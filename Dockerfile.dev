@@ -1,0 +1,145 @@
+# AGNOS Development Container
+# This Dockerfile creates a container with all build dependencies
+
+FROM ubuntu:24.04
+
+LABEL maintainer="AGNOS Team <team@agnos.io>"
+LABEL description="AGNOS development environment"
+
+# Prevent interactive prompts during build
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=UTC
+
+# Install base dependencies
+RUN apt-get update && apt-get install -y \
+    # Build essentials
+    build-essential \
+    bc \
+    bison \
+    flex \
+    libssl-dev \
+    libncurses5-dev \
+    libncursesw5-dev \
+    wget \
+    curl \
+    git \
+    ccache \
+    # Kernel build dependencies
+    fakeroot \
+    libelf-dev \
+    dwarves \
+    # Rust toolchain
+    rustc \
+    cargo \
+    rustfmt \
+    clippy \
+    # Python for build scripts
+    python3 \
+    python3-pip \
+    python3-venv \
+    # Documentation
+    asciidoc \
+    xmlto \
+    # Utilities
+    vim \
+    nano \
+    tmux \
+    htop \
+    tree \
+    jq \
+    # Network tools
+    iputils-ping \
+    net-tools \
+    iproute2 \
+    # Compression tools
+    xz-utils \
+    lzop \
+    lz4 \
+    zstd \
+    # Filesystem tools
+    squashfs-tools \
+    genisoimage \
+    # QEMU for testing
+    qemu-system-x86 \
+    qemu-utils \
+    # Security tools
+    libseccomp-dev \
+    libcap-dev \
+    # Debugging
+    gdb \
+    strace \
+    ltrace \
+    # Git LFS
+    git-lfs \
+    # Cleanup
+    && rm -rf /var/lib/apt/lists/*
+
+# Install additional Rust components
+RUN rustup component add rust-src rustc-dev llvm-tools-preview || true
+
+# Install cargo tools
+RUN cargo install cargo-audit cargo-tarpaulin cargo-outdated 2>/dev/null || true
+
+# Install Python tools
+RUN pip3 install --break-system-packages \
+    pytest \
+    pytest-cov \
+    black \
+    ruff \
+    mypy \
+    bandit \
+    safety \
+    || pip3 install \
+    pytest \
+    pytest-cov \
+    black \
+    ruff \
+    mypy \
+    bandit \
+    safety
+
+# Set up working directory
+WORKDIR /workspace
+
+# Create build cache directory
+RUN mkdir -p /cache
+
+# Set environment variables
+ENV CCACHE_DIR=/cache/ccache
+ENV CARGO_HOME=/cache/cargo
+ENV CARGO_TARGET_DIR=/cache/target
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Enable ccache
+ENV CC="ccache gcc"
+ENV CXX="ccache g++"
+
+# Create entrypoint script
+RUN cat > /entrypoint.sh << 'EOF'
+#!/bin/bash
+set -e
+
+# Initialize caches if needed
+mkdir -p /cache/ccache /cache/cargo /cache/target
+
+# Run the provided command or default to bash
+if [ $# -eq 0 ]; then
+    exec /bin/bash
+else
+    exec "$@"
+fi
+EOF
+
+RUN chmod +x /entrypoint.sh
+
+# Set the entrypoint
+ENTRYPOINT ["/entrypoint.sh"]
+
+# Default command
+CMD ["/bin/bash"]
+
+# Labels for metadata
+LABEL org.opencontainers.image.title="AGNOS Development Environment"
+LABEL org.opencontainers.image.description="Complete build environment for AGNOS OS development"
+LABEL org.opencontainers.image.source="https://github.com/agnostos/agnos"
+LABEL org.opencontainers.image.licenses="GPL-3.0"

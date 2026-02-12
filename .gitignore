@@ -1,0 +1,296 @@
+# AGNOS Project
+# https://github.com/agnostos/agnos
+
+# Build artifacts
+/build/
+/dist/
+/out/
+*.o
+*.a
+*.so
+*.ko
+*.mod
+*.mod.c
+*.cmd
+*.order
+*.symvers
+*.d
+
+# Kernel build
+kernel/.config
+kernel/.config.old
+kernel/.version
+kernel/Module.symvers
+kernel/modules.builtin
+kernel/modules.order
+kernel/include/config/
+kernel/include/generated/
+kernel/arch/*/include/generated/
+kernel/debian/
+kernel/.tmp_versions/
+kernel/*.dtb
+kernel/*.dtbo
+
+# Rust build
+target/
+Cargo.lock
+**/*.rs.bk
+*.rlib
+*.rmeta
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# C/C++
+*.exe
+*.out
+*.app
+*.i
+*.ii
+*.s
+*.su
+
+# Documentation build
+docs/_build/
+docs/api/_build/
+*.pdf
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+*.sublime-project
+*.sublime-workspace
+.project
+.classpath
+.settings/
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+log/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+*.cache
+.cache/
+
+# Testing
+test-results/
+coverage/
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+.nox/
+
+# Package management
+node_modules/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Environment
+.env
+.env.local
+.env.*.local
+.env.test
+.env.production
+
+# Secrets (NEVER commit these)
+*.key
+*.pem
+*.p12
+*.pfx
+*.crt
+*.cer
+credentials.json
+secrets.json
+secret.yaml
+secret.yml
+
+# Backup files
+*.bak
+*.backup
+*.orig
+*.rej
+
+# AGNOS specific
+/agnos-data/
+/agnos-cache/
+/agnos-models/
+*.agnos
+.agnos/
+
+# ISO images
+*.iso
+*.img
+
+# Disk images
+*.qcow2
+*.vmdk
+*.vdi
+*.raw
+
+# GDB
+.gdb_history
+peda-session-*
+
+# Core dumps
+core
+core.*
+vmlinux
+vmlinux-gdb.py
+
+# Container
+.dockerignore
+.containerignore
+
+# Generated files
+*.generated.*
+generated/
+auto-generated/
+
+# Valgrind
+*.vgcore
+vgcore.*
+
+# Perf
+perf.data
+perf.data.old
+
+# ctags
+tags
+TAGS
+cscope.out
+cscope.files
+cscope.in.out
+cscope.po.out
+
+# CLion
+.cmake/
+cmake-build-*/
+
+# Meson
+meson-logs/
+meson-private/
+builddir/
+
+# Autotools
+Makefile.in
+/aclocal.m4
+/autom4te.cache/
+/compile
+/configure
+/depcomp
+/install-sh
+/missing
+/stamp-h1
+/config.h
+config.h.in~
+libtool
+ltmain.sh
+m4/
+
+# pkg-config
+*.pc
+
+# Poedit
+*.mo
+*.pot
+
+# Archives
+*.tar
+*.gz
+*.bz2
+*.xz
+*.zip
+*.7z
+*.rar
+
+# Debug symbols
+*.dSYM/
+*.su
+*.idb
+*.pdb
+
+# Firmware
+*.fw
+*.bin
+
+# Device tree
+*.dtb
+*.dtbo
+*.dts.tmp
+
+# Kconfig
+*.config.cmd
+.config.old
+
+# Module signing
+signing_key.pem
+signing_key.x509
+x509.genkey
+
+# Rust analyzer
+rust-project.json
+
+# Cargo
+.cargo/
+
+# Nix
+result
+result-*
+.direnv/
+.envrc
+
+# direnv
+.direnv
+
+# Reproducible builds
+.buildinfo
+
+# ccache
+.ccache/
+
+# sccache
+.sccache/
+
+# Assembly output
+*.s

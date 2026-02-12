@@ -1,0 +1,223 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Build verification
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target: [x86_64, aarch64]
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential bc bison flex libssl-dev \
+          libncurses5-dev wget zlib1g-dev git ccache
+    
+    - name: Cache build artifacts
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target/
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+    
+    - name: Setup Rust toolchain
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        target: ${{ matrix.target }}-unknown-linux-gnu
+        override: true
+    
+    - name: Build kernel config
+      run: make kernel-config
+    
+    - name: Build userland (Rust)
+      run: cargo build --release
+    
+    - name: Build check
+      run: make build-check
+
+  # Code quality
+  quality:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Rust toolchain
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        components: rustfmt, clippy
+        override: true
+    
+    - name: Check formatting
+      run: cargo fmt -- --check
+    
+    - name: Run clippy
+      run: cargo clippy -- -D warnings
+    
+    - name: Check kernel style
+      run: |
+        if [ -f scripts/checkpatch.pl ]; then
+          find kernel -name "*.c" -o -name "*.h" | head -20 | \
+            xargs -I {} scripts/checkpatch.pl --no-tree -f {}
+        fi
+
+  # Security scanning
+  security:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        ignore-unfixed: true
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+        severity: 'CRITICAL,HIGH'
+    
+    - name: Upload Trivy scan results
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
+    
+    - name: Run cargo audit
+      run: |
+        cargo install cargo-audit
+        cargo audit
+    
+    - name: Run Bandit (Python)
+      run: |
+        pip install bandit
+        bandit -r scripts/ || true
+    
+    - name: Run Semgrep
+      uses: returntocorp/semgrep-action@v1
+      with:
+        config: >-
+          p/security-audit
+          p/secrets
+          p/ci
+
+  # Testing
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Rust toolchain
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+    
+    - name: Run Rust tests
+      run: cargo test --all-features
+    
+    - name: Run Python tests
+      run: |
+        pip install pytest pytest-cov
+        pytest tests/ -v || true
+    
+    - name: Generate coverage report
+      run: |
+        cargo install cargo-tarpaulin
+        cargo tarpaulin --out Xml || true
+    
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./cobertura.xml
+        flags: unittests
+        name: codecov-umbrella
+
+  # Documentation
+  docs:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Check documentation
+      run: |
+        # Check for broken links in markdown
+        if command -v markdown-link-check &> /dev/null; then
+          find . -name "*.md" -not -path "./node_modules/*" | \
+            xargs -I {} markdown-link-check {}
+        fi
+    
+    - name: Verify documentation completeness
+      run: |
+        # Check that all documented files exist
+        test -f README.md
+        test -f TODO.md
+        test -f CONTRIBUTING.md
+        test -f SECURITY.md
+        test -f LICENSE
+
+  # Container build
+  container:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Build container image
+      run: |
+        docker build -f Dockerfile.dev -t agnos:dev .
+    
+    - name: Test container
+      run: |
+        docker run --rm agnos:dev echo "Container build successful"
+
+  # License check
+  license:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Check license headers
+      run: |
+        # Check that source files have license headers
+        find . -name "*.rs" -o -name "*.c" -o -name "*.h" | \
+          while read f; do
+            if ! grep -q "GPL" "$f" 2>/dev/null; then
+              echo "Warning: $f may be missing license header"
+            fi
+          done
+    
+    - name: Verify LICENSE file
+      run: |
+        test -f LICENSE
+        grep -q "GNU GENERAL PUBLIC LICENSE" LICENSE
