@@ -9,8 +9,13 @@ pub mod llm;
 pub mod security;
 pub mod types;
 
+pub use agent::{AgentInfo, AgentStats, AgentEvent, StopReason};
 pub use error::{AgnosError, Result};
+pub use llm::*;
 pub use types::*;
+
+// Re-export commonly used crates
+pub use serde_json;
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;

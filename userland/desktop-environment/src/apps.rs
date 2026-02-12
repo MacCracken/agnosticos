@@ -1,0 +1,362 @@
+use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
+use thiserror::Error;
+use tracing::{error, info, warn};
+use uuid::Uuid;
+
+#[derive(Debug, Error)]
+pub enum AppError {
+    #[error("App not found: {0}")]
+    AppNotFound(String),
+    #[error("Window error: {0}")]
+    WindowError(String),
+    #[error("Permission denied: {0}")]
+    PermissionDenied(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AppType {
+    Terminal,
+    FileManager,
+    TextEditor,
+    WebBrowser,
+    AgentManager,
+    AuditViewer,
+    ModelManager,
+    Settings,
+    Custom,
+}
+
+#[derive(Debug, Clone)]
+pub struct AppWindow {
+    pub id: Uuid,
+    pub app_type: AppType,
+    pub title: String,
+    pub width: u32,
+    pub height: u32,
+    pub is_ai_enabled: bool,
+}
+
+impl AppWindow {
+    pub fn new(app_type: AppType, title: String) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            app_type,
+            title,
+            width: 800,
+            height: 600,
+            is_ai_enabled: false,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct TerminalApp {
+    pub id: String,
+    pub name: String,
+    pub ai_integration: bool,
+}
+
+impl TerminalApp {
+    pub fn new() -> Self {
+        Self {
+            id: "terminal".to_string(),
+            name: "AGNOS Terminal".to_string(),
+            ai_integration: true,
+        }
+    }
+
+    pub fn execute_command(&self, command: String) -> Result<String, AppError> {
+        info!("Terminal executing: {}", command);
+        Ok(format!("Executed: {}", command))
+    }
+}
+
+#[derive(Debug)]
+pub struct FileManagerApp {
+    pub id: String,
+    pub name: String,
+    pub current_path: String,
+    pub agent_assistance: bool,
+}
+
+impl FileManagerApp {
+    pub fn new() -> Self {
+        Self {
+            id: "filemanager".to_string(),
+            name: "File Manager".to_string(),
+            current_path: "/home".to_string(),
+            agent_assistance: true,
+        }
+    }
+
+    pub fn navigate(&mut self, path: String) -> Result<(), AppError> {
+        let path_clone = path.clone();
+        self.current_path = path;
+        info!("Navigated to: {}", path_clone);
+        Ok(())
+    }
+
+    pub fn search_with_agent(&self, query: String) -> Result<Vec<String>, AppError> {
+        info!("Agent-assisted search: {}", query);
+        Ok(vec![format!("Found: {}", query)])
+    }
+}
+
+#[derive(Debug)]
+pub struct AgentManagerApp {
+    pub id: String,
+    pub name: String,
+    pub running_agents: Vec<AgentInfo>,
+}
+
+#[derive(Debug, Clone)]
+pub struct AgentInfo {
+    pub id: Uuid,
+    pub name: String,
+    pub status: String,
+    pub capabilities: Vec<String>,
+}
+
+impl AgentManagerApp {
+    pub fn new() -> Self {
+        Self {
+            id: "agent-manager".to_string(),
+            name: "Agent Manager".to_string(),
+            running_agents: Vec::new(),
+        }
+    }
+
+    pub fn list_agents(&self) -> Vec<AgentInfo> {
+        self.running_agents.clone()
+    }
+
+    pub fn start_agent(
+        &mut self,
+        name: String,
+        capabilities: Vec<String>,
+    ) -> Result<Uuid, AppError> {
+        let id = Uuid::new_v4();
+        let name_clone = name.clone();
+        self.running_agents.push(AgentInfo {
+            id,
+            name: name_clone.clone(),
+            status: "Running".to_string(),
+            capabilities,
+        });
+        info!("Started agent: {}", name);
+        Ok(id)
+    }
+
+    pub fn stop_agent(&mut self, id: Uuid) -> Result<(), AppError> {
+        self.running_agents.retain(|a| a.id != id);
+        info!("Stopped agent: {}", id);
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub struct AuditViewerApp {
+    pub id: String,
+    pub name: String,
+    pub filters: AuditFilters,
+}
+
+#[derive(Debug, Clone)]
+pub struct AuditFilters {
+    pub include_agent: bool,
+    pub include_security: bool,
+    pub include_system: bool,
+    pub time_range: TimeRange,
+}
+
+#[derive(Debug, Clone)]
+pub enum TimeRange {
+    LastHour,
+    LastDay,
+    LastWeek,
+    Custom,
+}
+
+impl AuditViewerApp {
+    pub fn new() -> Self {
+        Self {
+            id: "audit-viewer".to_string(),
+            name: "Audit Log Viewer".to_string(),
+            filters: AuditFilters {
+                include_agent: true,
+                include_security: true,
+                include_system: true,
+                time_range: TimeRange::LastDay,
+            },
+        }
+    }
+
+    pub fn get_logs(&self) -> Vec<AuditEntry> {
+        vec![AuditEntry {
+            id: Uuid::new_v4(),
+            timestamp: chrono::Utc::now(),
+            event_type: "Agent Action".to_string(),
+            description: "Sample audit entry".to_string(),
+            source: "agent-runtime".to_string(),
+        }]
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct AuditEntry {
+    pub id: Uuid,
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+    pub event_type: String,
+    pub description: String,
+    pub source: String,
+}
+
+#[derive(Debug)]
+pub struct ModelManagerApp {
+    pub id: String,
+    pub name: String,
+    pub installed_models: Vec<ModelInfo>,
+    pub active_model: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ModelInfo {
+    pub id: String,
+    pub name: String,
+    pub size: u64,
+    pub provider: String,
+    pub is_downloaded: bool,
+}
+
+impl ModelManagerApp {
+    pub fn new() -> Self {
+        Self {
+            id: "model-manager".to_string(),
+            name: "Model Manager".to_string(),
+            installed_models: Vec::new(),
+            active_model: None,
+        }
+    }
+
+    pub fn list_models(&self) -> Vec<ModelInfo> {
+        self.installed_models.clone()
+    }
+
+    pub fn download_model(&self, model_id: String) -> Result<(), AppError> {
+        info!("Downloading model: {}", model_id);
+        Ok(())
+    }
+
+    pub fn select_model(&mut self, model_id: String) -> Result<(), AppError> {
+        let model_id_clone = model_id.clone();
+        self.active_model = Some(model_id);
+        info!("Selected model: {}", model_id_clone);
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub struct DesktopApplications {
+    terminal: TerminalApp,
+    file_manager: FileManagerApp,
+    agent_manager: AgentManagerApp,
+    audit_viewer: AuditViewerApp,
+    model_manager: ModelManagerApp,
+    open_windows: Arc<RwLock<HashMap<Uuid, AppWindow>>>,
+}
+
+impl DesktopApplications {
+    pub fn new() -> Self {
+        Self {
+            terminal: TerminalApp::new(),
+            file_manager: FileManagerApp::new(),
+            agent_manager: AgentManagerApp::new(),
+            audit_viewer: AuditViewerApp::new(),
+            model_manager: ModelManagerApp::new(),
+            open_windows: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    pub fn open_terminal(&self) -> Result<AppWindow, AppError> {
+        let window = AppWindow::new(AppType::Terminal, self.terminal.name.clone());
+        self.open_windows
+            .write()
+            .unwrap()
+            .insert(window.id, window.clone());
+        info!("Opened terminal");
+        Ok(window)
+    }
+
+    pub fn open_file_manager(&self, path: Option<String>) -> Result<AppWindow, AppError> {
+        let path_clone = path.clone();
+        let mut window = AppWindow::new(AppType::FileManager, self.file_manager.name.clone());
+        if let Some(p) = path_clone {
+            // Note: Cannot call mutable method on file_manager through immutable reference
+            // This needs to be refactored
+        }
+        window.is_ai_enabled = self.file_manager.agent_assistance;
+        self.open_windows
+            .write()
+            .unwrap()
+            .insert(window.id, window.clone());
+        info!("Opened file manager");
+        Ok(window)
+    }
+
+    pub fn open_agent_manager(&self) -> Result<AppWindow, AppError> {
+        let mut window = AppWindow::new(AppType::AgentManager, self.agent_manager.name.clone());
+        window.is_ai_enabled = true;
+        self.open_windows
+            .write()
+            .unwrap()
+            .insert(window.id, window.clone());
+        info!("Opened agent manager");
+        Ok(window)
+    }
+
+    pub fn open_audit_viewer(&self) -> Result<AppWindow, AppError> {
+        let mut window = AppWindow::new(AppType::AuditViewer, self.audit_viewer.name.clone());
+        window.is_ai_enabled = true;
+        self.open_windows
+            .write()
+            .unwrap()
+            .insert(window.id, window.clone());
+        info!("Opened audit viewer");
+        Ok(window)
+    }
+
+    pub fn open_model_manager(&self) -> Result<AppWindow, AppError> {
+        let mut window = AppWindow::new(AppType::ModelManager, self.model_manager.name.clone());
+        window.is_ai_enabled = true;
+        self.open_windows
+            .write()
+            .unwrap()
+            .insert(window.id, window.clone());
+        info!("Opened model manager");
+        Ok(window)
+    }
+
+    pub fn close_window(&self, window_id: Uuid) -> Result<(), AppError> {
+        self.open_windows.write().unwrap().remove(&window_id);
+        info!("Closed window: {}", window_id);
+        Ok(())
+    }
+
+    pub fn get_open_windows(&self) -> Vec<AppWindow> {
+        self.open_windows
+            .read()
+            .unwrap()
+            .values()
+            .cloned()
+            .collect()
+    }
+
+    pub fn get_agent_manager(&mut self) -> &mut AgentManagerApp {
+        &mut self.agent_manager
+    }
+
+    pub fn get_model_manager(&mut self) -> &mut ModelManagerApp {
+        &mut self.model_manager
+    }
+}

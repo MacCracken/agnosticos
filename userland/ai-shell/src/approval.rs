@@ -232,7 +232,7 @@ impl ApprovalManager {
                 println!("  {} {}", style("Reason:").dim(), reason);
             }
             ApprovalRequest::PrivilegeEscalation { command, user, reason } => {
-                println!("  {} {}", style("⚠️  PRIVILEGE ESCALATION").red().bold());
+                println!("  {}", style("⚠️  PRIVILEGE ESCALATION").red().bold());
                 println!("  {} {} as {}", style("Command:").bold(), command, user);
                 println!("  {} {}", style("Reason:").dim(), reason);
             }

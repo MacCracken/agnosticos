@@ -40,5 +40,6 @@ ansi_term = "0.12"
 hostname = "0.3"
 chrono = { workspace = true }
 git2 = { version = "0.18", optional = true }
-starship-battery = { version = "0.18", optional = true }
+battery = { version = "0.7", optional = true }
+nix = { version = "0.27", features = ["process", "signal"] }
 toml = "0.8"

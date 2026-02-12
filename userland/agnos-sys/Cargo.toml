@@ -10,9 +10,17 @@ description = "AGNOS kernel syscall bindings and low-level system interface"
 
 [dependencies]
 agnos-common = { workspace = true }
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+chrono = { workspace = true }
 libc = "0.2"
 nix = { version = "0.27", features = ["process", "sched", "mount", "user"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
 
 [build-dependencies]
 bindgen = "0.69"

@@ -49,7 +49,7 @@ impl Ui {
     
     /// Show help
     pub fn show_help(&self) {
-        println!("\n{}", style("AGNOS AI Shell Commands:").bold().underline());
+        println!("\n{}", style("AGNOS AI Shell Commands:").bold().underlined());
         println!();
         println!("  {}    - Show this help", style("help").yellow());
         println!("  {}  - Clear screen", style("clear").yellow());
@@ -80,7 +80,7 @@ impl Ui {
     
     /// Show command history
     pub fn show_history(&self, history: &crate::history::CommandHistory) {
-        println!("\n{}", style("Command History:").bold().underline());
+        println!("\n{}", style("Command History:").bold().underlined());
         println!();
         
         for (i, cmd) in history.get_recent(20).iter().enumerate() {

@@ -7,6 +7,7 @@ pub mod llm;
 pub mod security;
 pub mod syscall;
 
+pub use agent::{Agent, AgentContext, AgentRuntime};
 pub use error::{Result, SysError};
 
 pub mod error {

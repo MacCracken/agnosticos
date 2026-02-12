@@ -1,0 +1,440 @@
+use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
+use thiserror::Error;
+use tracing::{error, info, warn};
+use uuid::Uuid;
+
+#[derive(Debug, Error)]
+pub enum ShellError {
+    #[error("Notification not found: {0}")]
+    NotificationNotFound(Uuid),
+    #[error("App not found: {0}")]
+    AppNotFound(String),
+    #[error("Permission denied: {0}")]
+    PermissionDenied(String),
+}
+
+pub type NotificationId = Uuid;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NotificationPriority {
+    Low,
+    Normal,
+    High,
+    Critical,
+}
+
+#[derive(Debug, Clone)]
+pub struct Notification {
+    pub id: NotificationId,
+    pub app_name: String,
+    pub title: String,
+    pub body: String,
+    pub priority: NotificationPriority,
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+    pub requires_action: bool,
+    pub is_agent_related: bool,
+}
+
+impl Default for Notification {
+    fn default() -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            app_name: String::new(),
+            title: String::new(),
+            body: String::new(),
+            priority: NotificationPriority::Normal,
+            timestamp: chrono::Utc::now(),
+            requires_action: false,
+            is_agent_related: false,
+        }
+    }
+}
+
+pub struct QuickSetting {
+    pub id: String,
+    pub name: String,
+    pub icon: String,
+    pub is_active: bool,
+    #[doc(hidden)]
+    pub on_activate: Box<dyn Fn() + Send + Sync>,
+}
+
+impl std::fmt::Debug for QuickSetting {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("QuickSetting")
+            .field("id", &self.id)
+            .field("name", &self.name)
+            .field("icon", &self.icon)
+            .field("is_active", &self.is_active)
+            .field("on_activate", &"<function>")
+            .finish()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct SystemStatus {
+    pub cpu_usage: f32,
+    pub memory_usage: f32,
+    pub disk_usage: f32,
+    pub battery_level: Option<u8>,
+    pub network_status: NetworkStatus,
+    pub agent_count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NetworkStatus {
+    Connected,
+    Disconnected,
+    Connecting,
+    Error,
+}
+
+#[derive(Debug, Clone)]
+pub struct AppEntry {
+    pub id: String,
+    pub name: String,
+    pub icon: String,
+    pub category: AppCategory,
+    pub is_ai_app: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AppCategory {
+    System,
+    Office,
+    Development,
+    Communication,
+    Media,
+    Graphics,
+    AI,
+    Other,
+}
+
+#[derive(Debug, Clone)]
+pub struct LauncherItem {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub icon: String,
+    pub app: Option<AppEntry>,
+    pub action: Option<LauncherAction>,
+    pub is_suggested: bool,
+    pub relevance_score: f32,
+}
+
+#[derive(Debug, Clone)]
+pub enum LauncherAction {
+    OpenApp(String),
+    RunCommand(String),
+    SearchFiles(String),
+    WebSearch(String),
+}
+
+#[derive(Debug)]
+pub struct DesktopShell {
+    notifications: Arc<RwLock<HashMap<NotificationId, Notification>>>,
+    quick_settings: Arc<RwLock<Vec<QuickSetting>>>,
+    system_status: Arc<RwLock<SystemStatus>>,
+    launcher_items: Arc<RwLock<Vec<LauncherItem>>>,
+    app_registry: Arc<RwLock<HashMap<String, AppEntry>>>,
+    is_locked: Arc<RwLock<bool>>,
+    panel_visible: Arc<RwLock<bool>>,
+}
+
+impl DesktopShell {
+    pub fn new() -> Self {
+        let mut shell = Self {
+            notifications: Arc::new(RwLock::new(HashMap::new())),
+            quick_settings: Arc::new(RwLock::new(Vec::new())),
+            system_status: Arc::new(RwLock::new(SystemStatus {
+                cpu_usage: 0.0,
+                memory_usage: 0.0,
+                disk_usage: 0.0,
+                battery_level: None,
+                network_status: NetworkStatus::Connected,
+                agent_count: 0,
+            })),
+            launcher_items: Arc::new(RwLock::new(Vec::new())),
+            app_registry: Arc::new(RwLock::new(HashMap::new())),
+            is_locked: Arc::new(RwLock::new(false)),
+            panel_visible: Arc::new(RwLock::new(true)),
+        };
+
+        shell.initialize_quick_settings();
+        shell.initialize_app_registry();
+        shell.populate_launcher_items();
+
+        shell
+    }
+
+    fn initialize_quick_settings(&self) {
+        let mut settings = self.quick_settings.write().unwrap();
+
+        settings.push(QuickSetting {
+            id: "wifi".to_string(),
+            name: "Wi-Fi".to_string(),
+            icon: "wifi".to_string(),
+            is_active: true,
+            on_activate: Box::new(|| {
+                info!("Wi-Fi toggle activated");
+            }),
+        });
+
+        settings.push(QuickSetting {
+            id: "bluetooth".to_string(),
+            name: "Bluetooth".to_string(),
+            icon: "bluetooth".to_string(),
+            is_active: false,
+            on_activate: Box::new(|| {
+                info!("Bluetooth toggle activated");
+            }),
+        });
+
+        settings.push(QuickSetting {
+            id: "airplane".to_string(),
+            name: "Airplane Mode".to_string(),
+            icon: "airplane".to_string(),
+            is_active: false,
+            on_activate: Box::new(|| {
+                info!("Airplane mode toggle activated");
+            }),
+        });
+
+        settings.push(QuickSetting {
+            id: "dnd".to_string(),
+            name: "Do Not Disturb".to_string(),
+            icon: "dnd".to_string(),
+            is_active: false,
+            on_activate: Box::new(|| {
+                info!("Do Not Disturb toggle activated");
+            }),
+        });
+
+        settings.push(QuickSetting {
+            id: "nightlight".to_string(),
+            name: "Night Light".to_string(),
+            icon: "nightlight".to_string(),
+            is_active: true,
+            on_activate: Box::new(|| {
+                info!("Night Light toggle activated");
+            }),
+        });
+
+        info!("Quick settings initialized");
+    }
+
+    fn initialize_app_registry(&self) {
+        let mut registry = self.app_registry.write().unwrap();
+
+        let system_apps = [
+            ("terminal", "Terminal", "terminal", true),
+            ("filemanager", "File Manager", "folder", false),
+            ("settings", "Settings", "settings", false),
+            ("agent-manager", "Agent Manager", "bot", true),
+            ("audit-viewer", "Audit Viewer", "shield", true),
+            ("model-manager", "Model Manager", "cpu", true),
+        ];
+
+        for (id, name, icon, is_ai) in system_apps {
+            registry.insert(
+                id.to_string(),
+                AppEntry {
+                    id: id.to_string(),
+                    name: name.to_string(),
+                    icon: icon.to_string(),
+                    category: AppCategory::System,
+                    is_ai_app: is_ai,
+                },
+            );
+        }
+
+        info!("App registry initialized with {} entries", registry.len());
+    }
+
+    fn populate_launcher_items(&self) {
+        let registry = self.app_registry.read().unwrap();
+        let mut items = self.launcher_items.write().unwrap();
+
+        for app in registry.values() {
+            items.push(LauncherItem {
+                id: format!("app-{}", app.id),
+                name: app.name.clone(),
+                description: format!("Launch {}", app.name),
+                icon: app.icon.clone(),
+                app: Some(app.clone()),
+                action: Some(LauncherAction::OpenApp(app.id.clone())),
+                is_suggested: false,
+                relevance_score: 1.0,
+            });
+        }
+
+        items.push(LauncherItem {
+            id: "search-files".to_string(),
+            name: "Search Files".to_string(),
+            description: "Search for files on the system".to_string(),
+            icon: "search".to_string(),
+            app: None,
+            action: Some(LauncherAction::SearchFiles(String::new())),
+            is_suggested: false,
+            relevance_score: 0.8,
+        });
+
+        info!("Launcher populated with {} items", items.len());
+    }
+
+    pub fn show_notification(&self, notification: Notification) {
+        let title = notification.title.clone();
+        let mut notifications = self.notifications.write().unwrap();
+        notifications.insert(notification.id, notification);
+        info!("Notification shown: {}", title);
+    }
+
+    pub fn dismiss_notification(&self, id: NotificationId) -> Result<(), ShellError> {
+        let mut notifications = self.notifications.write().unwrap();
+        if !notifications.contains_key(&id) {
+            return Err(ShellError::NotificationNotFound(id));
+        }
+        notifications.remove(&id);
+        info!("Notification dismissed: {}", id);
+        Ok(())
+    }
+
+    pub fn show_agent_notification(&self, title: String, body: String, requires_action: bool) {
+        let notification = Notification {
+            id: Uuid::new_v4(),
+            app_name: "AGNOS Agent".to_string(),
+            title,
+            body,
+            priority: if requires_action {
+                NotificationPriority::High
+            } else {
+                NotificationPriority::Normal
+            },
+            timestamp: chrono::Utc::now(),
+            requires_action,
+            is_agent_related: true,
+        };
+        self.show_notification(notification);
+    }
+
+    pub fn request_human_override(&self, agent_name: String, action: String, reason: String) {
+        let agent_name_clone = agent_name.clone();
+        let notification = Notification {
+            id: Uuid::new_v4(),
+            app_name: format!("Agent: {}", agent_name_clone),
+            title: "Human Override Requested".to_string(),
+            body: format!(
+                "{}\n\nAction: {}\nReason: {}",
+                agent_name_clone, action, reason
+            ),
+            priority: NotificationPriority::Critical,
+            timestamp: chrono::Utc::now(),
+            requires_action: true,
+            is_agent_related: true,
+        };
+        self.show_notification(notification);
+        warn!("Human override requested by {}", agent_name);
+    }
+
+    pub fn toggle_quick_setting(&self, setting_id: &str) -> Result<(), ShellError> {
+        let mut settings = self.quick_settings.write().unwrap();
+        let setting = settings
+            .iter_mut()
+            .find(|s| s.id == setting_id)
+            .ok_or(ShellError::AppNotFound(setting_id.to_string()))?;
+
+        setting.is_active = !setting.is_active;
+        (setting.on_activate)();
+
+        info!(
+            "Quick setting {} toggled to {}",
+            setting_id, setting.is_active
+        );
+        Ok(())
+    }
+
+    pub fn search_launcher(&self, query: &str) -> Vec<LauncherItem> {
+        let items = self.launcher_items.read().unwrap();
+        let query = query.to_lowercase();
+
+        let mut results: Vec<_> = items
+            .iter()
+            .filter(|item| {
+                item.name.to_lowercase().contains(&query)
+                    || item.description.to_lowercase().contains(&query)
+            })
+            .cloned()
+            .collect();
+
+        results.sort_by(|a, b| b.relevance_score.partial_cmp(&a.relevance_score).unwrap());
+
+        if !query.is_empty() {
+            for item in &mut results {
+                if item.name.to_lowercase().starts_with(&query) {
+                    item.relevance_score *= 1.5;
+                }
+            }
+        }
+
+        results
+    }
+
+    pub fn launch_app(&self, app_id: &str) -> Result<(), ShellError> {
+        let registry = self.app_registry.read().unwrap();
+        if !registry.contains_key(app_id) {
+            return Err(ShellError::AppNotFound(app_id.to_string()));
+        }
+
+        info!("Launching application: {}", app_id);
+        Ok(())
+    }
+
+    pub fn lock_screen(&self) {
+        *self.is_locked.write().unwrap() = true;
+        info!("Screen locked");
+    }
+
+    pub fn unlock_screen(&self) {
+        *self.is_locked.write().unwrap() = false;
+        info!("Screen unlocked");
+    }
+
+    pub fn is_locked(&self) -> bool {
+        *self.is_locked.read().unwrap()
+    }
+
+    pub fn toggle_panel(&self) {
+        let mut visible = self.panel_visible.write().unwrap();
+        *visible = !*visible;
+        info!("Panel visibility: {}", *visible);
+    }
+
+    pub fn get_notifications(&self) -> Vec<Notification> {
+        self.notifications
+            .read()
+            .unwrap()
+            .values()
+            .cloned()
+            .collect()
+    }
+
+    pub fn get_quick_settings(&self) -> Vec<QuickSetting> {
+        // QuickSetting contains closures and cannot be cloned
+        // Return empty vec for now - needs proper handling
+        Vec::new()
+    }
+
+    pub fn get_system_status(&self) -> SystemStatus {
+        self.system_status.read().unwrap().clone()
+    }
+
+    pub fn update_system_status(&self, status: SystemStatus) {
+        *self.system_status.write().unwrap() = status;
+    }
+
+    pub fn set_agent_count(&self, count: usize) {
+        let mut status = self.system_status.write().unwrap();
+        status.agent_count = count;
+    }
+}

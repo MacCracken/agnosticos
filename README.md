@@ -230,12 +230,12 @@ AGNOS is currently in **pre-alpha** development. See [TODO.md](TODO.md) for deta
 
 | Document | Description |
 |----------|-------------|
-| [TODO.md](TODO.md) | Development phases and MVP tasks |
-| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Detailed system architecture |
-| [BUILD.md](docs/BUILD.md) | Build instructions and toolchain setup |
-| [SECURITY.md](SECURITY.md) | Security model and policies |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | Contribution guidelines and git workflow |
-| [PHASES.md](docs/PHASES.md) | Detailed phase planning |
+| [TODO.md](TODO.md) | Development roadmap and MVP tasks |
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | System architecture |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Contribution guidelines |
+| [SECURITY.md](SECURITY.md) | Security policies |
+| [docs/adr/](docs/adr/) | Architecture Decision Records |
+| [docs/api/](docs/api/) | API reference |
 
 ## Security
 
