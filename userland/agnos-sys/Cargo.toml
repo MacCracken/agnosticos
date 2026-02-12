@@ -1,0 +1,22 @@
+[package]
+name = "agnos-sys"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "AGNOS kernel syscall bindings and low-level system interface"
+
+[dependencies]
+agnos-common = { workspace = true }
+libc = "0.2"
+nix = { version = "0.27", features = ["process", "sched", "mount", "user"] }
+thiserror = { workspace = true }
+
+[build-dependencies]
+bindgen = "0.69"
+
+[features]
+default = []
+kernel-module = []

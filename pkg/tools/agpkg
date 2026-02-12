@@ -1,0 +1,632 @@
+#!/bin/bash
+# agpkg - AGNOS Package Manager
+# Usage: agpkg [command] [options] [packages]
+
+set -e
+
+VERSION="0.1.0"
+AGNOS_ROOT="/var/lib/agnos"
+PKG_ROOT="$AGNOS_ROOT/packages"
+CACHE_DIR="$AGNOS_ROOT/cache"
+REPOS_DIR="$AGNOS_ROOT/repos"
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+usage() {
+    cat << EOF
+AGNOS Package Manager v$VERSION
+
+Usage: agpkg <command> [options] [packages]
+
+Commands:
+    install     Install packages
+    remove      Remove packages
+    update      Update package database
+    upgrade     Upgrade installed packages
+    search      Search for packages
+    info        Show package information
+    list        List installed packages
+    build       Build package from source
+    verify      Verify package integrity
+    clean       Clean package cache
+
+Options:
+    -y, --yes       Automatic yes to prompts
+    -f, --force     Force operation
+    -v, --verbose   Verbose output
+    --root <path>   Use alternative root directory
+    --help          Show this help message
+
+Examples:
+    agpkg install neovim
+    agpkg install --root /mnt neovim
+    agpkg remove --force broken-package
+    agpkg search "text editor"
+EOF
+}
+
+log_info() {
+    echo -e "${GREEN}[INFO]${NC} $1"
+}
+
+log_warn() {
+    echo -e "${YELLOW}[WARN]${NC} $1"
+}
+
+log_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+parse_args() {
+    COMMAND=""
+    PACKAGES=()
+    AUTO_YES=false
+    FORCE=false
+    VERBOSE=false
+    ROOT=""
+    
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            install|remove|update|upgrade|search|info|list|build|verify|clean)
+                COMMAND="$1"
+                shift
+                ;;
+            -y|--yes)
+                AUTO_YES=true
+                shift
+                ;;
+            -f|--force)
+                FORCE=true
+                shift
+                ;;
+            -v|--verbose)
+                VERBOSE=true
+                shift
+                ;;
+            --root)
+                ROOT="$2"
+                shift 2
+                ;;
+            --help|-h)
+                usage
+                exit 0
+                ;;
+            --version|-V)
+                echo "agpkg version $VERSION"
+                exit 0
+                ;;
+            -*)
+                log_error "Unknown option: $1"
+                usage
+                exit 1
+                ;;
+            *)
+                PACKAGES+=("$1")
+                shift
+                ;;
+        esac
+    done
+    
+    if [[ -z "$COMMAND" ]]; then
+        log_error "No command specified"
+        usage
+        exit 1
+    fi
+}
+
+check_root() {
+    if [[ $EUID -ne 0 ]]; then
+        log_error "This command requires root privileges"
+        exit 1
+    fi
+}
+
+init_directories() {
+    if [[ -n "$ROOT" ]]; then
+        AGNOS_ROOT="$ROOT/var/lib/agnos"
+        PKG_ROOT="$AGNOS_ROOT/packages"
+        CACHE_DIR="$AGNOS_ROOT/cache"
+        REPOS_DIR="$AGNOS_ROOT/repos"
+    fi
+    
+    mkdir -p "$PKG_ROOT" "$CACHE_DIR" "$REPOS_DIR"
+    mkdir -p "$PKG_ROOT/installed"
+    mkdir -p "$PKG_ROOT/available"
+    mkdir -p "$PKG_ROOT/scripts"
+}
+
+cmd_install() {
+    check_root
+    
+    if [[ ${#PACKAGES[@]} -eq 0 ]]; then
+        log_error "No packages specified for installation"
+        exit 1
+    fi
+    
+    for pkg in "${PACKAGES[@]}"; do
+        log_info "Installing $pkg..."
+        
+        # Download package
+        download_package "$pkg"
+        
+        # Verify package
+        verify_package "$pkg"
+        
+        # Check dependencies
+        resolve_dependencies "$pkg"
+        
+        # Install package
+        install_package "$pkg"
+        
+        log_info "Successfully installed $pkg"
+    done
+}
+
+cmd_remove() {
+    check_root
+    
+    if [[ ${#PACKAGES[@]} -eq 0 ]]; then
+        log_error "No packages specified for removal"
+        exit 1
+    fi
+    
+    for pkg in "${PACKAGES[@]}"; do
+        log_info "Removing $pkg..."
+        
+        # Check if package is installed
+        if ! is_installed "$pkg"; then
+            log_warn "$pkg is not installed"
+            continue
+        fi
+        
+        # Check reverse dependencies
+        if ! $FORCE && has_reverse_dependencies "$pkg"; then
+            log_error "$pkg is required by other packages. Use --force to override."
+            continue
+        fi
+        
+        # Remove package
+        remove_package "$pkg"
+        
+        log_info "Successfully removed $pkg"
+    done
+}
+
+cmd_update() {
+    check_root
+    log_info "Updating package database..."
+    
+    # Update all configured repositories
+    for repo in "$REPOS_DIR"/*.repo; do
+        if [[ -f "$repo" ]]; then
+            update_repository "$repo"
+        fi
+    done
+    
+    log_info "Package database updated"
+}
+
+cmd_upgrade() {
+    check_root
+    log_info "Upgrading packages..."
+    
+    # Find upgradable packages
+    local upgradable=($(find_upgradable))
+    
+    if [[ ${#upgradable[@]} -eq 0 ]]; then
+        log_info "All packages are up to date"
+        return
+    fi
+    
+    log_info "Upgrading ${#upgradable[@]} package(s)"
+    
+    for pkg in "${upgradable[@]}"; do
+        log_info "Upgrading $pkg..."
+        download_package "$pkg"
+        verify_package "$pkg"
+        upgrade_package "$pkg"
+    done
+    
+    log_info "Upgrade complete"
+}
+
+cmd_search() {
+    if [[ ${#PACKAGES[@]} -eq 0 ]]; then
+        log_error "No search term specified"
+        exit 1
+    fi
+    
+    local term="${PACKAGES[0]}"
+    log_info "Searching for '$term'..."
+    
+    # Search in available packages
+    for pkg_file in "$PKG_ROOT/available"/*.agpkg; do
+        if [[ -f "$pkg_file" ]]; then
+            local name=$(jq -r '.name' "$pkg_file" 2>/dev/null || echo "")
+            local desc=$(jq -r '.description' "$pkg_file" 2>/dev/null || echo "")
+            
+            if [[ "$name" == *"$term"* ]] || [[ "$desc" == *"$term"* ]]; then
+                local version=$(jq -r '.version' "$pkg_file" 2>/dev/null || echo "unknown")
+                echo "  $name/$version - $desc"
+            fi
+        fi
+    done
+}
+
+cmd_info() {
+    if [[ ${#PACKAGES[@]} -eq 0 ]]; then
+        log_error "No package specified"
+        exit 1
+    fi
+    
+    local pkg="${PACKAGES[0]}"
+    local pkg_file="$PKG_ROOT/available/$pkg.agpkg"
+    
+    if [[ ! -f "$pkg_file" ]]; then
+        log_error "Package $pkg not found"
+        exit 1
+    fi
+    
+    echo "Package: $(jq -r '.name' "$pkg_file")"
+    echo "Version: $(jq -r '.version' "$pkg_file")"
+    echo "Description: $(jq -r '.description' "$pkg_file")"
+    echo "Architecture: $(jq -r '.architecture' "$pkg_file")"
+    echo "License: $(jq -r '.license' "$pkg_file")"
+    echo "Dependencies: $(jq -r '.dependencies | join(", ")' "$pkg_file")"
+    echo "Size: $(jq -r '.size' "$pkg_file") bytes"
+    echo "SHA256: $(jq -r '.checksums.sha256' "$pkg_file")"
+    echo "Installed: $(is_installed "$pkg" && echo "yes" || echo "no")"
+}
+
+cmd_list() {
+    log_info "Installed packages:"
+    
+    for installed in "$PKG_ROOT/installed"/*.installed; do
+        if [[ -f "$installed" ]]; then
+            local pkg=$(basename "$installed" .installed)
+            local version=$(cat "$installed")
+            echo "  $pkg/$version"
+        fi
+    done | sort
+}
+
+cmd_build() {
+    if [[ ${#PACKAGES[@]} -eq 0 ]]; then
+        log_error "No package spec specified"
+        exit 1
+    fi
+    
+    local spec_file="${PACKAGES[0]}"
+    
+    if [[ ! -f "$spec_file" ]]; then
+        log_error "Spec file not found: $spec_file"
+        exit 1
+    fi
+    
+    log_info "Building package from $spec_file..."
+    build_package "$spec_file"
+}
+
+cmd_verify() {
+    if [[ ${#PACKAGES[@]} -eq 0 ]]; then
+        log_error "No package specified"
+        exit 1
+    fi
+    
+    for pkg in "${PACKAGES[@]}"; do
+        local pkg_file="$CACHE_DIR/$pkg.agpkg"
+        
+        if [[ ! -f "$pkg_file" ]]; then
+            log_error "Package file not found: $pkg"
+            continue
+        fi
+        
+        if verify_package "$pkg"; then
+            log_info "$pkg: Verification OK"
+        else
+            log_error "$pkg: Verification FAILED"
+        fi
+    done
+}
+
+cmd_clean() {
+    log_info "Cleaning package cache..."
+    rm -rf "$CACHE_DIR"/*
+    log_info "Cache cleaned"
+}
+
+# Helper functions
+download_package() {
+    local pkg="$1"
+    log_info "Downloading $pkg..."
+    
+    # Placeholder: In production, this would download from repository
+    # curl -o "$CACHE_DIR/$pkg.agpkg" "$REPO_URL/$pkg.agpkg"
+    
+    if [[ $VERBOSE == true ]]; then
+        echo "  -> Would download from repository"
+    fi
+}
+
+verify_package() {
+    local pkg="$1"
+    local pkg_file="$CACHE_DIR/$pkg.agpkg"
+    
+    if [[ ! -f "$pkg_file" ]]; then
+        log_error "Package file not found: $pkg_file"
+        return 1
+    fi
+    
+    # Verify JSON structure
+    if ! jq empty "$pkg_file" 2>/dev/null; then
+        log_error "Invalid package format: $pkg"
+        return 1
+    fi
+    
+    # Verify checksums
+    local expected_sha=$(jq -r '.checksums.sha256' "$pkg_file")
+    # In production: verify actual file checksum
+    
+    # Verify signature
+    local sig=$(jq -r '.signature' "$pkg_file")
+    # In production: verify GPG signature
+    
+    return 0
+}
+
+resolve_dependencies() {
+    local pkg="$1"
+    local pkg_file="$CACHE_DIR/$pkg.agpkg"
+    
+    local deps=$(jq -r '.dependencies[]' "$pkg_file" 2>/dev/null || echo "")
+    
+    if [[ -n "$deps" ]]; then
+        log_info "Resolving dependencies for $pkg..."
+        
+        for dep in $deps; do
+            if ! is_installed "$dep"; then
+                log_info "  -> Installing dependency: $dep"
+                download_package "$dep"
+                verify_package "$dep"
+                install_package "$dep"
+            fi
+        done
+    fi
+}
+
+install_package() {
+    local pkg="$1"
+    local pkg_file="$CACHE_DIR/$pkg.agpkg"
+    local install_dir=$(jq -r '.install_dir // "/"' "$pkg_file")
+    local version=$(jq -r '.version' "$pkg_file")
+    
+    # Run pre-install script
+    local pre_install=$(jq -r '.scripts.pre_install // empty' "$pkg_file")
+    if [[ -n "$pre_install" && -f "$PKG_ROOT/scripts/$pre_install" ]]; then
+        bash "$PKG_ROOT/scripts/$pre_install" install
+    fi
+    
+    # Extract package files
+    # In production: extract tarball/zip to install_dir
+    
+    # Create installation record
+    echo "$version" > "$PKG_ROOT/installed/$pkg.installed"
+    
+    # Run post-install script
+    local post_install=$(jq -r '.scripts.post_install // empty' "$pkg_file")
+    if [[ -n "$post_install" && -f "$PKG_ROOT/scripts/$post_install" ]]; then
+        bash "$PKG_ROOT/scripts/$post_install" install
+    fi
+}
+
+remove_package() {
+    local pkg="$1"
+    local pkg_file="$PKG_ROOT/installed/$pkg.agpkg"
+    
+    # Run pre-remove script
+    if [[ -f "$pkg_file" ]]; then
+        local pre_remove=$(jq -r '.scripts.pre_remove // empty' "$pkg_file")
+        if [[ -n "$pre_remove" && -f "$PKG_ROOT/scripts/$pre_remove" ]]; then
+            bash "$PKG_ROOT/scripts/$pre_remove" remove
+        fi
+    fi
+    
+    # Remove files
+    # In production: remove tracked files
+    
+    # Remove installation record
+    rm -f "$PKG_ROOT/installed/$pkg.installed"
+    
+    # Run post-remove script
+    if [[ -f "$pkg_file" ]]; then
+        local post_remove=$(jq -r '.scripts.post_remove // empty' "$pkg_file")
+        if [[ -n "$post_remove" && -f "$PKG_ROOT/scripts/$post_remove" ]]; then
+            bash "$PKG_ROOT/scripts/$post_remove" remove
+        fi
+    fi
+}
+
+upgrade_package() {
+    local pkg="$1"
+    
+    # Backup current installation
+    backup_package "$pkg"
+    
+    # Remove old version
+    remove_package "$pkg"
+    
+    # Install new version
+    install_package "$pkg"
+}
+
+is_installed() {
+    local pkg="$1"
+    [[ -f "$PKG_ROOT/installed/$pkg.installed" ]]
+}
+
+has_reverse_dependencies() {
+    local pkg="$1"
+    
+    # Check if any installed package depends on this one
+    for installed in "$PKG_ROOT/installed"/*.installed; do
+        if [[ -f "$installed" ]]; then
+            local other=$(basename "$installed" .installed)
+            if [[ "$other" != "$pkg" ]]; then
+                local deps=$(jq -r '.dependencies[]' "$CACHE_DIR/$other.agpkg" 2>/dev/null || echo "")
+                if [[ "$deps" == *"$pkg"* ]]; then
+                    return 0
+                fi
+            fi
+        fi
+    done
+    
+    return 1
+}
+
+update_repository() {
+    local repo_file="$1"
+    local name=$(basename "$repo_file" .repo)
+    
+    log_info "Updating repository: $name"
+    
+    # Source repository configuration
+    source "$repo_file"
+    
+    # Download package index
+    # curl -o "$REPOS_DIR/$name.json" "$REPO_URL/index.json"
+    
+    if [[ $VERBOSE == true ]]; then
+        echo "  -> Would update from $REPO_URL"
+    fi
+}
+
+find_upgradable() {
+    # Find packages where available version > installed version
+    for installed in "$PKG_ROOT/installed"/*.installed; do
+        if [[ -f "$installed" ]]; then
+            local pkg=$(basename "$installed" .installed)
+            local current=$(cat "$installed")
+            
+            local available_file="$PKG_ROOT/available/$pkg.agpkg"
+            if [[ -f "$available_file" ]]; then
+                local available=$(jq -r '.version' "$available_file")
+                
+                # Version comparison (simplified)
+                if [[ "$available" != "$current" ]]; then
+                    echo "$pkg"
+                fi
+            fi
+        fi
+    done
+}
+
+build_package() {
+    local spec_file="$1"
+    
+    # Read spec file
+    local name=$(jq -r '.name' "$spec_file")
+    local version=$(jq -r '.version' "$spec_file")
+    local build_dir=$(mktemp -d)
+    
+    log_info "Building $name/$version..."
+    
+    # Run build steps
+    local build_script=$(jq -r '.build.script' "$spec_file")
+    
+    # Create package structure
+    mkdir -p "$build_dir/pkg"
+    
+    # Copy metadata
+    cp "$spec_file" "$build_dir/pkg/package.json"
+    
+    # Run build in source directory
+    local source_dir=$(jq -r '.source.dir' "$spec_file")
+    if [[ -d "$source_dir" ]]; then
+        (cd "$source_dir" && eval "$build_script")
+    fi
+    
+    # Package files
+    local output_file="$name-$version.agpkg"
+    
+    # Create tarball
+    tar czf "$output_file" -C "$build_dir/pkg" .
+    
+    # Sign package
+    sign_package "$output_file"
+    
+    # Cleanup
+    rm -rf "$build_dir"
+    
+    log_info "Package built: $output_file"
+}
+
+sign_package() {
+    local pkg_file="$1"
+    
+    # In production: Sign with AGNOS package signing key
+    if [[ $VERBOSE == true ]]; then
+        echo "  -> Signing package"
+    fi
+}
+
+backup_package() {
+    local pkg="$1"
+    local backup_dir="$AGNOS_ROOT/backups"
+    
+    mkdir -p "$backup_dir"
+    
+    # Create backup of package metadata and tracked files
+    local timestamp=$(date +%Y%m%d_%H%M%S)
+    tar czf "$backup_dir/${pkg}_${timestamp}.backup.tar.gz" \
+        -C "$PKG_ROOT" "installed/$pkg.installed" 2>/dev/null || true
+}
+
+# Main
+main() {
+    parse_args "$@"
+    init_directories
+    
+    case $COMMAND in
+        install)
+            cmd_install
+            ;;
+        remove)
+            cmd_remove
+            ;;
+        update)
+            cmd_update
+            ;;
+        upgrade)
+            cmd_upgrade
+            ;;
+        search)
+            cmd_search
+            ;;
+        info)
+            cmd_info
+            ;;
+        list)
+            cmd_list
+            ;;
+        build)
+            cmd_build
+            ;;
+        verify)
+            cmd_verify
+            ;;
+        clean)
+            cmd_clean
+            ;;
+        *)
+            log_error "Unknown command: $COMMAND"
+            usage
+            exit 1
+            ;;
+    esac
+}
+
+main "$@"

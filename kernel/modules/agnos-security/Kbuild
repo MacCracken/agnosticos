@@ -1,0 +1,8 @@
+# AGNOS Security Module build file
+# This file is used by the kernel build system
+
+obj-m := agnos_security.o
+
+agnos_security-y := asm_main.o asm_hooks.o asm_audit.o
+
+ccflags-y := -I$(src)/include

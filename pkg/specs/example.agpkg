@@ -1,0 +1,126 @@
+{
+  "format_version": "1.0.0",
+  "name": "agnos-base",
+  "version": "0.1.0",
+  "release": "1",
+  "epoch": "0",
+  "description": "AGNOS base system files and configuration",
+  "architecture": "x86_64",
+  "license": "GPL-3.0",
+  "homepage": "https://agnos.org",
+  "maintainer": "AGNOS Team <team@agnos.org>",
+  "dependencies": [
+    "glibc",
+    "systemd",
+    "coreutils"
+  ],
+  "optional_dependencies": [
+    "vim",
+    "git"
+  ],
+  "conflicts": [],
+  "provides": [
+    "base-system"
+  ],
+  "replaces": [],
+  "size": 10485760,
+  "installed_size": 52428800,
+  "checksums": {
+    "sha256": "aabbccdd...",
+    "sha512": "11223344...",
+    "blake2b": "55667788..."
+  },
+  "signature": {
+    "key_id": "A1B2C3D4",
+    "signature": "base64_encoded_signature..."
+  },
+  "source": {
+    "type": "git",
+    "url": "https://github.com/agnos/base.git",
+    "tag": "v0.1.0",
+    "commit": "abc123def456",
+    "dir": "base"
+  },
+  "build": {
+    "script": "./build.sh",
+    "environment": {
+      "CFLAGS": "-O2 -pipe",
+      "CXXFLAGS": "-O2 -pipe",
+      "LDFLAGS": "-Wl,-O1,--sort-common,--as-needed,-z,relro,-z,now"
+    },
+    "dependencies": [
+      "gcc",
+      "make",
+      "cmake"
+    ]
+  },
+  "install": {
+    "dir": "/",
+    "files": [
+      {
+        "src": "etc/",
+        "dest": "/etc/",
+        "mode": "755",
+        "owner": "root:root"
+      },
+      {
+        "src": "usr/",
+        "dest": "/usr/",
+        "mode": "755",
+        "owner": "root:root"
+      }
+    ]
+  },
+  "scripts": {
+    "pre_install": "pre-install.sh",
+    "post_install": "post-install.sh",
+    "pre_remove": "pre-remove.sh",
+    "post_remove": "post-remove.sh",
+    "pre_upgrade": "pre-upgrade.sh",
+    "post_upgrade": "post-upgrade.sh"
+  },
+  "permissions": {
+    "files": [
+      {
+        "path": "/etc/agnos/config",
+        "mode": "640",
+        "owner": "root:agnos"
+      }
+    ],
+    "capabilities": [
+      {
+        "path": "/usr/bin/agnos-agent",
+        "capability": "cap_ipc_lock,cap_sys_resource+ep"
+      }
+    ]
+  },
+  "backup": [
+    "/etc/agnos/config",
+    "/etc/agnos/agent.conf"
+  ],
+  "triggers": [
+    {
+      "name": "ldconfig",
+      "target": "/usr/lib/",
+      "script": "usr/bin/ldconfig"
+    }
+  ],
+  "metadata": {
+    "created_at": "2026-02-11T00:00:00Z",
+    "updated_at": "2026-02-11T00:00:00Z",
+    "packaged_by": "AGNOS Build System",
+    "build_date": "2026-02-11T00:00:00Z",
+    "build_host": "build.agnos.org"
+  },
+  "sbom": {
+    "format": "spdx-json",
+    "data": {
+      "spdxVersion": "SPDX-2.3",
+      "dataLicense": "CC0-1.0",
+      "SPDXID": "SPDXRef-DOCUMENT",
+      "name": "agnos-base-0.1.0",
+      "documentNamespace": "https://agnos.org/sbom/agnos-base-0.1.0",
+      "packages": []
+    }
+  }
+}

@@ -1,0 +1,26 @@
+[package]
+name = "llm_gateway"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "AGNOS llm gateway"
+
+[[bin]]
+name = "llm_gateway"
+path = "src/main.rs"
+
+[dependencies]
+agnos-common = { workspace = true }
+agnos-sys = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+clap = { workspace = true }

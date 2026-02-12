@@ -1,0 +1,7 @@
+# Audit Kernel Module build file
+
+obj-m := agnos_audit.o
+
+agnos_audit-y := audit_main.o audit_chain.o audit_log.o
+
+ccflags-y := -I$(src)/include

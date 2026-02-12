@@ -1,0 +1,52 @@
+[workspace]
+members = [
+    "agnos-common",
+    "agnos-sys",
+    "agent-runtime",
+    "ai-shell",
+    "llm-gateway",
+    "desktop-environment",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+authors = ["AGNOS Team <team@agnos.org>"]
+edition = "2021"
+license = "GPL-3.0"
+repository = "https://github.com/agnos/agnos"
+rust-version = "1.75"
+
+[workspace.dependencies]
+tokio = { version = "1.35", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+uuid = { version = "1.6", features = ["v4", "serde"] }
+thiserror = "1.0"
+anyhow = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+clap = { version = "4.4", features = ["derive"] }
+config = "0.13"
+tonic = "0.10"
+prost = "0.12"
+futures = "0.3"
+async-trait = "0.1"
+parking_lot = "0.12"
+dashmap = "5.5"
+chrono = { version = "0.4", features = ["serde"] }
+
+# AGNOS internal dependencies
+agnos-common = { path = "agnos-common" }
+agnos-sys = { path = "agnos-sys" }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true
+panic = "abort"
+
+[profile.dev]
+opt-level = 0
+debug = true

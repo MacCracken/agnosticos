@@ -1,0 +1,7 @@
+# Agent Kernel Subsystem build file
+
+obj-m := agnos_agent.o
+
+agnos_agent-y := agent_main.o agent_syscalls.o agent_sched.o
+
+ccflags-y := -I$(src)/include

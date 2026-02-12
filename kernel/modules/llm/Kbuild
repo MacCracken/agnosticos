@@ -1,0 +1,7 @@
+# LLM Kernel Module build file
+
+obj-m := agnos_llm.o
+
+agnos_llm-y := llm_main.o llm_memory.o llm_ioctl.o
+
+ccflags-y := -I$(src)/include
