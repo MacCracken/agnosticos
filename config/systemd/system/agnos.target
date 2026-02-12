@@ -1,0 +1,7 @@
+[Unit]
+Description=AGNOS System
+Documentation=man:systemd.special(7)
+Requires=basic.target
+Wants=agnos-init.service agent-runtime.service llm-gateway.service agnos-audit.service
+After=basic.target agnos-init.service
+AllowIsolate=yes

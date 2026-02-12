@@ -1,0 +1,6 @@
+[Unit]
+Description=AGNOS Graphical Interface
+Documentation=man:systemd.special(7)
+Requires=agnos.target
+After=agnos.target
+AllowIsolate=yes

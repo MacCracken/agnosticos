@@ -1,0 +1,36 @@
+[Unit]
+Description=AGNOS Audit Logging Service
+After=agnos-init.service
+Wants=agnos-init.service
+Before=basic.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/agnos-auditd
+Restart=always
+RestartSec=1
+User=root
+Group=root
+
+# Security - audit needs special permissions
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/log/agnos/audit
+PrivateTmp=true
+ProtectKernelTunables=false
+ProtectKernelModules=false
+ProtectControlGroups=false
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=false
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallFilter=@system-service
+
+# Audit service needs elevated capabilities
+CapabilityBoundingSet=CAP_AUDIT_WRITE CAP_AUDIT_CONTROL CAP_SYS_ADMIN CAP_SYS_PTRACE
+AmbientCapabilities=CAP_AUDIT_WRITE CAP_AUDIT_CONTROL
+
+[Install]
+WantedBy=basic.target

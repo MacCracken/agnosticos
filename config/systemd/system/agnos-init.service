@@ -1,0 +1,15 @@
+[Unit]
+Description=AGNOS System Initialization
+DefaultDependencies=no
+After=local-fs.target
+Before=basic.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/lib/agnos/init/agnos-init.sh
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=basic.target

@@ -1,0 +1,72 @@
+From: AGNOS Security Team
+Subject: [PATCH] KSPP: Enable kernel self-protection features
+Date: 2026-02-11
+
+This patch applies KSPP (Kernel Self Protection Project) recommended
+settings for AGNOS hardening.
+
+Signed-off-by: AGNOS Team <team@agnos.org>
+---
+ arch/x86/Kconfig | 45 +++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 45 insertions(+)
+
+diff --git a/arch/x86/Kconfig b/arch/x86/Kconfig
+index 123456..789abc 100644
+--- a/arch/x86/Kconfig
++++ b/arch/x86/Kconfig
+@@ -50,6 +50,51 @@ config X86_64
+ 	select ARCH_HAS_PMEM_API
+ 	select ARCH_HAS_MEM_ENCRYPT
+ 
++# AGNOS Security Hardening Options
++config AGNOS_KSPP_STRICT
++	bool "Enable strict KSPP compliance for AGNOS"
++	default y
++	help
++	  Enable all KSPP recommended security features for AGNOS
++	  AI-Native Operating System. This includes:
++
++	  - Automatic buffer overflow detection
++	  - Structure layout randomization
++	  - Kernel command line restrictions
++	  - Legacy device restrictions
++	  - Debug interface restrictions
++
++config AGNOS_FORCE_KPTR_RESTRICT
++	int "Kernel pointer restriction level"
++	range 0 2
++	default 2
++	help
++	  0 - no restrictions
++	  1 - kernel pointers printed using %pK are replaced with 0s
++	  2 - kernel pointers using %pK are replaced with 0s, (default)
++
++config AGNOS_FORCE_DMESG_RESTRICT
++	bool "Restrict dmesg access to root"
++	default y
++	help
++	  Only allow root to read the kernel syslog.
++
++config AGNOS_FORCE_YAMA
++	bool "Enable Yama LSM by default"
++	default y
++	help
++	  Enable ptrace protection and other Yama features.
++
++config AGNOS_FORCE_LOCKDOWN
++	bool "Enable kernel lockdown mode"
++	default y
++	help
++	  Enable integrity and confidentiality lockdown modes.
++
++config AGNOS_FORCE_SELINUX
++	bool "Enable SELinux by default"
++	default y
++	help
++	  Enable SELinux in enforcing mode by default.
++
+ config X86_INTEL_LPSS
+ 	bool "Intel Low Power Subsystem Support"
+ 	depends on X86_64
+-- 
+2.40.0

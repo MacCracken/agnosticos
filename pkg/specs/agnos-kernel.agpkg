@@ -1,0 +1,70 @@
+{
+  "format_version": "1.0.0",
+  "name": "agnos-kernel",
+  "version": "6.6.0",
+  "release": "1",
+  "description": "AGNOS hardened Linux kernel",
+  "architecture": "x86_64",
+  "license": "GPL-2.0",
+  "homepage": "https://kernel.org",
+  "maintainer": "AGNOS Team <team@agnos.org>",
+  "dependencies": [
+    "kmod",
+    "linux-firmware"
+  ],
+  "optional_dependencies": [
+    "dracut"
+  ],
+  "conflicts": [
+    "kernel",
+    "linux"
+  ],
+  "provides": [
+    "kernel=6.6.0",
+    "agnos-kernel-modules"
+  ],
+  "size": 134217728,
+  "installed_size": 268435456,
+  "source": {
+    "type": "kernel",
+    "url": "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.6.tar.xz",
+    "patches": [
+      "kernel/patches/security/*.patch"
+    ],
+    "config": "kernel/config/agnos_defconfig"
+  },
+  "build": {
+    "script": "make -j$(nproc) && make modules_install INSTALL_MOD_PATH=$pkgdir",
+    "environment": {
+      "ARCH": "x86_64",
+      "CROSS_COMPILE": ""
+    }
+  },
+  "install": {
+    "files": [
+      {
+        "src": "arch/x86/boot/bzImage",
+        "dest": "/boot/vmlinuz-agnos",
+        "mode": "644"
+      },
+      {
+        "src": "System.map",
+        "dest": "/boot/System.map-agnos",
+        "mode": "644"
+      },
+      {
+        "src": ".config",
+        "dest": "/boot/config-agnos",
+        "mode": "644"
+      }
+    ]
+  },
+  "scripts": {
+    "post_install": "depmod -a 6.6.0-agnos && grub-mkconfig -o /boot/grub/grub.cfg"
+  },
+  "metadata": {
+    "created_at": "2026-02-11T00:00:00Z",
+    "category": "kernel",
+    "priority": "required"
+  }
+}

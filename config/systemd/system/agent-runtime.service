@@ -1,0 +1,41 @@
+[Unit]
+Description=AGNOS Agent Runtime Daemon
+After=agnos-init.service network.target
+Wants=agnos-init.service
+
+[Service]
+Type=notify
+ExecStart=/usr/bin/agent-runtime daemon
+Restart=always
+RestartSec=5
+User=agnos
+Group=agnos
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/agnos/agents /var/log/agnos
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=false
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+# Resource limits
+MemoryMax=512M
+CPUQuota=50%
+TasksMax=256
+
+# Capability bounding set
+CapabilityBoundingSet=CAP_IPC_LOCK CAP_SYS_RESOURCE CAP_SYS_ADMIN
+AmbientCapabilities=CAP_IPC_LOCK CAP_SYS_RESOURCE
+
+[Install]
+WantedBy=multi-user.target

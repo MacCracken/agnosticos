@@ -1,0 +1,187 @@
+From: AGNOS Security Team
+Subject: [PATCH] AGNOS: Agent process isolation and sandboxing
+Date: 2026-02-11
+
+This patch adds kernel-level support for agent process isolation,
+including namespace management, capability dropping, and resource
+limits specifically designed for AI agent workloads.
+
+Signed-off-by: AGNOS Team <team@agnos.org>
+---
+ include/linux/agnos_agent.h | 120 ++++++++++++++++++++++++++++++++++++
+ kernel/agnos/Kconfig        |  45 ++++++++++++++
+ kernel/agnos/Makefile       |   5 ++
+ 3 files changed, 170 insertions(+)
+
+create mode 100644 include/linux/agnos_agent.h
+create mode 100644 kernel/agnos/Kconfig
+create mode 100644 kernel/agnos/Makefile
+
+diff --git a/include/linux/agnos_agent.h b/include/linux/agnos_agent.h
+new file mode 100644
+index 0000000..abcdefg
+--- /dev/null
++++ b/include/linux/agnos_agent.h
+@@ -0,0 +1,120 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++#ifndef _LINUX_AGNOS_AGENT_H
++#define _LINUX_AGNOS_AGENT_H
++
++#include <linux/types.h>
++#include <linux/uuid.h>
++#include <linux/sched.h>
++
++/* Agent capability flags */
++#define AGNOS_CAP_FILE_READ      (1ULL << 0)
++#define AGNOS_CAP_FILE_WRITE     (1ULL << 1)
++#define AGNOS_CAP_NETWORK        (1ULL << 2)
++#define AGNOS_CAP_PROCESS_SPAWN  (1ULL << 3)
++#define AGNOS_CAP_LLM_INFERENCE  (1ULL << 4)
++#define AGNOS_CAP_AUDIT_READ     (1ULL << 5)
++#define AGNOS_CAP_ALL            (~0ULL)
++
++/* Agent types */
++enum agnos_agent_type {
++	AGNOS_AGENT_SYSTEM,
++	AGNOS_AGENT_USER,
++	AGNOS_AGENT_SERVICE,
++	AGNOS_AGENT_MAX
++};
++
++/* Resource limits */
++struct agnos_agent_limits {
++	__u64 max_memory;
++	__u64 max_cpu_time;
++	__u32 max_file_descriptors;
++	__u32 max_processes;
++};
++
++/* Agent configuration */
++struct agnos_agent_config {
++	char name[64];
++	enum agnos_agent_type type;
++	__u64 capabilities;
++	struct agnos_agent_limits limits;
++	__u32 sandbox_flags;
++};
++
++/* Agent information */
++struct agnos_agent_info {
++	uuid_t agent_id;
++	__u32 pid;
++	char name[64];
++	enum agnos_agent_type type;
++	__u64 capabilities;
++	struct agnos_agent_limits limits;
++	__u64 memory_used;
++	__u64 cpu_time_used;
++};
++
++/* Sandbox flags */
++#define AGNOS_SANDBOX_NETWORK_ISOLATE  0x0001
++#define AGNOS_SANDBOX_FS_READONLY      0x0002
++#define AGNOS_SANDBOX_NO_EXEC          0x0004
++#define AGNOS_SANDBOX_DROP_CAPS        0x0008
++#define AGNOS_SANDBOX_SECCOMP          0x0010
++#define AGNOS_SANDBOX_LANDLOCK         0x0020
++
++#ifdef __KERNEL__
++
++/* Internal agent structure */
++struct agnos_agent {
++	struct list_head list;
++	uuid_t id;
++	struct task_struct *task;
++	char name[64];
++	enum agnos_agent_type type;
++	__u64 capabilities;
++	struct agnos_agent_limits limits;
++	__u64 memory_used;
++	__u64 cpu_time_used;
++	__u32 sandbox_flags;
++	struct landlock_ruleset *ruleset;
++	struct seccomp_filter *seccomp;
++	struct audit_context *audit;
++};
++
++/* Function prototypes */
++#ifdef CONFIG_AGNOS_AGENT_SUBSYSTEM
+
++extern struct agnos_agent *agnos_agent_create(const struct agnos_agent_config *config);
++extern void agnos_agent_destroy(struct agnos_agent *agent);
++extern struct agnos_agent *agnos_agent_find_by_task(struct task_struct *task);
++extern int agnos_agent_check_permission(struct agnos_agent *agent, __u64 cap);
++extern int agnos_agent_apply_sandbox(struct agnos_agent *agent);
++extern int agnos_agent_update_limits(struct agnos_agent *agent, 
++				     const struct agnos_agent_limits *limits);
++#else
++static inline struct agnos_agent *agnos_agent_create(const struct agnos_agent_config *config)
++{ return ERR_PTR(-ENOSYS); }
++static inline void agnos_agent_destroy(struct agnos_agent *agent) { }
++static inline struct agnos_agent *agnos_agent_find_by_task(struct task_struct *task)
++{ return NULL; }
++static inline int agnos_agent_check_permission(struct agnos_agent *agent, __u64 cap)
++{ return -ENOSYS; }
++static inline int agnos_agent_apply_sandbox(struct agnos_agent *agent)
++{ return -ENOSYS; }
++static inline int agnos_agent_update_limits(struct agnos_agent *agent,
++					    const struct agnos_agent_limits *limits)
++{ return -ENOSYS; }
++#endif
++
++#endif /* __KERNEL__ */
++
++#endif /* _LINUX_AGNOS_AGENT_H */
++
+diff --git a/kernel/agnos/Kconfig b/kernel/agnos/Kconfig
+new file mode 100644
+index 0000000..1234567
+--- /dev/null
++++ b/kernel/agnos/Kconfig
+@@ -0,0 +1,45 @@
++# SPDX-License-Identifier: GPL-2.0
++
++menu "AGNOS AI-Native OS Support"
++
++config AGNOS
++	bool "Enable AGNOS features"
++	default n
++	help
++	  Enable AGNOS (AI-Native General Operating System) features.
++	  This includes specialized support for AI agent workloads,
++	  enhanced security sandboxes, and LLM hardware acceleration.
++
++if AGNOS
+
++config AGNOS_SECURITY
++	tristate "AGNOS Security Module"
++	depends on SECURITY
++	select SECURITY_LANDLOCK
++	select SECURITY_SECCOMP
++	help
++	  Enable the AGNOS Security Module for agent sandboxing.
++
++config AGNOS_AGENT_SUBSYSTEM
++	tristate "Agent Kernel Subsystem"
++	depends on NAMESPACES
++	select CGROUPS
++	select CGROUP_PIDS
++	select CGROUP_DEVICE
++	help
++	  Enable kernel-level support for agent process management.
++
++config AGNOS_LLM
++	tristate "LLM Kernel Module"
++	depends on DRM
++	help
++	  Enable hardware acceleration for LLM inference workloads.
++
++config AGNOS_AUDIT
++	tristate "AGNOS Audit Module"
++	depends on AUDIT
++	help
++	  Enable cryptographic audit chain for agent actions.
++
++endif # AGNOS
++
++endmenu

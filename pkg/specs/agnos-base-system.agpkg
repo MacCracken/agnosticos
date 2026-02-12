@@ -1,0 +1,48 @@
+{
+  "format_version": "1.0.0",
+  "name": "agnos-base-system",
+  "version": "0.1.0",
+  "release": "1",
+  "description": "AGNOS base system - minimal bootable Linux distribution",
+  "architecture": "x86_64",
+  "license": "GPL-3.0",
+  "homepage": "https://agnos.org",
+  "maintainer": "AGNOS Team <team@agnos.org>",
+  "dependencies": [
+    "glibc>=2.38",
+    "systemd>=254",
+    "coreutils>=9.4",
+    "util-linux>=2.39",
+    "findutils>=4.9",
+    "grep>=3.11",
+    "sed>=4.9",
+    "gawk>=5.2",
+    "bash>=5.2",
+    "procps-ng>=4.0",
+    "iproute2>=6.6",
+    "iptables>=1.8",
+    "kmod>=31",
+    "shadow>=4.14",
+    "pam>=1.5",
+    "openssl>=3.1",
+    "zlib>=1.3",
+    "xz>=5.4",
+    "zstd>=1.5"
+  ],
+  "size": 0,
+  "installed_size": 1073741824,
+  "source": {
+    "type": "meta",
+    "packages": [
+      "filesystem",
+      "agnos-config",
+      "agnos-kernel",
+      "agnos-initramfs"
+    ]
+  },
+  "metadata": {
+    "created_at": "2026-02-11T00:00:00Z",
+    "category": "system",
+    "priority": "required"
+  }
+}

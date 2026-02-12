@@ -1,0 +1,15 @@
+[Unit]
+Description=AGNOS Security Module Loader
+DefaultDependencies=no
+After=systemd-modules-load.service
+Before=basic.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/agnos-load-modules.sh
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=basic.target

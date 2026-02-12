@@ -1,0 +1,19 @@
+# AGNOS Kernel Configuration for Linux 7.0
+# Development placeholder - will be updated when 7.0 is released
+# 
+# This configuration is based on 6.6 LTS with anticipated 7.0 features
+
+# Base settings (same as 6.6)
+CONFIG_LOCALVERSION="-agnos-devel"
+CONFIG_SMP=y
+CONFIG_X86_64=y
+
+# Security (7.0 may have new features)
+CONFIG_SECURITY=y
+CONFIG_SECURITY_SELINUX=y
+CONFIG_SECURITY_LANDLOCK=y
+CONFIG_SECURITY_SECCOMP=y
+CONFIG_SECURITY_LOCKDOWN_LSM=y
+
+# Note: Update this when 7.0 features are announced
+# See: https://kernelnewbies.org/LinuxChanges
