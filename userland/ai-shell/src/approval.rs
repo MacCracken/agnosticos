@@ -6,6 +6,7 @@
 use anyhow::{anyhow, Result};
 use console::{style, Style};
 use dialoguer::{theme::ColorfulTheme, Confirm, MultiSelect, Select};
+use std::io::IsTerminal;
 use std::time::Duration;
 use tokio::time::timeout;
 use tracing::{info, warn};
@@ -69,12 +70,12 @@ impl RiskLevel {
         }
     }
     
-    pub fn color(&self) -> Style {
+    pub fn color(&self) -> impl Fn(&str) -> String {
         match self {
-            RiskLevel::Low => style("").green(),
-            RiskLevel::Medium => style("").yellow(),
-            RiskLevel::High => style("").red(),
-            RiskLevel::Critical => style("").red().bold(),
+            RiskLevel::Low => |s: &str| format!("\x1b[32m{}\x1b[0m", s),
+            RiskLevel::Medium => |s: &str| format!("\x1b[33m{}\x1b[0m", s),
+            RiskLevel::High => |s: &str| format!("\x1b[31m{}\x1b[0m", s),
+            RiskLevel::Critical => |s: &str| format!("\x1b[1;31m{}\x1b[0m", s),
         }
     }
     
@@ -260,7 +261,7 @@ impl ApprovalManager {
         println!("\n  {} {} {}", 
             style("Risk Level:").bold(),
             risk.icon(),
-            risk.color().apply_to(format!("{:?}", risk))
+            risk.color()(&format!("{:?}", risk))
         );
         
         println!("{}", style("─".repeat(60)).dim());

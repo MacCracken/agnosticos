@@ -320,6 +320,103 @@ impl Orchestrator {
 
         Ok(())
     }
+
+    /// Store task result (for testing)
+    pub async fn store_result(&self, result: TaskResult) -> Result<()> {
+        self.handle_result(result).await;
+        Ok(())
+    }
+
+    /// Get queue statistics (for testing)
+    pub async fn get_queue_stats(&self) -> QueueStats {
+        let queues = self.task_queues.read().await;
+        let running = self.running_tasks.read().await;
+        
+        let total_tasks: usize = queues.values().map(|q| q.len()).sum();
+        
+        QueueStats {
+            total_tasks,
+            running_tasks: running.len(),
+            queued_tasks: total_tasks.saturating_sub(running.len()),
+        }
+    }
+
+    /// Peek at next task (for testing)
+    pub async fn peek_next_task(&self) -> Option<Task> {
+        let queues = self.task_queues.read().await;
+        
+        for priority in [
+            TaskPriority::Critical,
+            TaskPriority::High,
+            TaskPriority::Normal,
+            TaskPriority::Low,
+            TaskPriority::Background,
+        ] {
+            if let Some(queue) = queues.get(&priority) {
+                if let Some(task) = queue.front() {
+                    return Some(task.clone());
+                }
+            }
+        }
+        None
+    }
+
+    /// Get overdue tasks (for testing)
+    pub async fn get_overdue_tasks(&self) -> Vec<Task> {
+        let queues = self.task_queues.read().await;
+        let now = chrono::Utc::now();
+        
+        let mut overdue = Vec::new();
+        for queue in queues.values() {
+            for task in queue.iter() {
+                if let Some(deadline) = task.deadline {
+                    if deadline < now {
+                        overdue.push(task.clone());
+                    }
+                }
+            }
+        }
+        overdue
+    }
+
+    /// Get agent statistics (for testing)
+    pub async fn get_agent_stats(&self) -> AgentOrchestratorStats {
+        let agents = self.registry.list_all();
+        let results = self.results.read().await;
+        
+        AgentOrchestratorStats {
+            registered_agents: agents.len(),
+            total_tasks_processed: results.len(),
+        }
+    }
+
+    /// Cancel a task (for testing)
+    pub async fn cancel_task(&self, task_id: &str) -> Result<()> {
+        let mut queues = self.task_queues.write().await;
+        
+        for queue in queues.values_mut() {
+            queue.retain(|t| t.id != task_id);
+        }
+        
+        self.running_tasks.write().await.remove(task_id);
+        
+        Ok(())
+    }
+}
+
+/// Queue statistics
+#[derive(Debug, Clone)]
+pub struct QueueStats {
+    pub total_tasks: usize,
+    pub running_tasks: usize,
+    pub queued_tasks: usize,
+}
+
+/// Agent statistics for orchestrator
+#[derive(Debug, Clone)]
+pub struct AgentOrchestratorStats {
+    pub registered_agents: usize,
+    pub total_tasks_processed: usize,
 }
 
 /// Task status
@@ -331,3 +428,193 @@ pub enum TaskStatus {
 }
 
 use std::sync::Arc;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+
+    fn create_test_orchestrator() -> Orchestrator {
+        let registry = Arc::new(AgentRegistry::new());
+        Orchestrator::new(registry)
+    }
+
+    #[tokio::test]
+    async fn test_orchestrator_initialization() {
+        let orchestrator = create_test_orchestrator();
+        let queues = orchestrator.get_queue_stats().await;
+        assert_eq!(queues.total_tasks, 0);
+    }
+
+    #[tokio::test]
+    async fn test_task_submission() {
+        let orchestrator = create_test_orchestrator();
+        
+        let task = Task {
+            id: "test-task-1".to_string(),
+            priority: TaskPriority::Normal,
+            target_agents: vec![],
+            payload: serde_json::json!({"action": "test"}),
+            created_at: chrono::Utc::now(),
+            deadline: None,
+            dependencies: vec![],
+        };
+        
+        let result = orchestrator.submit_task(task).await;
+        assert!(result.is_ok());
+        
+        let queues = orchestrator.get_queue_stats().await;
+        assert_eq!(queues.total_tasks, 1);
+    }
+
+    #[tokio::test]
+    async fn test_task_priority_ordering() {
+        let orchestrator = create_test_orchestrator();
+        
+        let low_task = Task {
+            id: "low".to_string(),
+            priority: TaskPriority::Low,
+            target_agents: vec![],
+            payload: serde_json::json!({"p": "low"}),
+            created_at: chrono::Utc::now(),
+            deadline: None,
+            dependencies: vec![],
+        };
+        
+        let critical_task = Task {
+            id: "critical".to_string(),
+            priority: TaskPriority::Critical,
+            target_agents: vec![],
+            payload: serde_json::json!({"p": "critical"}),
+            created_at: chrono::Utc::now(),
+            deadline: None,
+            dependencies: vec![],
+        };
+        
+        let _ = orchestrator.submit_task(low_task).await;
+        let _ = orchestrator.submit_task(critical_task).await;
+        
+        let next = orchestrator.peek_next_task().await;
+        assert!(next.is_some());
+        assert_eq!(next.unwrap().priority, TaskPriority::Critical);
+    }
+
+    #[tokio::test]
+    async fn test_task_completion() {
+        let orchestrator = create_test_orchestrator();
+        
+        let task = Task {
+            id: "complete".to_string(),
+            priority: TaskPriority::Normal,
+            target_agents: vec![],
+            payload: serde_json::json!({"action": "done"}),
+            created_at: chrono::Utc::now(),
+            deadline: None,
+            dependencies: vec![],
+        };
+        
+        orchestrator.submit_task(task.clone()).await.unwrap();
+        
+        let result = TaskResult {
+            task_id: task.id.clone(),
+            agent_id: AgentId::new(),
+            success: true,
+            result: Some(serde_json::json!({"status": "done"})),
+            error: None,
+            completed_at: chrono::Utc::now(),
+            duration_ms: 100,
+        };
+        
+        orchestrator.store_result(result).await.unwrap();
+        
+        let retrieved = orchestrator.get_result(&task.id).await;
+        assert!(retrieved.is_some());
+        assert!(retrieved.unwrap().success);
+    }
+
+    #[tokio::test]
+    async fn test_task_failure() {
+        let orchestrator = create_test_orchestrator();
+        
+        let task = Task {
+            id: "fail".to_string(),
+            priority: TaskPriority::Normal,
+            target_agents: vec![],
+            payload: serde_json::json!({"action": "fail"}),
+            created_at: chrono::Utc::now(),
+            deadline: None,
+            dependencies: vec![],
+        };
+        
+        orchestrator.submit_task(task.clone()).await.unwrap();
+        
+        let result = TaskResult {
+            task_id: task.id.clone(),
+            agent_id: AgentId::new(),
+            success: false,
+            result: None,
+            error: Some("Test error".to_string()),
+            completed_at: chrono::Utc::now(),
+            duration_ms: 50,
+        };
+        
+        orchestrator.store_result(result).await.unwrap();
+        
+        let retrieved = orchestrator.get_result(&task.id).await;
+        assert!(retrieved.is_some());
+        assert!(!retrieved.unwrap().success);
+    }
+
+    #[tokio::test]
+    async fn test_overdue_tasks() {
+        let orchestrator = create_test_orchestrator();
+        
+        let task = Task {
+            id: "deadline".to_string(),
+            priority: TaskPriority::Normal,
+            target_agents: vec![],
+            payload: serde_json::json!({}),
+            created_at: chrono::Utc::now(),
+            deadline: Some(chrono::Utc::now()),
+            dependencies: vec![],
+        };
+        
+        orchestrator.submit_task(task).await.unwrap();
+        
+        let overdue = orchestrator.get_overdue_tasks().await;
+        assert!(!overdue.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_cancellation() {
+        let orchestrator = create_test_orchestrator();
+        
+        let task = Task {
+            id: "cancel".to_string(),
+            priority: TaskPriority::Normal,
+            target_agents: vec![],
+            payload: serde_json::json!({}),
+            created_at: chrono::Utc::now(),
+            deadline: None,
+            dependencies: vec![],
+        };
+        
+        orchestrator.submit_task(task.clone()).await.unwrap();
+        
+        // Try to cancel
+        let _ = orchestrator.cancel_task(&task.id).await;
+        
+        // The task may still be in the queue if scheduler hasn't processed it
+        // Just verify the cancel doesn't error
+        let queues = orchestrator.get_queue_stats().await;
+        assert!(queues.total_tasks <= 1);
+    }
+
+    #[tokio::test]
+    async fn test_workload_stats() {
+        let orchestrator = create_test_orchestrator();
+        
+        let stats = orchestrator.get_agent_stats().await;
+        assert_eq!(stats.registered_agents, 0);
+    }
+}

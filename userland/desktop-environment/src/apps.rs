@@ -360,3 +360,113 @@ impl DesktopApplications {
         &mut self.model_manager
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_app_window_new() {
+        let window = AppWindow::new(AppType::Terminal, "Test Terminal".to_string());
+        assert_eq!(window.title, "Test Terminal");
+        assert_eq!(window.width, 800);
+        assert_eq!(window.height, 600);
+        assert!(!window.is_ai_enabled);
+    }
+
+    #[test]
+    fn test_terminal_app_new() {
+        let terminal = TerminalApp::new();
+        assert_eq!(terminal.name, "AGNOS Terminal");
+        assert!(terminal.ai_integration);
+    }
+
+    #[test]
+    fn test_terminal_execute_command() {
+        let terminal = TerminalApp::new();
+        let result = terminal.execute_command("ls".to_string());
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "Executed: ls");
+    }
+
+    #[test]
+    fn test_file_manager_app_new() {
+        let fm = FileManagerApp::new();
+        assert_eq!(fm.current_path, "/home");
+        assert!(fm.agent_assistance);
+    }
+
+    #[test]
+    fn test_agent_manager_app_new() {
+        let am = AgentManagerApp::new();
+        assert!(am.running_agents.is_empty());
+    }
+
+    #[test]
+    fn test_audit_viewer_app_new() {
+        let av = AuditViewerApp::new();
+        assert!(av.filters.include_agent);
+        assert!(av.filters.include_security);
+    }
+
+    #[test]
+    fn test_audit_viewer_get_logs() {
+        let av = AuditViewerApp::new();
+        let logs = av.get_logs();
+        assert!(!logs.is_empty());
+    }
+
+    #[test]
+    fn test_model_manager_app_new() {
+        let mm = ModelManagerApp::new();
+        assert!(mm.installed_models.is_empty());
+        assert!(mm.active_model.is_none());
+    }
+
+    #[test]
+    fn test_model_manager_select_model() {
+        let mut mm = ModelManagerApp::new();
+        let result = mm.select_model("llama2-7b".to_string());
+        assert!(result.is_ok());
+        assert_eq!(mm.active_model, Some("llama2-7b".to_string()));
+    }
+
+    #[test]
+    fn test_desktop_applications_new() {
+        let apps = DesktopApplications::new();
+        let windows = apps.get_open_windows();
+        assert!(windows.is_empty());
+    }
+
+    #[test]
+    fn test_desktop_applications_open_terminal() {
+        let apps = DesktopApplications::new();
+        let result = apps.open_terminal();
+        assert!(result.is_ok());
+        let windows = apps.get_open_windows();
+        assert_eq!(windows.len(), 1);
+    }
+
+    #[test]
+    fn test_desktop_applications_close_window() {
+        let apps = DesktopApplications::new();
+        let window = apps.open_terminal().unwrap();
+        apps.close_window(window.id).unwrap();
+        let windows = apps.get_open_windows();
+        assert!(windows.is_empty());
+    }
+
+    #[test]
+    fn test_time_range_variants() {
+        assert!(matches!(TimeRange::LastHour, TimeRange::LastHour));
+        assert!(matches!(TimeRange::LastDay, TimeRange::LastDay));
+        assert!(matches!(TimeRange::LastWeek, TimeRange::LastWeek));
+    }
+
+    #[test]
+    fn test_app_type_variants() {
+        assert!(matches!(AppType::Terminal, AppType::Terminal));
+        assert!(matches!(AppType::FileManager, AppType::FileManager));
+        assert!(matches!(AppType::AgentManager, AppType::AgentManager));
+    }
+}

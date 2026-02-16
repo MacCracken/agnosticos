@@ -111,3 +111,117 @@ pub struct AccountingStats {
     pub total_completion_tokens: u32,
     pub total_tokens: u32,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use agnos_common::{AgentId, TokenUsage};
+
+    #[tokio::test]
+    async fn test_token_accounting_new() {
+        let accounting = TokenAccounting::new();
+        let stats = accounting.stats().await;
+        assert_eq!(stats.total_agents, 0);
+        assert_eq!(stats.total_tokens, 0);
+    }
+
+    #[tokio::test]
+    async fn test_record_usage() {
+        let accounting = TokenAccounting::new();
+        let agent_id = AgentId::new();
+        
+        let usage = TokenUsage {
+            prompt_tokens: 100,
+            completion_tokens: 200,
+            total_tokens: 300,
+        };
+        
+        accounting.record_usage(agent_id, usage).await;
+        
+        let agent_usage = accounting.get_usage(agent_id).await;
+        assert!(agent_usage.is_some());
+        assert_eq!(agent_usage.unwrap().total_tokens, 300);
+    }
+
+    #[tokio::test]
+    async fn test_get_total_usage() {
+        let accounting = TokenAccounting::new();
+        let agent_id = AgentId::new();
+        
+        let usage = TokenUsage {
+            prompt_tokens: 50,
+            completion_tokens: 100,
+            total_tokens: 150,
+        };
+        
+        accounting.record_usage(agent_id, usage).await;
+        
+        let total = accounting.get_total_usage().await;
+        assert_eq!(total.total_tokens, 150);
+    }
+
+    #[tokio::test]
+    async fn test_reset_usage() {
+        let accounting = TokenAccounting::new();
+        let agent_id = AgentId::new();
+        
+        let usage = TokenUsage {
+            prompt_tokens: 10,
+            completion_tokens: 20,
+            total_tokens: 30,
+        };
+        
+        accounting.record_usage(agent_id, usage).await;
+        accounting.reset_usage(agent_id).await;
+        
+        let agent_usage = accounting.get_usage(agent_id).await;
+        assert!(agent_usage.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_reset_all() {
+        let accounting = TokenAccounting::new();
+        let agent_id = AgentId::new();
+        
+        let usage = TokenUsage {
+            prompt_tokens: 10,
+            completion_tokens: 20,
+            total_tokens: 30,
+        };
+        
+        accounting.record_usage(agent_id, usage).await;
+        accounting.reset_all().await;
+        
+        let stats = accounting.stats().await;
+        assert_eq!(stats.total_agents, 0);
+        assert_eq!(stats.total_tokens, 0);
+    }
+
+    #[tokio::test]
+    async fn test_list_agents() {
+        let accounting = TokenAccounting::new();
+        
+        let agent1 = AgentId::new();
+        let agent2 = AgentId::new();
+        
+        accounting.record_usage(agent1, TokenUsage { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 }).await;
+        accounting.record_usage(agent2, TokenUsage { prompt_tokens: 15, completion_tokens: 25, total_tokens: 40 }).await;
+        
+        let agents = accounting.list_agents().await;
+        assert_eq!(agents.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_multiple_agents() {
+        let accounting = TokenAccounting::new();
+        
+        let agent1 = AgentId::new();
+        let agent2 = AgentId::new();
+        
+        accounting.record_usage(agent1, TokenUsage { prompt_tokens: 100, completion_tokens: 200, total_tokens: 300 }).await;
+        accounting.record_usage(agent2, TokenUsage { prompt_tokens: 50, completion_tokens: 100, total_tokens: 150 }).await;
+        
+        let total = accounting.get_total_usage().await;
+        assert_eq!(total.total_tokens, 450);
+    }
+}

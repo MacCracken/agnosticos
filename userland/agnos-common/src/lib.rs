@@ -9,7 +9,10 @@ pub mod llm;
 pub mod security;
 pub mod types;
 
-pub use agent::{AgentInfo, AgentStats, AgentEvent, StopReason};
+#[cfg(test)]
+mod security_tests;
+
+pub use agent::{AgentEvent, AgentInfo, AgentStats, StopReason};
 pub use error::{AgnosError, Result};
 pub use llm::*;
 pub use types::*;
@@ -154,11 +157,30 @@ pub struct AgentConfig {
     pub metadata: serde_json::Value,
 }
 
+impl Default for AgentConfig {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            agent_type: AgentType::User,
+            resource_limits: ResourceLimits::default(),
+            sandbox: SandboxConfig::default(),
+            permissions: Vec::new(),
+            metadata: serde_json::Value::Null,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AgentType {
     System,
     User,
     Service,
+}
+
+impl Default for AgentType {
+    fn default() -> Self {
+        Self::User
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -208,5 +230,85 @@ mod tests {
         let limits = ResourceLimits::default();
         assert_eq!(limits.max_memory, 1024 * 1024 * 1024);
         assert_eq!(limits.max_file_descriptors, 1024);
+    }
+
+    #[test]
+    fn test_version_display() {
+        let v = Version {
+            major: 1,
+            minor: 2,
+            patch: 3,
+            prerelease: Some("alpha".to_string()),
+            build: Some("build123".to_string()),
+        };
+        assert_eq!(v.to_string(), "1.2.3-alpha+build123");
+    }
+
+    #[test]
+    fn test_version_default() {
+        let v = Version::default();
+        assert_eq!(v.to_string(), "0.1.0");
+    }
+
+    #[test]
+    fn test_version_without_optional() {
+        let v = Version {
+            major: 2,
+            minor: 0,
+            patch: 0,
+            prerelease: None,
+            build: None,
+        };
+        assert_eq!(v.to_string(), "2.0.0");
+    }
+
+    #[test]
+    fn test_capabilities_default() {
+        let caps = Capabilities::default();
+        assert!(!caps.llm_support);
+        assert!(caps.virtualization);
+    }
+
+    #[test]
+    fn test_message_type_variants() {
+        use crate::types::MessageType;
+        assert_eq!(MessageType::Command, MessageType::Command);
+        assert_eq!(MessageType::Response, MessageType::Response);
+        assert_ne!(MessageType::Command, MessageType::Event);
+    }
+
+    #[test]
+    fn test_system_status_variants() {
+        use crate::types::SystemStatus;
+        assert_eq!(SystemStatus::Healthy, SystemStatus::Healthy);
+        assert_ne!(SystemStatus::Healthy, SystemStatus::Critical);
+    }
+
+    #[test]
+    fn test_component_config() {
+        use std::collections::HashMap;
+        let mut settings = HashMap::new();
+        settings.insert("port".to_string(), serde_json::json!(8080));
+        let config = ComponentConfig {
+            name: "test".to_string(),
+            enabled: true,
+            settings,
+        };
+        assert_eq!(config.name, "test");
+        assert!(config.enabled);
+    }
+
+    #[test]
+    fn test_agnos_error_retriable() {
+        use crate::error::AgnosError;
+
+        let timeout = AgnosError::Timeout;
+        assert!(timeout.is_retriable());
+
+        let not_found = AgnosError::AgentNotFound("test".to_string());
+        assert!(!not_found.is_retriable());
+
+        let permission = AgnosError::PermissionDenied("test".to_string());
+        assert!(!permission.is_retriable());
     }
 }

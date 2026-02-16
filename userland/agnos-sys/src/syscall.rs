@@ -49,3 +49,34 @@ fn check_result(result: i64) -> Result<i64> {
         Ok(result)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_syscall_constants() {
+        assert_eq!(SYS_AGNOS_AGENT_CREATE, 500);
+        assert_eq!(SYS_AGNOS_AGENT_TERMINATE, 501);
+        assert_eq!(SYS_AGNOS_AGENT_SET_LIMITS, 502);
+        assert_eq!(SYS_AGNOS_AGENT_GET_INFO, 503);
+        assert_eq!(SYS_AGNOS_LLM_LOAD_MODEL, 510);
+        assert_eq!(SYS_AGNOS_LLM_INFERENCE, 511);
+        assert_eq!(SYS_AGNOS_LLM_UNLOAD_MODEL, 512);
+        assert_eq!(SYS_AGNOS_AUDIT_LOG, 520);
+        assert_eq!(SYS_AGNOS_AUDIT_READ, 521);
+    }
+
+    #[test]
+    fn test_check_result_success() {
+        let result = check_result(0);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 0);
+    }
+
+    #[test]
+    fn test_check_result_error() {
+        let result = check_result(-1);
+        assert!(result.is_err());
+    }
+}

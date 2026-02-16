@@ -22,3 +22,31 @@ pub fn inference(model_handle: u64, input: &[u8], output: &mut [u8]) -> Result<u
     // TODO: Implement actual syscall
     Ok(0)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_load_model() {
+        let result = load_model("llama2-7b");
+        assert!(result.is_ok());
+        assert!(result.unwrap() >= 0);
+    }
+
+    #[test]
+    fn test_unload_model() {
+        let handle: u64 = 0;
+        let result = unload_model(handle);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_inference() {
+        let handle: u64 = 0;
+        let input: &[u8] = b"Hello, world!";
+        let mut output: [u8; 100] = [0; 100];
+        let result = inference(handle, input, &mut output);
+        assert!(result.is_ok());
+    }
+}

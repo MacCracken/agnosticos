@@ -312,3 +312,37 @@ impl ResourceManager {
 }
 
 use std::sync::Arc;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_gpu_device_clone() {
+        let gpu = GpuDevice {
+            id: 0,
+            name: "RTX 4090".to_string(),
+            total_memory: 24 * 1024 * 1024 * 1024,
+            available_memory: RwLock::new(24 * 1024 * 1024 * 1024),
+            compute_capability: Some("8.9".to_string()),
+        };
+        
+        let cloned = gpu.clone();
+        assert_eq!(cloned.name, "RTX 4090");
+        assert_eq!(cloned.total_memory, gpu.total_memory);
+    }
+
+    #[test]
+    fn test_gpu_device_id() {
+        let gpu = GpuDevice {
+            id: 1,
+            name: "RTX 3090".to_string(),
+            total_memory: 24 * 1024 * 1024 * 1024,
+            available_memory: RwLock::new(24 * 1024 * 1024 * 1024),
+            compute_capability: None,
+        };
+        
+        assert_eq!(gpu.id, 1);
+        assert!(gpu.compute_capability.is_none());
+    }
+}

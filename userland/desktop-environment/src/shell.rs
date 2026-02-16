@@ -60,6 +60,18 @@ pub struct QuickSetting {
     pub on_activate: Box<dyn Fn() + Send + Sync>,
 }
 
+impl Clone for QuickSetting {
+    fn clone(&self) -> Self {
+        Self {
+            id: self.id.clone(),
+            name: self.name.clone(),
+            icon: self.icon.clone(),
+            is_active: self.is_active,
+            on_activate: Box::new(|| {}),
+        }
+    }
+}
+
 impl std::fmt::Debug for QuickSetting {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("QuickSetting")
@@ -420,9 +432,7 @@ impl DesktopShell {
     }
 
     pub fn get_quick_settings(&self) -> Vec<QuickSetting> {
-        // QuickSetting contains closures and cannot be cloned
-        // Return empty vec for now - needs proper handling
-        Vec::new()
+        self.quick_settings.read().unwrap().clone()
     }
 
     pub fn get_system_status(&self) -> SystemStatus {
@@ -436,5 +446,104 @@ impl DesktopShell {
     pub fn set_agent_count(&self, count: usize) {
         let mut status = self.system_status.write().unwrap();
         status.agent_count = count;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_notification_priority_variants() {
+        assert!(matches!(
+            NotificationPriority::Low,
+            NotificationPriority::Low
+        ));
+        assert!(matches!(
+            NotificationPriority::Normal,
+            NotificationPriority::Normal
+        ));
+        assert!(matches!(
+            NotificationPriority::High,
+            NotificationPriority::High
+        ));
+        assert!(matches!(
+            NotificationPriority::Critical,
+            NotificationPriority::Critical
+        ));
+    }
+
+    #[test]
+    fn test_notification_default() {
+        let notification = Notification::default();
+        assert_eq!(notification.priority, NotificationPriority::Normal);
+        assert!(!notification.requires_action);
+        assert!(!notification.is_agent_related);
+    }
+
+    #[test]
+    fn test_notification_custom() {
+        let notification = Notification {
+            id: Uuid::new_v4(),
+            app_name: "test".to_string(),
+            title: "Test Title".to_string(),
+            body: "Test Body".to_string(),
+            priority: NotificationPriority::High,
+            timestamp: chrono::Utc::now(),
+            requires_action: true,
+            is_agent_related: true,
+        };
+        assert_eq!(notification.title, "Test Title");
+        assert!(notification.requires_action);
+    }
+
+    #[test]
+    fn test_system_status() {
+        let status = SystemStatus {
+            cpu_usage: 50.0,
+            memory_usage: 70.0,
+            disk_usage: 40.0,
+            battery_level: Some(80),
+            agent_count: 3,
+            network_status: NetworkStatus::Connected,
+        };
+        assert_eq!(status.cpu_usage, 50.0);
+        assert_eq!(status.agent_count, 3);
+    }
+
+    #[test]
+    fn test_network_status() {
+        assert!(matches!(NetworkStatus::Connected, NetworkStatus::Connected));
+        assert!(matches!(
+            NetworkStatus::Disconnected,
+            NetworkStatus::Disconnected
+        ));
+        assert!(matches!(
+            NetworkStatus::Connecting,
+            NetworkStatus::Connecting
+        ));
+    }
+
+    #[test]
+    fn test_app_category() {
+        assert!(matches!(AppCategory::System, AppCategory::System));
+        assert!(matches!(AppCategory::AI, AppCategory::AI));
+        assert!(matches!(AppCategory::Other, AppCategory::Other));
+    }
+
+    #[test]
+    fn test_launcher_item() {
+        let item = LauncherItem {
+            id: "test".to_string(),
+            name: "Test App".to_string(),
+            description: "A test application".to_string(),
+            icon: "app".to_string(),
+            app: None,
+            action: None,
+            is_suggested: false,
+            relevance_score: 0.9,
+        };
+        assert_eq!(item.name, "Test App");
+        assert_eq!(item.relevance_score, 0.9);
     }
 }

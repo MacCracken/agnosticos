@@ -389,3 +389,71 @@ impl CompositorBackend for WaylandBackend {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_window_state_variants() {
+        assert!(matches!(WindowState::Normal, WindowState::Normal));
+        assert!(matches!(WindowState::Minimized, WindowState::Minimized));
+        assert!(matches!(WindowState::Maximized, WindowState::Maximized));
+        assert!(matches!(WindowState::Fullscreen, WindowState::Fullscreen));
+    }
+
+    #[test]
+    fn test_rectangle_default() {
+        let rect = Rectangle::default();
+        assert_eq!(rect.x, 0);
+        assert_eq!(rect.y, 0);
+        assert_eq!(rect.width, 1920);
+        assert_eq!(rect.height, 1080);
+    }
+
+    #[test]
+    fn test_rectangle_custom() {
+        let rect = Rectangle {
+            x: 100,
+            y: 200,
+            width: 800,
+            height: 600,
+        };
+        assert_eq!(rect.x, 100);
+        assert_eq!(rect.y, 200);
+        assert_eq!(rect.width, 800);
+        assert_eq!(rect.height, 600);
+    }
+
+    #[test]
+    fn test_context_type_variants() {
+        assert!(matches!(ContextType::Development, ContextType::Development));
+        assert!(matches!(
+            ContextType::Communication,
+            ContextType::Communication
+        ));
+        assert!(matches!(
+            ContextType::AgentOperation,
+            ContextType::AgentOperation
+        ));
+    }
+
+    #[test]
+    fn test_workspace() {
+        let ws = Workspace {
+            id: 1,
+            name: "Main".to_string(),
+            windows: vec![],
+            active_window: None,
+            context_type: ContextType::General,
+        };
+        assert_eq!(ws.name, "Main");
+    }
+
+    #[test]
+    fn test_touch_phase() {
+        assert!(matches!(TouchPhase::Down, TouchPhase::Down));
+        assert!(matches!(TouchPhase::Move, TouchPhase::Move));
+        assert!(matches!(TouchPhase::Up, TouchPhase::Up));
+    }
+}

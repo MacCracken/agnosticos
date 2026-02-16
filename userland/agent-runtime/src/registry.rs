@@ -224,3 +224,66 @@ impl Clone for RegistryStats {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_registry_new() {
+        let registry = AgentRegistry::new();
+        assert!(registry.is_empty());
+        assert_eq!(registry.len(), 0);
+    }
+
+    #[test]
+    fn test_registry_contains() {
+        let registry = AgentRegistry::new();
+        let id = AgentId::new();
+        assert!(!registry.contains(id));
+    }
+
+    #[test]
+    fn test_registry_stats_default() {
+        let stats = RegistryStats::default();
+        assert_eq!(stats.total_registered, 0);
+        assert_eq!(stats.total_started, 0);
+        assert_eq!(stats.total_stopped, 0);
+    }
+
+    #[test]
+    fn test_registry_stats_clone() {
+        let stats = RegistryStats {
+            total_registered: 10,
+            total_started: 5,
+            total_stopped: 3,
+            total_failed: 2,
+        };
+        let cloned = stats.clone();
+        assert_eq!(cloned.total_registered, 10);
+        assert_eq!(cloned.total_started, 5);
+    }
+
+    #[tokio::test]
+    async fn test_registry_stats_async() {
+        let registry = AgentRegistry::new();
+        let stats = registry.stats().await;
+        assert_eq!(stats.total_registered, 0);
+    }
+
+    #[test]
+    fn test_extract_capabilities() {
+        let config = AgentConfig {
+            name: "test".to_string(),
+            agent_type: agnos_common::AgentType::Service,
+            permissions: vec![
+                agnos_common::Permission::FileRead,
+                agnos_common::Permission::NetworkAccess,
+            ],
+            ..Default::default()
+        };
+        
+        let caps = AgentRegistry::extract_capabilities(&config);
+        assert!(!caps.is_empty());
+    }
+}

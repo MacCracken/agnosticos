@@ -1,0 +1,38 @@
+# AGNOS Cargo Audit Configuration
+
+[advisories]
+db = "https://github.com/rustsec/advisory-db"
+db-urls = ["https://github.com/rustsec/advisory-db"]
+
+# Ignore specific advisories (temporary - should be fixed)
+ignore = [
+    # "RUSTSEC-XXXX-XXXX",
+]
+
+[exclude]
+# Exclude these paths from audit
+paths = [
+    "examples/",
+    "fuzz/",
+    "benches/",
+]
+
+[severity]
+# Vulnerability levels
+unknown = "warn"
+low = "warn"
+medium = "warn"
+high = "deny"
+critical = "deny"
+
+[output]
+format = "json"
+output = "audit.json"
+
+[yank]
+# Handle yanked packages
+warn = true
+
+[empty]
+# Handle empty packages
+warn = true

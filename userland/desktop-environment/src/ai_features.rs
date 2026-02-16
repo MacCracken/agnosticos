@@ -399,3 +399,134 @@ impl AIDesktopFeatures {
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_suggestion_type_variants() {
+        assert!(matches!(
+            SuggestionType::WindowPlacement,
+            SuggestionType::WindowPlacement
+        ));
+        assert!(matches!(
+            SuggestionType::ContextSwitch,
+            SuggestionType::ContextSwitch
+        ));
+        assert!(matches!(
+            SuggestionType::TaskRecommendation,
+            SuggestionType::TaskRecommendation
+        ));
+        assert!(matches!(
+            SuggestionType::SecurityAlert,
+            SuggestionType::SecurityAlert
+        ));
+    }
+
+    #[test]
+    fn test_ai_suggestion_default() {
+        let suggestion = AISuggestion::default();
+        assert_eq!(suggestion.suggestion_type, SuggestionType::Productivity);
+        assert!(!suggestion.is_dismissed);
+        assert_eq!(suggestion.confidence, 0.0);
+    }
+
+    #[test]
+    fn test_ai_suggestion_custom() {
+        let suggestion = AISuggestion {
+            id: Uuid::new_v4(),
+            suggestion_type: SuggestionType::TaskRecommendation,
+            title: "Take a break".to_string(),
+            description: "You've been working for 2 hours".to_string(),
+            confidence: 0.85,
+            action: Some("break".to_string()),
+            is_dismissed: false,
+            timestamp: chrono::Utc::now(),
+        };
+        assert_eq!(suggestion.confidence, 0.85);
+        assert!(suggestion.action.is_some());
+    }
+
+    #[test]
+    fn test_agent_status_variants() {
+        assert!(matches!(AgentStatus::Idle, AgentStatus::Idle));
+        assert!(matches!(AgentStatus::Thinking, AgentStatus::Thinking));
+        assert!(matches!(AgentStatus::Acting, AgentStatus::Acting));
+        assert!(matches!(AgentStatus::Waiting, AgentStatus::Waiting));
+        assert!(matches!(AgentStatus::Error, AgentStatus::Error));
+    }
+
+    #[test]
+    fn test_agent_hud_state() {
+        let state = AgentHUDState {
+            agent_id: Uuid::new_v4(),
+            agent_name: "test-agent".to_string(),
+            status: AgentStatus::Thinking,
+            current_task: "Processing data".to_string(),
+            progress: 0.5,
+            last_activity: chrono::Utc::now(),
+            resource_usage: ResourceMetrics {
+                cpu_percent: 25.0,
+                memory_mb: 512,
+                gpu_percent: Some(50.0),
+            },
+        };
+        assert_eq!(state.status, AgentStatus::Thinking);
+        assert_eq!(state.progress, 0.5);
+    }
+
+    #[test]
+    fn test_resource_metrics() {
+        let metrics = ResourceMetrics {
+            cpu_percent: 30.0,
+            memory_mb: 1024,
+            gpu_percent: Some(75.0),
+        };
+        assert_eq!(metrics.cpu_percent, 30.0);
+        assert_eq!(metrics.memory_mb, 1024);
+        assert!(metrics.gpu_percent.is_some());
+    }
+
+    #[test]
+    fn test_time_of_day_variants() {
+        assert!(matches!(TimeOfDay::Morning, TimeOfDay::Morning));
+        assert!(matches!(TimeOfDay::Afternoon, TimeOfDay::Afternoon));
+        assert!(matches!(TimeOfDay::Evening, TimeOfDay::Evening));
+        assert!(matches!(TimeOfDay::Night, TimeOfDay::Night));
+    }
+
+    #[test]
+    fn test_activity_level_variants() {
+        assert!(matches!(ActivityLevel::Low, ActivityLevel::Low));
+        assert!(matches!(ActivityLevel::Medium, ActivityLevel::Medium));
+        assert!(matches!(ActivityLevel::High, ActivityLevel::High));
+        assert!(matches!(ActivityLevel::Idle, ActivityLevel::Idle));
+    }
+
+    #[test]
+    fn test_context_type_variants() {
+        assert!(matches!(ContextType::Development, ContextType::Development));
+        assert!(matches!(
+            ContextType::Communication,
+            ContextType::Communication
+        ));
+        assert!(matches!(ContextType::Design, ContextType::Design));
+    }
+
+    #[test]
+    fn test_context_event_type_variants() {
+        assert!(matches!(
+            ContextEventType::WindowOpened,
+            ContextEventType::WindowOpened
+        ));
+        assert!(matches!(
+            ContextEventType::WindowClosed,
+            ContextEventType::WindowClosed
+        ));
+        assert!(matches!(
+            ContextEventType::FileOpened,
+            ContextEventType::FileOpened
+        ));
+    }
+}

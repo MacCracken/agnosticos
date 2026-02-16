@@ -6,6 +6,7 @@ members = [
     "ai-shell",
     "llm-gateway",
     "desktop-environment",
+    "examples",
 ]
 resolver = "2"
 
@@ -51,3 +52,11 @@ panic = "abort"
 [profile.dev]
 opt-level = 0
 debug = true
+
+[profile.coverage]
+inherits = "dev"
+debug = false
+opt-level = 0
+lto = false
+codegen-units = 16
+strip = false

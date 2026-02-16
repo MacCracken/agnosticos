@@ -37,7 +37,7 @@ impl Session {
         security: SecurityContext,
         initial_mode: Mode,
     ) -> Result<Self> {
-        let mode_manager = ModeManager::new(initial_mode, true);
+        let mode_manager = ModeManager::new(initial_mode.clone(), true);
         let interpreter = Interpreter::new();
         let approval = ApprovalManager::new();
         let history = CommandHistory::new(&config.history_file).await?;

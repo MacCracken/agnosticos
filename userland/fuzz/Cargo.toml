@@ -1,0 +1,31 @@
+[package]
+name = "agnos-fuzz"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+agnos-common = { path = "../agnos-common" }
+agnos-sys = { path = "../agnos-sys" }
+libfuzzer-sys = "0.4"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+
+[[bin]]
+name = "fuzz_agent_parse"
+path = "fuzz_agent_parse.rs"
+
+[[bin]]
+name = "fuzz_llm_inference"
+path = "fuzz_llm_inference.rs"
+
+[[bin]]
+name = "fuzz_interpreter"
+path = "fuzz_interpreter.rs"
+
+[[bin]]
+name = "fuzz_command_split"
+path = "fuzz_command_split.rs"

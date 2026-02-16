@@ -69,10 +69,57 @@ impl CommandHistory {
     }
 }
 
-impl Drop for CommandHistory {
-    fn drop(&mut self) {
-        // Try to save on drop
-        let _ = tokio::runtime::Handle::try_current()
-            .map(|rt| rt.block_on(self.save()));
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_history_get_recent() {
+        let mut entries = VecDeque::new();
+        entries.push_back("cmd1".to_string());
+        entries.push_back("cmd2".to_string());
+        entries.push_back("cmd3".to_string());
+        
+        let history = CommandHistory {
+            entries,
+            file: PathBuf::from("/tmp/test"),
+            max_size: 100,
+        };
+        
+        let recent = history.get_recent(2);
+        assert_eq!(recent.len(), 2);
+    }
+
+    #[test]
+    fn test_history_search() {
+        let mut entries = VecDeque::new();
+        entries.push_back("ls -la".to_string());
+        entries.push_back("cd /home".to_string());
+        entries.push_back("git status".to_string());
+        
+        let history = CommandHistory {
+            entries,
+            file: PathBuf::from("/tmp/test"),
+            max_size: 100,
+        };
+        
+        let results = history.search("git");
+        assert_eq!(results.len(), 1);
+    }
+
+    #[test]
+    fn test_history_search_no_results() {
+        let mut entries = VecDeque::new();
+        entries.push_back("ls".to_string());
+        
+        let history = CommandHistory {
+            entries,
+            file: PathBuf::from("/tmp/test"),
+            max_size: 100,
+        };
+        
+        let results = history.search("xyz");
+        assert!(results.is_empty());
     }
 }

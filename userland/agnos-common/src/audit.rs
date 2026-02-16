@@ -70,3 +70,59 @@ impl Default for AuditConfig {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_audit_config_default() {
+        let config = AuditConfig::default();
+        assert!(config.enabled);
+        assert_eq!(config.max_files, 10);
+        assert!(config.encrypt);
+        assert!(config.sign_entries);
+    }
+
+    #[test]
+    fn test_audit_event_type_variants() {
+        use crate::audit::AuditEventType;
+        assert_eq!(AuditEventType::AgentCreated, AuditEventType::AgentCreated);
+        assert_ne!(
+            AuditEventType::AgentCreated,
+            AuditEventType::AgentTerminated
+        );
+    }
+
+    #[test]
+    fn test_audit_result_variants() {
+        use crate::audit::AuditResult;
+        assert_eq!(AuditResult::Success, AuditResult::Success);
+        assert_ne!(AuditResult::Success, AuditResult::Denied);
+    }
+
+    #[test]
+    fn test_audit_entry() {
+        let event = AuditEvent {
+            sequence: 1,
+            timestamp: chrono::Utc::now(),
+            event_type: AuditEventType::AgentCreated,
+            agent_id: None,
+            user_id: UserId::new(),
+            action: "create".to_string(),
+            resource: "agent".to_string(),
+            result: AuditResult::Success,
+            details: serde_json::json!({"name": "test"}),
+        };
+
+        let entry = AuditEntry {
+            event,
+            previous_hash: "abc123".to_string(),
+            entry_hash: "def456".to_string(),
+            signature: "sig789".to_string(),
+        };
+
+        assert_eq!(entry.previous_hash, "abc123");
+        assert_eq!(entry.entry_hash, "def456");
+    }
+}

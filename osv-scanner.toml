@@ -1,0 +1,32 @@
+# AGNOS OSV Scanner Configuration
+
+[package]
+# Scan these package ecosystems
+[[scanned]]
+ecosystem = "crates.io"
+[[scanned]]
+ecosystem = "PyPI"
+[[scanned]]
+ecosystem = "npm"
+
+[config]
+# Exclude certain paths
+exclude = [
+    "**/test_data/**",
+    "**/fuzz/**",
+    "**/benches/**",
+    "**/.git/**",
+    "target/**",
+]
+
+# Only scan these package managers
+scan = [
+    "cargo",
+    "pip",
+    "npm",
+]
+
+[output]
+# Output format
+format = "json"
+output = "vulnerability-report.json"

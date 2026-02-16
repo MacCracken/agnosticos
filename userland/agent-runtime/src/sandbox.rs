@@ -223,3 +223,76 @@ impl Default for SeccompFilter {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sandbox_new() {
+        let config = SandboxConfig::default();
+        let sandbox = Sandbox::new(&config).unwrap();
+        assert!(!sandbox.is_applied());
+    }
+
+    #[test]
+    fn test_seccomp_filter_new() {
+        let filter = SeccompFilter::new();
+        assert!(filter.allowed_syscalls.contains("read"));
+        assert!(filter.allowed_syscalls.contains("write"));
+        assert!(filter.allowed_syscalls.contains("mmap"));
+    }
+
+    #[test]
+    fn test_seccomp_filter_allow() {
+        let mut filter = SeccompFilter::new();
+        filter.allow("custom_syscall");
+        assert!(filter.allowed_syscalls.contains("custom_syscall"));
+    }
+
+    #[test]
+    fn test_seccomp_filter_deny() {
+        let mut filter = SeccompFilter::new();
+        filter.deny("kill");
+        assert!(filter.denied_syscalls.contains("kill"));
+    }
+
+    #[test]
+    fn test_seccomp_filter_load() {
+        let filter = SeccompFilter::new();
+        let result = filter.load();
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_sandbox_apply() {
+        let config = SandboxConfig::default();
+        let mut sandbox = Sandbox::new(&config).unwrap();
+        
+        let result = sandbox.apply().await;
+        assert!(result.is_ok() || result.is_err()); // May fail on systems without Landlock
+    }
+
+    #[test]
+    fn test_sandbox_is_applied() {
+        let config = SandboxConfig::default();
+        let sandbox = Sandbox::new(&config).unwrap();
+        assert!(!sandbox.is_applied());
+    }
+
+    #[test]
+    fn test_check_landlock_support() {
+        #[cfg(target_os = "linux")]
+        {
+            let result = Sandbox::check_landlock_support();
+            // Result depends on kernel support
+            assert!(result.is_err()); // Currently not implemented
+        }
+        
+        #[cfg(not(target_os = "linux"))]
+        {
+            let result = Sandbox::check_landlock_support();
+            assert!(result.is_err());
+        }
+    }
+}

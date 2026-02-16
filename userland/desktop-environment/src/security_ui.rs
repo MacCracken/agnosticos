@@ -406,3 +406,125 @@ impl SecurityUI {
         self.security_level.read().unwrap().clone()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_threat_level_variants() {
+        assert!(matches!(ThreatLevel::Low, ThreatLevel::Low));
+        assert!(matches!(ThreatLevel::Medium, ThreatLevel::Medium));
+        assert!(matches!(ThreatLevel::High, ThreatLevel::High));
+        assert!(matches!(ThreatLevel::Critical, ThreatLevel::Critical));
+    }
+
+    #[test]
+    fn test_security_alert_default() {
+        let alert = SecurityAlert::default();
+        assert_eq!(alert.threat_level, ThreatLevel::Low);
+        assert!(!alert.requires_action);
+        assert!(!alert.is_resolved);
+    }
+
+    #[test]
+    fn test_security_alert_custom() {
+        let alert = SecurityAlert {
+            id: Uuid::new_v4(),
+            title: "Suspicious Activity".to_string(),
+            description: "Detected unusual behavior".to_string(),
+            threat_level: ThreatLevel::High,
+            source: "agent-runtime".to_string(),
+            timestamp: chrono::Utc::now(),
+            requires_action: true,
+            is_resolved: false,
+        };
+        assert_eq!(alert.threat_level, ThreatLevel::High);
+        assert!(alert.requires_action);
+    }
+
+    #[test]
+    fn test_permission_request() {
+        let request = PermissionRequest {
+            id: Uuid::new_v4(),
+            agent_id: Uuid::new_v4(),
+            agent_name: "test-agent".to_string(),
+            permission: "file:read".to_string(),
+            resource: "/home".to_string(),
+            reason: "Reading files".to_string(),
+            timestamp: chrono::Utc::now(),
+            is_granted: false,
+        };
+        assert_eq!(request.agent_name, "test-agent");
+        assert!(!request.is_granted);
+    }
+
+    #[test]
+    fn test_permission_definition() {
+        let def = PermissionDefinition {
+            name: "test:permission".to_string(),
+            description: "Test permission".to_string(),
+            category: PermissionCategory::Agent,
+            requires_confirmation: true,
+        };
+        assert_eq!(def.name, "test:permission");
+        assert!(def.requires_confirmation);
+    }
+
+    #[test]
+    fn test_permission_category() {
+        assert!(matches!(
+            PermissionCategory::FileSystem,
+            PermissionCategory::FileSystem
+        ));
+        assert!(matches!(
+            PermissionCategory::Network,
+            PermissionCategory::Network
+        ));
+        assert!(matches!(
+            PermissionCategory::Agent,
+            PermissionCategory::Agent
+        ));
+    }
+
+    #[test]
+    fn test_security_level() {
+        assert!(matches!(SecurityLevel::Standard, SecurityLevel::Standard));
+        assert!(matches!(SecurityLevel::Elevated, SecurityLevel::Elevated));
+        assert!(matches!(SecurityLevel::Lockdown, SecurityLevel::Lockdown));
+    }
+
+    #[test]
+    fn test_security_level_default() {
+        let level = SecurityLevel::default();
+        assert!(matches!(level, SecurityLevel::Standard));
+    }
+
+    #[test]
+    fn test_security_dashboard() {
+        let dashboard = SecurityDashboard {
+            threat_level: ThreatLevel::Medium,
+            active_alerts: 5,
+            pending_permissions: 3,
+            running_agents: 2,
+            last_scan: chrono::Utc::now(),
+        };
+        assert_eq!(dashboard.active_alerts, 5);
+        assert_eq!(dashboard.running_agents, 2);
+    }
+
+    #[test]
+    fn test_override_request() {
+        let request = OverrideRequest {
+            id: Uuid::new_v4(),
+            agent_name: "test-agent".to_string(),
+            action: "delete".to_string(),
+            reason: "Cleanup".to_string(),
+            timestamp: chrono::Utc::now(),
+            is_approved: false,
+            approved_by: None,
+        };
+        assert!(!request.is_approved);
+        assert!(request.approved_by.is_none());
+    }
+}

@@ -1,36 +1,33 @@
-mod compositor;
-mod shell;
 mod ai_features;
 mod apps;
+mod compositor;
 mod security_ui;
+mod shell;
+mod system_tests;
 
 pub use compositor::{
-    Compositor, CompositorError, Window, WindowState, SurfaceId,
-    Workspace, ContextType, Rectangle, CompositorBackend,
-    InputEvent, WaylandBackend,
+    Compositor, CompositorBackend, CompositorError, ContextType, InputEvent, Rectangle, SurfaceId,
+    WaylandBackend, Window, WindowState, Workspace,
 };
 
 pub use shell::{
-    DesktopShell, ShellError, Notification, NotificationPriority,
-    QuickSetting, SystemStatus, NetworkStatus, AppEntry, AppCategory,
-    LauncherItem, LauncherAction, NotificationId,
+    AppCategory, AppEntry, DesktopShell, LauncherAction, LauncherItem, NetworkStatus, Notification,
+    NotificationId, NotificationPriority, QuickSetting, ShellError, SystemStatus,
 };
 
 pub use ai_features::{
-    AIDesktopFeatures, AIFeatureError, AISuggestion, SuggestionType,
-    AgentHUDState, AgentStatus, ContextEvent, ContextEventType,
-    DesktopContext, ContextType as AIContextType, TimeOfDay, ActivityLevel,
-    ResourceMetrics,
+    AIDesktopFeatures, AIFeatureError, AISuggestion, ActivityLevel, AgentHUDState, AgentStatus,
+    ContextEvent, ContextEventType, ContextType as AIContextType, DesktopContext, ResourceMetrics,
+    SuggestionType, TimeOfDay,
 };
 
 pub use apps::{
-    DesktopApplications, AppError, AppType, AppWindow,
-    TerminalApp, FileManagerApp, AgentManagerApp, AuditViewerApp, ModelManagerApp,
-    AgentInfo, AuditEntry, AuditFilters, TimeRange, ModelInfo,
+    AgentInfo, AgentManagerApp, AppError, AppType, AppWindow, AuditEntry, AuditFilters,
+    AuditViewerApp, DesktopApplications, FileManagerApp, ModelInfo, ModelManagerApp, TerminalApp,
+    TimeRange,
 };
 
 pub use security_ui::{
-    SecurityUI, SecurityUIError, SecurityAlert, ThreatLevel,
-    PermissionRequest, PermissionDefinition, PermissionCategory,
-    AgentPermission, SecurityDashboard, OverrideRequest, SecurityLevel,
+    AgentPermission, OverrideRequest, PermissionCategory, PermissionDefinition, PermissionRequest,
+    SecurityAlert, SecurityDashboard, SecurityLevel, SecurityUI, SecurityUIError, ThreatLevel,
 };

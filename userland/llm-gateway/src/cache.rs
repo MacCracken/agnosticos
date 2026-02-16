@@ -105,3 +105,94 @@ pub struct CacheStats {
     pub expired_entries: usize,
     pub active_entries: usize,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use agnos_common::{FinishReason, InferenceResponse, TokenUsage};
+
+    #[tokio::test]
+    async fn test_cache_new() {
+        let cache = ResponseCache::new(Duration::from_secs(60));
+        let stats = cache.stats().await;
+        assert_eq!(stats.total_entries, 0);
+    }
+
+    #[tokio::test]
+    async fn test_cache_set_and_get() {
+        let cache = ResponseCache::new(Duration::from_secs(60));
+        
+        let request = InferenceRequest {
+            prompt: "Hello".to_string(),
+            model: "test".to_string(),
+            max_tokens: 100,
+            temperature: 0.7,
+            top_p: 1.0,
+            presence_penalty: 0.0,
+            frequency_penalty: 0.0,
+        };
+        
+        let response = InferenceResponse {
+            text: "Hi there!".to_string(),
+            tokens_generated: 5,
+            finish_reason: FinishReason::Stop,
+            model: "test".to_string(),
+            usage: TokenUsage {
+                prompt_tokens: 2,
+                completion_tokens: 5,
+                total_tokens: 7,
+            },
+        };
+        
+        cache.set(request.clone(), response.clone()).await;
+        
+        let cached = cache.get(&request).await;
+        assert!(cached.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_cache_miss() {
+        let cache = ResponseCache::new(Duration::from_secs(60));
+        
+        let request = InferenceRequest {
+            prompt: "Different prompt".to_string(),
+            model: "test".to_string(),
+            max_tokens: 100,
+            temperature: 0.7,
+            top_p: 1.0,
+            presence_penalty: 0.0,
+            frequency_penalty: 0.0,
+        };
+        
+        let cached = cache.get(&request).await;
+        assert!(cached.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_cache_clear() {
+        let cache = ResponseCache::new(Duration::from_secs(60));
+        
+        let request = InferenceRequest::default();
+        let response = InferenceResponse {
+            text: "Test".to_string(),
+            tokens_generated: 1,
+            finish_reason: FinishReason::Stop,
+            model: "test".to_string(),
+            usage: TokenUsage::default(),
+        };
+        
+        cache.set(request, response).await;
+        cache.clear().await;
+        
+        let stats = cache.stats().await;
+        assert_eq!(stats.total_entries, 0);
+    }
+
+    #[tokio::test]
+    async fn test_cache_stats() {
+        let cache = ResponseCache::new(Duration::from_secs(60));
+        
+        let stats = cache.stats().await;
+        assert_eq!(stats.active_entries, 0);
+    }
+}
