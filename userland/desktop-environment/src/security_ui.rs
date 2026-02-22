@@ -527,4 +527,224 @@ mod tests {
         assert!(!request.is_approved);
         assert!(request.approved_by.is_none());
     }
+
+    #[test]
+    fn test_security_ui_new() {
+        let ui = SecurityUI::new();
+        assert!(ui.get_active_alerts().is_empty());
+        assert!(ui.get_pending_permissions().is_empty());
+    }
+
+    #[test]
+    fn test_security_ui_show_alert() {
+        let ui = SecurityUI::new();
+        let alert = SecurityAlert {
+            id: Uuid::new_v4(),
+            title: "Test Alert".to_string(),
+            description: "Test".to_string(),
+            threat_level: ThreatLevel::Medium,
+            source: "test".to_string(),
+            timestamp: chrono::Utc::now(),
+            requires_action: true,
+            is_resolved: false,
+        };
+        ui.show_security_alert(alert);
+        let active = ui.get_active_alerts();
+        assert_eq!(active.len(), 1);
+    }
+
+    #[test]
+    fn test_security_ui_dismiss_alert() {
+        let ui = SecurityUI::new();
+        let alert = SecurityAlert {
+            id: Uuid::new_v4(),
+            title: "Test".to_string(),
+            description: "Test".to_string(),
+            threat_level: ThreatLevel::Low,
+            source: "test".to_string(),
+            timestamp: chrono::Utc::now(),
+            requires_action: false,
+            is_resolved: false,
+        };
+        let id = alert.id;
+        ui.show_security_alert(alert);
+        assert_eq!(ui.get_active_alerts().len(), 1);
+        ui.dismiss_alert(id).unwrap();
+        assert!(ui.get_active_alerts().is_empty());
+    }
+
+    #[test]
+    fn test_security_ui_request_permission() {
+        let ui = SecurityUI::new();
+        let request = PermissionRequest {
+            id: Uuid::new_v4(),
+            agent_id: Uuid::new_v4(),
+            agent_name: "test".to_string(),
+            permission: "file:read".to_string(),
+            resource: "/home".to_string(),
+            reason: "Read files".to_string(),
+            timestamp: chrono::Utc::now(),
+            is_granted: false,
+        };
+        ui.request_permission(request);
+        let pending = ui.get_pending_permissions();
+        assert_eq!(pending.len(), 1);
+    }
+
+    #[test]
+    fn test_security_ui_grant_permission() {
+        let ui = SecurityUI::new();
+        let request = PermissionRequest {
+            id: Uuid::new_v4(),
+            agent_id: Uuid::new_v4(),
+            agent_name: "test".to_string(),
+            permission: "file:read".to_string(),
+            resource: "/home".to_string(),
+            reason: "Read".to_string(),
+            timestamp: chrono::Utc::now(),
+            is_granted: false,
+        };
+        let id = request.id;
+        ui.request_permission(request);
+        ui.grant_permission(id).unwrap();
+        let pending = ui.get_pending_permissions();
+        assert!(pending.is_empty());
+    }
+
+    #[test]
+    fn test_security_ui_deny_permission() {
+        let ui = SecurityUI::new();
+        let request = PermissionRequest {
+            id: Uuid::new_v4(),
+            agent_id: Uuid::new_v4(),
+            agent_name: "test".to_string(),
+            permission: "file:read".to_string(),
+            resource: "/home".to_string(),
+            reason: "Read".to_string(),
+            timestamp: chrono::Utc::now(),
+            is_granted: false,
+        };
+        let id = request.id;
+        ui.request_permission(request);
+        ui.deny_permission(id).unwrap();
+        assert!(ui.get_pending_permissions().is_empty());
+    }
+
+    #[test]
+    fn test_security_ui_set_agent_permissions() {
+        let ui = SecurityUI::new();
+        let agent_id = Uuid::new_v4();
+        ui.set_agent_permissions(agent_id, "test-agent".to_string(), vec!["read".to_string()]);
+    }
+
+    #[test]
+    fn test_security_ui_revoke_agent_permissions() {
+        let ui = SecurityUI::new();
+        let agent_id = Uuid::new_v4();
+        ui.set_agent_permissions(agent_id, "test".to_string(), vec!["read".to_string()]);
+        ui.revoke_agent_permissions(agent_id).unwrap();
+    }
+
+    #[test]
+    fn test_security_ui_revoke_nonexistent_permissions() {
+        let ui = SecurityUI::new();
+        let result = ui.revoke_agent_permissions(Uuid::new_v4());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_security_ui_request_human_override() {
+        let ui = SecurityUI::new();
+        let id = ui.request_human_override(
+            "agent".to_string(),
+            "delete".to_string(),
+            "test".to_string(),
+        );
+        let requests = ui.get_override_requests();
+        assert_eq!(requests.len(), 1);
+    }
+
+    #[test]
+    fn test_security_ui_approve_override() {
+        let ui = SecurityUI::new();
+        let id = ui.request_human_override(
+            "agent".to_string(),
+            "delete".to_string(),
+            "test".to_string(),
+        );
+        ui.approve_override(id, "admin".to_string()).unwrap();
+        let requests = ui.get_override_requests();
+        assert!(requests.is_empty());
+    }
+
+    #[test]
+    fn test_security_ui_approve_nonexistent_override() {
+        let ui = SecurityUI::new();
+        let result = ui.approve_override(Uuid::new_v4(), "admin".to_string());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_security_ui_emergency_kill_switch() {
+        let ui = SecurityUI::new();
+        assert!(!ui.is_emergency_mode());
+        ui.emergency_kill_switch();
+        assert!(ui.is_emergency_mode());
+    }
+
+    #[test]
+    fn test_security_ui_deactivate_emergency() {
+        let ui = SecurityUI::new();
+        ui.emergency_kill_switch();
+        assert!(ui.is_emergency_mode());
+        ui.deactivate_emergency();
+        assert!(!ui.is_emergency_mode());
+    }
+
+    #[test]
+    fn test_security_ui_set_security_level() {
+        let ui = SecurityUI::new();
+        assert_eq!(ui.get_security_level(), SecurityLevel::Standard);
+        ui.set_security_level(SecurityLevel::Elevated);
+        assert_eq!(ui.get_security_level(), SecurityLevel::Elevated);
+        ui.set_security_level(SecurityLevel::Lockdown);
+        assert_eq!(ui.get_security_level(), SecurityLevel::Lockdown);
+    }
+
+    #[test]
+    fn test_security_ui_get_dashboard() {
+        let ui = SecurityUI::new();
+        let dashboard = ui.get_security_dashboard();
+        assert_eq!(dashboard.active_alerts, 0);
+        assert_eq!(dashboard.threat_level, ThreatLevel::Low);
+    }
+
+    #[test]
+    fn test_security_ui_error_variants() {
+        let err = SecurityUIError::PermissionNotFound("test".to_string());
+        assert!(err.to_string().contains("not found"));
+        let err = SecurityUIError::AlertNotFound(Uuid::nil());
+        assert!(err.to_string().contains("not found"));
+        let err = SecurityUIError::ActionBlocked("test".to_string());
+        assert!(err.to_string().contains("blocked"));
+    }
+
+    #[test]
+    fn test_threat_level_ordering() {
+        assert!(ThreatLevel::Critical > ThreatLevel::High);
+        assert!(ThreatLevel::High > ThreatLevel::Medium);
+        assert!(ThreatLevel::Medium > ThreatLevel::Low);
+    }
+
+    #[test]
+    fn test_agent_permission() {
+        let perm = AgentPermission {
+            agent_id: Uuid::new_v4(),
+            agent_name: "test".to_string(),
+            permissions: vec!["read".to_string(), "write".to_string()],
+            granted_at: chrono::Utc::now(),
+            expires_at: None,
+        };
+        assert_eq!(perm.permissions.len(), 2);
+    }
 }

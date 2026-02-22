@@ -211,3 +211,65 @@ impl LlmProvider for LlamaCppProvider {
         Ok(vec![])
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_provider_type_variants() {
+        assert!(matches!(ProviderType::Ollama, ProviderType::Ollama));
+        assert!(matches!(ProviderType::LlamaCpp, ProviderType::LlamaCpp));
+        assert!(matches!(ProviderType::OpenAi, ProviderType::OpenAi));
+        assert!(matches!(ProviderType::Anthropic, ProviderType::Anthropic));
+        assert!(matches!(ProviderType::Google, ProviderType::Google));
+    }
+
+    #[test]
+    fn test_provider_type_equality() {
+        assert_eq!(ProviderType::Ollama, ProviderType::Ollama);
+        assert_ne!(ProviderType::Ollama, ProviderType::LlamaCpp);
+    }
+
+    #[test]
+    fn test_provider_type_hash() {
+        use std::collections::HashSet;
+        let mut set = HashSet::new();
+        set.insert(ProviderType::Ollama);
+        set.insert(ProviderType::Ollama);
+        assert_eq!(set.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_ollama_provider_new() {
+        let provider = OllamaProvider::new().await;
+        assert!(provider.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_llama_cpp_provider_new() {
+        let provider = LlamaCppProvider::new().await;
+        assert!(provider.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_llama_cpp_load_model() {
+        let provider = LlamaCppProvider::new().await.unwrap();
+        let result = provider.load_model("test-model").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_llama_cpp_unload_model() {
+        let provider = LlamaCppProvider::new().await.unwrap();
+        let result = provider.unload_model("test-model").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_llama_cpp_list_models() {
+        let provider = LlamaCppProvider::new().await.unwrap();
+        let models = provider.list_models().await.unwrap();
+        assert!(models.is_empty());
+    }
+}

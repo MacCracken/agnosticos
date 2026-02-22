@@ -190,3 +190,131 @@ impl Default for MessageBus {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_agent_ipc_new() {
+        let agent_id = AgentId::new();
+        let result = AgentIpc::new(agent_id);
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_message_bus_new() {
+        let bus = MessageBus::new();
+        let subscribers = bus.subscribers.read().await.len();
+        assert_eq!(subscribers, 0);
+    }
+
+    #[tokio::test]
+    async fn test_message_bus_subscribe() {
+        let bus = MessageBus::new();
+        let agent_id = AgentId::new();
+        let (tx, _rx) = mpsc::channel(10);
+        
+        bus.subscribe(agent_id, tx).await;
+        
+        let subscribers = bus.subscribers.read().await;
+        assert!(subscribers.contains_key(&agent_id));
+    }
+
+    #[tokio::test]
+    async fn test_message_bus_unsubscribe() {
+        let bus = MessageBus::new();
+        let agent_id = AgentId::new();
+        let (tx, _rx) = mpsc::channel(10);
+        
+        bus.subscribe(agent_id, tx).await;
+        bus.unsubscribe(agent_id).await;
+        
+        let subscribers = bus.subscribers.read().await;
+        assert!(!subscribers.contains_key(&agent_id));
+    }
+
+    #[tokio::test]
+    async fn test_message_bus_subscribe_global() {
+        let bus = MessageBus::new();
+        let (tx, _rx) = mpsc::channel(10);
+        
+        bus.subscribe_global(tx).await;
+        
+        let globals = bus.global_subscribers.read().await;
+        assert_eq!(globals.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_message_bus_send_to_existing() {
+        let bus = MessageBus::new();
+        let agent_id = AgentId::new();
+        let (tx, mut rx) = mpsc::channel(10);
+        
+        bus.subscribe(agent_id, tx).await;
+        
+        let message = Message {
+            id: Uuid::new_v4().to_string(),
+            source: "test".to_string(),
+            target: agent_id.to_string(),
+            message_type: MessageType::Command,
+            payload: serde_json::json!({"test": "data"}),
+            timestamp: chrono::Utc::now(),
+        };
+        
+        let result = bus.send_to(agent_id, message).await;
+        assert!(result.is_ok());
+        
+        let received = rx.recv().await;
+        assert!(received.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_message_bus_send_to_nonexistent() {
+        let bus = MessageBus::new();
+        let agent_id = AgentId::new();
+        
+        let message = Message {
+            id: Uuid::new_v4().to_string(),
+            source: "test".to_string(),
+            target: agent_id.to_string(),
+            message_type: MessageType::Command,
+            payload: serde_json::json!({}),
+            timestamp: chrono::Utc::now(),
+        };
+        
+        let result = bus.send_to(agent_id, message).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_message_bus_publish() {
+        let bus = MessageBus::new();
+        let agent_id = AgentId::new();
+        let (tx, mut rx) = mpsc::channel(10);
+        
+        bus.subscribe(agent_id, tx).await;
+        
+        let message = Message {
+            id: Uuid::new_v4().to_string(),
+            source: "test".to_string(),
+            target: "broadcast".to_string(),
+            message_type: MessageType::Event,
+            payload: serde_json::json!({}),
+            timestamp: chrono::Utc::now(),
+        };
+        
+        let result = bus.publish(message).await;
+        assert!(result.is_ok());
+        
+        let received = rx.recv().await;
+        assert!(received.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_message_bus_default() {
+        let bus = MessageBus::default();
+        let subscribers = bus.subscribers.read().await.len();
+        assert_eq!(subscribers, 0);
+    }
+}

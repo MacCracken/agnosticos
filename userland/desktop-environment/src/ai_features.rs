@@ -529,4 +529,167 @@ mod tests {
             ContextEventType::FileOpened
         ));
     }
+
+    #[test]
+    fn test_ai_desktop_features_new() {
+        let features = AIDesktopFeatures::new();
+        assert_eq!(features.get_agent_hud_states().len(), 0);
+    }
+
+    #[test]
+    fn test_ai_desktop_features_analyze_context() {
+        let features = AIDesktopFeatures::new();
+        let context = features.analyze_context();
+        assert!(matches!(context.context_type, ContextType::Idle));
+    }
+
+    #[test]
+    fn test_ai_desktop_features_update_context() {
+        let features = AIDesktopFeatures::new();
+        let mut metadata = HashMap::new();
+        metadata.insert("app".to_string(), "vscode".to_string());
+        let event = ContextEvent {
+            id: Uuid::new_v4(),
+            event_type: ContextEventType::WindowOpened,
+            source: "compositor".to_string(),
+            timestamp: chrono::Utc::now(),
+            metadata,
+        };
+        features.update_context(event);
+        let context = features.get_context();
+        assert!(context.active_apps.contains(&"vscode".to_string()));
+    }
+
+    #[test]
+    fn test_ai_desktop_features_generate_suggestion() {
+        let features = AIDesktopFeatures::new();
+        let suggestion = features.generate_suggestion(
+            SuggestionType::TaskRecommendation,
+            "Take a break".to_string(),
+            "You've been coding for 2 hours".to_string(),
+            0.85,
+        );
+        assert_eq!(suggestion.title, "Take a break");
+        assert_eq!(suggestion.confidence, 0.85);
+    }
+
+    #[test]
+    fn test_ai_desktop_features_add_suggestion() {
+        let features = AIDesktopFeatures::new();
+        let suggestion = features.generate_suggestion(
+            SuggestionType::Productivity,
+            "Test".to_string(),
+            "Desc".to_string(),
+            0.7,
+        );
+        features.add_suggestion(suggestion);
+        let suggestions = features.proactive_suggestions();
+        assert!(!suggestions.is_empty());
+    }
+
+    #[test]
+    fn test_ai_desktop_features_smart_window_placement() {
+        let features = AIDesktopFeatures::new();
+        let (x, y, w, h) = features.smart_window_placement("test");
+        assert!(w > 0);
+        assert!(h > 0);
+    }
+
+    #[test]
+    fn test_ai_desktop_features_register_agent_hud() {
+        let features = AIDesktopFeatures::new();
+        let agent_id = Uuid::new_v4();
+        features.register_agent_hud(agent_id, "test-agent".to_string());
+        let states = features.get_agent_hud_states();
+        assert_eq!(states.len(), 1);
+        assert_eq!(states[0].agent_name, "test-agent");
+    }
+
+    #[test]
+    fn test_ai_desktop_features_update_agent_hud() {
+        let features = AIDesktopFeatures::new();
+        let agent_id = Uuid::new_v4();
+        features.register_agent_hud(agent_id, "test-agent".to_string());
+        features.update_agent_hud(
+            agent_id,
+            AgentStatus::Thinking,
+            "Processing".to_string(),
+            0.5,
+        );
+        let states = features.get_agent_hud_states();
+        assert_eq!(states[0].status, AgentStatus::Thinking);
+        assert_eq!(states[0].progress, 0.5);
+    }
+
+    #[test]
+    fn test_ai_desktop_features_unregister_agent_hud() {
+        let features = AIDesktopFeatures::new();
+        let agent_id = Uuid::new_v4();
+        features.register_agent_hud(agent_id, "test-agent".to_string());
+        assert_eq!(features.get_agent_hud_states().len(), 1);
+        features.unregister_agent_hud(agent_id);
+        assert!(features.get_agent_hud_states().is_empty());
+    }
+
+    #[test]
+    fn test_ai_desktop_features_set_proactive_mode() {
+        let features = AIDesktopFeatures::new();
+        features.set_proactive_mode(false);
+        features.set_proactive_mode(true);
+    }
+
+    #[test]
+    fn test_ai_desktop_features_set_ambient_enabled() {
+        let features = AIDesktopFeatures::new();
+        features.set_ambient_enabled(false);
+        features.set_ambient_enabled(true);
+    }
+
+    #[test]
+    fn test_ai_desktop_features_dismiss_suggestion() {
+        let features = AIDesktopFeatures::new();
+        let suggestion = features.generate_suggestion(
+            SuggestionType::Productivity,
+            "Test".to_string(),
+            "Desc".to_string(),
+            0.8,
+        );
+        let id = suggestion.id;
+        features.add_suggestion(suggestion);
+        features.dismiss_suggestion(id);
+    }
+
+    #[test]
+    fn test_ai_desktop_features_suggest_workspace_switch() {
+        let features = AIDesktopFeatures::new();
+        let suggestion = features.suggest_workspace_switch(0, 1, "Better focus".to_string());
+        assert_eq!(suggestion.suggestion_type, SuggestionType::ContextSwitch);
+    }
+
+    #[test]
+    fn test_ai_desktop_features_optimize_resources() {
+        let features = AIDesktopFeatures::new();
+        let suggestion = features.optimize_resources();
+        assert_eq!(
+            suggestion.suggestion_type,
+            SuggestionType::ResourceOptimization
+        );
+    }
+
+    #[test]
+    fn test_desktop_context_default() {
+        let context = DesktopContext::default();
+        assert!(matches!(context.context_type, ContextType::Idle));
+        assert!(context.active_apps.is_empty());
+    }
+
+    #[test]
+    fn test_ai_feature_error_variants() {
+        let err = AIFeatureError::ContextNotFound("test".to_string());
+        assert!(err.to_string().contains("not found"));
+        let err = AIFeatureError::AgentNotFound(Uuid::nil());
+        assert!(err.to_string().contains("not found"));
+        let err = AIFeatureError::ModelError("test".to_string());
+        assert!(err.to_string().contains("Model error"));
+    }
 }

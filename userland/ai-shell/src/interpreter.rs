@@ -431,4 +431,204 @@ mod tests {
         assert_eq!(translation.command, "cd");
         assert_eq!(translation.args, vec!["/tmp"]);
     }
+
+    #[test]
+    fn test_translate_list_files() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::ListFiles {
+            path: Some("/home".to_string()),
+            options: ListOptions::default(),
+        };
+        let translation = interpreter.translate(&intent).unwrap();
+        assert_eq!(translation.command, "ls");
+    }
+
+    #[test]
+    fn test_translate_list_files_no_path() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::ListFiles {
+            path: None,
+            options: ListOptions::default(),
+        };
+        let translation = interpreter.translate(&intent).unwrap();
+        assert_eq!(translation.command, "ls");
+    }
+
+    #[test]
+    fn test_translate_show_file() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::ShowFile {
+            path: "/etc/hosts".to_string(),
+            lines: None,
+        };
+        let translation = interpreter.translate(&intent).unwrap();
+        assert_eq!(translation.command, "cat");
+    }
+
+    #[test]
+    fn test_translate_show_file_with_lines() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::ShowFile {
+            path: "/var/log/syslog".to_string(),
+            lines: Some(10),
+        };
+        let translation = interpreter.translate(&intent).unwrap();
+        assert_eq!(translation.command, "head");
+    }
+
+    #[test]
+    fn test_translate_mkdir() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::CreateDirectory {
+            path: "/tmp/test".to_string(),
+        };
+        let translation = interpreter.translate(&intent).unwrap();
+        assert_eq!(translation.command, "mkdir");
+        assert!(translation.args.contains(&"-p".to_string()));
+    }
+
+    #[test]
+    fn test_translate_copy() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::Copy {
+            source: "/tmp/a".to_string(),
+            destination: "/tmp/b".to_string(),
+        };
+        let translation = interpreter.translate(&intent).unwrap();
+        assert_eq!(translation.command, "cp");
+    }
+
+    #[test]
+    fn test_translate_move_not_implemented() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::Move {
+            source: "/tmp/a".to_string(),
+            destination: "/tmp/b".to_string(),
+        };
+        assert!(interpreter.translate(&intent).is_err());
+    }
+
+    #[test]
+    fn test_translate_show_processes() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::ShowProcesses;
+        let translation = interpreter.translate(&intent).unwrap();
+        assert_eq!(translation.command, "ps");
+    }
+
+    #[test]
+    fn test_translate_system_info() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::SystemInfo;
+        let translation = interpreter.translate(&intent).unwrap();
+        assert_eq!(translation.command, "uname");
+    }
+
+    #[test]
+    fn test_translate_shell_command() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::ShellCommand {
+            command: "echo".to_string(),
+            args: vec!["hello".to_string()],
+        };
+        let translation = interpreter.translate(&intent).unwrap();
+        assert_eq!(translation.command, "echo");
+    }
+
+    #[test]
+    fn test_translate_question_fails() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::Question {
+            query: "What is this?".to_string(),
+        };
+        assert!(interpreter.translate(&intent).is_err());
+    }
+
+    #[test]
+    fn test_translate_unknown_fails() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::Unknown;
+        assert!(interpreter.translate(&intent).is_err());
+    }
+
+    #[test]
+    fn test_explain_ls() {
+        let interpreter = Interpreter::new();
+        let explanation = interpreter.explain("ls", &[]);
+        assert!(explanation.contains("files"));
+    }
+
+    #[test]
+    fn test_explain_cat() {
+        let interpreter = Interpreter::new();
+        let explanation = interpreter.explain("cat", &[]);
+        assert!(explanation.contains("contents"));
+    }
+
+    #[test]
+    fn test_explain_rm() {
+        let interpreter = Interpreter::new();
+        let explanation = interpreter.explain("rm", &[]);
+        assert!(explanation.contains("Removes") || explanation.contains("destructive"));
+    }
+
+    #[test]
+    fn test_explain_unknown_command() {
+        let interpreter = Interpreter::new();
+        let explanation = interpreter.explain("foobar", &[]);
+        assert!(explanation.contains("foobar"));
+    }
+
+    #[test]
+    fn test_list_options_default() {
+        let opts = ListOptions::default();
+        assert!(!opts.all);
+        assert!(!opts.long);
+        assert!(!opts.recursive);
+    }
+
+    #[test]
+    fn test_intent_variants() {
+        let intent = Intent::FindFiles {
+            pattern: "*.rs".to_string(),
+            path: None,
+        };
+        assert!(matches!(intent, Intent::FindFiles { .. }));
+
+        let intent = Intent::SearchContent {
+            pattern: "TODO".to_string(),
+            path: Some("/src".to_string()),
+        };
+        assert!(matches!(intent, Intent::SearchContent { .. }));
+
+        let intent = Intent::Remove {
+            path: "/tmp/test".to_string(),
+            recursive: true,
+        };
+        assert!(matches!(intent, Intent::Remove { .. }));
+
+        let intent = Intent::KillProcess { pid: 1234 };
+        assert!(matches!(intent, Intent::KillProcess { .. }));
+
+        let intent = Intent::NetworkInfo;
+        assert!(matches!(intent, Intent::NetworkInfo));
+
+        let intent = Intent::DiskUsage { path: None };
+        assert!(matches!(intent, Intent::DiskUsage { .. }));
+
+        let intent = Intent::InstallPackage {
+            packages: vec!["vim".to_string()],
+        };
+        assert!(matches!(intent, Intent::InstallPackage { .. }));
+
+        let intent = Intent::Ambiguous {
+            alternatives: vec!["a".to_string(), "b".to_string()],
+        };
+        assert!(matches!(intent, Intent::Ambiguous { .. }));
+    }
+
+    #[test]
+    fn test_interpreter_default() {
+        let interpreter = Interpreter::default();
+    }
 }

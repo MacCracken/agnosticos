@@ -456,4 +456,194 @@ mod tests {
         assert!(matches!(TouchPhase::Move, TouchPhase::Move));
         assert!(matches!(TouchPhase::Up, TouchPhase::Up));
     }
+
+    #[test]
+    fn test_compositor_new() {
+        let compositor = Compositor::new();
+        assert!(compositor.get_windows().is_empty());
+    }
+
+    #[test]
+    fn test_compositor_create_window() {
+        let compositor = Compositor::new();
+        let id = compositor.create_window("Test Window".to_string(), "test-app".to_string(), false);
+        assert!(id.is_ok());
+        let windows = compositor.get_windows();
+        assert_eq!(windows.len(), 1);
+        assert_eq!(windows[0].title, "Test Window");
+        assert!(!windows[0].is_agent_window);
+    }
+
+    #[test]
+    fn test_compositor_create_agent_window() {
+        let compositor = Compositor::new();
+        let id = compositor
+            .create_window("Agent Window".to_string(), "agent".to_string(), true)
+            .unwrap();
+        let windows = compositor.get_windows();
+        assert!(windows[0].is_agent_window);
+        let agent_windows = compositor.get_agent_windows();
+        assert_eq!(agent_windows.len(), 1);
+    }
+
+    #[test]
+    fn test_compositor_close_window() {
+        let compositor = Compositor::new();
+        let id = compositor
+            .create_window("Test".to_string(), "app".to_string(), false)
+            .unwrap();
+        assert_eq!(compositor.get_windows().len(), 1);
+        compositor.close_window(id).unwrap();
+        assert!(compositor.get_windows().is_empty());
+    }
+
+    #[test]
+    fn test_compositor_close_nonexistent_window() {
+        let compositor = Compositor::new();
+        let result = compositor.close_window(Uuid::new_v4());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_compositor_set_window_state() {
+        let compositor = Compositor::new();
+        let id = compositor
+            .create_window("Test".to_string(), "app".to_string(), false)
+            .unwrap();
+        compositor
+            .set_window_state(id, WindowState::Maximized)
+            .unwrap();
+        let windows = compositor.get_windows();
+        assert_eq!(windows[0].state, WindowState::Maximized);
+    }
+
+    #[test]
+    fn test_compositor_switch_workspace() {
+        let compositor = Compositor::new();
+        assert!(compositor.switch_workspace(0).is_ok());
+        assert!(compositor.switch_workspace(3).is_ok());
+        assert!(compositor.switch_workspace(4).is_err());
+    }
+
+    #[test]
+    fn test_compositor_move_window_to_workspace() {
+        let compositor = Compositor::new();
+        let id = compositor
+            .create_window("Test".to_string(), "app".to_string(), false)
+            .unwrap();
+        compositor.move_window_to_workspace(id, 2).unwrap();
+    }
+
+    #[test]
+    fn test_compositor_move_nonexistent_window() {
+        let compositor = Compositor::new();
+        let result = compositor.move_window_to_workspace(Uuid::new_v4(), 1);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_compositor_agent_aware_mode() {
+        let compositor = Compositor::new();
+        compositor.set_agent_aware_mode(true);
+        compositor.set_agent_aware_mode(false);
+    }
+
+    #[test]
+    fn test_compositor_secure_mode() {
+        let compositor = Compositor::new();
+        compositor.set_secure_mode(true);
+        compositor.set_secure_mode(false);
+    }
+
+    #[test]
+    fn test_compositor_get_workspace_context() {
+        let compositor = Compositor::new();
+        let context = compositor.get_workspace_context(0).unwrap();
+        assert_eq!(context, ContextType::General);
+        assert!(compositor.get_workspace_context(10).is_err());
+    }
+
+    #[test]
+    fn test_compositor_set_workspace_context() {
+        let compositor = Compositor::new();
+        compositor
+            .set_workspace_context(0, ContextType::Development)
+            .unwrap();
+        let context = compositor.get_workspace_context(0).unwrap();
+        assert_eq!(context, ContextType::Development);
+    }
+
+    #[test]
+    fn test_compositor_get_active_windows() {
+        let compositor = Compositor::new();
+        let _id1 = compositor
+            .create_window("W1".to_string(), "app".to_string(), false)
+            .unwrap();
+        let _id2 = compositor
+            .create_window("W2".to_string(), "app".to_string(), false)
+            .unwrap();
+        let active = compositor.get_active_windows();
+        assert_eq!(active.len(), 2);
+    }
+
+    #[test]
+    fn test_compositor_error_variants() {
+        let err = CompositorError::WindowNotFound(Uuid::nil());
+        assert!(err.to_string().contains("not found"));
+        let err = CompositorError::DisplayServerError("test".to_string());
+        assert!(err.to_string().contains("Display server"));
+        let err = CompositorError::PermissionDenied("test".to_string());
+        assert!(err.to_string().contains("denied"));
+    }
+
+    #[test]
+    fn test_input_event_mouse_move() {
+        let event = InputEvent::MouseMove { x: 100, y: 200 };
+        assert!(matches!(event, InputEvent::MouseMove { .. }));
+    }
+
+    #[test]
+    fn test_input_event_mouse_click() {
+        let event = InputEvent::MouseClick {
+            button: 1,
+            x: 50,
+            y: 50,
+        };
+        assert!(matches!(event, InputEvent::MouseClick { .. }));
+    }
+
+    #[test]
+    fn test_input_event_key_press() {
+        let event = InputEvent::KeyPress {
+            keycode: 65,
+            modifiers: 0,
+        };
+        assert!(matches!(event, InputEvent::KeyPress { .. }));
+    }
+
+    #[test]
+    fn test_input_event_touch() {
+        let event = InputEvent::TouchEvent {
+            finger_id: 0,
+            x: 100.0,
+            y: 200.0,
+            phase: TouchPhase::Down,
+        };
+        assert!(matches!(event, InputEvent::TouchEvent { .. }));
+    }
+
+    #[test]
+    fn test_wayland_backend_initialize() {
+        let mut backend = WaylandBackend;
+        assert!(backend.initialize().is_ok());
+        assert!(backend.render().is_ok());
+        assert!(backend.shutdown().is_ok());
+    }
+
+    #[test]
+    fn test_wayland_backend_handle_input() {
+        let mut backend = WaylandBackend;
+        let event = InputEvent::MouseMove { x: 100, y: 200 };
+        assert!(backend.handle_input(event).is_ok());
+    }
 }

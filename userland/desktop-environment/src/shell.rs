@@ -546,4 +546,184 @@ mod tests {
         assert_eq!(item.name, "Test App");
         assert_eq!(item.relevance_score, 0.9);
     }
+
+    #[test]
+    fn test_desktop_shell_new() {
+        let shell = DesktopShell::new();
+        let quick_settings = shell.get_quick_settings();
+        assert!(!quick_settings.is_empty());
+        assert!(shell.get_notifications().is_empty());
+    }
+
+    #[test]
+    fn test_desktop_shell_notification_lifecycle() {
+        let shell = DesktopShell::new();
+        let notification = Notification {
+            id: Uuid::new_v4(),
+            app_name: "test".to_string(),
+            title: "Test".to_string(),
+            body: "Body".to_string(),
+            priority: NotificationPriority::Normal,
+            timestamp: chrono::Utc::now(),
+            requires_action: false,
+            is_agent_related: false,
+        };
+        let id = notification.id;
+        shell.show_notification(notification);
+        assert_eq!(shell.get_notifications().len(), 1);
+        shell.dismiss_notification(id).unwrap();
+        assert!(shell.get_notifications().is_empty());
+    }
+
+    #[test]
+    fn test_desktop_shell_dismiss_nonexistent() {
+        let shell = DesktopShell::new();
+        let result = shell.dismiss_notification(Uuid::new_v4());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_desktop_shell_agent_notification() {
+        let shell = DesktopShell::new();
+        shell.show_agent_notification("Title".to_string(), "Body".to_string(), false);
+        let notifications = shell.get_notifications();
+        assert_eq!(notifications.len(), 1);
+        assert!(notifications[0].is_agent_related);
+        assert!(!notifications[0].requires_action);
+    }
+
+    #[test]
+    fn test_desktop_shell_agent_notification_requires_action() {
+        let shell = DesktopShell::new();
+        shell.show_agent_notification("Title".to_string(), "Body".to_string(), true);
+        let notifications = shell.get_notifications();
+        assert!(notifications[0].requires_action);
+        assert_eq!(notifications[0].priority, NotificationPriority::High);
+    }
+
+    #[test]
+    fn test_desktop_shell_lock_screen() {
+        let shell = DesktopShell::new();
+        assert!(!shell.is_locked());
+        shell.lock_screen();
+        assert!(shell.is_locked());
+        shell.unlock_screen();
+        assert!(!shell.is_locked());
+    }
+
+    #[test]
+    fn test_desktop_shell_toggle_quick_setting() {
+        let shell = DesktopShell::new();
+        let settings_before = shell.get_quick_settings();
+        let wifi_before = settings_before.iter().find(|s| s.id == "wifi").unwrap();
+        assert!(wifi_before.is_active);
+        shell.toggle_quick_setting("wifi").unwrap();
+        let settings_after = shell.get_quick_settings();
+        let wifi_after = settings_after.iter().find(|s| s.id == "wifi").unwrap();
+        assert!(!wifi_after.is_active);
+    }
+
+    #[test]
+    fn test_desktop_shell_toggle_quick_setting_nonexistent() {
+        let shell = DesktopShell::new();
+        let result = shell.toggle_quick_setting("nonexistent");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_desktop_shell_launch_app() {
+        let shell = DesktopShell::new();
+        assert!(shell.launch_app("terminal").is_ok());
+        assert!(shell.launch_app("nonexistent").is_err());
+    }
+
+    #[test]
+    fn test_desktop_shell_search_launcher() {
+        let shell = DesktopShell::new();
+        let results = shell.search_launcher("terminal");
+        assert!(!results.is_empty());
+        assert!(results
+            .iter()
+            .any(|r| r.name.to_lowercase().contains("terminal")));
+    }
+
+    #[test]
+    fn test_desktop_shell_toggle_panel() {
+        let shell = DesktopShell::new();
+        shell.toggle_panel();
+    }
+
+    #[test]
+    fn test_desktop_shell_update_system_status() {
+        let shell = DesktopShell::new();
+        let status = SystemStatus {
+            cpu_usage: 50.0,
+            memory_usage: 60.0,
+            disk_usage: 70.0,
+            battery_level: Some(80),
+            agent_count: 5,
+            network_status: NetworkStatus::Connected,
+        };
+        shell.update_system_status(status);
+        let current = shell.get_system_status();
+        assert_eq!(current.cpu_usage, 50.0);
+        assert_eq!(current.agent_count, 5);
+    }
+
+    #[test]
+    fn test_desktop_shell_set_agent_count() {
+        let shell = DesktopShell::new();
+        shell.set_agent_count(10);
+        assert_eq!(shell.get_system_status().agent_count, 10);
+    }
+
+    #[test]
+    fn test_desktop_shell_human_override_request() {
+        let shell = DesktopShell::new();
+        shell.request_human_override(
+            "test-agent".to_string(),
+            "delete".to_string(),
+            "dangerous".to_string(),
+        );
+        let notifications = shell.get_notifications();
+        assert_eq!(notifications.len(), 1);
+        assert!(notifications[0].requires_action);
+        assert_eq!(notifications[0].priority, NotificationPriority::Critical);
+    }
+
+    #[test]
+    fn test_quick_setting_clone() {
+        let qs = QuickSetting {
+            id: "test".to_string(),
+            name: "Test".to_string(),
+            icon: "test-icon".to_string(),
+            is_active: true,
+            on_activate: Box::new(|| {}),
+        };
+        let cloned = qs.clone();
+        assert_eq!(cloned.id, qs.id);
+        assert_eq!(cloned.name, qs.name);
+    }
+
+    #[test]
+    fn test_launcher_action() {
+        let action = LauncherAction::OpenApp("terminal".to_string());
+        assert!(matches!(action, LauncherAction::OpenApp(_)));
+        let action = LauncherAction::RunCommand("ls".to_string());
+        assert!(matches!(action, LauncherAction::RunCommand(_)));
+        let action = LauncherAction::SearchFiles("query".to_string());
+        assert!(matches!(action, LauncherAction::SearchFiles(_)));
+        let action = LauncherAction::WebSearch("search".to_string());
+        assert!(matches!(action, LauncherAction::WebSearch(_)));
+    }
+
+    #[test]
+    fn test_shell_error_variants() {
+        let err = ShellError::NotificationNotFound(Uuid::nil());
+        assert!(err.to_string().contains("not found"));
+        let err = ShellError::AppNotFound("test".to_string());
+        assert!(err.to_string().contains("not found"));
+        let err = ShellError::PermissionDenied("test".to_string());
+        assert!(err.to_string().contains("denied"));
+    }
 }

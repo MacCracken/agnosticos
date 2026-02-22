@@ -51,3 +51,56 @@ pub mod error {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sys_error_from_errno_eperm() {
+        let err = SysError::from_errno(libc::EPERM);
+        assert!(matches!(err, SysError::PermissionDenied));
+    }
+
+    #[test]
+    fn test_sys_error_from_errno_eagain() {
+        let err = SysError::from_errno(libc::EAGAIN);
+        assert!(matches!(err, SysError::WouldBlock));
+    }
+
+    #[test]
+    fn test_sys_error_from_errno_ewouldblock() {
+        let err = SysError::from_errno(libc::EWOULDBLOCK);
+        assert!(matches!(err, SysError::WouldBlock));
+    }
+
+    #[test]
+    fn test_sys_error_from_errno_einval() {
+        let err = SysError::from_errno(libc::EINVAL);
+        assert!(matches!(err, SysError::InvalidArgument(_)));
+    }
+
+    #[test]
+    fn test_sys_error_from_errno_enosys() {
+        let err = SysError::from_errno(libc::ENOSYS);
+        assert!(matches!(err, SysError::NotSupported));
+    }
+
+    #[test]
+    fn test_sys_error_from_errno_unknown() {
+        let err = SysError::from_errno(999);
+        assert!(matches!(err, SysError::SyscallFailed(999, _)));
+    }
+
+    #[test]
+    fn test_sys_error_display() {
+        let err = SysError::PermissionDenied;
+        assert!(err.to_string().contains("denied"));
+
+        let err = SysError::ModuleNotLoaded;
+        assert!(err.to_string().contains("module"));
+
+        let err = SysError::Unknown("test".to_string());
+        assert!(err.to_string().contains("test"));
+    }
+}

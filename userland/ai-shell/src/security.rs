@@ -234,3 +234,142 @@ pub fn analyze_command_permission(command: &str, args: &[String]) -> PermissionL
     // Default to requiring approval for unknown commands
     PermissionLevel::UserWrite
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_permission_level_safe_approval() {
+        let level = PermissionLevel::Safe;
+        assert!(!level.requires_approval());
+        assert!(level.ai_allowed());
+    }
+
+    #[test]
+    fn test_permission_level_read_only_approval() {
+        let level = PermissionLevel::ReadOnly;
+        assert!(!level.requires_approval());
+        assert!(level.ai_allowed());
+    }
+
+    #[test]
+    fn test_permission_level_user_write_approval() {
+        let level = PermissionLevel::UserWrite;
+        assert!(!level.requires_approval());
+        assert!(level.ai_allowed());
+    }
+
+    #[test]
+    fn test_permission_level_system_write_approval() {
+        let level = PermissionLevel::SystemWrite;
+        assert!(level.requires_approval());
+        assert!(level.ai_allowed());
+    }
+
+    #[test]
+    fn test_permission_level_admin_approval() {
+        let level = PermissionLevel::Admin;
+        assert!(level.requires_approval());
+        assert!(level.ai_allowed());
+    }
+
+    #[test]
+    fn test_permission_level_blocked_approval() {
+        let level = PermissionLevel::Blocked;
+        assert!(level.requires_approval());
+        assert!(!level.ai_allowed());
+    }
+
+    #[test]
+    fn test_analyze_command_safe() {
+        assert_eq!(analyze_command_permission("cd", &[]), PermissionLevel::Safe);
+        assert_eq!(analyze_command_permission("clear", &[]), PermissionLevel::Safe);
+        assert_eq!(analyze_command_permission("exit", &[]), PermissionLevel::Safe);
+        assert_eq!(analyze_command_permission("history", &[]), PermissionLevel::Safe);
+        assert_eq!(analyze_command_permission("help", &[]), PermissionLevel::Safe);
+    }
+
+    #[test]
+    fn test_analyze_command_user_write() {
+        assert_eq!(analyze_command_permission("mkdir", &["/tmp/test".to_string()]), PermissionLevel::UserWrite);
+        assert_eq!(analyze_command_permission("cp", &["a".to_string(), "b".to_string()]), PermissionLevel::UserWrite);
+        assert_eq!(analyze_command_permission("mv", &["a".to_string(), "b".to_string()]), PermissionLevel::UserWrite);
+    }
+
+    #[test]
+    fn test_analyze_command_system_write() {
+        assert_eq!(
+            analyze_command_permission("cp", &["a".to_string(), "/etc/config".to_string()]),
+            PermissionLevel::SystemWrite
+        );
+        assert_eq!(
+            analyze_command_permission("mv", &["a".to_string(), "/usr/bin/app".to_string()]),
+            PermissionLevel::SystemWrite
+        );
+    }
+
+    #[test]
+    fn test_analyze_command_admin() {
+        assert_eq!(analyze_command_permission("apt", &["install".to_string()]), PermissionLevel::Admin);
+        assert_eq!(analyze_command_permission("systemctl", &["start".to_string()]), PermissionLevel::Admin);
+        assert_eq!(analyze_command_permission("mount", &["/dev/sda1".to_string()]), PermissionLevel::Admin);
+    }
+
+    #[test]
+    fn test_analyze_command_blocked() {
+        assert_eq!(analyze_command_permission("chmod", &[]), PermissionLevel::Blocked);
+        assert_eq!(analyze_command_permission("chown", &[]), PermissionLevel::Blocked);
+        assert_eq!(analyze_command_permission("fdisk", &[]), PermissionLevel::Blocked);
+        assert_eq!(analyze_command_permission("mkfs", &[]), PermissionLevel::Blocked);
+    }
+
+    #[test]
+    fn test_analyze_command_rm_without_args() {
+        assert_eq!(analyze_command_permission("rm", &["file.txt".to_string()]), PermissionLevel::UserWrite);
+    }
+
+    #[test]
+    fn test_analyze_command_unknown() {
+        assert_eq!(analyze_command_permission("unknowncmd", &[]), PermissionLevel::UserWrite);
+    }
+
+    #[test]
+    fn test_security_context_username() {
+        let ctx = SecurityContext::new(false);
+        assert!(ctx.is_ok());
+        let ctx = ctx.unwrap();
+        assert!(!ctx.username().is_empty());
+    }
+
+    #[test]
+    fn test_security_context_is_restricted() {
+        let ctx = SecurityContext::new(true).unwrap();
+        assert!(ctx.is_restricted());
+        
+        let ctx_normal = SecurityContext::new(false).unwrap();
+        // Note: This might be true if running as root
+    }
+
+    #[test]
+    fn test_security_context_execute_normal_empty() {
+        let ctx = SecurityContext::new(false).unwrap();
+        let result = ctx.execute_normal(&[]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_security_context_execute_normal() {
+        let ctx = SecurityContext::new(false).unwrap();
+        let result = ctx.execute_normal(&["echo".to_string(), "test".to_string()]);
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_security_context_execute_with_privileges_restricted() {
+        let ctx = SecurityContext::new(true).unwrap();
+        let result = ctx.execute_with_privileges(&["echo".to_string()]).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("restricted"));
+    }
+}

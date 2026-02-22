@@ -469,4 +469,159 @@ mod tests {
         assert!(matches!(AppType::FileManager, AppType::FileManager));
         assert!(matches!(AppType::AgentManager, AppType::AgentManager));
     }
+
+    #[test]
+    fn test_file_manager_navigate() {
+        let mut fm = FileManagerApp::new();
+        fm.navigate("/tmp".to_string()).unwrap();
+        assert_eq!(fm.current_path, "/tmp");
+    }
+
+    #[test]
+    fn test_file_manager_search_with_agent() {
+        let fm = FileManagerApp::new();
+        let results = fm.search_with_agent("test".to_string()).unwrap();
+        assert!(!results.is_empty());
+    }
+
+    #[test]
+    fn test_agent_manager_list_agents() {
+        let am = AgentManagerApp::new();
+        assert!(am.list_agents().is_empty());
+    }
+
+    #[test]
+    fn test_agent_manager_start_agent() {
+        let mut am = AgentManagerApp::new();
+        let id = am
+            .start_agent("test-agent".to_string(), vec!["read".to_string()])
+            .unwrap();
+        let agents = am.list_agents();
+        assert_eq!(agents.len(), 1);
+        assert_eq!(agents[0].name, "test-agent");
+        assert_eq!(agents[0].status, "Running");
+    }
+
+    #[test]
+    fn test_agent_manager_stop_agent() {
+        let mut am = AgentManagerApp::new();
+        let id = am.start_agent("test".to_string(), vec![]).unwrap();
+        assert_eq!(am.list_agents().len(), 1);
+        am.stop_agent(id).unwrap();
+        assert!(am.list_agents().is_empty());
+    }
+
+    #[test]
+    fn test_model_manager_list_models() {
+        let mm = ModelManagerApp::new();
+        assert!(mm.list_models().is_empty());
+    }
+
+    #[test]
+    fn test_model_manager_download_model() {
+        let mm = ModelManagerApp::new();
+        assert!(mm.download_model("llama2".to_string()).is_ok());
+    }
+
+    #[test]
+    fn test_desktop_applications_open_file_manager() {
+        let apps = DesktopApplications::new();
+        let result = apps.open_file_manager(None);
+        assert!(result.is_ok());
+        let windows = apps.get_open_windows();
+        assert_eq!(windows.len(), 1);
+    }
+
+    #[test]
+    fn test_desktop_applications_open_agent_manager() {
+        let apps = DesktopApplications::new();
+        let result = apps.open_agent_manager();
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_ai_enabled);
+    }
+
+    #[test]
+    fn test_desktop_applications_open_audit_viewer() {
+        let apps = DesktopApplications::new();
+        let result = apps.open_audit_viewer();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_desktop_applications_open_model_manager() {
+        let apps = DesktopApplications::new();
+        let result = apps.open_model_manager();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_desktop_applications_multiple_windows() {
+        let apps = DesktopApplications::new();
+        apps.open_terminal().unwrap();
+        apps.open_file_manager(None).unwrap();
+        apps.open_agent_manager().unwrap();
+        assert_eq!(apps.get_open_windows().len(), 3);
+    }
+
+    #[test]
+    fn test_app_window_with_ai() {
+        let mut window = AppWindow::new(AppType::AgentManager, "Agent".to_string());
+        window.is_ai_enabled = true;
+        assert!(window.is_ai_enabled);
+    }
+
+    #[test]
+    fn test_app_error_variants() {
+        let err = AppError::AppNotFound("test".to_string());
+        assert!(err.to_string().contains("not found"));
+        let err = AppError::WindowError("test".to_string());
+        assert!(err.to_string().contains("error"));
+        let err = AppError::PermissionDenied("test".to_string());
+        assert!(err.to_string().contains("denied"));
+    }
+
+    #[test]
+    fn test_audit_filters() {
+        let filters = AuditFilters {
+            include_agent: true,
+            include_security: false,
+            include_system: true,
+            time_range: TimeRange::LastWeek,
+        };
+        assert!(filters.include_agent);
+        assert!(!filters.include_security);
+    }
+
+    #[test]
+    fn test_audit_entry() {
+        let entry = AuditEntry {
+            id: Uuid::new_v4(),
+            timestamp: chrono::Utc::now(),
+            event_type: "Test".to_string(),
+            description: "Test event".to_string(),
+            source: "test".to_string(),
+        };
+        assert_eq!(entry.event_type, "Test");
+    }
+
+    #[test]
+    fn test_model_info() {
+        let info = ModelInfo {
+            id: "llama2-7b".to_string(),
+            name: "Llama 2 7B".to_string(),
+            size: 4000000000,
+            provider: "ollama".to_string(),
+            is_downloaded: true,
+        };
+        assert!(info.is_downloaded);
+    }
+
+    #[test]
+    fn test_desktop_applications_get_managers() {
+        let mut apps = DesktopApplications::new();
+        let am = apps.get_agent_manager();
+        assert!(am.running_agents.is_empty());
+        let mm = apps.get_model_manager();
+        assert!(mm.active_model.is_none());
+    }
 }
