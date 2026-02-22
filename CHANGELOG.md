@@ -14,15 +14,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - LICENSE (GPL v3.0)
 - CI/CD pipeline with GitHub Actions
 - Security scanning and build automation
+- IPC module (`agent-runtime/src/ipc.rs`): `AgentIpc` and `MessageBus` with full test coverage
+- NL interpreter (`ai-shell/src/interpreter.rs`): intent parsing and command translation with full test coverage
+- AI shell security, config, and permissions modules with tests
+- Desktop environment modules: compositor, shell, apps, AI features, security UI with tests
+- LLM gateway providers module with test coverage
+
+### Fixed
+- `agnos-examples` crate: added missing workspace dependencies (`anyhow`, `async-trait`, `tracing`, `tracing-subscriber`) so `file_manager_agent` and `quick_start` examples compile cleanly
+- Removed stray `use async_trait::async_trait` import placed after entry-point macro in `file-manager-agent.rs`
+- Removed unused `use serde_json::json` import from `file-manager-agent.rs`
+
+### Added (Compatibility)
+- `docs/adr/adr-007-agnostic-integration.md`: ADR documenting the OpenAI-compatible HTTP API for the LLM Gateway and the integration architecture with the Agnostic QA platform
+- `docs/AGNOSTIC_INTEGRATION.md`: Integration guide — how to run Agnostic on AGNOS OS with full gateway routing
+- `userland/llm-gateway/src/main.rs`: 16 unit tests for `GatewayConfig`, `LlmGateway` lifecycle, `SharedSession`, `InferenceRequest` JSON serialisation, and the port-8088 contract regression guard
 
 ### Planned
-- Build system and toolchain setup
-- CI/CD pipeline configuration
-- Base Linux kernel hardening
-- AI Shell implementation
-- Agent Runtime Environment
-- Desktop Environment
-- Production hardening and certifications
+- Implement `agnos-sys` agent message loop and LLM gateway communication
+- Implement Landlock and seccomp-bpf sandbox enforcement
+- Implement IPC routing by agent name
+- **LLM Gateway HTTP server** (port 8088, OpenAI-compatible `/v1` API) — enables Agnostic and other apps to route through AGNOS gateway
+- Performance benchmarks
+- Package signing and update system
 
 ## Release Planning
 

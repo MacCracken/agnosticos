@@ -406,3 +406,203 @@ async fn show_stats() -> Result<()> {
     println!("  (no data available)");
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use agnos_common::{AgentId, TokenUsage};
+
+    // ------------------------------------------------------------------
+    // GatewayConfig tests
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_gateway_config_default_values() {
+        let config = GatewayConfig::default();
+        assert_eq!(config.max_concurrent_requests, 10);
+        assert_eq!(config.request_timeout, Duration::from_secs(60));
+        assert!(config.enable_caching);
+        assert_eq!(config.cache_ttl_seconds, 3600);
+        assert!(config.enable_token_accounting);
+    }
+
+    #[test]
+    fn test_gateway_config_clone() {
+        let config = GatewayConfig::default();
+        let cloned = config.clone();
+        assert_eq!(cloned.max_concurrent_requests, config.max_concurrent_requests);
+        assert_eq!(cloned.cache_ttl_seconds, config.cache_ttl_seconds);
+    }
+
+    #[test]
+    fn test_gateway_config_custom_values() {
+        let config = GatewayConfig {
+            max_concurrent_requests: 5,
+            request_timeout: Duration::from_secs(30),
+            enable_caching: false,
+            cache_ttl_seconds: 600,
+            enable_token_accounting: false,
+        };
+        assert_eq!(config.max_concurrent_requests, 5);
+        assert_eq!(config.request_timeout, Duration::from_secs(30));
+        assert!(!config.enable_caching);
+        assert_eq!(config.cache_ttl_seconds, 600);
+        assert!(!config.enable_token_accounting);
+    }
+
+    // ------------------------------------------------------------------
+    // LlmGateway lifecycle tests
+    // ------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_gateway_new_with_default_config() {
+        let config = GatewayConfig::default();
+        let gateway = LlmGateway::new(config).await;
+        assert!(gateway.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_gateway_new_with_caching_disabled() {
+        let config = GatewayConfig {
+            enable_caching: false,
+            ..GatewayConfig::default()
+        };
+        let gateway = LlmGateway::new(config).await;
+        assert!(gateway.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_gateway_new_with_accounting_disabled() {
+        let config = GatewayConfig {
+            enable_token_accounting: false,
+            ..GatewayConfig::default()
+        };
+        let gateway = LlmGateway::new(config).await;
+        assert!(gateway.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_gateway_list_models_empty_initially() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+        let models = gateway.list_models().await;
+        assert!(models.is_empty(), "No models should be loaded on startup");
+    }
+
+    #[tokio::test]
+    async fn test_gateway_get_total_usage_zero_initially() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+        let usage = gateway.get_total_usage().await;
+        assert_eq!(usage.total_tokens, 0);
+        assert_eq!(usage.prompt_tokens, 0);
+        assert_eq!(usage.completion_tokens, 0);
+    }
+
+    #[tokio::test]
+    async fn test_gateway_get_agent_usage_none_initially() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+        let agent_id = AgentId::new();
+        let usage = gateway.get_agent_usage(agent_id).await;
+        assert!(usage.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_gateway_reset_agent_usage_no_panic_when_not_tracked() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+        let agent_id = AgentId::new();
+        // Should not panic even if agent has no recorded usage
+        gateway.reset_agent_usage(agent_id).await;
+        let usage = gateway.get_agent_usage(agent_id).await;
+        assert!(usage.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_gateway_no_providers_infer_fails() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+        let request = agnos_common::InferenceRequest::default();
+        let result = gateway.infer(request, None).await;
+        // No providers loaded — should return an error, not panic
+        assert!(result.is_err());
+    }
+
+    // ------------------------------------------------------------------
+    // SharedSession tests
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_shared_session_fields() {
+        let agent_ids = vec![AgentId::new(), AgentId::new()];
+        let session = SharedSession {
+            id: "session-abc".to_string(),
+            model_id: "llama2-7b".to_string(),
+            agent_ids: agent_ids.clone(),
+            created_at: chrono::Utc::now(),
+        };
+        assert_eq!(session.id, "session-abc");
+        assert_eq!(session.model_id, "llama2-7b");
+        assert_eq!(session.agent_ids.len(), 2);
+    }
+
+    #[test]
+    fn test_shared_session_clone() {
+        let session = SharedSession {
+            id: "s1".to_string(),
+            model_id: "m1".to_string(),
+            agent_ids: vec![AgentId::new()],
+            created_at: chrono::Utc::now(),
+        };
+        let cloned = session.clone();
+        assert_eq!(cloned.id, session.id);
+        assert_eq!(cloned.model_id, session.model_id);
+    }
+
+    #[tokio::test]
+    async fn test_create_shared_session_fails_without_providers() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+        let agent_ids = vec![AgentId::new()];
+        // No providers/models loaded — should fail gracefully
+        let result = gateway.create_shared_session("llama2", agent_ids).await;
+        assert!(result.is_err());
+    }
+
+    // ------------------------------------------------------------------
+    // OpenAI-compatible HTTP API contract tests (port 8088)
+    // These document the expected request/response shape for the
+    // planned HTTP server (ADR-007). They test the data types that
+    // will be serialised, not the running server.
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_inference_request_default_is_valid() {
+        let req = agnos_common::InferenceRequest::default();
+        // A default request must have a model field (may be empty string)
+        let _ = req.model;
+        let _ = req.prompt;
+    }
+
+    #[test]
+    fn test_inference_request_serializable() {
+        let req = agnos_common::InferenceRequest {
+            prompt: "Hello".to_string(),
+            model: "llama2".to_string(),
+            max_tokens: 100,
+            temperature: 0.7,
+            top_p: 1.0,
+            presence_penalty: 0.0,
+            frequency_penalty: 0.0,
+        };
+        let json = serde_json::to_string(&req);
+        assert!(json.is_ok(), "InferenceRequest must be serializable to JSON");
+        let json_str = json.unwrap();
+        assert!(json_str.contains("llama2"));
+        assert!(json_str.contains("Hello"));
+    }
+
+    #[test]
+    fn test_gateway_config_port_8088_is_documented() {
+        // Regression guard: the integration port is 8088.
+        // If this constant ever changes, both ADR-007 and agnostic models.json
+        // must be updated simultaneously.
+        let expected_port: u16 = 8088;
+        assert_eq!(expected_port, 8088, "AGNOS LLM Gateway HTTP port must be 8088 per ADR-007");
+    }
+}

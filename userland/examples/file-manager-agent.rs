@@ -3,7 +3,6 @@
 //! Demonstrates a simple agent that manages file operations.
 
 use anyhow::Result;
-use serde_json::json;
 
 use agnos_sys::agent::{Agent, AgentContext};
 use agnos_common::Message;
@@ -74,5 +73,3 @@ impl Agent for FileManagerAgent {
 
 // Entry point
 agnos_sys::agent_main!(FileManagerAgent);
-
-use async_trait::async_trait;

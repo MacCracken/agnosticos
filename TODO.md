@@ -1,6 +1,6 @@
 # AGNOS Development Roadmap
 
-> **Status**: Pre-Alpha (Phase 5) | **Last Updated**: 2026-02-12
+> **Status**: Pre-Alpha (Phase 5) | **Last Updated**: 2026-02-22
 
 ## Executive Summary
 
@@ -73,6 +73,16 @@ AGNOS (AI-Native General Operating System) has completed core implementation pha
 - [x] Comprehensive CI/CD (build, test, security, release)
 - [x] Security guide and API documentation
 - [x] Testing guide and infrastructure
+- [x] IPC module with MessageBus and full test coverage
+- [x] NL interpreter with intent parsing, command translation, and full test coverage
+- [x] AI shell security, config, and permissions modules with tests
+- [x] Desktop environment modules with tests (compositor, shell, apps, AI features, security UI)
+- [x] LLM gateway providers module with tests
+- [x] Fixed `agnos-examples` crate compile errors (missing deps, stray imports)
+- [ ] Implement `agnos-sys` agent message loop and LLM gateway comms
+- [ ] Implement Landlock/seccomp sandbox enforcement (currently stubs)
+- [ ] Implement IPC routing by agent name
+- [ ] **LLM Gateway HTTP server** (port 8088): OpenAI-compatible `/v1/chat/completions`, `/v1/models`, `/v1/health` — required for Agnostic integration (see ADR-007)
 - [ ] Security audit completion
 - [ ] Performance benchmarks
 - [ ] Release automation
@@ -98,8 +108,8 @@ AGNOS (AI-Native General Operating System) has completed core implementation pha
 
 #### Documentation
 - [ ] **Video Tutorials**: Installation and basic usage
-- [ ] **Troubleshooting Guide**: Common issues and solutions
-- [ ] **API Examples**: Complete working examples for all APIs
+- [x] **Troubleshooting Guide**: Common issues and solutions (`docs/TROUBLESHOOTING.md`)
+- [x] **API Examples**: `quick_start` and `file_manager_agent` examples compile and run
 - [ ] **Agent Development Guide**: Step-by-step agent creation
 - [ ] **Kernel Development Guide**: For kernel hackers
 
@@ -279,4 +289,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ---
 
-*Last Updated: 2026-02-12 | Next Review: 2026-02-26*
+*Last Updated: 2026-02-22 | Next Review: 2026-03-01*
