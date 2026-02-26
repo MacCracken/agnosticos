@@ -20,9 +20,11 @@ use agnos_common::{
 mod providers;
 mod cache;
 mod accounting;
+mod http;
 
 use crate::accounting::TokenAccounting;
 use crate::cache::ResponseCache;
+use crate::http::start_http_server;
 use crate::providers::{LlmProvider, ProviderType};
 
 #[derive(Parser)]
@@ -302,6 +304,26 @@ impl LlmGateway {
     pub async fn reset_agent_usage(&self, agent_id: AgentId) {
         self.accounting.reset_usage(agent_id).await;
     }
+    
+    /// List available providers and their status
+    pub async fn list_providers(&self) -> Vec<crate::http::ProviderStatus> {
+        let providers = self.providers.read().await;
+        
+        vec![
+            crate::http::ProviderStatus {
+                name: "Ollama".to_string(),
+                available: providers.contains_key(&providers::ProviderType::Ollama),
+            },
+            crate::http::ProviderStatus {
+                name: "llama.cpp".to_string(),
+                available: providers.contains_key(&providers::ProviderType::LlamaCpp),
+            },
+            crate::http::ProviderStatus {
+                name: "OpenAI".to_string(),
+                available: providers.contains_key(&providers::ProviderType::OpenAi),
+            },
+        ]
+    }
 
     /// Create a model sharing session for multi-agent access
     pub async fn create_shared_session(
@@ -359,9 +381,18 @@ async fn run_daemon() -> Result<()> {
     info!("Starting LLM Gateway daemon...");
 
     let config = GatewayConfig::default();
-    let gateway = Arc::new(LlmGateway::new(config).await?);
+    let gateway = Arc::new(LlmGateway::new(config.clone()).await?);
     
     gateway.init_providers().await?;
+    
+    // Start HTTP server in background
+    let http_gateway = gateway.clone();
+    let http_config = config.clone();
+    tokio::spawn(async move {
+        if let Err(e) = start_http_server(http_gateway, http_config).await {
+            error!("HTTP server error: {}", e);
+        }
+    });
 
     info!("LLM Gateway daemon started successfully");
 

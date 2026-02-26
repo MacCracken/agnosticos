@@ -54,3 +54,88 @@ impl AgnosError {
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_error_agent_not_found() {
+        let err = AgnosError::AgentNotFound("test-agent".to_string());
+        assert!(err.to_string().contains("test-agent"));
+        assert!(!err.is_retriable());
+    }
+
+    #[test]
+    fn test_error_permission_denied() {
+        let err = AgnosError::PermissionDenied("access denied".to_string());
+        assert!(err.to_string().contains("access denied"));
+        assert!(!err.is_retriable());
+    }
+
+    #[test]
+    fn test_error_sandbox_violation() {
+        let err = AgnosError::SandboxViolation("file access blocked".to_string());
+        assert!(err.to_string().contains("file access blocked"));
+        assert!(!err.is_retriable());
+    }
+
+    #[test]
+    fn test_error_llm() {
+        let err = AgnosError::LlmError("model failed".to_string());
+        assert!(err.to_string().contains("model failed"));
+        assert!(!err.is_retriable());
+    }
+
+    #[test]
+    fn test_error_resource_limit() {
+        let err = AgnosError::ResourceLimitExceeded("memory".to_string());
+        assert!(err.to_string().contains("memory"));
+        assert!(!err.is_retriable());
+    }
+
+    #[test]
+    fn test_error_timeout_is_retriable() {
+        let err = AgnosError::Timeout;
+        assert!(err.is_retriable());
+        assert!(err.to_string().contains("Timeout"));
+    }
+
+    #[test]
+    fn test_error_kernel_is_retriable() {
+        let err = AgnosError::KernelError(1);
+        assert!(err.is_retriable());
+    }
+
+    #[test]
+    fn test_error_io_is_retriable() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
+        let err = AgnosError::Io(io_err);
+        assert!(err.is_retriable());
+    }
+
+    #[test]
+    fn test_error_audit() {
+        let err = AgnosError::AuditError("log write failed".to_string());
+        assert!(err.to_string().contains("log write failed"));
+    }
+
+    #[test]
+    fn test_error_invalid_config() {
+        let err = AgnosError::InvalidConfig("missing field".to_string());
+        assert!(err.to_string().contains("missing field"));
+    }
+
+    #[test]
+    fn test_error_syscall_failed() {
+        let err = AgnosError::SyscallFailed("permission denied".to_string());
+        assert!(err.to_string().contains("permission denied"));
+    }
+
+    #[test]
+    fn test_error_unknown() {
+        let err = AgnosError::Unknown("unexpected error".to_string());
+        assert!(err.to_string().contains("unexpected error"));
+        assert!(!err.is_retriable());
+    }
+}

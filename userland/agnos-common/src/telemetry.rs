@@ -1,0 +1,452 @@
+//! Telemetry and crash reporting system
+//!
+//! Provides opt-in metrics collection and crash reporting for AGNOS.
+//! All telemetry is anonymous and requires explicit user consent.
+
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::RwLock;
+
+/// Telemetry configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TelemetryConfig {
+    /// Whether telemetry is enabled
+    pub enabled: bool,
+    /// Whether crash reporting is enabled
+    pub crash_reporting: bool,
+    /// Whether metrics collection is enabled
+    pub metrics_enabled: bool,
+    /// Unique anonymous instance ID
+    pub instance_id: String,
+    /// Telemetry endpoint URL
+    pub endpoint_url: String,
+    /// Sampling rate (0.0 - 1.0)
+    pub sampling_rate: f32,
+    /// Metrics flush interval in seconds
+    pub flush_interval_secs: u64,
+}
+
+impl Default for TelemetryConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false, // Opt-in - disabled by default
+            crash_reporting: false,
+            metrics_enabled: false,
+            instance_id: generate_instance_id(),
+            endpoint_url: "https://telemetry.agnos.org/v1".to_string(),
+            sampling_rate: 1.0,
+            flush_interval_secs: 300, // 5 minutes
+        }
+    }
+}
+
+/// Generate anonymous instance ID
+fn generate_instance_id() -> String {
+    uuid::Uuid::new_v4().to_string()
+}
+
+/// Crash report data
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CrashReport {
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+    pub instance_id: String,
+    pub version: String,
+    pub component: String,
+    pub error_message: String,
+    pub stack_trace: Option<String>,
+    pub system_info: SystemInfo,
+}
+
+/// System information for crash reports
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SystemInfo {
+    pub os_type: String,
+    pub os_version: String,
+    pub architecture: String,
+    pub cpu_count: usize,
+    pub memory_mb: u64,
+    pub kernel_version: String,
+}
+
+/// Telemetry event
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TelemetryEvent {
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+    pub instance_id: String,
+    pub event_type: EventType,
+    pub category: String,
+    pub name: String,
+    pub value: f64,
+    pub metadata: HashMap<String, String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum EventType {
+    Counter,
+    Gauge,
+    Histogram,
+    Timing,
+}
+
+/// Telemetry session
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TelemetrySession {
+    pub started_at: chrono::DateTime<chrono::Utc>,
+    pub instance_id: String,
+    pub version: String,
+    pub events_sent: u64,
+    pub events_dropped: u64,
+}
+
+/// Main telemetry collector
+pub struct TelemetryCollector {
+    config: TelemetryConfig,
+    session: Arc<RwLock<TelemetrySession>>,
+    events: Arc<RwLock<Vec<TelemetryEvent>>>,
+    crash_reports: Arc<RwLock<Vec<CrashReport>>>,
+}
+
+impl TelemetryCollector {
+    /// Create new telemetry collector
+    pub fn new(config: TelemetryConfig) -> Self {
+        let session = TelemetrySession {
+            started_at: chrono::Utc::now(),
+            instance_id: config.instance_id.clone(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
+            events_sent: 0,
+            events_dropped: 0,
+        };
+        
+        Self {
+            config,
+            session: Arc::new(RwLock::new(session)),
+            events: Arc::new(RwLock::new(Vec::new())),
+            crash_reports: Arc::new(RwLock::new(Vec::new())),
+        }
+    }
+    
+    /// Check if telemetry is enabled
+    pub fn is_enabled(&self) -> bool {
+        self.config.enabled
+    }
+    
+    /// Record a telemetry event
+    pub async fn record_event(&self, category: &str, name: &str, value: f64, event_type: EventType) {
+        if !self.config.enabled || !self.config.metrics_enabled {
+            return;
+        }
+        
+        // Sampling
+        if self.config.sampling_rate < 1.0 {
+            let random_val = rand::random::<f32>();
+            if random_val > self.config.sampling_rate {
+                return;
+            }
+        }
+        
+        let event = TelemetryEvent {
+            timestamp: chrono::Utc::now(),
+            instance_id: self.config.instance_id.clone(),
+            event_type,
+            category: category.to_string(),
+            name: name.to_string(),
+            value,
+            metadata: HashMap::new(),
+        };
+        
+        let mut events = self.events.write().await;
+        events.push(event);
+        
+        // Limit in-memory events
+        if events.len() > 1000 {
+            events.remove(0);
+        }
+    }
+    
+    /// Record a counter event
+    pub async fn record_counter(&self, category: &str, name: &str, value: f64) {
+        self.record_event(category, name, value, EventType::Counter).await;
+    }
+    
+    /// Record a gauge event
+    pub async fn record_gauge(&self, category: &str, name: &str, value: f64) {
+        self.record_event(category, name, value, EventType::Gauge).await;
+    }
+    
+    /// Record a timing event
+    pub async fn record_timing(&self, category: &str, name: &str, milliseconds: f64) {
+        self.record_event(category, name, milliseconds, EventType::Timing).await;
+    }
+    
+    /// Submit a crash report
+    pub async fn submit_crash(&self, component: &str, error: &str, stack_trace: Option<&str>) {
+        if !self.config.enabled || !self.config.crash_reporting {
+            return;
+        }
+        
+        let system_info = SystemInfo {
+            os_type: std::env::consts::OS.to_string(),
+            os_version: "unknown".to_string(), // Would need platform-specific code
+            architecture: std::env::consts::ARCH.to_string(),
+            cpu_count: num_cpus::get(),
+            memory_mb: 0, // Would need system-specific code
+            kernel_version: "unknown".to_string(),
+        };
+        
+        let report = CrashReport {
+            timestamp: chrono::Utc::now(),
+            instance_id: self.config.instance_id.clone(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
+            component: component.to_string(),
+            error_message: error.to_string(),
+            stack_trace: stack_trace.map(|s| s.to_string()),
+            system_info,
+        };
+        
+        let mut reports = self.crash_reports.write().await;
+        reports.push(report);
+        
+        // Keep only last 10 crash reports in memory
+        if reports.len() > 10 {
+            reports.remove(0);
+        }
+    }
+    
+    /// Flush collected telemetry to endpoint
+    pub async fn flush(&self) -> Result<(), TelemetryError> {
+        if !self.config.enabled {
+            return Ok(());
+        }
+        
+        // Get events to send
+        let events_to_send = {
+            let mut events = self.events.write().await;
+            let drained: Vec<_> = events.drain(..).collect();
+            drained
+        };
+        
+        if events_to_send.is_empty() {
+            return Ok(());
+        }
+        
+        // Send to endpoint
+        let client = reqwest::Client::new();
+        let payload = serde_json::json!({
+            "instance_id": self.config.instance_id,
+            "events": events_to_send,
+        });
+        
+        match client
+            .post(&self.config.endpoint_url)
+            .json(&payload)
+            .timeout(std::time::Duration::from_secs(30))
+            .send()
+            .await
+        {
+            Ok(response) => {
+                if response.status().is_success() {
+                    let mut session = self.session.write().await;
+                    session.events_sent += events_to_send.len() as u64;
+                    Ok(())
+                } else {
+                    Err(TelemetryError::EndpointError(
+                        format!("HTTP {}", response.status())
+                    ))
+                }
+            }
+            Err(e) => Err(TelemetryError::NetworkError(e.to_string())),
+        }
+    }
+    
+    /// Get current session statistics
+    pub async fn get_stats(&self) -> TelemetrySession {
+        self.session.read().await.clone()
+    }
+}
+
+/// Telemetry errors
+#[derive(Debug, thiserror::Error)]
+pub enum TelemetryError {
+    #[error("Network error: {0}")]
+    NetworkError(String),
+    
+    #[error("Endpoint error: {0}")]
+    EndpointError(String),
+    
+    #[error("Serialization error: {0}")]
+    Serialization(String),
+}
+
+/// Global telemetry instance (optional)
+static GLOBAL_TELEMETRY: once_cell::sync::OnceCell<TelemetryCollector> = once_cell::sync::OnceCell::new();
+
+/// Initialize global telemetry
+pub fn init_telemetry(config: TelemetryConfig) {
+    let _ = GLOBAL_TELEMETRY.set(TelemetryCollector::new(config));
+}
+
+/// Get global telemetry instance
+pub fn global_telemetry() -> Option<&'static TelemetryCollector> {
+    GLOBAL_TELEMETRY.get()
+}
+
+/// Convenience macro for recording events
+#[macro_export]
+macro_rules! telemetry_counter {
+    ($category:expr, $name:expr, $value:expr) => {
+        if let Some(telemetry) = $crate::telemetry::global_telemetry() {
+            tokio::spawn(async move {
+                telemetry.record_counter($category, $name, $value).await;
+            });
+        }
+    };
+}
+
+/// Convenience macro for recording timing
+#[macro_export]
+macro_rules! telemetry_timing {
+    ($category:expr, $name:expr, $duration:expr) => {
+        if let Some(telemetry) = $crate::telemetry::global_telemetry() {
+            tokio::spawn(async move {
+                telemetry.record_timing($category, $name, $duration).await;
+            });
+        }
+    };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    #[test]
+    fn test_telemetry_config_default() {
+        let config = TelemetryConfig::default();
+        assert!(!config.enabled); // Should be opt-in (disabled by default)
+        assert!(!config.crash_reporting);
+        assert!(!config.metrics_enabled);
+        assert!(!config.instance_id.is_empty());
+        assert_eq!(config.sampling_rate, 1.0);
+    }
+    
+    #[test]
+    fn test_telemetry_config_custom() {
+        let config = TelemetryConfig {
+            enabled: true,
+            crash_reporting: true,
+            metrics_enabled: true,
+            instance_id: "test-id".to_string(),
+            endpoint_url: "https://test.example.com".to_string(),
+            sampling_rate: 0.5,
+            flush_interval_secs: 60,
+        };
+        
+        assert!(config.enabled);
+        assert!(config.crash_reporting);
+        assert!(config.metrics_enabled);
+        assert_eq!(config.instance_id, "test-id");
+    }
+    
+    #[test]
+    fn test_system_info_creation() {
+        let info = SystemInfo {
+            os_type: "linux".to_string(),
+            os_version: "6.1.0".to_string(),
+            architecture: "x86_64".to_string(),
+            cpu_count: 8,
+            memory_mb: 16384,
+            kernel_version: "6.1.0-agnos".to_string(),
+        };
+        
+        assert_eq!(info.os_type, "linux");
+        assert_eq!(info.cpu_count, 8);
+        assert_eq!(info.memory_mb, 16384);
+    }
+    
+    #[test]
+    fn test_event_type_variants() {
+        assert!(matches!(EventType::Counter, EventType::Counter));
+        assert!(matches!(EventType::Gauge, EventType::Gauge));
+        assert!(matches!(EventType::Histogram, EventType::Histogram));
+        assert!(matches!(EventType::Timing, EventType::Timing));
+    }
+    
+    #[tokio::test]
+    async fn test_telemetry_collector_disabled() {
+        let config = TelemetryConfig::default();
+        let collector = TelemetryCollector::new(config);
+        
+        assert!(!collector.is_enabled());
+        
+        // Should not panic when recording events while disabled
+        collector.record_counter("test", "counter", 1.0).await;
+    }
+    
+    #[tokio::test]
+    async fn test_telemetry_collector_enabled() {
+        let config = TelemetryConfig {
+            enabled: true,
+            metrics_enabled: true,
+            ..Default::default()
+        };
+        let collector = TelemetryCollector::new(config);
+        
+        assert!(collector.is_enabled());
+        
+        // Record some events
+        collector.record_counter("test", "event1", 1.0).await;
+        collector.record_gauge("test", "event2", 42.0).await;
+        collector.record_timing("test", "event3", 100.0).await;
+    }
+    
+    #[tokio::test]
+    async fn test_crash_reporting_disabled() {
+        let config = TelemetryConfig::default();
+        let collector = TelemetryCollector::new(config);
+        
+        // Should not panic when crash reporting is disabled
+        collector.submit_crash("test-component", "test error", None).await;
+    }
+    
+    #[tokio::test]
+    async fn test_telemetry_stats() {
+        let config = TelemetryConfig {
+            enabled: true,
+            metrics_enabled: true,
+            ..Default::default()
+        };
+        let collector = TelemetryCollector::new(config);
+        
+        let stats = collector.get_stats().await;
+        assert!(!stats.instance_id.is_empty());
+        assert_eq!(stats.events_sent, 0);
+    }
+    
+    #[test]
+    fn test_generate_instance_id() {
+        let id1 = generate_instance_id();
+        let id2 = generate_instance_id();
+        
+        // IDs should be unique
+        assert_ne!(id1, id2);
+        
+        // Should be valid UUID format
+        assert_eq!(id1.len(), 36);
+        assert!(id1.contains('-'));
+    }
+    
+    #[test]
+    fn test_telemetry_session_serialization() {
+        let session = TelemetrySession {
+            started_at: chrono::Utc::now(),
+            instance_id: "test-id".to_string(),
+            version: "1.0.0".to_string(),
+            events_sent: 100,
+            events_dropped: 5,
+        };
+        
+        let json = serde_json::to_string(&session).expect("Failed to serialize");
+        assert!(json.contains("test-id"));
+        assert!(json.contains("1.0.0"));
+    }
+}

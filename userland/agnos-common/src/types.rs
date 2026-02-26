@@ -105,3 +105,183 @@ pub struct ComponentConfig {
     pub enabled: bool,
     pub settings: HashMap<String, serde_json::Value>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_version_default() {
+        let version = Version::default();
+        assert_eq!(version.major, 0);
+        assert_eq!(version.minor, 1);
+        assert_eq!(version.patch, 0);
+        assert!(version.prerelease.is_none());
+        assert!(version.build.is_none());
+    }
+
+    #[test]
+    fn test_version_display() {
+        let version = Version {
+            major: 1,
+            minor: 2,
+            patch: 3,
+            prerelease: None,
+            build: None,
+        };
+        assert_eq!(version.to_string(), "1.2.3");
+    }
+
+    #[test]
+    fn test_version_display_with_prerelease() {
+        let version = Version {
+            major: 1,
+            minor: 0,
+            patch: 0,
+            prerelease: Some("alpha".to_string()),
+            build: None,
+        };
+        assert_eq!(version.to_string(), "1.0.0-alpha");
+    }
+
+    #[test]
+    fn test_version_display_with_build() {
+        let version = Version {
+            major: 2,
+            minor: 1,
+            patch: 0,
+            prerelease: None,
+            build: Some("abc123".to_string()),
+        };
+        assert_eq!(version.to_string(), "2.1.0+abc123");
+    }
+
+    #[test]
+    fn test_version_display_full() {
+        let version = Version {
+            major: 1,
+            minor: 0,
+            patch: 0,
+            prerelease: Some("beta.1".to_string()),
+            build: Some("20240101".to_string()),
+        };
+        assert_eq!(version.to_string(), "1.0.0-beta.1+20240101");
+    }
+
+    #[test]
+    fn test_capabilities_default() {
+        let caps = Capabilities::default();
+        assert!(!caps.llm_support);
+        assert!(!caps.gpu_acceleration);
+        assert!(!caps.secure_boot);
+        assert!(caps.virtualization);
+    }
+
+    #[test]
+    fn test_capabilities_custom() {
+        let caps = Capabilities {
+            llm_support: true,
+            gpu_acceleration: true,
+            secure_boot: true,
+            virtualization: false,
+        };
+        assert!(caps.llm_support);
+        assert!(caps.gpu_acceleration);
+        assert!(caps.secure_boot);
+        assert!(!caps.virtualization);
+    }
+
+    #[test]
+    fn test_message_creation() {
+        let msg = Message {
+            id: "msg-123".to_string(),
+            source: "agent-a".to_string(),
+            target: "agent-b".to_string(),
+            message_type: MessageType::Command,
+            payload: serde_json::json!({"action": "test"}),
+            timestamp: chrono::Utc::now(),
+        };
+        assert_eq!(msg.id, "msg-123");
+        assert_eq!(msg.source, "agent-a");
+        assert_eq!(msg.target, "agent-b");
+        assert!(matches!(msg.message_type, MessageType::Command));
+    }
+
+    #[test]
+    fn test_message_type_variants() {
+        assert!(matches!(MessageType::Command, MessageType::Command));
+        assert!(matches!(MessageType::Response, MessageType::Response));
+        assert!(matches!(MessageType::Event, MessageType::Event));
+        assert!(matches!(MessageType::Error, MessageType::Error));
+        assert!(matches!(MessageType::Heartbeat, MessageType::Heartbeat));
+    }
+
+    #[test]
+    fn test_system_health() {
+        let health = SystemHealth {
+            uptime_seconds: 3600,
+            cpu_usage_percent: 25.5,
+            memory_usage_percent: 60.0,
+            disk_usage_percent: 45.0,
+            active_agents: 5,
+            pending_tasks: 2,
+            status: SystemStatus::Healthy,
+        };
+        assert_eq!(health.uptime_seconds, 3600);
+        assert_eq!(health.cpu_usage_percent, 25.5);
+        assert_eq!(health.active_agents, 5);
+        assert!(matches!(health.status, SystemStatus::Healthy));
+    }
+
+    #[test]
+    fn test_system_status_variants() {
+        assert!(matches!(SystemStatus::Healthy, SystemStatus::Healthy));
+        assert!(matches!(SystemStatus::Degraded, SystemStatus::Degraded));
+        assert!(matches!(SystemStatus::Critical, SystemStatus::Critical));
+        assert!(matches!(
+            SystemStatus::Maintenance,
+            SystemStatus::Maintenance
+        ));
+    }
+
+    #[test]
+    fn test_component_config() {
+        let mut settings = HashMap::new();
+        settings.insert("key".to_string(), serde_json::json!("value"));
+
+        let config = ComponentConfig {
+            name: "test-component".to_string(),
+            enabled: true,
+            settings,
+        };
+        assert_eq!(config.name, "test-component");
+        assert!(config.enabled);
+        assert!(config.settings.contains_key("key"));
+    }
+
+    #[test]
+    fn test_component_config_disabled() {
+        let config = ComponentConfig {
+            name: "disabled-component".to_string(),
+            enabled: false,
+            settings: HashMap::new(),
+        };
+        assert!(!config.enabled);
+    }
+
+    #[test]
+    fn test_message_json_serialization() {
+        let msg = Message {
+            id: "msg-456".to_string(),
+            source: "src".to_string(),
+            target: "dst".to_string(),
+            message_type: MessageType::Response,
+            payload: serde_json::json!({"result": true}),
+            timestamp: chrono::Utc::now(),
+        };
+
+        let json = serde_json::to_string(&msg).expect("Failed to serialize");
+        assert!(json.contains("msg-456"));
+        assert!(json.contains("Response"));
+    }
+}

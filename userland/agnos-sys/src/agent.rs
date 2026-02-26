@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use tokio::sync::{mpsc, RwLock};
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 use agnos_common::{
     AgentConfig, AgentId, AgentStatus, Message, MessageType, ResourceUsage,
@@ -19,7 +19,6 @@ pub struct AgentContext {
     pub config: AgentConfig,
     pub status: RwLock<AgentStatus>,
     message_tx: mpsc::Sender<Message>,
-    message_rx: Option<mpsc::Receiver<Message>>,
 }
 
 impl AgentContext {
@@ -33,7 +32,6 @@ impl AgentContext {
             config,
             status: RwLock::new(AgentStatus::Starting),
             message_tx,
-            message_rx: None,
         };
         
         (ctx, message_rx)
@@ -93,20 +91,18 @@ pub struct AgentRuntime {
 
 impl AgentRuntime {
     /// Create a new agent runtime
-    pub fn new(config: AgentConfig) -> (Self, mpsc::Receiver<Message>) {
+    pub fn new(config: AgentConfig) -> Self {
         let (ctx, message_rx) = AgentContext::new(config);
         let ctx = Arc::new(ctx);
         
-        let runtime = Self {
+        Self {
             ctx,
-            message_rx: None,
-        };
-        
-        (runtime, message_rx)
+            message_rx: Some(message_rx),
+        }
     }
 
     /// Run an agent implementation
-    pub async fn run<A: Agent>(self, mut agent: A) -> Result<()> {
+    pub async fn run<A: Agent>(mut self, mut agent: A) -> Result<()> {
         info!("Starting agent runtime for {}", self.ctx.config.name);
         
         // Initialize the agent
@@ -117,10 +113,11 @@ impl AgentRuntime {
         
         info!("Agent {} is running", self.ctx.config.name);
         
-        // TODO: Implement message loop and agent lifecycle
+        // Get the message receiver if available
+        let message_rx = self.message_rx.take();
         
-        // Run the agent
-        agent.run(&self.ctx).await?;
+        // Run the main agent loop with message handling
+        let agent_result = self.run_message_loop(&mut agent, message_rx).await;
         
         // Cleanup
         self.ctx.set_status(AgentStatus::Stopping).await;
@@ -129,6 +126,41 @@ impl AgentRuntime {
         
         info!("Agent {} stopped", self.ctx.config.name);
         
+        agent_result
+    }
+    
+    async fn run_message_loop<A: Agent>(
+        &self,
+        agent: &mut A,
+        mut message_rx: Option<mpsc::Receiver<Message>>,
+    ) -> Result<()> {
+        let agent_name = self.ctx.config.name.clone();
+        
+        loop {
+            tokio::select! {
+                // Handle incoming messages
+                Some(message) = async {
+                    if let Some(rx) = message_rx.as_mut() {
+                        rx.recv().await
+                    } else {
+                        None
+                    }
+                } => {
+                    debug!("Agent {} received message: {}", agent_name, message.id);
+                    
+                    if let Err(e) = agent.handle_message(&self.ctx, message).await {
+                        warn!("Error handling message: {}", e);
+                    }
+                }
+                // Run the agent's main loop
+                result = agent.run(&self.ctx) => {
+                    result?;
+                    // Agent run() returned, which means the agent wants to stop
+                    break;
+                }
+            }
+        }
+        
         Ok(())
     }
 }
@@ -136,13 +168,142 @@ impl AgentRuntime {
 /// Helper functions for agents
 pub mod helpers {
     use super::*;
+    use std::time::Duration;
+    
+    pub const LLM_GATEWAY_ADDR: &str = "http://localhost:8088";
+    const LLM_GATEWAY_TIMEOUT: Duration = Duration::from_secs(60);
     
     /// Request LLM inference through the gateway
     pub async fn llm_inference(prompt: &str, model: Option<&str>) -> Result<String> {
-        // TODO: Implement actual LLM gateway communication
-        debug!("LLM inference request: prompt={} chars, model={:?}", 
-               prompt.len(), model);
-        Ok("LLM response placeholder".to_string())
+        let client = reqwest::Client::new();
+        
+        let request_body = serde_json::json!({
+            "model": model.unwrap_or("default"),
+            "messages": [
+                {"role": "user", "content": prompt}
+            ],
+            "max_tokens": 1024,
+            "temperature": 0.7
+        });
+        
+        let response = client
+            .post(format!("{}/v1/chat/completions", LLM_GATEWAY_ADDR))
+            .json(&request_body)
+            .timeout(LLM_GATEWAY_TIMEOUT)
+            .send()
+            .await
+            .map_err(|e| anyhow::anyhow!("LLM gateway request failed: {}", e))?;
+        
+        if !response.status().is_success() {
+            return Err(anyhow::anyhow!("LLM gateway error: {}", response.status()));
+        }
+        
+        let response_body: serde_json::Value = response.json().await
+            .map_err(|e| anyhow::anyhow!("Failed to parse LLM response: {}", e))?;
+        
+        let content = response_body["choices"]
+            .as_array()
+            .and_then(|arr| arr.first())
+            .and_then(|c| c["message"]["content"].as_str())
+            .unwrap_or("")
+            .to_string();
+        
+        debug!("LLM inference completed: {} chars", content.len());
+        Ok(content)
+    }
+    
+    /// Request LLM inference with full options
+    pub async fn llm_inference_with_options(
+        prompt: &str,
+        model: Option<&str>,
+        temperature: Option<f32>,
+        max_tokens: Option<u32>,
+    ) -> Result<String> {
+        let client = reqwest::Client::new();
+        
+        let mut request_body = serde_json::json!({
+            "model": model.unwrap_or("default"),
+            "messages": [
+                {"role": "user", "content": prompt}
+            ]
+        });
+        
+        if let Some(temp) = temperature {
+            request_body["temperature"] = serde_json::json!(temp);
+        }
+        if let Some(tokens) = max_tokens {
+            request_body["max_tokens"] = serde_json::json!(tokens);
+        }
+        
+        let response = client
+            .post(format!("{}/v1/chat/completions", LLM_GATEWAY_ADDR))
+            .json(&request_body)
+            .timeout(LLM_GATEWAY_TIMEOUT)
+            .send()
+            .await
+            .map_err(|e| anyhow::anyhow!("LLM gateway request failed: {}", e))?;
+        
+        if !response.status().is_success() {
+            return Err(anyhow::anyhow!("LLM gateway error: {}", response.status()));
+        }
+        
+        let response_body: serde_json::Value = response.json().await
+            .map_err(|e| anyhow::anyhow!("Failed to parse LLM response: {}", e))?;
+        
+        let content = response_body["choices"]
+            .as_array()
+            .and_then(|arr| arr.first())
+            .and_then(|c| c["message"]["content"].as_str())
+            .unwrap_or("")
+            .to_string();
+        
+        debug!("LLM inference completed: {} chars", content.len());
+        Ok(content)
+    }
+    
+    /// Check if LLM gateway is available
+    pub async fn llm_gateway_health() -> Result<bool> {
+        let client = reqwest::Client::new();
+        
+        match client
+            .get(format!("{}/v1/health", LLM_GATEWAY_ADDR))
+            .timeout(Duration::from_secs(5))
+            .send()
+            .await
+        {
+            Ok(response) => Ok(response.status().is_success()),
+            Err(_) => Ok(false),
+        }
+    }
+    
+    /// List available models from gateway
+    pub async fn llm_list_models() -> Result<Vec<String>> {
+        let client = reqwest::Client::new();
+        
+        let response = client
+            .get(format!("{}/v1/models", LLM_GATEWAY_ADDR))
+            .timeout(LLM_GATEWAY_TIMEOUT)
+            .send()
+            .await
+            .map_err(|e| anyhow::anyhow!("LLM gateway request failed: {}", e))?;
+        
+        if !response.status().is_success() {
+            return Err(anyhow::anyhow!("LLM gateway error: {}", response.status()));
+        }
+        
+        let response_body: serde_json::Value = response.json().await
+            .map_err(|e| anyhow::anyhow!("Failed to parse LLM response: {}", e))?;
+        
+        let models: Vec<String> = response_body["data"]
+            .as_array()
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|m| m["id"].as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default();
+        
+        Ok(models)
     }
     
     /// Log an audit event
@@ -153,7 +314,6 @@ pub mod helpers {
     
     /// Check resource usage
     pub async fn check_resources() -> ResourceUsage {
-        // TODO: Implement resource checking
         ResourceUsage::default()
     }
 }
@@ -164,7 +324,7 @@ macro_rules! agent_main {
     ($agent_type:ty) => {
         #[tokio::main]
         async fn main() -> anyhow::Result<()> {
-            use agnos_sys::agent::{AgentContext, AgentRuntime};
+            use agnos_sys::agent::{AgentRuntime};
             
             tracing_subscriber::fmt::init();
             
@@ -175,10 +335,65 @@ macro_rules! agent_main {
                 ..Default::default()
             };
             
-            let (runtime, _message_rx) = AgentRuntime::new(config);
+            let runtime = AgentRuntime::new(config);
             let agent = <$agent_type>::new()?;
             
             runtime.run(agent).await
         }
     };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::sync::mpsc;
+    use agnos_common::{AgentConfig, AgentId, AgentStatus, Message, MessageType};
+    
+    #[test]
+    fn test_agent_context_new() {
+        let config = AgentConfig::default();
+        let (ctx, rx) = AgentContext::new(config);
+        
+        assert_eq!(*ctx.status.blocking_read(), AgentStatus::Starting);
+        // Receiver is returned separately, not stored in context
+        drop(rx);
+    }
+    
+    #[test]
+    fn test_agent_runtime_new() {
+        let config = AgentConfig::default();
+        let _runtime = AgentRuntime::new(config);
+        // Runtime should be created without panicking
+    }
+    
+    #[tokio::test]
+    async fn test_agent_context_send_message() {
+        let config = AgentConfig::default();
+        let (ctx, rx) = AgentContext::new(config);
+        
+        // Drop the receiver so the send will fail
+        drop(rx);
+        
+        let result = ctx.send_message("target", serde_json::json!({"test": true})).await;
+        // This should fail because the receiver has been dropped
+        assert!(result.is_err());
+    }
+    
+    #[tokio::test]
+    async fn test_agent_context_status() {
+        let config = AgentConfig::default();
+        let (ctx, _rx) = AgentContext::new(config);
+        
+        ctx.set_status(AgentStatus::Running).await;
+        assert_eq!(ctx.status().await, AgentStatus::Running);
+        
+        ctx.set_status(AgentStatus::Stopped).await;
+        assert_eq!(ctx.status().await, AgentStatus::Stopped);
+    }
+    
+    #[tokio::test]
+    async fn test_llm_gateway_constants() {
+        // Verify the gateway address and port are correct
+        assert_eq!(helpers::LLM_GATEWAY_ADDR, "http://localhost:8088");
+    }
 }

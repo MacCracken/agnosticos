@@ -14,13 +14,15 @@ anyhow = { workspace = true }
 async-trait = { workspace = true }
 chrono = { workspace = true }
 libc = "0.2"
-nix = { version = "0.27", features = ["process", "sched", "mount", "user"] }
+nix = { version = "0.31", features = ["process", "sched", "mount", "user"] }
+reqwest = { workspace = true, features = ["json"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }
+bitflags = "2.4"
 
 [build-dependencies]
 bindgen = "0.69"

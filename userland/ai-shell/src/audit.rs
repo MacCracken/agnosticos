@@ -65,3 +65,68 @@ pub fn create_entry(
         result: result.to_string(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_create_entry() {
+        let entry = create_entry(
+            "testuser",
+            "AiAssisted",
+            "ls -la",
+            "execute",
+            true,
+            "success",
+        );
+        
+        assert_eq!(entry.user, "testuser");
+        assert_eq!(entry.mode, "AiAssisted");
+        assert_eq!(entry.input, "ls -la");
+        assert_eq!(entry.action, "execute");
+        assert!(entry.approved);
+        assert_eq!(entry.result, "success");
+        assert!(!entry.timestamp.is_empty());
+    }
+
+    #[test]
+    fn test_audit_entry_serialization() {
+        let entry = create_entry("user", "mode", "input", "action", false, "denied");
+        let json = serde_json::to_string(&entry).unwrap();
+        
+        assert!(json.contains("user"));
+        assert!(json.contains("mode"));
+        assert!(json.contains("input"));
+        assert!(json.contains("action"));
+        assert!(json.contains("approved"));
+        assert!(json.contains("result"));
+    }
+
+    #[test]
+    fn test_audit_entry_deserialization() {
+        let json = r#"{
+            "timestamp": "2024-01-01T00:00:00Z",
+            "user": "testuser",
+            "mode": "Human",
+            "input": "cd /home",
+            "action": "builtin",
+            "approved": true,
+            "result": "success"
+        }"#;
+        
+        let entry: AuditEntry = serde_json::from_str(json).unwrap();
+        assert_eq!(entry.user, "testuser");
+        assert_eq!(entry.mode, "Human");
+        assert!(entry.approved);
+    }
+
+    #[test]
+    fn test_audit_entry_clone() {
+        let entry = create_entry("user", "mode", "cmd", "action", true, "ok");
+        let cloned = entry.clone();
+        
+        assert_eq!(entry.user, cloned.user);
+        assert_eq!(entry.timestamp, cloned.timestamp);
+    }
+}

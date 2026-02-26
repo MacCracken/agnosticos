@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/badge/license-GPLv3-blue)](LICENSE)
 [![Kernel](https://img.shields.io/badge/kernel-Linux%206.6%20LTS-orange)](https://kernel.org)
 [![Security](https://img.shields.io/badge/security-hardened-red)](docs/security/security-model.md)
-[![Status](https://img.shields.io/badge/status-pre--alpha-yellow)](TODO.md)
+[![Status](https://img.shields.io/badge/status-pre--alpha-yellow)](docs/development/roadmap.md)
 
 **AGNOS** is a Linux-based operating system designed from the ground up for AI agents and human-AI collaboration. Built with security-first principles inspired by Arch Linux and enterprise hardened systems, AGNOS provides a sovereign computing environment where AI agents can operate autonomously while remaining fully auditable and controllable by human operators.
 
@@ -69,9 +69,15 @@
 
 ### 🤖 Multi-Agent Support
 - **Agent Kernel** — Orchestrates multiple agents with conflict resolution
-- **Message Bus** — Secure, encrypted inter-agent communication
+- **Message Bus** — Secure, encrypted inter-agent communication with agent name routing
 - **Resource Scheduler** — Fair allocation of GPU/CPU/memory between agents
 - **Human-in-the-Loop** — Automatic escalation for sensitive operations
+
+### 🌐 LLM Gateway HTTP API
+- **OpenAI-compatible API** on port 8088 — Drop-in replacement for OpenAI API
+- **Multiple provider support** — Local models (Ollama, llama.cpp) + cloud providers
+- **Request routing** — Route through agents with `X-Agent-Id` headers
+- **Health monitoring** — `/v1/health` endpoint for service discovery
 
 ## System Requirements
 
@@ -211,7 +217,7 @@ AGNOS Userland
 
 ## Development Status
 
-AGNOS is currently in **pre-alpha** development. See [TODO.md](TODO.md) for detailed phase breakdown.
+AGNOS is currently in **pre-alpha** development. See [docs/development/roadmap.md](docs/development/roadmap.md) for detailed phase breakdown.
 
 ### Current Phase: Foundation (Phase 0)
 - [x] Project scaffolding and documentation
@@ -230,7 +236,7 @@ AGNOS is currently in **pre-alpha** development. See [TODO.md](TODO.md) for deta
 
 | Document | Description |
 |----------|-------------|
-| [TODO.md](TODO.md) | Development roadmap and MVP tasks |
+| [docs/development/roadmap.md](docs/development/roadmap.md) | Development roadmap and MVP tasks |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | System architecture |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Contribution guidelines |
 | [SECURITY.md](SECURITY.md) | Security policies |
@@ -244,8 +250,15 @@ Security is our highest priority. AGNOS implements:
 - **Kernel-level MAC** with Landlock and SELinux policies
 - **Process isolation** via namespaces and cgroups v2
 - **Cryptographic verification** of all system components
-- **Supply chain security** with reproducible builds
+- **Supply chain security** with reproducible builds and SBOM generation
 - **Comprehensive audit logging** with integrity verification
+- **Fuzzing infrastructure** for automated security testing
+- **CIS benchmark compliance** validation
+
+### Package Security
+- **GPG-signed packages** — All release packages are signed with release keys
+- **Delta updates** — Efficient updates with automatic rollback capability
+- **SBOM generation** — SPDX and CycloneDX formats for supply chain transparency
 
 See [SECURITY.md](SECURITY.md) for details on reporting vulnerabilities and our security model.
 

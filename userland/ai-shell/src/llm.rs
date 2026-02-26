@@ -38,3 +38,53 @@ impl Default for LlmClient {
         Self::new(None)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_llm_client_new() {
+        let client = LlmClient::new(None);
+        assert!(client.endpoint.is_none());
+    }
+
+    #[test]
+    fn test_llm_client_new_with_endpoint() {
+        let client = LlmClient::new(Some("http://localhost:11434".to_string()));
+        assert_eq!(client.endpoint, Some("http://localhost:11434".to_string()));
+    }
+
+    #[test]
+    fn test_llm_client_default() {
+        let client = LlmClient::default();
+        assert!(client.endpoint.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_suggest_command() {
+        let client = LlmClient::default();
+        let result = client.suggest_command("list files").await;
+        assert!(result.is_ok());
+        let suggestion = result.unwrap();
+        assert!(suggestion.contains("list files"));
+    }
+
+    #[tokio::test]
+    async fn test_explain_command() {
+        let client = LlmClient::default();
+        let result = client.explain_command("ls -la").await;
+        assert!(result.is_ok());
+        let explanation = result.unwrap();
+        assert!(explanation.contains("ls -la"));
+    }
+
+    #[tokio::test]
+    async fn test_answer_question() {
+        let client = LlmClient::default();
+        let result = client.answer_question("What is AGNOS?").await;
+        assert!(result.is_ok());
+        let answer = result.unwrap();
+        assert!(answer.contains("What is AGNOS?"));
+    }
+}

@@ -1,0 +1,141 @@
+name: Release Automation
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 0.1.0)'
+        required: true
+        type: string
+      prerelease:
+        description: 'Mark as prerelease'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target: [x86_64-unknown-linux-gnu, aarch64-unknown-linux-gnu]
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Setup Rust toolchain
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        target: ${{ matrix.target }}
+        override: true
+    
+    - name: Install cross-compilation tools
+      if: matrix.target == 'aarch64-unknown-linux-gnu'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y gcc-aarch64-linux-gnu
+        echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+    
+    - name: Build release binaries
+      run: |
+        cd userland
+        cargo build --release --target ${{ matrix.target }}
+    
+    - name: Package binaries
+      run: |
+        VERSION="${{ github.ref_name || github.event.inputs.version }}"
+        ARCH=$(echo ${{ matrix.target }} | cut -d- -f1)
+        mkdir -p dist/agnos-${VERSION}-${ARCH}
+        cp userland/target/${{ matrix.target }}/release/agent_runtime dist/agnos-${VERSION}-${ARCH}/ 2>/dev/null || true
+        cp userland/target/${{ matrix.target }}/release/llm_gateway dist/agnos-${VERSION}-${ARCH}/ 2>/dev/null || true
+        cp userland/target/${{ matrix.target }}/release/agnsh dist/agnos-${VERSION}-${ARCH}/ 2>/dev/null || true
+        cd dist
+        tar czf agnos-${VERSION}-${ARCH}.tar.gz agnos-${VERSION}-${ARCH}
+    
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: agnos-${{ github.ref_name || github.event.inputs.version }}-${{ matrix.target }}
+        path: dist/*.tar.gz
+
+  release:
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      contents: write
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+    
+    - name: Sign packages
+      run: |
+        if [ -f scripts/sign-packages.sh ]; then
+          chmod +x scripts/sign-packages.sh
+          for artifact in artifacts/*/*.tar.gz; do
+            scripts/sign-packages.sh sign "$artifact" || true
+          done
+        fi
+    
+    - name: Generate SBOM
+      run: |
+        if [ -f scripts/generate-sbom.sh ]; then
+          chmod +x scripts/generate-sbom.sh
+          ./scripts/generate-sbom.sh generate || true
+        fi
+    
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        name: AGNOS ${{ github.ref_name || github.event.inputs.version }}
+        body: See CHANGELOG.md for detailed changes
+        prerelease: ${{ github.event.inputs.prerelease || false }}
+        files: |
+          artifacts/**/*.tar.gz
+          artifacts/**/*.asc
+          sbom/*.json
+          sbom/*.txt
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  update-changelog:
+    runs-on: ubuntu-latest
+    needs: release
+    if: startsWith(github.ref, 'refs/tags/v')
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Update CHANGELOG.md
+      run: |
+        VERSION="${{ github.ref_name }}"
+        DATE=$(date +%Y-%m-%d)
+        {
+          echo "## [${VERSION}] - ${DATE}"
+          echo ""
+          git log --pretty=format:"- %s" $(git describe --tags --abbrev=0 HEAD~1)..HEAD 2>/dev/null | head -20
+          echo ""
+        } > /tmp/new_entry.md
+        cat /tmp/new_entry.md CHANGELOG.md > /tmp/CHANGELOG.md
+        mv /tmp/CHANGELOG.md CHANGELOG.md
+        git config user.name "GitHub Actions"
+        git config user.email "actions@github.com"
+        git add CHANGELOG.md
+        git commit -m "docs: update CHANGELOG for ${VERSION}" || true
+        git push || true

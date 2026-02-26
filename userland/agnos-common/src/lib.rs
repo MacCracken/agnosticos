@@ -7,6 +7,7 @@ pub mod audit;
 pub mod error;
 pub mod llm;
 pub mod security;
+pub mod telemetry;
 pub mod types;
 
 #[cfg(test)]
@@ -15,6 +16,8 @@ mod security_tests;
 pub use agent::{AgentEvent, AgentInfo, AgentStats, StopReason};
 pub use error::{AgnosError, Result};
 pub use llm::*;
+pub use security::{Capability, SecurityContext, SecurityPolicy, PolicyEffect};
+pub use telemetry::{TelemetryConfig, TelemetryCollector, CrashReport, EventType};
 pub use types::*;
 
 // Re-export commonly used crates
