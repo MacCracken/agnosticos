@@ -1,0 +1,58 @@
+# AGNOS .gitattributes
+# Enforce consistent line endings and set language hints.
+
+# Default: normalize line endings to LF on commit
+* text=auto eol=lf
+
+# Rust source
+*.rs text eol=lf diff=rust
+
+# C/C++ source
+*.c text eol=lf diff=c
+*.h text eol=lf diff=c
+*.cpp text eol=lf diff=cpp
+
+# Scripts — must be LF so they run on Linux
+*.sh text eol=lf
+*.bash text eol=lf
+
+# TOML / YAML / JSON config
+*.toml text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.json text eol=lf
+
+# Markdown
+*.md text eol=lf diff=markdown
+
+# Kernel patches
+*.patch text eol=lf
+
+# Make
+Makefile text eol=lf
+*.mk text eol=lf
+
+# Kbuild files
+Kbuild text eol=lf
+Kconfig text eol=lf
+
+# Binaries — never diff/merge these
+*.iso binary
+*.img binary
+*.bin binary
+*.ko binary
+*.o binary
+*.so binary
+*.a binary
+*.qcow2 binary
+*.vmdk binary
+*.vdi binary
+*.pdf binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.svg text eol=lf
+
+# Language detection hints for GitHub Linguist
+*.agpkg linguist-language=TOML

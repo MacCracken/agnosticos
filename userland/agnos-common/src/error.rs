@@ -47,11 +47,25 @@ pub enum AgnosError {
 }
 
 impl AgnosError {
+    /// Returns `true` for transient errors that are safe to retry.
+    ///
+    /// Note: not all `Io` errors are retriable — permanent errors like
+    /// `PermissionDenied` or `NotFound` are excluded.
     pub fn is_retriable(&self) -> bool {
-        matches!(
-            self,
-            AgnosError::Timeout | AgnosError::Io(_) | AgnosError::KernelError(_)
-        )
+        match self {
+            AgnosError::Timeout => true,
+            AgnosError::KernelError(_) => true,
+            AgnosError::Io(e) => matches!(
+                e.kind(),
+                std::io::ErrorKind::TimedOut
+                    | std::io::ErrorKind::WouldBlock
+                    | std::io::ErrorKind::Interrupted
+                    | std::io::ErrorKind::ConnectionReset
+                    | std::io::ErrorKind::ConnectionAborted
+                    | std::io::ErrorKind::BrokenPipe
+            ),
+            _ => false,
+        }
     }
 }
 
@@ -108,10 +122,21 @@ mod tests {
     }
 
     #[test]
-    fn test_error_io_is_retriable() {
-        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
+    fn test_error_io_transient_is_retriable() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::TimedOut, "timed out");
         let err = AgnosError::Io(io_err);
         assert!(err.is_retriable());
+    }
+
+    #[test]
+    fn test_error_io_permanent_is_not_retriable() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
+        let err = AgnosError::Io(io_err);
+        assert!(!err.is_retriable());
+
+        let io_err2 = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "access denied");
+        let err2 = AgnosError::Io(io_err2);
+        assert!(!err2.is_retriable());
     }
 
     #[test]

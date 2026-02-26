@@ -51,11 +51,12 @@ AGNOS (AI-Native General Operating System) is in **Phase 5: Production**, focuse
 | 6+ | 📋 Planned | 0% | Future enhancements |
 
 ### Alpha Release Criteria (Q2 2026)
-- [ ] 80%+ test coverage (currently ~60%)
+- [ ] 80%+ test coverage (currently ~65%, was ~60% before recent additions)
 - [ ] All integration tests passing
 - [ ] Performance benchmarks established
 - [ ] Third-party security audit complete
 - [ ] Documentation complete
+- [ ] Known issues documented
 
 ---
 
@@ -207,7 +208,7 @@ All foundational work is complete. See [CHANGELOG.md](/CHANGELOG.md) for detaile
 
 ## Future Phases (Post-Alpha)
 
-### Phase 6: Advanced AI (Planned Q3 2026)
+### Phase 6: Advanced AI & Networking (Planned Q3 2026)
 
 #### Hardware Acceleration
 - [ ] NPU support (Apple Silicon, Intel NPU)
@@ -220,6 +221,57 @@ All foundational work is complete. See [CHANGELOG.md](/CHANGELOG.md) for detaile
 - [ ] Swarm intelligence protocols
 - [ ] Agent learning and adaptation
 - [ ] Multi-modal agents (vision, audio)
+
+#### Networking Toolkit (Kali Linux-Inspired)
+
+AGNOS will include a comprehensive, curated networking toolkit inspired by Kali Linux, pre-configured for agent-driven analysis and automation. All tools operate within the AGNOS sandbox and audit framework — every invocation is logged to the cryptographic audit chain.
+
+**Network Reconnaissance & Scanning**
+- [ ] `nmap` — port scanning and service/version detection
+- [ ] `masscan` — high-speed network scanning
+- [ ] `netdiscover` — ARP network scanning
+- [ ] `arp-scan` — local network discovery
+- [ ] `p0f` — passive OS fingerprinting
+
+**Traffic Analysis & Capture**
+- [ ] `tcpdump` — packet capture and analysis
+- [ ] `wireshark` / `tshark` — deep packet inspection
+- [ ] `termshark` — TUI Wireshark frontend
+- [ ] `bettercap` — network monitoring and MITM analysis framework
+- [ ] `ngrep` — network grep
+
+**Network Utilities**
+- [ ] `netcat` / `ncat` — TCP/UDP toolbox
+- [ ] `socat` — bidirectional data relay
+- [ ] `curl` + `httpie` — HTTP clients
+- [ ] `mtr` — network diagnostics (traceroute + ping)
+- [ ] `iperf3` — bandwidth measurement
+- [ ] `nethogs` / `iftop` — per-process/per-connection bandwidth monitoring
+- [ ] `ss` / `iproute2` — socket statistics and routing
+
+**DNS Tooling**
+- [ ] `dig` / `drill` — DNS lookup
+- [ ] `dnsx` — fast DNS toolkit
+- [ ] `dnsrecon` — DNS enumeration
+- [ ] `fierce` — DNS zone traversal
+
+**Web & Application Layer**
+- [ ] `nikto` — web server scanner
+- [ ] `gobuster` / `ffuf` — directory and subdomain fuzzing
+- [ ] `wfuzz` — web fuzzer
+- [ ] `sqlmap` — SQL injection detection (sandboxed, requires explicit agent approval)
+- [ ] `nuclei` — template-based vulnerability scanner
+
+**Wireless**
+- [ ] `aircrack-ng` suite — 802.11 analysis
+- [ ] `kismet` — wireless network detector
+
+**Agent Integration**
+- [ ] Each tool wrapped with an AGNOS agent API for programmatic invocation
+- [ ] AI Shell (`agnsh`) understands natural language queries like "scan 192.168.1.0/24 for open ports"
+- [ ] Results piped through LLM Gateway for automated interpretation and reporting
+- [ ] All tool invocations require user approval for sensitive operations (per Human Sovereignty principle)
+- [ ] Audit trail for every network operation
 
 ### Phase 7: Ecosystem (Planned Q4 2026)
 

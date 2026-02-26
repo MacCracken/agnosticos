@@ -1,0 +1,39 @@
+# AGNOS Code Owners
+#
+# Each line is a file pattern followed by one or more owners.
+# Owners are automatically requested for review when someone opens a PR
+# that modifies code matching a pattern.
+#
+# See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default: AGNOS core team owns everything
+*                           @agnos/core-team
+
+# Kernel code — kernel experts only
+/kernel/                    @agnos/kernel-team
+
+# Security-critical code — security team required
+/userland/agnos-sys/        @agnos/security-team @agnos/core-team
+/docs/security/             @agnos/security-team
+/userland/agnos-common/src/security.rs  @agnos/security-team
+/userland/agnos-common/src/audit.rs     @agnos/security-team
+/userland/agent-runtime/src/sandbox.rs  @agnos/security-team
+
+# LLM Gateway — AI/ML team
+/userland/llm-gateway/      @agnos/ai-team @agnos/core-team
+
+# Desktop environment
+/userland/desktop-environment/  @agnos/desktop-team
+
+# CI/CD changes require DevOps review
+/.github/                   @agnos/devops-team @agnos/core-team
+
+# Documentation
+/docs/                      @agnos/core-team
+/README.md                  @agnos/core-team
+/CHANGELOG.md               @agnos/core-team
+
+# Legal / compliance files — requires legal/leadership review
+/LICENSE                    @agnos/core-team
+/SECURITY.md                @agnos/security-team @agnos/core-team
+/CODE_OF_CONDUCT.md         @agnos/core-team

@@ -31,7 +31,7 @@ struct RegisteredAgent {
 }
 
 /// Registry statistics
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct RegistryStats {
     pub total_registered: u64,
     pub total_started: u64,
@@ -214,16 +214,6 @@ impl Default for AgentRegistry {
     }
 }
 
-impl Clone for RegistryStats {
-    fn clone(&self) -> Self {
-        Self {
-            total_registered: self.total_registered,
-            total_started: self.total_started,
-            total_stopped: self.total_stopped,
-            total_failed: self.total_failed,
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests {

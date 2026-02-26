@@ -4,7 +4,7 @@
 
 [![License](https://img.shields.io/badge/license-GPLv3-blue)](LICENSE)
 [![Kernel](https://img.shields.io/badge/kernel-Linux%206.6%20LTS-orange)](https://kernel.org)
-[![Security](https://img.shields.io/badge/security-hardened-red)](docs/security/security-model.md)
+[![Security](https://img.shields.io/badge/security-hardened-red)](docs/security/security-guide.md)
 [![Status](https://img.shields.io/badge/status-pre--alpha-yellow)](docs/development/roadmap.md)
 
 **AGNOS** is a Linux-based operating system designed from the ground up for AI agents and human-AI collaboration. Built with security-first principles inspired by Arch Linux and enterprise hardened systems, AGNOS provides a sovereign computing environment where AI agents can operate autonomously while remaining fully auditable and controllable by human operators.
@@ -72,6 +72,15 @@
 - **Message Bus** — Secure, encrypted inter-agent communication with agent name routing
 - **Resource Scheduler** — Fair allocation of GPU/CPU/memory between agents
 - **Human-in-the-Loop** — Automatic escalation for sensitive operations
+
+### 🌐 Networking Toolkit (Phase 6)
+Inspired by Kali Linux, AGNOS ships a curated networking toolkit pre-configured for agent-driven analysis. All tool invocations are sandboxed and recorded in the cryptographic audit chain:
+- **Reconnaissance** — `nmap`, `masscan`, `netdiscover`, `p0f`
+- **Traffic analysis** — `tcpdump`, `wireshark`/`tshark`, `bettercap`, `termshark`
+- **Utilities** — `netcat`, `socat`, `mtr`, `iperf3`, `nethogs`
+- **DNS** — `dig`, `dnsx`, `dnsrecon`
+- **Web layer** — `nikto`, `ffuf`, `gobuster`, `nuclei`
+- **Agent integration** — natural language queries like `"scan 192.168.1.0/24 for open ports"`
 
 ### 🌐 LLM Gateway HTTP API
 - **OpenAI-compatible API** on port 8088 — Drop-in replacement for OpenAI API
@@ -217,20 +226,29 @@ AGNOS Userland
 
 ## Development Status
 
-AGNOS is currently in **pre-alpha** development. See [docs/development/roadmap.md](docs/development/roadmap.md) for detailed phase breakdown.
+AGNOS is currently in **pre-alpha** development. See [docs/development/roadmap.md](docs/development/roadmap.md) for the full roadmap and detailed phase breakdown.
 
-### Current Phase: Foundation (Phase 0)
-- [x] Project scaffolding and documentation
-- [ ] Build system and toolchain
-- [ ] Base Linux kernel hardening
-- [ ] Initial package repository
+### Current Phase: Production Hardening (Phase 5 — 85% Complete)
 
-### Upcoming Phases
-- **Phase 1**: Core OS — Bootable system with package management
-- **Phase 2**: AI Shell — Natural language command interface
-- **Phase 3**: Agent Runtime — Multi-agent support and orchestration
-- **Phase 4**: Desktop — GUI environment with AI integration
-- **Phase 5**: Production — Security audits, certifications, enterprise features
+The core system is implemented. We are now focused on testing, security audits, and release preparation for the **Alpha release targeting Q2 2026**.
+
+- [x] Project scaffolding, architecture, and full documentation
+- [x] Build system, toolchain, and CI/CD pipeline
+- [x] Agent Runtime — multi-agent orchestration with IPC and sandboxing
+- [x] AI Shell (`agnsh`) — natural language command interface
+- [x] LLM Gateway — OpenAI-compatible HTTP API (port 8088)
+- [x] Desktop Environment — Wayland compositor + AI features
+- [x] Security & Compliance — Landlock, seccomp, CIS benchmarks, SBOM
+- [x] Release infrastructure — package signing, delta updates, telemetry
+- [ ] Test coverage: 60% → 80% (P0 blocker)
+- [ ] Integration tests: agent-orchestrator scenarios
+- [ ] Third-party security audit
+- [ ] Performance benchmarks established
+
+### Planned Phases
+- **Phase 6**: Advanced AI — NPU/GPU acceleration, swarm intelligence, networking toolkit
+- **Phase 7**: Ecosystem — Agent marketplace, cloud services
+- **Phase 8**: Research — Formal verification, novel sandboxing, AI safety
 
 ## Documentation
 

@@ -31,9 +31,8 @@ kernel/.tmp_versions/
 kernel/*.dtb
 kernel/*.dtbo
 
-# Rust build
+# Rust build artifacts
 target/
-Cargo.lock
 **/*.rs.bk
 *.rlib
 *.rmeta

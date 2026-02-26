@@ -74,14 +74,10 @@ pub fn apply_landlock(rules: &[FilesystemRule]) -> Result<()> {
 pub fn create_landlock_ruleset(rules: &[FilesystemRule]) -> Result<u32> {
     #[cfg(target_os = "linux")]
     {
-        let mut ruleset_attr = [0u8; 64];
-
-        // Set the ruleset handle size
-        let handle_size = rules.len() * 128;
-
         tracing::debug!("Creating Landlock ruleset with {} rules", rules.len());
 
-        // Return a dummy handle (in real implementation, this would be the fd)
+        // TODO: Implement actual Landlock syscalls (landlock_create_ruleset, landlock_add_rule,
+        // landlock_restrict_self). Return a dummy fd handle until implemented.
         Ok(0)
     }
 
@@ -100,8 +96,6 @@ pub fn restrict_filesystem(rules: &[FilesystemRule]) -> Result<()> {
 pub fn load_seccomp(filter: &[u8]) -> Result<()> {
     #[cfg(target_os = "linux")]
     {
-        use std::ptr;
-
         // seccomp_syscall_filter_basic or seccomp_load
         // In userspace, we use libseccomp
 
@@ -111,9 +105,9 @@ pub fn load_seccomp(filter: &[u8]) -> Result<()> {
 
         tracing::debug!("Loading seccomp filter ({} bytes)", filter.len());
 
-        // In a full implementation:
-        // scmp_filter_ctx ctx = seccomp_init(SECCOMP_RET_KILL);
-        // seccomp_rule_add_array(ctx, SCMP_ACT_KILL, SCMP_SYS(write), 0, NULL);
+        // TODO: In a full implementation:
+        // let ctx = seccomp_init(SECCOMP_RET_KILL);
+        // seccomp_rule_add_array(ctx, SCMP_ACT_KILL, SCMP_SYS(write), 0, null_mut());
         // seccomp_load(ctx);
     }
 

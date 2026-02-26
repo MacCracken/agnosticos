@@ -3,6 +3,7 @@
 //! Handles agent coordination, task distribution, workload balancing, and conflict resolution.
 
 use std::collections::{HashMap, VecDeque};
+use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use tokio::sync::{mpsc, RwLock};
@@ -48,30 +49,23 @@ pub struct TaskResult {
 }
 
 /// Orchestrator for multi-agent coordination
+///
+/// All interior state is wrapped in `Arc<RwLock<...>>` so that the orchestrator
+/// can be cheaply cloned and passed to background tasks (e.g. the scheduler loop)
+/// while still sharing the same underlying data structures.
+#[derive(Clone)]
 pub struct Orchestrator {
     registry: Arc<AgentRegistry>,
-    /// Task queues by priority
-    task_queues: RwLock<HashMap<TaskPriority, VecDeque<Task>>>,
-    /// Running tasks
-    running_tasks: RwLock<HashMap<String, Task>>,
-    /// Task results
-    results: RwLock<HashMap<String, TaskResult>>,
-    /// Communication bus
+    /// Task queues by priority (shared across clones)
+    task_queues: Arc<RwLock<HashMap<TaskPriority, VecDeque<Task>>>>,
+    /// Running tasks (shared across clones)
+    running_tasks: Arc<RwLock<HashMap<String, Task>>>,
+    /// Task results (shared across clones)
+    results: Arc<RwLock<HashMap<String, TaskResult>>>,
+    /// Communication bus sender (cheap to clone)
     message_bus: mpsc::Sender<Message>,
-    message_rx: RwLock<Option<mpsc::Receiver<Message>>>,
-}
-
-impl Clone for Orchestrator {
-    fn clone(&self) -> Self {
-        Self {
-            registry: self.registry.clone(),
-            task_queues: RwLock::new(HashMap::new()),
-            running_tasks: RwLock::new(HashMap::new()),
-            results: RwLock::new(HashMap::new()),
-            message_bus: self.message_bus.clone(),
-            message_rx: RwLock::new(None),
-        }
-    }
+    /// Receiver held until `start()` spawns the message loop
+    message_rx: Arc<RwLock<Option<mpsc::Receiver<Message>>>>,
 }
 
 impl Orchestrator {
@@ -92,11 +86,11 @@ impl Orchestrator {
 
         Self {
             registry,
-            task_queues: RwLock::new(queues),
-            running_tasks: RwLock::new(HashMap::new()),
-            results: RwLock::new(HashMap::new()),
+            task_queues: Arc::new(RwLock::new(queues)),
+            running_tasks: Arc::new(RwLock::new(HashMap::new())),
+            results: Arc::new(RwLock::new(HashMap::new())),
             message_bus,
-            message_rx: RwLock::new(Some(message_rx)),
+            message_rx: Arc::new(RwLock::new(Some(message_rx))),
         }
     }
 
@@ -329,15 +323,13 @@ impl Orchestrator {
 
     /// Get queue statistics (for testing)
     pub async fn get_queue_stats(&self) -> QueueStats {
-        let queues = self.task_queues.read().await;
-        let running = self.running_tasks.read().await;
-        
-        let total_tasks: usize = queues.values().map(|q| q.len()).sum();
-        
+        let queued_tasks: usize = self.task_queues.read().await.values().map(|q| q.len()).sum();
+        let running_tasks = self.running_tasks.read().await.len();
+
         QueueStats {
-            total_tasks,
-            running_tasks: running.len(),
-            queued_tasks: total_tasks.saturating_sub(running.len()),
+            total_tasks: queued_tasks + running_tasks,
+            running_tasks,
+            queued_tasks,
         }
     }
 
@@ -392,14 +384,17 @@ impl Orchestrator {
 
     /// Cancel a task (for testing)
     pub async fn cancel_task(&self, task_id: &str) -> Result<()> {
-        let mut queues = self.task_queues.write().await;
-        
-        for queue in queues.values_mut() {
-            queue.retain(|t| t.id != task_id);
+        // Acquire and release queues lock before acquiring running_tasks lock
+        // to avoid potential deadlock with the scheduler loop.
+        {
+            let mut queues = self.task_queues.write().await;
+            for queue in queues.values_mut() {
+                queue.retain(|t| t.id != task_id);
+            }
         }
-        
+
         self.running_tasks.write().await.remove(task_id);
-        
+
         Ok(())
     }
 }
@@ -426,8 +421,6 @@ pub enum TaskStatus {
     Running,
     Completed(TaskResult),
 }
-
-use std::sync::Arc;
 
 #[cfg(test)]
 mod tests {
