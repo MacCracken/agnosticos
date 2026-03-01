@@ -1,0 +1,21 @@
+pub mod approval;
+pub mod audit;
+pub mod commands;
+pub mod config;
+pub mod history;
+pub mod interpreter;
+pub mod llm;
+pub mod mode;
+pub mod output;
+pub mod permissions;
+pub mod prompt;
+pub mod sandbox;
+pub mod security;
+pub mod session;
+pub mod ui;
+
+pub use interpreter::{Interpreter, Intent, ListOptions, Translation};
+pub use config::ShellConfig;
+pub use mode::Mode;
+pub use security::SecurityContext;
+pub use session::Session;

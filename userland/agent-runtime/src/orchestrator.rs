@@ -6,6 +6,7 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, RwLock};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
@@ -37,7 +38,7 @@ pub struct Task {
 }
 
 /// Task execution result
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskResult {
     pub task_id: String,
     pub agent_id: AgentId,

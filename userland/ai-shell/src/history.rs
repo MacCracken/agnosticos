@@ -122,4 +122,47 @@ mod tests {
         let results = history.search("xyz");
         assert!(results.is_empty());
     }
+
+    #[test]
+    fn test_history_get_recent_empty() {
+        let entries = VecDeque::new();
+        let history = CommandHistory {
+            entries,
+            file: PathBuf::from("/tmp/test"),
+            max_size: 100,
+        };
+        
+        let recent = history.get_recent(5);
+        assert!(recent.is_empty());
+    }
+
+    #[test]
+    fn test_history_search_multiple() {
+        let mut entries = VecDeque::new();
+        entries.push_back("git commit -m".to_string());
+        entries.push_back("git push".to_string());
+        entries.push_back("git status".to_string());
+        entries.push_back("ls".to_string());
+        
+        let history = CommandHistory {
+            entries,
+            file: PathBuf::from("/tmp/test"),
+            max_size: 100,
+        };
+        
+        let results = history.search("git");
+        assert_eq!(results.len(), 3);
+    }
+
+    #[test]
+    fn test_history_max_size() {
+        let entries = VecDeque::new();
+        let history = CommandHistory {
+            entries,
+            file: PathBuf::from("/tmp/test"),
+            max_size: 100,
+        };
+        
+        assert_eq!(history.max_size, 100);
+    }
 }

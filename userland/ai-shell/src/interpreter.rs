@@ -631,4 +631,67 @@ mod tests {
     fn test_interpreter_default() {
         let interpreter = Interpreter::default();
     }
+
+    #[test]
+    fn test_explain_cd() {
+        let interpreter = Interpreter::new();
+        let explanation = interpreter.explain("cd", &[String::from("/home")]);
+        assert!(explanation.contains("directory"));
+    }
+
+    #[test]
+    fn test_explain_mkdir() {
+        let interpreter = Interpreter::new();
+        let explanation = interpreter.explain("mkdir", &[String::from("/tmp/test")]);
+        assert!(explanation.contains("new") || explanation.contains("directory"));
+    }
+
+    #[test]
+    fn test_explain_ps() {
+        let interpreter = Interpreter::new();
+        let explanation = interpreter.explain("ps", &[]);
+        assert!(explanation.contains("process"));
+    }
+
+    #[test]
+    fn test_explain_df() {
+        let interpreter = Interpreter::new();
+        let explanation = interpreter.explain("df", &[]);
+        assert!(explanation.contains("disk") || explanation.contains("space"));
+    }
+
+    #[test]
+    fn test_list_options_all() {
+        let mut opts = ListOptions::default();
+        opts.all = true;
+        assert!(opts.all);
+    }
+
+    #[test]
+    fn test_list_options_long() {
+        let mut opts = ListOptions::default();
+        opts.long = true;
+        assert!(opts.long);
+    }
+
+    #[test]
+    fn test_list_options_human_readable() {
+        let mut opts = ListOptions::default();
+        opts.human_readable = true;
+        assert!(opts.human_readable);
+    }
+
+    #[test]
+    fn test_list_options_sort_by_time() {
+        let mut opts = ListOptions::default();
+        opts.sort_by_time = true;
+        assert!(opts.sort_by_time);
+    }
+
+    #[test]
+    fn test_list_options_recursive() {
+        let mut opts = ListOptions::default();
+        opts.recursive = true;
+        assert!(opts.recursive);
+    }
 }

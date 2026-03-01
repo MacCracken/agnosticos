@@ -29,3 +29,11 @@ dashmap = { workspace = true }
 chrono = { workspace = true }
 nix = { version = "0.27", features = ["process", "signal"] }
 libc = "0.2"
+
+[dev-dependencies]
+tokio-test = "0.4"
+criterion = "0.5"
+
+[[bench]]
+name = "bench"
+harness = false

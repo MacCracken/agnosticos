@@ -43,3 +43,10 @@ git2 = { version = "0.18", optional = true }
 battery = { version = "0.7", optional = true }
 nix = { version = "0.31", features = ["process", "signal", "user"] }
 toml = "0.8"
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "ai_shell"
+harness = false

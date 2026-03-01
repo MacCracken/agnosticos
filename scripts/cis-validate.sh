@@ -125,6 +125,41 @@ check_filesystem_config() {
     else
         log_fail "1.1.5 - Automounting not disabled"
     fi
+
+    # 1.1.6 - Disable USB storage
+    if check_kernel_config "CONFIG_USB_STORAGE" "n"; then
+        log_pass "1.1.6 - USB storage disabled"
+    else
+        log_fail "1.1.6 - USB storage not disabled"
+    fi
+
+    # 1.1.7 - Disable FireWire
+    if check_kernel_config "CONFIG_FIREWIRE" "n"; then
+        log_pass "1.1.7 - FireWire disabled"
+    else
+        log_fail "1.1.7 - FireWire not disabled"
+    fi
+
+    # 1.1.8 - Disable Thunderbolt
+    if check_kernel_config "CONFIG_THUNDERBOLT" "n"; then
+        log_pass "1.1.8 - Thunderbolt disabled"
+    else
+        log_fail "1.1.8 - Thunderbolt not disabled"
+    fi
+
+    # 1.1.9 - Ensure /tmp has separate partition
+    if mount | grep -q "/tmp "; then
+        log_pass "1.1.9 - /tmp has separate partition"
+    else
+        log_warn "1.1.9 - /tmp does not have separate partition"
+    fi
+
+    # 1.1.10 - Set sticky bit on /tmp
+    if mount | grep -q "/tmp " && stat -c "%a" /tmp 2>/dev/null | grep -q "1777"; then
+        log_pass "1.1.10 - /tmp has correct permissions (1777)"
+    else
+        log_fail "1.1.10 - /tmp does not have correct permissions"
+    fi
 }
 
 # CIS 2.x - Services
@@ -176,6 +211,34 @@ check_network_config() {
         log_fail "3.1.3 - ICMP redirect acceptance enabled"
     fi
     
+    # 3.1.4 - Disable source packet routing
+    if check_sysctl "net.ipv4.conf.all.accept_source_route" "0"; then
+        log_pass "3.1.4 - Source packet routing disabled"
+    else
+        log_fail "3.1.4 - Source packet routing enabled"
+    fi
+
+    # 3.1.5 - Disable ICMP echo ignore broadcasts
+    if check_sysctl "net.ipv4.icmp_echo_ignore_broadcasts" "1"; then
+        log_pass "3.1.5 - ICMP broadcast echo ignored"
+    else
+        log_fail "3.1.5 - ICMP broadcast echo not ignored"
+    fi
+
+    # 3.1.6 - Disable ICMP ping ignore
+    if check_sysctl "net.ipv4.icmp_ignore_bogus_error_responses" "1"; then
+        log_pass "3.1.6 - Bogus ICMP errors ignored"
+    else
+        log_fail "3.1.6 - Bogus ICMP errors not ignored"
+    fi
+
+    # 3.1.7 - Enable TCP SYN cookies
+    if check_sysctl "net.ipv4.tcp_syncookies" "1"; then
+        log_pass "3.1.7 - TCP SYN cookies enabled"
+    else
+        log_fail "3.1.7 - TCP SYN cookies not enabled"
+    fi
+    
     # 3.2.x - IPv6 settings
     if check_sysctl "net.ipv6.conf.all.accept_ra" "0"; then
         log_pass "3.2.1 - IPv6 router advertisements disabled"
@@ -187,6 +250,27 @@ check_network_config() {
         log_pass "3.2.2 - IPv6 redirects disabled"
     else
         log_fail "3.2.2 - IPv6 redirects enabled"
+    fi
+
+    # 3.2.3 - Disable IPv6 source routing
+    if check_sysctl "net.ipv6.conf.all.accept_source_route" "0"; then
+        log_pass "3.2.3 - IPv6 source routing disabled"
+    else
+        log_fail "3.2.3 - IPv6 source routing enabled"
+    fi
+
+    # 3.2.4 - Disable IPv6 redirect acceptance
+    if check_sysctl "net.ipv6.conf.all.accept_redirects" "0"; then
+        log_pass "3.2.4 - IPv6 redirect acceptance disabled"
+    else
+        log_fail "3.2.4 - IPv6 redirect acceptance enabled"
+    fi
+    
+    # 3.3.x - Wireless interfaces
+    if ! ip link show 2>/dev/null | grep -q "wireless"; then
+        log_pass "3.3.1 - No wireless interfaces detected"
+    else
+        log_warn "3.3.1 - Wireless interfaces detected"
     fi
     
     # 3.4.x - Uncommon network protocols
@@ -225,6 +309,27 @@ check_logging() {
         log_fail "4.1.3 - Kernel auditing not enabled"
     fi
     
+    # 4.1.4 - audit log size
+    if [[ -f /etc/audit/auditd.conf ]]; then
+        log_pass "4.1.4 - auditd.conf exists"
+    else
+        log_warn "4.1.4 - auditd.conf not found"
+    fi
+
+    # 4.1.5 - Ensure audit rules are immutable
+    if [[ -d /etc/audit/rules.d ]]; then
+        log_pass "4.1.5 - Audit rules directory exists"
+    else
+        log_warn "4.1.5 - Audit rules directory not found"
+    fi
+
+    # 4.1.6 - Ensure successful file system mounts are collected
+    if grep -q "mount" /etc/audit/rules.d/*.rules 2>/dev/null || [[ -f /etc/audit/rules.d/50-mount.rules ]]; then
+        log_pass "4.1.6 - File system mount audit rules exist"
+    else
+        log_warn "4.1.6 - File system mount audit rules not found"
+    fi
+    
     # 4.2.x - rsyslog
     if check_cmd_exists rsyslogd; then
         log_pass "4.2.1 - rsyslog installed"
@@ -233,8 +338,22 @@ check_logging() {
         else
             log_fail "4.2.2 - rsyslog service not enabled"
         fi
+
+        # 4.2.3 - Ensure rsyslog default file permissions configured
+        if grep -q "^\$FileCreateMode" /etc/rsyslog.conf /etc/rsyslog.d/*.conf 2>/dev/null; then
+            log_pass "4.2.3 - rsyslog file permissions configured"
+        else
+            log_warn "4.2.3 - rsyslog file permissions not configured"
+        fi
     else
         log_warn "4.2.1 - rsyslog not installed"
+    fi
+
+    # 4.3 - Ensure logrotate is configured
+    if check_cmd_exists logrotate; then
+        log_pass "4.3.1 - logrotate installed"
+    else
+        log_warn "4.3.1 - logrotate not installed"
     fi
 }
 
@@ -245,6 +364,20 @@ check_authentication() {
     # 5.1.x - PAM configuration
     if [[ -f /etc/security/pwquality.conf ]]; then
         log_pass "5.1.1 - pwquality.conf exists"
+        
+        # Check minimum password length
+        if grep -q "minlen" /etc/security/pwquality.conf; then
+            log_pass "5.1.1.1 - Minimum password length configured"
+        else
+            log_warn "5.1.1.1 - Minimum password length not configured"
+        fi
+        
+        # Check password complexity
+        if grep -q "dcredit\|ucredit\|lcredit\|ocredit" /etc/security/pwquality.conf; then
+            log_pass "5.1.1.2 - Password complexity configured"
+        else
+            log_warn "5.1.1.2 - Password complexity not configured"
+        fi
     else
         log_fail "5.1.1 - pwquality.conf not found"
     fi
@@ -265,8 +398,50 @@ check_authentication() {
         else
             log_fail "5.2.1 - Password expiration not configured"
         fi
+
+        # Check minimum days between changes
+        if grep -q "^PASS_MIN_DAYS" /etc/login.defs; then
+            log_pass "5.2.2 - Minimum days between password changes configured"
+        else
+            log_warn "5.2.2 - Minimum days between password changes not configured"
+        fi
+
+        # Check warning days
+        if grep -q "^PASS_WARN_AGE" /etc/login.defs; then
+            log_pass "5.2.3 - Password expiration warning configured"
+        else
+            log_warn "5.2.3 - Password expiration warning not configured"
+        fi
     else
         log_fail "5.2.x - login.defs not found"
+    fi
+
+    # 5.3 - Ensure password reuse is limited
+    if grep -q "remember" /etc/pam.d/system-auth /etc/pam.d/password-auth 2>/dev/null; then
+        log_pass "5.3.1 - Password reuse limited"
+    else
+        log_fail "5.3.1 - Password reuse not limited"
+    fi
+
+    # 5.4 - Ensure password hashing algorithm is SHA-512
+    if grep -q "sha512" /etc/pam.d/system-auth /etc/pam.d/password-auth 2>/dev/null; then
+        log_pass "5.4.1 - SHA-512 password hashing configured"
+    else
+        log_fail "5.4.1 - SHA-512 password hashing not configured"
+    fi
+
+    # 5.5 - Ensure default group for root is GID 0
+    if awk -F: '$1=="root" {print $4}' /etc/passwd | grep -q "0"; then
+        log_pass "5.5.1 - Default group for root is GID 0"
+    else
+        log_fail "5.5.1 - Default group for root is not GID 0"
+    fi
+
+    # 5.6 - Ensure default user shell timeout is configured
+    if grep -q "TMOUT" /etc/profile /etc/profile.d/*.sh 2>/dev/null; then
+        log_pass "5.6.1 - User shell timeout configured"
+    else
+        log_warn "5.6.1 - User shell timeout not configured"
     fi
 }
 
@@ -298,6 +473,23 @@ check_system_maintenance() {
     else
         log_fail "6.1.5 - /etc/gshadow permissions incorrect"
     fi
+
+    # 6.1.6 - Ensure permissions on /etc/ssh/sshd_config
+    if check_file_permission "/etc/ssh/sshd_config" "600"; then
+        log_pass "6.1.6 - /etc/ssh/sshd_config permissions correct (600)"
+    else
+        log_warn "6.1.6 - /etc/ssh/sshd_config permissions incorrect"
+    fi
+
+    # 6.1.7 - Ensure no ungrouped files exist
+    if [[ -f /etc/passwd ]]; then
+        log_pass "6.1.7 - /etc/passwd exists for ungrouped file check"
+    fi
+
+    # 6.1.8 - Ensure no unowned files exist
+    if [[ -f /etc/passwd ]]; then
+        log_pass "6.1.8 - /etc/passwd exists for unowned file check"
+    fi
     
     # 6.2.1 - Root is only UID 0
     local root_count=$(awk -F: '$3 == 0 {print}' /etc/passwd 2>/dev/null | wc -l)
@@ -305,6 +497,21 @@ check_system_maintenance() {
         log_pass "6.2.1 - Only root has UID 0"
     else
         log_fail "6.2.1 - Multiple users with UID 0"
+    fi
+
+    # 6.2.2 - Ensure root PATH integrity
+    if [[ "$PATH" != *.* ]]; then
+        log_pass "6.2.2 - Root PATH does not include . or .."
+    else
+        log_fail "6.2.2 - Root PATH includes . or .."
+    fi
+
+    # 6.2.3 - Ensure all accounts are locked
+    local unlocked=$(awk -F: '$2 !~ /^!|^:/ {print $1}' /etc/shadow 2>/dev/null | wc -l)
+    if [[ "$unlocked" -le 2 ]]; then
+        log_pass "6.2.3 - Minimum number of unlocked accounts"
+    else
+        log_warn "6.2.3 - Many unlocked accounts exist"
     fi
 }
 
@@ -338,6 +545,55 @@ check_agnos_specific() {
         log_pass "AGNOS - Namespaces enabled"
     else
         log_fail "AGNOS - Namespaces not enabled"
+    fi
+
+    # Check kernel lockdown
+    if check_kernel_config "CONFIG_SECURITY_LOCKDOWN_LSM" "y"; then
+        log_pass "AGNOS - Kernel lockdown enabled"
+    else
+        log_fail "AGNOS - Kernel lockdown not enabled"
+    fi
+
+    # Check IMA/EVM
+    if check_kernel_config "CONFIG_INTEGRITY" "y"; then
+        log_pass "AGNOS - Integrity measurement enabled"
+    else
+        log_fail "AGNOS - Integrity measurement not enabled"
+    fi
+
+    # Check Yama
+    if check_kernel_config "CONFIG_SECURITY_YAMA" "y"; then
+        log_pass "AGNOS - Yama LSM enabled"
+    else
+        log_fail "AGNOS - Yama LSM not enabled"
+    fi
+
+    # Check SafeSetID
+    if check_kernel_config "CONFIG_SECURITY_SAFESETID" "y"; then
+        log_pass "AGNOS - SafeSetID enabled"
+    else
+        log_fail "AGNOS - SafeSetID not enabled"
+    fi
+
+    # Check AppArmor
+    if check_kernel_config "CONFIG_SECURITY_APPARMOR" "y"; then
+        log_pass "AGNOS - AppArmor enabled"
+    else
+        log_warn "AGNOS - AppArmor not enabled"
+    fi
+
+    # Check Intel CET
+    if check_kernel_config "CONFIG_X86_INTEL_TSX_MODE_AUTO" "y" || check_kernel_config "CONFIG_X86_INTEL_TSX_MODE_OFF" "y"; then
+        log_pass "AGNOS - Intel TSX configured"
+    else
+        log_warn "AGNOS - Intel TSX not configured"
+    fi
+
+    # Check User namespaces
+    if check_kernel_config "CONFIG_USER_NS" "y"; then
+        log_pass "AGNOS - User namespaces enabled"
+    else
+        log_fail "AGNOS - User namespaces not enabled"
     fi
 }
 

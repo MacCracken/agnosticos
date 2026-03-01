@@ -16,12 +16,12 @@ use agnos_common::{
 };
 
 mod agent;
-mod ipc;
-mod orchestrator;
-mod registry;
-mod resource;
-mod sandbox;
-mod supervisor;
+pub mod ipc;
+pub mod orchestrator;
+pub mod registry;
+pub mod resource;
+pub mod sandbox;
+pub mod supervisor;
 
 use crate::agent::{Agent, AgentHandle};
 use crate::orchestrator::Orchestrator;

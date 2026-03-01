@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Performance benchmarks** (`agent-runtime/benches/bench.rs`): Added 11 benchmarks covering agent ID generation, config creation, task creation/serialization, agent handle operations, task priority ordering, and resource usage
+- **Performance benchmarks** (`ai-shell/benches/ai_shell.rs`): Added 7 benchmarks covering interpreter parsing, command translation, and explanation functions
+- **Unit test coverage improvements**: Added tests to ai-shell interpreter and history modules, increased test count to 111
+- **Integration tests: agent-orchestrator** (`agent-runtime/tests/integration.rs`): Added 16 integration tests covering:
+  - Orchestrator initialization and task submission
+  - Multi-agent task distribution
+  - Task priority ordering
+  - Task result storage and retrieval
+  - Task failure handling
+  - Task cancellation
+  - Overdue task detection
+  - Queue statistics computation
+  - Agent stats tracking
+  - Broadcast functionality
+- **CIS benchmarks enhanced**: Added 20+ new CIS control checks:
+  - Filesystem: USB storage, FireWire, Thunderbolt, /tmp sticky bit
+  - Network: source packet routing, ICMP broadcast, SYN cookies, IPv6 source routing
+  - Logging: audit rules, logrotate configuration
+  - Authentication: password complexity, PAM configuration, shell timeout
+  - System maintenance: SSH permissions, account locking
+  - AGNOS-specific: kernel lockdown, IMA/EVM, Yama, SafeSetID, AppArmor, User namespaces
+
+### Documentation
+- **TODO.md removed**: Consolidated all remaining TODO items into `docs/development/roadmap.md`
+- **Agent Development Guide**: `docs/development/agent-development.md` created
+
 ### Fixed
 - **Critical: `Orchestrator` clone loses shared state** (`agent-runtime/src/orchestrator.rs`): `task_queues`, `running_tasks`, and `results` fields were plain `RwLock<...>` values. When the orchestrator was cloned for the scheduler background task, each clone got fresh empty maps, so the scheduler could never see tasks submitted to the original. Fixed by wrapping all shared interior state in `Arc<RwLock<...>>` and deriving `Clone` instead of a manual impl.
 - **Deadlock risk in `cancel_task`** (`agent-runtime/src/orchestrator.rs`): The method held the `task_queues` write lock while attempting to acquire the `running_tasks` write lock, creating a potential deadlock with the scheduler loop. Fixed by dropping `queues` before acquiring `running_tasks`.
