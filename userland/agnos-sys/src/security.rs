@@ -5,6 +5,39 @@
 use crate::error::{Result, SysError};
 use std::path::PathBuf;
 
+// Linux Landlock ABI syscall numbers (x86_64, available since kernel 5.13)
+#[cfg(target_os = "linux")]
+const SYS_LANDLOCK_CREATE_RULESET: libc::c_long = 444;
+#[cfg(target_os = "linux")]
+const SYS_LANDLOCK_ADD_RULE: libc::c_long = 445;
+#[cfg(target_os = "linux")]
+const SYS_LANDLOCK_RESTRICT_SELF: libc::c_long = 446;
+
+// Landlock ABI constants
+#[cfg(target_os = "linux")]
+const LANDLOCK_ACCESS_FS_READ_FILE: u64 = 1 << 2;
+#[cfg(target_os = "linux")]
+const LANDLOCK_ACCESS_FS_READ_DIR: u64 = 1 << 3;
+#[cfg(target_os = "linux")]
+const LANDLOCK_ACCESS_FS_WRITE_FILE: u64 = 1 << 1;
+#[cfg(target_os = "linux")]
+const LANDLOCK_RULE_PATH_BENEATH: u32 = 1;
+
+/// Landlock ruleset attribute (ABI v1)
+#[cfg(target_os = "linux")]
+#[repr(C)]
+struct LandlockRulesetAttr {
+    handled_access_fs: u64,
+}
+
+/// Landlock path-beneath attribute
+#[cfg(target_os = "linux")]
+#[repr(C)]
+struct LandlockPathBeneathAttr {
+    allowed_access: u64,
+    parent_fd: i32,
+}
+
 bitflags::bitflags! {
     /// Namespace flags for creating Linux namespaces
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -26,63 +59,184 @@ impl Default for NamespaceFlags {
     }
 }
 
-/// Apply Landlock filesystem restrictions
+/// Apply Landlock filesystem restrictions to the calling process.
+///
+/// This uses the Landlock ABI v1+ syscalls (kernel 5.13+) to restrict filesystem
+/// access for the calling process. If Landlock is not supported by the kernel,
+/// logs a warning and returns Ok (graceful degradation).
+///
+/// # Errors
+/// Returns an error if the Landlock syscalls fail for reasons other than
+/// kernel incompatibility (e.g., ENOMEM, EINVAL).
 pub fn apply_landlock(rules: &[FilesystemRule]) -> Result<()> {
     #[cfg(target_os = "linux")]
     {
-        use std::ffi::CString;
+        use std::os::unix::io::RawFd;
 
-        // Landlock requires kernel 5.13+
-        // Rules are passed as a byte array to the syscall
-        // For now, we'll use the userspace library approach
-
-        let mut access_bytes: Vec<u8> = Vec::new();
-
-        for rule in rules {
-            let path_cstr = CString::new(rule.path.to_string_lossy().as_bytes())
-                .map_err(|_| SysError::InvalidArgument("Path contains null byte".into()))?;
-            let path_bytes = path_cstr.as_bytes_with_nul();
-
-            // Convert FsAccess to Landlock access flags
-            let access = match rule.access {
-                FsAccess::NoAccess => 0u32,
-                FsAccess::ReadOnly => 1u32,  // LANDLOCK_ACCESS_FS_READ
-                FsAccess::ReadWrite => 3u32, // LANDLOCK_ACCESS_FS_READ | LANDLOCK_ACCESS_FS_WRITE
-            };
-
-            // Pack path and access (simplified format)
-            access_bytes.extend_from_slice(&(path_bytes.len() as u32).to_le_bytes());
-            access_bytes.extend_from_slice(path_bytes);
-            access_bytes.extend_from_slice(&access.to_le_bytes());
+        if rules.is_empty() {
+            return Ok(());
         }
 
-        // In a full implementation, this would call the actual Landlock syscalls
-        // landlock_create_ruleset(..., access_bytes.as_ptr() as *const _, access_bytes.len(), 0)
+        // Determine the full set of access rights we want to handle
+        let handled_access = LANDLOCK_ACCESS_FS_READ_FILE
+            | LANDLOCK_ACCESS_FS_READ_DIR
+            | LANDLOCK_ACCESS_FS_WRITE_FILE;
+
+        let attr = LandlockRulesetAttr {
+            handled_access_fs: handled_access,
+        };
+
+        // Create a Landlock ruleset
+        let ruleset_fd: RawFd = unsafe {
+            libc::syscall(
+                SYS_LANDLOCK_CREATE_RULESET,
+                &attr as *const LandlockRulesetAttr,
+                std::mem::size_of::<LandlockRulesetAttr>(),
+                0u32,
+            ) as RawFd
+        };
+
+        if ruleset_fd < 0 {
+            let err = std::io::Error::last_os_error();
+            if err.raw_os_error() == Some(libc::ENOSYS) || err.raw_os_error() == Some(libc::EOPNOTSUPP) {
+                tracing::warn!("Landlock not supported by kernel, skipping filesystem restrictions");
+                return Ok(());
+            }
+            return Err(SysError::Unknown(format!("landlock_create_ruleset failed: {}", err)));
+        }
+
+        // Add rules for each path
+        for rule in rules {
+            let allowed_access = match rule.access {
+                FsAccess::NoAccess => 0u64,
+                FsAccess::ReadOnly => LANDLOCK_ACCESS_FS_READ_FILE | LANDLOCK_ACCESS_FS_READ_DIR,
+                FsAccess::ReadWrite => {
+                    LANDLOCK_ACCESS_FS_READ_FILE | LANDLOCK_ACCESS_FS_READ_DIR | LANDLOCK_ACCESS_FS_WRITE_FILE
+                }
+            };
+
+            if allowed_access == 0 {
+                continue; // NoAccess means don't add a rule (default deny)
+            }
+
+            // Open the path to get a file descriptor
+            let path_fd: RawFd = unsafe {
+                let c_path = std::ffi::CString::new(
+                    rule.path.as_os_str().as_encoded_bytes()
+                ).map_err(|_| SysError::InvalidArgument("Path contains null byte".into()))?;
+                libc::open(c_path.as_ptr(), libc::O_PATH | libc::O_CLOEXEC)
+            };
+
+            if path_fd < 0 {
+                let err = std::io::Error::last_os_error();
+                tracing::warn!("Cannot open path {:?} for Landlock rule: {}", rule.path, err);
+                unsafe { libc::close(ruleset_fd); }
+                return Err(SysError::Unknown(format!(
+                    "Cannot open path {:?} for Landlock: {}", rule.path, err
+                )));
+            }
+
+            let path_beneath = LandlockPathBeneathAttr {
+                allowed_access,
+                parent_fd: path_fd,
+            };
+
+            let ret = unsafe {
+                libc::syscall(
+                    SYS_LANDLOCK_ADD_RULE,
+                    ruleset_fd,
+                    LANDLOCK_RULE_PATH_BENEATH,
+                    &path_beneath as *const LandlockPathBeneathAttr,
+                    0u32,
+                )
+            };
+
+            unsafe { libc::close(path_fd); }
+
+            if ret < 0 {
+                let err = std::io::Error::last_os_error();
+                unsafe { libc::close(ruleset_fd); }
+                return Err(SysError::Unknown(format!(
+                    "landlock_add_rule failed for {:?}: {}", rule.path, err
+                )));
+            }
+        }
+
+        // Enforce the ruleset on the calling process
+        // First, set no_new_privs (required by Landlock)
+        let ret = unsafe { libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) };
+        if ret < 0 {
+            let err = std::io::Error::last_os_error();
+            unsafe { libc::close(ruleset_fd); }
+            return Err(SysError::Unknown(format!("PR_SET_NO_NEW_PRIVS failed: {}", err)));
+        }
+
+        let ret = unsafe {
+            libc::syscall(SYS_LANDLOCK_RESTRICT_SELF, ruleset_fd, 0u32)
+        };
+
+        unsafe { libc::close(ruleset_fd); }
+
+        if ret < 0 {
+            let err = std::io::Error::last_os_error();
+            return Err(SysError::Unknown(format!("landlock_restrict_self failed: {}", err)));
+        }
 
         tracing::debug!("Applied {} Landlock rules", rules.len());
     }
 
     #[cfg(not(target_os = "linux"))]
     {
+        let _ = rules;
         tracing::warn!("Landlock is only available on Linux");
     }
 
     Ok(())
 }
 
-/// Create a Landlock ruleset from filesystem rules
+/// Create a Landlock ruleset fd from filesystem rules.
+///
+/// Returns the ruleset file descriptor. Caller is responsible for closing it
+/// after adding rules and calling `landlock_restrict_self`. Returns 0 if
+/// Landlock is not supported by the kernel (graceful degradation).
 pub fn create_landlock_ruleset(rules: &[FilesystemRule]) -> Result<u32> {
     #[cfg(target_os = "linux")]
     {
+        let _ = rules; // Rules inform the handled access set
         tracing::debug!("Creating Landlock ruleset with {} rules", rules.len());
 
-        // TODO: Implement actual Landlock syscalls (landlock_create_ruleset, landlock_add_rule,
-        // landlock_restrict_self). Return a dummy fd handle until implemented.
-        Ok(0)
+        let handled_access = LANDLOCK_ACCESS_FS_READ_FILE
+            | LANDLOCK_ACCESS_FS_READ_DIR
+            | LANDLOCK_ACCESS_FS_WRITE_FILE;
+
+        let attr = LandlockRulesetAttr {
+            handled_access_fs: handled_access,
+        };
+
+        let fd = unsafe {
+            libc::syscall(
+                SYS_LANDLOCK_CREATE_RULESET,
+                &attr as *const LandlockRulesetAttr,
+                std::mem::size_of::<LandlockRulesetAttr>(),
+                0u32,
+            ) as i32
+        };
+
+        if fd < 0 {
+            let err = std::io::Error::last_os_error();
+            if err.raw_os_error() == Some(libc::ENOSYS) || err.raw_os_error() == Some(libc::EOPNOTSUPP) {
+                tracing::warn!("Landlock not supported by kernel");
+                return Ok(0);
+            }
+            return Err(SysError::Unknown(format!("landlock_create_ruleset failed: {}", err)));
+        }
+
+        Ok(fd as u32)
     }
 
     #[cfg(not(target_os = "linux"))]
     {
+        let _ = rules;
         Ok(0)
     }
 }
@@ -92,82 +246,175 @@ pub fn restrict_filesystem(rules: &[FilesystemRule]) -> Result<()> {
     apply_landlock(rules)
 }
 
-/// Load seccomp-bpf filter
+/// Load a seccomp-BPF filter into the calling process.
+///
+/// The filter must be a valid sequence of BPF `sock_filter` instructions
+/// (8 bytes each). Use `create_basic_seccomp_filter()` to generate one.
+///
+/// This sets `PR_SET_NO_NEW_PRIVS` (required) and then installs the filter
+/// via `PR_SET_SECCOMP` with `SECCOMP_MODE_FILTER`.
+///
+/// # Errors
+/// Returns an error if the filter is empty, malformed (not a multiple of 8 bytes),
+/// or if the kernel rejects the filter.
 pub fn load_seccomp(filter: &[u8]) -> Result<()> {
     #[cfg(target_os = "linux")]
     {
-        // seccomp_syscall_filter_basic or seccomp_load
-        // In userspace, we use libseccomp
-
         if filter.is_empty() {
             return Err(SysError::InvalidArgument("Empty filter".into()));
         }
 
-        tracing::debug!("Loading seccomp filter ({} bytes)", filter.len());
+        if filter.len() % 8 != 0 {
+            return Err(SysError::InvalidArgument(
+                format!("Filter size {} is not a multiple of 8 (sock_filter size)", filter.len()),
+            ));
+        }
 
-        // TODO: In a full implementation:
-        // let ctx = seccomp_init(SECCOMP_RET_KILL);
-        // seccomp_rule_add_array(ctx, SCMP_ACT_KILL, SCMP_SYS(write), 0, null_mut());
-        // seccomp_load(ctx);
+        let num_instructions = filter.len() / 8;
+        tracing::debug!("Loading seccomp filter ({} instructions, {} bytes)", num_instructions, filter.len());
+
+        // Require no_new_privs before installing seccomp filter
+        let ret = unsafe { libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) };
+        if ret < 0 {
+            let err = std::io::Error::last_os_error();
+            return Err(SysError::Unknown(format!("PR_SET_NO_NEW_PRIVS failed: {}", err)));
+        }
+
+        // Build sock_fprog struct
+        #[repr(C)]
+        struct SockFprog {
+            len: libc::c_ushort,
+            filter: *const u8,
+        }
+
+        let prog = SockFprog {
+            len: num_instructions as libc::c_ushort,
+            filter: filter.as_ptr(),
+        };
+
+        let ret = unsafe {
+            libc::prctl(
+                libc::PR_SET_SECCOMP,
+                2, // SECCOMP_MODE_FILTER
+                &prog as *const SockFprog,
+                0,
+                0,
+            )
+        };
+
+        if ret < 0 {
+            let err = std::io::Error::last_os_error();
+            return Err(SysError::Unknown(format!("PR_SET_SECCOMP failed: {}", err)));
+        }
+
+        tracing::debug!("Seccomp filter installed successfully");
     }
 
     #[cfg(not(target_os = "linux"))]
     {
+        let _ = filter;
         tracing::warn!("Seccomp is only available on Linux");
     }
 
     Ok(())
 }
 
-/// Create a basic seccomp filter that denies dangerous syscalls
+/// BPF sock_filter instruction (8 bytes each, matching kernel struct sock_filter).
+#[repr(C)]
+struct SockFilter {
+    code: u16,
+    jt: u8,
+    jf: u8,
+    k: u32,
+}
+
+impl SockFilter {
+    const fn new(code: u16, jt: u8, jf: u8, k: u32) -> Self {
+        Self { code, jt, jf, k }
+    }
+
+    fn to_bytes(&self) -> [u8; 8] {
+        let mut bytes = [0u8; 8];
+        bytes[0..2].copy_from_slice(&self.code.to_ne_bytes());
+        bytes[2] = self.jt;
+        bytes[3] = self.jf;
+        bytes[4..8].copy_from_slice(&self.k.to_ne_bytes());
+        bytes
+    }
+}
+
+// BPF instruction constants
+const BPF_LD_W_ABS: u16 = 0x20; // BPF_LD | BPF_W | BPF_ABS
+const BPF_JMP_JEQ_K: u16 = 0x15; // BPF_JMP | BPF_JEQ | BPF_K
+const BPF_RET_K: u16 = 0x06; // BPF_RET | BPF_K
+
+// Seccomp return values
+const SECCOMP_RET_ALLOW: u32 = 0x7fff_0000;
+const SECCOMP_RET_KILL_PROCESS: u32 = 0x8000_0000;
+
+/// Create a basic seccomp filter that allows safe syscalls and kills on dangerous ones.
+///
+/// The filter uses proper BPF sock_filter encoding (8 bytes per instruction):
+/// `u16 code, u8 jt, u8 jf, u32 k`
+///
+/// Allowed: read, write, exit, exit_group, rt_sigreturn, mmap, mprotect, brk,
+///          close, fstat, munmap, sigaltstack, arch_prctl, gettid, futex,
+///          set_tid_address, set_robust_list, rseq, getrandom, clock_gettime.
+/// All other syscalls: KILL_PROCESS.
 pub fn create_basic_seccomp_filter() -> Result<Vec<u8>> {
     #[cfg(target_os = "linux")]
     {
-        let mut filter = Vec::new();
-
-        // BPF filter in compact binary format
-        // This is a minimal filter that allows everything except dangerous syscalls
-        // Format: BPF_STMT + BPF_JUMP
-
-        // Allow: read, write, exit, rt_sigreturn, mmap, mprotect, brk
-        // Deny: kill (can be used to kill other processes), reboot, setuid
-
-        let allow_syscalls = [
+        // Allowlisted syscalls (x86_64 numbers)
+        let allow_syscalls: &[u32] = &[
             0,   // read
             1,   // write
-            60,  // exit
-            231, // rt_sigreturn
+            3,   // close
+            5,   // fstat
             9,   // mmap
-            125, // mprotect
-            45,  // brk
+            10,  // mprotect
+            11,  // munmap
+            12,  // brk
+            15,  // rt_sigreturn
+            60,  // exit
+            131, // sigaltstack
+            158, // arch_prctl
+            186, // gettid
+            202, // futex
+            218, // set_tid_address
+            231, // exit_group
+            273, // set_robust_list
+            318, // getrandom
+            228, // clock_gettime
+            334, // rseq
         ];
 
-        for &syscall in &allow_syscalls {
-            filter.push(0x20); // BPF_LD | BPF_W | BPF_ABS
-            filter.push(0); // offset to syscall number
-            filter.push(0);
-            filter.push(0);
+        let num_allowed = allow_syscalls.len();
+        // Total instructions: 1 (load) + 2*num_allowed (jeq + allow per syscall) + 1 (default kill)
+        let mut instructions: Vec<SockFilter> = Vec::with_capacity(2 + 2 * num_allowed);
 
-            let imm = (syscall as u32).to_le_bytes();
-            filter.extend_from_slice(&imm);
+        // Instruction 0: Load syscall number from seccomp_data.nr (offset 0)
+        instructions.push(SockFilter::new(BPF_LD_W_ABS, 0, 0, 0));
 
-            filter.push(0x15); // BPF_JMP | BPF_JEQ
-            filter.push(0); // k
-            filter.push(0); // jt
-            filter.push(1); // jf (skip next instruction = allow)
-
-            // Next instruction: return ALLOW
-            filter.push(0x06); // BPF_RET | BPF_K
-            filter.push(0);
-            filter.push(0);
-            filter.push(0x7f); // SECCOMP_RET_ALLOW
+        // For each allowed syscall: JEQ → ALLOW, else fall through
+        for (i, &nr) in allow_syscalls.iter().enumerate() {
+            let remaining = (num_allowed - i - 1) as u8;
+            // jt = jump to ALLOW (skip remaining comparisons + default kill)
+            // jf = 0 (fall through to next comparison)
+            let jt = remaining * 2 + 1; // skip remaining (jeq+ret) pairs + the final kill
+            instructions.push(SockFilter::new(BPF_JMP_JEQ_K, jt, 0, nr));
         }
 
-        // Default: return ERRNO (deny)
-        filter.push(0x06); // BPF_RET | BPF_K
-        filter.push(0);
-        filter.push(0);
-        filter.push(0x7f); // SECCOMP_RET_ERRNO | 0x7f
+        // Default: KILL_PROCESS
+        instructions.push(SockFilter::new(BPF_RET_K, 0, 0, SECCOMP_RET_KILL_PROCESS));
+
+        // ALLOW return (target of all successful JEQ jumps)
+        instructions.push(SockFilter::new(BPF_RET_K, 0, 0, SECCOMP_RET_ALLOW));
+
+        // Serialize to bytes
+        let mut filter = Vec::with_capacity(instructions.len() * 8);
+        for insn in &instructions {
+            filter.extend_from_slice(&insn.to_bytes());
+        }
 
         Ok(filter)
     }
@@ -178,19 +425,38 @@ pub fn create_basic_seccomp_filter() -> Result<Vec<u8>> {
     }
 }
 
-/// Enter a new network namespace
+/// Map common namespace/unshare errno values to descriptive SysError variants.
+#[cfg(target_os = "linux")]
+fn map_namespace_error(operation: &str) -> SysError {
+    let err = std::io::Error::last_os_error();
+    match err.raw_os_error() {
+        Some(libc::EPERM) => SysError::PermissionDenied,
+        Some(libc::ENOMEM) => SysError::Unknown(format!("{}: out of memory", operation)),
+        Some(libc::EINVAL) => SysError::InvalidArgument(format!("{}: invalid flags", operation)),
+        Some(libc::ENOSPC) => SysError::Unknown(format!(
+            "{}: namespace limit reached (see /proc/sys/user/max_*_namespaces)", operation
+        )),
+        Some(libc::EUSERS) => SysError::Unknown(format!(
+            "{}: nesting limit for user namespaces exceeded", operation
+        )),
+        _ => SysError::Unknown(format!("{}: {}", operation, err)),
+    }
+}
+
+/// Enter a new network namespace.
+///
+/// Requires `CAP_SYS_ADMIN` in the current user namespace, or an unprivileged
+/// user namespace must be created first.
+///
+/// # Safety considerations
+/// This calls `libc::unshare(CLONE_NEWNET)` which is safe from Rust's memory
+/// safety perspective. The operation is kernel-mediated and validated.
 pub fn enter_network_namespace() -> Result<()> {
     #[cfg(target_os = "linux")]
     {
-        // Use raw syscall for CLONE_NEWNET
-        unsafe {
-            let ret = libc::unshare(libc::CLONE_NEWNET);
-            if ret != 0 {
-                return Err(SysError::Unknown(format!(
-                    "Failed to enter network namespace: {}",
-                    std::io::Error::last_os_error()
-                )));
-            }
+        let ret = unsafe { libc::unshare(libc::CLONE_NEWNET) };
+        if ret != 0 {
+            return Err(map_namespace_error("enter_network_namespace"));
         }
 
         tracing::debug!("Entered new network namespace");
@@ -204,7 +470,17 @@ pub fn enter_network_namespace() -> Result<()> {
     Ok(())
 }
 
-/// Create a new namespace with specified flags
+/// Create new namespace(s) with specified flags.
+///
+/// Requires appropriate capabilities depending on flags:
+/// - `NETWORK`: `CAP_SYS_ADMIN` (or user namespace)
+/// - `MOUNT`: `CAP_SYS_ADMIN` (or user namespace)
+/// - `PID`: `CAP_SYS_ADMIN` (or user namespace)
+/// - `USER`: unprivileged (but subject to nesting limits)
+///
+/// # Safety considerations
+/// This calls `libc::unshare()` which is safe from Rust's memory safety
+/// perspective. The operation is kernel-mediated and validated.
 pub fn create_namespace(flags: NamespaceFlags) -> Result<()> {
     #[cfg(target_os = "linux")]
     {
@@ -223,14 +499,9 @@ pub fn create_namespace(flags: NamespaceFlags) -> Result<()> {
             sflags |= libc::CLONE_NEWUSER;
         }
 
-        unsafe {
-            let ret = libc::unshare(sflags);
-            if ret != 0 {
-                return Err(SysError::Unknown(format!(
-                    "Failed to create namespace: {}",
-                    std::io::Error::last_os_error()
-                )));
-            }
+        let ret = unsafe { libc::unshare(sflags) };
+        if ret != 0 {
+            return Err(map_namespace_error("create_namespace"));
         }
 
         tracing::debug!("Created namespace with flags: {:?}", flags);
@@ -238,6 +509,7 @@ pub fn create_namespace(flags: NamespaceFlags) -> Result<()> {
 
     #[cfg(not(target_os = "linux"))]
     {
+        let _ = flags;
         tracing::warn!("Namespaces are only available on Linux");
     }
 
@@ -346,11 +618,17 @@ mod tests {
     }
 
     #[test]
-    fn test_load_seccomp() {
-        // Use a non-empty filter (at least 1 byte)
+    fn test_load_seccomp_empty() {
+        let result = load_seccomp(&[]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_load_seccomp_invalid_size() {
+        // Not a multiple of 8 bytes (sock_filter size)
         let filter: &[u8] = &[0x06, 0x00, 0x00, 0x7f];
         let result = load_seccomp(filter);
-        assert!(result.is_ok());
+        assert!(result.is_err());
     }
 
     #[test]

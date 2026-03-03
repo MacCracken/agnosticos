@@ -1,6 +1,7 @@
 //! Response caching for LLM requests
 
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 
 use agnos_common::{InferenceRequest, InferenceResponse};
 use tokio::sync::RwLock;
@@ -28,17 +29,18 @@ impl ResponseCache {
         }
     }
 
-    /// Generate a cache key from a request
+    /// Generate a cache key from a request by hashing its contents.
+    ///
+    /// Uses `DefaultHasher` to produce a fixed-size key regardless of prompt length,
+    /// keeping HashMap operations O(1) even for large prompts.
     fn make_key(request: &InferenceRequest) -> String {
-        // Create a deterministic key from request parameters
-        format!(
-            "{}:{}:{:.2}:{:.2}:{}",
-            request.model,
-            request.prompt,
-            request.temperature,
-            request.top_p,
-            request.max_tokens
-        )
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        request.model.hash(&mut hasher);
+        request.prompt.hash(&mut hasher);
+        request.temperature.to_bits().hash(&mut hasher);
+        request.top_p.to_bits().hash(&mut hasher);
+        request.max_tokens.hash(&mut hasher);
+        format!("{:016x}", hasher.finish())
     }
 
     /// Get a cached response if available and not expired

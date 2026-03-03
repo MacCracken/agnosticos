@@ -169,13 +169,26 @@ impl AgentRuntime {
 pub mod helpers {
     use super::*;
     use std::time::Duration;
-    
+
     pub const LLM_GATEWAY_ADDR: &str = "http://localhost:8088";
     const LLM_GATEWAY_TIMEOUT: Duration = Duration::from_secs(60);
-    
+
+    /// Shared HTTP client — reuses connection pool across all helper calls.
+    fn shared_client() -> &'static reqwest::Client {
+        static CLIENT: once_cell::sync::Lazy<reqwest::Client> =
+            once_cell::sync::Lazy::new(|| {
+                reqwest::Client::builder()
+                    .timeout(LLM_GATEWAY_TIMEOUT)
+                    .pool_max_idle_per_host(4)
+                    .build()
+                    .expect("failed to build reqwest client")
+            });
+        &CLIENT
+    }
+
     /// Request LLM inference through the gateway
     pub async fn llm_inference(prompt: &str, model: Option<&str>) -> Result<String> {
-        let client = reqwest::Client::new();
+        let client = shared_client();
         
         let request_body = serde_json::json!({
             "model": model.unwrap_or("default"),
@@ -189,29 +202,28 @@ pub mod helpers {
         let response = client
             .post(format!("{}/v1/chat/completions", LLM_GATEWAY_ADDR))
             .json(&request_body)
-            .timeout(LLM_GATEWAY_TIMEOUT)
             .send()
             .await
             .map_err(|e| anyhow::anyhow!("LLM gateway request failed: {}", e))?;
-        
+
         if !response.status().is_success() {
             return Err(anyhow::anyhow!("LLM gateway error: {}", response.status()));
         }
-        
+
         let response_body: serde_json::Value = response.json().await
             .map_err(|e| anyhow::anyhow!("Failed to parse LLM response: {}", e))?;
-        
+
         let content = response_body["choices"]
             .as_array()
             .and_then(|arr| arr.first())
             .and_then(|c| c["message"]["content"].as_str())
             .unwrap_or("")
             .to_string();
-        
+
         debug!("LLM inference completed: {} chars", content.len());
         Ok(content)
     }
-    
+
     /// Request LLM inference with full options
     pub async fn llm_inference_with_options(
         prompt: &str,
@@ -219,7 +231,7 @@ pub mod helpers {
         temperature: Option<f32>,
         max_tokens: Option<u32>,
     ) -> Result<String> {
-        let client = reqwest::Client::new();
+        let client = shared_client();
         
         let mut request_body = serde_json::json!({
             "model": model.unwrap_or("default"),
@@ -238,33 +250,32 @@ pub mod helpers {
         let response = client
             .post(format!("{}/v1/chat/completions", LLM_GATEWAY_ADDR))
             .json(&request_body)
-            .timeout(LLM_GATEWAY_TIMEOUT)
             .send()
             .await
             .map_err(|e| anyhow::anyhow!("LLM gateway request failed: {}", e))?;
-        
+
         if !response.status().is_success() {
             return Err(anyhow::anyhow!("LLM gateway error: {}", response.status()));
         }
-        
+
         let response_body: serde_json::Value = response.json().await
             .map_err(|e| anyhow::anyhow!("Failed to parse LLM response: {}", e))?;
-        
+
         let content = response_body["choices"]
             .as_array()
             .and_then(|arr| arr.first())
             .and_then(|c| c["message"]["content"].as_str())
             .unwrap_or("")
             .to_string();
-        
+
         debug!("LLM inference completed: {} chars", content.len());
         Ok(content)
     }
-    
+
     /// Check if LLM gateway is available
     pub async fn llm_gateway_health() -> Result<bool> {
-        let client = reqwest::Client::new();
-        
+        let client = shared_client();
+
         match client
             .get(format!("{}/v1/health", LLM_GATEWAY_ADDR))
             .timeout(Duration::from_secs(5))
@@ -278,11 +289,10 @@ pub mod helpers {
     
     /// List available models from gateway
     pub async fn llm_list_models() -> Result<Vec<String>> {
-        let client = reqwest::Client::new();
-        
+        let client = shared_client();
+
         let response = client
             .get(format!("{}/v1/models", LLM_GATEWAY_ADDR))
-            .timeout(LLM_GATEWAY_TIMEOUT)
             .send()
             .await
             .map_err(|e| anyhow::anyhow!("LLM gateway request failed: {}", e))?;

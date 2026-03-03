@@ -14,6 +14,11 @@ pub struct InferenceRequest {
     pub frequency_penalty: f32,
 }
 
+/// Maximum prompt length (256 KB) to prevent DoS via memory exhaustion.
+pub const MAX_PROMPT_LENGTH: usize = 256 * 1024;
+/// Maximum tokens that can be requested in a single inference call.
+pub const MAX_TOKENS_LIMIT: u32 = 128_000;
+
 impl Default for InferenceRequest {
     fn default() -> Self {
         Self {
@@ -24,6 +29,25 @@ impl Default for InferenceRequest {
             top_p: 1.0,
             presence_penalty: 0.0,
             frequency_penalty: 0.0,
+        }
+    }
+}
+
+impl InferenceRequest {
+    /// Validate the request parameters, clamping values to safe ranges.
+    ///
+    /// - `temperature`: clamped to `[0.0, 2.0]`
+    /// - `top_p`: clamped to `(0.0, 1.0]`
+    /// - `max_tokens`: clamped to `[1, MAX_TOKENS_LIMIT]`
+    /// - `prompt`: truncated to `MAX_PROMPT_LENGTH` bytes
+    pub fn validate(&mut self) {
+        self.temperature = self.temperature.clamp(0.0, 2.0);
+        self.top_p = self.top_p.clamp(f32::MIN_POSITIVE, 1.0);
+        self.max_tokens = self.max_tokens.clamp(1, MAX_TOKENS_LIMIT);
+        self.presence_penalty = self.presence_penalty.clamp(-2.0, 2.0);
+        self.frequency_penalty = self.frequency_penalty.clamp(-2.0, 2.0);
+        if self.prompt.len() > MAX_PROMPT_LENGTH {
+            self.prompt.truncate(MAX_PROMPT_LENGTH);
         }
     }
 }
@@ -94,12 +118,28 @@ pub struct LlmConfig {
     pub cloud_providers: Vec<CloudProviderConfig>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Cloud provider configuration.
+///
+/// The `api_key` field is redacted in `Debug` output to prevent accidental
+/// exposure in logs. Use `Serialize` with care — the key will appear in
+/// serialized output (use `#[serde(skip)]` if persisting to untrusted storage).
+#[derive(Clone, Serialize, Deserialize)]
 pub struct CloudProviderConfig {
     pub name: String,
     pub api_key: String,
     pub base_url: String,
     pub priority: u32,
+}
+
+impl std::fmt::Debug for CloudProviderConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CloudProviderConfig")
+            .field("name", &self.name)
+            .field("api_key", &"[REDACTED]")
+            .field("base_url", &self.base_url)
+            .field("priority", &self.priority)
+            .finish()
+    }
 }
 
 #[cfg(test)]

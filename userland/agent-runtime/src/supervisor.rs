@@ -3,6 +3,7 @@
 //! Monitors agent health, enforces resource limits, and handles failures.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
@@ -36,7 +37,7 @@ impl Default for HealthCheckConfig {
 }
 
 /// Agent health status
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AgentHealth {
     pub agent_id: AgentId,
     pub is_healthy: bool,
@@ -47,12 +48,16 @@ pub struct AgentHealth {
     pub resource_usage: ResourceUsage,
 }
 
-/// Supervisor for monitoring and managing agents
+/// Supervisor for monitoring and managing agents.
+///
+/// All mutable state is wrapped in `Arc<RwLock<...>>` so that clones share
+/// the same state — critical for background tasks like health_check_loop.
+#[derive(Clone)]
 pub struct Supervisor {
     registry: Arc<AgentRegistry>,
-    health_checks: RwLock<HashMap<AgentId, AgentHealth>>,
+    health_checks: Arc<RwLock<HashMap<AgentId, AgentHealth>>>,
     config: HealthCheckConfig,
-    running_agents: RwLock<HashMap<AgentId, Box<dyn AgentControl>>>,
+    running_agents: Arc<RwLock<HashMap<AgentId, Box<dyn AgentControl>>>>,
 }
 
 /// Trait for controlling agent processes
@@ -69,9 +74,9 @@ impl Supervisor {
     pub fn new(registry: Arc<AgentRegistry>) -> Self {
         Self {
             registry,
-            health_checks: RwLock::new(HashMap::new()),
+            health_checks: Arc::new(RwLock::new(HashMap::new())),
             config: HealthCheckConfig::default(),
-            running_agents: RwLock::new(HashMap::new()),
+            running_agents: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -286,29 +291,3 @@ impl Supervisor {
     }
 }
 
-impl Clone for Supervisor {
-    fn clone(&self) -> Self {
-        Self {
-            registry: self.registry.clone(),
-            health_checks: RwLock::new(HashMap::new()),
-            config: self.config.clone(),
-            running_agents: RwLock::new(HashMap::new()),
-        }
-    }
-}
-
-impl Clone for AgentHealth {
-    fn clone(&self) -> Self {
-        Self {
-            agent_id: self.agent_id,
-            is_healthy: self.is_healthy,
-            consecutive_failures: self.consecutive_failures,
-            consecutive_successes: self.consecutive_successes,
-            last_check: self.last_check,
-            last_response_time_ms: self.last_response_time_ms,
-            resource_usage: self.resource_usage,
-        }
-    }
-}
-
-use std::sync::Arc;

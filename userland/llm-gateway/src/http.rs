@@ -5,7 +5,7 @@
 use std::sync::Arc;
 
 use axum::{
-    extract::{Query, State},
+    extract::State,
     http::StatusCode,
     response::Json,
     routing::{get, post},
@@ -13,6 +13,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use tower_http::cors::CorsLayer;
+use tower_http::limit::RequestBodyLimitLayer;
 use tracing::{error, info};
 
 use crate::{LlmGateway, GatewayConfig};
@@ -38,10 +39,14 @@ pub async fn start_http_server(gateway: Arc<LlmGateway>, config: GatewayConfig) 
         .allow_methods(tower_http::cors::Any)
         .allow_headers(tower_http::cors::Any);
     
+    // 1 MB request body limit to prevent DoS via oversized payloads
+    let body_limit = RequestBodyLimitLayer::new(1024 * 1024);
+
     let app = Router::new()
         .route("/v1/chat/completions", post(chat_completions))
         .route("/v1/models", get(list_models))
         .route("/v1/health", get(health))
+        .layer(body_limit)
         .layer(cors)
         .with_state(state);
     
@@ -198,8 +203,8 @@ async fn chat_completions(
         .collect::<Vec<_>>()
         .join("\n");
     
-    // Create inference request
-    let request = agnos_common::InferenceRequest {
+    // Create inference request with validated parameters
+    let mut request = agnos_common::InferenceRequest {
         model: payload.model.clone(),
         prompt,
         max_tokens: payload.max_tokens.unwrap_or(1024),
@@ -208,6 +213,7 @@ async fn chat_completions(
         presence_penalty: 0.0,
         frequency_penalty: 0.0,
     };
+    request.validate();
     
     // Run inference
     match state.gateway.infer(request, agent_id).await {
@@ -238,12 +244,13 @@ async fn chat_completions(
             }))
         }
         Err(e) => {
+            // Log full error internally but return sanitized message to client
             error!("Inference failed: {}", e);
             Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(ErrorResponse {
                     error: ErrorDetail {
-                        message: format!("Inference failed: {}", e),
+                        message: "Inference request failed. Check server logs for details.".to_string(),
                         r#type: "internal_error".to_string(),
                         code: None,
                     },

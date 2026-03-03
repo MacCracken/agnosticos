@@ -1,6 +1,7 @@
 //! Inter-Process Communication for Agents
 //!
 //! Handles message passing between agents and the runtime.
+//! Uses length-prefixed framing: each message is preceded by a 4-byte big-endian length.
 
 use std::collections::HashMap;
 
@@ -12,6 +13,12 @@ use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use agnos_common::{AgentId, Message, MessageType};
+
+/// Maximum size of a single IPC message (64 KB).
+const MAX_MESSAGE_SIZE: u32 = 64 * 1024;
+
+/// Maximum number of global (monitoring) subscribers.
+const MAX_GLOBAL_SUBSCRIBERS: usize = 16;
 
 /// IPC endpoint for agent communication
 pub struct AgentIpc {
@@ -37,7 +44,10 @@ impl AgentIpc {
         Ok((ipc, message_rx))
     }
 
-    /// Start listening for incoming connections
+    /// Start listening for incoming connections.
+    ///
+    /// Sets restrictive permissions (owner-only) on the socket file
+    /// to prevent unauthorized access from other users.
     pub async fn start_listening(&self) -> Result<()> {
         // Ensure directory exists
         if let Some(parent) = self.socket_path.parent() {
@@ -50,17 +60,26 @@ impl AgentIpc {
         let listener = UnixListener::bind(&self.socket_path)
             .with_context(|| format!("Failed to bind to socket: {}", self.socket_path.display()))?;
 
+        // Restrict socket to owner only (0o700)
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let perms = std::fs::Permissions::from_mode(0o700);
+            std::fs::set_permissions(&self.socket_path, perms)
+                .with_context(|| "Failed to set socket permissions")?;
+        }
+
         info!("Agent {} IPC listening on {}", self.agent_id, self.socket_path.display());
 
         let tx = self.message_tx.clone();
-        let socket_path = self.socket_path.clone();
+        let agent_id = self.agent_id;
 
         tokio::spawn(async move {
             loop {
                 match listener.accept().await {
                     Ok((stream, _)) => {
                         let tx = tx.clone();
-                        tokio::spawn(handle_connection(stream, tx));
+                        tokio::spawn(handle_connection(stream, tx, agent_id));
                     }
                     Err(e) => {
                         error!("Failed to accept connection: {}", e);
@@ -80,35 +99,65 @@ impl AgentIpc {
     }
 }
 
-/// Handle an incoming connection
-async fn handle_connection(mut stream: UnixStream, tx: mpsc::Sender<Message>) {
-    let mut buffer = vec![0u8; 4096];
+impl Drop for AgentIpc {
+    fn drop(&mut self) {
+        // Clean up socket file on shutdown
+        let _ = std::fs::remove_file(&self.socket_path);
+        debug!("Cleaned up IPC socket: {}", self.socket_path.display());
+    }
+}
+
+/// Handle an incoming connection using length-prefixed framing.
+///
+/// Wire format: `[4-byte big-endian length][JSON message bytes]`
+/// Messages larger than `MAX_MESSAGE_SIZE` are rejected and the connection is closed.
+async fn handle_connection(mut stream: UnixStream, tx: mpsc::Sender<Message>, owner_agent_id: AgentId) {
+    let mut len_buf = [0u8; 4];
 
     loop {
-        match stream.read(&mut buffer).await {
-            Ok(0) => {
-                // Connection closed
+        // Read the 4-byte length prefix
+        match stream.read_exact(&mut len_buf).await {
+            Ok(_) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
+                // Connection closed cleanly
                 break;
             }
-            Ok(n) => {
-                let data = &buffer[..n];
-                
-                // Parse message
-                match serde_json::from_slice::<Message>(data) {
-                    Ok(message) => {
-                        debug!("Received message: {:?}", message);
-                        if let Err(e) = tx.send(message).await {
-                            error!("Failed to forward message: {}", e);
-                        }
-                    }
-                    Err(e) => {
-                        error!("Failed to parse message: {}", e);
-                    }
+            Err(e) => {
+                error!("Failed to read message length: {}", e);
+                break;
+            }
+        }
+
+        let msg_len = u32::from_be_bytes(len_buf);
+
+        if msg_len == 0 {
+            continue;
+        }
+
+        if msg_len > MAX_MESSAGE_SIZE {
+            error!(
+                "Message too large ({} bytes, max {}), closing connection",
+                msg_len, MAX_MESSAGE_SIZE
+            );
+            break;
+        }
+
+        let mut buffer = vec![0u8; msg_len as usize];
+        if let Err(e) = stream.read_exact(&mut buffer).await {
+            error!("Failed to read message body: {}", e);
+            break;
+        }
+
+        // Parse message
+        match serde_json::from_slice::<Message>(&buffer) {
+            Ok(message) => {
+                debug!("Received message: {:?}", message);
+                if let Err(e) = tx.send(message).await {
+                    error!("Failed to forward message: {}", e);
                 }
             }
             Err(e) => {
-                error!("Failed to read from socket: {}", e);
-                break;
+                warn!("Failed to parse message: {}", e);
             }
         }
     }
@@ -159,9 +208,19 @@ impl MessageBus {
         self.subscribers.write().await.remove(&agent_id);
     }
 
-    /// Subscribe to all messages (for monitoring/debugging)
-    pub async fn subscribe_global(&self, sender: mpsc::Sender<Message>) {
-        self.global_subscribers.write().await.push(sender);
+    /// Subscribe to all messages (for monitoring/debugging).
+    ///
+    /// Limited to [`MAX_GLOBAL_SUBSCRIBERS`] to prevent unbounded growth.
+    pub async fn subscribe_global(&self, sender: mpsc::Sender<Message>) -> Result<()> {
+        let mut globals = self.global_subscribers.write().await;
+        if globals.len() >= MAX_GLOBAL_SUBSCRIBERS {
+            return Err(anyhow::anyhow!(
+                "Maximum global subscribers ({}) reached",
+                MAX_GLOBAL_SUBSCRIBERS
+            ));
+        }
+        globals.push(sender);
+        Ok(())
     }
 
     /// Publish a message
@@ -285,11 +344,46 @@ mod tests {
     async fn test_message_bus_subscribe_global() {
         let bus = MessageBus::new();
         let (tx, _rx) = mpsc::channel(10);
-        
-        bus.subscribe_global(tx).await;
-        
+
+        bus.subscribe_global(tx).await.unwrap();
+
         let globals = bus.global_subscribers.read().await;
         assert_eq!(globals.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_message_bus_subscribe_global_limit() {
+        let bus = MessageBus::new();
+        for _ in 0..MAX_GLOBAL_SUBSCRIBERS {
+            let (tx, _rx) = mpsc::channel(10);
+            bus.subscribe_global(tx).await.unwrap();
+        }
+        // Next should fail
+        let (tx, _rx) = mpsc::channel(10);
+        assert!(bus.subscribe_global(tx).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_ipc_drop_cleanup() {
+        let tmp = std::env::temp_dir().join("agnos_ipc_test");
+        let _ = std::fs::create_dir_all(&tmp);
+        let sock_path = tmp.join("test.sock");
+        // Create a dummy file to simulate a socket
+        let _ = std::fs::File::create(&sock_path);
+        assert!(sock_path.exists());
+
+        // Build an AgentIpc with the temp path and verify Drop removes it
+        let agent_id = AgentId::new();
+        let (tx, _rx) = mpsc::channel(10);
+        let ipc = AgentIpc {
+            agent_id,
+            socket_path: sock_path.clone(),
+            message_tx: tx,
+            message_rx: None,
+        };
+        drop(ipc);
+        assert!(!sock_path.exists());
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 
     #[tokio::test]

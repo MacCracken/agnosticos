@@ -87,14 +87,37 @@ pub enum KeyType {
     Hmac,
 }
 
-/// Authentication token
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Authentication token.
+///
+/// The `token` field is redacted in `Debug` output to prevent accidental
+/// exposure in logs.
+#[derive(Clone, Serialize, Deserialize)]
 pub struct AuthToken {
     pub token: String,
     pub user_id: String,
     pub issued_at: chrono::DateTime<chrono::Utc>,
     pub expires_at: chrono::DateTime<chrono::Utc>,
     pub scopes: Vec<String>,
+}
+
+impl std::fmt::Debug for AuthToken {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AuthToken")
+            .field("token", &"[REDACTED]")
+            .field("user_id", &self.user_id)
+            .field("issued_at", &self.issued_at)
+            .field("expires_at", &self.expires_at)
+            .field("scopes", &self.scopes)
+            .finish()
+    }
+}
+
+impl AuthToken {
+    /// Constant-time comparison of token values to prevent timing attacks.
+    pub fn verify(&self, other: &str) -> bool {
+        use subtle::ConstantTimeEq;
+        self.token.as_bytes().ct_eq(other.as_bytes()).into()
+    }
 }
 
 #[cfg(test)]

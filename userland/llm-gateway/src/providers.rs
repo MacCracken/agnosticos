@@ -37,12 +37,18 @@ pub enum ProviderType {
 /// Ollama provider implementation
 pub struct OllamaProvider {
     base_url: String,
+    client: reqwest::Client,
 }
 
 impl OllamaProvider {
     pub async fn new() -> anyhow::Result<Self> {
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(120))
+            .pool_max_idle_per_host(4)
+            .build()?;
         Ok(Self {
             base_url: "http://localhost:11434".to_string(),
+            client,
         })
     }
 }
@@ -50,10 +56,7 @@ impl OllamaProvider {
 #[async_trait]
 impl LlmProvider for OllamaProvider {
     async fn infer(&self, request: InferenceRequest) -> anyhow::Result<InferenceResponse> {
-        use reqwest;
-        
-        let client = reqwest::Client::new();
-        let response = client
+        let response = self.client
             .post(format!("{}/api/generate", self.base_url))
             .json(&serde_json::json!({
                 "model": request.model,
@@ -92,8 +95,7 @@ impl LlmProvider for OllamaProvider {
     
     async fn load_model(&self, model_id: &str) -> anyhow::Result<agnos_common::ModelInfo> {
         // Pull the model if not already available
-        let client = reqwest::Client::new();
-        let _ = client
+        let _ = self.client
             .post(format!("{}/api/pull", self.base_url))
             .json(&serde_json::json!({
                 "name": model_id,
@@ -118,8 +120,7 @@ impl LlmProvider for OllamaProvider {
     }
     
     async fn list_models(&self) -> anyhow::Result<Vec<agnos_common::ModelInfo>> {
-        let client = reqwest::Client::new();
-        let response = client
+        let response = self.client
             .get(format!("{}/api/tags", self.base_url))
             .send()
             .await?;
@@ -149,12 +150,18 @@ impl LlmProvider for OllamaProvider {
 /// llama.cpp provider implementation
 pub struct LlamaCppProvider {
     base_url: String,
+    client: reqwest::Client,
 }
 
 impl LlamaCppProvider {
     pub async fn new() -> anyhow::Result<Self> {
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(120))
+            .pool_max_idle_per_host(4)
+            .build()?;
         Ok(Self {
             base_url: "http://localhost:8080".to_string(),
+            client,
         })
     }
 }
@@ -162,10 +169,7 @@ impl LlamaCppProvider {
 #[async_trait]
 impl LlmProvider for LlamaCppProvider {
     async fn infer(&self, request: InferenceRequest) -> anyhow::Result<InferenceResponse> {
-        use reqwest;
-        
-        let client = reqwest::Client::new();
-        let response = client
+        let response = self.client
             .post(format!("{}/completion", self.base_url))
             .json(&serde_json::json!({
                 "prompt": request.prompt,

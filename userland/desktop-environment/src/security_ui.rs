@@ -4,6 +4,13 @@ use thiserror::Error;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
+/// Maximum number of security alerts retained in memory.
+const MAX_ALERTS: usize = 500;
+/// Maximum number of permission requests retained.
+const MAX_PERMISSION_REQUESTS: usize = 200;
+/// Maximum number of override requests retained.
+const MAX_OVERRIDE_REQUESTS: usize = 100;
+
 #[derive(Debug, Error)]
 pub enum SecurityUIError {
     #[error("Permission not found: {0}")]
@@ -200,13 +207,22 @@ impl SecurityUI {
 
     pub fn show_security_alert(&self, alert: SecurityAlert) {
         let mut alerts = self.alerts.write().unwrap();
-        alerts.push(alert.clone());
+
+        // Evict oldest resolved alerts when at capacity
+        if alerts.len() >= MAX_ALERTS {
+            alerts.retain(|a| !a.is_resolved);
+            // If still full, drop the oldest
+            if alerts.len() >= MAX_ALERTS {
+                alerts.remove(0);
+            }
+        }
 
         if alert.threat_level == ThreatLevel::Critical {
             warn!("CRITICAL SECURITY ALERT: {}", alert.title);
         }
 
         debug!("Security alert: {}", alert.title);
+        alerts.push(alert);
     }
 
     pub fn dismiss_alert(&self, alert_id: Uuid) -> Result<(), SecurityUIError> {
@@ -220,6 +236,15 @@ impl SecurityUI {
     pub fn request_permission(&self, request: PermissionRequest) {
         let permission = request.permission.clone();
         let mut requests = self.permission_requests.write().unwrap();
+
+        // Evict oldest granted requests when at capacity
+        if requests.len() >= MAX_PERMISSION_REQUESTS {
+            requests.retain(|r| !r.is_granted);
+            if requests.len() >= MAX_PERMISSION_REQUESTS {
+                requests.remove(0);
+            }
+        }
+
         requests.push(request);
         info!("Permission request: {}", permission);
     }
@@ -292,6 +317,15 @@ impl SecurityUI {
         };
 
         let mut requests = self.override_requests.write().unwrap();
+
+        // Evict oldest approved overrides when at capacity
+        if requests.len() >= MAX_OVERRIDE_REQUESTS {
+            requests.retain(|r| !r.is_approved);
+            if requests.len() >= MAX_OVERRIDE_REQUESTS {
+                requests.remove(0);
+            }
+        }
+
         requests.push(request);
 
         warn!("Human override requested by {}", agent_name);

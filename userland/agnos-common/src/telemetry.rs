@@ -4,7 +4,7 @@
 //! All telemetry is anonymous and requires explicit user consent.
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -99,12 +99,17 @@ pub struct TelemetrySession {
     pub events_dropped: u64,
 }
 
+/// Maximum number of telemetry events kept in memory.
+const MAX_EVENTS: usize = 1000;
+/// Maximum number of crash reports kept in memory.
+const MAX_CRASH_REPORTS: usize = 10;
+
 /// Main telemetry collector
 pub struct TelemetryCollector {
     config: TelemetryConfig,
     session: Arc<RwLock<TelemetrySession>>,
-    events: Arc<RwLock<Vec<TelemetryEvent>>>,
-    crash_reports: Arc<RwLock<Vec<CrashReport>>>,
+    events: Arc<RwLock<VecDeque<TelemetryEvent>>>,
+    crash_reports: Arc<RwLock<VecDeque<CrashReport>>>,
 }
 
 impl TelemetryCollector {
@@ -121,8 +126,8 @@ impl TelemetryCollector {
         Self {
             config,
             session: Arc::new(RwLock::new(session)),
-            events: Arc::new(RwLock::new(Vec::new())),
-            crash_reports: Arc::new(RwLock::new(Vec::new())),
+            events: Arc::new(RwLock::new(VecDeque::new())),
+            crash_reports: Arc::new(RwLock::new(VecDeque::new())),
         }
     }
     
@@ -156,11 +161,11 @@ impl TelemetryCollector {
         };
         
         let mut events = self.events.write().await;
-        events.push(event);
-        
-        // Limit in-memory events
-        if events.len() > 1000 {
-            events.remove(0);
+        events.push_back(event);
+
+        // Limit in-memory events — O(1) with VecDeque
+        if events.len() > MAX_EVENTS {
+            events.pop_front();
         }
     }
     
@@ -205,11 +210,11 @@ impl TelemetryCollector {
         };
         
         let mut reports = self.crash_reports.write().await;
-        reports.push(report);
-        
-        // Keep only last 10 crash reports in memory
-        if reports.len() > 10 {
-            reports.remove(0);
+        reports.push_back(report);
+
+        // Keep only last crash reports in memory — O(1) with VecDeque
+        if reports.len() > MAX_CRASH_REPORTS {
+            reports.pop_front();
         }
     }
     
@@ -219,28 +224,33 @@ impl TelemetryCollector {
             return Ok(());
         }
         
-        // Get events to send
-        let events_to_send = {
+        // Drain all queued events
+        let events_to_send: Vec<_> = {
             let mut events = self.events.write().await;
-            let drained: Vec<_> = events.drain(..).collect();
-            drained
+            events.drain(..).collect()
         };
         
         if events_to_send.is_empty() {
             return Ok(());
         }
         
-        // Send to endpoint
-        let client = reqwest::Client::new();
+        // Send to endpoint (shared client avoids per-flush connection overhead)
+        static TELEMETRY_CLIENT: once_cell::sync::Lazy<reqwest::Client> =
+            once_cell::sync::Lazy::new(|| {
+                reqwest::Client::builder()
+                    .timeout(std::time::Duration::from_secs(30))
+                    .pool_max_idle_per_host(2)
+                    .build()
+                    .expect("failed to build telemetry http client")
+            });
         let payload = serde_json::json!({
             "instance_id": self.config.instance_id,
             "events": events_to_send,
         });
-        
-        match client
+
+        match TELEMETRY_CLIENT
             .post(&self.config.endpoint_url)
             .json(&payload)
-            .timeout(std::time::Duration::from_secs(30))
             .send()
             .await
         {

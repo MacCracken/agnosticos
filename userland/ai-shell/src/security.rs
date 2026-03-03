@@ -197,11 +197,32 @@ pub fn analyze_command_permission(command: &str, args: &[String]) -> PermissionL
     if system_write.contains(&cmd.as_str()) {
         // Check if targeting system directories
         if args.iter().any(|a| {
-            a.starts_with("/etc/") || 
-            a.starts_with("/usr/") || 
-            a.starts_with("/bin/") ||
-            a.starts_with("/sbin/") ||
-            a.starts_with("/lib")
+            // Normalize path to prevent traversal attacks (e.g., /usr/../etc/passwd)
+            let normalized = if a.starts_with('/') {
+                // Attempt to canonicalize; fall back to cleaning the path manually
+                std::path::Path::new(a)
+                    .canonicalize()
+                    .unwrap_or_else(|_| {
+                        // Manual normalization for paths that don't exist yet
+                        let mut components = Vec::new();
+                        for component in std::path::Path::new(a).components() {
+                            match component {
+                                std::path::Component::ParentDir => { components.pop(); }
+                                std::path::Component::CurDir => {}
+                                other => components.push(other),
+                            }
+                        }
+                        components.iter().collect()
+                    })
+            } else {
+                std::path::PathBuf::from(a)
+            };
+            let path_str = normalized.to_string_lossy();
+            path_str.starts_with("/etc/") || path_str == "/etc"
+                || path_str.starts_with("/usr/") || path_str == "/usr"
+                || path_str.starts_with("/bin/") || path_str == "/bin"
+                || path_str.starts_with("/sbin/") || path_str == "/sbin"
+                || path_str.starts_with("/lib")
         }) {
             return PermissionLevel::SystemWrite;
         }

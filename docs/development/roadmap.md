@@ -1,7 +1,7 @@
 # AGNOS Development Roadmap
 
-> **Status**: Pre-Alpha (Phase 5) | **Last Updated**: 2026-02-26  
-> **Current Phase**: Phase 5 - Production (85% Complete)  
+> **Status**: Pre-Alpha (Phase 5) | **Last Updated**: 2026-03-02
+> **Current Phase**: Phase 5 - Production (88% Complete)
 > **Next Milestone**: Alpha Release (Target: Q2 2026)
 
 ---
@@ -28,6 +28,16 @@
 | System tests: end-to-end desktop | desktop-environment | 1 week | TBD | ⏳ |
 | Load testing: multi-agent stress | agent-runtime | 3 days | TBD | ⏳ |
 | Video tutorials | Documentation | 3 days | TBD | ⏳ |
+| Streaming support for LLM providers | llm-gateway | 3 days | TBD | ⏳ |
+| Fuzz targets: agent-runtime + llm-gateway | Testing | 3 days | TBD | ⏳ |
+| CI coverage gate (fail below threshold) | CI/CD | 1 day | TBD | ⏳ |
+| Structured logging (JSON format) | All | 3 days | TBD | ⏳ |
+| Agent resource quotas (cgroups) | agent-runtime | 1 week | TBD | ⏳ |
+| Capability-based task distribution | agent-runtime | 3 days | TBD | ⏳ |
+| Cloud provider graceful degradation | llm-gateway | 2 days | TBD | ⏳ |
+| Metric dashboards (latency, cache, etc.) | llm-gateway | 3 days | TBD | ⏳ |
+| Connection backpressure for IPC | agent-runtime | 2 days | TBD | ⏳ |
+| Rate limiting on external APIs | llm-gateway | 2 days | TBD | ⏳ |
 
 ### P3 - Lower Priority (Beta/Post-Alpha)
 | Item | Component | Effort | Owner | Status |
@@ -47,8 +57,10 @@ AGNOS (AI-Native General Operating System) is in **Phase 5: Production**, focuse
 | Phase | Status | Completion | Key Deliverables |
 |-------|--------|------------|------------------|
 | 0-4 | ✅ Complete | 90-100% | Foundation through Desktop |
-| 5 | 🔄 In Progress | 85% | Production hardening |
-| 6+ | 📋 Planned | 0% | Future enhancements |
+| 5 | 🔄 In Progress | 88% | Production hardening |
+| 6 | 📋 Planned | 0% | Advanced AI & Networking |
+| 6.5 | 📋 Planned | 0% | OS-Level Features & Security Hardening |
+| 7+ | 📋 Planned | 0% | Ecosystem & Research |
 
 ### Alpha Release Criteria (Q2 2026)
 - [ ] 80%+ test coverage (currently ~65%, was ~60% before recent additions)
@@ -273,6 +285,44 @@ AGNOS will include a comprehensive, curated networking toolkit inspired by Kali 
 - [ ] All tool invocations require user approval for sensitive operations (per Human Sovereignty principle)
 - [ ] Audit trail for every network operation
 
+### Phase 6.5: OS-Level Features & Security Hardening (Planned Q3-Q4 2026)
+
+These are gaps identified in the March 2026 comprehensive audit. They are required to
+bring AGNOS from an application framework to a genuine operating system.
+
+#### Missing OS-Level Features
+
+| Feature | Description | Effort | Priority |
+|---------|-------------|--------|----------|
+| Init system integration | PID 1, service supervision, dependency ordering | 2 weeks | P1 |
+| Package manager | Agent distribution, versioning, dependency resolution | 3 weeks | P1 |
+| Filesystem integration | FUSE mount for agent-managed virtual filesystems | 1 week | P2 |
+| Device management | udev rules, hardware abstraction layer for agents | 1 week | P2 |
+| User/session management | PAM integration, multi-user agent isolation | 2 weeks | P1 |
+| A/B system updates | Atomic OS updates with automatic rollback | 2 weeks | P2 |
+| Power management | Suspend/hibernate with agent state serialization | 1 week | P3 |
+| Network stack integration | NetworkManager/systemd-networkd integration, agent-aware firewall | 2 weeks | P1 |
+| System logging (journald) | Unified logging across kernel + agents + userland | 1 week | P2 |
+| Bootloader integration | GRUB/systemd-boot config for custom kernel | 3 days | P2 |
+| Hardware-accelerated crypto | OpenSSL/BoringSSL engine for agent TLS | 1 week | P3 |
+
+#### Missing Security Hardening
+
+| Feature | Description | Effort | Priority |
+|---------|-------------|--------|----------|
+| dm-verity | Read-only rootfs integrity verification | 1 week | P1 |
+| IMA/EVM | Integrity Measurement Architecture for file integrity | 2 weeks | P1 |
+| TPM 2.0 integration | Measured boot, sealed secrets for agents | 2 weeks | P2 |
+| LUKS volumes for agent data | Encrypted-at-rest storage for each agent sandbox | 1 week | P1 |
+| AppArmor/SELinux profiles | Mandatory access control profiles per agent type | 2 weeks | P1 |
+| Audit subsystem (auditd) | Kernel-level audit events integrated with AGNOS audit chain | 1 week | P1 |
+| Key management service | Agent key rotation, certificate lifecycle management | 2 weeks | P2 |
+| Certificate pinning | Pin TLS certs for cloud LLM API providers | 3 days | P2 |
+| Memory encryption awareness | AMD SEV / Intel TDX support for confidential agents | 2 weeks | P3 |
+| Secure boot chain | UEFI Secure Boot with custom kernel signing | 1 week | P2 |
+| Network segmentation | Per-agent network namespaces with firewall rules | 1 week | P1 |
+| Secrets management | Vault-style secrets injection for agent env vars | 1 week | P2 |
+
 ### Phase 7: Ecosystem (Planned Q4 2026)
 
 #### Marketplace
@@ -424,6 +474,23 @@ For detailed history of all completed work, see [CHANGELOG.md](/CHANGELOG.md).
 - Release infrastructure (signing, updates, automation, telemetry)
 - Testing improvements (45% → 60% coverage, 93 tests passing)
 
+**March 2026 Comprehensive Audit (P0+P1 Fixes Applied):**
+- Fixed critical errno handling in syscall wrappers
+- Replaced stub Landlock/seccomp with real Linux syscall implementations
+- Fixed Supervisor clone creating empty state maps (health monitoring broken)
+- Fixed Orchestrator disconnected message loop + unbounded result growth
+- Added length-prefixed IPC framing, socket permissions, Drop cleanup
+- Added request body limits (1MB), connection pooling, input validation to LLM gateway
+- Replaced raw string cache keys with hashed keys for O(1) lookups
+- Switched telemetry to VecDeque for O(1) eviction
+- Added bounded collections to SecurityUI, DesktopShell, MessageBus
+- Redacted API keys and auth tokens from Debug output (custom impls)
+- Added constant-time token comparison (subtle crate)
+- Fixed ai-shell: shlex parsing, path traversal prevention, 64KB input limit
+- Shared reqwest::Client across all helper functions (connection reuse)
+- Sanitized error messages in HTTP responses to prevent info leakage
+- Added OS-level feature gaps and security hardening items to roadmap
+
 ---
 
-*Last Updated: 2026-02-26 | Next Review: 2026-03-01*
+*Last Updated: 2026-03-02 | Next Review: 2026-03-09*

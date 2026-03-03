@@ -13,17 +13,35 @@ pub const SYS_AGNOS_LLM_UNLOAD_MODEL: i64 = 512;
 pub const SYS_AGNOS_AUDIT_LOG: i64 = 520;
 pub const SYS_AGNOS_AUDIT_READ: i64 = 521;
 
-/// Raw syscall wrapper
+/// Raw syscall wrapper for single-argument syscalls.
+///
+/// # Safety
+/// - `num` must be a valid syscall number for the current kernel.
+/// - `arg1` must be a valid value for the given syscall (e.g., a valid pointer
+///   cast to `i64` where the syscall expects a pointer).
+/// - Caller is responsible for ensuring memory safety of any pointers passed.
 #[inline(always)]
 pub unsafe fn syscall1(num: i64, arg1: i64) -> i64 {
     libc::syscall(num, arg1)
 }
 
+/// Raw syscall wrapper for two-argument syscalls.
+///
+/// # Safety
+/// - `num` must be a valid syscall number for the current kernel.
+/// - `arg1` and `arg2` must be valid values for the given syscall.
+/// - Caller is responsible for ensuring memory safety of any pointers passed.
 #[inline(always)]
 pub unsafe fn syscall2(num: i64, arg1: i64, arg2: i64) -> i64 {
     libc::syscall(num, arg1, arg2)
 }
 
+/// Raw syscall wrapper for three-argument syscalls.
+///
+/// # Safety
+/// - `num` must be a valid syscall number for the current kernel.
+/// - `arg1`, `arg2`, and `arg3` must be valid values for the given syscall.
+/// - Caller is responsible for ensuring memory safety of any pointers passed.
 #[inline(always)]
 pub unsafe fn syscall3(num: i64, arg1: i64, arg2: i64, arg3: i64) -> i64 {
     libc::syscall(num, arg1, arg2, arg3)
@@ -37,14 +55,24 @@ pub fn kernel_modules_available() -> bool {
     }
 }
 
+/// Read the current thread-local errno value.
+///
+/// # Safety rationale
+/// `libc::__errno_location()` returns a pointer to thread-local storage,
+/// which is always valid for the current thread. The dereference is safe
+/// because the pointer is guaranteed non-null and properly aligned by libc.
 fn errno() -> i32 {
     unsafe { *libc::__errno_location() }
 }
 
-/// Convert syscall result to Result
+/// Convert syscall result to Result.
+///
+/// Linux `libc::syscall` returns -1 on error and sets `errno` separately.
+/// Previous code incorrectly negated the return value; we now read `errno()`
+/// which contains the actual error code set by the kernel.
 fn check_result(result: i64) -> Result<i64> {
     if result < 0 {
-        Err(SysError::from_errno(-result as i32))
+        Err(SysError::from_errno(errno()))
     } else {
         Ok(result)
     }

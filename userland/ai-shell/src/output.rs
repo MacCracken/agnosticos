@@ -22,8 +22,7 @@ impl OutputFormatter {
     }
 
     fn format_json(&self, output: &str) -> String {
-        // Simple JSON wrapping
-        format!("{{\"output\": \"{}\"}}", output.replace('"', "\\\""))
+        serde_json::json!({"output": output}).to_string()
     }
 
     fn format_table(&self, output: &str) -> String {
@@ -86,7 +85,7 @@ mod tests {
         let formatter = OutputFormatter::new("json");
         let input = r#"He said "Hello""#;
         let result = formatter.format(input);
-        assert!(!result.contains("\"Hello\""));
+        // serde_json properly escapes quotes
         assert!(result.contains("\\\""));
     }
 

@@ -40,7 +40,7 @@ chrono = { version = "0.4", features = ["serde"] }
 reqwest = { version = "0.11", features = ["json"] }
 axum = "0.7"
 tower = "0.4"
-tower-http = { version = "0.5", features = ["cors"] }
+tower-http = { version = "0.5", features = ["cors", "limit"] }
 
 # AGNOS internal dependencies
 agnos-common = { path = "agnos-common" }

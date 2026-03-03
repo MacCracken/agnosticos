@@ -4,6 +4,9 @@ use thiserror::Error;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
+/// Maximum number of notifications kept in memory.
+const MAX_NOTIFICATIONS: usize = 200;
+
 #[derive(Debug, Error)]
 pub enum ShellError {
     #[error("Notification not found: {0}")]
@@ -298,6 +301,19 @@ impl DesktopShell {
     pub fn show_notification(&self, notification: Notification) {
         let title = notification.title.clone();
         let mut notifications = self.notifications.write().unwrap();
+
+        // Evict oldest non-action notifications when at capacity
+        if notifications.len() >= MAX_NOTIFICATIONS {
+            let oldest_non_action = notifications
+                .values()
+                .filter(|n| !n.requires_action)
+                .min_by_key(|n| n.timestamp)
+                .map(|n| n.id);
+            if let Some(id) = oldest_non_action {
+                notifications.remove(&id);
+            }
+        }
+
         notifications.insert(notification.id, notification);
         info!("Notification shown: {}", title);
     }

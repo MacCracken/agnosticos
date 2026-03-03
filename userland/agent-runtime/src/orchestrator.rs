@@ -95,13 +95,18 @@ impl Orchestrator {
         }
     }
 
+    /// Maximum number of completed task results to retain.
+    const MAX_RESULTS: usize = 10_000;
+
     /// Start the orchestrator
     pub async fn start(&self) -> Result<()> {
         info!("Starting multi-agent orchestrator...");
 
-        // Start the message processing loop
+        // Start the message processing loop with shared state
         if let Some(rx) = self.message_rx.write().await.take() {
-            tokio::spawn(Self::message_loop(rx));
+            let results = self.results.clone();
+            let running_tasks = self.running_tasks.clone();
+            tokio::spawn(Self::message_loop(rx, results, running_tasks));
         }
 
         // Start the task scheduler
@@ -222,7 +227,7 @@ impl Orchestrator {
         Ok(())
     }
 
-    /// Handle task result
+    /// Handle task result and prune old results to prevent unbounded growth.
     async fn handle_result(&self, result: TaskResult) {
         let task_id = result.task_id.clone();
         info!(
@@ -233,23 +238,64 @@ impl Orchestrator {
         let mut results = self.results.write().await;
         results.insert(task_id.clone(), result);
 
+        // Prune old results to prevent unbounded memory growth
+        Self::prune_results(&mut results);
+        drop(results);
+
         // Remove from running tasks
-        let mut running = self.running_tasks.write().await;
-        running.remove(&task_id);
+        self.running_tasks.write().await.remove(&task_id);
     }
 
-    /// Message processing loop
-    async fn message_loop(mut rx: mpsc::Receiver<Message>) {
+    /// Prune results map if it exceeds MAX_RESULTS, keeping the most recent.
+    fn prune_results(results: &mut HashMap<String, TaskResult>) {
+        if results.len() > Self::MAX_RESULTS {
+            let mut entries: Vec<_> = results
+                .iter()
+                .map(|(k, v)| (k.clone(), v.completed_at))
+                .collect();
+            entries.sort_by_key(|(_, t)| *t);
+            let to_remove: Vec<_> = entries
+                .iter()
+                .take(entries.len() - Self::MAX_RESULTS)
+                .map(|(k, _)| k.clone())
+                .collect();
+            for key in to_remove {
+                results.remove(&key);
+            }
+        }
+    }
+
+    /// Message processing loop — receives messages from agents and processes
+    /// task results, routing them into the shared results map.
+    async fn message_loop(
+        mut rx: mpsc::Receiver<Message>,
+        results: Arc<RwLock<HashMap<String, TaskResult>>>,
+        running_tasks: Arc<RwLock<HashMap<String, Task>>>,
+    ) {
         while let Some(message) = rx.recv().await {
             debug!("Orchestrator received message: {:?}", message);
-            
+
             match message.message_type {
                 MessageType::Response => {
-                    // Handle task results
-                    debug!("Received response: {:?}", message.payload);
+                    // Try to deserialize as TaskResult
+                    if let Ok(result) = serde_json::from_value::<TaskResult>(message.payload.clone()) {
+                        let task_id = result.task_id.clone();
+                        info!(
+                            "Task {} completed by agent {}: success={}",
+                            task_id, result.agent_id, result.success
+                        );
+
+                        let mut res = results.write().await;
+                        res.insert(task_id.clone(), result);
+                        Self::prune_results(&mut res);
+                        drop(res);
+
+                        running_tasks.write().await.remove(&task_id);
+                    } else {
+                        debug!("Received non-task response: {:?}", message.payload);
+                    }
                 }
                 MessageType::Event => {
-                    // Handle agent events
                     debug!("Received event: {:?}", message.payload);
                 }
                 MessageType::Error => {

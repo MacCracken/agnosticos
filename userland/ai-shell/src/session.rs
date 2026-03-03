@@ -83,6 +83,12 @@ impl Session {
                 None => break, // EOF
             };
             
+            // Limit input length to prevent DoS
+            if input.len() > 65536 {
+                self.ui.show_error("Input too long (max 64KB)");
+                continue;
+            }
+
             // Skip empty input
             if input.trim().is_empty() {
                 continue;
@@ -305,13 +311,19 @@ impl Session {
     /// Execute raw shell command
     async fn execute_shell_command(&mut self, command: &str) -> Result<()> {
         // Parse command
-        let parts: Vec<&str> = command.split_whitespace().collect();
+        let parts = match shlex::split(command) {
+            Some(parts) => parts,
+            None => {
+                self.ui.show_error("Invalid command: unmatched quotes");
+                return Ok(());
+            }
+        };
         if parts.is_empty() {
             return Ok(());
         }
-        
-        let cmd = parts[0].to_string();
-        let args: Vec<String> = parts[1..].iter().map(|s| s.to_string()).collect();
+
+        let cmd = parts[0].clone();
+        let args: Vec<String> = parts[1..].to_vec();
         
         // Check for cd (special handling)
         if cmd == "cd" {
@@ -348,7 +360,16 @@ impl Session {
                 match child.wait().await {
                     Ok(status) => {
                         // Track exit code for prompt
-                        self.prompt_context.last_exit_code = status.code().unwrap_or(-1);
+                        self.prompt_context.last_exit_code = status.code().unwrap_or_else(|| {
+                            // Process killed by signal — convention: 128 + signal number
+                            #[cfg(unix)]
+                            {
+                                use std::os::unix::process::ExitStatusExt;
+                                status.signal().map(|s| 128 + s).unwrap_or(-1)
+                            }
+                            #[cfg(not(unix))]
+                            { -1 }
+                        });
                         
                         if let Some(stdout) = child.stdout.take() {
                             let reader = tokio::io::BufReader::new(stdout);
