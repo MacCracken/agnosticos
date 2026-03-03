@@ -7,6 +7,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (March 3, 2026 — P0/P1 Implementation Pass #2)
+
+- **Cgroups v2 resource enforcement** (`agent-runtime/src/supervisor.rs`):
+  - New `CgroupController` manages per-agent cgroup at `/sys/fs/cgroup/agnos/{agent_id}/`
+  - `setup_cgroup()` sets `memory.max`, `cpu.max`, and adds PID to `cgroup.procs`
+  - `check_resource_limits()` reads real usage from cgroup counters (`memory.current`, `cpu.stat`)
+  - Enforces limits: warns at 90% usage, sends SIGTERM when exceeded
+  - Falls back to `/proc/{pid}/` reads when cgroups are unavailable
+  - Cgroup cleanup on agent unregistration via `destroy()`
+- **Real agent resource monitoring** (`agent-runtime/src/agent.rs`):
+  - `resource_usage()` reads VmRSS from `/proc/{pid}/status` (memory in bytes)
+  - Reads utime+stime from `/proc/{pid}/stat` (CPU time in ms, clock-tick adjusted)
+  - Counts open FDs from `/proc/{pid}/fd/`
+  - Counts threads from `/proc/{pid}/task/`
+- **Agent pause/resume via signals** (`agent-runtime/src/agent.rs`):
+  - `pause()` sends SIGSTOP to actually suspend the process
+  - `resume()` sends SIGCONT to resume the process
+- **Audit logging with hash chain** (`agnos-sys/src/agent.rs`):
+  - `audit_log()` writes JSON lines to `/var/log/agnos/audit.log`
+  - Each entry includes SHA-256 hash chaining (hash of previous_hash + timestamp + event + details)
+  - File locking via `flock()` for concurrent writer safety
+  - Auto-creates log directory if missing
+  - `read_last_hash()` reads chain tail for integrity verification
+- **Real resource checking** (`agnos-sys/src/agent.rs`):
+  - `check_resources()` reads from `/proc/self/` for memory, CPU, FDs, threads
+- **LLM syscall implementation via gateway** (`agnos-sys/src/llm.rs`):
+  - `load_model()` registers model with LLM Gateway, returns unique handle
+  - `unload_model()` deregisters model handle with validation
+  - `inference()` sends prompt to `/v1/chat/completions`, writes UTF-8 response to output buffer
+  - Thread-safe handle tracking via `RwLock<HashMap>` + `AtomicU64`
+  - Input validation: empty model_id, invalid handles, non-UTF-8 input
+  - Added 9 new tests (handles, load/unload, inference edge cases)
+- **Desktop Agent Manager wired to IPC** (`desktop-environment/src/apps.rs`):
+  - `list_agents()` scans `/run/agnos/agents/` for `.sock` files
+  - Probes each socket with `UnixStream::connect()` to determine Running/Unresponsive status
+  - Merges discovered agents with locally tracked state
+- **Desktop Audit Viewer reads real log** (`desktop-environment/src/apps.rs`):
+  - `get_logs()` parses JSON lines from `/var/log/agnos/audit.log`
+  - Applies time range filters (LastHour, LastDay, LastWeek, Custom)
+  - Applies category filters (agent, security, system)
+  - `filter_cutoff()` computes time range boundaries
+- **Desktop Model Manager queries gateway** (`desktop-environment/src/apps.rs`):
+  - `list_models()` fetches from `/v1/models` and merges with local cache
+  - `download_model()` uses Ollama-compatible `/api/pull` endpoint
+  - `select_model()` validates model exists locally or in gateway before setting active
+
+### Documentation (March 3, 2026 — Consumer Integration)
+- **Phase 6.6 added to roadmap**: Consumer Project Integration section tracking AGNOSTIC (QA platform) and SecureYeoman (sovereign AI agent platform) dependencies on AGNOS
+- **AGNOSTIC integration**: 6/10 requirements already met (LLM Gateway, caching, cgroups, sandbox, audit), 4 planned for Phase 6.6 (agent registration, HUD, security UI, scheduler)
+- **SecureYeoman base image**: 5/17 requirements already met (Landlock, seccomp, cgroups, namespaces), 12 planned across Phase 6.5–6.6 (gVisor, WASM, auditd, dm-verity, LUKS, AppArmor/SELinux, secrets, netns, hardened image)
+- **Priority promotions**: 5 Phase 6.5 items promoted to P0 based on consumer needs (auditd, network segmentation, AppArmor/SELinux, dm-verity, LUKS)
+
+### Changed (March 3, 2026 — P0/P1 Pass #2)
+- `sha2` crate added to workspace dependencies for audit hash chain
+- `reqwest` blocking feature added to `agnos-sys` and `desktop-environment`
+- Test count: 402+ → 420+ (9 new LLM tests, updated desktop tests)
+- agnos-sys tests: 30 → 36
+- P0 stubs remaining: 1 → 0 (cgroups enforcement completed)
+- P1 stubs remaining: 6 → 0 (all implemented)
+- Phase 5 completion: 82% → 91%
+
 ### Security
 - **Sandbox enforcement wired to real syscalls** (`agent-runtime/src/sandbox.rs`, `ai-shell/src/sandbox.rs`):
   - `apply_landlock()` and `apply_seccomp()` now delegate to `agnos_sys::security` (previously returned `Ok(())`)

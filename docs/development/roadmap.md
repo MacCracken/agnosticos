@@ -1,7 +1,7 @@
 # AGNOS Development Roadmap
 
 > **Status**: Pre-Alpha (Phase 5) | **Last Updated**: 2026-03-03
-> **Current Phase**: Phase 5 - Production (82% Complete — P0/P1 stubs eliminated March 3)
+> **Current Phase**: Phase 5 - Production (91% Complete — all P0/P1 stubs eliminated)
 > **Next Milestone**: Alpha Release (Target: Q2 2026)
 
 ---
@@ -15,7 +15,7 @@
 | ~~Agent health checks (real implementation)~~ | agent-runtime | — | — | ✅ Done 2026-03-03 |
 | ~~Fix panicking unwrap() in production code~~ | llm-gateway, desktop-env | — | — | ✅ Done 2026-03-03 |
 | ~~Input validation enforcement (LLM params)~~ | agnos-common | — | — | ✅ Done 2026-03-03 |
-| Resource limit enforcement (cgroups) | agent-runtime | 1 week | TBD | ⏳ Stubbed |
+| ~~Resource limit enforcement (cgroups)~~ | agent-runtime | — | — | ✅ Done 2026-03-03 |
 | Unit test coverage 65% → 80% | All | 2 weeks | TBD | 🔄 In Progress |
 | CIS benchmarks 75% → 80% | Security | 3 days | TBD | 🔄 8 controls remain |
 
@@ -65,14 +65,14 @@
 
 ## Executive Summary
 
-AGNOS (AI-Native General Operating System) is in **Phase 5: Production**, focused on security hardening, testing, and release preparation. A March 3, 2026 internal audit discovered 30+ stub implementations, revising completion down to 75%. A same-day implementation pass eliminated all P0 security stubs and most P1 functionality stubs, bringing completion to **82%**. Remaining work: cgroups enforcement, test coverage (65%→80%), CIS compliance, performance benchmarks, and a third-party security audit.
+AGNOS (AI-Native General Operating System) is in **Phase 5: Production**, focused on security hardening, testing, and release preparation. A March 3, 2026 internal audit discovered 30+ stub implementations, revising completion down to 75%. Two same-day implementation passes eliminated **all P0 and P1 stubs**, bringing completion to **91%**. Remaining work for Alpha: test coverage (65%→80%), CIS compliance (75%→80%), performance benchmarks, and a third-party security audit.
 
 ### Phase Status Overview
 
 | Phase | Status | Completion | Key Deliverables |
 |-------|--------|------------|------------------|
 | 0-4 | ✅ Complete | 90-100% | Foundation through Desktop |
-| 5 | 🔄 In Progress | 82% | Production hardening |
+| 5 | 🔄 In Progress | 91% | Production hardening |
 | 6 | 📋 Planned | 0% | Advanced AI & Networking |
 | 6.5 | 📋 Planned | 0% | OS-Level Features & Security Hardening |
 | 7+ | 📋 Planned | 0% | Ecosystem & Research |
@@ -95,8 +95,8 @@ AGNOS (AI-Native General Operating System) is in **Phase 5: Production**, focuse
 
 All foundational work is complete. See [CHANGELOG.md](/CHANGELOG.md) for detailed history.
 
-### Phase 5.1 - Core Infrastructure (✅ 95% Complete)
-**Revised up from 70% after March 3 P0/P1 implementation pass**
+### Phase 5.1 - Core Infrastructure (✅ 100% Complete)
+**All P0/P1 stubs eliminated in March 3 implementation passes**
 
 #### ✅ Completed (verified working)
 - Agent SDK with message loop (`agnos-sys/src/agent.rs`)
@@ -109,9 +109,9 @@ All foundational work is complete. See [CHANGELOG.md](/CHANGELOG.md) for detaile
 - **LLM gateway CLI** — all 5 subcommands wired to HTTP API on port 8088 *(fixed 2026-03-03)*
 - **ai-shell LLM integration** — connected to LLM Gateway HTTP API with graceful fallback *(fixed 2026-03-03)*
 
-#### ⚠️ Remaining Stubs
-- **LLM syscall stubs** (`agnos-sys/src/llm.rs`): `load_model()`, `unload_model()`, `inference()` return defaults
-- **Audit logging** (`agnos-sys/src/agent.rs`): `audit_log()` only calls `debug!()`, no hash chain to file
+#### ✅ Previously Remaining Stubs — All Resolved
+- ~~**LLM syscall stubs** (`agnos-sys/src/llm.rs`)~~: Now delegates to LLM Gateway HTTP API with handle tracking *(fixed 2026-03-03)*
+- ~~**Audit logging** (`agnos-sys/src/agent.rs`)~~: Now writes JSON lines to `/var/log/agnos/audit.log` with SHA-256 hash chain *(fixed 2026-03-03)*
 
 ### Phase 5.2 - Security & Compliance (🔄 75% Complete)
 
@@ -257,7 +257,7 @@ All foundational work is complete. See [CHANGELOG.md](/CHANGELOG.md) for detaile
   - Note: Can use GitHub Issues/Discussions for Alpha
 
 ### Phase 5.6 - Internal Implementation Gaps (identified March 3, 2026 audit)
-**Completion: 65% (P0 security stubs: 4/5 done, P1 functionality: 7/13 done)**
+**Completion: 100% (all P0 and P1 stubs eliminated)**
 
 These are features where the public API/interface exists but the implementation behind it is a stub, returns fake data, or is disconnected from the actual system. This phase must be substantially complete before Alpha.
 
@@ -269,7 +269,7 @@ These are features where the public API/interface exists but the implementation 
 | ~~Sandbox: ai-shell~~ | ai-shell/src/sandbox.rs | ✅ Wired to `agnos-sys::security` with shell defaults |
 | ~~Health monitoring~~ | agent-runtime/src/supervisor.rs | ✅ Process liveness (`kill(pid, 0)`) + IPC socket connectivity |
 | ~~Agent restart on failure~~ | agent-runtime/src/supervisor.rs | ✅ Exponential backoff (2^n sec, max 5 attempts) |
-| Resource enforcement (cgroups) | agent-runtime/src/supervisor.rs | ⏳ CPU/memory tracked in-memory, never enforced via cgroups v2 |
+| ~~Resource enforcement (cgroups)~~ | agent-runtime/src/supervisor.rs | ✅ CgroupController writes memory.max/cpu.max, adds PID to cgroup.procs, reads usage from counters |
 
 #### P1 — Functionality Stubs
 
@@ -280,9 +280,9 @@ These are features where the public API/interface exists but the implementation 
 | ~~LLM integration (ai-shell)~~ | ai-shell/src/llm.rs | ✅ Connected to LLM Gateway with graceful fallback |
 | ~~Task dependency resolution~~ | agent-runtime/src/orchestrator.rs | ✅ Scheduler checks deps before scheduling |
 | ~~Telemetry system info~~ | agnos-common/src/telemetry.rs | ✅ Reads /etc/os-release, /proc/meminfo, /proc/version |
-| Agent resource monitoring | agent-runtime/src/agent.rs | ⏳ `resource_usage()` returns `Default` |
-| Audit logging (agent SDK) | agnos-sys/src/agent.rs | ⏳ `audit_log()` only calls `debug!()` |
-| LLM syscall stubs | agnos-sys/src/llm.rs | ⏳ `load_model()`, `unload_model()`, `inference()` return defaults |
+| ~~Agent resource monitoring~~ | agent-runtime/src/agent.rs | ✅ Reads VmRSS, CPU time, FD count, thread count from /proc/{pid}/ |
+| ~~Audit logging (agent SDK)~~ | agnos-sys/src/agent.rs | ✅ JSON lines to /var/log/agnos/audit.log with SHA-256 hash chain |
+| ~~LLM syscall stubs~~ | agnos-sys/src/llm.rs | ✅ Delegates to LLM Gateway HTTP API with handle tracking |
 
 #### P1 — Desktop Stubs
 
@@ -290,9 +290,9 @@ These are features where the public API/interface exists but the implementation 
 |-----|-----------|--------|
 | ~~Terminal command execution~~ | desktop-env/src/apps.rs | ✅ Uses `tokio::process::Command` with stdout/stderr capture |
 | ~~System status~~ | desktop-env/src/main.rs | ✅ Reads /proc/stat, /proc/meminfo, libc::statvfs |
-| Agent manager app | desktop-env/src/apps.rs | ⏳ Local vec, no IPC connection to agent-runtime |
-| Audit viewer app | desktop-env/src/apps.rs | ⏳ Returns 1 hardcoded sample entry |
-| Model manager app | desktop-env/src/apps.rs | ⏳ `download_model()` just logs |
+| ~~Agent manager app~~ | desktop-env/src/apps.rs | ✅ Scans /run/agnos/agents/ sockets, probes connectivity |
+| ~~Audit viewer app~~ | desktop-env/src/apps.rs | ✅ Reads /var/log/agnos/audit.log with time/category filters |
+| ~~Model manager app~~ | desktop-env/src/apps.rs | ✅ Queries LLM Gateway /v1/models, Ollama /api/pull |
 
 #### P2 — Incomplete Features
 
@@ -309,7 +309,7 @@ These are features where the public API/interface exists but the implementation 
 | Gap | Current Behavior | Fix Required | Component | Effort |
 |-----|-----------------|--------------|-----------|--------|
 | Wayland compositor | `render()` empty, `handle_input()` logs only | Full Wayland protocol implementation | desktop-env/src/compositor.rs | 2+ weeks |
-| Agent pause/resume | Sets enum status, no process control | `SIGSTOP`/`SIGCONT` or cgroup freeze | agent-runtime/src/agent.rs | 2 days |
+| ~~Agent pause/resume~~ | ~~Sets enum status, no process control~~ | ~~`SIGSTOP`/`SIGCONT`~~ | ~~agent-runtime/src/agent.rs~~ | ✅ Done |
 | `AgentControl` trait | Defined but never implemented | Implement on Agent type or remove | agent-runtime/src/supervisor.rs | 1 day |
 | Prompt right-side | `render_right()` returns `None` | Implement time/status display | ai-shell/src/prompt.rs | 1 day |
 | Feature flags | `wayland`, `ai` defined but gate nothing | Wire to `cfg` attributes or remove | desktop-env/Cargo.toml | 1 day |
@@ -424,6 +424,79 @@ bring AGNOS from an application framework to a genuine operating system.
 | Network segmentation | Per-agent network namespaces with firewall rules | 1 week | P1 |
 | Secrets management | Vault-style secrets injection for agent env vars | 1 week | P2 |
 
+### Phase 6.6: Consumer Project Integration (Planned Q3–Q4 2026)
+
+AGNOS serves as the base platform for two consumer projects. Their requirements
+drive prioritisation of OS-level features and security hardening in Phases 6–6.5.
+
+#### Consumer: AGNOSTIC (QA Automation Platform — Python/CrewAI)
+
+AGNOSTIC's 6-agent QA team runs on AGNOS and routes inference through the LLM Gateway.
+
+| Requirement | AGNOS Component | Phase | Status |
+|-------------|-----------------|-------|--------|
+| LLM Gateway HTTP API (port 8088) | llm-gateway | 5.1 | ✅ Done |
+| Token accounting per agent (`X-Agent-Id` header) | llm-gateway | 5.1 | ✅ Done |
+| Response caching + rate limiting | llm-gateway | 5.1 | ✅ Done |
+| Container sandbox (Landlock + seccomp + namespaces) | agnos-sys | 5.1 | ✅ Done |
+| cgroups v2 resource enforcement per agent | agent-runtime | 5.6 | ✅ Done |
+| Audit trail integration (hash chain) | agnos-sys | 5.6 | ✅ Done |
+| Agent registration with `akd` runtime | agent-runtime | 6.6 | ⏳ Planned |
+| Agent HUD visibility in desktop | desktop-environment | 6.6 | ⏳ Planned |
+| Security UI (permission manager, kill switch) | desktop-environment | 6.6 | ⏳ Planned |
+| Multi-agent resource scheduler | agent-runtime | 6.6 | ⏳ Planned |
+
+**Current integration**: Phase 1 (LLM Gateway only). Config: `AGNOS_LLM_GATEWAY_ENABLED=true`, `PRIMARY_MODEL_PROVIDER=agnos_gateway`.
+
+#### Consumer: SecureYeoman (Sovereign AI Agent Platform — TypeScript/Bun)
+
+SecureYeoman intends to use AGNOS as its base Docker image once security
+hardening is complete. Currently uses `debian:bookworm-slim`.
+
+| Requirement | AGNOS Component | Phase | Status |
+|-------------|-----------------|-------|--------|
+| Landlock filesystem restrictions (`CONFIG_SECURITY_LANDLOCK=y`) | kernel config | 5.1 | ✅ Done |
+| Seccomp-BPF syscall filtering (`CONFIG_SECCOMP_FILTER=y`) | kernel config | 5.1 | ✅ Done |
+| cgroups v2 mount at `/sys/fs/cgroup` | kernel + supervisor | 5.6 | ✅ Done |
+| User namespaces (`CONFIG_USER_NS=y`) | kernel config | 5.1 | ✅ Done |
+| Network/PID namespaces | kernel config | 5.1 | ✅ Done |
+| Pre-compiled seccomp profiles (Python, Node.js, shell) | agnos-sys | 6.5 | ⏳ Planned |
+| gVisor `runsc` pre-installed (opt-in) | base image | 6.5 | ⏳ Planned |
+| WASM runtime libraries (Wasmtime) | base image | 6.5 | ⏳ Planned |
+| Audit subsystem (auditd + AGNOS hash chain) | kernel + agnos-sys | 6.5 | ⏳ Planned |
+| dm-verity read-only rootfs | kernel | 6.5 | ⏳ Planned |
+| LUKS encrypted agent data volumes | kernel + tools | 6.5 | ⏳ Planned |
+| AppArmor/SELinux profiles per agent type | kernel + config | 6.5 | ⏳ Planned |
+| Secrets management (Vault/OpenBao injection) | agent-runtime | 6.5 | ⏳ Planned |
+| Network segmentation (per-agent netns + firewall) | agent-runtime | 6.5 | ⏳ Planned |
+| Hardened base Docker image (`agnos-base:latest`) | build system | 6.6 | ⏳ Planned |
+| Artifact sandbox scoping (task-scoped `/tmp` via Landlock) | agnos-sys | 6.6 | ⏳ Planned |
+| Process resource metrics export (for anomaly detection) | agent-runtime | 6.6 | ⏳ Planned |
+
+**Target Dockerfile**:
+```dockerfile
+FROM agnos-base:latest  # Linux 6.6 LTS, Landlock, seccomp, cgroups v2, gVisor, auditd
+COPY dist/secureyeoman-linux-x64 /usr/local/bin/secureyeoman
+USER secureyeoman
+EXPOSE 18789
+ENTRYPOINT ["secureyeoman"]
+```
+
+#### Priority-Driven Ordering
+
+Based on consumer needs, the following Phase 6.5 items are **promoted to P0** for
+the consumer integration milestone:
+
+| Item | Original Priority | New Priority | Reason |
+|------|-------------------|--------------|--------|
+| Audit subsystem (auditd) | P1 | **P0** | Both consumers need cryptographic audit integration |
+| Network segmentation | P1 | **P0** | SecureYeoman sandbox isolation depends on per-agent netns |
+| AppArmor/SELinux profiles | P1 | **P0** | SecureYeoman's deny-by-default security model |
+| dm-verity | P1 | **P0** | SecureYeoman requires read-only rootfs integrity |
+| LUKS volumes | P1 | **P0** | SecureYeoman's AES-256-GCM at-rest encryption policy |
+| Secrets management | P2 | **P1** | Both consumers manage API keys/tokens for LLM providers |
+| Hardened base Docker image | — | **P1** | Direct deliverable for SecureYeoman migration |
+
 ### Phase 7: Ecosystem (Planned Q4 2026)
 
 #### Marketplace
@@ -452,8 +525,8 @@ bring AGNOS from an application framework to a genuine operating system.
 ### Alpha Release - Q2 2026
 
 **Criteria:**
-- [x] Phase 5.6 P0 items complete (sandbox, health, restart, unwrap, validation) — 4/5 done, cgroups remaining
-- [x] Phase 5.6 P1 items substantially complete (CLI wiring, LLM integration, desktop) — 7/13 done
+- [x] Phase 5.6 P0 items complete (sandbox, health, restart, unwrap, validation, cgroups) — **all done**
+- [x] Phase 5.6 P1 items complete (CLI wiring, LLM integration, desktop, resource monitoring, audit, LLM syscalls) — **all done**
 - [ ] 80% test coverage
 - [ ] Performance benchmarks established (system-level + documentation)
 - [ ] Third-party security audit complete
@@ -461,7 +534,7 @@ bring AGNOS from an application framework to a genuine operating system.
 - [x] Known issues documented
 
 **Target Date**: End of Q2 2026
-**Confidence**: Medium-High (82% complete, P0/P1 stubs largely eliminated)
+**Confidence**: High (91% complete, all P0/P1 stubs eliminated, only test coverage + audit remain)
 
 ### Beta Release - Q3 2026
 
@@ -496,25 +569,25 @@ bring AGNOS from an application framework to a genuine operating system.
 |--------|--------|---------|--------|----------|
 | Code Coverage | >80% | ~65% | 🔄 | P0 |
 | Test Pass Rate | 100% | 100% | ✅ | - |
-| Total Tests | 400+ | 402+ | ✅ | - |
+| Total Tests | 400+ | 420+ | ✅ | - |
 | Agent Spawn Time | <500ms | ~300ms | ✅ | - |
 | Shell Response Time | <100ms | ~50ms | ✅ | - |
 | Memory Overhead | <2GB | ~1.2GB | ✅ | - |
 | Boot Time | <10s | N/A | ⏳ | P1 |
 | CIS Compliance | >80% | ~75% | 🔄 | P0 |
-| Stub Implementations (P0) | 0 | 1 | 🔄 | P0 |
-| Stub Implementations (P1) | 0 | 6 | 🔄 | P1 |
+| Stub Implementations (P0) | 0 | 0 | ✅ | - |
+| Stub Implementations (P1) | 0 | 0 | ✅ | - |
 
 ### By Component
 
 | Component | Tests | Stubs Remaining | Notes |
 |-----------|-------|-----------------|-------|
 | agnos-common | 94 | 0 | Telemetry system info ✅ |
-| agnos-sys | 30 | 2 | LLM syscall stubs, audit logging |
-| agent-runtime | 56 | 2 | Cgroups enforcement, resource monitoring |
+| agnos-sys | 36 | 0 | LLM gateway delegation ✅, audit hash chain ✅ |
+| agent-runtime | 56 | 0 | Cgroups ✅, /proc resource monitoring ✅ |
 | llm-gateway | 39 | 0 (P2 only) | Streaming + cloud providers are P2 |
 | ai-shell | 183 | 0 (P2 only) | 8 intents + output formatting are P2 |
-| desktop-environment | TBD | 3 | Agent manager, audit viewer, model manager apps |
+| desktop-environment | 151 | 0 | Agent manager ✅, audit viewer ✅, model manager ✅ |
 
 ---
 
@@ -623,6 +696,20 @@ For detailed history of all completed work, see [CHANGELOG.md](/CHANGELOG.md).
 - Test count: 402+ tests, 0 failures across all packages
 - Revised Phase 5 completion from 75% to 82%
 
+**March 3, 2026 P0/P1 Implementation Pass #2:**
+- Implemented cgroups v2 resource enforcement: `CgroupController` manages per-agent cgroups, sets `memory.max`/`cpu.max`, adds PID to `cgroup.procs`, reads counters for real usage
+- Implemented real agent resource monitoring: reads VmRSS, CPU time (utime+stime), FD count, thread count from `/proc/{pid}/`
+- Implemented agent pause/resume via SIGSTOP/SIGCONT signals
+- Implemented audit logging with SHA-256 hash chain to `/var/log/agnos/audit.log` (JSON lines, flock-based concurrent write safety)
+- Implemented LLM syscalls via LLM Gateway HTTP delegation: `load_model()`, `unload_model()`, `inference()` with handle tracking and input validation
+- Wired desktop Agent Manager to scan `/run/agnos/agents/` sockets with connectivity probing
+- Wired desktop Audit Viewer to read and filter real audit log entries
+- Wired desktop Model Manager to query LLM Gateway `/v1/models` and Ollama `/api/pull`
+- Added 9 new tests for LLM syscall implementation
+- Test count: 420+ tests, 0 failures across all packages
+- P0 stubs: 1 → 0, P1 stubs: 6 → 0 (all eliminated)
+- Revised Phase 5 completion from 82% to 91%
+
 ---
 
-*Last Updated: 2026-03-03 (P0/P1 implementation pass) | Next Review: 2026-03-10*
+*Last Updated: 2026-03-03 (P0/P1 implementation pass #2 — all stubs eliminated) | Next Review: 2026-03-10*

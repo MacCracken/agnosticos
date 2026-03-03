@@ -180,40 +180,132 @@ impl Agent {
         Ok(())
     }
 
-    /// Pause the agent (suspend execution)
+    /// Pause the agent (suspend execution via SIGSTOP)
     pub async fn pause(&mut self) -> Result<()> {
         let mut status = self.status.write().await;
         if *status != AgentStatus::Running {
             return Err(anyhow::anyhow!("Cannot pause agent in state: {:?}", *status));
         }
 
+        // Send SIGSTOP to actually suspend the process
+        if let Some(ref process) = self.process {
+            if let Some(pid) = process.id() {
+                #[cfg(unix)]
+                {
+                    use nix::sys::signal::{self, Signal};
+                    use nix::unistd::Pid;
+                    signal::kill(Pid::from_raw(pid as i32), Signal::SIGSTOP)
+                        .map_err(|e| anyhow::anyhow!("Failed to SIGSTOP agent {}: {}", self.id, e))?;
+                }
+            }
+        }
+
         *status = AgentStatus::Paused;
-        info!("Agent {} paused", self.id);
-        
-        // TODO: Implement actual process suspension
-        
+        info!("Agent {} paused (SIGSTOP)", self.id);
         Ok(())
     }
 
-    /// Resume a paused agent
+    /// Resume a paused agent (via SIGCONT)
     pub async fn resume(&mut self) -> Result<()> {
         let mut status = self.status.write().await;
         if *status != AgentStatus::Paused {
             return Err(anyhow::anyhow!("Cannot resume agent in state: {:?}", *status));
         }
 
+        // Send SIGCONT to resume the process
+        if let Some(ref process) = self.process {
+            if let Some(pid) = process.id() {
+                #[cfg(unix)]
+                {
+                    use nix::sys::signal::{self, Signal};
+                    use nix::unistd::Pid;
+                    signal::kill(Pid::from_raw(pid as i32), Signal::SIGCONT)
+                        .map_err(|e| anyhow::anyhow!("Failed to SIGCONT agent {}: {}", self.id, e))?;
+                }
+            }
+        }
+
         *status = AgentStatus::Running;
-        info!("Agent {} resumed", self.id);
-        
-        // TODO: Implement actual process resumption
-        
+        info!("Agent {} resumed (SIGCONT)", self.id);
         Ok(())
     }
 
-    /// Get current resource usage
+    /// Get current resource usage by reading from `/proc/{pid}/`.
+    ///
+    /// Returns real memory (VmRSS), CPU time (utime+stime), FD count, and
+    /// thread count for the agent's process.  Falls back to defaults if the
+    /// process has no PID or `/proc` is unavailable.
     pub async fn resource_usage(&self) -> ResourceUsage {
-        // TODO: Implement actual resource monitoring
-        ResourceUsage::default()
+        let pid = match self.process.as_ref().and_then(|p| p.id()) {
+            Some(p) => p,
+            None => return ResourceUsage::default(),
+        };
+
+        let memory_used = Self::read_vm_rss(pid);
+        let cpu_time_used = Self::read_cpu_time_ms(pid);
+        let file_descriptors_used = Self::count_fds(pid);
+        let processes_used = Self::count_threads(pid);
+
+        ResourceUsage {
+            memory_used,
+            cpu_time_used,
+            file_descriptors_used,
+            processes_used,
+        }
+    }
+
+    /// Read VmRSS from /proc/{pid}/status in bytes.
+    fn read_vm_rss(pid: u32) -> u64 {
+        let path = format!("/proc/{}/status", pid);
+        std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|contents| {
+                for line in contents.lines() {
+                    if let Some(val) = line.strip_prefix("VmRSS:") {
+                        let kb: u64 = val.trim().split_whitespace().next()?.parse().ok()?;
+                        return Some(kb * 1024);
+                    }
+                }
+                None
+            })
+            .unwrap_or(0)
+    }
+
+    /// Read CPU time (utime + stime) from /proc/{pid}/stat in milliseconds.
+    fn read_cpu_time_ms(pid: u32) -> u64 {
+        let path = format!("/proc/{}/stat", pid);
+        std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|contents| {
+                let after_comm = contents.find(')')?.checked_add(2)?;
+                let fields: Vec<&str> = contents[after_comm..].split_whitespace().collect();
+                let utime: u64 = fields.get(11)?.parse().ok()?;
+                let stime: u64 = fields.get(12)?.parse().ok()?;
+                let ticks = utime + stime;
+                let ticks_per_sec = unsafe { libc::sysconf(libc::_SC_CLK_TCK) } as u64;
+                if ticks_per_sec > 0 {
+                    Some(ticks * 1000 / ticks_per_sec)
+                } else {
+                    Some(ticks * 10) // fallback: assume 100 Hz
+                }
+            })
+            .unwrap_or(0)
+    }
+
+    /// Count open file descriptors from /proc/{pid}/fd/.
+    fn count_fds(pid: u32) -> u32 {
+        let path = format!("/proc/{}/fd", pid);
+        std::fs::read_dir(&path)
+            .map(|entries| entries.count() as u32)
+            .unwrap_or(0)
+    }
+
+    /// Count threads from /proc/{pid}/task/.
+    fn count_threads(pid: u32) -> u32 {
+        let path = format!("/proc/{}/task", pid);
+        std::fs::read_dir(&path)
+            .map(|entries| entries.count() as u32)
+            .unwrap_or(1) // at least 1 thread (the main thread)
     }
 
     /// Send a message to the agent

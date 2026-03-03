@@ -31,6 +31,7 @@ chrono = { workspace = true, features = ["serde"] }
 dashmap = { workspace = true }
 parking_lot = { workspace = true }
 libc = { workspace = true }
+reqwest = { workspace = true, features = ["json", "blocking"] }
 
 [dev-dependencies]
 tokio-test = "0.4"

@@ -170,8 +170,12 @@ pub mod helpers {
     use super::*;
     use std::time::Duration;
 
+    use sha2::{Digest, Sha256};
+
     pub const LLM_GATEWAY_ADDR: &str = "http://localhost:8088";
     const LLM_GATEWAY_TIMEOUT: Duration = Duration::from_secs(60);
+    const AUDIT_LOG_PATH: &str = "/var/log/agnos/audit.log";
+    const AUDIT_LOG_DIR: &str = "/var/log/agnos";
 
     /// Shared HTTP client — reuses connection pool across all helper calls.
     fn shared_client() -> &'static reqwest::Client {
@@ -319,15 +323,155 @@ pub mod helpers {
         Ok(models)
     }
     
-    /// Log an audit event
+    /// Log an audit event to `/var/log/agnos/audit.log` with cryptographic hash chain.
+    ///
+    /// Each entry is a JSON line containing the event data plus a SHA-256 hash
+    /// that chains to the previous entry, providing tamper evidence.  The file
+    /// is created (with directory) if it doesn't exist.  Writes are appended
+    /// atomically with a file lock.
     pub async fn audit_log(event_type: &str, details: agnos_common::serde_json::Value) -> Result<()> {
         debug!("Audit log: {} - {:?}", event_type, details);
+
+        // Build the log entry
+        let timestamp = chrono::Utc::now().to_rfc3339();
+        let previous_hash = read_last_hash().unwrap_or_else(|| "genesis".to_string());
+
+        // Hash = SHA-256(previous_hash || timestamp || event_type || details)
+        let mut hasher = Sha256::new();
+        hasher.update(previous_hash.as_bytes());
+        hasher.update(timestamp.as_bytes());
+        hasher.update(event_type.as_bytes());
+        hasher.update(details.to_string().as_bytes());
+        let hash = format!("{:x}", hasher.finalize());
+
+        let entry = serde_json::json!({
+            "timestamp": timestamp,
+            "event_type": event_type,
+            "details": details,
+            "previous_hash": previous_hash,
+            "hash": hash,
+        });
+
+        // Ensure the directory exists
+        if let Err(e) = std::fs::create_dir_all(AUDIT_LOG_DIR) {
+            warn!("Could not create audit log directory {}: {}", AUDIT_LOG_DIR, e);
+            // Still log to debug as fallback
+            return Ok(());
+        }
+
+        // Append atomically with exclusive file lock
+        use std::io::Write;
+        match std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(AUDIT_LOG_PATH)
+        {
+            Ok(mut file) => {
+                // Use advisory lock for concurrent writers
+                #[cfg(unix)]
+                {
+                    use std::os::unix::io::AsRawFd;
+                    let fd = file.as_raw_fd();
+                    unsafe {
+                        libc::flock(fd, libc::LOCK_EX);
+                    }
+                }
+
+                let line = format!("{}\n", entry);
+                if let Err(e) = file.write_all(line.as_bytes()) {
+                    warn!("Failed to write audit log: {}", e);
+                }
+
+                #[cfg(unix)]
+                {
+                    use std::os::unix::io::AsRawFd;
+                    let fd = file.as_raw_fd();
+                    unsafe {
+                        libc::flock(fd, libc::LOCK_UN);
+                    }
+                }
+            }
+            Err(e) => {
+                warn!("Could not open audit log {}: {}", AUDIT_LOG_PATH, e);
+            }
+        }
+
         Ok(())
     }
-    
-    /// Check resource usage
+
+    /// Read the hash from the last line of the audit log (for chaining).
+    fn read_last_hash() -> Option<String> {
+        let contents = std::fs::read_to_string(AUDIT_LOG_PATH).ok()?;
+        let last_line = contents.lines().rev().find(|l| !l.trim().is_empty())?;
+        let entry: serde_json::Value = serde_json::from_str(last_line).ok()?;
+        entry["hash"].as_str().map(String::from)
+    }
+
+    /// Check resource usage for the current process by reading from `/proc/self/`.
     pub async fn check_resources() -> ResourceUsage {
-        ResourceUsage::default()
+        let pid = std::process::id();
+
+        let memory_used = read_vm_rss(pid);
+        let cpu_time_used = read_cpu_time_ms(pid);
+        let file_descriptors_used = count_fds(pid);
+        let processes_used = count_threads(pid);
+
+        ResourceUsage {
+            memory_used,
+            cpu_time_used,
+            file_descriptors_used,
+            processes_used,
+        }
+    }
+
+    fn read_vm_rss(pid: u32) -> u64 {
+        let path = format!("/proc/{}/status", pid);
+        std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|contents| {
+                for line in contents.lines() {
+                    if let Some(val) = line.strip_prefix("VmRSS:") {
+                        let kb: u64 = val.trim().split_whitespace().next()?.parse().ok()?;
+                        return Some(kb * 1024);
+                    }
+                }
+                None
+            })
+            .unwrap_or(0)
+    }
+
+    fn read_cpu_time_ms(pid: u32) -> u64 {
+        let path = format!("/proc/{}/stat", pid);
+        std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|contents| {
+                let after_comm = contents.find(')')?.checked_add(2)?;
+                let fields: Vec<&str> = contents[after_comm..].split_whitespace().collect();
+                let utime: u64 = fields.get(11)?.parse().ok()?;
+                let stime: u64 = fields.get(12)?.parse().ok()?;
+                let ticks = utime + stime;
+                let ticks_per_sec = unsafe { libc::sysconf(libc::_SC_CLK_TCK) } as u64;
+                if ticks_per_sec > 0 {
+                    Some(ticks * 1000 / ticks_per_sec)
+                } else {
+                    Some(ticks * 10)
+                }
+            })
+            .unwrap_or(0)
+    }
+
+    fn count_fds(pid: u32) -> u32 {
+        let path = format!("/proc/{}/fd", pid);
+        std::fs::read_dir(&path)
+            .map(|entries| entries.count() as u32)
+            .unwrap_or(0)
+    }
+
+    fn count_threads(pid: u32) -> u32 {
+        let path = format!("/proc/{}/task", pid);
+        std::fs::read_dir(&path)
+            .map(|entries| entries.count() as u32)
+            .unwrap_or(1)
     }
 }
 
