@@ -362,3 +362,306 @@ pub async fn batch_approve(
     
     Ok(results)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_risk_level_from_permission_safe() {
+        let risk = RiskLevel::from_permission(&PermissionLevel::Safe);
+        assert_eq!(risk, RiskLevel::Low);
+    }
+
+    #[test]
+    fn test_risk_level_from_permission_readonly() {
+        let risk = RiskLevel::from_permission(&PermissionLevel::ReadOnly);
+        assert_eq!(risk, RiskLevel::Low);
+    }
+
+    #[test]
+    fn test_risk_level_from_permission_user_write() {
+        let risk = RiskLevel::from_permission(&PermissionLevel::UserWrite);
+        assert_eq!(risk, RiskLevel::Medium);
+    }
+
+    #[test]
+    fn test_risk_level_from_permission_system_write() {
+        let risk = RiskLevel::from_permission(&PermissionLevel::SystemWrite);
+        assert_eq!(risk, RiskLevel::High);
+    }
+
+    #[test]
+    fn test_risk_level_from_permission_admin() {
+        let risk = RiskLevel::from_permission(&PermissionLevel::Admin);
+        assert_eq!(risk, RiskLevel::Critical);
+    }
+
+    #[test]
+    fn test_risk_level_from_permission_blocked() {
+        let risk = RiskLevel::from_permission(&PermissionLevel::Blocked);
+        assert_eq!(risk, RiskLevel::Critical);
+    }
+
+    #[test]
+    fn test_risk_level_ordering() {
+        assert!(RiskLevel::Low < RiskLevel::Medium);
+        assert!(RiskLevel::Medium < RiskLevel::High);
+        assert!(RiskLevel::High < RiskLevel::Critical);
+    }
+
+    #[test]
+    fn test_risk_level_icon() {
+        assert_eq!(RiskLevel::Low.icon(), "✓");
+        assert_eq!(RiskLevel::Medium.icon(), "⚠");
+        assert_eq!(RiskLevel::High.icon(), "⚠");
+        assert_eq!(RiskLevel::Critical.icon(), "✕");
+    }
+
+    #[test]
+    fn test_risk_level_color() {
+        let low_color = RiskLevel::Low.color()("test");
+        assert!(low_color.contains("32")); // green
+
+        let med_color = RiskLevel::Medium.color()("test");
+        assert!(med_color.contains("33")); // yellow
+
+        let high_color = RiskLevel::High.color()("test");
+        assert!(high_color.contains("31")); // red
+
+        let crit_color = RiskLevel::Critical.color()("test");
+        assert!(crit_color.contains("1;31")); // bright red
+    }
+
+    #[test]
+    fn test_approval_manager_new() {
+        let manager = ApprovalManager::new();
+        assert_eq!(manager.timeout_seconds, 300);
+        assert!(!manager.auto_approve_low_risk);
+        assert!(manager.blocked_patterns.is_empty());
+    }
+
+    #[test]
+    fn test_approval_manager_auto_approve_setter() {
+        let mut manager = ApprovalManager::new();
+        assert!(!manager.auto_approve_low_risk);
+
+        manager.set_auto_approve_low_risk(true);
+        assert!(manager.auto_approve_low_risk);
+
+        manager.set_auto_approve_low_risk(false);
+        assert!(!manager.auto_approve_low_risk);
+    }
+
+    #[test]
+    fn test_approval_manager_add_blocked_pattern() {
+        let mut manager = ApprovalManager::new();
+        manager.block_pattern("rm -rf /".to_string());
+        assert!(manager.blocked_patterns.contains(&"rm -rf /".to_string()));
+    }
+
+    #[test]
+    fn test_approval_manager_is_blocked() {
+        let mut manager = ApprovalManager::new();
+        manager.block_pattern("rm -rf".to_string());
+
+        let request = ApprovalRequest::Command {
+            command: "rm -rf /".to_string(),
+            args: vec!["-rf".to_string(), "/".to_string()],
+            reason: "Remove all files".to_string(),
+            risk_level: RiskLevel::Critical,
+        };
+
+        assert!(manager.is_blocked(&request));
+    }
+
+    #[test]
+    fn test_approval_manager_is_not_blocked() {
+        let manager = ApprovalManager::new();
+
+        let request = ApprovalRequest::Command {
+            command: "ls".to_string(),
+            args: vec!["-la".to_string()],
+            reason: "List files".to_string(),
+            risk_level: RiskLevel::Low,
+        };
+
+        assert!(!manager.is_blocked(&request));
+    }
+
+    #[test]
+    fn test_approval_request_command() {
+        let request = ApprovalRequest::Command {
+            command: "ls".to_string(),
+            args: vec!["-la".to_string()],
+            reason: "List files".to_string(),
+            risk_level: RiskLevel::Low,
+        };
+
+        let debug_str = format!("{:?}", request);
+        assert!(debug_str.contains("Command"));
+        assert!(debug_str.contains("ls"));
+    }
+
+    #[test]
+    fn test_approval_request_privilege_escalation() {
+        let request = ApprovalRequest::PrivilegeEscalation {
+            command: "sudo rm -rf /".to_string(),
+            user: "root".to_string(),
+            reason: "Admin access needed".to_string(),
+        };
+
+        let debug_str = format!("{:?}", request);
+        assert!(debug_str.contains("PrivilegeEscalation"));
+        assert!(debug_str.contains("root"));
+    }
+
+    #[test]
+    fn test_approval_request_file_operation() {
+        let path = std::path::PathBuf::from("/home/user/important.txt");
+        let request = ApprovalRequest::FileOperation {
+            operation: "delete".to_string(),
+            path: path.clone(),
+            description: "Delete important file".to_string(),
+        };
+
+        let debug_str = format!("{:?}", request);
+        assert!(debug_str.contains("FileOperation"));
+        assert!(debug_str.contains("important.txt"));
+    }
+
+    #[test]
+    fn test_approval_request_network_access() {
+        let request = ApprovalRequest::NetworkAccess {
+            host: "evil.com".to_string(),
+            port: 443,
+            protocol: "https".to_string(),
+            purpose: "Check connectivity".to_string(),
+        };
+
+        let debug_str = format!("{:?}", request);
+        assert!(debug_str.contains("NetworkAccess"));
+        assert!(debug_str.contains("evil.com"));
+    }
+
+    #[test]
+    fn test_approval_request_batch() {
+        let request = ApprovalRequest::Batch {
+            operations: vec!["op1".to_string(), "op2".to_string()],
+            summary: "Batch operations".to_string(),
+        };
+
+        let debug_str = format!("{:?}", request);
+        assert!(debug_str.contains("Batch"));
+        assert!(debug_str.contains("op1"));
+        assert!(debug_str.contains("op2"));
+    }
+
+    #[test]
+    fn test_approval_response_variants() {
+        let approved = ApprovalResponse::Approved;
+        let approved_once = ApprovalResponse::ApprovedOnce;
+        let denied = ApprovalResponse::Denied;
+        let deny_block = ApprovalResponse::DenyAndBlock;
+        let need_info = ApprovalResponse::NeedInfo("Why?".to_string());
+
+        assert!(format!("{:?}", approved).contains("Approved"));
+        assert!(format!("{:?}", approved_once).contains("ApprovedOnce"));
+        assert!(format!("{:?}", denied).contains("Denied"));
+        assert!(format!("{:?}", deny_block).contains("DenyAndBlock"));
+        assert!(format!("{:?}", need_info).contains("NeedInfo"));
+    }
+
+    #[test]
+    fn test_assess_risk_command_low() {
+        let manager = ApprovalManager::new();
+        let request = ApprovalRequest::Command {
+            command: "ls".to_string(),
+            args: vec![],
+            reason: "List".to_string(),
+            risk_level: RiskLevel::Low,
+        };
+        assert_eq!(manager.assess_risk(&request), RiskLevel::Low);
+    }
+
+    #[test]
+    fn test_assess_risk_command_high() {
+        let manager = ApprovalManager::new();
+        let request = ApprovalRequest::Command {
+            command: "rm".to_string(),
+            args: vec!["-rf".to_string(), "/".to_string()],
+            reason: "Delete".to_string(),
+            risk_level: RiskLevel::Critical,
+        };
+        assert_eq!(manager.assess_risk(&request), RiskLevel::Critical);
+    }
+
+    #[test]
+    fn test_assess_risk_privilege_escalation() {
+        let manager = ApprovalManager::new();
+        let request = ApprovalRequest::PrivilegeEscalation {
+            command: "sudo su".to_string(),
+            user: "root".to_string(),
+            reason: "Root access".to_string(),
+        };
+        assert_eq!(manager.assess_risk(&request), RiskLevel::Critical);
+    }
+
+    #[test]
+    fn test_assess_risk_network() {
+        let manager = ApprovalManager::new();
+        let request = ApprovalRequest::NetworkAccess {
+            host: "example.com".to_string(),
+            port: 80,
+            protocol: "http".to_string(),
+            purpose: "HTTP request".to_string(),
+        };
+        assert_eq!(manager.assess_risk(&request), RiskLevel::Medium);
+    }
+
+    #[test]
+    fn test_approval_manager_default() {
+        let manager = ApprovalManager::default();
+        assert_eq!(manager.timeout_seconds, 300);
+        assert!(!manager.auto_approve_low_risk);
+    }
+
+    #[test]
+    fn test_risk_level_debug() {
+        let debug_low = format!("{:?}", RiskLevel::Low);
+        let debug_medium = format!("{:?}", RiskLevel::Medium);
+        let debug_high = format!("{:?}", RiskLevel::High);
+        let debug_critical = format!("{:?}", RiskLevel::Critical);
+
+        assert!(debug_low.contains("Low"));
+        assert!(debug_medium.contains("Medium"));
+        assert!(debug_high.contains("High"));
+        assert!(debug_critical.contains("Critical"));
+    }
+
+    #[test]
+    fn test_risk_level_clone() {
+        let original = RiskLevel::High;
+        let cloned = original.clone();
+        assert_eq!(original, cloned);
+    }
+
+    #[test]
+    fn test_approval_response_clone() {
+        let original = ApprovalResponse::NeedInfo("test".to_string());
+        let cloned = original.clone();
+        assert!(format!("{:?}", cloned).contains("NeedInfo"));
+    }
+
+    #[test]
+    fn test_approval_request_clone() {
+        let original = ApprovalRequest::Command {
+            command: "test".to_string(),
+            args: vec!["arg1".to_string()],
+            reason: "testing".to_string(),
+            risk_level: RiskLevel::Low,
+        };
+        let cloned = original.clone();
+        assert!(format!("{:?}", cloned).contains("test"));
+    }
+}
