@@ -192,11 +192,11 @@ impl TelemetryCollector {
         
         let system_info = SystemInfo {
             os_type: std::env::consts::OS.to_string(),
-            os_version: "unknown".to_string(), // Would need platform-specific code
+            os_version: Self::read_os_version(),
             architecture: std::env::consts::ARCH.to_string(),
             cpu_count: num_cpus::get(),
-            memory_mb: 0, // Would need system-specific code
-            kernel_version: "unknown".to_string(),
+            memory_mb: Self::read_memory_mb(),
+            kernel_version: Self::read_kernel_version(),
         };
         
         let report = CrashReport {
@@ -241,7 +241,10 @@ impl TelemetryCollector {
                     .timeout(std::time::Duration::from_secs(30))
                     .pool_max_idle_per_host(2)
                     .build()
-                    .expect("failed to build telemetry http client")
+                    .unwrap_or_else(|e| {
+                        tracing::error!("Failed to build telemetry client: {}, using default", e);
+                        reqwest::Client::new()
+                    })
             });
         let payload = serde_json::json!({
             "instance_id": self.config.instance_id,
@@ -272,6 +275,45 @@ impl TelemetryCollector {
     /// Get current session statistics
     pub async fn get_stats(&self) -> TelemetrySession {
         self.session.read().await.clone()
+    }
+
+    /// Read OS version from /etc/os-release (Linux) or fallback
+    fn read_os_version() -> String {
+        std::fs::read_to_string("/etc/os-release")
+            .ok()
+            .and_then(|content| {
+                content.lines()
+                    .find(|l| l.starts_with("PRETTY_NAME="))
+                    .map(|l| l.trim_start_matches("PRETTY_NAME=").trim_matches('"').to_string())
+            })
+            .unwrap_or_else(|| std::env::consts::OS.to_string())
+    }
+
+    /// Read total physical memory from /proc/meminfo (Linux)
+    fn read_memory_mb() -> u64 {
+        std::fs::read_to_string("/proc/meminfo")
+            .ok()
+            .and_then(|content| {
+                content.lines()
+                    .find(|l| l.starts_with("MemTotal:"))
+                    .and_then(|l| {
+                        l.split_whitespace().nth(1)
+                            .and_then(|kb| kb.parse::<u64>().ok())
+                            .map(|kb| kb / 1024) // Convert kB to MB
+                    })
+            })
+            .unwrap_or(0)
+    }
+
+    /// Read kernel version from /proc/version or uname
+    fn read_kernel_version() -> String {
+        std::fs::read_to_string("/proc/version")
+            .ok()
+            .and_then(|content| {
+                // /proc/version format: "Linux version X.Y.Z ..."
+                content.split_whitespace().nth(2).map(|s| s.to_string())
+            })
+            .unwrap_or_else(|| "unknown".to_string())
     }
 }
 

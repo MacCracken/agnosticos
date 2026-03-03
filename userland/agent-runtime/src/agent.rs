@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use tokio::process::{Child, Command};
-use tokio::sync::{mpsc, oneshot, RwLock};
+use tokio::sync::{mpsc, RwLock};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
@@ -26,6 +26,8 @@ pub struct AgentHandle {
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub started_at: Option<chrono::DateTime<chrono::Utc>>,
     pub resource_usage: ResourceUsage,
+    /// PID of the agent process (if spawned)
+    pub pid: Option<u32>,
 }
 
 /// Represents a running agent process
@@ -72,6 +74,7 @@ impl Agent {
 
     /// Get agent handle for external reference
     pub async fn handle(&self) -> AgentHandle {
+        let pid = self.process.as_ref().and_then(|p| p.id());
         AgentHandle {
             id: self.id,
             name: self.config.name.clone(),
@@ -79,6 +82,7 @@ impl Agent {
             created_at: chrono::Utc::now(),
             started_at: None,
             resource_usage: ResourceUsage::default(),
+            pid,
         }
     }
 

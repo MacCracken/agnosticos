@@ -184,20 +184,75 @@ impl Supervisor {
         }
     }
 
-    /// Check the health of a specific agent
+    /// Check the health of a specific agent.
+    ///
+    /// Verifies that the agent's process is alive (via /proc on Linux or
+    /// `kill(pid, 0)`) and that it hasn't exceeded its health check timeout.
     async fn check_agent_health(&self, agent_id: AgentId) -> Result<bool> {
-        // Get agent from registry
         let agent = self.registry.get(agent_id)
             .ok_or_else(|| anyhow::anyhow!("Agent {} not found in registry", agent_id))?;
 
         // Only check running agents
         if agent.status != AgentStatus::Running {
-            return Ok(true); // Not running, consider healthy
+            return Ok(true);
         }
 
-        // TODO: Implement actual health check via IPC or syscall
-        // For now, assume healthy
+        // Check if the agent's process is still alive
+        if let Some(pid) = agent.pid {
+            let alive = Self::is_process_alive(pid);
+            if !alive {
+                warn!("Agent {} (pid {}) process is no longer alive", agent_id, pid);
+                return Ok(false);
+            }
+
+            // Check IPC socket existence as a secondary liveness signal
+            let socket_path = format!("/run/agnos/agents/{}.sock", agent_id);
+            if std::path::Path::new(&socket_path).exists() {
+                // Try a non-blocking connect to verify socket is accepting
+                match tokio::time::timeout(
+                    self.config.timeout,
+                    tokio::net::UnixStream::connect(&socket_path),
+                )
+                .await
+                {
+                    Ok(Ok(_stream)) => {
+                        debug!("Agent {} health check passed (process alive + socket responsive)", agent_id);
+                        return Ok(true);
+                    }
+                    Ok(Err(e)) => {
+                        debug!("Agent {} socket connect failed: {} (process alive, socket unresponsive)", agent_id, e);
+                        // Process is alive but socket isn't responding — might be starting up
+                        return Ok(true);
+                    }
+                    Err(_) => {
+                        warn!("Agent {} health check timed out after {:?}", agent_id, self.config.timeout);
+                        return Ok(false);
+                    }
+                }
+            }
+
+            // No socket but process is alive — agent may not use IPC
+            debug!("Agent {} health check passed (process alive, no socket)", agent_id);
+            return Ok(true);
+        }
+
+        // No PID tracked — can't verify, assume healthy
+        debug!("Agent {} has no PID tracked, assuming healthy", agent_id);
         Ok(true)
+    }
+
+    /// Check if a process is alive using kill(pid, 0).
+    fn is_process_alive(pid: u32) -> bool {
+        #[cfg(target_os = "linux")]
+        {
+            // kill(pid, 0) checks if the process exists without sending a signal
+            unsafe { libc::kill(pid as libc::pid_t, 0) == 0 }
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = pid;
+            true // Can't check on non-Linux
+        }
     }
 
     /// Update health status based on check result
@@ -235,18 +290,89 @@ impl Supervisor {
         }
     }
 
-    /// Handle an unhealthy agent
+    /// Handle an unhealthy agent with restart logic.
+    ///
+    /// Attempts to restart the agent with exponential backoff.
+    /// After `MAX_RESTART_ATTEMPTS` failures, the agent is marked as permanently failed.
     async fn handle_unhealthy_agent(&self, agent_id: AgentId) {
+        const MAX_RESTART_ATTEMPTS: u32 = 5;
+        const BASE_BACKOFF_SECS: u64 = 2;
+
         warn!("Taking recovery action for unhealthy agent {}", agent_id);
 
-        // Update agent status
-        if let Err(e) = self.registry.update_status(agent_id, AgentStatus::Failed).await {
-            error!("Failed to update agent {} status: {}", agent_id, e);
+        // Get current failure count
+        let failure_count = {
+            let checks = self.health_checks.read().await;
+            checks.get(&agent_id).map_or(0, |h| h.consecutive_failures)
+        };
+
+        if failure_count > MAX_RESTART_ATTEMPTS {
+            error!(
+                "Agent {} has exceeded max restart attempts ({}), marking as permanently failed",
+                agent_id, MAX_RESTART_ATTEMPTS
+            );
+            if let Err(e) = self.registry.update_status(agent_id, AgentStatus::Failed).await {
+                error!("Failed to update agent {} status: {}", agent_id, e);
+            }
+            return;
         }
 
-        // TODO: Implement automatic restart logic
-        // For now, just log the failure
-        error!("Agent {} has failed health checks", agent_id);
+        // Exponential backoff: 2s, 4s, 8s, 16s, 32s
+        let backoff = Duration::from_secs(BASE_BACKOFF_SECS.saturating_pow(failure_count));
+        info!(
+            "Restarting agent {} (attempt {}/{}) after {:?} backoff",
+            agent_id, failure_count, MAX_RESTART_ATTEMPTS, backoff
+        );
+
+        // Mark as restarting
+        if let Err(e) = self.registry.update_status(agent_id, AgentStatus::Starting).await {
+            error!("Failed to update agent {} status for restart: {}", agent_id, e);
+            return;
+        }
+
+        tokio::time::sleep(backoff).await;
+
+        // Attempt restart via the AgentControl trait if available
+        let restart_result = {
+            let mut agents = self.running_agents.write().await;
+            if let Some(agent) = agents.get_mut(&agent_id) {
+                Some(agent.restart().await)
+            } else {
+                None
+            }
+        };
+
+        match restart_result {
+            Some(Ok(())) => {
+                info!("Agent {} restarted successfully", agent_id);
+                if let Err(e) = self.registry.update_status(agent_id, AgentStatus::Running).await {
+                    error!("Failed to update agent {} status after restart: {}", agent_id, e);
+                }
+                // Reset health counters on successful restart
+                let mut checks = self.health_checks.write().await;
+                if let Some(health) = checks.get_mut(&agent_id) {
+                    health.is_healthy = true;
+                    health.consecutive_failures = 0;
+                    health.consecutive_successes = 0;
+                }
+            }
+            Some(Err(e)) => {
+                error!("Failed to restart agent {}: {}", agent_id, e);
+                if let Err(e) = self.registry.update_status(agent_id, AgentStatus::Failed).await {
+                    error!("Failed to update agent {} status: {}", agent_id, e);
+                }
+            }
+            None => {
+                // No AgentControl registered — can't restart programmatically
+                warn!(
+                    "No AgentControl registered for agent {}, marking as failed",
+                    agent_id
+                );
+                if let Err(e) = self.registry.update_status(agent_id, AgentStatus::Failed).await {
+                    error!("Failed to update agent {} status: {}", agent_id, e);
+                }
+            }
+        }
     }
 
     /// Check if an agent is exceeding resource limits

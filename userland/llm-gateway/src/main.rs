@@ -156,11 +156,14 @@ impl LlmGateway {
     /// Run inference with the LLM
     pub async fn infer(
         &self,
-        request: InferenceRequest,
+        mut request: InferenceRequest,
         agent_id: Option<AgentId>,
     ) -> Result<InferenceResponse> {
+        // Enforce parameter bounds before any processing
+        request.validate();
+
         let _permit = self.rate_limiter.acquire().await?;
-        
+
         info!(
             "Inference request: model={}, agent={:?}",
             request.model, agent_id
@@ -403,38 +406,158 @@ async fn run_daemon() -> Result<()> {
     Ok(())
 }
 
+/// HTTP client for CLI commands that talk to the running gateway daemon
+fn gateway_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new())
+}
+
+const GATEWAY_URL: &str = "http://127.0.0.1:8088";
+
 async fn list_models() -> Result<()> {
-    println!("Available models:");
-    println!("  (none loaded - run 'llm-gateway daemon' first)");
+    let client = gateway_client();
+    let url = format!("{}/v1/models", GATEWAY_URL);
+
+    match client.get(&url).send().await {
+        Ok(resp) => {
+            let body: serde_json::Value = resp.json().await
+                .context("Failed to parse models response")?;
+
+            println!("Available models:");
+            if let Some(models) = body["data"].as_array() {
+                if models.is_empty() {
+                    println!("  (no models loaded)");
+                } else {
+                    for model in models {
+                        let id = model["id"].as_str().unwrap_or("unknown");
+                        let owner = model["owned_by"].as_str().unwrap_or("unknown");
+                        println!("  {} (owned by: {})", id, owner);
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("Failed to connect to LLM Gateway at {}: {}", GATEWAY_URL, e);
+            eprintln!("Is the daemon running? Start it with: llm-gateway daemon");
+        }
+    }
+
     Ok(())
 }
 
 async fn load_model(model_id: &str) -> Result<()> {
-    println!("Loading model: {}", model_id);
+    // The gateway auto-loads models via providers on init.
+    // This command verifies the model is accessible.
+    let client = gateway_client();
+    let url = format!("{}/v1/models", GATEWAY_URL);
+
+    match client.get(&url).send().await {
+        Ok(resp) => {
+            let body: serde_json::Value = resp.json().await
+                .context("Failed to parse response")?;
+
+            let found = body["data"].as_array()
+                .map(|models| models.iter().any(|m| m["id"].as_str() == Some(model_id)))
+                .unwrap_or(false);
+
+            if found {
+                println!("Model '{}' is available and loaded", model_id);
+            } else {
+                println!("Model '{}' not found. Available models:", model_id);
+                if let Some(models) = body["data"].as_array() {
+                    for m in models {
+                        println!("  {}", m["id"].as_str().unwrap_or("unknown"));
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("Failed to connect to LLM Gateway: {}", e);
+            eprintln!("Is the daemon running? Start it with: llm-gateway daemon");
+        }
+    }
+
     Ok(())
 }
 
 async fn unload_model(model_id: &str) -> Result<()> {
-    println!("Unloading model: {}", model_id);
+    println!("Requesting unload of model: {}", model_id);
+    // Currently models are managed by providers — unloading is a provider-level operation.
+    // This would need a management API endpoint (not yet implemented).
+    println!("Note: Model lifecycle is currently managed by providers (Ollama/llama.cpp).");
+    println!("Use the provider's own management interface to unload models.");
     Ok(())
 }
 
 async fn run_inference(model: Option<String>, prompt: String) -> Result<()> {
-    let request = InferenceRequest {
-        prompt,
-        model: model.unwrap_or_else(|| "default".to_string()),
-        ..Default::default()
-    };
+    let client = gateway_client();
+    let url = format!("{}/v1/chat/completions", GATEWAY_URL);
 
-    println!("Running inference with model: {}", request.model);
-    println!("Prompt: {}", request.prompt);
-    
+    let body = serde_json::json!({
+        "model": model.unwrap_or_else(|| "default".to_string()),
+        "messages": [
+            {"role": "user", "content": prompt}
+        ]
+    });
+
+    match client.post(&url).json(&body).send().await {
+        Ok(resp) => {
+            let status = resp.status();
+            let result: serde_json::Value = resp.json().await
+                .context("Failed to parse inference response")?;
+
+            if status.is_success() {
+                if let Some(text) = result["choices"][0]["message"]["content"].as_str() {
+                    println!("{}", text);
+                }
+                if let Some(usage) = result.get("usage") {
+                    eprintln!(
+                        "\n[tokens: prompt={}, completion={}, total={}]",
+                        usage["prompt_tokens"], usage["completion_tokens"], usage["total_tokens"]
+                    );
+                }
+            } else {
+                let msg = result["error"]["message"].as_str().unwrap_or("Unknown error");
+                eprintln!("Inference failed ({}): {}", status, msg);
+            }
+        }
+        Err(e) => {
+            eprintln!("Failed to connect to LLM Gateway: {}", e);
+            eprintln!("Is the daemon running? Start it with: llm-gateway daemon");
+        }
+    }
+
     Ok(())
 }
 
 async fn show_stats() -> Result<()> {
-    println!("Token usage statistics:");
-    println!("  (no data available)");
+    let client = gateway_client();
+    let url = format!("{}/v1/health", GATEWAY_URL);
+
+    match client.get(&url).send().await {
+        Ok(resp) => {
+            let body: serde_json::Value = resp.json().await
+                .context("Failed to parse health response")?;
+
+            println!("LLM Gateway Statistics:");
+            println!("  Status: {}", body["status"].as_str().unwrap_or("unknown"));
+            println!("  Uptime: {}", body["uptime"].as_str().unwrap_or("unknown"));
+
+            if let Some(providers) = body["providers"].as_array() {
+                println!("  Providers: {}", providers.len());
+                for p in providers {
+                    println!("    - {}", p.as_str().unwrap_or("unknown"));
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("Failed to connect to LLM Gateway at {}: {}", GATEWAY_URL, e);
+            eprintln!("Is the daemon running? Start it with: llm-gateway daemon");
+        }
+    }
+
     Ok(())
 }
 

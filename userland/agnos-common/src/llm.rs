@@ -34,6 +34,20 @@ impl Default for InferenceRequest {
 }
 
 impl InferenceRequest {
+    /// Create a new request with validated parameters.
+    ///
+    /// This is the preferred constructor — it ensures all parameters are
+    /// within safe ranges before the request can be used.
+    pub fn new(prompt: String, model: String) -> Self {
+        let mut req = Self {
+            prompt,
+            model,
+            ..Default::default()
+        };
+        req.validate();
+        req
+    }
+
     /// Validate the request parameters, clamping values to safe ranges.
     ///
     /// - `temperature`: clamped to `[0.0, 2.0]`

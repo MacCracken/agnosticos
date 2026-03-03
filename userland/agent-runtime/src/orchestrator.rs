@@ -326,11 +326,31 @@ impl Orchestrator {
                 let mut queues = orchestrator.task_queues.write().await;
                 if let Some(queue) = queues.get_mut(priority) {
                     if let Some(task) = queue.pop_front() {
+                        // Check if all dependencies are satisfied (present in results)
+                        if !task.dependencies.is_empty() {
+                            let results = orchestrator.results.read().await;
+                            let deps_satisfied = task
+                                .dependencies
+                                .iter()
+                                .all(|dep_id| results.contains_key(dep_id));
+                            drop(results);
+
+                            if !deps_satisfied {
+                                // Dependencies not yet met — push task back and skip
+                                debug!(
+                                    "Task {} has unsatisfied dependencies, deferring",
+                                    task.id
+                                );
+                                queue.push_back(task);
+                                continue;
+                            }
+                        }
+
                         drop(queues);
-                        
+
                         // Add to running tasks
                         orchestrator.running_tasks.write().await.insert(task.id.clone(), task.clone());
-                        
+
                         // Distribute the task
                         if let Err(e) = orchestrator.distribute_task(&task).await {
                             error!("Failed to distribute task {}: {}", task.id, e);
@@ -653,8 +673,82 @@ mod tests {
     #[tokio::test]
     async fn test_workload_stats() {
         let orchestrator = create_test_orchestrator();
-        
+
         let stats = orchestrator.get_agent_stats().await;
         assert_eq!(stats.registered_agents, 0);
+    }
+
+    #[tokio::test]
+    async fn test_dependency_blocking() {
+        let orchestrator = create_test_orchestrator();
+
+        // Submit a task that depends on a dependency that hasn't completed yet
+        let task_with_dep = Task {
+            id: "child".to_string(),
+            priority: TaskPriority::Normal,
+            target_agents: vec![],
+            payload: serde_json::json!({"action": "child"}),
+            created_at: chrono::Utc::now(),
+            deadline: None,
+            dependencies: vec!["parent-task".to_string()],
+        };
+
+        orchestrator.submit_task(task_with_dep).await.unwrap();
+
+        // The task should stay queued (scheduler hasn't run yet, but peek should show it)
+        let next = orchestrator.peek_next_task().await;
+        assert!(next.is_some());
+        assert_eq!(next.unwrap().dependencies, vec!["parent-task".to_string()]);
+
+        // Manually run one scheduler iteration by calling scheduler_loop logic:
+        // pop the task, check deps, push back
+        {
+            let mut queues = orchestrator.task_queues.write().await;
+            if let Some(queue) = queues.get_mut(&TaskPriority::Normal) {
+                if let Some(task) = queue.pop_front() {
+                    let results = orchestrator.results.read().await;
+                    let deps_satisfied = task
+                        .dependencies
+                        .iter()
+                        .all(|dep_id| results.contains_key(dep_id));
+                    drop(results);
+
+                    // Deps not satisfied — push back
+                    assert!(!deps_satisfied);
+                    queue.push_back(task);
+                }
+            }
+        }
+
+        // Task is still queued
+        let stats = orchestrator.get_queue_stats().await;
+        assert_eq!(stats.queued_tasks, 1);
+
+        // Now complete the dependency
+        let parent_result = TaskResult {
+            task_id: "parent-task".to_string(),
+            agent_id: AgentId::new(),
+            success: true,
+            result: Some(serde_json::json!({"status": "done"})),
+            error: None,
+            completed_at: chrono::Utc::now(),
+            duration_ms: 50,
+        };
+        orchestrator.store_result(parent_result).await.unwrap();
+
+        // Now the dependency is satisfied
+        {
+            let queues = orchestrator.task_queues.read().await;
+            if let Some(queue) = queues.get(&TaskPriority::Normal) {
+                if let Some(task) = queue.front() {
+                    let results = orchestrator.results.read().await;
+                    let deps_satisfied = task
+                        .dependencies
+                        .iter()
+                        .all(|dep_id| results.contains_key(dep_id));
+                    assert!(deps_satisfied);
+                }
+            }
+        }
     }
 }

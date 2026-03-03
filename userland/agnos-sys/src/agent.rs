@@ -181,7 +181,10 @@ pub mod helpers {
                     .timeout(LLM_GATEWAY_TIMEOUT)
                     .pool_max_idle_per_host(4)
                     .build()
-                    .expect("failed to build reqwest client")
+                    .unwrap_or_else(|e| {
+                        tracing::error!("Failed to build reqwest client: {}, using default", e);
+                        reqwest::Client::new()
+                    })
             });
         &CLIENT
     }

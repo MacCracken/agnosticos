@@ -220,7 +220,7 @@ async fn chat_completions(
         Ok(response) => {
             let now = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
+                .unwrap_or_default()
                 .as_secs();
             
             Ok(Json(ChatCompletionResponse {

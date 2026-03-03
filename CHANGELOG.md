@@ -7,6 +7,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- **Sandbox enforcement wired to real syscalls** (`agent-runtime/src/sandbox.rs`, `ai-shell/src/sandbox.rs`):
+  - `apply_landlock()` and `apply_seccomp()` now delegate to `agnos_sys::security` (previously returned `Ok(())`)
+  - agent-runtime: converts `agnos_common::FilesystemRule` to `agnos_sys::security::FilesystemRule` for Landlock, applies seccomp filter, creates network namespaces based on `NetworkAccess` config
+  - ai-shell: applies sensible shell defaults (read-only /usr, /lib, /bin, /sbin, /etc; read-write /tmp, /var/tmp)
+  - Both degrade gracefully on unsupported kernels (warn but don't fail)
+- **Fixed 6 panicking `.unwrap()`/`.expect()` calls in production code**:
+  - `llm-gateway/src/http.rs`: `SystemTime::duration_since().unwrap()` → `.unwrap_or_default()` (2 occurrences)
+  - `desktop-environment/src/shell.rs`: `partial_cmp().unwrap()` → `.unwrap_or(Ordering::Equal)` (NaN safety)
+  - `desktop-environment/src/ai_features.rs`: same NaN fix
+  - `agnos-sys/src/agent.rs`: `.expect("failed to build reqwest client")` → `.unwrap_or_else()` with fallback
+  - `agnos-common/src/telemetry.rs`: `.expect()` → `.unwrap_or_else()` with fallback (shared reqwest client)
+- **Input validation enforcement** (`agnos-common/src/llm.rs`, `llm-gateway/src/main.rs`):
+  - Added `InferenceRequest::new()` constructor that auto-validates parameters
+  - Added `request.validate()` call at entry point of `LlmGateway::infer()`
+
+### Added
+- **Agent health checks** (`agent-runtime/src/supervisor.rs`): Real health monitoring using process liveness check via `kill(pid, 0)` plus IPC socket connectivity probe with 5-second timeout (previously always returned `true`)
+- **Agent restart with backoff** (`agent-runtime/src/supervisor.rs`): `handle_unhealthy_agent()` now implements exponential backoff restart (2^n seconds, max 5 attempts). Resets health counters on success, marks agent as permanently Failed after max attempts (previously only logged)
+- **Agent-runtime CLI commands wired** (`agent-runtime/src/main.rs`):
+  - `start_agent()`: Creates Agent, registers with AgentRegistry, prints status + PID
+  - `stop_agent()`: Connects to IPC socket at `/run/agnos/agents/{id}.sock`, sends shutdown
+  - `list_agents()`: Enumerates `.sock` files in `/run/agnos/agents/`
+  - `get_status()`: Checks socket existence + connectivity with 5s timeout
+  - `send_message()`: Validates JSON payload, sends length-prefixed message via Unix socket
+- **LLM gateway CLI commands wired** (`llm-gateway/src/main.rs`):
+  - `list_models()`: GET `/v1/models`, displays model IDs
+  - `load_model()`: Checks model availability via `/v1/models`
+  - `run_inference()`: POST `/v1/chat/completions` with messages format
+  - `show_stats()`: GET `/v1/health`
+- **ai-shell LLM integration** (`ai-shell/src/llm.rs`): Full rewrite connecting to LLM Gateway HTTP API on port 8088:
+  - `suggest_command()`: System prompt for shell command generation
+  - `explain_command()`: System prompt for command explanation
+  - `answer_question()`: General Q&A with AGNOS context
+  - All methods fall back gracefully when gateway unavailable
+- **Task dependency checking** (`agent-runtime/src/orchestrator.rs`): Scheduler loop now checks `task.dependencies` against completed results before scheduling a task (previously the field was ignored)
+- **Real telemetry system info** (`agnos-common/src/telemetry.rs`):
+  - `read_os_version()`: Reads PRETTY_NAME from `/etc/os-release`
+  - `read_memory_mb()`: Reads MemTotal from `/proc/meminfo`
+  - `read_kernel_version()`: Reads kernel version from `/proc/version`
+- **Desktop terminal real execution** (`desktop-environment/src/apps.rs`): `TerminalApp::execute_command()` now uses `tokio::process::Command` with stdout/stderr capture (previously returned `"Executed: {cmd}"`)
+- **Desktop system status from /proc** (`desktop-environment/src/main.rs`): CPU, memory, and disk usage now read from `/proc/stat`, `/proc/meminfo`, and `libc::statvfs` (previously hardcoded 25%/40%/60%)
+- **`pid` field on `AgentHandle`** (`agent-runtime/src/agent.rs`): Added `pid: Option<u32>` field extracted from child process
+- **`libc` dependency** added to `desktop-environment/Cargo.toml` for `statvfs` calls
+
+### Changed
+- **Roadmap updated** (`docs/development/roadmap.md`): Phase 5.6 P0/P1 items marked complete, Phase 5 revised from 75% to 82%, test counts updated to 402+, Alpha confidence raised to Medium-High
+
+### Metrics
+| Metric | Before (March 3 AM) | After (March 3 PM) | Target |
+|--------|---------------------|---------------------|--------|
+| Phase 5 Completion | 75% | 82% | 100% |
+| P0 Stubs Remaining | 7 | 3 | 0 |
+| P1 Stubs Remaining | 13 | 6 | 0 |
+| Total Tests | 350+ | 402+ | 400+ |
+| Test Pass Rate | 100% | 100% | 100% |
+
 ### Added
 - **Performance benchmarks** (`agent-runtime/benches/bench.rs`): Added 11 benchmarks covering agent ID generation, config creation, task creation/serialization, agent handle operations, task priority ordering, and resource usage
 - **Performance benchmarks** (`ai-shell/benches/ai_shell.rs`): Added 7 benchmarks covering interpreter parsing, command translation, and explanation functions

@@ -66,9 +66,37 @@ impl TerminalApp {
         }
     }
 
-    pub fn execute_command(&self, command: String) -> Result<String, AppError> {
+    pub async fn execute_command(&self, command: String) -> Result<String, AppError> {
         info!("Terminal executing: {}", command);
-        Ok(format!("Executed: {}", command))
+
+        let parts: Vec<&str> = command.split_whitespace().collect();
+        if parts.is_empty() {
+            return Err(AppError::WindowError("Empty command".to_string()));
+        }
+
+        let program = parts[0];
+        let args = &parts[1..];
+
+        let output = tokio::process::Command::new(program)
+            .args(args)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .output()
+            .await
+            .map_err(|e| AppError::WindowError(format!("Failed to execute '{}': {}", command, e)))?;
+
+        if output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+            Ok(stdout)
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            Err(AppError::WindowError(format!(
+                "Command '{}' failed (exit code {:?}): {}",
+                command,
+                output.status.code(),
+                stderr
+            )))
+        }
     }
 }
 
@@ -381,12 +409,28 @@ mod tests {
         assert!(terminal.ai_integration);
     }
 
-    #[test]
-    fn test_terminal_execute_command() {
+    #[tokio::test]
+    async fn test_terminal_execute_command() {
         let terminal = TerminalApp::new();
-        let result = terminal.execute_command("ls".to_string());
+        let result = terminal.execute_command("echo hello".to_string()).await;
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), "Executed: ls");
+        assert_eq!(result.unwrap().trim(), "hello");
+    }
+
+    #[tokio::test]
+    async fn test_terminal_execute_command_failure() {
+        let terminal = TerminalApp::new();
+        let result = terminal
+            .execute_command("nonexistent_command_xyz".to_string())
+            .await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_terminal_execute_empty_command() {
+        let terminal = TerminalApp::new();
+        let result = terminal.execute_command("".to_string()).await;
+        assert!(result.is_err());
     }
 
     #[test]

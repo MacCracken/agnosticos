@@ -126,13 +126,17 @@ impl DesktopEnvironment {
     }
 
     async fn update_system_status(&self) {
+        let cpu_usage = read_cpu_usage().await.unwrap_or(0.0);
+        let memory_usage = read_memory_usage().await.unwrap_or(0.0);
+        let disk_usage = read_disk_usage().unwrap_or(0.0);
+
         let status = shell::SystemStatus {
-            cpu_usage: 25.0,
-            memory_usage: 40.0,
-            disk_usage: 60.0,
-            battery_level: Some(85),
+            cpu_usage,
+            memory_usage,
+            disk_usage,
+            battery_level: None,
             network_status: shell::NetworkStatus::Connected,
-            agent_count: 2,
+            agent_count: 0,
         };
         self.shell.update_system_status(status);
 
@@ -162,6 +166,85 @@ impl DesktopEnvironment {
 
         info!("Desktop environment stopped");
     }
+}
+
+/// Parse CPU jiffies from a `/proc/stat` "cpu" line.
+/// Returns (total, idle).
+fn parse_cpu_line(line: &str) -> Option<(u64, u64)> {
+    let fields: Vec<u64> = line
+        .split_whitespace()
+        .skip(1) // skip "cpu"
+        .filter_map(|s| s.parse().ok())
+        .collect();
+    if fields.len() < 4 {
+        return None;
+    }
+    // fields: user, nice, system, idle, iowait, irq, softirq, steal ...
+    let idle = fields[3] + fields.get(4).copied().unwrap_or(0);
+    let total: u64 = fields.iter().sum();
+    Some((total, idle))
+}
+
+/// Read CPU usage percentage by sampling /proc/stat twice with a 100ms gap.
+async fn read_cpu_usage() -> Option<f32> {
+    let stat1 = tokio::fs::read_to_string("/proc/stat").await.ok()?;
+    let line1 = stat1.lines().find(|l| l.starts_with("cpu "))?;
+    let (total1, idle1) = parse_cpu_line(line1)?;
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    let stat2 = tokio::fs::read_to_string("/proc/stat").await.ok()?;
+    let line2 = stat2.lines().find(|l| l.starts_with("cpu "))?;
+    let (total2, idle2) = parse_cpu_line(line2)?;
+
+    let total_delta = total2.saturating_sub(total1) as f64;
+    let idle_delta = idle2.saturating_sub(idle1) as f64;
+
+    if total_delta == 0.0 {
+        return Some(0.0);
+    }
+    Some(((total_delta - idle_delta) / total_delta * 100.0) as f32)
+}
+
+/// Read memory usage percentage from /proc/meminfo.
+async fn read_memory_usage() -> Option<f32> {
+    let meminfo = tokio::fs::read_to_string("/proc/meminfo").await.ok()?;
+    let mut mem_total: Option<u64> = None;
+    let mut mem_available: Option<u64> = None;
+
+    for line in meminfo.lines() {
+        if line.starts_with("MemTotal:") {
+            mem_total = line.split_whitespace().nth(1).and_then(|v| v.parse().ok());
+        } else if line.starts_with("MemAvailable:") {
+            mem_available = line.split_whitespace().nth(1).and_then(|v| v.parse().ok());
+        }
+        if mem_total.is_some() && mem_available.is_some() {
+            break;
+        }
+    }
+
+    let total = mem_total? as f64;
+    let available = mem_available? as f64;
+    if total == 0.0 {
+        return Some(0.0);
+    }
+    Some(((total - available) / total * 100.0) as f32)
+}
+
+/// Read disk usage percentage for the root filesystem using statvfs.
+fn read_disk_usage() -> Option<f32> {
+    let path = std::ffi::CString::new("/").ok()?;
+    let mut stat: libc::statvfs = unsafe { std::mem::zeroed() };
+    let ret = unsafe { libc::statvfs(path.as_ptr(), &mut stat) };
+    if ret != 0 {
+        return None;
+    }
+    let total = stat.f_blocks as f64;
+    let available = stat.f_bavail as f64;
+    if total == 0.0 {
+        return Some(0.0);
+    }
+    Some(((total - available) / total * 100.0) as f32)
 }
 
 #[tokio::main]

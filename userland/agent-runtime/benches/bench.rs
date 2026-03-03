@@ -52,6 +52,7 @@ fn benchmark_agent_handle_clone(c: &mut Criterion) {
         created_at: chrono::Utc::now(),
         started_at: None,
         resource_usage: agnos_common::ResourceUsage::default(),
+        pid: None,
     };
 
     c.bench_function("agent_handle_clone", |b| {
