@@ -1,0 +1,620 @@
+//! Agent Registration HTTP API
+//!
+//! Axum HTTP server on port 8090 providing REST endpoints for external
+//! consumers (AGNOSTIC, SecureYeoman) to register agents, send heartbeats,
+//! and query agent status.
+
+use std::collections::HashMap;
+use std::net::SocketAddr;
+use std::sync::Arc;
+
+use axum::extract::{Path, State};
+use axum::http::StatusCode;
+use axum::response::IntoResponse;
+use axum::routing::{delete, get, post};
+use axum::{Json, Router};
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use tokio::sync::RwLock;
+use tracing::{debug, error, info, warn};
+use uuid::Uuid;
+
+/// Default listen port for the agent registration API.
+pub const DEFAULT_PORT: u16 = 8090;
+
+// ---------------------------------------------------------------------------
+// Request / Response types
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RegisterAgentRequest {
+    pub name: String,
+    #[serde(default)]
+    pub capabilities: Vec<String>,
+    #[serde(default)]
+    pub resource_needs: ResourceNeeds,
+    #[serde(default)]
+    pub metadata: HashMap<String, String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ResourceNeeds {
+    #[serde(default)]
+    pub min_memory_mb: u64,
+    #[serde(default)]
+    pub min_cpu_shares: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RegisterAgentResponse {
+    pub id: Uuid,
+    pub name: String,
+    pub status: String,
+    pub registered_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HeartbeatRequest {
+    #[serde(default)]
+    pub status: Option<String>,
+    #[serde(default)]
+    pub current_task: Option<String>,
+    #[serde(default)]
+    pub cpu_percent: Option<f32>,
+    #[serde(default)]
+    pub memory_mb: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentDetail {
+    pub id: Uuid,
+    pub name: String,
+    pub status: String,
+    pub capabilities: Vec<String>,
+    pub resource_needs: ResourceNeeds,
+    pub metadata: HashMap<String, String>,
+    pub registered_at: DateTime<Utc>,
+    pub last_heartbeat: Option<DateTime<Utc>>,
+    pub current_task: Option<String>,
+    pub cpu_percent: Option<f32>,
+    pub memory_mb: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentListResponse {
+    pub agents: Vec<AgentDetail>,
+    pub total: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HealthResponse {
+    pub status: String,
+    pub service: String,
+    pub version: String,
+    pub agents_registered: usize,
+    pub uptime_seconds: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ErrorResponse {
+    pub error: String,
+    pub code: u16,
+}
+
+// ---------------------------------------------------------------------------
+// Shared state
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone)]
+pub struct RegisteredAgentEntry {
+    pub detail: AgentDetail,
+}
+
+#[derive(Debug, Clone)]
+pub struct ApiState {
+    agents: Arc<RwLock<HashMap<Uuid, RegisteredAgentEntry>>>,
+    started_at: DateTime<Utc>,
+}
+
+impl ApiState {
+    pub fn new() -> Self {
+        Self {
+            agents: Arc::new(RwLock::new(HashMap::new())),
+            started_at: Utc::now(),
+        }
+    }
+}
+
+impl Default for ApiState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Handlers
+// ---------------------------------------------------------------------------
+
+async fn health_handler(State(state): State<ApiState>) -> impl IntoResponse {
+    let agents = state.agents.read().await;
+    let uptime = (Utc::now() - state.started_at).num_seconds().max(0) as u64;
+
+    Json(HealthResponse {
+        status: "ok".to_string(),
+        service: "agnos-agent-runtime".to_string(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        agents_registered: agents.len(),
+        uptime_seconds: uptime,
+    })
+}
+
+async fn register_agent_handler(
+    State(state): State<ApiState>,
+    Json(req): Json<RegisterAgentRequest>,
+) -> impl IntoResponse {
+    if req.name.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "Agent name is required", "code": 400})),
+        )
+            .into_response();
+    }
+
+    if req.name.len() > 256 {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "Agent name too long (max 256)", "code": 400})),
+        )
+            .into_response();
+    }
+
+    let mut agents = state.agents.write().await;
+
+    // Check for duplicate names
+    if agents.values().any(|a| a.detail.name == req.name) {
+        return (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({"error": format!("Agent '{}' already registered", req.name), "code": 409})),
+        )
+            .into_response();
+    }
+
+    let id = Uuid::new_v4();
+    let now = Utc::now();
+
+    let detail = AgentDetail {
+        id,
+        name: req.name.clone(),
+        status: "registered".to_string(),
+        capabilities: req.capabilities,
+        resource_needs: req.resource_needs,
+        metadata: req.metadata,
+        registered_at: now,
+        last_heartbeat: None,
+        current_task: None,
+        cpu_percent: None,
+        memory_mb: None,
+    };
+
+    agents.insert(id, RegisteredAgentEntry {
+        detail: detail.clone(),
+    });
+
+    info!("Agent registered: {} ({})", req.name, id);
+
+    let resp = RegisterAgentResponse {
+        id,
+        name: req.name,
+        status: "registered".to_string(),
+        registered_at: now,
+    };
+
+    (StatusCode::CREATED, Json(serde_json::to_value(resp).unwrap())).into_response()
+}
+
+async fn heartbeat_handler(
+    State(state): State<ApiState>,
+    Path(id): Path<Uuid>,
+    Json(req): Json<HeartbeatRequest>,
+) -> impl IntoResponse {
+    let mut agents = state.agents.write().await;
+
+    match agents.get_mut(&id) {
+        Some(entry) => {
+            entry.detail.last_heartbeat = Some(Utc::now());
+            if let Some(status) = req.status {
+                entry.detail.status = status;
+            }
+            if let Some(task) = req.current_task {
+                entry.detail.current_task = Some(task);
+            }
+            if let Some(cpu) = req.cpu_percent {
+                entry.detail.cpu_percent = Some(cpu);
+            }
+            if let Some(mem) = req.memory_mb {
+                entry.detail.memory_mb = Some(mem);
+            }
+
+            debug!("Heartbeat received from agent {}", id);
+            (StatusCode::OK, Json(serde_json::json!({"status": "ok"}))).into_response()
+        }
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": format!("Agent {} not found", id), "code": 404})),
+        )
+            .into_response(),
+    }
+}
+
+async fn list_agents_handler(State(state): State<ApiState>) -> impl IntoResponse {
+    let agents = state.agents.read().await;
+    let agent_list: Vec<AgentDetail> = agents.values().map(|a| a.detail.clone()).collect();
+    let total = agent_list.len();
+
+    Json(AgentListResponse {
+        agents: agent_list,
+        total,
+    })
+}
+
+async fn get_agent_handler(
+    State(state): State<ApiState>,
+    Path(id): Path<Uuid>,
+) -> impl IntoResponse {
+    let agents = state.agents.read().await;
+
+    match agents.get(&id) {
+        Some(entry) => (StatusCode::OK, Json(serde_json::to_value(&entry.detail).unwrap())).into_response(),
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": format!("Agent {} not found", id), "code": 404})),
+        )
+            .into_response(),
+    }
+}
+
+async fn deregister_agent_handler(
+    State(state): State<ApiState>,
+    Path(id): Path<Uuid>,
+) -> impl IntoResponse {
+    let mut agents = state.agents.write().await;
+
+    match agents.remove(&id) {
+        Some(entry) => {
+            info!("Agent deregistered: {} ({})", entry.detail.name, id);
+            (StatusCode::OK, Json(serde_json::json!({"status": "deregistered", "id": id.to_string()}))).into_response()
+        }
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": format!("Agent {} not found", id), "code": 404})),
+        )
+            .into_response(),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Router & server
+// ---------------------------------------------------------------------------
+
+/// Build the Axum router for the agent registration API.
+pub fn build_router(state: ApiState) -> Router {
+    Router::new()
+        .route("/v1/health", get(health_handler))
+        .route("/v1/agents/register", post(register_agent_handler))
+        .route("/v1/agents/:id/heartbeat", post(heartbeat_handler))
+        .route("/v1/agents", get(list_agents_handler))
+        .route("/v1/agents/:id", get(get_agent_handler))
+        .route("/v1/agents/:id", delete(deregister_agent_handler))
+        .with_state(state)
+}
+
+/// Start the HTTP API server on the given port.
+pub async fn start_server(port: u16) -> anyhow::Result<()> {
+    let state = ApiState::new();
+    let app = build_router(state);
+
+    let addr = SocketAddr::from(([0, 0, 0, 0], port));
+    info!("Agent Registration API listening on {}", addr);
+
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+    axum::serve(listener, app).await?;
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::Body;
+    use axum::http::Request;
+    use tower::ServiceExt;
+
+    fn test_state() -> ApiState {
+        ApiState::new()
+    }
+
+    fn test_app() -> Router {
+        build_router(test_state())
+    }
+
+    #[tokio::test]
+    async fn test_health() {
+        let app = test_app();
+        let req = Request::builder()
+            .uri("/v1/health")
+            .body(Body::empty())
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: HealthResponse = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json.status, "ok");
+        assert_eq!(json.service, "agnos-agent-runtime");
+    }
+
+    #[tokio::test]
+    async fn test_register_agent() {
+        let app = test_app();
+        let req_body = serde_json::json!({
+            "name": "test-agent",
+            "capabilities": ["file:read", "llm:inference"],
+            "resource_needs": {"min_memory_mb": 512, "min_cpu_shares": 100}
+        });
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/agents/register")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["name"], "test-agent");
+        assert_eq!(json["status"], "registered");
+        assert!(json["id"].as_str().is_some());
+    }
+
+    #[tokio::test]
+    async fn test_register_empty_name() {
+        let app = test_app();
+        let req_body = serde_json::json!({"name": ""});
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/agents/register")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_register_duplicate_name() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        // Register first
+        let req_body = serde_json::json!({"name": "dup-agent"});
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/agents/register")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        // Duplicate
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/agents/register")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::CONFLICT);
+    }
+
+    #[tokio::test]
+    async fn test_list_agents() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        // Register two agents
+        for name in ["agent-a", "agent-b"] {
+            let req = Request::builder()
+                .method("POST")
+                .uri("/v1/agents/register")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&serde_json::json!({"name": name})).unwrap(),
+                ))
+                .unwrap();
+            app.clone().oneshot(req).await.unwrap();
+        }
+
+        // List
+        let req = Request::builder()
+            .uri("/v1/agents")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: AgentListResponse = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json.total, 2);
+    }
+
+    #[tokio::test]
+    async fn test_get_agent() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        // Register
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/agents/register")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                serde_json::to_vec(&serde_json::json!({"name": "get-me"})).unwrap(),
+            ))
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let reg: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let id = reg["id"].as_str().unwrap();
+
+        // Get
+        let req = Request::builder()
+            .uri(format!("/v1/agents/{}", id))
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_get_agent_not_found() {
+        let app = test_app();
+        let req = Request::builder()
+            .uri(format!("/v1/agents/{}", Uuid::new_v4()))
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_heartbeat() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        // Register
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/agents/register")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                serde_json::to_vec(&serde_json::json!({"name": "hb-agent"})).unwrap(),
+            ))
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let reg: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let id = reg["id"].as_str().unwrap();
+
+        // Heartbeat
+        let hb_body = serde_json::json!({
+            "status": "running",
+            "current_task": "processing",
+            "cpu_percent": 25.5,
+            "memory_mb": 512
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri(format!("/v1/agents/{}/heartbeat", id))
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&hb_body).unwrap()))
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // Verify heartbeat updated the agent
+        let req = Request::builder()
+            .uri(format!("/v1/agents/{}", id))
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let detail: AgentDetail = serde_json::from_slice(&body).unwrap();
+        assert_eq!(detail.status, "running");
+        assert_eq!(detail.current_task, Some("processing".to_string()));
+        assert!(detail.last_heartbeat.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_heartbeat_not_found() {
+        let app = test_app();
+        let req = Request::builder()
+            .method("POST")
+            .uri(format!("/v1/agents/{}/heartbeat", Uuid::new_v4()))
+            .header("content-type", "application/json")
+            .body(Body::from(
+                serde_json::to_vec(&serde_json::json!({})).unwrap(),
+            ))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_deregister_agent() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        // Register
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/agents/register")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                serde_json::to_vec(&serde_json::json!({"name": "delete-me"})).unwrap(),
+            ))
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let reg: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let id = reg["id"].as_str().unwrap();
+
+        // Delete
+        let req = Request::builder()
+            .method("DELETE")
+            .uri(format!("/v1/agents/{}", id))
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // Verify gone
+        let req = Request::builder()
+            .uri(format!("/v1/agents/{}", id))
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_deregister_not_found() {
+        let app = test_app();
+        let req = Request::builder()
+            .method("DELETE")
+            .uri(format!("/v1/agents/{}", Uuid::new_v4()))
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn test_api_state_default() {
+        let state = ApiState::default();
+        assert!(state.started_at <= Utc::now());
+    }
+
+    #[test]
+    fn test_resource_needs_default() {
+        let rn = ResourceNeeds::default();
+        assert_eq!(rn.min_memory_mb, 0);
+        assert_eq!(rn.min_cpu_shares, 0);
+    }
+}

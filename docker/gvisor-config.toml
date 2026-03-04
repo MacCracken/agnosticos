@@ -1,0 +1,29 @@
+# gVisor (runsc) configuration for AGNOS
+# Used when building with --build-arg GVISOR=1
+
+[runsc]
+# Platform: systrap (recommended for most environments)
+# Alternatives: kvm (requires /dev/kvm), ptrace (slower but most compatible)
+platform = "systrap"
+
+# Network mode: sandbox provides full network isolation
+# Alternatives: host (shared network namespace), none (no network)
+network = "sandbox"
+
+# Enable debug logging (disable in production)
+debug = false
+debug-log = "/var/log/agnos/gvisor.log"
+
+# Filesystem: overlay for copy-on-write isolation
+overlay2 = "all:memory"
+
+# Resource limits
+# These supplement container-level limits from Docker/Kubernetes
+[runsc.limits]
+# Maximum number of open files per sandbox
+num-network-channels = 2
+
+# Security
+[runsc.security]
+# Enable rootless mode (preferred for non-root containers)
+rootless = true

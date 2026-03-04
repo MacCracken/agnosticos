@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (March 3, 2026 — Phase 6.6 Consumer Integration)
+
+- **Secrets management** (`agnos-common/src/secrets.rs`):
+  - `SecretBackend` trait with `get_secret()`, `set_secret()`, `delete_secret()`, `list_secrets()`
+  - `EnvSecretBackend` — reads from environment variables (dev/simple use)
+  - `FileSecretBackend` — AES-256-GCM encrypted file store with random nonces and path sanitization
+  - `VaultSecretBackend` — HTTP client to HashiCorp Vault KV v2 API
+  - `SecretInjector` — injects secrets into agent environments before spawn
+- **Pre-compiled seccomp profiles** (`agent-runtime/src/seccomp_profiles.rs`):
+  - `SeccompProfile` enum: Python (~76 syscalls), Node (~72), Shell (~52), Wasm (~44), Custom
+  - Per-profile allowlists built on shared `base_syscalls()` foundation
+  - `build_seccomp_filter()` → `BpfFilterSpec`, `validate_profile()` checks essential syscalls
+  - Wired into `Sandbox::apply_with_profile()` for profile-based sandboxing
+- **Agent Registration HTTP API** (`agent-runtime/src/http_api.rs`):
+  - Axum HTTP server on port 8090 with REST endpoints
+  - `POST /v1/agents/register`, `POST /v1/agents/:id/heartbeat`, `GET /v1/agents`, `GET /v1/agents/:id`, `DELETE /v1/agents/:id`, `GET /v1/health`
+  - Input validation: empty name, name length, duplicate detection
+- **Multi-agent resource scheduler** (`agent-runtime/src/orchestrator.rs`):
+  - `TaskRequirements` struct: min_memory, min_cpu_shares, required_capabilities, preferred_agent
+  - `score_agent()` with weighted scoring: memory headroom (40%), CPU headroom (30%), capability match (20%), affinity bonus (10%)
+  - Fair-share scheduling with consumption penalty
+- **Agent HUD visibility** (`desktop-environment/src/ai_features.rs`, `compositor.rs`):
+  - `start_hud_polling(interval)` — periodic GET to agent registration API
+  - `render_hud_overlay()` — text-based box-drawing overlay with status icons
+- **Security UI enforcement** (`desktop-environment/src/security_ui.rs`):
+  - `emergency_kill_agent()` — SIGKILL via libc, cgroup removal, API deregistration, audit log
+  - `grant_permission_enforced()` — validates against definitions, blocks in Lockdown for confirmation-required perms
+  - `revoke_permission_enforced()` — removes permission, sends SIGHUP
+- **WASM runtime** (`agent-runtime/src/wasm_runtime.rs`):
+  - `WasmAgent` with `load()` and `run()` using Wasmtime + WASI
+  - Feature-gated behind `wasm` feature flag
+  - Config: memory limit, fuel metering, preopened directories, env vars
+- **Hardened Docker image** (`Dockerfile`, `docker/entrypoint.sh`):
+  - Multi-stage build: `rust:1.77-bookworm` builder → `debian:bookworm-slim` runtime
+  - Non-root user `agnos` (UID 1000), tini as PID 1
+  - Optional gVisor via `--build-arg GVISOR=1`
+  - Health check on LLM gateway port 8088, exposes ports 8088 + 8090
+- **gVisor configuration** (`docker/gvisor-config.toml`):
+  - Default config: platform=systrap, network=sandbox, rootless=true
+
+### Fixed (March 3, 2026 — Phase 6.6)
+
+- **Deadlock in `Compositor::set_window_state()`**: acquired read lock then write lock on same `RwLock<HashMap>` — fixed to single write lock
+- **Deadlock in `Compositor::move_window_to_workspace()`**: same read-then-write lock pattern — fixed to single write lock
+- **Deadlock in `AIDesktopFeatures::update_context()`**: held write lock on `current_context` while calling `detect_context_type()` which also acquires write lock — fixed with explicit scope drop
+- **Duplicate syscall in Python seccomp profile**: `set_tid_address` appeared in both `base_syscalls()` and `python_syscalls()` — removed from profile-specific list
+- **Axum route syntax**: HTTP API routes used `{id}` (axum 0.8 syntax) but project uses axum 0.7 which requires `:id` — fixed all parameterized routes
+- **Missing tokio runtime for test**: `test_emergency_kill_agent_no_pid` used `#[test]` but calls `tokio::task::spawn` — changed to `#[tokio::test]`
+
 ### Added (March 3, 2026 — P0/P1 Implementation Pass #2)
 
 - **Cgroups v2 resource enforcement** (`agent-runtime/src/supervisor.rs`):

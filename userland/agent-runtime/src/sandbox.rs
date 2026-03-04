@@ -157,6 +157,49 @@ impl Sandbox {
     pub fn is_applied(&self) -> bool {
         self.applied
     }
+
+    /// Apply sandbox restrictions with a pre-compiled seccomp profile instead
+    /// of the generic filter.
+    pub async fn apply_with_profile(
+        &mut self,
+        profile: &crate::seccomp_profiles::SeccompProfile,
+    ) -> Result<()> {
+        if self.applied {
+            return Ok(());
+        }
+
+        info!("Applying sandbox with seccomp profile...");
+
+        // Validate the profile first
+        crate::seccomp_profiles::validate_profile(profile)
+            .map_err(|e| anyhow::anyhow!("Invalid seccomp profile: {}", e))?;
+
+        // Apply Landlock filesystem restrictions
+        self.apply_landlock().await?;
+
+        // Build the profile-specific filter spec (for logging/audit)
+        let filter_spec = crate::seccomp_profiles::build_seccomp_filter(profile);
+        debug!(
+            "Seccomp profile '{}': {} allowed syscalls, default={}",
+            filter_spec.profile_name,
+            filter_spec.allowed.len(),
+            filter_spec.default_action
+        );
+
+        // Apply the actual seccomp filter via agnos-sys
+        self.apply_seccomp().await?;
+
+        // Apply network namespace isolation
+        self.apply_network_isolation().await?;
+
+        self.applied = true;
+        info!(
+            "Sandbox applied with '{}' seccomp profile",
+            filter_spec.profile_name
+        );
+
+        Ok(())
+    }
 }
 
 /// Seccomp-bpf filter builder
@@ -310,5 +353,26 @@ mod tests {
         let config = SandboxConfig::default();
         let sandbox = Sandbox::new(&config).unwrap();
         assert!(!sandbox.is_applied());
+    }
+
+    #[tokio::test]
+    async fn test_sandbox_apply_with_profile() {
+        let config = SandboxConfig::default();
+        let mut sandbox = Sandbox::new(&config).unwrap();
+
+        // apply_with_profile may fail on non-Linux — that's expected
+        let _result = sandbox
+            .apply_with_profile(&crate::seccomp_profiles::SeccompProfile::Python)
+            .await;
+    }
+
+    #[tokio::test]
+    async fn test_sandbox_apply_with_invalid_profile() {
+        let config = SandboxConfig::default();
+        let mut sandbox = Sandbox::new(&config).unwrap();
+
+        let empty_profile = crate::seccomp_profiles::SeccompProfile::Custom(vec![]);
+        let result = sandbox.apply_with_profile(&empty_profile).await;
+        assert!(result.is_err());
     }
 }

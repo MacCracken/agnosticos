@@ -193,36 +193,41 @@ impl AIDesktopFeatures {
     }
 
     pub fn update_context(&self, event: ContextEvent) {
-        let mut history = self.context_history.write().unwrap();
-        history.push(event.clone());
+        {
+            let mut history = self.context_history.write().unwrap();
+            history.push(event.clone());
 
-        let len = history.len();
-        if len > 100 {
-            history.drain(0..len - 100);
+            let len = history.len();
+            if len > 100 {
+                history.drain(0..len - 100);
+            }
         }
 
-        let mut context = self.current_context.write().unwrap();
-        match event.event_type {
-            ContextEventType::WindowOpened => {
-                if let Some(app) = event.metadata.get("app") {
-                    if !context.active_apps.contains(app) {
-                        context.active_apps.push(app.clone());
+        {
+            let mut context = self.current_context.write().unwrap();
+            match event.event_type {
+                ContextEventType::WindowOpened => {
+                    if let Some(app) = event.metadata.get("app") {
+                        if !context.active_apps.contains(app) {
+                            context.active_apps.push(app.clone());
+                        }
                     }
                 }
-            }
-            ContextEventType::FileOpened => {
-                if let Some(file) = event.metadata.get("file") {
-                    context.open_files.push(file.clone());
-                    let len = context.open_files.len();
-                    if len > 10 {
-                        context.open_files.drain(0..len - 10);
+                ContextEventType::FileOpened => {
+                    if let Some(file) = event.metadata.get("file") {
+                        context.open_files.push(file.clone());
+                        let len = context.open_files.len();
+                        if len > 10 {
+                            context.open_files.drain(0..len - 10);
+                        }
                     }
                 }
+                _ => {}
             }
-            _ => {}
         }
 
         self.detect_context_type();
+        let context = self.current_context.read().unwrap();
         debug!("Context updated: {:?}", context.context_type);
     }
 
@@ -397,6 +402,98 @@ impl AIDesktopFeatures {
             "Consider suspending idle agents to free resources".to_string(),
             0.65,
         )
+    }
+
+    /// Start a background polling loop that periodically fetches agent state
+    /// from the registration API at `http://localhost:8090/v1/agents` and
+    /// updates the HUD.
+    pub fn start_hud_polling(&self, interval: std::time::Duration) -> tokio::task::JoinHandle<()> {
+        let agent_hud = self.agent_hud.clone();
+
+        tokio::spawn(async move {
+            let client = reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(5))
+                .build()
+                .unwrap_or_default();
+
+            let mut ticker = tokio::time::interval(interval);
+            loop {
+                ticker.tick().await;
+
+                match Self::poll_agents(&client).await {
+                    Ok(agents) => {
+                        let mut hud = agent_hud.write().unwrap();
+                        // Clear stale entries and replace with fresh data
+                        hud.clear();
+                        for agent in agents {
+                            hud.insert(agent.agent_id, agent);
+                        }
+                        debug!("HUD updated with {} agents", hud.len());
+                    }
+                    Err(e) => {
+                        debug!("HUD poll failed (agent API may be down): {}", e);
+                    }
+                }
+            }
+        })
+    }
+
+    /// Poll the agent registration API and convert responses to HUD state.
+    async fn poll_agents(
+        client: &reqwest::Client,
+    ) -> Result<Vec<AgentHUDState>, Box<dyn std::error::Error + Send + Sync>> {
+        let resp = client
+            .get("http://localhost:8090/v1/agents")
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            return Err(format!("API returned {}", resp.status()).into());
+        }
+
+        let body: serde_json::Value = resp.json().await?;
+        let mut states = Vec::new();
+
+        if let Some(agents) = body["agents"].as_array() {
+            for agent in agents {
+                let id_str = agent["id"].as_str().unwrap_or_default();
+                let agent_id = uuid::Uuid::parse_str(id_str).unwrap_or_else(|_| Uuid::new_v4());
+
+                let status_str = agent["status"].as_str().unwrap_or("unknown");
+                let status = match status_str {
+                    "running" => AgentStatus::Acting,
+                    "registered" => AgentStatus::Idle,
+                    "error" | "failed" => AgentStatus::Error,
+                    "waiting" => AgentStatus::Waiting,
+                    _ => AgentStatus::Idle,
+                };
+
+                let last_hb = agent["last_heartbeat"]
+                    .as_str()
+                    .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+                    .map(|dt| dt.with_timezone(&chrono::Utc))
+                    .unwrap_or_else(chrono::Utc::now);
+
+                states.push(AgentHUDState {
+                    agent_id,
+                    agent_name: agent["name"].as_str().unwrap_or("unknown").to_string(),
+                    status,
+                    current_task: agent["current_task"]
+                        .as_str()
+                        .unwrap_or("")
+                        .to_string(),
+                    progress: 0.0,
+                    last_activity: last_hb,
+                    resource_usage: ResourceMetrics {
+                        cpu_percent: agent["cpu_percent"].as_f64().unwrap_or(0.0) as f32,
+                        memory_mb: agent["memory_mb"].as_u64().unwrap_or(0),
+                        gpu_percent: None,
+                    },
+                });
+            }
+        }
+
+        Ok(states)
     }
 }
 

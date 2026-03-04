@@ -34,6 +34,7 @@ async fn test_submit_single_task() {
         created_at: chrono::Utc::now(),
         deadline: None,
         dependencies: vec![],
+        requirements: agent_runtime::orchestrator::TaskRequirements::default(),
     };
 
     let task_id = orchestrator.submit_task(task).await.unwrap();
@@ -61,6 +62,7 @@ async fn test_multi_agent_task_distribution() {
             created_at: chrono::Utc::now(),
             deadline: None,
             dependencies: vec![],
+            requirements: agent_runtime::orchestrator::TaskRequirements::default(),
         };
         orchestrator.submit_task(task).await.unwrap();
     }
@@ -95,6 +97,7 @@ async fn test_task_priority_ordering() {
             created_at: chrono::Utc::now(),
             deadline: None,
             dependencies: vec![],
+            requirements: agent_runtime::orchestrator::TaskRequirements::default(),
         };
         orchestrator.submit_task(task).await.unwrap();
     }
@@ -122,6 +125,7 @@ async fn test_task_result_storage() {
         created_at: chrono::Utc::now(),
         deadline: None,
         dependencies: vec![],
+        requirements: agent_runtime::orchestrator::TaskRequirements::default(),
     };
 
     let task_id = orchestrator.submit_task(task).await.unwrap();
@@ -161,6 +165,7 @@ async fn test_task_failure_handling() {
         created_at: chrono::Utc::now(),
         deadline: None,
         dependencies: vec![],
+        requirements: agent_runtime::orchestrator::TaskRequirements::default(),
     };
 
     let task_id = orchestrator.submit_task(task).await.unwrap();
@@ -201,6 +206,7 @@ async fn test_task_cancellation() {
             created_at: chrono::Utc::now(),
             deadline: None,
             dependencies: vec![],
+            requirements: agent_runtime::orchestrator::TaskRequirements::default(),
         };
         orchestrator.submit_task(task).await.unwrap();
     }
@@ -233,6 +239,7 @@ async fn test_overdue_task_detection() {
         created_at: chrono::Utc::now(),
         deadline: Some(chrono::Utc::now() - chrono::Duration::seconds(10)),
         dependencies: vec![],
+        requirements: agent_runtime::orchestrator::TaskRequirements::default(),
     };
 
     orchestrator.submit_task(task).await.unwrap();
@@ -277,6 +284,7 @@ async fn test_queue_stats_computation() {
             created_at: chrono::Utc::now(),
             deadline: None,
             dependencies: vec![],
+            requirements: agent_runtime::orchestrator::TaskRequirements::default(),
         };
         orchestrator.submit_task(task).await.unwrap();
     }
@@ -302,6 +310,7 @@ async fn test_task_get_status_queued() {
         created_at: chrono::Utc::now(),
         deadline: None,
         dependencies: vec![],
+        requirements: agent_runtime::orchestrator::TaskRequirements::default(),
     };
 
     let task_id = orchestrator.submit_task(task).await.unwrap();
@@ -328,6 +337,7 @@ async fn test_task_get_status_completed() {
         created_at: chrono::Utc::now(),
         deadline: None,
         dependencies: vec![],
+        requirements: agent_runtime::orchestrator::TaskRequirements::default(),
     };
 
     let task_id = orchestrator.submit_task(task).await.unwrap();
@@ -392,6 +402,7 @@ async fn test_multiple_task_results() {
             created_at: chrono::Utc::now(),
             deadline: None,
             dependencies: vec![],
+            requirements: agent_runtime::orchestrator::TaskRequirements::default(),
         };
 
         let task_id = orchestrator.submit_task(task).await.unwrap();
@@ -430,6 +441,7 @@ async fn test_peek_next_task() {
         created_at: chrono::Utc::now(),
         deadline: None,
         dependencies: vec![],
+        requirements: agent_runtime::orchestrator::TaskRequirements::default(),
     };
 
     orchestrator.submit_task(task).await.unwrap();

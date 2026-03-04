@@ -13,12 +13,15 @@ use tracing::{info, warn};
 use agnos_common::{AgentConfig, AgentId};
 
 mod agent;
+pub mod http_api;
 pub mod ipc;
 pub mod orchestrator;
 pub mod registry;
 pub mod resource;
 pub mod sandbox;
+pub mod seccomp_profiles;
 pub mod supervisor;
+pub mod wasm_runtime;
 
 use crate::agent::Agent;
 use crate::orchestrator::Orchestrator;

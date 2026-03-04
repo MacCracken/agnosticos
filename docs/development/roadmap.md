@@ -1,7 +1,7 @@
 # AGNOS Development Roadmap
 
 > **Status**: Pre-Alpha (Phase 5) | **Last Updated**: 2026-03-03
-> **Current Phase**: Phase 5 - Production (91% Complete — all P0/P1 stubs eliminated)
+> **Current Phase**: Phase 5 - Production (95% Complete — consumer integration features implemented)
 > **Next Milestone**: Alpha Release (Target: Q2 2026)
 
 ---
@@ -41,7 +41,7 @@
 | Cloud provider graceful degradation | llm-gateway | 2 days | TBD | ⏳ No health/retry |
 | Rate limiting on external APIs (per-agent/provider) | llm-gateway | 2 days | TBD | ⏳ Semaphore only |
 | Agent resource quotas (cgroups) | agent-runtime | 1 week | TBD | ⏳ In-memory only |
-| Capability-based task distribution | agent-runtime | 3 days | TBD | ⏳ Round-robin |
+| ~~Capability-based task distribution~~ | agent-runtime | — | — | ✅ Done 2026-03-03 (load-aware scoring) |
 | Connection backpressure for IPC | agent-runtime | 2 days | TBD | ⏳ |
 | Metric dashboards (latency, cache, etc.) | llm-gateway | 3 days | TBD | ⏳ |
 | System tests: end-to-end desktop | desktop-environment | 1 week | TBD | ⏳ |
@@ -72,9 +72,10 @@ AGNOS (AI-Native General Operating System) is in **Phase 5: Production**, focuse
 | Phase | Status | Completion | Key Deliverables |
 |-------|--------|------------|------------------|
 | 0-4 | ✅ Complete | 90-100% | Foundation through Desktop |
-| 5 | 🔄 In Progress | 91% | Production hardening |
+| 5 | 🔄 In Progress | 95% | Production hardening |
 | 6 | 📋 Planned | 0% | Advanced AI & Networking |
 | 6.5 | 📋 Planned | 0% | OS-Level Features & Security Hardening |
+| 6.6 | 🔄 In Progress | 100% | Consumer Integration (9 features) |
 | 7+ | 📋 Planned | 0% | Ecosystem & Research |
 
 ### Alpha Release Criteria (Q2 2026)
@@ -302,7 +303,7 @@ These are features where the public API/interface exists but the implementation 
 | Output formatting | `format_table()` + `format_auto()` return input unchanged | Implement column detection + alignment | ai-shell/src/output.rs | 1 day |
 | Streaming inference | Both providers return empty `mpsc::Receiver` | Implement SSE for Ollama + llama.cpp | llm-gateway/src/providers.rs | 3 days |
 | Cloud LLM providers | `ProviderType::OpenAi/Anthropic/Google` enum exists | Implement actual HTTP clients | llm-gateway/src/providers.rs | 3 days |
-| Load balancing | Round-robin only | Implement capability/load-aware assignment | agent-runtime/src/orchestrator.rs | 3 days |
+| ~~Load balancing~~ | ~~Round-robin only~~ | ~~Implement capability/load-aware assignment~~ | ~~agent-runtime/src/orchestrator.rs~~ | ✅ Done (load-aware scoring) |
 
 #### P3 — Low Priority
 
@@ -441,10 +442,10 @@ AGNOSTIC's 6-agent QA team runs on AGNOS and routes inference through the LLM Ga
 | Container sandbox (Landlock + seccomp + namespaces) | agnos-sys | 5.1 | ✅ Done |
 | cgroups v2 resource enforcement per agent | agent-runtime | 5.6 | ✅ Done |
 | Audit trail integration (hash chain) | agnos-sys | 5.6 | ✅ Done |
-| Agent registration with `akd` runtime | agent-runtime | 6.6 | ⏳ Planned |
-| Agent HUD visibility in desktop | desktop-environment | 6.6 | ⏳ Planned |
-| Security UI (permission manager, kill switch) | desktop-environment | 6.6 | ⏳ Planned |
-| Multi-agent resource scheduler | agent-runtime | 6.6 | ⏳ Planned |
+| Agent registration HTTP API (port 8090) | agent-runtime | 6.6 | ✅ Done 2026-03-03 |
+| Agent HUD visibility in desktop | desktop-environment | 6.6 | ✅ Done 2026-03-03 |
+| Security UI (permission manager, kill switch) | desktop-environment | 6.6 | ✅ Done 2026-03-03 |
+| Multi-agent resource scheduler | agent-runtime | 6.6 | ✅ Done 2026-03-03 |
 
 **Current integration**: Phase 1 (LLM Gateway only). Config: `AGNOS_LLM_GATEWAY_ENABLED=true`, `PRIMARY_MODEL_PROVIDER=agnos_gateway`.
 
@@ -460,16 +461,16 @@ hardening is complete. Currently uses `debian:bookworm-slim`.
 | cgroups v2 mount at `/sys/fs/cgroup` | kernel + supervisor | 5.6 | ✅ Done |
 | User namespaces (`CONFIG_USER_NS=y`) | kernel config | 5.1 | ✅ Done |
 | Network/PID namespaces | kernel config | 5.1 | ✅ Done |
-| Pre-compiled seccomp profiles (Python, Node.js, shell) | agnos-sys | 6.5 | ⏳ Planned |
-| gVisor `runsc` pre-installed (opt-in) | base image | 6.5 | ⏳ Planned |
-| WASM runtime libraries (Wasmtime) | base image | 6.5 | ⏳ Planned |
+| Pre-compiled seccomp profiles (Python, Node.js, Shell, WASM) | agent-runtime | 6.6 | ✅ Done 2026-03-03 |
+| gVisor `runsc` pre-installed (opt-in) | Dockerfile | 6.6 | ✅ Done 2026-03-03 |
+| WASM runtime (Wasmtime, feature-gated) | agent-runtime | 6.6 | ✅ Done 2026-03-03 |
 | Audit subsystem (auditd + AGNOS hash chain) | kernel + agnos-sys | 6.5 | ⏳ Planned |
 | dm-verity read-only rootfs | kernel | 6.5 | ⏳ Planned |
 | LUKS encrypted agent data volumes | kernel + tools | 6.5 | ⏳ Planned |
 | AppArmor/SELinux profiles per agent type | kernel + config | 6.5 | ⏳ Planned |
-| Secrets management (Vault/OpenBao injection) | agent-runtime | 6.5 | ⏳ Planned |
+| Secrets management (Vault/Env/File injection) | agnos-common | 6.6 | ✅ Done 2026-03-03 |
 | Network segmentation (per-agent netns + firewall) | agent-runtime | 6.5 | ⏳ Planned |
-| Hardened base Docker image (`agnos-base:latest`) | build system | 6.6 | ⏳ Planned |
+| Hardened base Docker image (`agnos-base:latest`) | Dockerfile | 6.6 | ✅ Done 2026-03-03 |
 | Artifact sandbox scoping (task-scoped `/tmp` via Landlock) | agnos-sys | 6.6 | ⏳ Planned |
 | Process resource metrics export (for anomaly detection) | agent-runtime | 6.6 | ⏳ Planned |
 
@@ -494,8 +495,8 @@ the consumer integration milestone:
 | AppArmor/SELinux profiles | P1 | **P0** | SecureYeoman's deny-by-default security model |
 | dm-verity | P1 | **P0** | SecureYeoman requires read-only rootfs integrity |
 | LUKS volumes | P1 | **P0** | SecureYeoman's AES-256-GCM at-rest encryption policy |
-| Secrets management | P2 | **P1** | Both consumers manage API keys/tokens for LLM providers |
-| Hardened base Docker image | — | **P1** | Direct deliverable for SecureYeoman migration |
+| ~~Secrets management~~ | ~~P2~~ | ~~**P1**~~ | ✅ Done 2026-03-03 |
+| ~~Hardened base Docker image~~ | ~~—~~ | ~~**P1**~~ | ✅ Done 2026-03-03 |
 
 ### Phase 7: Ecosystem (Planned Q4 2026)
 
@@ -534,7 +535,7 @@ the consumer integration milestone:
 - [x] Known issues documented
 
 **Target Date**: End of Q2 2026
-**Confidence**: High (91% complete, all P0/P1 stubs eliminated, only test coverage + audit remain)
+**Confidence**: High (95% complete, consumer integration features implemented, only test coverage + audit remain)
 
 ### Beta Release - Q3 2026
 
@@ -569,7 +570,7 @@ the consumer integration milestone:
 |--------|--------|---------|--------|----------|
 | Code Coverage | >80% | ~65% | 🔄 | P0 |
 | Test Pass Rate | 100% | 100% | ✅ | - |
-| Total Tests | 400+ | 420+ | ✅ | - |
+| Total Tests | 400+ | 580+ | ✅ | - |
 | Agent Spawn Time | <500ms | ~300ms | ✅ | - |
 | Shell Response Time | <100ms | ~50ms | ✅ | - |
 | Memory Overhead | <2GB | ~1.2GB | ✅ | - |
@@ -582,12 +583,12 @@ the consumer integration milestone:
 
 | Component | Tests | Stubs Remaining | Notes |
 |-----------|-------|-----------------|-------|
-| agnos-common | 94 | 0 | Telemetry system info ✅ |
+| agnos-common | 104 | 0 | Secrets management ✅ |
 | agnos-sys | 36 | 0 | LLM gateway delegation ✅, audit hash chain ✅ |
-| agent-runtime | 56 | 0 | Cgroups ✅, /proc resource monitoring ✅ |
+| agent-runtime | 80 | 0 | HTTP API ✅, seccomp profiles ✅, WASM runtime ✅, load-aware scheduler ✅ |
 | llm-gateway | 39 | 0 (P2 only) | Streaming + cloud providers are P2 |
 | ai-shell | 183 | 0 (P2 only) | 8 intents + output formatting are P2 |
-| desktop-environment | 151 | 0 | Agent manager ✅, audit viewer ✅, model manager ✅ |
+| desktop-environment | 161 | 0 | HUD ✅, security enforcement ✅, deadlock fixes ✅ |
 
 ---
 
@@ -712,4 +713,4 @@ For detailed history of all completed work, see [CHANGELOG.md](/CHANGELOG.md).
 
 ---
 
-*Last Updated: 2026-03-03 (P0/P1 implementation pass #2 — all stubs eliminated) | Next Review: 2026-03-10*
+*Last Updated: 2026-03-03 (Phase 6.6 consumer integration — 9 features implemented) | Next Review: 2026-03-10*

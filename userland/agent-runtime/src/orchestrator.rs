@@ -11,9 +11,22 @@ use tokio::sync::{mpsc, RwLock};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
-use agnos_common::{AgentId, Message, MessageType};
+use agnos_common::{AgentConfig, AgentId, Message, MessageType};
 
 use crate::registry::AgentRegistry;
+
+/// Resource/capability requirements for a task.
+#[derive(Debug, Clone, Default)]
+pub struct TaskRequirements {
+    /// Minimum memory in bytes the agent must have available.
+    pub min_memory: u64,
+    /// Minimum CPU shares.
+    pub min_cpu_shares: u32,
+    /// Capabilities the agent must possess.
+    pub required_capabilities: Vec<String>,
+    /// Preferred agent name (affinity bonus).
+    pub preferred_agent: Option<String>,
+}
 
 /// Task priority levels
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -35,6 +48,8 @@ pub struct Task {
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub deadline: Option<chrono::DateTime<chrono::Utc>>,
     pub dependencies: Vec<String>,
+    /// Resource/capability requirements for scoring.
+    pub requirements: TaskRequirements,
 }
 
 /// Task execution result
@@ -193,9 +208,8 @@ impl Orchestrator {
         Ok(())
     }
 
-    /// Auto-assign a task to the most suitable agent(s)
+    /// Auto-assign a task to the most suitable agent using load-aware scoring.
     async fn auto_assign_task(&self, task: &Task) -> Result<()> {
-        // Get available agents
         let available = self.registry.list_by_status(agnos_common::AgentStatus::Running);
 
         if available.is_empty() {
@@ -203,19 +217,43 @@ impl Orchestrator {
             return Err(anyhow::anyhow!("No available agents"));
         }
 
-        // Simple round-robin for now
-        // TODO: Implement intelligent load balancing
-        let selected = &available[0];
+        // Score each agent and pick the best
+        let mut best_agent = &available[0];
+        let mut best_score = f64::NEG_INFINITY;
+
+        // Count tasks per agent for fair-share
+        let running = self.running_tasks.read().await;
+        let mut task_counts: HashMap<AgentId, usize> = HashMap::new();
+        for t in running.values() {
+            for agent_id in &t.target_agents {
+                *task_counts.entry(*agent_id).or_insert(0) += 1;
+            }
+        }
+        drop(running);
+
+        for agent in &available {
+            let config = self.registry.get_config(agent.id);
+            let score = Self::score_agent(
+                agent,
+                config.as_ref(),
+                &task.requirements,
+                *task_counts.get(&agent.id).unwrap_or(&0),
+            );
+            if score > best_score {
+                best_score = score;
+                best_agent = agent;
+            }
+        }
 
         info!(
-            "Auto-assigned task {} to agent {} ({})",
-            task.id, selected.name, selected.id
+            "Auto-assigned task {} to agent {} ({}) with score {:.2}",
+            task.id, best_agent.name, best_agent.id, best_score
         );
 
         let message = Message {
             id: Uuid::new_v4().to_string(),
             source: "orchestrator".to_string(),
-            target: selected.name.clone(),
+            target: best_agent.name.clone(),
             message_type: MessageType::Command,
             payload: task.payload.clone(),
             timestamp: chrono::Utc::now(),
@@ -225,6 +263,95 @@ impl Orchestrator {
             .map_err(|_| anyhow::anyhow!("Failed to send message"))?;
 
         Ok(())
+    }
+
+    /// Score an agent for a given task's requirements.
+    ///
+    /// Weights:
+    /// - Memory headroom:  40%
+    /// - CPU headroom:     30%
+    /// - Capability match: 20%
+    /// - Affinity bonus:   10%
+    ///
+    /// Fair-share: agents with fewer running tasks get a bonus.
+    pub fn score_agent(
+        agent: &crate::agent::AgentHandle,
+        config: Option<&AgentConfig>,
+        requirements: &TaskRequirements,
+        running_task_count: usize,
+    ) -> f64 {
+        let mut score = 0.0;
+
+        // --- Memory headroom (40%) ---
+        let max_memory = config
+            .map(|c| c.resource_limits.max_memory)
+            .unwrap_or(1024 * 1024 * 1024); // 1GB default
+        let used_memory = agent.resource_usage.memory_used;
+        let available_memory = max_memory.saturating_sub(used_memory);
+
+        if requirements.min_memory > 0 {
+            if available_memory >= requirements.min_memory {
+                // Ratio of available to max, capped at 1.0
+                let ratio = (available_memory as f64) / (max_memory as f64);
+                score += 0.4 * ratio;
+            }
+            // else: 0 points for memory — agent can't satisfy the requirement
+        } else {
+            // No memory requirement — full points based on headroom
+            let ratio = (available_memory as f64) / (max_memory.max(1) as f64);
+            score += 0.4 * ratio;
+        }
+
+        // --- CPU headroom (30%) ---
+        let max_cpu_time = config
+            .map(|c| c.resource_limits.max_cpu_time)
+            .unwrap_or(3_600_000);
+        let used_cpu = agent.resource_usage.cpu_time_used;
+        let available_cpu = max_cpu_time.saturating_sub(used_cpu);
+        let cpu_ratio = (available_cpu as f64) / (max_cpu_time.max(1) as f64);
+        score += 0.3 * cpu_ratio;
+
+        // --- Capability match (20%) ---
+        if let Some(config) = config {
+            if !requirements.required_capabilities.is_empty() {
+                let agent_caps: std::collections::HashSet<String> = config
+                    .permissions
+                    .iter()
+                    .map(|p| format!("{:?}", p).to_lowercase())
+                    .collect();
+
+                let matched = requirements
+                    .required_capabilities
+                    .iter()
+                    .filter(|cap| agent_caps.contains(&cap.to_lowercase()))
+                    .count();
+
+                let ratio = if requirements.required_capabilities.is_empty() {
+                    1.0
+                } else {
+                    (matched as f64) / (requirements.required_capabilities.len() as f64)
+                };
+                score += 0.2 * ratio;
+            } else {
+                score += 0.2; // No requirements = full match
+            }
+        } else {
+            score += 0.1; // No config = partial match
+        }
+
+        // --- Affinity bonus (10%) ---
+        if let Some(ref preferred) = requirements.preferred_agent {
+            if agent.name == *preferred {
+                score += 0.1;
+            }
+        }
+
+        // --- Fair-share bonus ---
+        // Agents with fewer running tasks get a small bonus (up to 0.05)
+        let fair_share_penalty = (running_task_count as f64) * 0.01;
+        score -= fair_share_penalty.min(0.1);
+
+        score
     }
 
     /// Handle task result and prune old results to prevent unbounded growth.
@@ -518,11 +645,12 @@ mod tests {
             created_at: chrono::Utc::now(),
             deadline: None,
             dependencies: vec![],
+            requirements: TaskRequirements::default(),
         };
-        
+
         let result = orchestrator.submit_task(task).await;
         assert!(result.is_ok());
-        
+
         let queues = orchestrator.get_queue_stats().await;
         assert_eq!(queues.total_tasks, 1);
     }
@@ -530,7 +658,7 @@ mod tests {
     #[tokio::test]
     async fn test_task_priority_ordering() {
         let orchestrator = create_test_orchestrator();
-        
+
         let low_task = Task {
             id: "low".to_string(),
             priority: TaskPriority::Low,
@@ -539,8 +667,9 @@ mod tests {
             created_at: chrono::Utc::now(),
             deadline: None,
             dependencies: vec![],
+            requirements: TaskRequirements::default(),
         };
-        
+
         let critical_task = Task {
             id: "critical".to_string(),
             priority: TaskPriority::Critical,
@@ -549,6 +678,7 @@ mod tests {
             created_at: chrono::Utc::now(),
             deadline: None,
             dependencies: vec![],
+            requirements: TaskRequirements::default(),
         };
         
         let _ = orchestrator.submit_task(low_task).await;
@@ -571,10 +701,11 @@ mod tests {
             created_at: chrono::Utc::now(),
             deadline: None,
             dependencies: vec![],
+            requirements: TaskRequirements::default(),
         };
-        
+
         orchestrator.submit_task(task.clone()).await.unwrap();
-        
+
         let result = TaskResult {
             task_id: task.id.clone(),
             agent_id: AgentId::new(),
@@ -604,10 +735,11 @@ mod tests {
             created_at: chrono::Utc::now(),
             deadline: None,
             dependencies: vec![],
+            requirements: TaskRequirements::default(),
         };
-        
+
         orchestrator.submit_task(task.clone()).await.unwrap();
-        
+
         let result = TaskResult {
             task_id: task.id.clone(),
             agent_id: AgentId::new(),
@@ -637,8 +769,9 @@ mod tests {
             created_at: chrono::Utc::now(),
             deadline: Some(chrono::Utc::now()),
             dependencies: vec![],
+            requirements: TaskRequirements::default(),
         };
-        
+
         orchestrator.submit_task(task).await.unwrap();
         
         let overdue = orchestrator.get_overdue_tasks().await;
@@ -657,6 +790,7 @@ mod tests {
             created_at: chrono::Utc::now(),
             deadline: None,
             dependencies: vec![],
+            requirements: TaskRequirements::default(),
         };
         
         orchestrator.submit_task(task.clone()).await.unwrap();
@@ -691,6 +825,7 @@ mod tests {
             created_at: chrono::Utc::now(),
             deadline: None,
             dependencies: vec!["parent-task".to_string()],
+            requirements: TaskRequirements::default(),
         };
 
         orchestrator.submit_task(task_with_dep).await.unwrap();
@@ -750,5 +885,115 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn test_score_agent_idle() {
+        use crate::agent::AgentHandle;
+
+        let handle = AgentHandle {
+            id: AgentId::new(),
+            name: "idle-agent".to_string(),
+            status: agnos_common::AgentStatus::Running,
+            created_at: chrono::Utc::now(),
+            started_at: None,
+            resource_usage: agnos_common::ResourceUsage::default(),
+            pid: None,
+        };
+
+        let config = AgentConfig::default();
+        let requirements = TaskRequirements::default();
+
+        let score = Orchestrator::score_agent(&handle, Some(&config), &requirements, 0);
+        // Idle agent with no requirements should get near-max score
+        assert!(score > 0.8, "Expected high score for idle agent, got {}", score);
+    }
+
+    #[test]
+    fn test_score_agent_with_load() {
+        use crate::agent::AgentHandle;
+
+        let handle = AgentHandle {
+            id: AgentId::new(),
+            name: "busy-agent".to_string(),
+            status: agnos_common::AgentStatus::Running,
+            created_at: chrono::Utc::now(),
+            started_at: None,
+            resource_usage: agnos_common::ResourceUsage {
+                memory_used: 512 * 1024 * 1024,
+                cpu_time_used: 1_800_000,
+                file_descriptors_used: 0,
+                processes_used: 0,
+            },
+            pid: None,
+        };
+
+        let config = AgentConfig::default();
+        let requirements = TaskRequirements::default();
+
+        let score = Orchestrator::score_agent(&handle, Some(&config), &requirements, 5);
+        // Agent at ~50% resource usage with 5 running tasks
+        assert!(score > 0.0, "Score should be positive");
+        assert!(score < 0.8, "Score should be lower due to load");
+    }
+
+    #[test]
+    fn test_score_agent_affinity() {
+        use crate::agent::AgentHandle;
+
+        let handle = AgentHandle {
+            id: AgentId::new(),
+            name: "preferred-agent".to_string(),
+            status: agnos_common::AgentStatus::Running,
+            created_at: chrono::Utc::now(),
+            started_at: None,
+            resource_usage: agnos_common::ResourceUsage::default(),
+            pid: None,
+        };
+
+        let config = AgentConfig::default();
+
+        let reqs_with_affinity = TaskRequirements {
+            preferred_agent: Some("preferred-agent".to_string()),
+            ..Default::default()
+        };
+        let reqs_without = TaskRequirements::default();
+
+        let score_with = Orchestrator::score_agent(&handle, Some(&config), &reqs_with_affinity, 0);
+        let score_without = Orchestrator::score_agent(&handle, Some(&config), &reqs_without, 0);
+
+        assert!(score_with > score_without, "Affinity should boost score");
+    }
+
+    #[test]
+    fn test_score_agent_fair_share() {
+        use crate::agent::AgentHandle;
+
+        let handle = AgentHandle {
+            id: AgentId::new(),
+            name: "agent".to_string(),
+            status: agnos_common::AgentStatus::Running,
+            created_at: chrono::Utc::now(),
+            started_at: None,
+            resource_usage: agnos_common::ResourceUsage::default(),
+            pid: None,
+        };
+
+        let config = AgentConfig::default();
+        let requirements = TaskRequirements::default();
+
+        let score_0_tasks = Orchestrator::score_agent(&handle, Some(&config), &requirements, 0);
+        let score_10_tasks = Orchestrator::score_agent(&handle, Some(&config), &requirements, 10);
+
+        assert!(score_0_tasks > score_10_tasks, "Agent with fewer tasks should score higher");
+    }
+
+    #[test]
+    fn test_task_requirements_default() {
+        let req = TaskRequirements::default();
+        assert_eq!(req.min_memory, 0);
+        assert_eq!(req.min_cpu_shares, 0);
+        assert!(req.required_capabilities.is_empty());
+        assert!(req.preferred_agent.is_none());
     }
 }

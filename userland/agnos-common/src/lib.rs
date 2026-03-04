@@ -6,6 +6,7 @@ pub mod agent;
 pub mod audit;
 pub mod error;
 pub mod llm;
+pub mod secrets;
 pub mod security;
 pub mod telemetry;
 pub mod types;

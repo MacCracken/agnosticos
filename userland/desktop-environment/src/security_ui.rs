@@ -439,6 +439,182 @@ impl SecurityUI {
     pub fn get_security_level(&self) -> SecurityLevel {
         self.security_level.read().unwrap().clone()
     }
+
+    /// Enforce an emergency kill on a specific agent process.
+    ///
+    /// Sends SIGKILL, removes cgroup, deregisters via API, and writes an
+    /// audit log entry.
+    pub fn emergency_kill_agent(&self, agent_id: Uuid, pid: Option<u32>) -> Result<(), SecurityUIError> {
+        info!("EMERGENCY KILL: agent {} (pid: {:?})", agent_id, pid);
+
+        // Send SIGKILL to the process if PID is known
+        if let Some(pid) = pid {
+            #[cfg(unix)]
+            {
+                let result = unsafe { libc::kill(pid as i32, libc::SIGKILL) };
+                if result == 0 {
+                    info!("SIGKILL sent to PID {} (agent {})", pid, agent_id);
+                } else {
+                    let err = std::io::Error::last_os_error();
+                    warn!("Failed to SIGKILL PID {}: {}", pid, err);
+                }
+            }
+        }
+
+        // Remove cgroup (best-effort)
+        let cgroup_path = format!("/sys/fs/cgroup/agnos/{}", agent_id);
+        if std::path::Path::new(&cgroup_path).exists() {
+            if let Err(e) = std::fs::remove_dir_all(&cgroup_path) {
+                warn!("Failed to remove cgroup {}: {}", cgroup_path, e);
+            } else {
+                debug!("Removed cgroup for agent {}", agent_id);
+            }
+        }
+
+        // Deregister via HTTP API (best-effort, fire-and-forget)
+        let agent_id_str = agent_id.to_string();
+        tokio::task::spawn(async move {
+            let _ = reqwest::Client::new()
+                .delete(format!("http://localhost:8090/v1/agents/{}", agent_id_str))
+                .timeout(std::time::Duration::from_secs(5))
+                .send()
+                .await;
+        });
+
+        // Write audit log entry
+        Self::write_audit_log("emergency_kill", &agent_id.to_string(), "Agent killed via emergency kill switch");
+
+        // Record a critical alert
+        self.show_security_alert(SecurityAlert {
+            id: Uuid::new_v4(),
+            title: format!("Emergency Kill: Agent {}", agent_id),
+            description: "Agent was terminated via emergency kill switch".to_string(),
+            threat_level: ThreatLevel::Critical,
+            source: "security-ui".to_string(),
+            timestamp: chrono::Utc::now(),
+            requires_action: false,
+            is_resolved: true,
+        });
+
+        Ok(())
+    }
+
+    /// Grant a permission to an agent with policy validation and audit logging.
+    pub fn grant_permission_enforced(
+        &self,
+        agent_id: Uuid,
+        agent_name: &str,
+        permission: &str,
+    ) -> Result<(), SecurityUIError> {
+        // Validate permission exists in definitions
+        let defs = self.permission_definitions.read().unwrap();
+        let perm_def = defs.iter().find(|d| d.name == permission);
+
+        if perm_def.is_none() {
+            return Err(SecurityUIError::PermissionNotFound(permission.to_string()));
+        }
+
+        let requires_confirmation = perm_def.unwrap().requires_confirmation;
+
+        if requires_confirmation {
+            // Check security level — in Lockdown, no permissions can be granted
+            let level = self.security_level.read().unwrap().clone();
+            if level == SecurityLevel::Lockdown {
+                return Err(SecurityUIError::ActionBlocked(
+                    "Cannot grant permissions in Lockdown mode".to_string(),
+                ));
+            }
+        }
+
+        // Update agent permissions
+        let mut perms = self.agent_permissions.write().unwrap();
+        let entry = perms.entry(agent_id).or_insert_with(|| AgentPermission {
+            agent_id,
+            agent_name: agent_name.to_string(),
+            permissions: Vec::new(),
+            granted_at: chrono::Utc::now(),
+            expires_at: None,
+        });
+
+        if !entry.permissions.contains(&permission.to_string()) {
+            entry.permissions.push(permission.to_string());
+        }
+
+        Self::write_audit_log(
+            "permission_granted",
+            &agent_id.to_string(),
+            &format!("Permission '{}' granted to '{}'", permission, agent_name),
+        );
+
+        info!("Permission '{}' granted to agent {} ({})", permission, agent_name, agent_id);
+        Ok(())
+    }
+
+    /// Revoke a permission from an agent and send SIGHUP to reload config.
+    pub fn revoke_permission_enforced(
+        &self,
+        agent_id: Uuid,
+        permission: &str,
+        pid: Option<u32>,
+    ) -> Result<(), SecurityUIError> {
+        let mut perms = self.agent_permissions.write().unwrap();
+
+        if let Some(entry) = perms.get_mut(&agent_id) {
+            entry.permissions.retain(|p| p != permission);
+
+            // Send SIGHUP to agent process to reload configuration
+            if let Some(pid) = pid {
+                #[cfg(unix)]
+                {
+                    let result = unsafe { libc::kill(pid as i32, libc::SIGHUP) };
+                    if result == 0 {
+                        debug!("SIGHUP sent to PID {} to reload config", pid);
+                    }
+                }
+            }
+
+            Self::write_audit_log(
+                "permission_revoked",
+                &agent_id.to_string(),
+                &format!("Permission '{}' revoked", permission),
+            );
+
+            info!("Permission '{}' revoked from agent {}", permission, agent_id);
+            Ok(())
+        } else {
+            Err(SecurityUIError::PermissionNotFound(format!(
+                "No permissions found for agent {}",
+                agent_id
+            )))
+        }
+    }
+
+    /// Write a JSON audit log entry to `/var/log/agnos/audit.log`.
+    fn write_audit_log(event_type: &str, agent_id: &str, details: &str) {
+        let entry = serde_json::json!({
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+            "event_type": event_type,
+            "source": "security-ui",
+            "agent_id": agent_id,
+            "details": details,
+        });
+
+        let log_path = "/var/log/agnos/audit.log";
+        match std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(log_path)
+        {
+            Ok(mut file) => {
+                use std::io::Write;
+                let _ = writeln!(file, "{}", entry);
+            }
+            Err(e) => {
+                // Don't fail on audit log write — just warn
+                warn!("Could not write audit log to {}: {}", log_path, e);
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -780,5 +956,92 @@ mod tests {
             expires_at: None,
         };
         assert_eq!(perm.permissions.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_emergency_kill_agent_no_pid() {
+        let ui = SecurityUI::new();
+        let agent_id = Uuid::new_v4();
+        // Kill without PID — should succeed (skips SIGKILL)
+        let result = ui.emergency_kill_agent(agent_id, None);
+        assert!(result.is_ok());
+        // Should have logged a critical alert
+        let alerts = ui.get_active_alerts();
+        // Alert is already resolved, so active_alerts won't include it
+        // but we can check the dashboard
+    }
+
+    #[test]
+    fn test_grant_permission_enforced() {
+        let ui = SecurityUI::new();
+        let agent_id = Uuid::new_v4();
+
+        // Grant a known permission
+        let result = ui.grant_permission_enforced(agent_id, "test-agent", "file:read");
+        assert!(result.is_ok());
+
+        // Grant unknown permission should fail
+        let result = ui.grant_permission_enforced(agent_id, "test-agent", "unknown:perm");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_grant_permission_lockdown() {
+        let ui = SecurityUI::new();
+        ui.set_security_level(SecurityLevel::Lockdown);
+
+        let agent_id = Uuid::new_v4();
+        // file:write requires confirmation → blocked in Lockdown
+        let result = ui.grant_permission_enforced(agent_id, "test-agent", "file:write");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Lockdown"));
+    }
+
+    #[test]
+    fn test_grant_permission_no_confirmation_in_lockdown() {
+        let ui = SecurityUI::new();
+        ui.set_security_level(SecurityLevel::Lockdown);
+
+        let agent_id = Uuid::new_v4();
+        // file:read does NOT require confirmation → allowed even in Lockdown
+        let result = ui.grant_permission_enforced(agent_id, "test-agent", "file:read");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_revoke_permission_enforced() {
+        let ui = SecurityUI::new();
+        let agent_id = Uuid::new_v4();
+
+        // First grant
+        ui.grant_permission_enforced(agent_id, "test-agent", "file:read").unwrap();
+
+        // Then revoke (no PID)
+        let result = ui.revoke_permission_enforced(agent_id, "file:read", None);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_revoke_permission_not_found() {
+        let ui = SecurityUI::new();
+        let agent_id = Uuid::new_v4();
+
+        let result = ui.revoke_permission_enforced(agent_id, "file:read", None);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_grant_duplicate_permission() {
+        let ui = SecurityUI::new();
+        let agent_id = Uuid::new_v4();
+
+        ui.grant_permission_enforced(agent_id, "agent", "file:read").unwrap();
+        ui.grant_permission_enforced(agent_id, "agent", "file:read").unwrap();
+
+        // Should only appear once
+        let perms = ui.agent_permissions.read().unwrap();
+        let entry = perms.get(&agent_id).unwrap();
+        let count = entry.permissions.iter().filter(|p| *p == "file:read").count();
+        assert_eq!(count, 1);
     }
 }

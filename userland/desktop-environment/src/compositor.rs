@@ -166,12 +166,10 @@ impl Compositor {
         id: SurfaceId,
         state: WindowState,
     ) -> Result<(), CompositorError> {
-        let windows = self.windows.read().unwrap();
-        let window = windows
-            .get(&id)
-            .ok_or(CompositorError::WindowNotFound(id))?;
-
         let mut windows = self.windows.write().unwrap();
+        if !windows.contains_key(&id) {
+            return Err(CompositorError::WindowNotFound(id));
+        }
         if let Some(w) = windows.get_mut(&id) {
             w.state = state.clone();
             info!("Window {} state changed to {:?}", id, state);
@@ -185,13 +183,11 @@ impl Compositor {
         window_id: SurfaceId,
         workspace_id: usize,
     ) -> Result<(), CompositorError> {
-        let windows = self.windows.read().unwrap();
+        let mut windows = self.windows.write().unwrap();
         if !windows.contains_key(&window_id) {
             return Err(CompositorError::WindowNotFound(window_id));
         }
-
-        let mut windows = self.windows.write().unwrap();
-        let window = windows.get(&window_id).unwrap().clone();
+        let _window = windows.get(&window_id).unwrap().clone();
 
         let old_ws = *self.active_workspace.read().unwrap();
         let mut workspaces = self.workspaces.write().unwrap();
@@ -266,6 +262,52 @@ impl Compositor {
             .filter(|(id, _)| window_ids.contains(id))
             .map(|(_, w)| w.clone())
             .collect()
+    }
+
+    /// Render a text-based HUD overlay showing agent status.
+    ///
+    /// Returns a formatted string suitable for compositing onto the desktop.
+    /// The actual rendering will be handled by the Wayland compositor once
+    /// we have a real buffer allocation path; this method provides the content.
+    pub fn render_hud_overlay(
+        &self,
+        agents: &[crate::ai_features::AgentHUDState],
+    ) -> String {
+        if agents.is_empty() {
+            return String::new();
+        }
+
+        let mut lines = Vec::new();
+        lines.push("╔══════════════════════════════════════╗".to_string());
+        lines.push("║         Agent HUD                    ║".to_string());
+        lines.push("╠══════════════════════════════════════╣".to_string());
+
+        for agent in agents {
+            let status_icon = match agent.status {
+                crate::ai_features::AgentStatus::Idle => "○",
+                crate::ai_features::AgentStatus::Thinking => "◐",
+                crate::ai_features::AgentStatus::Acting => "●",
+                crate::ai_features::AgentStatus::Waiting => "◑",
+                crate::ai_features::AgentStatus::Error => "✗",
+            };
+
+            let name = if agent.agent_name.len() > 20 {
+                format!("{}…", &agent.agent_name[..19])
+            } else {
+                agent.agent_name.clone()
+            };
+
+            lines.push(format!(
+                "║ {} {:<20} {:>5.1}% {:>4}MB ║",
+                status_icon,
+                name,
+                agent.resource_usage.cpu_percent,
+                agent.resource_usage.memory_mb,
+            ));
+        }
+
+        lines.push("╚══════════════════════════════════════╝".to_string());
+        lines.join("\n")
     }
 
     pub fn get_agent_windows(&self) -> Vec<Window> {
@@ -645,5 +687,77 @@ mod tests {
         let mut backend = WaylandBackend;
         let event = InputEvent::MouseMove { x: 100, y: 200 };
         assert!(backend.handle_input(event).is_ok());
+    }
+
+    #[test]
+    fn test_hud_overlay_empty() {
+        let compositor = Compositor::new();
+        let result = compositor.render_hud_overlay(&[]);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_hud_overlay_with_agents() {
+        use crate::ai_features::{AgentHUDState, AgentStatus, ResourceMetrics};
+
+        let compositor = Compositor::new();
+        let agents = vec![
+            AgentHUDState {
+                agent_id: Uuid::new_v4(),
+                agent_name: "qa-agent".to_string(),
+                status: AgentStatus::Acting,
+                current_task: "running tests".to_string(),
+                progress: 0.5,
+                last_activity: chrono::Utc::now(),
+                resource_usage: ResourceMetrics {
+                    cpu_percent: 45.2,
+                    memory_mb: 256,
+                    gpu_percent: None,
+                },
+            },
+            AgentHUDState {
+                agent_id: Uuid::new_v4(),
+                agent_name: "file-manager".to_string(),
+                status: AgentStatus::Idle,
+                current_task: String::new(),
+                progress: 0.0,
+                last_activity: chrono::Utc::now(),
+                resource_usage: ResourceMetrics {
+                    cpu_percent: 0.0,
+                    memory_mb: 64,
+                    gpu_percent: None,
+                },
+            },
+        ];
+
+        let result = compositor.render_hud_overlay(&agents);
+        assert!(result.contains("Agent HUD"));
+        assert!(result.contains("qa-agent"));
+        assert!(result.contains("file-manager"));
+        assert!(result.contains("●")); // Acting icon
+        assert!(result.contains("○")); // Idle icon
+    }
+
+    #[test]
+    fn test_hud_overlay_long_name() {
+        use crate::ai_features::{AgentHUDState, AgentStatus, ResourceMetrics};
+
+        let compositor = Compositor::new();
+        let agents = vec![AgentHUDState {
+            agent_id: Uuid::new_v4(),
+            agent_name: "very-long-agent-name-that-should-be-truncated".to_string(),
+            status: AgentStatus::Thinking,
+            current_task: String::new(),
+            progress: 0.0,
+            last_activity: chrono::Utc::now(),
+            resource_usage: ResourceMetrics {
+                cpu_percent: 10.0,
+                memory_mb: 128,
+                gpu_percent: None,
+            },
+        }];
+
+        let result = compositor.render_hud_overlay(&agents);
+        assert!(result.contains("…")); // Truncation marker
     }
 }

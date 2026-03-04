@@ -29,6 +29,17 @@ dashmap = { workspace = true }
 chrono = { workspace = true }
 nix = { version = "0.27", features = ["process", "signal"] }
 libc = "0.2"
+axum = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+reqwest = { workspace = true }
+
+wasmtime = { version = "27", optional = true }
+wasmtime-wasi = { version = "27", optional = true }
+
+[features]
+default = []
+wasm = ["wasmtime", "wasmtime-wasi"]
 
 [dev-dependencies]
 tokio-test = "0.4"
