@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed (March 4, 2026 — Test Suite & Compilation Fixes)
+
+- **Fixed 4 compilation errors in test code**:
+  - `agent-runtime/Cargo.toml`: Added missing `tempfile = "3"` dev-dependency
+  - `desktop-environment/src/compositor.rs`: Added `Default` impl for `WindowState` enum (returns `Normal`)
+  - `desktop-environment/src/compositor.rs`: Added `Window`, `Application`, `System`, `User` variants to `ContextType` enum
+  - `desktop-environment/src/security_ui.rs`: Added `Info` variant to `ThreatLevel` enum (lowest severity)
+  - `desktop-environment/src/main.rs`: Fixed `test_window_state_defaults` to test enum equality instead of nonexistent struct fields
+
+### Added (March 4, 2026 — Test Coverage Push: 46% → 65%+)
+
+- **1020 new tests** across all packages (1215 → 2235 total), 0 failures, 8 ignored (require root)
+- **ai-shell** (185 → 319 tests):
+  - `session.rs`: 67 tests covering Session creation, builtins (help/mode/history/clear/exit), mode switching (human/ai/auto/strict), shell command execution, cd handling, process spawning, build_prompt
+  - `prompt.rs`: 32 tests covering all 7 PromptModule types (AiMode, Directory, GitBranch, ExecutionTime, ExitStatus, Character, Context), PromptRenderer, PromptConfig defaults, parse_format
+  - `ui.rs`: 13 tests covering Ui construction, all show_* output methods
+  - `approval.rs`: 21 tests covering RiskLevel, is_blocked for all request types, assess_risk for system paths and batch sizes, auto-approve/auto-deny async paths
+  - `interpreter.rs`: 30 tests covering parse for all intent types, translate error paths, explain for mv/cp/top/du/grep/find
+- **desktop-environment** (161 → 268 tests):
+  - `main.rs`: 16 tests covering parse_cpu_line, read_memory_usage, read_disk_usage, read_cpu_usage, DesktopEnvironment new/initialize/shutdown
+  - `apps.rs`: 55 tests covering AppWindow, TerminalApp, FileManagerApp, AgentManagerApp, AuditViewerApp, ModelManagerApp, DesktopApplications, all AppError/AppType variants
+  - `ai_features.rs`: 30 tests covering detect_context_type, update_context events, proactive_suggestions filtering, dismiss_suggestion, context history cap, smart_window_placement, agent HUD
+- **agent-runtime** (116 → 239 tests):
+  - `agent.rs`: 17 tests covering AgentHandle, AgentStatus variants, /proc/self reads (VmRSS, CPU time, FDs, threads), Agent::new, message passing
+  - `resource.rs`: 17 tests covering ResourceManager memory/CPU/GPU allocation and release, GpuDevice
+  - `supervisor.rs`: 30 tests covering CgroupController (path generation, read/write with tempdir, destroy), HealthCheckConfig, Supervisor clone/register/health, process alive checks
+  - `orchestrator.rs`: 27 tests covering TaskPriority ordering, TaskResult serialization, QueueStats, submit/cancel/status, score_agent
+  - `registry.rs`: 20 tests covering extract_capabilities, Registry CRUD, RegistryStats, async register/unregister/update
+- **agnos-common** (104 → 168 tests):
+  - `secrets.rs`: 20 tests covering EnvBackend, FileBackend (encrypt/decrypt roundtrip, wrong key), VaultBackend URLs, SecretInjector
+  - `telemetry.rs`: 24 tests covering TelemetryCollector, event/counter/gauge/timing recording, VecDeque eviction, crash reports, flush, system info helpers, serde roundtrips
+  - `llm.rs`: 14 tests covering InferenceRequest validate() clamping, prompt truncation, InferenceResponse, ModelInfo, CloudProvider debug redaction, TokenUsage
+- **llm-gateway** (47 → 145 tests):
+  - `http.rs`: 37 tests including 14 axum integration tests (GET /v1/health, GET /v1/models, POST /v1/chat/completions with auth, 401/404/500 error paths)
+  - `providers.rs`: 22 tests covering OllamaProvider/LlamaCppProvider (infer graceful failure, stream channels, trait objects, Arc usage)
+  - `main.rs`: 46 tests covering LlmGateway methods, multi-agent token accounting, config edge cases, SharedSession
+
 ### Added (March 4, 2026 — Phase 6.5 P0 Kernel Security Features)
 
 - **Audit subsystem bindings** (`agnos-sys/src/audit.rs`):

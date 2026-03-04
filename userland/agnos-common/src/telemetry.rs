@@ -496,9 +496,399 @@ mod tests {
             events_sent: 100,
             events_dropped: 5,
         };
-        
+
         let json = serde_json::to_string(&session).expect("Failed to serialize");
         assert!(json.contains("test-id"));
         assert!(json.contains("1.0.0"));
+    }
+
+    // --- Additional telemetry.rs coverage tests ---
+
+    #[tokio::test]
+    async fn test_collector_construction_sets_session() {
+        let config = TelemetryConfig {
+            enabled: true,
+            metrics_enabled: true,
+            instance_id: "construct-test".to_string(),
+            ..Default::default()
+        };
+        let collector = TelemetryCollector::new(config);
+        let stats = collector.get_stats().await;
+        assert_eq!(stats.instance_id, "construct-test");
+        assert_eq!(stats.events_sent, 0);
+        assert_eq!(stats.events_dropped, 0);
+    }
+
+    #[tokio::test]
+    async fn test_record_event_disabled_telemetry() {
+        let config = TelemetryConfig {
+            enabled: false,
+            metrics_enabled: true,
+            ..Default::default()
+        };
+        let collector = TelemetryCollector::new(config);
+        // Recording should silently skip when disabled
+        collector.record_event("cat", "name", 1.0, EventType::Counter).await;
+        let events = collector.events.read().await;
+        assert!(events.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_record_event_disabled_metrics() {
+        let config = TelemetryConfig {
+            enabled: true,
+            metrics_enabled: false,
+            ..Default::default()
+        };
+        let collector = TelemetryCollector::new(config);
+        collector.record_event("cat", "name", 1.0, EventType::Counter).await;
+        let events = collector.events.read().await;
+        assert!(events.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_record_event_stores_correctly() {
+        let config = TelemetryConfig {
+            enabled: true,
+            metrics_enabled: true,
+            instance_id: "event-store-test".to_string(),
+            ..Default::default()
+        };
+        let collector = TelemetryCollector::new(config);
+        collector.record_event("perf", "latency", 42.5, EventType::Gauge).await;
+
+        let events = collector.events.read().await;
+        assert_eq!(events.len(), 1);
+        let event = &events[0];
+        assert_eq!(event.category, "perf");
+        assert_eq!(event.name, "latency");
+        assert_eq!(event.value, 42.5);
+        assert_eq!(event.event_type, EventType::Gauge);
+        assert_eq!(event.instance_id, "event-store-test");
+    }
+
+    #[tokio::test]
+    async fn test_record_counter_stores_counter_type() {
+        let config = TelemetryConfig {
+            enabled: true,
+            metrics_enabled: true,
+            ..Default::default()
+        };
+        let collector = TelemetryCollector::new(config);
+        collector.record_counter("http", "requests", 1.0).await;
+
+        let events = collector.events.read().await;
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].event_type, EventType::Counter);
+    }
+
+    #[tokio::test]
+    async fn test_record_gauge_stores_gauge_type() {
+        let config = TelemetryConfig {
+            enabled: true,
+            metrics_enabled: true,
+            ..Default::default()
+        };
+        let collector = TelemetryCollector::new(config);
+        collector.record_gauge("system", "cpu_pct", 85.0).await;
+
+        let events = collector.events.read().await;
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].event_type, EventType::Gauge);
+        assert_eq!(events[0].value, 85.0);
+    }
+
+    #[tokio::test]
+    async fn test_record_timing_stores_timing_type() {
+        let config = TelemetryConfig {
+            enabled: true,
+            metrics_enabled: true,
+            ..Default::default()
+        };
+        let collector = TelemetryCollector::new(config);
+        collector.record_timing("db", "query_ms", 123.456).await;
+
+        let events = collector.events.read().await;
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].event_type, EventType::Timing);
+        assert_eq!(events[0].value, 123.456);
+    }
+
+    #[tokio::test]
+    async fn test_vecdeque_eviction_at_max_events() {
+        let config = TelemetryConfig {
+            enabled: true,
+            metrics_enabled: true,
+            sampling_rate: 1.0,
+            ..Default::default()
+        };
+        let collector = TelemetryCollector::new(config);
+
+        // Fill beyond MAX_EVENTS (1000)
+        for i in 0..1005 {
+            collector.record_counter("test", "counter", i as f64).await;
+        }
+
+        let events = collector.events.read().await;
+        // Should be capped at MAX_EVENTS
+        assert_eq!(events.len(), MAX_EVENTS);
+        // The oldest events (0..5) should have been evicted; first remaining = 5.0
+        assert_eq!(events[0].value, 5.0);
+    }
+
+    #[tokio::test]
+    async fn test_submit_crash_disabled() {
+        let config = TelemetryConfig {
+            enabled: false,
+            crash_reporting: true,
+            ..Default::default()
+        };
+        let collector = TelemetryCollector::new(config);
+        collector.submit_crash("comp", "error msg", Some("trace")).await;
+        let reports = collector.crash_reports.read().await;
+        assert!(reports.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_submit_crash_reporting_disabled() {
+        let config = TelemetryConfig {
+            enabled: true,
+            crash_reporting: false,
+            ..Default::default()
+        };
+        let collector = TelemetryCollector::new(config);
+        collector.submit_crash("comp", "error msg", None).await;
+        let reports = collector.crash_reports.read().await;
+        assert!(reports.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_submit_crash_enabled() {
+        let config = TelemetryConfig {
+            enabled: true,
+            crash_reporting: true,
+            instance_id: "crash-test".to_string(),
+            ..Default::default()
+        };
+        let collector = TelemetryCollector::new(config);
+        collector.submit_crash("agent-runtime", "panic at the disco", Some("line 42")).await;
+
+        let reports = collector.crash_reports.read().await;
+        assert_eq!(reports.len(), 1);
+        let report = &reports[0];
+        assert_eq!(report.component, "agent-runtime");
+        assert_eq!(report.error_message, "panic at the disco");
+        assert_eq!(report.stack_trace.as_deref(), Some("line 42"));
+        assert_eq!(report.instance_id, "crash-test");
+    }
+
+    #[tokio::test]
+    async fn test_submit_crash_no_stack_trace() {
+        let config = TelemetryConfig {
+            enabled: true,
+            crash_reporting: true,
+            ..Default::default()
+        };
+        let collector = TelemetryCollector::new(config);
+        collector.submit_crash("llm-gateway", "connection lost", None).await;
+
+        let reports = collector.crash_reports.read().await;
+        assert_eq!(reports.len(), 1);
+        assert!(reports[0].stack_trace.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_crash_report_eviction_at_max() {
+        let config = TelemetryConfig {
+            enabled: true,
+            crash_reporting: true,
+            ..Default::default()
+        };
+        let collector = TelemetryCollector::new(config);
+
+        // Submit more than MAX_CRASH_REPORTS (10)
+        for i in 0..15 {
+            collector.submit_crash("comp", &format!("error {}", i), None).await;
+        }
+
+        let reports = collector.crash_reports.read().await;
+        assert_eq!(reports.len(), MAX_CRASH_REPORTS);
+        // Oldest should be evicted; first remaining should be "error 5"
+        assert_eq!(reports[0].error_message, "error 5");
+    }
+
+    #[tokio::test]
+    async fn test_flush_disabled() {
+        let config = TelemetryConfig::default(); // disabled
+        let collector = TelemetryCollector::new(config);
+        let result = collector.flush().await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_flush_empty_events() {
+        let config = TelemetryConfig {
+            enabled: true,
+            metrics_enabled: true,
+            ..Default::default()
+        };
+        let collector = TelemetryCollector::new(config);
+        // No events recorded — flush should succeed (no-op)
+        let result = collector.flush().await;
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_read_os_version_returns_string() {
+        // Pure function — just verify it returns something non-panicking
+        let version = TelemetryCollector::read_os_version();
+        assert!(!version.is_empty());
+    }
+
+    #[test]
+    fn test_read_memory_mb_returns_value() {
+        let mem = TelemetryCollector::read_memory_mb();
+        // On Linux this reads /proc/meminfo, on other platforms returns 0
+        // Just verify no panic
+        let _ = mem;
+    }
+
+    #[test]
+    fn test_read_kernel_version_returns_string() {
+        let version = TelemetryCollector::read_kernel_version();
+        assert!(!version.is_empty());
+    }
+
+    #[test]
+    fn test_telemetry_config_serialization_roundtrip() {
+        let config = TelemetryConfig {
+            enabled: true,
+            crash_reporting: true,
+            metrics_enabled: true,
+            instance_id: "serial-test".to_string(),
+            endpoint_url: "https://test.example.com/v1".to_string(),
+            sampling_rate: 0.75,
+            flush_interval_secs: 120,
+        };
+        let json = serde_json::to_string(&config).unwrap();
+        let deserialized: TelemetryConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.instance_id, "serial-test");
+        assert_eq!(deserialized.sampling_rate, 0.75);
+        assert_eq!(deserialized.flush_interval_secs, 120);
+    }
+
+    #[test]
+    fn test_crash_report_serialization() {
+        let report = CrashReport {
+            timestamp: chrono::Utc::now(),
+            instance_id: "crash-serial".to_string(),
+            version: "0.1.0".to_string(),
+            component: "desktop".to_string(),
+            error_message: "segfault".to_string(),
+            stack_trace: Some("at main.rs:10".to_string()),
+            system_info: SystemInfo {
+                os_type: "linux".to_string(),
+                os_version: "Arch".to_string(),
+                architecture: "x86_64".to_string(),
+                cpu_count: 4,
+                memory_mb: 8192,
+                kernel_version: "6.6.0".to_string(),
+            },
+        };
+        let json = serde_json::to_string(&report).unwrap();
+        let deserialized: CrashReport = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.component, "desktop");
+        assert_eq!(deserialized.system_info.cpu_count, 4);
+    }
+
+    #[test]
+    fn test_telemetry_event_serialization() {
+        let event = TelemetryEvent {
+            timestamp: chrono::Utc::now(),
+            instance_id: "evt-serial".to_string(),
+            event_type: EventType::Histogram,
+            category: "perf".to_string(),
+            name: "request_size".to_string(),
+            value: 1024.0,
+            metadata: HashMap::from([("unit".to_string(), "bytes".to_string())]),
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        let deserialized: TelemetryEvent = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.event_type, EventType::Histogram);
+        assert_eq!(deserialized.value, 1024.0);
+        assert_eq!(deserialized.metadata.get("unit").unwrap(), "bytes");
+    }
+
+    #[test]
+    fn test_event_type_equality() {
+        assert_eq!(EventType::Counter, EventType::Counter);
+        assert_ne!(EventType::Counter, EventType::Gauge);
+        assert_ne!(EventType::Histogram, EventType::Timing);
+    }
+
+    #[test]
+    fn test_system_info_serialization_roundtrip() {
+        let info = SystemInfo {
+            os_type: "linux".to_string(),
+            os_version: "AGNOS 0.1".to_string(),
+            architecture: "aarch64".to_string(),
+            cpu_count: 16,
+            memory_mb: 32768,
+            kernel_version: "6.6.0-agnos".to_string(),
+        };
+        let json = serde_json::to_string(&info).unwrap();
+        let deserialized: SystemInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.architecture, "aarch64");
+        assert_eq!(deserialized.memory_mb, 32768);
+    }
+
+    #[test]
+    fn test_telemetry_error_display() {
+        let net_err = TelemetryError::NetworkError("timeout".to_string());
+        assert!(net_err.to_string().contains("timeout"));
+
+        let ep_err = TelemetryError::EndpointError("HTTP 500".to_string());
+        assert!(ep_err.to_string().contains("HTTP 500"));
+
+        let ser_err = TelemetryError::Serialization("bad json".to_string());
+        assert!(ser_err.to_string().contains("bad json"));
+    }
+
+    #[tokio::test]
+    async fn test_is_enabled_reflects_config() {
+        let enabled_config = TelemetryConfig {
+            enabled: true,
+            ..Default::default()
+        };
+        let disabled_config = TelemetryConfig {
+            enabled: false,
+            ..Default::default()
+        };
+        let c1 = TelemetryCollector::new(enabled_config);
+        let c2 = TelemetryCollector::new(disabled_config);
+        assert!(c1.is_enabled());
+        assert!(!c2.is_enabled());
+    }
+
+    #[tokio::test]
+    async fn test_multiple_event_types_interleaved() {
+        let config = TelemetryConfig {
+            enabled: true,
+            metrics_enabled: true,
+            ..Default::default()
+        };
+        let collector = TelemetryCollector::new(config);
+
+        collector.record_counter("a", "c1", 1.0).await;
+        collector.record_gauge("a", "g1", 2.0).await;
+        collector.record_timing("a", "t1", 3.0).await;
+        collector.record_event("a", "h1", 4.0, EventType::Histogram).await;
+
+        let events = collector.events.read().await;
+        assert_eq!(events.len(), 4);
+        assert_eq!(events[0].event_type, EventType::Counter);
+        assert_eq!(events[1].event_type, EventType::Gauge);
+        assert_eq!(events[2].event_type, EventType::Timing);
+        assert_eq!(events[3].event_type, EventType::Histogram);
     }
 }

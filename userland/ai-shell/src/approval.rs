@@ -664,4 +664,286 @@ mod tests {
         let cloned = original.clone();
         assert!(format!("{:?}", cloned).contains("test"));
     }
+
+    // --- Additional approval.rs coverage tests ---
+
+    #[test]
+    fn test_is_blocked_privilege_escalation() {
+        let mut manager = ApprovalManager::new();
+        manager.block_pattern("sudo".to_string());
+
+        let request = ApprovalRequest::PrivilegeEscalation {
+            command: "sudo rm -rf /".to_string(),
+            user: "root".to_string(),
+            reason: "Need root".to_string(),
+        };
+        assert!(manager.is_blocked(&request));
+    }
+
+    #[test]
+    fn test_is_blocked_privilege_escalation_no_match() {
+        let mut manager = ApprovalManager::new();
+        manager.block_pattern("reboot".to_string());
+
+        let request = ApprovalRequest::PrivilegeEscalation {
+            command: "sudo ls".to_string(),
+            user: "root".to_string(),
+            reason: "List files".to_string(),
+        };
+        assert!(!manager.is_blocked(&request));
+    }
+
+    #[test]
+    fn test_is_blocked_file_operation_returns_false() {
+        let mut manager = ApprovalManager::new();
+        manager.block_pattern("rm".to_string());
+
+        // FileOperation is not checked by is_blocked — always returns false
+        let request = ApprovalRequest::FileOperation {
+            operation: "rm".to_string(),
+            path: std::path::PathBuf::from("/etc/passwd"),
+            description: "Delete passwd".to_string(),
+        };
+        assert!(!manager.is_blocked(&request));
+    }
+
+    #[test]
+    fn test_is_blocked_network_access_returns_false() {
+        let mut manager = ApprovalManager::new();
+        manager.block_pattern("evil".to_string());
+
+        let request = ApprovalRequest::NetworkAccess {
+            host: "evil.com".to_string(),
+            port: 443,
+            protocol: "https".to_string(),
+            purpose: "Exfiltrate".to_string(),
+        };
+        assert!(!manager.is_blocked(&request));
+    }
+
+    #[test]
+    fn test_is_blocked_batch_returns_false() {
+        let mut manager = ApprovalManager::new();
+        manager.block_pattern("rm".to_string());
+
+        let request = ApprovalRequest::Batch {
+            operations: vec!["rm -rf /".to_string()],
+            summary: "Dangerous".to_string(),
+        };
+        assert!(!manager.is_blocked(&request));
+    }
+
+    #[test]
+    fn test_is_blocked_multiple_patterns() {
+        let mut manager = ApprovalManager::new();
+        manager.block_pattern("rm -rf".to_string());
+        manager.block_pattern("shutdown".to_string());
+        manager.block_pattern("reboot".to_string());
+
+        let blocked = ApprovalRequest::Command {
+            command: "shutdown now".to_string(),
+            args: vec![],
+            reason: "Power off".to_string(),
+            risk_level: RiskLevel::Critical,
+        };
+        assert!(manager.is_blocked(&blocked));
+
+        let not_blocked = ApprovalRequest::Command {
+            command: "ls -la".to_string(),
+            args: vec![],
+            reason: "List".to_string(),
+            risk_level: RiskLevel::Low,
+        };
+        assert!(!manager.is_blocked(&not_blocked));
+    }
+
+    #[test]
+    fn test_assess_risk_file_operation_system_path_etc() {
+        let manager = ApprovalManager::new();
+        let request = ApprovalRequest::FileOperation {
+            operation: "write".to_string(),
+            path: std::path::PathBuf::from("/etc/shadow"),
+            description: "Modify shadow".to_string(),
+        };
+        assert_eq!(manager.assess_risk(&request), RiskLevel::High);
+    }
+
+    #[test]
+    fn test_assess_risk_file_operation_system_path_usr() {
+        let manager = ApprovalManager::new();
+        let request = ApprovalRequest::FileOperation {
+            operation: "write".to_string(),
+            path: std::path::PathBuf::from("/usr/lib/something"),
+            description: "Modify lib".to_string(),
+        };
+        assert_eq!(manager.assess_risk(&request), RiskLevel::High);
+    }
+
+    #[test]
+    fn test_assess_risk_file_operation_system_path_bin() {
+        let manager = ApprovalManager::new();
+        let request = ApprovalRequest::FileOperation {
+            operation: "write".to_string(),
+            path: std::path::PathBuf::from("/bin/sh"),
+            description: "Replace shell".to_string(),
+        };
+        assert_eq!(manager.assess_risk(&request), RiskLevel::High);
+    }
+
+    #[test]
+    fn test_assess_risk_file_operation_system_path_sbin() {
+        let manager = ApprovalManager::new();
+        let request = ApprovalRequest::FileOperation {
+            operation: "write".to_string(),
+            path: std::path::PathBuf::from("/sbin/init"),
+            description: "Replace init".to_string(),
+        };
+        assert_eq!(manager.assess_risk(&request), RiskLevel::High);
+    }
+
+    #[test]
+    fn test_assess_risk_file_operation_delete() {
+        let manager = ApprovalManager::new();
+        let request = ApprovalRequest::FileOperation {
+            operation: "delete".to_string(),
+            path: std::path::PathBuf::from("/home/user/file.txt"),
+            description: "Delete user file".to_string(),
+        };
+        assert_eq!(manager.assess_risk(&request), RiskLevel::High);
+    }
+
+    #[test]
+    fn test_assess_risk_file_operation_remove() {
+        let manager = ApprovalManager::new();
+        let request = ApprovalRequest::FileOperation {
+            operation: "remove".to_string(),
+            path: std::path::PathBuf::from("/home/user/file.txt"),
+            description: "Remove user file".to_string(),
+        };
+        assert_eq!(manager.assess_risk(&request), RiskLevel::High);
+    }
+
+    #[test]
+    fn test_assess_risk_file_operation_safe_user_path() {
+        let manager = ApprovalManager::new();
+        let request = ApprovalRequest::FileOperation {
+            operation: "write".to_string(),
+            path: std::path::PathBuf::from("/home/user/notes.txt"),
+            description: "Write notes".to_string(),
+        };
+        assert_eq!(manager.assess_risk(&request), RiskLevel::Medium);
+    }
+
+    #[test]
+    fn test_assess_risk_batch_large() {
+        let manager = ApprovalManager::new();
+        let ops: Vec<String> = (0..15).map(|i| format!("op{}", i)).collect();
+        let request = ApprovalRequest::Batch {
+            operations: ops,
+            summary: "Many ops".to_string(),
+        };
+        assert_eq!(manager.assess_risk(&request), RiskLevel::High);
+    }
+
+    #[test]
+    fn test_assess_risk_batch_small() {
+        let manager = ApprovalManager::new();
+        let request = ApprovalRequest::Batch {
+            operations: vec!["op1".to_string(), "op2".to_string()],
+            summary: "Few ops".to_string(),
+        };
+        assert_eq!(manager.assess_risk(&request), RiskLevel::Medium);
+    }
+
+    #[test]
+    fn test_assess_risk_batch_exactly_10() {
+        let manager = ApprovalManager::new();
+        let ops: Vec<String> = (0..10).map(|i| format!("op{}", i)).collect();
+        let request = ApprovalRequest::Batch {
+            operations: ops,
+            summary: "Boundary".to_string(),
+        };
+        // 10 is not > 10, so Medium
+        assert_eq!(manager.assess_risk(&request), RiskLevel::Medium);
+    }
+
+    #[test]
+    fn test_assess_risk_command_medium() {
+        let manager = ApprovalManager::new();
+        let request = ApprovalRequest::Command {
+            command: "touch".to_string(),
+            args: vec!["file.txt".to_string()],
+            reason: "Create file".to_string(),
+            risk_level: RiskLevel::Medium,
+        };
+        assert_eq!(manager.assess_risk(&request), RiskLevel::Medium);
+    }
+
+    #[test]
+    fn test_approval_response_modify_variant() {
+        let modified_request = ApprovalRequest::Command {
+            command: "echo".to_string(),
+            args: vec!["hello".to_string()],
+            reason: "Modified".to_string(),
+            risk_level: RiskLevel::Low,
+        };
+        let response = ApprovalResponse::Modify(modified_request);
+        let debug = format!("{:?}", response);
+        assert!(debug.contains("Modify"));
+        assert!(debug.contains("echo"));
+    }
+
+    #[test]
+    fn test_risk_level_copy_eq() {
+        let a = RiskLevel::Critical;
+        let b = a; // Copy
+        assert_eq!(a, b);
+    }
+
+    #[tokio::test]
+    async fn test_request_blocked_pattern_auto_denies() {
+        let mut manager = ApprovalManager::new();
+        manager.block_pattern("dangerous".to_string());
+
+        let request = ApprovalRequest::Command {
+            command: "dangerous-cmd".to_string(),
+            args: vec![],
+            reason: "Test blocked".to_string(),
+            risk_level: RiskLevel::Critical,
+        };
+
+        let result = manager.request(&request).await.unwrap();
+        assert!(matches!(result, ApprovalResponse::Denied));
+    }
+
+    #[tokio::test]
+    async fn test_request_auto_approve_low_risk() {
+        let mut manager = ApprovalManager::new();
+        manager.set_auto_approve_low_risk(true);
+
+        let request = ApprovalRequest::Command {
+            command: "ls".to_string(),
+            args: vec![],
+            reason: "List".to_string(),
+            risk_level: RiskLevel::Low,
+        };
+
+        let result = manager.request(&request).await.unwrap();
+        assert!(matches!(result, ApprovalResponse::Approved));
+    }
+
+    #[tokio::test]
+    async fn test_request_non_interactive_denies() {
+        // In test environment, stdin is not a terminal, so this should deny
+        let manager = ApprovalManager::new();
+        let request = ApprovalRequest::Command {
+            command: "echo".to_string(),
+            args: vec!["test".to_string()],
+            reason: "Test non-interactive".to_string(),
+            risk_level: RiskLevel::Medium,
+        };
+
+        let result = manager.request(&request).await.unwrap();
+        assert!(matches!(result, ApprovalResponse::Denied));
+    }
 }

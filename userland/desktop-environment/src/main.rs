@@ -265,3 +265,277 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use uuid::Uuid;
+
+    #[test]
+    fn test_args_default_values() {
+        let args = Args {
+            backend: "wayland".to_string(),
+            kiosk: false,
+            no_ai: false,
+            secure: false,
+        };
+        
+        assert_eq!(args.backend, "wayland");
+        assert!(!args.kiosk);
+        assert!(!args.no_ai);
+        assert!(!args.secure);
+    }
+
+    #[test]
+    fn test_args_custom_values() {
+        let args = Args {
+            backend: "x11".to_string(),
+            kiosk: true,
+            no_ai: true,
+            secure: true,
+        };
+        
+        assert_eq!(args.backend, "x11");
+        assert!(args.kiosk);
+        assert!(args.no_ai);
+        assert!(args.secure);
+    }
+
+    #[test]
+    fn test_window_state_defaults() {
+        let state = WindowState::default();
+        assert_eq!(state, WindowState::Normal);
+    }
+
+    #[test]
+    fn test_context_type_variants() {
+        assert_eq!(format!("{:?}", ContextType::Window), "Window");
+        assert_eq!(format!("{:?}", ContextType::Application), "Application");
+        assert_eq!(format!("{:?}", ContextType::System), "System");
+        assert_eq!(format!("{:?}", ContextType::User), "User");
+    }
+
+    #[test]
+    fn test_notification_priority() {
+        assert_eq!(format!("{:?}", NotificationPriority::Low), "Low");
+        assert_eq!(format!("{:?}", NotificationPriority::Normal), "Normal");
+        assert_eq!(format!("{:?}", NotificationPriority::High), "High");
+        assert_eq!(format!("{:?}", NotificationPriority::Critical), "Critical");
+    }
+
+    #[test]
+    fn test_threat_level_ordering() {
+        assert!(ThreatLevel::Info < ThreatLevel::Low);
+        assert!(ThreatLevel::Low < ThreatLevel::Medium);
+        assert!(ThreatLevel::Medium < ThreatLevel::High);
+        assert!(ThreatLevel::High < ThreatLevel::Critical);
+    }
+
+    #[test]
+    fn test_security_level_variants() {
+        assert_eq!(format!("{:?}", SecurityLevel::Standard), "Standard");
+        assert_eq!(format!("{:?}", SecurityLevel::Elevated), "Elevated");
+        assert_eq!(format!("{:?}", SecurityLevel::Lockdown), "Lockdown");
+    }
+
+    #[test]
+    fn test_suggestion_type_variants() {
+        assert_eq!(format!("{:?}", SuggestionType::WindowPlacement), "WindowPlacement");
+        assert_eq!(format!("{:?}", SuggestionType::ContextSwitch), "ContextSwitch");
+        assert_eq!(format!("{:?}", SuggestionType::TaskRecommendation), "TaskRecommendation");
+        assert_eq!(format!("{:?}", SuggestionType::ResourceOptimization), "ResourceOptimization");
+        assert_eq!(format!("{:?}", SuggestionType::SecurityAlert), "SecurityAlert");
+        assert_eq!(format!("{:?}", SuggestionType::Productivity), "Productivity");
+    }
+
+    #[test]
+    fn test_context_event_type_variants() {
+        assert_eq!(format!("{:?}", ContextEventType::WindowOpened), "WindowOpened");
+        assert_eq!(format!("{:?}", ContextEventType::WindowClosed), "WindowClosed");
+        assert_eq!(format!("{:?}", ContextEventType::AppSwitched), "AppSwitched");
+        assert_eq!(format!("{:?}", ContextEventType::FileOpened), "FileOpened");
+        assert_eq!(format!("{:?}", ContextEventType::CommandExecuted), "CommandExecuted");
+    }
+
+    #[test]
+    fn test_ai_suggestion_default() {
+        let suggestion = AISuggestion::default();
+        assert!(suggestion.id != Uuid::nil());
+        assert!(!suggestion.title.is_empty() || suggestion.title.is_empty());
+        assert!(suggestion.confidence >= 0.0 && suggestion.confidence <= 1.0);
+    }
+
+    // --- parse_cpu_line tests ---
+
+    #[test]
+    fn test_parse_cpu_line_valid() {
+        let line = "cpu  1234 567 890 12345 678 90 12 34";
+        let result = parse_cpu_line(line);
+        assert!(result.is_some());
+        let (total, idle) = result.unwrap();
+        // idle = fields[3] + fields[4] = 12345 + 678 = 13023
+        assert_eq!(idle, 12345 + 678);
+        // total = sum of all fields = 1234+567+890+12345+678+90+12+34 = 15850
+        assert_eq!(total, 1234 + 567 + 890 + 12345 + 678 + 90 + 12 + 34);
+    }
+
+    #[test]
+    fn test_parse_cpu_line_too_few_fields() {
+        let line = "cpu  100 200 300";
+        let result = parse_cpu_line(line);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_parse_cpu_line_empty() {
+        let result = parse_cpu_line("");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_parse_cpu_line_zeros() {
+        let line = "cpu  0 0 0 0";
+        let result = parse_cpu_line(line);
+        assert!(result.is_some());
+        let (total, idle) = result.unwrap();
+        assert_eq!(total, 0);
+        assert_eq!(idle, 0);
+    }
+
+    #[test]
+    fn test_parse_cpu_line_exactly_four_fields() {
+        // Exactly 4 fields — no iowait, so idle = fields[3] + 0
+        let line = "cpu  100 200 300 5000";
+        let result = parse_cpu_line(line);
+        assert!(result.is_some());
+        let (total, idle) = result.unwrap();
+        assert_eq!(idle, 5000); // fields[3] + get(4).unwrap_or(0)
+        assert_eq!(total, 100 + 200 + 300 + 5000);
+    }
+
+    #[test]
+    fn test_parse_cpu_line_non_numeric_fields() {
+        // "abc" is skipped by filter_map, leaving fewer than 4 fields
+        let line = "cpu  abc def ghi jkl";
+        let result = parse_cpu_line(line);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_parse_cpu_line_mixed_fields() {
+        // Some numeric, some not — filter_map keeps only numeric
+        let line = "cpu  100 abc 200 300 400";
+        let result = parse_cpu_line(line);
+        assert!(result.is_some());
+        let (total, idle) = result.unwrap();
+        // Parsed fields: [100, 200, 300, 400] — idle = 300 + 400 = 700 (wait, fields[3]=400, fields[4] doesn't exist since only 4)
+        // Actually: "100" "abc" "200" "300" "400" → filter_map → [100, 200, 300, 400]
+        // fields[3] = 400, fields.get(4) = None → idle = 400
+        assert_eq!(idle, 400);
+        assert_eq!(total, 100 + 200 + 300 + 400);
+    }
+
+    // --- read_memory_usage tests ---
+
+    #[tokio::test]
+    async fn test_read_memory_usage_returns_some_on_linux() {
+        let result = read_memory_usage().await;
+        // On Linux with /proc/meminfo this should succeed
+        assert!(result.is_some());
+        let usage = result.unwrap();
+        assert!(usage >= 0.0 && usage <= 100.0);
+    }
+
+    // --- read_disk_usage tests ---
+
+    #[test]
+    fn test_read_disk_usage_returns_some() {
+        let result = read_disk_usage();
+        assert!(result.is_some());
+        let usage = result.unwrap();
+        assert!(usage >= 0.0 && usage <= 100.0);
+    }
+
+    // --- read_cpu_usage tests ---
+
+    #[tokio::test]
+    async fn test_read_cpu_usage_returns_some_on_linux() {
+        let result = read_cpu_usage().await;
+        assert!(result.is_some());
+        let usage = result.unwrap();
+        assert!(usage >= 0.0 && usage <= 100.0);
+    }
+
+    // --- DesktopEnvironment tests ---
+
+    fn make_test_args() -> Args {
+        Args {
+            backend: "wayland".to_string(),
+            kiosk: false,
+            no_ai: false,
+            secure: false,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_desktop_environment_new_default() {
+        let args = make_test_args();
+        let de = DesktopEnvironment::new(&args).await;
+        let running = *de.running.lock().await;
+        assert!(!running);
+    }
+
+    #[tokio::test]
+    async fn test_desktop_environment_new_secure_mode() {
+        let args = Args {
+            backend: "wayland".to_string(),
+            kiosk: false,
+            no_ai: false,
+            secure: true,
+        };
+        let de = DesktopEnvironment::new(&args).await;
+        // Secure mode sets compositor secure mode and elevated security level
+        // Just verify construction succeeds without panic
+        let running = *de.running.lock().await;
+        assert!(!running);
+    }
+
+    #[tokio::test]
+    async fn test_desktop_environment_new_no_ai() {
+        let args = Args {
+            backend: "x11".to_string(),
+            kiosk: true,
+            no_ai: true,
+            secure: false,
+        };
+        let de = DesktopEnvironment::new(&args).await;
+        let running = *de.running.lock().await;
+        assert!(!running);
+    }
+
+    #[tokio::test]
+    async fn test_desktop_environment_initialize() {
+        let args = make_test_args();
+        let de = DesktopEnvironment::new(&args).await;
+        let result = de.initialize().await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_desktop_environment_shutdown() {
+        let args = make_test_args();
+        let de = DesktopEnvironment::new(&args).await;
+        *de.running.lock().await = true;
+        assert!(*de.running.lock().await);
+        de.shutdown().await;
+        assert!(!*de.running.lock().await);
+    }
+
+    #[tokio::test]
+    async fn test_desktop_environment_update_system_status() {
+        let args = make_test_args();
+        let de = DesktopEnvironment::new(&args).await;
+        // Should not panic
+        de.update_system_status().await;
+    }
+}

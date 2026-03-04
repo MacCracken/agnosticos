@@ -272,8 +272,354 @@ mod tests {
             ],
             ..Default::default()
         };
-        
+
         let caps = AgentRegistry::extract_capabilities(&config);
         assert!(!caps.is_empty());
+    }
+
+    #[test]
+    fn test_extract_capabilities_all_types() {
+        let config = AgentConfig {
+            name: "cap-test".to_string(),
+            agent_type: agnos_common::AgentType::System,
+            permissions: vec![
+                agnos_common::Permission::FileRead,
+                agnos_common::Permission::FileWrite,
+                agnos_common::Permission::NetworkAccess,
+                agnos_common::Permission::ProcessSpawn,
+                agnos_common::Permission::LlmInference,
+                agnos_common::Permission::AuditRead,
+            ],
+            ..Default::default()
+        };
+
+        let caps = AgentRegistry::extract_capabilities(&config);
+        // 1 type cap + 6 permission caps = 7
+        assert_eq!(caps.len(), 7);
+        assert!(caps[0].starts_with("type:"));
+        for cap in &caps[1..] {
+            assert!(cap.starts_with("perm:"));
+        }
+    }
+
+    #[test]
+    fn test_extract_capabilities_no_permissions() {
+        let config = AgentConfig {
+            name: "minimal".to_string(),
+            agent_type: agnos_common::AgentType::User,
+            permissions: vec![],
+            ..Default::default()
+        };
+
+        let caps = AgentRegistry::extract_capabilities(&config);
+        assert_eq!(caps.len(), 1); // Only type cap
+        assert!(caps[0].contains("user"));
+    }
+
+    #[test]
+    fn test_registry_default() {
+        let registry = AgentRegistry::default();
+        assert!(registry.is_empty());
+        assert_eq!(registry.len(), 0);
+    }
+
+    #[test]
+    fn test_registry_get_nonexistent() {
+        let registry = AgentRegistry::new();
+        assert!(registry.get(AgentId::new()).is_none());
+    }
+
+    #[test]
+    fn test_registry_get_by_name_nonexistent() {
+        let registry = AgentRegistry::new();
+        assert!(registry.get_by_name("nonexistent").is_none());
+    }
+
+    #[test]
+    fn test_registry_find_by_capability_empty() {
+        let registry = AgentRegistry::new();
+        let found = registry.find_by_capability("gpu");
+        assert!(found.is_empty());
+    }
+
+    #[test]
+    fn test_registry_list_all_empty() {
+        let registry = AgentRegistry::new();
+        assert!(registry.list_all().is_empty());
+    }
+
+    #[test]
+    fn test_registry_list_by_status_empty() {
+        let registry = AgentRegistry::new();
+        assert!(registry.list_by_status(AgentStatus::Running).is_empty());
+    }
+
+    #[test]
+    fn test_registry_get_config_nonexistent() {
+        let registry = AgentRegistry::new();
+        assert!(registry.get_config(AgentId::new()).is_none());
+    }
+
+    #[test]
+    fn test_registry_stats_debug() {
+        let stats = RegistryStats {
+            total_registered: 10,
+            total_started: 8,
+            total_stopped: 2,
+            total_failed: 1,
+        };
+        let debug = format!("{:?}", stats);
+        assert!(debug.contains("total_registered"));
+        assert!(debug.contains("10"));
+        assert!(debug.contains("total_failed"));
+        assert!(debug.contains("1"));
+    }
+
+    #[test]
+    fn test_registry_stats_default_all_zero() {
+        let stats = RegistryStats::default();
+        assert_eq!(stats.total_registered, 0);
+        assert_eq!(stats.total_started, 0);
+        assert_eq!(stats.total_stopped, 0);
+        assert_eq!(stats.total_failed, 0);
+    }
+
+    #[tokio::test]
+    async fn test_registry_register_and_get() {
+        let registry = AgentRegistry::new();
+
+        let config = AgentConfig {
+            name: "test-agent".to_string(),
+            agent_type: agnos_common::AgentType::Service,
+            permissions: vec![agnos_common::Permission::FileRead],
+            ..Default::default()
+        };
+
+        let (agent, _rx) = Agent::new(config.clone()).await.unwrap();
+        let handle = registry.register(&agent, config).await.unwrap();
+
+        assert_eq!(handle.name, "test-agent");
+        assert_eq!(handle.status, AgentStatus::Pending);
+        assert_eq!(registry.len(), 1);
+        assert!(!registry.is_empty());
+
+        // Get by ID
+        let found = registry.get(handle.id).unwrap();
+        assert_eq!(found.name, "test-agent");
+
+        // Get by name
+        let found = registry.get_by_name("test-agent").unwrap();
+        assert_eq!(found.id, handle.id);
+
+        // Contains
+        assert!(registry.contains(handle.id));
+    }
+
+    #[tokio::test]
+    async fn test_registry_register_duplicate_name() {
+        let registry = AgentRegistry::new();
+
+        let config1 = AgentConfig {
+            name: "dup-agent".to_string(),
+            ..Default::default()
+        };
+        let config2 = AgentConfig {
+            name: "dup-agent".to_string(),
+            ..Default::default()
+        };
+
+        let (agent1, _rx1) = Agent::new(config1.clone()).await.unwrap();
+        registry.register(&agent1, config1).await.unwrap();
+
+        let (agent2, _rx2) = Agent::new(config2.clone()).await.unwrap();
+        let result = registry.register(&agent2, config2).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("already exists"));
+    }
+
+    #[tokio::test]
+    async fn test_registry_unregister() {
+        let registry = AgentRegistry::new();
+
+        let config = AgentConfig {
+            name: "unreg-agent".to_string(),
+            ..Default::default()
+        };
+
+        let (agent, _rx) = Agent::new(config.clone()).await.unwrap();
+        let handle = registry.register(&agent, config).await.unwrap();
+
+        assert_eq!(registry.len(), 1);
+        registry.unregister(handle.id).await.unwrap();
+        assert_eq!(registry.len(), 0);
+        assert!(registry.get(handle.id).is_none());
+        assert!(registry.get_by_name("unreg-agent").is_none());
+    }
+
+    #[tokio::test]
+    async fn test_registry_unregister_nonexistent() {
+        let registry = AgentRegistry::new();
+        // Should succeed (no-op)
+        let result = registry.unregister(AgentId::new()).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_registry_update_status() {
+        let registry = AgentRegistry::new();
+
+        let config = AgentConfig {
+            name: "status-agent".to_string(),
+            ..Default::default()
+        };
+
+        let (agent, _rx) = Agent::new(config.clone()).await.unwrap();
+        let handle = registry.register(&agent, config).await.unwrap();
+
+        registry.update_status(handle.id, AgentStatus::Running).await.unwrap();
+        let updated = registry.get(handle.id).unwrap();
+        assert_eq!(updated.status, AgentStatus::Running);
+    }
+
+    #[tokio::test]
+    async fn test_registry_update_status_nonexistent() {
+        let registry = AgentRegistry::new();
+        let result = registry.update_status(AgentId::new(), AgentStatus::Running).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_registry_update_resource_usage() {
+        let registry = AgentRegistry::new();
+
+        let config = AgentConfig {
+            name: "resource-agent".to_string(),
+            ..Default::default()
+        };
+
+        let (agent, _rx) = Agent::new(config.clone()).await.unwrap();
+        let handle = registry.register(&agent, config).await.unwrap();
+
+        let usage = ResourceUsage {
+            memory_used: 1024,
+            cpu_time_used: 500,
+            file_descriptors_used: 5,
+            processes_used: 1,
+        };
+        registry.update_resource_usage(handle.id, usage).await.unwrap();
+
+        let updated = registry.get(handle.id).unwrap();
+        assert_eq!(updated.resource_usage.memory_used, 1024);
+        assert_eq!(updated.resource_usage.cpu_time_used, 500);
+    }
+
+    #[tokio::test]
+    async fn test_registry_list_all() {
+        let registry = AgentRegistry::new();
+
+        let config1 = AgentConfig {
+            name: "agent-a".to_string(),
+            ..Default::default()
+        };
+        let config2 = AgentConfig {
+            name: "agent-b".to_string(),
+            ..Default::default()
+        };
+
+        let (a1, _rx1) = Agent::new(config1.clone()).await.unwrap();
+        let (a2, _rx2) = Agent::new(config2.clone()).await.unwrap();
+        registry.register(&a1, config1).await.unwrap();
+        registry.register(&a2, config2).await.unwrap();
+
+        let all = registry.list_all();
+        assert_eq!(all.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_registry_list_by_status() {
+        let registry = AgentRegistry::new();
+
+        let config1 = AgentConfig {
+            name: "running-agent".to_string(),
+            ..Default::default()
+        };
+        let config2 = AgentConfig {
+            name: "stopped-agent".to_string(),
+            ..Default::default()
+        };
+
+        let (a1, _rx1) = Agent::new(config1.clone()).await.unwrap();
+        let (a2, _rx2) = Agent::new(config2.clone()).await.unwrap();
+        let h1 = registry.register(&a1, config1).await.unwrap();
+        let h2 = registry.register(&a2, config2).await.unwrap();
+
+        registry.update_status(h1.id, AgentStatus::Running).await.unwrap();
+        registry.update_status(h2.id, AgentStatus::Stopped).await.unwrap();
+
+        let running = registry.list_by_status(AgentStatus::Running);
+        assert_eq!(running.len(), 1);
+        assert_eq!(running[0].name, "running-agent");
+
+        let stopped = registry.list_by_status(AgentStatus::Stopped);
+        assert_eq!(stopped.len(), 1);
+        assert_eq!(stopped[0].name, "stopped-agent");
+    }
+
+    #[tokio::test]
+    async fn test_registry_find_by_capability() {
+        let registry = AgentRegistry::new();
+
+        let config = AgentConfig {
+            name: "capable-agent".to_string(),
+            agent_type: agnos_common::AgentType::Service,
+            permissions: vec![agnos_common::Permission::NetworkAccess],
+            ..Default::default()
+        };
+
+        let (agent, _rx) = Agent::new(config.clone()).await.unwrap();
+        registry.register(&agent, config).await.unwrap();
+
+        // The capability is stored as "perm:networkaccess" (lowercase debug format)
+        let found = registry.find_by_capability("perm:networkaccess");
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].name, "capable-agent");
+
+        // Non-matching capability
+        let not_found = registry.find_by_capability("perm:filewrite");
+        assert!(not_found.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_registry_get_config() {
+        let registry = AgentRegistry::new();
+
+        let config = AgentConfig {
+            name: "config-agent".to_string(),
+            agent_type: agnos_common::AgentType::System,
+            ..Default::default()
+        };
+
+        let (agent, _rx) = Agent::new(config.clone()).await.unwrap();
+        let handle = registry.register(&agent, config).await.unwrap();
+
+        let retrieved_config = registry.get_config(handle.id).unwrap();
+        assert_eq!(retrieved_config.name, "config-agent");
+        assert!(matches!(retrieved_config.agent_type, agnos_common::AgentType::System));
+    }
+
+    #[tokio::test]
+    async fn test_registry_stats_after_register() {
+        let registry = AgentRegistry::new();
+
+        let config = AgentConfig {
+            name: "stats-agent".to_string(),
+            ..Default::default()
+        };
+
+        let (agent, _rx) = Agent::new(config.clone()).await.unwrap();
+        registry.register(&agent, config).await.unwrap();
+
+        let stats = registry.stats().await;
+        assert_eq!(stats.total_registered, 1);
     }
 }

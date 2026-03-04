@@ -341,8 +341,197 @@ mod tests {
             available_memory: RwLock::new(24 * 1024 * 1024 * 1024),
             compute_capability: None,
         };
-        
+
         assert_eq!(gpu.id, 1);
         assert!(gpu.compute_capability.is_none());
+    }
+
+    #[test]
+    fn test_gpu_device_debug() {
+        let gpu = GpuDevice {
+            id: 0,
+            name: "Test GPU".to_string(),
+            total_memory: 8 * 1024 * 1024 * 1024,
+            available_memory: RwLock::new(8 * 1024 * 1024 * 1024),
+            compute_capability: Some("7.5".to_string()),
+        };
+        let debug_str = format!("{:?}", gpu);
+        assert!(debug_str.contains("Test GPU"));
+        assert!(debug_str.contains("7.5"));
+    }
+
+    #[test]
+    fn test_gpu_device_clone_preserves_available_memory() {
+        let total = 16 * 1024 * 1024 * 1024u64;
+        let available = 10 * 1024 * 1024 * 1024u64;
+        let gpu = GpuDevice {
+            id: 2,
+            name: "A100".to_string(),
+            total_memory: total,
+            available_memory: RwLock::new(available),
+            compute_capability: Some("8.0".to_string()),
+        };
+
+        let cloned = gpu.clone();
+        assert_eq!(cloned.id, 2);
+        assert_eq!(cloned.name, "A100");
+        assert_eq!(cloned.total_memory, total);
+        assert_eq!(*cloned.available_memory.blocking_read(), available);
+        assert_eq!(cloned.compute_capability, Some("8.0".to_string()));
+    }
+
+    #[test]
+    fn test_gpu_device_no_compute_capability() {
+        let gpu = GpuDevice {
+            id: 0,
+            name: "Intel Integrated".to_string(),
+            total_memory: 2 * 1024 * 1024 * 1024,
+            available_memory: RwLock::new(2 * 1024 * 1024 * 1024),
+            compute_capability: None,
+        };
+        assert!(gpu.compute_capability.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_resource_manager_new() {
+        let rm = ResourceManager::new().await.unwrap();
+        // total_memory should be detected (> 0 on any real system)
+        assert!(rm.total_memory() > 0);
+        // available should equal total at creation
+        assert_eq!(rm.available_memory().await, rm.total_memory());
+    }
+
+    #[tokio::test]
+    async fn test_resource_manager_list_gpus() {
+        let rm = ResourceManager::new().await.unwrap();
+        // May be empty if no GPU, but should not panic
+        let gpus = rm.list_gpus().await;
+        let _ = gpus;
+    }
+
+    #[tokio::test]
+    async fn test_resource_manager_gpu_allocations_empty() {
+        let rm = ResourceManager::new().await.unwrap();
+        let allocs = rm.get_gpu_allocations().await;
+        assert!(allocs.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_resource_manager_reserve_memory() {
+        let rm = ResourceManager::new().await.unwrap();
+        let total = rm.total_memory();
+        let agent_id = AgentId::new();
+
+        // Reserve 1 MB
+        let reserve_amount = 1024 * 1024u64;
+        rm.reserve_memory(agent_id, reserve_amount).await.unwrap();
+        assert_eq!(rm.available_memory().await, total - reserve_amount);
+    }
+
+    #[tokio::test]
+    async fn test_resource_manager_reserve_memory_insufficient() {
+        let rm = ResourceManager::new().await.unwrap();
+        let total = rm.total_memory();
+        let agent_id = AgentId::new();
+
+        // Try to reserve more than total
+        let result = rm.reserve_memory(agent_id, total + 1).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Insufficient memory"));
+    }
+
+    #[tokio::test]
+    async fn test_resource_manager_release_memory() {
+        let rm = ResourceManager::new().await.unwrap();
+        let total = rm.total_memory();
+        let agent_id = AgentId::new();
+
+        let reserve_amount = 1024 * 1024u64;
+        rm.reserve_memory(agent_id, reserve_amount).await.unwrap();
+        assert_eq!(rm.available_memory().await, total - reserve_amount);
+
+        rm.release_memory(reserve_amount).await;
+        assert_eq!(rm.available_memory().await, total);
+    }
+
+    #[tokio::test]
+    async fn test_resource_manager_release_memory_capped_at_total() {
+        let rm = ResourceManager::new().await.unwrap();
+        let total = rm.total_memory();
+
+        // Release more than was reserved — should be capped at total
+        rm.release_memory(total + 1_000_000).await;
+        assert_eq!(rm.available_memory().await, total);
+    }
+
+    #[tokio::test]
+    async fn test_resource_manager_reserve_multiple() {
+        let rm = ResourceManager::new().await.unwrap();
+        let total = rm.total_memory();
+        let amount = 1024 * 1024u64;
+
+        let a1 = AgentId::new();
+        let a2 = AgentId::new();
+        rm.reserve_memory(a1, amount).await.unwrap();
+        rm.reserve_memory(a2, amount).await.unwrap();
+        assert_eq!(rm.available_memory().await, total - 2 * amount);
+    }
+
+    #[tokio::test]
+    async fn test_resource_manager_allocate_cpu() {
+        let rm = ResourceManager::new().await.unwrap();
+        let agent_id = AgentId::new();
+
+        let cores = rm.allocate_cpu(agent_id, 1).await.unwrap();
+        assert_eq!(cores, vec![0]);
+    }
+
+    #[tokio::test]
+    async fn test_resource_manager_allocate_cpu_multiple() {
+        let rm = ResourceManager::new().await.unwrap();
+        let agent_id = AgentId::new();
+
+        let cores = rm.allocate_cpu(agent_id, 2).await.unwrap();
+        assert_eq!(cores, vec![0, 1]);
+    }
+
+    #[tokio::test]
+    async fn test_resource_manager_allocate_cpu_too_many() {
+        let rm = ResourceManager::new().await.unwrap();
+        let agent_id = AgentId::new();
+
+        // Request more cores than available
+        let result = rm.allocate_cpu(agent_id, 99999).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_resource_manager_release_cpu() {
+        let rm = ResourceManager::new().await.unwrap();
+        let agent_id = AgentId::new();
+
+        rm.allocate_cpu(agent_id, 1).await.unwrap();
+        let result = rm.release_cpu(agent_id).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_resource_manager_release_cpu_not_allocated() {
+        let rm = ResourceManager::new().await.unwrap();
+        let agent_id = AgentId::new();
+
+        // Release without allocating — should be ok
+        let result = rm.release_cpu(agent_id).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_resource_manager_release_gpu_not_allocated() {
+        let rm = ResourceManager::new().await.unwrap();
+        let agent_id = AgentId::new();
+
+        // Release without allocating — should be ok
+        let result = rm.release_gpu(agent_id).await;
+        assert!(result.is_ok());
     }
 }

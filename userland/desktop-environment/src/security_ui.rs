@@ -23,6 +23,7 @@ pub enum SecurityUIError {
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ThreatLevel {
+    Info,
     Low,
     Medium,
     High,

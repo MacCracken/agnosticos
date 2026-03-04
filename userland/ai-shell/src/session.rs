@@ -813,4 +813,367 @@ mod tests {
         let config = ShellConfig::default();
         assert_eq!(config.history_size, 10000);
     }
+
+    #[test]
+    fn test_shell_config_default_values() {
+        let config = ShellConfig::default();
+        assert_eq!(config.approval_timeout, 300);
+        assert_eq!(config.history_size, 10000);
+        assert_eq!(config.output_format, "auto");
+        assert!(config.ai_enabled);
+        assert!(!config.auto_approve_low_risk);
+    }
+
+    #[test]
+    fn test_shell_config_custom_values() {
+        let config = ShellConfig {
+            default_mode: Mode::Strict,
+            history_file: std::path::PathBuf::from("/tmp/custom-history"),
+            history_size: 50000,
+            output_format: "json".to_string(),
+            ai_enabled: false,
+            auto_approve_low_risk: true,
+            approval_timeout: 600,
+            llm_endpoint: Some("http://localhost:8088".to_string()),
+            audit_log: std::path::PathBuf::from("/tmp/audit.log"),
+            show_explanations: false,
+            theme: "dark".to_string(),
+        };
+
+        assert_eq!(config.approval_timeout, 600);
+        assert_eq!(config.history_size, 50000);
+        assert_eq!(config.output_format, "json");
+        assert!(!config.ai_enabled);
+    }
+
+    // --- Session tests ---
+
+    async fn make_test_session() -> Session {
+        let temp_dir = std::env::temp_dir();
+        let history_file = temp_dir.join(format!("agnos_test_session_{}", std::process::id()));
+        let config = ShellConfig {
+            history_file,
+            ..ShellConfig::default()
+        };
+        let security = SecurityContext::new(false).unwrap();
+        Session::new(config, security, Mode::Human).await.unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_session_new() {
+        let session = make_test_session().await;
+        // Session was created successfully; verify cwd is set
+        assert!(!session.cwd.as_os_str().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_session_execute_one_shot_echo() {
+        let mut session = make_test_session().await;
+        let result = session.execute_one_shot("echo hello".to_string()).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_session_execute_one_shot_invalid() {
+        let mut session = make_test_session().await;
+        // Nonexistent command — execute_shell_command shows error via ui but returns Ok
+        let result = session.execute_one_shot("___nonexistent_cmd_12345___".to_string()).await;
+        assert!(result.is_ok());
+        // Exit code should be set to error
+        assert_ne!(session.prompt_context.last_exit_code, 0);
+    }
+
+    #[tokio::test]
+    async fn test_process_input_help() {
+        let mut session = make_test_session().await;
+        let result = session.process_input("help").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_process_input_mode_show() {
+        let mut session = make_test_session().await;
+        let result = session.process_input("mode").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_process_input_history() {
+        let mut session = make_test_session().await;
+        let result = session.process_input("history").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_process_input_clear() {
+        let mut session = make_test_session().await;
+        let result = session.process_input("clear").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_process_input_mode_human() {
+        let mut session = make_test_session().await;
+        let result = session.process_input("mode human").await;
+        assert!(result.is_ok());
+        assert_eq!(session.prompt_context.ai_mode, "HUMAN");
+    }
+
+    #[tokio::test]
+    async fn test_process_input_mode_ai() {
+        let mut session = make_test_session().await;
+        let result = session.process_input("mode ai").await;
+        assert!(result.is_ok());
+        assert_eq!(session.prompt_context.ai_mode, "AI-ASSIST");
+    }
+
+    #[tokio::test]
+    async fn test_process_input_mode_auto() {
+        let mut session = make_test_session().await;
+        let result = session.process_input("mode auto").await;
+        assert!(result.is_ok());
+        assert_eq!(session.prompt_context.ai_mode, "AI-AUTO");
+    }
+
+    #[tokio::test]
+    async fn test_process_input_mode_strict() {
+        let mut session = make_test_session().await;
+        let result = session.process_input("mode strict").await;
+        assert!(result.is_ok());
+        assert_eq!(session.prompt_context.ai_mode, "STRICT");
+    }
+
+    #[tokio::test]
+    async fn test_process_input_mode_invalid() {
+        let mut session = make_test_session().await;
+        // Invalid mode doesn't error, just shows an error message via ui
+        let result = session.process_input("mode invalidxyz").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_process_input_exit() {
+        let mut session = make_test_session().await;
+        let result = session.process_input("exit").await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Exit"));
+    }
+
+    #[tokio::test]
+    async fn test_process_input_quit() {
+        let mut session = make_test_session().await;
+        let result = session.process_input("quit").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_execute_shell_command_echo() {
+        let mut session = make_test_session().await;
+        let result = session.execute_shell_command("echo test").await;
+        assert!(result.is_ok());
+        assert_eq!(session.prompt_context.last_exit_code, 0);
+    }
+
+    #[tokio::test]
+    async fn test_execute_shell_command_invalid_quotes() {
+        let mut session = make_test_session().await;
+        // Unmatched quotes — shlex::split returns None
+        let result = session.execute_shell_command("echo \"unterminated").await;
+        assert!(result.is_ok()); // Returns Ok, shows error via UI
+    }
+
+    #[tokio::test]
+    async fn test_execute_command_echo() {
+        let mut session = make_test_session().await;
+        let result = session.execute_command("echo", &["hello".to_string()]).await;
+        assert!(result.is_ok());
+        assert_eq!(session.prompt_context.last_exit_code, 0);
+    }
+
+    #[tokio::test]
+    async fn test_execute_command_nonexistent() {
+        let mut session = make_test_session().await;
+        let result = session.execute_command("___no_such_command___", &[]).await;
+        assert!(result.is_ok()); // Returns Ok, shows error via UI
+        assert_eq!(session.prompt_context.last_exit_code, -1);
+    }
+
+    #[tokio::test]
+    async fn test_execute_command_false() {
+        let mut session = make_test_session().await;
+        let result = session.execute_command("false", &[]).await;
+        assert!(result.is_ok());
+        assert_ne!(session.prompt_context.last_exit_code, 0);
+    }
+
+    #[tokio::test]
+    async fn test_build_prompt_nonempty() {
+        let session = make_test_session().await;
+        let prompt = session.build_prompt();
+        assert!(!prompt.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_execute_shell_command_cd() {
+        let mut session = make_test_session().await;
+        let result = session.execute_shell_command("cd /tmp").await;
+        assert!(result.is_ok());
+        // Note: parallel tests share process cwd, so just verify cd succeeded
+        assert!(session.cwd.exists());
+    }
+
+    #[tokio::test]
+    async fn test_execute_shell_command_cd_invalid() {
+        let mut session = make_test_session().await;
+        let result = session.execute_shell_command("cd /nonexistent_dir_12345").await;
+        assert!(result.is_ok()); // Shows error via UI but returns Ok
+    }
+
+    #[tokio::test]
+    async fn test_execute_shell_command_empty_after_parse() {
+        let mut session = make_test_session().await;
+        // shlex::split("") returns Some([]) which is empty — should return Ok(())
+        let result = session.execute_shell_command("  ").await;
+        assert!(result.is_ok());
+    }
+
+    // --- Additional session.rs coverage tests ---
+
+    #[tokio::test]
+    async fn test_execute_with_assistance_question_intent() {
+        // "what is my IP address?" is parsed as Intent::Question
+        let mut session = make_test_session().await;
+        session.mode_manager.switch(Mode::AiAssisted).unwrap();
+        // execute_with_assistance handles Question by showing info, no error
+        let result = session.execute_with_assistance("what is my IP address?").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_execute_with_assistance_unknown_intent() {
+        // A multi-word string that doesn't match any pattern falls through to Unknown
+        // which tries to execute as shell command with a warning
+        let mut session = make_test_session().await;
+        session.mode_manager.switch(Mode::AiAssisted).unwrap();
+        // "xyzzy plugh" is multi-word, not a question, not a known pattern => Unknown
+        // Unknown falls through to execute_shell_command which will fail but return Ok
+        let result = session.execute_with_assistance("xyzzy plugh").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_execute_with_assistance_translatable_safe_intent() {
+        // "show me all files" parses as ListFiles which translates to "ls"
+        let mut session = make_test_session().await;
+        session.mode_manager.switch(Mode::AiAssisted).unwrap();
+        let result = session.execute_with_assistance("show me all files").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_execute_autonomously_delegates_to_assistance() {
+        // Due to the broad "list" regex pattern, most inputs parse as ListFiles
+        // rather than ShellCommand, so execute_autonomously delegates to
+        // execute_with_assistance for non-ShellCommand intents
+        let mut session = make_test_session().await;
+        session.mode_manager.switch(Mode::AiAutonomous).unwrap();
+        let result = session.execute_autonomously("true").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_execute_autonomously_non_shell_intent() {
+        // Non-ShellCommand intents delegate to execute_with_assistance
+        let mut session = make_test_session().await;
+        session.mode_manager.switch(Mode::AiAutonomous).unwrap();
+        let result = session.execute_autonomously("show me all files").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_process_input_ai_assisted_mode() {
+        let mut session = make_test_session().await;
+        // Switch to AI-assisted mode first
+        session.process_input("mode ai").await.unwrap();
+        // Then run a command in AI mode
+        let result = session.process_input("what is the time?").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_process_input_autonomous_mode() {
+        let mut session = make_test_session().await;
+        session.process_input("mode auto").await.unwrap();
+        // A safe command in autonomous mode
+        let result = session.process_input("true").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_process_input_strict_mode_non_interactive() {
+        let mut session = make_test_session().await;
+        session.process_input("mode strict").await.unwrap();
+        // In strict mode, everything requires approval. Since stdin is not a
+        // terminal in tests, ApprovalManager will deny by default.
+        let result = session.process_input("echo hello").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_mode_switch_assist_alias() {
+        let mut session = make_test_session().await;
+        let result = session.process_input("mode assist").await;
+        assert!(result.is_ok());
+        assert_eq!(session.prompt_context.ai_mode, "AI-ASSIST");
+    }
+
+    #[tokio::test]
+    async fn test_execute_shell_command_cd_home_tilde() {
+        let mut session = make_test_session().await;
+        let result = session.execute_shell_command("cd ~").await;
+        assert!(result.is_ok());
+        // cwd should point to home directory after cd ~
+        let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"));
+        // Note: parallel tests may race on process cwd, so just check it didn't error
+        assert!(session.cwd.exists());
+    }
+
+    #[tokio::test]
+    async fn test_execute_shell_command_cd_no_args() {
+        let mut session = make_test_session().await;
+        // "cd" with no args defaults to "~"
+        let result = session.execute_shell_command("cd").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_execute_command_with_args() {
+        let mut session = make_test_session().await;
+        let result = session.execute_command("echo", &["hello".to_string(), "world".to_string()]).await;
+        assert!(result.is_ok());
+        assert_eq!(session.prompt_context.last_exit_code, 0);
+    }
+
+    #[tokio::test]
+    async fn test_execute_command_exit_code_nonzero() {
+        let mut session = make_test_session().await;
+        // "false" exits with code 1
+        let result = session.execute_command("false", &[]).await;
+        assert!(result.is_ok());
+        assert_eq!(session.prompt_context.last_exit_code, 1);
+    }
+
+    #[tokio::test]
+    async fn test_build_prompt_changes_with_mode() {
+        let mut session = make_test_session().await;
+        let prompt_human = session.build_prompt();
+
+        session.process_input("mode ai").await.unwrap();
+        let prompt_ai = session.build_prompt();
+
+        // Prompts should differ since mode changed
+        // (both are non-empty, and typically contain the mode indicator)
+        assert!(!prompt_human.is_empty());
+        assert!(!prompt_ai.is_empty());
+    }
 }

@@ -276,4 +276,283 @@ mod tests {
         let models = provider.list_models().await.unwrap();
         assert!(models.is_empty());
     }
+
+    // ------------------------------------------------------------------
+    // Additional coverage: ProviderType traits and provider fields
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_provider_type_debug() {
+        let dbg = format!("{:?}", ProviderType::Ollama);
+        assert_eq!(dbg, "Ollama");
+        let dbg = format!("{:?}", ProviderType::LlamaCpp);
+        assert_eq!(dbg, "LlamaCpp");
+        let dbg = format!("{:?}", ProviderType::OpenAi);
+        assert_eq!(dbg, "OpenAi");
+        let dbg = format!("{:?}", ProviderType::Anthropic);
+        assert_eq!(dbg, "Anthropic");
+        let dbg = format!("{:?}", ProviderType::Google);
+        assert_eq!(dbg, "Google");
+    }
+
+    #[test]
+    fn test_provider_type_clone() {
+        let a = ProviderType::Ollama;
+        let b = a;
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn test_provider_type_copy() {
+        let a = ProviderType::Google;
+        let b = a;
+        // a is still valid (Copy)
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn test_provider_type_all_variants_distinct() {
+        use std::collections::HashSet;
+        let mut set = HashSet::new();
+        set.insert(ProviderType::Ollama);
+        set.insert(ProviderType::LlamaCpp);
+        set.insert(ProviderType::OpenAi);
+        set.insert(ProviderType::Anthropic);
+        set.insert(ProviderType::Google);
+        assert_eq!(set.len(), 5, "All 5 provider types must be distinct");
+    }
+
+    #[test]
+    fn test_provider_type_ne_exhaustive() {
+        let variants = [
+            ProviderType::Ollama,
+            ProviderType::LlamaCpp,
+            ProviderType::OpenAi,
+            ProviderType::Anthropic,
+            ProviderType::Google,
+        ];
+        for (i, a) in variants.iter().enumerate() {
+            for (j, b) in variants.iter().enumerate() {
+                if i == j {
+                    assert_eq!(a, b);
+                } else {
+                    assert_ne!(a, b);
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_ollama_provider_base_url() {
+        let provider = OllamaProvider::new().await.unwrap();
+        assert_eq!(provider.base_url, "http://localhost:11434");
+    }
+
+    #[tokio::test]
+    async fn test_llama_cpp_provider_base_url() {
+        let provider = LlamaCppProvider::new().await.unwrap();
+        assert_eq!(provider.base_url, "http://localhost:8080");
+    }
+
+    #[tokio::test]
+    async fn test_ollama_provider_unload_model_is_noop() {
+        let provider = OllamaProvider::new().await.unwrap();
+        // Ollama manages loading automatically — unload is always Ok
+        let result = provider.unload_model("any-model").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_llama_cpp_infer_stream_returns_receiver() {
+        let provider = LlamaCppProvider::new().await.unwrap();
+        let request = InferenceRequest::default();
+        let rx = provider.infer_stream(request).await;
+        assert!(rx.is_ok(), "infer_stream should return a receiver");
+    }
+
+    #[tokio::test]
+    async fn test_ollama_infer_stream_returns_receiver() {
+        let provider = OllamaProvider::new().await.unwrap();
+        let request = InferenceRequest::default();
+        let rx = provider.infer_stream(request).await;
+        assert!(rx.is_ok(), "infer_stream should return a receiver");
+    }
+
+    #[tokio::test]
+    async fn test_llama_cpp_load_model_error_message() {
+        let provider = LlamaCppProvider::new().await.unwrap();
+        let err = provider.load_model("anything").await.unwrap_err();
+        assert!(
+            err.to_string().contains("llama.cpp requires model at startup"),
+            "Error should explain startup requirement, got: {}",
+            err
+        );
+    }
+
+    #[tokio::test]
+    async fn test_llama_cpp_unload_model_always_ok() {
+        let provider = LlamaCppProvider::new().await.unwrap();
+        assert!(provider.unload_model("nonexistent").await.is_ok());
+        assert!(provider.unload_model("").await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_llama_cpp_list_models_returns_empty_vec() {
+        let provider = LlamaCppProvider::new().await.unwrap();
+        let models = provider.list_models().await.unwrap();
+        assert_eq!(models.len(), 0);
+    }
+
+    #[test]
+    fn test_provider_type_used_as_hashmap_key() {
+        use std::collections::HashMap;
+        let mut map: HashMap<ProviderType, &str> = HashMap::new();
+        map.insert(ProviderType::Ollama, "ollama");
+        map.insert(ProviderType::LlamaCpp, "llamacpp");
+        map.insert(ProviderType::OpenAi, "openai");
+        map.insert(ProviderType::Anthropic, "anthropic");
+        map.insert(ProviderType::Google, "google");
+        assert_eq!(map.len(), 5);
+        assert_eq!(map[&ProviderType::Ollama], "ollama");
+        assert_eq!(map[&ProviderType::Google], "google");
+    }
+
+    // ==================================================================
+    // Additional coverage: provider infer() error paths, trait coverage
+    // ==================================================================
+
+    #[tokio::test]
+    async fn test_ollama_infer_fails_gracefully_without_server() {
+        let provider = OllamaProvider::new().await.unwrap();
+        let request = InferenceRequest {
+            model: "llama2".to_string(),
+            prompt: "Hello".to_string(),
+            max_tokens: 10,
+            temperature: 0.7,
+            top_p: 1.0,
+            presence_penalty: 0.0,
+            frequency_penalty: 0.0,
+        };
+        let result = provider.infer(request).await;
+        // Should fail since Ollama is not running in test env
+        assert!(result.is_err(), "infer should fail without running Ollama server");
+    }
+
+    #[tokio::test]
+    async fn test_ollama_infer_error_is_descriptive() {
+        let provider = OllamaProvider::new().await.unwrap();
+        let request = InferenceRequest::default();
+        let err = provider.infer(request).await.unwrap_err();
+        let msg = err.to_string();
+        // Error should mention connection failure
+        assert!(
+            msg.contains("error") || msg.contains("connect") || msg.contains("Connection"),
+            "Error message should be descriptive, got: {}",
+            msg
+        );
+    }
+
+    #[tokio::test]
+    async fn test_llama_cpp_infer_fails_gracefully_without_server() {
+        let provider = LlamaCppProvider::new().await.unwrap();
+        let request = InferenceRequest {
+            model: "gguf-model".to_string(),
+            prompt: "Test prompt".to_string(),
+            max_tokens: 50,
+            temperature: 0.5,
+            top_p: 0.9,
+            presence_penalty: 0.0,
+            frequency_penalty: 0.0,
+        };
+        let result = provider.infer(request).await;
+        assert!(result.is_err(), "infer should fail without running llama.cpp server");
+    }
+
+    #[tokio::test]
+    async fn test_llama_cpp_infer_error_is_descriptive() {
+        let provider = LlamaCppProvider::new().await.unwrap();
+        let request = InferenceRequest::default();
+        let err = provider.infer(request).await.unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("error") || msg.contains("connect") || msg.contains("Connection"),
+            "Error message should be descriptive, got: {}",
+            msg
+        );
+    }
+
+    #[tokio::test]
+    async fn test_ollama_list_models_fails_without_server() {
+        let provider = OllamaProvider::new().await.unwrap();
+        let result = provider.list_models().await;
+        assert!(result.is_err(), "list_models should fail without running Ollama server");
+    }
+
+    #[tokio::test]
+    async fn test_ollama_load_model_fails_without_server() {
+        let provider = OllamaProvider::new().await.unwrap();
+        let result = provider.load_model("nonexistent-model").await;
+        assert!(result.is_err(), "load_model should fail without running Ollama server");
+    }
+
+    #[tokio::test]
+    async fn test_llama_cpp_load_model_error_message_content() {
+        let provider = LlamaCppProvider::new().await.unwrap();
+        let err = provider.load_model("model-xyz").await.unwrap_err();
+        let msg = err.to_string();
+        assert_eq!(msg, "llama.cpp requires model at startup");
+    }
+
+    #[tokio::test]
+    async fn test_ollama_infer_stream_returns_channel() {
+        let provider = OllamaProvider::new().await.unwrap();
+        let request = InferenceRequest::default();
+        let result = provider.infer_stream(request).await;
+        assert!(result.is_ok());
+        let mut rx = result.unwrap();
+        // Channel sender is dropped immediately in stub, so recv returns None
+        assert!(rx.recv().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_llama_cpp_infer_stream_returns_channel() {
+        let provider = LlamaCppProvider::new().await.unwrap();
+        let request = InferenceRequest::default();
+        let result = provider.infer_stream(request).await;
+        assert!(result.is_ok());
+        let mut rx = result.unwrap();
+        assert!(rx.recv().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_provider_trait_ollama_as_dyn() {
+        let provider: Box<dyn LlmProvider> = Box::new(OllamaProvider::new().await.unwrap());
+        // Verify trait object works
+        let result = provider.unload_model("anything").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_provider_trait_llama_cpp_as_dyn() {
+        let provider: Box<dyn LlmProvider> = Box::new(LlamaCppProvider::new().await.unwrap());
+        let result = provider.unload_model("anything").await;
+        assert!(result.is_ok());
+        let models = provider.list_models().await.unwrap();
+        assert!(models.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_provider_trait_arc_ollama() {
+        use std::sync::Arc;
+        let provider: Arc<dyn LlmProvider> = Arc::new(OllamaProvider::new().await.unwrap());
+        assert!(provider.unload_model("m").await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_provider_trait_arc_llama_cpp() {
+        use std::sync::Arc;
+        let provider: Arc<dyn LlmProvider> = Arc::new(LlamaCppProvider::new().await.unwrap());
+        let err = provider.load_model("m").await.unwrap_err();
+        assert!(err.to_string().contains("startup"));
+    }
 }

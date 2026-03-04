@@ -135,3 +135,90 @@ impl Default for Ui {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_ui_new() {
+        let ui = Ui::new();
+        // Should not panic
+        let _ = &ui.term;
+    }
+
+    #[test]
+    fn test_ui_default() {
+        let ui = Ui::default();
+        let _ = &ui.term;
+    }
+
+    #[test]
+    fn test_show_output() {
+        let ui = Ui::new();
+        ui.show_output("test output line");
+    }
+
+    #[test]
+    fn test_show_info() {
+        let ui = Ui::new();
+        ui.show_info("informational message");
+    }
+
+    #[test]
+    fn test_show_warning() {
+        let ui = Ui::new();
+        ui.show_warning("warning message");
+    }
+
+    #[test]
+    fn test_show_error() {
+        let ui = Ui::new();
+        ui.show_error("error message");
+    }
+
+    #[test]
+    fn test_show_welcome() {
+        let ui = Ui::new();
+        ui.show_welcome();
+    }
+
+    #[test]
+    fn test_show_goodbye() {
+        let ui = Ui::new();
+        ui.show_goodbye();
+    }
+
+    #[test]
+    fn test_show_help() {
+        let ui = Ui::new();
+        ui.show_help();
+    }
+
+    #[test]
+    fn test_show_mode() {
+        let ui = Ui::new();
+        ui.show_mode(&crate::mode::Mode::Human);
+        ui.show_mode(&crate::mode::Mode::AiAssisted);
+        ui.show_mode(&crate::mode::Mode::AiAutonomous);
+        ui.show_mode(&crate::mode::Mode::Strict);
+    }
+
+    #[test]
+    fn test_show_ai_thinking() {
+        let ui = Ui::new();
+        ui.show_ai_thinking("processing request...");
+    }
+
+    #[test]
+    fn test_show_output_empty() {
+        let ui = Ui::new();
+        ui.show_output("");
+    }
+
+    #[test]
+    fn test_show_error_empty() {
+        let ui = Ui::new();
+        ui.show_error("");
+    }
+}

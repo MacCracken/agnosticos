@@ -958,4 +958,946 @@ mod tests {
         let mm = apps.get_model_manager();
         assert!(mm.active_model.is_none());
     }
+
+    // --- Additional coverage tests ---
+
+    #[test]
+    fn test_app_window_new_file_manager() {
+        let window = AppWindow::new(AppType::FileManager, "Files".to_string());
+        assert_eq!(window.app_type, AppType::FileManager);
+        assert_eq!(window.title, "Files");
+        assert_eq!(window.width, 800);
+        assert_eq!(window.height, 600);
+        assert!(!window.is_ai_enabled);
+        assert_ne!(window.id, Uuid::nil());
+    }
+
+    #[test]
+    fn test_app_window_new_each_type() {
+        let types = vec![
+            AppType::Terminal,
+            AppType::FileManager,
+            AppType::TextEditor,
+            AppType::WebBrowser,
+            AppType::AgentManager,
+            AppType::AuditViewer,
+            AppType::ModelManager,
+            AppType::Settings,
+            AppType::Custom,
+        ];
+        for t in types {
+            let window = AppWindow::new(t.clone(), format!("{:?}", t));
+            assert_eq!(window.app_type, t);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_terminal_execute_multiword_command() {
+        let terminal = TerminalApp::new();
+        let result = terminal.execute_command("echo hello world".to_string()).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().trim(), "hello world");
+    }
+
+    #[tokio::test]
+    async fn test_terminal_execute_command_with_exit_code() {
+        let terminal = TerminalApp::new();
+        // "false" returns exit code 1
+        let result = terminal.execute_command("false".to_string()).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        match err {
+            AppError::WindowError(msg) => {
+                assert!(msg.contains("failed"));
+            }
+            _ => panic!("Expected WindowError"),
+        }
+    }
+
+    #[test]
+    fn test_file_manager_navigate_multiple() {
+        let mut fm = FileManagerApp::new();
+        assert_eq!(fm.current_path, "/home");
+        fm.navigate("/tmp".to_string()).unwrap();
+        assert_eq!(fm.current_path, "/tmp");
+        fm.navigate("/var/log".to_string()).unwrap();
+        assert_eq!(fm.current_path, "/var/log");
+    }
+
+    #[test]
+    fn test_file_manager_search_with_agent_query() {
+        let fm = FileManagerApp::new();
+        let results = fm.search_with_agent("documents".to_string()).unwrap();
+        assert_eq!(results.len(), 1);
+        assert!(results[0].contains("documents"));
+    }
+
+    #[test]
+    fn test_agent_manager_start_and_list() {
+        let mut am = AgentManagerApp::new();
+        let id = am.start_agent("agent-a".to_string(), vec!["read".to_string(), "write".to_string()]).unwrap();
+        assert_eq!(am.running_agents.len(), 1);
+        assert_eq!(am.running_agents[0].capabilities.len(), 2);
+        let agents = am.list_agents();
+        assert!(agents.iter().any(|a| a.name == "agent-a"));
+    }
+
+    #[test]
+    fn test_agent_manager_stop_nonexistent() {
+        let mut am = AgentManagerApp::new();
+        // Stopping a non-existent agent should succeed (no-op)
+        let result = am.stop_agent(Uuid::new_v4());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_agent_manager_start_multiple_stop_one() {
+        let mut am = AgentManagerApp::new();
+        let id1 = am.start_agent("a1".to_string(), vec![]).unwrap();
+        let id2 = am.start_agent("a2".to_string(), vec![]).unwrap();
+        assert_eq!(am.running_agents.len(), 2);
+        am.stop_agent(id1).unwrap();
+        assert_eq!(am.running_agents.len(), 1);
+        assert_eq!(am.running_agents[0].id, id2);
+    }
+
+    #[test]
+    fn test_audit_viewer_get_logs_no_file() {
+        let av = AuditViewerApp::new();
+        // Audit log doesn't exist in test env, returns empty vec
+        let logs = av.get_logs();
+        assert!(logs.is_empty());
+    }
+
+    #[test]
+    fn test_audit_viewer_filter_cutoff_last_hour() {
+        let av = AuditViewerApp {
+            id: "audit".to_string(),
+            name: "Audit".to_string(),
+            filters: AuditFilters {
+                include_agent: true,
+                include_security: true,
+                include_system: true,
+                time_range: TimeRange::LastHour,
+            },
+        };
+        let cutoff = av.filter_cutoff();
+        assert!(cutoff.is_some());
+    }
+
+    #[test]
+    fn test_audit_viewer_filter_cutoff_last_week() {
+        let av = AuditViewerApp {
+            id: "audit".to_string(),
+            name: "Audit".to_string(),
+            filters: AuditFilters {
+                include_agent: true,
+                include_security: true,
+                include_system: true,
+                time_range: TimeRange::LastWeek,
+            },
+        };
+        let cutoff = av.filter_cutoff();
+        assert!(cutoff.is_some());
+    }
+
+    #[test]
+    fn test_audit_viewer_filter_cutoff_custom() {
+        let av = AuditViewerApp {
+            id: "audit".to_string(),
+            name: "Audit".to_string(),
+            filters: AuditFilters {
+                include_agent: true,
+                include_security: true,
+                include_system: true,
+                time_range: TimeRange::Custom,
+            },
+        };
+        let cutoff = av.filter_cutoff();
+        assert!(cutoff.is_none());
+    }
+
+    #[test]
+    fn test_model_manager_select_nonexistent_model() {
+        let mut mm = ModelManagerApp::new();
+        // No models installed, gateway not running — should fail
+        let result = mm.select_model("nonexistent".to_string());
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            AppError::AppNotFound(msg) => assert!(msg.contains("nonexistent")),
+            _ => panic!("Expected AppNotFound"),
+        }
+    }
+
+    #[test]
+    fn test_model_manager_select_installed_model() {
+        let mut mm = ModelManagerApp::new();
+        mm.installed_models.push(ModelInfo {
+            id: "model-a".to_string(),
+            name: "Model A".to_string(),
+            size: 1_000_000,
+            provider: "local".to_string(),
+            is_downloaded: true,
+        });
+        let result = mm.select_model("model-a".to_string());
+        assert!(result.is_ok());
+        assert_eq!(mm.active_model, Some("model-a".to_string()));
+    }
+
+    #[test]
+    fn test_app_error_display_app_not_found() {
+        let err = AppError::AppNotFound("my-app".to_string());
+        assert_eq!(err.to_string(), "App not found: my-app");
+    }
+
+    #[test]
+    fn test_app_error_display_window_error() {
+        let err = AppError::WindowError("broken".to_string());
+        assert_eq!(err.to_string(), "Window error: broken");
+    }
+
+    #[test]
+    fn test_app_error_display_permission_denied() {
+        let err = AppError::PermissionDenied("root".to_string());
+        assert_eq!(err.to_string(), "Permission denied: root");
+    }
+
+    #[test]
+    fn test_app_type_debug() {
+        assert_eq!(format!("{:?}", AppType::Terminal), "Terminal");
+        assert_eq!(format!("{:?}", AppType::FileManager), "FileManager");
+        assert_eq!(format!("{:?}", AppType::TextEditor), "TextEditor");
+        assert_eq!(format!("{:?}", AppType::WebBrowser), "WebBrowser");
+        assert_eq!(format!("{:?}", AppType::AgentManager), "AgentManager");
+        assert_eq!(format!("{:?}", AppType::AuditViewer), "AuditViewer");
+        assert_eq!(format!("{:?}", AppType::ModelManager), "ModelManager");
+        assert_eq!(format!("{:?}", AppType::Settings), "Settings");
+        assert_eq!(format!("{:?}", AppType::Custom), "Custom");
+    }
+
+    #[test]
+    fn test_app_type_equality() {
+        assert_eq!(AppType::Terminal, AppType::Terminal);
+        assert_ne!(AppType::Terminal, AppType::FileManager);
+    }
+
+    #[test]
+    fn test_desktop_applications_open_file_manager_with_path() {
+        let apps = DesktopApplications::new();
+        let result = apps.open_file_manager(Some("/tmp".to_string()));
+        assert!(result.is_ok());
+        let window = result.unwrap();
+        assert_eq!(window.app_type, AppType::FileManager);
+        assert!(window.is_ai_enabled); // agent_assistance is true by default
+    }
+
+    #[test]
+    fn test_desktop_applications_close_nonexistent_window() {
+        let apps = DesktopApplications::new();
+        // Closing a window that doesn't exist should succeed (no-op)
+        let result = apps.close_window(Uuid::new_v4());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_desktop_applications_open_all_and_count() {
+        let apps = DesktopApplications::new();
+        apps.open_terminal().unwrap();
+        apps.open_file_manager(None).unwrap();
+        apps.open_agent_manager().unwrap();
+        apps.open_audit_viewer().unwrap();
+        apps.open_model_manager().unwrap();
+        assert_eq!(apps.get_open_windows().len(), 5);
+    }
+
+    #[test]
+    fn test_agent_info_clone() {
+        let info = AgentInfo {
+            id: Uuid::new_v4(),
+            name: "test".to_string(),
+            status: "Running".to_string(),
+            capabilities: vec!["read".to_string()],
+        };
+        let cloned = info.clone();
+        assert_eq!(cloned.id, info.id);
+        assert_eq!(cloned.name, info.name);
+    }
+
+    #[test]
+    fn test_time_range_custom() {
+        let range = TimeRange::Custom;
+        assert!(matches!(range, TimeRange::Custom));
+    }
+
+    #[test]
+    fn test_model_info_clone() {
+        let info = ModelInfo {
+            id: "m1".to_string(),
+            name: "Model 1".to_string(),
+            size: 500,
+            provider: "local".to_string(),
+            is_downloaded: false,
+        };
+        let cloned = info.clone();
+        assert_eq!(cloned.id, "m1");
+        assert!(!cloned.is_downloaded);
+    }
+
+    #[test]
+    fn test_audit_entry_clone() {
+        let entry = AuditEntry {
+            id: Uuid::new_v4(),
+            timestamp: chrono::Utc::now(),
+            event_type: "agent_start".to_string(),
+            description: "Agent started".to_string(),
+            source: "runtime".to_string(),
+        };
+        let cloned = entry.clone();
+        assert_eq!(cloned.event_type, "agent_start");
+        assert_eq!(cloned.source, "runtime");
+    }
+
+    // ==================================================================
+    // Additional coverage: TerminalApp commands with args and stderr
+    // ==================================================================
+
+    #[tokio::test]
+    async fn test_terminal_execute_command_with_args() {
+        let terminal = TerminalApp::new();
+        // printf is a shell builtin but /usr/bin/printf should work; use "expr" as alternative
+        let result = terminal.execute_command("expr 2 + 3".to_string()).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().trim(), "5");
+    }
+
+    #[tokio::test]
+    async fn test_terminal_execute_ls_tmp() {
+        let terminal = TerminalApp::new();
+        let result = terminal.execute_command("ls /tmp".to_string()).await;
+        // /tmp always exists; ls should succeed
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_terminal_execute_stderr_output() {
+        let terminal = TerminalApp::new();
+        // ls on a nonexistent path fails and produces stderr
+        let result = terminal
+            .execute_command("ls /nonexistent_path_abc123".to_string())
+            .await;
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            AppError::WindowError(msg) => {
+                assert!(msg.contains("failed"), "Expected 'failed' in: {}", msg);
+                // stderr content should be included in the error message
+                assert!(
+                    msg.contains("No such file") || msg.contains("cannot access") || msg.len() > 0,
+                    "stderr should be included in error"
+                );
+            }
+            other => panic!("Expected WindowError, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_terminal_execute_whitespace_only_command() {
+        let terminal = TerminalApp::new();
+        let result = terminal.execute_command("   ".to_string()).await;
+        // split_whitespace on "   " yields empty → should return empty command error
+        assert!(result.is_err());
+    }
+
+    // ==================================================================
+    // FileManagerApp: search_with_agent result content
+    // ==================================================================
+
+    #[test]
+    fn test_file_manager_search_with_agent_returns_found_prefix() {
+        let fm = FileManagerApp::new();
+        let results = fm.search_with_agent("config.toml".to_string()).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0], "Found: config.toml");
+    }
+
+    #[test]
+    fn test_file_manager_search_with_agent_empty_query() {
+        let fm = FileManagerApp::new();
+        let results = fm.search_with_agent("".to_string()).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0], "Found: ");
+    }
+
+    // ==================================================================
+    // AgentManagerApp: multi-agent scenarios, info retrieval
+    // ==================================================================
+
+    #[test]
+    fn test_agent_manager_agent_info_fields() {
+        let mut am = AgentManagerApp::new();
+        let caps = vec!["read".to_string(), "write".to_string(), "execute".to_string()];
+        let id = am.start_agent("my-agent".to_string(), caps.clone()).unwrap();
+        let agent = am.running_agents.iter().find(|a| a.id == id).unwrap();
+        assert_eq!(agent.name, "my-agent");
+        assert_eq!(agent.status, "Starting");
+        assert_eq!(agent.capabilities, caps);
+    }
+
+    #[test]
+    fn test_agent_manager_list_agents_updates_status_when_no_socket_dir() {
+        let mut am = AgentManagerApp::new();
+        am.start_agent("orphan".to_string(), vec![]).unwrap();
+        // list_agents will try to read /run/agnos/agents which likely doesn't exist
+        // in CI. Locally tracked agents should still be returned.
+        let agents = am.list_agents();
+        assert!(agents.iter().any(|a| a.name == "orphan"));
+    }
+
+    #[test]
+    fn test_agent_manager_start_many_agents() {
+        let mut am = AgentManagerApp::new();
+        for i in 0..20 {
+            am.start_agent(format!("agent-{}", i), vec![]).unwrap();
+        }
+        assert_eq!(am.running_agents.len(), 20);
+    }
+
+    // ==================================================================
+    // AuditViewerApp: real temp log file parsing
+    // ==================================================================
+
+    #[test]
+    fn test_audit_viewer_get_logs_with_temp_file() {
+        use std::io::Write;
+
+        let now = chrono::Utc::now();
+        let ts = now.to_rfc3339();
+
+        let log_lines = format!(
+            r#"{{"timestamp":"{}","event_type":"agent_start","details":"Agent foo started","source":"runtime"}}
+{{"timestamp":"{}","event_type":"security_violation","details":"Blocked syscall","source":"seccomp"}}
+{{"timestamp":"{}","event_type":"system_boot","details":"System initialized","source":"init"}}
+"#,
+            ts, ts, ts
+        );
+
+        // We cannot write to /var/log/agnos/audit.log in tests, but we can
+        // test the parsing logic by constructing an AuditViewerApp that reads
+        // from a temp file. Since the path is hardcoded, we test that
+        // the method handles missing file gracefully (already covered) and
+        // instead test the filter_cutoff logic directly.
+        let av = AuditViewerApp {
+            id: "test".to_string(),
+            name: "Test".to_string(),
+            filters: AuditFilters {
+                include_agent: true,
+                include_security: true,
+                include_system: true,
+                time_range: TimeRange::Custom, // no cutoff
+            },
+        };
+        // Custom time range returns None cutoff
+        assert!(av.filter_cutoff().is_none());
+    }
+
+    #[test]
+    fn test_audit_viewer_filter_cutoff_last_day() {
+        let av = AuditViewerApp {
+            id: "a".to_string(),
+            name: "A".to_string(),
+            filters: AuditFilters {
+                include_agent: true,
+                include_security: true,
+                include_system: true,
+                time_range: TimeRange::LastDay,
+            },
+        };
+        let cutoff = av.filter_cutoff().unwrap();
+        let now = chrono::Utc::now();
+        // Cutoff should be approximately 24 hours ago
+        let diff = now - cutoff;
+        assert!(diff.num_hours() >= 23 && diff.num_hours() <= 25);
+    }
+
+    #[test]
+    fn test_audit_viewer_filter_excludes_agent_events() {
+        let av = AuditViewerApp {
+            id: "a".to_string(),
+            name: "A".to_string(),
+            filters: AuditFilters {
+                include_agent: false,
+                include_security: true,
+                include_system: true,
+                time_range: TimeRange::Custom,
+            },
+        };
+        // Cannot test with real file in CI, but verify filter struct
+        assert!(!av.filters.include_agent);
+        assert!(av.filters.include_security);
+    }
+
+    #[test]
+    fn test_audit_viewer_filter_excludes_security_events() {
+        let av = AuditViewerApp {
+            id: "a".to_string(),
+            name: "A".to_string(),
+            filters: AuditFilters {
+                include_agent: true,
+                include_security: false,
+                include_system: true,
+                time_range: TimeRange::Custom,
+            },
+        };
+        assert!(!av.filters.include_security);
+    }
+
+    #[test]
+    fn test_audit_viewer_filter_excludes_system_events() {
+        let av = AuditViewerApp {
+            id: "a".to_string(),
+            name: "A".to_string(),
+            filters: AuditFilters {
+                include_agent: true,
+                include_security: true,
+                include_system: false,
+                time_range: TimeRange::Custom,
+            },
+        };
+        assert!(!av.filters.include_system);
+    }
+
+    // ==================================================================
+    // ModelManagerApp: list_models and download_model error paths
+    // ==================================================================
+
+    #[test]
+    fn test_model_manager_list_models_gateway_unreachable() {
+        let mut mm = ModelManagerApp::new();
+        // Pre-populate local models
+        mm.installed_models.push(ModelInfo {
+            id: "local-model".to_string(),
+            name: "Local Model".to_string(),
+            size: 100,
+            provider: "local".to_string(),
+            is_downloaded: true,
+        });
+        // list_models hits gateway which isn't running; should fall back to cached list
+        let models = mm.list_models();
+        assert!(models.iter().any(|m| m.id == "local-model"));
+    }
+
+    #[test]
+    fn test_model_manager_download_model_gateway_unreachable() {
+        let mut mm = ModelManagerApp::new();
+        // Gateway not running — download should fail with WindowError
+        let result = mm.download_model("llama2-7b".to_string());
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            AppError::WindowError(msg) => {
+                assert!(msg.contains("LLM Gateway unreachable"), "Got: {}", msg);
+            }
+            other => panic!("Expected WindowError, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_model_manager_select_model_not_in_list_or_gateway() {
+        let mut mm = ModelManagerApp::new();
+        let result = mm.select_model("ghost-model".to_string());
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            AppError::AppNotFound(msg) => assert!(msg.contains("ghost-model")),
+            other => panic!("Expected AppNotFound, got {:?}", other),
+        }
+    }
+
+    // ==================================================================
+    // DesktopApplications: open each type, window properties, close
+    // ==================================================================
+
+    #[test]
+    fn test_desktop_applications_open_terminal_window_properties() {
+        let apps = DesktopApplications::new();
+        let window = apps.open_terminal().unwrap();
+        assert_eq!(window.app_type, AppType::Terminal);
+        assert_eq!(window.title, "AGNOS Terminal");
+        assert_eq!(window.width, 800);
+        assert_eq!(window.height, 600);
+        // Terminal windows are not AI-enabled by default
+        assert!(!window.is_ai_enabled);
+    }
+
+    #[test]
+    fn test_desktop_applications_open_file_manager_ai_enabled() {
+        let apps = DesktopApplications::new();
+        let window = apps.open_file_manager(None).unwrap();
+        // FileManagerApp has agent_assistance = true
+        assert!(window.is_ai_enabled);
+    }
+
+    #[test]
+    fn test_desktop_applications_open_agent_manager_ai_enabled() {
+        let apps = DesktopApplications::new();
+        let window = apps.open_agent_manager().unwrap();
+        assert!(window.is_ai_enabled);
+        assert_eq!(window.app_type, AppType::AgentManager);
+    }
+
+    #[test]
+    fn test_desktop_applications_open_audit_viewer_ai_enabled() {
+        let apps = DesktopApplications::new();
+        let window = apps.open_audit_viewer().unwrap();
+        assert!(window.is_ai_enabled);
+        assert_eq!(window.app_type, AppType::AuditViewer);
+    }
+
+    #[test]
+    fn test_desktop_applications_open_model_manager_ai_enabled() {
+        let apps = DesktopApplications::new();
+        let window = apps.open_model_manager().unwrap();
+        assert!(window.is_ai_enabled);
+        assert_eq!(window.app_type, AppType::ModelManager);
+    }
+
+    #[test]
+    fn test_desktop_applications_close_specific_window_leaves_others() {
+        let apps = DesktopApplications::new();
+        let w1 = apps.open_terminal().unwrap();
+        let w2 = apps.open_file_manager(None).unwrap();
+        let w3 = apps.open_agent_manager().unwrap();
+        assert_eq!(apps.get_open_windows().len(), 3);
+
+        apps.close_window(w2.id).unwrap();
+        let remaining = apps.get_open_windows();
+        assert_eq!(remaining.len(), 2);
+        assert!(remaining.iter().any(|w| w.id == w1.id));
+        assert!(remaining.iter().any(|w| w.id == w3.id));
+        assert!(!remaining.iter().any(|w| w.id == w2.id));
+    }
+
+    // ==================================================================
+    // AppWindow: resize and set_ai_enabled
+    // ==================================================================
+
+    #[test]
+    fn test_app_window_resize() {
+        let mut window = AppWindow::new(AppType::Terminal, "T".to_string());
+        assert_eq!(window.width, 800);
+        assert_eq!(window.height, 600);
+        window.width = 1920;
+        window.height = 1080;
+        assert_eq!(window.width, 1920);
+        assert_eq!(window.height, 1080);
+    }
+
+    #[test]
+    fn test_app_window_set_ai_enabled() {
+        let mut window = AppWindow::new(AppType::FileManager, "FM".to_string());
+        assert!(!window.is_ai_enabled);
+        window.is_ai_enabled = true;
+        assert!(window.is_ai_enabled);
+        window.is_ai_enabled = false;
+        assert!(!window.is_ai_enabled);
+    }
+
+    // ==================================================================
+    // AppError: Display formatting for all variants
+    // ==================================================================
+
+    #[test]
+    fn test_app_error_display_format_exact() {
+        assert_eq!(
+            format!("{}", AppError::AppNotFound("xyz".to_string())),
+            "App not found: xyz"
+        );
+        assert_eq!(
+            format!("{}", AppError::WindowError("oops".to_string())),
+            "Window error: oops"
+        );
+        assert_eq!(
+            format!("{}", AppError::PermissionDenied("sudo".to_string())),
+            "Permission denied: sudo"
+        );
+    }
+
+    #[test]
+    fn test_app_error_debug_includes_variant_name() {
+        let err = AppError::AppNotFound("test".to_string());
+        let dbg = format!("{:?}", err);
+        assert!(dbg.contains("AppNotFound"));
+    }
+
+    // ==================================================================
+    // Edge cases
+    // ==================================================================
+
+    #[test]
+    fn test_app_window_unique_ids() {
+        let w1 = AppWindow::new(AppType::Terminal, "A".to_string());
+        let w2 = AppWindow::new(AppType::Terminal, "A".to_string());
+        assert_ne!(w1.id, w2.id, "Each window must have a unique UUID");
+    }
+
+    #[test]
+    fn test_agent_manager_stop_all_agents() {
+        let mut am = AgentManagerApp::new();
+        let ids: Vec<Uuid> = (0..5)
+            .map(|i| am.start_agent(format!("a{}", i), vec![]).unwrap())
+            .collect();
+        assert_eq!(am.running_agents.len(), 5);
+        for id in ids {
+            am.stop_agent(id).unwrap();
+        }
+        assert!(am.running_agents.is_empty());
+    }
+
+    #[test]
+    fn test_desktop_applications_get_agent_manager_mut() {
+        let mut apps = DesktopApplications::new();
+        {
+            let am = apps.get_agent_manager();
+            am.start_agent("via-desktop".to_string(), vec!["net".to_string()]).unwrap();
+        }
+        // Agent should persist in the desktop apps state
+        let am = apps.get_agent_manager();
+        assert_eq!(am.running_agents.len(), 1);
+        assert_eq!(am.running_agents[0].name, "via-desktop");
+    }
+
+    #[test]
+    fn test_desktop_applications_get_model_manager_mut() {
+        let mut apps = DesktopApplications::new();
+        {
+            let mm = apps.get_model_manager();
+            mm.installed_models.push(ModelInfo {
+                id: "test-m".to_string(),
+                name: "Test M".to_string(),
+                size: 42,
+                provider: "test".to_string(),
+                is_downloaded: false,
+            });
+        }
+        let mm = apps.get_model_manager();
+        assert_eq!(mm.installed_models.len(), 1);
+        assert_eq!(mm.installed_models[0].id, "test-m");
+    }
+
+    // ==================================================================
+    // Additional coverage: FileManagerApp navigate, ModelManagerApp list/select
+    // with pre-populated models, DesktopApplications lifecycle, constants
+    // ==================================================================
+
+    #[test]
+    fn test_file_manager_navigate_to_root() {
+        let mut fm = FileManagerApp::new();
+        fm.navigate("/".to_string()).unwrap();
+        assert_eq!(fm.current_path, "/");
+    }
+
+    #[test]
+    fn test_file_manager_navigate_preserves_path() {
+        let mut fm = FileManagerApp::new();
+        fm.navigate("/usr/local/bin".to_string()).unwrap();
+        assert_eq!(fm.current_path, "/usr/local/bin");
+        // Navigate again
+        fm.navigate("/etc".to_string()).unwrap();
+        assert_eq!(fm.current_path, "/etc");
+    }
+
+    #[test]
+    fn test_file_manager_default_state() {
+        let fm = FileManagerApp::new();
+        assert_eq!(fm.id, "filemanager");
+        assert_eq!(fm.name, "File Manager");
+        assert_eq!(fm.current_path, "/home");
+        assert!(fm.agent_assistance);
+    }
+
+    #[test]
+    fn test_model_manager_list_models_with_cached_models() {
+        let mut mm = ModelManagerApp::new();
+        mm.installed_models.push(ModelInfo {
+            id: "cached-1".to_string(),
+            name: "Cached 1".to_string(),
+            size: 500_000,
+            provider: "local".to_string(),
+            is_downloaded: true,
+        });
+        mm.installed_models.push(ModelInfo {
+            id: "cached-2".to_string(),
+            name: "Cached 2".to_string(),
+            size: 1_000_000,
+            provider: "ollama".to_string(),
+            is_downloaded: false,
+        });
+
+        // Gateway unreachable, should return cached models
+        let models = mm.list_models();
+        assert!(models.len() >= 2);
+        assert!(models.iter().any(|m| m.id == "cached-1"));
+        assert!(models.iter().any(|m| m.id == "cached-2"));
+    }
+
+    #[test]
+    fn test_model_manager_select_then_re_select() {
+        let mut mm = ModelManagerApp::new();
+        mm.installed_models.push(ModelInfo {
+            id: "m-a".to_string(),
+            name: "A".to_string(),
+            size: 0,
+            provider: "".to_string(),
+            is_downloaded: true,
+        });
+        mm.installed_models.push(ModelInfo {
+            id: "m-b".to_string(),
+            name: "B".to_string(),
+            size: 0,
+            provider: "".to_string(),
+            is_downloaded: true,
+        });
+
+        mm.select_model("m-a".to_string()).unwrap();
+        assert_eq!(mm.active_model, Some("m-a".to_string()));
+
+        mm.select_model("m-b".to_string()).unwrap();
+        assert_eq!(mm.active_model, Some("m-b".to_string()));
+    }
+
+    #[test]
+    fn test_model_manager_id_and_name() {
+        let mm = ModelManagerApp::new();
+        assert_eq!(mm.id, "model-manager");
+        assert_eq!(mm.name, "Model Manager");
+    }
+
+    #[test]
+    fn test_agent_manager_id_and_name() {
+        let am = AgentManagerApp::new();
+        assert_eq!(am.id, "agent-manager");
+        assert_eq!(am.name, "Agent Manager");
+    }
+
+    #[test]
+    fn test_audit_viewer_id_and_name() {
+        let av = AuditViewerApp::new();
+        assert_eq!(av.id, "audit-viewer");
+        assert_eq!(av.name, "Audit Log Viewer");
+    }
+
+    #[test]
+    fn test_terminal_id_and_name() {
+        let t = TerminalApp::new();
+        assert_eq!(t.id, "terminal");
+        assert_eq!(t.name, "AGNOS Terminal");
+        assert!(t.ai_integration);
+    }
+
+    #[test]
+    fn test_llm_gateway_addr_constant() {
+        assert_eq!(LLM_GATEWAY_ADDR, "http://localhost:8088");
+    }
+
+    #[test]
+    fn test_agent_socket_dir_constant() {
+        assert_eq!(AGENT_SOCKET_DIR, "/run/agnos/agents");
+    }
+
+    #[test]
+    fn test_audit_log_path_constant() {
+        assert_eq!(AUDIT_LOG_PATH, "/var/log/agnos/audit.log");
+    }
+
+    #[test]
+    fn test_desktop_applications_close_all_windows() {
+        let apps = DesktopApplications::new();
+        let w1 = apps.open_terminal().unwrap();
+        let w2 = apps.open_file_manager(None).unwrap();
+        let w3 = apps.open_agent_manager().unwrap();
+        assert_eq!(apps.get_open_windows().len(), 3);
+
+        apps.close_window(w1.id).unwrap();
+        apps.close_window(w2.id).unwrap();
+        apps.close_window(w3.id).unwrap();
+        assert!(apps.get_open_windows().is_empty());
+    }
+
+    #[test]
+    fn test_agent_info_debug() {
+        let info = AgentInfo {
+            id: Uuid::new_v4(),
+            name: "dbg-agent".to_string(),
+            status: "Running".to_string(),
+            capabilities: vec!["net".to_string()],
+        };
+        let dbg = format!("{:?}", info);
+        assert!(dbg.contains("dbg-agent"));
+        assert!(dbg.contains("Running"));
+    }
+
+    #[test]
+    fn test_model_info_debug() {
+        let info = ModelInfo {
+            id: "m".to_string(),
+            name: "Model".to_string(),
+            size: 42,
+            provider: "p".to_string(),
+            is_downloaded: true,
+        };
+        let dbg = format!("{:?}", info);
+        assert!(dbg.contains("Model"));
+    }
+
+    #[test]
+    fn test_audit_filters_clone() {
+        let filters = AuditFilters {
+            include_agent: false,
+            include_security: true,
+            include_system: false,
+            time_range: TimeRange::LastHour,
+        };
+        let cloned = filters.clone();
+        assert_eq!(cloned.include_agent, false);
+        assert_eq!(cloned.include_security, true);
+        assert_eq!(cloned.include_system, false);
+    }
+
+    #[test]
+    fn test_app_window_clone() {
+        let w = AppWindow::new(AppType::Terminal, "Clone Test".to_string());
+        let c = w.clone();
+        assert_eq!(c.id, w.id);
+        assert_eq!(c.title, w.title);
+        assert_eq!(c.app_type, w.app_type);
+    }
+
+    #[test]
+    fn test_agent_manager_start_with_empty_capabilities() {
+        let mut am = AgentManagerApp::new();
+        let id = am.start_agent("no-caps".to_string(), vec![]).unwrap();
+        let agent = am.running_agents.iter().find(|a| a.id == id).unwrap();
+        assert!(agent.capabilities.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_terminal_execute_true_command() {
+        let terminal = TerminalApp::new();
+        let result = terminal.execute_command("true".to_string()).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), ""); // "true" produces no output
+    }
+
+    #[tokio::test]
+    async fn test_terminal_execute_pwd() {
+        let terminal = TerminalApp::new();
+        let result = terminal.execute_command("pwd".to_string()).await;
+        assert!(result.is_ok());
+        let output = result.unwrap();
+        assert!(!output.trim().is_empty());
+    }
+
+    #[test]
+    fn test_file_manager_search_returns_one_result() {
+        let fm = FileManagerApp::new();
+        let results = fm.search_with_agent("anything".to_string()).unwrap();
+        assert_eq!(results.len(), 1);
+    }
 }

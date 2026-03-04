@@ -701,4 +701,278 @@ mod tests {
             "http://127.0.0.1:8200/v1/kv/data/key"
         );
     }
+
+    // --- Additional secrets.rs coverage tests ---
+
+    #[test]
+    fn test_env_backend_new_default_prefix() {
+        let backend = EnvSecretBackend::new();
+        assert_eq!(backend.prefix, "AGNOS_SECRET_");
+    }
+
+    #[test]
+    fn test_env_backend_default_trait() {
+        let backend = EnvSecretBackend::default();
+        assert_eq!(backend.prefix, "AGNOS_SECRET_");
+    }
+
+    #[test]
+    fn test_env_backend_custom_prefix() {
+        let backend = EnvSecretBackend::with_prefix("CUSTOM_");
+        assert_eq!(backend.prefix, "CUSTOM_");
+    }
+
+    #[test]
+    fn test_env_backend_env_key_formatting() {
+        let backend = EnvSecretBackend::with_prefix("PFX_");
+        // Dashes become underscores, lowercase becomes uppercase
+        assert_eq!(backend.env_key("my-secret"), "PFX_MY_SECRET");
+        assert_eq!(backend.env_key("ALREADY_UPPER"), "PFX_ALREADY_UPPER");
+        assert_eq!(backend.env_key("mix-Case_key"), "PFX_MIX_CASE_KEY");
+    }
+
+    #[tokio::test]
+    async fn test_env_backend_delete_nonexistent() {
+        let backend = EnvSecretBackend::with_prefix("DEL_MISS_");
+        let deleted = backend.delete_secret("no-such-key").await.unwrap();
+        assert!(!deleted);
+    }
+
+    #[test]
+    fn test_file_backend_new_construction() {
+        let key = [0xAAu8; 32];
+        let backend = FileSecretBackend::new(Path::new("/tmp/test_secrets"), key);
+        assert!(backend.is_ok());
+        let backend = backend.unwrap();
+        assert_eq!(backend.base_dir, PathBuf::from("/tmp/test_secrets"));
+        assert_eq!(backend.encryption_key, [0xAAu8; 32]);
+    }
+
+    #[test]
+    fn test_file_backend_secret_path_various_keys() {
+        let key = [0u8; 32];
+        let backend = FileSecretBackend::new(Path::new("/tmp/secrets"), key).unwrap();
+
+        // Normal key
+        let path = backend.secret_path("api-key_1");
+        assert_eq!(path, PathBuf::from("/tmp/secrets/api-key_1.secret"));
+
+        // Special characters get sanitised to underscores
+        let path = backend.secret_path("key with spaces");
+        assert!(path.to_string_lossy().contains("key_with_spaces.secret"));
+
+        // Dots get sanitised
+        let path = backend.secret_path("key.with.dots");
+        assert!(!path.to_string_lossy().contains(".."));
+    }
+
+    #[test]
+    fn test_file_backend_decrypt_too_short() {
+        let key = [0x11u8; 32];
+        let backend = FileSecretBackend::new(Path::new("/tmp"), key).unwrap();
+        // Data shorter than 12 bytes (nonce length) should fail
+        let result = backend.decrypt(&[1, 2, 3]);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("too short"));
+    }
+
+    #[test]
+    fn test_file_backend_encrypt_decrypt_roundtrip() {
+        let key = [0x22u8; 32];
+        let backend = FileSecretBackend::new(Path::new("/tmp"), key).unwrap();
+        let plaintext = b"hello world secret data";
+        let encrypted = backend.encrypt(plaintext).unwrap();
+        // Encrypted data should be nonce(12) + ciphertext (longer than plaintext due to tag)
+        assert!(encrypted.len() > 12);
+        let decrypted = backend.decrypt(&encrypted).unwrap();
+        assert_eq!(decrypted, plaintext);
+    }
+
+    #[test]
+    fn test_file_backend_decrypt_wrong_key() {
+        let key1 = [0x33u8; 32];
+        let key2 = [0x44u8; 32];
+        let backend1 = FileSecretBackend::new(Path::new("/tmp"), key1).unwrap();
+        let backend2 = FileSecretBackend::new(Path::new("/tmp"), key2).unwrap();
+        let encrypted = backend1.encrypt(b"secret").unwrap();
+        let result = backend2.decrypt(&encrypted);
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_file_backend_get_secret_nonexistent() {
+        let dir = std::env::temp_dir().join("agnos_secret_nofile_test");
+        let _ = std::fs::remove_dir_all(&dir);
+        let key = [0x55u8; 32];
+        let backend = FileSecretBackend::new(&dir, key).unwrap();
+        let result = backend.get_secret("does-not-exist").await.unwrap();
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_file_backend_list_secrets_empty_dir() {
+        let dir = std::env::temp_dir().join("agnos_secret_emptylist_test");
+        let _ = std::fs::remove_dir_all(&dir);
+        let key = [0x66u8; 32];
+        let backend = FileSecretBackend::new(&dir, key).unwrap();
+        // Dir doesn't exist yet — should return empty list
+        let keys = backend.list_secrets().await.unwrap();
+        assert!(keys.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_file_backend_list_secrets_filters_non_secret_files() {
+        let dir = std::env::temp_dir().join("agnos_secret_filter_test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        // Create a non-.secret file that should be ignored
+        std::fs::write(dir.join("readme.txt"), b"not a secret").unwrap();
+        // Create a .secret file
+        std::fs::write(dir.join("api-key.secret"), b"fake").unwrap();
+
+        let key = [0x77u8; 32];
+        let backend = FileSecretBackend::new(&dir, key).unwrap();
+        let keys = backend.list_secrets().await.unwrap();
+        assert_eq!(keys.len(), 1);
+        assert!(keys.contains(&"api-key".to_string()));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_vault_backend_construction() {
+        let backend = VaultSecretBackend::new("http://vault:8200", "s.mytoken", "kv2");
+        assert_eq!(backend.addr, "http://vault:8200");
+        assert_eq!(backend.token, "s.mytoken");
+        assert_eq!(backend.mount, "kv2");
+    }
+
+    #[test]
+    fn test_vault_backend_data_url_nested_key() {
+        let backend = VaultSecretBackend::new("http://127.0.0.1:8200", "token", "secret");
+        assert_eq!(
+            backend.data_url("path/to/key"),
+            "http://127.0.0.1:8200/v1/secret/data/path/to/key"
+        );
+    }
+
+    #[test]
+    fn test_vault_backend_metadata_url_nested_key() {
+        let backend = VaultSecretBackend::new("http://127.0.0.1:8200", "token", "secret");
+        assert_eq!(
+            backend.metadata_url("path/to/key"),
+            "http://127.0.0.1:8200/v1/secret/metadata/path/to/key"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_secret_injector_new() {
+        let backend = EnvSecretBackend::with_prefix("INJNEW_");
+        let injector = SecretInjector::new(Box::new(backend));
+        // Just verify construction works — injector wraps the backend
+        let empty_mappings = HashMap::new();
+        let resolved = injector.resolve(&empty_mappings).await.unwrap();
+        assert!(resolved.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_secret_injector_resolve_all_missing() {
+        let backend = EnvSecretBackend::with_prefix("INJMISS_");
+        let injector = SecretInjector::new(Box::new(backend));
+        let mut mappings = HashMap::new();
+        mappings.insert("nonexistent1".to_string(), "VAR1".to_string());
+        mappings.insert("nonexistent2".to_string(), "VAR2".to_string());
+        let resolved = injector.resolve(&mappings).await.unwrap();
+        // All missing — should be empty
+        assert!(resolved.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_secret_injector_inject_into_env() {
+        let backend = EnvSecretBackend::with_prefix("INJENV_");
+        let val = SecretValue {
+            data: "injected-env-val".to_string(),
+            metadata: HashMap::new(),
+            created_at: chrono::Utc::now(),
+        };
+        backend.set_secret("inject-test", val).await.unwrap();
+
+        let injector = SecretInjector::new(Box::new(EnvSecretBackend::with_prefix("INJENV_")));
+        let mut mappings = HashMap::new();
+        mappings.insert("inject-test".to_string(), "MY_INJECTED_VAR".to_string());
+        injector.inject_into_env(&mappings).await.unwrap();
+
+        assert_eq!(std::env::var("MY_INJECTED_VAR").unwrap(), "injected-env-val");
+
+        // Cleanup
+        unsafe {
+            std::env::remove_var("MY_INJECTED_VAR");
+        }
+        let cleanup = EnvSecretBackend::with_prefix("INJENV_");
+        cleanup.delete_secret("inject-test").await.unwrap();
+    }
+
+    #[test]
+    fn test_secret_value_metadata_access() {
+        let mut metadata = HashMap::new();
+        metadata.insert("owner".to_string(), "agent-1".to_string());
+        metadata.insert("rotation".to_string(), "30d".to_string());
+        let val = SecretValue {
+            data: "secret-data".to_string(),
+            metadata,
+            created_at: chrono::Utc::now(),
+        };
+        assert_eq!(val.metadata.len(), 2);
+        assert_eq!(val.metadata.get("owner").unwrap(), "agent-1");
+        assert_eq!(val.metadata.get("rotation").unwrap(), "30d");
+    }
+
+    #[test]
+    fn test_secret_value_clone() {
+        let val = SecretValue {
+            data: "clone-test".to_string(),
+            metadata: HashMap::from([("k".to_string(), "v".to_string())]),
+            created_at: chrono::Utc::now(),
+        };
+        let cloned = val.clone();
+        assert_eq!(cloned.data, val.data);
+        assert_eq!(cloned.metadata, val.metadata);
+    }
+
+    #[test]
+    fn test_secret_value_debug() {
+        let val = SecretValue {
+            data: "debug-test".to_string(),
+            metadata: HashMap::new(),
+            created_at: chrono::Utc::now(),
+        };
+        let debug = format!("{:?}", val);
+        assert!(debug.contains("debug-test"));
+    }
+
+    #[tokio::test]
+    async fn test_injector_partial_resolve() {
+        // One key exists, one doesn't — only the existing one should resolve
+        let backend = EnvSecretBackend::with_prefix("PARTIAL_");
+        let val = SecretValue {
+            data: "found-value".to_string(),
+            metadata: HashMap::new(),
+            created_at: chrono::Utc::now(),
+        };
+        backend.set_secret("exists", val).await.unwrap();
+
+        let injector = SecretInjector::new(Box::new(EnvSecretBackend::with_prefix("PARTIAL_")));
+        let mut mappings = HashMap::new();
+        mappings.insert("exists".to_string(), "FOUND_VAR".to_string());
+        mappings.insert("missing".to_string(), "MISSING_VAR".to_string());
+
+        let resolved = injector.resolve(&mappings).await.unwrap();
+        assert_eq!(resolved.len(), 1);
+        assert_eq!(resolved.get("FOUND_VAR").unwrap(), "found-value");
+        assert!(!resolved.contains_key("MISSING_VAR"));
+
+        // Cleanup
+        let cleanup = EnvSecretBackend::with_prefix("PARTIAL_");
+        cleanup.delete_secret("exists").await.unwrap();
+    }
 }

@@ -276,4 +276,199 @@ mod tests {
         assert_eq!(provider.name, "openai");
         assert_eq!(provider.priority, 1);
     }
+
+    // --- Additional llm.rs coverage tests ---
+
+    #[test]
+    fn test_inference_request_new_constructor() {
+        let req = InferenceRequest::new("Hello world".to_string(), "gpt-4".to_string());
+        assert_eq!(req.prompt, "Hello world");
+        assert_eq!(req.model, "gpt-4");
+        // Defaults should be applied via validate()
+        assert_eq!(req.temperature, 0.7);
+        assert_eq!(req.max_tokens, 1024);
+    }
+
+    #[test]
+    fn test_inference_request_validate_clamps_temperature() {
+        let mut req = InferenceRequest::default();
+        req.temperature = 5.0;
+        req.validate();
+        assert_eq!(req.temperature, 2.0);
+
+        req.temperature = -1.0;
+        req.validate();
+        assert_eq!(req.temperature, 0.0);
+    }
+
+    #[test]
+    fn test_inference_request_validate_clamps_top_p() {
+        let mut req = InferenceRequest::default();
+        req.top_p = 0.0;
+        req.validate();
+        assert!(req.top_p > 0.0); // clamped to f32::MIN_POSITIVE
+
+        req.top_p = 2.0;
+        req.validate();
+        assert_eq!(req.top_p, 1.0);
+    }
+
+    #[test]
+    fn test_inference_request_validate_clamps_max_tokens() {
+        let mut req = InferenceRequest::default();
+        req.max_tokens = 0;
+        req.validate();
+        assert_eq!(req.max_tokens, 1);
+
+        req.max_tokens = 999_999;
+        req.validate();
+        assert_eq!(req.max_tokens, MAX_TOKENS_LIMIT);
+    }
+
+    #[test]
+    fn test_inference_request_validate_clamps_penalties() {
+        let mut req = InferenceRequest::default();
+        req.presence_penalty = -5.0;
+        req.frequency_penalty = 5.0;
+        req.validate();
+        assert_eq!(req.presence_penalty, -2.0);
+        assert_eq!(req.frequency_penalty, 2.0);
+    }
+
+    #[test]
+    fn test_inference_request_validate_truncates_prompt() {
+        let long_prompt = "A".repeat(MAX_PROMPT_LENGTH + 1000);
+        let mut req = InferenceRequest {
+            prompt: long_prompt,
+            ..Default::default()
+        };
+        req.validate();
+        assert_eq!(req.prompt.len(), MAX_PROMPT_LENGTH);
+    }
+
+    #[test]
+    fn test_inference_request_serialization_roundtrip() {
+        let req = InferenceRequest::new("test prompt".to_string(), "llama3".to_string());
+        let json = serde_json::to_string(&req).unwrap();
+        let deserialized: InferenceRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.prompt, "test prompt");
+        assert_eq!(deserialized.model, "llama3");
+    }
+
+    #[test]
+    fn test_inference_response_construction() {
+        let resp = InferenceResponse {
+            text: "Hello!".to_string(),
+            tokens_generated: 5,
+            finish_reason: FinishReason::Stop,
+            model: "llama2-7b".to_string(),
+            usage: TokenUsage {
+                prompt_tokens: 10,
+                completion_tokens: 5,
+                total_tokens: 15,
+            },
+        };
+        assert_eq!(resp.text, "Hello!");
+        assert_eq!(resp.tokens_generated, 5);
+        assert_eq!(resp.finish_reason, FinishReason::Stop);
+        assert_eq!(resp.usage.total_tokens, 15);
+    }
+
+    #[test]
+    fn test_inference_response_serialization() {
+        let resp = InferenceResponse {
+            text: "output".to_string(),
+            tokens_generated: 3,
+            finish_reason: FinishReason::Length,
+            model: "test".to_string(),
+            usage: TokenUsage {
+                prompt_tokens: 50,
+                completion_tokens: 3,
+                total_tokens: 53,
+            },
+        };
+        let json = serde_json::to_string(&resp).unwrap();
+        let deserialized: InferenceResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.finish_reason, FinishReason::Length);
+        assert_eq!(deserialized.usage.prompt_tokens, 50);
+    }
+
+    #[test]
+    fn test_finish_reason_error_variant() {
+        let reason = FinishReason::Error;
+        assert_eq!(reason, FinishReason::Error);
+        assert_ne!(reason, FinishReason::Stop);
+    }
+
+    #[test]
+    fn test_model_info_with_capabilities() {
+        let model = ModelInfo {
+            id: "gpt-4-vision".to_string(),
+            name: "GPT-4 Vision".to_string(),
+            provider: Provider::OpenAi,
+            capabilities: vec![
+                ModelCapability::TextGeneration,
+                ModelCapability::Vision,
+                ModelCapability::FunctionCalling,
+            ],
+            max_tokens: 128_000,
+            size_bytes: 0,
+            loaded: true,
+        };
+        assert_eq!(model.capabilities.len(), 3);
+        assert!(model.capabilities.contains(&ModelCapability::Vision));
+        assert!(model.capabilities.contains(&ModelCapability::FunctionCalling));
+        assert!(model.loaded);
+    }
+
+    #[test]
+    fn test_model_info_serialization() {
+        let model = ModelInfo {
+            id: "test-model".to_string(),
+            name: "Test Model".to_string(),
+            provider: Provider::Custom("my-provider".to_string()),
+            capabilities: vec![ModelCapability::Embeddings],
+            max_tokens: 2048,
+            size_bytes: 100_000,
+            loaded: false,
+        };
+        let json = serde_json::to_string(&model).unwrap();
+        let deserialized: ModelInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.provider, Provider::Custom("my-provider".to_string()));
+        assert!(deserialized.capabilities.contains(&ModelCapability::Embeddings));
+    }
+
+    #[test]
+    fn test_provider_google_variant() {
+        let provider = Provider::Google;
+        assert_eq!(provider, Provider::Google);
+        assert_ne!(provider, Provider::Local);
+    }
+
+    #[test]
+    fn test_cloud_provider_debug_redacts_api_key() {
+        let provider = CloudProviderConfig {
+            name: "openai".to_string(),
+            api_key: "sk-super-secret-key-12345".to_string(),
+            base_url: "https://api.openai.com".to_string(),
+            priority: 1,
+        };
+        let debug_output = format!("{:?}", provider);
+        assert!(debug_output.contains("[REDACTED]"));
+        assert!(!debug_output.contains("sk-super-secret-key-12345"));
+    }
+
+    #[test]
+    fn test_token_usage_serialization() {
+        let usage = TokenUsage {
+            prompt_tokens: 100,
+            completion_tokens: 50,
+            total_tokens: 150,
+        };
+        let json = serde_json::to_string(&usage).unwrap();
+        let deserialized: TokenUsage = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.prompt_tokens, 100);
+        assert_eq!(deserialized.completion_tokens, 50);
+        assert_eq!(deserialized.total_tokens, 150);
+    }
 }

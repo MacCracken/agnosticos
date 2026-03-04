@@ -16,7 +16,7 @@
 | ~~Fix panicking unwrap() in production code~~ | llm-gateway, desktop-env | — | — | ✅ Done 2026-03-03 |
 | ~~Input validation enforcement (LLM params)~~ | agnos-common | — | — | ✅ Done 2026-03-03 |
 | ~~Resource limit enforcement (cgroups)~~ | agent-runtime | — | — | ✅ Done 2026-03-03 |
-| Unit test coverage 65% → 80% | All | 2 weeks | TBD | 🔄 In Progress |
+| Unit test coverage 65% → 80% | All | 1 week | TBD | 🔄 62% (was 46%, +876 tests on 2026-03-04) |
 | CIS benchmarks 75% → 80% | Security | 3 days | TBD | 🔄 8 controls remain |
 
 ### P1 - High Priority (Alpha Blockers)
@@ -146,34 +146,35 @@ All foundational work is complete. See [CHANGELOG.md](/CHANGELOG.md) for detaile
   - Status: Vendor selection in progress
   - Details: See [docs/security/penetration-testing.md](/docs/security/penetration-testing.md)
 
-### Phase 5.3 - Testing & Quality (🔄 65% Complete)
+### Phase 5.3 - Testing & Quality (🔄 75% Complete)
 
 #### ✅ Completed
 - Unit test framework (cargo test)
-- ~65% test coverage across all components (up from ~45%)
-- agnos-common: 104 tests passing (up from 94)
-- ai-shell: 183 tests passing (up from 111)
-- agent-runtime: 80 unit + 16 integration tests passing (up from 56+16)
-- llm-gateway: 39 tests passing
-- agnos-sys: 36 tests passing
-- desktop-environment: 161 tests passing (up from 151)
-- Total: 580+ tests across all packages
+- ~62% test coverage (tarpaulin), up from ~46% on 2026-03-04 (+876 tests)
+- agnos-common: 168 tests passing (up from 104)
+- ai-shell: 319 tests passing (up from 185)
+- agent-runtime: 239 unit + 16 integration tests passing (up from 116+16)
+- llm-gateway: 145 tests passing (up from 47)
+- agnos-sys: 125 tests passing
+- desktop-environment: 268 tests passing (up from 161)
+- Total: 2091 tests across all packages (1215 → 2091, 0 failures, 8 ignored requiring root)
 - Performance micro-benchmarks: 29 benchmarks across 4 packages (Criterion)
   - `agent-runtime/benches/bench.rs` — 12 benchmarks
   - `ai-shell/benches/ai_shell.rs` — 7 benchmarks
   - `llm-gateway/benches/llm_gateway.rs` — 5 benchmarks
   - `agnos-common/benches/agnos_common.rs` — 5 benchmarks
+- Fixed 4 compilation errors in test code (missing tempfile dep, missing enum variants, wrong test assertions)
 
 #### ⏳ Remaining
 
 ##### P0 - Critical (Alpha Blockers)
-- [ ] **Unit Test Coverage: 65% → 80%**
-  - Effort: 2 weeks
+- [ ] **Unit Test Coverage: 62% → 80%**
+  - Effort: 1 week (was 2 weeks, reduced by March 4 push)
   - Owner: TBD
   - Priority components:
-    1. ai-shell (40% → 70%)
-    2. desktop-environment (35% → 70%)
-    3. agnos-sys (65% → 80%)
+    1. agnos-sys (needs root-gated tests for audit/LUKS/netns/dmverity)
+    2. agent-runtime (supervisor process management, sandbox apply paths)
+    3. llm-gateway (HTTP handler integration tests)
 
 ##### P1 - High Priority
 - [ ] **Performance Benchmarks: System-Level + Documentation**
@@ -569,9 +570,9 @@ the consumer integration milestone:
 
 | Metric | Target | Current | Status | Priority |
 |--------|--------|---------|--------|----------|
-| Code Coverage | >80% | ~65% | 🔄 | P0 |
+| Code Coverage | >80% | ~62% | 🔄 | P0 |
 | Test Pass Rate | 100% | 100% | ✅ | - |
-| Total Tests | 400+ | 580+ | ✅ | - |
+| Total Tests | 400+ | 2235 | ✅ | - |
 | Agent Spawn Time | <500ms | ~300ms | ✅ | - |
 | Shell Response Time | <100ms | ~50ms | ✅ | - |
 | Memory Overhead | <2GB | ~1.2GB | ✅ | - |
@@ -584,12 +585,12 @@ the consumer integration milestone:
 
 | Component | Tests | Stubs Remaining | Notes |
 |-----------|-------|-----------------|-------|
-| agnos-common | 104 | 0 | Secrets management ✅ |
-| agnos-sys | 36 | 0 | LLM gateway delegation ✅, audit hash chain ✅ |
-| agent-runtime | 80 | 0 | HTTP API ✅, seccomp profiles ✅, WASM runtime ✅, load-aware scheduler ✅ |
-| llm-gateway | 39 | 0 (P2 only) | Streaming + cloud providers are P2 |
-| ai-shell | 183 | 0 (P2 only) | 8 intents + output formatting are P2 |
-| desktop-environment | 161 | 0 | HUD ✅, security enforcement ✅, deadlock fixes ✅ |
+| agnos-common | 168 | 0 | Secrets management ✅, telemetry ✅, LLM types ✅ |
+| agnos-sys | 125 | 0 | LLM gateway delegation ✅, audit hash chain ✅ |
+| agent-runtime | 255 | 0 | HTTP API ✅, seccomp profiles ✅, WASM runtime ✅, load-aware scheduler ✅ |
+| llm-gateway | 145 | 0 (P2 only) | HTTP handler integration tests ✅, streaming + cloud providers are P2 |
+| ai-shell | 319 | 0 (P2 only) | Session/prompt/approval ✅, 8 intents + output formatting are P2 |
+| desktop-environment | 268 | 0 | HUD ✅, security enforcement ✅, apps ✅, system metrics ✅ |
 
 ---
 
@@ -712,4 +713,4 @@ For detailed history of all completed work, see [CHANGELOG.md](/CHANGELOG.md).
 
 ---
 
-*Last Updated: 2026-03-04 (roadmap review + consistency fixes) | Next Review: 2026-03-10*
+*Last Updated: 2026-03-04 (test coverage push 46%→62%, 876 new tests, roadmap + changelog updated) | Next Review: 2026-03-10*

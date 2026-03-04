@@ -789,4 +789,564 @@ mod tests {
         let err = AIFeatureError::ModelError("test".to_string());
         assert!(err.to_string().contains("Model error"));
     }
+
+    // --- detect_context_type tests ---
+
+    #[test]
+    fn test_detect_context_type_development_code() {
+        let features = AIDesktopFeatures::new();
+        let mut metadata = HashMap::new();
+        metadata.insert("app".to_string(), "vscode".to_string());
+        features.update_context(ContextEvent {
+            id: Uuid::new_v4(),
+            event_type: ContextEventType::WindowOpened,
+            source: "test".to_string(),
+            timestamp: chrono::Utc::now(),
+            metadata,
+        });
+        let ctx = features.get_context();
+        // "vscode" contains "code" → Development
+        assert_eq!(ctx.context_type, ContextType::Development);
+    }
+
+    #[test]
+    fn test_detect_context_type_development_terminal() {
+        let features = AIDesktopFeatures::new();
+        let mut metadata = HashMap::new();
+        metadata.insert("app".to_string(), "terminal".to_string());
+        features.update_context(ContextEvent {
+            id: Uuid::new_v4(),
+            event_type: ContextEventType::WindowOpened,
+            source: "test".to_string(),
+            timestamp: chrono::Utc::now(),
+            metadata,
+        });
+        let ctx = features.get_context();
+        assert_eq!(ctx.context_type, ContextType::Development);
+    }
+
+    #[test]
+    fn test_detect_context_type_development_editor() {
+        let features = AIDesktopFeatures::new();
+        let mut metadata = HashMap::new();
+        metadata.insert("app".to_string(), "text-editor".to_string());
+        features.update_context(ContextEvent {
+            id: Uuid::new_v4(),
+            event_type: ContextEventType::WindowOpened,
+            source: "test".to_string(),
+            timestamp: chrono::Utc::now(),
+            metadata,
+        });
+        let ctx = features.get_context();
+        assert_eq!(ctx.context_type, ContextType::Development);
+    }
+
+    #[test]
+    fn test_detect_context_type_design_figma() {
+        let features = AIDesktopFeatures::new();
+        let mut metadata = HashMap::new();
+        metadata.insert("app".to_string(), "figma".to_string());
+        features.update_context(ContextEvent {
+            id: Uuid::new_v4(),
+            event_type: ContextEventType::WindowOpened,
+            source: "test".to_string(),
+            timestamp: chrono::Utc::now(),
+            metadata,
+        });
+        let ctx = features.get_context();
+        assert_eq!(ctx.context_type, ContextType::Design);
+    }
+
+    #[test]
+    fn test_detect_context_type_design_gimp() {
+        let features = AIDesktopFeatures::new();
+        let mut metadata = HashMap::new();
+        metadata.insert("app".to_string(), "gimp".to_string());
+        features.update_context(ContextEvent {
+            id: Uuid::new_v4(),
+            event_type: ContextEventType::WindowOpened,
+            source: "test".to_string(),
+            timestamp: chrono::Utc::now(),
+            metadata,
+        });
+        let ctx = features.get_context();
+        assert_eq!(ctx.context_type, ContextType::Design);
+    }
+
+    #[test]
+    fn test_detect_context_type_design_blender() {
+        let features = AIDesktopFeatures::new();
+        let mut metadata = HashMap::new();
+        metadata.insert("app".to_string(), "blender".to_string());
+        features.update_context(ContextEvent {
+            id: Uuid::new_v4(),
+            event_type: ContextEventType::WindowOpened,
+            source: "test".to_string(),
+            timestamp: chrono::Utc::now(),
+            metadata,
+        });
+        let ctx = features.get_context();
+        assert_eq!(ctx.context_type, ContextType::Design);
+    }
+
+    #[test]
+    fn test_detect_context_type_communication_slack() {
+        let features = AIDesktopFeatures::new();
+        let mut metadata = HashMap::new();
+        metadata.insert("app".to_string(), "slack".to_string());
+        features.update_context(ContextEvent {
+            id: Uuid::new_v4(),
+            event_type: ContextEventType::WindowOpened,
+            source: "test".to_string(),
+            timestamp: chrono::Utc::now(),
+            metadata,
+        });
+        let ctx = features.get_context();
+        assert_eq!(ctx.context_type, ContextType::Communication);
+    }
+
+    #[test]
+    fn test_detect_context_type_communication_discord() {
+        let features = AIDesktopFeatures::new();
+        let mut metadata = HashMap::new();
+        metadata.insert("app".to_string(), "discord".to_string());
+        features.update_context(ContextEvent {
+            id: Uuid::new_v4(),
+            event_type: ContextEventType::WindowOpened,
+            source: "test".to_string(),
+            timestamp: chrono::Utc::now(),
+            metadata,
+        });
+        let ctx = features.get_context();
+        assert_eq!(ctx.context_type, ContextType::Communication);
+    }
+
+    #[test]
+    fn test_detect_context_type_communication_mail() {
+        let features = AIDesktopFeatures::new();
+        let mut metadata = HashMap::new();
+        metadata.insert("app".to_string(), "mail".to_string());
+        features.update_context(ContextEvent {
+            id: Uuid::new_v4(),
+            event_type: ContextEventType::WindowOpened,
+            source: "test".to_string(),
+            timestamp: chrono::Utc::now(),
+            metadata,
+        });
+        let ctx = features.get_context();
+        assert_eq!(ctx.context_type, ContextType::Communication);
+    }
+
+    #[test]
+    fn test_detect_context_type_browsing() {
+        let features = AIDesktopFeatures::new();
+        let mut metadata = HashMap::new();
+        metadata.insert("app".to_string(), "browser".to_string());
+        features.update_context(ContextEvent {
+            id: Uuid::new_v4(),
+            event_type: ContextEventType::WindowOpened,
+            source: "test".to_string(),
+            timestamp: chrono::Utc::now(),
+            metadata,
+        });
+        let ctx = features.get_context();
+        assert_eq!(ctx.context_type, ContextType::Browsing);
+    }
+
+    #[test]
+    fn test_detect_context_type_idle_unknown_app() {
+        let features = AIDesktopFeatures::new();
+        let mut metadata = HashMap::new();
+        metadata.insert("app".to_string(), "calculator".to_string());
+        features.update_context(ContextEvent {
+            id: Uuid::new_v4(),
+            event_type: ContextEventType::WindowOpened,
+            source: "test".to_string(),
+            timestamp: chrono::Utc::now(),
+            metadata,
+        });
+        let ctx = features.get_context();
+        assert_eq!(ctx.context_type, ContextType::Idle);
+    }
+
+    // --- update_context event type tests ---
+
+    #[test]
+    fn test_update_context_window_closed() {
+        let features = AIDesktopFeatures::new();
+        features.update_context(ContextEvent {
+            id: Uuid::new_v4(),
+            event_type: ContextEventType::WindowClosed,
+            source: "test".to_string(),
+            timestamp: chrono::Utc::now(),
+            metadata: HashMap::new(),
+        });
+        // WindowClosed doesn't change active_apps (falls through to _ branch)
+        let ctx = features.get_context();
+        assert!(ctx.active_apps.is_empty());
+    }
+
+    #[test]
+    fn test_update_context_app_switched() {
+        let features = AIDesktopFeatures::new();
+        features.update_context(ContextEvent {
+            id: Uuid::new_v4(),
+            event_type: ContextEventType::AppSwitched,
+            source: "test".to_string(),
+            timestamp: chrono::Utc::now(),
+            metadata: HashMap::new(),
+        });
+        let ctx = features.get_context();
+        assert!(ctx.active_apps.is_empty());
+    }
+
+    #[test]
+    fn test_update_context_command_executed() {
+        let features = AIDesktopFeatures::new();
+        features.update_context(ContextEvent {
+            id: Uuid::new_v4(),
+            event_type: ContextEventType::CommandExecuted,
+            source: "test".to_string(),
+            timestamp: chrono::Utc::now(),
+            metadata: HashMap::new(),
+        });
+        let ctx = features.get_context();
+        assert!(ctx.active_apps.is_empty());
+    }
+
+    #[test]
+    fn test_update_context_file_opened() {
+        let features = AIDesktopFeatures::new();
+        let mut metadata = HashMap::new();
+        metadata.insert("file".to_string(), "/home/user/doc.txt".to_string());
+        features.update_context(ContextEvent {
+            id: Uuid::new_v4(),
+            event_type: ContextEventType::FileOpened,
+            source: "test".to_string(),
+            timestamp: chrono::Utc::now(),
+            metadata,
+        });
+        let ctx = features.get_context();
+        assert!(ctx.open_files.contains(&"/home/user/doc.txt".to_string()));
+    }
+
+    #[test]
+    fn test_update_context_file_opened_cap_at_10() {
+        let features = AIDesktopFeatures::new();
+        for i in 0..15 {
+            let mut metadata = HashMap::new();
+            metadata.insert("file".to_string(), format!("file_{}.txt", i));
+            features.update_context(ContextEvent {
+                id: Uuid::new_v4(),
+                event_type: ContextEventType::FileOpened,
+                source: "test".to_string(),
+                timestamp: chrono::Utc::now(),
+                metadata,
+            });
+        }
+        let ctx = features.get_context();
+        assert!(ctx.open_files.len() <= 10);
+        // Last file should be present
+        assert!(ctx.open_files.contains(&"file_14.txt".to_string()));
+    }
+
+    #[test]
+    fn test_update_context_window_opened_no_app_metadata() {
+        let features = AIDesktopFeatures::new();
+        // WindowOpened without "app" metadata — should not add to active_apps
+        features.update_context(ContextEvent {
+            id: Uuid::new_v4(),
+            event_type: ContextEventType::WindowOpened,
+            source: "test".to_string(),
+            timestamp: chrono::Utc::now(),
+            metadata: HashMap::new(),
+        });
+        let ctx = features.get_context();
+        assert!(ctx.active_apps.is_empty());
+    }
+
+    #[test]
+    fn test_update_context_window_opened_duplicate_app() {
+        let features = AIDesktopFeatures::new();
+        let mut metadata = HashMap::new();
+        metadata.insert("app".to_string(), "vscode".to_string());
+        features.update_context(ContextEvent {
+            id: Uuid::new_v4(),
+            event_type: ContextEventType::WindowOpened,
+            source: "test".to_string(),
+            timestamp: chrono::Utc::now(),
+            metadata: metadata.clone(),
+        });
+        features.update_context(ContextEvent {
+            id: Uuid::new_v4(),
+            event_type: ContextEventType::WindowOpened,
+            source: "test".to_string(),
+            timestamp: chrono::Utc::now(),
+            metadata,
+        });
+        let ctx = features.get_context();
+        // Should not add duplicate
+        assert_eq!(ctx.active_apps.iter().filter(|a| *a == "vscode").count(), 1);
+    }
+
+    // --- proactive_suggestions tests ---
+
+    #[test]
+    fn test_proactive_suggestions_filters_dismissed() {
+        let features = AIDesktopFeatures::new();
+        let s1 = features.generate_suggestion(
+            SuggestionType::Productivity,
+            "S1".to_string(),
+            "D1".to_string(),
+            0.9,
+        );
+        let s1_id = s1.id;
+        let s2 = features.generate_suggestion(
+            SuggestionType::TaskRecommendation,
+            "S2".to_string(),
+            "D2".to_string(),
+            0.8,
+        );
+        features.add_suggestion(s1);
+        features.add_suggestion(s2);
+        features.dismiss_suggestion(s1_id);
+        let suggestions = features.proactive_suggestions();
+        assert_eq!(suggestions.len(), 1);
+        assert_eq!(suggestions[0].title, "S2");
+    }
+
+    #[test]
+    fn test_proactive_suggestions_filters_low_confidence() {
+        let features = AIDesktopFeatures::new();
+        let low = features.generate_suggestion(
+            SuggestionType::Productivity,
+            "Low".to_string(),
+            "Desc".to_string(),
+            0.3, // below 0.5 threshold
+        );
+        let high = features.generate_suggestion(
+            SuggestionType::TaskRecommendation,
+            "High".to_string(),
+            "Desc".to_string(),
+            0.9,
+        );
+        features.add_suggestion(low);
+        features.add_suggestion(high);
+        let suggestions = features.proactive_suggestions();
+        assert_eq!(suggestions.len(), 1);
+        assert_eq!(suggestions[0].title, "High");
+    }
+
+    #[test]
+    fn test_proactive_suggestions_empty() {
+        let features = AIDesktopFeatures::new();
+        let suggestions = features.proactive_suggestions();
+        assert!(suggestions.is_empty());
+    }
+
+    // --- dismiss_suggestion tests ---
+
+    #[test]
+    fn test_dismiss_suggestion_marks_dismissed() {
+        let features = AIDesktopFeatures::new();
+        let s = features.generate_suggestion(
+            SuggestionType::SecurityAlert,
+            "Alert".to_string(),
+            "Desc".to_string(),
+            0.95,
+        );
+        let id = s.id;
+        features.add_suggestion(s);
+        features.dismiss_suggestion(id);
+        // After dismiss, proactive_suggestions should not include it
+        let suggestions = features.proactive_suggestions();
+        assert!(suggestions.iter().all(|s| s.id != id));
+    }
+
+    #[test]
+    fn test_dismiss_nonexistent_suggestion() {
+        let features = AIDesktopFeatures::new();
+        // Should not panic
+        features.dismiss_suggestion(Uuid::new_v4());
+    }
+
+    // --- analyze_context tests ---
+
+    #[test]
+    fn test_analyze_context_returns_valid() {
+        let features = AIDesktopFeatures::new();
+        let ctx = features.analyze_context();
+        // time_of_day should be set based on current hour
+        let valid = matches!(
+            ctx.time_of_day,
+            TimeOfDay::Morning | TimeOfDay::Afternoon | TimeOfDay::Evening | TimeOfDay::Night
+        );
+        assert!(valid);
+    }
+
+    // --- set_proactive_mode / set_ambient_enabled toggle tests ---
+
+    #[test]
+    fn test_set_proactive_mode_toggle() {
+        let features = AIDesktopFeatures::new();
+        features.set_proactive_mode(false);
+        assert!(!*features.proactive_mode.read().unwrap());
+        features.set_proactive_mode(true);
+        assert!(*features.proactive_mode.read().unwrap());
+    }
+
+    #[test]
+    fn test_set_ambient_enabled_toggle() {
+        let features = AIDesktopFeatures::new();
+        features.set_ambient_enabled(false);
+        assert!(!*features.ambient_enabled.read().unwrap());
+        features.set_ambient_enabled(true);
+        assert!(*features.ambient_enabled.read().unwrap());
+    }
+
+    // --- add_suggestion dedup + sort tests ---
+
+    #[test]
+    fn test_add_suggestion_deduplicates_same_type_and_title() {
+        let features = AIDesktopFeatures::new();
+        let s1 = features.generate_suggestion(
+            SuggestionType::Productivity,
+            "Same".to_string(),
+            "First".to_string(),
+            0.7,
+        );
+        let s2 = features.generate_suggestion(
+            SuggestionType::Productivity,
+            "Same".to_string(),
+            "Second".to_string(),
+            0.9,
+        );
+        features.add_suggestion(s1);
+        features.add_suggestion(s2);
+        let suggestions = features.proactive_suggestions();
+        // Should have only one with title "Same"
+        let same_count = suggestions.iter().filter(|s| s.title == "Same").count();
+        assert_eq!(same_count, 1);
+        // The remaining one should be the second (higher confidence)
+        assert_eq!(suggestions[0].description, "Second");
+    }
+
+    #[test]
+    fn test_add_suggestion_sorts_by_confidence_descending() {
+        let features = AIDesktopFeatures::new();
+        let low = features.generate_suggestion(
+            SuggestionType::Productivity,
+            "Low".to_string(),
+            "D".to_string(),
+            0.6,
+        );
+        let high = features.generate_suggestion(
+            SuggestionType::TaskRecommendation,
+            "High".to_string(),
+            "D".to_string(),
+            0.95,
+        );
+        let mid = features.generate_suggestion(
+            SuggestionType::SecurityAlert,
+            "Mid".to_string(),
+            "D".to_string(),
+            0.8,
+        );
+        features.add_suggestion(low);
+        features.add_suggestion(high);
+        features.add_suggestion(mid);
+        let suggestions = features.proactive_suggestions();
+        assert_eq!(suggestions.len(), 3);
+        assert!(suggestions[0].confidence >= suggestions[1].confidence);
+        assert!(suggestions[1].confidence >= suggestions[2].confidence);
+    }
+
+    // --- context history cap at 100 ---
+
+    #[test]
+    fn test_context_history_capped_at_100() {
+        let features = AIDesktopFeatures::new();
+        for i in 0..120 {
+            features.update_context(ContextEvent {
+                id: Uuid::new_v4(),
+                event_type: ContextEventType::UserPresent,
+                source: format!("test-{}", i),
+                timestamp: chrono::Utc::now(),
+                metadata: HashMap::new(),
+            });
+        }
+        let history = features.context_history.read().unwrap();
+        assert!(history.len() <= 100);
+    }
+
+    // --- smart_window_placement for different context types ---
+
+    #[test]
+    fn test_smart_window_placement_development() {
+        let features = AIDesktopFeatures::new();
+        // Set context to Development
+        let mut metadata = HashMap::new();
+        metadata.insert("app".to_string(), "code".to_string());
+        features.update_context(ContextEvent {
+            id: Uuid::new_v4(),
+            event_type: ContextEventType::WindowOpened,
+            source: "test".to_string(),
+            timestamp: chrono::Utc::now(),
+            metadata,
+        });
+        let (x, y, w, h) = features.smart_window_placement("test");
+        assert_eq!((x, y, w, h), (100, 100, 1400, 900));
+    }
+
+    #[test]
+    fn test_smart_window_placement_design() {
+        let features = AIDesktopFeatures::new();
+        let mut metadata = HashMap::new();
+        metadata.insert("app".to_string(), "figma".to_string());
+        features.update_context(ContextEvent {
+            id: Uuid::new_v4(),
+            event_type: ContextEventType::WindowOpened,
+            source: "test".to_string(),
+            timestamp: chrono::Utc::now(),
+            metadata,
+        });
+        let (x, y, w, h) = features.smart_window_placement("test");
+        assert_eq!((x, y, w, h), (50, 50, 1820, 1000));
+    }
+
+    #[test]
+    fn test_smart_window_placement_communication() {
+        let features = AIDesktopFeatures::new();
+        let mut metadata = HashMap::new();
+        metadata.insert("app".to_string(), "slack".to_string());
+        features.update_context(ContextEvent {
+            id: Uuid::new_v4(),
+            event_type: ContextEventType::WindowOpened,
+            source: "test".to_string(),
+            timestamp: chrono::Utc::now(),
+            metadata,
+        });
+        let (x, y, w, h) = features.smart_window_placement("test");
+        assert_eq!((x, y, w, h), (200, 500, 600, 400));
+    }
+
+    // --- register/update/unregister agent HUD ---
+
+    #[test]
+    fn test_register_multiple_agents_hud() {
+        let features = AIDesktopFeatures::new();
+        let id1 = Uuid::new_v4();
+        let id2 = Uuid::new_v4();
+        features.register_agent_hud(id1, "agent-1".to_string());
+        features.register_agent_hud(id2, "agent-2".to_string());
+        assert_eq!(features.get_agent_hud_states().len(), 2);
+    }
+
+    #[test]
+    fn test_update_agent_hud_nonexistent() {
+        let features = AIDesktopFeatures::new();
+        // Updating a non-existent agent should not panic
+        features.update_agent_hud(Uuid::new_v4(), AgentStatus::Error, "task".to_string(), 0.0);
+        assert!(features.get_agent_hud_states().is_empty());
+    }
 }

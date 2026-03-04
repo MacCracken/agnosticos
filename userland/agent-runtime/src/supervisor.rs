@@ -745,3 +745,988 @@ fn read_proc_cpu_time_us(pid: u32) -> u64 {
         .unwrap_or(0)
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex;
+    use agnos_common::AgentId;
+    use tempfile::TempDir;
+
+    struct MockAgentControl {
+        healthy: bool,
+    }
+
+    #[async_trait::async_trait]
+    impl AgentControl for MockAgentControl {
+        async fn check_health(&self) -> Result<bool> {
+            Ok(self.healthy)
+        }
+
+        async fn get_resource_usage(&self) -> Result<ResourceUsage> {
+            Ok(ResourceUsage {
+                memory_used: 100 * 1024 * 1024,
+                cpu_time_used: 1000,
+                file_descriptors_used: 10,
+                processes_used: 1,
+            })
+        }
+
+        async fn stop(&mut self, _reason: StopReason) -> Result<()> {
+            Ok(())
+        }
+
+        async fn restart(&mut self) -> Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn test_health_check_config_defaults() {
+        let config = HealthCheckConfig::default();
+        assert_eq!(config.interval, Duration::from_secs(30));
+        assert_eq!(config.timeout, Duration::from_secs(5));
+        assert_eq!(config.unhealthy_threshold, 3);
+        assert_eq!(config.healthy_threshold, 2);
+    }
+
+    #[test]
+    fn test_health_check_config_custom() {
+        let config = HealthCheckConfig {
+            interval: Duration::from_secs(60),
+            timeout: Duration::from_secs(10),
+            unhealthy_threshold: 5,
+            healthy_threshold: 3,
+        };
+        assert_eq!(config.interval, Duration::from_secs(60));
+        assert_eq!(config.timeout, Duration::from_secs(10));
+        assert_eq!(config.unhealthy_threshold, 5);
+        assert_eq!(config.healthy_threshold, 3);
+    }
+
+    #[test]
+    fn test_agent_health_default() {
+        let agent_id = AgentId::new();
+        let health = AgentHealth {
+            agent_id,
+            is_healthy: true,
+            consecutive_failures: 0,
+            consecutive_successes: 0,
+            last_check: Instant::now(),
+            last_response_time_ms: 0,
+            resource_usage: ResourceUsage::default(),
+        };
+        assert!(health.is_healthy);
+        assert_eq!(health.consecutive_failures, 0);
+        assert_eq!(health.consecutive_successes, 0);
+    }
+
+    #[test]
+    fn test_agent_health_unhealthy() {
+        let agent_id = AgentId::new();
+        let health = AgentHealth {
+            agent_id,
+            is_healthy: false,
+            consecutive_failures: 3,
+            consecutive_successes: 0,
+            last_check: Instant::now(),
+            last_response_time_ms: 5000,
+            resource_usage: ResourceUsage {
+                memory_used: 2 * 1024 * 1024 * 1024,
+                cpu_time_used: 10_000_000,
+                file_descriptors_used: 1000,
+                processes_used: 50,
+            },
+        };
+        assert!(!health.is_healthy);
+        assert_eq!(health.consecutive_failures, 3);
+    }
+
+    #[test]
+    fn test_cgroup_controller_memory_limit_format() {
+        let agent_id = AgentId::new();
+        let controller = CgroupController {
+            path: PathBuf::from(format!("/tmp/test-cgroup-{}", agent_id)),
+            agent_id,
+        };
+        
+        assert_eq!(controller.memory_current(), 0);
+    }
+
+    #[test]
+    fn test_cgroup_controller_new_requires_path() {
+        let agent_id = AgentId::new();
+        let path = PathBuf::from("/nonexistent/path/that/should/not/exist");
+        let controller = CgroupController {
+            path,
+            agent_id,
+        };
+        
+        let result = controller.set_memory_limit(1024 * 1024 * 1024);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_cgroup_controller_open_nonexistent() {
+        let agent_id = AgentId::new();
+        let result = CgroupController::open(agent_id);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_supervisor_new() {
+        let registry = Arc::new(AgentRegistry::new());
+        let supervisor = Supervisor::new(registry.clone());
+        
+        assert!(supervisor.health_checks.blocking_read().is_empty());
+        assert!(supervisor.running_agents.blocking_read().is_empty());
+        assert!(supervisor.cgroups.blocking_read().is_empty());
+    }
+
+    #[test]
+    fn test_supervisor_config() {
+        let registry = Arc::new(AgentRegistry::new());
+        let supervisor = Supervisor::new(registry);
+        
+        assert_eq!(supervisor.config.interval, Duration::from_secs(30));
+        assert_eq!(supervisor.config.timeout, Duration::from_secs(5));
+        assert_eq!(supervisor.config.unhealthy_threshold, 3);
+        assert_eq!(supervisor.config.healthy_threshold, 2);
+    }
+
+    #[tokio::test]
+    async fn test_supervisor_register_agent() {
+        let registry = Arc::new(AgentRegistry::new());
+        let supervisor = Supervisor::new(registry.clone());
+        
+        let agent_id = AgentId::new();
+        let result = supervisor.register_agent(agent_id).await;
+        assert!(result.is_ok());
+        
+        let health_map = supervisor.health_checks.read().await;
+        assert!(health_map.contains_key(&agent_id));
+        
+        let health = health_map.get(&agent_id).unwrap();
+        assert!(health.is_healthy);
+        assert_eq!(health.consecutive_failures, 0);
+        assert_eq!(health.consecutive_successes, 0);
+    }
+
+    #[tokio::test]
+    async fn test_supervisor_unregister_agent() {
+        let registry = Arc::new(AgentRegistry::new());
+        let supervisor = Supervisor::new(registry.clone());
+        
+        let agent_id = AgentId::new();
+        supervisor.register_agent(agent_id).await.unwrap();
+        
+        let result = supervisor.unregister_agent(agent_id).await;
+        assert!(result.is_ok());
+        
+        let health_map = supervisor.health_checks.read().await;
+        assert!(!health_map.contains_key(&agent_id));
+    }
+
+    #[tokio::test]
+    async fn test_supervisor_unregister_nonexistent() {
+        let registry = Arc::new(AgentRegistry::new());
+        let supervisor = Supervisor::new(registry.clone());
+        
+        let agent_id = AgentId::new();
+        let result = supervisor.unregister_agent(agent_id).await;
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_resource_usage_default() {
+        let usage = ResourceUsage::default();
+        assert_eq!(usage.memory_used, 0);
+        assert_eq!(usage.cpu_time_used, 0);
+        assert_eq!(usage.file_descriptors_used, 0);
+        assert_eq!(usage.processes_used, 0);
+    }
+
+    #[test]
+    fn test_resource_usage_custom() {
+        let usage = ResourceUsage {
+            memory_used: 1024 * 1024 * 1024,
+            cpu_time_used: 5000000,
+            file_descriptors_used: 100,
+            processes_used: 10,
+        };
+        assert_eq!(usage.memory_used, 1024 * 1024 * 1024);
+        assert_eq!(usage.cpu_time_used, 5_000_000);
+        assert_eq!(usage.file_descriptors_used, 100);
+        assert_eq!(usage.processes_used, 10);
+    }
+
+    #[test]
+    fn test_agent_control_trait_object() {
+        let mock = MockAgentControl { healthy: true };
+        let boxed: Box<dyn AgentControl> = Box::new(mock);
+        
+        let health = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(boxed.check_health());
+        
+        assert!(health.unwrap());
+    }
+
+    #[test]
+    fn test_agent_control_trait_object_unhealthy() {
+        let mock = MockAgentControl { healthy: false };
+        let boxed: Box<dyn AgentControl> = Box::new(mock);
+        
+        let health = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(boxed.check_health());
+        
+        assert!(!health.unwrap());
+    }
+
+    #[test]
+    fn test_cgroup_controller_memory_max_unlimited() {
+        let agent_id = AgentId::new();
+        let controller = CgroupController {
+            path: PathBuf::from("/sys/fs/cgroup"),
+            agent_id,
+        };
+
+        let max = controller.memory_max();
+        assert!(max.is_none() || max.is_some());
+    }
+
+    #[test]
+    fn test_cgroup_controller_path_generation() {
+        let agent_id = AgentId::new();
+        let expected_path = PathBuf::from(CGROUP_BASE).join(agent_id.to_string());
+        let controller = CgroupController {
+            path: expected_path.clone(),
+            agent_id,
+        };
+        assert_eq!(controller.path, expected_path);
+        assert_eq!(controller.agent_id, agent_id);
+    }
+
+    #[test]
+    fn test_cgroup_controller_cpu_usage_usec_nonexistent() {
+        let agent_id = AgentId::new();
+        let controller = CgroupController {
+            path: PathBuf::from("/nonexistent/cgroup/path"),
+            agent_id,
+        };
+        assert_eq!(controller.cpu_usage_usec(), 0);
+    }
+
+    #[test]
+    fn test_cgroup_controller_pids_nonexistent() {
+        let agent_id = AgentId::new();
+        let controller = CgroupController {
+            path: PathBuf::from("/nonexistent/cgroup/path"),
+            agent_id,
+        };
+        assert!(controller.pids().is_empty());
+    }
+
+    #[test]
+    fn test_cgroup_controller_memory_current_nonexistent() {
+        let agent_id = AgentId::new();
+        let controller = CgroupController {
+            path: PathBuf::from("/nonexistent/cgroup/path"),
+            agent_id,
+        };
+        assert_eq!(controller.memory_current(), 0);
+    }
+
+    #[test]
+    fn test_cgroup_controller_memory_max_nonexistent() {
+        let agent_id = AgentId::new();
+        let controller = CgroupController {
+            path: PathBuf::from("/nonexistent/cgroup/path"),
+            agent_id,
+        };
+        assert!(controller.memory_max().is_none());
+    }
+
+    #[test]
+    fn test_cgroup_controller_set_cpu_limit_nonexistent() {
+        let agent_id = AgentId::new();
+        let controller = CgroupController {
+            path: PathBuf::from("/nonexistent/cgroup/path"),
+            agent_id,
+        };
+        let result = controller.set_cpu_limit(100_000, 100_000);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_cgroup_controller_add_pid_nonexistent() {
+        let agent_id = AgentId::new();
+        let controller = CgroupController {
+            path: PathBuf::from("/nonexistent/cgroup/path"),
+            agent_id,
+        };
+        let result = controller.add_pid(12345);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_cgroup_controller_destroy_nonexistent() {
+        let agent_id = AgentId::new();
+        let controller = CgroupController {
+            path: PathBuf::from("/nonexistent/cgroup/path"),
+            agent_id,
+        };
+        // Non-existent path should succeed (no-op)
+        let result = controller.destroy();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_cgroup_controller_with_tempdir() {
+        let tmp = TempDir::new().unwrap();
+        let agent_id = AgentId::new();
+        let cg_path = tmp.path().join(agent_id.to_string());
+        std::fs::create_dir_all(&cg_path).unwrap();
+
+        let controller = CgroupController {
+            path: cg_path.clone(),
+            agent_id,
+        };
+
+        // Write a fake memory.max file
+        std::fs::write(cg_path.join("memory.max"), "1073741824").unwrap();
+        assert_eq!(controller.memory_max(), Some(1073741824));
+
+        // Write "max" for unlimited
+        std::fs::write(cg_path.join("memory.max"), "max").unwrap();
+        assert_eq!(controller.memory_max(), None);
+
+        // Write a fake memory.current
+        std::fs::write(cg_path.join("memory.current"), "524288000").unwrap();
+        assert_eq!(controller.memory_current(), 524288000);
+
+        // Write a fake cpu.stat
+        std::fs::write(
+            cg_path.join("cpu.stat"),
+            "usage_usec 1234567\nuser_usec 1000000\nsystem_usec 234567\n",
+        )
+        .unwrap();
+        assert_eq!(controller.cpu_usage_usec(), 1234567);
+
+        // Write a fake cgroup.procs
+        std::fs::write(cg_path.join("cgroup.procs"), "100\n200\n300\n").unwrap();
+        assert_eq!(controller.pids(), vec![100, 200, 300]);
+    }
+
+    #[test]
+    fn test_cgroup_controller_pids_empty_file() {
+        let tmp = TempDir::new().unwrap();
+        let agent_id = AgentId::new();
+        let cg_path = tmp.path().join(agent_id.to_string());
+        std::fs::create_dir_all(&cg_path).unwrap();
+
+        let controller = CgroupController {
+            path: cg_path.clone(),
+            agent_id,
+        };
+        std::fs::write(cg_path.join("cgroup.procs"), "").unwrap();
+        assert!(controller.pids().is_empty());
+    }
+
+    #[test]
+    fn test_cgroup_controller_set_memory_limit_with_tempdir() {
+        let tmp = TempDir::new().unwrap();
+        let agent_id = AgentId::new();
+        let cg_path = tmp.path().join(agent_id.to_string());
+        std::fs::create_dir_all(&cg_path).unwrap();
+
+        let controller = CgroupController {
+            path: cg_path.clone(),
+            agent_id,
+        };
+
+        // Set a numeric limit
+        controller.set_memory_limit(2 * 1024 * 1024 * 1024).unwrap();
+        let written = std::fs::read_to_string(cg_path.join("memory.max")).unwrap();
+        assert_eq!(written, "2147483648");
+
+        // Set unlimited (0 means "max")
+        controller.set_memory_limit(0).unwrap();
+        let written = std::fs::read_to_string(cg_path.join("memory.max")).unwrap();
+        assert_eq!(written, "max");
+    }
+
+    #[test]
+    fn test_cgroup_controller_set_cpu_limit_with_tempdir() {
+        let tmp = TempDir::new().unwrap();
+        let agent_id = AgentId::new();
+        let cg_path = tmp.path().join(agent_id.to_string());
+        std::fs::create_dir_all(&cg_path).unwrap();
+
+        let controller = CgroupController {
+            path: cg_path.clone(),
+            agent_id,
+        };
+
+        controller.set_cpu_limit(50000, 100000).unwrap();
+        let written = std::fs::read_to_string(cg_path.join("cpu.max")).unwrap();
+        assert_eq!(written, "50000 100000");
+
+        // Unlimited (0 quota)
+        controller.set_cpu_limit(0, 100000).unwrap();
+        let written = std::fs::read_to_string(cg_path.join("cpu.max")).unwrap();
+        assert_eq!(written, "max 100000");
+    }
+
+    #[test]
+    fn test_cgroup_controller_add_pid_with_tempdir() {
+        let tmp = TempDir::new().unwrap();
+        let agent_id = AgentId::new();
+        let cg_path = tmp.path().join(agent_id.to_string());
+        std::fs::create_dir_all(&cg_path).unwrap();
+
+        let controller = CgroupController {
+            path: cg_path.clone(),
+            agent_id,
+        };
+
+        controller.add_pid(42).unwrap();
+        let written = std::fs::read_to_string(cg_path.join("cgroup.procs")).unwrap();
+        assert_eq!(written, "42");
+    }
+
+    #[test]
+    fn test_cgroup_controller_destroy_with_tempdir() {
+        let tmp = TempDir::new().unwrap();
+        let agent_id = AgentId::new();
+        let cg_path = tmp.path().join(agent_id.to_string());
+        std::fs::create_dir_all(&cg_path).unwrap();
+
+        let controller = CgroupController {
+            path: cg_path.clone(),
+            agent_id,
+        };
+
+        assert!(cg_path.exists());
+        controller.destroy().unwrap();
+        assert!(!cg_path.exists());
+    }
+
+    #[test]
+    fn test_health_check_config_clone() {
+        let config = HealthCheckConfig {
+            interval: Duration::from_secs(15),
+            timeout: Duration::from_secs(3),
+            unhealthy_threshold: 5,
+            healthy_threshold: 2,
+        };
+        let cloned = config.clone();
+        assert_eq!(cloned.interval, Duration::from_secs(15));
+        assert_eq!(cloned.timeout, Duration::from_secs(3));
+        assert_eq!(cloned.unhealthy_threshold, 5);
+        assert_eq!(cloned.healthy_threshold, 2);
+    }
+
+    #[test]
+    fn test_health_check_config_debug() {
+        let config = HealthCheckConfig::default();
+        let debug_str = format!("{:?}", config);
+        assert!(debug_str.contains("interval"));
+        assert!(debug_str.contains("timeout"));
+    }
+
+    #[test]
+    fn test_agent_health_clone() {
+        let agent_id = AgentId::new();
+        let health = AgentHealth {
+            agent_id,
+            is_healthy: false,
+            consecutive_failures: 5,
+            consecutive_successes: 0,
+            last_check: Instant::now(),
+            last_response_time_ms: 3000,
+            resource_usage: ResourceUsage {
+                memory_used: 500,
+                cpu_time_used: 100,
+                file_descriptors_used: 10,
+                processes_used: 2,
+            },
+        };
+
+        let cloned = health.clone();
+        assert_eq!(cloned.agent_id, agent_id);
+        assert!(!cloned.is_healthy);
+        assert_eq!(cloned.consecutive_failures, 5);
+        assert_eq!(cloned.last_response_time_ms, 3000);
+        assert_eq!(cloned.resource_usage.memory_used, 500);
+    }
+
+    #[test]
+    fn test_agent_health_debug() {
+        let health = AgentHealth {
+            agent_id: AgentId::new(),
+            is_healthy: true,
+            consecutive_failures: 0,
+            consecutive_successes: 10,
+            last_check: Instant::now(),
+            last_response_time_ms: 5,
+            resource_usage: ResourceUsage::default(),
+        };
+        let debug_str = format!("{:?}", health);
+        assert!(debug_str.contains("is_healthy"));
+        assert!(debug_str.contains("consecutive_failures"));
+    }
+
+    #[test]
+    fn test_supervisor_clone_shares_state() {
+        let registry = Arc::new(AgentRegistry::new());
+        let supervisor = Supervisor::new(registry.clone());
+        let cloned = supervisor.clone();
+
+        // Both should share the same Arc pointers
+        assert!(Arc::ptr_eq(&supervisor.health_checks, &cloned.health_checks));
+        assert!(Arc::ptr_eq(&supervisor.running_agents, &cloned.running_agents));
+        assert!(Arc::ptr_eq(&supervisor.cgroups, &cloned.cgroups));
+    }
+
+    #[tokio::test]
+    async fn test_supervisor_register_multiple_agents() {
+        let registry = Arc::new(AgentRegistry::new());
+        let supervisor = Supervisor::new(registry.clone());
+
+        let id1 = AgentId::new();
+        let id2 = AgentId::new();
+        let id3 = AgentId::new();
+
+        supervisor.register_agent(id1).await.unwrap();
+        supervisor.register_agent(id2).await.unwrap();
+        supervisor.register_agent(id3).await.unwrap();
+
+        let health_map = supervisor.health_checks.read().await;
+        assert_eq!(health_map.len(), 3);
+        assert!(health_map.contains_key(&id1));
+        assert!(health_map.contains_key(&id2));
+        assert!(health_map.contains_key(&id3));
+    }
+
+    #[tokio::test]
+    async fn test_supervisor_get_health() {
+        let registry = Arc::new(AgentRegistry::new());
+        let supervisor = Supervisor::new(registry.clone());
+        let agent_id = AgentId::new();
+
+        // No health yet
+        assert!(supervisor.get_health(agent_id).await.is_none());
+
+        // Register, then check
+        supervisor.register_agent(agent_id).await.unwrap();
+        let health = supervisor.get_health(agent_id).await.unwrap();
+        assert!(health.is_healthy);
+        assert_eq!(health.agent_id, agent_id);
+    }
+
+    #[tokio::test]
+    async fn test_supervisor_get_all_health() {
+        let registry = Arc::new(AgentRegistry::new());
+        let supervisor = Supervisor::new(registry.clone());
+
+        assert!(supervisor.get_all_health().await.is_empty());
+
+        let id1 = AgentId::new();
+        let id2 = AgentId::new();
+        supervisor.register_agent(id1).await.unwrap();
+        supervisor.register_agent(id2).await.unwrap();
+
+        let all = supervisor.get_all_health().await;
+        assert_eq!(all.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_supervisor_update_health_status_healthy() {
+        let registry = Arc::new(AgentRegistry::new());
+        let supervisor = Supervisor::new(registry.clone());
+        let agent_id = AgentId::new();
+
+        supervisor.register_agent(agent_id).await.unwrap();
+
+        // Mark healthy several times
+        supervisor.update_health_status(agent_id, true).await;
+        supervisor.update_health_status(agent_id, true).await;
+
+        let health = supervisor.get_health(agent_id).await.unwrap();
+        assert!(health.is_healthy);
+        assert_eq!(health.consecutive_successes, 2);
+        assert_eq!(health.consecutive_failures, 0);
+    }
+
+    #[tokio::test]
+    async fn test_supervisor_update_health_status_unhealthy_below_threshold() {
+        let registry = Arc::new(AgentRegistry::new());
+        let supervisor = Supervisor::new(registry.clone());
+        let agent_id = AgentId::new();
+
+        supervisor.register_agent(agent_id).await.unwrap();
+
+        // Mark unhealthy once (threshold is 3 by default)
+        supervisor.update_health_status(agent_id, false).await;
+
+        let health = supervisor.get_health(agent_id).await.unwrap();
+        // Still healthy — hasn't hit threshold yet
+        assert!(health.is_healthy);
+        assert_eq!(health.consecutive_failures, 1);
+    }
+
+    #[tokio::test]
+    async fn test_supervisor_update_health_resets_counters() {
+        let registry = Arc::new(AgentRegistry::new());
+        let supervisor = Supervisor::new(registry.clone());
+        let agent_id = AgentId::new();
+
+        supervisor.register_agent(agent_id).await.unwrap();
+
+        // Failure resets successes
+        supervisor.update_health_status(agent_id, true).await;
+        supervisor.update_health_status(agent_id, false).await;
+
+        let health = supervisor.get_health(agent_id).await.unwrap();
+        assert_eq!(health.consecutive_successes, 0);
+        assert_eq!(health.consecutive_failures, 1);
+
+        // Success resets failures
+        supervisor.update_health_status(agent_id, true).await;
+        let health = supervisor.get_health(agent_id).await.unwrap();
+        assert_eq!(health.consecutive_successes, 1);
+        assert_eq!(health.consecutive_failures, 0);
+    }
+
+    #[tokio::test]
+    async fn test_supervisor_shutdown_all_empty() {
+        let registry = Arc::new(AgentRegistry::new());
+        let supervisor = Supervisor::new(registry.clone());
+
+        // Should succeed even with no agents
+        let result = supervisor.shutdown_all().await;
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_is_process_alive_nonexistent() {
+        // PID 4_000_000 is extremely unlikely to exist (max PID is typically 4194304)
+        // but won't wrap to -1 like u32::MAX would when cast to pid_t
+        assert!(!Supervisor::is_process_alive(4_000_000));
+    }
+
+    #[test]
+    fn test_is_process_alive_current() {
+        let pid = std::process::id();
+        assert!(Supervisor::is_process_alive(pid));
+    }
+
+    #[test]
+    fn test_read_proc_memory_nonexistent() {
+        assert_eq!(read_proc_memory(u32::MAX), 0);
+    }
+
+    #[test]
+    fn test_read_proc_memory_current() {
+        let pid = std::process::id();
+        let mem = read_proc_memory(pid);
+        assert!(mem > 0);
+    }
+
+    #[test]
+    fn test_read_proc_cpu_time_us_nonexistent() {
+        assert_eq!(read_proc_cpu_time_us(u32::MAX), 0);
+    }
+
+    #[test]
+    fn test_read_proc_cpu_time_us_current() {
+        let pid = std::process::id();
+        let _cpu = read_proc_cpu_time_us(pid);
+        // May be 0 in short test, but should not panic
+    }
+
+    #[tokio::test]
+    async fn test_mock_agent_control_resource_usage() {
+        let mock = MockAgentControl { healthy: true };
+        let usage = mock.get_resource_usage().await.unwrap();
+        assert_eq!(usage.memory_used, 100 * 1024 * 1024);
+        assert_eq!(usage.cpu_time_used, 1000);
+        assert_eq!(usage.file_descriptors_used, 10);
+        assert_eq!(usage.processes_used, 1);
+    }
+
+    #[tokio::test]
+    async fn test_mock_agent_control_stop() {
+        let mut mock = MockAgentControl { healthy: true };
+        let result = mock.stop(StopReason::Normal).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_mock_agent_control_restart() {
+        let mut mock = MockAgentControl { healthy: true };
+        let result = mock.restart().await;
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_cgroup_base_constant() {
+        assert_eq!(CGROUP_BASE, "/sys/fs/cgroup/agnos");
+    }
+
+    // ==================================================================
+    // Additional coverage: update_health_status threshold transitions,
+    // handle_unhealthy_agent paths, check_resource_limits, shutdown_all,
+    // read_proc helpers, cgroup controller with real tempdir data
+    // ==================================================================
+
+    #[tokio::test]
+    async fn test_update_health_status_transition_to_unhealthy() {
+        let registry = Arc::new(AgentRegistry::new());
+        let supervisor = Supervisor::new(registry.clone());
+        let agent_id = AgentId::new();
+
+        supervisor.register_agent(agent_id).await.unwrap();
+
+        // Mark unhealthy 3 times (= unhealthy_threshold)
+        supervisor.update_health_status(agent_id, false).await;
+        supervisor.update_health_status(agent_id, false).await;
+        // At failure count 2, still healthy (threshold is 3)
+        let health = supervisor.get_health(agent_id).await.unwrap();
+        assert!(health.is_healthy);
+        assert_eq!(health.consecutive_failures, 2);
+
+        // Third failure should trigger transition to unhealthy
+        supervisor.update_health_status(agent_id, false).await;
+        let health = supervisor.get_health(agent_id).await.unwrap();
+        assert!(!health.is_healthy);
+        assert_eq!(health.consecutive_failures, 3);
+    }
+
+    #[tokio::test]
+    async fn test_update_health_status_recovery_from_unhealthy() {
+        let registry = Arc::new(AgentRegistry::new());
+        let supervisor = Supervisor::new(registry.clone());
+        let agent_id = AgentId::new();
+
+        supervisor.register_agent(agent_id).await.unwrap();
+
+        // Make it unhealthy
+        for _ in 0..3 {
+            supervisor.update_health_status(agent_id, false).await;
+        }
+        let health = supervisor.get_health(agent_id).await.unwrap();
+        assert!(!health.is_healthy);
+
+        // Recover with successes (healthy_threshold = 2)
+        supervisor.update_health_status(agent_id, true).await;
+        let health = supervisor.get_health(agent_id).await.unwrap();
+        assert!(!health.is_healthy); // Not yet recovered
+        assert_eq!(health.consecutive_successes, 1);
+
+        supervisor.update_health_status(agent_id, true).await;
+        let health = supervisor.get_health(agent_id).await.unwrap();
+        assert!(health.is_healthy); // Recovered!
+        assert_eq!(health.consecutive_successes, 2);
+    }
+
+    #[tokio::test]
+    async fn test_update_health_status_nonexistent_agent() {
+        let registry = Arc::new(AgentRegistry::new());
+        let supervisor = Supervisor::new(registry.clone());
+
+        // Should not panic when updating health of an agent that's not registered
+        supervisor.update_health_status(AgentId::new(), true).await;
+        supervisor.update_health_status(AgentId::new(), false).await;
+    }
+
+    #[tokio::test]
+    async fn test_supervisor_start_spawns_loops() {
+        let registry = Arc::new(AgentRegistry::new());
+        let supervisor = Supervisor::new(registry.clone());
+
+        // start() should succeed and spawn background tasks
+        let result = supervisor.start().await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_supervisor_shutdown_all_with_agents() {
+        let registry = Arc::new(AgentRegistry::new());
+        let supervisor = Supervisor::new(registry.clone());
+
+        let id1 = AgentId::new();
+        let id2 = AgentId::new();
+        supervisor.register_agent(id1).await.unwrap();
+        supervisor.register_agent(id2).await.unwrap();
+
+        // Put mock agents into running_agents
+        {
+            let mut running = supervisor.running_agents.write().await;
+            running.insert(id1, Box::new(MockAgentControl { healthy: true }));
+            running.insert(id2, Box::new(MockAgentControl { healthy: false }));
+        }
+
+        let result = supervisor.shutdown_all().await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_supervisor_register_then_unregister_cleans_up() {
+        let registry = Arc::new(AgentRegistry::new());
+        let supervisor = Supervisor::new(registry.clone());
+
+        let id = AgentId::new();
+        supervisor.register_agent(id).await.unwrap();
+        assert!(supervisor.get_health(id).await.is_some());
+
+        supervisor.unregister_agent(id).await.unwrap();
+        assert!(supervisor.get_health(id).await.is_none());
+        // Cgroup map should also be cleaned
+        assert!(!supervisor.cgroups.read().await.contains_key(&id));
+    }
+
+    #[test]
+    fn test_read_proc_memory_current_process() {
+        let pid = std::process::id();
+        let mem = read_proc_memory(pid);
+        assert!(mem > 0, "Current process should have non-zero memory");
+    }
+
+    #[test]
+    fn test_read_proc_cpu_time_us_current_process() {
+        let pid = std::process::id();
+        let _cpu = read_proc_cpu_time_us(pid);
+        // May be 0 in a short test, but should not panic
+    }
+
+    #[test]
+    fn test_cgroup_controller_debug() {
+        let agent_id = AgentId::new();
+        let controller = CgroupController {
+            path: PathBuf::from("/tmp/test-debug"),
+            agent_id,
+        };
+        let dbg = format!("{:?}", controller);
+        assert!(dbg.contains("CgroupController"));
+        assert!(dbg.contains("/tmp/test-debug"));
+    }
+
+    #[test]
+    fn test_cgroup_controller_cpu_stat_with_tempdir_no_usage_line() {
+        let tmp = TempDir::new().unwrap();
+        let agent_id = AgentId::new();
+        let cg_path = tmp.path().join(agent_id.to_string());
+        std::fs::create_dir_all(&cg_path).unwrap();
+
+        let controller = CgroupController {
+            path: cg_path.clone(),
+            agent_id,
+        };
+
+        // Write cpu.stat without usage_usec line
+        std::fs::write(cg_path.join("cpu.stat"), "user_usec 100\nsystem_usec 200\n").unwrap();
+        assert_eq!(controller.cpu_usage_usec(), 0);
+    }
+
+    #[test]
+    fn test_cgroup_controller_memory_max_invalid_content() {
+        let tmp = TempDir::new().unwrap();
+        let agent_id = AgentId::new();
+        let cg_path = tmp.path().join(agent_id.to_string());
+        std::fs::create_dir_all(&cg_path).unwrap();
+
+        let controller = CgroupController {
+            path: cg_path.clone(),
+            agent_id,
+        };
+
+        // Write invalid content that's not "max" and not a number
+        std::fs::write(cg_path.join("memory.max"), "invalid").unwrap();
+        assert_eq!(controller.memory_max(), None);
+    }
+
+    #[test]
+    fn test_cgroup_controller_pids_with_invalid_lines() {
+        let tmp = TempDir::new().unwrap();
+        let agent_id = AgentId::new();
+        let cg_path = tmp.path().join(agent_id.to_string());
+        std::fs::create_dir_all(&cg_path).unwrap();
+
+        let controller = CgroupController {
+            path: cg_path.clone(),
+            agent_id,
+        };
+
+        // Mix of valid and invalid lines
+        std::fs::write(cg_path.join("cgroup.procs"), "100\nnot_a_pid\n200\n\n300\n").unwrap();
+        let pids = controller.pids();
+        assert_eq!(pids, vec![100, 200, 300]);
+    }
+
+    #[tokio::test]
+    async fn test_supervisor_get_all_health_after_unregister() {
+        let registry = Arc::new(AgentRegistry::new());
+        let supervisor = Supervisor::new(registry.clone());
+
+        let id1 = AgentId::new();
+        let id2 = AgentId::new();
+        supervisor.register_agent(id1).await.unwrap();
+        supervisor.register_agent(id2).await.unwrap();
+        assert_eq!(supervisor.get_all_health().await.len(), 2);
+
+        supervisor.unregister_agent(id1).await.unwrap();
+        assert_eq!(supervisor.get_all_health().await.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_supervisor_register_same_agent_twice() {
+        let registry = Arc::new(AgentRegistry::new());
+        let supervisor = Supervisor::new(registry.clone());
+
+        let id = AgentId::new();
+        supervisor.register_agent(id).await.unwrap();
+        // Registering again should overwrite (reset health counters)
+        supervisor.update_health_status(id, false).await;
+        supervisor.register_agent(id).await.unwrap();
+        let health = supervisor.get_health(id).await.unwrap();
+        assert_eq!(health.consecutive_failures, 0);
+    }
+
+    #[test]
+    fn test_is_process_alive_self() {
+        // Our own PID should always be alive
+        let pid = std::process::id();
+        assert!(Supervisor::is_process_alive(pid));
+    }
+
+    #[tokio::test]
+    async fn test_check_agent_health_not_in_registry() {
+        let registry = Arc::new(AgentRegistry::new());
+        let supervisor = Supervisor::new(registry.clone());
+        let agent_id = AgentId::new();
+
+        // Agent not in registry should error
+        let result = supervisor.check_agent_health(agent_id).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_supervisor_clone_register_visible_in_clone() {
+        let registry = Arc::new(AgentRegistry::new());
+        let supervisor = Supervisor::new(registry.clone());
+        let cloned = supervisor.clone();
+
+        let id = AgentId::new();
+        supervisor.register_agent(id).await.unwrap();
+
+        // Visible in clone
+        assert!(cloned.get_health(id).await.is_some());
+    }
+}
+

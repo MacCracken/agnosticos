@@ -25,6 +25,12 @@ pub enum WindowState {
     Floating,
 }
 
+impl Default for WindowState {
+    fn default() -> Self {
+        Self::Normal
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Window {
     pub id: SurfaceId,
@@ -71,6 +77,10 @@ pub enum ContextType {
     Design,
     General,
     AgentOperation,
+    Window,
+    Application,
+    System,
+    User,
 }
 
 #[derive(Debug)]

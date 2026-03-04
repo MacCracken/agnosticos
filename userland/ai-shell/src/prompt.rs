@@ -399,7 +399,7 @@ mod tests {
     #[test]
     fn test_ai_mode_rendering() {
         let module = AiModeModule;
-        
+
         let ctx_auto = PromptContext::new(
             PathBuf::from("/"),
             "user".to_string(),
@@ -408,5 +408,240 @@ mod tests {
         let rendered = module.render(&ctx_auto);
         assert!(rendered.is_some());
         assert!(rendered.unwrap().contains('🤖'));
+    }
+
+    #[test]
+    fn test_ai_mode_all_modes() {
+        let module = AiModeModule;
+
+        // AI-ASSIST
+        let ctx = PromptContext::new(PathBuf::from("/"), "u".into(), "AI-ASSIST".into());
+        let r = module.render(&ctx).unwrap();
+        assert!(r.contains("👤🤖"));
+
+        // HUMAN
+        let ctx = PromptContext::new(PathBuf::from("/"), "u".into(), "HUMAN".into());
+        let r = module.render(&ctx).unwrap();
+        assert!(r.contains("👤"));
+
+        // STRICT
+        let ctx = PromptContext::new(PathBuf::from("/"), "u".into(), "STRICT".into());
+        let r = module.render(&ctx).unwrap();
+        assert!(r.contains("🔒"));
+
+        // Unknown
+        let ctx = PromptContext::new(PathBuf::from("/"), "u".into(), "CUSTOM".into());
+        let r = module.render(&ctx).unwrap();
+        assert!(r.contains("●"));
+    }
+
+    #[test]
+    fn test_ai_mode_empty_returns_none() {
+        let module = AiModeModule;
+        let ctx = PromptContext::new(PathBuf::from("/"), "u".into(), "".into());
+        assert!(module.render(&ctx).is_none());
+    }
+
+    #[test]
+    fn test_ai_mode_name() {
+        assert_eq!(AiModeModule.name(), "ai_mode");
+    }
+
+    #[test]
+    fn test_directory_module_home_abbreviation() {
+        let module = DirectoryModule;
+        let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/home/testuser"));
+        let sub = home.join("projects");
+        let ctx = PromptContext::new(sub, "u".into(), "HUMAN".into());
+        let rendered = module.render(&ctx).unwrap();
+        assert!(rendered.contains("~"));
+    }
+
+    #[test]
+    fn test_directory_module_absolute_path() {
+        let module = DirectoryModule;
+        let ctx = PromptContext::new(PathBuf::from("/etc/nginx"), "u".into(), "HUMAN".into());
+        let rendered = module.render(&ctx).unwrap();
+        assert!(rendered.contains("/etc/nginx"));
+    }
+
+    #[test]
+    fn test_directory_module_name() {
+        assert_eq!(DirectoryModule.name(), "directory");
+    }
+
+    #[test]
+    fn test_git_branch_non_git_dir() {
+        let module = GitBranchModule;
+        let ctx = PromptContext::new(PathBuf::from("/tmp"), "u".into(), "HUMAN".into());
+        assert!(module.render(&ctx).is_none());
+    }
+
+    #[test]
+    fn test_git_branch_name() {
+        assert_eq!(GitBranchModule.name(), "git_branch");
+    }
+
+    #[test]
+    fn test_execution_time_below_threshold() {
+        let module = ExecutionTimeModule::new(2000);
+        let mut ctx = PromptContext::new(PathBuf::from("/"), "u".into(), "HUMAN".into());
+        ctx.cmd_duration_ms = 500;
+        assert!(module.render(&ctx).is_none());
+    }
+
+    #[test]
+    fn test_execution_time_above_threshold_ms() {
+        let module = ExecutionTimeModule::new(100);
+        let mut ctx = PromptContext::new(PathBuf::from("/"), "u".into(), "HUMAN".into());
+        ctx.cmd_duration_ms = 500;
+        let r = module.render(&ctx).unwrap();
+        assert!(r.contains("500ms"));
+    }
+
+    #[test]
+    fn test_execution_time_seconds_format() {
+        let module = ExecutionTimeModule::new(100);
+        let mut ctx = PromptContext::new(PathBuf::from("/"), "u".into(), "HUMAN".into());
+        ctx.cmd_duration_ms = 2500;
+        let r = module.render(&ctx).unwrap();
+        assert!(r.contains("2.500s"));
+    }
+
+    #[test]
+    fn test_execution_time_name() {
+        assert_eq!(ExecutionTimeModule::new(100).name(), "execution_time");
+    }
+
+    #[test]
+    fn test_exit_status_zero_returns_none() {
+        let module = ExitStatusModule;
+        let mut ctx = PromptContext::new(PathBuf::from("/"), "u".into(), "HUMAN".into());
+        ctx.last_exit_code = 0;
+        assert!(module.render(&ctx).is_none());
+    }
+
+    #[test]
+    fn test_exit_status_nonzero() {
+        let module = ExitStatusModule;
+        let mut ctx = PromptContext::new(PathBuf::from("/"), "u".into(), "HUMAN".into());
+        ctx.last_exit_code = 127;
+        let r = module.render(&ctx).unwrap();
+        assert!(r.contains("127"));
+    }
+
+    #[test]
+    fn test_exit_status_name() {
+        assert_eq!(ExitStatusModule.name(), "exit_status");
+    }
+
+    #[test]
+    fn test_character_success() {
+        let module = CharacterModule;
+        let mut ctx = PromptContext::new(PathBuf::from("/"), "u".into(), "HUMAN".into());
+        ctx.last_exit_code = 0;
+        let r = module.render(&ctx).unwrap();
+        // Green color ANSI for exit code 0
+        assert!(r.contains("❯"));
+    }
+
+    #[test]
+    fn test_character_failure() {
+        let module = CharacterModule;
+        let mut ctx = PromptContext::new(PathBuf::from("/"), "u".into(), "HUMAN".into());
+        ctx.last_exit_code = 1;
+        let r = module.render(&ctx).unwrap();
+        // Red color ANSI for non-zero exit
+        assert!(r.contains("❯"));
+    }
+
+    #[test]
+    fn test_character_name() {
+        assert_eq!(CharacterModule.name(), "character");
+    }
+
+    #[test]
+    fn test_context_module_renders() {
+        let module = ContextModule;
+        let ctx = PromptContext::new(PathBuf::from("/"), "alice".into(), "HUMAN".into());
+        let r = module.render(&ctx).unwrap();
+        assert!(r.contains("alice"));
+        assert!(r.contains("@"));
+    }
+
+    #[test]
+    fn test_context_module_name() {
+        assert_eq!(ContextModule.name(), "context");
+    }
+
+    #[test]
+    fn test_prompt_renderer_new() {
+        let config = PromptConfig::default();
+        let renderer = PromptRenderer::new(config);
+        // Should have modules registered
+        assert!(!renderer.modules.is_empty());
+    }
+
+    #[test]
+    fn test_prompt_renderer_render() {
+        let renderer = PromptRenderer::default();
+        let ctx = PromptContext::new(PathBuf::from("/tmp"), "user".into(), "HUMAN".into());
+        let output = renderer.render(&ctx);
+        assert!(!output.is_empty());
+    }
+
+    #[test]
+    fn test_prompt_renderer_render_right_returns_none() {
+        let renderer = PromptRenderer::default();
+        let ctx = PromptContext::new(PathBuf::from("/"), "u".into(), "HUMAN".into());
+        assert!(renderer.render_right(&ctx).is_none());
+    }
+
+    #[test]
+    fn test_prompt_config_defaults() {
+        let config = PromptConfig::default();
+        assert!(config.show_ai_mode);
+        assert!(config.show_execution_time);
+        assert!(config.show_git_status);
+        assert!(!config.show_context);
+        assert!(config.show_directory);
+        assert!(config.show_exit_status);
+        assert!(!config.show_battery);
+        assert_eq!(config.execution_time_threshold, 2000);
+        assert!(config.format.contains("$ai_mode"));
+    }
+
+    #[test]
+    fn test_parse_format_empty() {
+        let modules = parse_format("");
+        assert!(modules.is_empty());
+    }
+
+    #[test]
+    fn test_parse_format_single() {
+        let modules = parse_format("$directory");
+        assert_eq!(modules, vec!["directory"]);
+    }
+
+    #[test]
+    fn test_prompt_renderer_default() {
+        let renderer = PromptRenderer::default();
+        let ctx = PromptContext::new(PathBuf::from("/"), "u".into(), "AI-AUTO".into());
+        let output = renderer.render(&ctx);
+        assert!(!output.is_empty());
+    }
+
+    #[test]
+    fn test_prompt_renderer_register_module() {
+        let mut renderer = PromptRenderer::new(PromptConfig::default());
+        let count_before = renderer.modules.len();
+        renderer.register_module(Box::new(ContextModule));
+        assert_eq!(renderer.modules.len(), count_before + 1);
+    }
+
+    #[test]
+    fn test_prompt_context_hostname_populated() {
+        let ctx = PromptContext::new(PathBuf::from("/"), "u".into(), "HUMAN".into());
+        assert!(!ctx.hostname.is_empty());
     }
 }

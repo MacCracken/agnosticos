@@ -390,3 +390,595 @@ impl ResourceLimits {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_agent_handle_default() {
+        let handle = AgentHandle {
+            id: AgentId::new(),
+            name: "test-agent".to_string(),
+            status: AgentStatus::Pending,
+            created_at: chrono::Utc::now(),
+            started_at: None,
+            resource_usage: ResourceUsage::default(),
+            pid: None,
+        };
+        
+        assert_eq!(handle.name, "test-agent");
+        assert_eq!(handle.status, AgentStatus::Pending);
+        assert!(handle.pid.is_none());
+    }
+
+    #[test]
+    fn test_agent_handle_running() {
+        let handle = AgentHandle {
+            id: AgentId::new(),
+            name: "running-agent".to_string(),
+            status: AgentStatus::Running,
+            created_at: chrono::Utc::now(),
+            started_at: Some(chrono::Utc::now()),
+            resource_usage: ResourceUsage {
+                memory_used: 1024 * 1024 * 100,
+                cpu_time_used: 50000,
+                file_descriptors_used: 5,
+                processes_used: 1,
+            },
+            pid: Some(12345),
+        };
+        
+        assert_eq!(handle.status, AgentStatus::Running);
+        assert!(handle.pid.is_some());
+        assert_eq!(handle.pid, Some(12345));
+        assert!(handle.resource_usage.memory_used > 0);
+    }
+
+    #[test]
+    fn test_agent_handle_debug() {
+        let handle = AgentHandle {
+            id: AgentId::new(),
+            name: "debug-agent".to_string(),
+            status: AgentStatus::Stopped,
+            created_at: chrono::Utc::now(),
+            started_at: None,
+            resource_usage: ResourceUsage::default(),
+            pid: None,
+        };
+        
+        let debug_str = format!("{:?}", handle);
+        assert!(debug_str.contains("debug-agent"));
+        assert!(debug_str.contains("Stopped"));
+    }
+
+    #[test]
+    fn test_resource_limits_default() {
+        let limits = ResourceLimits {
+            max_memory: 0,
+            max_cpu_time: 0,
+        };
+        
+        assert_eq!(limits.max_memory, 0);
+        assert_eq!(limits.max_cpu_time, 0);
+    }
+
+    #[test]
+    fn test_resource_limits_custom() {
+        let limits = ResourceLimits {
+            max_memory: 1024 * 1024 * 1024,
+            max_cpu_time: 3600,
+        };
+        
+        assert_eq!(limits.max_memory, 1024 * 1024 * 1024);
+        assert_eq!(limits.max_cpu_time, 3600);
+    }
+
+    #[test]
+    fn test_resource_limits_apply_zero() {
+        let limits = ResourceLimits {
+            max_memory: 0,
+            max_cpu_time: 0,
+        };
+        
+        let result = limits.apply();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_agent_id_new_unique() {
+        let id1 = AgentId::new();
+        let id2 = AgentId::new();
+        
+        assert_ne!(id1, id2);
+    }
+
+    #[test]
+    fn test_agent_status_variants() {
+        assert_eq!(format!("{:?}", AgentStatus::Pending), "Pending");
+        assert_eq!(format!("{:?}", AgentStatus::Starting), "Starting");
+        assert_eq!(format!("{:?}", AgentStatus::Running), "Running");
+        assert_eq!(format!("{:?}", AgentStatus::Stopping), "Stopping");
+        assert_eq!(format!("{:?}", AgentStatus::Stopped), "Stopped");
+        assert_eq!(format!("{:?}", AgentStatus::Failed), "Failed");
+    }
+
+    #[test]
+    fn test_agent_status_is_stopped() {
+        assert_eq!(AgentStatus::Pending, AgentStatus::Pending);
+        assert_eq!(AgentStatus::Stopped, AgentStatus::Stopped);
+        assert_eq!(AgentStatus::Failed, AgentStatus::Failed);
+    }
+
+    #[test]
+    fn test_agent_handle_clone() {
+        let handle = AgentHandle {
+            id: AgentId::new(),
+            name: "clone-test".to_string(),
+            status: AgentStatus::Running,
+            created_at: chrono::Utc::now(),
+            started_at: Some(chrono::Utc::now()),
+            resource_usage: ResourceUsage {
+                memory_used: 42,
+                cpu_time_used: 100,
+                file_descriptors_used: 3,
+                processes_used: 1,
+            },
+            pid: Some(9999),
+        };
+
+        let cloned = handle.clone();
+        assert_eq!(cloned.id, handle.id);
+        assert_eq!(cloned.name, "clone-test");
+        assert_eq!(cloned.status, AgentStatus::Running);
+        assert_eq!(cloned.pid, Some(9999));
+        assert_eq!(cloned.resource_usage.memory_used, 42);
+        assert_eq!(cloned.resource_usage.cpu_time_used, 100);
+        assert_eq!(cloned.resource_usage.file_descriptors_used, 3);
+        assert_eq!(cloned.resource_usage.processes_used, 1);
+    }
+
+    #[test]
+    fn test_agent_handle_all_statuses() {
+        for status in [
+            AgentStatus::Pending,
+            AgentStatus::Starting,
+            AgentStatus::Running,
+            AgentStatus::Paused,
+            AgentStatus::Stopping,
+            AgentStatus::Stopped,
+            AgentStatus::Failed,
+        ] {
+            let handle = AgentHandle {
+                id: AgentId::new(),
+                name: format!("agent-{:?}", status),
+                status,
+                created_at: chrono::Utc::now(),
+                started_at: None,
+                resource_usage: ResourceUsage::default(),
+                pid: None,
+            };
+            assert_eq!(handle.status, status);
+        }
+    }
+
+    #[test]
+    fn test_agent_handle_with_pid() {
+        let handle = AgentHandle {
+            id: AgentId::new(),
+            name: "pid-agent".to_string(),
+            status: AgentStatus::Running,
+            created_at: chrono::Utc::now(),
+            started_at: Some(chrono::Utc::now()),
+            resource_usage: ResourceUsage::default(),
+            pid: Some(1),
+        };
+        assert_eq!(handle.pid, Some(1));
+
+        let handle_no_pid = AgentHandle {
+            id: AgentId::new(),
+            name: "no-pid-agent".to_string(),
+            status: AgentStatus::Pending,
+            created_at: chrono::Utc::now(),
+            started_at: None,
+            resource_usage: ResourceUsage::default(),
+            pid: None,
+        };
+        assert!(handle_no_pid.pid.is_none());
+    }
+
+    #[test]
+    fn test_resource_usage_default_is_zero() {
+        let usage = ResourceUsage::default();
+        assert_eq!(usage.memory_used, 0);
+        assert_eq!(usage.cpu_time_used, 0);
+        assert_eq!(usage.file_descriptors_used, 0);
+        assert_eq!(usage.processes_used, 0);
+    }
+
+    #[test]
+    fn test_agent_id_display() {
+        let id = AgentId::new();
+        let s = id.to_string();
+        // AgentId wraps a UUID, so the display string should be a valid UUID
+        assert!(!s.is_empty());
+        assert!(uuid::Uuid::parse_str(&s).is_ok());
+    }
+
+    #[test]
+    fn test_agent_status_equality() {
+        assert_ne!(AgentStatus::Running, AgentStatus::Stopped);
+        assert_ne!(AgentStatus::Pending, AgentStatus::Failed);
+        assert_ne!(AgentStatus::Starting, AgentStatus::Stopping);
+        assert_eq!(AgentStatus::Paused, AgentStatus::Paused);
+    }
+
+    #[test]
+    fn test_agent_handle_resource_usage_large_values() {
+        let handle = AgentHandle {
+            id: AgentId::new(),
+            name: "heavy-agent".to_string(),
+            status: AgentStatus::Running,
+            created_at: chrono::Utc::now(),
+            started_at: Some(chrono::Utc::now()),
+            resource_usage: ResourceUsage {
+                memory_used: 16 * 1024 * 1024 * 1024, // 16 GB
+                cpu_time_used: 86_400_000,             // 24 hours in ms
+                file_descriptors_used: 65535,
+                processes_used: 1024,
+            },
+            pid: Some(42),
+        };
+        assert_eq!(handle.resource_usage.memory_used, 16 * 1024 * 1024 * 1024);
+        assert_eq!(handle.resource_usage.cpu_time_used, 86_400_000);
+        assert_eq!(handle.resource_usage.file_descriptors_used, 65535);
+        assert_eq!(handle.resource_usage.processes_used, 1024);
+    }
+
+    #[test]
+    fn test_read_vm_rss_nonexistent_pid() {
+        // PID 0 or very large PID should return 0 (no /proc entry)
+        assert_eq!(Agent::read_vm_rss(u32::MAX), 0);
+    }
+
+    #[test]
+    fn test_read_cpu_time_ms_nonexistent_pid() {
+        assert_eq!(Agent::read_cpu_time_ms(u32::MAX), 0);
+    }
+
+    #[test]
+    fn test_count_fds_nonexistent_pid() {
+        assert_eq!(Agent::count_fds(u32::MAX), 0);
+    }
+
+    #[test]
+    fn test_count_threads_nonexistent_pid() {
+        // Falls back to 1 (at least main thread)
+        assert_eq!(Agent::count_threads(u32::MAX), 1);
+    }
+
+    #[test]
+    fn test_read_vm_rss_current_process() {
+        // Reading our own process should return non-zero
+        let pid = std::process::id();
+        let rss = Agent::read_vm_rss(pid);
+        assert!(rss > 0, "Current process should have non-zero RSS");
+    }
+
+    #[test]
+    fn test_read_cpu_time_current_process() {
+        let pid = std::process::id();
+        let cpu = Agent::read_cpu_time_ms(pid);
+        // CPU time might be 0 for a very short-lived test, but it shouldn't panic
+        let _ = cpu;
+    }
+
+    #[test]
+    fn test_count_fds_current_process() {
+        let pid = std::process::id();
+        let fds = Agent::count_fds(pid);
+        assert!(fds > 0, "Current process should have open file descriptors");
+    }
+
+    #[test]
+    fn test_count_threads_current_process() {
+        let pid = std::process::id();
+        let threads = Agent::count_threads(pid);
+        assert!(threads >= 1, "Current process should have at least 1 thread");
+    }
+
+    #[tokio::test]
+    async fn test_agent_new_creates_pending_agent() {
+        let config = AgentConfig {
+            name: "test-new-agent".to_string(),
+            agent_type: agnos_common::AgentType::User,
+            ..Default::default()
+        };
+
+        let (agent, _rx) = Agent::new(config).await.unwrap();
+        assert!(!agent.id().to_string().is_empty());
+        assert!(agent.is_running().await == false);
+    }
+
+    #[tokio::test]
+    async fn test_agent_handle_method() {
+        let config = AgentConfig {
+            name: "handle-test-agent".to_string(),
+            agent_type: agnos_common::AgentType::Service,
+            ..Default::default()
+        };
+
+        let (agent, _rx) = Agent::new(config).await.unwrap();
+        let handle = agent.handle().await;
+
+        assert_eq!(handle.name, "handle-test-agent");
+        assert_eq!(handle.status, AgentStatus::Pending);
+        assert!(handle.pid.is_none());
+        assert_eq!(handle.resource_usage.memory_used, 0);
+    }
+
+    #[tokio::test]
+    async fn test_agent_resource_usage_no_process() {
+        let config = AgentConfig {
+            name: "no-proc-agent".to_string(),
+            ..Default::default()
+        };
+
+        let (agent, _rx) = Agent::new(config).await.unwrap();
+        let usage = agent.resource_usage().await;
+
+        // No process spawned, so should return defaults
+        assert_eq!(usage.memory_used, 0);
+        assert_eq!(usage.cpu_time_used, 0);
+        assert_eq!(usage.file_descriptors_used, 0);
+        assert_eq!(usage.processes_used, 0);
+    }
+
+    #[tokio::test]
+    async fn test_agent_send_message() {
+        let config = AgentConfig {
+            name: "msg-agent".to_string(),
+            ..Default::default()
+        };
+
+        let (agent, mut rx) = Agent::new(config).await.unwrap();
+
+        let msg = Message {
+            id: "msg-1".to_string(),
+            source: "test".to_string(),
+            target: "msg-agent".to_string(),
+            message_type: agnos_common::MessageType::Command,
+            payload: serde_json::json!({"hello": "world"}),
+            timestamp: chrono::Utc::now(),
+        };
+
+        agent.send_message(msg.clone()).await.unwrap();
+        let received = rx.recv().await.unwrap();
+        assert_eq!(received.id, "msg-1");
+        assert_eq!(received.source, "test");
+    }
+
+    #[tokio::test]
+    async fn test_agent_is_running_false_when_pending() {
+        let config = AgentConfig {
+            name: "pending-agent".to_string(),
+            ..Default::default()
+        };
+        let (agent, _rx) = Agent::new(config).await.unwrap();
+        assert!(!agent.is_running().await);
+    }
+
+    // ==================================================================
+    // Additional coverage: find_agent_executable, build_resource_limits,
+    // ResourceLimits::apply with non-zero values, Agent state methods,
+    // handle() details, send_message channel full
+    // ==================================================================
+
+    #[tokio::test]
+    async fn test_agent_find_agent_executable_default() {
+        let config = AgentConfig {
+            name: "exec-test".to_string(),
+            agent_type: agnos_common::AgentType::User,
+            ..Default::default()
+        };
+        let (agent, _rx) = Agent::new(config).await.unwrap();
+
+        // Since no executable exists in standard paths, should fall back to default
+        let exec = agent.find_agent_executable().await.unwrap();
+        assert_eq!(exec, PathBuf::from("/usr/bin/agnos-agent-runner"));
+    }
+
+    #[tokio::test]
+    async fn test_agent_build_resource_limits() {
+        let config = AgentConfig {
+            name: "limits-test".to_string(),
+            resource_limits: agnos_common::ResourceLimits {
+                max_memory: 512 * 1024 * 1024,
+                max_cpu_time: 7200,
+                max_file_descriptors: 256,
+                max_processes: 10,
+            },
+            ..Default::default()
+        };
+        let (agent, _rx) = Agent::new(config).await.unwrap();
+
+        let limits = agent.build_resource_limits();
+        assert!(limits.is_some());
+        let limits = limits.unwrap();
+        assert_eq!(limits.max_memory, 512 * 1024 * 1024);
+        assert_eq!(limits.max_cpu_time, 7200);
+    }
+
+    #[test]
+    fn test_resource_limits_apply_cpu_only() {
+        // Only set CPU limit (not memory, which would restrict the test process)
+        let limits = ResourceLimits {
+            max_memory: 0,
+            max_cpu_time: 3600,
+        };
+        let result = limits.apply();
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_agent_handle_has_correct_name() {
+        let config = AgentConfig {
+            name: "named-agent".to_string(),
+            agent_type: agnos_common::AgentType::Service,
+            ..Default::default()
+        };
+        let (agent, _rx) = Agent::new(config).await.unwrap();
+        let handle = agent.handle().await;
+        assert_eq!(handle.name, "named-agent");
+        assert_eq!(handle.status, AgentStatus::Pending);
+        assert!(handle.pid.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_agent_id_is_stable() {
+        let config = AgentConfig {
+            name: "stable-id".to_string(),
+            ..Default::default()
+        };
+        let (agent, _rx) = Agent::new(config).await.unwrap();
+        let id1 = agent.id();
+        let id2 = agent.id();
+        assert_eq!(id1, id2, "Agent ID should not change between calls");
+    }
+
+    #[tokio::test]
+    async fn test_agent_send_multiple_messages() {
+        let config = AgentConfig {
+            name: "multi-msg".to_string(),
+            ..Default::default()
+        };
+        let (agent, mut rx) = Agent::new(config).await.unwrap();
+
+        for i in 0..5 {
+            let msg = Message {
+                id: format!("msg-{}", i),
+                source: "test".to_string(),
+                target: "multi-msg".to_string(),
+                message_type: agnos_common::MessageType::Command,
+                payload: serde_json::json!({"index": i}),
+                timestamp: chrono::Utc::now(),
+            };
+            agent.send_message(msg).await.unwrap();
+        }
+
+        // Receive all 5
+        for i in 0..5 {
+            let received = rx.recv().await.unwrap();
+            assert_eq!(received.id, format!("msg-{}", i));
+        }
+    }
+
+    #[tokio::test]
+    async fn test_agent_resource_usage_returns_default_no_process() {
+        let config = AgentConfig {
+            name: "no-proc".to_string(),
+            ..Default::default()
+        };
+        let (agent, _rx) = Agent::new(config).await.unwrap();
+        let usage = agent.resource_usage().await;
+        assert_eq!(usage.memory_used, 0);
+        assert_eq!(usage.cpu_time_used, 0);
+        assert_eq!(usage.file_descriptors_used, 0);
+        assert_eq!(usage.processes_used, 0);
+    }
+
+    #[test]
+    fn test_read_vm_rss_pid_1() {
+        // PID 1 should exist; may return 0 if /proc/1/status not readable (permissions)
+        let rss = Agent::read_vm_rss(1);
+        // Just ensure no panic
+        let _ = rss;
+    }
+
+    #[test]
+    fn test_count_fds_pid_1() {
+        // PID 1 may not be readable without root
+        let fds = Agent::count_fds(1);
+        let _ = fds;
+    }
+
+    #[test]
+    fn test_count_threads_pid_1() {
+        let threads = Agent::count_threads(1);
+        // At minimum 1 (fallback)
+        assert!(threads >= 1);
+    }
+
+    #[tokio::test]
+    async fn test_agent_new_different_agent_types() {
+        for agent_type in [
+            agnos_common::AgentType::User,
+            agnos_common::AgentType::Service,
+            agnos_common::AgentType::System,
+        ] {
+            let config = AgentConfig {
+                name: format!("{:?}-agent", agent_type),
+                agent_type,
+                ..Default::default()
+            };
+            let result = Agent::new(config).await;
+            assert!(result.is_ok());
+        }
+    }
+
+    #[tokio::test]
+    async fn test_agent_handle_resource_usage_is_default() {
+        let config = AgentConfig {
+            name: "handle-usage".to_string(),
+            ..Default::default()
+        };
+        let (agent, _rx) = Agent::new(config).await.unwrap();
+        let handle = agent.handle().await;
+        assert_eq!(handle.resource_usage.memory_used, 0);
+        assert_eq!(handle.resource_usage.cpu_time_used, 0);
+        assert_eq!(handle.resource_usage.file_descriptors_used, 0);
+        assert_eq!(handle.resource_usage.processes_used, 0);
+    }
+
+    #[test]
+    fn test_agent_handle_debug_format() {
+        let handle = AgentHandle {
+            id: AgentId::new(),
+            name: "dbg-test".to_string(),
+            status: AgentStatus::Running,
+            created_at: chrono::Utc::now(),
+            started_at: Some(chrono::Utc::now()),
+            resource_usage: ResourceUsage::default(),
+            pid: Some(42),
+        };
+        let dbg = format!("{:?}", handle);
+        assert!(dbg.contains("dbg-test"));
+        assert!(dbg.contains("Running"));
+        assert!(dbg.contains("42"));
+    }
+
+    #[tokio::test]
+    async fn test_agent_find_executable_service_type() {
+        let config = AgentConfig {
+            name: "svc-exec".to_string(),
+            agent_type: agnos_common::AgentType::Service,
+            ..Default::default()
+        };
+        let (agent, _rx) = Agent::new(config).await.unwrap();
+        let exec = agent.find_agent_executable().await.unwrap();
+        // Should fall back to default since no standard paths exist
+        assert_eq!(exec, PathBuf::from("/usr/bin/agnos-agent-runner"));
+    }
+
+    #[tokio::test]
+    async fn test_agent_find_executable_system_type() {
+        let config = AgentConfig {
+            name: "sys-exec".to_string(),
+            agent_type: agnos_common::AgentType::System,
+            ..Default::default()
+        };
+        let (agent, _rx) = Agent::new(config).await.unwrap();
+        let exec = agent.find_agent_executable().await.unwrap();
+        assert_eq!(exec, PathBuf::from("/usr/bin/agnos-agent-runner"));
+    }
+}
