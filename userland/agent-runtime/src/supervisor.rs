@@ -14,6 +14,7 @@ use tokio::time::interval;
 use tracing::{debug, error, info, warn};
 
 use agnos_common::{AgentEvent, AgentId, AgentStatus, ResourceUsage, StopReason};
+use agnos_sys::audit as sys_audit;
 
 use crate::agent::Agent;
 use crate::registry::AgentRegistry;
@@ -288,7 +289,8 @@ impl Supervisor {
         Ok(())
     }
 
-    /// Unregister an agent from supervision and clean up its cgroup.
+    /// Unregister an agent from supervision and clean up its cgroup,
+    /// network namespace, and encrypted storage.
     pub async fn unregister_agent(&self, agent_id: AgentId) -> Result<()> {
         self.health_checks.write().await.remove(&agent_id);
         self.running_agents.write().await.remove(&agent_id);
@@ -301,6 +303,36 @@ impl Supervisor {
                 }
             }
         }
+
+        // Clean up network namespace (if one was created for this agent)
+        let ns_name = format!("agnos-agent-{}", agent_id);
+        let handle = agnos_sys::netns::NetNamespaceHandle {
+            name: ns_name.clone(),
+            veth_host: String::new(),
+            veth_agent: String::new(),
+            netns_path: format!("/var/run/netns/{}", ns_name),
+        };
+        if std::path::Path::new(&handle.netns_path).exists() {
+            if let Err(e) = agnos_sys::netns::destroy_agent_netns(&handle) {
+                debug!("Could not destroy netns for agent {}: {}", agent_id, e);
+            }
+        }
+
+        // Clean up LUKS encrypted volume (if one was created)
+        let luks_name = format!("agnos-agent-{}", agent_id);
+        let mapper_path = format!("/dev/mapper/{}", luks_name);
+        if std::path::Path::new(&mapper_path).exists() {
+            if let Err(e) = agnos_sys::luks::teardown_agent_volume(&luks_name) {
+                debug!("Could not teardown LUKS for agent {}: {}", agent_id, e);
+            }
+        }
+
+        // Emit audit event for agent unregistration
+        let _ = sys_audit::agnos_audit_log_syscall(
+            "agent_unregistered",
+            &format!("agent_id={}", agent_id),
+            0,
+        );
 
         info!("Unregistered agent {} from supervision", agent_id);
         Ok(())
@@ -479,6 +511,13 @@ impl Supervisor {
         const BASE_BACKOFF_SECS: u64 = 2;
 
         warn!("Taking recovery action for unhealthy agent {}", agent_id);
+
+        // Emit audit event for unhealthy agent
+        let _ = sys_audit::agnos_audit_log_syscall(
+            "agent_unhealthy",
+            &format!("agent_id={}", agent_id),
+            1,
+        );
 
         // Get current failure count
         let failure_count = {

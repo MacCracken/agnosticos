@@ -111,6 +111,9 @@ mod tests {
             network_access: NetworkAccess::None,
             seccomp_rules: vec![],
             isolate_network: true,
+            network_policy: None,
+            mac_profile: None,
+            encrypted_storage: None,
         };
 
         assert!(matches!(config.network_access, NetworkAccess::None));

@@ -89,6 +89,51 @@ impl Default for ResourceLimits {
     }
 }
 
+/// Per-agent network firewall policy for restricted network access.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NetworkPolicy {
+    /// Outbound ports the agent is allowed to connect to
+    pub allowed_outbound_ports: Vec<u16>,
+    /// Outbound hosts/CIDRs the agent is allowed to connect to
+    pub allowed_outbound_hosts: Vec<String>,
+    /// Inbound ports the agent is allowed to receive on
+    pub allowed_inbound_ports: Vec<u16>,
+    /// Whether to enable NAT for outbound traffic
+    pub enable_nat: bool,
+}
+
+impl Default for NetworkPolicy {
+    fn default() -> Self {
+        Self {
+            allowed_outbound_ports: vec![80, 443],
+            allowed_outbound_hosts: Vec::new(),
+            allowed_inbound_ports: Vec::new(),
+            enable_nat: true,
+        }
+    }
+}
+
+/// Per-agent encrypted storage configuration (LUKS2).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EncryptedStorageConfig {
+    /// Whether encrypted storage is enabled for this agent
+    pub enabled: bool,
+    /// Size of the encrypted volume in megabytes
+    pub size_mb: u64,
+    /// Filesystem to use (ext4, xfs, btrfs)
+    pub filesystem: String,
+}
+
+impl Default for EncryptedStorageConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            size_mb: 256,
+            filesystem: "ext4".to_string(),
+        }
+    }
+}
+
 /// Sandbox configuration for agents
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SandboxConfig {
@@ -100,6 +145,15 @@ pub struct SandboxConfig {
     pub seccomp_rules: Vec<SeccompRule>,
     /// Whether to create a new network namespace
     pub isolate_network: bool,
+    /// Per-agent network firewall policy (for NetworkAccess::Restricted)
+    #[serde(default)]
+    pub network_policy: Option<NetworkPolicy>,
+    /// MAC profile name to apply (auto-detects SELinux/AppArmor)
+    #[serde(default)]
+    pub mac_profile: Option<String>,
+    /// Encrypted storage configuration
+    #[serde(default)]
+    pub encrypted_storage: Option<EncryptedStorageConfig>,
 }
 
 impl Default for SandboxConfig {
@@ -112,6 +166,9 @@ impl Default for SandboxConfig {
             network_access: NetworkAccess::LocalhostOnly,
             seccomp_rules: vec![],
             isolate_network: true,
+            network_policy: None,
+            mac_profile: None,
+            encrypted_storage: None,
         }
     }
 }

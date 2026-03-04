@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (March 4, 2026 — Phase 6.5 P0 Kernel Security Features)
+
+- **Audit subsystem bindings** (`agnos-sys/src/audit.rs`):
+  - `AuditHandle` wrapping Linux netlink audit socket (AF_NETLINK, NETLINK_AUDIT)
+  - `AuditConfig` with netlink and `/proc/agnos/audit` support
+  - `AuditStatus` query via AUDIT_GET, enable/disable via AUDIT_SET
+  - `AuditRule` add/delete (FileWatch, SyscallWatch types) with validation
+  - `RawAuditEntry` parsing from AGNOS proc interface (JSON hash chain)
+  - `agnos_audit_log_syscall()` — custom AGNOS syscall (nr 520) fast path
+  - 15 tests (8 ignored requiring CAP_AUDIT_CONTROL)
+- **MAC profiles (AppArmor/SELinux)** (`agnos-sys/src/mac.rs`):
+  - `detect_mac_system()` — auto-detects active LSM from `/sys/kernel/security/lsm`
+  - `MacSystem` enum: SELinux, AppArmor, None
+  - `AgentMacProfile` with SELinux contexts (`system_u:system_r:agnos_agent_{type}_t:s0`) and AppArmor profiles
+  - SELinux: get/set mode, get/set context (current + on_exec), load/remove modules (semodule)
+  - AppArmor: load profiles (`.load` interface), change_profile (`/proc/self/attr/current`)
+  - `apply_agent_mac_profile()` — one-call auto-detect + apply
+  - 20 tests
+- **Network segmentation** (`agnos-sys/src/netns.rs`):
+  - Per-agent network namespaces with veth pairs and IP configuration
+  - `NetNamespaceConfig` with auto-generated IPs (10.100.{hash%255}.{1,2}/30)
+  - `FirewallPolicy` + `FirewallRule` with nftables integration
+  - `generate_nftables_ruleset()` — pure function for fully testable nft rules
+  - NAT support, DNS forwarding, established connection tracking
+  - 18 tests (1 ignored requiring root)
+- **dm-verity rootfs integrity** (`agnos-sys/src/dmverity.rs`):
+  - `VerityConfig` with SHA-256/SHA-512 hash algorithms
+  - `verity_format()`, `verity_open()`, `verity_close()`, `verity_status()`, `verity_verify()`
+  - Root hash validation (hex-only, correct length for algorithm)
+  - `verity_supported()` — checks kernel module + veritysetup availability
+  - `read_stored_root_hash()` — reads from `/etc/agnos/verity-root-hash`
+  - 12 tests (1 ignored requiring root)
+- **LUKS encrypted volumes** (`agnos-sys/src/luks.rs`):
+  - Per-agent LUKS2-encrypted loopback volumes (aes-xts-plain64, argon2id)
+  - `LuksConfig`, `LuksCipher`, `LuksPbkdf`, `LuksFilesystem` (ext4/xfs/btrfs)
+  - `LuksKey` — wraps `Vec<u8>` with zeroing on Drop, `generate()` via `getrandom`
+  - `setup_agent_volume()` / `teardown_agent_volume()` — high-level lifecycle
+  - Volume naming: `agnos-agent-{id}`, mount at `/var/lib/agnos/agents/{id}/data/`
+  - 16 tests (1 ignored requiring root)
+- **Sandbox integration** (`agent-runtime/src/sandbox.rs`):
+  - `Sandbox` struct gains `netns_handle` and `luks_name` fields
+  - New apply ordering: encrypted storage → MAC → Landlock → seccomp → network → audit
+  - `apply_encrypted_storage()` — LUKS mount before Landlock locks filesystem
+  - `apply_mac_profile()` — MAC context before seccomp blocks /proc/self/attr/ writes
+  - `build_firewall_policy()` — translates `NetworkPolicy` to nftables `FirewallPolicy`
+  - `emit_audit_event()` — logs sandbox lifecycle via AGNOS audit syscall
+  - `teardown()` — cleans up netns + LUKS on agent unregistration
+  - `NetworkAccess::Restricted` now creates full netns with nftables (replaces TODO)
+  - 12 new integration tests (backward-compatible serialization verified)
+- **Supervisor audit integration** (`agent-runtime/src/supervisor.rs`):
+  - `unregister_agent()` now cleans up network namespaces and LUKS volumes
+  - `handle_unhealthy_agent()` emits audit events
+  - Audit events for agent_unregistered and agent_unhealthy
+- **New types in `agnos-common/src/lib.rs`**:
+  - `NetworkPolicy` — per-agent outbound/inbound port/host firewall rules
+  - `EncryptedStorageConfig` — LUKS volume enable/size/filesystem
+  - `SandboxConfig` gains: `network_policy`, `mac_profile`, `encrypted_storage` (all `#[serde(default)]`)
+
 ### Added (March 3, 2026 — Phase 6.6 Consumer Integration)
 
 - **Secrets management** (`agnos-common/src/secrets.rs`):

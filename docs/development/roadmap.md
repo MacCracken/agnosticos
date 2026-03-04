@@ -1,6 +1,6 @@
 # AGNOS Development Roadmap
 
-> **Status**: Pre-Alpha (Phase 5) | **Last Updated**: 2026-03-03
+> **Status**: Pre-Alpha (Phase 5) | **Last Updated**: 2026-03-04
 > **Current Phase**: Phase 5 - Production (95% Complete — consumer integration features implemented)
 > **Next Milestone**: Alpha Release (Target: Q2 2026)
 
@@ -58,14 +58,14 @@
 | Support portal | Infrastructure | 2 weeks | TBD | ⏳ |
 | Interactive API explorer | Documentation | 1 week | TBD | ⏳ |
 | Wayland compositor rendering + input | desktop-environment | 2+ weeks | TBD | ⏳ Full stub |
-| Agent pause/resume (real process control) | agent-runtime | 2 days | TBD | ⏳ Status only |
+| ~~Agent pause/resume (real process control)~~ | agent-runtime | — | — | ✅ Done (SIGSTOP/SIGCONT) |
 | Dead code cleanup (unused traits, imports) | All | 1 day | TBD | ⏳ |
 
 ---
 
 ## Executive Summary
 
-AGNOS (AI-Native General Operating System) is in **Phase 5: Production**, focused on security hardening, testing, and release preparation. A March 3, 2026 internal audit discovered 30+ stub implementations, revising completion down to 75%. Two same-day implementation passes eliminated **all P0 and P1 stubs**, bringing completion to **91%**. Remaining work for Alpha: test coverage (65%→80%), CIS compliance (75%→80%), performance benchmarks, and a third-party security audit.
+AGNOS (AI-Native General Operating System) is in **Phase 5: Production**, focused on security hardening, testing, and release preparation. A March 3 internal audit discovered 30+ stub implementations; two same-day passes eliminated **all P0/P1 stubs** (91%). Phase 6.6 consumer integration then added 9 features (secrets, seccomp profiles, HTTP registration API, load-aware scheduler, HUD, security enforcement, WASM runtime, Docker image, gVisor), bringing completion to **95%**. Remaining Alpha blockers: test coverage (65%→80%), CIS compliance (75%→80%), performance benchmarks, and a third-party security audit.
 
 ### Phase Status Overview
 
@@ -75,7 +75,7 @@ AGNOS (AI-Native General Operating System) is in **Phase 5: Production**, focuse
 | 5 | 🔄 In Progress | 95% | Production hardening |
 | 6 | 📋 Planned | 0% | Advanced AI & Networking |
 | 6.5 | 📋 Planned | 0% | OS-Level Features & Security Hardening |
-| 6.6 | 🔄 In Progress | 100% | Consumer Integration (9 features) |
+| 6.6 | ✅ Complete | 100% | Consumer Integration (9 features) |
 | 7+ | 📋 Planned | 0% | Ecosystem & Research |
 
 ### Alpha Release Criteria (Q2 2026)
@@ -151,12 +151,13 @@ All foundational work is complete. See [CHANGELOG.md](/CHANGELOG.md) for detaile
 #### ✅ Completed
 - Unit test framework (cargo test)
 - ~65% test coverage across all components (up from ~45%)
-- agnos-common: 94 tests passing
+- agnos-common: 104 tests passing (up from 94)
 - ai-shell: 183 tests passing (up from 111)
-- agent-runtime: 40 unit + 16 integration tests passing (up from 38+16)
+- agent-runtime: 80 unit + 16 integration tests passing (up from 56+16)
 - llm-gateway: 39 tests passing
-- agnos-sys: 30 tests passing
-- Total: 402+ tests across all packages
+- agnos-sys: 36 tests passing
+- desktop-environment: 161 tests passing (up from 151)
+- Total: 580+ tests across all packages
 - Performance micro-benchmarks: 29 benchmarks across 4 packages (Criterion)
   - `agent-runtime/benches/bench.rs` — 12 benchmarks
   - `ai-shell/benches/ai_shell.rs` — 7 benchmarks
@@ -412,18 +413,18 @@ bring AGNOS from an application framework to a genuine operating system.
 
 | Feature | Description | Effort | Priority |
 |---------|-------------|--------|----------|
-| dm-verity | Read-only rootfs integrity verification | 1 week | P1 |
+| ~~dm-verity~~ | ~~Read-only rootfs integrity verification~~ | — | ✅ Done 2026-03-04 |
 | IMA/EVM | Integrity Measurement Architecture for file integrity | 2 weeks | P1 |
 | TPM 2.0 integration | Measured boot, sealed secrets for agents | 2 weeks | P2 |
-| LUKS volumes for agent data | Encrypted-at-rest storage for each agent sandbox | 1 week | P1 |
-| AppArmor/SELinux profiles | Mandatory access control profiles per agent type | 2 weeks | P1 |
-| Audit subsystem (auditd) | Kernel-level audit events integrated with AGNOS audit chain | 1 week | P1 |
+| ~~LUKS volumes for agent data~~ | ~~Encrypted-at-rest storage for each agent sandbox~~ | — | ✅ Done 2026-03-04 |
+| ~~AppArmor/SELinux profiles~~ | ~~Mandatory access control profiles per agent type~~ | — | ✅ Done 2026-03-04 |
+| ~~Audit subsystem (auditd)~~ | ~~Kernel-level audit events integrated with AGNOS audit chain~~ | — | ✅ Done 2026-03-04 |
 | Key management service | Agent key rotation, certificate lifecycle management | 2 weeks | P2 |
 | Certificate pinning | Pin TLS certs for cloud LLM API providers | 3 days | P2 |
 | Memory encryption awareness | AMD SEV / Intel TDX support for confidential agents | 2 weeks | P3 |
 | Secure boot chain | UEFI Secure Boot with custom kernel signing | 1 week | P2 |
-| Network segmentation | Per-agent network namespaces with firewall rules | 1 week | P1 |
-| Secrets management | Vault-style secrets injection for agent env vars | 1 week | P2 |
+| ~~Network segmentation~~ | ~~Per-agent network namespaces with firewall rules~~ | — | ✅ Done 2026-03-04 |
+| ~~Secrets management~~ | ~~Vault-style secrets injection for agent env vars~~ | — | ✅ Done 2026-03-03 |
 
 ### Phase 6.6: Consumer Project Integration (Planned Q3–Q4 2026)
 
@@ -464,15 +465,15 @@ hardening is complete. Currently uses `debian:bookworm-slim`.
 | Pre-compiled seccomp profiles (Python, Node.js, Shell, WASM) | agent-runtime | 6.6 | ✅ Done 2026-03-03 |
 | gVisor `runsc` pre-installed (opt-in) | Dockerfile | 6.6 | ✅ Done 2026-03-03 |
 | WASM runtime (Wasmtime, feature-gated) | agent-runtime | 6.6 | ✅ Done 2026-03-03 |
-| Audit subsystem (auditd + AGNOS hash chain) | kernel + agnos-sys | 6.5 | ⏳ Planned |
-| dm-verity read-only rootfs | kernel | 6.5 | ⏳ Planned |
-| LUKS encrypted agent data volumes | kernel + tools | 6.5 | ⏳ Planned |
-| AppArmor/SELinux profiles per agent type | kernel + config | 6.5 | ⏳ Planned |
+| Audit subsystem (auditd + AGNOS hash chain) | kernel + agnos-sys | 6.5 | ✅ Done 2026-03-04 |
+| dm-verity read-only rootfs | kernel | 6.5 | ✅ Done 2026-03-04 |
+| LUKS encrypted agent data volumes | kernel + tools | 6.5 | ✅ Done 2026-03-04 |
+| AppArmor/SELinux profiles per agent type | kernel + config | 6.5 | ✅ Done 2026-03-04 |
 | Secrets management (Vault/Env/File injection) | agnos-common | 6.6 | ✅ Done 2026-03-03 |
-| Network segmentation (per-agent netns + firewall) | agent-runtime | 6.5 | ⏳ Planned |
+| Network segmentation (per-agent netns + firewall) | agent-runtime | 6.5 | ✅ Done 2026-03-04 |
 | Hardened base Docker image (`agnos-base:latest`) | Dockerfile | 6.6 | ✅ Done 2026-03-03 |
-| Artifact sandbox scoping (task-scoped `/tmp` via Landlock) | agnos-sys | 6.6 | ⏳ Planned |
-| Process resource metrics export (for anomaly detection) | agent-runtime | 6.6 | ⏳ Planned |
+| Artifact sandbox scoping (task-scoped `/tmp` via Landlock) | agnos-sys | 6.5 | ⏳ Planned |
+| Process resource metrics export (for anomaly detection) | agent-runtime | 6.5 | ⏳ Planned |
 
 **Target Dockerfile**:
 ```dockerfile
@@ -490,11 +491,11 @@ the consumer integration milestone:
 
 | Item | Original Priority | New Priority | Reason |
 |------|-------------------|--------------|--------|
-| Audit subsystem (auditd) | P1 | **P0** | Both consumers need cryptographic audit integration |
-| Network segmentation | P1 | **P0** | SecureYeoman sandbox isolation depends on per-agent netns |
-| AppArmor/SELinux profiles | P1 | **P0** | SecureYeoman's deny-by-default security model |
-| dm-verity | P1 | **P0** | SecureYeoman requires read-only rootfs integrity |
-| LUKS volumes | P1 | **P0** | SecureYeoman's AES-256-GCM at-rest encryption policy |
+| ~~Audit subsystem (auditd)~~ | ~~P1~~ | ~~**P0**~~ | ✅ Done 2026-03-04 |
+| ~~Network segmentation~~ | ~~P1~~ | ~~**P0**~~ | ✅ Done 2026-03-04 |
+| ~~AppArmor/SELinux profiles~~ | ~~P1~~ | ~~**P0**~~ | ✅ Done 2026-03-04 |
+| ~~dm-verity~~ | ~~P1~~ | ~~**P0**~~ | ✅ Done 2026-03-04 |
+| ~~LUKS volumes~~ | ~~P1~~ | ~~**P0**~~ | ✅ Done 2026-03-04 |
 | ~~Secrets management~~ | ~~P2~~ | ~~**P1**~~ | ✅ Done 2026-03-03 |
 | ~~Hardened base Docker image~~ | ~~—~~ | ~~**P1**~~ | ✅ Done 2026-03-03 |
 
@@ -613,18 +614,16 @@ the consumer integration milestone:
    - Good first issues: Add tests to ai-shell and desktop-environment
    - See [docs/development/testing.md](/docs/development/testing.md)
 
-2. **Remaining Stubs (P0/P1)** - Wire remaining stubbed code to real implementations
-   - P0: cgroups resource enforcement
-   - P1: agent resource monitoring, audit logging, LLM syscalls, desktop apps
-   - See Phase 5.6 tables above for full list
+2. **CIS Compliance (P0)** - 8 kernel config/sysctl controls remaining
+   - Quick wins: disable USB_STORAGE/FIREWIRE/THUNDERBOLT, source route rejection, /tmp sticky bit
+   - See [docs/security/cis-benchmarks.md](/docs/security/cis-benchmarks.md)
 
 3. **Performance (P1)** - System-level benchmarks and documentation
    - Micro-benchmarks exist, need integration-level tests
    - Create `docs/development/performance-benchmarks.md`
 
-4. **Documentation (P2)** - Video tutorials
-   - Agent Development Guide is complete
-   - See [docs/development/agent-development.md](/docs/development/agent-development.md)
+4. **P2 Feature Gaps** - Streaming, cloud providers, ai-shell intents
+   - See Phase 5.6 P2 table for full list (~10 days of work)
 
 ### Getting Started
 
@@ -713,4 +712,4 @@ For detailed history of all completed work, see [CHANGELOG.md](/CHANGELOG.md).
 
 ---
 
-*Last Updated: 2026-03-03 (Phase 6.6 consumer integration — 9 features implemented) | Next Review: 2026-03-10*
+*Last Updated: 2026-03-04 (roadmap review + consistency fixes) | Next Review: 2026-03-10*

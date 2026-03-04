@@ -31,6 +31,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             network_access: NetworkAccess::Restricted,
             seccomp_rules: vec![],
             isolate_network: true,
+            network_policy: None,
+            mac_profile: None,
+            encrypted_storage: None,
         },
         permissions: vec![
             Permission::FileRead,

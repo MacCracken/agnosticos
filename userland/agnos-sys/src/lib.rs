@@ -3,7 +3,12 @@
 //! Provides safe Rust bindings to AGNOS-specific kernel syscalls and features.
 
 pub mod agent;
+pub mod audit;
+pub mod dmverity;
 pub mod llm;
+pub mod luks;
+pub mod mac;
+pub mod netns;
 pub mod security;
 pub mod syscall;
 
