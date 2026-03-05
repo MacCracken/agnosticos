@@ -8,7 +8,7 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use tokio::sync::mpsc;
-use tracing::{info, warn};
+use tracing::info;
 
 use agnos_common::{AgentConfig, AgentId};
 
@@ -83,9 +83,13 @@ pub struct RuntimeState {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .init();
+    let fmt = tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env());
+    if std::env::var("AGNOS_LOG_FORMAT").as_deref() == Ok("json") {
+        fmt.json().init();
+    } else {
+        fmt.init();
+    }
 
     info!("AGNOS Agent Runtime Daemon v{}", env!("CARGO_PKG_VERSION"));
 

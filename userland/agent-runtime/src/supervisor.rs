@@ -1728,5 +1728,186 @@ mod tests {
         // Visible in clone
         assert!(cloned.get_health(id).await.is_some());
     }
+
+    // ==================================================================
+    // Additional coverage: signal_agent paths, check_agent_health states,
+    // handle_unhealthy_agent, check_resource_limits, cgroup edge cases,
+    // read_proc helper edge cases, supervisor with registry interactions
+    // ==================================================================
+
+    #[tokio::test]
+    async fn test_signal_agent_no_agent_in_registry() {
+        let registry = Arc::new(AgentRegistry::new());
+        let supervisor = Supervisor::new(registry.clone());
+        // Should not panic when agent is not in registry
+        supervisor.signal_agent(AgentId::new(), libc::SIGTERM).await;
+    }
+
+    #[tokio::test]
+    async fn test_handle_unhealthy_agent_no_control_exceeds_max() {
+        let registry = Arc::new(AgentRegistry::new());
+        let supervisor = Supervisor::new(registry.clone());
+        let agent_id = AgentId::new();
+
+        // Register the agent for supervision
+        supervisor.register_agent(agent_id).await.unwrap();
+
+        // Set consecutive_failures high enough to exceed MAX_RESTART_ATTEMPTS (5)
+        {
+            let mut checks = supervisor.health_checks.write().await;
+            if let Some(h) = checks.get_mut(&agent_id) {
+                h.consecutive_failures = 10;
+            }
+        }
+
+        // Should not panic, just try to mark as failed
+        supervisor.handle_unhealthy_agent(agent_id).await;
+    }
+
+    #[tokio::test]
+    async fn test_handle_unhealthy_agent_below_max() {
+        let registry = Arc::new(AgentRegistry::new());
+        let supervisor = Supervisor::new(registry.clone());
+        let agent_id = AgentId::new();
+
+        supervisor.register_agent(agent_id).await.unwrap();
+
+        // Set failures below max — will try to restart but no AgentControl registered
+        {
+            let mut checks = supervisor.health_checks.write().await;
+            if let Some(h) = checks.get_mut(&agent_id) {
+                h.consecutive_failures = 2;
+            }
+        }
+
+        // Should not panic; will attempt restart, find no AgentControl, mark failed
+        supervisor.handle_unhealthy_agent(agent_id).await;
+    }
+
+    #[test]
+    fn test_cgroup_controller_set_memory_limit_zero_is_max() {
+        let tmp = TempDir::new().unwrap();
+        let agent_id = AgentId::new();
+        let cg_path = tmp.path().join(agent_id.to_string());
+        std::fs::create_dir_all(&cg_path).unwrap();
+
+        let controller = CgroupController {
+            path: cg_path.clone(),
+            agent_id,
+        };
+
+        controller.set_memory_limit(0).unwrap();
+        let content = std::fs::read_to_string(cg_path.join("memory.max")).unwrap();
+        assert_eq!(content, "max");
+    }
+
+    #[test]
+    fn test_cgroup_controller_set_cpu_limit_zero_quota_is_max() {
+        let tmp = TempDir::new().unwrap();
+        let agent_id = AgentId::new();
+        let cg_path = tmp.path().join(agent_id.to_string());
+        std::fs::create_dir_all(&cg_path).unwrap();
+
+        let controller = CgroupController {
+            path: cg_path.clone(),
+            agent_id,
+        };
+
+        controller.set_cpu_limit(0, 50000).unwrap();
+        let content = std::fs::read_to_string(cg_path.join("cpu.max")).unwrap();
+        assert_eq!(content, "max 50000");
+    }
+
+    #[test]
+    fn test_read_proc_memory_pid_zero() {
+        // PID 0 (kernel scheduler) is special, should not panic
+        let mem = read_proc_memory(0);
+        let _ = mem;
+    }
+
+    #[test]
+    fn test_read_proc_cpu_time_us_pid_zero() {
+        let cpu = read_proc_cpu_time_us(0);
+        let _ = cpu;
+    }
+
+    #[tokio::test]
+    async fn test_supervisor_register_unregister_multiple() {
+        let registry = Arc::new(AgentRegistry::new());
+        let supervisor = Supervisor::new(registry.clone());
+
+        let ids: Vec<AgentId> = (0..10).map(|_| AgentId::new()).collect();
+        for &id in &ids {
+            supervisor.register_agent(id).await.unwrap();
+        }
+        assert_eq!(supervisor.get_all_health().await.len(), 10);
+
+        // Unregister half
+        for &id in &ids[..5] {
+            supervisor.unregister_agent(id).await.unwrap();
+        }
+        assert_eq!(supervisor.get_all_health().await.len(), 5);
+
+        // Remaining should still be there
+        for &id in &ids[5..] {
+            assert!(supervisor.get_health(id).await.is_some());
+        }
+    }
+
+    #[tokio::test]
+    async fn test_supervisor_health_alternating_updates() {
+        let registry = Arc::new(AgentRegistry::new());
+        let supervisor = Supervisor::new(registry.clone());
+        let agent_id = AgentId::new();
+        supervisor.register_agent(agent_id).await.unwrap();
+
+        // Alternate healthy/unhealthy to verify counter resets
+        supervisor.update_health_status(agent_id, true).await;
+        supervisor.update_health_status(agent_id, false).await;
+        supervisor.update_health_status(agent_id, true).await;
+        supervisor.update_health_status(agent_id, false).await;
+
+        let health = supervisor.get_health(agent_id).await.unwrap();
+        // After alternating, consecutive counters should reflect the last transition
+        assert_eq!(health.consecutive_failures, 1);
+        assert_eq!(health.consecutive_successes, 0);
+    }
+
+    #[test]
+    fn test_cgroup_controller_memory_current_with_whitespace() {
+        let tmp = TempDir::new().unwrap();
+        let agent_id = AgentId::new();
+        let cg_path = tmp.path().join(agent_id.to_string());
+        std::fs::create_dir_all(&cg_path).unwrap();
+
+        let controller = CgroupController {
+            path: cg_path.clone(),
+            agent_id,
+        };
+
+        // Kernel often writes with trailing newline
+        std::fs::write(cg_path.join("memory.current"), "12345678\n").unwrap();
+        assert_eq!(controller.memory_current(), 12345678);
+    }
+
+    #[test]
+    fn test_cgroup_controller_cpu_stat_multiple_lines() {
+        let tmp = TempDir::new().unwrap();
+        let agent_id = AgentId::new();
+        let cg_path = tmp.path().join(agent_id.to_string());
+        std::fs::create_dir_all(&cg_path).unwrap();
+
+        let controller = CgroupController {
+            path: cg_path.clone(),
+            agent_id,
+        };
+
+        // Realistic cpu.stat output
+        std::fs::write(
+            cg_path.join("cpu.stat"),
+            "usage_usec 9876543\nuser_usec 6000000\nsystem_usec 3876543\nnr_periods 100\nnr_throttled 5\nthrottled_usec 50000\n",
+        ).unwrap();
+        assert_eq!(controller.cpu_usage_usec(), 9876543);
+    }
 }
 

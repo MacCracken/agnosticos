@@ -170,4 +170,19 @@ mod tests {
         
         let _ = std::fs::remove_file(&config_path);
     }
+
+    #[tokio::test]
+    async fn test_config_from_nonexistent_file() {
+        let dir = std::env::temp_dir().join("agnos_config_new_test");
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("new_config.toml");
+        let _ = std::fs::remove_file(&path);
+
+        // Loading from a nonexistent path should create a default config
+        let config = ShellConfig::from_file(path.clone()).await.unwrap();
+        assert!(config.ai_enabled); // default value
+        assert!(path.exists()); // file was created
+
+        let _ = std::fs::remove_file(&path);
+    }
 }

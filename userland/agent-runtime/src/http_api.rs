@@ -617,4 +617,68 @@ mod tests {
         assert_eq!(rn.min_memory_mb, 0);
         assert_eq!(rn.min_cpu_shares, 0);
     }
+
+    #[tokio::test]
+    async fn test_register_name_too_long() {
+        let app = test_app();
+        let long_name = "x".repeat(257);
+        let req_body = serde_json::json!({"name": long_name});
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/agents/register")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_heartbeat_partial_update() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        // Register
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/agents/register")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                serde_json::to_vec(&serde_json::json!({"name": "partial-hb"})).unwrap(),
+            ))
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let reg: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let id = reg["id"].as_str().unwrap();
+
+        // Heartbeat with only status (no task, cpu, mem)
+        let hb_body = serde_json::json!({"status": "idle"});
+        let req = Request::builder()
+            .method("POST")
+            .uri(format!("/v1/agents/{}/heartbeat", id))
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&hb_body).unwrap()))
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_list_agents_empty() {
+        let app = test_app();
+        let req = Request::builder()
+            .uri("/v1/agents")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: AgentListResponse = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json.total, 0);
+        assert!(json.agents.is_empty());
+    }
 }

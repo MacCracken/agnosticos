@@ -237,11 +237,11 @@ impl Interpreter {
             }
         }
 
-        if let Some(caps) = self.patterns.get("ps").unwrap().captures(&input_lower) {
+        if let Some(_caps) = self.patterns.get("ps").unwrap().captures(&input_lower) {
             return Intent::ShowProcesses;
         }
 
-        if let Some(caps) = self.patterns.get("sysinfo").unwrap().captures(&input_lower) {
+        if let Some(_caps) = self.patterns.get("sysinfo").unwrap().captures(&input_lower) {
             return Intent::SystemInfo;
         }
 
@@ -366,16 +366,139 @@ impl Interpreter {
                 })
             }
 
-            Intent::Question { query } => Err(anyhow!(
+            Intent::Move {
+                source,
+                destination,
+            } => Ok(Translation {
+                command: "mv".to_string(),
+                args: vec![source.clone(), destination.clone()],
+                description: format!("Move {} to {}", source, destination),
+                permission: PermissionLevel::UserWrite,
+                explanation: "Moves or renames files/directories".to_string(),
+            }),
+
+            Intent::FindFiles { pattern, path } => {
+                let args = vec![
+                    path.clone().unwrap_or_else(|| ".".to_string()),
+                    "-name".to_string(),
+                    pattern.clone(),
+                ];
+                Ok(Translation {
+                    command: "find".to_string(),
+                    args,
+                    description: format!(
+                        "Find files matching '{}'{}",
+                        pattern,
+                        path.as_ref()
+                            .map(|p| format!(" in {}", p))
+                            .unwrap_or_default()
+                    ),
+                    permission: PermissionLevel::ReadOnly,
+                    explanation: "Searches for files by name pattern".to_string(),
+                })
+            }
+
+            Intent::SearchContent { pattern, path } => {
+                let mut args = vec!["-rn".to_string(), pattern.clone()];
+                if let Some(p) = path {
+                    args.push(p.clone());
+                }
+                Ok(Translation {
+                    command: "grep".to_string(),
+                    args,
+                    description: format!(
+                        "Search for '{}' in files{}",
+                        pattern,
+                        path.as_ref()
+                            .map(|p| format!(" under {}", p))
+                            .unwrap_or_default()
+                    ),
+                    permission: PermissionLevel::ReadOnly,
+                    explanation: "Searches file contents for a text pattern".to_string(),
+                })
+            }
+
+            Intent::Remove { path, recursive } => {
+                let mut args = Vec::new();
+                if *recursive {
+                    args.push("-r".to_string());
+                }
+                args.push(path.clone());
+                Ok(Translation {
+                    command: "rm".to_string(),
+                    args,
+                    description: format!(
+                        "Remove {}{}",
+                        path,
+                        if *recursive { " (recursive)" } else { "" }
+                    ),
+                    permission: PermissionLevel::Admin,
+                    explanation: "Deletes files or directories permanently".to_string(),
+                })
+            }
+
+            Intent::KillProcess { pid } => Ok(Translation {
+                command: "kill".to_string(),
+                args: vec![pid.to_string()],
+                description: format!("Kill process {}", pid),
+                permission: PermissionLevel::Admin,
+                explanation: "Sends termination signal to a process".to_string(),
+            }),
+
+            Intent::NetworkInfo => Ok(Translation {
+                command: "ip".to_string(),
+                args: vec!["addr".to_string(), "show".to_string()],
+                description: "Show network interfaces and addresses".to_string(),
+                permission: PermissionLevel::ReadOnly,
+                explanation: "Displays network interface configuration".to_string(),
+            }),
+
+            Intent::DiskUsage { path } => {
+                let mut args = vec!["-h".to_string()];
+                if let Some(p) = path {
+                    args.push(p.clone());
+                }
+                Ok(Translation {
+                    command: "df".to_string(),
+                    args,
+                    description: format!(
+                        "Show disk usage{}",
+                        path.as_ref()
+                            .map(|p| format!(" for {}", p))
+                            .unwrap_or_default()
+                    ),
+                    permission: PermissionLevel::ReadOnly,
+                    explanation: "Shows filesystem disk space usage".to_string(),
+                })
+            }
+
+            Intent::InstallPackage { packages } => {
+                let mut args = vec!["install".to_string(), "-y".to_string()];
+                args.extend(packages.iter().cloned());
+                Ok(Translation {
+                    command: "apt-get".to_string(),
+                    args,
+                    description: format!("Install package(s): {}", packages.join(", ")),
+                    permission: PermissionLevel::SystemWrite,
+                    explanation: "Installs system packages (requires root)".to_string(),
+                })
+            }
+
+            Intent::Ambiguous { alternatives } => Err(anyhow!(
+                "Ambiguous request. Did you mean one of: {}?",
+                alternatives.join(", ")
+            )),
+
+            Intent::Question { query: _ } => Err(anyhow!(
                 "Questions should be handled by LLM, not translated to commands"
             )),
 
-            _ => Err(anyhow!("Cannot translate intent: {:?}", intent)),
+            Intent::Unknown => Err(anyhow!("Cannot translate unknown intent")),
         }
     }
 
     /// Get explanation of what a command does
-    pub fn explain(&self, command: &str, args: &[String]) -> String {
+    pub fn explain(&self, command: &str, _args: &[String]) -> String {
         let cmd = command.to_lowercase();
 
         match cmd.as_str() {
@@ -499,13 +622,15 @@ mod tests {
     }
 
     #[test]
-    fn test_translate_move_not_implemented() {
+    fn test_translate_move() {
         let interpreter = Interpreter::new();
         let intent = Intent::Move {
             source: "/tmp/a".to_string(),
             destination: "/tmp/b".to_string(),
         };
-        assert!(interpreter.translate(&intent).is_err());
+        let translation = interpreter.translate(&intent).unwrap();
+        assert_eq!(translation.command, "mv");
+        assert_eq!(translation.args, vec!["/tmp/a", "/tmp/b"]);
     }
 
     #[test]
@@ -865,73 +990,142 @@ mod tests {
     }
 
     #[test]
-    fn test_translate_find_files_not_implemented() {
+    fn test_translate_find_files() {
         let interpreter = Interpreter::new();
         let intent = Intent::FindFiles {
             pattern: "*.rs".to_string(),
             path: None,
         };
-        // FindFiles falls into the catch-all `_ =>` which returns Err
-        assert!(interpreter.translate(&intent).is_err());
+        let translation = interpreter.translate(&intent).unwrap();
+        assert_eq!(translation.command, "find");
+        assert!(translation.args.contains(&"-name".to_string()));
+        assert!(translation.args.contains(&"*.rs".to_string()));
     }
 
     #[test]
-    fn test_translate_search_content_not_implemented() {
+    fn test_translate_find_files_with_path() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::FindFiles {
+            pattern: "*.rs".to_string(),
+            path: Some("/src".to_string()),
+        };
+        let translation = interpreter.translate(&intent).unwrap();
+        assert_eq!(translation.command, "find");
+        assert_eq!(translation.args[0], "/src");
+    }
+
+    #[test]
+    fn test_translate_search_content() {
         let interpreter = Interpreter::new();
         let intent = Intent::SearchContent {
             pattern: "TODO".to_string(),
             path: Some("/src".to_string()),
         };
-        assert!(interpreter.translate(&intent).is_err());
+        let translation = interpreter.translate(&intent).unwrap();
+        assert_eq!(translation.command, "grep");
+        assert!(translation.args.contains(&"TODO".to_string()));
+        assert!(translation.args.contains(&"/src".to_string()));
     }
 
     #[test]
-    fn test_translate_remove_not_implemented() {
+    fn test_translate_search_content_no_path() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::SearchContent {
+            pattern: "error".to_string(),
+            path: None,
+        };
+        let translation = interpreter.translate(&intent).unwrap();
+        assert_eq!(translation.command, "grep");
+        assert_eq!(translation.args.len(), 2); // -rn + pattern
+    }
+
+    #[test]
+    fn test_translate_remove() {
         let interpreter = Interpreter::new();
         let intent = Intent::Remove {
             path: "/tmp/test".to_string(),
             recursive: true,
         };
-        assert!(interpreter.translate(&intent).is_err());
+        let translation = interpreter.translate(&intent).unwrap();
+        assert_eq!(translation.command, "rm");
+        assert!(translation.args.contains(&"-r".to_string()));
+        assert_eq!(translation.permission, PermissionLevel::Admin);
     }
 
     #[test]
-    fn test_translate_kill_process_not_implemented() {
+    fn test_translate_remove_non_recursive() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::Remove {
+            path: "/tmp/file.txt".to_string(),
+            recursive: false,
+        };
+        let translation = interpreter.translate(&intent).unwrap();
+        assert_eq!(translation.command, "rm");
+        assert!(!translation.args.contains(&"-r".to_string()));
+    }
+
+    #[test]
+    fn test_translate_kill_process() {
         let interpreter = Interpreter::new();
         let intent = Intent::KillProcess { pid: 1234 };
-        assert!(interpreter.translate(&intent).is_err());
+        let translation = interpreter.translate(&intent).unwrap();
+        assert_eq!(translation.command, "kill");
+        assert_eq!(translation.args, vec!["1234"]);
+        assert_eq!(translation.permission, PermissionLevel::Admin);
     }
 
     #[test]
-    fn test_translate_disk_usage_not_implemented() {
+    fn test_translate_disk_usage() {
         let interpreter = Interpreter::new();
         let intent = Intent::DiskUsage { path: Some("/home".to_string()) };
-        assert!(interpreter.translate(&intent).is_err());
+        let translation = interpreter.translate(&intent).unwrap();
+        assert_eq!(translation.command, "df");
+        assert!(translation.args.contains(&"-h".to_string()));
+        assert!(translation.args.contains(&"/home".to_string()));
     }
 
     #[test]
-    fn test_translate_install_package_not_implemented() {
+    fn test_translate_disk_usage_no_path() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::DiskUsage { path: None };
+        let translation = interpreter.translate(&intent).unwrap();
+        assert_eq!(translation.command, "df");
+        assert_eq!(translation.args, vec!["-h"]);
+    }
+
+    #[test]
+    fn test_translate_install_package() {
         let interpreter = Interpreter::new();
         let intent = Intent::InstallPackage {
-            packages: vec!["vim".to_string()],
+            packages: vec!["vim".to_string(), "git".to_string()],
         };
-        assert!(interpreter.translate(&intent).is_err());
+        let translation = interpreter.translate(&intent).unwrap();
+        assert_eq!(translation.command, "apt-get");
+        assert!(translation.args.contains(&"install".to_string()));
+        assert!(translation.args.contains(&"vim".to_string()));
+        assert!(translation.args.contains(&"git".to_string()));
+        assert_eq!(translation.permission, PermissionLevel::SystemWrite);
     }
 
     #[test]
-    fn test_translate_network_info_not_implemented() {
+    fn test_translate_network_info() {
         let interpreter = Interpreter::new();
         let intent = Intent::NetworkInfo;
-        assert!(interpreter.translate(&intent).is_err());
+        let translation = interpreter.translate(&intent).unwrap();
+        assert_eq!(translation.command, "ip");
+        assert!(translation.args.contains(&"addr".to_string()));
+        assert_eq!(translation.permission, PermissionLevel::ReadOnly);
     }
 
     #[test]
-    fn test_translate_ambiguous_not_implemented() {
+    fn test_translate_ambiguous() {
         let interpreter = Interpreter::new();
         let intent = Intent::Ambiguous {
-            alternatives: vec!["a".to_string(), "b".to_string()],
+            alternatives: vec!["list files".to_string(), "list processes".to_string()],
         };
-        assert!(interpreter.translate(&intent).is_err());
+        let err = interpreter.translate(&intent).unwrap_err();
+        assert!(err.to_string().contains("Ambiguous"));
+        assert!(err.to_string().contains("list files"));
     }
 
     #[test]

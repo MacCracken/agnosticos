@@ -946,4 +946,164 @@ mod tests {
         let result = manager.request(&request).await.unwrap();
         assert!(matches!(result, ApprovalResponse::Denied));
     }
+
+    #[test]
+    fn test_display_request_command_no_args() {
+        let manager = ApprovalManager::new();
+        let request = ApprovalRequest::Command {
+            command: "ls".to_string(),
+            args: vec![],
+            reason: "List files".to_string(),
+            risk_level: RiskLevel::Low,
+        };
+        // Should not panic; output goes to stdout
+        assert!(manager.display_request(&request, RiskLevel::Low).is_ok());
+    }
+
+    #[test]
+    fn test_display_request_command_with_args() {
+        let manager = ApprovalManager::new();
+        let request = ApprovalRequest::Command {
+            command: "rm".to_string(),
+            args: vec!["-rf".to_string(), "/tmp/test".to_string()],
+            reason: "Remove temp files".to_string(),
+            risk_level: RiskLevel::High,
+        };
+        assert!(manager.display_request(&request, RiskLevel::High).is_ok());
+    }
+
+    #[test]
+    fn test_display_request_privilege_escalation() {
+        let manager = ApprovalManager::new();
+        let request = ApprovalRequest::PrivilegeEscalation {
+            command: "systemctl restart nginx".to_string(),
+            user: "root".to_string(),
+            reason: "Restart web server".to_string(),
+        };
+        assert!(manager.display_request(&request, RiskLevel::Critical).is_ok());
+    }
+
+    #[test]
+    fn test_display_request_file_operation() {
+        let manager = ApprovalManager::new();
+        let request = ApprovalRequest::FileOperation {
+            operation: "write".to_string(),
+            path: std::path::PathBuf::from("/etc/config.toml"),
+            description: "Update configuration".to_string(),
+        };
+        assert!(manager.display_request(&request, RiskLevel::High).is_ok());
+    }
+
+    #[test]
+    fn test_display_request_network_access() {
+        let manager = ApprovalManager::new();
+        let request = ApprovalRequest::NetworkAccess {
+            host: "api.example.com".to_string(),
+            port: 443,
+            protocol: "https".to_string(),
+            purpose: "Fetch model weights".to_string(),
+        };
+        assert!(manager.display_request(&request, RiskLevel::Medium).is_ok());
+    }
+
+    #[test]
+    fn test_display_request_batch_small() {
+        let manager = ApprovalManager::new();
+        let request = ApprovalRequest::Batch {
+            operations: vec!["op1".to_string(), "op2".to_string(), "op3".to_string()],
+            summary: "Batch of 3 operations".to_string(),
+        };
+        assert!(manager.display_request(&request, RiskLevel::Medium).is_ok());
+    }
+
+    #[test]
+    fn test_display_request_batch_large_truncates() {
+        let manager = ApprovalManager::new();
+        let ops: Vec<String> = (0..10).map(|i| format!("operation_{}", i)).collect();
+        let request = ApprovalRequest::Batch {
+            operations: ops,
+            summary: "Batch of 10 operations".to_string(),
+        };
+        // Should display first 5 + "...and 5 more"
+        assert!(manager.display_request(&request, RiskLevel::High).is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_request_blocked_privilege_escalation() {
+        let mut manager = ApprovalManager::new();
+        manager.block_pattern("sudo".to_string());
+
+        let request = ApprovalRequest::PrivilegeEscalation {
+            command: "sudo systemctl".to_string(),
+            user: "root".to_string(),
+            reason: "Admin".to_string(),
+        };
+        let result = manager.request(&request).await.unwrap();
+        assert!(matches!(result, ApprovalResponse::Denied));
+    }
+
+    #[tokio::test]
+    async fn test_request_non_interactive_high_risk_denies() {
+        let manager = ApprovalManager::new();
+        // High risk, non-interactive → should deny
+        let request = ApprovalRequest::PrivilegeEscalation {
+            command: "passwd root".to_string(),
+            user: "root".to_string(),
+            reason: "Change root password".to_string(),
+        };
+        let result = manager.request(&request).await.unwrap();
+        assert!(matches!(result, ApprovalResponse::Denied));
+    }
+
+    #[tokio::test]
+    async fn test_request_auto_approve_disabled_for_non_low() {
+        let mut manager = ApprovalManager::new();
+        manager.set_auto_approve_low_risk(true);
+
+        // Medium risk should NOT be auto-approved
+        let request = ApprovalRequest::Command {
+            command: "wget".to_string(),
+            args: vec!["https://example.com".to_string()],
+            reason: "Download".to_string(),
+            risk_level: RiskLevel::Medium,
+        };
+
+        // In non-interactive (test), still gets denied
+        let result = manager.request(&request).await.unwrap();
+        assert!(matches!(result, ApprovalResponse::Denied));
+    }
+
+    #[test]
+    fn test_block_multiple_patterns_and_check() {
+        let mut manager = ApprovalManager::new();
+        manager.block_pattern("rm".to_string());
+        manager.block_pattern("dd".to_string());
+        manager.block_pattern("mkfs".to_string());
+
+        assert_eq!(manager.blocked_patterns.len(), 3);
+
+        let rm_req = ApprovalRequest::Command {
+            command: "rm -rf /".to_string(),
+            args: vec![],
+            reason: "test".to_string(),
+            risk_level: RiskLevel::Critical,
+        };
+        assert!(manager.is_blocked(&rm_req));
+
+        let dd_req = ApprovalRequest::Command {
+            command: "dd if=/dev/zero".to_string(),
+            args: vec![],
+            reason: "test".to_string(),
+            risk_level: RiskLevel::Critical,
+        };
+        assert!(manager.is_blocked(&dd_req));
+
+        let safe_req = ApprovalRequest::Command {
+            command: "ls -la".to_string(),
+            args: vec![],
+            reason: "test".to_string(),
+            risk_level: RiskLevel::Low,
+        };
+        assert!(!manager.is_blocked(&safe_req));
+    }
 }

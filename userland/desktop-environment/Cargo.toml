@@ -25,7 +25,7 @@ uuid = { workspace = true, features = ["v4", "serde"] }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
-tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }
 clap = { workspace = true, features = ["derive"] }
 chrono = { workspace = true, features = ["serde"] }
 dashmap = { workspace = true }
@@ -35,12 +35,6 @@ reqwest = { workspace = true, features = ["json", "blocking"] }
 
 [dev-dependencies]
 tokio-test = "0.4"
-
-[features]
-default = ["wayland", "ai"]
-
-wayland = []
-ai = []
 
 [profile.release]
 opt-level = 3

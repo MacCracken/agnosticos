@@ -1,5 +1,5 @@
 use agent_runtime::agent::AgentHandle;
-use agent_runtime::orchestrator::{Task, TaskPriority, TaskResult};
+use agent_runtime::orchestrator::{Task, TaskPriority, TaskRequirements, TaskResult};
 use agent_runtime::registry::AgentRegistry;
 use agnos_common::{AgentConfig, AgentId, AgentStatus, AgentType, ResourceLimits, SandboxConfig};
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
@@ -38,6 +38,7 @@ fn benchmark_orchestrator_task_creation(c: &mut Criterion) {
                 created_at: chrono::Utc::now(),
                 deadline: None,
                 dependencies: vec![],
+                requirements: TaskRequirements::default(),
             };
             black_box(task);
         });
@@ -121,6 +122,7 @@ fn benchmark_agent_handle_creation(c: &mut Criterion) {
                 created_at: chrono::Utc::now(),
                 started_at: None,
                 resource_usage: agnos_common::ResourceUsage::default(),
+                pid: None,
             };
             black_box(handle);
         });

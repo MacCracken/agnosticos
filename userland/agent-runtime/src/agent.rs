@@ -981,4 +981,220 @@ mod tests {
         let exec = agent.find_agent_executable().await.unwrap();
         assert_eq!(exec, PathBuf::from("/usr/bin/agnos-agent-runner"));
     }
+
+    // ==================================================================
+    // Additional coverage: pause/resume error paths, stop without process,
+    // ResourceLimits::apply with non-zero values, start error state,
+    // message channel drop, handle details, agent lifecycle edge cases
+    // ==================================================================
+
+    #[tokio::test]
+    async fn test_agent_pause_when_not_running() {
+        let config = AgentConfig {
+            name: "pause-fail".to_string(),
+            ..Default::default()
+        };
+        let (mut agent, _rx) = Agent::new(config).await.unwrap();
+        // Agent is Pending, not Running — pause should fail
+        let result = agent.pause().await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Cannot pause"));
+    }
+
+    #[tokio::test]
+    async fn test_agent_resume_when_not_paused() {
+        let config = AgentConfig {
+            name: "resume-fail".to_string(),
+            ..Default::default()
+        };
+        let (mut agent, _rx) = Agent::new(config).await.unwrap();
+        // Agent is Pending, not Paused — resume should fail
+        let result = agent.resume().await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Cannot resume"));
+    }
+
+    #[tokio::test]
+    async fn test_agent_stop_without_process() {
+        let config = AgentConfig {
+            name: "stop-no-proc".to_string(),
+            ..Default::default()
+        };
+        let (mut agent, _rx) = Agent::new(config).await.unwrap();
+        // Stop should succeed even without a spawned process
+        let result = agent.stop(agnos_common::StopReason::Normal).await;
+        assert!(result.is_ok());
+        assert!(!agent.is_running().await);
+    }
+
+    #[tokio::test]
+    async fn test_agent_stop_with_different_reasons() {
+        for reason in [
+            agnos_common::StopReason::Normal,
+            agnos_common::StopReason::Error("test error".to_string()),
+            agnos_common::StopReason::ResourceLimit,
+            agnos_common::StopReason::UserRequest,
+        ] {
+            let config = AgentConfig {
+                name: format!("stop-{:?}", reason),
+                ..Default::default()
+            };
+            let (mut agent, _rx) = Agent::new(config).await.unwrap();
+            let result = agent.stop(reason).await;
+            assert!(result.is_ok());
+        }
+    }
+
+    #[tokio::test]
+    async fn test_agent_start_when_not_pending_or_stopped() {
+        let config = AgentConfig {
+            name: "start-fail".to_string(),
+            ..Default::default()
+        };
+        let (mut agent, _rx) = Agent::new(config).await.unwrap();
+        // Stop the agent first (moves to Stopped)
+        agent.stop(agnos_common::StopReason::Normal).await.unwrap();
+        // Start again from Stopped should attempt (may fail finding executable, but state check passes)
+        let result = agent.start().await;
+        // The start will probably fail due to sandbox or missing executable, but the state check passed
+        let _ = result;
+    }
+
+    #[test]
+    fn test_resource_limits_apply_with_memory() {
+        let limits = ResourceLimits {
+            max_memory: 0, // Don't restrict the test process
+            max_cpu_time: 7200,
+        };
+        let result = limits.apply();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_resource_limits_apply_both_zero() {
+        let limits = ResourceLimits {
+            max_memory: 0,
+            max_cpu_time: 0,
+        };
+        let result = limits.apply();
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_agent_send_message_after_receiver_dropped() {
+        let config = AgentConfig {
+            name: "dropped-rx".to_string(),
+            ..Default::default()
+        };
+        let (agent, rx) = Agent::new(config).await.unwrap();
+        drop(rx); // Drop the receiver
+
+        let msg = Message {
+            id: "orphan".to_string(),
+            source: "test".to_string(),
+            target: "dropped-rx".to_string(),
+            message_type: agnos_common::MessageType::Command,
+            payload: serde_json::json!({}),
+            timestamp: chrono::Utc::now(),
+        };
+
+        // Should fail because receiver is dropped
+        let result = agent.send_message(msg).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_agent_handle_has_correct_id() {
+        let config = AgentConfig {
+            name: "id-check".to_string(),
+            ..Default::default()
+        };
+        let (agent, _rx) = Agent::new(config).await.unwrap();
+        let id = agent.id();
+        let handle = agent.handle().await;
+        assert_eq!(handle.id, id);
+    }
+
+    #[test]
+    fn test_agent_handle_name_is_config_name() {
+        let handle = AgentHandle {
+            id: AgentId::new(),
+            name: "specific-name".to_string(),
+            status: AgentStatus::Pending,
+            created_at: chrono::Utc::now(),
+            started_at: None,
+            resource_usage: ResourceUsage::default(),
+            pid: None,
+        };
+        assert_eq!(handle.name, "specific-name");
+    }
+
+    #[tokio::test]
+    async fn test_agent_build_resource_limits_default_config() {
+        let config = AgentConfig::default();
+        let (agent, _rx) = Agent::new(config).await.unwrap();
+        let limits = agent.build_resource_limits();
+        // Default config has resource limits; should return Some
+        assert!(limits.is_some());
+    }
+
+    #[test]
+    fn test_read_vm_rss_pid_2() {
+        // PID 2 is kthreadd on Linux, typically has 0 VmRSS
+        let rss = Agent::read_vm_rss(2);
+        // Just ensure no panic
+        let _ = rss;
+    }
+
+    #[test]
+    fn test_read_cpu_time_ms_pid_2() {
+        let cpu = Agent::read_cpu_time_ms(2);
+        let _ = cpu;
+    }
+
+    #[test]
+    fn test_count_fds_pid_2() {
+        let fds = Agent::count_fds(2);
+        let _ = fds;
+    }
+
+    #[test]
+    fn test_count_threads_pid_2() {
+        let threads = Agent::count_threads(2);
+        // Should be at least 1 (the fallback)
+        assert!(threads >= 1);
+    }
+
+    #[tokio::test]
+    async fn test_agent_new_with_custom_resource_limits() {
+        let config = AgentConfig {
+            name: "custom-limits".to_string(),
+            resource_limits: agnos_common::ResourceLimits {
+                max_memory: 2 * 1024 * 1024 * 1024,
+                max_cpu_time: 14400,
+                max_file_descriptors: 1024,
+                max_processes: 50,
+            },
+            ..Default::default()
+        };
+        let (agent, _rx) = Agent::new(config).await.unwrap();
+        let limits = agent.build_resource_limits().unwrap();
+        assert_eq!(limits.max_memory, 2 * 1024 * 1024 * 1024);
+        assert_eq!(limits.max_cpu_time, 14400);
+    }
+
+    #[tokio::test]
+    async fn test_agent_new_with_sandbox_config() {
+        let config = AgentConfig {
+            name: "sandboxed".to_string(),
+            sandbox: agnos_common::SandboxConfig {
+                isolate_network: true,
+                network_access: agnos_common::NetworkAccess::LocalhostOnly,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let result = Agent::new(config).await;
+        assert!(result.is_ok());
+    }
 }

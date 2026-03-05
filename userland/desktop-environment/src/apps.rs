@@ -1900,4 +1900,146 @@ mod tests {
         let results = fm.search_with_agent("anything".to_string()).unwrap();
         assert_eq!(results.len(), 1);
     }
+
+    #[test]
+    fn test_filter_cutoff_last_hour() {
+        let mut av = AuditViewerApp::new();
+        av.filters.time_range = TimeRange::LastHour;
+        let cutoff = av.filter_cutoff();
+        assert!(cutoff.is_some());
+        let diff = chrono::Utc::now() - cutoff.unwrap();
+        // Should be ~1 hour (3600 seconds ± tolerance)
+        assert!(diff.num_seconds() >= 3590 && diff.num_seconds() <= 3610);
+    }
+
+    #[test]
+    fn test_filter_cutoff_last_day() {
+        let mut av = AuditViewerApp::new();
+        av.filters.time_range = TimeRange::LastDay;
+        let cutoff = av.filter_cutoff();
+        assert!(cutoff.is_some());
+        let diff = chrono::Utc::now() - cutoff.unwrap();
+        assert!(diff.num_hours() >= 23 && diff.num_hours() <= 25);
+    }
+
+    #[test]
+    fn test_filter_cutoff_last_week() {
+        let mut av = AuditViewerApp::new();
+        av.filters.time_range = TimeRange::LastWeek;
+        let cutoff = av.filter_cutoff();
+        assert!(cutoff.is_some());
+        let diff = chrono::Utc::now() - cutoff.unwrap();
+        assert!(diff.num_days() >= 6 && diff.num_days() <= 8);
+    }
+
+    #[test]
+    fn test_filter_cutoff_custom_returns_none() {
+        let mut av = AuditViewerApp::new();
+        av.filters.time_range = TimeRange::Custom;
+        let cutoff = av.filter_cutoff();
+        assert!(cutoff.is_none());
+    }
+
+    #[test]
+    fn test_audit_viewer_filters_category() {
+        // Test that filter flags are stored correctly
+        let mut av = AuditViewerApp::new();
+        av.filters.include_agent = false;
+        av.filters.include_security = false;
+        av.filters.include_system = true;
+        assert!(!av.filters.include_agent);
+        assert!(!av.filters.include_security);
+        assert!(av.filters.include_system);
+    }
+
+    #[test]
+    fn test_model_manager_select_existing_model() {
+        let mut mm = ModelManagerApp::new();
+        mm.installed_models.push(ModelInfo {
+            id: "gpt-4".to_string(),
+            name: "GPT-4".to_string(),
+            size: 0,
+            provider: "openai".to_string(),
+            is_downloaded: true,
+        });
+        mm.installed_models.push(ModelInfo {
+            id: "llama3".to_string(),
+            name: "Llama 3".to_string(),
+            size: 8_000_000_000,
+            provider: "ollama".to_string(),
+            is_downloaded: true,
+        });
+        // Select first model
+        mm.select_model("gpt-4".to_string()).unwrap();
+        assert_eq!(mm.active_model.as_deref(), Some("gpt-4"));
+        // Switch to second
+        mm.select_model("llama3".to_string()).unwrap();
+        assert_eq!(mm.active_model.as_deref(), Some("llama3"));
+    }
+
+    #[test]
+    fn test_desktop_close_nonexistent_window() {
+        let apps = DesktopApplications::new();
+        let result = apps.close_window(Uuid::new_v4());
+        assert!(result.is_ok()); // no-op
+    }
+
+    #[test]
+    fn test_desktop_open_all_window_types() {
+        let apps = DesktopApplications::new();
+        let t = apps.open_terminal().unwrap();
+        assert_eq!(t.app_type, AppType::Terminal);
+        let fm = apps.open_file_manager(None).unwrap();
+        assert_eq!(fm.app_type, AppType::FileManager);
+        let am = apps.open_agent_manager().unwrap();
+        assert_eq!(am.app_type, AppType::AgentManager);
+        assert!(am.is_ai_enabled);
+        let av = apps.open_audit_viewer().unwrap();
+        assert_eq!(av.app_type, AppType::AuditViewer);
+        assert!(av.is_ai_enabled);
+        let mm = apps.open_model_manager().unwrap();
+        assert_eq!(mm.app_type, AppType::ModelManager);
+        assert!(mm.is_ai_enabled);
+        assert_eq!(apps.get_open_windows().len(), 5);
+    }
+
+    #[test]
+    fn test_terminal_app_fields() {
+        let t = TerminalApp::new();
+        assert_eq!(t.id, "terminal");
+        assert_eq!(t.name, "AGNOS Terminal");
+        assert!(t.ai_integration);
+    }
+
+    #[test]
+    fn test_file_manager_fields() {
+        let fm = FileManagerApp::new();
+        assert_eq!(fm.id, "filemanager");
+        assert_eq!(fm.name, "File Manager");
+        assert_eq!(fm.current_path, "/home");
+        assert!(fm.agent_assistance);
+    }
+
+    #[test]
+    fn test_agent_manager_fields() {
+        let am = AgentManagerApp::new();
+        assert_eq!(am.id, "agent-manager");
+        assert_eq!(am.name, "Agent Manager");
+    }
+
+    #[test]
+    fn test_audit_viewer_fields() {
+        let av = AuditViewerApp::new();
+        assert_eq!(av.id, "audit-viewer");
+        assert_eq!(av.name, "Audit Log Viewer");
+        assert!(matches!(av.filters.time_range, TimeRange::LastDay));
+    }
+
+    #[test]
+    fn test_model_manager_fields() {
+        let mm = ModelManagerApp::new();
+        assert_eq!(mm.id, "model-manager");
+        assert_eq!(mm.name, "Model Manager");
+    }
+
 }

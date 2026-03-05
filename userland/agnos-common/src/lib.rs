@@ -372,4 +372,151 @@ mod tests {
         let permission = AgnosError::PermissionDenied("test".to_string());
         assert!(!permission.is_retriable());
     }
+
+    #[test]
+    fn test_user_id_generation() {
+        let id1 = UserId::new();
+        let id2 = UserId::new();
+        assert_ne!(id1, id2);
+    }
+
+    #[test]
+    fn test_user_id_default() {
+        let id = UserId::default();
+        let _ = id.0;
+    }
+
+    #[test]
+    fn test_agent_id_display() {
+        let id = AgentId::new();
+        let display = format!("{}", id);
+        assert!(!display.is_empty());
+        assert_eq!(display.len(), 36); // UUID format
+    }
+
+    #[test]
+    fn test_agent_id_default() {
+        let id = AgentId::default();
+        let _ = id.0;
+    }
+
+    #[test]
+    fn test_network_policy_default() {
+        let policy = NetworkPolicy::default();
+        assert_eq!(policy.allowed_outbound_ports, vec![80, 443]);
+        assert!(policy.allowed_outbound_hosts.is_empty());
+        assert!(policy.allowed_inbound_ports.is_empty());
+        assert!(policy.enable_nat);
+    }
+
+    #[test]
+    fn test_encrypted_storage_config_default() {
+        let config = EncryptedStorageConfig::default();
+        assert!(!config.enabled);
+        assert_eq!(config.size_mb, 256);
+        assert_eq!(config.filesystem, "ext4");
+    }
+
+    #[test]
+    fn test_sandbox_config_default() {
+        let config = SandboxConfig::default();
+        assert_eq!(config.filesystem_rules.len(), 1);
+        assert_eq!(config.network_access, NetworkAccess::LocalhostOnly);
+        assert!(config.seccomp_rules.is_empty());
+        assert!(config.isolate_network);
+        assert!(config.network_policy.is_none());
+        assert!(config.mac_profile.is_none());
+        assert!(config.encrypted_storage.is_none());
+    }
+
+    #[test]
+    fn test_agent_config_default() {
+        let config = AgentConfig::default();
+        assert!(config.name.is_empty());
+        assert_eq!(config.agent_type, AgentType::User);
+        assert!(config.permissions.is_empty());
+    }
+
+    #[test]
+    fn test_agent_type_default() {
+        assert_eq!(AgentType::default(), AgentType::User);
+    }
+
+    #[test]
+    fn test_resource_usage_default() {
+        let usage = ResourceUsage::default();
+        assert_eq!(usage.memory_used, 0);
+        assert_eq!(usage.cpu_time_used, 0);
+        assert_eq!(usage.file_descriptors_used, 0);
+        assert_eq!(usage.processes_used, 0);
+    }
+
+    #[test]
+    fn test_fs_access_variants() {
+        assert_ne!(FsAccess::NoAccess, FsAccess::ReadOnly);
+        assert_ne!(FsAccess::ReadOnly, FsAccess::ReadWrite);
+    }
+
+    #[test]
+    fn test_network_access_variants() {
+        assert_ne!(NetworkAccess::None, NetworkAccess::Full);
+        assert_ne!(NetworkAccess::LocalhostOnly, NetworkAccess::Restricted);
+    }
+
+    #[test]
+    fn test_seccomp_action_variants() {
+        assert_ne!(SeccompAction::Allow, SeccompAction::Deny);
+        assert_ne!(SeccompAction::Deny, SeccompAction::Trap);
+    }
+
+    #[test]
+    fn test_permission_variants() {
+        assert_ne!(Permission::FileRead, Permission::FileWrite);
+        assert_ne!(Permission::NetworkAccess, Permission::ProcessSpawn);
+    }
+
+    #[test]
+    fn test_agent_status_variants() {
+        assert_ne!(AgentStatus::Pending, AgentStatus::Running);
+        assert_ne!(AgentStatus::Running, AgentStatus::Stopped);
+        assert_ne!(AgentStatus::Failed, AgentStatus::Paused);
+    }
+
+    #[test]
+    fn test_sandbox_config_serialization() {
+        let config = SandboxConfig::default();
+        let json = serde_json::to_string(&config).unwrap();
+        let deserialized: SandboxConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.filesystem_rules.len(), 1);
+        assert_eq!(deserialized.network_access, NetworkAccess::LocalhostOnly);
+    }
+
+    #[test]
+    fn test_network_policy_serialization() {
+        let policy = NetworkPolicy {
+            allowed_outbound_ports: vec![8080],
+            allowed_outbound_hosts: vec!["example.com".to_string()],
+            allowed_inbound_ports: vec![3000],
+            enable_nat: false,
+        };
+        let json = serde_json::to_string(&policy).unwrap();
+        let deserialized: NetworkPolicy = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.allowed_outbound_ports, vec![8080]);
+        assert!(!deserialized.enable_nat);
+    }
+
+    #[test]
+    fn test_agent_config_serialization() {
+        let config = AgentConfig {
+            name: "test-agent".to_string(),
+            agent_type: AgentType::Service,
+            resource_limits: ResourceLimits::default(),
+            sandbox: SandboxConfig::default(),
+            permissions: vec![Permission::FileRead, Permission::LlmInference],
+            metadata: serde_json::json!({"version": "1.0"}),
+        };
+        let json = serde_json::to_string(&config).unwrap();
+        assert!(json.contains("test-agent"));
+        assert!(json.contains("Service"));
+    }
 }

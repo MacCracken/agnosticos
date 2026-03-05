@@ -214,14 +214,58 @@ mod tests {
     #[tokio::test]
     async fn test_multiple_agents() {
         let accounting = TokenAccounting::new();
-        
+
         let agent1 = AgentId::new();
         let agent2 = AgentId::new();
-        
+
         accounting.record_usage(agent1, TokenUsage { prompt_tokens: 100, completion_tokens: 200, total_tokens: 300 }).await;
         accounting.record_usage(agent2, TokenUsage { prompt_tokens: 50, completion_tokens: 100, total_tokens: 150 }).await;
-        
+
         let total = accounting.get_total_usage().await;
         assert_eq!(total.total_tokens, 450);
+    }
+
+    #[tokio::test]
+    async fn test_stats() {
+        let accounting = TokenAccounting::new();
+        let agent1 = AgentId::new();
+        let agent2 = AgentId::new();
+
+        accounting.record_usage(agent1, TokenUsage { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 }).await;
+        accounting.record_usage(agent2, TokenUsage { prompt_tokens: 5, completion_tokens: 15, total_tokens: 20 }).await;
+
+        let stats = accounting.stats().await;
+        assert_eq!(stats.total_agents, 2);
+        assert_eq!(stats.total_prompt_tokens, 15);
+        assert_eq!(stats.total_completion_tokens, 35);
+        assert_eq!(stats.total_tokens, 50);
+    }
+
+    #[tokio::test]
+    async fn test_default() {
+        let accounting = TokenAccounting::default();
+        let stats = accounting.stats().await;
+        assert_eq!(stats.total_agents, 0);
+    }
+
+    #[tokio::test]
+    async fn test_get_usage_nonexistent() {
+        let accounting = TokenAccounting::new();
+        let usage = accounting.get_usage(AgentId::new()).await;
+        assert!(usage.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_accumulate_usage_same_agent() {
+        let accounting = TokenAccounting::new();
+        let agent = AgentId::new();
+
+        accounting.record_usage(agent, TokenUsage { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 }).await;
+        accounting.record_usage(agent, TokenUsage { prompt_tokens: 5, completion_tokens: 10, total_tokens: 15 }).await;
+
+        let usage = accounting.get_usage(agent).await.unwrap();
+        assert_eq!(usage.prompt_tokens, 15);
+        assert_eq!(usage.completion_tokens, 30);
+        assert_eq!(usage.total_tokens, 45);
     }
 }

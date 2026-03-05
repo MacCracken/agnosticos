@@ -915,4 +915,541 @@ mod tests {
 
         teardown_agent_volume(&config.name).unwrap();
     }
+
+    // --- Additional coverage tests ---
+
+    #[test]
+    fn test_luks_config_default_all_fields() {
+        let config = LuksConfig::default();
+        assert_eq!(config.name, "");
+        assert_eq!(config.backing_path, PathBuf::new());
+        assert_eq!(config.size_mb, 256);
+        assert_eq!(config.mount_point, PathBuf::new());
+        assert_eq!(config.filesystem, LuksFilesystem::Ext4);
+        assert_eq!(config.key_size_bits, 512);
+        assert_eq!(config.pbkdf, LuksPbkdf::Argon2id);
+        assert_eq!(config.cipher.algorithm, "aes");
+        assert_eq!(config.cipher.mode, "xts-plain64");
+    }
+
+    #[test]
+    fn test_luks_config_for_agent_paths() {
+        let config = LuksConfig::for_agent("my-agent", 64);
+        assert_eq!(
+            config.backing_path,
+            PathBuf::from("/var/lib/agnos/agents/my-agent/volume.img")
+        );
+        assert_eq!(
+            config.mount_point,
+            PathBuf::from("/var/lib/agnos/agents/my-agent/data")
+        );
+        assert_eq!(config.pbkdf, LuksPbkdf::Argon2id);
+        assert_eq!(config.cipher.algorithm, "aes");
+        assert_eq!(config.cipher.mode, "xts-plain64");
+    }
+
+    #[test]
+    fn test_luks_config_validate_name_too_long() {
+        let config = LuksConfig {
+            name: "a".repeat(129),
+            ..LuksConfig::for_agent("x", 64)
+        };
+        let err = config.validate().unwrap_err();
+        let msg = format!("{}", err);
+        assert!(msg.contains("too long"), "Expected 'too long' in: {}", msg);
+    }
+
+    #[test]
+    fn test_luks_config_validate_name_exactly_128() {
+        let config = LuksConfig {
+            name: "a".repeat(128),
+            ..LuksConfig::for_agent("x", 64)
+        };
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_luks_config_validate_size_too_large() {
+        let config = LuksConfig {
+            size_mb: 1024 * 1024 + 1,
+            ..LuksConfig::for_agent("x", 64)
+        };
+        let err = config.validate().unwrap_err();
+        let msg = format!("{}", err);
+        assert!(msg.contains("maximum size"), "Expected 'maximum size' in: {}", msg);
+    }
+
+    #[test]
+    fn test_luks_config_validate_size_exactly_4mb() {
+        let config = LuksConfig {
+            size_mb: 4,
+            ..LuksConfig::for_agent("x", 64)
+        };
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_luks_config_validate_size_exactly_1tb() {
+        let config = LuksConfig {
+            size_mb: 1024 * 1024,
+            ..LuksConfig::for_agent("x", 64)
+        };
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_luks_config_validate_key_size_256_valid() {
+        let config = LuksConfig {
+            key_size_bits: 256,
+            ..LuksConfig::for_agent("x", 64)
+        };
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_luks_config_validate_bad_key_size_error_msg() {
+        let config = LuksConfig {
+            key_size_bits: 1024,
+            ..LuksConfig::for_agent("x", 64)
+        };
+        let err = config.validate().unwrap_err();
+        let msg = format!("{}", err);
+        assert!(msg.contains("1024"), "Expected '1024' in: {}", msg);
+        assert!(msg.contains("256 or 512"), "Expected '256 or 512' in: {}", msg);
+    }
+
+    #[test]
+    fn test_luks_config_validate_invalid_chars_error_msg() {
+        let config = LuksConfig {
+            name: "bad/name".to_string(),
+            ..LuksConfig::for_agent("x", 64)
+        };
+        let err = config.validate().unwrap_err();
+        let msg = format!("{}", err);
+        assert!(msg.contains("invalid characters"), "Expected 'invalid characters' in: {}", msg);
+        assert!(msg.contains("bad/name"), "Expected name in error: {}", msg);
+    }
+
+    #[test]
+    fn test_luks_config_validate_name_with_dots() {
+        let config = LuksConfig {
+            name: "has.dot".to_string(),
+            ..LuksConfig::for_agent("x", 64)
+        };
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_luks_config_validate_name_with_underscore() {
+        let config = LuksConfig {
+            name: "has_underscore".to_string(),
+            ..LuksConfig::for_agent("x", 64)
+        };
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_luks_filesystem_display() {
+        assert_eq!(format!("{}", LuksFilesystem::Ext4), "ext4");
+        assert_eq!(format!("{}", LuksFilesystem::Xfs), "xfs");
+        assert_eq!(format!("{}", LuksFilesystem::Btrfs), "btrfs");
+    }
+
+    #[test]
+    fn test_luks_filesystem_clone_copy_eq() {
+        let fs = LuksFilesystem::Xfs;
+        let fs2 = fs; // Copy
+        let fs3 = fs.clone(); // Clone
+        assert_eq!(fs, fs2);
+        assert_eq!(fs, fs3);
+        assert_ne!(fs, LuksFilesystem::Ext4);
+    }
+
+    #[test]
+    fn test_luks_cipher_custom() {
+        let cipher = LuksCipher {
+            algorithm: "serpent".to_string(),
+            mode: "cbc-essiv".to_string(),
+        };
+        assert_eq!(cipher.as_cryptsetup_str(), "serpent-cbc-essiv");
+    }
+
+    #[test]
+    fn test_luks_cipher_clone() {
+        let c1 = LuksCipher::default();
+        let c2 = c1.clone();
+        assert_eq!(c2.algorithm, "aes");
+        assert_eq!(c2.mode, "xts-plain64");
+    }
+
+    #[test]
+    fn test_luks_cipher_debug() {
+        let cipher = LuksCipher::default();
+        let debug = format!("{:?}", cipher);
+        assert!(debug.contains("aes"));
+        assert!(debug.contains("xts-plain64"));
+    }
+
+    #[test]
+    fn test_luks_pbkdf_clone_copy_eq() {
+        let p1 = LuksPbkdf::Argon2id;
+        let p2 = p1; // Copy
+        let p3 = p1.clone(); // Clone
+        assert_eq!(p1, p2);
+        assert_eq!(p1, p3);
+        assert_ne!(p1, LuksPbkdf::Pbkdf2);
+    }
+
+    #[test]
+    fn test_luks_status_none_mount_point() {
+        let status = LuksStatus {
+            name: "test-vol".to_string(),
+            is_open: false,
+            is_mounted: false,
+            backing_path: PathBuf::from("/tmp/vol.img"),
+            mount_point: None,
+            cipher: "aes-xts-plain64".to_string(),
+            key_size_bits: 256,
+        };
+        assert!(!status.is_open);
+        assert!(!status.is_mounted);
+        assert!(status.mount_point.is_none());
+        assert_eq!(status.key_size_bits, 256);
+    }
+
+    #[test]
+    fn test_luks_status_clone() {
+        let status = LuksStatus {
+            name: "vol".to_string(),
+            is_open: true,
+            is_mounted: false,
+            backing_path: PathBuf::from("/a"),
+            mount_point: Some(PathBuf::from("/b")),
+            cipher: "aes-xts-plain64".to_string(),
+            key_size_bits: 512,
+        };
+        let cloned = status.clone();
+        assert_eq!(cloned.name, "vol");
+        assert!(cloned.is_open);
+        assert!(!cloned.is_mounted);
+        assert_eq!(cloned.mount_point, Some(PathBuf::from("/b")));
+    }
+
+    #[test]
+    fn test_luks_status_debug() {
+        let status = LuksStatus {
+            name: "dbg".to_string(),
+            is_open: true,
+            is_mounted: true,
+            backing_path: PathBuf::from("/x"),
+            mount_point: Some(PathBuf::from("/y")),
+            cipher: "aes-xts-plain64".to_string(),
+            key_size_bits: 512,
+        };
+        let debug = format!("{:?}", status);
+        assert!(debug.contains("dbg"));
+        assert!(debug.contains("true"));
+    }
+
+    #[test]
+    fn test_luks_status_json_roundtrip_none_mount() {
+        let status = LuksStatus {
+            name: "roundtrip".to_string(),
+            is_open: false,
+            is_mounted: false,
+            backing_path: PathBuf::from("/tmp/rt.img"),
+            mount_point: None,
+            cipher: "serpent-cbc-essiv".to_string(),
+            key_size_bits: 256,
+        };
+        let json = serde_json::to_string(&status).unwrap();
+        assert!(json.contains("\"mount_point\":null"));
+        let de: LuksStatus = serde_json::from_str(&json).unwrap();
+        assert_eq!(de.name, "roundtrip");
+        assert!(de.mount_point.is_none());
+        assert_eq!(de.cipher, "serpent-cbc-essiv");
+        assert_eq!(de.key_size_bits, 256);
+    }
+
+    #[test]
+    fn test_luks_config_serialization_roundtrip() {
+        let config = LuksConfig::for_agent("ser-test", 128);
+        let json = serde_json::to_string(&config).unwrap();
+        let de: LuksConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(de.name, "agnos-agent-ser-test");
+        assert_eq!(de.size_mb, 128);
+        assert_eq!(de.key_size_bits, 512);
+        assert_eq!(de.filesystem, LuksFilesystem::Ext4);
+        assert_eq!(de.pbkdf, LuksPbkdf::Argon2id);
+        assert_eq!(de.cipher.algorithm, "aes");
+    }
+
+    #[test]
+    fn test_luks_key_from_passphrase_utf8() {
+        let key = LuksKey::from_passphrase("héllo wörld 🔑").unwrap();
+        assert_eq!(key.as_bytes(), "héllo wörld 🔑".as_bytes());
+        assert!(!key.is_empty());
+        assert!(key.len() > 0);
+    }
+
+    #[test]
+    fn test_luks_key_from_bytes_single_byte() {
+        let key = LuksKey::from_bytes(vec![42]).unwrap();
+        assert_eq!(key.len(), 1);
+        assert_eq!(key.as_bytes(), &[42]);
+    }
+
+    #[test]
+    fn test_luks_key_generate_boundary_1024() {
+        let key = LuksKey::generate(1024).unwrap();
+        assert_eq!(key.len(), 1024);
+    }
+
+    #[test]
+    fn test_luks_key_generate_boundary_1025() {
+        let err = LuksKey::generate(1025).unwrap_err();
+        let msg = format!("{}", err);
+        assert!(msg.contains("too large"), "Expected 'too large' in: {}", msg);
+    }
+
+    #[test]
+    fn test_luks_key_generate_size_1() {
+        let key = LuksKey::generate(1).unwrap();
+        assert_eq!(key.len(), 1);
+    }
+
+    #[test]
+    fn test_luks_key_debug_shows_length() {
+        let key = LuksKey::from_bytes(vec![1, 2, 3]).unwrap();
+        let debug = format!("{:?}", key);
+        assert_eq!(debug, "LuksKey([REDACTED; 3 bytes])");
+    }
+
+    #[test]
+    fn test_luks_key_debug_different_sizes() {
+        let k1 = LuksKey::from_bytes(vec![0; 64]).unwrap();
+        let k2 = LuksKey::from_bytes(vec![0; 1]).unwrap();
+        assert!(format!("{:?}", k1).contains("64 bytes"));
+        assert!(format!("{:?}", k2).contains("1 bytes"));
+    }
+
+    #[test]
+    fn test_luks_key_zeroed_on_drop_via_raw_ptr() {
+        // Verify the drop implementation runs; we use a raw pointer
+        // to check the memory region after drop. Note: this is inherently
+        // racy with the allocator, but it exercises the Drop impl code path.
+        let mut raw_data = vec![0xAAu8; 16];
+        let ptr = raw_data.as_mut_ptr();
+        let len = raw_data.len();
+        {
+            let key = LuksKey::from_bytes(raw_data).unwrap();
+            assert_eq!(key.len(), len);
+            assert!(key.as_bytes().iter().all(|&b| b == 0xAA));
+            // key dropped here, zeroing the vec's contents
+        }
+        // The Vec was moved into LuksKey, so we read from ptr.
+        // The allocator *may* have reused the memory, so we just
+        // exercise the code path. The important thing is no panic.
+        let _ = ptr;
+    }
+
+    #[test]
+    fn test_luks_key_from_bytes_error_message() {
+        let err = LuksKey::from_bytes(vec![]).unwrap_err();
+        let msg = format!("{}", err);
+        assert!(msg.contains("empty"), "Expected 'empty' in: {}", msg);
+    }
+
+    #[test]
+    fn test_luks_key_from_passphrase_error_message() {
+        let err = LuksKey::from_passphrase("").unwrap_err();
+        let msg = format!("{}", err);
+        assert!(msg.contains("empty"), "Expected 'empty' in: {}", msg);
+    }
+
+    #[test]
+    fn test_luks_key_generate_zero_error_message() {
+        let err = LuksKey::generate(0).unwrap_err();
+        let msg = format!("{}", err);
+        assert!(msg.contains("> 0"), "Expected '> 0' in: {}", msg);
+    }
+
+    #[test]
+    fn test_luks_config_validate_empty_name_error_message() {
+        let config = LuksConfig::default();
+        let err = config.validate().unwrap_err();
+        let msg = format!("{}", err);
+        assert!(msg.contains("empty"), "Expected 'empty' in: {}", msg);
+    }
+
+    #[test]
+    fn test_luks_config_validate_size_3mb_error() {
+        let config = LuksConfig {
+            size_mb: 3,
+            ..LuksConfig::for_agent("x", 64)
+        };
+        let err = config.validate().unwrap_err();
+        let msg = format!("{}", err);
+        assert!(msg.contains("at least 4 MB"), "Expected 'at least 4 MB' in: {}", msg);
+    }
+
+    #[test]
+    fn test_luks_pbkdf_debug() {
+        assert!(format!("{:?}", LuksPbkdf::Argon2id).contains("Argon2id"));
+        assert!(format!("{:?}", LuksPbkdf::Pbkdf2).contains("Pbkdf2"));
+    }
+
+    #[test]
+    fn test_luks_filesystem_debug() {
+        assert!(format!("{:?}", LuksFilesystem::Ext4).contains("Ext4"));
+        assert!(format!("{:?}", LuksFilesystem::Xfs).contains("Xfs"));
+        assert!(format!("{:?}", LuksFilesystem::Btrfs).contains("Btrfs"));
+    }
+
+    #[test]
+    fn test_luks_config_debug() {
+        let config = LuksConfig::for_agent("dbg-agent", 32);
+        let debug = format!("{:?}", config);
+        assert!(debug.contains("agnos-agent-dbg-agent"));
+        assert!(debug.contains("32"));
+    }
+
+    #[test]
+    fn test_luks_config_clone() {
+        let config = LuksConfig::for_agent("clone-test", 100);
+        let cloned = config.clone();
+        assert_eq!(cloned.name, config.name);
+        assert_eq!(cloned.size_mb, config.size_mb);
+        assert_eq!(cloned.backing_path, config.backing_path);
+        assert_eq!(cloned.mount_point, config.mount_point);
+        assert_eq!(cloned.filesystem, config.filesystem);
+        assert_eq!(cloned.key_size_bits, config.key_size_bits);
+        assert_eq!(cloned.pbkdf, config.pbkdf);
+    }
+
+    #[test]
+    fn test_luks_config_for_agent_with_special_id() {
+        let config = LuksConfig::for_agent("abc_123", 8);
+        assert_eq!(config.name, "agnos-agent-abc_123");
+        // size_mb 8 is >= 4, should be valid
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_luks_pbkdf_serialization() {
+        let json_argon = serde_json::to_string(&LuksPbkdf::Argon2id).unwrap();
+        let json_pbkdf2 = serde_json::to_string(&LuksPbkdf::Pbkdf2).unwrap();
+        let de_argon: LuksPbkdf = serde_json::from_str(&json_argon).unwrap();
+        let de_pbkdf2: LuksPbkdf = serde_json::from_str(&json_pbkdf2).unwrap();
+        assert_eq!(de_argon, LuksPbkdf::Argon2id);
+        assert_eq!(de_pbkdf2, LuksPbkdf::Pbkdf2);
+    }
+
+    #[test]
+    fn test_luks_filesystem_serialization() {
+        for fs in [LuksFilesystem::Ext4, LuksFilesystem::Xfs, LuksFilesystem::Btrfs] {
+            let json = serde_json::to_string(&fs).unwrap();
+            let de: LuksFilesystem = serde_json::from_str(&json).unwrap();
+            assert_eq!(de, fs);
+        }
+    }
+
+    #[test]
+    fn test_luks_cipher_serialization() {
+        let cipher = LuksCipher {
+            algorithm: "twofish".to_string(),
+            mode: "cbc-plain".to_string(),
+        };
+        let json = serde_json::to_string(&cipher).unwrap();
+        assert!(json.contains("twofish"));
+        assert!(json.contains("cbc-plain"));
+        let de: LuksCipher = serde_json::from_str(&json).unwrap();
+        assert_eq!(de.algorithm, "twofish");
+        assert_eq!(de.mode, "cbc-plain");
+        assert_eq!(de.as_cryptsetup_str(), "twofish-cbc-plain");
+    }
+
+    #[test]
+    fn test_luks_key_large_passphrase() {
+        let passphrase = "x".repeat(4096);
+        let key = LuksKey::from_passphrase(&passphrase).unwrap();
+        assert_eq!(key.len(), 4096);
+    }
+
+    #[test]
+    fn test_luks_key_from_bytes_large() {
+        let data = vec![0xBB; 8192];
+        let key = LuksKey::from_bytes(data).unwrap();
+        assert_eq!(key.len(), 8192);
+        assert!(key.as_bytes().iter().all(|&b| b == 0xBB));
+    }
+
+    #[test]
+    fn test_luks_config_validate_name_special_chars() {
+        // Test various invalid characters
+        for name in &["a b", "a/b", "a.b", "a:b", "a;b", "a@b", "a!b", "a#b"] {
+            let config = LuksConfig {
+                name: name.to_string(),
+                ..LuksConfig::for_agent("x", 64)
+            };
+            assert!(
+                config.validate().is_err(),
+                "Expected error for name '{}' but got Ok",
+                name
+            );
+        }
+    }
+
+    #[test]
+    fn test_luks_config_validate_alphanumeric_hyphen_underscore() {
+        // These should all be valid
+        for name in &["abc", "ABC", "a-b", "a_b", "123", "a1-b2_c3"] {
+            let config = LuksConfig {
+                name: name.to_string(),
+                ..LuksConfig::for_agent("x", 64)
+            };
+            assert!(
+                config.validate().is_ok(),
+                "Expected Ok for name '{}' but got Err",
+                name
+            );
+        }
+    }
+
+    #[test]
+    fn test_luks_key_multiple_generate_unique() {
+        let k1 = LuksKey::generate(32).unwrap();
+        let k2 = LuksKey::generate(32).unwrap();
+        // Two random keys should (almost certainly) differ
+        assert_ne!(k1.as_bytes(), k2.as_bytes());
+    }
+
+    #[test]
+    fn test_luks_status_all_fields_json() {
+        let json = r#"{
+            "name": "vol1",
+            "is_open": true,
+            "is_mounted": false,
+            "backing_path": "/dev/sda1",
+            "mount_point": "/mnt/data",
+            "cipher": "aes-xts-plain64",
+            "key_size_bits": 512
+        }"#;
+        let status: LuksStatus = serde_json::from_str(json).unwrap();
+        assert_eq!(status.name, "vol1");
+        assert!(status.is_open);
+        assert!(!status.is_mounted);
+        assert_eq!(status.backing_path, PathBuf::from("/dev/sda1"));
+        assert_eq!(status.mount_point, Some(PathBuf::from("/mnt/data")));
+        assert_eq!(status.cipher, "aes-xts-plain64");
+        assert_eq!(status.key_size_bits, 512);
+    }
+
+    #[test]
+    fn test_luks_config_default_cipher_is_default() {
+        let config = LuksConfig::default();
+        let cipher_default = LuksCipher::default();
+        assert_eq!(config.cipher.algorithm, cipher_default.algorithm);
+        assert_eq!(config.cipher.mode, cipher_default.mode);
+    }
 }

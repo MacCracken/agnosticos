@@ -473,6 +473,180 @@ pub mod helpers {
             .map(|entries| entries.count() as u32)
             .unwrap_or(1)
     }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn test_read_vm_rss_for_self() {
+            let pid = std::process::id();
+            let rss = read_vm_rss(pid);
+            assert!(rss > 0, "RSS for current process should be > 0");
+        }
+
+        #[test]
+        fn test_read_vm_rss_for_invalid_pid() {
+            let rss = read_vm_rss(u32::MAX);
+            assert_eq!(rss, 0);
+        }
+
+        #[test]
+        fn test_read_cpu_time_ms_for_self() {
+            let pid = std::process::id();
+            let cpu = read_cpu_time_ms(pid);
+            // Could be 0 if very fast, but should not panic
+            let _ = cpu;
+        }
+
+        #[test]
+        fn test_read_cpu_time_ms_for_invalid_pid() {
+            let cpu = read_cpu_time_ms(u32::MAX);
+            assert_eq!(cpu, 0);
+        }
+
+        #[test]
+        fn test_count_fds_for_self() {
+            let pid = std::process::id();
+            let fds = count_fds(pid);
+            // At minimum stdin, stdout, stderr
+            assert!(fds >= 3, "fd count should be >= 3, got {}", fds);
+        }
+
+        #[test]
+        fn test_count_fds_for_invalid_pid() {
+            let fds = count_fds(u32::MAX);
+            assert_eq!(fds, 0);
+        }
+
+        #[test]
+        fn test_count_threads_for_self() {
+            let pid = std::process::id();
+            let threads = count_threads(pid);
+            assert!(threads >= 1, "thread count should be >= 1");
+        }
+
+        #[test]
+        fn test_count_threads_for_invalid_pid() {
+            let threads = count_threads(u32::MAX);
+            assert_eq!(threads, 1);
+        }
+
+        #[test]
+        fn test_read_last_hash_returns_option() {
+            // In test environment, audit log likely doesn't exist
+            // Should return None gracefully
+            let hash = read_last_hash();
+            let _ = hash; // Should not panic
+        }
+
+        #[tokio::test]
+        async fn test_check_resources_returns_nonzero() {
+            let usage = check_resources().await;
+            assert!(usage.memory_used > 0, "memory_used should be > 0");
+            assert!(usage.file_descriptors_used > 0, "fd count should be > 0");
+            assert!(usage.processes_used >= 1, "thread count should be >= 1");
+        }
+
+        #[tokio::test]
+        async fn test_llm_gateway_health_no_server() {
+            let result = llm_gateway_health().await;
+            assert!(result.is_ok());
+            assert!(!result.unwrap(), "health should be false with no server");
+        }
+
+        #[tokio::test]
+        async fn test_llm_inference_no_server() {
+            let result = llm_inference("hello", None).await;
+            assert!(result.is_err());
+            assert!(result.unwrap_err().to_string().contains("LLM gateway request failed"));
+        }
+
+        #[tokio::test]
+        async fn test_llm_inference_with_model_no_server() {
+            let result = llm_inference("hello", Some("gpt-4")).await;
+            assert!(result.is_err());
+        }
+
+        #[tokio::test]
+        async fn test_llm_inference_with_options_all_some() {
+            let result = llm_inference_with_options("prompt", Some("model"), Some(0.5), Some(256)).await;
+            assert!(result.is_err());
+            assert!(result.unwrap_err().to_string().contains("LLM gateway request failed"));
+        }
+
+        #[tokio::test]
+        async fn test_llm_inference_with_options_all_none() {
+            let result = llm_inference_with_options("prompt", None, None, None).await;
+            assert!(result.is_err());
+        }
+
+        #[tokio::test]
+        async fn test_llm_inference_with_options_partial() {
+            // Only temperature set
+            let result = llm_inference_with_options("prompt", None, Some(0.9), None).await;
+            assert!(result.is_err());
+
+            // Only max_tokens set
+            let result = llm_inference_with_options("prompt", None, None, Some(512)).await;
+            assert!(result.is_err());
+        }
+
+        #[tokio::test]
+        async fn test_llm_list_models_no_server() {
+            let result = llm_list_models().await;
+            assert!(result.is_err());
+            assert!(result.unwrap_err().to_string().contains("LLM gateway request failed"));
+        }
+
+        #[tokio::test]
+        async fn test_audit_log_returns_ok_on_permission_error() {
+            let result = audit_log("test_event", serde_json::json!({"key": "value"})).await;
+            // audit_log returns Ok(()) even on write failure
+            assert!(result.is_ok());
+        }
+
+        #[test]
+        fn test_llm_gateway_addr_constant() {
+            assert_eq!(LLM_GATEWAY_ADDR, "http://localhost:8088");
+        }
+
+        #[test]
+        fn test_hash_chain_determinism() {
+            // Verify SHA-256 hashing works as expected for audit chain
+            let mut hasher1 = Sha256::new();
+            hasher1.update(b"genesis");
+            hasher1.update(b"2026-01-01T00:00:00Z");
+            hasher1.update(b"test");
+            hasher1.update(b"{}");
+            let hash1 = format!("{:x}", hasher1.finalize());
+
+            let mut hasher2 = Sha256::new();
+            hasher2.update(b"genesis");
+            hasher2.update(b"2026-01-01T00:00:00Z");
+            hasher2.update(b"test");
+            hasher2.update(b"{}");
+            let hash2 = format!("{:x}", hasher2.finalize());
+
+            assert_eq!(hash1, hash2);
+            assert_eq!(hash1.len(), 64); // SHA-256 hex = 64 chars
+        }
+
+        #[test]
+        fn test_hash_chain_different_inputs() {
+            let mut hasher1 = Sha256::new();
+            hasher1.update(b"genesis");
+            hasher1.update(b"event_a");
+            let hash1 = format!("{:x}", hasher1.finalize());
+
+            let mut hasher2 = Sha256::new();
+            hasher2.update(b"genesis");
+            hasher2.update(b"event_b");
+            let hash2 = format!("{:x}", hasher2.finalize());
+
+            assert_ne!(hash1, hash2);
+        }
+    }
 }
 
 /// Macros for agent development
@@ -503,54 +677,337 @@ macro_rules! agent_main {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio::sync::mpsc;
-    use agnos_common::{AgentConfig, AgentId, AgentStatus, Message, MessageType};
-    
+    use agnos_common::{AgentConfig, AgentStatus, Message, MessageType};
+
+    // ── AgentContext ──────────────────────────────────────────────────
+
     #[test]
     fn test_agent_context_new() {
         let config = AgentConfig::default();
         let (ctx, rx) = AgentContext::new(config);
-        
+
         assert_eq!(*ctx.status.blocking_read(), AgentStatus::Starting);
         // Receiver is returned separately, not stored in context
         drop(rx);
     }
-    
+
     #[test]
-    fn test_agent_runtime_new() {
-        let config = AgentConfig::default();
-        let _runtime = AgentRuntime::new(config);
-        // Runtime should be created without panicking
+    fn test_agent_context_new_preserves_config() {
+        let mut config = AgentConfig::default();
+        config.name = "test-agent".to_string();
+        let (ctx, _rx) = AgentContext::new(config);
+
+        assert_eq!(ctx.config.name, "test-agent");
     }
-    
+
+    #[test]
+    fn test_agent_context_new_generates_unique_ids() {
+        let (ctx1, _rx1) = AgentContext::new(AgentConfig::default());
+        let (ctx2, _rx2) = AgentContext::new(AgentConfig::default());
+        assert_ne!(ctx1.id, ctx2.id);
+    }
+
     #[tokio::test]
-    async fn test_agent_context_send_message() {
+    async fn test_agent_context_send_message_success() {
+        let mut config = AgentConfig::default();
+        config.name = "sender-agent".to_string();
+        let (ctx, mut rx) = AgentContext::new(config);
+
+        let payload = serde_json::json!({"action": "do_thing"});
+        ctx.send_message("target-agent", payload.clone()).await.unwrap();
+
+        let msg = rx.recv().await.expect("should receive a message");
+        assert_eq!(msg.source, "sender-agent");
+        assert_eq!(msg.target, "target-agent");
+        assert_eq!(msg.payload, payload);
+        assert_eq!(msg.message_type, MessageType::Command);
+        // id should be a valid UUID string
+        assert!(!msg.id.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_agent_context_send_message_fails_when_receiver_dropped() {
         let config = AgentConfig::default();
         let (ctx, rx) = AgentContext::new(config);
-        
+
         // Drop the receiver so the send will fail
         drop(rx);
-        
+
         let result = ctx.send_message("target", serde_json::json!({"test": true})).await;
-        // This should fail because the receiver has been dropped
         assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Failed to send message"));
     }
-    
+
+    #[tokio::test]
+    async fn test_agent_context_send_multiple_messages() {
+        let config = AgentConfig::default();
+        let (ctx, mut rx) = AgentContext::new(config);
+
+        for i in 0..5 {
+            ctx.send_message("target", serde_json::json!({"i": i})).await.unwrap();
+        }
+
+        for i in 0..5 {
+            let msg = rx.recv().await.unwrap();
+            assert_eq!(msg.payload["i"], i);
+        }
+    }
+
     #[tokio::test]
     async fn test_agent_context_status() {
         let config = AgentConfig::default();
         let (ctx, _rx) = AgentContext::new(config);
-        
+
+        assert_eq!(ctx.status().await, AgentStatus::Starting);
+
         ctx.set_status(AgentStatus::Running).await;
         assert_eq!(ctx.status().await, AgentStatus::Running);
-        
+
+        ctx.set_status(AgentStatus::Paused).await;
+        assert_eq!(ctx.status().await, AgentStatus::Paused);
+
+        ctx.set_status(AgentStatus::Stopping).await;
+        assert_eq!(ctx.status().await, AgentStatus::Stopping);
+
         ctx.set_status(AgentStatus::Stopped).await;
         assert_eq!(ctx.status().await, AgentStatus::Stopped);
+
+        ctx.set_status(AgentStatus::Failed).await;
+        assert_eq!(ctx.status().await, AgentStatus::Failed);
     }
-    
+
+    // ── AgentRuntime ──────────────────────────────────────────────────
+
+    #[test]
+    fn test_agent_runtime_new() {
+        let config = AgentConfig::default();
+        let runtime = AgentRuntime::new(config);
+        assert!(runtime.message_rx.is_some());
+    }
+
+    #[test]
+    fn test_agent_runtime_new_preserves_config() {
+        let mut config = AgentConfig::default();
+        config.name = "runtime-test".to_string();
+        let runtime = AgentRuntime::new(config);
+        assert_eq!(runtime.ctx.config.name, "runtime-test");
+    }
+
+    // A minimal mock agent for testing runtime.run()
+    struct MockAgent {
+        init_called: bool,
+        run_called: bool,
+        shutdown_called: bool,
+        init_should_fail: bool,
+    }
+
+    impl MockAgent {
+        fn new() -> Self {
+            Self {
+                init_called: false,
+                run_called: false,
+                shutdown_called: false,
+                init_should_fail: false,
+            }
+        }
+
+        fn failing_init() -> Self {
+            Self {
+                init_called: false,
+                run_called: false,
+                shutdown_called: false,
+                init_should_fail: true,
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl Agent for MockAgent {
+        async fn init(&mut self, _ctx: &AgentContext) -> Result<()> {
+            self.init_called = true;
+            if self.init_should_fail {
+                return Err(anyhow::anyhow!("init failure"));
+            }
+            Ok(())
+        }
+
+        async fn run(&mut self, _ctx: &AgentContext) -> Result<()> {
+            self.run_called = true;
+            // Return immediately to stop the loop
+            Ok(())
+        }
+
+        async fn handle_message(&mut self, _ctx: &AgentContext, _message: Message) -> Result<()> {
+            Ok(())
+        }
+
+        async fn shutdown(&mut self, _ctx: &AgentContext) -> Result<()> {
+            self.shutdown_called = true;
+            Ok(())
+        }
+    }
+
     #[tokio::test]
-    async fn test_llm_gateway_constants() {
-        // Verify the gateway address and port are correct
-        assert_eq!(helpers::LLM_GATEWAY_ADDR, "http://localhost:8088");
+    async fn test_agent_runtime_run_lifecycle() {
+        let mut config = AgentConfig::default();
+        config.name = "lifecycle-test".to_string();
+        let runtime = AgentRuntime::new(config);
+        let agent = MockAgent::new();
+
+        let result = runtime.run(agent).await;
+        assert!(result.is_ok());
     }
+
+    #[tokio::test]
+    async fn test_agent_runtime_run_init_failure() {
+        let config = AgentConfig::default();
+        let runtime = AgentRuntime::new(config);
+        let agent = MockAgent::failing_init();
+
+        let result = runtime.run(agent).await;
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("Agent initialization failed"));
+    }
+
+    // Agent that handles a message, then returns from run
+    struct MessageHandlingAgent {
+        received_messages: Vec<Message>,
+    }
+
+    impl MessageHandlingAgent {
+        fn new() -> Self {
+            Self {
+                received_messages: Vec::new(),
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl Agent for MessageHandlingAgent {
+        async fn init(&mut self, _ctx: &AgentContext) -> Result<()> {
+            Ok(())
+        }
+
+        async fn run(&mut self, _ctx: &AgentContext) -> Result<()> {
+            // Small delay to allow message handling to occur first
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            Ok(())
+        }
+
+        async fn handle_message(&mut self, _ctx: &AgentContext, message: Message) -> Result<()> {
+            self.received_messages.push(message);
+            Ok(())
+        }
+
+        async fn shutdown(&mut self, _ctx: &AgentContext) -> Result<()> {
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn test_agent_runtime_run_completes_on_run_return() {
+        let mut config = AgentConfig::default();
+        config.name = "run-return-test".to_string();
+        let runtime = AgentRuntime::new(config);
+        let agent = MessageHandlingAgent::new();
+
+        // Should complete without hanging
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            runtime.run(agent),
+        )
+        .await;
+
+        assert!(result.is_ok(), "runtime.run should complete within timeout");
+        assert!(result.unwrap().is_ok());
+    }
+
+    // Agent whose run() fails with an error
+    struct FailingRunAgent;
+
+    #[async_trait::async_trait]
+    impl Agent for FailingRunAgent {
+        async fn init(&mut self, _ctx: &AgentContext) -> Result<()> {
+            Ok(())
+        }
+
+        async fn run(&mut self, _ctx: &AgentContext) -> Result<()> {
+            Err(anyhow::anyhow!("run failed"))
+        }
+
+        async fn handle_message(&mut self, _ctx: &AgentContext, _message: Message) -> Result<()> {
+            Ok(())
+        }
+
+        async fn shutdown(&mut self, _ctx: &AgentContext) -> Result<()> {
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn test_agent_runtime_run_propagates_run_error() {
+        let config = AgentConfig::default();
+        let runtime = AgentRuntime::new(config);
+        let agent = FailingRunAgent;
+
+        let result = runtime.run(agent).await;
+        // The run error propagates through run_message_loop via `result?`
+        // but shutdown is still called, and then agent_result is returned
+        assert!(result.is_err());
+    }
+
+    // ── AgentContext with custom config fields ────────────────────────
+
+    #[test]
+    fn test_agent_context_preserves_agent_type() {
+        let mut config = AgentConfig::default();
+        config.agent_type = agnos_common::AgentType::Service;
+        let (ctx, _rx) = AgentContext::new(config);
+        assert_eq!(ctx.config.agent_type, agnos_common::AgentType::Service);
+    }
+
+    #[tokio::test]
+    async fn test_agent_context_status_transitions_all_variants() {
+        let config = AgentConfig::default();
+        let (ctx, _rx) = AgentContext::new(config);
+
+        let variants = [
+            AgentStatus::Pending,
+            AgentStatus::Starting,
+            AgentStatus::Running,
+            AgentStatus::Paused,
+            AgentStatus::Stopping,
+            AgentStatus::Stopped,
+            AgentStatus::Failed,
+        ];
+
+        for status in variants {
+            ctx.set_status(status).await;
+            assert_eq!(ctx.status().await, status);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_send_message_sets_correct_timestamp() {
+        let config = AgentConfig::default();
+        let (ctx, mut rx) = AgentContext::new(config);
+
+        let before = chrono::Utc::now();
+        ctx.send_message("t", serde_json::json!(null)).await.unwrap();
+        let after = chrono::Utc::now();
+
+        let msg = rx.recv().await.unwrap();
+        assert!(msg.timestamp >= before);
+        assert!(msg.timestamp <= after);
+    }
+
+    #[test]
+    fn test_agent_runtime_ctx_is_arc() {
+        let config = AgentConfig::default();
+        let runtime = AgentRuntime::new(config);
+        // ctx should be shareable (Arc)
+        let _clone = Arc::clone(&runtime.ctx);
+    }
+
 }

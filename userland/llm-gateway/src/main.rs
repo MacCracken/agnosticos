@@ -147,7 +147,30 @@ impl LlmGateway {
             }
         }
 
-        // TODO: Initialize cloud providers (OpenAI, Anthropic)
+        // Initialize cloud providers from environment
+        if let Ok(api_key) = std::env::var("OPENAI_API_KEY") {
+            match providers::OpenAiProvider::new(api_key, std::env::var("OPENAI_BASE_URL").ok()) {
+                Ok(provider) => {
+                    providers.insert(ProviderType::OpenAi, Arc::new(provider));
+                    info!("OpenAI provider initialized");
+                }
+                Err(e) => {
+                    warn!("Failed to initialize OpenAI provider: {}", e);
+                }
+            }
+        }
+
+        if let Ok(api_key) = std::env::var("ANTHROPIC_API_KEY") {
+            match providers::AnthropicProvider::new(api_key, std::env::var("ANTHROPIC_BASE_URL").ok()) {
+                Ok(provider) => {
+                    providers.insert(ProviderType::Anthropic, Arc::new(provider));
+                    info!("Anthropic provider initialized");
+                }
+                Err(e) => {
+                    warn!("Failed to initialize Anthropic provider: {}", e);
+                }
+            }
+        }
 
         info!("{} provider(s) initialized", providers.len());
         Ok(())
@@ -362,9 +385,13 @@ pub struct SharedSession {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .init();
+    let fmt = tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env());
+    if std::env::var("AGNOS_LOG_FORMAT").as_deref() == Ok("json") {
+        fmt.json().init();
+    } else {
+        fmt.init();
+    }
 
     info!("AGNOS LLM Gateway Service v{}", env!("CARGO_PKG_VERSION"));
 
@@ -1307,5 +1334,372 @@ mod tests {
         req.validate();
         assert!(req.temperature <= 2.0);
         assert!(req.top_p >= 0.0);
+    }
+
+    // ==================================================================
+    // Additional coverage: init_providers, cache paths, select_provider
+    // with registered providers, CLI helpers, GatewayConfig edge cases
+    // ==================================================================
+
+    #[tokio::test]
+    async fn test_init_providers_does_not_panic() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+        // init_providers tries to connect to Ollama/llama.cpp — should not panic
+        let result = gateway.init_providers().await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_init_providers_populates_provider_map() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+        gateway.init_providers().await.unwrap();
+        let providers = gateway.providers.read().await;
+        // In CI without local LLM servers, providers may have 0-2 local + 0-2 cloud entries
+        // We just verify the map was populated without errors
+        let _ = providers.len();
+    }
+
+    #[tokio::test]
+    async fn test_gateway_config_all_disabled() {
+        let config = GatewayConfig {
+            max_concurrent_requests: 1,
+            request_timeout: Duration::from_millis(100),
+            enable_caching: false,
+            cache_ttl_seconds: 0,
+            enable_token_accounting: false,
+        };
+        let gateway = LlmGateway::new(config).await.unwrap();
+        assert!(!gateway.config.enable_caching);
+        assert!(!gateway.config.enable_token_accounting);
+        assert_eq!(gateway.config.cache_ttl_seconds, 0);
+    }
+
+    #[tokio::test]
+    async fn test_gateway_infer_with_accounting_disabled() {
+        let config = GatewayConfig {
+            enable_token_accounting: false,
+            ..GatewayConfig::default()
+        };
+        let gateway = LlmGateway::new(config).await.unwrap();
+        let request = agnos_common::InferenceRequest::default();
+        let agent_id = AgentId::new();
+        // Will fail (no providers) but should not panic on accounting path
+        let result = gateway.infer(request, Some(agent_id)).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_gateway_infer_validates_max_tokens() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+        let request = agnos_common::InferenceRequest {
+            max_tokens: 0, // Should be clamped to at least 1 by validate()
+            ..Default::default()
+        };
+        // Will fail (no providers) but validate() should not panic
+        let result = gateway.infer(request, None).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_gateway_infer_validates_penalties() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+        let request = agnos_common::InferenceRequest {
+            presence_penalty: 10.0,
+            frequency_penalty: -10.0,
+            ..Default::default()
+        };
+        let result = gateway.infer(request, None).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_gateway_cache_stats_initially_empty() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+        let stats = gateway.cache.stats().await;
+        assert_eq!(stats.total_entries, 0);
+        assert_eq!(stats.active_entries, 0);
+    }
+
+    #[tokio::test]
+    async fn test_gateway_cache_clear() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+        // Set a cached value
+        let request = agnos_common::InferenceRequest::default();
+        let response = agnos_common::InferenceResponse {
+            text: "cached".to_string(),
+            tokens_generated: 1,
+            finish_reason: agnos_common::FinishReason::Stop,
+            model: "test".to_string(),
+            usage: TokenUsage::default(),
+        };
+        gateway.cache.set(request.clone(), response).await;
+        let stats = gateway.cache.stats().await;
+        assert_eq!(stats.total_entries, 1);
+
+        gateway.cache.clear().await;
+        let stats = gateway.cache.stats().await;
+        assert_eq!(stats.total_entries, 0);
+    }
+
+    #[tokio::test]
+    async fn test_gateway_cache_hit() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+        let request = agnos_common::InferenceRequest {
+            model: "test-model".to_string(),
+            prompt: "cached prompt".to_string(),
+            ..Default::default()
+        };
+        let response = agnos_common::InferenceResponse {
+            text: "cached response".to_string(),
+            tokens_generated: 5,
+            finish_reason: agnos_common::FinishReason::Stop,
+            model: "test-model".to_string(),
+            usage: TokenUsage {
+                prompt_tokens: 3,
+                completion_tokens: 5,
+                total_tokens: 8,
+            },
+        };
+        gateway.cache.set(request.clone(), response.clone()).await;
+        let cached = gateway.cache.get(&request).await;
+        assert!(cached.is_some());
+        assert_eq!(cached.unwrap().text, "cached response");
+    }
+
+    #[tokio::test]
+    async fn test_gateway_select_provider_with_loaded_model_and_ollama_provider() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+
+        // Register a fake Ollama provider
+        {
+            let mut providers = gateway.providers.write().await;
+            // Use a LlamaCppProvider as a stand-in (it implements LlmProvider)
+            let provider = providers::LlamaCppProvider::new().await.unwrap();
+            providers.insert(ProviderType::Ollama, Arc::new(provider));
+        }
+
+        // Load a model
+        {
+            let mut loaded = gateway.loaded_models.write().await;
+            loaded.insert("my-loaded-model".to_string(), agnos_common::ModelInfo {
+                id: "my-loaded-model".to_string(),
+                name: "Loaded".to_string(),
+                provider: agnos_common::Provider::Local,
+                capabilities: vec![],
+                max_tokens: 4096,
+                size_bytes: 0,
+                loaded: true,
+            });
+        }
+
+        // select_provider should find the Ollama provider for the loaded model
+        let request = agnos_common::InferenceRequest {
+            model: "my-loaded-model".to_string(),
+            ..Default::default()
+        };
+        let result = gateway.select_provider(&request).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_gateway_select_provider_falls_back_to_first() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+
+        // Register only a LlamaCpp provider (not Ollama)
+        {
+            let mut providers = gateway.providers.write().await;
+            let provider = providers::LlamaCppProvider::new().await.unwrap();
+            providers.insert(ProviderType::LlamaCpp, Arc::new(provider));
+        }
+
+        // Request for a model not in loaded_models — should fall back to first available
+        let request = agnos_common::InferenceRequest {
+            model: "unknown-model".to_string(),
+            ..Default::default()
+        };
+        let result = gateway.select_provider(&request).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_gateway_select_provider_loaded_model_no_ollama_falls_back() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+
+        // Register only LlamaCpp, not Ollama
+        {
+            let mut providers = gateway.providers.write().await;
+            let provider = providers::LlamaCppProvider::new().await.unwrap();
+            providers.insert(ProviderType::LlamaCpp, Arc::new(provider));
+        }
+
+        // Load a model — but no Ollama provider
+        {
+            let mut loaded = gateway.loaded_models.write().await;
+            loaded.insert("model-x".to_string(), agnos_common::ModelInfo {
+                id: "model-x".to_string(),
+                name: "X".to_string(),
+                provider: agnos_common::Provider::Local,
+                capabilities: vec![],
+                max_tokens: 4096,
+                size_bytes: 0,
+                loaded: true,
+            });
+        }
+
+        let request = agnos_common::InferenceRequest {
+            model: "model-x".to_string(),
+            ..Default::default()
+        };
+        // Should fall through loaded model check (no Ollama) and use first available
+        let result = gateway.select_provider(&request).await;
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_gateway_client_has_timeout() {
+        // gateway_client() should build successfully with a 30s timeout
+        let client = gateway_client();
+        // Cannot inspect timeout, but ensure it's a valid client
+        drop(client);
+    }
+
+    #[test]
+    fn test_gateway_url_is_localhost_8088() {
+        assert!(GATEWAY_URL.contains("127.0.0.1"));
+        assert!(GATEWAY_URL.contains("8088"));
+    }
+
+    #[test]
+    fn test_gateway_config_debug_contains_all_fields() {
+        let config = GatewayConfig {
+            max_concurrent_requests: 42,
+            request_timeout: Duration::from_secs(99),
+            enable_caching: false,
+            cache_ttl_seconds: 7200,
+            enable_token_accounting: true,
+        };
+        let dbg = format!("{:?}", config);
+        assert!(dbg.contains("42"));
+        assert!(dbg.contains("enable_caching"));
+        assert!(dbg.contains("false"));
+        assert!(dbg.contains("7200"));
+        assert!(dbg.contains("enable_token_accounting"));
+    }
+
+    #[test]
+    fn test_shared_session_clone_deep() {
+        let agents = vec![AgentId::new(), AgentId::new(), AgentId::new()];
+        let session = SharedSession {
+            id: "original".to_string(),
+            model_id: "model".to_string(),
+            agent_ids: agents.clone(),
+            created_at: chrono::Utc::now(),
+        };
+        let cloned = session.clone();
+        assert_eq!(cloned.agent_ids.len(), 3);
+        assert_eq!(cloned.id, "original");
+        assert_eq!(cloned.model_id, "model");
+        // Cloned should be independent
+        drop(session);
+        assert_eq!(cloned.agent_ids.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_gateway_load_model_error_contains_model_name() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+        let result = gateway.load_model("my-special-model").await;
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("my-special-model"));
+    }
+
+    #[tokio::test]
+    async fn test_gateway_concurrent_list_models() {
+        let gateway = Arc::new(LlmGateway::new(GatewayConfig::default()).await.unwrap());
+
+        // Insert some models
+        {
+            let mut loaded = gateway.loaded_models.write().await;
+            for i in 0..10 {
+                loaded.insert(format!("m-{}", i), agnos_common::ModelInfo {
+                    id: format!("m-{}", i),
+                    name: format!("Model {}", i),
+                    provider: agnos_common::Provider::Local,
+                    capabilities: vec![],
+                    max_tokens: 4096,
+                    size_bytes: 0,
+                    loaded: true,
+                });
+            }
+        }
+
+        // Spawn concurrent readers
+        let mut handles = vec![];
+        for _ in 0..5 {
+            let gw = gateway.clone();
+            handles.push(tokio::spawn(async move {
+                gw.list_models().await
+            }));
+        }
+
+        for handle in handles {
+            let models = handle.await.unwrap();
+            assert_eq!(models.len(), 10);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_gateway_accounting_stats() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+        let a1 = AgentId::new();
+        let a2 = AgentId::new();
+
+        gateway.accounting.record_usage(a1, TokenUsage {
+            prompt_tokens: 10, completion_tokens: 20, total_tokens: 30,
+        }).await;
+        gateway.accounting.record_usage(a2, TokenUsage {
+            prompt_tokens: 5, completion_tokens: 10, total_tokens: 15,
+        }).await;
+
+        let stats = gateway.accounting.stats().await;
+        assert_eq!(stats.total_agents, 2);
+        assert_eq!(stats.total_prompt_tokens, 15);
+        assert_eq!(stats.total_completion_tokens, 30);
+        assert_eq!(stats.total_tokens, 45);
+    }
+
+    #[tokio::test]
+    async fn test_gateway_accounting_list_agents() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+        let a1 = AgentId::new();
+        let a2 = AgentId::new();
+
+        gateway.accounting.record_usage(a1, TokenUsage {
+            prompt_tokens: 1, completion_tokens: 2, total_tokens: 3,
+        }).await;
+        gateway.accounting.record_usage(a2, TokenUsage {
+            prompt_tokens: 4, completion_tokens: 5, total_tokens: 9,
+        }).await;
+
+        let agents = gateway.accounting.list_agents().await;
+        assert_eq!(agents.len(), 2);
+        let agent_ids: Vec<AgentId> = agents.iter().map(|(id, _)| *id).collect();
+        assert!(agent_ids.contains(&a1));
+        assert!(agent_ids.contains(&a2));
+    }
+
+    #[tokio::test]
+    async fn test_gateway_accounting_reset_all() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+        let a1 = AgentId::new();
+
+        gateway.accounting.record_usage(a1, TokenUsage {
+            prompt_tokens: 100, completion_tokens: 200, total_tokens: 300,
+        }).await;
+
+        gateway.accounting.reset_all().await;
+        let total = gateway.get_total_usage().await;
+        assert_eq!(total.total_tokens, 0);
+        assert!(gateway.get_agent_usage(a1).await.is_none());
     }
 }

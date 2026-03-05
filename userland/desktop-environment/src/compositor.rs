@@ -700,6 +700,27 @@ mod tests {
     }
 
     #[test]
+    fn test_wayland_backend_handle_click() {
+        let mut backend = WaylandBackend;
+        let event = InputEvent::MouseClick { button: 1, x: 50, y: 50 };
+        assert!(backend.handle_input(event).is_ok());
+    }
+
+    #[test]
+    fn test_wayland_backend_handle_keypress() {
+        let mut backend = WaylandBackend;
+        let event = InputEvent::KeyPress { keycode: 65, modifiers: 0 };
+        assert!(backend.handle_input(event).is_ok());
+    }
+
+    #[test]
+    fn test_wayland_backend_handle_touch() {
+        let mut backend = WaylandBackend;
+        let event = InputEvent::TouchEvent { finger_id: 0, x: 100.0, y: 200.0, phase: TouchPhase::Down };
+        assert!(backend.handle_input(event).is_ok());
+    }
+
+    #[test]
     fn test_hud_overlay_empty() {
         let compositor = Compositor::new();
         let result = compositor.render_hud_overlay(&[]);
@@ -769,5 +790,62 @@ mod tests {
 
         let result = compositor.render_hud_overlay(&agents);
         assert!(result.contains("…")); // Truncation marker
+    }
+
+    #[test]
+    fn test_hud_overlay_waiting_and_error_status() {
+        use crate::ai_features::{AgentHUDState, AgentStatus, ResourceMetrics};
+
+        let compositor = Compositor::new();
+        let agents = vec![
+            AgentHUDState {
+                agent_id: Uuid::new_v4(),
+                agent_name: "waiting-agent".to_string(),
+                status: AgentStatus::Waiting,
+                current_task: "blocked on input".to_string(),
+                progress: 0.3,
+                last_activity: chrono::Utc::now(),
+                resource_usage: ResourceMetrics {
+                    cpu_percent: 1.0,
+                    memory_mb: 32,
+                    gpu_percent: None,
+                },
+            },
+            AgentHUDState {
+                agent_id: Uuid::new_v4(),
+                agent_name: "error-agent".to_string(),
+                status: AgentStatus::Error,
+                current_task: "crashed".to_string(),
+                progress: 0.0,
+                last_activity: chrono::Utc::now(),
+                resource_usage: ResourceMetrics {
+                    cpu_percent: 0.0,
+                    memory_mb: 16,
+                    gpu_percent: None,
+                },
+            },
+        ];
+
+        let result = compositor.render_hud_overlay(&agents);
+        assert!(result.contains("◑")); // Waiting icon
+        assert!(result.contains("✗")); // Error icon
+    }
+
+    #[test]
+    fn test_set_window_state_nonexistent() {
+        let compositor = Compositor::new();
+        let result = compositor.set_window_state(Uuid::new_v4(), WindowState::Maximized);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_window_state_floating() {
+        assert!(matches!(WindowState::Floating, WindowState::Floating));
+        assert_ne!(WindowState::Floating, WindowState::Normal);
+    }
+
+    #[test]
+    fn test_window_state_default() {
+        assert_eq!(WindowState::default(), WindowState::Normal);
     }
 }

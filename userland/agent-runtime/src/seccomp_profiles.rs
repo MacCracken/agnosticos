@@ -468,4 +468,30 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn test_build_seccomp_filter_node() {
+        let filter = build_seccomp_filter(&SeccompProfile::Node);
+        assert_eq!(filter.profile_name, "node");
+        assert_eq!(filter.default_action, "kill");
+    }
+
+    #[test]
+    fn test_build_seccomp_filter_shell() {
+        let filter = build_seccomp_filter(&SeccompProfile::Shell);
+        assert_eq!(filter.profile_name, "shell");
+    }
+
+    #[test]
+    fn test_build_seccomp_filter_wasm() {
+        let filter = build_seccomp_filter(&SeccompProfile::Wasm);
+        assert_eq!(filter.profile_name, "wasm");
+    }
+
+    #[test]
+    fn test_build_seccomp_filter_custom() {
+        let custom = SeccompProfile::Custom(vec!["read".to_string(), "write".to_string()]);
+        let filter = build_seccomp_filter(&custom);
+        assert_eq!(filter.profile_name, "custom");
+    }
 }

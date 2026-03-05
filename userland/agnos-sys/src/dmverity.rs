@@ -628,4 +628,482 @@ mod tests {
     fn test_verity_format_and_verify() {
         // Would create test images, format, and verify
     }
+
+    // --- Additional coverage tests ---
+
+    #[test]
+    fn test_verity_hash_algorithm_display() {
+        assert_eq!(format!("{}", VerityHashAlgorithm::Sha256), "sha256");
+        assert_eq!(format!("{}", VerityHashAlgorithm::Sha512), "sha512");
+    }
+
+    #[test]
+    fn test_verity_hash_algorithm_serde_roundtrip() {
+        for alg in &[VerityHashAlgorithm::Sha256, VerityHashAlgorithm::Sha512] {
+            let json = serde_json::to_string(alg).unwrap();
+            let back: VerityHashAlgorithm = serde_json::from_str(&json).unwrap();
+            assert_eq!(*alg, back);
+        }
+    }
+
+    #[test]
+    fn test_verity_hash_algorithm_clone_copy_eq() {
+        let a = VerityHashAlgorithm::Sha256;
+        let b = a; // Copy
+        let c = a.clone(); // Clone
+        assert_eq!(a, b);
+        assert_eq!(a, c);
+        assert_ne!(VerityHashAlgorithm::Sha256, VerityHashAlgorithm::Sha512);
+    }
+
+    #[test]
+    fn test_verity_hash_algorithm_debug() {
+        assert_eq!(format!("{:?}", VerityHashAlgorithm::Sha256), "Sha256");
+        assert_eq!(format!("{:?}", VerityHashAlgorithm::Sha512), "Sha512");
+    }
+
+    #[test]
+    fn test_verity_config_validate_name_too_long() {
+        let config = VerityConfig {
+            name: "a".repeat(129),
+            data_device: PathBuf::from("/dev/sda1"),
+            hash_device: PathBuf::from("/dev/sda2"),
+            data_block_size: 4096,
+            hash_block_size: 4096,
+            hash_algorithm: VerityHashAlgorithm::Sha256,
+            root_hash: "a".repeat(64),
+            salt: None,
+        };
+        let err = config.validate().unwrap_err();
+        assert!(err.to_string().contains("too long"));
+    }
+
+    #[test]
+    fn test_verity_config_validate_name_exactly_128() {
+        let config = VerityConfig {
+            name: "a".repeat(128),
+            data_device: PathBuf::from("/dev/sda1"),
+            hash_device: PathBuf::from("/dev/sda2"),
+            data_block_size: 4096,
+            hash_block_size: 4096,
+            hash_algorithm: VerityHashAlgorithm::Sha256,
+            root_hash: "a".repeat(64),
+            salt: None,
+        };
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_verity_config_validate_name_invalid_chars() {
+        let config = VerityConfig {
+            name: "bad name!".to_string(),
+            data_device: PathBuf::from("/dev/sda1"),
+            hash_device: PathBuf::from("/dev/sda2"),
+            data_block_size: 4096,
+            hash_block_size: 4096,
+            hash_algorithm: VerityHashAlgorithm::Sha256,
+            root_hash: "a".repeat(64),
+            salt: None,
+        };
+        let err = config.validate().unwrap_err();
+        assert!(err.to_string().contains("invalid characters"));
+    }
+
+    #[test]
+    fn test_verity_config_validate_name_with_slash() {
+        let config = VerityConfig {
+            name: "bad/name".to_string(),
+            data_device: PathBuf::from("/dev/sda1"),
+            hash_device: PathBuf::from("/dev/sda2"),
+            data_block_size: 4096,
+            hash_block_size: 4096,
+            hash_algorithm: VerityHashAlgorithm::Sha256,
+            root_hash: "a".repeat(64),
+            salt: None,
+        };
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_verity_config_validate_name_with_dash_and_underscore() {
+        let config = VerityConfig {
+            name: "my-verity_vol01".to_string(),
+            data_device: PathBuf::from("/dev/sda1"),
+            hash_device: PathBuf::from("/dev/sda2"),
+            data_block_size: 4096,
+            hash_block_size: 4096,
+            hash_algorithm: VerityHashAlgorithm::Sha256,
+            root_hash: "a".repeat(64),
+            salt: None,
+        };
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_verity_config_validate_data_block_size_zero() {
+        let config = VerityConfig {
+            name: "test".to_string(),
+            data_device: PathBuf::from("/dev/sda1"),
+            hash_device: PathBuf::from("/dev/sda2"),
+            data_block_size: 0,
+            hash_block_size: 4096,
+            hash_algorithm: VerityHashAlgorithm::Sha256,
+            root_hash: "a".repeat(64),
+            salt: None,
+        };
+        let err = config.validate().unwrap_err();
+        assert!(err.to_string().contains("power of 2"));
+    }
+
+    #[test]
+    fn test_verity_config_validate_hash_block_size_not_pow2() {
+        let config = VerityConfig {
+            name: "test".to_string(),
+            data_device: PathBuf::from("/dev/sda1"),
+            hash_device: PathBuf::from("/dev/sda2"),
+            data_block_size: 4096,
+            hash_block_size: 3000,
+            hash_algorithm: VerityHashAlgorithm::Sha256,
+            root_hash: "a".repeat(64),
+            salt: None,
+        };
+        let err = config.validate().unwrap_err();
+        assert!(err.to_string().contains("Hash block size"));
+    }
+
+    #[test]
+    fn test_verity_config_validate_block_sizes_pow2() {
+        // Test various valid power-of-2 block sizes
+        for size in &[512, 1024, 2048, 4096, 8192] {
+            let config = VerityConfig {
+                name: "test".to_string(),
+                data_device: PathBuf::from("/dev/sda1"),
+                hash_device: PathBuf::from("/dev/sda2"),
+                data_block_size: *size,
+                hash_block_size: *size,
+                hash_algorithm: VerityHashAlgorithm::Sha256,
+                root_hash: "a".repeat(64),
+                salt: None,
+            };
+            assert!(config.validate().is_ok(), "Block size {} should be valid", size);
+        }
+    }
+
+    #[test]
+    fn test_verity_config_validate_sha512_hash() {
+        let config = VerityConfig {
+            name: "test".to_string(),
+            data_device: PathBuf::from("/dev/sda1"),
+            hash_device: PathBuf::from("/dev/sda2"),
+            data_block_size: 4096,
+            hash_block_size: 4096,
+            hash_algorithm: VerityHashAlgorithm::Sha512,
+            root_hash: "b".repeat(128),
+            salt: None,
+        };
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_verity_config_validate_sha512_wrong_hash_len() {
+        let config = VerityConfig {
+            name: "test".to_string(),
+            data_device: PathBuf::from("/dev/sda1"),
+            hash_device: PathBuf::from("/dev/sda2"),
+            data_block_size: 4096,
+            hash_block_size: 4096,
+            hash_algorithm: VerityHashAlgorithm::Sha512,
+            root_hash: "b".repeat(64), // SHA-256 length, not SHA-512
+            salt: None,
+        };
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_verity_config_clone() {
+        let config = VerityConfig {
+            name: "test-clone".to_string(),
+            data_device: PathBuf::from("/dev/sda1"),
+            hash_device: PathBuf::from("/dev/sda2"),
+            data_block_size: 4096,
+            hash_block_size: 4096,
+            hash_algorithm: VerityHashAlgorithm::Sha256,
+            root_hash: "a".repeat(64),
+            salt: Some("beef".to_string()),
+        };
+        let cloned = config.clone();
+        assert_eq!(cloned.name, config.name);
+        assert_eq!(cloned.data_device, config.data_device);
+        assert_eq!(cloned.hash_device, config.hash_device);
+        assert_eq!(cloned.data_block_size, config.data_block_size);
+        assert_eq!(cloned.hash_block_size, config.hash_block_size);
+        assert_eq!(cloned.hash_algorithm, config.hash_algorithm);
+        assert_eq!(cloned.root_hash, config.root_hash);
+        assert_eq!(cloned.salt, config.salt);
+    }
+
+    #[test]
+    fn test_verity_config_debug() {
+        let config = VerityConfig {
+            name: "dbg-test".to_string(),
+            data_device: PathBuf::from("/dev/sda1"),
+            hash_device: PathBuf::from("/dev/sda2"),
+            data_block_size: 4096,
+            hash_block_size: 4096,
+            hash_algorithm: VerityHashAlgorithm::Sha256,
+            root_hash: "a".repeat(64),
+            salt: None,
+        };
+        let dbg = format!("{:?}", config);
+        assert!(dbg.contains("VerityConfig"));
+        assert!(dbg.contains("dbg-test"));
+    }
+
+    #[test]
+    fn test_verity_config_serialization_roundtrip() {
+        let config = VerityConfig {
+            name: "serde-test".to_string(),
+            data_device: PathBuf::from("/dev/loop0"),
+            hash_device: PathBuf::from("/dev/loop1"),
+            data_block_size: 4096,
+            hash_block_size: 4096,
+            hash_algorithm: VerityHashAlgorithm::Sha512,
+            root_hash: "c".repeat(128),
+            salt: Some("0123456789abcdef".to_string()),
+        };
+        let json = serde_json::to_string(&config).unwrap();
+        let back: VerityConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.name, "serde-test");
+        assert_eq!(back.data_device, PathBuf::from("/dev/loop0"));
+        assert_eq!(back.hash_device, PathBuf::from("/dev/loop1"));
+        assert_eq!(back.data_block_size, 4096);
+        assert_eq!(back.hash_algorithm, VerityHashAlgorithm::Sha512);
+        assert_eq!(back.root_hash, "c".repeat(128));
+        assert_eq!(back.salt, Some("0123456789abcdef".to_string()));
+    }
+
+    #[test]
+    fn test_verity_status_clone() {
+        let status = VerityStatus {
+            name: "vol1".to_string(),
+            is_active: true,
+            is_verified: true,
+            corruption_detected: false,
+            root_hash: "f".repeat(64),
+        };
+        let cloned = status.clone();
+        assert_eq!(cloned.name, status.name);
+        assert_eq!(cloned.is_active, status.is_active);
+        assert_eq!(cloned.is_verified, status.is_verified);
+        assert_eq!(cloned.corruption_detected, status.corruption_detected);
+        assert_eq!(cloned.root_hash, status.root_hash);
+    }
+
+    #[test]
+    fn test_verity_status_debug() {
+        let status = VerityStatus {
+            name: "vol1".to_string(),
+            is_active: false,
+            is_verified: false,
+            corruption_detected: true,
+            root_hash: String::new(),
+        };
+        let dbg = format!("{:?}", status);
+        assert!(dbg.contains("VerityStatus"));
+        assert!(dbg.contains("vol1"));
+        assert!(dbg.contains("true")); // corruption_detected
+    }
+
+    #[test]
+    fn test_verity_status_serialization_all_states() {
+        // Active and verified
+        let s1 = VerityStatus {
+            name: "active".to_string(),
+            is_active: true,
+            is_verified: true,
+            corruption_detected: false,
+            root_hash: "a".repeat(64),
+        };
+        let json1 = serde_json::to_string(&s1).unwrap();
+        let back1: VerityStatus = serde_json::from_str(&json1).unwrap();
+        assert!(back1.is_active);
+        assert!(back1.is_verified);
+
+        // Inactive
+        let s2 = VerityStatus {
+            name: "inactive".to_string(),
+            is_active: false,
+            is_verified: false,
+            corruption_detected: false,
+            root_hash: String::new(),
+        };
+        let json2 = serde_json::to_string(&s2).unwrap();
+        let back2: VerityStatus = serde_json::from_str(&json2).unwrap();
+        assert!(!back2.is_active);
+
+        // Corrupted
+        let s3 = VerityStatus {
+            name: "corrupted".to_string(),
+            is_active: true,
+            is_verified: false,
+            corruption_detected: true,
+            root_hash: "d".repeat(64),
+        };
+        let json3 = serde_json::to_string(&s3).unwrap();
+        let back3: VerityStatus = serde_json::from_str(&json3).unwrap();
+        assert!(back3.corruption_detected);
+        assert!(!back3.is_verified);
+    }
+
+    #[test]
+    fn test_validate_root_hash_uppercase_hex() {
+        // Uppercase hex should be valid
+        let hash = "ABCDEF0123456789".repeat(4); // 64 chars
+        assert!(validate_root_hash(&hash, VerityHashAlgorithm::Sha256).is_ok());
+    }
+
+    #[test]
+    fn test_validate_root_hash_mixed_case_hex() {
+        let hash = "aAbBcCdDeEfF0123456789aAbBcCdDeEfF0123456789aAbBcCdDeEfF01234567";
+        assert_eq!(hash.len(), 64);
+        assert!(validate_root_hash(hash, VerityHashAlgorithm::Sha256).is_ok());
+    }
+
+    #[test]
+    fn test_validate_root_hash_sha512_too_long() {
+        let hash = "a".repeat(129);
+        assert!(validate_root_hash(&hash, VerityHashAlgorithm::Sha512).is_err());
+    }
+
+    #[test]
+    fn test_validate_root_hash_sha256_too_long() {
+        let hash = "a".repeat(65);
+        assert!(validate_root_hash(&hash, VerityHashAlgorithm::Sha256).is_err());
+    }
+
+    #[test]
+    fn test_validate_root_hash_non_hex_mixed() {
+        // Valid length but contains non-hex chars
+        let mut hash = "a".repeat(63);
+        hash.push('z');
+        assert!(validate_root_hash(&hash, VerityHashAlgorithm::Sha256).is_err());
+    }
+
+    #[test]
+    fn test_validate_root_hash_error_messages() {
+        let err = validate_root_hash("", VerityHashAlgorithm::Sha256).unwrap_err();
+        assert!(err.to_string().contains("empty"));
+
+        let err = validate_root_hash(&"a".repeat(32), VerityHashAlgorithm::Sha256).unwrap_err();
+        assert!(err.to_string().contains("length"));
+
+        let err = validate_root_hash(&"z".repeat(64), VerityHashAlgorithm::Sha256).unwrap_err();
+        assert!(err.to_string().contains("non-hex"));
+    }
+
+    #[test]
+    fn test_validate_hex_string_valid() {
+        assert!(validate_hex_string("0123456789abcdefABCDEF", "test").is_ok());
+    }
+
+    #[test]
+    fn test_validate_hex_string_empty() {
+        // Empty string should be valid (all chars are hex vacuously)
+        assert!(validate_hex_string("", "test").is_ok());
+    }
+
+    #[test]
+    fn test_validate_hex_string_invalid() {
+        let err = validate_hex_string("not-hex!", "mysalt").unwrap_err();
+        assert!(err.to_string().contains("mysalt"));
+        assert!(err.to_string().contains("non-hex"));
+    }
+
+    #[test]
+    fn test_read_stored_root_hash_empty_file() {
+        let dir = std::env::temp_dir().join("agnos_verity_test_empty");
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("empty-hash");
+        std::fs::write(&path, "").unwrap();
+
+        let err = read_stored_root_hash(&path).unwrap_err();
+        assert!(err.to_string().contains("empty"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_read_stored_root_hash_with_whitespace() {
+        let dir = std::env::temp_dir().join("agnos_verity_test_ws");
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("hash-ws");
+        let hash = "a".repeat(64);
+        // Write with trailing newline and spaces
+        std::fs::write(&path, format!("  {}  \n", hash)).unwrap();
+
+        let result = read_stored_root_hash(&path).unwrap();
+        assert_eq!(result, hash);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_verity_close_empty_name() {
+        let result = verity_close("");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_verity_status_empty_name() {
+        let result = verity_status("");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_verity_config_validate_non_hex_root_hash() {
+        let config = VerityConfig {
+            name: "test".to_string(),
+            data_device: PathBuf::from("/dev/sda1"),
+            hash_device: PathBuf::from("/dev/sda2"),
+            data_block_size: 4096,
+            hash_block_size: 4096,
+            hash_algorithm: VerityHashAlgorithm::Sha256,
+            root_hash: "z".repeat(64),
+            salt: None,
+        };
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_verity_config_validate_empty_root_hash() {
+        let config = VerityConfig {
+            name: "test".to_string(),
+            data_device: PathBuf::from("/dev/sda1"),
+            hash_device: PathBuf::from("/dev/sda2"),
+            data_block_size: 4096,
+            hash_block_size: 4096,
+            hash_algorithm: VerityHashAlgorithm::Sha256,
+            root_hash: String::new(),
+            salt: None,
+        };
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_verity_config_serialization_no_salt() {
+        let config = VerityConfig {
+            name: "no-salt".to_string(),
+            data_device: PathBuf::from("/dev/sda1"),
+            hash_device: PathBuf::from("/dev/sda2"),
+            data_block_size: 4096,
+            hash_block_size: 4096,
+            hash_algorithm: VerityHashAlgorithm::Sha256,
+            root_hash: "a".repeat(64),
+            salt: None,
+        };
+        let json = serde_json::to_string(&config).unwrap();
+        assert!(json.contains("\"salt\":null"));
+        let back: VerityConfig = serde_json::from_str(&json).unwrap();
+        assert!(back.salt.is_none());
+    }
 }

@@ -5,9 +5,9 @@ use std::collections::VecDeque;
 use std::path::PathBuf;
 
 pub struct CommandHistory {
-    entries: VecDeque<String>,
-    file: PathBuf,
-    max_size: usize,
+    pub(crate) entries: VecDeque<String>,
+    pub(crate) file: PathBuf,
+    pub(crate) max_size: usize,
 }
 
 impl CommandHistory {
@@ -162,7 +162,82 @@ mod tests {
             file: PathBuf::from("/tmp/test"),
             max_size: 100,
         };
-        
+
         assert_eq!(history.max_size, 100);
+    }
+
+    #[tokio::test]
+    async fn test_history_add() {
+        let mut history = CommandHistory {
+            entries: VecDeque::new(),
+            file: PathBuf::from("/tmp/test_add"),
+            max_size: 100,
+        };
+
+        history.add("ls -la").await.unwrap();
+        history.add("cd /home").await.unwrap();
+        assert_eq!(history.entries.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_history_add_no_duplicate() {
+        let mut history = CommandHistory {
+            entries: VecDeque::new(),
+            file: PathBuf::from("/tmp/test_dup"),
+            max_size: 100,
+        };
+
+        history.add("ls").await.unwrap();
+        history.add("ls").await.unwrap();
+        assert_eq!(history.entries.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_history_add_trim() {
+        let mut history = CommandHistory {
+            entries: VecDeque::new(),
+            file: PathBuf::from("/tmp/test_trim"),
+            max_size: 3,
+        };
+
+        history.add("cmd1").await.unwrap();
+        history.add("cmd2").await.unwrap();
+        history.add("cmd3").await.unwrap();
+        history.add("cmd4").await.unwrap();
+        assert_eq!(history.entries.len(), 3);
+        assert_eq!(history.entries[0], "cmd2");
+    }
+
+    #[tokio::test]
+    async fn test_history_save_and_load() {
+        let dir = std::env::temp_dir().join("agnos_history_test");
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("history.txt");
+        let _ = std::fs::remove_file(&path);
+
+        let mut history = CommandHistory {
+            entries: VecDeque::new(),
+            file: path.clone(),
+            max_size: 100,
+        };
+
+        history.add("ls").await.unwrap();
+        history.add("pwd").await.unwrap();
+        history.save().await.unwrap();
+
+        let loaded = CommandHistory::new(&path).await.unwrap();
+        assert_eq!(loaded.entries.len(), 2);
+        assert_eq!(loaded.entries[0], "ls");
+        assert_eq!(loaded.entries[1], "pwd");
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[tokio::test]
+    async fn test_history_new_nonexistent_file() {
+        let path = PathBuf::from("/tmp/agnos_nonexistent_history_12345.txt");
+        let _ = std::fs::remove_file(&path);
+        let history = CommandHistory::new(&path).await.unwrap();
+        assert!(history.entries.is_empty());
     }
 }

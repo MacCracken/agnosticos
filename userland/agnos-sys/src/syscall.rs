@@ -107,4 +107,52 @@ mod tests {
         let result = check_result(-1);
         assert!(result.is_err());
     }
+
+    #[test]
+    fn test_check_result_positive() {
+        let result = check_result(42);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 42);
+    }
+
+    #[test]
+    fn test_check_result_large_negative() {
+        let result = check_result(-100);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_kernel_modules_available() {
+        // On a non-AGNOS kernel this returns false (ENOSYS)
+        let available = kernel_modules_available();
+        // Just verify it doesn't panic
+        let _ = available;
+    }
+
+    #[test]
+    fn test_errno_readable() {
+        // errno() should return a valid value without panicking
+        let e = errno();
+        // errno is always >= 0
+        let _ = e;
+    }
+
+    #[test]
+    fn test_syscall1_invalid_number() {
+        // Calling a non-existent syscall should return -1 and set ENOSYS
+        let result = unsafe { syscall1(9999, 0) };
+        assert!(result < 0);
+    }
+
+    #[test]
+    fn test_syscall2_invalid_number() {
+        let result = unsafe { syscall2(9999, 0, 0) };
+        assert!(result < 0);
+    }
+
+    #[test]
+    fn test_syscall3_invalid_number() {
+        let result = unsafe { syscall3(9999, 0, 0, 0) };
+        assert!(result < 0);
+    }
 }

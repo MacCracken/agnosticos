@@ -530,10 +530,10 @@ mod tests {
         let bus = MessageBus::new();
         let agent_id = AgentId::new();
         let (tx, mut rx) = mpsc::channel(10);
-        
+
         bus.subscribe(agent_id.clone(), tx).await;
         bus.register_agent_name(agent_id, "target-agent").await;
-        
+
         let message = Message {
             id: Uuid::new_v4().to_string(),
             source: "test".to_string(),
@@ -542,11 +542,364 @@ mod tests {
             payload: serde_json::json!({"test": "data"}),
             timestamp: chrono::Utc::now(),
         };
-        
+
         let result = bus.publish(message).await;
         assert!(result.is_ok());
-        
+
         let received = rx.recv().await;
         assert!(received.is_some());
+    }
+
+    // ==================================================================
+    // Additional coverage: handle_connection, AgentIpc::send, socket
+    // path format, MessageBus global subscribers receive broadcasts,
+    // publish to wildcard, unsubscribe then send, name overwrite
+    // ==================================================================
+
+    #[test]
+    fn test_agent_ipc_socket_path_format() {
+        let agent_id = AgentId::new();
+        let (ipc, _rx) = AgentIpc::new(agent_id).unwrap();
+        let expected = format!("/run/agnos/agents/{}.sock", agent_id);
+        assert_eq!(ipc.socket_path.to_str().unwrap(), expected);
+    }
+
+    #[tokio::test]
+    async fn test_agent_ipc_send() {
+        let agent_id = AgentId::new();
+        let (ipc, mut rx) = AgentIpc::new(agent_id).unwrap();
+
+        let msg = Message {
+            id: "ipc-msg-1".to_string(),
+            source: "test".to_string(),
+            target: agent_id.to_string(),
+            message_type: MessageType::Command,
+            payload: serde_json::json!({"hello": true}),
+            timestamp: chrono::Utc::now(),
+        };
+
+        ipc.send(msg).await.unwrap();
+        let received = rx.recv().await.unwrap();
+        assert_eq!(received.id, "ipc-msg-1");
+    }
+
+    #[tokio::test]
+    async fn test_message_bus_publish_broadcast_wildcard() {
+        let bus = MessageBus::new();
+        let agent_id = AgentId::new();
+        let (tx, mut rx) = mpsc::channel(10);
+
+        bus.subscribe(agent_id, tx).await;
+
+        // "*" target should broadcast
+        let message = Message {
+            id: Uuid::new_v4().to_string(),
+            source: "orchestrator".to_string(),
+            target: "*".to_string(),
+            message_type: MessageType::Event,
+            payload: serde_json::json!({"event": "shutdown"}),
+            timestamp: chrono::Utc::now(),
+        };
+
+        bus.publish(message).await.unwrap();
+        let received = rx.recv().await;
+        assert!(received.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_message_bus_publish_to_global_subscribers() {
+        let bus = MessageBus::new();
+        let (global_tx, mut global_rx) = mpsc::channel(10);
+        bus.subscribe_global(global_tx).await.unwrap();
+
+        // Broadcast message
+        let message = Message {
+            id: Uuid::new_v4().to_string(),
+            source: "test".to_string(),
+            target: "broadcast".to_string(),
+            message_type: MessageType::Event,
+            payload: serde_json::json!({}),
+            timestamp: chrono::Utc::now(),
+        };
+
+        bus.publish(message).await.unwrap();
+        let received = global_rx.recv().await;
+        assert!(received.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_message_bus_publish_to_multiple_subscribers() {
+        let bus = MessageBus::new();
+
+        let id1 = AgentId::new();
+        let id2 = AgentId::new();
+        let (tx1, mut rx1) = mpsc::channel(10);
+        let (tx2, mut rx2) = mpsc::channel(10);
+
+        bus.subscribe(id1, tx1).await;
+        bus.subscribe(id2, tx2).await;
+
+        let message = Message {
+            id: Uuid::new_v4().to_string(),
+            source: "test".to_string(),
+            target: "broadcast".to_string(),
+            message_type: MessageType::Event,
+            payload: serde_json::json!({}),
+            timestamp: chrono::Utc::now(),
+        };
+
+        bus.publish(message).await.unwrap();
+
+        assert!(rx1.recv().await.is_some());
+        assert!(rx2.recv().await.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_message_bus_send_to_after_unsubscribe() {
+        let bus = MessageBus::new();
+        let agent_id = AgentId::new();
+        let (tx, _rx) = mpsc::channel(10);
+
+        bus.subscribe(agent_id, tx).await;
+        bus.unsubscribe(agent_id).await;
+
+        let message = Message {
+            id: Uuid::new_v4().to_string(),
+            source: "test".to_string(),
+            target: agent_id.to_string(),
+            message_type: MessageType::Command,
+            payload: serde_json::json!({}),
+            timestamp: chrono::Utc::now(),
+        };
+
+        let result = bus.send_to(agent_id, message).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_message_bus_register_name_overwrite() {
+        let bus = MessageBus::new();
+        let id1 = AgentId::new();
+        let id2 = AgentId::new();
+
+        bus.register_agent_name(id1, "shared-name").await;
+        bus.register_agent_name(id2, "shared-name").await;
+
+        // Name should now point to id2
+        let resolved = bus.get_agent_id("shared-name").await;
+        assert_eq!(resolved, Some(id2));
+    }
+
+    #[tokio::test]
+    async fn test_message_bus_get_agent_id_nonexistent() {
+        let bus = MessageBus::new();
+        assert!(bus.get_agent_id("nonexistent").await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_message_bus_unregister_nonexistent_name() {
+        let bus = MessageBus::new();
+        // Should not panic
+        bus.unregister_agent_name("doesnotexist").await;
+    }
+
+    #[tokio::test]
+    async fn test_message_bus_publish_unknown_target_broadcasts() {
+        let bus = MessageBus::new();
+        let agent_id = AgentId::new();
+        let (tx, mut rx) = mpsc::channel(10);
+
+        bus.subscribe(agent_id, tx).await;
+
+        // Target name not registered — should broadcast to all
+        let message = Message {
+            id: Uuid::new_v4().to_string(),
+            source: "test".to_string(),
+            target: "unknown-agent".to_string(),
+            message_type: MessageType::Command,
+            payload: serde_json::json!({}),
+            timestamp: chrono::Utc::now(),
+        };
+
+        bus.publish(message).await.unwrap();
+        let received = rx.recv().await;
+        assert!(received.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_handle_connection_with_valid_message() {
+        // Test handle_connection via a real Unix socket pair
+        let tmp = std::env::temp_dir().join(format!("agnos_ipc_test_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&tmp);
+        let sock_path = tmp.join("test_conn.sock");
+        let _ = std::fs::remove_file(&sock_path);
+
+        let listener = UnixListener::bind(&sock_path).unwrap();
+        let (tx, mut rx) = mpsc::channel(10);
+        let agent_id = AgentId::new();
+
+        // Spawn handler
+        tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            handle_connection(stream, tx, agent_id).await;
+        });
+
+        // Connect and send a message with length-prefix framing
+        let mut client = UnixStream::connect(&sock_path).await.unwrap();
+        let msg = Message {
+            id: "conn-test".to_string(),
+            source: "client".to_string(),
+            target: "server".to_string(),
+            message_type: MessageType::Command,
+            payload: serde_json::json!({"action": "ping"}),
+            timestamp: chrono::Utc::now(),
+        };
+        let bytes = serde_json::to_vec(&msg).unwrap();
+        let len = (bytes.len() as u32).to_be_bytes();
+
+        use tokio::io::AsyncWriteExt;
+        client.write_all(&len).await.unwrap();
+        client.write_all(&bytes).await.unwrap();
+        drop(client); // Close connection
+
+        // Should receive the message
+        let received = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            rx.recv(),
+        ).await.unwrap();
+        assert!(received.is_some());
+        assert_eq!(received.unwrap().id, "conn-test");
+
+        let _ = std::fs::remove_file(&sock_path);
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[tokio::test]
+    async fn test_handle_connection_oversized_message() {
+        let tmp = std::env::temp_dir().join(format!("agnos_ipc_oversize_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&tmp);
+        let sock_path = tmp.join("oversize.sock");
+        let _ = std::fs::remove_file(&sock_path);
+
+        let listener = UnixListener::bind(&sock_path).unwrap();
+        let (tx, mut rx) = mpsc::channel(10);
+        let agent_id = AgentId::new();
+
+        tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            handle_connection(stream, tx, agent_id).await;
+        });
+
+        let mut client = UnixStream::connect(&sock_path).await.unwrap();
+        // Send a length that exceeds MAX_MESSAGE_SIZE
+        let oversized_len = (MAX_MESSAGE_SIZE + 1).to_be_bytes();
+
+        use tokio::io::AsyncWriteExt;
+        client.write_all(&oversized_len).await.unwrap();
+        drop(client);
+
+        // Handler should close the connection without forwarding any message
+        let received = tokio::time::timeout(
+            std::time::Duration::from_millis(500),
+            rx.recv(),
+        ).await;
+        // Either timeout or None
+        assert!(received.is_err() || received.unwrap().is_none());
+
+        let _ = std::fs::remove_file(&sock_path);
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[tokio::test]
+    async fn test_handle_connection_zero_length_then_valid() {
+        let tmp = std::env::temp_dir().join(format!("agnos_ipc_zero_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&tmp);
+        let sock_path = tmp.join("zero.sock");
+        let _ = std::fs::remove_file(&sock_path);
+
+        let listener = UnixListener::bind(&sock_path).unwrap();
+        let (tx, mut rx) = mpsc::channel(10);
+        let agent_id = AgentId::new();
+
+        tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            handle_connection(stream, tx, agent_id).await;
+        });
+
+        let mut client = UnixStream::connect(&sock_path).await.unwrap();
+        use tokio::io::AsyncWriteExt;
+
+        // Send zero-length (should be skipped)
+        client.write_all(&0u32.to_be_bytes()).await.unwrap();
+
+        // Then send a valid message
+        let msg = Message {
+            id: "after-zero".to_string(),
+            source: "client".to_string(),
+            target: "server".to_string(),
+            message_type: MessageType::Event,
+            payload: serde_json::json!({}),
+            timestamp: chrono::Utc::now(),
+        };
+        let bytes = serde_json::to_vec(&msg).unwrap();
+        client.write_all(&(bytes.len() as u32).to_be_bytes()).await.unwrap();
+        client.write_all(&bytes).await.unwrap();
+        drop(client);
+
+        let received = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            rx.recv(),
+        ).await.unwrap();
+        assert!(received.is_some());
+        assert_eq!(received.unwrap().id, "after-zero");
+
+        let _ = std::fs::remove_file(&sock_path);
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[tokio::test]
+    async fn test_handle_connection_invalid_json() {
+        let tmp = std::env::temp_dir().join(format!("agnos_ipc_badjson_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&tmp);
+        let sock_path = tmp.join("badjson.sock");
+        let _ = std::fs::remove_file(&sock_path);
+
+        let listener = UnixListener::bind(&sock_path).unwrap();
+        let (tx, mut rx) = mpsc::channel(10);
+        let agent_id = AgentId::new();
+
+        tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            handle_connection(stream, tx, agent_id).await;
+        });
+
+        let mut client = UnixStream::connect(&sock_path).await.unwrap();
+        use tokio::io::AsyncWriteExt;
+
+        // Send invalid JSON bytes
+        let garbage = b"this is not json";
+        client.write_all(&(garbage.len() as u32).to_be_bytes()).await.unwrap();
+        client.write_all(garbage).await.unwrap();
+        drop(client);
+
+        // Handler should log a warning but not forward any message
+        let received = tokio::time::timeout(
+            std::time::Duration::from_millis(500),
+            rx.recv(),
+        ).await;
+        assert!(received.is_err() || received.unwrap().is_none());
+
+        let _ = std::fs::remove_file(&sock_path);
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_max_message_size_constant() {
+        assert_eq!(MAX_MESSAGE_SIZE, 64 * 1024);
+    }
+
+    #[test]
+    fn test_max_global_subscribers_constant() {
+        assert_eq!(MAX_GLOBAL_SUBSCRIBERS, 16);
     }
 }

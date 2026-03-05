@@ -194,58 +194,6 @@ pub fn apply_landlock(rules: &[FilesystemRule]) -> Result<()> {
     Ok(())
 }
 
-/// Create a Landlock ruleset fd from filesystem rules.
-///
-/// Returns the ruleset file descriptor. Caller is responsible for closing it
-/// after adding rules and calling `landlock_restrict_self`. Returns 0 if
-/// Landlock is not supported by the kernel (graceful degradation).
-pub fn create_landlock_ruleset(rules: &[FilesystemRule]) -> Result<u32> {
-    #[cfg(target_os = "linux")]
-    {
-        let _ = rules; // Rules inform the handled access set
-        tracing::debug!("Creating Landlock ruleset with {} rules", rules.len());
-
-        let handled_access = LANDLOCK_ACCESS_FS_READ_FILE
-            | LANDLOCK_ACCESS_FS_READ_DIR
-            | LANDLOCK_ACCESS_FS_WRITE_FILE;
-
-        let attr = LandlockRulesetAttr {
-            handled_access_fs: handled_access,
-        };
-
-        let fd = unsafe {
-            libc::syscall(
-                SYS_LANDLOCK_CREATE_RULESET,
-                &attr as *const LandlockRulesetAttr,
-                std::mem::size_of::<LandlockRulesetAttr>(),
-                0u32,
-            ) as i32
-        };
-
-        if fd < 0 {
-            let err = std::io::Error::last_os_error();
-            if err.raw_os_error() == Some(libc::ENOSYS) || err.raw_os_error() == Some(libc::EOPNOTSUPP) {
-                tracing::warn!("Landlock not supported by kernel");
-                return Ok(0);
-            }
-            return Err(SysError::Unknown(format!("landlock_create_ruleset failed: {}", err)));
-        }
-
-        Ok(fd as u32)
-    }
-
-    #[cfg(not(target_os = "linux"))]
-    {
-        let _ = rules;
-        Ok(0)
-    }
-}
-
-/// Restrict filesystem access using Landlock
-pub fn restrict_filesystem(rules: &[FilesystemRule]) -> Result<()> {
-    apply_landlock(rules)
-}
-
 /// Load a seccomp-BPF filter into the calling process.
 ///
 /// The filter must be a valid sequence of BPF `sock_filter` instructions
@@ -600,22 +548,6 @@ mod tests {
         assert!(result.is_ok());
     }
 
-    #[test]
-    fn test_restrict_filesystem() {
-        let rules = vec![
-            FilesystemRule::read_only("/etc"),
-            FilesystemRule::read_write("/tmp"),
-        ];
-        let result = restrict_filesystem(&rules);
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_create_landlock_ruleset() {
-        let rules = vec![FilesystemRule::read_only("/home")];
-        let result = create_landlock_ruleset(&rules);
-        assert!(result.is_ok());
-    }
 
     #[test]
     fn test_load_seccomp_empty() {
@@ -659,5 +591,123 @@ mod tests {
         // Test with empty flags (should succeed even if namespaces not available)
         let result = create_namespace(NamespaceFlags::empty());
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_namespace_flags_default() {
+        let flags = NamespaceFlags::default();
+        assert!(flags.is_empty());
+        assert!(!flags.contains(NamespaceFlags::NETWORK));
+        assert!(!flags.contains(NamespaceFlags::MOUNT));
+        assert!(!flags.contains(NamespaceFlags::PID));
+        assert!(!flags.contains(NamespaceFlags::USER));
+    }
+
+    #[test]
+    fn test_namespace_flags_all_combinations() {
+        let all = NamespaceFlags::NETWORK | NamespaceFlags::MOUNT | NamespaceFlags::PID | NamespaceFlags::USER;
+        assert!(all.contains(NamespaceFlags::NETWORK));
+        assert!(all.contains(NamespaceFlags::MOUNT));
+        assert!(all.contains(NamespaceFlags::PID));
+        assert!(all.contains(NamespaceFlags::USER));
+    }
+
+    #[test]
+    fn test_namespace_flags_individual_values() {
+        assert_eq!(NamespaceFlags::NETWORK.bits(), 1);
+        assert_eq!(NamespaceFlags::MOUNT.bits(), 2);
+        assert_eq!(NamespaceFlags::PID.bits(), 4);
+        assert_eq!(NamespaceFlags::USER.bits(), 8);
+    }
+
+    #[test]
+    fn test_namespace_flags_debug() {
+        let flags = NamespaceFlags::NETWORK | NamespaceFlags::PID;
+        let dbg = format!("{:?}", flags);
+        assert!(dbg.contains("NETWORK"));
+        assert!(dbg.contains("PID"));
+    }
+
+    #[test]
+    fn test_namespace_flags_clone_eq() {
+        let a = NamespaceFlags::MOUNT;
+        let b = a.clone();
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn test_fs_access_debug() {
+        assert_eq!(format!("{:?}", FsAccess::NoAccess), "NoAccess");
+        assert_eq!(format!("{:?}", FsAccess::ReadOnly), "ReadOnly");
+        assert_eq!(format!("{:?}", FsAccess::ReadWrite), "ReadWrite");
+    }
+
+    #[test]
+    fn test_fs_access_clone_eq() {
+        let a = FsAccess::ReadWrite;
+        let b = a.clone();
+        assert_eq!(a, b);
+        assert_ne!(a, FsAccess::NoAccess);
+    }
+
+    #[test]
+    fn test_filesystem_rule_new() {
+        let rule = FilesystemRule::new("/tmp", FsAccess::ReadOnly);
+        assert_eq!(rule.path, PathBuf::from("/tmp"));
+        assert_eq!(rule.access, FsAccess::ReadOnly);
+    }
+
+    #[test]
+    fn test_filesystem_rule_new_pathbuf() {
+        let rule = FilesystemRule::new(PathBuf::from("/var/log"), FsAccess::ReadWrite);
+        assert_eq!(rule.path, PathBuf::from("/var/log"));
+        assert_eq!(rule.access, FsAccess::ReadWrite);
+    }
+
+    #[test]
+    fn test_apply_landlock_empty_rules() {
+        let result = apply_landlock(&[]);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_create_basic_seccomp_filter_structure() {
+        let filter = create_basic_seccomp_filter().unwrap();
+        // Must be a multiple of 8 (sock_filter size)
+        assert_eq!(filter.len() % 8, 0);
+        // At least: 1 load + some jeq + 1 kill + 1 allow = minimum 4 instructions = 32 bytes
+        assert!(filter.len() >= 32);
+    }
+
+    #[test]
+    fn test_load_seccomp_seven_bytes() {
+        // 7 bytes is not a multiple of 8
+        let result = load_seccomp(&[0; 7]);
+        assert!(result.is_err());
+        let err_msg = format!("{}", result.unwrap_err());
+        assert!(err_msg.contains("not a multiple of 8"));
+    }
+
+    #[test]
+    fn test_sock_filter_to_bytes() {
+        let sf = SockFilter::new(0x20, 1, 2, 0xDEAD);
+        let bytes = sf.to_bytes();
+        assert_eq!(bytes.len(), 8);
+        // Verify code field (first 2 bytes in native endian)
+        assert_eq!(u16::from_ne_bytes([bytes[0], bytes[1]]), 0x20);
+        // Verify jt and jf
+        assert_eq!(bytes[2], 1);
+        assert_eq!(bytes[3], 2);
+        // Verify k field (last 4 bytes in native endian)
+        assert_eq!(u32::from_ne_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]), 0xDEAD);
+    }
+
+    #[test]
+    fn test_sock_filter_const_new() {
+        let sf = SockFilter::new(BPF_RET_K, 0, 0, SECCOMP_RET_ALLOW);
+        assert_eq!(sf.code, BPF_RET_K);
+        assert_eq!(sf.jt, 0);
+        assert_eq!(sf.jf, 0);
+        assert_eq!(sf.k, SECCOMP_RET_ALLOW);
     }
 }

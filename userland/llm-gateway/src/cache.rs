@@ -193,8 +193,55 @@ mod tests {
     #[tokio::test]
     async fn test_cache_stats() {
         let cache = ResponseCache::new(Duration::from_secs(60));
-        
+
         let stats = cache.stats().await;
         assert_eq!(stats.active_entries, 0);
+    }
+
+    #[tokio::test]
+    async fn test_cache_cleanup_on_overflow() {
+        // Use a very short TTL so entries expire immediately
+        let cache = ResponseCache::new(Duration::from_millis(1));
+
+        let response = InferenceResponse {
+            text: "reply".to_string(),
+            tokens_generated: 1,
+            finish_reason: FinishReason::Stop,
+            model: "test".to_string(),
+            usage: TokenUsage::default(),
+        };
+
+        // Insert 1001 entries to trigger cleanup
+        for i in 0..1001 {
+            let request = InferenceRequest {
+                prompt: format!("prompt-{}", i),
+                model: "test".to_string(),
+                max_tokens: 100,
+                temperature: 0.7,
+                top_p: 1.0,
+                presence_penalty: 0.0,
+                frequency_penalty: 0.0,
+            };
+            cache.set(request, response.clone()).await;
+        }
+
+        // Wait for TTL to expire
+        tokio::time::sleep(Duration::from_millis(5)).await;
+
+        // Insert one more to trigger cleanup of expired entries
+        let request = InferenceRequest {
+            prompt: "trigger-cleanup".to_string(),
+            model: "test".to_string(),
+            max_tokens: 100,
+            temperature: 0.7,
+            top_p: 1.0,
+            presence_penalty: 0.0,
+            frequency_penalty: 0.0,
+        };
+        cache.set(request, response).await;
+
+        // After cleanup, most expired entries should be removed
+        let stats = cache.stats().await;
+        assert!(stats.total_entries < 1001, "expected cleanup to remove entries, got {}", stats.total_entries);
     }
 }

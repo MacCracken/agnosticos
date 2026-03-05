@@ -6,7 +6,7 @@
 use anyhow::Result;
 use clap::Parser;
 use std::path::PathBuf;
-use tracing::{info, warn};
+use tracing::info;
 
 mod approval;
 pub mod audit;
@@ -24,9 +24,8 @@ pub mod security;
 pub mod session;
 pub mod ui;
 
-use approval::ApprovalManager;
 use config::ShellConfig;
-use mode::{Mode, ModeManager};
+use mode::Mode;
 use security::SecurityContext;
 use session::Session;
 
@@ -75,7 +74,12 @@ struct Args {
 #[tokio::main]
 async fn main() -> Result<()> {
     // Initialize logging
-    tracing_subscriber::fmt::init();
+    let fmt = tracing_subscriber::fmt();
+    if std::env::var("AGNOS_LOG_FORMAT").as_deref() == Ok("json") {
+        fmt.json().init();
+    } else {
+        fmt.init();
+    }
     
     let args = Args::parse();
     

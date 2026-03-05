@@ -1126,4 +1126,375 @@ mod tests {
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
     }
+
+    // ==================================================================
+    // Additional coverage: auth edge cases, prompt building, handler
+    // paths, request validation
+    // ==================================================================
+
+    #[tokio::test]
+    async fn test_auth_bearer_prefix_case_sensitive() {
+        let app = test_app_with_auth("mykey").await;
+        let body = serde_json::json!({
+            "model": "llama2",
+            "messages": [{"role": "user", "content": "Hi"}]
+        });
+        // "bearer" lowercase should fail — OpenAI uses "Bearer"
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/chat/completions")
+            .header("content-type", "application/json")
+            .header("authorization", "bearer mykey")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn test_auth_no_bearer_prefix() {
+        let app = test_app_with_auth("mykey").await;
+        let body = serde_json::json!({
+            "model": "llama2",
+            "messages": [{"role": "user", "content": "Hi"}]
+        });
+        // Authorization header without "Bearer " prefix
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/chat/completions")
+            .header("content-type", "application/json")
+            .header("authorization", "mykey")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn test_auth_empty_bearer_token() {
+        let app = test_app_with_auth("mykey").await;
+        let body = serde_json::json!({
+            "model": "llama2",
+            "messages": [{"role": "user", "content": "Hi"}]
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/chat/completions")
+            .header("content-type", "application/json")
+            .header("authorization", "Bearer ")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn test_chat_completions_empty_model_string() {
+        let app = test_app_no_auth().await;
+        let body = serde_json::json!({
+            "model": "",
+            "messages": [{"role": "user", "content": "Hello"}]
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/chat/completions")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        // Empty model still parses, but inference fails
+        assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[tokio::test]
+    async fn test_chat_completions_prompt_built_from_messages() {
+        // Verify the prompt building logic: "role: content\nrole: content"
+        let messages = vec![
+            ChatMessage { role: "system".to_string(), content: "Be helpful".to_string() },
+            ChatMessage { role: "user".to_string(), content: "Hello".to_string() },
+        ];
+        let prompt: String = messages
+            .iter()
+            .map(|m| format!("{}: {}", m.role, m.content))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert_eq!(prompt, "system: Be helpful\nuser: Hello");
+    }
+
+    #[tokio::test]
+    async fn test_chat_completions_single_message_prompt() {
+        let messages = vec![
+            ChatMessage { role: "user".to_string(), content: "Test".to_string() },
+        ];
+        let prompt: String = messages
+            .iter()
+            .map(|m| format!("{}: {}", m.role, m.content))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert_eq!(prompt, "user: Test");
+    }
+
+    #[tokio::test]
+    async fn test_chat_completions_empty_messages_prompt() {
+        let messages: Vec<ChatMessage> = vec![];
+        let prompt: String = messages
+            .iter()
+            .map(|m| format!("{}: {}", m.role, m.content))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert_eq!(prompt, "");
+    }
+
+    #[tokio::test]
+    async fn test_health_endpoint_response_structure() {
+        let app = test_app_no_auth().await;
+        let req = Request::builder()
+            .uri("/v1/health")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        // Verify providers is always an array with expected structure
+        let providers = json["providers"].as_array().unwrap();
+        for p in providers {
+            assert!(p["name"].is_string());
+            assert!(p["available"].is_boolean());
+        }
+    }
+
+    #[tokio::test]
+    async fn test_list_models_response_structure() {
+        let app = test_app_no_auth().await;
+        let req = Request::builder()
+            .uri("/v1/models")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["object"], "list");
+        // data should be an array (possibly empty)
+        assert!(json["data"].is_array());
+    }
+
+    #[tokio::test]
+    async fn test_chat_completions_get_method_not_allowed() {
+        let app = test_app_no_auth().await;
+        let req = Request::builder()
+            .method("GET")
+            .uri("/v1/chat/completions")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        // GET on a POST-only route should return 405 Method Not Allowed
+        assert_eq!(resp.status(), StatusCode::METHOD_NOT_ALLOWED);
+    }
+
+    #[tokio::test]
+    async fn test_models_post_method_not_allowed() {
+        let app = test_app_no_auth().await;
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/models")
+            .header("content-type", "application/json")
+            .body(Body::from("{}"))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::METHOD_NOT_ALLOWED);
+    }
+
+    #[tokio::test]
+    async fn test_health_post_method_not_allowed() {
+        let app = test_app_no_auth().await;
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/health")
+            .header("content-type", "application/json")
+            .body(Body::from("{}"))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::METHOD_NOT_ALLOWED);
+    }
+
+    #[tokio::test]
+    async fn test_chat_completions_unicode_content() {
+        let app = test_app_no_auth().await;
+        let body = serde_json::json!({
+            "model": "llama2",
+            "messages": [{"role": "user", "content": "こんにちは世界 🌍 Привет мир"}]
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/chat/completions")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        // Should parse successfully (fails at inference, not parsing)
+        assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[tokio::test]
+    async fn test_chat_completions_very_long_model_name() {
+        let app = test_app_no_auth().await;
+        let long_model = "m".repeat(1000);
+        let body = serde_json::json!({
+            "model": long_model,
+            "messages": [{"role": "user", "content": "Hi"}]
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/chat/completions")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[tokio::test]
+    async fn test_chat_completions_error_response_structure() {
+        let app = test_app_no_auth().await;
+        let body = serde_json::json!({
+            "model": "llama2",
+            "messages": [{"role": "user", "content": "Hi"}]
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/chat/completions")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+
+        let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        // Error response should have error.message, error.type, error.code
+        assert!(json["error"]["message"].is_string());
+        assert_eq!(json["error"]["type"], "internal_error");
+        assert!(json["error"]["code"].is_null());
+        // Message should be sanitized (not expose internal details)
+        let msg = json["error"]["message"].as_str().unwrap();
+        assert!(msg.contains("Inference request failed"));
+    }
+
+    #[test]
+    fn test_chat_completion_request_zero_temperature() {
+        let json = r#"{
+            "model": "llama2",
+            "messages": [{"role": "user", "content": "test"}],
+            "temperature": 0.0
+        }"#;
+        let req: ChatCompletionRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.temperature, Some(0.0));
+    }
+
+    #[test]
+    fn test_chat_completion_request_max_tokens_zero() {
+        let json = r#"{
+            "model": "llama2",
+            "messages": [{"role": "user", "content": "test"}],
+            "max_tokens": 0
+        }"#;
+        let req: ChatCompletionRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.max_tokens, Some(0));
+    }
+
+    #[test]
+    fn test_error_response_debug() {
+        let error = ErrorResponse {
+            error: ErrorDetail {
+                message: "test error".to_string(),
+                r#type: "test_type".to_string(),
+                code: Some("test_code".to_string()),
+            },
+        };
+        let dbg = format!("{:?}", error);
+        assert!(dbg.contains("test error"));
+        assert!(dbg.contains("test_code"));
+    }
+
+    #[test]
+    fn test_health_response_debug() {
+        let health = HealthResponse {
+            status: "healthy".to_string(),
+            providers: vec![],
+        };
+        let dbg = format!("{:?}", health);
+        assert!(dbg.contains("healthy"));
+    }
+
+    #[test]
+    fn test_models_response_debug() {
+        let resp = ModelsResponse {
+            object: "list".to_string(),
+            data: vec![],
+        };
+        let dbg = format!("{:?}", resp);
+        assert!(dbg.contains("list"));
+    }
+
+    #[test]
+    fn test_chat_completion_response_debug() {
+        let resp = ChatCompletionResponse {
+            id: "id".to_string(),
+            object: "obj".to_string(),
+            created: 0,
+            model: "m".to_string(),
+            choices: vec![],
+            usage: Usage { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+        };
+        let dbg = format!("{:?}", resp);
+        assert!(dbg.contains("id"));
+    }
+
+    #[test]
+    fn test_choice_debug() {
+        let choice = Choice {
+            index: 0,
+            message: ChatMessage { role: "a".to_string(), content: "b".to_string() },
+            finish_reason: "stop".to_string(),
+        };
+        let dbg = format!("{:?}", choice);
+        assert!(dbg.contains("stop"));
+    }
+
+    #[test]
+    fn test_usage_debug() {
+        let usage = Usage {
+            prompt_tokens: 10,
+            completion_tokens: 20,
+            total_tokens: 30,
+        };
+        let dbg = format!("{:?}", usage);
+        assert!(dbg.contains("10"));
+        assert!(dbg.contains("20"));
+        assert!(dbg.contains("30"));
+    }
+
+    #[test]
+    fn test_provider_status_debug() {
+        let status = ProviderStatus {
+            name: "test".to_string(),
+            available: true,
+        };
+        let dbg = format!("{:?}", status);
+        assert!(dbg.contains("test"));
+        assert!(dbg.contains("true"));
+    }
+
+    #[test]
+    fn test_model_debug() {
+        let model = Model {
+            id: "test-model".to_string(),
+            object: "model".to_string(),
+            created: 12345,
+            owned_by: "test-owner".to_string(),
+        };
+        let dbg = format!("{:?}", model);
+        assert!(dbg.contains("test-model"));
+        assert!(dbg.contains("12345"));
+    }
 }

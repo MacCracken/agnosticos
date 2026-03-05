@@ -4,7 +4,7 @@
 //! with AGNOS-specific features like AI mode indicators
 
 use ansi_term::{Color, Style};
-use anyhow::Result;
+use chrono;
 use std::path::PathBuf;
 use std::time::SystemTime;
 
@@ -353,8 +353,31 @@ impl PromptRenderer {
     
     /// Render right-side prompt (RPROMPT style)
     pub fn render_right(&self, context: &PromptContext) -> Option<String> {
-        // Placeholder for right-side prompt (time, etc.)
-        None
+        let mut parts = Vec::new();
+
+        // Show execution time if above threshold
+        if self.config.show_execution_time && context.cmd_duration_ms >= self.config.execution_time_threshold {
+            let duration = if context.cmd_duration_ms < 1000 {
+                format!("{}ms", context.cmd_duration_ms)
+            } else {
+                let secs = context.cmd_duration_ms / 1000;
+                let ms = context.cmd_duration_ms % 1000;
+                format!("{}.{:03}s", secs, ms)
+            };
+            let style = Style::new().fg(Color::Yellow).dimmed();
+            parts.push(style.paint(duration).to_string());
+        }
+
+        // Show current time
+        let now = chrono::Local::now();
+        let time_style = Style::new().dimmed();
+        parts.push(time_style.paint(now.format("%H:%M:%S").to_string()).to_string());
+
+        if parts.is_empty() {
+            None
+        } else {
+            Some(parts.join(" "))
+        }
     }
 }
 
@@ -591,10 +614,20 @@ mod tests {
     }
 
     #[test]
-    fn test_prompt_renderer_render_right_returns_none() {
+    fn test_prompt_renderer_render_right_returns_time() {
         let renderer = PromptRenderer::default();
         let ctx = PromptContext::new(PathBuf::from("/"), "u".into(), "HUMAN".into());
-        assert!(renderer.render_right(&ctx).is_none());
+        let right = renderer.render_right(&ctx);
+        assert!(right.is_some(), "right prompt should contain at least the time");
+    }
+
+    #[test]
+    fn test_prompt_renderer_render_right_with_duration() {
+        let renderer = PromptRenderer::default();
+        let mut ctx = PromptContext::new(PathBuf::from("/"), "u".into(), "HUMAN".into());
+        ctx.cmd_duration_ms = 5000; // above 2000ms threshold
+        let right = renderer.render_right(&ctx).unwrap();
+        assert!(right.contains("5.000s"));
     }
 
     #[test]
@@ -643,5 +676,26 @@ mod tests {
     fn test_prompt_context_hostname_populated() {
         let ctx = PromptContext::new(PathBuf::from("/"), "u".into(), "HUMAN".into());
         assert!(!ctx.hostname.is_empty());
+    }
+
+    #[test]
+    fn test_prompt_renderer_render_right_short_duration_ms() {
+        let mut config = PromptConfig::default();
+        config.execution_time_threshold = 100;
+        let renderer = PromptRenderer::new(config);
+        let mut ctx = PromptContext::new(PathBuf::from("/"), "u".into(), "HUMAN".into());
+        ctx.cmd_duration_ms = 500; // Above 100ms threshold but below 1000 → ms format
+        let right = renderer.render_right(&ctx).unwrap();
+        assert!(right.contains("500ms"));
+    }
+
+    #[test]
+    fn test_prompt_renderer_with_context_module() {
+        let mut config = PromptConfig::default();
+        config.show_context = true;
+        let renderer = PromptRenderer::new(config);
+        let ctx = PromptContext::new(PathBuf::from("/tmp"), "alice".into(), "HUMAN".into());
+        let output = renderer.render(&ctx);
+        assert!(output.contains("alice"));
     }
 }

@@ -221,4 +221,58 @@ mod tests {
         let ui = Ui::new();
         ui.show_error("");
     }
+
+    #[test]
+    fn test_show_history() {
+        use std::collections::VecDeque;
+        use std::path::PathBuf;
+
+        let mut entries = VecDeque::new();
+        entries.push_back("ls -la".to_string());
+        entries.push_back("cd /home".to_string());
+        entries.push_back("git status".to_string());
+
+        let history = crate::history::CommandHistory {
+            entries,
+            file: PathBuf::from("/tmp/test"),
+            max_size: 100,
+        };
+
+        let ui = Ui::new();
+        ui.show_history(&history);
+    }
+
+    #[test]
+    fn test_show_proposed_action_with_explanation() {
+        let translation = crate::interpreter::Translation {
+            command: "ls".to_string(),
+            args: vec!["-la".to_string(), "/home".to_string()],
+            description: "List files in home directory".to_string(),
+            permission: crate::security::PermissionLevel::Safe,
+            explanation: "Shows all files including hidden ones".to_string(),
+        };
+
+        let ui = Ui::new();
+        ui.show_proposed_action(&translation);
+    }
+
+    #[test]
+    fn test_show_proposed_action_empty_explanation() {
+        let translation = crate::interpreter::Translation {
+            command: "pwd".to_string(),
+            args: vec![],
+            description: "Print working directory".to_string(),
+            permission: crate::security::PermissionLevel::Safe,
+            explanation: String::new(),
+        };
+
+        let ui = Ui::new();
+        ui.show_proposed_action(&translation);
+    }
+
+    #[test]
+    fn test_clear_screen() {
+        let ui = Ui::new();
+        ui.clear_screen();
+    }
 }

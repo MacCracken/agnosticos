@@ -3,10 +3,11 @@
 //! Handles GPU allocation, memory management, and CPU scheduling.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use anyhow::{Context, Result};
 use tokio::sync::RwLock;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 use agnos_common::AgentId;
 
@@ -16,7 +17,7 @@ pub struct GpuDevice {
     pub id: u32,
     pub name: String,
     pub total_memory: u64,
-    pub available_memory: RwLock<u64>,
+    pub available_memory: AtomicU64,
     pub compute_capability: Option<String>,
 }
 
@@ -26,7 +27,7 @@ impl Clone for GpuDevice {
             id: self.id,
             name: self.name.clone(),
             total_memory: self.total_memory,
-            available_memory: RwLock::new(*self.available_memory.blocking_read()),
+            available_memory: AtomicU64::new(self.available_memory.load(Ordering::Relaxed)),
             compute_capability: self.compute_capability.clone(),
         }
     }
@@ -80,11 +81,10 @@ impl ResourceManager {
         let mut allocated_gpus = Vec::new();
         
         for gpu in gpus.iter_mut() {
-            let available = *gpu.available_memory.read().await;
-            
+            let available = gpu.available_memory.load(Ordering::Relaxed);
+
             if available >= memory_required {
-                let mut gpu_available = gpu.available_memory.write().await;
-                *gpu_available -= memory_required;
+                gpu.available_memory.fetch_sub(memory_required, Ordering::Relaxed);
                 
                 allocated_gpus.push(gpu.id);
                 info!("Allocated GPU {} to agent {}", gpu.id, agent_id);
@@ -115,9 +115,8 @@ impl ResourceManager {
             
             for gpu_id in gpu_ids {
                 if let Some(gpu) = gpus.iter_mut().find(|g| g.id == gpu_id) {
-                    let mut available = gpu.available_memory.write().await;
                     // Restore full GPU memory (simplified)
-                    *available = gpu.total_memory;
+                    gpu.available_memory.store(gpu.total_memory, Ordering::Relaxed);
                     info!("Released GPU {} from agent {}", gpu_id, agent_id);
                 }
             }
@@ -222,8 +221,33 @@ impl ResourceManager {
             }
         }
 
-        // Try to detect other GPUs (AMD, Intel)
-        // TODO: Implement detection for other GPU vendors
+        // Try to detect AMD GPUs
+        match Self::detect_amd_gpus().await {
+            Ok(amd_gpus) => {
+                let offset = gpus.len() as u32;
+                for mut gpu in amd_gpus {
+                    gpu.id += offset;
+                    gpus.push(gpu);
+                }
+            }
+            Err(e) => {
+                debug!("Failed to detect AMD GPUs: {}", e);
+            }
+        }
+
+        // Try to detect Intel GPUs
+        match Self::detect_intel_gpus().await {
+            Ok(intel_gpus) => {
+                let offset = gpus.len() as u32;
+                for mut gpu in intel_gpus {
+                    gpu.id += offset;
+                    gpus.push(gpu);
+                }
+            }
+            Err(e) => {
+                debug!("Failed to detect Intel GPUs: {}", e);
+            }
+        }
 
         if gpus.is_empty() {
             info!("No GPUs detected");
@@ -261,12 +285,140 @@ impl ResourceManager {
                     id,
                     name,
                     total_memory,
-                    available_memory: RwLock::new(total_memory),
+                    available_memory: AtomicU64::new(total_memory),
                     compute_capability: None,
                 });
             }
         }
 
+        Ok(gpus)
+    }
+
+    /// Detect AMD GPUs via /sys/class/drm and rocm-smi
+    async fn detect_amd_gpus() -> Result<Vec<GpuDevice>> {
+        use tokio::process::Command;
+
+        // Try rocm-smi first for detailed info
+        let output = Command::new("rocm-smi")
+            .args(&["--showid", "--showmeminfo", "vram", "--csv"])
+            .output()
+            .await;
+
+        if let Ok(output) = output {
+            if output.status.success() {
+                let stdout = String::from_utf8(output.stdout)?;
+                let mut gpus = Vec::new();
+                // Parse CSV: skip header, each row has device info
+                for (idx, line) in stdout.lines().skip(1).enumerate() {
+                    let parts: Vec<&str> = line.split(',').collect();
+                    let name = parts.get(0).unwrap_or(&"AMD GPU").trim().to_string();
+                    let total_mem = parts
+                        .get(1)
+                        .and_then(|s| s.trim().parse::<u64>().ok())
+                        .unwrap_or(0);
+
+                    gpus.push(GpuDevice {
+                        id: idx as u32,
+                        name,
+                        total_memory: total_mem,
+                        available_memory: AtomicU64::new(total_mem),
+                        compute_capability: None,
+                    });
+                }
+                if !gpus.is_empty() {
+                    return Ok(gpus);
+                }
+            }
+        }
+
+        // Fallback: scan /sys/class/drm for AMD render nodes
+        let mut gpus = Vec::new();
+        let drm_path = std::path::Path::new("/sys/class/drm");
+        if drm_path.exists() {
+            if let Ok(entries) = std::fs::read_dir(drm_path) {
+                for (idx, entry) in entries.flatten().enumerate() {
+                    let name = entry.file_name().to_string_lossy().to_string();
+                    if !name.starts_with("card") || name.contains('-') {
+                        continue;
+                    }
+                    let vendor_path = entry.path().join("device/vendor");
+                    if let Ok(vendor) = std::fs::read_to_string(&vendor_path) {
+                        let vendor = vendor.trim();
+                        // AMD vendor ID
+                        if vendor == "0x1002" {
+                            let device_name = std::fs::read_to_string(
+                                entry.path().join("device/label"),
+                            )
+                            .unwrap_or_else(|_| format!("AMD GPU {}", idx));
+                            let mem_path = entry.path().join("device/mem_info_vram_total");
+                            let total_memory = std::fs::read_to_string(&mem_path)
+                                .ok()
+                                .and_then(|s| s.trim().parse::<u64>().ok())
+                                .unwrap_or(0);
+
+                            gpus.push(GpuDevice {
+                                id: idx as u32,
+                                name: device_name.trim().to_string(),
+                                total_memory,
+                                available_memory: AtomicU64::new(total_memory),
+                                compute_capability: None,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        if gpus.is_empty() {
+            anyhow::bail!("No AMD GPUs detected");
+        }
+        Ok(gpus)
+    }
+
+    /// Detect Intel GPUs via /sys/class/drm
+    async fn detect_intel_gpus() -> Result<Vec<GpuDevice>> {
+        let mut gpus = Vec::new();
+        let drm_path = std::path::Path::new("/sys/class/drm");
+        if !drm_path.exists() {
+            anyhow::bail!("No /sys/class/drm directory");
+        }
+
+        if let Ok(entries) = std::fs::read_dir(drm_path) {
+            for (idx, entry) in entries.flatten().enumerate() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if !name.starts_with("card") || name.contains('-') {
+                    continue;
+                }
+                let vendor_path = entry.path().join("device/vendor");
+                if let Ok(vendor) = std::fs::read_to_string(&vendor_path) {
+                    let vendor = vendor.trim();
+                    // Intel vendor ID
+                    if vendor == "0x8086" {
+                        let device_name =
+                            std::fs::read_to_string(entry.path().join("device/label"))
+                                .unwrap_or_else(|_| format!("Intel GPU {}", idx));
+                        // Intel GPUs expose local memory via i915 sysfs when available
+                        let mem_path = entry.path().join("device/lmem_total_bytes");
+                        let total_memory = std::fs::read_to_string(&mem_path)
+                            .ok()
+                            .and_then(|s| s.trim().parse::<u64>().ok())
+                            .unwrap_or(0);
+
+                        gpus.push(GpuDevice {
+                            id: idx as u32,
+                            name: device_name.trim().to_string(),
+                            total_memory,
+                            available_memory: AtomicU64::new(total_memory),
+                            compute_capability: None,
+                        });
+                    }
+                }
+            }
+        }
+
+        if gpus.is_empty() {
+            anyhow::bail!("No Intel GPUs detected");
+        }
         Ok(gpus)
     }
 
@@ -311,8 +463,6 @@ impl ResourceManager {
     }
 }
 
-use std::sync::Arc;
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -323,7 +473,7 @@ mod tests {
             id: 0,
             name: "RTX 4090".to_string(),
             total_memory: 24 * 1024 * 1024 * 1024,
-            available_memory: RwLock::new(24 * 1024 * 1024 * 1024),
+            available_memory: AtomicU64::new(24 * 1024 * 1024 * 1024),
             compute_capability: Some("8.9".to_string()),
         };
         
@@ -338,7 +488,7 @@ mod tests {
             id: 1,
             name: "RTX 3090".to_string(),
             total_memory: 24 * 1024 * 1024 * 1024,
-            available_memory: RwLock::new(24 * 1024 * 1024 * 1024),
+            available_memory: AtomicU64::new(24 * 1024 * 1024 * 1024),
             compute_capability: None,
         };
 
@@ -352,7 +502,7 @@ mod tests {
             id: 0,
             name: "Test GPU".to_string(),
             total_memory: 8 * 1024 * 1024 * 1024,
-            available_memory: RwLock::new(8 * 1024 * 1024 * 1024),
+            available_memory: AtomicU64::new(8 * 1024 * 1024 * 1024),
             compute_capability: Some("7.5".to_string()),
         };
         let debug_str = format!("{:?}", gpu);
@@ -368,7 +518,7 @@ mod tests {
             id: 2,
             name: "A100".to_string(),
             total_memory: total,
-            available_memory: RwLock::new(available),
+            available_memory: AtomicU64::new(available),
             compute_capability: Some("8.0".to_string()),
         };
 
@@ -376,7 +526,7 @@ mod tests {
         assert_eq!(cloned.id, 2);
         assert_eq!(cloned.name, "A100");
         assert_eq!(cloned.total_memory, total);
-        assert_eq!(*cloned.available_memory.blocking_read(), available);
+        assert_eq!(cloned.available_memory.load(Ordering::Relaxed), available);
         assert_eq!(cloned.compute_capability, Some("8.0".to_string()));
     }
 
@@ -386,7 +536,7 @@ mod tests {
             id: 0,
             name: "Intel Integrated".to_string(),
             total_memory: 2 * 1024 * 1024 * 1024,
-            available_memory: RwLock::new(2 * 1024 * 1024 * 1024),
+            available_memory: AtomicU64::new(2 * 1024 * 1024 * 1024),
             compute_capability: None,
         };
         assert!(gpu.compute_capability.is_none());
@@ -533,5 +683,235 @@ mod tests {
         // Release without allocating — should be ok
         let result = rm.release_gpu(agent_id).await;
         assert!(result.is_ok());
+    }
+
+    // ==================================================================
+    // Additional coverage: GPU allocation/release with injected GPUs,
+    // memory reserve/release edge cases, CPU allocation boundaries,
+    // detect_cpu_cores, GpuDevice edge cases, concurrent operations
+    // ==================================================================
+
+    #[tokio::test]
+    async fn test_resource_manager_gpu_allocation_with_injected_gpu() {
+        let rm = ResourceManager::new().await.unwrap();
+        let total_mem = 8 * 1024 * 1024 * 1024u64;
+
+        // Inject a test GPU
+        {
+            let mut gpus = rm.gpus.write().await;
+            gpus.push(GpuDevice {
+                id: 99,
+                name: "Test GPU".to_string(),
+                total_memory: total_mem,
+                available_memory: AtomicU64::new(total_mem),
+                compute_capability: Some("9.0".to_string()),
+            });
+        }
+
+        let agent_id = AgentId::new();
+        let allocated = rm.allocate_gpu(agent_id, 4 * 1024 * 1024 * 1024).await.unwrap();
+        assert!(allocated.contains(&99));
+
+        // Check allocations
+        let allocs = rm.get_gpu_allocations().await;
+        assert!(allocs.contains_key(&agent_id));
+    }
+
+    #[tokio::test]
+    async fn test_resource_manager_gpu_allocation_insufficient_memory() {
+        let rm = ResourceManager::new().await.unwrap();
+
+        // Clear any detected GPUs and inject only a small one
+        {
+            let mut gpus = rm.gpus.write().await;
+            gpus.clear();
+            gpus.push(GpuDevice {
+                id: 50,
+                name: "Small GPU".to_string(),
+                total_memory: 1024, // Very small
+                available_memory: AtomicU64::new(1024),
+                compute_capability: None,
+            });
+        }
+
+        let agent_id = AgentId::new();
+        // Request more memory than available
+        let result = rm.allocate_gpu(agent_id, 1024 * 1024).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("No GPU"));
+    }
+
+    #[tokio::test]
+    async fn test_resource_manager_gpu_release_restores_memory() {
+        let rm = ResourceManager::new().await.unwrap();
+        let total_mem = 16 * 1024 * 1024 * 1024u64;
+
+        {
+            let mut gpus = rm.gpus.write().await;
+            gpus.push(GpuDevice {
+                id: 10,
+                name: "Release Test GPU".to_string(),
+                total_memory: total_mem,
+                available_memory: AtomicU64::new(total_mem),
+                compute_capability: None,
+            });
+        }
+
+        let agent_id = AgentId::new();
+        rm.allocate_gpu(agent_id, 4 * 1024 * 1024 * 1024).await.unwrap();
+
+        // After allocation, available should be reduced
+        {
+            let gpus = rm.gpus.read().await;
+            let gpu = gpus.iter().find(|g| g.id == 10).unwrap();
+            assert!(gpu.available_memory.load(Ordering::Relaxed) < total_mem);
+        }
+
+        // Release
+        rm.release_gpu(agent_id).await.unwrap();
+
+        // After release, available should be restored to total
+        {
+            let gpus = rm.gpus.read().await;
+            let gpu = gpus.iter().find(|g| g.id == 10).unwrap();
+            assert_eq!(gpu.available_memory.load(Ordering::Relaxed), total_mem);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_resource_manager_memory_reserve_exact_total() {
+        let rm = ResourceManager::new().await.unwrap();
+        let total = rm.total_memory();
+        let agent_id = AgentId::new();
+
+        // Reserve exactly total
+        let result = rm.reserve_memory(agent_id, total).await;
+        assert!(result.is_ok());
+        assert_eq!(rm.available_memory().await, 0);
+    }
+
+    #[tokio::test]
+    async fn test_resource_manager_memory_reserve_then_release_then_reserve() {
+        let rm = ResourceManager::new().await.unwrap();
+        let total = rm.total_memory();
+        let amount = 1024 * 1024u64;
+        let agent_id = AgentId::new();
+
+        rm.reserve_memory(agent_id, amount).await.unwrap();
+        rm.release_memory(amount).await;
+        assert_eq!(rm.available_memory().await, total);
+
+        // Should be able to reserve again
+        rm.reserve_memory(agent_id, amount).await.unwrap();
+        assert_eq!(rm.available_memory().await, total - amount);
+    }
+
+    #[tokio::test]
+    async fn test_resource_manager_cpu_allocate_zero() {
+        let rm = ResourceManager::new().await.unwrap();
+        let agent_id = AgentId::new();
+
+        let cores = rm.allocate_cpu(agent_id, 0).await.unwrap();
+        assert!(cores.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_resource_manager_cpu_allocate_exactly_available() {
+        let rm = ResourceManager::new().await.unwrap();
+        let agent_id = AgentId::new();
+
+        // Get actual core count
+        let num_cores = ResourceManager::detect_cpu_cores().await.unwrap();
+        let cores = rm.allocate_cpu(agent_id, num_cores).await.unwrap();
+        assert_eq!(cores.len(), num_cores);
+    }
+
+    #[test]
+    fn test_gpu_device_zero_memory() {
+        let gpu = GpuDevice {
+            id: 0,
+            name: "Zero Mem GPU".to_string(),
+            total_memory: 0,
+            available_memory: AtomicU64::new(0),
+            compute_capability: None,
+        };
+        let cloned = gpu.clone();
+        assert_eq!(cloned.total_memory, 0);
+        assert_eq!(cloned.available_memory.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn test_gpu_device_clone_independent_atomic() {
+        let gpu = GpuDevice {
+            id: 0,
+            name: "Atomic Test".to_string(),
+            total_memory: 1000,
+            available_memory: AtomicU64::new(1000),
+            compute_capability: None,
+        };
+
+        let cloned = gpu.clone();
+        // Modify original's available_memory
+        gpu.available_memory.store(500, Ordering::Relaxed);
+
+        // Cloned should still have old value (independent AtomicU64)
+        assert_eq!(cloned.available_memory.load(Ordering::Relaxed), 1000);
+        assert_eq!(gpu.available_memory.load(Ordering::Relaxed), 500);
+    }
+
+    #[tokio::test]
+    async fn test_resource_manager_total_memory_positive() {
+        let rm = ResourceManager::new().await.unwrap();
+        assert!(rm.total_memory() > 0);
+    }
+
+    #[tokio::test]
+    async fn test_resource_manager_multiple_gpu_allocations() {
+        let rm = ResourceManager::new().await.unwrap();
+
+        // Inject two GPUs
+        {
+            let mut gpus = rm.gpus.write().await;
+            for i in 0..2 {
+                gpus.push(GpuDevice {
+                    id: 200 + i,
+                    name: format!("Multi GPU {}", i),
+                    total_memory: 4 * 1024 * 1024 * 1024,
+                    available_memory: AtomicU64::new(4 * 1024 * 1024 * 1024),
+                    compute_capability: None,
+                });
+            }
+        }
+
+        let a1 = AgentId::new();
+        let a2 = AgentId::new();
+
+        let _g1 = rm.allocate_gpu(a1, 2 * 1024 * 1024 * 1024).await.unwrap();
+        let _g2 = rm.allocate_gpu(a2, 2 * 1024 * 1024 * 1024).await.unwrap();
+
+        let allocs = rm.get_gpu_allocations().await;
+        assert_eq!(allocs.len(), 2);
+        assert!(allocs.contains_key(&a1));
+        assert!(allocs.contains_key(&a2));
+
+        // Release both
+        rm.release_gpu(a1).await.unwrap();
+        rm.release_gpu(a2).await.unwrap();
+        assert!(rm.get_gpu_allocations().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_detect_cpu_cores_returns_positive() {
+        let cores = ResourceManager::detect_cpu_cores().await.unwrap();
+        assert!(cores >= 1);
+    }
+
+    #[tokio::test]
+    async fn test_resource_manager_release_memory_zero() {
+        let rm = ResourceManager::new().await.unwrap();
+        let total = rm.total_memory();
+
+        rm.release_memory(0).await;
+        assert_eq!(rm.available_memory().await, total);
     }
 }

@@ -703,4 +703,330 @@ mod tests {
         let ctx = get_current_selinux_context().unwrap();
         assert!(!ctx.is_empty());
     }
+
+    // --- Additional coverage tests ---
+
+    #[test]
+    fn test_mac_system_serde_roundtrip() {
+        for variant in &[MacSystem::SELinux, MacSystem::AppArmor, MacSystem::None] {
+            let json = serde_json::to_string(variant).unwrap();
+            let back: MacSystem = serde_json::from_str(&json).unwrap();
+            assert_eq!(*variant, back);
+        }
+    }
+
+    #[test]
+    fn test_selinux_mode_serde_roundtrip() {
+        for variant in &[SELinuxMode::Enforcing, SELinuxMode::Permissive, SELinuxMode::Disabled] {
+            let json = serde_json::to_string(variant).unwrap();
+            let back: SELinuxMode = serde_json::from_str(&json).unwrap();
+            assert_eq!(*variant, back);
+        }
+    }
+
+    #[test]
+    fn test_apparmor_profile_state_serde_roundtrip() {
+        for variant in &[
+            AppArmorProfileState::Enforce,
+            AppArmorProfileState::Complain,
+            AppArmorProfileState::Unconfined,
+        ] {
+            let json = serde_json::to_string(variant).unwrap();
+            let back: AppArmorProfileState = serde_json::from_str(&json).unwrap();
+            assert_eq!(*variant, back);
+        }
+    }
+
+    #[test]
+    fn test_mac_system_clone_and_copy() {
+        let a = MacSystem::SELinux;
+        let b = a; // Copy
+        let c = a.clone(); // Clone
+        assert_eq!(a, b);
+        assert_eq!(a, c);
+    }
+
+    #[test]
+    fn test_mac_system_debug() {
+        let dbg = format!("{:?}", MacSystem::SELinux);
+        assert_eq!(dbg, "SELinux");
+        let dbg = format!("{:?}", MacSystem::AppArmor);
+        assert_eq!(dbg, "AppArmor");
+        let dbg = format!("{:?}", MacSystem::None);
+        assert_eq!(dbg, "None");
+    }
+
+    #[test]
+    fn test_selinux_mode_debug() {
+        assert_eq!(format!("{:?}", SELinuxMode::Enforcing), "Enforcing");
+        assert_eq!(format!("{:?}", SELinuxMode::Permissive), "Permissive");
+        assert_eq!(format!("{:?}", SELinuxMode::Disabled), "Disabled");
+    }
+
+    #[test]
+    fn test_apparmor_profile_state_debug() {
+        assert_eq!(format!("{:?}", AppArmorProfileState::Enforce), "Enforce");
+        assert_eq!(format!("{:?}", AppArmorProfileState::Complain), "Complain");
+        assert_eq!(format!("{:?}", AppArmorProfileState::Unconfined), "Unconfined");
+    }
+
+    #[test]
+    fn test_agent_mac_profile_new_system() {
+        let profile = AgentMacProfile::new("System");
+        assert_eq!(profile.agent_type, "System");
+        assert_eq!(
+            profile.selinux_context.as_deref(),
+            Some("system_u:system_r:agnos_agent_system_t:s0")
+        );
+        assert_eq!(
+            profile.apparmor_profile.as_deref(),
+            Some("agnos-agent-system")
+        );
+    }
+
+    #[test]
+    fn test_agent_mac_profile_new_mixed_case() {
+        let profile = AgentMacProfile::new("MyCustomType");
+        assert_eq!(profile.agent_type, "MyCustomType");
+        assert_eq!(
+            profile.selinux_context.as_deref(),
+            Some("system_u:system_r:agnos_agent_mycustomtype_t:s0")
+        );
+        assert_eq!(
+            profile.apparmor_profile.as_deref(),
+            Some("agnos-agent-mycustomtype")
+        );
+    }
+
+    #[test]
+    fn test_agent_mac_profile_new_from_string() {
+        // Tests the `impl Into<String>` path with an owned String
+        let name = String::from("Worker");
+        let profile = AgentMacProfile::new(name);
+        assert_eq!(profile.agent_type, "Worker");
+    }
+
+    #[test]
+    fn test_agent_mac_profile_validate_selinux_empty_context_string() {
+        let profile = AgentMacProfile {
+            agent_type: "User".to_string(),
+            selinux_context: Some(String::new()),
+            apparmor_profile: None,
+        };
+        let err = profile.validate(MacSystem::SELinux).unwrap_err();
+        assert!(err.to_string().contains("required but not set"));
+    }
+
+    #[test]
+    fn test_agent_mac_profile_validate_selinux_three_components() {
+        let profile = AgentMacProfile {
+            agent_type: "User".to_string(),
+            selinux_context: Some("user:role:type".to_string()),
+            apparmor_profile: None,
+        };
+        let err = profile.validate(MacSystem::SELinux).unwrap_err();
+        assert!(err.to_string().contains("user:role:type:level"));
+    }
+
+    #[test]
+    fn test_agent_mac_profile_validate_apparmor_null_char() {
+        let profile = AgentMacProfile {
+            agent_type: "User".to_string(),
+            selinux_context: None,
+            apparmor_profile: Some("bad\0name".to_string()),
+        };
+        let err = profile.validate(MacSystem::AppArmor).unwrap_err();
+        assert!(err.to_string().contains("Invalid AppArmor profile name"));
+    }
+
+    #[test]
+    fn test_agent_mac_profile_validate_apparmor_empty_string() {
+        let profile = AgentMacProfile {
+            agent_type: "User".to_string(),
+            selinux_context: None,
+            apparmor_profile: Some(String::new()),
+        };
+        let err = profile.validate(MacSystem::AppArmor).unwrap_err();
+        assert!(err.to_string().contains("required but not set"));
+    }
+
+    #[test]
+    fn test_agent_mac_profile_validate_empty_type_for_all_systems() {
+        let profile = AgentMacProfile {
+            agent_type: String::new(),
+            selinux_context: Some("u:r:t:s0".to_string()),
+            apparmor_profile: Some("valid".to_string()),
+        };
+        // Empty agent type is rejected for all MAC systems
+        assert!(profile.validate(MacSystem::SELinux).is_err());
+        assert!(profile.validate(MacSystem::AppArmor).is_err());
+        assert!(profile.validate(MacSystem::None).is_err());
+    }
+
+    #[test]
+    fn test_agent_mac_profile_clone() {
+        let profile = AgentMacProfile::new("User");
+        let cloned = profile.clone();
+        assert_eq!(cloned.agent_type, profile.agent_type);
+        assert_eq!(cloned.selinux_context, profile.selinux_context);
+        assert_eq!(cloned.apparmor_profile, profile.apparmor_profile);
+    }
+
+    #[test]
+    fn test_agent_mac_profile_debug() {
+        let profile = AgentMacProfile::new("User");
+        let dbg = format!("{:?}", profile);
+        assert!(dbg.contains("User"));
+        assert!(dbg.contains("AgentMacProfile"));
+    }
+
+    #[test]
+    fn test_agent_mac_profile_serialization_roundtrip() {
+        let profile = AgentMacProfile {
+            agent_type: "Custom".to_string(),
+            selinux_context: None,
+            apparmor_profile: Some("my-profile".to_string()),
+        };
+        let json = serde_json::to_string(&profile).unwrap();
+        let back: AgentMacProfile = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.agent_type, "Custom");
+        assert!(back.selinux_context.is_none());
+        assert_eq!(back.apparmor_profile.as_deref(), Some("my-profile"));
+    }
+
+    #[test]
+    fn test_default_agent_profiles_all_validate_selinux() {
+        let profiles = default_agent_profiles();
+        for profile in &profiles {
+            assert!(profile.validate(MacSystem::SELinux).is_ok());
+        }
+    }
+
+    #[test]
+    fn test_default_agent_profiles_all_validate_apparmor() {
+        let profiles = default_agent_profiles();
+        for profile in &profiles {
+            assert!(profile.validate(MacSystem::AppArmor).is_ok());
+        }
+    }
+
+    #[test]
+    fn test_default_agent_profiles_all_validate_none() {
+        let profiles = default_agent_profiles();
+        for profile in &profiles {
+            assert!(profile.validate(MacSystem::None).is_ok());
+        }
+    }
+
+    #[test]
+    fn test_set_selinux_context_validation_three_parts() {
+        let result = set_selinux_context("a:b:c", false);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_set_selinux_context_validation_on_exec() {
+        // Empty context should fail regardless of on_exec flag
+        let result = set_selinux_context("", true);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_apparmor_change_profile_null_char() {
+        let result = apparmor_change_profile("bad\0name");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_load_selinux_module_nonexistent_path() {
+        let result = load_selinux_module(Path::new("/nonexistent/module.pp"));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_remove_selinux_module_empty_name() {
+        let result = remove_selinux_module("");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_load_apparmor_profile_nonexistent_path() {
+        let result = load_apparmor_profile(Path::new("/nonexistent/profile"));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_apply_agent_mac_profile_matching_case_insensitive() {
+        // When no MAC is active, it returns Ok regardless
+        let profiles = default_agent_profiles();
+        let mac = detect_mac_system();
+        if mac == MacSystem::None {
+            // Case-insensitive match works
+            assert!(apply_agent_mac_profile("user", &profiles).is_ok());
+            assert!(apply_agent_mac_profile("USER", &profiles).is_ok());
+            assert!(apply_agent_mac_profile("User", &profiles).is_ok());
+            assert!(apply_agent_mac_profile("service", &profiles).is_ok());
+            assert!(apply_agent_mac_profile("system", &profiles).is_ok());
+        }
+    }
+
+    #[test]
+    fn test_apply_agent_mac_profile_empty_profiles() {
+        let mac = detect_mac_system();
+        if mac == MacSystem::None {
+            // With no MAC, even an empty profiles list succeeds (returns early)
+            assert!(apply_agent_mac_profile("User", &[]).is_ok());
+        }
+    }
+
+    #[test]
+    fn test_mac_system_eq_and_ne() {
+        assert_eq!(MacSystem::SELinux, MacSystem::SELinux);
+        assert_ne!(MacSystem::SELinux, MacSystem::AppArmor);
+        assert_ne!(MacSystem::SELinux, MacSystem::None);
+        assert_ne!(MacSystem::AppArmor, MacSystem::None);
+    }
+
+    #[test]
+    fn test_selinux_mode_eq_and_ne() {
+        assert_eq!(SELinuxMode::Enforcing, SELinuxMode::Enforcing);
+        assert_ne!(SELinuxMode::Enforcing, SELinuxMode::Permissive);
+        assert_ne!(SELinuxMode::Permissive, SELinuxMode::Disabled);
+    }
+
+    #[test]
+    fn test_apparmor_profile_state_eq_and_ne() {
+        assert_eq!(AppArmorProfileState::Enforce, AppArmorProfileState::Enforce);
+        assert_ne!(AppArmorProfileState::Enforce, AppArmorProfileState::Complain);
+        assert_ne!(AppArmorProfileState::Complain, AppArmorProfileState::Unconfined);
+    }
+
+    #[test]
+    fn test_get_selinux_mode_returns_result() {
+        // On non-SELinux systems, should return Disabled or NotSupported
+        let result = get_selinux_mode();
+        // Either way it should not panic
+        let _ = result;
+    }
+
+    #[test]
+    fn test_agent_mac_profile_validate_selinux_five_components() {
+        // Five colon-separated components is also valid (>= 4)
+        let profile = AgentMacProfile {
+            agent_type: "User".to_string(),
+            selinux_context: Some("u:r:t:s0:c1".to_string()),
+            apparmor_profile: None,
+        };
+        assert!(profile.validate(MacSystem::SELinux).is_ok());
+    }
+
+    #[test]
+    fn test_agent_mac_profile_validate_apparmor_valid_chars() {
+        let profile = AgentMacProfile {
+            agent_type: "User".to_string(),
+            selinux_context: None,
+            apparmor_profile: Some("agnos-agent_user.v2".to_string()),
+        };
+        assert!(profile.validate(MacSystem::AppArmor).is_ok());
+    }
 }

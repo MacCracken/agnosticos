@@ -209,4 +209,47 @@ mod tests {
         };
         assert_eq!(token.scopes.len(), 2);
     }
+
+    #[test]
+    fn test_auth_token_debug_redacts_token() {
+        let now = chrono::Utc::now();
+        let token = AuthToken {
+            token: "super-secret-token-value".to_string(),
+            user_id: "user-1".to_string(),
+            issued_at: now,
+            expires_at: now + chrono::Duration::hours(1),
+            scopes: vec!["read".to_string()],
+        };
+        let debug_output = format!("{:?}", token);
+        assert!(debug_output.contains("[REDACTED]"));
+        assert!(!debug_output.contains("super-secret-token-value"));
+        assert!(debug_output.contains("user-1"));
+        assert!(debug_output.contains("read"));
+    }
+
+    #[test]
+    fn test_auth_token_verify_correct() {
+        let now = chrono::Utc::now();
+        let token = AuthToken {
+            token: "my-token-123".to_string(),
+            user_id: "user-1".to_string(),
+            issued_at: now,
+            expires_at: now + chrono::Duration::hours(1),
+            scopes: vec![],
+        };
+        assert!(token.verify("my-token-123"));
+    }
+
+    #[test]
+    fn test_auth_token_verify_incorrect() {
+        let now = chrono::Utc::now();
+        let token = AuthToken {
+            token: "my-token-123".to_string(),
+            user_id: "user-1".to_string(),
+            issued_at: now,
+            expires_at: now + chrono::Duration::hours(1),
+            scopes: vec![],
+        };
+        assert!(!token.verify("wrong-token"));
+    }
 }

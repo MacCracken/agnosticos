@@ -125,8 +125,69 @@ mod tests {
     fn test_audit_entry_clone() {
         let entry = create_entry("user", "mode", "cmd", "action", true, "ok");
         let cloned = entry.clone();
-        
+
         assert_eq!(entry.user, cloned.user);
         assert_eq!(entry.timestamp, cloned.timestamp);
+    }
+
+    #[test]
+    fn test_audit_logger_new() {
+        let logger = AuditLogger::new(PathBuf::from("/tmp/test_audit.log"));
+        assert_eq!(logger.file, PathBuf::from("/tmp/test_audit.log"));
+    }
+
+    #[tokio::test]
+    async fn test_audit_logger_log() {
+        let dir = std::env::temp_dir().join("agnos_audit_test");
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("audit.log");
+        let _ = std::fs::remove_file(&path);
+
+        let logger = AuditLogger::new(path.clone());
+        let entry = create_entry("test", "Human", "ls", "execute", true, "ok");
+        logger.log(entry).await.unwrap();
+
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert!(content.contains("test"));
+        assert!(content.contains("Human"));
+        assert!(content.ends_with('\n'));
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[tokio::test]
+    async fn test_audit_logger_appends() {
+        let dir = std::env::temp_dir().join("agnos_audit_append_test");
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("audit_append.log");
+        let _ = std::fs::remove_file(&path);
+
+        let logger = AuditLogger::new(path.clone());
+        let e1 = create_entry("user1", "mode1", "cmd1", "a1", true, "ok");
+        let e2 = create_entry("user2", "mode2", "cmd2", "a2", false, "denied");
+        logger.log(e1).await.unwrap();
+        logger.log(e2).await.unwrap();
+
+        let content = std::fs::read_to_string(&path).unwrap();
+        let lines: Vec<&str> = content.lines().collect();
+        assert_eq!(lines.len(), 2);
+        assert!(lines[0].contains("user1"));
+        assert!(lines[1].contains("user2"));
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_create_entry_denied() {
+        let entry = create_entry("admin", "Strict", "rm -rf /", "delete", false, "denied");
+        assert!(!entry.approved);
+        assert_eq!(entry.result, "denied");
+    }
+
+    #[test]
+    fn test_audit_entry_debug() {
+        let entry = create_entry("u", "m", "i", "a", true, "r");
+        let dbg = format!("{:?}", entry);
+        assert!(dbg.contains("AuditEntry"));
     }
 }
