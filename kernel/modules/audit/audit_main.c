@@ -14,7 +14,7 @@
 #include <crypto/hash.h>
 #include <crypto/hmac.h>
 
-#define AUDIT_VERSION "0.1.0"
+#define AUDIT_VERSION "2026.3.5"
 #define AUDIT_LOG_PATH "/var/log/agnos/audit.log"
 #define HASH_SIZE 32  /* SHA256 */
 

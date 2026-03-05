@@ -508,19 +508,31 @@ MINOR - New features (backwards compatible)
 PATCH - Bug fixes (backwards compatible)
 ```
 
+### Versioning Scheme
+
+AGNOS uses **Calendar Versioning (CalVer)** in `YYYY.D.M` format:
+
+- `YYYY` — release year
+- `D` — release day of the month
+- `M` — release month
+
+Patch releases append `-#N` (e.g., `2026.3.5-#1`, `2026.3.5-#2`).
+
+The canonical version lives in the `VERSION` file at the repository root. Shell scripts, the Makefile, and the Docker entrypoint all read from this file. Cargo workspace version is set in `userland/Cargo.toml` under `[workspace.package]`.
+
 ### Release Branches
 
 ```
 main
   ↑
-release/v0.1.0  ← Release branch
+release/v2026.3.5  ← Release branch
   ↑
 develop
 ```
 
 ### Release Checklist
 
-- [ ] Version bumped in all relevant files
+- [ ] Version bumped in `VERSION` file and `userland/Cargo.toml`
 - [ ] Changelog updated
 - [ ] All tests passing
 - [ ] Security review completed
@@ -534,24 +546,25 @@ develop
 
 ```bash
 # Create release branch
-git checkout -b release/v0.1.0
+git checkout -b release/v2026.3.5
 
-# Update version
-./scripts/bump-version.sh 0.1.0
+# Update version — edit the VERSION file, then sync Cargo.toml
+echo "2026.3.5" > VERSION
+# Update version in userland/Cargo.toml [workspace.package] to match
 
 # Update changelog
 vim CHANGELOG.md
 
 # Commit
 git add .
-git commit -m "chore(release): prepare v0.1.0"
+git commit -m "chore(release): prepare v2026.3.5"
 
 # Create tag
-git tag -s v0.1.0 -m "Release v0.1.0"
+git tag -s v2026.3.5 -m "Release v2026.3.5"
 
 # Push
-git push origin release/v0.1.0
-git push origin v0.1.0
+git push origin release/v2026.3.5
+git push origin v2026.3.5
 ```
 
 ## Questions?

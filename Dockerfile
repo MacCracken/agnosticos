@@ -49,7 +49,7 @@ LABEL org.opencontainers.image.title="AGNOS"
 LABEL org.opencontainers.image.description="AI-Native General Operating System"
 LABEL org.opencontainers.image.source="https://github.com/agnos/agnos"
 LABEL org.opencontainers.image.licenses="GPL-3.0"
-LABEL org.opencontainers.image.version="0.1.0"
+LABEL org.opencontainers.image.version="2026.3.5"
 
 # Install minimal runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -76,7 +76,8 @@ COPY --from=builder /build/userland/target/release/agent_runtime /usr/local/bin/
 COPY --from=builder /build/userland/target/release/llm_gateway   /usr/local/bin/
 COPY --from=builder /build/userland/target/release/ai_shell      /usr/local/bin/
 
-# Copy entrypoint
+# Copy VERSION file and entrypoint
+COPY VERSION /etc/agnos/VERSION
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 

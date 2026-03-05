@@ -14,7 +14,7 @@
 #include <linux/mutex.h>
 #include <linux/dma-mapping.h>
 
-#define LLM_VERSION "0.1.0"
+#define LLM_VERSION "2026.3.5"
 #define LLM_DEVICE_NAME "agnos_llm"
 #define MAX_MODELS 16
 

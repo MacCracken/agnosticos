@@ -14,7 +14,7 @@
 #include <linux/net.h>
 #include <linux/slab.h>
 
-#define ASM_VERSION "0.1.0"
+#define ASM_VERSION "2026.3.5"
 #define ASM_NAME "agnos_security"
 
 static unsigned int agnos_enabled = 1;

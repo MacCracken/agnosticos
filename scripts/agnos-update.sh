@@ -12,7 +12,7 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 # Configuration
 UPDATE_DIR="${AGNOS_UPDATE_DIR:-/var/lib/agnos/updates}"
 BACKUP_DIR="${AGNOS_BACKUP_DIR:-/var/lib/agnos/backups}"
-CURRENT_VERSION="${AGNOS_VERSION:-$(cat ${PROJECT_ROOT}/VERSION 2>/dev/null || echo '0.1.0')}"
+CURRENT_VERSION="${AGNOS_VERSION:-$(cat ${PROJECT_ROOT}/VERSION 2>/dev/null || echo '2026.3.5')}"
 
 # Colors
 RED='\033[0;31m'
@@ -525,7 +525,7 @@ Environment Variables:
 
 Examples:
     # Create delta update
-    $0 create-delta 0.1.0 0.2.0 agnos-0.1.0.tar.gz agnos-0.2.0.tar.gz
+    $0 create-delta 2026.3.5 2026.4.5 agnos-2026.3.5.tar.gz agnos-2026.4.5.tar.gz
 
     # Check for updates
     $0 check

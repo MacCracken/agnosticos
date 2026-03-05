@@ -29,9 +29,9 @@ impl std::fmt::Display for Version {
 impl Default for Version {
     fn default() -> Self {
         Self {
-            major: 0,
-            minor: 1,
-            patch: 0,
+            major: 2026,
+            minor: 3,
+            patch: 5,
             prerelease: None,
             build: None,
         }

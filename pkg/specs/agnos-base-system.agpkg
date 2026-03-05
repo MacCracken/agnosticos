@@ -1,7 +1,7 @@
 {
   "format_version": "1.0.0",
   "name": "agnos-base-system",
-  "version": "0.1.0",
+  "version": "2026.3.5",
   "release": "1",
   "description": "AGNOS base system - minimal bootable Linux distribution",
   "architecture": "x86_64",

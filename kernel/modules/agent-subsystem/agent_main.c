@@ -12,7 +12,7 @@
 #include <linux/slab.h>
 #include <linux/uuid.h>
 
-#define AGENT_VERSION "0.1.0"
+#define AGENT_VERSION "2026.3.5"
 #define MAX_AGENTS 1024
 
 /* Agent process structure */

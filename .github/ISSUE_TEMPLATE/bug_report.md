@@ -24,7 +24,7 @@ A clear and concise description of what you expected to happen.
 If applicable, add screenshots to help explain your problem.
 
 **System (please complete the following information):**
- - AGNOS Version: [e.g. 0.1.0]
+ - AGNOS Version: [e.g. 2026.3.5]
  - Kernel Version: [e.g. 6.6.0-agnos]
  - Hardware: [e.g. Intel i7-12700K, 32GB RAM]
  - Installation Method: [e.g. ISO, Build from source]

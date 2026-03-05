@@ -3,7 +3,8 @@
 # Drops capabilities, sets ulimits, and starts services.
 set -e
 
-echo "AGNOS v0.1.0 starting..."
+AGNOS_VERSION="$(cat /etc/agnos/VERSION 2>/dev/null || echo 'unknown')"
+echo "AGNOS v${AGNOS_VERSION} starting..."
 
 # Drop all capabilities except the minimum set
 # (only effective if container started with --cap-add)

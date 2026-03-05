@@ -10,7 +10,7 @@ CONFIG_DIR="$SCRIPT_DIR/../config"
 
 # Defaults
 ISO_NAME="agnos"
-ISO_VERSION="0.1.0"
+ISO_VERSION="$(cat "${SCRIPT_DIR}/../VERSION" 2>/dev/null || echo '2026.3.5')"
 KERNEL_VERSION="6.6-lts"
 ARCH="x86_64"
 
@@ -40,7 +40,7 @@ Build AGNOS bootable ISO image
 
 Options:
     -n, --name NAME         ISO name (default: agnos)
-    -v, --version VERSION   AGNOS version (default: 0.1.0)
+    -v, --version VERSION   AGNOS version (default: read from VERSION file)
     -k, --kernel VERSION    Kernel version to include (default: 6.6-lts)
     -a, --arch ARCH         Target architecture (default: x86_64)
     -o, --output DIR        Output directory (default: output/)

@@ -24,7 +24,7 @@ use security_ui::{SecurityUI, SecurityAlert, ThreatLevel, SecurityLevel};
 #[derive(Debug, clap::Parser)]
 #[command(name = "desktop-environment")]
 #[command(author = "AGNOS Team")]
-#[command(version = "0.1.0")]
+#[command(version = "2026.3.5")]
 #[command(about = "AGNOS Desktop Environment", long_about = None)]
 struct Args {
     #[arg(short, long, default_value = "wayland")]
@@ -263,7 +263,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let args = Args::parse();
 
-    info!("AGNOS Desktop Environment v0.1.0");
+    info!("AGNOS Desktop Environment v2026.3.5");
     info!("Backend: {}", args.backend);
 
     let desktop = DesktopEnvironment::new(&args).await;

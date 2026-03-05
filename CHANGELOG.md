@@ -5,7 +5,25 @@ All notable changes to AGNOS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2026.3.5] - 2026-03-05
+
+### Current Status
+| Metric | Value |
+|--------|-------|
+| Phase 5 Completion | 98% |
+| Test Coverage | ~80% (4581 tests, 0 failures, 7 ignored) |
+| Compiler Warnings | 0 |
+| CIS Compliance | ~85% |
+| P0/P1 Stubs | 0 |
+| Alpha Blocker | Third-party security audit (vendor selection) |
+
+### Changed (Versioning)
+- Adopted Calendar Versioning (CalVer) scheme: `YYYY.D.M` format, patches as `-#N`
+- Created `VERSION` file at repository root as single source of truth
+- Shell scripts (`build-iso.sh`, `agnos-update.sh`, `agpkg`, `entrypoint.sh`) now read from `VERSION` file
+- Makefile reads version from `VERSION` file
+- Dockerfile copies `VERSION` to `/etc/agnos/VERSION` for runtime access
+- Updated all hardcoded `0.1.0` references across Cargo.toml, kernel modules, package specs, CI workflows, and docs
 
 ### Added (March 5, 2026 — Final Coverage Push to ~80%)
 
@@ -520,24 +538,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Telemetry system** (`agnos-common/src/telemetry.rs`): Opt-in crash reporting and metrics collection (disabled by default)
 - **Release automation** (`.github/workflows/release-automation.yml`): Automated release creation, SBOM attachment, and CHANGELOG updates
 
-### Testing
-- **Test Coverage**: Increased from ~45% to ~65% (target: 80% for Alpha)
-- **agnos-common**: 93 tests passing (types, error, telemetry modules fully tested)
-- **ai-shell**: 99 tests passing (added 25+ new tests):
-  - `sandbox.rs`: 6 new tests
-  - `output.rs`: 8 new tests  
-  - `audit.rs`: 5 new tests
-  - `llm.rs`: 6 new tests
-- **agnos-sys**: 29 tests passing (security module with landlock/seccomp tests)
-- **Total codebase**: 350+ tests across all packages
-- **Test Infrastructure**: All async tests properly configured with tokio
-
-### Metrics
-| Metric | Before | After | Target |
-|--------|--------|-------|--------|
-| Code Coverage | ~45% | ~65% | 80% |
-| Total Tests | ~250 | 350+ | 400+ |
-| Test Pass Rate | ~95% | 100% | 100% |
+### Testing (Early Phase 5)
+- Initial test infrastructure setup with tokio async tests
+- Early coverage push from ~45% to ~65%
+- Foundation tests for agnos-common, ai-shell, agnos-sys
 
 ### Fixed
 - `agnos-examples` crate: added missing workspace dependencies (`anyhow`, `async-trait`, `tracing`, `tracing-subscriber`) so `file_manager_agent` and `quick_start` examples compile cleanly
@@ -554,35 +558,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Release Planning
 
-### [0.1.0] - Phase 1: Core OS - Target Q2 2026
-- Bootable hardened Linux base
-- Package management system (agpkg)
-- Basic userland and init system
-- Initial security modules
+Versioning follows CalVer: `YYYY.D.M` (e.g., `2026.3.5`). Patch releases use `-#N` suffix.
 
-### [0.2.0] - Phase 2: AI Shell - Target Q3 2026
-- Natural language command interface
-- LLM Gateway service
-- Local and cloud model support
-- Bash compatibility layer
+### Alpha - Target Q2 2026
+- Phase 5 production hardening complete
+- 80%+ test coverage, 4581 tests, 0 warnings
+- Third-party security audit
+- CIS compliance ~85%
+- All P0/P1 stubs eliminated
 
-### [0.3.0] - Phase 3: Agent Runtime - Target Q4 2026
-- Agent Kernel Module
-- Multi-agent orchestration
-- Agent SDK and templates
-- Sandboxing implementation
+### Beta - Target Q3 2026
+- Community testing feedback incorporated
+- Performance optimization based on benchmarks
+- Video tutorials published
+- Support channels operational
 
-### [0.4.0] - Phase 4: Desktop - Target Q1 2027
-- Wayland-based compositor
-- AI-augmented desktop environment
-- Essential applications
-- Human oversight interface
-
-### [1.0.0] - Phase 5: Production - Target Q2 2027
-- Security certifications
-- Enterprise features
-- Long-term support
-- General availability
+### Stable - Target Q4 2026
+- Production ready
+- Enterprise features (SSO, audit logging)
+- Certifications complete
+- Commercial support available
 
 ---
 

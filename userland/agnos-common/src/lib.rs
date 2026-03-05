@@ -308,7 +308,7 @@ mod tests {
     #[test]
     fn test_version_default() {
         let v = Version::default();
-        assert_eq!(v.to_string(), "0.1.0");
+        assert_eq!(v.to_string(), "2026.3.5");
     }
 
     #[test]
