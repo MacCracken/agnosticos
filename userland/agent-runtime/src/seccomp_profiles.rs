@@ -6,7 +6,7 @@
 use std::collections::HashSet;
 
 use serde::{Deserialize, Serialize};
-use tracing::{debug, info};
+use tracing::info;
 
 /// Pre-defined seccomp profile for a language runtime.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -493,5 +493,152 @@ mod tests {
         let custom = SeccompProfile::Custom(vec!["read".to_string(), "write".to_string()]);
         let filter = build_seccomp_filter(&custom);
         assert_eq!(filter.profile_name, "custom");
+    }
+
+    // ==================================================================
+    // New coverage: validate all builtin profiles contain base syscalls,
+    // custom profile with all essentials, BpfFilterSpec fields,
+    // profile equality, serialization roundtrip for all variants
+    // ==================================================================
+
+    #[test]
+    fn test_all_profiles_contain_base_syscalls() {
+        let base = base_syscalls();
+        for profile in [
+            SeccompProfile::Python,
+            SeccompProfile::Node,
+            SeccompProfile::Shell,
+            SeccompProfile::Wasm,
+        ] {
+            let allowed = allowed_syscalls(&profile);
+            for syscall in &base {
+                assert!(
+                    allowed.contains(*syscall),
+                    "Profile {:?} missing base syscall '{}'",
+                    profile, syscall
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_validate_custom_with_all_essentials() {
+        let essentials: Vec<String> = vec![
+            "exit", "exit_group", "read", "write", "mmap", "brk",
+        ].into_iter().map(String::from).collect();
+        let custom = SeccompProfile::Custom(essentials);
+        assert!(validate_profile(&custom).is_ok());
+    }
+
+    #[test]
+    fn test_validate_custom_missing_exit() {
+        let custom = SeccompProfile::Custom(vec![
+            "exit_group".to_string(),
+            "read".to_string(),
+            "write".to_string(),
+            "mmap".to_string(),
+            "brk".to_string(),
+        ]);
+        let result = validate_profile(&custom);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("exit"));
+    }
+
+    #[test]
+    fn test_validate_custom_missing_mmap() {
+        let custom = SeccompProfile::Custom(vec![
+            "exit".to_string(),
+            "exit_group".to_string(),
+            "read".to_string(),
+            "write".to_string(),
+            "brk".to_string(),
+        ]);
+        let result = validate_profile(&custom);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("mmap"));
+    }
+
+    #[test]
+    fn test_bpf_filter_spec_fields() {
+        let filter = build_seccomp_filter(&SeccompProfile::Python);
+        assert_eq!(filter.profile_name, "python");
+        assert_eq!(filter.default_action, "kill");
+        assert!(filter.allowed.contains("read"));
+        assert!(filter.allowed.contains("write"));
+        assert!(filter.allowed.contains("socket")); // Python-specific
+    }
+
+    #[test]
+    fn test_bpf_filter_spec_debug() {
+        let filter = build_seccomp_filter(&SeccompProfile::Shell);
+        let dbg = format!("{:?}", filter);
+        assert!(dbg.contains("shell"));
+        assert!(dbg.contains("kill"));
+    }
+
+    #[test]
+    fn test_bpf_filter_spec_clone() {
+        let filter = build_seccomp_filter(&SeccompProfile::Node);
+        let cloned = filter.clone();
+        assert_eq!(cloned.profile_name, filter.profile_name);
+        assert_eq!(cloned.allowed.len(), filter.allowed.len());
+        assert_eq!(cloned.default_action, filter.default_action);
+    }
+
+    #[test]
+    fn test_profile_equality() {
+        assert_eq!(SeccompProfile::Python, SeccompProfile::Python);
+        assert_ne!(SeccompProfile::Python, SeccompProfile::Node);
+        assert_ne!(SeccompProfile::Shell, SeccompProfile::Wasm);
+    }
+
+    #[test]
+    fn test_profile_serialization_all_variants() {
+        for profile in [
+            SeccompProfile::Python,
+            SeccompProfile::Node,
+            SeccompProfile::Shell,
+            SeccompProfile::Wasm,
+        ] {
+            let json = serde_json::to_string(&profile).unwrap();
+            let deser: SeccompProfile = serde_json::from_str(&json).unwrap();
+            assert_eq!(deser, profile);
+        }
+    }
+
+    #[test]
+    fn test_custom_profile_serialization_with_many_syscalls() {
+        let custom = SeccompProfile::Custom(
+            base_syscalls().into_iter().map(String::from).collect(),
+        );
+        let json = serde_json::to_string(&custom).unwrap();
+        let deser: SeccompProfile = serde_json::from_str(&json).unwrap();
+        assert_eq!(deser, custom);
+    }
+
+    #[test]
+    fn test_shell_profile_has_execve() {
+        let allowed = allowed_syscalls(&SeccompProfile::Shell);
+        assert!(allowed.contains("execve"), "Shell profile must allow execve");
+    }
+
+    #[test]
+    fn test_wasm_profile_no_execve_no_socket() {
+        let allowed = allowed_syscalls(&SeccompProfile::Wasm);
+        assert!(!allowed.contains("execve"), "WASM should not allow execve");
+        assert!(!allowed.contains("socket"), "WASM should not allow socket");
+    }
+
+    #[test]
+    fn test_python_profile_has_threading() {
+        let allowed = allowed_syscalls(&SeccompProfile::Python);
+        assert!(allowed.contains("clone3"));
+        assert!(allowed.contains("clone"));
+    }
+
+    #[test]
+    fn test_node_profile_has_eventfd2() {
+        let allowed = allowed_syscalls(&SeccompProfile::Node);
+        assert!(allowed.contains("eventfd2"), "Node profile needs eventfd2 for libuv");
     }
 }

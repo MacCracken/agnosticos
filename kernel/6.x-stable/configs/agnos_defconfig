@@ -97,6 +97,34 @@ CONFIG_NF_CONNTRACK=y
 CONFIG_NF_NAT=y
 CONFIG_NF_TABLES=y
 
+# CIS 1.1.5 - Disable automounting
+CONFIG_AUTOMOUNT=n
+
+# CIS 1.1.6 - Disable USB storage (attack vector reduction)
+CONFIG_USB_STORAGE=n
+
+# CIS 1.1.7 - Disable FireWire (DMA attack prevention)
+CONFIG_FIREWIRE=n
+CONFIG_FIREWIRE_OHCI=n
+
+# CIS 1.1.8 - Disable Thunderbolt (DMA attack prevention)
+CONFIG_THUNDERBOLT=n
+
+# Disable uncommon network protocols (CIS 3.4.x)
+CONFIG_SCTP=n
+CONFIG_RDS=n
+CONFIG_TIPC=n
+CONFIG_DCCP=n
+
+# Disable unused filesystems
+CONFIG_NFSD=n
+CONFIG_CRAMFS=n
+CONFIG_FREEVXFS_FS=n
+CONFIG_JFFS2_FS=n
+CONFIG_HFS_FS=n
+CONFIG_HFSPLUS_FS=n
+CONFIG_UDF_FS=n
+
 # Device drivers
 CONFIG_BLK_DEV=y
 CONFIG_BLK_DEV_LOOP=y
@@ -124,5 +152,8 @@ CONFIG_CRYPTO_SHA256=y
 CONFIG_CRYPTO_AES=y
 CONFIG_CRYPTO_GCM=y
 
+# AppArmor support
+CONFIG_SECURITY_APPARMOR=y
+
 # Boot options
-CONFIG_CMDLINE="quiet loglevel=3 agnos.security.enforce=1 agnos.audit.enabled=1"
+CONFIG_CMDLINE="quiet loglevel=3 agnos.security.enforce=1 agnos.audit.enabled=1 audit=1 audit_backlog_limit=8192"

@@ -1248,4 +1248,118 @@ mod tests {
         assert_ne!(FirewallAction::Accept, FirewallAction::Drop);
         assert_ne!(FirewallAction::Drop, FirewallAction::Reject);
     }
+
+    // --- New coverage tests ---
+
+    #[test]
+    fn test_generate_agent_ips_empty_name() {
+        // Should not panic, just return some valid IPs
+        let (host, agent) = generate_agent_ips("");
+        assert!(host.starts_with("10.100."));
+        assert!(agent.starts_with("10.100."));
+    }
+
+    #[test]
+    fn test_generate_agent_ips_long_name() {
+        let name = "a".repeat(1000);
+        let (host, agent) = generate_agent_ips(&name);
+        assert!(host.starts_with("10.100."));
+        assert!(agent.ends_with(".2"));
+    }
+
+    #[test]
+    fn test_net_namespace_config_for_agent_from_owned_string() {
+        let config = NetNamespaceConfig::for_agent(String::from("owned-name"));
+        assert_eq!(config.name, "owned-name");
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_net_namespace_config_validate_prefix_len_zero_error_msg() {
+        let mut config = NetNamespaceConfig::for_agent("test");
+        config.prefix_len = 0;
+        let err = config.validate().unwrap_err();
+        assert!(err.to_string().contains("prefix length"));
+    }
+
+    #[test]
+    fn test_net_namespace_config_validate_prefix_len_33_error_msg() {
+        let mut config = NetNamespaceConfig::for_agent("test");
+        config.prefix_len = 33;
+        let err = config.validate().unwrap_err();
+        assert!(err.to_string().contains("prefix length"));
+    }
+
+    #[test]
+    fn test_net_namespace_config_validate_agent_ip_invalid_format() {
+        let mut config = NetNamespaceConfig::for_agent("test");
+        config.agent_ip = "999.999.999.999".to_string();
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_format_nft_rule_reject_action() {
+        let rule = FirewallRule {
+            direction: TrafficDirection::Inbound,
+            protocol: Protocol::Tcp,
+            port: 22,
+            remote_addr: String::new(),
+            action: FirewallAction::Reject,
+            comment: String::new(),
+        };
+        let formatted = format_nft_rule(&rule);
+        assert!(formatted.contains("reject"));
+    }
+
+    #[test]
+    fn test_generate_nftables_ruleset_accept_inbound_policy() {
+        let policy = FirewallPolicy {
+            default_inbound: FirewallAction::Accept,
+            default_outbound: FirewallAction::Drop,
+            rules: Vec::new(),
+        };
+        let ruleset = generate_nftables_ruleset(&policy, "veth0");
+        // Input chain should have accept policy
+        assert!(ruleset.contains("hook input priority 0; policy accept;"));
+        // Output chain should have drop policy
+        assert!(ruleset.contains("hook output priority 0; policy drop;"));
+    }
+
+    #[test]
+    fn test_generate_nftables_ruleset_contains_dns_rule() {
+        let policy = FirewallPolicy::default();
+        let ruleset = generate_nftables_ruleset(&policy, "veth0");
+        assert!(ruleset.contains("udp dport 53 accept"));
+    }
+
+    #[test]
+    fn test_net_namespace_config_for_agent_ip_determinism() {
+        // Same name always produces same IPs
+        let c1 = NetNamespaceConfig::for_agent("deterministic");
+        let c2 = NetNamespaceConfig::for_agent("deterministic");
+        assert_eq!(c1.agent_ip, c2.agent_ip);
+        assert_eq!(c1.host_ip, c2.host_ip);
+    }
+
+    #[test]
+    fn test_truncate_veth_name_single_char() {
+        assert_eq!(truncate_veth_name("x"), "x");
+    }
+
+    #[test]
+    fn test_firewall_rule_serialization_roundtrip() {
+        let rule = FirewallRule {
+            direction: TrafficDirection::Outbound,
+            protocol: Protocol::Tcp,
+            port: 443,
+            remote_addr: "1.2.3.4".to_string(),
+            action: FirewallAction::Accept,
+            comment: "HTTPS".to_string(),
+        };
+        let json = serde_json::to_string(&rule).unwrap();
+        let de: FirewallRule = serde_json::from_str(&json).unwrap();
+        assert_eq!(de.port, 443);
+        assert_eq!(de.remote_addr, "1.2.3.4");
+        assert_eq!(de.comment, "HTTPS");
+    }
 }

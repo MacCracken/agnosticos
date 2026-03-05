@@ -1,11 +1,9 @@
 //! Agent registry for discovery and management
 
-use std::collections::HashMap;
-
 use anyhow::Result;
 use dashmap::DashMap;
 use tokio::sync::RwLock;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 use agnos_common::{AgentConfig, AgentId, AgentStatus, ResourceUsage};
 
@@ -621,5 +619,123 @@ mod tests {
 
         let stats = registry.stats().await;
         assert_eq!(stats.total_registered, 1);
+    }
+
+    // ==================================================================
+    // New coverage: concurrent register/unregister, capability indexing,
+    // update_resource_usage for nonexistent, multiple agents by capability
+    // ==================================================================
+
+    #[tokio::test]
+    async fn test_registry_update_resource_usage_nonexistent() {
+        let registry = AgentRegistry::new();
+        let usage = ResourceUsage { memory_used: 100, cpu_time_used: 50, file_descriptors_used: 2, processes_used: 1 };
+        // Should not error — just a no-op
+        let result = registry.update_resource_usage(AgentId::new(), usage).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_registry_multiple_agents_same_capability() {
+        let registry = AgentRegistry::new();
+
+        for name in ["cap-a1", "cap-a2", "cap-a3"] {
+            let config = AgentConfig {
+                name: name.to_string(),
+                agent_type: agnos_common::AgentType::Service,
+                permissions: vec![agnos_common::Permission::NetworkAccess],
+                ..Default::default()
+            };
+            let (agent, _rx) = Agent::new(config.clone()).await.unwrap();
+            registry.register(&agent, config).await.unwrap();
+        }
+
+        let found = registry.find_by_capability("perm:networkaccess");
+        assert_eq!(found.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_registry_unregister_removes_capabilities() {
+        let registry = AgentRegistry::new();
+
+        let config = AgentConfig {
+            name: "cap-remove".to_string(),
+            agent_type: agnos_common::AgentType::Service,
+            permissions: vec![agnos_common::Permission::FileRead],
+            ..Default::default()
+        };
+        let (agent, _rx) = Agent::new(config.clone()).await.unwrap();
+        let handle = registry.register(&agent, config).await.unwrap();
+
+        let before = registry.find_by_capability("perm:fileread");
+        assert_eq!(before.len(), 1);
+
+        registry.unregister(handle.id).await.unwrap();
+
+        let after = registry.find_by_capability("perm:fileread");
+        assert!(after.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_registry_stats_increments() {
+        let registry = AgentRegistry::new();
+
+        for i in 0..3 {
+            let config = AgentConfig {
+                name: format!("stat-agent-{}", i),
+                ..Default::default()
+            };
+            let (agent, _rx) = Agent::new(config.clone()).await.unwrap();
+            registry.register(&agent, config).await.unwrap();
+        }
+
+        let stats = registry.stats().await;
+        assert_eq!(stats.total_registered, 3);
+    }
+
+    #[tokio::test]
+    async fn test_registry_concurrent_register() {
+        let registry = std::sync::Arc::new(AgentRegistry::new());
+        let mut handles = Vec::new();
+
+        for i in 0..5 {
+            let reg = registry.clone();
+            let handle = tokio::spawn(async move {
+                let config = AgentConfig {
+                    name: format!("concurrent-{}", i),
+                    ..Default::default()
+                };
+                let (agent, _rx) = Agent::new(config.clone()).await.unwrap();
+                reg.register(&agent, config).await
+            });
+            handles.push(handle);
+        }
+
+        let mut success_count = 0;
+        for handle in handles {
+            if handle.await.unwrap().is_ok() {
+                success_count += 1;
+            }
+        }
+        assert_eq!(success_count, 5);
+        assert_eq!(registry.len(), 5);
+    }
+
+    #[test]
+    fn test_extract_capabilities_service_with_file_perms() {
+        let config = AgentConfig {
+            name: "svc".to_string(),
+            agent_type: agnos_common::AgentType::Service,
+            permissions: vec![
+                agnos_common::Permission::FileRead,
+                agnos_common::Permission::FileWrite,
+            ],
+            ..Default::default()
+        };
+        let caps = AgentRegistry::extract_capabilities(&config);
+        assert_eq!(caps.len(), 3); // type + 2 perms
+        assert!(caps[0].contains("service"));
+        assert!(caps.iter().any(|c| c.contains("fileread")));
+        assert!(caps.iter().any(|c| c.contains("filewrite")));
     }
 }

@@ -1,6 +1,6 @@
 //! Shell configuration
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -184,5 +184,73 @@ mod tests {
         assert!(path.exists()); // file was created
 
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_config_round_trip_toml() {
+        let config = ShellConfig {
+            llm_endpoint: Some("http://localhost:11434".to_string()),
+            theme: "monokai".to_string(),
+            ..Default::default()
+        };
+        let toml_str = toml::to_string_pretty(&config).unwrap();
+        let parsed: ShellConfig = toml::from_str(&toml_str).unwrap();
+        assert_eq!(parsed.llm_endpoint, Some("http://localhost:11434".to_string()));
+        assert_eq!(parsed.theme, "monokai");
+        assert_eq!(parsed.history_size, config.history_size);
+        assert_eq!(parsed.ai_enabled, config.ai_enabled);
+    }
+
+    #[test]
+    fn test_config_deserialization_minimal() {
+        // Test that all fields are required in deserialization
+        let toml_str = r#"
+            default_mode = "Human"
+            history_file = "/tmp/h"
+            history_size = 100
+            output_format = "plain"
+            ai_enabled = true
+            auto_approve_low_risk = false
+            approval_timeout = 10
+            audit_log = "/tmp/a.log"
+            show_explanations = true
+            theme = "minimal"
+        "#;
+        let config: ShellConfig = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.history_size, 100);
+        assert!(config.llm_endpoint.is_none());
+        assert_eq!(config.theme, "minimal");
+    }
+
+    #[test]
+    fn test_config_serialization_contains_all_fields() {
+        let config = ShellConfig::default();
+        let toml_str = toml::to_string_pretty(&config).unwrap();
+        assert!(toml_str.contains("default_mode"));
+        assert!(toml_str.contains("history_file"));
+        assert!(toml_str.contains("history_size"));
+        assert!(toml_str.contains("output_format"));
+        assert!(toml_str.contains("ai_enabled"));
+        assert!(toml_str.contains("auto_approve_low_risk"));
+        assert!(toml_str.contains("approval_timeout"));
+        assert!(toml_str.contains("audit_log"));
+        assert!(toml_str.contains("show_explanations"));
+        assert!(toml_str.contains("theme"));
+    }
+
+    #[test]
+    fn test_config_clone() {
+        let config = ShellConfig::default();
+        let cloned = config.clone();
+        assert_eq!(cloned.history_size, config.history_size);
+        assert_eq!(cloned.ai_enabled, config.ai_enabled);
+        assert_eq!(cloned.theme, config.theme);
+    }
+
+    #[test]
+    fn test_config_debug() {
+        let config = ShellConfig::default();
+        let debug_str = format!("{:?}", config);
+        assert!(debug_str.contains("ShellConfig"));
     }
 }

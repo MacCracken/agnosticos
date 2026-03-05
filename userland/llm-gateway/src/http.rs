@@ -26,7 +26,7 @@ struct AppState {
     api_key: Option<String>,
 }
 
-pub async fn start_http_server(gateway: Arc<LlmGateway>, config: GatewayConfig) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn start_http_server(gateway: Arc<LlmGateway>, _config: GatewayConfig) -> Result<(), Box<dyn std::error::Error>> {
     let api_key = std::env::var("AGNOS_GATEWAY_API_KEY").ok();
     
     let state = AppState {
@@ -46,6 +46,7 @@ pub async fn start_http_server(gateway: Arc<LlmGateway>, config: GatewayConfig) 
         .route("/v1/chat/completions", post(chat_completions))
         .route("/v1/models", get(list_models))
         .route("/v1/health", get(health))
+        .route("/v1/metrics", get(metrics))
         .layer(body_limit)
         .layer(cors)
         .with_state(state);
@@ -75,6 +76,7 @@ struct ChatCompletionRequest {
     #[serde(default)]
     top_p: Option<f32>,
     #[serde(default)]
+    #[allow(dead_code)]
     stream: Option<bool>,
 }
 
@@ -290,9 +292,94 @@ async fn health(
     State(state): State<AppState>,
 ) -> Json<HealthResponse> {
     let providers = state.gateway.list_providers().await;
-    
+
     Json(HealthResponse {
         status: "healthy".to_string(),
+        providers,
+    })
+}
+
+// ============================================================================
+// Metrics
+// ============================================================================
+
+#[derive(Debug, Serialize)]
+struct MetricsResponse {
+    cache: CacheMetrics,
+    accounting: AccountingMetrics,
+    providers: Vec<ProviderMetrics>,
+}
+
+#[derive(Debug, Serialize)]
+struct CacheMetrics {
+    total_entries: usize,
+    active_entries: usize,
+    expired_entries: usize,
+}
+
+#[derive(Debug, Serialize)]
+struct AccountingMetrics {
+    total_agents: usize,
+    total_prompt_tokens: u32,
+    total_completion_tokens: u32,
+    total_tokens: u32,
+}
+
+#[derive(Debug, Serialize)]
+struct ProviderMetrics {
+    name: String,
+    available: bool,
+    healthy: bool,
+    consecutive_failures: u32,
+}
+
+async fn metrics(
+    State(state): State<AppState>,
+) -> Json<MetricsResponse> {
+    let cache_stats = state.gateway.cache_stats().await;
+    let acct_stats = state.gateway.accounting_stats().await;
+    let provider_list = state.gateway.list_providers().await;
+    let health_map = state.gateway.provider_health().await;
+
+    let providers = provider_list
+        .into_iter()
+        .map(|p| {
+            let (healthy, failures) = match p.name.as_str() {
+                "Ollama" => health_map
+                    .get(&crate::providers::ProviderType::Ollama)
+                    .map(|h| (h.is_healthy, h.consecutive_failures))
+                    .unwrap_or((p.available, 0)),
+                "llama.cpp" => health_map
+                    .get(&crate::providers::ProviderType::LlamaCpp)
+                    .map(|h| (h.is_healthy, h.consecutive_failures))
+                    .unwrap_or((p.available, 0)),
+                "OpenAI" => health_map
+                    .get(&crate::providers::ProviderType::OpenAi)
+                    .map(|h| (h.is_healthy, h.consecutive_failures))
+                    .unwrap_or((p.available, 0)),
+                _ => (p.available, 0),
+            };
+            ProviderMetrics {
+                name: p.name,
+                available: p.available,
+                healthy,
+                consecutive_failures: failures,
+            }
+        })
+        .collect();
+
+    Json(MetricsResponse {
+        cache: CacheMetrics {
+            total_entries: cache_stats.total_entries,
+            active_entries: cache_stats.active_entries,
+            expired_entries: cache_stats.expired_entries,
+        },
+        accounting: AccountingMetrics {
+            total_agents: acct_stats.total_agents,
+            total_prompt_tokens: acct_stats.total_prompt_tokens,
+            total_completion_tokens: acct_stats.total_completion_tokens,
+            total_tokens: acct_stats.total_tokens,
+        },
         providers,
     })
 }
@@ -1496,5 +1583,272 @@ mod tests {
         let dbg = format!("{:?}", model);
         assert!(dbg.contains("test-model"));
         assert!(dbg.contains("12345"));
+    }
+
+    #[test]
+    fn test_metrics_response_serialization() {
+        let resp = MetricsResponse {
+            cache: CacheMetrics {
+                total_entries: 42,
+                active_entries: 30,
+                expired_entries: 12,
+            },
+            accounting: AccountingMetrics {
+                total_agents: 3,
+                total_prompt_tokens: 1000,
+                total_completion_tokens: 500,
+                total_tokens: 1500,
+            },
+            providers: vec![
+                ProviderMetrics {
+                    name: "Ollama".to_string(),
+                    available: true,
+                    healthy: true,
+                    consecutive_failures: 0,
+                },
+                ProviderMetrics {
+                    name: "OpenAI".to_string(),
+                    available: true,
+                    healthy: false,
+                    consecutive_failures: 3,
+                },
+            ],
+        };
+
+        let json = serde_json::to_string(&resp).unwrap();
+        assert!(json.contains("\"total_entries\":42"));
+        assert!(json.contains("\"total_tokens\":1500"));
+        assert!(json.contains("\"consecutive_failures\":3"));
+    }
+
+    #[test]
+    fn test_metrics_response_empty() {
+        let resp = MetricsResponse {
+            cache: CacheMetrics {
+                total_entries: 0,
+                active_entries: 0,
+                expired_entries: 0,
+            },
+            accounting: AccountingMetrics {
+                total_agents: 0,
+                total_prompt_tokens: 0,
+                total_completion_tokens: 0,
+                total_tokens: 0,
+            },
+            providers: vec![],
+        };
+
+        let json = serde_json::to_string(&resp).unwrap();
+        assert!(json.contains("\"total_agents\":0"));
+        assert!(json.contains("\"providers\":[]"));
+    }
+
+    // ==================================================================
+    // Metrics endpoint integration test
+    // ==================================================================
+
+    #[tokio::test]
+    async fn test_metrics_endpoint_returns_200() {
+        let gateway = crate::LlmGateway::new(crate::GatewayConfig::default()).await.unwrap();
+        let state = AppState {
+            gateway: Arc::new(gateway),
+            api_key: None,
+        };
+        let app = Router::new()
+            .route("/v1/metrics", get(metrics))
+            .with_state(state);
+
+        let req = Request::builder()
+            .uri("/v1/metrics")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(json["cache"].is_object());
+        assert!(json["accounting"].is_object());
+        assert!(json["providers"].is_array());
+        assert_eq!(json["cache"]["total_entries"], 0);
+        assert_eq!(json["accounting"]["total_agents"], 0);
+    }
+
+    // ==================================================================
+    // Metrics response field verification
+    // ==================================================================
+
+    #[test]
+    fn test_metrics_response_debug() {
+        let resp = MetricsResponse {
+            cache: CacheMetrics {
+                total_entries: 1,
+                active_entries: 1,
+                expired_entries: 0,
+            },
+            accounting: AccountingMetrics {
+                total_agents: 1,
+                total_prompt_tokens: 10,
+                total_completion_tokens: 20,
+                total_tokens: 30,
+            },
+            providers: vec![],
+        };
+        let dbg = format!("{:?}", resp);
+        assert!(dbg.contains("total_entries"));
+        assert!(dbg.contains("total_tokens"));
+    }
+
+    #[test]
+    fn test_cache_metrics_debug() {
+        let cm = CacheMetrics {
+            total_entries: 5,
+            active_entries: 3,
+            expired_entries: 2,
+        };
+        let dbg = format!("{:?}", cm);
+        assert!(dbg.contains("5"));
+        assert!(dbg.contains("3"));
+        assert!(dbg.contains("2"));
+    }
+
+    #[test]
+    fn test_accounting_metrics_debug() {
+        let am = AccountingMetrics {
+            total_agents: 7,
+            total_prompt_tokens: 100,
+            total_completion_tokens: 200,
+            total_tokens: 300,
+        };
+        let dbg = format!("{:?}", am);
+        assert!(dbg.contains("7"));
+        assert!(dbg.contains("300"));
+    }
+
+    #[test]
+    fn test_provider_metrics_serialization() {
+        let pm = ProviderMetrics {
+            name: "TestProvider".to_string(),
+            available: true,
+            healthy: false,
+            consecutive_failures: 5,
+        };
+        let json_val: serde_json::Value = serde_json::to_value(&pm).unwrap();
+        assert_eq!(json_val["name"], "TestProvider");
+        assert_eq!(json_val["available"], true);
+        assert_eq!(json_val["healthy"], false);
+        assert_eq!(json_val["consecutive_failures"], 5);
+    }
+
+    #[test]
+    fn test_provider_metrics_debug() {
+        let pm = ProviderMetrics {
+            name: "Ollama".to_string(),
+            available: true,
+            healthy: true,
+            consecutive_failures: 0,
+        };
+        let dbg = format!("{:?}", pm);
+        assert!(dbg.contains("Ollama"));
+    }
+
+    // ==================================================================
+    // Auth edge cases: extra whitespace, Basic auth instead of Bearer
+    // ==================================================================
+
+    #[tokio::test]
+    async fn test_auth_basic_instead_of_bearer() {
+        let app = test_app_with_auth("secret").await;
+        let body = serde_json::json!({
+            "model": "llama2",
+            "messages": [{"role": "user", "content": "Hi"}]
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/chat/completions")
+            .header("content-type", "application/json")
+            .header("authorization", "Basic secret")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn test_auth_bearer_with_extra_spaces() {
+        let app = test_app_with_auth("mykey").await;
+        let body = serde_json::json!({
+            "model": "llama2",
+            "messages": [{"role": "user", "content": "Hi"}]
+        });
+        // "Bearer  mykey" (double space) should fail
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/chat/completions")
+            .header("content-type", "application/json")
+            .header("authorization", "Bearer  mykey")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    // ==================================================================
+    // Request content-type edge case
+    // ==================================================================
+
+    #[tokio::test]
+    async fn test_chat_completions_no_content_type_header() {
+        let app = test_app_no_auth().await;
+        let body = serde_json::json!({
+            "model": "llama2",
+            "messages": [{"role": "user", "content": "Hi"}]
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/chat/completions")
+            // No content-type header
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        // Axum requires content-type for JSON extraction — should reject
+        assert!(
+            resp.status().is_client_error(),
+            "Expected 4xx without content-type, got {}",
+            resp.status()
+        );
+    }
+
+    // ==================================================================
+    // Metrics endpoint response structure
+    // ==================================================================
+
+    #[tokio::test]
+    async fn test_metrics_endpoint_structure_with_providers() {
+        let gateway = crate::LlmGateway::new(crate::GatewayConfig::default()).await.unwrap();
+        let state = AppState {
+            gateway: Arc::new(gateway),
+            api_key: None,
+        };
+        let app = Router::new()
+            .route("/v1/metrics", get(metrics))
+            .with_state(state);
+
+        let req = Request::builder()
+            .uri("/v1/metrics")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        // Providers should be an array (possibly with Ollama, llama.cpp, OpenAI)
+        let providers = json["providers"].as_array().unwrap();
+        for p in providers {
+            assert!(p["name"].is_string());
+            assert!(p["available"].is_boolean());
+            assert!(p["healthy"].is_boolean());
+            assert!(p["consecutive_failures"].is_number());
+        }
     }
 }

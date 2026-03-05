@@ -3,9 +3,9 @@
 //! Provides interactive prompts and logging for all actions
 //! that require human oversight.
 
-use anyhow::{anyhow, Result};
-use console::{style, Style};
-use dialoguer::{theme::ColorfulTheme, Confirm, MultiSelect, Select};
+use anyhow::Result;
+use console::style;
+use dialoguer::{theme::ColorfulTheme, Select};
 use std::io::IsTerminal;
 use std::time::Duration;
 use tokio::time::timeout;
@@ -15,6 +15,7 @@ use crate::security::PermissionLevel;
 
 /// Types of approval requests
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum ApprovalRequest {
     /// Command execution approval
     Command {
@@ -24,18 +25,21 @@ pub enum ApprovalRequest {
         risk_level: RiskLevel,
     },
     /// Privilege escalation approval
+    #[allow(dead_code)]
     PrivilegeEscalation {
         command: String,
         user: String,
         reason: String,
     },
     /// File operation approval
+    #[allow(dead_code)]
     FileOperation {
         operation: String,
         path: std::path::PathBuf,
         description: String,
     },
     /// Network access approval
+    #[allow(dead_code)]
     NetworkAccess {
         host: String,
         port: u16,
@@ -91,6 +95,7 @@ impl RiskLevel {
 
 /// Response to an approval request
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum ApprovalResponse {
     /// Approved to proceed
     Approved,
@@ -101,8 +106,10 @@ pub enum ApprovalResponse {
     /// Denied and block similar requests
     DenyAndBlock,
     /// Request more information
+    #[allow(dead_code)]
     NeedInfo(String),
     /// Modify the request
+    #[allow(dead_code)]
     Modify(ApprovalRequest),
 }
 
@@ -125,6 +132,7 @@ impl ApprovalManager {
     }
     
     /// Configure auto-approval for low-risk operations
+    #[allow(dead_code)]
     pub fn set_auto_approve_low_risk(&mut self, enabled: bool) {
         self.auto_approve_low_risk = enabled;
     }
@@ -270,7 +278,7 @@ impl ApprovalManager {
     }
     
     /// Get user decision interactively
-    async fn get_user_decision(&self, request: &ApprovalRequest, risk: RiskLevel) -> Result<ApprovalResponse> {
+    async fn get_user_decision(&self, request: &ApprovalRequest, _risk: RiskLevel) -> Result<ApprovalResponse> {
         let choices = vec![
             "✓ Approve",
             "✓ Approve once",
@@ -300,7 +308,7 @@ impl ApprovalManager {
     }
     
     /// Gather additional information from user
-    async fn gather_more_info(&self, request: &ApprovalRequest) -> Result<String> {
+    async fn gather_more_info(&self, _request: &ApprovalRequest) -> Result<String> {
         use dialoguer::Input;
         
         let info: String = Input::with_theme(&self.theme)
@@ -311,6 +319,7 @@ impl ApprovalManager {
     }
     
     /// Add a blocked pattern
+    #[allow(dead_code)]
     pub fn block_pattern(&mut self, pattern: String) {
         self.blocked_patterns.push(pattern);
     }
@@ -323,6 +332,7 @@ impl Default for ApprovalManager {
 }
 
 /// Batch approval for multiple operations
+#[allow(dead_code)]
 pub async fn batch_approve(
     manager: &ApprovalManager,
     operations: Vec<ApprovalRequest>,

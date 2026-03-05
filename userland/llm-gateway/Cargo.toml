@@ -33,9 +33,18 @@ axum = { workspace = true }
 tower = { workspace = true }
 tower-http = { workspace = true }
 
+[lib]
+name = "llm_gateway"
+path = "src/lib.rs"
+
 [dev-dependencies]
 criterion = "0.5"
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
 
 [[bench]]
 name = "llm_gateway"
+harness = false
+
+[[bench]]
+name = "system_bench"
 harness = false

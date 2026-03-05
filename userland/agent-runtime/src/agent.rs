@@ -7,11 +7,10 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result};
 use tokio::process::{Child, Command};
 use tokio::sync::{mpsc, RwLock};
-use tracing::{debug, error, info, warn};
-use uuid::Uuid;
+use tracing::{info, warn};
 
 use agnos_common::{
-    AgentConfig, AgentId, AgentStatus, AgentType, Message, ResourceUsage, StopReason,
+    AgentConfig, AgentId, AgentStatus, Message, ResourceUsage, StopReason,
 };
 
 use crate::ipc::AgentIpc;
@@ -36,11 +35,11 @@ pub struct Agent {
     config: AgentConfig,
     status: RwLock<AgentStatus>,
     process: Option<Child>,
-    ipc: Option<AgentIpc>,
+    _ipc: Option<AgentIpc>,
     sandbox: Sandbox,
     started_at: Option<Instant>,
     message_tx: mpsc::Sender<Message>,
-    message_rx: Option<mpsc::Receiver<Message>>,
+    _message_rx: Option<mpsc::Receiver<Message>>,
 }
 
 impl Agent {
@@ -57,11 +56,11 @@ impl Agent {
             config,
             status: RwLock::new(AgentStatus::Pending),
             process: None,
-            ipc: None,
+            _ipc: None,
             sandbox,
             started_at: None,
             message_tx,
-            message_rx: None,
+            _message_rx: None,
         };
 
         Ok((agent, message_rx))
@@ -124,7 +123,7 @@ impl Agent {
             }
         }
 
-        let mut child = cmd.spawn()
+        let child = cmd.spawn()
             .with_context(|| format!("Failed to spawn agent process: {}", executable.display()))?;
 
         info!("Agent {} started with PID {:?}", self.id, child.id());
@@ -349,6 +348,44 @@ impl Agent {
             max_memory: self.config.resource_limits.max_memory,
             max_cpu_time: self.config.resource_limits.max_cpu_time,
         })
+    }
+}
+
+#[async_trait::async_trait]
+impl crate::supervisor::AgentControl for Agent {
+    async fn check_health(&self) -> Result<bool> {
+        // Check process is alive via kill(pid, 0)
+        if let Some(ref process) = self.process {
+            if let Some(pid) = process.id() {
+                #[cfg(unix)]
+                {
+                    let alive = unsafe { libc::kill(pid as i32, 0) } == 0;
+                    return Ok(alive);
+                }
+                #[cfg(not(unix))]
+                {
+                    let _ = pid;
+                    return Ok(true);
+                }
+            }
+        }
+        // No process spawned — check status
+        Ok(*self.status.read().await == AgentStatus::Running)
+    }
+
+    async fn get_resource_usage(&self) -> Result<ResourceUsage> {
+        Ok(self.resource_usage().await)
+    }
+
+    async fn stop(&mut self, reason: StopReason) -> Result<()> {
+        Agent::stop(self, reason).await
+    }
+
+    async fn restart(&mut self) -> Result<()> {
+        Agent::stop(self, StopReason::Normal).await?;
+        // Reset status so start() will accept it
+        *self.status.write().await = AgentStatus::Pending;
+        Agent::start(self).await
     }
 }
 
@@ -1196,5 +1233,93 @@ mod tests {
         };
         let result = Agent::new(config).await;
         assert!(result.is_ok());
+    }
+
+    // ==================================================================
+    // New coverage: AgentControl trait, proc helpers with current PID,
+    // resource_usage without process, find_agent_executable fallback,
+    // ResourceLimits::apply with non-zero values
+    // ==================================================================
+
+    #[tokio::test]
+    async fn test_agent_control_check_health_no_process() {
+        use crate::supervisor::AgentControl;
+        let config = AgentConfig {
+            name: "ctrl-health".to_string(),
+            ..Default::default()
+        };
+        let (agent, _rx) = Agent::new(config).await.unwrap();
+        // No process spawned, status is Pending (not Running) => returns false
+        let healthy = agent.check_health().await.unwrap();
+        assert!(!healthy);
+    }
+
+    #[tokio::test]
+    async fn test_agent_control_get_resource_usage_no_process() {
+        use crate::supervisor::AgentControl;
+        let config = AgentConfig {
+            name: "ctrl-usage".to_string(),
+            ..Default::default()
+        };
+        let (agent, _rx) = Agent::new(config).await.unwrap();
+        let usage = agent.get_resource_usage().await.unwrap();
+        assert_eq!(usage.memory_used, 0);
+        assert_eq!(usage.cpu_time_used, 0);
+        assert_eq!(usage.file_descriptors_used, 0);
+        assert_eq!(usage.processes_used, 0);
+    }
+
+    #[test]
+    fn test_read_vm_rss_current_process_positive() {
+        let pid = std::process::id();
+        let rss = Agent::read_vm_rss(pid);
+        // The test runner process should have non-trivial RSS
+        assert!(rss > 1024, "Expected RSS > 1KB, got {}", rss);
+    }
+
+    #[test]
+    fn test_count_fds_current_process_at_least_three() {
+        // stdin, stdout, stderr at minimum
+        let pid = std::process::id();
+        let fds = Agent::count_fds(pid);
+        assert!(fds >= 3, "Expected at least 3 FDs, got {}", fds);
+    }
+
+    #[test]
+    fn test_count_threads_current_process_at_least_one() {
+        let pid = std::process::id();
+        let threads = Agent::count_threads(pid);
+        assert!(threads >= 1);
+    }
+
+    #[test]
+    fn test_resource_limits_apply_nonzero_cpu() {
+        // Apply a generous CPU limit (won't restrict the test)
+        let limits = ResourceLimits {
+            max_memory: 0,
+            max_cpu_time: 86400, // 24h
+        };
+        assert!(limits.apply().is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_agent_handle_id_matches_agent_id() {
+        let config = AgentConfig {
+            name: "id-match".to_string(),
+            ..Default::default()
+        };
+        let (agent, _rx) = Agent::new(config).await.unwrap();
+        let handle = agent.handle().await;
+        assert_eq!(handle.id, agent.id());
+        assert_eq!(handle.name, "id-match");
+    }
+
+    #[tokio::test]
+    async fn test_agent_new_unique_ids() {
+        let config1 = AgentConfig { name: "a1".to_string(), ..Default::default() };
+        let config2 = AgentConfig { name: "a2".to_string(), ..Default::default() };
+        let (agent1, _rx1) = Agent::new(config1).await.unwrap();
+        let (agent2, _rx2) = Agent::new(config2).await.unwrap();
+        assert_ne!(agent1.id(), agent2.id());
     }
 }

@@ -4,7 +4,6 @@
 //! with AGNOS-specific features like AI mode indicators
 
 use ansi_term::{Color, Style};
-use chrono;
 use std::path::PathBuf;
 use std::time::SystemTime;
 
@@ -25,8 +24,6 @@ pub struct PromptConfig {
     pub show_directory: bool,
     /// Show exit status of last command
     pub show_exit_status: bool,
-    /// Show battery level
-    pub show_battery: bool,
     /// Time threshold for showing execution time (ms)
     pub execution_time_threshold: u64,
     /// Character set for prompt
@@ -59,7 +56,6 @@ impl Default for PromptConfig {
             show_context: false,
             show_directory: true,
             show_exit_status: true,
-            show_battery: false,
             execution_time_threshold: 2000, // 2 seconds
             character_set: CharacterSet::Unicode,
             style: PromptStyle::Powerline,
@@ -639,7 +635,6 @@ mod tests {
         assert!(!config.show_context);
         assert!(config.show_directory);
         assert!(config.show_exit_status);
-        assert!(!config.show_battery);
         assert_eq!(config.execution_time_threshold, 2000);
         assert!(config.format.contains("$ai_mode"));
     }
@@ -697,5 +692,88 @@ mod tests {
         let ctx = PromptContext::new(PathBuf::from("/tmp"), "alice".into(), "HUMAN".into());
         let output = renderer.render(&ctx);
         assert!(output.contains("alice"));
+    }
+
+    #[test]
+    fn test_parse_format_with_separator_chars() {
+        // Module names delimited by non-alphanumeric chars
+        let modules = parse_format("$user@$host:$path");
+        assert_eq!(modules, vec!["user", "host", "path"]);
+    }
+
+    #[test]
+    fn test_parse_format_no_dollar_signs() {
+        let modules = parse_format("no modules here");
+        assert!(modules.is_empty());
+    }
+
+    #[test]
+    fn test_prompt_context_default_exit_code_and_duration() {
+        let ctx = PromptContext::new(PathBuf::from("/"), "user".into(), "HUMAN".into());
+        assert_eq!(ctx.last_exit_code, 0);
+        assert_eq!(ctx.cmd_duration_ms, 0);
+    }
+
+    #[test]
+    fn test_prompt_renderer_render_right_below_threshold_ms() {
+        let renderer = PromptRenderer::default();
+        let mut ctx = PromptContext::new(PathBuf::from("/"), "u".into(), "HUMAN".into());
+        ctx.cmd_duration_ms = 100; // below default 2000ms threshold
+        let right = renderer.render_right(&ctx).unwrap();
+        // Should only contain the time, not duration
+        assert!(!right.contains("ms"));
+        assert!(!right.contains("took"));
+    }
+
+    #[test]
+    fn test_prompt_renderer_render_right_exactly_at_threshold() {
+        let renderer = PromptRenderer::default();
+        let mut ctx = PromptContext::new(PathBuf::from("/"), "u".into(), "HUMAN".into());
+        ctx.cmd_duration_ms = 2000; // exactly at threshold
+        let right = renderer.render_right(&ctx).unwrap();
+        assert!(right.contains("2.000s"));
+    }
+
+    #[test]
+    fn test_execution_time_module_at_threshold() {
+        let module = ExecutionTimeModule::new(1000);
+        let mut ctx = PromptContext::new(PathBuf::from("/"), "u".into(), "HUMAN".into());
+        ctx.cmd_duration_ms = 1000; // exactly at threshold
+        let r = module.render(&ctx);
+        assert!(r.is_some());
+        assert!(r.unwrap().contains("1.000s"));
+    }
+
+    #[test]
+    fn test_prompt_renderer_no_modules_config() {
+        let config = PromptConfig {
+            show_ai_mode: false,
+            show_context: false,
+            show_directory: false,
+            show_git_status: false,
+            show_execution_time: false,
+            show_exit_status: false,
+            ..PromptConfig::default()
+        };
+        let renderer = PromptRenderer::new(config);
+        let ctx = PromptContext::new(PathBuf::from("/"), "u".into(), "HUMAN".into());
+        let output = renderer.render(&ctx);
+        // Should still have CharacterModule (always added)
+        assert!(!output.is_empty());
+    }
+
+    #[test]
+    fn test_directory_module_root_path() {
+        let module = DirectoryModule;
+        let ctx = PromptContext::new(PathBuf::from("/"), "u".into(), "HUMAN".into());
+        let rendered = module.render(&ctx).unwrap();
+        assert!(rendered.contains("/"));
+    }
+
+    #[test]
+    fn test_prompt_context_cwd_update() {
+        let mut ctx = PromptContext::new(PathBuf::from("/tmp"), "u".into(), "HUMAN".into());
+        ctx.cwd = PathBuf::from("/var/log");
+        assert_eq!(ctx.cwd, PathBuf::from("/var/log"));
     }
 }

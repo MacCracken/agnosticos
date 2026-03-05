@@ -1029,4 +1029,87 @@ mod tests {
         };
         assert!(profile.validate(MacSystem::AppArmor).is_ok());
     }
+
+    // --- New coverage tests ---
+
+    #[test]
+    fn test_detect_mac_system_returns_valid_variant() {
+        let system = detect_mac_system();
+        // Must be one of the three variants
+        match system {
+            MacSystem::SELinux | MacSystem::AppArmor | MacSystem::None => {}
+        }
+    }
+
+    #[test]
+    fn test_get_selinux_mode_on_non_selinux() {
+        // On most test systems, SELinux is not active
+        let result = get_selinux_mode();
+        // Should return Ok(Disabled) or Err(NotSupported), never panic
+        match result {
+            Ok(mode) => {
+                let _ = mode; // Valid
+            }
+            Err(_) => {} // Also valid (non-Linux)
+        }
+    }
+
+    #[test]
+    fn test_apply_agent_mac_profile_no_mac_with_all_profiles() {
+        let mac = detect_mac_system();
+        if mac == MacSystem::None {
+            let profiles = default_agent_profiles();
+            // When no MAC system is active, apply should succeed for all types
+            for agent_type in &["User", "Service", "System"] {
+                let result = apply_agent_mac_profile(agent_type, &profiles);
+                assert!(result.is_ok(), "Should succeed for '{}' with no MAC", agent_type);
+            }
+        }
+    }
+
+    #[test]
+    fn test_agent_mac_profile_new_empty_string() {
+        let profile = AgentMacProfile::new("");
+        assert_eq!(profile.agent_type, "");
+        // validate should fail because agent_type is empty
+        assert!(profile.validate(MacSystem::None).is_err());
+    }
+
+    #[test]
+    fn test_agent_mac_profile_selinux_context_format() {
+        let profile = AgentMacProfile::new("Test");
+        let ctx = profile.selinux_context.as_deref().unwrap();
+        // Should have exactly 4 colon-separated parts
+        let parts: Vec<&str> = ctx.split(':').collect();
+        assert_eq!(parts.len(), 4);
+        assert_eq!(parts[0], "system_u");
+        assert_eq!(parts[1], "system_r");
+        assert!(parts[2].starts_with("agnos_agent_"));
+        assert_eq!(parts[3], "s0");
+    }
+
+    #[test]
+    fn test_mac_system_display_all_variants() {
+        assert_eq!(format!("{}", MacSystem::SELinux), "SELinux");
+        assert_eq!(format!("{}", MacSystem::AppArmor), "AppArmor");
+        assert_eq!(format!("{}", MacSystem::None), "None");
+    }
+
+    #[test]
+    fn test_selinux_mode_clone_copy() {
+        let m = SELinuxMode::Enforcing;
+        let m2 = m; // Copy
+        let m3 = m.clone(); // Clone
+        assert_eq!(m, m2);
+        assert_eq!(m, m3);
+    }
+
+    #[test]
+    fn test_apparmor_profile_state_clone_copy() {
+        let s = AppArmorProfileState::Enforce;
+        let s2 = s; // Copy
+        let s3 = s.clone(); // Clone
+        assert_eq!(s, s2);
+        assert_eq!(s, s3);
+    }
 }

@@ -216,7 +216,7 @@ pub struct WasmAgent;
 
 #[cfg(not(feature = "wasm"))]
 impl WasmAgent {
-    pub fn load(config: WasmAgentConfig) -> Result<Self, String> {
+    pub fn load(_config: WasmAgentConfig) -> Result<Self, String> {
         Err("WASM runtime not available — compile with --features wasm".to_string())
     }
 
@@ -293,5 +293,88 @@ mod tests {
         };
         let result = WasmAgent::load(config);
         assert!(result.is_err());
+    }
+
+    // ==================================================================
+    // New coverage: config validation, defaults, clone, debug
+    // ==================================================================
+
+    #[test]
+    fn test_wasm_agent_config_default_module_path_empty() {
+        let config = WasmAgentConfig::default();
+        assert!(config.module_path.as_os_str().is_empty());
+        assert!(config.args.is_empty());
+    }
+
+    #[test]
+    fn test_wasm_agent_config_clone() {
+        let config = WasmAgentConfig {
+            module_path: PathBuf::from("/opt/agent.wasm"),
+            memory_limit: 128 * 1024 * 1024,
+            fuel: 500_000,
+            allowed_dirs: vec![PathBuf::from("/tmp"), PathBuf::from("/data")],
+            env_vars: vec![("HOME".to_string(), "/home/agent".to_string())],
+            args: vec!["--verbose".to_string(), "--mode=test".to_string()],
+        };
+        let cloned = config.clone();
+        assert_eq!(cloned.module_path, PathBuf::from("/opt/agent.wasm"));
+        assert_eq!(cloned.memory_limit, 128 * 1024 * 1024);
+        assert_eq!(cloned.fuel, 500_000);
+        assert_eq!(cloned.allowed_dirs.len(), 2);
+        assert_eq!(cloned.env_vars.len(), 1);
+        assert_eq!(cloned.args.len(), 2);
+    }
+
+    #[test]
+    fn test_wasm_agent_config_debug() {
+        let config = WasmAgentConfig::default();
+        let dbg = format!("{:?}", config);
+        assert!(dbg.contains("WasmAgentConfig"));
+        assert!(dbg.contains("memory_limit"));
+        assert!(dbg.contains("fuel"));
+    }
+
+    #[test]
+    fn test_wasm_execution_result_debug() {
+        let result = WasmExecutionResult {
+            success: false,
+            fuel_consumed: 999,
+            error: Some("trap: unreachable".to_string()),
+        };
+        let dbg = format!("{:?}", result);
+        assert!(dbg.contains("false"));
+        assert!(dbg.contains("999"));
+        assert!(dbg.contains("unreachable"));
+    }
+
+    #[cfg(not(feature = "wasm"))]
+    #[test]
+    fn test_wasm_agent_load_disabled_error_message() {
+        let config = WasmAgentConfig::default();
+        let result = WasmAgent::load(config);
+        assert!(result.is_err());
+        let err = result.err().unwrap();
+        assert!(err.contains("not available"));
+    }
+
+    #[test]
+    fn test_wasm_agent_config_zero_fuel() {
+        let config = WasmAgentConfig {
+            fuel: 0,
+            ..Default::default()
+        };
+        assert_eq!(config.fuel, 0);
+    }
+
+    #[test]
+    fn test_wasm_execution_result_success_no_error() {
+        let result = WasmExecutionResult {
+            success: true,
+            fuel_consumed: 0,
+            error: None,
+        };
+        assert!(result.success);
+        assert!(result.error.is_none());
+        assert_eq!(result.fuel_consumed, 0);
     }
 }

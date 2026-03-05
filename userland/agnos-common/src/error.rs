@@ -163,4 +163,118 @@ mod tests {
         assert!(err.to_string().contains("unexpected error"));
         assert!(!err.is_retriable());
     }
+
+    #[test]
+    fn test_error_from_io_error() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::Other, "disk failure");
+        let err: AgnosError = io_err.into();
+        assert!(matches!(err, AgnosError::Io(_)));
+        assert!(err.to_string().contains("disk failure"));
+    }
+
+    #[test]
+    fn test_error_from_serde_json_error() {
+        let json_err = serde_json::from_str::<serde_json::Value>("{{bad json").unwrap_err();
+        let err: AgnosError = json_err.into();
+        assert!(matches!(err, AgnosError::Serialization(_)));
+        assert!(err.to_string().contains("Serialization error"));
+    }
+
+    #[test]
+    fn test_error_io_would_block_is_retriable() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::WouldBlock, "would block");
+        let err = AgnosError::Io(io_err);
+        assert!(err.is_retriable());
+    }
+
+    #[test]
+    fn test_error_io_interrupted_is_retriable() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::Interrupted, "interrupted");
+        let err = AgnosError::Io(io_err);
+        assert!(err.is_retriable());
+    }
+
+    #[test]
+    fn test_error_io_connection_reset_is_retriable() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::ConnectionReset, "reset");
+        let err = AgnosError::Io(io_err);
+        assert!(err.is_retriable());
+    }
+
+    #[test]
+    fn test_error_io_connection_aborted_is_retriable() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::ConnectionAborted, "aborted");
+        let err = AgnosError::Io(io_err);
+        assert!(err.is_retriable());
+    }
+
+    #[test]
+    fn test_error_io_broken_pipe_is_retriable() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::BrokenPipe, "broken pipe");
+        let err = AgnosError::Io(io_err);
+        assert!(err.is_retriable());
+    }
+
+    #[test]
+    fn test_error_io_already_exists_not_retriable() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::AlreadyExists, "exists");
+        let err = AgnosError::Io(io_err);
+        assert!(!err.is_retriable());
+    }
+
+    #[test]
+    fn test_error_kernel_display() {
+        let err = AgnosError::KernelError(42);
+        assert_eq!(err.to_string(), "Kernel error: 42");
+        assert!(err.is_retriable());
+    }
+
+    #[test]
+    fn test_error_kernel_negative() {
+        let err = AgnosError::KernelError(-1);
+        assert_eq!(err.to_string(), "Kernel error: -1");
+    }
+
+    #[test]
+    fn test_error_serialization_not_retriable() {
+        let json_err = serde_json::from_str::<serde_json::Value>("not json").unwrap_err();
+        let err = AgnosError::Serialization(json_err);
+        assert!(!err.is_retriable());
+    }
+
+    #[test]
+    fn test_error_debug_impl() {
+        let err = AgnosError::Timeout;
+        let debug_str = format!("{:?}", err);
+        assert!(debug_str.contains("Timeout"));
+    }
+
+    #[test]
+    fn test_error_display_all_variants() {
+        let variants: Vec<AgnosError> = vec![
+            AgnosError::Io(std::io::Error::new(std::io::ErrorKind::Other, "io")),
+            AgnosError::AgentNotFound("a".into()),
+            AgnosError::PermissionDenied("p".into()),
+            AgnosError::ResourceLimitExceeded("r".into()),
+            AgnosError::SandboxViolation("s".into()),
+            AgnosError::LlmError("l".into()),
+            AgnosError::AuditError("au".into()),
+            AgnosError::InvalidConfig("c".into()),
+            AgnosError::KernelError(0),
+            AgnosError::SyscallFailed("sc".into()),
+            AgnosError::Timeout,
+            AgnosError::Unknown("u".into()),
+        ];
+        for err in &variants {
+            let display = err.to_string();
+            assert!(!display.is_empty(), "Display should not be empty for {:?}", err);
+        }
+    }
+
+    #[test]
+    fn test_error_is_std_error() {
+        let err = AgnosError::Timeout;
+        let std_err: &dyn std::error::Error = &err;
+        assert!(std_err.to_string().contains("Timeout"));
+    }
 }

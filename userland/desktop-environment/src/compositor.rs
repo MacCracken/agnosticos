@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use thiserror::Error;
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 use uuid::Uuid;
 
 #[derive(Debug, Error)]
@@ -193,7 +193,7 @@ impl Compositor {
         window_id: SurfaceId,
         workspace_id: usize,
     ) -> Result<(), CompositorError> {
-        let mut windows = self.windows.write().unwrap();
+        let windows = self.windows.write().unwrap();
         if !windows.contains_key(&window_id) {
             return Err(CompositorError::WindowNotFound(window_id));
         }
@@ -529,7 +529,7 @@ mod tests {
     #[test]
     fn test_compositor_create_agent_window() {
         let compositor = Compositor::new();
-        let id = compositor
+        let _id = compositor
             .create_window("Agent Window".to_string(), "agent".to_string(), true)
             .unwrap();
         let windows = compositor.get_windows();
@@ -847,5 +847,273 @@ mod tests {
     #[test]
     fn test_window_state_default() {
         assert_eq!(WindowState::default(), WindowState::Normal);
+    }
+
+    #[test]
+    fn test_compositor_has_4_default_workspaces() {
+        let compositor = Compositor::new();
+        let workspaces = compositor.workspaces.read().unwrap();
+        assert_eq!(workspaces.len(), 4);
+        for (i, ws) in workspaces.iter().enumerate() {
+            assert_eq!(ws.id, i);
+            assert_eq!(ws.name, format!("Workspace {}", i + 1));
+            assert_eq!(ws.context_type, ContextType::General);
+            assert!(ws.windows.is_empty());
+            assert!(ws.active_window.is_none());
+        }
+    }
+
+    #[test]
+    fn test_compositor_window_added_to_active_workspace() {
+        let compositor = Compositor::new();
+        let id = compositor.create_window("W".to_string(), "app".to_string(), false).unwrap();
+        let workspaces = compositor.workspaces.read().unwrap();
+        assert!(workspaces[0].windows.contains(&id));
+        assert_eq!(workspaces[0].active_window, Some(id));
+    }
+
+    #[test]
+    fn test_compositor_close_updates_active_window() {
+        let compositor = Compositor::new();
+        let id1 = compositor.create_window("W1".to_string(), "app".to_string(), false).unwrap();
+        let id2 = compositor.create_window("W2".to_string(), "app".to_string(), false).unwrap();
+        // Close the active (last created) window
+        compositor.close_window(id2).unwrap();
+        let workspaces = compositor.workspaces.read().unwrap();
+        // Active should fall back to id1 (last remaining)
+        assert_eq!(workspaces[0].active_window, Some(id1));
+    }
+
+    #[test]
+    fn test_compositor_close_last_window_clears_active() {
+        let compositor = Compositor::new();
+        let id = compositor.create_window("W".to_string(), "app".to_string(), false).unwrap();
+        compositor.close_window(id).unwrap();
+        let workspaces = compositor.workspaces.read().unwrap();
+        assert!(workspaces[0].active_window.is_none());
+    }
+
+    #[test]
+    fn test_compositor_set_all_window_states() {
+        let compositor = Compositor::new();
+        let id = compositor.create_window("W".to_string(), "app".to_string(), false).unwrap();
+
+        for state in [WindowState::Minimized, WindowState::Maximized, WindowState::Fullscreen, WindowState::Floating, WindowState::Normal] {
+            compositor.set_window_state(id, state.clone()).unwrap();
+            let windows = compositor.get_windows();
+            assert_eq!(windows[0].state, state);
+        }
+    }
+
+    #[test]
+    fn test_compositor_move_window_removes_from_source() {
+        let compositor = Compositor::new();
+        let id = compositor.create_window("W".to_string(), "app".to_string(), false).unwrap();
+        compositor.move_window_to_workspace(id, 2).unwrap();
+        let workspaces = compositor.workspaces.read().unwrap();
+        assert!(!workspaces[0].windows.contains(&id));
+        assert!(workspaces[2].windows.contains(&id));
+    }
+
+    #[test]
+    fn test_compositor_get_active_windows_after_workspace_switch() {
+        let compositor = Compositor::new();
+        let _id1 = compositor.create_window("W1".to_string(), "app".to_string(), false).unwrap();
+        compositor.switch_workspace(1).unwrap();
+        let _id2 = compositor.create_window("W2".to_string(), "app".to_string(), false).unwrap();
+        // Active workspace is 1, so only W2 should be returned
+        let active = compositor.get_active_windows();
+        assert_eq!(active.len(), 1);
+        assert_eq!(active[0].title, "W2");
+    }
+
+    #[test]
+    fn test_compositor_agent_windows_filter() {
+        let compositor = Compositor::new();
+        compositor.create_window("Normal".to_string(), "app".to_string(), false).unwrap();
+        compositor.create_window("Agent1".to_string(), "agent".to_string(), true).unwrap();
+        compositor.create_window("Agent2".to_string(), "agent".to_string(), true).unwrap();
+        assert_eq!(compositor.get_agent_windows().len(), 2);
+        assert_eq!(compositor.get_windows().len(), 3);
+    }
+
+    #[test]
+    fn test_compositor_set_workspace_context_all_types() {
+        let compositor = Compositor::new();
+        let contexts = [
+            ContextType::Development,
+            ContextType::Communication,
+            ContextType::Design,
+            ContextType::AgentOperation,
+            ContextType::Window,
+            ContextType::Application,
+            ContextType::System,
+            ContextType::User,
+        ];
+        for (i, ctx) in contexts.iter().enumerate() {
+            let ws = i % 4;
+            compositor.set_workspace_context(ws, ctx.clone()).unwrap();
+            assert_eq!(compositor.get_workspace_context(ws).unwrap(), *ctx);
+        }
+    }
+
+    #[test]
+    fn test_compositor_create_multiple_windows_tracking() {
+        let compositor = Compositor::new();
+        let ids: Vec<SurfaceId> = (0..5)
+            .map(|i| {
+                compositor
+                    .create_window(format!("Win-{}", i), format!("app-{}", i), i % 2 == 0)
+                    .unwrap()
+            })
+            .collect();
+        assert_eq!(compositor.get_windows().len(), 5);
+        assert_eq!(compositor.get_agent_windows().len(), 3); // 0,2,4 are agent
+        // Last created window should be active
+        let workspaces = compositor.workspaces.read().unwrap();
+        assert_eq!(workspaces[0].active_window, Some(ids[4]));
+    }
+
+    #[test]
+    fn test_compositor_close_middle_window_preserves_others() {
+        let compositor = Compositor::new();
+        let id1 = compositor.create_window("W1".to_string(), "a".to_string(), false).unwrap();
+        let id2 = compositor.create_window("W2".to_string(), "b".to_string(), false).unwrap();
+        let id3 = compositor.create_window("W3".to_string(), "c".to_string(), false).unwrap();
+        compositor.close_window(id2).unwrap();
+        let windows = compositor.get_windows();
+        assert_eq!(windows.len(), 2);
+        let remaining_ids: Vec<SurfaceId> = windows.iter().map(|w| w.id).collect();
+        assert!(remaining_ids.contains(&id1));
+        assert!(remaining_ids.contains(&id3));
+    }
+
+    #[test]
+    fn test_compositor_switch_workspace_boundary() {
+        let compositor = Compositor::new();
+        assert!(compositor.switch_workspace(0).is_ok());
+        assert!(compositor.switch_workspace(3).is_ok());
+        assert!(compositor.switch_workspace(4).is_err());
+        assert!(compositor.switch_workspace(100).is_err());
+    }
+
+    #[test]
+    fn test_compositor_window_state_transitions_full_cycle() {
+        let compositor = Compositor::new();
+        let id = compositor.create_window("W".to_string(), "app".to_string(), false).unwrap();
+        // Normal -> Maximized -> Fullscreen -> Minimized -> Floating -> Normal
+        let transitions = vec![
+            WindowState::Maximized,
+            WindowState::Fullscreen,
+            WindowState::Minimized,
+            WindowState::Floating,
+            WindowState::Normal,
+        ];
+        for state in transitions {
+            compositor.set_window_state(id, state.clone()).unwrap();
+            let w = compositor.get_windows().into_iter().find(|w| w.id == id).unwrap();
+            assert_eq!(w.state, state);
+        }
+    }
+
+    #[test]
+    fn test_compositor_move_window_to_same_workspace() {
+        let compositor = Compositor::new();
+        let id = compositor.create_window("W".to_string(), "app".to_string(), false).unwrap();
+        // Move to workspace 0 (same as active)
+        compositor.move_window_to_workspace(id, 0).unwrap();
+        let workspaces = compositor.workspaces.read().unwrap();
+        // Window should be in workspace 0 (might be duplicated, but that's the current impl)
+        assert!(workspaces[0].windows.contains(&id));
+    }
+
+    #[test]
+    fn test_compositor_move_window_to_last_workspace() {
+        let compositor = Compositor::new();
+        let id = compositor.create_window("W".to_string(), "app".to_string(), false).unwrap();
+        compositor.move_window_to_workspace(id, 3).unwrap();
+        let workspaces = compositor.workspaces.read().unwrap();
+        assert!(workspaces[3].windows.contains(&id));
+        assert_eq!(workspaces[3].active_window, Some(id));
+    }
+
+    #[test]
+    fn test_compositor_window_created_at_is_recent() {
+        let before = chrono::Utc::now();
+        let compositor = Compositor::new();
+        let _id = compositor.create_window("W".to_string(), "app".to_string(), false).unwrap();
+        let after = chrono::Utc::now();
+        let window = &compositor.get_windows()[0];
+        assert!(window.created_at >= before);
+        assert!(window.created_at <= after);
+    }
+
+    #[test]
+    fn test_compositor_close_window_double_close_fails() {
+        let compositor = Compositor::new();
+        let id = compositor.create_window("W".to_string(), "app".to_string(), false).unwrap();
+        compositor.close_window(id).unwrap();
+        let result = compositor.close_window(id);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_compositor_get_active_windows_empty_workspace() {
+        let compositor = Compositor::new();
+        compositor.switch_workspace(2).unwrap();
+        let active = compositor.get_active_windows();
+        assert!(active.is_empty());
+    }
+
+    #[test]
+    fn test_compositor_error_display_window_not_found_contains_uuid() {
+        let id = Uuid::new_v4();
+        let err = CompositorError::WindowNotFound(id);
+        assert!(err.to_string().contains(&id.to_string()));
+    }
+
+    #[test]
+    fn test_compositor_error_is_std_error() {
+        let err = CompositorError::DisplayServerError("test".to_string());
+        let std_err: &dyn std::error::Error = &err;
+        assert!(!std_err.to_string().is_empty());
+    }
+
+    #[test]
+    fn test_compositor_workspace_active_window_after_multiple_creates() {
+        let compositor = Compositor::new();
+        let _id1 = compositor.create_window("W1".to_string(), "a".to_string(), false).unwrap();
+        let _id2 = compositor.create_window("W2".to_string(), "b".to_string(), false).unwrap();
+        let id3 = compositor.create_window("W3".to_string(), "c".to_string(), false).unwrap();
+        let workspaces = compositor.workspaces.read().unwrap();
+        // Active window should be the last one created
+        assert_eq!(workspaces[0].active_window, Some(id3));
+    }
+
+    #[test]
+    fn test_compositor_set_workspace_context_out_of_bounds_silent() {
+        let compositor = Compositor::new();
+        // Setting context on out-of-bounds workspace should return Ok (no workspace to modify)
+        let result = compositor.set_workspace_context(100, ContextType::Development);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_compositor_windows_across_workspaces() {
+        let compositor = Compositor::new();
+        compositor.switch_workspace(0).unwrap();
+        let id_ws0 = compositor.create_window("WS0".to_string(), "a".to_string(), false).unwrap();
+        compositor.switch_workspace(1).unwrap();
+        let _id_ws1 = compositor.create_window("WS1".to_string(), "b".to_string(), false).unwrap();
+        // get_windows returns all windows regardless of workspace
+        assert_eq!(compositor.get_windows().len(), 2);
+        // get_active_windows only returns windows in active workspace (1)
+        let active = compositor.get_active_windows();
+        assert_eq!(active.len(), 1);
+        assert_eq!(active[0].title, "WS1");
+        // Move ws0 window to workspace 1 from workspace 0
+        compositor.move_window_to_workspace(id_ws0, 1).unwrap();
+        let active_after = compositor.get_active_windows();
+        assert_eq!(active_after.len(), 2);
     }
 }

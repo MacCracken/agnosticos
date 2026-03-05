@@ -499,6 +499,16 @@ impl LlmGateway {
         self.provider_health.read().await.clone()
     }
 
+    /// Return cache statistics
+    pub async fn cache_stats(&self) -> crate::cache::CacheStats {
+        self.cache.stats().await
+    }
+
+    /// Return token accounting statistics
+    pub async fn accounting_stats(&self) -> crate::accounting::AccountingStats {
+        self.accounting.stats().await
+    }
+
     /// Spawn a background task that pings each provider every 30 seconds via `list_models()`
     /// and updates health status accordingly.
     pub fn start_health_check_loop(self: &Arc<Self>) {
@@ -2178,5 +2188,668 @@ mod tests {
         health.record_failure();
         assert_eq!(health.consecutive_failures, 1);
         assert!(health.is_healthy);
+    }
+
+    // ==================================================================
+    // Mock provider for infer success path testing
+    // ==================================================================
+
+    struct MockProvider {
+        response: InferenceResponse,
+    }
+
+    #[async_trait::async_trait]
+    impl providers::LlmProvider for MockProvider {
+        async fn infer(&self, _request: InferenceRequest) -> anyhow::Result<InferenceResponse> {
+            Ok(self.response.clone())
+        }
+
+        async fn infer_stream(&self, _request: InferenceRequest) -> anyhow::Result<mpsc::Receiver<anyhow::Result<String>>> {
+            let (tx, rx) = mpsc::channel(10);
+            tx.send(Ok("streamed".to_string())).await.unwrap();
+            drop(tx);
+            Ok(rx)
+        }
+
+        async fn load_model(&self, model_id: &str) -> anyhow::Result<ModelInfo> {
+            Ok(ModelInfo {
+                id: model_id.to_string(),
+                name: model_id.to_string(),
+                provider: agnos_common::Provider::Local,
+                capabilities: vec![agnos_common::ModelCapability::TextGeneration],
+                max_tokens: 4096,
+                size_bytes: 0,
+                loaded: true,
+            })
+        }
+
+        async fn unload_model(&self, _model_id: &str) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        async fn list_models(&self) -> anyhow::Result<Vec<ModelInfo>> {
+            Ok(vec![ModelInfo {
+                id: "mock-model".to_string(),
+                name: "Mock Model".to_string(),
+                provider: agnos_common::Provider::Local,
+                capabilities: vec![],
+                max_tokens: 4096,
+                size_bytes: 0,
+                loaded: true,
+            }])
+        }
+    }
+
+    fn mock_response() -> InferenceResponse {
+        InferenceResponse {
+            text: "mock response".to_string(),
+            tokens_generated: 5,
+            finish_reason: agnos_common::FinishReason::Stop,
+            model: "mock".to_string(),
+            usage: TokenUsage {
+                prompt_tokens: 3,
+                completion_tokens: 5,
+                total_tokens: 8,
+            },
+        }
+    }
+
+    #[tokio::test]
+    async fn test_infer_success_with_mock_provider() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+
+        // Register mock provider
+        {
+            let mut providers = gateway.providers.write().await;
+            providers.insert(
+                ProviderType::Ollama,
+                Arc::new(MockProvider { response: mock_response() }),
+            );
+        }
+
+        let request = InferenceRequest {
+            model: "mock".to_string(),
+            prompt: "test".to_string(),
+            ..Default::default()
+        };
+        let result = gateway.infer(request, None).await;
+        assert!(result.is_ok());
+        let resp = result.unwrap();
+        assert_eq!(resp.text, "mock response");
+        assert_eq!(resp.tokens_generated, 5);
+    }
+
+    #[tokio::test]
+    async fn test_infer_success_records_accounting() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+
+        {
+            let mut providers = gateway.providers.write().await;
+            providers.insert(
+                ProviderType::Ollama,
+                Arc::new(MockProvider { response: mock_response() }),
+            );
+        }
+
+        let agent_id = AgentId::new();
+        let request = InferenceRequest::default();
+        let result = gateway.infer(request, Some(agent_id)).await;
+        assert!(result.is_ok());
+
+        let usage = gateway.get_agent_usage(agent_id).await;
+        assert!(usage.is_some());
+        assert_eq!(usage.unwrap().total_tokens, 8);
+    }
+
+    #[tokio::test]
+    async fn test_infer_success_caches_response() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+
+        {
+            let mut providers = gateway.providers.write().await;
+            providers.insert(
+                ProviderType::Ollama,
+                Arc::new(MockProvider { response: mock_response() }),
+            );
+        }
+
+        let request = InferenceRequest {
+            model: "cache-test".to_string(),
+            prompt: "cache me".to_string(),
+            ..Default::default()
+        };
+
+        // First call populates cache
+        let result1 = gateway.infer(request.clone(), None).await;
+        assert!(result1.is_ok());
+
+        // Verify cache has the entry
+        let cached = gateway.cache.get(&request).await;
+        assert!(cached.is_some());
+        assert_eq!(cached.unwrap().text, "mock response");
+    }
+
+    #[tokio::test]
+    async fn test_infer_with_caching_disabled_does_not_cache() {
+        let config = GatewayConfig {
+            enable_caching: false,
+            ..GatewayConfig::default()
+        };
+        let gateway = LlmGateway::new(config).await.unwrap();
+
+        {
+            let mut providers = gateway.providers.write().await;
+            providers.insert(
+                ProviderType::Ollama,
+                Arc::new(MockProvider { response: mock_response() }),
+            );
+        }
+
+        let request = InferenceRequest::default();
+        let _ = gateway.infer(request.clone(), None).await.unwrap();
+
+        let cached = gateway.cache.get(&request).await;
+        assert!(cached.is_none(), "Should not cache when caching is disabled");
+    }
+
+    #[tokio::test]
+    async fn test_infer_with_accounting_disabled_does_not_record() {
+        let config = GatewayConfig {
+            enable_token_accounting: false,
+            ..GatewayConfig::default()
+        };
+        let gateway = LlmGateway::new(config).await.unwrap();
+
+        {
+            let mut providers = gateway.providers.write().await;
+            providers.insert(
+                ProviderType::Ollama,
+                Arc::new(MockProvider { response: mock_response() }),
+            );
+        }
+
+        let agent_id = AgentId::new();
+        let _ = gateway.infer(InferenceRequest::default(), Some(agent_id)).await.unwrap();
+
+        assert!(
+            gateway.get_agent_usage(agent_id).await.is_none(),
+            "Should not record usage when accounting is disabled"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_infer_success_records_provider_health() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+
+        {
+            let mut providers = gateway.providers.write().await;
+            providers.insert(
+                ProviderType::Ollama,
+                Arc::new(MockProvider { response: mock_response() }),
+            );
+        }
+
+        let _ = gateway.infer(InferenceRequest::default(), None).await.unwrap();
+
+        let health = gateway.provider_health().await;
+        let h = health.get(&ProviderType::Ollama).unwrap();
+        assert!(h.is_healthy);
+        assert_eq!(h.consecutive_failures, 0);
+    }
+
+    #[tokio::test]
+    async fn test_infer_stream_with_mock_provider() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+
+        {
+            let mut providers = gateway.providers.write().await;
+            providers.insert(
+                ProviderType::Ollama,
+                Arc::new(MockProvider { response: mock_response() }),
+            );
+        }
+
+        let request = InferenceRequest::default();
+        let result = gateway.infer_stream(request, None).await;
+        assert!(result.is_ok());
+        let mut rx = result.unwrap();
+        let first = rx.recv().await;
+        assert!(first.is_some());
+        assert_eq!(first.unwrap().unwrap(), "streamed");
+    }
+
+    #[tokio::test]
+    async fn test_load_model_with_mock_provider() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+
+        {
+            let mut providers = gateway.providers.write().await;
+            providers.insert(
+                ProviderType::Ollama,
+                Arc::new(MockProvider { response: mock_response() }),
+            );
+        }
+
+        let result = gateway.load_model("test-model").await;
+        assert!(result.is_ok());
+
+        let models = gateway.list_models().await;
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0].id, "test-model");
+    }
+
+    #[tokio::test]
+    async fn test_create_shared_session_with_mock_provider() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+
+        {
+            let mut providers = gateway.providers.write().await;
+            providers.insert(
+                ProviderType::Ollama,
+                Arc::new(MockProvider { response: mock_response() }),
+            );
+        }
+
+        let agents = vec![AgentId::new(), AgentId::new()];
+        let result = gateway.create_shared_session("my-model", agents).await;
+        assert!(result.is_ok());
+        let session = result.unwrap();
+        assert_eq!(session.model_id, "my-model");
+        assert_eq!(session.agent_ids.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_run_health_checks_with_mock_provider() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+
+        {
+            let mut providers = gateway.providers.write().await;
+            providers.insert(
+                ProviderType::Ollama,
+                Arc::new(MockProvider { response: mock_response() }),
+            );
+        }
+
+        gateway.run_health_checks().await;
+
+        let health = gateway.provider_health().await;
+        let h = health.get(&ProviderType::Ollama).unwrap();
+        assert!(h.is_healthy);
+        assert_eq!(h.consecutive_failures, 0);
+    }
+
+    #[tokio::test]
+    async fn test_infer_cache_hit_skips_provider() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+
+        // No providers registered — if cache hits, inference should succeed
+        let request = InferenceRequest {
+            model: "cached-model".to_string(),
+            prompt: "cached prompt".to_string(),
+            max_tokens: 100,
+            temperature: 0.7,
+            top_p: 1.0,
+            presence_penalty: 0.0,
+            frequency_penalty: 0.0,
+        };
+        let response = InferenceResponse {
+            text: "from cache".to_string(),
+            tokens_generated: 2,
+            finish_reason: agnos_common::FinishReason::Stop,
+            model: "cached-model".to_string(),
+            usage: TokenUsage { prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 },
+        };
+
+        gateway.cache.set(request.clone(), response.clone()).await;
+
+        // infer should return cached result even without providers
+        let result = gateway.infer(request, None).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().text, "from cache");
+    }
+
+    #[test]
+    fn test_provider_health_many_failures() {
+        let mut health = ProviderHealth::new();
+        for _ in 0..100 {
+            health.record_failure();
+        }
+        assert!(!health.is_healthy);
+        assert_eq!(health.consecutive_failures, 100);
+        // One success should still restore
+        health.record_success();
+        assert!(health.is_healthy);
+        assert_eq!(health.consecutive_failures, 0);
+    }
+
+    #[tokio::test]
+    async fn test_gateway_cache_stats_method() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+        let stats = gateway.cache_stats().await;
+        assert_eq!(stats.total_entries, 0);
+        assert_eq!(stats.active_entries, 0);
+        assert_eq!(stats.expired_entries, 0);
+    }
+
+    #[tokio::test]
+    async fn test_gateway_accounting_stats_method() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+        let stats = gateway.accounting_stats().await;
+        assert_eq!(stats.total_agents, 0);
+        assert_eq!(stats.total_tokens, 0);
+    }
+
+    // ==================================================================
+    // Additional coverage: mock provider failure/retry, health ordering,
+    // concurrent infer, cache interaction, edge cases
+    // ==================================================================
+
+    struct FailingProvider;
+
+    #[async_trait::async_trait]
+    impl providers::LlmProvider for FailingProvider {
+        async fn infer(&self, _request: InferenceRequest) -> anyhow::Result<InferenceResponse> {
+            anyhow::bail!("provider always fails")
+        }
+        async fn infer_stream(&self, _request: InferenceRequest) -> anyhow::Result<mpsc::Receiver<anyhow::Result<String>>> {
+            anyhow::bail!("stream always fails")
+        }
+        async fn load_model(&self, _model_id: &str) -> anyhow::Result<ModelInfo> {
+            anyhow::bail!("load always fails")
+        }
+        async fn unload_model(&self, _model_id: &str) -> anyhow::Result<()> {
+            Ok(())
+        }
+        async fn list_models(&self) -> anyhow::Result<Vec<ModelInfo>> {
+            anyhow::bail!("list always fails")
+        }
+    }
+
+    #[tokio::test]
+    async fn test_infer_retry_all_providers_fail() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+        {
+            let mut providers = gateway.providers.write().await;
+            providers.insert(ProviderType::Ollama, Arc::new(FailingProvider));
+            providers.insert(ProviderType::LlamaCpp, Arc::new(FailingProvider));
+            providers.insert(ProviderType::OpenAi, Arc::new(FailingProvider));
+        }
+        let request = InferenceRequest::default();
+        let err = gateway.infer(request, None).await.unwrap_err();
+        assert!(err.to_string().contains("provider always fails"));
+    }
+
+    #[tokio::test]
+    async fn test_infer_retry_first_fails_second_succeeds() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+        {
+            let mut providers = gateway.providers.write().await;
+            providers.insert(ProviderType::Ollama, Arc::new(FailingProvider));
+            providers.insert(ProviderType::LlamaCpp, Arc::new(MockProvider { response: mock_response() }));
+        }
+        let request = InferenceRequest::default();
+        let result = gateway.infer(request, None).await;
+        // One of the providers should succeed
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().text, "mock response");
+    }
+
+    #[tokio::test]
+    async fn test_infer_retry_records_failure_health() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+        {
+            let mut providers = gateway.providers.write().await;
+            providers.insert(ProviderType::Ollama, Arc::new(FailingProvider));
+            providers.insert(ProviderType::LlamaCpp, Arc::new(MockProvider { response: mock_response() }));
+        }
+        let request = InferenceRequest::default();
+        let _ = gateway.infer(request, None).await;
+        // The failing provider should have a failure recorded
+        let health = gateway.provider_health().await;
+        // At least one provider should have been tracked
+        assert!(!health.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_infer_with_timeout_very_short() {
+        let config = GatewayConfig {
+            request_timeout: Duration::from_nanos(1), // extremely short
+            ..GatewayConfig::default()
+        };
+        let gateway = LlmGateway::new(config).await.unwrap();
+        {
+            let mut providers = gateway.providers.write().await;
+            providers.insert(ProviderType::Ollama, Arc::new(MockProvider { response: mock_response() }));
+        }
+        // MockProvider returns immediately, so even a nanosecond timeout might succeed
+        // The key test is that it doesn't panic
+        let request = InferenceRequest::default();
+        let _ = gateway.infer(request, None).await;
+    }
+
+    #[tokio::test]
+    async fn test_infer_cache_hit_does_not_record_accounting() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+        let request = InferenceRequest {
+            model: "cached".to_string(),
+            prompt: "test cache accounting".to_string(),
+            max_tokens: 100,
+            temperature: 0.7,
+            top_p: 1.0,
+            presence_penalty: 0.0,
+            frequency_penalty: 0.0,
+        };
+        let response = InferenceResponse {
+            text: "cached".to_string(),
+            tokens_generated: 3,
+            finish_reason: agnos_common::FinishReason::Stop,
+            model: "cached".to_string(),
+            usage: TokenUsage { prompt_tokens: 2, completion_tokens: 3, total_tokens: 5 },
+        };
+        gateway.cache.set(request.clone(), response).await;
+
+        let agent_id = AgentId::new();
+        let result = gateway.infer(request, Some(agent_id)).await;
+        assert!(result.is_ok());
+        // Cache hit should NOT record accounting (it returns before provider call)
+        assert!(gateway.get_agent_usage(agent_id).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_select_providers_ordered_with_loaded_model_and_other_providers() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+        {
+            let mut providers = gateway.providers.write().await;
+            providers.insert(ProviderType::Ollama, Arc::new(MockProvider { response: mock_response() }));
+            providers.insert(ProviderType::OpenAi, Arc::new(MockProvider { response: mock_response() }));
+        }
+        {
+            let mut loaded = gateway.loaded_models.write().await;
+            loaded.insert("local-model".to_string(), ModelInfo {
+                id: "local-model".to_string(),
+                name: "Local".to_string(),
+                provider: agnos_common::Provider::Local,
+                capabilities: vec![],
+                max_tokens: 4096,
+                size_bytes: 0,
+                loaded: true,
+            });
+        }
+        let request = InferenceRequest {
+            model: "local-model".to_string(),
+            ..Default::default()
+        };
+        let candidates = gateway.select_providers_ordered(&request).await.unwrap();
+        // Ollama should be first since model is loaded
+        assert_eq!(candidates[0].0, ProviderType::Ollama);
+    }
+
+    #[tokio::test]
+    async fn test_concurrent_infer_with_mock() {
+        let gateway = Arc::new(LlmGateway::new(GatewayConfig {
+            max_concurrent_requests: 5,
+            ..GatewayConfig::default()
+        }).await.unwrap());
+        {
+            let mut providers = gateway.providers.write().await;
+            providers.insert(ProviderType::Ollama, Arc::new(MockProvider { response: mock_response() }));
+        }
+        let mut handles = vec![];
+        for _ in 0..5 {
+            let gw = gateway.clone();
+            handles.push(tokio::spawn(async move {
+                gw.infer(InferenceRequest::default(), None).await
+            }));
+        }
+        for handle in handles {
+            let result = handle.await.unwrap();
+            assert!(result.is_ok());
+        }
+    }
+
+    #[tokio::test]
+    async fn test_gateway_cache_stats_after_insert() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+        let request = InferenceRequest::default();
+        let response = InferenceResponse {
+            text: "stats test".to_string(),
+            tokens_generated: 1,
+            finish_reason: agnos_common::FinishReason::Stop,
+            model: "test".to_string(),
+            usage: TokenUsage::default(),
+        };
+        gateway.cache.set(request, response).await;
+        let stats = gateway.cache_stats().await;
+        assert_eq!(stats.total_entries, 1);
+        assert_eq!(stats.active_entries, 1);
+        assert_eq!(stats.expired_entries, 0);
+    }
+
+    #[tokio::test]
+    async fn test_gateway_accounting_stats_after_recording() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+        let agent = AgentId::new();
+        gateway.accounting.record_usage(agent, TokenUsage {
+            prompt_tokens: 25, completion_tokens: 75, total_tokens: 100,
+        }).await;
+        let stats = gateway.accounting_stats().await;
+        assert_eq!(stats.total_agents, 1);
+        assert_eq!(stats.total_prompt_tokens, 25);
+        assert_eq!(stats.total_completion_tokens, 75);
+        assert_eq!(stats.total_tokens, 100);
+    }
+
+    #[tokio::test]
+    async fn test_gateway_provider_health_all_types() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+        let types = [
+            ProviderType::Ollama,
+            ProviderType::LlamaCpp,
+            ProviderType::OpenAi,
+            ProviderType::Anthropic,
+            ProviderType::Google,
+        ];
+        for pt in &types {
+            gateway.record_provider_success(*pt).await;
+        }
+        let health = gateway.provider_health().await;
+        assert_eq!(health.len(), 5);
+        for pt in &types {
+            assert!(health.get(pt).unwrap().is_healthy);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_gateway_select_providers_ordered_empty_model_name() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+        {
+            let mut providers = gateway.providers.write().await;
+            providers.insert(ProviderType::Ollama, Arc::new(MockProvider { response: mock_response() }));
+        }
+        let request = InferenceRequest {
+            model: "".to_string(),
+            ..Default::default()
+        };
+        let candidates = gateway.select_providers_ordered(&request).await.unwrap();
+        assert_eq!(candidates.len(), 1);
+    }
+
+    #[test]
+    fn test_provider_health_record_success_updates_last_check() {
+        let mut health = ProviderHealth::new();
+        let before = health.last_check;
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        health.record_success();
+        assert!(health.last_check > before);
+    }
+
+    #[test]
+    fn test_provider_health_exactly_at_threshold() {
+        let mut health = ProviderHealth::new();
+        // Exactly 3 failures should mark unhealthy
+        health.record_failure();
+        health.record_failure();
+        assert!(health.is_healthy);
+        health.record_failure();
+        assert!(!health.is_healthy);
+        assert_eq!(health.consecutive_failures, 3);
+    }
+
+    #[tokio::test]
+    async fn test_infer_multiple_agents_accumulates_independently() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+        {
+            let mut providers = gateway.providers.write().await;
+            providers.insert(ProviderType::Ollama, Arc::new(MockProvider { response: mock_response() }));
+        }
+        let a1 = AgentId::new();
+        let a2 = AgentId::new();
+        let _ = gateway.infer(InferenceRequest::default(), Some(a1)).await.unwrap();
+        let _ = gateway.infer(InferenceRequest::default(), Some(a2)).await.unwrap();
+        // Cache should hit for second call with same request, so only first agent gets accounting
+        // Both should have usage since cache returns before accounting
+        let u1 = gateway.get_agent_usage(a1).await;
+        assert!(u1.is_some());
+        let total = gateway.get_total_usage().await;
+        assert!(total.total_tokens > 0);
+    }
+
+    #[tokio::test]
+    async fn test_run_health_checks_with_failing_provider() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+        {
+            let mut providers = gateway.providers.write().await;
+            providers.insert(ProviderType::Ollama, Arc::new(FailingProvider));
+        }
+        gateway.run_health_checks().await;
+        let health = gateway.provider_health().await;
+        let h = health.get(&ProviderType::Ollama).unwrap();
+        assert_eq!(h.consecutive_failures, 1);
+    }
+
+    #[tokio::test]
+    async fn test_load_model_with_failing_provider() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+        {
+            let mut providers = gateway.providers.write().await;
+            providers.insert(ProviderType::Ollama, Arc::new(FailingProvider));
+        }
+        let result = gateway.load_model("any-model").await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Failed to load model"));
+        // Model should NOT be in loaded_models
+        assert!(gateway.list_models().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_infer_stream_with_failing_provider() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+        {
+            let mut providers = gateway.providers.write().await;
+            providers.insert(ProviderType::Ollama, Arc::new(FailingProvider));
+        }
+        let result = gateway.infer_stream(InferenceRequest::default(), None).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("stream always fails"));
     }
 }

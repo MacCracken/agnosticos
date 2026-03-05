@@ -48,7 +48,7 @@ pub mod error {
         pub fn from_errno(errno: i32) -> Self {
             match errno {
                 libc::EPERM => Self::PermissionDenied,
-                libc::EAGAIN | libc::EWOULDBLOCK => Self::WouldBlock,
+                libc::EAGAIN => Self::WouldBlock,
                 libc::EINVAL => Self::InvalidArgument("invalid argument".into()),
                 libc::ENOSYS => Self::NotSupported,
                 _ => Self::SyscallFailed(errno, std::io::Error::from_raw_os_error(errno).to_string()),

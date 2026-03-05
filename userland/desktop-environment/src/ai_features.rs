@@ -2,7 +2,7 @@ use chrono::Timelike;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use thiserror::Error;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info};
 use uuid::Uuid;
 
 #[derive(Debug, Error)]
@@ -294,7 +294,7 @@ impl AIDesktopFeatures {
     }
 
     pub fn proactive_suggestions(&self) -> Vec<AISuggestion> {
-        let context = self.analyze_context();
+        let _context = self.analyze_context();
         let suggestions = self.suggestions.write().unwrap();
 
         let relevant: Vec<_> = suggestions
@@ -306,7 +306,7 @@ impl AIDesktopFeatures {
         relevant
     }
 
-    pub fn smart_window_placement(&self, app_id: &str) -> (i32, i32, u32, u32) {
+    pub fn smart_window_placement(&self, _app_id: &str) -> (i32, i32, u32, u32) {
         let context = self.current_context.read().unwrap();
         match context.context_type {
             ContextType::Development => (100, 100, 1400, 900),
@@ -386,7 +386,7 @@ impl AIDesktopFeatures {
         self.current_context.read().unwrap().clone()
     }
 
-    pub fn suggest_workspace_switch(&self, from: usize, to: usize, reason: String) -> AISuggestion {
+    pub fn suggest_workspace_switch(&self, _from: usize, to: usize, reason: String) -> AISuggestion {
         self.generate_suggestion(
             SuggestionType::ContextSwitch,
             format!("Switch to Workspace {}", to + 1),
@@ -687,7 +687,7 @@ mod tests {
     #[test]
     fn test_ai_desktop_features_smart_window_placement() {
         let features = AIDesktopFeatures::new();
-        let (x, y, w, h) = features.smart_window_placement("test");
+        let (_x, _y, w, h) = features.smart_window_placement("test");
         assert!(w > 0);
         assert!(h > 0);
     }
@@ -1348,5 +1348,311 @@ mod tests {
         // Updating a non-existent agent should not panic
         features.update_agent_hud(Uuid::new_v4(), AgentStatus::Error, "task".to_string(), 0.0);
         assert!(features.get_agent_hud_states().is_empty());
+    }
+
+    #[test]
+    fn test_resource_metrics_no_gpu() {
+        let metrics = ResourceMetrics {
+            cpu_percent: 0.0,
+            memory_mb: 0,
+            gpu_percent: None,
+        };
+        assert!(metrics.gpu_percent.is_none());
+    }
+
+    #[test]
+    fn test_desktop_context_default_fields() {
+        let ctx = DesktopContext::default();
+        assert!(ctx.active_apps.is_empty());
+        assert!(ctx.open_files.is_empty());
+        assert!(ctx.recent_commands.is_empty());
+        assert_eq!(ctx.time_of_day, TimeOfDay::Afternoon);
+        assert_eq!(ctx.user_activity_level, ActivityLevel::Medium);
+    }
+
+    #[test]
+    fn test_optimize_resources_confidence() {
+        let features = AIDesktopFeatures::new();
+        let suggestion = features.optimize_resources();
+        assert_eq!(suggestion.confidence, 0.65);
+        assert!(!suggestion.is_dismissed);
+    }
+
+    #[test]
+    fn test_suggest_workspace_switch_fields() {
+        let features = AIDesktopFeatures::new();
+        let suggestion = features.suggest_workspace_switch(0, 2, "Focus needed".to_string());
+        assert_eq!(suggestion.confidence, 0.75);
+        assert!(suggestion.title.contains("3")); // workspace 2 + 1
+        assert_eq!(suggestion.description, "Focus needed");
+    }
+
+    #[test]
+    fn test_context_event_type_meeting_started() {
+        assert!(matches!(
+            ContextEventType::MeetingStarted,
+            ContextEventType::MeetingStarted
+        ));
+    }
+
+    #[test]
+    fn test_context_event_type_meeting_ended() {
+        assert!(matches!(
+            ContextEventType::MeetingEnded,
+            ContextEventType::MeetingEnded
+        ));
+    }
+
+    #[test]
+    fn test_context_event_type_user_away() {
+        assert!(matches!(
+            ContextEventType::UserAway,
+            ContextEventType::UserAway
+        ));
+    }
+
+    #[test]
+    fn test_context_type_writing() {
+        assert!(matches!(ContextType::Writing, ContextType::Writing));
+    }
+
+    #[test]
+    fn test_context_type_gaming() {
+        assert!(matches!(ContextType::Gaming, ContextType::Gaming));
+    }
+
+    #[test]
+    fn test_context_type_meeting() {
+        assert!(matches!(ContextType::Meeting, ContextType::Meeting));
+    }
+
+    #[test]
+    fn test_register_agent_hud_initial_state() {
+        let features = AIDesktopFeatures::new();
+        let id = Uuid::new_v4();
+        features.register_agent_hud(id, "my-agent".to_string());
+        let states = features.get_agent_hud_states();
+        let state = &states[0];
+        assert_eq!(state.agent_id, id);
+        assert_eq!(state.agent_name, "my-agent");
+        assert_eq!(state.status, AgentStatus::Idle);
+        assert!(state.current_task.is_empty());
+        assert_eq!(state.progress, 0.0);
+        assert_eq!(state.resource_usage.cpu_percent, 0.0);
+        assert_eq!(state.resource_usage.memory_mb, 0);
+        assert!(state.resource_usage.gpu_percent.is_none());
+    }
+
+    #[test]
+    fn test_unregister_nonexistent_agent_no_panic() {
+        let features = AIDesktopFeatures::new();
+        features.unregister_agent_hud(Uuid::new_v4());
+        assert!(features.get_agent_hud_states().is_empty());
+    }
+
+    #[test]
+    fn test_analyze_context_updates_time_of_day() {
+        let features = AIDesktopFeatures::new();
+        let ctx = features.analyze_context();
+        let hour = chrono::Utc::now().hour();
+        let expected = match hour {
+            5..=11 => TimeOfDay::Morning,
+            12..=16 => TimeOfDay::Afternoon,
+            17..=20 => TimeOfDay::Evening,
+            _ => TimeOfDay::Night,
+        };
+        assert_eq!(ctx.time_of_day, expected);
+    }
+
+    #[test]
+    fn test_suggestion_dedup_different_types_same_title_kept() {
+        let features = AIDesktopFeatures::new();
+        let s1 = features.generate_suggestion(
+            SuggestionType::Productivity,
+            "Same Title".to_string(),
+            "D1".to_string(),
+            0.8,
+        );
+        let s2 = features.generate_suggestion(
+            SuggestionType::SecurityAlert,
+            "Same Title".to_string(),
+            "D2".to_string(),
+            0.9,
+        );
+        features.add_suggestion(s1);
+        features.add_suggestion(s2);
+        let results = features.proactive_suggestions();
+        // Different types with same title should both be kept
+        assert_eq!(results.len(), 2);
+    }
+
+    #[test]
+    fn test_suggestion_boundary_confidence_at_threshold() {
+        let features = AIDesktopFeatures::new();
+        let at_threshold = features.generate_suggestion(
+            SuggestionType::Productivity,
+            "Exactly 0.5".to_string(),
+            "D".to_string(),
+            0.5, // exactly at threshold -- should be excluded (> 0.5 required)
+        );
+        features.add_suggestion(at_threshold);
+        let results = features.proactive_suggestions();
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_suggestion_just_above_threshold() {
+        let features = AIDesktopFeatures::new();
+        let above = features.generate_suggestion(
+            SuggestionType::Productivity,
+            "Above".to_string(),
+            "D".to_string(),
+            0.51,
+        );
+        features.add_suggestion(above);
+        let results = features.proactive_suggestions();
+        assert_eq!(results.len(), 1);
+    }
+
+    #[test]
+    fn test_update_agent_hud_updates_last_activity() {
+        let features = AIDesktopFeatures::new();
+        let id = Uuid::new_v4();
+        features.register_agent_hud(id, "agent".to_string());
+        let before = chrono::Utc::now();
+        features.update_agent_hud(id, AgentStatus::Acting, "task".to_string(), 0.75);
+        let states = features.get_agent_hud_states();
+        let state = states.iter().find(|s| s.agent_id == id).unwrap();
+        assert!(state.last_activity >= before);
+        assert_eq!(state.status, AgentStatus::Acting);
+        assert_eq!(state.current_task, "task");
+        assert_eq!(state.progress, 0.75);
+    }
+
+    #[test]
+    fn test_register_agent_overwrites_existing() {
+        let features = AIDesktopFeatures::new();
+        let id = Uuid::new_v4();
+        features.register_agent_hud(id, "first-name".to_string());
+        features.register_agent_hud(id, "second-name".to_string());
+        let states = features.get_agent_hud_states();
+        assert_eq!(states.len(), 1);
+        assert_eq!(states[0].agent_name, "second-name");
+    }
+
+    #[test]
+    fn test_smart_window_placement_default_context() {
+        let features = AIDesktopFeatures::new();
+        // Default context is Idle, so should get the catch-all placement
+        let (x, y, w, h) = features.smart_window_placement("anything");
+        assert_eq!((x, y, w, h), (100, 100, 1200, 800));
+    }
+
+    #[test]
+    fn test_context_event_clone_and_debug() {
+        let event = ContextEvent {
+            id: Uuid::new_v4(),
+            event_type: ContextEventType::UserPresent,
+            source: "test".to_string(),
+            timestamp: chrono::Utc::now(),
+            metadata: HashMap::new(),
+        };
+        let cloned = event.clone();
+        assert_eq!(cloned.event_type, ContextEventType::UserPresent);
+        let debug = format!("{:?}", cloned);
+        assert!(debug.contains("UserPresent"));
+    }
+
+    #[test]
+    fn test_resource_metrics_clone_and_debug() {
+        let metrics = ResourceMetrics {
+            cpu_percent: 99.9,
+            memory_mb: 8192,
+            gpu_percent: Some(50.0),
+        };
+        let cloned = metrics.clone();
+        assert_eq!(cloned.cpu_percent, 99.9);
+        assert_eq!(cloned.memory_mb, 8192);
+        assert_eq!(cloned.gpu_percent, Some(50.0));
+        let debug = format!("{:?}", cloned);
+        assert!(debug.contains("8192"));
+    }
+
+    #[test]
+    fn test_multiple_file_open_events_ordering() {
+        let features = AIDesktopFeatures::new();
+        for i in 0..12 {
+            let mut metadata = HashMap::new();
+            metadata.insert("file".to_string(), format!("/path/file_{}.rs", i));
+            features.update_context(ContextEvent {
+                id: Uuid::new_v4(),
+                event_type: ContextEventType::FileOpened,
+                source: "test".to_string(),
+                timestamp: chrono::Utc::now(),
+                metadata,
+            });
+        }
+        let ctx = features.get_context();
+        assert_eq!(ctx.open_files.len(), 10);
+        // Oldest files (0, 1) should be evicted; newest (11) should be present
+        assert!(ctx.open_files.contains(&"/path/file_11.rs".to_string()));
+        assert!(!ctx.open_files.contains(&"/path/file_0.rs".to_string()));
+    }
+
+    #[test]
+    fn test_file_opened_without_file_metadata_ignored() {
+        let features = AIDesktopFeatures::new();
+        features.update_context(ContextEvent {
+            id: Uuid::new_v4(),
+            event_type: ContextEventType::FileOpened,
+            source: "test".to_string(),
+            timestamp: chrono::Utc::now(),
+            metadata: HashMap::new(), // no "file" key
+        });
+        let ctx = features.get_context();
+        assert!(ctx.open_files.is_empty());
+    }
+
+    #[test]
+    fn test_ai_feature_error_debug() {
+        let err = AIFeatureError::ContextNotFound("workspace-5".to_string());
+        let debug = format!("{:?}", err);
+        assert!(debug.contains("ContextNotFound"));
+        assert!(debug.contains("workspace-5"));
+    }
+
+    #[test]
+    fn test_desktop_context_equality() {
+        let ctx1 = DesktopContext::default();
+        let ctx2 = DesktopContext::default();
+        assert_eq!(ctx1, ctx2);
+
+        let ctx3 = DesktopContext {
+            context_type: ContextType::Development,
+            ..DesktopContext::default()
+        };
+        assert_ne!(ctx1, ctx3);
+    }
+
+    #[test]
+    fn test_agent_hud_state_clone_and_debug() {
+        let state = AgentHUDState {
+            agent_id: Uuid::nil(),
+            agent_name: "debug-agent".to_string(),
+            status: AgentStatus::Error,
+            current_task: "crashing".to_string(),
+            progress: 0.0,
+            last_activity: chrono::Utc::now(),
+            resource_usage: ResourceMetrics {
+                cpu_percent: 0.0,
+                memory_mb: 0,
+                gpu_percent: None,
+            },
+        };
+        let cloned = state.clone();
+        assert_eq!(cloned.agent_name, "debug-agent");
+        assert_eq!(cloned.status, AgentStatus::Error);
+        let debug = format!("{:?}", cloned);
+        assert!(debug.contains("debug-agent"));
     }
 }

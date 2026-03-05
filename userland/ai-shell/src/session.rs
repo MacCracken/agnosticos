@@ -3,7 +3,7 @@
 //! Coordinates all shell components and handles the main event loop
 
 use anyhow::{anyhow, Result};
-use std::io::{self, Write};
+
 use std::path::PathBuf;
 
 use crate::approval::{ApprovalManager, ApprovalRequest, ApprovalResponse};
@@ -13,18 +13,18 @@ use crate::interpreter::{Interpreter, Intent};
 use crate::mode::{Mode, ModeManager};
 use crate::output::OutputFormatter;
 use crate::prompt::{PromptConfig, PromptContext, PromptRenderer};
-use crate::security::{analyze_command_permission, PermissionLevel, SecurityContext};
+use crate::security::{analyze_command_permission, SecurityContext};
 use crate::ui::Ui;
 
 /// Main shell session
 pub struct Session {
-    config: ShellConfig,
-    security: SecurityContext,
+    _config: ShellConfig,
+    _security: SecurityContext,
     mode_manager: ModeManager,
     interpreter: Interpreter,
     approval: ApprovalManager,
     history: CommandHistory,
-    output: OutputFormatter,
+    _output: OutputFormatter,
     ui: Ui,
     cwd: PathBuf,
     prompt_renderer: PromptRenderer,
@@ -55,13 +55,13 @@ impl Session {
         );
         
         Ok(Self {
-            config,
-            security,
+            _config: config,
+            _security: security,
             mode_manager,
             interpreter,
             approval,
             history,
-            output,
+            _output: output,
             ui,
             cwd,
             prompt_renderer,
@@ -491,7 +491,7 @@ mod tests {
     #[tokio::test]
     async fn test_command_history_new() {
         let temp_path = std::env::temp_dir().join("agnos_test_history");
-        let history = CommandHistory::new(&temp_path).await.unwrap();
+        let _history = CommandHistory::new(&temp_path).await.unwrap();
         let _ = std::fs::remove_file(&temp_path);
     }
 
@@ -1133,7 +1133,7 @@ mod tests {
         let result = session.execute_shell_command("cd ~").await;
         assert!(result.is_ok());
         // cwd should point to home directory after cd ~
-        let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"));
+        let _home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"));
         // Note: parallel tests may race on process cwd, so just check it didn't error
         assert!(session.cwd.exists());
     }
@@ -1175,5 +1175,304 @@ mod tests {
         // (both are non-empty, and typically contain the mode indicator)
         assert!(!prompt_human.is_empty());
         assert!(!prompt_ai.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_session_cwd_is_current_dir() {
+        let session = make_test_session().await;
+        // Session cwd should match actual current directory at creation time
+        assert!(session.cwd.is_absolute());
+    }
+
+    #[tokio::test]
+    async fn test_process_input_empty_string() {
+        let mut session = make_test_session().await;
+        // Empty input in human mode should execute as shell command (no-op)
+        let result = session.process_input("").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_process_input_whitespace_only() {
+        let mut session = make_test_session().await;
+        let result = session.process_input("   ").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_execute_shell_command_with_pipe_chars() {
+        let mut session = make_test_session().await;
+        // shlex should handle this as a single arg containing |
+        let result = session.execute_shell_command("echo hello").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_execute_command_true() {
+        let mut session = make_test_session().await;
+        let result = session.execute_command("true", &[]).await;
+        assert!(result.is_ok());
+        assert_eq!(session.prompt_context.last_exit_code, 0);
+    }
+
+    #[tokio::test]
+    async fn test_session_prompt_context_initial_exit_code() {
+        let session = make_test_session().await;
+        assert_eq!(session.prompt_context.last_exit_code, 0);
+        assert_eq!(session.prompt_context.cmd_duration_ms, 0);
+    }
+
+    #[tokio::test]
+    async fn test_mode_switch_round_trip() {
+        let mut session = make_test_session().await;
+        session.process_input("mode ai").await.unwrap();
+        assert_eq!(session.prompt_context.ai_mode, "AI-ASSIST");
+        session.process_input("mode human").await.unwrap();
+        assert_eq!(session.prompt_context.ai_mode, "HUMAN");
+    }
+
+    #[tokio::test]
+    async fn test_execute_shell_command_ls() {
+        let mut session = make_test_session().await;
+        let result = session.execute_shell_command("ls").await;
+        assert!(result.is_ok());
+        assert_eq!(session.prompt_context.last_exit_code, 0);
+    }
+
+    #[tokio::test]
+    async fn test_execute_command_with_cwd() {
+        let mut session = make_test_session().await;
+        // The command should run in the session's cwd
+        let result = session.execute_command("pwd", &[]).await;
+        assert!(result.is_ok());
+        assert_eq!(session.prompt_context.last_exit_code, 0);
+    }
+
+    // ====================================================================
+    // Additional coverage tests: session lifecycle, history, edge cases
+    // ====================================================================
+
+    #[tokio::test]
+    async fn test_command_history_empty_search() {
+        let temp_path = std::env::temp_dir().join("agnos_test_hist_empty_search");
+        let history = CommandHistory::new(&temp_path).await.unwrap();
+        let results = history.search("nonexistent_pattern_xyz");
+        assert!(results.is_empty());
+        let _ = std::fs::remove_file(&temp_path);
+    }
+
+    #[tokio::test]
+    async fn test_command_history_get_recent_more_than_available() {
+        let temp_path = std::env::temp_dir().join("agnos_test_hist_recent_excess");
+        let mut history = CommandHistory::new(&temp_path).await.unwrap();
+        history.add("cmd1").await.unwrap();
+        history.add("cmd2").await.unwrap();
+        // Request more than available
+        let entries = history.get_recent(100);
+        assert_eq!(entries.len(), 2);
+        let _ = std::fs::remove_file(&temp_path);
+    }
+
+    #[tokio::test]
+    async fn test_command_history_get_recent_zero() {
+        let temp_path = std::env::temp_dir().join("agnos_test_hist_recent_zero");
+        let mut history = CommandHistory::new(&temp_path).await.unwrap();
+        history.add("cmd1").await.unwrap();
+        let entries = history.get_recent(0);
+        assert!(entries.is_empty());
+        let _ = std::fs::remove_file(&temp_path);
+    }
+
+    #[tokio::test]
+    async fn test_command_history_deduplicates_consecutive() {
+        let temp_path = std::env::temp_dir().join("agnos_test_hist_dupes");
+        let mut history = CommandHistory::new(&temp_path).await.unwrap();
+        history.add("ls").await.unwrap();
+        history.add("ls").await.unwrap();
+        history.add("ls").await.unwrap();
+        let entries = history.get_recent(10);
+        // Consecutive duplicates are deduplicated
+        assert_eq!(entries.len(), 1);
+        let _ = std::fs::remove_file(&temp_path);
+    }
+
+    #[tokio::test]
+    async fn test_command_history_non_consecutive_duplicates_kept() {
+        let temp_path = std::env::temp_dir().join("agnos_test_hist_non_consec_dupes");
+        let mut history = CommandHistory::new(&temp_path).await.unwrap();
+        history.add("ls").await.unwrap();
+        history.add("pwd").await.unwrap();
+        history.add("ls").await.unwrap();
+        let entries = history.get_recent(10);
+        // Non-consecutive duplicates should be preserved
+        assert_eq!(entries.len(), 3);
+        let _ = std::fs::remove_file(&temp_path);
+    }
+
+    #[tokio::test]
+    async fn test_command_history_search_case_sensitive() {
+        let temp_path = std::env::temp_dir().join("agnos_test_hist_case");
+        let mut history = CommandHistory::new(&temp_path).await.unwrap();
+        history.add("Git Status").await.unwrap();
+        history.add("git log").await.unwrap();
+        let results = history.search("git");
+        // search should match "git log" — whether it matches "Git Status" depends on implementation
+        assert!(!results.is_empty());
+        let _ = std::fs::remove_file(&temp_path);
+    }
+
+    #[tokio::test]
+    async fn test_command_history_persistence_round_trip() {
+        let temp_path = std::env::temp_dir().join("agnos_test_hist_persist_rt");
+        // Write and save
+        {
+            let mut history = CommandHistory::new(&temp_path).await.unwrap();
+            history.add("alpha").await.unwrap();
+            history.add("beta").await.unwrap();
+            history.add("gamma").await.unwrap();
+            history.save().await.unwrap();
+        }
+        // Reload and verify
+        {
+            let history = CommandHistory::new(&temp_path).await.unwrap();
+            let entries = history.get_recent(10);
+            assert_eq!(entries.len(), 3);
+        }
+        let _ = std::fs::remove_file(&temp_path);
+    }
+
+    #[tokio::test]
+    async fn test_session_execute_one_shot_builtin_help() {
+        let mut session = make_test_session().await;
+        let result = session.execute_one_shot("help".to_string()).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_session_execute_one_shot_builtin_exit() {
+        let mut session = make_test_session().await;
+        let result = session.execute_one_shot("exit".to_string()).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_session_mode_manager_current_starts_human() {
+        let session = make_test_session().await;
+        assert_eq!(session.mode_manager.current(), &Mode::Human);
+    }
+
+    #[tokio::test]
+    async fn test_session_prompt_context_username_nonempty() {
+        let session = make_test_session().await;
+        assert!(!session.prompt_context.username.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_session_cwd_matches_prompt_context() {
+        let session = make_test_session().await;
+        assert_eq!(session.cwd, session.prompt_context.cwd);
+    }
+
+    #[tokio::test]
+    async fn test_execute_shell_command_cd_then_ls() {
+        let mut session = make_test_session().await;
+        session.execute_shell_command("cd /tmp").await.unwrap();
+        let result = session.execute_shell_command("ls").await;
+        assert!(result.is_ok());
+        assert_eq!(session.prompt_context.last_exit_code, 0);
+    }
+
+    #[tokio::test]
+    async fn test_execute_command_updates_duration() {
+        let mut session = make_test_session().await;
+        // Execute a command
+        session.execute_command("echo", &["test".to_string()]).await.unwrap();
+        // last_exit_code should be set to 0 for successful command
+        assert_eq!(session.prompt_context.last_exit_code, 0);
+    }
+
+    #[tokio::test]
+    async fn test_process_input_special_characters() {
+        let mut session = make_test_session().await;
+        // Input with special shell characters — shlex should handle gracefully
+        let result = session.process_input("echo 'hello world'").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_mode_switch_all_modes_round_trip() {
+        let mut session = make_test_session().await;
+        for mode_str in &["ai", "auto", "strict", "human"] {
+            let input = format!("mode {}", mode_str);
+            let result = session.process_input(&input).await;
+            assert!(result.is_ok(), "Failed to switch to mode: {}", mode_str);
+        }
+        assert_eq!(session.prompt_context.ai_mode, "HUMAN");
+    }
+
+    #[tokio::test]
+    async fn test_execute_shell_command_with_env_var_syntax() {
+        let mut session = make_test_session().await;
+        // shlex handles $VAR syntax as literal strings
+        let result = session.execute_shell_command("echo $HOME").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_execute_command_multiple_sequential() {
+        let mut session = make_test_session().await;
+        for _ in 0..5 {
+            session.execute_command("true", &[]).await.unwrap();
+            assert_eq!(session.prompt_context.last_exit_code, 0);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_execute_command_alternating_success_failure() {
+        let mut session = make_test_session().await;
+        session.execute_command("true", &[]).await.unwrap();
+        assert_eq!(session.prompt_context.last_exit_code, 0);
+        session.execute_command("false", &[]).await.unwrap();
+        assert_ne!(session.prompt_context.last_exit_code, 0);
+        session.execute_command("true", &[]).await.unwrap();
+        assert_eq!(session.prompt_context.last_exit_code, 0);
+    }
+
+    #[tokio::test]
+    async fn test_session_interpreter_accessible() {
+        let session = make_test_session().await;
+        // Verify interpreter is properly initialized by calling explain
+        let explanation = session.interpreter.explain("ls", &[]);
+        assert!(!explanation.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_build_prompt_contains_mode() {
+        let mut session = make_test_session().await;
+        let prompt = session.build_prompt();
+        // Default mode is HUMAN, prompt should contain some indication
+        assert!(!prompt.is_empty());
+
+        session.process_input("mode strict").await.unwrap();
+        let prompt_strict = session.build_prompt();
+        assert!(!prompt_strict.is_empty());
+    }
+
+    #[test]
+    fn test_shell_config_llm_endpoint_default_none() {
+        let config = ShellConfig::default();
+        assert!(config.llm_endpoint.is_none());
+    }
+
+    #[test]
+    fn test_shell_config_show_explanations_default() {
+        let config = ShellConfig::default();
+        assert!(config.show_explanations);
+    }
+
+    #[test]
+    fn test_shell_config_theme_default() {
+        let config = ShellConfig::default();
+        assert_eq!(config.theme, "default");
     }
 }

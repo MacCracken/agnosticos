@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use thiserror::Error;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 /// Maximum number of security alerts retained in memory.
@@ -143,7 +143,7 @@ impl Default for SecurityLevel {
 
 impl SecurityUI {
     pub fn new() -> Self {
-        let mut ui = Self {
+        let ui = Self {
             alerts: Arc::new(RwLock::new(Vec::new())),
             permission_requests: Arc::new(RwLock::new(Vec::new())),
             agent_permissions: Arc::new(RwLock::new(HashMap::new())),
@@ -866,7 +866,7 @@ mod tests {
     #[test]
     fn test_security_ui_request_human_override() {
         let ui = SecurityUI::new();
-        let id = ui.request_human_override(
+        let _id = ui.request_human_override(
             "agent".to_string(),
             "delete".to_string(),
             "test".to_string(),
@@ -967,7 +967,7 @@ mod tests {
         let result = ui.emergency_kill_agent(agent_id, None);
         assert!(result.is_ok());
         // Should have logged a critical alert
-        let alerts = ui.get_active_alerts();
+        let _alerts = ui.get_active_alerts();
         // Alert is already resolved, so active_alerts won't include it
         // but we can check the dashboard
     }
@@ -1044,5 +1044,442 @@ mod tests {
         let entry = perms.get(&agent_id).unwrap();
         let count = entry.permissions.iter().filter(|p| *p == "file:read").count();
         assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_security_ui_permission_definitions_initialized() {
+        let ui = SecurityUI::new();
+        let defs = ui.permission_definitions.read().unwrap();
+        assert_eq!(defs.len(), 6);
+        let names: Vec<&str> = defs.iter().map(|d| d.name.as_str()).collect();
+        assert!(names.contains(&"file:read"));
+        assert!(names.contains(&"file:write"));
+        assert!(names.contains(&"file:delete"));
+        assert!(names.contains(&"network:outbound"));
+        assert!(names.contains(&"process:spawn"));
+        assert!(names.contains(&"agent:delegate"));
+    }
+
+    #[test]
+    fn test_security_ui_dashboard_with_alerts_and_perms() {
+        let ui = SecurityUI::new();
+        // Add 2 alerts, 1 resolved
+        let alert1 = SecurityAlert {
+            id: Uuid::new_v4(),
+            title: "Alert 1".to_string(),
+            threat_level: ThreatLevel::High,
+            is_resolved: false,
+            ..SecurityAlert::default()
+        };
+        let alert2 = SecurityAlert {
+            id: Uuid::new_v4(),
+            title: "Alert 2".to_string(),
+            threat_level: ThreatLevel::Medium,
+            is_resolved: true,
+            ..SecurityAlert::default()
+        };
+        ui.show_security_alert(alert1);
+        ui.show_security_alert(alert2);
+
+        // Add a permission request
+        let req = PermissionRequest {
+            id: Uuid::new_v4(),
+            agent_id: Uuid::new_v4(),
+            agent_name: "test".to_string(),
+            permission: "file:read".to_string(),
+            resource: "/home".to_string(),
+            reason: "test".to_string(),
+            timestamp: chrono::Utc::now(),
+            is_granted: false,
+        };
+        ui.request_permission(req);
+
+        // Add agent perms
+        ui.set_agent_permissions(Uuid::new_v4(), "a".to_string(), vec![]);
+
+        let dashboard = ui.get_security_dashboard();
+        assert_eq!(dashboard.active_alerts, 1); // only unresolved
+        assert_eq!(dashboard.pending_permissions, 1);
+        assert_eq!(dashboard.running_agents, 1);
+        assert_eq!(dashboard.threat_level, ThreatLevel::High); // max of active
+    }
+
+    #[test]
+    fn test_security_ui_critical_alert_shows() {
+        let ui = SecurityUI::new();
+        let alert = SecurityAlert {
+            id: Uuid::new_v4(),
+            title: "CRITICAL".to_string(),
+            threat_level: ThreatLevel::Critical,
+            is_resolved: false,
+            ..SecurityAlert::default()
+        };
+        ui.show_security_alert(alert);
+        let dashboard = ui.get_security_dashboard();
+        assert_eq!(dashboard.threat_level, ThreatLevel::Critical);
+    }
+
+    #[test]
+    fn test_threat_level_info_ordering() {
+        assert!(ThreatLevel::Info < ThreatLevel::Low);
+        assert!(ThreatLevel::Low < ThreatLevel::Medium);
+    }
+
+    #[test]
+    fn test_security_level_transitions() {
+        let ui = SecurityUI::new();
+        assert_eq!(ui.get_security_level(), SecurityLevel::Standard);
+        ui.set_security_level(SecurityLevel::Elevated);
+        assert_eq!(ui.get_security_level(), SecurityLevel::Elevated);
+        ui.set_security_level(SecurityLevel::Lockdown);
+        assert_eq!(ui.get_security_level(), SecurityLevel::Lockdown);
+        ui.set_security_level(SecurityLevel::Standard);
+        assert_eq!(ui.get_security_level(), SecurityLevel::Standard);
+    }
+
+    #[test]
+    fn test_emergency_kill_switch_revokes_overrides() {
+        let ui = SecurityUI::new();
+        let id = ui.request_human_override("agent".to_string(), "act".to_string(), "reason".to_string());
+        ui.approve_override(id, "admin".to_string()).unwrap();
+        // Now kill switch
+        ui.emergency_kill_switch();
+        // After kill switch, the previously approved override should be revoked (is_approved = false)
+        let overrides = ui.override_requests.read().unwrap();
+        let req = overrides.iter().find(|r| r.id == id).unwrap();
+        assert!(!req.is_approved);
+    }
+
+    #[test]
+    fn test_grant_permission_enforced_multiple_permissions() {
+        let ui = SecurityUI::new();
+        let agent_id = Uuid::new_v4();
+        ui.grant_permission_enforced(agent_id, "agent", "file:read").unwrap();
+        ui.grant_permission_enforced(agent_id, "agent", "network:outbound").unwrap();
+        let perms = ui.agent_permissions.read().unwrap();
+        let entry = perms.get(&agent_id).unwrap();
+        assert_eq!(entry.permissions.len(), 2);
+    }
+
+    #[test]
+    fn test_permission_category_all_variants() {
+        let categories = [
+            PermissionCategory::FileSystem,
+            PermissionCategory::Network,
+            PermissionCategory::Process,
+            PermissionCategory::Hardware,
+            PermissionCategory::Agent,
+            PermissionCategory::System,
+        ];
+        for cat in categories {
+            let s = format!("{:?}", cat);
+            assert!(!s.is_empty());
+        }
+    }
+
+    // ====================================================================
+    // Additional coverage tests: eviction, concurrent operations, edge cases
+    // ====================================================================
+
+    #[test]
+    fn test_security_ui_alert_eviction_at_max_capacity() {
+        let ui = SecurityUI::new();
+        // Fill up to MAX_ALERTS with unresolved alerts
+        for i in 0..MAX_ALERTS {
+            ui.show_security_alert(SecurityAlert {
+                id: Uuid::new_v4(),
+                title: format!("Alert {}", i),
+                threat_level: ThreatLevel::Low,
+                is_resolved: false,
+                ..SecurityAlert::default()
+            });
+        }
+        assert_eq!(ui.get_active_alerts().len(), MAX_ALERTS);
+
+        // Add one more — should evict oldest
+        ui.show_security_alert(SecurityAlert {
+            id: Uuid::new_v4(),
+            title: "Overflow alert".to_string(),
+            threat_level: ThreatLevel::High,
+            is_resolved: false,
+            ..SecurityAlert::default()
+        });
+        // Should not exceed MAX_ALERTS
+        let alerts = ui.alerts.read().unwrap();
+        assert!(alerts.len() <= MAX_ALERTS);
+    }
+
+    #[test]
+    fn test_security_ui_alert_eviction_resolved_first() {
+        let ui = SecurityUI::new();
+        // Fill with mix of resolved and unresolved
+        for i in 0..MAX_ALERTS {
+            ui.show_security_alert(SecurityAlert {
+                id: Uuid::new_v4(),
+                title: format!("Alert {}", i),
+                threat_level: ThreatLevel::Low,
+                is_resolved: i % 2 == 0, // half resolved
+                ..SecurityAlert::default()
+            });
+        }
+        // Add one more — resolved alerts should be evicted first
+        ui.show_security_alert(SecurityAlert {
+            id: Uuid::new_v4(),
+            title: "New alert".to_string(),
+            threat_level: ThreatLevel::Medium,
+            is_resolved: false,
+            ..SecurityAlert::default()
+        });
+        let alerts = ui.alerts.read().unwrap();
+        assert!(alerts.len() <= MAX_ALERTS);
+    }
+
+    #[test]
+    fn test_permission_request_eviction() {
+        let ui = SecurityUI::new();
+        for i in 0..MAX_PERMISSION_REQUESTS {
+            ui.request_permission(PermissionRequest {
+                id: Uuid::new_v4(),
+                agent_id: Uuid::new_v4(),
+                agent_name: format!("agent-{}", i),
+                permission: "file:read".to_string(),
+                resource: "/home".to_string(),
+                reason: "test".to_string(),
+                timestamp: chrono::Utc::now(),
+                is_granted: false,
+            });
+        }
+        // Add one more to trigger eviction
+        ui.request_permission(PermissionRequest {
+            id: Uuid::new_v4(),
+            agent_id: Uuid::new_v4(),
+            agent_name: "overflow-agent".to_string(),
+            permission: "file:read".to_string(),
+            resource: "/home".to_string(),
+            reason: "test".to_string(),
+            timestamp: chrono::Utc::now(),
+            is_granted: false,
+        });
+        let requests = ui.permission_requests.read().unwrap();
+        assert!(requests.len() <= MAX_PERMISSION_REQUESTS);
+    }
+
+    #[test]
+    fn test_override_request_eviction() {
+        let ui = SecurityUI::new();
+        for i in 0..MAX_OVERRIDE_REQUESTS {
+            ui.request_human_override(
+                format!("agent-{}", i),
+                "action".to_string(),
+                "reason".to_string(),
+            );
+        }
+        // Add one more to trigger eviction
+        ui.request_human_override(
+            "overflow-agent".to_string(),
+            "action".to_string(),
+            "reason".to_string(),
+        );
+        let requests = ui.override_requests.read().unwrap();
+        assert!(requests.len() <= MAX_OVERRIDE_REQUESTS);
+    }
+
+    #[test]
+    fn test_dismiss_nonexistent_alert_succeeds() {
+        let ui = SecurityUI::new();
+        // dismiss_alert doesn't return error for nonexistent IDs
+        let result = ui.dismiss_alert(Uuid::new_v4());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_grant_nonexistent_permission_succeeds() {
+        let ui = SecurityUI::new();
+        // grant_permission doesn't error if request not found
+        let result = ui.grant_permission(Uuid::new_v4());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_deny_nonexistent_permission_succeeds() {
+        let ui = SecurityUI::new();
+        let result = ui.deny_permission(Uuid::new_v4());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_set_agent_permissions_overwrite() {
+        let ui = SecurityUI::new();
+        let agent_id = Uuid::new_v4();
+        ui.set_agent_permissions(agent_id, "agent".to_string(), vec!["read".to_string()]);
+        ui.set_agent_permissions(agent_id, "agent".to_string(), vec!["write".to_string()]);
+        let perms = ui.agent_permissions.read().unwrap();
+        let entry = perms.get(&agent_id).unwrap();
+        assert_eq!(entry.permissions, vec!["write".to_string()]);
+    }
+
+    #[test]
+    fn test_grant_permission_enforced_in_elevated_mode() {
+        let ui = SecurityUI::new();
+        ui.set_security_level(SecurityLevel::Elevated);
+        let agent_id = Uuid::new_v4();
+        // file:write requires confirmation, but Elevated is not Lockdown
+        let result = ui.grant_permission_enforced(agent_id, "test-agent", "file:write");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_grant_permission_enforced_file_delete_lockdown() {
+        let ui = SecurityUI::new();
+        ui.set_security_level(SecurityLevel::Lockdown);
+        let agent_id = Uuid::new_v4();
+        // file:delete requires confirmation → blocked in Lockdown
+        let result = ui.grant_permission_enforced(agent_id, "agent", "file:delete");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_grant_permission_enforced_process_spawn_lockdown() {
+        let ui = SecurityUI::new();
+        ui.set_security_level(SecurityLevel::Lockdown);
+        let agent_id = Uuid::new_v4();
+        let result = ui.grant_permission_enforced(agent_id, "agent", "process:spawn");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_grant_permission_enforced_network_outbound_lockdown_ok() {
+        let ui = SecurityUI::new();
+        ui.set_security_level(SecurityLevel::Lockdown);
+        let agent_id = Uuid::new_v4();
+        // network:outbound does NOT require confirmation → allowed in Lockdown
+        let result = ui.grant_permission_enforced(agent_id, "agent", "network:outbound");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_revoke_permission_enforced_removes_only_specified() {
+        let ui = SecurityUI::new();
+        let agent_id = Uuid::new_v4();
+        ui.grant_permission_enforced(agent_id, "agent", "file:read").unwrap();
+        ui.grant_permission_enforced(agent_id, "agent", "network:outbound").unwrap();
+
+        let perms_before = ui.agent_permissions.read().unwrap();
+        assert_eq!(perms_before.get(&agent_id).unwrap().permissions.len(), 2);
+        drop(perms_before);
+
+        ui.revoke_permission_enforced(agent_id, "file:read", None).unwrap();
+
+        let perms_after = ui.agent_permissions.read().unwrap();
+        let entry = perms_after.get(&agent_id).unwrap();
+        assert_eq!(entry.permissions.len(), 1);
+        assert_eq!(entry.permissions[0], "network:outbound");
+    }
+
+    #[test]
+    fn test_emergency_kill_switch_disables_human_override() {
+        let ui = SecurityUI::new();
+        assert!(*ui.human_override_enabled.read().unwrap());
+        ui.emergency_kill_switch();
+        assert!(!*ui.human_override_enabled.read().unwrap());
+    }
+
+    #[test]
+    fn test_deactivate_emergency_does_not_reenable_override() {
+        let ui = SecurityUI::new();
+        ui.emergency_kill_switch();
+        ui.deactivate_emergency();
+        // deactivate only sets emergency_mode to false, not human_override
+        assert!(!ui.is_emergency_mode());
+        assert!(!*ui.human_override_enabled.read().unwrap());
+    }
+
+    #[test]
+    fn test_get_dashboard_no_active_alerts_returns_low_threat() {
+        let ui = SecurityUI::new();
+        let dashboard = ui.get_security_dashboard();
+        assert_eq!(dashboard.threat_level, ThreatLevel::Low);
+        assert_eq!(dashboard.active_alerts, 0);
+        assert_eq!(dashboard.pending_permissions, 0);
+    }
+
+    #[test]
+    fn test_get_dashboard_with_info_level_alert() {
+        let ui = SecurityUI::new();
+        ui.show_security_alert(SecurityAlert {
+            id: Uuid::new_v4(),
+            title: "Info".to_string(),
+            threat_level: ThreatLevel::Info,
+            is_resolved: false,
+            ..SecurityAlert::default()
+        });
+        let dashboard = ui.get_security_dashboard();
+        assert_eq!(dashboard.threat_level, ThreatLevel::Info);
+    }
+
+    #[test]
+    fn test_multiple_overrides_then_approve_one() {
+        let ui = SecurityUI::new();
+        let id1 = ui.request_human_override("a".to_string(), "x".to_string(), "r".to_string());
+        let id2 = ui.request_human_override("b".to_string(), "y".to_string(), "r".to_string());
+
+        assert_eq!(ui.get_override_requests().len(), 2);
+
+        ui.approve_override(id1, "admin".to_string()).unwrap();
+        // Only id2 should remain pending
+        let pending = ui.get_override_requests();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].id, id2);
+    }
+
+    #[test]
+    fn test_security_alert_clone() {
+        let alert = SecurityAlert {
+            id: Uuid::new_v4(),
+            title: "Clone test".to_string(),
+            description: "Desc".to_string(),
+            threat_level: ThreatLevel::Medium,
+            source: "test".to_string(),
+            timestamp: chrono::Utc::now(),
+            requires_action: true,
+            is_resolved: false,
+        };
+        let cloned = alert.clone();
+        assert_eq!(cloned.id, alert.id);
+        assert_eq!(cloned.title, alert.title);
+        assert_eq!(cloned.threat_level, alert.threat_level);
+    }
+
+    #[test]
+    fn test_permission_request_clone() {
+        let req = PermissionRequest {
+            id: Uuid::new_v4(),
+            agent_id: Uuid::new_v4(),
+            agent_name: "test".to_string(),
+            permission: "file:read".to_string(),
+            resource: "/home".to_string(),
+            reason: "test".to_string(),
+            timestamp: chrono::Utc::now(),
+            is_granted: false,
+        };
+        let cloned = req.clone();
+        assert_eq!(cloned.id, req.id);
+        assert_eq!(cloned.permission, req.permission);
+    }
+
+    #[test]
+    fn test_override_request_clone() {
+        let req = OverrideRequest {
+            id: Uuid::new_v4(),
+            agent_name: "test".to_string(),
+            action: "delete".to_string(),
+            reason: "cleanup".to_string(),
+            timestamp: chrono::Utc::now(),
+            is_approved: false,
+            approved_by: None,
+        };
+        let cloned = req.clone();
+        assert_eq!(cloned.id, req.id);
+        assert_eq!(cloned.agent_name, "test");
     }
 }

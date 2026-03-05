@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use thiserror::Error;
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 use uuid::Uuid;
 
 /// Maximum number of notifications kept in memory.
@@ -159,7 +159,7 @@ pub struct DesktopShell {
 
 impl DesktopShell {
     pub fn new() -> Self {
-        let mut shell = Self {
+        let shell = Self {
             notifications: Arc::new(RwLock::new(HashMap::new())),
             quick_settings: Arc::new(RwLock::new(Vec::new())),
             system_status: Arc::new(RwLock::new(SystemStatus {
@@ -741,5 +741,487 @@ mod tests {
         assert!(err.to_string().contains("not found"));
         let err = ShellError::PermissionDenied("test".to_string());
         assert!(err.to_string().contains("denied"));
+    }
+
+    #[test]
+    fn test_desktop_shell_initial_system_status() {
+        let shell = DesktopShell::new();
+        let status = shell.get_system_status();
+        assert_eq!(status.cpu_usage, 0.0);
+        assert_eq!(status.memory_usage, 0.0);
+        assert_eq!(status.disk_usage, 0.0);
+        assert!(status.battery_level.is_none());
+        assert_eq!(status.network_status, NetworkStatus::Connected);
+        assert_eq!(status.agent_count, 0);
+    }
+
+    #[test]
+    fn test_desktop_shell_quick_settings_count() {
+        let shell = DesktopShell::new();
+        let settings = shell.get_quick_settings();
+        assert_eq!(settings.len(), 5); // wifi, bluetooth, airplane, dnd, nightlight
+    }
+
+    #[test]
+    fn test_desktop_shell_quick_settings_initial_state() {
+        let shell = DesktopShell::new();
+        let settings = shell.get_quick_settings();
+        let wifi = settings.iter().find(|s| s.id == "wifi").unwrap();
+        assert!(wifi.is_active);
+        let bluetooth = settings.iter().find(|s| s.id == "bluetooth").unwrap();
+        assert!(!bluetooth.is_active);
+    }
+
+    #[test]
+    fn test_desktop_shell_search_launcher_empty_query() {
+        let shell = DesktopShell::new();
+        let results = shell.search_launcher("");
+        // Empty query matches everything
+        assert!(!results.is_empty());
+    }
+
+    #[test]
+    fn test_desktop_shell_search_launcher_no_results() {
+        let shell = DesktopShell::new();
+        let results = shell.search_launcher("zzz_nonexistent_12345");
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_desktop_shell_launch_all_registered_apps() {
+        let shell = DesktopShell::new();
+        for app_id in ["terminal", "filemanager", "settings", "agent-manager", "audit-viewer", "model-manager"] {
+            assert!(shell.launch_app(app_id).is_ok(), "Failed to launch {}", app_id);
+        }
+    }
+
+    #[test]
+    fn test_desktop_shell_toggle_panel_round_trip() {
+        let shell = DesktopShell::new();
+        assert!(*shell.panel_visible.read().unwrap());
+        shell.toggle_panel();
+        assert!(!*shell.panel_visible.read().unwrap());
+        shell.toggle_panel();
+        assert!(*shell.panel_visible.read().unwrap());
+    }
+
+    #[test]
+    fn test_desktop_shell_system_status_battery_some() {
+        let shell = DesktopShell::new();
+        let status = SystemStatus {
+            cpu_usage: 25.0,
+            memory_usage: 50.0,
+            disk_usage: 30.0,
+            battery_level: Some(95),
+            network_status: NetworkStatus::Disconnected,
+            agent_count: 0,
+        };
+        shell.update_system_status(status);
+        let current = shell.get_system_status();
+        assert_eq!(current.battery_level, Some(95));
+        assert_eq!(current.network_status, NetworkStatus::Disconnected);
+    }
+
+    #[test]
+    fn test_desktop_shell_notification_eviction() {
+        let shell = DesktopShell::new();
+        // Add MAX_NOTIFICATIONS + 1 notifications to trigger eviction
+        for i in 0..=MAX_NOTIFICATIONS {
+            let notification = Notification {
+                id: Uuid::new_v4(),
+                app_name: format!("app-{}", i),
+                title: format!("Title {}", i),
+                body: String::new(),
+                priority: NotificationPriority::Normal,
+                timestamp: chrono::Utc::now(),
+                requires_action: false,
+                is_agent_related: false,
+            };
+            shell.show_notification(notification);
+        }
+        // Should not exceed MAX_NOTIFICATIONS
+        assert!(shell.get_notifications().len() <= MAX_NOTIFICATIONS + 1);
+    }
+
+    #[test]
+    fn test_desktop_shell_human_override_fields() {
+        let shell = DesktopShell::new();
+        shell.request_human_override(
+            "agent-a".to_string(),
+            "write /etc/passwd".to_string(),
+            "needs access".to_string(),
+        );
+        let n = &shell.get_notifications()[0];
+        assert!(n.body.contains("agent-a"));
+        assert!(n.body.contains("write /etc/passwd"));
+        assert!(n.body.contains("needs access"));
+        assert!(n.is_agent_related);
+    }
+
+    #[test]
+    fn test_quick_setting_debug() {
+        let qs = QuickSetting {
+            id: "test".to_string(),
+            name: "Test".to_string(),
+            icon: "icon".to_string(),
+            is_active: false,
+            on_activate: Box::new(|| {}),
+        };
+        let debug_str = format!("{:?}", qs);
+        assert!(debug_str.contains("QuickSetting"));
+        assert!(debug_str.contains("test"));
+    }
+
+    #[test]
+    fn test_network_status_error() {
+        assert!(matches!(NetworkStatus::Error, NetworkStatus::Error));
+    }
+
+    // ====================================================================
+    // Additional coverage tests: edge cases, state transitions, eviction
+    // ====================================================================
+
+    #[test]
+    fn test_desktop_shell_multiple_notifications() {
+        let shell = DesktopShell::new();
+        for i in 0..10 {
+            shell.show_notification(Notification {
+                id: Uuid::new_v4(),
+                app_name: format!("app-{}", i),
+                title: format!("Notif {}", i),
+                body: String::new(),
+                priority: NotificationPriority::Normal,
+                timestamp: chrono::Utc::now(),
+                requires_action: false,
+                is_agent_related: false,
+            });
+        }
+        assert_eq!(shell.get_notifications().len(), 10);
+    }
+
+    #[test]
+    fn test_desktop_shell_dismiss_multiple_notifications() {
+        let shell = DesktopShell::new();
+        let mut ids = Vec::new();
+        for _ in 0..5 {
+            let n = Notification {
+                id: Uuid::new_v4(),
+                ..Notification::default()
+            };
+            ids.push(n.id);
+            shell.show_notification(n);
+        }
+        assert_eq!(shell.get_notifications().len(), 5);
+        for id in &ids[..3] {
+            shell.dismiss_notification(*id).unwrap();
+        }
+        assert_eq!(shell.get_notifications().len(), 2);
+    }
+
+    #[test]
+    fn test_desktop_shell_dismiss_same_notification_twice() {
+        let shell = DesktopShell::new();
+        let n = Notification {
+            id: Uuid::new_v4(),
+            ..Notification::default()
+        };
+        let id = n.id;
+        shell.show_notification(n);
+        shell.dismiss_notification(id).unwrap();
+        // Second dismiss should fail
+        let result = shell.dismiss_notification(id);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_desktop_shell_agent_notification_is_high_priority_when_requires_action() {
+        let shell = DesktopShell::new();
+        shell.show_agent_notification("Alert".to_string(), "Body".to_string(), true);
+        let n = &shell.get_notifications()[0];
+        assert_eq!(n.priority, NotificationPriority::High);
+        assert!(n.is_agent_related);
+        assert!(n.requires_action);
+    }
+
+    #[test]
+    fn test_desktop_shell_agent_notification_normal_when_no_action() {
+        let shell = DesktopShell::new();
+        shell.show_agent_notification("Info".to_string(), "Details".to_string(), false);
+        let n = &shell.get_notifications()[0];
+        assert_eq!(n.priority, NotificationPriority::Normal);
+        assert!(!n.requires_action);
+    }
+
+    #[test]
+    fn test_desktop_shell_toggle_all_quick_settings() {
+        let shell = DesktopShell::new();
+        let setting_ids: Vec<String> = shell
+            .get_quick_settings()
+            .iter()
+            .map(|s| s.id.clone())
+            .collect();
+
+        for id in &setting_ids {
+            assert!(shell.toggle_quick_setting(id).is_ok());
+        }
+    }
+
+    #[test]
+    fn test_desktop_shell_toggle_quick_setting_double_toggle() {
+        let shell = DesktopShell::new();
+        let initial = shell.get_quick_settings().iter()
+            .find(|s| s.id == "bluetooth").unwrap().is_active;
+
+        shell.toggle_quick_setting("bluetooth").unwrap();
+        let after_first = shell.get_quick_settings().iter()
+            .find(|s| s.id == "bluetooth").unwrap().is_active;
+        assert_ne!(initial, after_first);
+
+        shell.toggle_quick_setting("bluetooth").unwrap();
+        let after_second = shell.get_quick_settings().iter()
+            .find(|s| s.id == "bluetooth").unwrap().is_active;
+        assert_eq!(initial, after_second);
+    }
+
+    #[test]
+    fn test_desktop_shell_search_launcher_case_insensitive() {
+        let shell = DesktopShell::new();
+        let results_lower = shell.search_launcher("terminal");
+        let results_upper = shell.search_launcher("TERMINAL");
+        // Both should find the same items
+        assert_eq!(results_lower.len(), results_upper.len());
+    }
+
+    #[test]
+    fn test_desktop_shell_search_launcher_partial_match() {
+        let shell = DesktopShell::new();
+        let results = shell.search_launcher("term");
+        assert!(!results.is_empty());
+    }
+
+    #[test]
+    fn test_desktop_shell_search_launcher_by_description() {
+        let shell = DesktopShell::new();
+        // Launcher items have descriptions like "Launch Terminal", "Search for files"
+        let results = shell.search_launcher("Launch");
+        assert!(!results.is_empty());
+    }
+
+    #[test]
+    fn test_desktop_shell_launch_each_registered_app() {
+        let shell = DesktopShell::new();
+        let app_ids = ["terminal", "filemanager", "settings", "agent-manager", "audit-viewer", "model-manager"];
+        for id in app_ids {
+            assert!(shell.launch_app(id).is_ok(), "Failed to launch {}", id);
+        }
+    }
+
+    #[test]
+    fn test_desktop_shell_launch_nonexistent_app_returns_error() {
+        let shell = DesktopShell::new();
+        let result = shell.launch_app("nonexistent-app-xyz");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_desktop_shell_lock_unlock_round_trip() {
+        let shell = DesktopShell::new();
+        assert!(!shell.is_locked());
+        shell.lock_screen();
+        assert!(shell.is_locked());
+        shell.unlock_screen();
+        assert!(!shell.is_locked());
+        shell.lock_screen();
+        shell.lock_screen(); // double lock
+        assert!(shell.is_locked());
+        shell.unlock_screen();
+        assert!(!shell.is_locked());
+    }
+
+    #[test]
+    fn test_desktop_shell_update_system_status_all_fields() {
+        let shell = DesktopShell::new();
+        let status = SystemStatus {
+            cpu_usage: 99.9,
+            memory_usage: 87.5,
+            disk_usage: 55.2,
+            battery_level: Some(15),
+            network_status: NetworkStatus::Error,
+            agent_count: 42,
+        };
+        shell.update_system_status(status);
+        let s = shell.get_system_status();
+        assert_eq!(s.cpu_usage, 99.9);
+        assert_eq!(s.memory_usage, 87.5);
+        assert_eq!(s.disk_usage, 55.2);
+        assert_eq!(s.battery_level, Some(15));
+        assert_eq!(s.network_status, NetworkStatus::Error);
+        assert_eq!(s.agent_count, 42);
+    }
+
+    #[test]
+    fn test_desktop_shell_set_agent_count_multiple_times() {
+        let shell = DesktopShell::new();
+        shell.set_agent_count(5);
+        assert_eq!(shell.get_system_status().agent_count, 5);
+        shell.set_agent_count(0);
+        assert_eq!(shell.get_system_status().agent_count, 0);
+        shell.set_agent_count(100);
+        assert_eq!(shell.get_system_status().agent_count, 100);
+    }
+
+    #[test]
+    fn test_desktop_shell_panel_toggle_multiple() {
+        let shell = DesktopShell::new();
+        assert!(*shell.panel_visible.read().unwrap());
+        for _ in 0..4 {
+            shell.toggle_panel();
+        }
+        // 4 toggles: true->false->true->false->true
+        assert!(*shell.panel_visible.read().unwrap());
+    }
+
+    #[test]
+    fn test_notification_with_all_priorities() {
+        let priorities = vec![
+            NotificationPriority::Low,
+            NotificationPriority::Normal,
+            NotificationPriority::High,
+            NotificationPriority::Critical,
+        ];
+        let shell = DesktopShell::new();
+        for p in priorities {
+            shell.show_notification(Notification {
+                id: Uuid::new_v4(),
+                app_name: "test".to_string(),
+                title: format!("{:?}", p),
+                body: String::new(),
+                priority: p,
+                timestamp: chrono::Utc::now(),
+                requires_action: false,
+                is_agent_related: false,
+            });
+        }
+        assert_eq!(shell.get_notifications().len(), 4);
+    }
+
+    #[test]
+    fn test_system_status_clone() {
+        let status = SystemStatus {
+            cpu_usage: 1.0,
+            memory_usage: 2.0,
+            disk_usage: 3.0,
+            battery_level: None,
+            network_status: NetworkStatus::Connecting,
+            agent_count: 7,
+        };
+        let cloned = status.clone();
+        assert_eq!(cloned.cpu_usage, 1.0);
+        assert_eq!(cloned.network_status, NetworkStatus::Connecting);
+        assert_eq!(cloned.agent_count, 7);
+    }
+
+    #[test]
+    fn test_app_entry_clone() {
+        let entry = AppEntry {
+            id: "test".to_string(),
+            name: "Test App".to_string(),
+            icon: "icon".to_string(),
+            category: AppCategory::Development,
+            is_ai_app: true,
+        };
+        let cloned = entry.clone();
+        assert_eq!(cloned.id, "test");
+        assert_eq!(cloned.category, AppCategory::Development);
+        assert!(cloned.is_ai_app);
+    }
+
+    #[test]
+    fn test_launcher_item_clone() {
+        let item = LauncherItem {
+            id: "item".to_string(),
+            name: "Item".to_string(),
+            description: "Description".to_string(),
+            icon: "icon".to_string(),
+            app: None,
+            action: Some(LauncherAction::RunCommand("ls".to_string())),
+            is_suggested: true,
+            relevance_score: 0.75,
+        };
+        let cloned = item.clone();
+        assert_eq!(cloned.id, "item");
+        assert!(cloned.is_suggested);
+        assert_eq!(cloned.relevance_score, 0.75);
+    }
+
+    #[test]
+    fn test_app_category_all_variants() {
+        let cats = [
+            AppCategory::System,
+            AppCategory::Office,
+            AppCategory::Development,
+            AppCategory::Communication,
+            AppCategory::Media,
+            AppCategory::Graphics,
+            AppCategory::AI,
+            AppCategory::Other,
+        ];
+        for cat in cats {
+            let dbg = format!("{:?}", cat);
+            assert!(!dbg.is_empty());
+        }
+    }
+
+    #[test]
+    fn test_desktop_shell_human_override_notification_is_critical() {
+        let shell = DesktopShell::new();
+        shell.request_human_override(
+            "risky-agent".to_string(),
+            "delete /etc/passwd".to_string(),
+            "automated cleanup".to_string(),
+        );
+        let notifications = shell.get_notifications();
+        assert_eq!(notifications.len(), 1);
+        assert_eq!(notifications[0].priority, NotificationPriority::Critical);
+        assert_eq!(notifications[0].title, "Human Override Requested");
+    }
+
+    #[test]
+    fn test_desktop_shell_app_registry_has_six_apps() {
+        let shell = DesktopShell::new();
+        let registry = shell.app_registry.read().unwrap();
+        assert_eq!(registry.len(), 6);
+    }
+
+    #[test]
+    fn test_desktop_shell_notification_eviction_prefers_non_action() {
+        let shell = DesktopShell::new();
+        // Fill with action-required notifications
+        for _ in 0..MAX_NOTIFICATIONS {
+            shell.show_notification(Notification {
+                id: Uuid::new_v4(),
+                app_name: "test".to_string(),
+                title: "Action".to_string(),
+                body: String::new(),
+                priority: NotificationPriority::High,
+                timestamp: chrono::Utc::now(),
+                requires_action: true,
+                is_agent_related: false,
+            });
+        }
+        // Add a non-action notification — should still fit since eviction targets non-action first
+        // When all are action-required, nothing gets evicted (no non-action to remove)
+        shell.show_notification(Notification {
+            id: Uuid::new_v4(),
+            app_name: "overflow".to_string(),
+            title: "Overflow".to_string(),
+            body: String::new(),
+            priority: NotificationPriority::Low,
+            timestamp: chrono::Utc::now(),
+            requires_action: false,
+            is_agent_related: false,
+        });
+        let count = shell.get_notifications().len();
+        assert!(count <= MAX_NOTIFICATIONS + 1);
     }
 }

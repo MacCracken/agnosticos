@@ -391,33 +391,6 @@ fn map_namespace_error(operation: &str) -> SysError {
     }
 }
 
-/// Enter a new network namespace.
-///
-/// Requires `CAP_SYS_ADMIN` in the current user namespace, or an unprivileged
-/// user namespace must be created first.
-///
-/// # Safety considerations
-/// This calls `libc::unshare(CLONE_NEWNET)` which is safe from Rust's memory
-/// safety perspective. The operation is kernel-mediated and validated.
-pub fn enter_network_namespace() -> Result<()> {
-    #[cfg(target_os = "linux")]
-    {
-        let ret = unsafe { libc::unshare(libc::CLONE_NEWNET) };
-        if ret != 0 {
-            return Err(map_namespace_error("enter_network_namespace"));
-        }
-
-        tracing::debug!("Entered new network namespace");
-    }
-
-    #[cfg(not(target_os = "linux"))]
-    {
-        tracing::warn!("Network namespaces are only available on Linux");
-    }
-
-    Ok(())
-}
-
 /// Create new namespace(s) with specified flags.
 ///
 /// Requires appropriate capabilities depending on flags:
@@ -564,13 +537,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "Requires privileged access to create network namespaces"]
-    fn test_enter_network_namespace() {
-        let result = enter_network_namespace();
-        assert!(result.is_ok());
-    }
-
-    #[test]
     fn test_create_basic_seccomp_filter() {
         let filter = create_basic_seccomp_filter();
         assert!(filter.is_ok());
@@ -709,5 +675,415 @@ mod tests {
         assert_eq!(sf.jt, 0);
         assert_eq!(sf.jf, 0);
         assert_eq!(sf.k, SECCOMP_RET_ALLOW);
+    }
+
+    // --- New coverage tests (batch 2) ---
+
+    #[test]
+    fn test_filesystem_rule_no_access() {
+        let rule = FilesystemRule::new("/tmp", FsAccess::NoAccess);
+        assert_eq!(rule.access, FsAccess::NoAccess);
+        assert_eq!(rule.path, PathBuf::from("/tmp"));
+    }
+
+    #[test]
+    fn test_filesystem_rule_read_only_from_string() {
+        let rule = FilesystemRule::read_only(String::from("/usr/share"));
+        assert_eq!(rule.access, FsAccess::ReadOnly);
+        assert_eq!(rule.path, PathBuf::from("/usr/share"));
+    }
+
+    #[test]
+    fn test_filesystem_rule_read_write_from_string() {
+        let rule = FilesystemRule::read_write(String::from("/home/user"));
+        assert_eq!(rule.access, FsAccess::ReadWrite);
+        assert_eq!(rule.path, PathBuf::from("/home/user"));
+    }
+
+    #[test]
+    fn test_fs_access_all_variants_ne() {
+        assert_ne!(FsAccess::NoAccess, FsAccess::ReadOnly);
+        assert_ne!(FsAccess::NoAccess, FsAccess::ReadWrite);
+        assert_ne!(FsAccess::ReadOnly, FsAccess::ReadWrite);
+    }
+
+    #[test]
+    fn test_fs_access_copy_semantics() {
+        let a = FsAccess::ReadOnly;
+        let b = a; // Copy
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn test_namespace_flags_empty_is_default() {
+        assert_eq!(NamespaceFlags::empty(), NamespaceFlags::default());
+    }
+
+    #[test]
+    fn test_namespace_flags_bitwise_operations() {
+        let mut flags = NamespaceFlags::NETWORK;
+        flags |= NamespaceFlags::PID;
+        assert!(flags.contains(NamespaceFlags::NETWORK));
+        assert!(flags.contains(NamespaceFlags::PID));
+        assert!(!flags.contains(NamespaceFlags::MOUNT));
+
+        flags &= !NamespaceFlags::NETWORK;
+        assert!(!flags.contains(NamespaceFlags::NETWORK));
+        assert!(flags.contains(NamespaceFlags::PID));
+    }
+
+    #[test]
+    fn test_namespace_flags_intersection() {
+        let a = NamespaceFlags::NETWORK | NamespaceFlags::MOUNT;
+        let b = NamespaceFlags::MOUNT | NamespaceFlags::PID;
+        let intersection = a & b;
+        assert!(intersection.contains(NamespaceFlags::MOUNT));
+        assert!(!intersection.contains(NamespaceFlags::NETWORK));
+        assert!(!intersection.contains(NamespaceFlags::PID));
+    }
+
+    #[test]
+    fn test_namespace_flags_is_empty() {
+        assert!(NamespaceFlags::empty().is_empty());
+        assert!(!NamespaceFlags::NETWORK.is_empty());
+    }
+
+    #[test]
+    fn test_create_basic_seccomp_filter_length() {
+        let filter = create_basic_seccomp_filter().unwrap();
+        // 20 allowed syscalls => 1 load + 20 jeq + 1 kill + 1 allow = 23 instructions = 184 bytes
+        let num_instructions = filter.len() / 8;
+        assert_eq!(num_instructions, 23, "Expected 23 BPF instructions");
+    }
+
+    #[test]
+    fn test_create_basic_seccomp_filter_starts_with_load() {
+        let filter = create_basic_seccomp_filter().unwrap();
+        // First instruction should be BPF_LD_W_ABS (0x20)
+        let first_code = u16::from_ne_bytes([filter[0], filter[1]]);
+        assert_eq!(first_code, BPF_LD_W_ABS);
+    }
+
+    #[test]
+    fn test_create_basic_seccomp_filter_ends_with_allow() {
+        let filter = create_basic_seccomp_filter().unwrap();
+        // Last instruction should be RET ALLOW
+        let last_start = filter.len() - 8;
+        let last_code = u16::from_ne_bytes([filter[last_start], filter[last_start + 1]]);
+        let last_k = u32::from_ne_bytes([
+            filter[last_start + 4],
+            filter[last_start + 5],
+            filter[last_start + 6],
+            filter[last_start + 7],
+        ]);
+        assert_eq!(last_code, BPF_RET_K);
+        assert_eq!(last_k, SECCOMP_RET_ALLOW);
+    }
+
+    #[test]
+    fn test_create_basic_seccomp_filter_penultimate_is_kill() {
+        let filter = create_basic_seccomp_filter().unwrap();
+        // Penultimate instruction should be RET KILL_PROCESS
+        let pen_start = filter.len() - 16;
+        let pen_code = u16::from_ne_bytes([filter[pen_start], filter[pen_start + 1]]);
+        let pen_k = u32::from_ne_bytes([
+            filter[pen_start + 4],
+            filter[pen_start + 5],
+            filter[pen_start + 6],
+            filter[pen_start + 7],
+        ]);
+        assert_eq!(pen_code, BPF_RET_K);
+        assert_eq!(pen_k, SECCOMP_RET_KILL_PROCESS);
+    }
+
+    #[test]
+    fn test_create_basic_seccomp_filter_deterministic() {
+        let f1 = create_basic_seccomp_filter().unwrap();
+        let f2 = create_basic_seccomp_filter().unwrap();
+        assert_eq!(f1, f2, "Filter should be deterministic");
+    }
+
+    #[test]
+    fn test_sock_filter_to_bytes_all_zeros() {
+        let sf = SockFilter::new(0, 0, 0, 0);
+        assert_eq!(sf.to_bytes(), [0u8; 8]);
+    }
+
+    #[test]
+    fn test_sock_filter_to_bytes_max_values() {
+        let sf = SockFilter::new(u16::MAX, u8::MAX, u8::MAX, u32::MAX);
+        let bytes = sf.to_bytes();
+        assert_eq!(u16::from_ne_bytes([bytes[0], bytes[1]]), u16::MAX);
+        assert_eq!(bytes[2], u8::MAX);
+        assert_eq!(bytes[3], u8::MAX);
+        assert_eq!(u32::from_ne_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]), u32::MAX);
+    }
+
+    #[test]
+    fn test_load_seccomp_exactly_8_bytes() {
+        // 8 bytes = 1 instruction, valid size but may be rejected by kernel
+        // We just test it doesn't return InvalidArgument for size
+        let filter = [0u8; 8];
+        let result = load_seccomp(&filter);
+        // On Linux this will try to install and likely fail with a kernel error (not size error)
+        // On non-Linux it succeeds (no-op)
+        #[cfg(not(target_os = "linux"))]
+        assert!(result.is_ok());
+        #[cfg(target_os = "linux")]
+        {
+            // Should not be an InvalidArgument about size
+            if let Err(e) = result {
+                let msg = format!("{}", e);
+                assert!(!msg.contains("not a multiple of 8"));
+            }
+        }
+    }
+
+    #[test]
+    fn test_load_seccomp_16_bytes() {
+        let filter = [0u8; 16];
+        let result = load_seccomp(&filter);
+        #[cfg(not(target_os = "linux"))]
+        assert!(result.is_ok());
+        #[cfg(target_os = "linux")]
+        {
+            if let Err(e) = result {
+                let msg = format!("{}", e);
+                assert!(!msg.contains("not a multiple of 8"));
+            }
+        }
+    }
+
+    #[test]
+    fn test_load_seccomp_1_byte() {
+        let result = load_seccomp(&[0x42]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_load_seccomp_15_bytes() {
+        let result = load_seccomp(&[0u8; 15]);
+        assert!(result.is_err());
+        let msg = format!("{}", result.unwrap_err());
+        assert!(msg.contains("not a multiple of 8"));
+    }
+
+    #[test]
+    fn test_apply_landlock_with_no_access_rule() {
+        // NoAccess rules should be skipped (default deny)
+        let rules = vec![FilesystemRule::new("/tmp", FsAccess::NoAccess)];
+        let result = apply_landlock(&rules);
+        // On non-Linux: Ok. On Linux: depends on kernel support
+        // The NoAccess rule should be skipped in the loop
+        let _ = result;
+    }
+
+    #[test]
+    fn test_apply_landlock_multiple_rules() {
+        let rules = vec![
+            FilesystemRule::read_only("/usr"),
+            FilesystemRule::read_write("/tmp"),
+            FilesystemRule::new("/var", FsAccess::NoAccess),
+        ];
+        let result = apply_landlock(&rules);
+        // Just verify it doesn't panic
+        let _ = result;
+    }
+
+    #[test]
+    fn test_bpf_constants() {
+        assert_eq!(BPF_LD_W_ABS, 0x20);
+        assert_eq!(BPF_JMP_JEQ_K, 0x15);
+        assert_eq!(BPF_RET_K, 0x06);
+    }
+
+    #[test]
+    fn test_seccomp_return_values() {
+        assert_eq!(SECCOMP_RET_ALLOW, 0x7fff_0000);
+        assert_eq!(SECCOMP_RET_KILL_PROCESS, 0x8000_0000);
+    }
+
+    #[test]
+    fn test_sock_filter_size_is_8_bytes() {
+        assert_eq!(std::mem::size_of::<SockFilter>(), 8);
+    }
+
+    #[test]
+    fn test_filesystem_rule_with_deep_path() {
+        let rule = FilesystemRule::read_only("/a/b/c/d/e/f/g/h/i/j");
+        assert_eq!(rule.path, PathBuf::from("/a/b/c/d/e/f/g/h/i/j"));
+    }
+
+    #[test]
+    fn test_filesystem_rule_with_empty_path() {
+        let rule = FilesystemRule::new("", FsAccess::ReadWrite);
+        assert_eq!(rule.path, PathBuf::from(""));
+    }
+
+    #[test]
+    fn test_namespace_flags_union_all() {
+        let all = NamespaceFlags::all();
+        assert!(all.contains(NamespaceFlags::NETWORK));
+        assert!(all.contains(NamespaceFlags::MOUNT));
+        assert!(all.contains(NamespaceFlags::PID));
+        assert!(all.contains(NamespaceFlags::USER));
+        assert_eq!(all.bits(), 0b1111);
+    }
+
+    // --- Coverage batch 3: more Landlock/seccomp paths, rule combos, namespace edge cases ---
+
+    #[test]
+    fn test_apply_landlock_only_no_access_rules() {
+        // All rules are NoAccess — should skip all in the loop but still create ruleset
+        let rules = vec![
+            FilesystemRule::new("/tmp", FsAccess::NoAccess),
+            FilesystemRule::new("/var", FsAccess::NoAccess),
+            FilesystemRule::new("/home", FsAccess::NoAccess),
+        ];
+        let result = apply_landlock(&rules);
+        // On Linux: creates ruleset then skips all rules. On non-Linux: no-op Ok.
+        let _ = result;
+    }
+
+    #[test]
+    fn test_apply_landlock_mixed_access_levels() {
+        let rules = vec![
+            FilesystemRule::read_only("/usr"),
+            FilesystemRule::read_write("/tmp"),
+            FilesystemRule::new("/etc", FsAccess::NoAccess),
+            FilesystemRule::read_only("/var/log"),
+        ];
+        let result = apply_landlock(&rules);
+        let _ = result;
+    }
+
+    #[test]
+    fn test_apply_landlock_nonexistent_path() {
+        let rules = vec![
+            FilesystemRule::read_only("/nonexistent_path_that_does_not_exist_12345"),
+        ];
+        let result = apply_landlock(&rules);
+        // On Linux: open() will fail → should return Err
+        // On non-Linux: no-op → Ok
+        #[cfg(not(target_os = "linux"))]
+        assert!(result.is_ok());
+        #[cfg(target_os = "linux")]
+        {
+            // May succeed (if landlock not supported) or fail (bad path)
+            let _ = result;
+        }
+    }
+
+    #[test]
+    fn test_apply_landlock_single_read_only_rule() {
+        let rules = vec![FilesystemRule::read_only("/tmp")];
+        let result = apply_landlock(&rules);
+        let _ = result;
+    }
+
+    #[test]
+    fn test_apply_landlock_single_read_write_rule() {
+        let rules = vec![FilesystemRule::read_write("/tmp")];
+        let result = apply_landlock(&rules);
+        let _ = result;
+    }
+
+    #[test]
+    fn test_load_seccomp_size_9_bytes() {
+        let result = load_seccomp(&[0u8; 9]);
+        assert!(result.is_err());
+        let msg = format!("{}", result.unwrap_err());
+        assert!(msg.contains("not a multiple of 8"));
+    }
+
+    #[test]
+    fn test_load_seccomp_size_17_bytes() {
+        let result = load_seccomp(&[0u8; 17]);
+        assert!(result.is_err());
+        let msg = format!("{}", result.unwrap_err());
+        assert!(msg.contains("17"));
+    }
+
+    #[test]
+    fn test_load_seccomp_size_24_bytes() {
+        // 24 = 3 instructions, valid multiple of 8
+        let filter = [0u8; 24];
+        let result = load_seccomp(&filter);
+        #[cfg(not(target_os = "linux"))]
+        assert!(result.is_ok());
+        #[cfg(target_os = "linux")]
+        {
+            if let Err(e) = result {
+                let msg = format!("{}", e);
+                assert!(!msg.contains("not a multiple of 8"));
+            }
+        }
+    }
+
+    #[test]
+    fn test_create_basic_seccomp_filter_contains_jeq_instructions() {
+        let filter = create_basic_seccomp_filter().unwrap();
+        // Instructions 1 through N-2 should all be JEQ
+        let num_insns = filter.len() / 8;
+        for i in 1..(num_insns - 2) {
+            let offset = i * 8;
+            let code = u16::from_ne_bytes([filter[offset], filter[offset + 1]]);
+            assert_eq!(code, BPF_JMP_JEQ_K, "Instruction {} should be JEQ", i);
+        }
+    }
+
+    #[test]
+    fn test_create_basic_seccomp_filter_first_jeq_is_read_syscall() {
+        let filter = create_basic_seccomp_filter().unwrap();
+        // Second instruction (index 1) should check syscall 0 (read)
+        let k = u32::from_ne_bytes([filter[12], filter[13], filter[14], filter[15]]);
+        assert_eq!(k, 0, "First JEQ should check syscall 0 (read)");
+    }
+
+    #[test]
+    fn test_sock_filter_roundtrip_bpf_ld() {
+        let sf = SockFilter::new(BPF_LD_W_ABS, 0, 0, 0);
+        let bytes = sf.to_bytes();
+        let code = u16::from_ne_bytes([bytes[0], bytes[1]]);
+        let k = u32::from_ne_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]);
+        assert_eq!(code, BPF_LD_W_ABS);
+        assert_eq!(k, 0);
+    }
+
+    #[test]
+    fn test_sock_filter_roundtrip_bpf_jmp() {
+        let sf = SockFilter::new(BPF_JMP_JEQ_K, 5, 0, 231);
+        let bytes = sf.to_bytes();
+        assert_eq!(bytes[2], 5); // jt
+        assert_eq!(bytes[3], 0); // jf
+        let k = u32::from_ne_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]);
+        assert_eq!(k, 231); // exit_group
+    }
+
+    #[test]
+    fn test_namespace_flags_symmetric_difference() {
+        let a = NamespaceFlags::NETWORK | NamespaceFlags::MOUNT;
+        let b = NamespaceFlags::MOUNT | NamespaceFlags::PID;
+        let sym_diff = a ^ b;
+        assert!(sym_diff.contains(NamespaceFlags::NETWORK));
+        assert!(!sym_diff.contains(NamespaceFlags::MOUNT));
+        assert!(sym_diff.contains(NamespaceFlags::PID));
+    }
+
+    #[test]
+    fn test_namespace_flags_complement() {
+        let flags = NamespaceFlags::NETWORK;
+        let complement = !flags & NamespaceFlags::all();
+        assert!(!complement.contains(NamespaceFlags::NETWORK));
+        assert!(complement.contains(NamespaceFlags::MOUNT));
+        assert!(complement.contains(NamespaceFlags::PID));
+        assert!(complement.contains(NamespaceFlags::USER));
+    }
+
+    #[test]
+    fn test_filesystem_rule_with_relative_path() {
+        let rule = FilesystemRule::new("relative/path", FsAccess::ReadOnly);
+        assert_eq!(rule.path, PathBuf::from("relative/path"));
+        assert_eq!(rule.access, FsAccess::ReadOnly);
     }
 }

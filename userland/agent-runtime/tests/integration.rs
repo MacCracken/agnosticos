@@ -213,7 +213,7 @@ async fn test_task_cancellation() {
 
     // Get initial count
     let stats_before = orchestrator.get_queue_stats().await;
-    let initial_count = stats_before.queued_tasks;
+    let _initial_count = stats_before.queued_tasks;
 
     // Cancel some tasks - use the ID returned from submit
     // Note: Since IDs are generated, we can't predict them

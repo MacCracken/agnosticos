@@ -1,7 +1,11 @@
+// Desktop environment is deliberately incomplete (P3: Wayland compositor stub).
+// Struct fields define the public API surface for future rendering implementation.
+#![allow(dead_code, unused_mut, unused_imports)]
+
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::signal;
-use tracing::{info, warn, error};
+use tracing::info;
 use tracing_subscriber::EnvFilter;
 use clap::Parser;
 

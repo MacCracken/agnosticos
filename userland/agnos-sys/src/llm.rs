@@ -263,4 +263,165 @@ mod tests {
             unload_model(h).unwrap();
         }
     }
+
+    // --- Coverage batch 2: more LLM syscall stubs, error paths, request/response types ---
+
+    #[test]
+    fn test_load_model_returns_incrementing_handles() {
+        let h1 = load_model("incr-test-a").unwrap();
+        let h2 = load_model("incr-test-b").unwrap();
+        assert!(h2 > h1, "Handles should be monotonically increasing");
+        unload_model(h1).unwrap();
+        unload_model(h2).unwrap();
+    }
+
+    #[test]
+    fn test_unload_model_twice_same_handle() {
+        let h = load_model("double-unload").unwrap();
+        unload_model(h).unwrap();
+        let result = unload_model(h);
+        assert!(result.is_err());
+        let msg = format!("{}", result.unwrap_err());
+        assert!(msg.contains("no model loaded"));
+    }
+
+    #[test]
+    fn test_load_model_same_name_multiple_times() {
+        let h1 = load_model("duplicate-model").unwrap();
+        let h2 = load_model("duplicate-model").unwrap();
+        assert_ne!(h1, h2, "Same model name should get different handles");
+        unload_model(h1).unwrap();
+        unload_model(h2).unwrap();
+    }
+
+    #[test]
+    fn test_load_model_with_special_characters() {
+        let h = load_model("model/with:special@chars!").unwrap();
+        assert!(h > 0);
+        unload_model(h).unwrap();
+    }
+
+    #[test]
+    fn test_load_model_with_whitespace_name() {
+        let h = load_model("  model with spaces  ").unwrap();
+        assert!(h > 0);
+        unload_model(h).unwrap();
+    }
+
+    #[test]
+    fn test_inference_invalid_handle_zero() {
+        let input = b"test";
+        let mut output = [0u8; 64];
+        let result = inference(0, input, &mut output);
+        assert!(result.is_err());
+        let msg = format!("{}", result.unwrap_err());
+        assert!(msg.contains("no model loaded"));
+    }
+
+    #[test]
+    fn test_inference_invalid_handle_max() {
+        let input = b"test";
+        let mut output = [0u8; 64];
+        let result = inference(u64::MAX, input, &mut output);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_inference_empty_output_buffer() {
+        let h = load_model("empty-output-buf").unwrap();
+        let input = b"hello";
+        let mut output = [0u8; 0];
+        // This will try to connect to gateway and fail, but we test the path
+        let result = inference(h, input, &mut output);
+        // Gateway not running, so this will error at the HTTP call
+        assert!(result.is_err());
+        unload_model(h).unwrap();
+    }
+
+    #[test]
+    fn test_inference_invalid_utf8_error_message() {
+        let h = load_model("utf8-err-msg").unwrap();
+        let input: &[u8] = &[0x80, 0x81, 0x82];
+        let mut output = [0u8; 100];
+        let result = inference(h, input, &mut output);
+        assert!(result.is_err());
+        let msg = format!("{}", result.unwrap_err());
+        assert!(msg.contains("not valid UTF-8"));
+        unload_model(h).unwrap();
+    }
+
+    #[test]
+    fn test_inference_with_valid_utf8_gateway_unreachable() {
+        let h = load_model("gateway-unreachable").unwrap();
+        let input = b"What is 2+2?";
+        let mut output = [0u8; 256];
+        let result = inference(h, input, &mut output);
+        // Gateway not running → HTTP error
+        assert!(result.is_err());
+        let msg = format!("{}", result.unwrap_err());
+        assert!(msg.contains("LLM Gateway request failed"));
+        unload_model(h).unwrap();
+    }
+
+    #[test]
+    fn test_load_model_error_variant() {
+        let result = load_model("");
+        match result {
+            Err(SysError::InvalidArgument(msg)) => {
+                assert!(msg.contains("empty"));
+            }
+            other => panic!("Expected InvalidArgument, got {:?}", other.err()),
+        }
+    }
+
+    #[test]
+    fn test_unload_model_error_variant() {
+        let result = unload_model(u64::MAX - 1);
+        match result {
+            Err(SysError::InvalidArgument(msg)) => {
+                assert!(msg.contains("no model loaded"));
+            }
+            other => panic!("Expected InvalidArgument, got {:?}", other.err()),
+        }
+    }
+
+    #[test]
+    fn test_loaded_models_state_after_operations() {
+        let h1 = load_model("state-test-1").unwrap();
+        let h2 = load_model("state-test-2").unwrap();
+
+        // Both should be in the map
+        {
+            let models = LOADED_MODELS.read().unwrap();
+            assert_eq!(models.get(&h1), Some(&"state-test-1".to_string()));
+            assert_eq!(models.get(&h2), Some(&"state-test-2".to_string()));
+        }
+
+        unload_model(h1).unwrap();
+
+        // h1 gone, h2 still there
+        {
+            let models = LOADED_MODELS.read().unwrap();
+            assert!(models.get(&h1).is_none());
+            assert_eq!(models.get(&h2), Some(&"state-test-2".to_string()));
+        }
+
+        unload_model(h2).unwrap();
+    }
+
+    #[test]
+    fn test_next_handle_never_reuses() {
+        // Other tests run in parallel and also increment NEXT_HANDLE,
+        // so we only assert monotonic increase, not exact values.
+        let h1 = load_model("no-reuse-1").unwrap();
+        let h2 = load_model("no-reuse-2").unwrap();
+        assert!(h2 > h1, "handles must be strictly increasing");
+        unload_model(h1).unwrap();
+        unload_model(h2).unwrap();
+    }
+
+    #[test]
+    fn test_llm_gateway_addr_constant() {
+        assert_eq!(LLM_GATEWAY_ADDR, "http://localhost:8088");
+    }
 }

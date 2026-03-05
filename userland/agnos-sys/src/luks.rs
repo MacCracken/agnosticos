@@ -1452,4 +1452,102 @@ mod tests {
         assert_eq!(config.cipher.algorithm, cipher_default.algorithm);
         assert_eq!(config.cipher.mode, cipher_default.mode);
     }
+
+    // --- New coverage tests ---
+
+    #[test]
+    fn test_luks_close_empty_name() {
+        let result = luks_close("");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_teardown_agent_volume_empty_name() {
+        let result = teardown_agent_volume("");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_luks_key_generate_various_sizes() {
+        for size in &[1, 16, 32, 64, 128, 256, 512, 1024] {
+            let key = LuksKey::generate(*size).unwrap();
+            assert_eq!(key.len(), *size);
+            assert!(!key.is_empty());
+        }
+    }
+
+    #[test]
+    fn test_luks_config_for_agent_validates_ok() {
+        // for_agent should always produce a valid config with reasonable agent IDs
+        for id in &["agent-1", "myagent", "a", "test_agent_123"] {
+            let config = LuksConfig::for_agent(id, 8);
+            assert!(config.validate().is_ok(), "Config for '{}' should be valid", id);
+        }
+    }
+
+    #[test]
+    fn test_luks_config_validate_size_exactly_3mb_fails() {
+        let config = LuksConfig {
+            size_mb: 3,
+            ..LuksConfig::for_agent("x", 64)
+        };
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_luks_filesystem_serde_each_variant() {
+        let variants = [LuksFilesystem::Ext4, LuksFilesystem::Xfs, LuksFilesystem::Btrfs];
+        for fs in &variants {
+            let json = serde_json::to_string(fs).unwrap();
+            let de: LuksFilesystem = serde_json::from_str(&json).unwrap();
+            assert_eq!(de, *fs);
+            assert_eq!(de.as_str(), fs.as_str());
+            assert_eq!(de.mkfs_cmd(), fs.mkfs_cmd());
+        }
+    }
+
+    #[test]
+    fn test_luks_pbkdf_serde_each_variant() {
+        for pbkdf in &[LuksPbkdf::Argon2id, LuksPbkdf::Pbkdf2] {
+            let json = serde_json::to_string(pbkdf).unwrap();
+            let de: LuksPbkdf = serde_json::from_str(&json).unwrap();
+            assert_eq!(de, *pbkdf);
+            assert_eq!(de.as_str(), pbkdf.as_str());
+        }
+    }
+
+    #[test]
+    fn test_luks_key_from_bytes_preserves_all_byte_values() {
+        let data: Vec<u8> = (0..=255).collect();
+        let key = LuksKey::from_bytes(data.clone()).unwrap();
+        assert_eq!(key.len(), 256);
+        assert_eq!(key.as_bytes(), &data[..]);
+    }
+
+    #[test]
+    fn test_luks_status_serde_with_some_mount() {
+        let status = LuksStatus {
+            name: "vol".to_string(),
+            is_open: true,
+            is_mounted: true,
+            backing_path: PathBuf::from("/a"),
+            mount_point: Some(PathBuf::from("/mnt")),
+            cipher: "aes-xts-plain64".to_string(),
+            key_size_bits: 512,
+        };
+        let json = serde_json::to_string(&status).unwrap();
+        let de: LuksStatus = serde_json::from_str(&json).unwrap();
+        assert_eq!(de.mount_point, Some(PathBuf::from("/mnt")));
+    }
+
+    #[test]
+    fn test_cryptsetup_available_does_not_panic() {
+        // Only verifies no panic/crash
+        let _ = cryptsetup_available();
+    }
+
+    #[test]
+    fn test_dmcrypt_supported_does_not_panic() {
+        let _ = dmcrypt_supported();
+    }
 }

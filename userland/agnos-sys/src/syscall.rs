@@ -70,6 +70,7 @@ fn errno() -> i32 {
 /// Linux `libc::syscall` returns -1 on error and sets `errno` separately.
 /// Previous code incorrectly negated the return value; we now read `errno()`
 /// which contains the actual error code set by the kernel.
+#[allow(dead_code)]
 fn check_result(result: i64) -> Result<i64> {
     if result < 0 {
         Err(SysError::from_errno(errno()))
@@ -154,5 +155,56 @@ mod tests {
     fn test_syscall3_invalid_number() {
         let result = unsafe { syscall3(9999, 0, 0, 0) };
         assert!(result < 0);
+    }
+
+    // --- New coverage tests ---
+
+    #[test]
+    fn test_check_result_minus_one() {
+        let result = check_result(-1);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_check_result_large_positive() {
+        let result = check_result(i64::MAX);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), i64::MAX);
+    }
+
+    #[test]
+    fn test_check_result_zero_boundary() {
+        assert!(check_result(0).is_ok());
+        assert!(check_result(-1).is_err());
+        assert!(check_result(1).is_ok());
+    }
+
+    #[test]
+    fn test_syscall_constants_spacing() {
+        // Agent syscalls: 500-503
+        assert_eq!(SYS_AGNOS_AGENT_TERMINATE - SYS_AGNOS_AGENT_CREATE, 1);
+        assert_eq!(SYS_AGNOS_AGENT_SET_LIMITS - SYS_AGNOS_AGENT_CREATE, 2);
+        assert_eq!(SYS_AGNOS_AGENT_GET_INFO - SYS_AGNOS_AGENT_CREATE, 3);
+
+        // LLM syscalls: 510-512
+        assert_eq!(SYS_AGNOS_LLM_INFERENCE - SYS_AGNOS_LLM_LOAD_MODEL, 1);
+        assert_eq!(SYS_AGNOS_LLM_UNLOAD_MODEL - SYS_AGNOS_LLM_LOAD_MODEL, 2);
+
+        // Audit syscalls: 520-521
+        assert_eq!(SYS_AGNOS_AUDIT_READ - SYS_AGNOS_AUDIT_LOG, 1);
+    }
+
+    #[test]
+    fn test_kernel_modules_available_returns_bool() {
+        let available = kernel_modules_available();
+        // On a standard kernel, AGNOS modules are not available
+        assert!(!available, "AGNOS modules should not be available on a standard kernel");
+    }
+
+    #[test]
+    fn test_errno_returns_nonnegative() {
+        // errno should always be a non-negative value
+        let e = errno();
+        assert!(e >= 0, "errno should be non-negative, got {}", e);
     }
 }

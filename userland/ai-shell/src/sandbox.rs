@@ -7,7 +7,7 @@ use anyhow::{Context, Result};
 use tracing::{debug, info, warn};
 
 use agnos_sys::security::{
-    self, FilesystemRule, FsAccess, NamespaceFlags,
+    self, FilesystemRule,
 };
 
 /// Sandboxed execution context
@@ -130,5 +130,42 @@ mod tests {
         let sandbox = Sandbox::new(true);
         // On non-Linux or unprivileged, this degrades gracefully
         assert!(sandbox.apply_seccomp().is_ok());
+    }
+
+    #[test]
+    fn test_sandbox_new_enabled() {
+        let sandbox = Sandbox::new(true);
+        assert!(sandbox.enabled);
+    }
+
+    #[test]
+    fn test_sandbox_disabled_skips_landlock() {
+        // Disabled sandbox should short-circuit immediately
+        let sandbox = Sandbox::new(false);
+        let result = sandbox.apply_landlock();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_sandbox_disabled_skips_seccomp() {
+        let sandbox = Sandbox::new(false);
+        let result = sandbox.apply_seccomp();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_sandbox_default_is_enabled() {
+        let sandbox = Sandbox::default();
+        assert!(sandbox.enabled);
+    }
+
+    #[test]
+    fn test_sandbox_multiple_apply_calls() {
+        // Calling apply multiple times should not panic
+        let sandbox = Sandbox::new(false);
+        sandbox.apply_landlock().unwrap();
+        sandbox.apply_landlock().unwrap();
+        sandbox.apply_seccomp().unwrap();
+        sandbox.apply_seccomp().unwrap();
     }
 }

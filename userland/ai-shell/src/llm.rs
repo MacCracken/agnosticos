@@ -169,4 +169,116 @@ mod tests {
         let answer = result.unwrap();
         assert!(!answer.is_empty());
     }
+
+    // --- Coverage batch 2: client construction, request building, response parsing, error handling ---
+
+    #[test]
+    fn test_llm_client_custom_endpoint_preserved() {
+        let url = "http://10.0.0.1:9999".to_string();
+        let client = LlmClient::new(Some(url.clone()));
+        assert_eq!(client.endpoint, url);
+    }
+
+    #[test]
+    fn test_llm_client_empty_string_endpoint() {
+        let client = LlmClient::new(Some(String::new()));
+        assert_eq!(client.endpoint, "");
+    }
+
+    #[test]
+    fn test_default_gateway_url_constant() {
+        assert_eq!(DEFAULT_GATEWAY_URL, "http://127.0.0.1:8088");
+    }
+
+    #[test]
+    fn test_llm_client_new_none_uses_default() {
+        let c1 = LlmClient::new(None);
+        let c2 = LlmClient::default();
+        assert_eq!(c1.endpoint, c2.endpoint);
+    }
+
+    #[tokio::test]
+    async fn test_suggest_command_fallback_contains_request() {
+        let client = LlmClient::default();
+        let result = client.suggest_command("install docker").await.unwrap();
+        // When gateway is down, fallback includes the original request text
+        assert!(
+            result.contains("install docker") || result.contains("docker"),
+            "Fallback should mention the request"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_explain_command_fallback_contains_command() {
+        let client = LlmClient::default();
+        let result = client.explain_command("grep -r 'foo' /bar").await.unwrap();
+        assert!(
+            result.contains("grep") || result.contains("Explanation"),
+            "Fallback should reference the command"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_answer_question_fallback_contains_question() {
+        let client = LlmClient::default();
+        let result = client.answer_question("How do I compile Rust?").await.unwrap();
+        assert!(
+            result.contains("Rust") || result.contains("Answer"),
+            "Fallback should reference the question"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_suggest_command_empty_request() {
+        let client = LlmClient::default();
+        let result = client.suggest_command("").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_explain_command_empty_command() {
+        let client = LlmClient::default();
+        let result = client.explain_command("").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_answer_question_empty_question() {
+        let client = LlmClient::default();
+        let result = client.answer_question("").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_suggest_command_special_chars() {
+        let client = LlmClient::default();
+        let result = client.suggest_command("find / -name '*.rs' | xargs grep \"TODO\"").await;
+        assert!(result.is_ok());
+        assert!(!result.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_llm_client_unreachable_endpoint() {
+        let client = LlmClient::new(Some("http://192.0.2.1:1".to_string()));
+        let result = client.suggest_command("hello").await;
+        // Should fall back gracefully, not panic
+        assert!(result.is_ok());
+        let text = result.unwrap();
+        assert!(text.contains("LLM Gateway unavailable") || text.contains("hello"));
+    }
+
+    #[tokio::test]
+    async fn test_explain_command_multiline() {
+        let client = LlmClient::default();
+        let result = client.explain_command("echo hello && echo world").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_answer_question_long_input() {
+        let client = LlmClient::default();
+        let long_question = "x".repeat(5000);
+        let result = client.answer_question(&long_question).await;
+        assert!(result.is_ok());
+    }
 }

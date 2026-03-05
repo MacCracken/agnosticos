@@ -891,4 +891,303 @@ mod tests {
         assert_eq!(events[2].event_type, EventType::Timing);
         assert_eq!(events[3].event_type, EventType::Histogram);
     }
+
+    // --- New coverage tests (batch 2) ---
+
+    #[test]
+    fn test_telemetry_config_default_endpoint() {
+        let config = TelemetryConfig::default();
+        assert_eq!(config.endpoint_url, "https://telemetry.agnos.org/v1");
+    }
+
+    #[test]
+    fn test_telemetry_config_default_flush_interval() {
+        let config = TelemetryConfig::default();
+        assert_eq!(config.flush_interval_secs, 300);
+    }
+
+    #[test]
+    fn test_telemetry_config_instance_id_is_uuid() {
+        let config = TelemetryConfig::default();
+        // UUID v4 format: 8-4-4-4-12
+        let parts: Vec<&str> = config.instance_id.split('-').collect();
+        assert_eq!(parts.len(), 5);
+        assert_eq!(parts[0].len(), 8);
+        assert_eq!(parts[1].len(), 4);
+        assert_eq!(parts[2].len(), 4);
+        assert_eq!(parts[3].len(), 4);
+        assert_eq!(parts[4].len(), 12);
+    }
+
+    #[test]
+    fn test_generate_instance_id_is_valid_uuid() {
+        let id = generate_instance_id();
+        let parsed = uuid::Uuid::parse_str(&id);
+        assert!(parsed.is_ok(), "Generated ID should be valid UUID: {}", id);
+    }
+
+    #[test]
+    fn test_telemetry_config_clone() {
+        let config = TelemetryConfig {
+            enabled: true,
+            crash_reporting: true,
+            metrics_enabled: true,
+            instance_id: "clone-me".to_string(),
+            endpoint_url: "https://example.com".to_string(),
+            sampling_rate: 0.42,
+            flush_interval_secs: 10,
+        };
+        let cloned = config.clone();
+        assert_eq!(cloned.instance_id, "clone-me");
+        assert_eq!(cloned.sampling_rate, 0.42);
+        assert_eq!(cloned.flush_interval_secs, 10);
+    }
+
+    #[test]
+    fn test_telemetry_config_debug() {
+        let config = TelemetryConfig::default();
+        let debug = format!("{:?}", config);
+        assert!(debug.contains("TelemetryConfig"));
+        assert!(debug.contains("enabled"));
+    }
+
+    #[test]
+    fn test_event_type_serialization_roundtrip() {
+        let types = [EventType::Counter, EventType::Gauge, EventType::Histogram, EventType::Timing];
+        for et in &types {
+            let json = serde_json::to_string(et).unwrap();
+            let deserialized: EventType = serde_json::from_str(&json).unwrap();
+            assert_eq!(*et, deserialized);
+        }
+    }
+
+    #[test]
+    fn test_event_type_copy() {
+        let a = EventType::Counter;
+        let b = a; // Copy, not move
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn test_system_info_clone() {
+        let info = SystemInfo {
+            os_type: "linux".to_string(),
+            os_version: "test".to_string(),
+            architecture: "x86_64".to_string(),
+            cpu_count: 4,
+            memory_mb: 8192,
+            kernel_version: "6.6".to_string(),
+        };
+        let cloned = info.clone();
+        assert_eq!(cloned.os_type, info.os_type);
+        assert_eq!(cloned.cpu_count, info.cpu_count);
+    }
+
+    #[test]
+    fn test_system_info_debug() {
+        let info = SystemInfo {
+            os_type: "linux".to_string(),
+            os_version: "test".to_string(),
+            architecture: "x86_64".to_string(),
+            cpu_count: 4,
+            memory_mb: 8192,
+            kernel_version: "6.6".to_string(),
+        };
+        let debug = format!("{:?}", info);
+        assert!(debug.contains("linux"));
+        assert!(debug.contains("8192"));
+    }
+
+    #[test]
+    fn test_crash_report_clone() {
+        let report = CrashReport {
+            timestamp: chrono::Utc::now(),
+            instance_id: "clone-test".to_string(),
+            version: "0.1.0".to_string(),
+            component: "test".to_string(),
+            error_message: "err".to_string(),
+            stack_trace: None,
+            system_info: SystemInfo {
+                os_type: "linux".to_string(),
+                os_version: "v".to_string(),
+                architecture: "x86_64".to_string(),
+                cpu_count: 1,
+                memory_mb: 1024,
+                kernel_version: "6.0".to_string(),
+            },
+        };
+        let cloned = report.clone();
+        assert_eq!(cloned.instance_id, "clone-test");
+        assert!(cloned.stack_trace.is_none());
+    }
+
+    #[test]
+    fn test_telemetry_session_clone() {
+        let session = TelemetrySession {
+            started_at: chrono::Utc::now(),
+            instance_id: "sess-clone".to_string(),
+            version: "0.1.0".to_string(),
+            events_sent: 42,
+            events_dropped: 3,
+        };
+        let cloned = session.clone();
+        assert_eq!(cloned.events_sent, 42);
+        assert_eq!(cloned.events_dropped, 3);
+    }
+
+    #[test]
+    fn test_telemetry_session_debug() {
+        let session = TelemetrySession {
+            started_at: chrono::Utc::now(),
+            instance_id: "dbg".to_string(),
+            version: "1.0.0".to_string(),
+            events_sent: 0,
+            events_dropped: 0,
+        };
+        let debug = format!("{:?}", session);
+        assert!(debug.contains("dbg"));
+    }
+
+    #[tokio::test]
+    async fn test_record_event_with_zero_sampling_rate() {
+        let config = TelemetryConfig {
+            enabled: true,
+            metrics_enabled: true,
+            sampling_rate: 0.0,
+            ..Default::default()
+        };
+        let collector = TelemetryCollector::new(config);
+        // With 0.0 sampling rate, random_val > 0.0 is always true, so events are dropped
+        for _ in 0..100 {
+            collector.record_counter("cat", "name", 1.0).await;
+        }
+        let events = collector.events.read().await;
+        assert!(events.is_empty(), "No events should pass 0.0 sampling rate");
+    }
+
+    #[tokio::test]
+    async fn test_record_event_with_full_sampling_rate() {
+        let config = TelemetryConfig {
+            enabled: true,
+            metrics_enabled: true,
+            sampling_rate: 1.0,
+            ..Default::default()
+        };
+        let collector = TelemetryCollector::new(config);
+        collector.record_counter("cat", "name", 1.0).await;
+        let events = collector.events.read().await;
+        assert_eq!(events.len(), 1, "All events should pass 1.0 sampling rate");
+    }
+
+    #[tokio::test]
+    async fn test_submit_crash_system_info_populated() {
+        let config = TelemetryConfig {
+            enabled: true,
+            crash_reporting: true,
+            ..Default::default()
+        };
+        let collector = TelemetryCollector::new(config);
+        collector.submit_crash("test-comp", "test-err", None).await;
+
+        let reports = collector.crash_reports.read().await;
+        assert_eq!(reports.len(), 1);
+        let info = &reports[0].system_info;
+        assert!(!info.os_type.is_empty());
+        assert!(!info.architecture.is_empty());
+        assert!(info.cpu_count > 0);
+    }
+
+    #[tokio::test]
+    async fn test_get_stats_version_is_package_version() {
+        let config = TelemetryConfig::default();
+        let collector = TelemetryCollector::new(config);
+        let stats = collector.get_stats().await;
+        assert_eq!(stats.version, env!("CARGO_PKG_VERSION"));
+    }
+
+    #[tokio::test]
+    async fn test_flush_drains_events() {
+        let config = TelemetryConfig {
+            enabled: true,
+            metrics_enabled: true,
+            // Use an unreachable endpoint so flush will fail but still drain
+            endpoint_url: "http://127.0.0.1:1/v1".to_string(),
+            ..Default::default()
+        };
+        let collector = TelemetryCollector::new(config);
+        collector.record_counter("cat", "name", 1.0).await;
+        assert_eq!(collector.events.read().await.len(), 1);
+
+        // Flush will fail (no server) but should drain events
+        let _ = collector.flush().await;
+        assert_eq!(collector.events.read().await.len(), 0);
+    }
+
+    #[test]
+    fn test_telemetry_error_variants_are_error_trait() {
+        let err: Box<dyn std::error::Error> = Box::new(TelemetryError::NetworkError("test".to_string()));
+        assert!(err.to_string().contains("test"));
+    }
+
+    #[test]
+    fn test_telemetry_event_metadata_empty_default() {
+        let event = TelemetryEvent {
+            timestamp: chrono::Utc::now(),
+            instance_id: "test".to_string(),
+            event_type: EventType::Counter,
+            category: "cat".to_string(),
+            name: "name".to_string(),
+            value: 0.0,
+            metadata: HashMap::new(),
+        };
+        assert!(event.metadata.is_empty());
+    }
+
+    #[test]
+    fn test_telemetry_event_with_metadata() {
+        let mut metadata = HashMap::new();
+        metadata.insert("host".to_string(), "node-1".to_string());
+        metadata.insert("region".to_string(), "us-west".to_string());
+        let event = TelemetryEvent {
+            timestamp: chrono::Utc::now(),
+            instance_id: "test".to_string(),
+            event_type: EventType::Gauge,
+            category: "infra".to_string(),
+            name: "disk_pct".to_string(),
+            value: 72.5,
+            metadata,
+        };
+        assert_eq!(event.metadata.len(), 2);
+        assert_eq!(event.metadata.get("host").unwrap(), "node-1");
+    }
+
+    #[test]
+    fn test_read_memory_mb_on_linux() {
+        let mem = TelemetryCollector::read_memory_mb();
+        // On Linux with /proc/meminfo, should be > 0
+        #[cfg(target_os = "linux")]
+        assert!(mem > 0, "Memory should be > 0 on Linux, got {}", mem);
+        let _ = mem;
+    }
+
+    #[test]
+    fn test_read_kernel_version_on_linux() {
+        let version = TelemetryCollector::read_kernel_version();
+        #[cfg(target_os = "linux")]
+        {
+            assert_ne!(version, "unknown");
+            // Kernel version usually starts with a digit
+            assert!(version.chars().next().unwrap().is_ascii_digit(),
+                "Kernel version should start with digit: {}", version);
+        }
+        let _ = version;
+    }
+
+    #[test]
+    fn test_telemetry_error_debug() {
+        let err = TelemetryError::NetworkError("conn refused".to_string());
+        let debug = format!("{:?}", err);
+        assert!(debug.contains("NetworkError"));
+        assert!(debug.contains("conn refused"));
+    }
 }

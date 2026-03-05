@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use thiserror::Error;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 #[derive(Debug, Error)]
@@ -594,7 +594,7 @@ impl DesktopApplications {
     pub fn open_file_manager(&self, path: Option<String>) -> Result<AppWindow, AppError> {
         let path_clone = path.clone();
         let mut window = AppWindow::new(AppType::FileManager, self.file_manager.name.clone());
-        if let Some(p) = path_clone {
+        if let Some(_p) = path_clone {
             // Note: Cannot call mutable method on file_manager through immutable reference
             // This needs to be refactored
         }
@@ -1035,7 +1035,7 @@ mod tests {
     #[test]
     fn test_agent_manager_start_and_list() {
         let mut am = AgentManagerApp::new();
-        let id = am.start_agent("agent-a".to_string(), vec!["read".to_string(), "write".to_string()]).unwrap();
+        let _id = am.start_agent("agent-a".to_string(), vec!["read".to_string(), "write".to_string()]).unwrap();
         assert_eq!(am.running_agents.len(), 1);
         assert_eq!(am.running_agents[0].capabilities.len(), 2);
         let agents = am.list_agents();
@@ -1367,12 +1367,10 @@ mod tests {
 
     #[test]
     fn test_audit_viewer_get_logs_with_temp_file() {
-        use std::io::Write;
-
         let now = chrono::Utc::now();
         let ts = now.to_rfc3339();
 
-        let log_lines = format!(
+        let _log_lines = format!(
             r#"{{"timestamp":"{}","event_type":"agent_start","details":"Agent foo started","source":"runtime"}}
 {{"timestamp":"{}","event_type":"security_violation","details":"Blocked syscall","source":"seccomp"}}
 {{"timestamp":"{}","event_type":"system_boot","details":"System initialized","source":"init"}}
@@ -2042,4 +2040,242 @@ mod tests {
         assert_eq!(mm.name, "Model Manager");
     }
 
+    #[test]
+    fn test_time_range_all_variants() {
+        assert!(matches!(TimeRange::LastHour, TimeRange::LastHour));
+        assert!(matches!(TimeRange::LastDay, TimeRange::LastDay));
+        assert!(matches!(TimeRange::LastWeek, TimeRange::LastWeek));
+        assert!(matches!(TimeRange::Custom, TimeRange::Custom));
+    }
+
+    #[test]
+    fn test_app_type_all_variants_debug() {
+        let types = [
+            AppType::Terminal,
+            AppType::FileManager,
+            AppType::TextEditor,
+            AppType::WebBrowser,
+            AppType::AgentManager,
+            AppType::AuditViewer,
+            AppType::ModelManager,
+            AppType::Settings,
+            AppType::Custom,
+        ];
+        for t in types {
+            let s = format!("{:?}", t);
+            assert!(!s.is_empty());
+        }
+    }
+
+    #[test]
+    fn test_desktop_applications_open_terminal_multiple() {
+        let apps = DesktopApplications::new();
+        let w1 = apps.open_terminal().unwrap();
+        let w2 = apps.open_terminal().unwrap();
+        assert_ne!(w1.id, w2.id);
+        assert_eq!(apps.get_open_windows().len(), 2);
+    }
+
+    // ====================================================================
+    // Additional coverage tests: edge cases, boundary values, combinations
+    // ====================================================================
+
+    #[test]
+    fn test_file_manager_navigate_empty_path() {
+        let mut fm = FileManagerApp::new();
+        // Navigate to empty string — stores as-is
+        fm.navigate("".to_string()).unwrap();
+        assert_eq!(fm.current_path, "");
+    }
+
+    #[test]
+    fn test_file_manager_navigate_relative_path() {
+        let mut fm = FileManagerApp::new();
+        fm.navigate("relative/path".to_string()).unwrap();
+        assert_eq!(fm.current_path, "relative/path");
+    }
+
+    #[test]
+    fn test_file_manager_search_special_characters() {
+        let fm = FileManagerApp::new();
+        let results = fm.search_with_agent("test*.log".to_string()).unwrap();
+        assert_eq!(results.len(), 1);
+        assert!(results[0].contains("test*.log"));
+    }
+
+    #[test]
+    fn test_agent_manager_stop_then_start_same_name() {
+        let mut am = AgentManagerApp::new();
+        let id1 = am.start_agent("reuse".to_string(), vec![]).unwrap();
+        am.stop_agent(id1).unwrap();
+        assert!(am.running_agents.is_empty());
+        let id2 = am.start_agent("reuse".to_string(), vec![]).unwrap();
+        assert_ne!(id1, id2);
+        assert_eq!(am.running_agents.len(), 1);
+    }
+
+    #[test]
+    fn test_agent_manager_stop_same_id_twice() {
+        let mut am = AgentManagerApp::new();
+        let id = am.start_agent("once".to_string(), vec![]).unwrap();
+        am.stop_agent(id).unwrap();
+        // Stopping again should be a no-op
+        let result = am.stop_agent(id);
+        assert!(result.is_ok());
+        assert!(am.running_agents.is_empty());
+    }
+
+    #[test]
+    fn test_model_manager_select_switches_active() {
+        let mut mm = ModelManagerApp::new();
+        mm.installed_models.push(ModelInfo {
+            id: "x".to_string(),
+            name: "X".to_string(),
+            size: 0,
+            provider: "".to_string(),
+            is_downloaded: true,
+        });
+        mm.installed_models.push(ModelInfo {
+            id: "y".to_string(),
+            name: "Y".to_string(),
+            size: 0,
+            provider: "".to_string(),
+            is_downloaded: true,
+        });
+        mm.select_model("x".to_string()).unwrap();
+        assert_eq!(mm.active_model.as_deref(), Some("x"));
+        mm.select_model("y".to_string()).unwrap();
+        assert_eq!(mm.active_model.as_deref(), Some("y"));
+        // old selection replaced
+        assert_ne!(mm.active_model.as_deref(), Some("x"));
+    }
+
+    #[test]
+    fn test_desktop_applications_window_ids_all_unique() {
+        let apps = DesktopApplications::new();
+        let w1 = apps.open_terminal().unwrap();
+        let w2 = apps.open_terminal().unwrap();
+        let w3 = apps.open_file_manager(None).unwrap();
+        let w4 = apps.open_agent_manager().unwrap();
+        let ids = vec![w1.id, w2.id, w3.id, w4.id];
+        for i in 0..ids.len() {
+            for j in (i + 1)..ids.len() {
+                assert_ne!(ids[i], ids[j], "Window IDs must be unique");
+            }
+        }
+    }
+
+    #[test]
+    fn test_desktop_applications_close_then_reopen() {
+        let apps = DesktopApplications::new();
+        let w = apps.open_terminal().unwrap();
+        apps.close_window(w.id).unwrap();
+        assert!(apps.get_open_windows().is_empty());
+        let w2 = apps.open_terminal().unwrap();
+        assert_eq!(apps.get_open_windows().len(), 1);
+        assert_ne!(w.id, w2.id);
+    }
+
+    #[test]
+    fn test_app_window_default_dimensions() {
+        let w = AppWindow::new(AppType::Custom, "Custom".to_string());
+        assert_eq!(w.width, 800);
+        assert_eq!(w.height, 600);
+    }
+
+    #[test]
+    fn test_app_window_title_can_be_empty() {
+        let w = AppWindow::new(AppType::Terminal, "".to_string());
+        assert_eq!(w.title, "");
+    }
+
+    #[test]
+    fn test_app_window_title_with_unicode() {
+        let w = AppWindow::new(AppType::TextEditor, "Editor \u{1F4DD}".to_string());
+        assert!(w.title.contains("Editor"));
+    }
+
+    #[tokio::test]
+    async fn test_terminal_execute_echo_newline() {
+        let terminal = TerminalApp::new();
+        let result = terminal.execute_command("echo -n hello".to_string()).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "hello");
+    }
+
+    #[tokio::test]
+    async fn test_terminal_execute_cat_dev_null() {
+        let terminal = TerminalApp::new();
+        let result = terminal.execute_command("cat /dev/null".to_string()).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), ""); // empty output
+    }
+
+    #[test]
+    fn test_agent_info_status_field() {
+        let info = AgentInfo {
+            id: Uuid::new_v4(),
+            name: "status-test".to_string(),
+            status: "Stopped".to_string(),
+            capabilities: vec![],
+        };
+        assert_eq!(info.status, "Stopped");
+        assert!(info.capabilities.is_empty());
+    }
+
+    #[test]
+    fn test_model_info_large_size() {
+        let info = ModelInfo {
+            id: "large".to_string(),
+            name: "Large Model".to_string(),
+            size: u64::MAX,
+            provider: "test".to_string(),
+            is_downloaded: false,
+        };
+        assert_eq!(info.size, u64::MAX);
+    }
+
+    #[test]
+    fn test_audit_entry_fields() {
+        let now = chrono::Utc::now();
+        let entry = AuditEntry {
+            id: Uuid::nil(),
+            timestamp: now,
+            event_type: "security_alert".to_string(),
+            description: "Unusual access pattern".to_string(),
+            source: "agent-runtime".to_string(),
+        };
+        assert_eq!(entry.id, Uuid::nil());
+        assert_eq!(entry.event_type, "security_alert");
+        assert_eq!(entry.source, "agent-runtime");
+    }
+
+    #[test]
+    fn test_desktop_applications_get_open_windows_returns_clone() {
+        let apps = DesktopApplications::new();
+        let w = apps.open_terminal().unwrap();
+        let windows1 = apps.get_open_windows();
+        let windows2 = apps.get_open_windows();
+        // Both calls return same data
+        assert_eq!(windows1.len(), 1);
+        assert_eq!(windows2.len(), 1);
+        assert_eq!(windows1[0].id, w.id);
+    }
+
+    #[test]
+    fn test_file_manager_navigate_long_path() {
+        let mut fm = FileManagerApp::new();
+        let long_path = "/a".repeat(500);
+        fm.navigate(long_path.clone()).unwrap();
+        assert_eq!(fm.current_path, long_path);
+    }
+
+    #[test]
+    fn test_agent_manager_start_with_many_capabilities() {
+        let mut am = AgentManagerApp::new();
+        let caps: Vec<String> = (0..100).map(|i| format!("cap-{}", i)).collect();
+        let id = am.start_agent("many-caps".to_string(), caps.clone()).unwrap();
+        let agent = am.running_agents.iter().find(|a| a.id == id).unwrap();
+        assert_eq!(agent.capabilities.len(), 100);
+    }
 }

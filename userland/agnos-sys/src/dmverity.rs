@@ -1106,4 +1106,117 @@ mod tests {
         let back: VerityConfig = serde_json::from_str(&json).unwrap();
         assert!(back.salt.is_none());
     }
+
+    // --- New coverage tests ---
+
+    #[test]
+    fn test_read_stored_root_hash_whitespace_only_file() {
+        let dir = std::env::temp_dir().join("agnos_verity_test_ws_only");
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("ws-only-hash");
+        std::fs::write(&path, "   \n  \t  \n").unwrap();
+
+        let err = read_stored_root_hash(&path).unwrap_err();
+        assert!(err.to_string().contains("empty"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_verity_config_validate_block_size_1() {
+        let config = VerityConfig {
+            name: "test".to_string(),
+            data_device: PathBuf::from("/dev/sda1"),
+            hash_device: PathBuf::from("/dev/sda2"),
+            data_block_size: 1,
+            hash_block_size: 4096,
+            hash_algorithm: VerityHashAlgorithm::Sha256,
+            root_hash: "a".repeat(64),
+            salt: None,
+        };
+        // 1 is a power of 2
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_verity_config_validate_block_size_2() {
+        let config = VerityConfig {
+            name: "test".to_string(),
+            data_device: PathBuf::from("/dev/sda1"),
+            hash_device: PathBuf::from("/dev/sda2"),
+            data_block_size: 2,
+            hash_block_size: 2,
+            hash_algorithm: VerityHashAlgorithm::Sha256,
+            root_hash: "a".repeat(64),
+            salt: None,
+        };
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_verity_config_validate_hash_block_size_zero() {
+        let config = VerityConfig {
+            name: "test".to_string(),
+            data_device: PathBuf::from("/dev/sda1"),
+            hash_device: PathBuf::from("/dev/sda2"),
+            data_block_size: 4096,
+            hash_block_size: 0,
+            hash_algorithm: VerityHashAlgorithm::Sha256,
+            root_hash: "a".repeat(64),
+            salt: None,
+        };
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_validate_root_hash_sha256_all_digits() {
+        let hash = "0123456789012345678901234567890123456789012345678901234567890123";
+        assert_eq!(hash.len(), 64);
+        assert!(validate_root_hash(hash, VerityHashAlgorithm::Sha256).is_ok());
+    }
+
+    #[test]
+    fn test_validate_root_hash_sha512_correct_length() {
+        let hash = "a".repeat(128);
+        assert!(validate_root_hash(&hash, VerityHashAlgorithm::Sha512).is_ok());
+    }
+
+    #[test]
+    fn test_validate_root_hash_sha512_wrong_length_64() {
+        let hash = "a".repeat(64);
+        let err = validate_root_hash(&hash, VerityHashAlgorithm::Sha512).unwrap_err();
+        assert!(err.to_string().contains("length"));
+        assert!(err.to_string().contains("128"));
+    }
+
+    #[test]
+    fn test_verity_config_validate_salt_empty_string() {
+        let config = VerityConfig {
+            name: "test".to_string(),
+            data_device: PathBuf::from("/dev/sda1"),
+            hash_device: PathBuf::from("/dev/sda2"),
+            data_block_size: 4096,
+            hash_block_size: 4096,
+            hash_algorithm: VerityHashAlgorithm::Sha256,
+            root_hash: "a".repeat(64),
+            salt: Some(String::new()),
+        };
+        // Empty hex string is vacuously valid
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_verity_status_default_values() {
+        let status = VerityStatus {
+            name: String::new(),
+            is_active: false,
+            is_verified: false,
+            corruption_detected: false,
+            root_hash: String::new(),
+        };
+        assert!(!status.is_active);
+        assert!(!status.is_verified);
+        assert!(!status.corruption_detected);
+        assert!(status.root_hash.is_empty());
+    }
 }

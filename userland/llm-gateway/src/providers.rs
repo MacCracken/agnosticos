@@ -19,6 +19,7 @@ pub trait LlmProvider: Send + Sync {
     async fn load_model(&self, model_id: &str) -> anyhow::Result<agnos_common::ModelInfo>;
 
     /// Unload a model
+    #[allow(dead_code)]
     async fn unload_model(&self, model_id: &str) -> anyhow::Result<()>;
 
     /// List available models
@@ -690,6 +691,7 @@ pub struct GoogleProvider {
 }
 
 impl GoogleProvider {
+    #[allow(dead_code)]
     pub fn new(api_key: String, base_url: Option<String>) -> anyhow::Result<Self> {
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(120))
@@ -1699,5 +1701,502 @@ mod tests {
         let provider = GoogleProvider::new("".to_string(), None).unwrap();
         let dbg = format!("{:?}", provider.api_key);
         assert_eq!(dbg, "[REDACTED]");
+    }
+
+    // ------------------------------------------------------------------
+    // Ollama/LlamaCpp infer error paths with detailed assertions
+    // ------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_ollama_list_models_error_is_connection_related() {
+        let provider = OllamaProvider::new().await.unwrap();
+        let err = provider.list_models().await.unwrap_err();
+        let msg = err.to_string().to_lowercase();
+        assert!(
+            msg.contains("error") || msg.contains("connect") || msg.contains("refused") || msg.contains("connection"),
+            "Expected connection-related error, got: {}",
+            msg
+        );
+    }
+
+    #[tokio::test]
+    async fn test_llama_cpp_infer_error_is_connection_related() {
+        let provider = LlamaCppProvider::new().await.unwrap();
+        let err = provider.infer(InferenceRequest::default()).await.unwrap_err();
+        let msg = err.to_string().to_lowercase();
+        assert!(
+            msg.contains("error") || msg.contains("connect") || msg.contains("refused"),
+            "Expected connection-related error, got: {}",
+            msg
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // Google provider error details
+    // ------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_google_infer_error_is_connection_related() {
+        let provider = GoogleProvider::new(
+            "goog-fake".to_string(),
+            Some("http://127.0.0.1:19999".to_string()),
+        ).unwrap();
+        let err = provider.infer(InferenceRequest::default()).await.unwrap_err();
+        let msg = err.to_string().to_lowercase();
+        assert!(
+            msg.contains("error") || msg.contains("connect") || msg.contains("refused"),
+            "Expected connection-related error, got: {}",
+            msg
+        );
+    }
+
+    #[tokio::test]
+    async fn test_google_list_models_error_is_connection_related() {
+        let provider = GoogleProvider::new(
+            "goog-fake".to_string(),
+            Some("http://127.0.0.1:19999".to_string()),
+        ).unwrap();
+        let err = provider.list_models().await.unwrap_err();
+        let msg = err.to_string().to_lowercase();
+        assert!(
+            msg.contains("error") || msg.contains("connect") || msg.contains("refused"),
+            "Expected connection-related error, got: {}",
+            msg
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // Trait object collections — Arc<dyn LlmProvider> in HashMap
+    // ------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_providers_in_hashmap() {
+        use std::collections::HashMap;
+        use std::sync::Arc;
+
+        let mut map: HashMap<ProviderType, Arc<dyn LlmProvider>> = HashMap::new();
+        map.insert(
+            ProviderType::Ollama,
+            Arc::new(OllamaProvider::new().await.unwrap()),
+        );
+        map.insert(
+            ProviderType::LlamaCpp,
+            Arc::new(LlamaCppProvider::new().await.unwrap()),
+        );
+        map.insert(
+            ProviderType::OpenAi,
+            Arc::new(OpenAiProvider::new("sk-test".to_string(), None).unwrap()),
+        );
+        map.insert(
+            ProviderType::Anthropic,
+            Arc::new(AnthropicProvider::new("ant-test".to_string(), None).unwrap()),
+        );
+        map.insert(
+            ProviderType::Google,
+            Arc::new(GoogleProvider::new("goog-test".to_string(), None).unwrap()),
+        );
+
+        assert_eq!(map.len(), 5);
+
+        // All should support unload_model
+        for (_, provider) in &map {
+            assert!(provider.unload_model("x").await.is_ok());
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Anthropic provider: infer_stream error detail
+    // ------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_anthropic_infer_stream_error_detail() {
+        let provider = AnthropicProvider::new(
+            "ant-fake".to_string(),
+            Some("http://127.0.0.1:19999".to_string()),
+        ).unwrap();
+        let mut rx = provider.infer_stream(InferenceRequest::default()).await.unwrap();
+        let msg = rx.recv().await.unwrap();
+        let err = msg.unwrap_err();
+        let err_str = err.to_string().to_lowercase();
+        assert!(
+            err_str.contains("error") || err_str.contains("connect") || err_str.contains("refused"),
+            "Expected connection error, got: {}",
+            err_str
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // OpenAI list_models error detail
+    // ------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_openai_list_models_error_detail() {
+        let provider = OpenAiProvider::new(
+            "sk-fake".to_string(),
+            Some("http://127.0.0.1:19999".to_string()),
+        ).unwrap();
+        let err = provider.list_models().await.unwrap_err();
+        let msg = err.to_string().to_lowercase();
+        assert!(
+            msg.contains("error") || msg.contains("connect") || msg.contains("refused"),
+            "Expected connection error, got: {}",
+            msg
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // Ollama/LlamaCpp infer_stream: channel sends error on connect failure
+    // ------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_ollama_infer_stream_channel_sends_error() {
+        let provider = OllamaProvider::new().await.unwrap();
+        let mut rx = provider.infer_stream(InferenceRequest::default()).await.unwrap();
+        let result = rx.recv().await;
+        assert!(result.is_some());
+        assert!(result.unwrap().is_err());
+    }
+
+    #[tokio::test]
+    async fn test_llama_cpp_infer_stream_channel_sends_error() {
+        let provider = LlamaCppProvider::new().await.unwrap();
+        let mut rx = provider.infer_stream(InferenceRequest::default()).await.unwrap();
+        let result = rx.recv().await;
+        assert!(result.is_some());
+        assert!(result.unwrap().is_err());
+    }
+
+    // ------------------------------------------------------------------
+    // Google infer_stream error detail
+    // ------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_google_infer_stream_error_detail() {
+        let provider = GoogleProvider::new(
+            "goog-fake".to_string(),
+            Some("http://127.0.0.1:19999".to_string()),
+        ).unwrap();
+        let mut rx = provider.infer_stream(InferenceRequest::default()).await.unwrap();
+        let msg = rx.recv().await.unwrap();
+        let err = msg.unwrap_err();
+        let err_str = err.to_string().to_lowercase();
+        assert!(
+            err_str.contains("error") || err_str.contains("connect") || err_str.contains("refused"),
+            "Expected connection error in stream, got: {}",
+            err_str
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // RedactedKey: boundary at len=7
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_redacted_key_7_chars() {
+        let key = RedactedKey("1234567".to_string());
+        assert_eq!(format!("{:?}", key), "[REDACTED]");
+    }
+
+    // ------------------------------------------------------------------
+    // Provider type as HashMap value
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_provider_type_clone_all_variants() {
+        let variants = [
+            ProviderType::Ollama,
+            ProviderType::LlamaCpp,
+            ProviderType::OpenAi,
+            ProviderType::Anthropic,
+            ProviderType::Google,
+        ];
+        for v in &variants {
+            let cloned = *v;
+            assert_eq!(*v, cloned);
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Additional coverage: provider construction edge cases, trait object
+    // interactions, concurrent access, default request handling
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_openai_provider_base_url_with_trailing_slash() {
+        let provider = OpenAiProvider::new(
+            "sk-key".to_string(),
+            Some("http://localhost:4000/".to_string()),
+        ).unwrap();
+        // Should store exactly as given
+        assert_eq!(provider.base_url, "http://localhost:4000/");
+    }
+
+    #[test]
+    fn test_anthropic_provider_base_url_with_trailing_slash() {
+        let provider = AnthropicProvider::new(
+            "ant-key".to_string(),
+            Some("http://localhost:5000/".to_string()),
+        ).unwrap();
+        assert_eq!(provider.base_url, "http://localhost:5000/");
+    }
+
+    #[test]
+    fn test_google_provider_base_url_with_trailing_slash() {
+        let provider = GoogleProvider::new(
+            "goog-key".to_string(),
+            Some("http://localhost:6000/".to_string()),
+        ).unwrap();
+        assert_eq!(provider.base_url, "http://localhost:6000/");
+    }
+
+    #[test]
+    fn test_redacted_key_exactly_boundary_len_8() {
+        // 8 chars => [REDACTED], 9 chars => partial display
+        let k8 = RedactedKey("abcdefgh".to_string());
+        assert_eq!(format!("{:?}", k8), "[REDACTED]");
+        let k9 = RedactedKey("abcdefghi".to_string());
+        let dbg = format!("{:?}", k9);
+        assert!(dbg.contains("abcd"));
+        assert!(dbg.contains("fghi"));
+        assert!(dbg.contains("..."));
+    }
+
+    #[test]
+    fn test_redacted_key_unicode() {
+        // Unicode keys should not panic
+        let key = RedactedKey("🔑🔐🗝️🔓🔒securekeydata".to_string());
+        let dbg = format!("{:?}", key);
+        // length > 8 bytes, so it should show partial
+        assert!(dbg.contains("...") || dbg == "[REDACTED]");
+    }
+
+    #[tokio::test]
+    async fn test_ollama_provider_default_request() {
+        let provider = OllamaProvider::new().await.unwrap();
+        let request = InferenceRequest::default();
+        // infer with default request (no server) should produce a connection error
+        let err = provider.infer(request).await.unwrap_err();
+        assert!(!err.to_string().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_llama_cpp_provider_default_request() {
+        let provider = LlamaCppProvider::new().await.unwrap();
+        let request = InferenceRequest::default();
+        let err = provider.infer(request).await.unwrap_err();
+        assert!(!err.to_string().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_openai_provider_empty_prompt() {
+        let provider = OpenAiProvider::new(
+            "sk-fake".to_string(),
+            Some("http://127.0.0.1:19999".to_string()),
+        ).unwrap();
+        let request = InferenceRequest {
+            prompt: "".to_string(),
+            model: "gpt-4".to_string(),
+            max_tokens: 10,
+            temperature: 0.7,
+            top_p: 1.0,
+            presence_penalty: 0.0,
+            frequency_penalty: 0.0,
+        };
+        // Should fail with connection error, not panic on empty prompt
+        assert!(provider.infer(request).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_anthropic_provider_empty_prompt() {
+        let provider = AnthropicProvider::new(
+            "ant-fake".to_string(),
+            Some("http://127.0.0.1:19999".to_string()),
+        ).unwrap();
+        let request = InferenceRequest {
+            prompt: "".to_string(),
+            model: "claude-3-haiku".to_string(),
+            max_tokens: 10,
+            temperature: 0.5,
+            top_p: 1.0,
+            presence_penalty: 0.0,
+            frequency_penalty: 0.0,
+        };
+        assert!(provider.infer(request).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_google_provider_empty_prompt() {
+        let provider = GoogleProvider::new(
+            "goog-fake".to_string(),
+            Some("http://127.0.0.1:19999".to_string()),
+        ).unwrap();
+        let request = InferenceRequest {
+            prompt: "".to_string(),
+            model: "gemini-pro".to_string(),
+            max_tokens: 10,
+            temperature: 0.5,
+            top_p: 1.0,
+            presence_penalty: 0.0,
+            frequency_penalty: 0.0,
+        };
+        assert!(provider.infer(request).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_anthropic_list_models_max_tokens() {
+        let provider = AnthropicProvider::new("ant-key".to_string(), None).unwrap();
+        let models = provider.list_models().await.unwrap();
+        for model in &models {
+            assert_eq!(model.max_tokens, 8192, "All Anthropic models should have max_tokens=8192");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_anthropic_list_models_size_bytes_zero() {
+        let provider = AnthropicProvider::new("ant-key".to_string(), None).unwrap();
+        let models = provider.list_models().await.unwrap();
+        for model in &models {
+            assert_eq!(model.size_bytes, 0, "Cloud models should report 0 size_bytes");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_concurrent_provider_creation() {
+        let mut handles = vec![];
+        for _ in 0..10 {
+            handles.push(tokio::spawn(async {
+                OllamaProvider::new().await.is_ok()
+            }));
+        }
+        for handle in handles {
+            let result = handle.await.unwrap();
+            assert!(result, "Concurrent OllamaProvider::new() should succeed");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_llama_cpp_concurrent_list_models() {
+        let provider = std::sync::Arc::new(LlamaCppProvider::new().await.unwrap());
+        let mut handles = vec![];
+        for _ in 0..10 {
+            let p = provider.clone();
+            handles.push(tokio::spawn(async move {
+                p.list_models().await.unwrap()
+            }));
+        }
+        for handle in handles {
+            let models = handle.await.unwrap();
+            assert!(models.is_empty());
+        }
+    }
+
+    #[tokio::test]
+    async fn test_provider_trait_object_vec() {
+        let providers: Vec<Box<dyn LlmProvider>> = vec![
+            Box::new(OllamaProvider::new().await.unwrap()),
+            Box::new(LlamaCppProvider::new().await.unwrap()),
+            Box::new(OpenAiProvider::new("sk-test".to_string(), None).unwrap()),
+            Box::new(AnthropicProvider::new("ant-test".to_string(), None).unwrap()),
+            Box::new(GoogleProvider::new("goog-test".to_string(), None).unwrap()),
+        ];
+        assert_eq!(providers.len(), 5);
+        // All should support unload without panic
+        for p in &providers {
+            assert!(p.unload_model("any").await.is_ok());
+        }
+    }
+
+    #[tokio::test]
+    async fn test_openai_infer_stream_receiver_closes_on_error() {
+        let provider = OpenAiProvider::new(
+            "sk-fake".to_string(),
+            Some("http://127.0.0.1:19999".to_string()),
+        ).unwrap();
+        let mut rx = provider.infer_stream(InferenceRequest::default()).await.unwrap();
+        // First message should be error
+        let first = rx.recv().await;
+        assert!(first.is_some());
+        assert!(first.unwrap().is_err());
+        // Channel should be closed after error
+        let second = rx.recv().await;
+        assert!(second.is_none(), "Channel should close after error is sent");
+    }
+
+    #[tokio::test]
+    async fn test_anthropic_infer_stream_receiver_closes_on_error() {
+        let provider = AnthropicProvider::new(
+            "ant-fake".to_string(),
+            Some("http://127.0.0.1:19999".to_string()),
+        ).unwrap();
+        let mut rx = provider.infer_stream(InferenceRequest::default()).await.unwrap();
+        let first = rx.recv().await;
+        assert!(first.is_some());
+        assert!(first.unwrap().is_err());
+        let second = rx.recv().await;
+        assert!(second.is_none(), "Channel should close after error is sent");
+    }
+
+    #[tokio::test]
+    async fn test_google_infer_stream_receiver_closes_on_error() {
+        let provider = GoogleProvider::new(
+            "goog-fake".to_string(),
+            Some("http://127.0.0.1:19999".to_string()),
+        ).unwrap();
+        let mut rx = provider.infer_stream(InferenceRequest::default()).await.unwrap();
+        let first = rx.recv().await;
+        assert!(first.is_some());
+        assert!(first.unwrap().is_err());
+        let second = rx.recv().await;
+        assert!(second.is_none(), "Channel should close after error is sent");
+    }
+
+    #[test]
+    fn test_openai_provider_with_very_long_api_key() {
+        let long_key = "sk-".to_string() + &"a".repeat(1000);
+        let provider = OpenAiProvider::new(long_key, None);
+        assert!(provider.is_ok());
+        let dbg = format!("{:?}", provider.unwrap().api_key);
+        assert!(dbg.contains("sk-a"));
+        assert!(dbg.contains("..."));
+    }
+
+    #[test]
+    fn test_google_provider_with_very_long_api_key() {
+        let long_key = "goog-".to_string() + &"b".repeat(500);
+        let provider = GoogleProvider::new(long_key, None);
+        assert!(provider.is_ok());
+        let dbg = format!("{:?}", provider.unwrap().api_key);
+        assert!(dbg.contains("..."));
+    }
+
+    #[tokio::test]
+    async fn test_ollama_load_model_returns_correct_fields() {
+        // load_model will fail without server, but test the error path
+        let provider = OllamaProvider::new().await.unwrap();
+        let result = provider.load_model("llama2:7b").await;
+        // Ollama load_model makes HTTP request, will fail without server
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_google_load_model_error_message_exact() {
+        let provider = GoogleProvider::new("goog-key".to_string(), None).unwrap();
+        let err = provider.load_model("gemini-2.0-flash").await.unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "Google models are cloud-managed and cannot be loaded locally"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_anthropic_unload_empty_model_id() {
+        let provider = AnthropicProvider::new("ant-key".to_string(), None).unwrap();
+        assert!(provider.unload_model("").await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_google_unload_empty_model_id() {
+        let provider = GoogleProvider::new("goog-key".to_string(), None).unwrap();
+        assert!(provider.unload_model("").await.is_ok());
     }
 }

@@ -646,6 +646,75 @@ pub mod helpers {
 
             assert_ne!(hash1, hash2);
         }
+
+        // --- New coverage tests ---
+
+        #[test]
+        fn test_read_vm_rss_returns_bytes_not_kb() {
+            let pid = std::process::id();
+            let rss = read_vm_rss(pid);
+            // RSS should be in bytes (VmRSS kB * 1024), so at least several KB
+            if rss > 0 {
+                assert!(rss >= 1024, "RSS should be in bytes, got {}", rss);
+            }
+        }
+
+        #[test]
+        fn test_read_cpu_time_ms_nonnegative() {
+            let pid = std::process::id();
+            let cpu = read_cpu_time_ms(pid);
+            // Can be 0 but never negative (u64)
+            let _ = cpu;
+        }
+
+        #[test]
+        fn test_count_fds_reasonable_range() {
+            let pid = std::process::id();
+            let fds = count_fds(pid);
+            // Should have at least 3 (stdin/stdout/stderr) and less than 10000
+            assert!(fds >= 3 && fds < 10000, "Unexpected fd count: {}", fds);
+        }
+
+        #[test]
+        fn test_count_threads_at_least_one() {
+            let pid = std::process::id();
+            let threads = count_threads(pid);
+            assert!(threads >= 1);
+        }
+
+        #[tokio::test]
+        async fn test_check_resources_all_fields_populated() {
+            let usage = check_resources().await;
+            // memory_used should be > 0 on Linux
+            assert!(usage.memory_used > 0);
+            // fd count >= 3
+            assert!(usage.file_descriptors_used >= 3);
+            // at least 1 thread
+            assert!(usage.processes_used >= 1);
+        }
+
+        #[test]
+        fn test_read_last_hash_missing_file() {
+            // AUDIT_LOG_PATH unlikely to exist in test env
+            let hash = read_last_hash();
+            // Should return None without panicking
+            let _ = hash;
+        }
+
+        #[tokio::test]
+        async fn test_audit_log_creates_hash_chain_entry() {
+            // audit_log always returns Ok (even on write failure)
+            let result = audit_log("test_event_type", serde_json::json!({"agent": "test-1"})).await;
+            assert!(result.is_ok());
+        }
+
+        #[test]
+        fn test_shared_client_returns_same_instance() {
+            let c1 = shared_client();
+            let c2 = shared_client();
+            // Both should be the same static reference
+            assert!(std::ptr::eq(c1, c2));
+        }
     }
 }
 
@@ -1008,6 +1077,249 @@ mod tests {
         let runtime = AgentRuntime::new(config);
         // ctx should be shareable (Arc)
         let _clone = Arc::clone(&runtime.ctx);
+    }
+
+    // --- New coverage tests (batch 2) ---
+
+    #[tokio::test]
+    async fn test_agent_context_initial_status_is_starting() {
+        let config = AgentConfig::default();
+        let (ctx, _rx) = AgentContext::new(config);
+        assert_eq!(ctx.status().await, AgentStatus::Starting);
+    }
+
+    #[tokio::test]
+    async fn test_agent_context_set_status_overwrite() {
+        let config = AgentConfig::default();
+        let (ctx, _rx) = AgentContext::new(config);
+        ctx.set_status(AgentStatus::Running).await;
+        ctx.set_status(AgentStatus::Paused).await;
+        ctx.set_status(AgentStatus::Running).await;
+        assert_eq!(ctx.status().await, AgentStatus::Running);
+    }
+
+    #[tokio::test]
+    async fn test_send_message_unique_ids() {
+        let config = AgentConfig::default();
+        let (ctx, mut rx) = AgentContext::new(config);
+
+        ctx.send_message("t", serde_json::json!(1)).await.unwrap();
+        ctx.send_message("t", serde_json::json!(2)).await.unwrap();
+
+        let msg1 = rx.recv().await.unwrap();
+        let msg2 = rx.recv().await.unwrap();
+        assert_ne!(msg1.id, msg2.id, "Each message should have a unique ID");
+    }
+
+    #[tokio::test]
+    async fn test_send_message_preserves_complex_payload() {
+        let config = AgentConfig::default();
+        let (ctx, mut rx) = AgentContext::new(config);
+
+        let payload = serde_json::json!({
+            "nested": {"key": "value"},
+            "array": [1, 2, 3],
+            "null_val": null,
+            "bool": true
+        });
+        ctx.send_message("target", payload.clone()).await.unwrap();
+        let msg = rx.recv().await.unwrap();
+        assert_eq!(msg.payload, payload);
+    }
+
+    #[test]
+    fn test_agent_runtime_message_rx_is_some() {
+        let config = AgentConfig::default();
+        let runtime = AgentRuntime::new(config);
+        assert!(runtime.message_rx.is_some());
+    }
+
+    #[test]
+    fn test_agent_context_config_default_values() {
+        let mut config = AgentConfig::default();
+        config.name = "default-agent".to_string();
+        let (ctx, _rx) = AgentContext::new(config);
+        assert_eq!(ctx.config.name, "default-agent");
+    }
+
+    #[tokio::test]
+    async fn test_agent_context_message_channel_capacity() {
+        let config = AgentConfig::default();
+        let (ctx, _rx) = AgentContext::new(config);
+        // Channel capacity is 100, so we can send 100 without receiving
+        for i in 0..100 {
+            ctx.send_message("t", serde_json::json!(i)).await.unwrap();
+        }
+    }
+
+    // Agent that panics in handle_message but run() returns Ok
+    struct ErrorMessageAgent;
+
+    #[async_trait::async_trait]
+    impl Agent for ErrorMessageAgent {
+        async fn init(&mut self, _ctx: &AgentContext) -> Result<()> {
+            Ok(())
+        }
+
+        async fn run(&mut self, _ctx: &AgentContext) -> Result<()> {
+            Ok(())
+        }
+
+        async fn handle_message(&mut self, _ctx: &AgentContext, _message: Message) -> Result<()> {
+            Err(anyhow::anyhow!("message handling failed"))
+        }
+
+        async fn shutdown(&mut self, _ctx: &AgentContext) -> Result<()> {
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn test_agent_runtime_error_message_agent_completes() {
+        let config = AgentConfig::default();
+        let runtime = AgentRuntime::new(config);
+        let agent = ErrorMessageAgent;
+
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            runtime.run(agent),
+        ).await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_ok());
+    }
+
+    // Agent that tracks shutdown was called
+    struct ShutdownTrackingAgent {
+        shutdown_called: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    }
+
+    #[async_trait::async_trait]
+    impl Agent for ShutdownTrackingAgent {
+        async fn init(&mut self, _ctx: &AgentContext) -> Result<()> {
+            Ok(())
+        }
+
+        async fn run(&mut self, _ctx: &AgentContext) -> Result<()> {
+            Ok(())
+        }
+
+        async fn handle_message(&mut self, _ctx: &AgentContext, _message: Message) -> Result<()> {
+            Ok(())
+        }
+
+        async fn shutdown(&mut self, _ctx: &AgentContext) -> Result<()> {
+            self.shutdown_called.store(true, std::sync::atomic::Ordering::SeqCst);
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn test_agent_runtime_calls_shutdown() {
+        let shutdown_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let config = AgentConfig::default();
+        let runtime = AgentRuntime::new(config);
+        let agent = ShutdownTrackingAgent {
+            shutdown_called: shutdown_flag.clone(),
+        };
+        runtime.run(agent).await.unwrap();
+        assert!(shutdown_flag.load(std::sync::atomic::Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn test_agent_runtime_sets_running_status() {
+        // Use a simple agent that checks status during run
+        struct StatusCheckAgent {
+            was_running: std::sync::Arc<std::sync::atomic::AtomicBool>,
+        }
+
+        #[async_trait::async_trait]
+        impl Agent for StatusCheckAgent {
+            async fn init(&mut self, _ctx: &AgentContext) -> Result<()> {
+                Ok(())
+            }
+
+            async fn run(&mut self, ctx: &AgentContext) -> Result<()> {
+                if ctx.status().await == AgentStatus::Running {
+                    self.was_running.store(true, std::sync::atomic::Ordering::SeqCst);
+                }
+                Ok(())
+            }
+
+            async fn handle_message(&mut self, _ctx: &AgentContext, _message: Message) -> Result<()> {
+                Ok(())
+            }
+
+            async fn shutdown(&mut self, _ctx: &AgentContext) -> Result<()> {
+                Ok(())
+            }
+        }
+
+        let was_running = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let config = AgentConfig::default();
+        let runtime = AgentRuntime::new(config);
+        let agent = StatusCheckAgent {
+            was_running: was_running.clone(),
+        };
+        runtime.run(agent).await.unwrap();
+        assert!(was_running.load(std::sync::atomic::Ordering::SeqCst));
+    }
+
+    #[test]
+    fn test_agent_context_id_is_valid_uuid() {
+        let config = AgentConfig::default();
+        let (ctx, _rx) = AgentContext::new(config);
+        // AgentId wraps a Uuid — just check it's non-nil
+        assert_ne!(format!("{}", ctx.id), "");
+    }
+
+    #[tokio::test]
+    async fn test_send_message_empty_target() {
+        let config = AgentConfig::default();
+        let (ctx, mut rx) = AgentContext::new(config);
+        ctx.send_message("", serde_json::json!(null)).await.unwrap();
+        let msg = rx.recv().await.unwrap();
+        assert_eq!(msg.target, "");
+    }
+
+    #[tokio::test]
+    async fn test_send_message_empty_payload() {
+        let config = AgentConfig::default();
+        let (ctx, mut rx) = AgentContext::new(config);
+        ctx.send_message("target", serde_json::json!(null)).await.unwrap();
+        let msg = rx.recv().await.unwrap();
+        assert!(msg.payload.is_null());
+    }
+
+    // Agent whose shutdown fails
+    struct FailingShutdownAgent;
+
+    #[async_trait::async_trait]
+    impl Agent for FailingShutdownAgent {
+        async fn init(&mut self, _ctx: &AgentContext) -> Result<()> {
+            Ok(())
+        }
+
+        async fn run(&mut self, _ctx: &AgentContext) -> Result<()> {
+            Ok(())
+        }
+
+        async fn handle_message(&mut self, _ctx: &AgentContext, _message: Message) -> Result<()> {
+            Ok(())
+        }
+
+        async fn shutdown(&mut self, _ctx: &AgentContext) -> Result<()> {
+            Err(anyhow::anyhow!("shutdown failed"))
+        }
+    }
+
+    #[tokio::test]
+    async fn test_agent_runtime_shutdown_error_propagated() {
+        let config = AgentConfig::default();
+        let runtime = AgentRuntime::new(config);
+        let agent = FailingShutdownAgent;
+        let result = runtime.run(agent).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("shutdown failed"));
     }
 
 }

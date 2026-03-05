@@ -1,230 +1,284 @@
-# AGNOS Performance Benchmarks
-
-This document describes the benchmark infrastructure, how to run and interpret
-benchmarks, current performance targets, and the plan for CI regression tracking.
+# Performance Benchmarks
 
 ## Overview
 
-AGNOS uses [Criterion.rs](https://github.com/bheisler/criterion.rs) (v0.5) for
-all Rust benchmarks. Benchmarks live in the `benches/` directory of each
-workspace crate and are compiled as separate binaries with `harness = false`.
+AGNOS includes a benchmark suite built on [Criterion.rs](https://github.com/bheisler/criterion.rs) (v0.5) to measure and track performance across four core userland packages. Benchmarks live in `benches/` directories alongside their crates and are compiled as separate binaries (`harness = false`).
 
-There are two tiers of benchmarks:
+The suite is split into two tiers:
 
-| Tier | Purpose | Example |
-|------|---------|---------|
-| **Micro** | Measure individual operations (ID generation, serialization, parsing) | `agent_id_generation`, `inference_request_serialize` |
-| **System** | Measure end-to-end flows across multiple subsystems | `system/agent_lifecycle_create_register_unregister`, `system/ipc_messagebus_roundtrip` |
+| Tier | Purpose | Count |
+|------|---------|-------|
+| **Micro-benchmarks** | Isolated operations -- ID generation, serialization, parsing | 36 |
+| **System-level benchmarks** | End-to-end flows with async I/O, concurrency, and real subsystem interaction | 10 |
+
+**Total: 46 benchmarks** across 5 bench files in 4 packages.
 
 ## Running Benchmarks
 
-### Run all benchmarks
+### All benchmarks
 
 ```bash
-cargo bench
+cargo bench --workspace
 ```
 
-### Run benchmarks for a single crate
+### Per-package
 
 ```bash
+cargo bench -p agnos-common
 cargo bench -p agent_runtime
-cargo bench -p agnos_common
 cargo bench -p ai_shell
 cargo bench -p llm_gateway
 ```
 
-### Run a specific benchmark by name filter
+### Filter by name
 
 ```bash
-cargo bench -- "system/agent"
-cargo bench -- "interpreter_parse"
+cargo bench -p agent_runtime -- "agent_id"
+cargo bench -p agent_runtime -- "system/"
 ```
 
-### Run benchmarks without plotting (faster, no gnuplot dependency)
+### Save and compare baselines
 
 ```bash
-cargo bench -- --noplot
-```
-
-### Save a baseline for later comparison
-
-```bash
-cargo bench -- --save-baseline before-optimization
+cargo bench -- --save-baseline before-change
 # ... make changes ...
-cargo bench -- --baseline before-optimization
+cargo bench -- --baseline before-change
 ```
 
-## Performance Targets (Alpha)
+### Fast CI mode (no plots, shorter measurement)
 
-These targets must be met before the Q2 2026 Alpha release. Values marked
-"current" were measured on an AMD Ryzen 9 7950X / 64 GB DDR5 development
-machine and may vary on different hardware.
+```bash
+cargo bench -- --noplot --warm-up-time 1 --measurement-time 3
+```
 
-| Metric | Target | Current | Status |
-|--------|--------|---------|--------|
-| Boot time (kernel + userland init) | < 10 s | not yet measured | pending |
-| Agent spawn time (create + register) | < 500 ms | ~300 ms | on track |
-| Shell response time (parse + translate) | < 100 ms | ~50 ms | on track |
-| Memory overhead (idle, 0 agents) | < 2 GB | ~1.2 GB | on track |
-| IPC round-trip (MessageBus send_to) | < 1 ms | ~20 us | on track |
-| Orchestrator submit (single task) | < 5 ms | ~50 us | on track |
-| Memory reserve+release cycle | < 1 ms | ~10 us | on track |
+Reports are written to `target/criterion/`. Open `target/criterion/report/index.html` for the overview dashboard.
 
-## Benchmark Index
+## Micro-Benchmarks
 
-### agnos-common (8 micro-benchmarks)
+### agnos-common (9 benchmarks)
 
-File: `userland/agnos-common/benches/agnos_common.rs`
+File: [`userland/agnos-common/benches/agnos_common.rs`](../../userland/agnos-common/benches/agnos_common.rs)
 
-| Name | What it measures |
-|------|-----------------|
-| `agent_id_new` | UUID v4 agent ID generation |
-| `agent_id_to_string` | AgentId -> String conversion |
-| `agent_id_display` | AgentId Display formatting |
-| `inference_request_serialize` | InferenceRequest -> JSON |
-| `inference_request_deserialize` | JSON -> InferenceRequest |
-| `agent_config_default` | AgentConfig::default() |
-| `agent_config_new` | AgentConfig construction with fields |
-| `serde_json_to_string` | AgentConfig JSON serialization |
-| `serde_json_to_vec` | AgentConfig JSON-to-bytes |
+| Benchmark | What it measures |
+|---|---|
+| `agent_id_new` | `AgentId::new()` -- UUID v4 generation |
+| `agent_id_to_string` | `AgentId` to `String` conversion |
+| `agent_id_display` | `AgentId` via `Display` trait (format!) |
+| `inference_request_serialize` | `InferenceRequest` to JSON string via serde |
+| `inference_request_deserialize` | JSON string to `InferenceRequest` via serde |
+| `agent_config_default` | `AgentConfig::default()` construction |
+| `agent_config_new` | Full `AgentConfig` with `AgentType::Service` + permissions |
+| `serde_json_to_string` | `AgentConfig` serialized to JSON `String` |
+| `serde_json_to_vec` | `AgentConfig` serialized to JSON `Vec<u8>` |
 
-### agent-runtime micro (11 micro-benchmarks)
+### agent-runtime (11 benchmarks)
 
-File: `userland/agent-runtime/benches/bench.rs`
+File: [`userland/agent-runtime/benches/bench.rs`](../../userland/agent-runtime/benches/bench.rs)
 
-| Name | What it measures |
-|------|-----------------|
-| `agent_id_generation` | AgentId::new() |
-| `agent_config_creation` | AgentConfig struct creation |
-| `orchestrator_task_creation` | Task struct creation with UUID |
-| `agent_handle_clone` | Clone of AgentHandle |
-| `task_priority_ordering` | Vec of TaskPriority variants |
-| `task_result_serialize` | TaskResult -> JSON |
-| `task_payload_json_parse` | JSON -> serde_json::Value |
-| `agent_status_clone` | AgentStatus clone |
-| `resource_usage_default` | ResourceUsage::default() |
-| `agent_handle_creation` | Full AgentHandle construction |
-| `task_result_creation` | Full TaskResult construction |
+| Benchmark | What it measures |
+|---|---|
+| `agent_id_generation` | `AgentId::new()` via `black_box` |
+| `agent_config_creation` | Full `AgentConfig` struct construction |
+| `orchestrator_task_creation` | `Task` struct with UUID, chrono timestamp, JSON payload |
+| `agent_handle_clone` | Clone cost of `AgentHandle` (String + DateTime + ResourceUsage) |
+| `task_priority_ordering` | Priority enum vector creation (Critical through Background) |
+| `task_result_serialize` | `TaskResult` to JSON serialization |
+| `task_payload_json_parse` | Nested JSON payload deserialization to `serde_json::Value` |
+| `agent_status_clone` | `AgentStatus` enum clone |
+| `resource_usage_default` | `ResourceUsage::default()` construction |
+| `agent_handle_creation` | Full `AgentHandle` construction with UUID + timestamp |
+| `task_result_creation` | Full `TaskResult` construction with UUID + JSON result |
 
-### agent-runtime system (10 system-level benchmarks)
+### ai-shell (9 benchmarks)
 
-File: `userland/agent-runtime/benches/system_bench.rs`
+File: [`userland/ai-shell/benches/ai_shell.rs`](../../userland/ai-shell/benches/ai_shell.rs)
 
-| Name | What it measures |
-|------|-----------------|
-| `system/agent_lifecycle_create_register_unregister` | Full agent create -> registry register -> unregister |
-| `system/agent_create` | Agent::new() with config (includes IPC channel setup) |
-| `system/registry_register_unregister/{1,10,50}` | N agents register + unregister throughput |
-| `system/ipc_messagebus_roundtrip` | Subscribe 2 agents, send A->B, send B->A |
-| `system/ipc_broadcast/{1,5,20}` | Publish to N subscribers via MessageBus |
-| `system/orchestrator_submit/{1,10,100}` | Submit N tasks, measure throughput |
-| `system/orchestrator_submit_mixed_priorities_50` | Submit 50 tasks across 5 priority levels |
-| `system/orchestrator_submit_and_result` | Submit task, store result, retrieve result |
-| `system/resource_memory_reserve_release` | Reserve 64 MB + release cycle |
-| `system/resource_memory_concurrent/{1,5,20}` | N concurrent 1 MB reserves via tokio::spawn |
+| Benchmark | What it measures |
+|---|---|
+| `interpreter_parse_simple` | Parse 8 natural-language commands (list, cd, copy, processes, etc.) |
+| `interpreter_parse_list_files` | Single parse: "show me all files in /home" |
+| `interpreter_parse_cd` | Single parse: "go to /tmp" |
+| `interpreter_translate_list_files` | Translate `Intent::ListFiles` to shell command string |
+| `interpreter_translate_cd` | Translate `Intent::ChangeDirectory` to shell command string |
+| `interpreter_explain_ls` | Explain `ls` command (no args) |
+| `interpreter_explain_cat` | Explain `cat /etc/hosts` command |
+| `interpreter_explain_rm` | Explain `rm -rf /tmp/test` command |
+| `interpreter_parse_10_commands` | Parse 10 mixed shell commands sequentially |
 
-### ai-shell (10 micro-benchmarks)
+### llm-gateway (7 benchmarks)
 
-File: `userland/ai-shell/benches/ai_shell.rs`
+File: [`userland/llm-gateway/benches/llm_gateway.rs`](../../userland/llm-gateway/benches/llm_gateway.rs)
 
-| Name | What it measures |
-|------|-----------------|
-| `interpreter_parse_simple` | Parse 8 natural-language commands |
-| `interpreter_parse_list_files` | Parse "show me all files in /home" |
-| `interpreter_parse_cd` | Parse "go to /tmp" |
-| `interpreter_translate_list_files` | Translate ListFiles intent to command |
-| `interpreter_translate_cd` | Translate ChangeDirectory intent |
-| `interpreter_explain_ls` | Explain "ls" command |
-| `interpreter_explain_cat` | Explain "cat /etc/hosts" |
-| `interpreter_explain_rm` | Explain "rm -rf /tmp/test" |
-| `interpreter_parse_10_commands` | Parse 10 mixed shell commands |
+| Benchmark | What it measures |
+|---|---|
+| `cache_key_generation` | Format-string cache key from model + prompt + temperature + top_p + max_tokens |
+| `hashmap_insert_100` | Insert 100 String key-value pairs into a fresh HashMap |
+| `hashmap_lookup_100` | Look up 100 keys in a pre-populated 100-entry HashMap |
+| `json_parse_small` | Deserialize 3 JSON strings to `InferenceRequest` |
+| `token_usage_default` | `TokenUsage::default()` construction |
+| `token_usage_calculation` | Set prompt/completion tokens and sum total |
+| `response_serialize` | `InferenceResponse` to JSON serialization |
 
-### llm-gateway (7 micro-benchmarks)
+## System-Level Benchmarks
 
-File: `userland/llm-gateway/benches/llm_gateway.rs`
+### agent-runtime (10 benchmarks)
 
-| Name | What it measures |
-|------|-----------------|
-| `cache_key_generation` | Format-based cache key from InferenceRequest |
-| `hashmap_insert_100` | Insert 100 String->String pairs |
-| `hashmap_lookup_100` | Look up 100 keys |
-| `json_parse_small` | Parse 3 JSON request strings |
-| `token_usage_default` | TokenUsage::default() |
-| `token_usage_calculation` | Token arithmetic |
-| `response_serialize` | InferenceResponse -> JSON |
+File: [`userland/agent-runtime/benches/system_bench.rs`](../../userland/agent-runtime/benches/system_bench.rs)
 
-**Total: 46 benchmarks** (36 micro + 10 system)
+These benchmarks use a Tokio runtime and exercise real async code paths including `Arc<RwLock>` contention, mpsc channels, and `tokio::spawn` concurrency.
 
-## Interpreting Results
+**Agent lifecycle**
 
-Criterion outputs reports to `target/criterion/`. Each benchmark gets a
-directory containing:
+| Benchmark | What it measures |
+|---|---|
+| `system/agent_lifecycle_create_register_unregister` | Full cycle: `Agent::new()` + registry register + unregister |
+| `system/agent_create` | `Agent::new()` only (includes IPC channel setup) |
+| `system/registry_register_unregister/{1,10,50}` | Register + unregister N agents; throughput scaling via `Throughput::Elements` |
 
-- `report/index.html` -- HTML report with violin plots and regression analysis
-- `estimates.json` -- machine-readable timing estimates (mean, median, std dev)
-- `new/` and `base/` -- raw sample data for current and baseline runs
+**IPC**
 
-Key values to look at:
+| Benchmark | What it measures |
+|---|---|
+| `system/ipc_messagebus_roundtrip` | Subscribe 2 agents, send A->B via `send_to`, then B->A; measures full round-trip |
+| `system/ipc_broadcast/{1,5,20}` | Publish one message to N subscribers; measures fan-out cost |
 
-- **mean** -- average time per iteration
-- **std dev** -- lower is better; high values indicate inconsistent performance
-- **change** -- percentage change vs. the saved baseline (shown as
-  "No change", "Improvement", or "Regression")
+**Orchestrator**
 
-Criterion uses statistical hypothesis testing. A benchmark is flagged as a
-regression only when the change exceeds the noise threshold (default 5%).
+| Benchmark | What it measures |
+|---|---|
+| `system/orchestrator_submit/{1,10,100}` | Submit N Normal-priority tasks; measures queue throughput |
+| `system/orchestrator_submit_mixed_priorities_50` | Submit 50 tasks across all 5 priority levels (Critical, High, Normal, Low, Background) |
+| `system/orchestrator_submit_and_result` | Submit task + store `TaskResult` + retrieve result by ID |
 
-## Adding New Benchmarks
+**Resource management**
 
-1. Add a benchmark function in the appropriate `benches/*.rs` file. Follow the
-   naming convention: `benchmark_<what>` for micro-benchmarks, `bench_<what>`
-   for system-level.
+| Benchmark | What it measures |
+|---|---|
+| `system/resource_memory_reserve_release` | Reserve 64 MB then release via `ResourceManager`; measures lock cycle |
+| `system/resource_memory_concurrent/{1,5,20}` | N concurrent `tokio::spawn` tasks each reserving 1 MB; measures contention scaling |
 
-2. Use `black_box()` around values that must not be optimized away.
+Parameterized benchmarks (those with `/{N}` suffixes) use Criterion `BenchmarkGroup` with `Throughput::Elements` so reports display ops/sec scaling curves.
 
-3. For async operations, create a `tokio::runtime::Runtime` outside the
-   benchmark closure and use `rt.block_on()` inside `b.iter()`.
+### llm-gateway (planned)
 
-4. Add the function to the relevant `criterion_group!()` macro.
+The following system-level benchmarks are planned for the llm-gateway package:
 
-5. If creating a new bench file, add a `[[bench]]` section to `Cargo.toml`:
+- **Cache throughput** -- sustained insert + lookup under concurrent load
+- **Cache hit/miss ratio** -- measure lookup latency for hits vs. misses
+- **Token accounting** -- concurrent token usage accumulation across requests
+- **Provider selection** -- health-aware fallback with `ProviderHealth` retry logic
+- **Inference pipeline** -- end-to-end: request parse, cache check, provider call, response format
+- **Cache cleanup** -- eviction performance under memory pressure
+
+### ai-shell (planned)
+
+The following system-level benchmarks are planned for the ai-shell package:
+
+- **Session lifecycle** -- create session, execute commands, teardown
+- **Multi-command pipeline** -- throughput of N commands in sequence
+- **Prompt rendering** -- latency of prompt string construction
+- **Intent classification** -- batch classification accuracy and speed
+- **History search** -- search across large session history
+- **Explain pipeline** -- end-to-end: parse command, translate, generate explanation
+
+## Performance Targets
+
+Key performance indicators for alpha readiness (Q2 2026):
+
+| Metric | Target | Current Estimate | Status |
+|---|---|---|---|
+| Agent spawn time (create + register) | < 500 ms | ~300 ms | On track |
+| Shell response time (local parse + translate) | < 100 ms | ~50 ms | On track |
+| Memory overhead (idle, 0 agents) | < 2 GB | ~1.2 GB | On track |
+| IPC round-trip (MessageBus send_to) | < 1 ms | ~20 us | On track |
+| Cache lookup (HashMap get) | < 100 us | Sub-100 us | On track |
+| Orchestrator submit (single task) | < 5 ms | ~50 us | On track |
+| Memory reserve + release cycle | < 1 ms | ~10 us | On track |
+| Boot time (kernel + userland init) | < 10 s | N/A | Requires hardware |
+
+Current estimates were measured on an AMD Ryzen 9 7950X / 64 GB DDR5 development machine. These will be replaced with CI-tracked medians once automated regression tracking is in place.
+
+## CI Integration
+
+### Current state
+
+- Benchmarks run locally via `cargo bench`.
+- Criterion writes HTML reports to `target/criterion/` with automatic comparison against the previous run.
+- The CI pipeline (`.github/workflows/ci.yml`) includes a benchmark step with `continue-on-error: true` so fluctuations do not block merges.
+- Benchmark output is uploaded as a CI artifact for manual review.
+
+### Planned: Criterion HTML report archiving
+
+Archive Criterion reports as CI artifacts on every merge to `main`. This provides a browsable history of performance changes without external tooling.
+
+### Planned: bencher.dev integration
+
+Track benchmark results over time with automated regression alerts:
+
+```yaml
+- name: Run benchmarks
+  run: cargo bench --workspace -- --output-format bencher | tee results.txt
+- name: Upload to Bencher
+  uses: bencherdev/bencher@v0.4
+  with:
+    command: bencher run --project agnos --file results.txt
+```
+
+### Planned: Regression thresholds
+
+Once baselines are stable, configure hard thresholds -- flag CI failure when any benchmark regresses by more than 15% compared to the rolling baseline.
+
+### Tips for reliable CI results
+
+- Use dedicated runners or reduce sample size (`--sample-size 20`) to minimize noise on shared runners.
+- Run benchmarks in a separate CI job from unit tests to avoid resource contention.
+- Use `--warm-up-time 1 --measurement-time 3` for faster CI cycles when absolute numbers are less important than relative change detection.
+
+## Contributing
+
+### Adding a micro-benchmark
+
+1. Open the relevant `benches/*.rs` file for the package.
+2. Add a function following the established pattern:
+   ```rust
+   fn benchmark_my_operation(c: &mut Criterion) {
+       c.bench_function("my_operation_name", |b| {
+           b.iter(|| {
+               black_box(my_operation());
+           });
+       });
+   }
+   ```
+3. Register it in the `criterion_group!` macro at the bottom of the file.
+4. Run `cargo bench -p <package> -- "my_operation_name"` to verify.
+5. Update the benchmark tables in this document.
+
+### Adding a system-level benchmark
+
+1. Add the benchmark to the appropriate `benches/system_bench.rs` file. If one does not exist for the package, create it and add a `[[bench]]` entry in `Cargo.toml`:
    ```toml
    [[bench]]
-   name = "my_bench"
+   name = "system_bench"
    harness = false
    ```
+2. Use `tokio::runtime::Runtime::new().unwrap()` outside the closure and `rt.block_on(async { ... })` inside `b.iter()`.
+3. For parameterized benchmarks, use `BenchmarkGroup` with `Throughput::Elements`:
+   ```rust
+   let mut group = c.benchmark_group("system/my_group");
+   for n in [1, 10, 100] {
+       group.throughput(Throughput::Elements(n as u64));
+       group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, &n| {
+           b.iter(|| { /* ... */ });
+       });
+   }
+   group.finish();
+   ```
+4. Prefix all system benchmark names with `system/` for easy filtering.
 
-6. Update the benchmark index table in this document.
+### Naming conventions
 
-7. Run `cargo bench -- "<your_bench_name>"` to verify.
-
-## CI Regression Tracking Plan
-
-The CI pipeline (`.github/workflows/ci.yml`) includes a benchmark step that:
-
-1. Runs `cargo bench -- --noplot` on every push to `main` and `develop` and on
-   every pull request.
-2. The step is configured with `continue-on-error: true` so benchmark
-   fluctuations do not block merges.
-3. Benchmark output is uploaded as a CI artifact for manual review.
-
-### Future improvements (post-Alpha)
-
-- Store baseline results in a dedicated `gh-pages` branch or S3 bucket.
-- Use [criterion-compare-action](https://github.com/boa-dev/criterion-compare-action)
-  to post benchmark diffs as PR comments.
-- Set hard regression thresholds (e.g., > 15% slowdown = CI failure) once
-  baselines are stable.
-- Add integration benchmarks that measure full boot-to-agent-ready time in a
-  VM or container.
-
-## Coverage Gate
-
-The CI pipeline enforces a minimum code coverage threshold using cargo-tarpaulin:
-
-```
-cargo tarpaulin --fail-under 65
-```
-
-The current threshold is **65%** (actual coverage: ~62%). This will be raised
-incrementally toward the Alpha target of **80%**.
+| Category | Pattern | Example |
+|---|---|---|
+| Micro-benchmark | `<noun>_<operation>` | `agent_id_new`, `task_result_serialize` |
+| System benchmark | `system/<subsystem>_<operation>` | `system/ipc_broadcast`, `system/orchestrator_submit` |
+| Parameterized | auto-appended `/{N}` via `BenchmarkId` | `system/registry_register_unregister/50` |

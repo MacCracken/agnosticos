@@ -10,9 +10,12 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::{mpsc, RwLock};
 use tracing::{debug, error, info, warn};
-use uuid::Uuid;
 
-use agnos_common::{AgentId, Message, MessageType};
+use agnos_common::{AgentId, Message};
+#[cfg(test)]
+use agnos_common::MessageType;
+#[cfg(test)]
+use uuid::Uuid;
 
 /// Maximum size of a single IPC message (64 KB).
 const MAX_MESSAGE_SIZE: u32 = 64 * 1024;
@@ -28,7 +31,7 @@ pub struct AgentIpc {
     agent_id: AgentId,
     socket_path: std::path::PathBuf,
     message_tx: mpsc::Sender<Message>,
-    message_rx: Option<mpsc::Receiver<Message>>,
+    _message_rx: Option<mpsc::Receiver<Message>>,
 }
 
 impl AgentIpc {
@@ -41,7 +44,7 @@ impl AgentIpc {
             agent_id,
             socket_path,
             message_tx,
-            message_rx: None,
+            _message_rx: None,
         };
 
         Ok((ipc, message_rx))
@@ -417,7 +420,7 @@ mod tests {
             agent_id,
             socket_path: sock_path.clone(),
             message_tx: tx,
-            message_rx: None,
+            _message_rx: None,
         };
         drop(ipc);
         assert!(!sock_path.exists());
@@ -1016,5 +1019,139 @@ mod tests {
         drop(client);
         let _ = std::fs::remove_file(&sock_path);
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    // ==================================================================
+    // New coverage: length-prefix encoding/decoding, MessageBus routing,
+    // IPC construction details, multiple global subscribers, try_send
+    // ==================================================================
+
+    #[test]
+    fn test_length_prefix_encoding_roundtrip() {
+        let msg = Message {
+            id: "roundtrip".to_string(),
+            source: "test".to_string(),
+            target: "target".to_string(),
+            message_type: MessageType::Command,
+            payload: serde_json::json!({"key": "value"}),
+            timestamp: chrono::Utc::now(),
+        };
+        let bytes = serde_json::to_vec(&msg).unwrap();
+        let len_bytes = (bytes.len() as u32).to_be_bytes();
+
+        // Decode the length prefix
+        let decoded_len = u32::from_be_bytes(len_bytes);
+        assert_eq!(decoded_len as usize, bytes.len());
+
+        // Decode the message
+        let decoded: Message = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(decoded.id, "roundtrip");
+    }
+
+    #[test]
+    fn test_length_prefix_zero() {
+        let len_bytes = 0u32.to_be_bytes();
+        let decoded = u32::from_be_bytes(len_bytes);
+        assert_eq!(decoded, 0);
+    }
+
+    #[test]
+    fn test_length_prefix_max_message_size() {
+        let len_bytes = MAX_MESSAGE_SIZE.to_be_bytes();
+        let decoded = u32::from_be_bytes(len_bytes);
+        assert_eq!(decoded, MAX_MESSAGE_SIZE);
+    }
+
+    #[tokio::test]
+    async fn test_message_bus_multiple_global_subscribers() {
+        let bus = MessageBus::new();
+        let mut receivers = Vec::new();
+
+        for _ in 0..3 {
+            let (tx, rx) = mpsc::channel(10);
+            bus.subscribe_global(tx).await.unwrap();
+            receivers.push(rx);
+        }
+
+        let msg = Message {
+            id: "multi-global".to_string(),
+            source: "test".to_string(),
+            target: "broadcast".to_string(),
+            message_type: MessageType::Event,
+            payload: serde_json::json!({}),
+            timestamp: chrono::Utc::now(),
+        };
+
+        bus.publish(msg).await.unwrap();
+
+        // All global subscribers should receive the message
+        for rx in &mut receivers {
+            let received = rx.recv().await;
+            assert!(received.is_some());
+            assert_eq!(received.unwrap().id, "multi-global");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_message_bus_publish_targeted_does_not_broadcast() {
+        let bus = MessageBus::new();
+        let id1 = AgentId::new();
+        let id2 = AgentId::new();
+        let (tx1, mut rx1) = mpsc::channel(10);
+        let (tx2, mut rx2) = mpsc::channel(10);
+
+        bus.subscribe(id1, tx1).await;
+        bus.subscribe(id2, tx2).await;
+        bus.register_agent_name(id1, "agent-one").await;
+        bus.register_agent_name(id2, "agent-two").await;
+
+        let msg = Message {
+            id: "targeted".to_string(),
+            source: "test".to_string(),
+            target: "agent-one".to_string(),
+            message_type: MessageType::Command,
+            payload: serde_json::json!({}),
+            timestamp: chrono::Utc::now(),
+        };
+
+        bus.publish(msg).await.unwrap();
+
+        // Only agent-one should receive it
+        let received = rx1.recv().await;
+        assert!(received.is_some());
+
+        // agent-two should NOT receive it (use try_recv to avoid blocking)
+        let result = rx2.try_recv();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_agent_ipc_new_returns_receiver() {
+        let id = AgentId::new();
+        let (ipc, _rx) = AgentIpc::new(id).unwrap();
+        assert_eq!(ipc.agent_id, id);
+    }
+
+    #[tokio::test]
+    async fn test_agent_ipc_send_multiple() {
+        let id = AgentId::new();
+        let (ipc, mut rx) = AgentIpc::new(id).unwrap();
+
+        for i in 0..3 {
+            let msg = Message {
+                id: format!("ipc-multi-{}", i),
+                source: "test".to_string(),
+                target: id.to_string(),
+                message_type: MessageType::Event,
+                payload: serde_json::json!({}),
+                timestamp: chrono::Utc::now(),
+            };
+            ipc.send(msg).await.unwrap();
+        }
+
+        for i in 0..3 {
+            let received = rx.recv().await.unwrap();
+            assert_eq!(received.id, format!("ipc-multi-{}", i));
+        }
     }
 }

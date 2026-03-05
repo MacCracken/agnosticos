@@ -7,7 +7,7 @@
 mod tests {
     use crate::llm::{FinishReason, InferenceResponse, TokenUsage};
     use crate::{
-        AgentConfig, AgentId, AgentType, FilesystemRule, FsAccess, InferenceRequest, NetworkAccess,
+        AgentConfig, AgentId, FilesystemRule, FsAccess, InferenceRequest, NetworkAccess,
         Permission, ResourceLimits, SandboxConfig,
     };
 

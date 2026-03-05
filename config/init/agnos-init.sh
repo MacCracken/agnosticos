@@ -26,16 +26,34 @@ setup_directories() {
     chmod 750 /var/log/agnos
 }
 
+# Apply sysctl hardening (CIS compliance)
+setup_sysctl() {
+    log "Applying sysctl hardening..."
+
+    if [ -f /etc/sysctl.d/99-agnos-hardening.conf ]; then
+        sysctl -p /etc/sysctl.d/99-agnos-hardening.conf 2>/dev/null || true
+        log "Sysctl hardening applied"
+    else
+        log "Warning: /etc/sysctl.d/99-agnos-hardening.conf not found"
+    fi
+
+    # CIS 1.1.10 - Ensure /tmp has sticky bit
+    chmod 1777 /tmp 2>/dev/null || true
+}
+
 # Initialize security policies
 setup_security() {
     log "Initializing AGNOS security..."
-    
+
+    # Apply sysctl hardening first
+    setup_sysctl
+
     # Load SELinux policies if available
     if [ -f /etc/selinux/agnos/config ]; then
         log "Loading SELinux policies..."
         # semodule -i /usr/share/selinux/agnos/agnos.pp
     fi
-    
+
     # Set up Landlock rules
     if [ -x /usr/bin/agnos-setup-landlock ]; then
         log "Setting up Landlock..."

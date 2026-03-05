@@ -51,7 +51,7 @@ impl Agent for FileManagerAgent {
         Ok(())
     }
     
-    async fn handle_message(&mut self, ctx: &AgentContext, message: Message) -> Result<()> {
+    async fn handle_message(&mut self, _ctx: &AgentContext, message: Message) -> Result<()> {
         tracing::debug!("Received message: {:?}", message);
         
         // Handle file operation commands

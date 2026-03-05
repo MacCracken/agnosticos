@@ -1,19 +1,19 @@
 //! User interface components
 
 use anyhow::Result;
-use console::{style, Style, Term};
-use dialoguer::{theme::ColorfulTheme, Input};
+use console::{style, Term};
+use dialoguer::theme::ColorfulTheme;
 
 pub struct Ui {
     term: Term,
-    theme: ColorfulTheme,
+    _theme: ColorfulTheme,
 }
 
 impl Ui {
     pub fn new() -> Self {
         Self {
             term: Term::stdout(),
-            theme: ColorfulTheme::default(),
+            _theme: ColorfulTheme::default(),
         }
     }
     

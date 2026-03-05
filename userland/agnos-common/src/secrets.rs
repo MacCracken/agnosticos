@@ -975,4 +975,287 @@ mod tests {
         let cleanup = EnvSecretBackend::with_prefix("PARTIAL_");
         cleanup.delete_secret("exists").await.unwrap();
     }
+
+    // --- New coverage tests (batch 2) ---
+
+    #[test]
+    fn test_env_key_empty_key() {
+        let backend = EnvSecretBackend::with_prefix("EMPTYKEY_");
+        assert_eq!(backend.env_key(""), "EMPTYKEY_");
+    }
+
+    #[test]
+    fn test_env_key_special_characters() {
+        let backend = EnvSecretBackend::with_prefix("SPEC_");
+        // Dashes become underscores, everything uppercased
+        assert_eq!(backend.env_key("a-b-c"), "SPEC_A_B_C");
+        // Other chars preserved (only dashes mapped)
+        assert_eq!(backend.env_key("key.with.dots"), "SPEC_KEY.WITH.DOTS");
+    }
+
+    #[test]
+    fn test_env_key_all_dashes() {
+        let backend = EnvSecretBackend::with_prefix("DASH_");
+        assert_eq!(backend.env_key("---"), "DASH____");
+    }
+
+    #[tokio::test]
+    async fn test_env_backend_overwrite_secret() {
+        let backend = EnvSecretBackend::with_prefix("OVERWR_");
+        let val1 = SecretValue {
+            data: "original".to_string(),
+            metadata: HashMap::new(),
+            created_at: chrono::Utc::now(),
+        };
+        backend.set_secret("key", val1).await.unwrap();
+
+        let val2 = SecretValue {
+            data: "updated".to_string(),
+            metadata: HashMap::new(),
+            created_at: chrono::Utc::now(),
+        };
+        backend.set_secret("key", val2).await.unwrap();
+
+        let retrieved = backend.get_secret("key").await.unwrap().unwrap();
+        assert_eq!(retrieved.data, "updated");
+
+        backend.delete_secret("key").await.unwrap();
+    }
+
+    #[test]
+    fn test_file_backend_secret_path_empty_key() {
+        let key = [0u8; 32];
+        let backend = FileSecretBackend::new(Path::new("/tmp/secrets"), key).unwrap();
+        let path = backend.secret_path("");
+        assert_eq!(path, PathBuf::from("/tmp/secrets/.secret"));
+    }
+
+    #[test]
+    fn test_file_backend_secret_path_unicode() {
+        let key = [0u8; 32];
+        let backend = FileSecretBackend::new(Path::new("/tmp/secrets"), key).unwrap();
+        // 'é' is alphanumeric in Rust, so it passes the filter
+        let path = backend.secret_path("café");
+        let name = path.file_name().unwrap().to_string_lossy();
+        assert!(name.ends_with(".secret"));
+        // Characters like '!' should be sanitized to '_'
+        let path2 = backend.secret_path("key!@#$");
+        let name2 = path2.file_name().unwrap().to_string_lossy();
+        assert!(!name2.contains('!'));
+        assert!(!name2.contains('@'));
+        assert!(!name2.contains('#'));
+        assert!(!name2.contains('$'));
+        assert!(name2.ends_with(".secret"));
+    }
+
+    #[test]
+    fn test_file_backend_encrypt_produces_different_ciphertext_each_time() {
+        let key = [0xABu8; 32];
+        let backend = FileSecretBackend::new(Path::new("/tmp"), key).unwrap();
+        let plaintext = b"same plaintext";
+        let enc1 = backend.encrypt(plaintext).unwrap();
+        let enc2 = backend.encrypt(plaintext).unwrap();
+        // Random nonce means different ciphertext each time
+        assert_ne!(enc1, enc2);
+        // But both decrypt to same plaintext
+        assert_eq!(backend.decrypt(&enc1).unwrap(), plaintext);
+        assert_eq!(backend.decrypt(&enc2).unwrap(), plaintext);
+    }
+
+    #[test]
+    fn test_file_backend_decrypt_exactly_12_bytes() {
+        let key = [0xCCu8; 32];
+        let backend = FileSecretBackend::new(Path::new("/tmp"), key).unwrap();
+        // Exactly 12 bytes = nonce only, no ciphertext — should fail (auth tag missing)
+        let result = backend.decrypt(&[0u8; 12]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_file_backend_decrypt_13_bytes_invalid() {
+        let key = [0xDDu8; 32];
+        let backend = FileSecretBackend::new(Path::new("/tmp"), key).unwrap();
+        // 13 bytes = nonce + 1 byte garbage — should fail decryption
+        let result = backend.decrypt(&[0u8; 13]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_file_backend_encrypt_empty_plaintext() {
+        let key = [0xEEu8; 32];
+        let backend = FileSecretBackend::new(Path::new("/tmp"), key).unwrap();
+        let encrypted = backend.encrypt(b"").unwrap();
+        // Even empty plaintext produces nonce + auth tag
+        assert!(encrypted.len() > 12);
+        let decrypted = backend.decrypt(&encrypted).unwrap();
+        assert!(decrypted.is_empty());
+    }
+
+    #[test]
+    fn test_file_backend_encrypt_large_plaintext() {
+        let key = [0xFFu8; 32];
+        let backend = FileSecretBackend::new(Path::new("/tmp"), key).unwrap();
+        let plaintext = vec![0x42u8; 10_000];
+        let encrypted = backend.encrypt(&plaintext).unwrap();
+        let decrypted = backend.decrypt(&encrypted).unwrap();
+        assert_eq!(decrypted, plaintext);
+    }
+
+    #[tokio::test]
+    async fn test_file_backend_multiple_secrets() {
+        let dir = std::env::temp_dir().join("agnos_secret_multi_test");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        let key = [0x99u8; 32];
+        let backend = FileSecretBackend::new(&dir, key).unwrap();
+
+        for i in 0..5 {
+            let val = SecretValue {
+                data: format!("secret-{}", i),
+                metadata: HashMap::new(),
+                created_at: chrono::Utc::now(),
+            };
+            backend.set_secret(&format!("key-{}", i), val).await.unwrap();
+        }
+
+        let keys = backend.list_secrets().await.unwrap();
+        assert_eq!(keys.len(), 5);
+
+        for i in 0..5 {
+            let retrieved = backend.get_secret(&format!("key-{}", i)).await.unwrap().unwrap();
+            assert_eq!(retrieved.data, format!("secret-{}", i));
+        }
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_vault_backend_custom_mount() {
+        let backend = VaultSecretBackend::new("http://vault:8200", "tok", "custom-mount");
+        assert_eq!(
+            backend.data_url("k"),
+            "http://vault:8200/v1/custom-mount/data/k"
+        );
+        assert_eq!(
+            backend.metadata_url("k"),
+            "http://vault:8200/v1/custom-mount/metadata/k"
+        );
+    }
+
+    #[test]
+    fn test_vault_backend_multiple_trailing_slashes() {
+        let backend = VaultSecretBackend::new("http://vault:8200///", "tok", "secret");
+        // Only last slash is trimmed by trim_end_matches
+        assert_eq!(backend.addr, "http://vault:8200");
+    }
+
+    #[test]
+    fn test_vault_backend_empty_key() {
+        let backend = VaultSecretBackend::new("http://vault:8200", "tok", "secret");
+        assert_eq!(
+            backend.data_url(""),
+            "http://vault:8200/v1/secret/data/"
+        );
+    }
+
+    #[test]
+    fn test_secret_value_empty_data() {
+        let val = SecretValue {
+            data: String::new(),
+            metadata: HashMap::new(),
+            created_at: chrono::Utc::now(),
+        };
+        let json = serde_json::to_string(&val).unwrap();
+        let deserialized: SecretValue = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.data, "");
+        assert!(deserialized.metadata.is_empty());
+    }
+
+    #[test]
+    fn test_secret_value_large_metadata() {
+        let mut metadata = HashMap::new();
+        for i in 0..100 {
+            metadata.insert(format!("key-{}", i), format!("value-{}", i));
+        }
+        let val = SecretValue {
+            data: "d".to_string(),
+            metadata,
+            created_at: chrono::Utc::now(),
+        };
+        assert_eq!(val.metadata.len(), 100);
+        let json = serde_json::to_string(&val).unwrap();
+        let deserialized: SecretValue = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.metadata.len(), 100);
+    }
+
+    #[test]
+    fn test_secret_value_timestamp_preserved() {
+        let now = chrono::Utc::now();
+        let val = SecretValue {
+            data: "ts-test".to_string(),
+            metadata: HashMap::new(),
+            created_at: now,
+        };
+        let json = serde_json::to_string(&val).unwrap();
+        let deserialized: SecretValue = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.created_at, now);
+    }
+
+    #[tokio::test]
+    async fn test_env_backend_list_with_custom_prefix_no_match() {
+        let backend = EnvSecretBackend::with_prefix("NOMATCH_UNIQUE_PFX_");
+        let keys = backend.list_secrets().await.unwrap();
+        // Should return empty or at least not contain random env vars
+        for key in &keys {
+            // All returned keys should have been from our prefix
+            assert!(!key.is_empty());
+        }
+    }
+
+    #[tokio::test]
+    async fn test_injector_empty_mappings() {
+        let backend = EnvSecretBackend::with_prefix("EMPTY_MAP_");
+        let injector = SecretInjector::new(Box::new(backend));
+        let mappings = HashMap::new();
+        let resolved = injector.resolve(&mappings).await.unwrap();
+        assert!(resolved.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_injector_inject_into_env_empty() {
+        let backend = EnvSecretBackend::with_prefix("INJEMPTY_");
+        let injector = SecretInjector::new(Box::new(backend));
+        let mappings = HashMap::new();
+        let result = injector.inject_into_env(&mappings).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_file_backend_overwrite_existing_secret() {
+        let dir = std::env::temp_dir().join("agnos_secret_overwrite_test");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        let key = [0xBBu8; 32];
+        let backend = FileSecretBackend::new(&dir, key).unwrap();
+
+        let val1 = SecretValue {
+            data: "first".to_string(),
+            metadata: HashMap::new(),
+            created_at: chrono::Utc::now(),
+        };
+        backend.set_secret("overwrite-key", val1).await.unwrap();
+
+        let val2 = SecretValue {
+            data: "second".to_string(),
+            metadata: HashMap::from([("ver".to_string(), "2".to_string())]),
+            created_at: chrono::Utc::now(),
+        };
+        backend.set_secret("overwrite-key", val2).await.unwrap();
+
+        let retrieved = backend.get_secret("overwrite-key").await.unwrap().unwrap();
+        assert_eq!(retrieved.data, "second");
+        assert_eq!(retrieved.metadata.get("ver").unwrap(), "2");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

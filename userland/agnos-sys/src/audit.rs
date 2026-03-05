@@ -39,7 +39,7 @@ pub struct AuditHandle {
     /// The netlink socket fd (-1 if using proc-only mode)
     fd: i32,
     /// Configuration used to open this handle
-    config: AuditConfig,
+    _config: AuditConfig,
 }
 
 /// Configuration for opening an audit connection.
@@ -258,7 +258,7 @@ pub fn open_audit(config: &AuditConfig) -> Result<AuditHandle> {
 
         Ok(AuditHandle {
             fd,
-            config: config.clone(),
+            _config: config.clone(),
         })
     }
 
@@ -1213,7 +1213,7 @@ mod tests {
         // Create a dummy handle with fd=-1 (no socket)
         let handle = AuditHandle {
             fd: -1,
-            config: AuditConfig::default(),
+            _config: AuditConfig::default(),
         };
         let debug_str = format!("{:?}", handle);
         assert!(debug_str.contains("AuditHandle"));
@@ -1228,7 +1228,7 @@ mod tests {
     fn test_send_audit_event_no_socket() {
         let handle = AuditHandle {
             fd: -1,
-            config: AuditConfig { use_netlink: false, use_agnos_proc: false, proc_path: String::new() },
+            _config: AuditConfig { use_netlink: false, use_agnos_proc: false, proc_path: String::new() },
         };
         let result = send_audit_event(&handle, "test", "hello");
         assert!(result.is_err());
@@ -1244,7 +1244,7 @@ mod tests {
         assert!(fd >= 0);
         let handle = AuditHandle {
             fd,
-            config: AuditConfig::default(),
+            _config: AuditConfig::default(),
         };
         let result = send_audit_event(&handle, "", "message");
         assert!(result.is_err());
@@ -1259,7 +1259,7 @@ mod tests {
         assert!(fd >= 0);
         let handle = AuditHandle {
             fd,
-            config: AuditConfig::default(),
+            _config: AuditConfig::default(),
         };
         let big_message = "x".repeat(8193);
         let result = send_audit_event(&handle, "test", &big_message);
@@ -1273,7 +1273,7 @@ mod tests {
     fn test_get_audit_status_no_socket() {
         let handle = AuditHandle {
             fd: -1,
-            config: AuditConfig { use_netlink: false, use_agnos_proc: false, proc_path: String::new() },
+            _config: AuditConfig { use_netlink: false, use_agnos_proc: false, proc_path: String::new() },
         };
         let result = get_audit_status(&handle);
         assert!(result.is_err());
@@ -1285,7 +1285,7 @@ mod tests {
     fn test_set_audit_enabled_no_socket() {
         let handle = AuditHandle {
             fd: -1,
-            config: AuditConfig { use_netlink: false, use_agnos_proc: false, proc_path: String::new() },
+            _config: AuditConfig { use_netlink: false, use_agnos_proc: false, proc_path: String::new() },
         };
         let result = set_audit_enabled(&handle, true);
         assert!(result.is_err());
@@ -1300,7 +1300,7 @@ mod tests {
     fn test_add_audit_rule_validates_rule() {
         let handle = AuditHandle {
             fd: -1,
-            config: AuditConfig { use_netlink: false, use_agnos_proc: false, proc_path: String::new() },
+            _config: AuditConfig { use_netlink: false, use_agnos_proc: false, proc_path: String::new() },
         };
         // Invalid rule (empty key) should fail validation before checking fd
         let bad_rule = AuditRule {
@@ -1318,7 +1318,7 @@ mod tests {
     fn test_delete_audit_rule_validates_rule() {
         let handle = AuditHandle {
             fd: -1,
-            config: AuditConfig { use_netlink: false, use_agnos_proc: false, proc_path: String::new() },
+            _config: AuditConfig { use_netlink: false, use_agnos_proc: false, proc_path: String::new() },
         };
         let bad_rule = AuditRule {
             rule_type: AuditRuleType::SyscallWatch,
@@ -1335,7 +1335,7 @@ mod tests {
     fn test_add_audit_rule_no_socket() {
         let handle = AuditHandle {
             fd: -1,
-            config: AuditConfig { use_netlink: false, use_agnos_proc: false, proc_path: String::new() },
+            _config: AuditConfig { use_netlink: false, use_agnos_proc: false, proc_path: String::new() },
         };
         // Valid rule but fd=-1 should fail in send_rule_message
         let rule = AuditRule::file_watch("/etc/passwd", "test_key");
@@ -1349,7 +1349,7 @@ mod tests {
     fn test_delete_audit_rule_no_socket() {
         let handle = AuditHandle {
             fd: -1,
-            config: AuditConfig { use_netlink: false, use_agnos_proc: false, proc_path: String::new() },
+            _config: AuditConfig { use_netlink: false, use_agnos_proc: false, proc_path: String::new() },
         };
         let rule = AuditRule::syscall_watch(59, "test_key");
         let result = delete_audit_rule(&handle, &rule);
@@ -1365,7 +1365,7 @@ mod tests {
         // Should not panic when fd is -1
         let handle = AuditHandle {
             fd: -1,
-            config: AuditConfig::default(),
+            _config: AuditConfig::default(),
         };
         close_audit(handle);
     }
@@ -1485,7 +1485,7 @@ mod tests {
     #[test]
     fn test_send_audit_event_not_supported() {
         // Can't easily create an AuditHandle on non-Linux, so this tests the branch
-        let handle = AuditHandle { fd: -1, config: AuditConfig::default() };
+        let handle = AuditHandle { fd: -1, _config: AuditConfig::default() };
         let result = send_audit_event(&handle, "test", "msg");
         assert!(result.is_err());
     }
@@ -1494,6 +1494,130 @@ mod tests {
     #[test]
     fn test_agnos_audit_log_syscall_not_supported() {
         let result = agnos_audit_log_syscall("test", "data", 0);
+        assert!(result.is_err());
+    }
+
+    // --- New coverage tests ---
+
+    #[test]
+    fn test_audit_config_custom_values() {
+        let config = AuditConfig {
+            use_netlink: false,
+            use_agnos_proc: true,
+            proc_path: "/custom/path".to_string(),
+        };
+        assert!(!config.use_netlink);
+        assert!(config.use_agnos_proc);
+        assert_eq!(config.proc_path, "/custom/path");
+    }
+
+    #[test]
+    fn test_audit_config_default_proc_path() {
+        let config = AuditConfig::default();
+        assert_eq!(config.proc_path, "/proc/agnos/audit");
+    }
+
+    #[test]
+    fn test_audit_status_all_fields_nondefault() {
+        let status = AuditStatus {
+            enabled: 1,
+            failure_action: 2,
+            pid: 42,
+            backlog_limit: 16384,
+            lost: 100,
+            backlog: 50,
+        };
+        assert_eq!(status.enabled, 1);
+        assert_eq!(status.failure_action, 2);
+        assert_eq!(status.pid, 42);
+        assert_eq!(status.backlog_limit, 16384);
+        assert_eq!(status.lost, 100);
+        assert_eq!(status.backlog, 50);
+    }
+
+    #[test]
+    fn test_audit_rule_file_watch_from_owned_string() {
+        let path = String::from("/var/log/auth.log");
+        let key = String::from("auth_watch");
+        let rule = AuditRule::file_watch(path, key);
+        assert_eq!(rule.path.as_deref(), Some("/var/log/auth.log"));
+        assert_eq!(rule.key, "auth_watch");
+    }
+
+    #[test]
+    fn test_audit_rule_syscall_watch_zero() {
+        let rule = AuditRule::syscall_watch(0, "read_watch");
+        assert_eq!(rule.syscall, Some(0));
+        assert!(rule.validate().is_ok());
+    }
+
+    #[test]
+    fn test_audit_rule_validate_file_watch_root_path() {
+        let rule = AuditRule::file_watch("/", "root");
+        assert!(rule.validate().is_ok());
+    }
+
+    #[test]
+    fn test_audit_rule_validate_key_1_char() {
+        let rule = AuditRule::file_watch("/etc/passwd", "k");
+        assert!(rule.validate().is_ok());
+    }
+
+    #[test]
+    fn test_read_agnos_audit_events_with_trailing_newlines() {
+        let dir = std::env::temp_dir().join("agnos_audit_test_trail");
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("trailing.json");
+
+        let entry = RawAuditEntry {
+            sequence: 99,
+            timestamp_ns: 5000,
+            action_type: "trail_test".to_string(),
+            result: 0,
+            hash: "abc".to_string(),
+            prev_hash: "".to_string(),
+            payload: "data".to_string(),
+        };
+        let json = serde_json::to_string(&entry).unwrap();
+        std::fs::write(&path, format!("{}\n\n\n", json)).unwrap();
+
+        let entries = read_agnos_audit_events(path.to_str().unwrap()).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].sequence, 99);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_raw_audit_entry_negative_result() {
+        let entry = RawAuditEntry {
+            sequence: 0,
+            timestamp_ns: 0,
+            action_type: "err".to_string(),
+            result: -1,
+            hash: String::new(),
+            prev_hash: String::new(),
+            payload: String::new(),
+        };
+        let json = serde_json::to_string(&entry).unwrap();
+        let de: RawAuditEntry = serde_json::from_str(&json).unwrap();
+        assert_eq!(de.result, -1);
+    }
+
+    #[test]
+    fn test_audit_rule_type_serde_all_variants() {
+        for rt in &[AuditRuleType::FileWatch, AuditRuleType::SyscallWatch] {
+            let json = serde_json::to_string(rt).unwrap();
+            let back: AuditRuleType = serde_json::from_str(&json).unwrap();
+            assert_eq!(*rt, back);
+        }
+    }
+
+    #[test]
+    fn test_agnos_audit_log_syscall_on_non_agnos_kernel() {
+        // On any standard Linux kernel, syscall 520 returns ENOSYS
+        let result = agnos_audit_log_syscall("test_action", "test_data", 42);
+        // Should get NotSupported (ENOSYS) on a non-AGNOS kernel
         assert!(result.is_err());
     }
 }

@@ -7,6 +7,136 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (March 5, 2026 — Final Coverage Push to ~80%)
+
+- **Final test coverage push (+169 tests, 4412 → 4581)**:
+  - agnos-sys: +30 (security 15, llm 15), agent-runtime: +14 (resource), ai-shell: +14 (llm)
+  - agnos-common: +29 (error 14, lib 15), desktop-environment: +26 (compositor 13, ai_features 13)
+  - Fixed flaky `test_next_handle_never_reuses` (global atomic race in parallel tests)
+  - Estimated coverage: ~79% → ~80%
+
+### Added (March 5, 2026 — System Tests & Load Tests)
+
+- **End-to-end system tests** (`agent-runtime/tests/system_tests.rs`, 15 tests):
+  - Full agent lifecycle via HTTP API (register → heartbeat → get → list → deregister)
+  - Multi-agent registration (10 agents), concurrent registrations (50), health endpoint under load (100 calls)
+  - Orchestrator + HTTP integration, task lifecycle, priority scheduling, overdue detection
+  - Metrics aggregation validation, input validation (empty name, long name)
+
+- **Load/stress tests** (`agent-runtime/tests/load_tests.rs`, 15 tests):
+  - 100 concurrent agent registrations, 100 concurrent task submissions
+  - Mixed priority flood (200 tasks), rapid heartbeats (1000 total)
+  - Register-deregister churn (50 cycles), concurrent task cancellation
+  - Queue stats consistency under concurrent ops, large payload handling (1MB JSON)
+  - Overdue detection (100 tasks), agent metrics aggregation (100 agents)
+  - Concurrent result storage (200 results), task dependency chains
+
+- **Desktop E2E system tests** (expanded `desktop-environment/src/system_tests.rs`, +29 tests, 40 total):
+  - Full desktop startup sequence, multi-window workspace management
+  - Security alert escalation, permission request flows, override request flows
+  - AI context with 5 agents, HUD lifecycle, screen lock interactions
+  - Security level transitions, emergency kill switch, file manager navigation
+  - Quick settings toggle, compositor window operations, full teardown sequence
+  - Cross-component: context detection, smart placement, HUD overlay, security+AI combined
+
+### Added (March 5, 2026 — P3 Completions, Test Coverage Push)
+
+- **AgentControl trait implemented** (`agent-runtime/src/agent.rs`):
+  - `check_health()`: process liveness via `kill(pid, 0)` signal check
+  - `get_resource_usage()`: delegates to existing `resource_usage()` method
+  - `stop(reason)`: delegates to `Agent::stop()`
+  - `restart()`: stop + reset to Pending + start sequence
+
+- **Prompt right-side confirmed complete** (`ai-shell/src/prompt.rs:351`):
+  - `render_right()` displays execution time + HH:MM:SS clock
+  - Already tested — no code changes needed
+
+- **Test coverage push (+1187 tests, 3166 → 4353)** across two rounds:
+  - Round 1 (+513): agnos-sys (+65), llm-gateway (+92), agent-runtime (+80), ai-shell (+51), desktop-environment (+44)
+  - Round 2 (+674): agnos-common (+65: secrets 18, telemetry 22, audit 25), agnos-sys (+37: agent 16, security 21), agent-runtime (+85: supervisor 20, sandbox 25, orchestrator 20, resource 20), llm-gateway (+76: providers 25, main 20, cache 15, accounting 16), ai-shell (+61: interpreter 20, session 21, security 20), desktop-environment (+53: security_ui 18, apps 17, shell 18)
+  - Estimated coverage: ~62% → ~78% (target: 80% for Alpha)
+  - All 4,353 tests passing, 0 failures, 0 warnings, 7 ignored (require root)
+
+### Added (March 5, 2026 — CIS Hardening, Security Cleanup, Roadmap Cleanup)
+
+- **CIS benchmark compliance raised to ~85%** (from ~75%):
+  - **Kernel config hardening** (all 3 defconfigs: 6.6-lts, 6.x-stable, config/):
+    - `CONFIG_USB_STORAGE=n` — CIS 1.1.6 (attack vector reduction)
+    - `CONFIG_FIREWIRE=n`, `CONFIG_FIREWIRE_OHCI=n` — CIS 1.1.7 (DMA attack prevention)
+    - `CONFIG_THUNDERBOLT=n` — CIS 1.1.8 (DMA attack prevention)
+    - `CONFIG_SCTP=n`, `CONFIG_RDS=n`, `CONFIG_TIPC=n`, `CONFIG_DCCP=n` — CIS 3.4.x
+    - 7 unused filesystems disabled: CRAMFS, FREEVXFS, JFFS2, HFS, HFSPLUS, UDF, NFSD
+    - `CONFIG_SECURITY_APPARMOR=y` added
+    - Boot cmdline: `audit=1 audit_backlog_limit=8192` added
+  - **New sysctl hardening config** (`config/sysctl/99-agnos-hardening.conf`):
+    - CIS 3.1.x: source route rejection, ICMP broadcast ignore, SYN cookies, reverse path filter, martian logging
+    - CIS 3.2.x: IPv6 source route, redirect, router advertisement controls
+    - Kernel hardening: `dmesg_restrict=1`, `kptr_restrict=2`, `yama.ptrace_scope=2`, `unprivileged_bpf_disabled=1`, `perf_event_paranoid=3`
+    - Filesystem: `suid_dumpable=0`, protected symlinks/hardlinks/fifos/regular
+  - **Init script updated** (`config/init/agnos-init.sh`): loads sysctl config, sets /tmp sticky bit (CIS 1.1.10)
+  - **CIS benchmarks doc updated** (`docs/security/cis-benchmarks.md`): added controls 1.1.6-1.1.10, 3.1.4-3.1.9, 3.2.3, sysctl hardening section
+
+- **Redundant security wrapper removed** (`agnos-sys/src/security.rs`):
+  - Removed `enter_network_namespace()` — specialized duplicate of `create_namespace(NamespaceFlags::NETWORK)`, called nowhere except its own `#[ignore]` test
+  - Removed corresponding test (ignored tests: 8 → 7)
+
+- **Roadmap P3 items resolved**:
+  - GPU vendor detection: confirmed already implemented (NVIDIA/AMD/Intel via nvidia-smi, rocm-smi, sysfs)
+  - Feature flags wiring: confirmed N/A (no feature flags exist in desktop-environment)
+  - Redundant security wrappers: removed (see above)
+
+### Added (March 5, 2026 — System Benchmarks, Metrics, Dead Code Cleanup)
+
+- **System-level performance benchmarks**:
+  - `llm-gateway/benches/system_bench.rs` (699 lines, 6 benchmark groups):
+    cache throughput (10/100/500 entries), cache hit/miss ratio, token accounting
+    throughput (1/10/50 agents), provider selection overhead, end-to-end inference
+    pipeline (mock), cache expiry cleanup
+  - `ai-shell/benches/system_bench.rs` (514 lines, 6 benchmark groups):
+    session lifecycle, multi-command pipeline (10/50/100 commands), prompt rendering
+    pipeline, intent classification throughput (10/50/100/500 inputs), history search
+    (100/500/1000/5000 entries), explain pipeline
+  - `llm-gateway/src/lib.rs`: New library target re-exporting `cache`, `accounting`,
+    `providers` modules for benchmark access
+  - Total benchmarks: 36 micro + 22 system-level = 58 across 7 bench executables
+
+- **Performance benchmarks documentation** (`docs/development/performance-benchmarks.md`):
+  - Running benchmarks (all, per-package, filtered, baselines, CI mode)
+  - Micro-benchmark inventory (36 benchmarks across 4 packages)
+  - System-level benchmark inventory (22 benchmarks across 3 packages)
+  - Performance targets table (agent spawn, shell response, IPC, cache, memory, boot)
+  - CI integration guidance (Criterion HTML reports, regression tracking)
+
+- **Metric dashboard endpoints**:
+  - LLM Gateway `GET /v1/metrics` (port 8088): cache stats (total/active/expired
+    entries), token accounting (agents, prompt/completion/total tokens), provider
+    health (name, available, healthy, consecutive failures)
+  - Agent Runtime `GET /v1/metrics` (port 8090): total agents, agents by status,
+    uptime, average CPU percent, total memory MB
+  - `LlmGateway::cache_stats()` and `accounting_stats()` public methods
+  - `AgentMetricsResponse` struct with serde support
+  - 4 new tests for metrics endpoints (empty, with agents + heartbeats)
+
+### Fixed (March 5, 2026 — Dead Code Cleanup)
+
+- **Eliminated all 118 compiler warnings** (0 remaining):
+  - Removed unused imports across all 6 crates:
+    - agent-runtime: `debug`/`error`/`Uuid`/`AgentType`/`MessageType`/`HashMap`/`warn`/`PathBuf`/`Path`/`AgentEvent`/`Agent`
+    - ai-shell: `anyhow`/`Style`/`Confirm`/`MultiSelect`/`FsAccess`/`NamespaceFlags`/`Write`/`PermissionLevel`/`Input`
+    - desktop-environment: `error`/`warn` from tracing in 5 files
+    - Added `#[cfg(test)]` imports for `Uuid`/`MessageType` in `agent-runtime/src/ipc.rs`
+  - Removed unused `show_battery: bool` field from `PromptConfig` (ai-shell/src/prompt.rs)
+  - Removed unused optional dependencies `git2` and `battery` from ai-shell/Cargo.toml
+  - Removed unused `chrono` import from ai-shell/src/prompt.rs
+  - Fixed unreachable pattern: `libc::EAGAIN | libc::EWOULDBLOCK` → `libc::EAGAIN` (same value on Linux) in agnos-sys/src/lib.rs
+  - Fixed `let mut child` → `let child` in agent-runtime/src/agent.rs
+  - Prefixed unused struct fields with underscore: `_config` (audit.rs), `_ipc`/`_message_rx` (agent.rs, ipc.rs), `_uid`/`_gid`/`_euid` (security.rs), `_config`/`_security`/`_output` (session.rs), `_theme` (ui.rs)
+  - Added `#[allow(dead_code)]` for API surface items: `check_result`, `memory_max`/`pids`, `unload_model`, `GoogleProvider::new`, `clear`, `reset_all`/`list_agents`, `block_pattern`/`set_auto_approve_low_risk`/`batch_approve`, approval enum variants
+  - Added `#![allow(dead_code, unused_mut, unused_imports)]` to desktop-environment (P3 Wayland compositor stub)
+  - Prefixed unused variables with underscore: `_context`, `_app_id`, `_from`, `_p`, `_risk`, `_request`, `_config` (wasm_runtime)
+
+- **Test count**: 3056 → 3166 (+110 tests), 0 failures, 8 ignored (require root)
+
 ### Added (March 5, 2026 — P2 Implementation Pass)
 
 - **Google Gemini LLM provider** (`llm-gateway/src/providers.rs`):

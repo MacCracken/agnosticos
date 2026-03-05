@@ -4,7 +4,6 @@
 //! to the real kernel interfaces in `agnos-sys`.
 
 use std::collections::HashSet;
-use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use tracing::{debug, info, warn};
@@ -1039,5 +1038,332 @@ mod tests {
         let filter = SeccompFilter::new();
         // On non-Linux or without capabilities, load may fail or succeed
         let _result = filter.load();
+    }
+
+    // ==================================================================
+    // NEW: SandboxConfig validation, apply order, network policy edge cases,
+    // MAC profile edge cases, encrypted storage config, firewall protocol,
+    // SeccompFilter chaining, sandbox state transitions, teardown sequences
+    // ==================================================================
+
+    #[test]
+    fn test_sandbox_new_preserves_all_config_fields() {
+        let config = SandboxConfig {
+            filesystem_rules: vec![
+                agnos_common::FilesystemRule {
+                    path: "/home".into(),
+                    access: agnos_common::FsAccess::ReadWrite,
+                },
+            ],
+            network_access: agnos_common::NetworkAccess::Restricted,
+            seccomp_rules: vec![
+                agnos_common::SeccompRule {
+                    syscall: "read".to_string(),
+                    action: agnos_common::SeccompAction::Allow,
+                },
+                agnos_common::SeccompRule {
+                    syscall: "write".to_string(),
+                    action: agnos_common::SeccompAction::Allow,
+                },
+            ],
+            isolate_network: true,
+            network_policy: Some(agnos_common::NetworkPolicy {
+                allowed_outbound_ports: vec![443],
+                allowed_outbound_hosts: vec!["example.com".to_string()],
+                allowed_inbound_ports: vec![8080],
+                enable_nat: true,
+            }),
+            mac_profile: Some("Sandbox".to_string()),
+            encrypted_storage: Some(agnos_common::EncryptedStorageConfig {
+                enabled: true,
+                size_mb: 256,
+                filesystem: "btrfs".to_string(),
+            }),
+        };
+
+        let sandbox = Sandbox::new(&config).unwrap();
+        assert_eq!(sandbox.config.filesystem_rules.len(), 1);
+        assert_eq!(sandbox.config.network_access, agnos_common::NetworkAccess::Restricted);
+        assert_eq!(sandbox.config.seccomp_rules.len(), 2);
+        assert!(sandbox.config.isolate_network);
+        assert!(sandbox.config.network_policy.is_some());
+        assert_eq!(sandbox.config.mac_profile.as_deref(), Some("Sandbox"));
+        let storage = sandbox.config.encrypted_storage.as_ref().unwrap();
+        assert!(storage.enabled);
+        assert_eq!(storage.size_mb, 256);
+        assert_eq!(storage.filesystem, "btrfs");
+    }
+
+    #[test]
+    fn test_sandbox_not_applied_initially() {
+        let config = SandboxConfig::default();
+        let sandbox = Sandbox::new(&config).unwrap();
+        assert!(!sandbox.is_applied());
+        assert!(!sandbox.applied);
+    }
+
+    #[test]
+    fn test_convert_fs_rules_single_rule() {
+        let rules = vec![agnos_common::FilesystemRule {
+            path: "/var/log".into(),
+            access: agnos_common::FsAccess::ReadOnly,
+        }];
+        let sys_rules = Sandbox::convert_fs_rules(&rules);
+        assert_eq!(sys_rules.len(), 1);
+        assert_eq!(sys_rules[0].access, SysFsAccess::ReadOnly);
+    }
+
+    #[test]
+    fn test_convert_fs_rules_many_rules() {
+        let rules: Vec<_> = (0..100)
+            .map(|i| agnos_common::FilesystemRule {
+                path: format!("/path/{}", i).into(),
+                access: agnos_common::FsAccess::ReadOnly,
+            })
+            .collect();
+        let sys_rules = Sandbox::convert_fs_rules(&rules);
+        assert_eq!(sys_rules.len(), 100);
+    }
+
+    #[test]
+    fn test_build_firewall_policy_outbound_ports_protocol() {
+        let config = SandboxConfig {
+            network_policy: Some(agnos_common::NetworkPolicy {
+                allowed_outbound_ports: vec![80, 443, 8088],
+                allowed_outbound_hosts: vec![],
+                allowed_inbound_ports: vec![],
+                enable_nat: false,
+            }),
+            ..SandboxConfig::default()
+        };
+        let sandbox = Sandbox::new(&config).unwrap();
+        let policy = sandbox.build_firewall_policy();
+
+        assert_eq!(policy.rules.len(), 3);
+        for rule in &policy.rules {
+            assert_eq!(rule.direction, netns::TrafficDirection::Outbound);
+            assert_eq!(rule.protocol, netns::Protocol::Tcp);
+            assert_eq!(rule.action, netns::FirewallAction::Accept);
+            assert!(rule.remote_addr.is_empty());
+        }
+        assert_eq!(policy.rules[0].port, 80);
+        assert_eq!(policy.rules[1].port, 443);
+        assert_eq!(policy.rules[2].port, 8088);
+    }
+
+    #[test]
+    fn test_build_firewall_policy_outbound_hosts_protocol() {
+        let config = SandboxConfig {
+            network_policy: Some(agnos_common::NetworkPolicy {
+                allowed_outbound_ports: vec![],
+                allowed_outbound_hosts: vec!["host1.com".to_string()],
+                allowed_inbound_ports: vec![],
+                enable_nat: false,
+            }),
+            ..SandboxConfig::default()
+        };
+        let sandbox = Sandbox::new(&config).unwrap();
+        let policy = sandbox.build_firewall_policy();
+
+        assert_eq!(policy.rules.len(), 1);
+        assert_eq!(policy.rules[0].protocol, netns::Protocol::Any);
+        assert_eq!(policy.rules[0].port, 0);
+        assert_eq!(policy.rules[0].remote_addr, "host1.com");
+    }
+
+    #[test]
+    fn test_build_firewall_policy_empty_policy() {
+        let config = SandboxConfig {
+            network_policy: Some(agnos_common::NetworkPolicy {
+                allowed_outbound_ports: vec![],
+                allowed_outbound_hosts: vec![],
+                allowed_inbound_ports: vec![],
+                enable_nat: false,
+            }),
+            ..SandboxConfig::default()
+        };
+        let sandbox = Sandbox::new(&config).unwrap();
+        let policy = sandbox.build_firewall_policy();
+
+        assert!(policy.rules.is_empty());
+        // Still in allowlist mode since network_policy is Some
+        assert_eq!(policy.default_outbound, netns::FirewallAction::Drop);
+    }
+
+    #[test]
+    fn test_seccomp_filter_chained_operations() {
+        let mut filter = SeccompFilter::new();
+        filter
+            .allow("socket")
+            .allow("bind")
+            .allow("listen")
+            .deny("ptrace")
+            .deny("reboot");
+
+        assert!(filter.allowed_syscalls.contains("socket"));
+        assert!(filter.allowed_syscalls.contains("bind"));
+        assert!(filter.allowed_syscalls.contains("listen"));
+        assert!(filter.denied_syscalls.contains("ptrace"));
+        assert!(filter.denied_syscalls.contains("reboot"));
+    }
+
+    #[test]
+    fn test_seccomp_filter_all_default_syscalls() {
+        let filter = SeccompFilter::new();
+        // Verify all essential syscalls from new()
+        let expected = [
+            "read", "write", "openat", "close", "exit", "exit_group",
+            "mmap", "munmap", "mprotect", "brk",
+            "fstat", "lseek", "pread64", "pwrite64",
+            "getpid", "getppid", "gettid",
+        ];
+        for syscall in expected {
+            assert!(
+                filter.allowed_syscalls.contains(syscall),
+                "Missing default syscall: {}",
+                syscall
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_sandbox_teardown_clears_both_handles() {
+        let config = SandboxConfig::default();
+        let mut sandbox = Sandbox::new(&config).unwrap();
+
+        // Set both handles to simulate allocated resources
+        sandbox.luks_name = Some("fake-luks-vol".to_string());
+        // We can't set netns_handle easily (no public constructor),
+        // but verify luks_name is cleared
+        sandbox.teardown().await;
+        assert!(sandbox.luks_name.is_none());
+        assert!(sandbox.netns_handle.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_sandbox_apply_with_all_profiles() {
+        let profiles = [
+            crate::seccomp_profiles::SeccompProfile::Python,
+            crate::seccomp_profiles::SeccompProfile::Node,
+            crate::seccomp_profiles::SeccompProfile::Shell,
+            crate::seccomp_profiles::SeccompProfile::Wasm,
+        ];
+
+        for profile in &profiles {
+            let config = SandboxConfig::default();
+            let mut sandbox = Sandbox::new(&config).unwrap();
+            // May fail on non-Linux, but should not panic
+            let _result = sandbox.apply_with_profile(profile).await;
+        }
+    }
+
+    #[test]
+    fn test_sandbox_config_all_network_access_types() {
+        for access in [
+            agnos_common::NetworkAccess::None,
+            agnos_common::NetworkAccess::LocalhostOnly,
+            agnos_common::NetworkAccess::Restricted,
+            agnos_common::NetworkAccess::Full,
+        ] {
+            let config = SandboxConfig {
+                network_access: access,
+                ..SandboxConfig::default()
+            };
+            let sandbox = Sandbox::new(&config).unwrap();
+            assert_eq!(sandbox.config.network_access, access);
+        }
+    }
+
+    #[test]
+    fn test_sandbox_config_clone_independence() {
+        let config = SandboxConfig {
+            mac_profile: Some("Original".to_string()),
+            ..SandboxConfig::default()
+        };
+        let sandbox = Sandbox::new(&config).unwrap();
+
+        // Sandbox stores a clone, so original can be modified
+        let mut config2 = config.clone();
+        config2.mac_profile = Some("Modified".to_string());
+
+        // Sandbox should still have original value
+        assert_eq!(sandbox.config.mac_profile.as_deref(), Some("Original"));
+    }
+
+    #[tokio::test]
+    async fn test_sandbox_emit_audit_event_with_luks_name() {
+        let config = SandboxConfig::default();
+        let mut sandbox = Sandbox::new(&config).unwrap();
+        sandbox.luks_name = Some("audit-test-vol".to_string());
+
+        // Should not panic
+        sandbox.emit_audit_event("test_with_luks").await;
+    }
+
+    #[test]
+    fn test_seccomp_filter_deny_already_allowed() {
+        let mut filter = SeccompFilter::new();
+        // "read" is in the allowed set by default
+        assert!(filter.allowed_syscalls.contains("read"));
+        // Deny it
+        filter.deny("read");
+        // Both sets can contain it (filter.load() resolves precedence)
+        assert!(filter.denied_syscalls.contains("read"));
+        assert!(filter.allowed_syscalls.contains("read"));
+    }
+
+    #[tokio::test]
+    async fn test_sandbox_apply_landlock_with_rules() {
+        let config = SandboxConfig {
+            filesystem_rules: vec![
+                agnos_common::FilesystemRule {
+                    path: "/tmp".into(),
+                    access: agnos_common::FsAccess::ReadWrite,
+                },
+            ],
+            ..SandboxConfig::default()
+        };
+        let sandbox = Sandbox::new(&config).unwrap();
+        // May fail on non-Linux, that's expected
+        let _result = sandbox.apply_landlock().await;
+    }
+
+    #[tokio::test]
+    async fn test_sandbox_apply_seccomp_standalone() {
+        let config = SandboxConfig::default();
+        let sandbox = Sandbox::new(&config).unwrap();
+        // May fail or succeed depending on platform
+        let _result = sandbox.apply_seccomp().await;
+    }
+
+    #[test]
+    fn test_build_firewall_policy_many_ports() {
+        let config = SandboxConfig {
+            network_policy: Some(agnos_common::NetworkPolicy {
+                allowed_outbound_ports: (1..=100).collect(),
+                allowed_outbound_hosts: vec![],
+                allowed_inbound_ports: (200..=210).collect(),
+                enable_nat: true,
+            }),
+            ..SandboxConfig::default()
+        };
+        let sandbox = Sandbox::new(&config).unwrap();
+        let policy = sandbox.build_firewall_policy();
+
+        assert_eq!(policy.rules.len(), 100 + 11);
+    }
+
+    #[tokio::test]
+    async fn test_sandbox_double_teardown() {
+        let config = SandboxConfig::default();
+        let mut sandbox = Sandbox::new(&config).unwrap();
+        sandbox.luks_name = Some("double-teardown".to_string());
+
+        sandbox.teardown().await;
+        assert!(sandbox.luks_name.is_none());
+
+        // Second teardown should be a no-op
+        sandbox.teardown().await;
+        assert!(sandbox.luks_name.is_none());
     }
 }

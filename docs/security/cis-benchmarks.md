@@ -15,6 +15,11 @@ This document maps CIS Linux Benchmark 3.0.0 controls to AGNOS kernel configurat
 | 1.1.3 | Mount /var/tmp with noexec | ✅ | `/etc/fstab` noexec option |
 | 1.1.4 | Mount /dev/shm with noexec | ✅ | `/etc/fstab` noexec option |
 | 1.1.5 | Disable automounting | ✅ | `CONFIG_AUTOMOUNT=n` |
+| 1.1.6 | Disable USB storage | ✅ | `CONFIG_USB_STORAGE=n` |
+| 1.1.7 | Disable FireWire | ✅ | `CONFIG_FIREWIRE=n` |
+| 1.1.8 | Disable Thunderbolt | ✅ | `CONFIG_THUNDERBOLT=n` |
+| 1.1.9 | Ensure /tmp has separate partition | ✅ | `/etc/fstab` separate mount |
+| 1.1.10 | Set sticky bit on /tmp | ✅ | Permissions 1777 |
 
 #### 1.2 Services
 
@@ -61,6 +66,12 @@ This document maps CIS Linux Benchmark 3.0.0 controls to AGNOS kernel configurat
 | 3.1.1 | Disable IP forwarding | ✅ | `net.ipv4.ip_forward=0` |
 | 3.1.2 | Disable packet redirect sending | ✅ | `net.ipv4.conf.all.send_redirects=0` |
 | 3.1.3 | Disable ICMP redirect acceptance | ✅ | `net.ipv4.conf.all.accept_redirects=0` |
+| 3.1.4 | Disable source packet routing | ✅ | `net.ipv4.conf.all.accept_source_route=0` |
+| 3.1.5 | Ignore ICMP broadcast echo | ✅ | `net.ipv4.icmp_echo_ignore_broadcasts=1` |
+| 3.1.6 | Ignore bogus ICMP errors | ✅ | `net.ipv4.icmp_ignore_bogus_error_responses=1` |
+| 3.1.7 | Enable TCP SYN cookies | ✅ | `net.ipv4.tcp_syncookies=1` |
+| 3.1.8 | Enable reverse path filtering | ✅ | `net.ipv4.conf.all.rp_filter=1` |
+| 3.1.9 | Log suspicious packets | ✅ | `net.ipv4.conf.all.log_martians=1` |
 
 #### 3.2 Network Parameters (IPv6)
 
@@ -68,6 +79,7 @@ This document maps CIS Linux Benchmark 3.0.0 controls to AGNOS kernel configurat
 |-------------|-------------|--------|----------------|
 | 3.2.1 | Disable IPv6 router advertisements | ✅ | `net.ipv6.conf.all.accept_ra=0` |
 | 3.2.2 | Disable IPv6 redirects | ✅ | `net.ipv6.conf.all.accept_redirects=0` |
+| 3.2.3 | Disable IPv6 source routing | ✅ | `net.ipv6.conf.all.accept_source_route=0` |
 
 #### 3.3 TCP Wrappers
 
@@ -175,6 +187,21 @@ This document maps CIS Linux Benchmark 3.0.0 controls to AGNOS kernel configurat
 | `agnos-agent-subsystem` | Agent lifecycle management | ✅ |
 | `agnos-llm` | LLM inference acceleration | ✅ |
 | `agnos-audit` | Cryptographic audit chain | ✅ |
+
+### Kernel Hardening (Sysctl)
+
+All sysctl parameters are defined in `config/sysctl/99-agnos-hardening.conf` and deployed to `/etc/sysctl.d/99-agnos-hardening.conf` during OS installation.
+
+| Feature | Sysctl Parameter | Value |
+|---------|-----------------|-------|
+| Restrict dmesg | `kernel.dmesg_restrict` | 1 |
+| Restrict kptr | `kernel.kptr_restrict` | 2 |
+| Yama ptrace | `kernel.yama.ptrace_scope` | 2 |
+| Restrict BPF | `kernel.unprivileged_bpf_disabled` | 1 |
+| Restrict perf | `kernel.perf_event_paranoid` | 3 |
+| No core dumps for suid | `fs.suid_dumpable` | 0 |
+| Protected symlinks | `fs.protected_symlinks` | 1 |
+| Protected hardlinks | `fs.protected_hardlinks` | 1 |
 
 ## Compliance Verification
 

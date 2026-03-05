@@ -519,4 +519,195 @@ mod tests {
         assert!(json.contains("test-agent"));
         assert!(json.contains("Service"));
     }
+
+    #[test]
+    fn test_agent_id_serde_roundtrip() {
+        let id = AgentId::new();
+        let json = serde_json::to_string(&id).unwrap();
+        let deserialized: AgentId = serde_json::from_str(&json).unwrap();
+        assert_eq!(id, deserialized);
+    }
+
+    #[test]
+    fn test_agent_id_hash_equality() {
+        use std::collections::HashSet;
+        let id = AgentId::new();
+        let mut set = HashSet::new();
+        set.insert(id);
+        set.insert(id); // duplicate
+        assert_eq!(set.len(), 1);
+    }
+
+    #[test]
+    fn test_agent_id_copy_semantics() {
+        let id = AgentId::new();
+        let id2 = id; // Copy
+        assert_eq!(id, id2);
+    }
+
+    #[test]
+    fn test_user_id_serde_roundtrip() {
+        let id = UserId::new();
+        let json = serde_json::to_string(&id).unwrap();
+        let deserialized: UserId = serde_json::from_str(&json).unwrap();
+        assert_eq!(id, deserialized);
+    }
+
+    #[test]
+    fn test_resource_limits_serde_roundtrip() {
+        let limits = ResourceLimits {
+            max_memory: 512 * 1024 * 1024,
+            max_cpu_time: 60_000,
+            max_file_descriptors: 256,
+            max_processes: 16,
+        };
+        let json = serde_json::to_string(&limits).unwrap();
+        let deserialized: ResourceLimits = serde_json::from_str(&json).unwrap();
+        assert_eq!(limits, deserialized);
+    }
+
+    #[test]
+    fn test_agent_status_serde_roundtrip() {
+        let statuses = [
+            AgentStatus::Pending,
+            AgentStatus::Starting,
+            AgentStatus::Running,
+            AgentStatus::Paused,
+            AgentStatus::Stopping,
+            AgentStatus::Stopped,
+            AgentStatus::Failed,
+        ];
+        for status in &statuses {
+            let json = serde_json::to_string(status).unwrap();
+            let deserialized: AgentStatus = serde_json::from_str(&json).unwrap();
+            assert_eq!(*status, deserialized);
+        }
+    }
+
+    #[test]
+    fn test_resource_usage_serde_roundtrip() {
+        let usage = ResourceUsage {
+            memory_used: 1024,
+            cpu_time_used: 500,
+            file_descriptors_used: 10,
+            processes_used: 3,
+        };
+        let json = serde_json::to_string(&usage).unwrap();
+        let deserialized: ResourceUsage = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.memory_used, 1024);
+        assert_eq!(deserialized.cpu_time_used, 500);
+    }
+
+    #[test]
+    fn test_agent_type_serde_all_variants() {
+        let types = [AgentType::System, AgentType::User, AgentType::Service];
+        for t in &types {
+            let json = serde_json::to_string(t).unwrap();
+            let deserialized: AgentType = serde_json::from_str(&json).unwrap();
+            assert_eq!(*t, deserialized);
+        }
+    }
+
+    #[test]
+    fn test_permission_serde_all_variants() {
+        let perms = [
+            Permission::FileRead,
+            Permission::FileWrite,
+            Permission::NetworkAccess,
+            Permission::ProcessSpawn,
+            Permission::LlmInference,
+            Permission::AuditRead,
+        ];
+        for p in &perms {
+            let json = serde_json::to_string(p).unwrap();
+            let deserialized: Permission = serde_json::from_str(&json).unwrap();
+            assert_eq!(*p, deserialized);
+        }
+    }
+
+    #[test]
+    fn test_sandbox_config_with_all_optional_fields() {
+        let config = SandboxConfig {
+            filesystem_rules: vec![],
+            network_access: NetworkAccess::Restricted,
+            seccomp_rules: vec![SeccompRule {
+                syscall: "write".to_string(),
+                action: SeccompAction::Allow,
+            }],
+            isolate_network: false,
+            network_policy: Some(NetworkPolicy::default()),
+            mac_profile: Some("agnos-agent".to_string()),
+            encrypted_storage: Some(EncryptedStorageConfig {
+                enabled: true,
+                size_mb: 512,
+                filesystem: "btrfs".to_string(),
+            }),
+        };
+        let json = serde_json::to_string(&config).unwrap();
+        let deserialized: SandboxConfig = serde_json::from_str(&json).unwrap();
+        assert!(deserialized.network_policy.is_some());
+        assert_eq!(deserialized.mac_profile.as_deref(), Some("agnos-agent"));
+        assert!(deserialized.encrypted_storage.unwrap().enabled);
+    }
+
+    #[test]
+    fn test_sandbox_config_json_missing_optional_fields_uses_defaults() {
+        let json = r#"{"filesystem_rules":[],"network_access":"Full","seccomp_rules":[],"isolate_network":false}"#;
+        let config: SandboxConfig = serde_json::from_str(json).unwrap();
+        assert!(config.network_policy.is_none());
+        assert!(config.mac_profile.is_none());
+        assert!(config.encrypted_storage.is_none());
+    }
+
+    #[test]
+    fn test_encrypted_storage_config_serde_roundtrip() {
+        let config = EncryptedStorageConfig {
+            enabled: true,
+            size_mb: 1024,
+            filesystem: "xfs".to_string(),
+        };
+        let json = serde_json::to_string(&config).unwrap();
+        let deserialized: EncryptedStorageConfig = serde_json::from_str(&json).unwrap();
+        assert!(deserialized.enabled);
+        assert_eq!(deserialized.size_mb, 1024);
+        assert_eq!(deserialized.filesystem, "xfs");
+    }
+
+    #[test]
+    fn test_agent_config_deserialization_roundtrip() {
+        let config = AgentConfig {
+            name: "roundtrip-agent".to_string(),
+            agent_type: AgentType::System,
+            resource_limits: ResourceLimits::default(),
+            sandbox: SandboxConfig::default(),
+            permissions: vec![Permission::FileRead, Permission::FileWrite, Permission::ProcessSpawn],
+            metadata: serde_json::json!({"key": "value", "count": 42}),
+        };
+        let json = serde_json::to_string(&config).unwrap();
+        let deserialized: AgentConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.name, "roundtrip-agent");
+        assert_eq!(deserialized.agent_type, AgentType::System);
+        assert_eq!(deserialized.permissions.len(), 3);
+        assert_eq!(deserialized.metadata["count"], 42);
+    }
+
+    #[test]
+    fn test_resource_usage_clone() {
+        let usage = ResourceUsage {
+            memory_used: 999,
+            cpu_time_used: 888,
+            file_descriptors_used: 77,
+            processes_used: 6,
+        };
+        let cloned = usage;
+        assert_eq!(cloned.memory_used, 999);
+        assert_eq!(cloned.processes_used, 6);
+    }
+
+    #[test]
+    fn test_agent_status_debug() {
+        let status = AgentStatus::Running;
+        let debug_str = format!("{:?}", status);
+        assert_eq!(debug_str, "Running");
+    }
 }
