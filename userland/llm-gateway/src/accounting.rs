@@ -59,7 +59,7 @@ impl TokenAccounting {
     pub async fn reset_usage(&self, agent_id: AgentId) {
         let mut agent_usage = self.agent_usage.write().await;
         agent_usage.remove(&agent_id);
-        debug!("Reset token usage for agent {}", agent_id);
+        debug!(agent_id = ?agent_id, "Reset token usage for agent");
     }
 
     /// Reset all usage data

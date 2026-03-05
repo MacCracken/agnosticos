@@ -680,6 +680,219 @@ impl LlmProvider for AnthropicProvider {
 }
 
 // ---------------------------------------------------------------------------
+// Google (Gemini)
+// ---------------------------------------------------------------------------
+
+pub struct GoogleProvider {
+    base_url: String,
+    api_key: RedactedKey,
+    client: reqwest::Client,
+}
+
+impl GoogleProvider {
+    pub fn new(api_key: String, base_url: Option<String>) -> anyhow::Result<Self> {
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(120))
+            .pool_max_idle_per_host(4)
+            .build()?;
+        Ok(Self {
+            base_url: base_url
+                .unwrap_or_else(|| "https://generativelanguage.googleapis.com/v1beta".to_string()),
+            api_key: RedactedKey(api_key),
+            client,
+        })
+    }
+}
+
+#[async_trait]
+impl LlmProvider for GoogleProvider {
+    async fn infer(&self, request: InferenceRequest) -> anyhow::Result<InferenceResponse> {
+        let url = format!(
+            "{}/models/{}:generateContent?key={}",
+            self.base_url, request.model, self.api_key.0
+        );
+
+        let response = self
+            .client
+            .post(&url)
+            .header("content-type", "application/json")
+            .json(&serde_json::json!({
+                "contents": [{"parts": [{"text": request.prompt}]}],
+                "generationConfig": {
+                    "maxOutputTokens": request.max_tokens,
+                    "temperature": request.temperature,
+                    "topP": request.top_p,
+                }
+            }))
+            .send()
+            .await?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            anyhow::bail!("Google Gemini API error ({}): {}", status, body);
+        }
+
+        let result: serde_json::Value = response.json().await?;
+        let text = result["candidates"]
+            .as_array()
+            .and_then(|arr| arr.first())
+            .and_then(|c| c["content"]["parts"].as_array())
+            .and_then(|parts| parts.first())
+            .and_then(|p| p["text"].as_str())
+            .unwrap_or("")
+            .to_string();
+
+        let finish_reason = result["candidates"]
+            .as_array()
+            .and_then(|arr| arr.first())
+            .and_then(|c| c["finishReason"].as_str());
+
+        let finish = match finish_reason {
+            Some("MAX_TOKENS") => agnos_common::FinishReason::Length,
+            _ => agnos_common::FinishReason::Stop,
+        };
+
+        let prompt_tokens = result["usageMetadata"]["promptTokenCount"]
+            .as_u64()
+            .unwrap_or(0) as u32;
+        let completion_tokens = result["usageMetadata"]["candidatesTokenCount"]
+            .as_u64()
+            .unwrap_or(0) as u32;
+
+        Ok(InferenceResponse {
+            text,
+            tokens_generated: completion_tokens,
+            finish_reason: finish,
+            model: request.model,
+            usage: agnos_common::TokenUsage {
+                prompt_tokens,
+                completion_tokens,
+                total_tokens: prompt_tokens + completion_tokens,
+            },
+        })
+    }
+
+    async fn infer_stream(
+        &self,
+        request: InferenceRequest,
+    ) -> anyhow::Result<mpsc::Receiver<anyhow::Result<String>>> {
+        let (tx, rx) = mpsc::channel(100);
+        let url = format!(
+            "{}/models/{}:streamGenerateContent?key={}&alt=sse",
+            self.base_url, request.model, self.api_key.0
+        );
+        let client = self.client.clone();
+
+        tokio::spawn(async move {
+            let resp = client
+                .post(&url)
+                .header("content-type", "application/json")
+                .json(&serde_json::json!({
+                    "contents": [{"parts": [{"text": request.prompt}]}],
+                    "generationConfig": {
+                        "maxOutputTokens": request.max_tokens,
+                        "temperature": request.temperature,
+                        "topP": request.top_p,
+                    }
+                }))
+                .send()
+                .await;
+
+            let resp = match resp {
+                Ok(r) => r,
+                Err(e) => {
+                    let _ = tx.send(Err(e.into())).await;
+                    return;
+                }
+            };
+
+            let mut stream = resp.bytes_stream();
+            let mut buffer = String::new();
+
+            while let Some(chunk) = stream.next().await {
+                match chunk {
+                    Ok(bytes) => {
+                        buffer.push_str(&String::from_utf8_lossy(&bytes));
+                        // Gemini SSE: "data: <json>\n\n"
+                        while let Some(pos) = buffer.find("\n\n") {
+                            let event = buffer[..pos].to_string();
+                            buffer = buffer[pos + 2..].to_string();
+                            if let Some(data) = event.strip_prefix("data: ") {
+                                if let Ok(json) =
+                                    serde_json::from_str::<serde_json::Value>(data)
+                                {
+                                    if let Some(text) = json["candidates"]
+                                        .as_array()
+                                        .and_then(|arr| arr.first())
+                                        .and_then(|c| c["content"]["parts"].as_array())
+                                        .and_then(|parts| parts.first())
+                                        .and_then(|p| p["text"].as_str())
+                                    {
+                                        if !text.is_empty() {
+                                            if tx.send(Ok(text.to_string())).await.is_err() {
+                                                return;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        let _ = tx.send(Err(e.into())).await;
+                        return;
+                    }
+                }
+            }
+        });
+
+        Ok(rx)
+    }
+
+    async fn load_model(&self, _model_id: &str) -> anyhow::Result<agnos_common::ModelInfo> {
+        anyhow::bail!("Google models are cloud-managed and cannot be loaded locally")
+    }
+
+    async fn unload_model(&self, _model_id: &str) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn list_models(&self) -> anyhow::Result<Vec<agnos_common::ModelInfo>> {
+        let url = format!("{}/models?key={}", self.base_url, self.api_key.0);
+        let response = self.client.get(&url).send().await?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            anyhow::bail!("Google Gemini list models error ({}): {}", status, body);
+        }
+
+        let result: serde_json::Value = response.json().await?;
+        let mut models = Vec::new();
+
+        if let Some(items) = result["models"].as_array() {
+            for item in items {
+                let name = item["name"].as_str().unwrap_or("").to_string();
+                let display = item["displayName"].as_str().unwrap_or(&name).to_string();
+                let max_out = item["outputTokenLimit"].as_u64().unwrap_or(8192) as u32;
+                models.push(agnos_common::ModelInfo {
+                    id: name,
+                    name: display,
+                    provider: agnos_common::Provider::Google,
+                    capabilities: vec![agnos_common::ModelCapability::TextGeneration],
+                    max_tokens: max_out,
+                    size_bytes: 0,
+                    loaded: true,
+                });
+            }
+        }
+
+        Ok(models)
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -1351,5 +1564,140 @@ mod tests {
         ];
         assert_eq!(types.len(), 5);
         assert!(types.contains(&ProviderType::Google));
+    }
+
+    // --- Google provider tests ---
+
+    #[test]
+    fn test_google_provider_new() {
+        let provider = GoogleProvider::new("goog-key".to_string(), None);
+        assert!(provider.is_ok());
+        assert_eq!(
+            provider.unwrap().base_url,
+            "https://generativelanguage.googleapis.com/v1beta"
+        );
+    }
+
+    #[test]
+    fn test_google_provider_custom_base_url() {
+        let provider = GoogleProvider::new(
+            "goog-key".to_string(),
+            Some("http://localhost:6000".to_string()),
+        )
+        .unwrap();
+        assert_eq!(provider.base_url, "http://localhost:6000");
+    }
+
+    #[tokio::test]
+    async fn test_google_unload_is_noop() {
+        let provider = GoogleProvider::new("goog-key".to_string(), None).unwrap();
+        assert!(provider.unload_model("gemini-pro").await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_google_load_model_fails() {
+        let provider = GoogleProvider::new("goog-key".to_string(), None).unwrap();
+        let err = provider.load_model("gemini-pro").await.unwrap_err();
+        assert!(err.to_string().contains("cloud-managed"));
+    }
+
+    #[tokio::test]
+    async fn test_google_as_dyn_trait() {
+        let provider: Box<dyn LlmProvider> =
+            Box::new(GoogleProvider::new("goog-key".to_string(), None).unwrap());
+        assert!(provider.unload_model("x").await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_google_infer_stream_returns_receiver() {
+        let provider = GoogleProvider::new("goog-key".to_string(), None).unwrap();
+        let rx = provider.infer_stream(InferenceRequest::default()).await;
+        assert!(rx.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_google_infer_fails_without_server() {
+        let provider = GoogleProvider::new(
+            "goog-fake".to_string(),
+            Some("http://127.0.0.1:19999".to_string()),
+        )
+        .unwrap();
+        let request = InferenceRequest {
+            model: "gemini-pro".to_string(),
+            prompt: "Hello".to_string(),
+            max_tokens: 10,
+            temperature: 0.7,
+            top_p: 1.0,
+            presence_penalty: 0.0,
+            frequency_penalty: 0.0,
+        };
+        assert!(provider.infer(request).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_google_list_models_fails_without_server() {
+        let provider = GoogleProvider::new(
+            "goog-fake".to_string(),
+            Some("http://127.0.0.1:19999".to_string()),
+        )
+        .unwrap();
+        assert!(provider.list_models().await.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_google_load_model_error_message_content() {
+        let provider = GoogleProvider::new("goog-key".to_string(), None).unwrap();
+        let err = provider.load_model("gemini-pro").await.unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "Google models are cloud-managed and cannot be loaded locally"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_google_unload_model_multiple_times() {
+        let provider = GoogleProvider::new("goog-key".to_string(), None).unwrap();
+        assert!(provider.unload_model("gemini-pro").await.is_ok());
+        assert!(provider.unload_model("gemini-pro").await.is_ok());
+        assert!(provider.unload_model("").await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_google_arc_provider_unload() {
+        use std::sync::Arc;
+        let provider: Arc<dyn LlmProvider> =
+            Arc::new(GoogleProvider::new("goog-key".to_string(), None).unwrap());
+        assert!(provider.unload_model("x").await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_google_infer_stream_sends_error_on_connection_failure() {
+        let provider = GoogleProvider::new(
+            "goog-fake".to_string(),
+            Some("http://127.0.0.1:19999".to_string()),
+        )
+        .unwrap();
+        let mut rx = provider
+            .infer_stream(InferenceRequest::default())
+            .await
+            .unwrap();
+        let result = rx.recv().await;
+        assert!(result.is_some());
+        assert!(result.unwrap().is_err());
+    }
+
+    #[test]
+    fn test_google_provider_stores_api_key() {
+        let provider = GoogleProvider::new("goog-my-secret-key".to_string(), None).unwrap();
+        let dbg = format!("{:?}", provider.api_key);
+        assert!(dbg.contains("goog"));
+        assert!(dbg.contains("-key"));
+    }
+
+    #[test]
+    fn test_google_provider_empty_api_key() {
+        let provider = GoogleProvider::new("".to_string(), None).unwrap();
+        let dbg = format!("{:?}", provider.api_key);
+        assert_eq!(dbg, "[REDACTED]");
     }
 }

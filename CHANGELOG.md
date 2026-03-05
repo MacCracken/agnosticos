@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (March 5, 2026 — P2 Implementation Pass)
+
+- **Google Gemini LLM provider** (`llm-gateway/src/providers.rs`):
+  - Full HTTP API integration: `infer()`, `infer_stream()` (SSE), `list_models()` via Gemini REST API
+  - Supports `generateContent` and `streamGenerateContent` endpoints
+  - 14 new tests covering construction, inference, streaming, error paths, trait object usage
+
+- **Cloud provider graceful degradation** (`llm-gateway/src/main.rs`):
+  - `ProviderHealth` struct tracking per-provider health (consecutive failures, last check time)
+  - `select_provider()` now skips unhealthy providers, tries healthy ones first
+  - `infer()` retries up to 2 additional providers on failure with automatic health recording
+  - Background health check loop (every 30s) pings providers via `list_models()`
+  - 3 consecutive failures → mark unhealthy; 1 success → restore healthy
+  - 20 new tests
+
+- **Agent resource quota enforcement** (`agent-runtime/src/supervisor.rs`):
+  - `ResourceQuota` struct with configurable thresholds: `memory_warn_pct` (80%), `memory_kill_pct` (95%), `cpu_throttle_pct` (90%)
+  - `check_resource_limits()` now enforces quotas: warning + audit at warn threshold, SIGKILL + audit at kill threshold
+  - CPU rate tracking between monitoring intervals for throttle detection
+  - `set_quota()`/`get_quota()` for runtime tuning
+  - Quota cleanup on agent unregister
+  - 15 new tests
+
+- **Structured logging** (all binaries):
+  - Converted key log sites in llm-gateway to structured tracing fields (`model=`, `agent_id=`, `tokens=`, `error=`)
+  - All 4 binaries support `AGNOS_LOG_FORMAT=json` for production JSON output
+
+- **IPC connection backpressure** (`agent-runtime/src/ipc.rs`):
+  - ACK/NACK wire protocol: server sends 1-byte response (0x01 ACK, 0x02 NACK_QUEUE_FULL, 0x03 NACK_INVALID)
+  - Connection semaphore (max 64 concurrent connections per agent socket)
+  - `try_send()` for non-blocking queue-full detection
+  - 4 new tests (backpressure NACK, constants, connection limit)
+
+- **Expanded fuzz targets** (`userland/fuzz/`):
+  - `fuzz_ipc_framing.rs` — length-prefixed message framing with round-trip validation
+  - `fuzz_provider_response.rs` — response parsing for all 5 LLM providers
+  - `fuzz_secrets_parse.rs` — SecretValue JSON parsing round-trip
+  - Fixed pre-existing compile error in `fuzz_llm_inference.rs`
+
+- **Test count**: 2235 → 3056 (+821 tests), 0 failures, 8 ignored (require root)
+
 ### Fixed (March 4, 2026 — Test Suite & Compilation Fixes)
 
 - **Fixed 4 compilation errors in test code**:

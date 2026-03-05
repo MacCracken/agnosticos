@@ -4,10 +4,13 @@ version = "0.1.0"
 edition = "2021"
 publish = false
 
+[workspace]
+
 [dependencies]
 agnos-common = { path = "../agnos-common" }
 agnos-sys = { path = "../agnos-sys" }
 libfuzzer-sys = "0.4"
+serde_json = "1"
 
 [profile.release]
 opt-level = 3
@@ -29,3 +32,15 @@ path = "fuzz_interpreter.rs"
 [[bin]]
 name = "fuzz_command_split"
 path = "fuzz_command_split.rs"
+
+[[bin]]
+name = "fuzz_ipc_framing"
+path = "fuzz_ipc_framing.rs"
+
+[[bin]]
+name = "fuzz_provider_response"
+path = "fuzz_provider_response.rs"
+
+[[bin]]
+name = "fuzz_secrets_parse"
+path = "fuzz_secrets_parse.rs"

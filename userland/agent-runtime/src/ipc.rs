@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 
 use anyhow::{Context, Result};
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::{mpsc, RwLock};
 use tracing::{debug, error, info, warn};
@@ -19,6 +19,9 @@ const MAX_MESSAGE_SIZE: u32 = 64 * 1024;
 
 /// Maximum number of global (monitoring) subscribers.
 const MAX_GLOBAL_SUBSCRIBERS: usize = 16;
+
+/// Maximum concurrent connections per agent socket.
+const MAX_CONCURRENT_CONNECTIONS: usize = 64;
 
 /// IPC endpoint for agent communication
 pub struct AgentIpc {
@@ -73,13 +76,26 @@ impl AgentIpc {
 
         let tx = self.message_tx.clone();
         let agent_id = self.agent_id;
+        let conn_semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(MAX_CONCURRENT_CONNECTIONS));
 
         tokio::spawn(async move {
             loop {
                 match listener.accept().await {
                     Ok((stream, _)) => {
                         let tx = tx.clone();
-                        tokio::spawn(handle_connection(stream, tx, agent_id));
+                        let permit = conn_semaphore.clone().try_acquire_owned();
+                        match permit {
+                            Ok(permit) => {
+                                tokio::spawn(async move {
+                                    handle_connection(stream, tx, agent_id).await;
+                                    drop(permit);
+                                });
+                            }
+                            Err(_) => {
+                                warn!(agent_id = %agent_id, max = MAX_CONCURRENT_CONNECTIONS, "Connection rejected: too many concurrent connections");
+                                drop(stream);
+                            }
+                        }
                     }
                     Err(e) => {
                         error!("Failed to accept connection: {}", e);
@@ -107,10 +123,19 @@ impl Drop for AgentIpc {
     }
 }
 
-/// Handle an incoming connection using length-prefixed framing.
+/// Response codes sent back to the client after each message.
+const ACK: u8 = 0x01;
+const NACK_QUEUE_FULL: u8 = 0x02;
+const NACK_INVALID: u8 = 0x03;
+
+/// Handle an incoming connection using length-prefixed framing with backpressure.
 ///
-/// Wire format: `[4-byte big-endian length][JSON message bytes]`
+/// Wire format (request):  `[4-byte big-endian length][JSON message bytes]`
+/// Wire format (response): `[1-byte status]` — ACK (0x01), NACK_QUEUE_FULL (0x02), or NACK_INVALID (0x03).
+///
 /// Messages larger than `MAX_MESSAGE_SIZE` are rejected and the connection is closed.
+/// When the agent's message queue is full, the sender receives NACK_QUEUE_FULL and
+/// can choose to retry after a delay, providing explicit flow-control signalling.
 async fn handle_connection(mut stream: UnixStream, tx: mpsc::Sender<Message>, owner_agent_id: AgentId) {
     let mut len_buf = [0u8; 4];
 
@@ -136,8 +161,9 @@ async fn handle_connection(mut stream: UnixStream, tx: mpsc::Sender<Message>, ow
 
         if msg_len > MAX_MESSAGE_SIZE {
             error!(
-                "Message too large ({} bytes, max {}), closing connection",
-                msg_len, MAX_MESSAGE_SIZE
+                size = msg_len,
+                max = MAX_MESSAGE_SIZE,
+                "Message too large, closing connection"
             );
             break;
         }
@@ -151,13 +177,25 @@ async fn handle_connection(mut stream: UnixStream, tx: mpsc::Sender<Message>, ow
         // Parse message
         match serde_json::from_slice::<Message>(&buffer) {
             Ok(message) => {
-                debug!("Received message: {:?}", message);
-                if let Err(e) = tx.send(message).await {
-                    error!("Failed to forward message: {}", e);
+                debug!(msg_id = %message.id, agent_id = %owner_agent_id, "Received message");
+                // Use try_send for backpressure: if the queue is full, NACK immediately
+                match tx.try_send(message) {
+                    Ok(()) => {
+                        let _ = stream.write_all(&[ACK]).await;
+                    }
+                    Err(mpsc::error::TrySendError::Full(_)) => {
+                        warn!(agent_id = %owner_agent_id, "Message queue full, sending NACK");
+                        let _ = stream.write_all(&[NACK_QUEUE_FULL]).await;
+                    }
+                    Err(mpsc::error::TrySendError::Closed(_)) => {
+                        error!(agent_id = %owner_agent_id, "Message channel closed");
+                        break;
+                    }
                 }
             }
             Err(e) => {
-                warn!("Failed to parse message: {}", e);
+                warn!(error = %e, "Failed to parse message");
+                let _ = stream.write_all(&[NACK_INVALID]).await;
             }
         }
     }
@@ -757,9 +795,14 @@ mod tests {
         let bytes = serde_json::to_vec(&msg).unwrap();
         let len = (bytes.len() as u32).to_be_bytes();
 
-        use tokio::io::AsyncWriteExt;
         client.write_all(&len).await.unwrap();
         client.write_all(&bytes).await.unwrap();
+
+        // Read the ACK response
+        let mut ack = [0u8; 1];
+        client.read_exact(&mut ack).await.unwrap();
+        assert_eq!(ack[0], ACK);
+
         drop(client); // Close connection
 
         // Should receive the message
@@ -794,7 +837,6 @@ mod tests {
         // Send a length that exceeds MAX_MESSAGE_SIZE
         let oversized_len = (MAX_MESSAGE_SIZE + 1).to_be_bytes();
 
-        use tokio::io::AsyncWriteExt;
         client.write_all(&oversized_len).await.unwrap();
         drop(client);
 
@@ -827,7 +869,6 @@ mod tests {
         });
 
         let mut client = UnixStream::connect(&sock_path).await.unwrap();
-        use tokio::io::AsyncWriteExt;
 
         // Send zero-length (should be skipped)
         client.write_all(&0u32.to_be_bytes()).await.unwrap();
@@ -844,6 +885,12 @@ mod tests {
         let bytes = serde_json::to_vec(&msg).unwrap();
         client.write_all(&(bytes.len() as u32).to_be_bytes()).await.unwrap();
         client.write_all(&bytes).await.unwrap();
+
+        // Read ACK
+        let mut ack = [0u8; 1];
+        client.read_exact(&mut ack).await.unwrap();
+        assert_eq!(ack[0], ACK);
+
         drop(client);
 
         let received = tokio::time::timeout(
@@ -874,15 +921,20 @@ mod tests {
         });
 
         let mut client = UnixStream::connect(&sock_path).await.unwrap();
-        use tokio::io::AsyncWriteExt;
 
         // Send invalid JSON bytes
         let garbage = b"this is not json";
         client.write_all(&(garbage.len() as u32).to_be_bytes()).await.unwrap();
         client.write_all(garbage).await.unwrap();
+
+        // Should receive a NACK_INVALID response
+        let mut nack = [0u8; 1];
+        client.read_exact(&mut nack).await.unwrap();
+        assert_eq!(nack[0], NACK_INVALID);
+
         drop(client);
 
-        // Handler should log a warning but not forward any message
+        // Handler should not forward any message
         let received = tokio::time::timeout(
             std::time::Duration::from_millis(500),
             rx.recv(),
@@ -901,5 +953,68 @@ mod tests {
     #[test]
     fn test_max_global_subscribers_constant() {
         assert_eq!(MAX_GLOBAL_SUBSCRIBERS, 16);
+    }
+
+    #[test]
+    fn test_max_concurrent_connections_constant() {
+        assert_eq!(MAX_CONCURRENT_CONNECTIONS, 64);
+    }
+
+    #[test]
+    fn test_ack_nack_constants() {
+        assert_eq!(ACK, 0x01);
+        assert_eq!(NACK_QUEUE_FULL, 0x02);
+        assert_eq!(NACK_INVALID, 0x03);
+    }
+
+    #[tokio::test]
+    async fn test_handle_connection_backpressure_nack() {
+        let tmp = std::env::temp_dir().join(format!("agnos_ipc_bp_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&tmp);
+        let sock_path = tmp.join("bp.sock");
+        let _ = std::fs::remove_file(&sock_path);
+
+        let listener = UnixListener::bind(&sock_path).unwrap();
+        // Channel with capacity 1 — second message will trigger NACK
+        let (tx, _rx) = mpsc::channel(1);
+        let agent_id = AgentId::new();
+
+        tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            handle_connection(stream, tx, agent_id).await;
+        });
+
+        let mut client = UnixStream::connect(&sock_path).await.unwrap();
+
+        let make_msg = |id: &str| -> Vec<u8> {
+            let msg = Message {
+                id: id.to_string(),
+                source: "client".to_string(),
+                target: "server".to_string(),
+                message_type: MessageType::Command,
+                payload: serde_json::json!({}),
+                timestamp: chrono::Utc::now(),
+            };
+            serde_json::to_vec(&msg).unwrap()
+        };
+
+        // First message: should get ACK
+        let bytes = make_msg("msg-1");
+        client.write_all(&(bytes.len() as u32).to_be_bytes()).await.unwrap();
+        client.write_all(&bytes).await.unwrap();
+        let mut resp = [0u8; 1];
+        client.read_exact(&mut resp).await.unwrap();
+        assert_eq!(resp[0], ACK);
+
+        // Second message: queue full, should get NACK
+        let bytes = make_msg("msg-2");
+        client.write_all(&(bytes.len() as u32).to_be_bytes()).await.unwrap();
+        client.write_all(&bytes).await.unwrap();
+        client.read_exact(&mut resp).await.unwrap();
+        assert_eq!(resp[0], NACK_QUEUE_FULL);
+
+        drop(client);
+        let _ = std::fs::remove_file(&sock_path);
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 }

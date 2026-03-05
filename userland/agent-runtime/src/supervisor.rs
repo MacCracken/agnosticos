@@ -141,6 +141,47 @@ impl CgroupController {
     }
 }
 
+/// Configurable resource quota thresholds for an agent.
+///
+/// These thresholds control when the supervisor takes action against an agent
+/// that is approaching or exceeding its resource limits.
+#[derive(Debug, Clone)]
+pub struct ResourceQuota {
+    /// Memory usage percentage of limit at which a warning is emitted (default 80%).
+    pub memory_warn_pct: f64,
+    /// Memory usage percentage of limit at which the agent is killed (default 95%).
+    pub memory_kill_pct: f64,
+    /// CPU usage rate percentage (of one core) at which a throttling warning is emitted (default 90%).
+    pub cpu_throttle_pct: f64,
+    /// The configured memory limit in bytes (from AgentConfig).
+    pub memory_limit: u64,
+    /// The configured CPU time limit in ms (from AgentConfig).
+    pub cpu_time_limit: u64,
+}
+
+impl Default for ResourceQuota {
+    fn default() -> Self {
+        Self {
+            memory_warn_pct: 80.0,
+            memory_kill_pct: 95.0,
+            cpu_throttle_pct: 90.0,
+            memory_limit: 0,
+            cpu_time_limit: 0,
+        }
+    }
+}
+
+impl ResourceQuota {
+    /// Create a quota from agent resource limits with default thresholds.
+    pub fn from_limits(memory_limit: u64, cpu_time_limit: u64) -> Self {
+        Self {
+            memory_limit,
+            cpu_time_limit,
+            ..Self::default()
+        }
+    }
+}
+
 /// Health check configuration
 #[derive(Debug, Clone)]
 pub struct HealthCheckConfig {
@@ -185,6 +226,10 @@ pub struct Supervisor {
     running_agents: Arc<RwLock<HashMap<AgentId, Box<dyn AgentControl>>>>,
     /// Tracks which agents have active cgroup controllers
     cgroups: Arc<RwLock<HashMap<AgentId, ()>>>,
+    /// Per-agent resource quotas (configurable thresholds for enforcement)
+    quotas: Arc<RwLock<HashMap<AgentId, ResourceQuota>>>,
+    /// Previous CPU usage readings for rate calculation (agent_id → (timestamp, usage_usec))
+    last_cpu_readings: Arc<RwLock<HashMap<AgentId, (Instant, u64)>>>,
 }
 
 /// Trait for controlling agent processes
@@ -205,6 +250,8 @@ impl Supervisor {
             config: HealthCheckConfig::default(),
             running_agents: Arc::new(RwLock::new(HashMap::new())),
             cgroups: Arc::new(RwLock::new(HashMap::new())),
+            quotas: Arc::new(RwLock::new(HashMap::new())),
+            last_cpu_readings: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -244,6 +291,18 @@ impl Supervisor {
         };
 
         self.health_checks.write().await.insert(agent_id, health);
+
+        // Set up resource quota from agent config (if available in registry)
+        if let Some(config) = self.registry.get_config(agent_id) {
+            let quota = ResourceQuota::from_limits(
+                config.resource_limits.max_memory,
+                config.resource_limits.max_cpu_time,
+            );
+            self.quotas.write().await.insert(agent_id, quota);
+        } else {
+            // No config available — use default quota (no limits enforced)
+            self.quotas.write().await.insert(agent_id, ResourceQuota::default());
+        }
 
         // Attempt to set up cgroups enforcement for this agent
         if let Err(e) = self.setup_cgroup(agent_id).await {
@@ -294,6 +353,8 @@ impl Supervisor {
     pub async fn unregister_agent(&self, agent_id: AgentId) -> Result<()> {
         self.health_checks.write().await.remove(&agent_id);
         self.running_agents.write().await.remove(&agent_id);
+        self.quotas.write().await.remove(&agent_id);
+        self.last_cpu_readings.write().await.remove(&agent_id);
 
         // Clean up cgroup
         if self.cgroups.write().await.remove(&agent_id).is_some() {
@@ -594,19 +655,21 @@ impl Supervisor {
         }
     }
 
-    /// Check if an agent is exceeding resource limits.
+    /// Check if an agent is exceeding resource limits using quota thresholds.
     ///
     /// On Linux with cgroups v2, memory limits are enforced by the kernel OOM
     /// killer automatically (memory.max).  This function reads the actual usage
-    /// from the cgroup counters and updates the registry.  If limits are
-    /// exceeded beyond a soft threshold (90%), we issue a SIGTERM to give the
-    /// agent a chance to clean up.  If cgroups are unavailable, we fall back
-    /// to `/proc/{pid}/` reads.
+    /// from the cgroup counters and updates the registry.  It then checks the
+    /// agent's `ResourceQuota` thresholds:
+    ///
+    /// - **memory_warn_pct** (default 80%): emit warning + audit event
+    /// - **memory_kill_pct** (default 95%): SIGKILL the agent + audit event
+    /// - **cpu_throttle_pct** (default 90%): emit CPU throttle warning + audit event
+    ///
+    /// If cgroups are unavailable, we fall back to `/proc/{pid}/` reads.
     async fn check_resource_limits(&self, agent_id: AgentId) -> Result<()> {
         let agent = self.registry.get(agent_id)
             .ok_or_else(|| anyhow::anyhow!("Agent {} not found", agent_id))?;
-        let config = self.registry.get_config(agent_id)
-            .ok_or_else(|| anyhow::anyhow!("Config not found for agent {}", agent_id))?;
 
         let (mem_used, cpu_used_us) = if let Some(cg) = CgroupController::open(agent_id) {
             (cg.memory_current(), cg.cpu_usage_usec())
@@ -630,38 +693,97 @@ impl Supervisor {
         };
         let _ = self.registry.update_resource_usage(agent_id, usage).await;
 
-        // Enforce memory: warn at 90%, SIGTERM at limit
-        if config.resource_limits.max_memory > 0 {
-            let limit = config.resource_limits.max_memory;
-            if mem_used > limit {
-                warn!(
-                    "Agent {} EXCEEDED memory limit: {} > {} bytes — sending SIGTERM",
-                    agent_id, mem_used, limit
+        // Get the quota for this agent (fall back to defaults if missing)
+        let quota = {
+            let quotas = self.quotas.read().await;
+            quotas.get(&agent_id).cloned().unwrap_or_default()
+        };
+
+        // --- Memory enforcement ---
+        if quota.memory_limit > 0 {
+            let mem_pct = (mem_used as f64 / quota.memory_limit as f64) * 100.0;
+
+            if mem_pct >= quota.memory_kill_pct {
+                error!(
+                    "Agent {} EXCEEDED memory kill threshold ({:.1}% >= {:.1}%): {} / {} bytes — sending SIGKILL",
+                    agent_id, mem_pct, quota.memory_kill_pct, mem_used, quota.memory_limit
                 );
-                self.signal_agent(agent_id, libc::SIGTERM).await;
-            } else if mem_used > limit * 9 / 10 {
+                let _ = sys_audit::agnos_audit_log_syscall(
+                    "agent_memory_kill",
+                    &format!(
+                        "agent_id={} memory_used={} memory_limit={} pct={:.1} threshold={:.1}",
+                        agent_id, mem_used, quota.memory_limit, mem_pct, quota.memory_kill_pct
+                    ),
+                    1,
+                );
+                self.signal_agent(agent_id, libc::SIGKILL).await;
+            } else if mem_pct >= quota.memory_warn_pct {
                 warn!(
-                    "Agent {} approaching memory limit: {} / {} bytes (>90%)",
-                    agent_id, mem_used, limit
+                    "Agent {} approaching memory limit ({:.1}% >= {:.1}%): {} / {} bytes",
+                    agent_id, mem_pct, quota.memory_warn_pct, mem_used, quota.memory_limit
+                );
+                let _ = sys_audit::agnos_audit_log_syscall(
+                    "agent_memory_warning",
+                    &format!(
+                        "agent_id={} memory_used={} memory_limit={} pct={:.1} threshold={:.1}",
+                        agent_id, mem_used, quota.memory_limit, mem_pct, quota.memory_warn_pct
+                    ),
+                    0,
                 );
             }
         }
 
-        // Enforce CPU time: warn at 90%, SIGTERM at limit
-        if config.resource_limits.max_cpu_time > 0 {
-            let limit = config.resource_limits.max_cpu_time;
-            if cpu_used_ms > limit {
-                warn!(
-                    "Agent {} EXCEEDED CPU time limit: {} > {} ms — sending SIGTERM",
-                    agent_id, cpu_used_ms, limit
-                );
-                self.signal_agent(agent_id, libc::SIGTERM).await;
-            } else if cpu_used_ms > limit * 9 / 10 {
-                warn!(
-                    "Agent {} approaching CPU time limit: {} / {} ms (>90%)",
-                    agent_id, cpu_used_ms, limit
-                );
+        // --- CPU usage rate enforcement ---
+        // Calculate CPU usage rate by comparing with previous reading.
+        // Rate = (delta_usage_usec / delta_time_usec) * 100 → percentage of one core.
+        let now = Instant::now();
+        let prev_reading = {
+            let readings = self.last_cpu_readings.read().await;
+            readings.get(&agent_id).copied()
+        };
+
+        if let Some((prev_time, prev_usec)) = prev_reading {
+            let elapsed = now.duration_since(prev_time);
+            let elapsed_us = elapsed.as_micros() as u64;
+            if elapsed_us > 0 && cpu_used_us >= prev_usec {
+                let delta_cpu_us = cpu_used_us - prev_usec;
+                let cpu_rate_pct = (delta_cpu_us as f64 / elapsed_us as f64) * 100.0;
+
+                if cpu_rate_pct >= quota.cpu_throttle_pct {
+                    warn!(
+                        "Agent {} CPU usage rate {:.1}% >= throttle threshold {:.1}%",
+                        agent_id, cpu_rate_pct, quota.cpu_throttle_pct
+                    );
+                    let _ = sys_audit::agnos_audit_log_syscall(
+                        "agent_cpu_throttle_warning",
+                        &format!(
+                            "agent_id={} cpu_rate_pct={:.1} threshold={:.1}",
+                            agent_id, cpu_rate_pct, quota.cpu_throttle_pct
+                        ),
+                        0,
+                    );
+                }
             }
+        }
+
+        // Store current reading for next interval
+        self.last_cpu_readings.write().await.insert(agent_id, (now, cpu_used_us));
+
+        // --- CPU total time enforcement (existing behavior) ---
+        if quota.cpu_time_limit > 0 && cpu_used_ms > quota.cpu_time_limit {
+            error!(
+                "Agent {} EXCEEDED CPU time limit: {} > {} ms — sending SIGKILL",
+                agent_id, cpu_used_ms, quota.cpu_time_limit
+            );
+            let _ = sys_audit::agnos_audit_log_syscall(
+                "agent_cpu_time_kill",
+                &format!(
+                    "agent_id={} cpu_used_ms={} cpu_limit_ms={}",
+                    agent_id, cpu_used_ms, quota.cpu_time_limit
+                ),
+                1,
+            );
+            self.signal_agent(agent_id, libc::SIGKILL).await;
         }
 
         Ok(())
@@ -697,6 +819,19 @@ impl Supervisor {
     /// Get all health statuses
     pub async fn get_all_health(&self) -> Vec<AgentHealth> {
         self.health_checks.read().await.values().cloned().collect()
+    }
+
+    /// Set the resource quota for a specific agent.
+    ///
+    /// This allows runtime tuning of the warning/kill thresholds without
+    /// re-registering the agent.
+    pub async fn set_quota(&self, agent_id: AgentId, quota: ResourceQuota) {
+        self.quotas.write().await.insert(agent_id, quota);
+    }
+
+    /// Get the resource quota for a specific agent.
+    pub async fn get_quota(&self, agent_id: AgentId) -> Option<ResourceQuota> {
+        self.quotas.read().await.get(&agent_id).cloned()
     }
 }
 
@@ -876,10 +1011,12 @@ mod tests {
     fn test_supervisor_new() {
         let registry = Arc::new(AgentRegistry::new());
         let supervisor = Supervisor::new(registry.clone());
-        
+
         assert!(supervisor.health_checks.blocking_read().is_empty());
         assert!(supervisor.running_agents.blocking_read().is_empty());
         assert!(supervisor.cgroups.blocking_read().is_empty());
+        assert!(supervisor.quotas.blocking_read().is_empty());
+        assert!(supervisor.last_cpu_readings.blocking_read().is_empty());
     }
 
     #[test]
@@ -1291,6 +1428,8 @@ mod tests {
         assert!(Arc::ptr_eq(&supervisor.health_checks, &cloned.health_checks));
         assert!(Arc::ptr_eq(&supervisor.running_agents, &cloned.running_agents));
         assert!(Arc::ptr_eq(&supervisor.cgroups, &cloned.cgroups));
+        assert!(Arc::ptr_eq(&supervisor.quotas, &cloned.quotas));
+        assert!(Arc::ptr_eq(&supervisor.last_cpu_readings, &cloned.last_cpu_readings));
     }
 
     #[tokio::test]
@@ -1908,6 +2047,196 @@ mod tests {
             "usage_usec 9876543\nuser_usec 6000000\nsystem_usec 3876543\nnr_periods 100\nnr_throttled 5\nthrottled_usec 50000\n",
         ).unwrap();
         assert_eq!(controller.cpu_usage_usec(), 9876543);
+    }
+
+    // ==================================================================
+    // ResourceQuota tests
+    // ==================================================================
+
+    #[test]
+    fn test_resource_quota_defaults() {
+        let quota = ResourceQuota::default();
+        assert!((quota.memory_warn_pct - 80.0).abs() < f64::EPSILON);
+        assert!((quota.memory_kill_pct - 95.0).abs() < f64::EPSILON);
+        assert!((quota.cpu_throttle_pct - 90.0).abs() < f64::EPSILON);
+        assert_eq!(quota.memory_limit, 0);
+        assert_eq!(quota.cpu_time_limit, 0);
+    }
+
+    #[test]
+    fn test_resource_quota_from_limits() {
+        let quota = ResourceQuota::from_limits(1024 * 1024 * 1024, 3600_000);
+        assert_eq!(quota.memory_limit, 1024 * 1024 * 1024);
+        assert_eq!(quota.cpu_time_limit, 3600_000);
+        // Should still have default thresholds
+        assert!((quota.memory_warn_pct - 80.0).abs() < f64::EPSILON);
+        assert!((quota.memory_kill_pct - 95.0).abs() < f64::EPSILON);
+        assert!((quota.cpu_throttle_pct - 90.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_resource_quota_clone() {
+        let quota = ResourceQuota {
+            memory_warn_pct: 70.0,
+            memory_kill_pct: 90.0,
+            cpu_throttle_pct: 85.0,
+            memory_limit: 512 * 1024 * 1024,
+            cpu_time_limit: 1800_000,
+        };
+        let cloned = quota.clone();
+        assert!((cloned.memory_warn_pct - 70.0).abs() < f64::EPSILON);
+        assert!((cloned.memory_kill_pct - 90.0).abs() < f64::EPSILON);
+        assert!((cloned.cpu_throttle_pct - 85.0).abs() < f64::EPSILON);
+        assert_eq!(cloned.memory_limit, 512 * 1024 * 1024);
+        assert_eq!(cloned.cpu_time_limit, 1800_000);
+    }
+
+    #[test]
+    fn test_resource_quota_debug() {
+        let quota = ResourceQuota::default();
+        let dbg = format!("{:?}", quota);
+        assert!(dbg.contains("memory_warn_pct"));
+        assert!(dbg.contains("memory_kill_pct"));
+        assert!(dbg.contains("cpu_throttle_pct"));
+    }
+
+    #[tokio::test]
+    async fn test_supervisor_set_and_get_quota() {
+        let registry = Arc::new(AgentRegistry::new());
+        let supervisor = Supervisor::new(registry.clone());
+        let agent_id = AgentId::new();
+
+        // No quota yet
+        assert!(supervisor.get_quota(agent_id).await.is_none());
+
+        // Set a quota
+        let quota = ResourceQuota {
+            memory_warn_pct: 70.0,
+            memory_kill_pct: 90.0,
+            cpu_throttle_pct: 85.0,
+            memory_limit: 2 * 1024 * 1024 * 1024,
+            cpu_time_limit: 7200_000,
+        };
+        supervisor.set_quota(agent_id, quota).await;
+
+        let retrieved = supervisor.get_quota(agent_id).await.unwrap();
+        assert!((retrieved.memory_warn_pct - 70.0).abs() < f64::EPSILON);
+        assert!((retrieved.memory_kill_pct - 90.0).abs() < f64::EPSILON);
+        assert_eq!(retrieved.memory_limit, 2 * 1024 * 1024 * 1024);
+    }
+
+    #[tokio::test]
+    async fn test_supervisor_register_creates_quota() {
+        let registry = Arc::new(AgentRegistry::new());
+        let supervisor = Supervisor::new(registry.clone());
+        let agent_id = AgentId::new();
+
+        supervisor.register_agent(agent_id).await.unwrap();
+
+        // register_agent should create a default quota (since agent won't be in registry config)
+        let quota = supervisor.get_quota(agent_id).await.unwrap();
+        assert!((quota.memory_warn_pct - 80.0).abs() < f64::EPSILON);
+        assert!((quota.memory_kill_pct - 95.0).abs() < f64::EPSILON);
+    }
+
+    #[tokio::test]
+    async fn test_supervisor_unregister_removes_quota() {
+        let registry = Arc::new(AgentRegistry::new());
+        let supervisor = Supervisor::new(registry.clone());
+        let agent_id = AgentId::new();
+
+        supervisor.register_agent(agent_id).await.unwrap();
+        assert!(supervisor.get_quota(agent_id).await.is_some());
+
+        supervisor.unregister_agent(agent_id).await.unwrap();
+        assert!(supervisor.get_quota(agent_id).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_supervisor_set_quota_overrides_registered() {
+        let registry = Arc::new(AgentRegistry::new());
+        let supervisor = Supervisor::new(registry.clone());
+        let agent_id = AgentId::new();
+
+        supervisor.register_agent(agent_id).await.unwrap();
+
+        // Override with custom quota
+        let custom = ResourceQuota {
+            memory_warn_pct: 50.0,
+            memory_kill_pct: 75.0,
+            cpu_throttle_pct: 60.0,
+            memory_limit: 256 * 1024 * 1024,
+            cpu_time_limit: 600_000,
+        };
+        supervisor.set_quota(agent_id, custom).await;
+
+        let retrieved = supervisor.get_quota(agent_id).await.unwrap();
+        assert!((retrieved.memory_warn_pct - 50.0).abs() < f64::EPSILON);
+        assert!((retrieved.memory_kill_pct - 75.0).abs() < f64::EPSILON);
+        assert_eq!(retrieved.memory_limit, 256 * 1024 * 1024);
+    }
+
+    #[tokio::test]
+    async fn test_supervisor_quotas_empty_on_new() {
+        let registry = Arc::new(AgentRegistry::new());
+        let supervisor = Supervisor::new(registry.clone());
+        assert!(supervisor.quotas.read().await.is_empty());
+        assert!(supervisor.last_cpu_readings.read().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_supervisor_unregister_cleans_cpu_readings() {
+        let registry = Arc::new(AgentRegistry::new());
+        let supervisor = Supervisor::new(registry.clone());
+        let agent_id = AgentId::new();
+
+        // Manually insert a CPU reading
+        supervisor.last_cpu_readings.write().await.insert(agent_id, (Instant::now(), 12345));
+
+        supervisor.register_agent(agent_id).await.unwrap();
+        supervisor.unregister_agent(agent_id).await.unwrap();
+
+        assert!(!supervisor.last_cpu_readings.read().await.contains_key(&agent_id));
+    }
+
+    #[test]
+    fn test_resource_quota_from_limits_zero() {
+        let quota = ResourceQuota::from_limits(0, 0);
+        assert_eq!(quota.memory_limit, 0);
+        assert_eq!(quota.cpu_time_limit, 0);
+        // Default thresholds still set
+        assert!((quota.memory_warn_pct - 80.0).abs() < f64::EPSILON);
+    }
+
+    #[tokio::test]
+    async fn test_supervisor_multiple_agents_independent_quotas() {
+        let registry = Arc::new(AgentRegistry::new());
+        let supervisor = Supervisor::new(registry.clone());
+        let id1 = AgentId::new();
+        let id2 = AgentId::new();
+
+        supervisor.set_quota(id1, ResourceQuota {
+            memory_warn_pct: 60.0,
+            memory_kill_pct: 80.0,
+            cpu_throttle_pct: 70.0,
+            memory_limit: 1024,
+            cpu_time_limit: 500,
+        }).await;
+
+        supervisor.set_quota(id2, ResourceQuota {
+            memory_warn_pct: 90.0,
+            memory_kill_pct: 99.0,
+            cpu_throttle_pct: 95.0,
+            memory_limit: 2048,
+            cpu_time_limit: 1000,
+        }).await;
+
+        let q1 = supervisor.get_quota(id1).await.unwrap();
+        let q2 = supervisor.get_quota(id2).await.unwrap();
+        assert!((q1.memory_warn_pct - 60.0).abs() < f64::EPSILON);
+        assert!((q2.memory_warn_pct - 90.0).abs() < f64::EPSILON);
+        assert_eq!(q1.memory_limit, 1024);
+        assert_eq!(q2.memory_limit, 2048);
     }
 }
 

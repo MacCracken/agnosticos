@@ -9,7 +9,7 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use tokio::sync::{mpsc, RwLock, Semaphore};
-use tokio::time::{timeout, Duration};
+use tokio::time::{timeout, Duration, Instant};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
@@ -63,12 +63,51 @@ enum Commands {
     Stats,
 }
 
+/// Per-provider health tracking for graceful degradation
+#[derive(Debug, Clone)]
+pub struct ProviderHealth {
+    /// Whether this provider is currently considered healthy
+    pub is_healthy: bool,
+    /// Number of consecutive failures since last success
+    pub consecutive_failures: u32,
+    /// When the health status was last checked
+    pub last_check: Instant,
+}
+
+impl ProviderHealth {
+    fn new() -> Self {
+        Self {
+            is_healthy: true,
+            consecutive_failures: 0,
+            last_check: Instant::now(),
+        }
+    }
+
+    /// Record a failure. After 3 consecutive failures, mark unhealthy.
+    fn record_failure(&mut self) {
+        self.consecutive_failures += 1;
+        self.last_check = Instant::now();
+        if self.consecutive_failures >= 3 {
+            self.is_healthy = false;
+        }
+    }
+
+    /// Record a success. One success resets the provider to healthy.
+    fn record_success(&mut self) {
+        self.consecutive_failures = 0;
+        self.is_healthy = true;
+        self.last_check = Instant::now();
+    }
+}
+
 /// LLM Gateway service
 pub struct LlmGateway {
     /// Active providers
     providers: RwLock<HashMap<ProviderType, Arc<dyn LlmProvider>>>,
     /// Currently loaded models
     loaded_models: RwLock<HashMap<String, ModelInfo>>,
+    /// Per-provider health tracking
+    provider_health: RwLock<HashMap<ProviderType, ProviderHealth>>,
     /// Request rate limiter
     rate_limiter: Semaphore,
     /// Response cache
@@ -113,6 +152,7 @@ impl LlmGateway {
         Ok(Self {
             providers: RwLock::new(HashMap::new()),
             loaded_models: RwLock::new(HashMap::new()),
+            provider_health: RwLock::new(HashMap::new()),
             rate_limiter,
             cache,
             accounting,
@@ -125,12 +165,14 @@ impl LlmGateway {
         info!("Initializing LLM providers...");
 
         let mut providers = self.providers.write().await;
+        let mut health = self.provider_health.write().await;
 
         // Try to initialize local providers
         match providers::OllamaProvider::new().await {
             Ok(provider) => {
                 info!("Ollama provider initialized");
                 providers.insert(ProviderType::Ollama, Arc::new(provider));
+                health.insert(ProviderType::Ollama, ProviderHealth::new());
             }
             Err(e) => {
                 warn!("Failed to initialize Ollama provider: {}", e);
@@ -141,6 +183,7 @@ impl LlmGateway {
             Ok(provider) => {
                 info!("llama.cpp provider initialized");
                 providers.insert(ProviderType::LlamaCpp, Arc::new(provider));
+                health.insert(ProviderType::LlamaCpp, ProviderHealth::new());
             }
             Err(e) => {
                 warn!("Failed to initialize llama.cpp provider: {}", e);
@@ -152,6 +195,7 @@ impl LlmGateway {
             match providers::OpenAiProvider::new(api_key, std::env::var("OPENAI_BASE_URL").ok()) {
                 Ok(provider) => {
                     providers.insert(ProviderType::OpenAi, Arc::new(provider));
+                    health.insert(ProviderType::OpenAi, ProviderHealth::new());
                     info!("OpenAI provider initialized");
                 }
                 Err(e) => {
@@ -164,6 +208,7 @@ impl LlmGateway {
             match providers::AnthropicProvider::new(api_key, std::env::var("ANTHROPIC_BASE_URL").ok()) {
                 Ok(provider) => {
                     providers.insert(ProviderType::Anthropic, Arc::new(provider));
+                    health.insert(ProviderType::Anthropic, ProviderHealth::new());
                     info!("Anthropic provider initialized");
                 }
                 Err(e) => {
@@ -172,11 +217,11 @@ impl LlmGateway {
             }
         }
 
-        info!("{} provider(s) initialized", providers.len());
+        info!(count = providers.len(), "Providers initialized");
         Ok(())
     }
 
-    /// Run inference with the LLM
+    /// Run inference with the LLM, retrying with fallback providers on failure
     pub async fn infer(
         &self,
         mut request: InferenceRequest,
@@ -188,42 +233,82 @@ impl LlmGateway {
         let _permit = self.rate_limiter.acquire().await?;
 
         info!(
-            "Inference request: model={}, agent={:?}",
-            request.model, agent_id
+            model = %request.model,
+            agent_id = ?agent_id,
+            max_tokens = request.max_tokens,
+            temperature = request.temperature,
+            "Inference request"
         );
 
         // Check cache if enabled
         if self.config.enable_caching {
             if let Some(cached) = self.cache.get(&request).await {
-                debug!("Cache hit for inference request");
+                debug!(model = %request.model, "Cache hit for inference request");
                 return Ok(cached);
             }
         }
 
-        // Select the best provider for the request
-        let provider = self.select_provider(&request).await?;
-        
-        // Execute inference with timeout
-        let response = timeout(
-            self.config.request_timeout,
-            provider.infer(request.clone())
-        )
-        .await
-        .context("Inference request timed out")??;
+        // Collect ordered list of (provider_type, provider) to try
+        let candidates = self.select_providers_ordered(&request).await?;
 
-        // Update token accounting
-        if self.config.enable_token_accounting {
-            if let Some(agent_id) = agent_id {
-                self.accounting.record_usage(agent_id, response.usage).await;
+        // Try up to 3 candidates (initial + 2 retries)
+        let max_attempts = candidates.len().min(3);
+        let mut last_error = None;
+
+        for (i, (provider_type, provider)) in candidates.into_iter().take(max_attempts).enumerate() {
+            if i > 0 {
+                info!(
+                    provider = ?provider_type,
+                    attempt = i + 1,
+                    "Retrying inference with fallback provider"
+                );
+            }
+
+            match timeout(
+                self.config.request_timeout,
+                provider.infer(request.clone()),
+            )
+            .await
+            {
+                Ok(Ok(response)) => {
+                    // Record success for health tracking
+                    self.record_provider_success(provider_type).await;
+
+                    // Update token accounting
+                    if self.config.enable_token_accounting {
+                        if let Some(agent_id) = agent_id {
+                            self.accounting.record_usage(agent_id, response.usage).await;
+                        }
+                    }
+
+                    // Cache the response
+                    if self.config.enable_caching {
+                        self.cache.set(request, response.clone()).await;
+                    }
+
+                    return Ok(response);
+                }
+                Ok(Err(e)) => {
+                    warn!(
+                        provider = ?provider_type,
+                        error = %e,
+                        "Provider inference failed"
+                    );
+                    self.record_provider_failure(provider_type).await;
+                    last_error = Some(e);
+                }
+                Err(_) => {
+                    warn!(
+                        provider = ?provider_type,
+                        "Provider inference timed out"
+                    );
+                    self.record_provider_failure(provider_type).await;
+                    last_error = Some(anyhow::anyhow!("Inference request timed out"));
+                }
             }
         }
 
-        // Cache the response
-        if self.config.enable_caching {
-            self.cache.set(request, response.clone()).await;
-        }
-
-        Ok(response)
+        Err(last_error.unwrap_or_else(|| anyhow::anyhow!("No LLM provider available")))
     }
 
     /// Stream inference results
@@ -235,8 +320,10 @@ impl LlmGateway {
         let _permit = self.rate_limiter.acquire().await?;
         
         info!(
-            "Streaming inference request: model={}, agent={:?}",
-            request.model, agent_id
+            model = %request.model,
+            agent_id = ?agent_id,
+            max_tokens = request.max_tokens,
+            "Streaming inference request"
         );
 
         let provider = self.select_provider(&request).await?;
@@ -245,31 +332,88 @@ impl LlmGateway {
         Ok(stream)
     }
 
-    /// Select the best provider for a request
+    /// Select the best provider for a request (returns first healthy match)
     async fn select_provider(&self, request: &InferenceRequest) -> Result<Arc<dyn LlmProvider>> {
+        let candidates = self.select_providers_ordered(request).await?;
+        candidates
+            .into_iter()
+            .next()
+            .map(|(_, provider)| provider)
+            .ok_or_else(|| anyhow::anyhow!("No LLM provider available"))
+    }
+
+    /// Return an ordered list of healthy providers to try for a request.
+    /// Unhealthy providers are appended at the end as last-resort fallbacks.
+    async fn select_providers_ordered(
+        &self,
+        request: &InferenceRequest,
+    ) -> Result<Vec<(ProviderType, Arc<dyn LlmProvider>)>> {
         let providers = self.providers.read().await;
-        
-        // Check if requested model is loaded locally
+        let health = self.provider_health.read().await;
         let loaded = self.loaded_models.read().await;
+
+        if providers.is_empty() {
+            return Err(anyhow::anyhow!("No LLM provider available"));
+        }
+
+        let mut healthy: Vec<(ProviderType, Arc<dyn LlmProvider>)> = Vec::new();
+        let mut unhealthy: Vec<(ProviderType, Arc<dyn LlmProvider>)> = Vec::new();
+
+        // Helper: classify a provider as healthy or unhealthy
+        let mut classify = |pt: ProviderType, p: Arc<dyn LlmProvider>| {
+            let is_healthy = health.get(&pt).map(|h| h.is_healthy).unwrap_or(true);
+            if is_healthy {
+                healthy.push((pt, p));
+            } else {
+                unhealthy.push((pt, p));
+            }
+        };
+
+        // Priority 1: If the model is loaded locally, prefer Ollama
         if loaded.contains_key(&request.model) {
-            // Use the provider that has this model
             if let Some(provider) = providers.get(&ProviderType::Ollama) {
-                return Ok(provider.clone());
+                classify(ProviderType::Ollama, provider.clone());
             }
         }
-        drop(loaded);
 
-        // Default to first available local provider
-        if let Some((_, provider)) = providers.iter().next() {
-            return Ok(provider.clone());
+        // Priority 2: All other providers in registration order
+        for (&pt, provider) in providers.iter() {
+            // Skip Ollama if already added above
+            if pt == ProviderType::Ollama && loaded.contains_key(&request.model) {
+                continue;
+            }
+            classify(pt, provider.clone());
         }
 
-        // Try cloud providers as fallback
-        if let Some(provider) = providers.get(&ProviderType::OpenAi) {
-            return Ok(provider.clone());
-        }
+        // Healthy first, unhealthy as last resort
+        healthy.extend(unhealthy);
+        Ok(healthy)
+    }
 
-        Err(anyhow::anyhow!("No LLM provider available"))
+    /// Record a successful call to a provider
+    async fn record_provider_success(&self, provider_type: ProviderType) {
+        let mut health = self.provider_health.write().await;
+        health
+            .entry(provider_type)
+            .or_insert_with(ProviderHealth::new)
+            .record_success();
+        debug!(provider = ?provider_type, "Provider marked healthy");
+    }
+
+    /// Record a failed call to a provider
+    async fn record_provider_failure(&self, provider_type: ProviderType) {
+        let mut health = self.provider_health.write().await;
+        let entry = health
+            .entry(provider_type)
+            .or_insert_with(ProviderHealth::new);
+        entry.record_failure();
+        if !entry.is_healthy {
+            warn!(
+                provider = ?provider_type,
+                consecutive_failures = entry.consecutive_failures,
+                "Provider marked unhealthy"
+            );
+        }
     }
 
     /// List available models
@@ -280,7 +424,7 @@ impl LlmGateway {
 
     /// Load a model
     pub async fn load_model(&self, model_id: &str) -> Result<()> {
-        info!("Loading model: {}", model_id);
+        info!(model_id = %model_id, "Loading model");
 
         let providers = self.providers.read().await;
         
@@ -290,12 +434,11 @@ impl LlmGateway {
                 Ok(model_info) => {
                     let mut loaded = self.loaded_models.write().await;
                     loaded.insert(model_id.to_string(), model_info);
-                    info!("Model {} loaded successfully via {:?}", model_id, provider_type);
+                    info!(model_id = %model_id, provider = ?provider_type, "Model loaded successfully");
                     return Ok(());
                 }
                 Err(e) => {
-                    debug!("Provider {:?} could not load model {}: {}", 
-                           provider_type, model_id, e);
+                    debug!(provider = ?provider_type, model_id = %model_id, error = %e, "Provider could not load model");
                 }
             }
         }
@@ -305,12 +448,12 @@ impl LlmGateway {
 
     /// Unload a model
     pub async fn unload_model(&self, model_id: &str) -> Result<()> {
-        info!("Unloading model: {}", model_id);
+        info!(model_id = %model_id, "Unloading model");
 
         let mut loaded = self.loaded_models.write().await;
         
         if loaded.remove(model_id).is_some() {
-            info!("Model {} unloaded", model_id);
+            info!(model_id = %model_id, "Model unloaded");
         }
 
         Ok(())
@@ -351,14 +494,62 @@ impl LlmGateway {
         ]
     }
 
+    /// Return health status for all tracked providers
+    pub async fn provider_health(&self) -> HashMap<ProviderType, ProviderHealth> {
+        self.provider_health.read().await.clone()
+    }
+
+    /// Spawn a background task that pings each provider every 30 seconds via `list_models()`
+    /// and updates health status accordingly.
+    pub fn start_health_check_loop(self: &Arc<Self>) {
+        let gateway = Arc::clone(self);
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(30));
+            loop {
+                interval.tick().await;
+                gateway.run_health_checks().await;
+            }
+        });
+    }
+
+    /// Run a single round of health checks against all registered providers
+    pub async fn run_health_checks(&self) {
+        let provider_list: Vec<(ProviderType, Arc<dyn LlmProvider>)> = {
+            let providers = self.providers.read().await;
+            providers.iter().map(|(&pt, p)| (pt, p.clone())).collect()
+        };
+
+        for (provider_type, provider) in provider_list {
+            match timeout(Duration::from_secs(10), provider.list_models()).await {
+                Ok(Ok(_)) => {
+                    self.record_provider_success(provider_type).await;
+                }
+                Ok(Err(e)) => {
+                    debug!(
+                        provider = ?provider_type,
+                        error = %e,
+                        "Health check failed"
+                    );
+                    self.record_provider_failure(provider_type).await;
+                }
+                Err(_) => {
+                    debug!(
+                        provider = ?provider_type,
+                        "Health check timed out"
+                    );
+                    self.record_provider_failure(provider_type).await;
+                }
+            }
+        }
+    }
+
     /// Create a model sharing session for multi-agent access
     pub async fn create_shared_session(
         &self,
         model_id: &str,
         agent_ids: Vec<AgentId>,
     ) -> Result<SharedSession> {
-        info!("Creating shared session for model {} with {} agents", 
-              model_id, agent_ids.len());
+        info!(model_id = %model_id, agent_count = agent_ids.len(), "Creating shared session");
 
         // Ensure model is loaded
         self.load_model(model_id).await?;
@@ -414,7 +605,10 @@ async fn run_daemon() -> Result<()> {
     let gateway = Arc::new(LlmGateway::new(config.clone()).await?);
     
     gateway.init_providers().await?;
-    
+
+    // Start background health checks (every 30s)
+    gateway.start_health_check_loop();
+
     // Start HTTP server in background
     let http_gateway = gateway.clone();
     let http_config = config.clone();
@@ -1701,5 +1895,288 @@ mod tests {
         let total = gateway.get_total_usage().await;
         assert_eq!(total.total_tokens, 0);
         assert!(gateway.get_agent_usage(a1).await.is_none());
+    }
+
+    // ==================================================================
+    // Provider health tracking and graceful degradation tests
+    // ==================================================================
+
+    #[test]
+    fn test_provider_health_new_is_healthy() {
+        let health = ProviderHealth::new();
+        assert!(health.is_healthy);
+        assert_eq!(health.consecutive_failures, 0);
+    }
+
+    #[test]
+    fn test_provider_health_record_failure_below_threshold() {
+        let mut health = ProviderHealth::new();
+        health.record_failure();
+        assert!(health.is_healthy, "1 failure should not mark unhealthy");
+        assert_eq!(health.consecutive_failures, 1);
+
+        health.record_failure();
+        assert!(health.is_healthy, "2 failures should not mark unhealthy");
+        assert_eq!(health.consecutive_failures, 2);
+    }
+
+    #[test]
+    fn test_provider_health_unhealthy_after_3_failures() {
+        let mut health = ProviderHealth::new();
+        health.record_failure();
+        health.record_failure();
+        health.record_failure();
+        assert!(!health.is_healthy, "3 consecutive failures should mark unhealthy");
+        assert_eq!(health.consecutive_failures, 3);
+    }
+
+    #[test]
+    fn test_provider_health_success_resets_to_healthy() {
+        let mut health = ProviderHealth::new();
+        // Drive to unhealthy
+        for _ in 0..5 {
+            health.record_failure();
+        }
+        assert!(!health.is_healthy);
+        assert_eq!(health.consecutive_failures, 5);
+
+        // One success should restore health
+        health.record_success();
+        assert!(health.is_healthy);
+        assert_eq!(health.consecutive_failures, 0);
+    }
+
+    #[test]
+    fn test_provider_health_clone() {
+        let mut health = ProviderHealth::new();
+        health.record_failure();
+        let cloned = health.clone();
+        assert_eq!(cloned.consecutive_failures, 1);
+        assert!(cloned.is_healthy);
+    }
+
+    #[test]
+    fn test_provider_health_debug() {
+        let health = ProviderHealth::new();
+        let dbg = format!("{:?}", health);
+        assert!(dbg.contains("is_healthy"));
+        assert!(dbg.contains("consecutive_failures"));
+    }
+
+    #[tokio::test]
+    async fn test_gateway_provider_health_empty_initially() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+        let health = gateway.provider_health().await;
+        assert!(health.is_empty(), "No providers registered => empty health map");
+    }
+
+    #[tokio::test]
+    async fn test_gateway_record_provider_success() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+        gateway.record_provider_success(ProviderType::Ollama).await;
+
+        let health = gateway.provider_health().await;
+        let h = health.get(&ProviderType::Ollama).unwrap();
+        assert!(h.is_healthy);
+        assert_eq!(h.consecutive_failures, 0);
+    }
+
+    #[tokio::test]
+    async fn test_gateway_record_provider_failure_marks_unhealthy() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+
+        for _ in 0..3 {
+            gateway.record_provider_failure(ProviderType::OpenAi).await;
+        }
+
+        let health = gateway.provider_health().await;
+        let h = health.get(&ProviderType::OpenAi).unwrap();
+        assert!(!h.is_healthy);
+        assert_eq!(h.consecutive_failures, 3);
+    }
+
+    #[tokio::test]
+    async fn test_gateway_record_success_after_failures_restores_health() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+
+        // Make it unhealthy
+        for _ in 0..4 {
+            gateway.record_provider_failure(ProviderType::LlamaCpp).await;
+        }
+        assert!(!gateway.provider_health().await.get(&ProviderType::LlamaCpp).unwrap().is_healthy);
+
+        // One success restores
+        gateway.record_provider_success(ProviderType::LlamaCpp).await;
+        assert!(gateway.provider_health().await.get(&ProviderType::LlamaCpp).unwrap().is_healthy);
+    }
+
+    #[tokio::test]
+    async fn test_select_providers_ordered_skips_unhealthy() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+
+        // Register two providers
+        {
+            let mut providers = gateway.providers.write().await;
+            let p1 = providers::LlamaCppProvider::new().await.unwrap();
+            let p2 = providers::LlamaCppProvider::new().await.unwrap();
+            providers.insert(ProviderType::Ollama, Arc::new(p1));
+            providers.insert(ProviderType::LlamaCpp, Arc::new(p2));
+        }
+
+        // Initialize health entries
+        gateway.record_provider_success(ProviderType::Ollama).await;
+        gateway.record_provider_success(ProviderType::LlamaCpp).await;
+
+        // Mark Ollama unhealthy
+        for _ in 0..3 {
+            gateway.record_provider_failure(ProviderType::Ollama).await;
+        }
+
+        let request = agnos_common::InferenceRequest::default();
+        let candidates = gateway.select_providers_ordered(&request).await.unwrap();
+
+        // LlamaCpp (healthy) should come before Ollama (unhealthy)
+        assert_eq!(candidates.len(), 2);
+        assert_eq!(candidates[0].0, ProviderType::LlamaCpp);
+        assert_eq!(candidates[1].0, ProviderType::Ollama);
+    }
+
+    #[tokio::test]
+    async fn test_select_provider_returns_healthy_provider() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+
+        // Register two providers
+        {
+            let mut providers = gateway.providers.write().await;
+            let p1 = providers::LlamaCppProvider::new().await.unwrap();
+            let p2 = providers::LlamaCppProvider::new().await.unwrap();
+            providers.insert(ProviderType::Ollama, Arc::new(p1));
+            providers.insert(ProviderType::OpenAi, Arc::new(p2));
+        }
+
+        // Mark Ollama unhealthy
+        for _ in 0..3 {
+            gateway.record_provider_failure(ProviderType::Ollama).await;
+        }
+        gateway.record_provider_success(ProviderType::OpenAi).await;
+
+        let request = agnos_common::InferenceRequest::default();
+        // select_provider should succeed (returns OpenAi which is healthy)
+        let result = gateway.select_provider(&request).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_select_providers_ordered_all_unhealthy_still_returns() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+
+        {
+            let mut providers = gateway.providers.write().await;
+            let p = providers::LlamaCppProvider::new().await.unwrap();
+            providers.insert(ProviderType::Ollama, Arc::new(p));
+        }
+
+        // Mark the only provider unhealthy
+        for _ in 0..3 {
+            gateway.record_provider_failure(ProviderType::Ollama).await;
+        }
+
+        let request = agnos_common::InferenceRequest::default();
+        let candidates = gateway.select_providers_ordered(&request).await.unwrap();
+        // Should still include the unhealthy provider as last resort
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].0, ProviderType::Ollama);
+    }
+
+    #[tokio::test]
+    async fn test_run_health_checks_no_providers() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+        // Should not panic with no providers
+        gateway.run_health_checks().await;
+        let health = gateway.provider_health().await;
+        assert!(health.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_run_health_checks_updates_last_check() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+
+        // Register a provider
+        {
+            let mut providers = gateway.providers.write().await;
+            let p = providers::LlamaCppProvider::new().await.unwrap();
+            providers.insert(ProviderType::LlamaCpp, Arc::new(p));
+        }
+        gateway.record_provider_success(ProviderType::LlamaCpp).await;
+
+        let before = {
+            let h = gateway.provider_health().await;
+            h.get(&ProviderType::LlamaCpp).unwrap().last_check
+        };
+
+        tokio::time::sleep(Duration::from_millis(5)).await;
+
+        // Run health checks — will either succeed or fail, but should update last_check
+        gateway.run_health_checks().await;
+
+        let health = gateway.provider_health().await;
+        let h = health.get(&ProviderType::LlamaCpp).unwrap();
+        assert!(h.last_check > before, "Health check should update last_check timestamp");
+    }
+
+    #[tokio::test]
+    async fn test_provider_health_multiple_providers_independent() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+
+        // Fail Ollama, succeed OpenAi
+        for _ in 0..3 {
+            gateway.record_provider_failure(ProviderType::Ollama).await;
+        }
+        gateway.record_provider_success(ProviderType::OpenAi).await;
+
+        let health = gateway.provider_health().await;
+        assert!(!health.get(&ProviderType::Ollama).unwrap().is_healthy);
+        assert!(health.get(&ProviderType::OpenAi).unwrap().is_healthy);
+    }
+
+    #[tokio::test]
+    async fn test_infer_retry_returns_error_when_no_providers() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+        let request = agnos_common::InferenceRequest::default();
+        let result = gateway.infer(request, None).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("No LLM provider available"));
+    }
+
+    #[tokio::test]
+    async fn test_start_health_check_loop_does_not_panic() {
+        let gateway = Arc::new(LlmGateway::new(GatewayConfig::default()).await.unwrap());
+        // Start the loop — it will run in background; just ensure it doesn't panic on spawn
+        gateway.start_health_check_loop();
+        // Give it a moment then drop — the spawned task will be cancelled
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+
+    #[test]
+    fn test_provider_health_last_check_updates() {
+        let mut health = ProviderHealth::new();
+        let before = health.last_check;
+        // Sleep a tiny bit to ensure Instant moves forward
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        health.record_failure();
+        assert!(health.last_check > before);
+    }
+
+    #[test]
+    fn test_provider_health_failure_then_success_then_failure() {
+        let mut health = ProviderHealth::new();
+        health.record_failure();
+        health.record_failure();
+        assert!(health.is_healthy);
+        health.record_success();
+        assert_eq!(health.consecutive_failures, 0);
+        health.record_failure();
+        assert_eq!(health.consecutive_failures, 1);
+        assert!(health.is_healthy);
     }
 }

@@ -245,7 +245,7 @@ async fn chat_completions(
         }
         Err(e) => {
             // Log full error internally but return sanitized message to client
-            error!("Inference failed: {}", e);
+            error!(model = %payload.model, error = %e, "Inference failed");
             Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(ErrorResponse {

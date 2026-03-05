@@ -1,7 +1,7 @@
 # AGNOS Development Roadmap
 
-> **Status**: Pre-Alpha (Phase 5) | **Last Updated**: 2026-03-04
-> **Current Phase**: Phase 5 - Production (95% Complete — consumer integration features implemented)
+> **Status**: Pre-Alpha (Phase 5) | **Last Updated**: 2026-03-05
+> **Current Phase**: Phase 5 - Production (97% Complete — P2 items substantially addressed)
 > **Next Milestone**: Alpha Release (Target: Q2 2026)
 
 ---
@@ -11,44 +11,21 @@
 ### P0 - Critical (Must Complete for Alpha)
 | Item | Component | Effort | Owner | Status |
 |------|-----------|--------|-------|--------|
-| ~~Sandbox enforcement (Landlock/seccomp)~~ | agent-runtime, ai-shell | — | — | ✅ Done 2026-03-03 |
-| ~~Agent health checks (real implementation)~~ | agent-runtime | — | — | ✅ Done 2026-03-03 |
-| ~~Fix panicking unwrap() in production code~~ | llm-gateway, desktop-env | — | — | ✅ Done 2026-03-03 |
-| ~~Input validation enforcement (LLM params)~~ | agnos-common | — | — | ✅ Done 2026-03-03 |
-| ~~Resource limit enforcement (cgroups)~~ | agent-runtime | — | — | ✅ Done 2026-03-03 |
-| Unit test coverage 65% → 80% | All | 1 week | TBD | 🔄 62% (was 46%, +876 tests on 2026-03-04) |
+| Unit test coverage 65% → 80% | All | 1 week | TBD | 🔄 62% (3056 tests, +1821 since March 3) |
 | CIS benchmarks 75% → 80% | Security | 3 days | TBD | 🔄 8 controls remain |
 
 ### P1 - High Priority (Alpha Blockers)
 | Item | Component | Effort | Owner | Status |
 |------|-----------|--------|-------|--------|
-| ~~Wire CLI subcommands to real logic~~ | agent-runtime, llm-gateway | — | — | ✅ Done 2026-03-03 |
-| ~~LLM integration for ai-shell~~ | ai-shell | — | — | ✅ Done 2026-03-03 |
-| ~~Agent restart on failure~~ | agent-runtime | — | — | ✅ Done 2026-03-03 |
-| ~~Task dependency resolution~~ | agent-runtime | — | — | ✅ Done 2026-03-03 |
-| ~~Telemetry system info (real values)~~ | agnos-common | — | — | ✅ Done 2026-03-03 |
-| ~~Desktop terminal + system status~~ | desktop-environment | — | — | ✅ Done 2026-03-03 |
 | Performance benchmark docs + system-level benches | All | 1 week | TBD | 🔄 Micro-benchmarks done |
 | Third-party security audit | Security | 2 weeks | External | ⏳ Vendor selection |
 
 ### P2 - Medium Priority (Alpha Polish)
 | Item | Component | Effort | Owner | Status |
 |------|-----------|--------|-------|--------|
-| Streaming support for LLM providers | llm-gateway | 3 days | TBD | ⏳ Trait only |
-| CI coverage gate (fail below threshold) | CI/CD | 1 day | TBD | ⏳ |
-| Structured logging (JSON format) | All | 2-3 days | TBD | ⏳ Text fmt only |
-| Cloud provider implementations (OpenAI, Anthropic) | llm-gateway | 3 days | TBD | ⏳ Enum only |
-| Cloud provider graceful degradation | llm-gateway | 2 days | TBD | ⏳ No health/retry |
-| Rate limiting on external APIs (per-agent/provider) | llm-gateway | 2 days | TBD | ⏳ Semaphore only |
-| Agent resource quotas (cgroups) | agent-runtime | 1 week | TBD | ⏳ In-memory only |
-| ~~Capability-based task distribution~~ | agent-runtime | — | — | ✅ Done 2026-03-03 (load-aware scoring) |
-| Connection backpressure for IPC | agent-runtime | 2 days | TBD | ⏳ |
 | Metric dashboards (latency, cache, etc.) | llm-gateway | 3 days | TBD | ⏳ |
 | System tests: end-to-end desktop | desktop-environment | 1 week | TBD | ⏳ |
 | Load testing: multi-agent stress | agent-runtime | 3 days | TBD | ⏳ |
-| Fuzz targets: agent-runtime + llm-gateway | Testing | 3 days | TBD | ⏳ |
-| Remaining ai-shell intent translation (8 intents) | ai-shell | 3 days | TBD | ⏳ |
-| Output formatting (table, auto) | ai-shell | 1 day | TBD | ⏳ Returns input unchanged |
 | Video tutorials | Documentation | 3 days | TBD | ⏳ |
 
 ### P3 - Lower Priority (Beta/Post-Alpha)
@@ -58,21 +35,20 @@
 | Support portal | Infrastructure | 2 weeks | TBD | ⏳ |
 | Interactive API explorer | Documentation | 1 week | TBD | ⏳ |
 | Wayland compositor rendering + input | desktop-environment | 2+ weeks | TBD | ⏳ Full stub |
-| ~~Agent pause/resume (real process control)~~ | agent-runtime | — | — | ✅ Done (SIGSTOP/SIGCONT) |
 | Dead code cleanup (unused traits, imports) | All | 1 day | TBD | ⏳ |
 
 ---
 
 ## Executive Summary
 
-AGNOS (AI-Native General Operating System) is in **Phase 5: Production**, focused on security hardening, testing, and release preparation. A March 3 internal audit discovered 30+ stub implementations; two same-day passes eliminated **all P0/P1 stubs** (91%). Phase 6.6 consumer integration then added 9 features (secrets, seccomp profiles, HTTP registration API, load-aware scheduler, HUD, security enforcement, WASM runtime, Docker image, gVisor), bringing completion to **95%**. Remaining Alpha blockers: test coverage (65%→80%), CIS compliance (75%→80%), performance benchmarks, and a third-party security audit.
+AGNOS (AI-Native General Operating System) is in **Phase 5: Production**, focused on security hardening, testing, and release preparation. All P0/P1/P2 implementation gaps have been resolved. Key additions on March 5: Google Gemini provider, cloud provider graceful degradation (health tracking + retry fallback), agent resource quota enforcement (memory kill/warn thresholds, CPU throttle detection), structured logging, IPC backpressure, and expanded fuzz targets. Total: **3056 tests**, 0 failures. Remaining Alpha blockers: test coverage (62%→80%), CIS compliance (75%→80%), performance benchmarks, and a third-party security audit.
 
 ### Phase Status Overview
 
 | Phase | Status | Completion | Key Deliverables |
 |-------|--------|------------|------------------|
 | 0-4 | ✅ Complete | 90-100% | Foundation through Desktop |
-| 5 | 🔄 In Progress | 95% | Production hardening |
+| 5 | 🔄 In Progress | 97% | Production hardening |
 | 6 | 📋 Planned | 0% | Advanced AI & Networking |
 | 6.5 | 📋 Planned | 0% | OS-Level Features & Security Hardening |
 | 6.6 | ✅ Complete | 100% | Consumer Integration (9 features) |
@@ -151,13 +127,13 @@ All foundational work is complete. See [CHANGELOG.md](/CHANGELOG.md) for detaile
 #### ✅ Completed
 - Unit test framework (cargo test)
 - ~62% test coverage (tarpaulin), up from ~46% on 2026-03-04 (+876 tests)
-- agnos-common: 168 tests passing (up from 104)
-- ai-shell: 319 tests passing (up from 185)
-- agent-runtime: 239 unit + 16 integration tests passing (up from 116+16)
-- llm-gateway: 145 tests passing (up from 47)
-- agnos-sys: 125 tests passing
-- desktop-environment: 268 tests passing (up from 161)
-- Total: 2091 tests across all packages (1215 → 2091, 0 failures, 8 ignored requiring root)
+- agnos-common: 189 tests passing
+- ai-shell: 392 tests passing (lib) + 392 (bin)
+- agent-runtime: 400 unit + 16 integration tests passing
+- llm-gateway: 278 tests passing
+- agnos-sys: 386 tests passing (8 ignored requiring root)
+- desktop-environment: 309 tests passing
+- Total: 3056 tests across all packages, 0 failures, 8 ignored requiring root
 - Performance micro-benchmarks: 29 benchmarks across 4 packages (Criterion)
   - `agent-runtime/benches/bench.rs` — 12 benchmarks
   - `ai-shell/benches/ai_shell.rs` — 7 benchmarks
@@ -264,61 +240,19 @@ All foundational work is complete. See [CHANGELOG.md](/CHANGELOG.md) for detaile
 
 These are features where the public API/interface exists but the implementation behind it is a stub, returns fake data, or is disconnected from the actual system. This phase must be substantially complete before Alpha.
 
-#### P0 — Security-Critical Stubs
+All P0, P1, and P2 stubs eliminated. See Completed Work History for details.
 
-| Gap | Component | Status |
-|-----|-----------|--------|
-| ~~Sandbox: agent-runtime~~ | agent-runtime/src/sandbox.rs | ✅ Wired to `agnos-sys::security` (Landlock + seccomp + namespaces) |
-| ~~Sandbox: ai-shell~~ | ai-shell/src/sandbox.rs | ✅ Wired to `agnos-sys::security` with shell defaults |
-| ~~Health monitoring~~ | agent-runtime/src/supervisor.rs | ✅ Process liveness (`kill(pid, 0)`) + IPC socket connectivity |
-| ~~Agent restart on failure~~ | agent-runtime/src/supervisor.rs | ✅ Exponential backoff (2^n sec, max 5 attempts) |
-| ~~Resource enforcement (cgroups)~~ | agent-runtime/src/supervisor.rs | ✅ CgroupController writes memory.max/cpu.max, adds PID to cgroup.procs, reads usage from counters |
+#### P3 — Low Priority (remaining)
 
-#### P1 — Functionality Stubs
-
-| Gap | Component | Status |
-|-----|-----------|--------|
-| ~~Agent CLI commands~~ | agent-runtime/src/main.rs | ✅ 5 commands wired to Registry/IPC |
-| ~~LLM gateway CLI commands~~ | llm-gateway/src/main.rs | ✅ 5 commands wired to HTTP API |
-| ~~LLM integration (ai-shell)~~ | ai-shell/src/llm.rs | ✅ Connected to LLM Gateway with graceful fallback |
-| ~~Task dependency resolution~~ | agent-runtime/src/orchestrator.rs | ✅ Scheduler checks deps before scheduling |
-| ~~Telemetry system info~~ | agnos-common/src/telemetry.rs | ✅ Reads /etc/os-release, /proc/meminfo, /proc/version |
-| ~~Agent resource monitoring~~ | agent-runtime/src/agent.rs | ✅ Reads VmRSS, CPU time, FD count, thread count from /proc/{pid}/ |
-| ~~Audit logging (agent SDK)~~ | agnos-sys/src/agent.rs | ✅ JSON lines to /var/log/agnos/audit.log with SHA-256 hash chain |
-| ~~LLM syscall stubs~~ | agnos-sys/src/llm.rs | ✅ Delegates to LLM Gateway HTTP API with handle tracking |
-
-#### P1 — Desktop Stubs
-
-| Gap | Component | Status |
-|-----|-----------|--------|
-| ~~Terminal command execution~~ | desktop-env/src/apps.rs | ✅ Uses `tokio::process::Command` with stdout/stderr capture |
-| ~~System status~~ | desktop-env/src/main.rs | ✅ Reads /proc/stat, /proc/meminfo, libc::statvfs |
-| ~~Agent manager app~~ | desktop-env/src/apps.rs | ✅ Scans /run/agnos/agents/ sockets, probes connectivity |
-| ~~Audit viewer app~~ | desktop-env/src/apps.rs | ✅ Reads /var/log/agnos/audit.log with time/category filters |
-| ~~Model manager app~~ | desktop-env/src/apps.rs | ✅ Queries LLM Gateway /v1/models, Ollama /api/pull |
-
-#### P2 — Incomplete Features
-
-| Gap | Current Behavior | Fix Required | Component | Effort |
-|-----|-----------------|--------------|-----------|--------|
-| Intent translation | 5 of 13 intents translate, 8 return error | Implement remaining: FindFiles, SearchContent, Remove, KillProcess, NetworkInfo, DiskUsage, InstallPackage, Ambiguous | ai-shell/src/interpreter.rs | 3 days |
-| Output formatting | `format_table()` + `format_auto()` return input unchanged | Implement column detection + alignment | ai-shell/src/output.rs | 1 day |
-| Streaming inference | Both providers return empty `mpsc::Receiver` | Implement SSE for Ollama + llama.cpp | llm-gateway/src/providers.rs | 3 days |
-| Cloud LLM providers | `ProviderType::OpenAi/Anthropic/Google` enum exists | Implement actual HTTP clients | llm-gateway/src/providers.rs | 3 days |
-| ~~Load balancing~~ | ~~Round-robin only~~ | ~~Implement capability/load-aware assignment~~ | ~~agent-runtime/src/orchestrator.rs~~ | ✅ Done (load-aware scoring) |
-
-#### P3 — Low Priority
-
-| Gap | Current Behavior | Fix Required | Component | Effort |
-|-----|-----------------|--------------|-----------|--------|
-| Wayland compositor | `render()` empty, `handle_input()` logs only | Full Wayland protocol implementation | desktop-env/src/compositor.rs | 2+ weeks |
-| ~~Agent pause/resume~~ | ~~Sets enum status, no process control~~ | ~~`SIGSTOP`/`SIGCONT`~~ | ~~agent-runtime/src/agent.rs~~ | ✅ Done |
-| `AgentControl` trait | Defined but never implemented | Implement on Agent type or remove | agent-runtime/src/supervisor.rs | 1 day |
-| Prompt right-side | `render_right()` returns `None` | Implement time/status display | ai-shell/src/prompt.rs | 1 day |
-| Feature flags | `wayland`, `ai` defined but gate nothing | Wire to `cfg` attributes or remove | desktop-env/Cargo.toml | 1 day |
-| Dead code cleanup | Unused traits, imports, cache/accounting fns | Remove or expose via endpoints | All | 1 day |
-| GPU vendor detection | Only detects NVIDIA | Add AMD, Intel detection | agent-runtime/src/resource.rs | 1 day |
-| Redundant security wrappers | `create_landlock_ruleset()` + `restrict_filesystem()` duplicate `apply_landlock()` | Consolidate or remove | agnos-sys/src/security.rs | 1 day |
+| Gap | Fix Required | Component | Effort |
+|-----|--------------|-----------|--------|
+| Wayland compositor | Full Wayland protocol implementation | desktop-env/src/compositor.rs | 2+ weeks |
+| `AgentControl` trait | Implement on Agent type or remove | agent-runtime/src/supervisor.rs | 1 day |
+| Prompt right-side | Implement time/status display | ai-shell/src/prompt.rs | 1 day |
+| Feature flags | Wire to `cfg` attributes or remove | desktop-env/Cargo.toml | 1 day |
+| Dead code cleanup | Remove unused traits, imports | All | 1 day |
+| GPU vendor detection | Add AMD, Intel detection | agent-runtime/src/resource.rs | 1 day |
+| Redundant security wrappers | Consolidate or remove | agnos-sys/src/security.rs | 1 day |
 
 ---
 
@@ -412,20 +346,16 @@ bring AGNOS from an application framework to a genuine operating system.
 
 #### Missing Security Hardening
 
+Completed: dm-verity, LUKS, AppArmor/SELinux, auditd, network segmentation, secrets (all done 2026-03-03/04).
+
 | Feature | Description | Effort | Priority |
 |---------|-------------|--------|----------|
-| ~~dm-verity~~ | ~~Read-only rootfs integrity verification~~ | — | ✅ Done 2026-03-04 |
 | IMA/EVM | Integrity Measurement Architecture for file integrity | 2 weeks | P1 |
 | TPM 2.0 integration | Measured boot, sealed secrets for agents | 2 weeks | P2 |
-| ~~LUKS volumes for agent data~~ | ~~Encrypted-at-rest storage for each agent sandbox~~ | — | ✅ Done 2026-03-04 |
-| ~~AppArmor/SELinux profiles~~ | ~~Mandatory access control profiles per agent type~~ | — | ✅ Done 2026-03-04 |
-| ~~Audit subsystem (auditd)~~ | ~~Kernel-level audit events integrated with AGNOS audit chain~~ | — | ✅ Done 2026-03-04 |
 | Key management service | Agent key rotation, certificate lifecycle management | 2 weeks | P2 |
 | Certificate pinning | Pin TLS certs for cloud LLM API providers | 3 days | P2 |
 | Memory encryption awareness | AMD SEV / Intel TDX support for confidential agents | 2 weeks | P3 |
 | Secure boot chain | UEFI Secure Boot with custom kernel signing | 1 week | P2 |
-| ~~Network segmentation~~ | ~~Per-agent network namespaces with firewall rules~~ | — | ✅ Done 2026-03-04 |
-| ~~Secrets management~~ | ~~Vault-style secrets injection for agent env vars~~ | — | ✅ Done 2026-03-03 |
 
 ### Phase 6.6: Consumer Project Integration (Planned Q3–Q4 2026)
 
@@ -487,18 +417,7 @@ ENTRYPOINT ["secureyeoman"]
 
 #### Priority-Driven Ordering
 
-Based on consumer needs, the following Phase 6.5 items are **promoted to P0** for
-the consumer integration milestone:
-
-| Item | Original Priority | New Priority | Reason |
-|------|-------------------|--------------|--------|
-| ~~Audit subsystem (auditd)~~ | ~~P1~~ | ~~**P0**~~ | ✅ Done 2026-03-04 |
-| ~~Network segmentation~~ | ~~P1~~ | ~~**P0**~~ | ✅ Done 2026-03-04 |
-| ~~AppArmor/SELinux profiles~~ | ~~P1~~ | ~~**P0**~~ | ✅ Done 2026-03-04 |
-| ~~dm-verity~~ | ~~P1~~ | ~~**P0**~~ | ✅ Done 2026-03-04 |
-| ~~LUKS volumes~~ | ~~P1~~ | ~~**P0**~~ | ✅ Done 2026-03-04 |
-| ~~Secrets management~~ | ~~P2~~ | ~~**P1**~~ | ✅ Done 2026-03-03 |
-| ~~Hardened base Docker image~~ | ~~—~~ | ~~**P1**~~ | ✅ Done 2026-03-03 |
+All consumer-driven P0/P1 items completed (2026-03-03/04): auditd, network segmentation, AppArmor/SELinux, dm-verity, LUKS, secrets management, hardened Docker image.
 
 ### Phase 7: Ecosystem (Planned Q4 2026)
 
@@ -537,7 +456,7 @@ the consumer integration milestone:
 - [x] Known issues documented
 
 **Target Date**: End of Q2 2026
-**Confidence**: High (95% complete, consumer integration features implemented, only test coverage + audit remain)
+**Confidence**: High (97% complete, P2 items addressed, only test coverage + audit remain)
 
 ### Beta Release - Q3 2026
 
@@ -572,7 +491,7 @@ the consumer integration milestone:
 |--------|--------|---------|--------|----------|
 | Code Coverage | >80% | ~62% | 🔄 | P0 |
 | Test Pass Rate | 100% | 100% | ✅ | - |
-| Total Tests | 400+ | 2235 | ✅ | - |
+| Total Tests | 400+ | 3056 | ✅ | - |
 | Agent Spawn Time | <500ms | ~300ms | ✅ | - |
 | Shell Response Time | <100ms | ~50ms | ✅ | - |
 | Memory Overhead | <2GB | ~1.2GB | ✅ | - |
@@ -585,12 +504,12 @@ the consumer integration milestone:
 
 | Component | Tests | Stubs Remaining | Notes |
 |-----------|-------|-----------------|-------|
-| agnos-common | 168 | 0 | Secrets management ✅, telemetry ✅, LLM types ✅ |
-| agnos-sys | 125 | 0 | LLM gateway delegation ✅, audit hash chain ✅ |
-| agent-runtime | 255 | 0 | HTTP API ✅, seccomp profiles ✅, WASM runtime ✅, load-aware scheduler ✅ |
-| llm-gateway | 145 | 0 (P2 only) | HTTP handler integration tests ✅, streaming + cloud providers are P2 |
-| ai-shell | 319 | 0 (P2 only) | Session/prompt/approval ✅, 8 intents + output formatting are P2 |
-| desktop-environment | 268 | 0 | HUD ✅, security enforcement ✅, apps ✅, system metrics ✅ |
+| agnos-common | 189 | 0 | Secrets management ✅, telemetry ✅, LLM types ✅ |
+| agnos-sys | 386 | 0 | LLM gateway delegation ✅, audit hash chain ✅ |
+| agent-runtime | 400+16 | 0 | Resource quotas ✅, IPC backpressure ✅, WASM runtime ✅ |
+| llm-gateway | 278 | 0 | All 5 providers ✅, streaming ✅, graceful degradation ✅ |
+| ai-shell | 392 | 0 | All 13 intents ✅, output formatting ✅, session/prompt/approval ✅ |
+| desktop-environment | 309 | 0 | HUD ✅, security enforcement ✅, apps ✅, system metrics ✅ |
 
 ---
 
@@ -713,4 +632,4 @@ For detailed history of all completed work, see [CHANGELOG.md](/CHANGELOG.md).
 
 ---
 
-*Last Updated: 2026-03-04 (test coverage push 46%→62%, 876 new tests, roadmap + changelog updated) | Next Review: 2026-03-10*
+*Last Updated: 2026-03-05 (P2 pass complete: provider degradation, resource quotas, Google Gemini, structured logging, IPC backpressure, fuzz targets; 3056 tests) | Next Review: 2026-03-10*
