@@ -59,14 +59,17 @@ impl ResponseCache {
         format!("{:016x}", hasher.finish())
     }
 
-    /// Get a cached response if available and not expired
+    /// Get a cached response if available and not expired.
+    ///
+    /// Uses a read lock for concurrent access. The `last_accessed` field is not
+    /// updated on reads — LRU ordering is only approximate, but this avoids
+    /// writer starvation under high read concurrency.
     pub async fn get(&self, request: &InferenceRequest) -> Option<InferenceResponse> {
         let key = Self::make_key(request);
-        let mut cache = self.cache.write().await;
+        let cache = self.cache.read().await;
 
-        if let Some(entry) = cache.get_mut(&key) {
+        if let Some(entry) = cache.get(&key) {
             if entry.expires_at > Instant::now() {
-                entry.last_accessed = Instant::now();
                 return Some(entry.response.clone());
             }
         }

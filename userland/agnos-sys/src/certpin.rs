@@ -262,30 +262,65 @@ pub fn fetch_server_cert(host: &str, port: u16) -> Result<CertInfo> {
         .ok_or_else(|| SysError::Unknown("Malformed certificate in openssl output".into()))?;
     let pem_cert = &pem_text[begin..end + "-----END CERTIFICATE-----".len()];
 
-    // Parse certificate details with openssl x509 (pipe PEM via shell)
-    let x509_output = std::process::Command::new("sh")
-        .args(["-c", &format!(
-            "echo '{}' | openssl x509 -noout -subject -issuer -serial -dates -fingerprint -sha256",
-            pem_cert.replace('\'', "'\\''")
-        )])
-        .output()
+    // Parse certificate details with openssl x509 (pipe PEM via stdin)
+    let mut x509_child = std::process::Command::new("openssl")
+        .args(["x509", "-noout", "-subject", "-issuer", "-serial", "-dates", "-fingerprint", "-sha256"])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map_err(|e| SysError::Unknown(format!("Failed to spawn openssl x509: {}", e)))?;
+
+    if let Some(mut stdin) = x509_child.stdin.take() {
+        use std::io::Write;
+        let _ = stdin.write_all(pem_cert.as_bytes());
+    }
+    let x509_output = x509_child
+        .wait_with_output()
         .map_err(|e| SysError::Unknown(format!("Failed to run openssl x509: {}", e)))?;
 
     let x509_text = String::from_utf8_lossy(&x509_output.stdout);
 
-    // Get SPKI hash
-    let spki_output = std::process::Command::new("sh")
-        .args(["-c", &format!(
-            "echo '{}' | openssl x509 -pubkey -noout | openssl pkey -pubin -outform DER | sha256sum",
-            pem_cert.replace('\'', "'\\''")
-        )])
-        .output()
-        .map_err(|e| SysError::Unknown(format!("Failed to compute SPKI hash: {}", e)))?;
+    // Get SPKI hash: openssl x509 -pubkey | openssl pkey -pubin -outform DER | sha256sum
+    // We use a two-stage pipeline, piping PEM via stdin to avoid shell injection.
+    let mut pubkey_child = std::process::Command::new("openssl")
+        .args(["x509", "-pubkey", "-noout"])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map_err(|e| SysError::Unknown(format!("Failed to spawn openssl x509 -pubkey: {}", e)))?;
 
-    let spki_hex = String::from_utf8_lossy(&spki_output.stdout);
-    let spki_hex = spki_hex.split_whitespace().next().unwrap_or("");
-    let spki_bytes = hex::decode(spki_hex)
-        .map_err(|e| SysError::Unknown(format!("Failed to decode SPKI hex: {}", e)))?;
+    if let Some(mut stdin) = pubkey_child.stdin.take() {
+        use std::io::Write;
+        let _ = stdin.write_all(pem_cert.as_bytes());
+    }
+    let pubkey_output = pubkey_child
+        .wait_with_output()
+        .map_err(|e| SysError::Unknown(format!("Failed to get public key: {}", e)))?;
+
+    let mut pkey_child = std::process::Command::new("openssl")
+        .args(["pkey", "-pubin", "-outform", "DER"])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map_err(|e| SysError::Unknown(format!("Failed to spawn openssl pkey: {}", e)))?;
+
+    if let Some(mut stdin) = pkey_child.stdin.take() {
+        use std::io::Write;
+        let _ = stdin.write_all(&pubkey_output.stdout);
+    }
+    let der_output = pkey_child
+        .wait_with_output()
+        .map_err(|e| SysError::Unknown(format!("Failed to get DER key: {}", e)))?;
+
+    // Compute SHA-256 of the DER-encoded SPKI directly in Rust
+    use sha2::{Sha256, Digest};
+    let spki_hash = Sha256::digest(&der_output.stdout);
+    let _spki_hex = hex::encode(&spki_hash);
+
+    let spki_bytes = spki_hash.to_vec();
     let spki_b64 = base64_encode(&spki_bytes);
 
     let mut info = parse_openssl_cert(&x509_text)?;

@@ -12,7 +12,7 @@ use axum::{
     Router,
 };
 use serde::{Deserialize, Serialize};
-use tower_http::cors::CorsLayer;
+use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::limit::RequestBodyLimitLayer;
 use tracing::{error, info};
 
@@ -35,7 +35,13 @@ pub async fn start_http_server(gateway: Arc<LlmGateway>, _config: GatewayConfig)
     };
     
     let cors = CorsLayer::new()
-        .allow_origin(tower_http::cors::Any)
+        .allow_origin(AllowOrigin::predicate(|origin, _| {
+            if let Ok(o) = origin.to_str() {
+                o.starts_with("http://localhost") || o.starts_with("http://127.0.0.1")
+            } else {
+                false
+            }
+        }))
         .allow_methods(tower_http::cors::Any)
         .allow_headers(tower_http::cors::Any);
     
@@ -51,7 +57,8 @@ pub async fn start_http_server(gateway: Arc<LlmGateway>, _config: GatewayConfig)
         .layer(cors)
         .with_state(state);
     
-    let addr = format!("0.0.0.0:{}", HTTP_PORT);
+    let bind_addr = std::env::var("AGNOS_GATEWAY_BIND").unwrap_or_else(|_| "127.0.0.1".to_string());
+    let addr = format!("{}:{}", bind_addr, HTTP_PORT);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     
     info!("LLM Gateway HTTP server listening on http://{}", addr);
@@ -162,7 +169,8 @@ async fn chat_completions(
         match headers.get("authorization") {
             Some(auth) => {
                 let auth_str = auth.to_str().unwrap_or("");
-                if !auth_str.starts_with("Bearer ") || auth_str.strip_prefix("Bearer ").unwrap() != api_key {
+                let token = auth_str.strip_prefix("Bearer ").unwrap_or("");
+                if token.is_empty() || token != api_key {
                     return Err((
                         StatusCode::UNAUTHORIZED,
                         Json(ErrorResponse {

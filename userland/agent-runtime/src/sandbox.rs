@@ -126,9 +126,39 @@ impl Sandbox {
     async fn apply_seccomp(&self) -> Result<()> {
         debug!("Applying seccomp-bpf filters...");
 
-        // Generate a basic seccomp filter allowing safe syscalls
-        let filter = security::create_basic_seccomp_filter()
-            .context("Failed to create seccomp filter")?;
+        let filter = if self.config.seccomp_rules.is_empty() {
+            // No per-agent rules — use the basic filter
+            security::create_basic_seccomp_filter()
+                .context("Failed to create seccomp filter")?
+        } else {
+            // Build custom filter from per-agent rules
+            let base_allowed: &[u32] = &[
+                0, 1, 3, 5, 9, 10, 11, 12, 15, 60, 131, 158, 186, 202, 218, 231, 273, 318, 228, 334,
+            ];
+
+            let mut extra_allowed = Vec::new();
+            let mut denied = Vec::new();
+
+            for rule in &self.config.seccomp_rules {
+                if let Some(nr) = security::syscall_name_to_nr(&rule.syscall) {
+                    match rule.action {
+                        agnos_common::SeccompAction::Allow => extra_allowed.push(nr),
+                        agnos_common::SeccompAction::Deny => denied.push((nr, security::SECCOMP_RET_KILL_PROCESS)),
+                        agnos_common::SeccompAction::Trap => denied.push((nr, security::SECCOMP_RET_TRAP)),
+                    }
+                } else {
+                    warn!("Unknown syscall name '{}' in seccomp rules, skipping", rule.syscall);
+                }
+            }
+
+            debug!(
+                "Custom seccomp filter: {} base + {} extra allowed, {} denied",
+                base_allowed.len(), extra_allowed.len(), denied.len()
+            );
+
+            security::create_custom_seccomp_filter(base_allowed, &extra_allowed, &denied)
+                .context("Failed to create custom seccomp filter")?
+        };
 
         if filter.is_empty() {
             debug!("Empty seccomp filter (non-Linux platform), skipping");
@@ -302,13 +332,8 @@ impl Sandbox {
         let luks_config = luks::LuksConfig::for_agent(&agent_id, storage_config.size_mb);
 
         // Generate a random key for this volume
-        let key = match luks::LuksKey::generate(64) {
-            Ok(k) => k,
-            Err(e) => {
-                warn!("Failed to generate LUKS key: {} — skipping encrypted storage", e);
-                return Ok(());
-            }
-        };
+        let key = luks::LuksKey::generate(64)
+            .map_err(|e| anyhow::anyhow!("Failed to generate LUKS encryption key: {}", e))?;
 
         match luks::setup_agent_volume(&luks_config, &key) {
             Ok(status) => {
@@ -1333,6 +1358,48 @@ mod tests {
         let config = SandboxConfig::default();
         let sandbox = Sandbox::new(&config).unwrap();
         // May fail or succeed depending on platform
+        let _result = sandbox.apply_seccomp().await;
+    }
+
+    #[tokio::test]
+    #[ignore] // Seccomp filters persist per-process; run in isolation
+    async fn test_sandbox_apply_seccomp_with_custom_rules() {
+        let config = SandboxConfig {
+            seccomp_rules: vec![
+                agnos_common::SeccompRule {
+                    syscall: "socket".to_string(),
+                    action: agnos_common::SeccompAction::Allow,
+                },
+                agnos_common::SeccompRule {
+                    syscall: "ptrace".to_string(),
+                    action: agnos_common::SeccompAction::Deny,
+                },
+                agnos_common::SeccompRule {
+                    syscall: "mount".to_string(),
+                    action: agnos_common::SeccompAction::Trap,
+                },
+            ],
+            ..SandboxConfig::default()
+        };
+        let sandbox = Sandbox::new(&config).unwrap();
+        // May fail or succeed depending on platform (needs CAP_SYS_ADMIN)
+        let _result = sandbox.apply_seccomp().await;
+    }
+
+    #[tokio::test]
+    #[ignore] // Seccomp filters persist per-process; run in isolation
+    async fn test_sandbox_apply_seccomp_unknown_syscall_warns() {
+        let config = SandboxConfig {
+            seccomp_rules: vec![
+                agnos_common::SeccompRule {
+                    syscall: "nonexistent_call".to_string(),
+                    action: agnos_common::SeccompAction::Allow,
+                },
+            ],
+            ..SandboxConfig::default()
+        };
+        let sandbox = Sandbox::new(&config).unwrap();
+        // Should not panic, just warn and skip unknown syscall
         let _result = sandbox.apply_seccomp().await;
     }
 

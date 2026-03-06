@@ -2458,7 +2458,7 @@ mod tests {
         let c1 = bridge.client_connect(Some(100));
         let c2 = bridge.client_connect(Some(200));
 
-        let (s1, _) = bridge.create_surface(c1).unwrap();
+        let (_s1, _) = bridge.create_surface(c1).unwrap();
         let (s2, _) = bridge.create_surface(c2).unwrap();
 
         assert_eq!(bridge.client_count(), 2);

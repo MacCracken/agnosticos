@@ -310,14 +310,18 @@ pub fn apply_firewall_rules(handle: &NetNamespaceHandle, policy: &FirewallPolicy
     {
         let ruleset = generate_nftables_ruleset(policy, &handle.veth_agent);
 
-        // Write ruleset to a temp file and load it inside the namespace
-        let tmp_path = format!("/tmp/agnos-nft-{}.conf", handle.name);
+        // Write ruleset to a unique temp file under /run to avoid predictable paths
+        let run_dir = std::path::Path::new("/run/agnos");
+        let _ = std::fs::create_dir_all(run_dir);
+        let tmp_name = format!("nft-{}.conf", uuid::Uuid::new_v4());
+        let tmp_path = run_dir.join(&tmp_name);
+        let tmp_path_str = tmp_path.to_string_lossy().to_string();
         std::fs::write(&tmp_path, &ruleset)
             .map_err(|e| SysError::Unknown(format!("Failed to write nft rules: {}", e)))?;
 
         let result = run_cmd(
             "ip",
-            &["netns", "exec", &handle.name, "nft", "-f", &tmp_path],
+            &["netns", "exec", &handle.name, "nft", "-f", &tmp_path_str],
         );
 
         let _ = std::fs::remove_file(&tmp_path);
@@ -490,11 +494,29 @@ fn format_nft_rule(rule: &FirewallRule) -> String {
         }
     }
 
-    // Remote address
+    // Remote address — validate to prevent nftables rule injection
     if !rule.remote_addr.is_empty() {
+        let addr = &rule.remote_addr;
+        // Reject shell metacharacters
+        const SHELL_METACHAR: &[char] = &[';', '|', '&', '`', '$', '(', ')', '{', '}', '<', '>', '\n', '\r', '\\', '"', '\''];
+        if addr.chars().any(|c| SHELL_METACHAR.contains(&c)) {
+            // Skip this rule — contains dangerous characters
+            return String::new();
+        }
+        // Validate as IP address or CIDR (addr/prefix)
+        let valid = if let Some((ip_part, prefix_part)) = addr.split_once('/') {
+            ip_part.parse::<std::net::IpAddr>().is_ok()
+                && prefix_part.parse::<u8>().is_ok()
+        } else {
+            addr.parse::<std::net::IpAddr>().is_ok()
+        };
+        if !valid {
+            // Skip this rule — invalid remote address
+            return String::new();
+        }
         match rule.direction {
-            TrafficDirection::Inbound => parts.push(format!("ip saddr {}", rule.remote_addr)),
-            TrafficDirection::Outbound => parts.push(format!("ip daddr {}", rule.remote_addr)),
+            TrafficDirection::Inbound => parts.push(format!("ip saddr {}", addr)),
+            TrafficDirection::Outbound => parts.push(format!("ip daddr {}", addr)),
         }
     }
 

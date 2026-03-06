@@ -21,7 +21,7 @@ pub enum CompositorError {
 
 pub type SurfaceId = Uuid;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[derive(Default)]
 pub enum WindowState {
     #[default]
@@ -44,7 +44,7 @@ pub struct Window {
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct Rectangle {
     pub x: i32,
     pub y: i32,

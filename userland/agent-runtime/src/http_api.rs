@@ -209,7 +209,13 @@ async fn register_agent_handler(
         registered_at: now,
     };
 
-    (StatusCode::CREATED, Json(serde_json::to_value(resp).unwrap())).into_response()
+    match serde_json::to_value(resp) {
+        Ok(val) => (StatusCode::CREATED, Json(val)).into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": format!("Serialization error: {}", e), "code": 500})),
+        ).into_response(),
+    }
 }
 
 async fn heartbeat_handler(
@@ -264,7 +270,13 @@ async fn get_agent_handler(
     let agents = state.agents.read().await;
 
     match agents.get(&id) {
-        Some(entry) => (StatusCode::OK, Json(serde_json::to_value(&entry.detail).unwrap())).into_response(),
+        Some(entry) => match serde_json::to_value(&entry.detail) {
+            Ok(val) => (StatusCode::OK, Json(val)).into_response(),
+            Err(e) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": format!("Serialization error: {}", e), "code": 500})),
+            ).into_response(),
+        },
         None => (
             StatusCode::NOT_FOUND,
             Json(serde_json::json!({"error": format!("Agent {} not found", id), "code": 404})),
@@ -362,7 +374,11 @@ pub async fn start_server(port: u16) -> anyhow::Result<()> {
     let state = ApiState::new();
     let app = build_router(state);
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], port));
+    let bind_addr: std::net::IpAddr = std::env::var("AGNOS_RUNTIME_BIND")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or_else(|| std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST));
+    let addr = SocketAddr::new(bind_addr, port);
     info!("Agent Registration API listening on {}", addr);
 
     let listener = tokio::net::TcpListener::bind(addr).await?;

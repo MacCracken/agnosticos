@@ -297,8 +297,205 @@ const BPF_JMP_JEQ_K: u16 = 0x15; // BPF_JMP | BPF_JEQ | BPF_K
 const BPF_RET_K: u16 = 0x06; // BPF_RET | BPF_K
 
 // Seccomp return values
-const SECCOMP_RET_ALLOW: u32 = 0x7fff_0000;
-const SECCOMP_RET_KILL_PROCESS: u32 = 0x8000_0000;
+pub const SECCOMP_RET_ALLOW: u32 = 0x7fff_0000;
+pub const SECCOMP_RET_KILL_PROCESS: u32 = 0x8000_0000;
+pub const SECCOMP_RET_TRAP: u32 = 0x0003_0000;
+
+/// Map a syscall name to its x86_64 syscall number.
+///
+/// Returns `None` for unrecognized names. Covers the most common Linux syscalls.
+pub fn syscall_name_to_nr(name: &str) -> Option<u32> {
+    match name {
+        "read" => Some(0),
+        "write" => Some(1),
+        "open" => Some(2),
+        "close" => Some(3),
+        "stat" => Some(4),
+        "fstat" => Some(5),
+        "lstat" => Some(6),
+        "poll" => Some(7),
+        "lseek" => Some(8),
+        "mmap" => Some(9),
+        "mprotect" => Some(10),
+        "munmap" => Some(11),
+        "brk" => Some(12),
+        "rt_sigaction" => Some(13),
+        "rt_sigprocmask" => Some(14),
+        "rt_sigreturn" => Some(15),
+        "ioctl" => Some(16),
+        "pread64" => Some(17),
+        "pwrite64" => Some(18),
+        "readv" => Some(19),
+        "writev" => Some(20),
+        "access" => Some(21),
+        "pipe" => Some(22),
+        "select" => Some(23),
+        "sched_yield" => Some(24),
+        "mremap" => Some(25),
+        "msync" => Some(26),
+        "dup" => Some(32),
+        "dup2" => Some(33),
+        "nanosleep" => Some(35),
+        "getpid" => Some(39),
+        "socket" => Some(41),
+        "connect" => Some(42),
+        "accept" => Some(43),
+        "sendto" => Some(44),
+        "recvfrom" => Some(45),
+        "sendmsg" => Some(46),
+        "recvmsg" => Some(47),
+        "shutdown" => Some(48),
+        "bind" => Some(49),
+        "listen" => Some(50),
+        "getsockname" => Some(51),
+        "getpeername" => Some(52),
+        "setsockopt" => Some(54),
+        "getsockopt" => Some(55),
+        "clone" => Some(56),
+        "fork" => Some(57),
+        "vfork" => Some(58),
+        "execve" => Some(59),
+        "exit" => Some(60),
+        "wait4" => Some(61),
+        "kill" => Some(62),
+        "fcntl" => Some(72),
+        "flock" => Some(73),
+        "fsync" => Some(74),
+        "fdatasync" => Some(75),
+        "truncate" => Some(76),
+        "ftruncate" => Some(77),
+        "getdents" => Some(78),
+        "getcwd" => Some(79),
+        "chdir" => Some(80),
+        "rename" => Some(82),
+        "mkdir" => Some(83),
+        "rmdir" => Some(84),
+        "creat" => Some(85),
+        "link" => Some(86),
+        "unlink" => Some(87),
+        "symlink" => Some(88),
+        "readlink" => Some(89),
+        "chmod" => Some(90),
+        "chown" => Some(92),
+        "getuid" => Some(102),
+        "getgid" => Some(104),
+        "geteuid" => Some(107),
+        "getegid" => Some(108),
+        "setpgid" => Some(109),
+        "getppid" => Some(110),
+        "getpgrp" => Some(111),
+        "setsid" => Some(112),
+        "getgroups" => Some(115),
+        "sigaltstack" => Some(131),
+        "statfs" => Some(137),
+        "fstatfs" => Some(138),
+        "prctl" => Some(157),
+        "arch_prctl" => Some(158),
+        "mount" => Some(165),
+        "umount2" => Some(166),
+        "reboot" => Some(169),
+        "gettid" => Some(186),
+        "futex" => Some(202),
+        "getdents64" => Some(217),
+        "set_tid_address" => Some(218),
+        "clock_gettime" => Some(228),
+        "exit_group" => Some(231),
+        "epoll_wait" => Some(232),
+        "epoll_ctl" => Some(233),
+        "openat" => Some(257),
+        "mkdirat" => Some(258),
+        "newfstatat" => Some(262),
+        "unlinkat" => Some(263),
+        "renameat" => Some(264),
+        "set_robust_list" => Some(273),
+        "pipe2" => Some(293),
+        "dup3" => Some(292),
+        "epoll_create1" => Some(291),
+        "accept4" => Some(288),
+        "eventfd2" => Some(290),
+        "getrandom" => Some(318),
+        "memfd_create" => Some(319),
+        "ptrace" => Some(101),
+        "rseq" => Some(334),
+        _ => None,
+    }
+}
+
+/// Build a custom seccomp-BPF filter from explicit allow/deny/trap rules.
+///
+/// `base_allowed` is the set of syscall numbers always allowed (baseline).
+/// `extra_allowed` are additional syscall numbers to allow.
+/// `denied` maps syscall numbers to their action (kill or trap).
+///
+/// The generated filter checks denied rules first (returning kill/trap),
+/// then checks allowed rules (returning allow), then defaults to kill.
+pub fn create_custom_seccomp_filter(
+    base_allowed: &[u32],
+    extra_allowed: &[u32],
+    denied: &[(u32, u32)], // (syscall_nr, seccomp_ret action)
+) -> Result<Vec<u8>> {
+    #[cfg(target_os = "linux")]
+    {
+        let mut all_allowed: Vec<u32> = base_allowed.to_vec();
+        for &nr in extra_allowed {
+            if !all_allowed.contains(&nr) {
+                all_allowed.push(nr);
+            }
+        }
+        // Remove any syscall that appears in the denied list
+        let denied_nrs: std::collections::HashSet<u32> = denied.iter().map(|&(nr, _)| nr).collect();
+        all_allowed.retain(|nr| !denied_nrs.contains(nr));
+
+        let num_denied = denied.len();
+        let num_allowed = all_allowed.len();
+
+        // Layout: 1 (load) + 2*denied (jeq+ret per denied) + 2*allowed (jeq+ret per allowed) + 1 (default kill) + 1 (allow ret)
+        // But we use a simpler linear scan approach like the basic filter.
+        // Denied entries: each is JEQ → specific RET (kill/trap)
+        // Allowed entries: each is JEQ → jump to final ALLOW
+        // Default: KILL_PROCESS
+
+        let total_after_load = num_denied * 2 + num_allowed + 2; // denied pairs + allowed jeqs + default_kill + allow_ret
+        let mut instructions: Vec<SockFilter> = Vec::with_capacity(1 + total_after_load);
+
+        // Instruction 0: Load syscall number
+        instructions.push(SockFilter::new(BPF_LD_W_ABS, 0, 0, 0));
+
+        // Denied rules first — each denied syscall gets JEQ → next instruction (its RET)
+        for &(nr, action) in denied {
+            // JEQ: if match, jump to next instruction (jt=0), else skip the RET (jf=1)
+            instructions.push(SockFilter::new(BPF_JMP_JEQ_K, 0, 1, nr));
+            instructions.push(SockFilter::new(BPF_RET_K, 0, 0, action));
+        }
+
+        // Allowed rules: JEQ → jump to ALLOW at the end
+        for (i, &nr) in all_allowed.iter().enumerate() {
+            let remaining = (num_allowed - i - 1) as u8;
+            // Jump over remaining JEQs + default kill to reach ALLOW
+            let jt = remaining + 1; // skip remaining comparisons + default kill
+            instructions.push(SockFilter::new(BPF_JMP_JEQ_K, jt, 0, nr));
+        }
+
+        // Default: KILL_PROCESS
+        instructions.push(SockFilter::new(BPF_RET_K, 0, 0, SECCOMP_RET_KILL_PROCESS));
+
+        // ALLOW return
+        instructions.push(SockFilter::new(BPF_RET_K, 0, 0, SECCOMP_RET_ALLOW));
+
+        let mut filter = Vec::with_capacity(instructions.len() * 8);
+        for insn in &instructions {
+            filter.extend_from_slice(&insn.to_bytes());
+        }
+
+        Ok(filter)
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (base_allowed, extra_allowed, denied);
+        Ok(vec![])
+    }
+}
 
 /// Create a basic seccomp filter that allows safe syscalls and kills on dangerous ones.
 ///
@@ -898,6 +1095,80 @@ mod tests {
     fn test_seccomp_return_values() {
         assert_eq!(SECCOMP_RET_ALLOW, 0x7fff_0000);
         assert_eq!(SECCOMP_RET_KILL_PROCESS, 0x8000_0000);
+        assert_eq!(SECCOMP_RET_TRAP, 0x0003_0000);
+    }
+
+    #[test]
+    fn test_syscall_name_to_nr_common() {
+        assert_eq!(syscall_name_to_nr("read"), Some(0));
+        assert_eq!(syscall_name_to_nr("write"), Some(1));
+        assert_eq!(syscall_name_to_nr("close"), Some(3));
+        assert_eq!(syscall_name_to_nr("mmap"), Some(9));
+        assert_eq!(syscall_name_to_nr("socket"), Some(41));
+        assert_eq!(syscall_name_to_nr("connect"), Some(42));
+        assert_eq!(syscall_name_to_nr("execve"), Some(59));
+        assert_eq!(syscall_name_to_nr("exit"), Some(60));
+        assert_eq!(syscall_name_to_nr("kill"), Some(62));
+        assert_eq!(syscall_name_to_nr("ptrace"), Some(101));
+        assert_eq!(syscall_name_to_nr("mount"), Some(165));
+        assert_eq!(syscall_name_to_nr("reboot"), Some(169));
+        assert_eq!(syscall_name_to_nr("getrandom"), Some(318));
+    }
+
+    #[test]
+    fn test_syscall_name_to_nr_unknown() {
+        assert_eq!(syscall_name_to_nr("nonexistent_syscall"), None);
+        assert_eq!(syscall_name_to_nr(""), None);
+    }
+
+    #[test]
+    fn test_custom_seccomp_filter_basic() {
+        let base = &[0u32, 1, 3, 60, 231]; // read, write, close, exit, exit_group
+        let extra = &[41u32, 42]; // socket, connect
+        let denied: &[(u32, u32)] = &[];
+
+        let filter = create_custom_seccomp_filter(base, extra, denied).unwrap();
+        assert!(!filter.is_empty());
+        assert_eq!(filter.len() % 8, 0);
+        // 1 (load) + 7 (allowed JEQs) + 1 (default kill) + 1 (allow ret) = 10 instructions
+        assert_eq!(filter.len() / 8, 10);
+    }
+
+    #[test]
+    fn test_custom_seccomp_filter_with_denied() {
+        let base = &[0u32, 1, 3, 60, 231];
+        let extra = &[];
+        let denied = &[(101u32, SECCOMP_RET_KILL_PROCESS), (169, SECCOMP_RET_TRAP)]; // ptrace, reboot
+
+        let filter = create_custom_seccomp_filter(base, extra, denied).unwrap();
+        assert!(!filter.is_empty());
+        assert_eq!(filter.len() % 8, 0);
+        // 1 (load) + 2*2 (denied pairs) + 5 (allowed JEQs) + 1 (kill) + 1 (allow) = 12
+        assert_eq!(filter.len() / 8, 12);
+    }
+
+    #[test]
+    fn test_custom_seccomp_filter_denied_overrides_base() {
+        // If a syscall is in both base_allowed and denied, denied wins
+        let base = &[0u32, 1, 62]; // read, write, kill
+        let extra = &[];
+        let denied = &[(62u32, SECCOMP_RET_KILL_PROCESS)]; // deny kill
+
+        let filter = create_custom_seccomp_filter(base, extra, denied).unwrap();
+        // kill should be removed from allowed: 2 allowed + 1 denied
+        // 1 (load) + 2*1 (denied) + 2 (allowed JEQs) + 1 (kill) + 1 (allow) = 7
+        assert_eq!(filter.len() / 8, 7);
+    }
+
+    #[test]
+    fn test_custom_seccomp_filter_no_duplicates() {
+        let base = &[0u32, 1, 41]; // read, write, socket
+        let extra = &[0u32, 41]; // duplicates of read, socket
+
+        let filter = create_custom_seccomp_filter(base, extra, &[]).unwrap();
+        // Should only have 3 unique allowed syscalls
+        // 1 (load) + 3 (allowed JEQs) + 1 (kill) + 1 (allow) = 6
+        assert_eq!(filter.len() / 8, 6);
     }
 
     #[test]

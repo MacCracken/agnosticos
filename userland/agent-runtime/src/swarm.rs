@@ -6,7 +6,7 @@
 //! - Collective decision-making (weighted voting, ranked choice)
 //! - Emergent coordination (pheromone-style stigmergy via pub/sub topics)
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Result};
@@ -160,7 +160,7 @@ pub struct SwarmCoordinator {
     proposals: HashMap<String, SwarmProposal>,
     decompositions: HashMap<String, DecompositionPlan>,
     signals: Vec<StigmergySignal>,
-    eligible_voters: Vec<AgentId>,
+    eligible_voters: HashSet<AgentId>,
     max_signals: usize,
 }
 
@@ -170,21 +170,19 @@ impl SwarmCoordinator {
             proposals: HashMap::new(),
             decompositions: HashMap::new(),
             signals: Vec::new(),
-            eligible_voters: Vec::new(),
+            eligible_voters: HashSet::new(),
             max_signals: 1000,
         }
     }
 
     /// Register an agent as eligible to participate in swarm decisions.
     pub fn register_participant(&mut self, agent_id: AgentId) {
-        if !self.eligible_voters.contains(&agent_id) {
-            self.eligible_voters.push(agent_id);
-        }
+        self.eligible_voters.insert(agent_id);
     }
 
     /// Remove an agent from swarm participation.
     pub fn unregister_participant(&mut self, agent_id: &AgentId) {
-        self.eligible_voters.retain(|id| id != agent_id);
+        self.eligible_voters.remove(agent_id);
         // Remove their votes from open proposals
         for proposal in self.proposals.values_mut() {
             if proposal.status == ProposalStatus::Open {
@@ -281,7 +279,7 @@ impl SwarmCoordinator {
 
         let vote_count = proposal.votes.len();
         let eligible_count = self.eligible_voters.len().max(1);
-        let vote_pct = (vote_count as f64 / eligible_count as f64 * 100.0) as u8;
+        let vote_pct = (vote_count as f64 / eligible_count as f64 * 100.0).round() as u8;
 
         let quorum_met = match proposal.quorum {
             QuorumRule::Majority => vote_count * 2 > eligible_count,
@@ -425,11 +423,15 @@ impl SwarmCoordinator {
 
         let deps: Vec<String> = plan.subtasks[subtask_idx].dependencies.clone();
 
+        // Build O(1) lookup for subtask statuses
+        let status_map: HashMap<&str, &SubTaskStatus> = plan.subtasks
+            .iter()
+            .map(|s| (s.id.as_str(), &s.status))
+            .collect();
+
         // Check dependencies are completed
         for dep_id in &deps {
-            let dep_done = plan.subtasks.iter()
-                .any(|s| s.id == *dep_id && s.status == SubTaskStatus::Completed);
-            if !dep_done {
+            if status_map.get(dep_id.as_str()) != Some(&&SubTaskStatus::Completed) {
                 return Err(anyhow!("Dependency {} not yet completed", dep_id));
             }
         }
@@ -471,12 +473,18 @@ impl SwarmCoordinator {
             None => return Vec::new(),
         };
 
+        // Build O(1) lookup for subtask statuses
+        let status_map: HashMap<&str, &SubTaskStatus> = plan.subtasks
+            .iter()
+            .map(|s| (s.id.as_str(), &s.status))
+            .collect();
+
         plan.subtasks
             .iter()
             .filter(|s| s.status == SubTaskStatus::Pending)
             .filter(|s| {
                 s.dependencies.iter().all(|dep_id| {
-                    plan.subtasks.iter().any(|d| d.id == *dep_id && d.status == SubTaskStatus::Completed)
+                    status_map.get(dep_id.as_str()) == Some(&&SubTaskStatus::Completed)
                 })
             })
             .collect()

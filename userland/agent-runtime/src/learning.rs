@@ -6,7 +6,7 @@
 //! - Reward signals for reinforcement-style feedback
 //! - Capability scoring (dynamic confidence per skill)
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::time::{Duration, Instant};
 
 use tracing::debug;
@@ -153,7 +153,7 @@ pub struct AgentLearner {
     /// Per-agent capability confidence scores.
     capabilities: HashMap<(AgentId, String), CapabilityScore>,
     /// Recent outcomes for windowed analysis.
-    recent_outcomes: Vec<ActionOutcome>,
+    recent_outcomes: VecDeque<ActionOutcome>,
     /// Maximum recent outcomes to retain.
     max_recent: usize,
     /// Exponential moving average decay factor for capability scores.
@@ -166,7 +166,7 @@ impl AgentLearner {
             profiles: HashMap::new(),
             strategies: HashMap::new(),
             capabilities: HashMap::new(),
-            recent_outcomes: Vec::new(),
+            recent_outcomes: VecDeque::new(),
             max_recent: 10_000,
             ema_alpha: 0.1,
         }
@@ -208,9 +208,12 @@ impl AgentLearner {
         );
 
         // Store recent outcome
-        self.recent_outcomes.push(outcome);
+        self.recent_outcomes.push_back(outcome);
         if self.recent_outcomes.len() > self.max_recent {
-            self.recent_outcomes.drain(0..self.recent_outcomes.len() / 4);
+            let quarter = self.recent_outcomes.len() / 4;
+            for _ in 0..quarter {
+                self.recent_outcomes.pop_front();
+            }
         }
     }
 

@@ -106,6 +106,49 @@ Full codebase audit identified 32 items across 6 crates. Grouped by priority.
 | 31 | `unsafe` in `as_bytes()` missing safety comment | desktop-env/renderer.rs:223 | 5 min | Done |
 | 32 | 3 separate lock acquisitions in provider selection | llm-gateway/main.rs:369 | 15 min | Done |
 
+### Code Audit Cycle #2 — March 6, 2026 (Security/Performance/Correctness)
+
+Comprehensive audit across all 6 crates. 80+ findings identified; all Critical and High items fixed.
+
+#### Critical (Fixed)
+| # | Item | File | Fix |
+|---|------|------|-----|
+| 1 | Shell injection via `sh -c` with PEM data | agnos-sys/certpin.rs | Direct process spawn + stdin pipe |
+| 2 | nftables rule injection via `remote_addr` | agnos-sys/netns.rs | IP/CIDR validation, reject shell metacharacters |
+| 3 | Seccomp ignores per-agent rules | agent-runtime/sandbox.rs | Wired `SandboxConfig.seccomp_rules` → custom BPF filter |
+| 4 | Predictable temp files | agnos-sys/netns.rs | UUID-based paths under `/run/agnos/` |
+
+#### High (Fixed)
+| # | Item | File | Fix |
+|---|------|------|-----|
+| 5 | LLM Gateway bound to 0.0.0.0 | llm-gateway/http.rs | Default 127.0.0.1, `AGNOS_GATEWAY_BIND` env |
+| 6 | Agent Runtime API bound to 0.0.0.0 | agent-runtime/http_api.rs | Default 127.0.0.1, `AGNOS_RUNTIME_BIND` env |
+| 7 | CORS allows any origin | llm-gateway/http.rs | Restricted to localhost origins |
+| 8 | Bearer token unwrap panic | llm-gateway/http.rs | Safe `unwrap_or("")` |
+| 9 | Production unwraps in HTTP API | agent-runtime/http_api.rs | Error responses |
+| 10 | Edited commands bypass risk assessment | ai-shell/approval.rs | Re-assess when binary changes |
+| 11 | Unbounded exponential backoff | agent-runtime/supervisor.rs | Capped at 300s |
+
+#### Performance (Fixed)
+| # | Item | File | Fix |
+|---|------|------|-----|
+| 12 | Cache write lock on reads | llm-gateway/cache.rs | Read lock |
+| 13 | Small types not Copy | desktop-env/compositor.rs | Copy derives |
+| 14 | O(n) voter membership | agent-runtime/swarm.rs | HashSet |
+| 15 | O(n²) dependency checks | agent-runtime/swarm.rs | HashMap |
+| 16 | Repeated sysconf syscall | agent-runtime/supervisor.rs | OnceLock cache |
+| 17 | O(n) front removal | agent-runtime/learning.rs | VecDeque |
+
+#### Remaining (Lower Priority, Not Blocking Alpha)
+- Sandbox partial application rollback
+- Secret zeroing optimization (needs `zeroize` crate)
+- Thread-unsafe env var manipulation in secrets.rs
+- Various `let _ =` swallowed errors in IPC/service manager
+- Desktop environment blanket `#![allow(dead_code)]`
+- AI Shell Question intent stub
+- Placeholder certificate pins
+- Streaming parser O(n²) String::drain pattern
+
 ---
 
 ## Executive Summary

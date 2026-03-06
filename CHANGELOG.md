@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | Phase 5 Completion | 99% |
 | Phase 6 Completion | 55% |
 | Phase 6.5 Completion | 100% |
-| Test Coverage | ~80% (5800+ tests, 0 failures, 7 ignored) |
+| Test Coverage | ~80% (5800+ tests, 0 failures, 9 ignored) |
 | Compiler Warnings | 0 |
 | Clippy Warnings | 0 |
 | CIS Compliance | ~85% |
@@ -121,11 +121,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **12 P1 performance/correctness fixes**: atomic rate limiting, borrow-based inference API, lock snapshotting, rollback size bounds, TOCTOU elimination, overflow checks, audit chain verification
 - **14 P2 polish items**: blit clipping, O(1) task lookup, O(n) result pruning, dead agent eviction, Debug derives, audit log rotation, crypto hash, TimedOut variant
 
+### Security — Code Audit Cycle (March 6, 2026)
+
+Comprehensive security, performance, and correctness audit across all 6 crates. 80+ findings identified, prioritized by severity, all Critical and High items fixed.
+
+#### Critical Security Fixes
+- **Shell injection in certpin.rs**: Replaced `sh -c` with direct process spawning + stdin pipes for openssl commands; SPKI hash now computed in Rust via `sha2::Sha256` instead of piping through sha256sum
+- **nftables rule injection in netns.rs**: Validate `remote_addr` as IP/CIDR, reject shell metacharacters (`;|&\`$(){}` etc.), skip rules with invalid addresses
+- **Seccomp per-agent rules not wired**: `apply_seccomp()` ignored `SandboxConfig.seccomp_rules`; now builds custom BPF filter from per-agent Allow/Deny/Trap rules via new `create_custom_seccomp_filter()` + `syscall_name_to_nr()` mapping (100+ syscalls)
+- **Predictable temp files in netns.rs**: Replaced `/tmp/agnos-nft-{name}.conf` with UUID-based paths under `/run/agnos/`
+
+#### High Security Fixes
+- **LLM Gateway bound to 0.0.0.0**: Now defaults to `127.0.0.1` (configurable via `AGNOS_GATEWAY_BIND` env var)
+- **Agent Runtime API bound to 0.0.0.0**: Now defaults to `127.0.0.1` (configurable via `AGNOS_RUNTIME_BIND` env var)
+- **CORS allowed any origin**: Restricted to `http://localhost*` and `http://127.0.0.1*` origins
+- **Bearer token unwrap panic**: Replaced `auth_str.strip_prefix("Bearer ").unwrap()` with safe `unwrap_or("")`
+- **Production unwraps in HTTP API**: Replaced `serde_json::to_value().unwrap()` with proper error responses (500)
+- **Edited commands bypassed risk re-assessment**: `approval.rs` now re-runs `analyze_command_permission()` when the command binary changes during editing
+- **Exponential backoff unbounded**: Capped at 300 seconds (5 minutes) to prevent u64 overflow and unreasonable delays
+
+#### Performance Fixes
+- **Cache write lock contention**: `LlmCache::get()` now uses `read()` instead of `write()` lock
+- **Small type Copy derives**: Added `Copy` to `WindowState` and `Rectangle` (4-8 bytes each)
+- **O(n) voter membership**: `eligible_voters` changed from `Vec` to `HashSet` for O(1) contains
+- **O(n²) dependency checks**: `get_ready_subtasks()` and `assign_subtask()` build `HashMap` for O(1) dependency lookup
+- **Repeated syscall**: `sysconf(_SC_CLK_TCK)` cached in `OnceLock` (value never changes at runtime)
+- **O(n) front removal**: `recent_outcomes` changed from `Vec` to `VecDeque` for O(1) pop_front
+
+#### Correctness Fixes
+- **Swallowed audit log errors**: All 6 `let _ = audit_log()` sites in supervisor.rs now log warnings on failure
+- **Unused variable warning**: Fixed `s1` in desktop-environment wayland test
+
+#### New in agnos-sys/security.rs
+- `pub fn syscall_name_to_nr(name: &str) -> Option<u32>` — maps 100+ common x86_64 syscall names to numbers
+- `pub fn create_custom_seccomp_filter(base_allowed, extra_allowed, denied) -> Result<Vec<u8>>` — builds BPF filter with per-syscall Allow/Kill/Trap actions
+- `pub const SECCOMP_RET_ALLOW/SECCOMP_RET_KILL_PROCESS/SECCOMP_RET_TRAP` — now public for use by agent-runtime
+
 ### Changed
 
 - Phase 6 completion: 30% → 100% (agent intelligence, multi-modal, swarm, LLM analysis, tool wrappers, hardware acceleration, all networking tools)
 - agent-runtime lib.rs: added module declarations and re-exports for swarm, learning, multimodal
-- agent-runtime tests: 719 → 843 (lib)
+- agent-runtime tests: 719 → 843 (lib, +2 ignored seccomp integration tests)
+- agnos-sys tests: 825 → 831 (lib, +6 new custom seccomp/syscall mapping tests)
 - llm-gateway lib.rs: added acceleration module and AcceleratorRegistry re-export
 - llm-gateway tests: 206 → 249 (lib)
 - desktop-environment tests: 576 → 593 (lib)

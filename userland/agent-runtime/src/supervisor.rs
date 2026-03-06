@@ -387,11 +387,13 @@ impl Supervisor {
         }
 
         // Emit audit event for agent unregistration
-        let _ = sys_audit::agnos_audit_log_syscall(
+        if let Err(e) = sys_audit::agnos_audit_log_syscall(
             "agent_unregistered",
             &format!("agent_id={}", agent_id),
             0,
-        );
+        ) {
+            warn!("Audit log failed: {}", e);
+        }
 
         info!("Unregistered agent {} from supervision", agent_id);
         Ok(())
@@ -570,11 +572,13 @@ impl Supervisor {
         warn!("Taking recovery action for unhealthy agent {}", agent_id);
 
         // Emit audit event for unhealthy agent
-        let _ = sys_audit::agnos_audit_log_syscall(
+        if let Err(e) = sys_audit::agnos_audit_log_syscall(
             "agent_unhealthy",
             &format!("agent_id={}", agent_id),
             1,
-        );
+        ) {
+            warn!("Audit log failed: {}", e);
+        }
 
         // Get current failure count
         let failure_count = {
@@ -593,8 +597,9 @@ impl Supervisor {
             return;
         }
 
-        // Exponential backoff: 2s, 4s, 8s, 16s, 32s
-        let backoff = Duration::from_secs(BASE_BACKOFF_SECS.saturating_pow(failure_count));
+        // Exponential backoff: 2s, 4s, 8s, 16s, 32s — capped at 300s (5 min)
+        const MAX_BACKOFF_SECS: u64 = 300;
+        let backoff = Duration::from_secs(BASE_BACKOFF_SECS.saturating_pow(failure_count).min(MAX_BACKOFF_SECS));
         info!(
             "Restarting agent {} (attempt {}/{}) after {:?} backoff",
             agent_id, failure_count, MAX_RESTART_ATTEMPTS, backoff
@@ -704,28 +709,32 @@ impl Supervisor {
                     "Agent {} EXCEEDED memory kill threshold ({:.1}% >= {:.1}%): {} / {} bytes — sending SIGKILL",
                     agent_id, mem_pct, quota.memory_kill_pct, mem_used, quota.memory_limit
                 );
-                let _ = sys_audit::agnos_audit_log_syscall(
+                if let Err(e) = sys_audit::agnos_audit_log_syscall(
                     "agent_memory_kill",
                     &format!(
                         "agent_id={} memory_used={} memory_limit={} pct={:.1} threshold={:.1}",
                         agent_id, mem_used, quota.memory_limit, mem_pct, quota.memory_kill_pct
                     ),
                     1,
-                );
+                ) {
+                    warn!("Audit log failed: {}", e);
+                }
                 self.signal_agent(agent_id, libc::SIGKILL).await;
             } else if mem_pct >= quota.memory_warn_pct {
                 warn!(
                     "Agent {} approaching memory limit ({:.1}% >= {:.1}%): {} / {} bytes",
                     agent_id, mem_pct, quota.memory_warn_pct, mem_used, quota.memory_limit
                 );
-                let _ = sys_audit::agnos_audit_log_syscall(
+                if let Err(e) = sys_audit::agnos_audit_log_syscall(
                     "agent_memory_warning",
                     &format!(
                         "agent_id={} memory_used={} memory_limit={} pct={:.1} threshold={:.1}",
                         agent_id, mem_used, quota.memory_limit, mem_pct, quota.memory_warn_pct
                     ),
                     0,
-                );
+                ) {
+                    warn!("Audit log failed: {}", e);
+                }
             }
         }
 
@@ -750,14 +759,16 @@ impl Supervisor {
                         "Agent {} CPU usage rate {:.1}% >= throttle threshold {:.1}%",
                         agent_id, cpu_rate_pct, quota.cpu_throttle_pct
                     );
-                    let _ = sys_audit::agnos_audit_log_syscall(
+                    if let Err(e) = sys_audit::agnos_audit_log_syscall(
                         "agent_cpu_throttle_warning",
                         &format!(
                             "agent_id={} cpu_rate_pct={:.1} threshold={:.1}",
                             agent_id, cpu_rate_pct, quota.cpu_throttle_pct
                         ),
                         0,
-                    );
+                    ) {
+                        warn!("Audit log failed: {}", e);
+                    }
                 }
             }
         }
@@ -771,14 +782,16 @@ impl Supervisor {
                 "Agent {} EXCEEDED CPU time limit: {} > {} ms — sending SIGKILL",
                 agent_id, cpu_used_ms, quota.cpu_time_limit
             );
-            let _ = sys_audit::agnos_audit_log_syscall(
+            if let Err(e) = sys_audit::agnos_audit_log_syscall(
                 "agent_cpu_time_kill",
                 &format!(
                     "agent_id={} cpu_used_ms={} cpu_limit_ms={}",
                     agent_id, cpu_used_ms, quota.cpu_time_limit
                 ),
                 1,
-            );
+            ) {
+                warn!("Audit log failed: {}", e);
+            }
             self.signal_agent(agent_id, libc::SIGKILL).await;
         }
 
@@ -865,8 +878,12 @@ fn read_proc_cpu_time_us(pid: u32) -> u64 {
             let utime: u64 = fields.get(11)?.parse().ok()?;
             let stime: u64 = fields.get(12)?.parse().ok()?;
             let ticks = utime + stime;
-            // Convert clock ticks to microseconds (typically 100 ticks/sec on Linux)
-            let ticks_per_sec = unsafe { libc::sysconf(libc::_SC_CLK_TCK) } as u64;
+            // Convert clock ticks to microseconds (typically 100 ticks/sec on Linux).
+            // Cache the result since the clock tick rate never changes at runtime.
+            static CLK_TCK: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
+            let ticks_per_sec = *CLK_TCK.get_or_init(|| {
+                (unsafe { libc::sysconf(libc::_SC_CLK_TCK) }) as u64
+            });
             if ticks_per_sec > 0 {
                 Some(ticks * 1_000_000 / ticks_per_sec)
             } else {

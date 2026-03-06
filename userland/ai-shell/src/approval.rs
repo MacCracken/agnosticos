@@ -348,11 +348,19 @@ impl ApprovalManager {
                     )
                 };
 
+                // Re-assess risk if the command binary changed
+                let new_risk = if new_cmd != *command {
+                    let perm = crate::security::analyze_command_permission(&new_cmd, &new_args);
+                    RiskLevel::from_permission(&perm)
+                } else {
+                    *risk_level
+                };
+
                 Ok(ApprovalRequest::Command {
                     command: new_cmd,
                     args: new_args,
                     reason: reason.clone(),
-                    risk_level: *risk_level,
+                    risk_level: new_risk,
                 })
             }
             ApprovalRequest::FileOperation { operation, path, description } => {
