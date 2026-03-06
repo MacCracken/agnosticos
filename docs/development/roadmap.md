@@ -26,22 +26,22 @@
 | Capability scoping (manifest → sandbox) | agnos-common | Done |
 | Audit viewer in AI Shell | ai-shell | Done (16 new tests) |
 | Per-agent rate limiting (tokens/hr, req/min, concurrent) | llm-gateway | Done (12 tests) |
-| Agent lifecycle hooks (on_start/stop/error) | agent-runtime | Done (14 tests) |
+| Agent lifecycle hooks (on_start/stop/error) | agent-runtime | Done (12 tests) |
 | Agent-to-agent pub/sub protocol | agent-runtime/ipc | Done (17 tests) |
 | Rollback / undo for agent actions | agent-runtime/sandbox | Done (15 tests) |
 | Interactive approval editing in agnsh | ai-shell | Done (3 new tests) |
 | Agent package manager (`agnos install`) | agent-runtime | Done (31 tests) |
 | Wayland protocol layer (feature-gated) | desktop-environment | Done (41 tests) |
-| Wayland Dispatch traits (wire protocol handlers) | desktop-environment | Done (63 tests) |
+| Wayland Dispatch traits (wire protocol handlers) | desktop-environment | Done (58 tests) |
 | IMA/EVM file integrity | agnos-sys | Done (31 tests) |
 | TPM 2.0 measured boot & sealed secrets | agnos-sys | Done (23 tests) |
 | UEFI Secure Boot integration | agnos-sys | Done (18 tests) |
-| Network tools framework + AI Shell intents | agent-runtime + ai-shell | Done (81 tests) |
+| Network tools framework + AI Shell intents | agent-runtime + ai-shell | Done (100 tests) |
 | Network tool agent wrappers (7 structs) | agent-runtime | Done (21 tests) |
-| Swarm intelligence protocols | agent-runtime | Done (20 tests) |
+| Swarm intelligence protocols | agent-runtime | Done (19 tests) |
 | Agent learning & adaptation (UCB1) | agent-runtime | Done (13 tests) |
-| Multi-modal agent support | agent-runtime | Done (15 tests) |
-| LLM tool output analysis pipeline | agent-runtime | Done (12 tests) |
+| Multi-modal agent support | agent-runtime | Done (14 tests) |
+| LLM tool output analysis pipeline | agent-runtime | Done (15 tests) |
 | Bootloader config (systemd-boot + GRUB2) | agnos-sys | Done (27 tests) |
 | Journald integration | agnos-sys | Done (30 tests) |
 | Udev device management | agnos-sys | Done (26 tests) |
@@ -169,7 +169,7 @@ AGNOS (AI-Native General Operating System) is in **Phase 5: Production**, focuse
 
 ### Alpha Release Criteria (Q2 2026)
 - [x] Core features fully wired (not stubbed) — P0/P1 stubs eliminated March 3
-- [x] 80%+ test coverage (~80%, 5700+ tests)
+- [x] 80%+ test coverage (~80%, 5800+ tests, 3421 lib)
 - [x] Integration tests: agent-orchestrator (16 tests)
 - [x] Performance benchmarks established (58 benchmarks + docs)
 - [ ] Third-party security audit complete
@@ -225,9 +225,9 @@ AGNOS (AI-Native General Operating System) is in **Phase 5: Production**, focuse
 
 #### Agent Intelligence ✅ Complete
 - [x] Distributed agent computing — swarm task decomposition (DataParallel/Pipeline/FunctionalSplit/Redundant)
-- [x] Swarm intelligence protocols — consensus voting with quorum rules (20 tests)
+- [x] Swarm intelligence protocols — consensus voting with quorum rules (19 tests)
 - [x] Agent learning and adaptation — UCB1 strategy selection, capability scoring with EMA (13 tests)
-- [x] Multi-modal agents (vision, audio) — modality profiles, content blocks, registry (15 tests)
+- [x] Multi-modal agents (vision, audio) — modality profiles, content blocks, registry (14 tests)
 
 #### Networking Toolkit (Kali Linux-Inspired)
 
@@ -278,7 +278,7 @@ AGNOS includes a networking toolkit framework (`agent-runtime/src/network_tools.
 - [x] 32 tool variants: all reconnaissance, traffic analysis, utility, DNS, web, and wireless tools
 - [x] 7 typed agent wrappers: PortScanner, DnsInvestigator, NetworkProber, VulnAssessor, TrafficAnalyzer, WebFuzzer, SocketInspector
 - [x] Output parsers: structured results for nmap, masscan, dig, traceroute/mtr, ss
-- [x] LLM tool output analysis pipeline (`tool_analysis.rs`, 12 tests) — results piped through LLM Gateway
+- [x] LLM tool output analysis pipeline (`tool_analysis.rs`, 15 tests) — results piped through LLM Gateway
 - [x] AI Shell understands 17 network actions via natural language
 - [x] Target validation, risk levels, dangerous arg rejection (masscan rate limits, nuclei template restrictions)
 - [x] All tool invocations require user approval for sensitive operations (per Human Sovereignty principle)

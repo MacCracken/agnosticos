@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | Metric | Value |
 |--------|-------|
 | Phase 5 Completion | 99% |
-| Phase 6 Completion | 55% |
+| Phase 6 Completion | 100% |
 | Phase 6.5 Completion | 100% |
 | Test Coverage | ~80% (5800+ tests, 0 failures, 9 ignored) |
 | Compiler Warnings | 0 |
@@ -21,13 +21,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added — Phase 6: Agent Intelligence & Multi-Modal (3 New Modules)
 
-- **agent-runtime/swarm.rs** — Swarm intelligence protocols: consensus voting (Majority/SuperMajority/Unanimous/MinVotes/MinPercent quorum rules), task decomposition (DataParallel/Pipeline/FunctionalSplit/Redundant strategies), stigmergy signals with exponential decay, aggregation strategies (Merge/Vote/Concatenate/BestScore) (20 tests)
+- **agent-runtime/swarm.rs** — Swarm intelligence protocols: consensus voting (Majority/SuperMajority/Unanimous/MinVotes/MinPercent quorum rules), task decomposition (DataParallel/Pipeline/FunctionalSplit/Redundant strategies), stigmergy signals with exponential decay, aggregation strategies (Merge/Vote/Concatenate/BestScore) (19 tests)
 - **agent-runtime/learning.rs** — Agent learning and adaptation: performance profiling with action outcome tracking, UCB1 (Upper Confidence Bound) strategy selection for exploration/exploitation balance, capability scoring with exponential moving average, score trend detection (13 tests)
-- **agent-runtime/multimodal.rs** — Multi-modal agent support: Modality enum (Text/Vision/Audio/ToolUse/StructuredData/Code), ModalityProfile with cost estimation, ContentBlock for mixed-content messages, ModalityRegistry with factory methods (text_only/vision_capable/full_multimodal), message validation against modality profiles (15 tests)
+- **agent-runtime/multimodal.rs** — Multi-modal agent support: Modality enum (Text/Vision/Audio/ToolUse/StructuredData/Code), ModalityProfile with cost estimation, ContentBlock for mixed-content messages, ModalityRegistry with factory methods (text_only/vision_capable/full_multimodal), message validation against modality profiles (14 tests)
 
 ### Added — LLM Tool Output Analysis Pipeline
 
-- **agent-runtime/tool_analysis.rs** — LLM-based network tool output analysis: tool-specific system prompts for port scan/DNS/vuln scan/trace/capture analysis, structured response parsing (SUMMARY/RISK/FINDINGS/RECOMMENDATIONS format), FindingSeverity levels (Critical/High/Medium/Low/Info), HTTP integration with LLM Gateway on port 8088 (12 tests)
+- **agent-runtime/tool_analysis.rs** — LLM-based network tool output analysis: tool-specific system prompts for port scan/DNS/vuln scan/trace/capture analysis, structured response parsing (SUMMARY/RISK/FINDINGS/RECOMMENDATIONS format), FindingSeverity levels (Critical/High/Medium/Low/Info), HTTP integration with LLM Gateway on port 8088 (15 tests)
 
 ### Added — Wayland Dispatch Traits (Wire Protocol Handlers)
 
@@ -95,8 +95,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **agnos-sys/ima.rs** — IMA/EVM file integrity, measurement parsing from sysfs, policy rule builder, xattr verification (31 tests)
 - **agnos-sys/tpm.rs** — TPM 2.0 PCR read/extend, sealed secrets, measured boot verification, hardware RNG (23 tests)
 - **agnos-sys/secureboot.rs** — UEFI secure boot state detection, key enrollment, kernel module signing verification (18 tests)
-- **agent-runtime/network_tools.rs** — Network tool framework with 23 tool types, 7 typed agent wrappers (PortScanner, DnsInvestigator, NetworkProber, VulnAssessor, TrafficAnalyzer, WebFuzzer, SocketInspector), target validation, dangerous arg rejection, risk levels, sandboxed execution, output parsers (81 tests)
-- **desktop-environment/wayland.rs** — Wayland protocol abstraction layer (feature-gated), SHM buffers, xdg_shell tracking, surface map, seat capabilities, input event mapping, full Dispatch trait implementations for wl_compositor/wl_surface/wl_shm/wl_seat/wl_output/xdg_wm_base/xdg_surface/xdg_toplevel (63 tests)
+- **agent-runtime/network_tools.rs** — Network tool framework with 32 tool types, 7 typed agent wrappers (PortScanner, DnsInvestigator, NetworkProber, VulnAssessor, TrafficAnalyzer, WebFuzzer, SocketInspector), target validation, dangerous arg rejection, risk levels, sandboxed execution, output parsers (100 tests)
+- **desktop-environment/wayland.rs** — Wayland protocol abstraction layer (feature-gated), SHM buffers, xdg_shell tracking, surface map, seat capabilities, input event mapping, full Dispatch trait implementations for wl_compositor/wl_surface/wl_shm/wl_seat/wl_output/xdg_wm_base/xdg_surface/xdg_toplevel (58 tests)
 
 ### Added — LLM Gateway Certificate Pinning Integration
 
@@ -150,6 +150,8 @@ Comprehensive security, performance, and correctness audit across all 6 crates. 
 
 #### Correctness Fixes
 - **Swallowed audit log errors**: All 6 `let _ = audit_log()` sites in supervisor.rs now log warnings on failure
+- **LUKS key failure silently ignored**: `sandbox.rs` now returns `Err` instead of `Ok(())` when `LuksKey::generate()` fails
+- **Vote percentage truncation bias**: `swarm.rs` now uses `.round()` before `as u8` cast to prevent systematic rounding-down
 - **Unused variable warning**: Fixed `s1` in desktop-environment wayland test
 
 #### New in agnos-sys/security.rs
