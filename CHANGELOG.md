@@ -20,6 +20,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | Phase 6.7 Completion | 100% |
 | Alpha Blocker | Third-party security audit (vendor selection) |
 
+### Roadmap — Cross-Project Integration (AGNOSTIC + AGNOS)
+
+- Added **9 cross-project integration items** to Phase 6.8 roadmap: unified audit log forwarding, external agent memory bridge, shared OpenTelemetry pipeline, Python/Node.js base images, fleet config for external agents, cross-project reasoning traces, LLM token budget sharing, capability federation
+- Added **integration status table** to Consumer Integration section tracking Phase 1-4 progress
+- Updated AGNOSTIC roadmap (`/home/macro/Repos/agnostic/docs/development/roadmap.md`) with matching Phase 3 (deep integration, 7 items) and Phase 4 (Docker migration, 3 items) sections
+- Both roadmaps now reference shared items with aligned priorities and component mappings
+
 ### Added — Phase 6.7: Alpha Polish (14 Items) — [ADR-008](docs/adr/adr-008-phase67-alpha-polish.md)
 
 #### AI Shell & User Interaction

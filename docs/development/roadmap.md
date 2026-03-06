@@ -351,6 +351,19 @@ Blockers before migration:
 | Agnostic | `universal_llm_adapter.py` | Deduplicate adapter logic; route through gateway |
 | BullShift | AI Bridge backends | Single endpoint replaces per-provider config |
 
+#### Current Integration Status (AGNOSTIC ↔ AGNOS)
+
+| Phase | Feature | AGNOSTIC | AGNOS | Status |
+|-------|---------|----------|-------|--------|
+| 1 | LLM Gateway routing | `universal_llm_adapter.py` → port 8088 | `llm-gateway/` | Done |
+| 2 | Agent HUD registration | `agnos_agent_registration.py` → port 8090 | `agent-runtime/http_api.rs` | Done |
+| 2 | Heartbeat lifecycle | `AgentRegistryClient.send_heartbeat()` | `heartbeat_handler()` | Done |
+| 3 | Audit log forwarding | `shared/audit.py` (22 actions) | `agent-runtime/http_api.rs` | Planned (6.8) |
+| 3 | Persistent memory bridge | Agent-local state | `agent-runtime/memory_store.rs` REST | Planned (6.8) |
+| 3 | Shared OpenTelemetry | `opentelemetry-sdk` (Python) | `agnos-common/telemetry.rs` | Planned (6.8) |
+| 3 | Reasoning traces | CrewAI decision chains | `agent-runtime/tool_analysis.rs` REST | Planned (6.8) |
+| 4 | Docker base images | 6 Dockerfiles → `agnos:python3.12` | `docker/` publish | Planned (post-Alpha) |
+
 ### Phase 6.7: Alpha Polish — Core Experience Gaps (Complete) — [ADR-008](../adr/adr-008-phase67-alpha-polish.md)
 
 All 14 items implemented. See [Phase 6.7 Developer Guide](phase67-guide.md) for usage.
@@ -449,6 +462,20 @@ Features that make AGNOS meaningfully better than running agents on a generic Li
 | Webhook/event sink support | agent-runtime/http_api.rs | 2 days | P2 | POST agent events (task complete, alert, approval needed) to external URLs. Enables integration with Slack, PagerDuty, CI/CD |
 | gRPC API (alongside REST) | agent-runtime + llm-gateway | 1 week | P3 | Protocol Buffers + gRPC for high-performance agent communication. Streaming, bidirectional, typed contracts |
 | Service mesh readiness (sidecar pattern) | agent-runtime | 3 days | P3 | Envoy/Linkerd sidecar injection for agents. Enables traffic shaping, retries, observability at network layer |
+
+#### Cross-Project Integration (AGNOSTIC + SecureYeoman)
+
+| Item | Component | Effort | Priority | Description |
+|------|-----------|--------|----------|-------------|
+| Unified audit log forwarding | agent-runtime/http_api.rs | 2 days | P1 | Accept structured audit events from external agents (AGNOSTIC's 22-action audit log, YEOMAN events) and append to AGNOS cryptographic audit chain. Shared correlation IDs across projects |
+| External agent memory bridge | agent-runtime/memory_store.rs | 2 days | P1 | REST API for AgentMemoryStore — external agents (Python/TypeScript) can persist/retrieve KV state through AGNOS rather than managing their own storage. Enables AGNOSTIC QA agents to store learned test patterns across sessions |
+| Shared observability pipeline | agnos-common/telemetry.rs + agent-runtime | 2 days | P1 | OpenTelemetry collector accepts traces from AGNOSTIC (Python opentelemetry-sdk) and SecureYeoman (Node.js @opentelemetry/sdk-trace-node). Unified distributed traces across Rust/Python/TypeScript services |
+| Python runtime base image | docker/ | 3 days | P2 | Publish `agnos:python3.12` Docker image with agent-runtime sidecar, Landlock+seccomp sandbox, audit chain integration. Replaces AGNOSTIC's 6 per-agent Dockerfiles |
+| Node.js runtime base image | docker/ | 2 days | P2 | Publish `agnos:node20` Docker image for SecureYeoman. Same sandbox/audit benefits as Python variant |
+| Fleet config for external agents | agent-runtime/service_manager.rs | 1 day | P2 | Extend FleetConfig to manage external (containerized) agent services. `fleet.toml` can declare AGNOSTIC agents alongside native AGNOS agents, with reconciliation handling Docker lifecycle |
+| Cross-project reasoning traces | agent-runtime/tool_analysis.rs | 1 day | P2 | Accept ReasoningTrace submissions via REST API from external agents. AGNOSTIC's QA decision chains (test plan → execution → analysis) visible in AGNOS dashboard |
+| LLM Gateway token budget sharing | llm-gateway | 2 days | P2 | Shared token budget pools across projects. AGNOSTIC and SecureYeoman draw from allocated quotas with automatic rebalancing. Prevents one project from exhausting shared LLM capacity |
+| Agent capability federation | agent-runtime/registry.rs | 2 days | P3 | AGNOSTIC's 6 QA agents advertise capabilities (security_audit, load_testing, etc.) through AGNOS capability negotiation. Native AGNOS agents can request QA services without knowing about AGNOSTIC directly |
 
 ---
 
