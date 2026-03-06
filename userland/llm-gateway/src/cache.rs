@@ -76,7 +76,7 @@ impl ResponseCache {
 
     /// Store a response in the cache
     pub async fn set(&self, request: &InferenceRequest, response: InferenceResponse) {
-        let key = Self::make_key(&request);
+        let key = Self::make_key(request);
         let now = Instant::now();
         let entry = CacheEntry {
             response,

@@ -233,17 +233,14 @@ impl Default for AgentConfig {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum AgentType {
     System,
+    #[default]
     User,
     Service,
 }
 
-impl Default for AgentType {
-    fn default() -> Self {
-        Self::User
-    }
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Permission {
@@ -384,7 +381,7 @@ impl AgentManifest {
         AgentConfig {
             name: self.name.clone(),
             agent_type: AgentType::User,
-            resource_limits: self.resource_limits.clone(),
+            resource_limits: self.resource_limits,
             sandbox: SandboxConfig {
                 filesystem_rules: self.filesystem_access.clone(),
                 network_access: match self.network_scope {
@@ -421,6 +418,7 @@ pub enum ManifestNetworkScope {
 
 /// Per-agent rate limit configuration for LLM Gateway.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct AgentRateLimit {
     /// Maximum tokens per hour (0 = unlimited).
     #[serde(default)]
@@ -433,15 +431,6 @@ pub struct AgentRateLimit {
     pub max_concurrent_requests: u32,
 }
 
-impl Default for AgentRateLimit {
-    fn default() -> Self {
-        Self {
-            max_tokens_per_hour: 0,
-            max_requests_per_minute: 0,
-            max_concurrent_requests: 0,
-        }
-    }
-}
 
 /// Agent status
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

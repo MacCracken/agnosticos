@@ -537,18 +537,17 @@ impl Supervisor {
                 health.consecutive_successes += 1;
                 health.consecutive_failures = 0;
 
-                if health.consecutive_successes >= self.config.healthy_threshold {
-                    if !health.is_healthy {
+                if health.consecutive_successes >= self.config.healthy_threshold
+                    && !health.is_healthy {
                         info!("Agent {} is now healthy", agent_id);
                         health.is_healthy = true;
                     }
-                }
             } else {
                 health.consecutive_failures += 1;
                 health.consecutive_successes = 0;
 
-                if health.consecutive_failures >= self.config.unhealthy_threshold {
-                    if health.is_healthy {
+                if health.consecutive_failures >= self.config.unhealthy_threshold
+                    && health.is_healthy {
                         warn!("Agent {} is now unhealthy", agent_id);
                         health.is_healthy = false;
                         
@@ -556,7 +555,6 @@ impl Supervisor {
                         drop(checks);
                         self.handle_unhealthy_agent(agent_id).await;
                     }
-                }
             }
         }
     }
@@ -842,7 +840,7 @@ fn read_proc_memory(pid: u32) -> u64 {
             for line in contents.lines() {
                 if let Some(val) = line.strip_prefix("VmRSS:") {
                     // Value is in kB, e.g. "   12345 kB"
-                    let kb: u64 = val.trim().split_whitespace().next()?.parse().ok()?;
+                    let kb: u64 = val.split_whitespace().next()?.parse().ok()?;
                     return Some(kb * 1024);
                 }
             }
@@ -2062,9 +2060,9 @@ mod tests {
 
     #[test]
     fn test_resource_quota_from_limits() {
-        let quota = ResourceQuota::from_limits(1024 * 1024 * 1024, 3600_000);
+        let quota = ResourceQuota::from_limits(1024 * 1024 * 1024, 3_600_000);
         assert_eq!(quota.memory_limit, 1024 * 1024 * 1024);
-        assert_eq!(quota.cpu_time_limit, 3600_000);
+        assert_eq!(quota.cpu_time_limit, 3_600_000);
         // Should still have default thresholds
         assert!((quota.memory_warn_pct - 80.0).abs() < f64::EPSILON);
         assert!((quota.memory_kill_pct - 95.0).abs() < f64::EPSILON);
@@ -2078,14 +2076,14 @@ mod tests {
             memory_kill_pct: 90.0,
             cpu_throttle_pct: 85.0,
             memory_limit: 512 * 1024 * 1024,
-            cpu_time_limit: 1800_000,
+            cpu_time_limit: 1_800_000,
         };
         let cloned = quota.clone();
         assert!((cloned.memory_warn_pct - 70.0).abs() < f64::EPSILON);
         assert!((cloned.memory_kill_pct - 90.0).abs() < f64::EPSILON);
         assert!((cloned.cpu_throttle_pct - 85.0).abs() < f64::EPSILON);
         assert_eq!(cloned.memory_limit, 512 * 1024 * 1024);
-        assert_eq!(cloned.cpu_time_limit, 1800_000);
+        assert_eq!(cloned.cpu_time_limit, 1_800_000);
     }
 
     #[test]
@@ -2112,7 +2110,7 @@ mod tests {
             memory_kill_pct: 90.0,
             cpu_throttle_pct: 85.0,
             memory_limit: 2 * 1024 * 1024 * 1024,
-            cpu_time_limit: 7200_000,
+            cpu_time_limit: 7_200_000,
         };
         supervisor.set_quota(agent_id, quota).await;
 

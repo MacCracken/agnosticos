@@ -57,6 +57,12 @@ pub struct TerminalApp {
     pub ai_integration: bool,
 }
 
+impl Default for TerminalApp {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TerminalApp {
     pub fn new() -> Self {
         Self {
@@ -108,6 +114,12 @@ pub struct FileManagerApp {
     pub agent_assistance: bool,
 }
 
+impl Default for FileManagerApp {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FileManagerApp {
     pub fn new() -> Self {
         Self {
@@ -147,6 +159,12 @@ pub struct AgentInfo {
     pub name: String,
     pub status: String,
     pub capabilities: Vec<String>,
+}
+
+impl Default for AgentManagerApp {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl AgentManagerApp {
@@ -264,6 +282,12 @@ pub enum TimeRange {
 /// Path to the AGNOS audit log (JSON lines with hash chain)
 const AUDIT_LOG_PATH: &str = "/var/log/agnos/audit.log";
 
+impl Default for AuditViewerApp {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AuditViewerApp {
     pub fn new() -> Self {
         Self {
@@ -344,7 +368,7 @@ impl AuditViewerApp {
                         Some("")
                     }
                 })
-                .unwrap_or_else(|| "")
+                .unwrap_or("")
                 .to_string();
 
             let description = if description.is_empty() {
@@ -408,6 +432,12 @@ pub struct ModelInfo {
 
 /// LLM Gateway address for model management
 const LLM_GATEWAY_ADDR: &str = "http://localhost:8088";
+
+impl Default for ModelManagerApp {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl ModelManagerApp {
     pub fn new() -> Self {
@@ -567,6 +597,12 @@ pub struct DesktopApplications {
     audit_viewer: AuditViewerApp,
     model_manager: ModelManagerApp,
     open_windows: Arc<RwLock<HashMap<Uuid, AppWindow>>>,
+}
+
+impl Default for DesktopApplications {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl DesktopApplications {
@@ -829,7 +865,7 @@ mod tests {
             .start_agent("test-agent".to_string(), vec!["read".to_string()])
             .unwrap();
         // The locally tracked agent should be present
-        assert!(am.running_agents.len() >= 1);
+        assert!(!am.running_agents.is_empty());
         assert_eq!(am.running_agents[0].name, "test-agent");
         assert_eq!(am.running_agents[0].status, "Starting");
     }
@@ -838,7 +874,7 @@ mod tests {
     fn test_agent_manager_stop_agent() {
         let mut am = AgentManagerApp::new();
         let id = am.start_agent("test".to_string(), vec![]).unwrap();
-        assert!(am.running_agents.len() >= 1);
+        assert!(!am.running_agents.is_empty());
         am.stop_agent(id).unwrap();
         assert!(am.running_agents.is_empty());
     }
@@ -1291,7 +1327,7 @@ mod tests {
                 assert!(msg.contains("failed"), "Expected 'failed' in: {}", msg);
                 // stderr content should be included in the error message
                 assert!(
-                    msg.contains("No such file") || msg.contains("cannot access") || msg.len() > 0,
+                    msg.contains("No such file") || msg.contains("cannot access") || !msg.is_empty(),
                     "stderr should be included in error"
                 );
             }
@@ -1853,9 +1889,9 @@ mod tests {
             time_range: TimeRange::LastHour,
         };
         let cloned = filters.clone();
-        assert_eq!(cloned.include_agent, false);
-        assert_eq!(cloned.include_security, true);
-        assert_eq!(cloned.include_system, false);
+        assert!(!cloned.include_agent);
+        assert!(cloned.include_security);
+        assert!(!cloned.include_system);
     }
 
     #[test]
@@ -2157,7 +2193,7 @@ mod tests {
         let w2 = apps.open_terminal().unwrap();
         let w3 = apps.open_file_manager(None).unwrap();
         let w4 = apps.open_agent_manager().unwrap();
-        let ids = vec![w1.id, w2.id, w3.id, w4.id];
+        let ids = [w1.id, w2.id, w3.id, w4.id];
         for i in 0..ids.len() {
             for j in (i + 1)..ids.len() {
                 assert_ne!(ids[i], ids[j], "Window IDs must be unique");

@@ -496,7 +496,7 @@ mod tests {
         std::fs::write(dir.path().join("file1.txt"), "MODIFIED").unwrap();
 
         let result = mgr.rollback(id, &snap_id).await.unwrap();
-        assert!(result.restored.len() > 0);
+        assert!(!result.restored.is_empty());
         assert!(result.errors.is_empty());
 
         let content = std::fs::read_to_string(dir.path().join("file1.txt")).unwrap();
@@ -538,7 +538,7 @@ mod tests {
         std::fs::remove_file(dir.path().join("file2.txt")).unwrap();
         assert!(!dir.path().join("file2.txt").exists());
 
-        let result = mgr.rollback(id, &snap_id).await.unwrap();
+        let _result = mgr.rollback(id, &snap_id).await.unwrap();
         assert!(dir.path().join("file2.txt").exists());
         let content = std::fs::read_to_string(dir.path().join("file2.txt")).unwrap();
         assert_eq!(content, "goodbye world");

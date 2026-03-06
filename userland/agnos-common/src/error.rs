@@ -166,7 +166,7 @@ mod tests {
 
     #[test]
     fn test_error_from_io_error() {
-        let io_err = std::io::Error::new(std::io::ErrorKind::Other, "disk failure");
+        let io_err = std::io::Error::other("disk failure");
         let err: AgnosError = io_err.into();
         assert!(matches!(err, AgnosError::Io(_)));
         assert!(err.to_string().contains("disk failure"));
@@ -252,7 +252,7 @@ mod tests {
     #[test]
     fn test_error_display_all_variants() {
         let variants: Vec<AgnosError> = vec![
-            AgnosError::Io(std::io::Error::new(std::io::ErrorKind::Other, "io")),
+            AgnosError::Io(std::io::Error::other("io")),
             AgnosError::AgentNotFound("a".into()),
             AgnosError::PermissionDenied("p".into()),
             AgnosError::ResourceLimitExceeded("r".into()),

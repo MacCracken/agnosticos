@@ -654,7 +654,7 @@ mod tests {
     #[test]
     fn test_permission_level_clone() {
         let p = PermissionLevel::Admin;
-        let p2 = p.clone();
+        let p2 = p;
         assert_eq!(p, p2);
     }
 

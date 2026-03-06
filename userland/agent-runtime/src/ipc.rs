@@ -530,7 +530,7 @@ mod tests {
         let agent_id = AgentId::new();
         let (tx, mut rx) = mpsc::channel(10);
         
-        bus.subscribe(agent_id.clone(), tx).await;
+        bus.subscribe(agent_id, tx).await;
         bus.register_agent_name(agent_id, "my-agent").await;
         
         let message = Message {
@@ -572,7 +572,7 @@ mod tests {
         let agent_id = AgentId::new();
         let (tx, mut rx) = mpsc::channel(10);
 
-        bus.subscribe(agent_id.clone(), tx).await;
+        bus.subscribe(agent_id, tx).await;
         bus.register_agent_name(agent_id, "target-agent").await;
 
         let message = Message {

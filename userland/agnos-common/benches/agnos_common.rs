@@ -5,13 +5,13 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 fn benchmark_agent_id_generation(c: &mut Criterion) {
     c.bench_function("agent_id_new", |b| {
-        b.iter(|| AgentId::new());
+        b.iter(AgentId::new);
     });
 }
 
 fn benchmark_agent_id_parsing(c: &mut Criterion) {
     let id = AgentId::new();
-    let id_str = id.to_string();
+    let _id_str = id.to_string();
 
     c.bench_function("agent_id_to_string", |b| {
         b.iter(|| black_box(&id).to_string());
@@ -45,7 +45,7 @@ fn benchmark_inference_request_serialization(c: &mut Criterion) {
 
 fn benchmark_agent_config(c: &mut Criterion) {
     c.bench_function("agent_config_default", |b| {
-        b.iter(|| AgentConfig::default());
+        b.iter(AgentConfig::default);
     });
 
     c.bench_function("agent_config_new", |b| {

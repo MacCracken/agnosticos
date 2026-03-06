@@ -132,9 +132,8 @@ impl LlmProvider for OllamaProvider {
                             if line.trim().is_empty() { continue; }
                             if let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) {
                                 if let Some(text) = json["response"].as_str() {
-                                    if !text.is_empty() {
-                                        if tx.send(Ok(text.to_string())).await.is_err() { return; }
-                                    }
+                                    if !text.is_empty()
+                                        && tx.send(Ok(text.to_string())).await.is_err() { return; }
                                 }
                                 if json["done"].as_bool() == Some(true) { return; }
                             }
@@ -289,9 +288,8 @@ impl LlmProvider for LlamaCppProvider {
                                     if data.trim() == "[DONE]" { return; }
                                     if let Ok(json) = serde_json::from_str::<serde_json::Value>(data) {
                                         if let Some(text) = json["content"].as_str() {
-                                            if !text.is_empty() {
-                                                if tx.send(Ok(text.to_string())).await.is_err() { return; }
-                                            }
+                                            if !text.is_empty()
+                                                && tx.send(Ok(text.to_string())).await.is_err() { return; }
                                         }
                                         if json["stop"].as_bool() == Some(true) { return; }
                                     }
@@ -445,9 +443,8 @@ impl LlmProvider for OpenAiProvider {
                                     if data.trim() == "[DONE]" { return; }
                                     if let Ok(json) = serde_json::from_str::<serde_json::Value>(data) {
                                         if let Some(text) = json["choices"][0]["delta"]["content"].as_str() {
-                                            if !text.is_empty() {
-                                                if tx.send(Ok(text.to_string())).await.is_err() { return; }
-                                            }
+                                            if !text.is_empty()
+                                                && tx.send(Ok(text.to_string())).await.is_err() { return; }
                                         }
                                     }
                                 }
@@ -631,9 +628,8 @@ impl LlmProvider for AnthropicProvider {
                                     // content_block_delta events contain the text
                                     if json["type"].as_str() == Some("content_block_delta") {
                                         if let Some(text) = json["delta"]["text"].as_str() {
-                                            if !text.is_empty() {
-                                                if tx.send(Ok(text.to_string())).await.is_err() { return; }
-                                            }
+                                            if !text.is_empty()
+                                                && tx.send(Ok(text.to_string())).await.is_err() { return; }
                                         }
                                     }
                                     if json["type"].as_str() == Some("message_stop") { return; }
@@ -833,11 +829,10 @@ impl LlmProvider for GoogleProvider {
                                         .and_then(|parts| parts.first())
                                         .and_then(|p| p["text"].as_str())
                                     {
-                                        if !text.is_empty() {
-                                            if tx.send(Ok(text.to_string())).await.is_err() {
+                                        if !text.is_empty()
+                                            && tx.send(Ok(text.to_string())).await.is_err() {
                                                 return;
                                             }
-                                        }
                                     }
                                 }
                             }
@@ -1559,13 +1554,11 @@ mod tests {
 
     #[test]
     fn test_provider_type_in_vec() {
-        let types = vec![
-            ProviderType::Ollama,
+        let types = [ProviderType::Ollama,
             ProviderType::LlamaCpp,
             ProviderType::OpenAi,
             ProviderType::Anthropic,
-            ProviderType::Google,
-        ];
+            ProviderType::Google];
         assert_eq!(types.len(), 5);
         assert!(types.contains(&ProviderType::Google));
     }
@@ -1801,7 +1794,7 @@ mod tests {
         assert_eq!(map.len(), 5);
 
         // All should support unload_model
-        for (_, provider) in &map {
+        for provider in map.values() {
             assert!(provider.unload_model("x").await.is_ok());
         }
     }

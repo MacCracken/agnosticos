@@ -5,6 +5,66 @@ All notable changes to AGNOS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2026.3.6] - 2026-03-06
+
+### Current Status
+| Metric | Value |
+|--------|-------|
+| Phase 5 Completion | 99% |
+| Phase 6.5 Completion | 100% |
+| Test Coverage | ~80% (5548 tests, 0 failures, 7 ignored) |
+| Compiler Warnings | 0 |
+| Clippy Warnings | 0 |
+| CIS Compliance | ~85% |
+| Alpha Blocker | Third-party security audit (vendor selection) |
+
+### Added — Phase 6.5: OS-Level Features (12 New Modules)
+
+- **agnos-sys/bootloader.rs** — systemd-boot + GRUB2 auto-detection, boot entry parsing, kernel cmdline validation, timeout management (27 tests)
+- **agnos-sys/journald.rs** — systemd journal integration, JSON entry parsing, filtering by unit/priority/time/boot, vacuum, streaming follow (30 tests)
+- **agnos-sys/udev.rs** — udev device management, `udevadm` output parsing, rule rendering/validation, device monitoring (26 tests)
+- **agnos-sys/fuse.rs** — FUSE mount management, `/proc/mounts` parsing, overlayfs for agent sandboxing, option rendering (32 tests)
+- **agnos-sys/pam.rs** — PAM authentication, user/session management, `/etc/passwd` parsing, PAM config parse/render roundtrip (40 tests)
+- **agnos-sys/update.rs** — A/B system update slot management, CalVer version comparison, manifest verification, rollback logic (37 tests)
+- **agnos-sys/certpin.rs** — TLS certificate pinning with SPKI SHA-256 pins, ASN.1 DER parsing, pin verification, HPKP header generation, default pins for OpenAI/Anthropic/Google (38 tests)
+- **agnos-sys/ima.rs** — IMA/EVM file integrity, measurement parsing from sysfs, policy rule builder, xattr verification (31 tests)
+- **agnos-sys/tpm.rs** — TPM 2.0 PCR read/extend, sealed secrets, measured boot verification, hardware RNG (23 tests)
+- **agnos-sys/secureboot.rs** — UEFI secure boot state detection, key enrollment, kernel module signing verification (18 tests)
+- **agent-runtime/network_tools.rs** — Network tool framework with 11 tool types, target validation, dangerous arg rejection, risk levels, sandboxed execution (37 tests)
+- **desktop-environment/wayland.rs** — Wayland protocol abstraction layer (feature-gated), SHM buffers, xdg_shell tracking, surface map, seat capabilities, input event mapping (41 tests)
+
+### Added — LLM Gateway Certificate Pinning Integration
+
+- Wired `certpin` module into LLM Gateway provider health checks
+- `CertPinSet` loaded at startup (default pins for cloud LLM providers)
+- Pin verification runs during background health check loop
+- Support for enforce mode (hard fail) and report-only mode (log warnings)
+- Startup warning for pins expiring within 30 days (12 tests)
+
+### Added — AI Shell: 5 New Natural Language Intents
+
+- **JournalView** — "show journal logs", "view logs for llm-gateway", "show error logs since 1h"
+- **DeviceInfo** — "list devices", "show usb devices", "device info for /dev/sda"
+- **MountControl** — "list mounts", "unmount /mnt/agent-data", "show fuse mounts"
+- **BootConfig** — "list boot entries", "show bootloader", "set default boot entry"
+- **SystemUpdate** — "check for updates", "apply system update", "rollback update"
+- Total AI Shell intents: 25+ (41 new tests)
+
+### Added — Engineering Backlog (32 Items, All Complete)
+
+- **6 P0 crash/security fixes**: unwrap panics, injection, path traversal, secret zeroing
+- **12 P1 performance/correctness fixes**: atomic rate limiting, borrow-based inference API, lock snapshotting, rollback size bounds, TOCTOU elimination, overflow checks, audit chain verification
+- **14 P2 polish items**: blit clipping, O(1) task lookup, O(n) result pruning, dead agent eviction, Debug derives, audit log rotation, crypto hash, TimedOut variant
+
+### Changed
+
+- Roadmap fully updated to reflect Phase 6.5 completion and all new modules
+- Clippy warnings: 82 → 0 (auto-fix + manual fixes)
+- `DeviceSubsystem::from_str` / `DeviceEvent::from_str` renamed to `::parse` (clippy `should_implement_trait`)
+- `SerialCounter::next` renamed to `::next_serial` (clippy `should_implement_trait`)
+- `SeatCapabilities::to_bitmask` / `ModifierState::to_raw` now take `self` by value (Copy types)
+- `&PathBuf` → `&Path` in agent-runtime CLI handlers
+
 ## [2026.3.5] - 2026-03-05
 
 ### Current Status

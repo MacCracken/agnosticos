@@ -431,7 +431,7 @@ pub mod helpers {
             .and_then(|contents| {
                 for line in contents.lines() {
                     if let Some(val) = line.strip_prefix("VmRSS:") {
-                        let kb: u64 = val.trim().split_whitespace().next()?.parse().ok()?;
+                        let kb: u64 = val.split_whitespace().next()?.parse().ok()?;
                         return Some(kb * 1024);
                     }
                 }
@@ -672,7 +672,7 @@ pub mod helpers {
             let pid = std::process::id();
             let fds = count_fds(pid);
             // Should have at least 3 (stdin/stdout/stderr) and less than 10000
-            assert!(fds >= 3 && fds < 10000, "Unexpected fd count: {}", fds);
+            assert!((3..10000).contains(&fds), "Unexpected fd count: {}", fds);
         }
 
         #[test]
@@ -744,6 +744,7 @@ macro_rules! agent_main {
 }
 
 #[cfg(test)]
+#[allow(clippy::field_reassign_with_default)]
 mod tests {
     use super::*;
     use agnos_common::{AgentConfig, AgentStatus, Message, MessageType};

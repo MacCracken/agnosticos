@@ -129,15 +129,18 @@ pub struct SecurityUI {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Default)]
 pub enum SecurityLevel {
+    #[default]
     Standard,
     Elevated,
     Lockdown,
 }
 
-impl Default for SecurityLevel {
+
+impl Default for SecurityUI {
     fn default() -> Self {
-        SecurityLevel::Standard
+        Self::new()
     }
 }
 

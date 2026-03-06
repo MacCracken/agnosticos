@@ -226,7 +226,7 @@ impl Default for SeatCapabilities {
 
 impl SeatCapabilities {
     /// Convert to the wayland bitmask representation.
-    pub fn to_bitmask(&self) -> u32 {
+    pub fn to_bitmask(self) -> u32 {
         let mut mask = 0u32;
         if self.pointer {
             mask |= 1;
@@ -275,7 +275,7 @@ impl ModifierState {
     }
 
     /// Encode back to a raw bitmask.
-    pub fn to_raw(&self) -> u32 {
+    pub fn to_raw(self) -> u32 {
         let mut raw = 0u32;
         if self.shift { raw |= 0x01; }
         if self.caps_lock { raw |= 0x02; }
@@ -678,7 +678,7 @@ impl SerialCounter {
     }
 
     /// Get the next serial number.
-    pub fn next(&mut self) -> u32 {
+    pub fn next_serial(&mut self) -> u32 {
         self.current = self.current.wrapping_add(1);
         self.current
     }
@@ -877,6 +877,7 @@ pub use wayland_stub::WaylandState;
 // ============================================================================
 
 #[cfg(test)]
+#[allow(clippy::field_reassign_with_default)]
 mod tests {
     use super::*;
     use uuid::Uuid;
@@ -1117,8 +1118,8 @@ mod tests {
     fn test_serial_counter() {
         let mut counter = SerialCounter::new();
         assert_eq!(counter.current(), 0);
-        assert_eq!(counter.next(), 1);
-        assert_eq!(counter.next(), 2);
+        assert_eq!(counter.next_serial(), 1);
+        assert_eq!(counter.next_serial(), 2);
         assert_eq!(counter.current(), 2);
     }
 

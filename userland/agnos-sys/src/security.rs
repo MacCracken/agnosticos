@@ -465,17 +465,14 @@ impl FilesystemRule {
 
 /// Filesystem access levels
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub enum FsAccess {
+    #[default]
     NoAccess,
     ReadOnly,
     ReadWrite,
 }
 
-impl Default for FsAccess {
-    fn default() -> Self {
-        FsAccess::NoAccess
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -597,7 +594,7 @@ mod tests {
     #[test]
     fn test_namespace_flags_clone_eq() {
         let a = NamespaceFlags::MOUNT;
-        let b = a.clone();
+        let b = a;
         assert_eq!(a, b);
     }
 
@@ -611,7 +608,7 @@ mod tests {
     #[test]
     fn test_fs_access_clone_eq() {
         let a = FsAccess::ReadWrite;
-        let b = a.clone();
+        let b = a;
         assert_eq!(a, b);
         assert_ne!(a, FsAccess::NoAccess);
     }

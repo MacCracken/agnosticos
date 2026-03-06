@@ -162,6 +162,12 @@ impl Default for DesktopContext {
     }
 }
 
+impl Default for AIDesktopFeatures {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AIDesktopFeatures {
     pub fn new() -> Self {
         Self {

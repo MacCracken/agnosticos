@@ -49,7 +49,7 @@ pub enum DeviceSubsystem {
 
 impl DeviceSubsystem {
     /// Parse a subsystem string into the enum.
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse(s: &str) -> Self {
         match s {
             "block" => Self::Block,
             "net" => Self::Net,
@@ -115,7 +115,7 @@ impl std::fmt::Display for DeviceEvent {
 
 impl DeviceEvent {
     /// Parse a string into a `DeviceEvent`.
-    pub fn from_str(s: &str) -> Result<Self> {
+    pub fn parse(s: &str) -> Result<Self> {
         match s {
             "add" => Ok(Self::Add),
             "remove" => Ok(Self::Remove),
@@ -710,21 +710,21 @@ E: SUBSYSTEM=net
 
     #[test]
     fn test_subsystem_from_str_known() {
-        assert_eq!(DeviceSubsystem::from_str("block"), DeviceSubsystem::Block);
-        assert_eq!(DeviceSubsystem::from_str("net"), DeviceSubsystem::Net);
-        assert_eq!(DeviceSubsystem::from_str("input"), DeviceSubsystem::Input);
-        assert_eq!(DeviceSubsystem::from_str("usb"), DeviceSubsystem::Usb);
-        assert_eq!(DeviceSubsystem::from_str("pci"), DeviceSubsystem::Pci);
-        assert_eq!(DeviceSubsystem::from_str("tty"), DeviceSubsystem::Tty);
-        assert_eq!(DeviceSubsystem::from_str("drm"), DeviceSubsystem::Gpu);
-        assert_eq!(DeviceSubsystem::from_str("sound"), DeviceSubsystem::Sound);
-        assert_eq!(DeviceSubsystem::from_str("snd"), DeviceSubsystem::Sound);
+        assert_eq!(DeviceSubsystem::parse("block"), DeviceSubsystem::Block);
+        assert_eq!(DeviceSubsystem::parse("net"), DeviceSubsystem::Net);
+        assert_eq!(DeviceSubsystem::parse("input"), DeviceSubsystem::Input);
+        assert_eq!(DeviceSubsystem::parse("usb"), DeviceSubsystem::Usb);
+        assert_eq!(DeviceSubsystem::parse("pci"), DeviceSubsystem::Pci);
+        assert_eq!(DeviceSubsystem::parse("tty"), DeviceSubsystem::Tty);
+        assert_eq!(DeviceSubsystem::parse("drm"), DeviceSubsystem::Gpu);
+        assert_eq!(DeviceSubsystem::parse("sound"), DeviceSubsystem::Sound);
+        assert_eq!(DeviceSubsystem::parse("snd"), DeviceSubsystem::Sound);
     }
 
     #[test]
     fn test_subsystem_from_str_other() {
         assert_eq!(
-            DeviceSubsystem::from_str("thunderbolt"),
+            DeviceSubsystem::parse("thunderbolt"),
             DeviceSubsystem::Other("thunderbolt".into())
         );
     }
@@ -756,9 +756,9 @@ E: SUBSYSTEM=net
 
     #[test]
     fn test_device_event_from_str() {
-        assert_eq!(DeviceEvent::from_str("add").unwrap(), DeviceEvent::Add);
-        assert_eq!(DeviceEvent::from_str("remove").unwrap(), DeviceEvent::Remove);
-        assert!(DeviceEvent::from_str("invalid").is_err());
+        assert_eq!(DeviceEvent::parse("add").unwrap(), DeviceEvent::Add);
+        assert_eq!(DeviceEvent::parse("remove").unwrap(), DeviceEvent::Remove);
+        assert!(DeviceEvent::parse("invalid").is_err());
     }
 
     // -- render_udev_rule --------------------------------------------------

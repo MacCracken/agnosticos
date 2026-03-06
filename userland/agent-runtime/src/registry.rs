@@ -75,7 +75,7 @@ impl AgentRegistry {
         for cap in capabilities {
             self.by_capability
                 .entry(cap)
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(id);
         }
 

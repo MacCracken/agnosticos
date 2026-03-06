@@ -453,7 +453,7 @@ mod tests {
         // On Linux with /proc/meminfo this should succeed
         assert!(result.is_some());
         let usage = result.unwrap();
-        assert!(usage >= 0.0 && usage <= 100.0);
+        assert!((0.0..=100.0).contains(&usage));
     }
 
     // --- read_disk_usage tests ---
@@ -463,7 +463,7 @@ mod tests {
         let result = read_disk_usage();
         assert!(result.is_some());
         let usage = result.unwrap();
-        assert!(usage >= 0.0 && usage <= 100.0);
+        assert!((0.0..=100.0).contains(&usage));
     }
 
     // --- read_cpu_usage tests ---
@@ -473,7 +473,7 @@ mod tests {
         let result = read_cpu_usage().await;
         assert!(result.is_some());
         let usage = result.unwrap();
-        assert!(usage >= 0.0 && usage <= 100.0);
+        assert!((0.0..=100.0).contains(&usage));
     }
 
     // --- DesktopEnvironment tests ---

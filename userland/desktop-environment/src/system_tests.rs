@@ -4,7 +4,7 @@
 //! including cross-component interactions and comprehensive lifecycle scenarios.
 
 #[cfg(test)]
-mod system_tests {
+mod desktop_system_tests {
     use crate::{
         AIDesktopFeatures, AgentStatus, AppType, Compositor, ContextEventType,
         DesktopApplications, DesktopShell, Notification, NotificationPriority,
@@ -143,7 +143,7 @@ mod system_tests {
         shell.toggle_quick_setting("wifi").unwrap();
 
         let settings = shell.get_quick_settings();
-        assert!(settings.len() >= 1);
+        assert!(!settings.is_empty());
     }
 
     #[test]

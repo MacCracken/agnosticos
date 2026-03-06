@@ -558,7 +558,7 @@ mod tests {
     fn test_pcr_bank_clone_copy_eq() {
         let a = TpmPcrBank::Sha256;
         let b = a;
-        let c = a.clone();
+        let c = a;
         assert_eq!(a, b);
         assert_eq!(a, c);
         assert_ne!(TpmPcrBank::Sha1, TpmPcrBank::Sha256);

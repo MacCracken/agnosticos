@@ -650,7 +650,7 @@ mod tests {
     fn test_verity_hash_algorithm_clone_copy_eq() {
         let a = VerityHashAlgorithm::Sha256;
         let b = a; // Copy
-        let c = a.clone(); // Clone
+        let c = a; // Clone
         assert_eq!(a, b);
         assert_eq!(a, c);
         assert_ne!(VerityHashAlgorithm::Sha256, VerityHashAlgorithm::Sha512);

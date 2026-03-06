@@ -22,7 +22,9 @@ pub enum CompositorError {
 pub type SurfaceId = Uuid;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Default)]
 pub enum WindowState {
+    #[default]
     Normal,
     Minimized,
     Maximized,
@@ -30,11 +32,6 @@ pub enum WindowState {
     Floating,
 }
 
-impl Default for WindowState {
-    fn default() -> Self {
-        Self::Normal
-    }
-}
 
 #[derive(Debug, Clone)]
 pub struct Window {
@@ -125,6 +122,12 @@ pub struct Compositor {
     drag_state: Arc<RwLock<Option<(SurfaceId, i32, i32)>>>,
     /// Window being resized: (id, edge, original_rect)
     resize_state: Arc<RwLock<Option<(SurfaceId, ResizeEdge, Rectangle)>>>,
+}
+
+impl Default for Compositor {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Compositor {
@@ -522,7 +525,7 @@ impl Compositor {
 
     fn handle_mouse_move(&self, x: i32, y: i32) -> InputAction {
         // Handle active drag
-        let drag = self.drag_state.read().unwrap().clone();
+        let drag = *self.drag_state.read().unwrap();
         if let Some((id, offset_x, offset_y)) = drag {
             let new_x = x - offset_x;
             let new_y = y - offset_y;

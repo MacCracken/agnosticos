@@ -1200,9 +1200,9 @@ mod tests {
 
         let entries = read_agnos_audit_events(path.to_str().unwrap()).unwrap();
         assert_eq!(entries.len(), 5);
-        for i in 0..5 {
-            assert_eq!(entries[i].sequence, i as u64);
-            assert_eq!(entries[i].action_type, format!("action_{}", i));
+        for (i, entry) in entries.iter().enumerate().take(5) {
+            assert_eq!(entry.sequence, i as u64);
+            assert_eq!(entry.action_type, format!("action_{}", i));
         }
 
         let _ = std::fs::remove_dir_all(&dir);
@@ -1450,13 +1450,10 @@ mod tests {
         // 256 chars should pass validation (fail at syscall level, not validation)
         let result = agnos_audit_log_syscall(&"a".repeat(256), "data", 0);
         // Will fail with ENOSYS (no such syscall 520) or succeed — either way, no validation error
-        match result {
-            Err(e) => {
-                let msg = e.to_string();
-                assert!(!msg.contains("too long"), "Should not fail validation: {}", msg);
-                assert!(!msg.contains("empty"), "Should not fail validation: {}", msg);
-            }
-            Ok(()) => {} // unlikely but acceptable
+        if let Err(e) = result {
+            let msg = e.to_string();
+            assert!(!msg.contains("too long"), "Should not fail validation: {}", msg);
+            assert!(!msg.contains("empty"), "Should not fail validation: {}", msg);
         }
     }
 
@@ -1464,12 +1461,9 @@ mod tests {
     #[test]
     fn test_agnos_audit_log_syscall_data_exactly_4096() {
         let result = agnos_audit_log_syscall("test", &"d".repeat(4096), 0);
-        match result {
-            Err(e) => {
-                let msg = e.to_string();
-                assert!(!msg.contains("too long"), "Should not fail validation: {}", msg);
-            }
-            Ok(()) => {}
+        if let Err(e) = result {
+            let msg = e.to_string();
+            assert!(!msg.contains("too long"), "Should not fail validation: {}", msg);
         }
     }
 

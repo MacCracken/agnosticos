@@ -2,7 +2,7 @@
 //!
 //! Manages agent lifecycle, orchestration, and resource allocation.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
@@ -251,7 +251,7 @@ async fn run_daemon(cli: Cli) -> Result<()> {
     Ok(())
 }
 
-async fn handle_service_command(action: ServiceCommands, config_dir: &PathBuf) -> Result<()> {
+async fn handle_service_command(action: ServiceCommands, config_dir: &Path) -> Result<()> {
     let services_dir = config_dir.join("services");
     let mgr = ServiceManager::new(&services_dir);
     mgr.load_definitions().await?;
@@ -265,8 +265,8 @@ async fn handle_service_command(action: ServiceCommands, config_dir: &PathBuf) -
                 return Ok(());
             }
             println!(
-                "{:<20} {:<10} {:<8} {:<10} {:<8} {}",
-                "NAME", "STATE", "PID", "UPTIME", "RESTARTS", "DESCRIPTION"
+                "{:<20} {:<10} {:<8} {:<10} {:<8} DESCRIPTION",
+                "NAME", "STATE", "PID", "UPTIME", "RESTARTS"
             );
             println!("{}", "-".repeat(80));
             for svc in &services {
@@ -330,7 +330,7 @@ async fn handle_service_command(action: ServiceCommands, config_dir: &PathBuf) -
     Ok(())
 }
 
-async fn handle_package_command(action: PackageCommands, data_dir: &PathBuf) -> Result<()> {
+async fn handle_package_command(action: PackageCommands, data_dir: &Path) -> Result<()> {
     let pkg_dir = data_dir.join("packages");
     let mut mgr = crate::package_manager::PackageManager::new(&pkg_dir)?;
 
@@ -362,7 +362,7 @@ async fn handle_package_command(action: PackageCommands, data_dir: &PathBuf) -> 
                 println!("No packages installed.");
                 return Ok(());
             }
-            println!("{:<25} {:<12} {:<20} {}", "NAME", "VERSION", "AUTHOR", "DESCRIPTION");
+            println!("{:<25} {:<12} {:<20} DESCRIPTION", "NAME", "VERSION", "AUTHOR");
             println!("{}", "-".repeat(80));
             for pkg in &packages {
                 println!(
@@ -487,7 +487,7 @@ async fn list_agents() -> Result<()> {
     let agents_dir = "/run/agnos/agents";
 
     println!("Running agents:");
-    println!("{:<40} {:<10} {}", "ID", "PID", "Socket");
+    println!("{:<40} {:<10} Socket", "ID", "PID");
     println!("{}", "-".repeat(70));
 
     match tokio::fs::read_dir(agents_dir).await {
@@ -495,7 +495,7 @@ async fn list_agents() -> Result<()> {
             let mut count = 0;
             while let Ok(Some(entry)) = entries.next_entry().await {
                 let path = entry.path();
-                if path.extension().map_or(false, |e| e == "sock") {
+                if path.extension().is_some_and(|e| e == "sock") {
                     let name = path.file_stem()
                         .map(|s| s.to_string_lossy().to_string())
                         .unwrap_or_default();

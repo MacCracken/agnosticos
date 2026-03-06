@@ -621,7 +621,7 @@ pub fn consent_prompt(package: &AgentPackage) -> String {
     }
 
     lines.push(format!("│ Size:    {:<41}│", format_bytes(package.binary_size)));
-    lines.push(format!("├──────────────────────────────────────────────────┤"));
+    lines.push("├──────────────────────────────────────────────────┤".to_string());
 
     // Description
     let desc = &package.manifest.description;
@@ -636,8 +636,8 @@ pub fn consent_prompt(package: &AgentPackage) -> String {
 
     // Permissions
     if !package.manifest.requested_permissions.is_empty() {
-        lines.push(format!("├──────────────────────────────────────────────────┤"));
-        lines.push(format!("│ Requested Permissions:                           │"));
+        lines.push("├──────────────────────────────────────────────────┤".to_string());
+        lines.push("│ Requested Permissions:                           │".to_string());
         for perm in &package.manifest.requested_permissions {
             let icon = match perm {
                 Permission::FileRead => "📖",
@@ -667,7 +667,7 @@ pub fn consent_prompt(package: &AgentPackage) -> String {
         lines.push(format!("│ Network: {:<41}│", scope));
     }
 
-    lines.push(format!("└──────────────────────────────────────────────────┘"));
+    lines.push("└──────────────────────────────────────────────────┘".to_string());
 
     lines.join("\n")
 }

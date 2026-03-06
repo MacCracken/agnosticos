@@ -233,6 +233,7 @@ impl Session {
                                 risk_level: crate::approval::RiskLevel::from_permission(&translation.permission),
                             };
                             
+                            #[allow(clippy::collapsible_match)]
                             match self.approval.request(&request).await? {
                                 ApprovalResponse::Approved | ApprovalResponse::ApprovedOnce => {
                                     self.execute_command(&translation.command, &translation.args).await?;
@@ -344,7 +345,7 @@ impl Session {
         
         // Check for cd (special handling)
         if cmd == "cd" {
-            let path = args.get(0).map(|s| s.as_str()).unwrap_or("~");
+            let path = args.first().map(|s| s.as_str()).unwrap_or("~");
             let expanded = shellexpand::tilde(path);
             match std::env::set_current_dir(&*expanded) {
                 Ok(_) => {
@@ -569,12 +570,9 @@ mod tests {
         let interpreter = Interpreter::new();
         let intent = interpreter.parse("ls -la /home");
         
-        match intent {
-            Intent::ShellCommand { command, args } => {
-                assert_eq!(command, "ls");
-                assert_eq!(args, vec!["-la", "/home"]);
-            }
-            _ => {}
+        if let Intent::ShellCommand { command, args } = intent {
+            assert_eq!(command, "ls");
+            assert_eq!(args, vec!["-la", "/home"]);
         }
     }
 
@@ -583,11 +581,8 @@ mod tests {
         let interpreter = Interpreter::new();
         let intent = interpreter.parse("what is my IP address?");
         
-        match intent {
-            Intent::Question { query } => {
-                assert!(query.contains("IP"));
-            }
-            _ => {}
+        if let Intent::Question { query } = intent {
+            assert!(query.contains("IP"));
         }
     }
 

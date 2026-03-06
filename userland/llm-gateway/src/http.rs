@@ -239,9 +239,9 @@ async fn chat_completions(
                     finish_reason: "stop".to_string(),
                 }],
                 usage: Usage {
-                    prompt_tokens: response.usage.prompt_tokens as u32,
-                    completion_tokens: response.usage.completion_tokens as u32,
-                    total_tokens: response.usage.total_tokens as u32,
+                    prompt_tokens: response.usage.prompt_tokens,
+                    completion_tokens: response.usage.completion_tokens,
+                    total_tokens: response.usage.total_tokens,
                 },
             }))
         }
@@ -1296,10 +1296,8 @@ mod tests {
     #[tokio::test]
     async fn test_chat_completions_prompt_built_from_messages() {
         // Verify the prompt building logic: "role: content\nrole: content"
-        let messages = vec![
-            ChatMessage { role: "system".to_string(), content: "Be helpful".to_string() },
-            ChatMessage { role: "user".to_string(), content: "Hello".to_string() },
-        ];
+        let messages = [ChatMessage { role: "system".to_string(), content: "Be helpful".to_string() },
+            ChatMessage { role: "user".to_string(), content: "Hello".to_string() }];
         let prompt: String = messages
             .iter()
             .map(|m| format!("{}: {}", m.role, m.content))
@@ -1310,9 +1308,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_chat_completions_single_message_prompt() {
-        let messages = vec![
-            ChatMessage { role: "user".to_string(), content: "Test".to_string() },
-        ];
+        let messages = [ChatMessage { role: "user".to_string(), content: "Test".to_string() }];
         let prompt: String = messages
             .iter()
             .map(|m| format!("{}: {}", m.role, m.content))

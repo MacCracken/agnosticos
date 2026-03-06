@@ -10,12 +10,14 @@ use tracing::info;
 
 /// Pre-defined seccomp profile for a language runtime.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum SeccompProfile {
     /// Python interpreter (~45 syscalls)
     Python,
     /// Node.js / Bun runtime (~40 syscalls)
     Node,
     /// Shell (bash/sh) execution (~25 syscalls)
+    #[default]
     Shell,
     /// WebAssembly (Wasmtime/Wasmer) (~20 syscalls)
     Wasm,
@@ -23,11 +25,6 @@ pub enum SeccompProfile {
     Custom(Vec<String>),
 }
 
-impl Default for SeccompProfile {
-    fn default() -> Self {
-        SeccompProfile::Shell
-    }
-}
 
 /// Base syscalls required by any running process.
 fn base_syscalls() -> Vec<&'static str> {

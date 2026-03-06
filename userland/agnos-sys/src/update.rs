@@ -243,13 +243,13 @@ pub fn validate_version(version: &str) -> Result<()> {
         })?;
     }
     let year: u32 = parts[0].parse().unwrap();
-    if year < 2024 || year > 2100 {
+    if !(2024..=2100).contains(&year) {
         return Err(SysError::InvalidArgument(format!(
             "Version year out of range (2024-2100): {year}"
         )));
     }
     let month: u32 = parts[2].parse().unwrap();
-    if month < 1 || month > 12 {
+    if !(1..=12).contains(&month) {
         return Err(SysError::InvalidArgument(format!(
             "Version month out of range (1-12): {month}"
         )));
@@ -554,13 +554,12 @@ pub fn apply_update(config: &UpdateConfig, manifest: &UpdateManifest) -> Result<
     state.rollback_available = true;
     save_update_state(&state, &config.state_file)?;
 
-    if config.verify_after_apply {
-        if !verify_update(config, manifest)? {
+    if config.verify_after_apply
+        && !verify_update(config, manifest)? {
             return Err(SysError::Unknown(
                 "Post-apply verification failed".into(),
             ));
         }
-    }
 
     Ok(())
 }
@@ -588,7 +587,7 @@ pub fn verify_update(config: &UpdateConfig, manifest: &UpdateManifest) -> Result
     let output = std::process::Command::new("dd")
         .args([
             &format!("if={}", target_dev.display()),
-            &format!("bs=1"),
+            &"bs=1".to_string(),
             &format!("count={size}"),
         ])
         .output()

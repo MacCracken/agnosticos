@@ -135,8 +135,7 @@ impl TopicBroker {
     /// Subscribe an agent to a topic.
     /// Supports wildcard suffix: "file.*" matches "file.created", "file.deleted", etc.
     pub async fn subscribe(&self, agent_id: AgentId, topic: &str) {
-        if topic.ends_with(".*") {
-            let prefix = &topic[..topic.len() - 2];
+        if let Some(prefix) = topic.strip_suffix(".*") {
             let mut wildcards = self.wildcard_subs.write().await;
             wildcards
                 .entry(prefix.to_string())
@@ -151,8 +150,7 @@ impl TopicBroker {
 
     /// Unsubscribe an agent from a topic.
     pub async fn unsubscribe(&self, agent_id: AgentId, topic: &str) {
-        if topic.ends_with(".*") {
-            let prefix = &topic[..topic.len() - 2];
+        if let Some(prefix) = topic.strip_suffix(".*") {
             let mut wildcards = self.wildcard_subs.write().await;
             if let Some(subs) = wildcards.get_mut(prefix) {
                 subs.remove(&agent_id);

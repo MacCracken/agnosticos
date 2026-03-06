@@ -560,7 +560,7 @@ mod tests {
     fn test_secureboot_state_clone_copy_eq() {
         let a = SecureBootState::Enabled;
         let b = a;
-        let c = a.clone();
+        let c = a;
         assert_eq!(a, b);
         assert_eq!(a, c);
         assert_ne!(SecureBootState::Enabled, SecureBootState::Disabled);

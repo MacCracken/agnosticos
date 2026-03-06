@@ -157,6 +157,12 @@ pub struct DesktopShell {
     panel_visible: Arc<RwLock<bool>>,
 }
 
+impl Default for DesktopShell {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DesktopShell {
     pub fn new() -> Self {
         let shell = Self {

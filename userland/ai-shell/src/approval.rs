@@ -193,12 +193,11 @@ impl ApprovalManager {
             ApprovalRequest::PrivilegeEscalation { .. } => RiskLevel::Critical,
             ApprovalRequest::FileOperation { operation, path, .. } => {
                 let path_str = path.to_string_lossy();
-                if path_str.starts_with("/etc/") || 
+                if path_str.starts_with("/etc/") ||
                    path_str.starts_with("/usr/") ||
                    path_str.starts_with("/bin/") ||
-                   path_str.starts_with("/sbin/") {
-                    RiskLevel::High
-                } else if operation.contains("delete") || operation.contains("remove") {
+                   path_str.starts_with("/sbin/") ||
+                   operation.contains("delete") || operation.contains("remove") {
                     RiskLevel::High
                 } else {
                     RiskLevel::Medium
@@ -718,7 +717,7 @@ mod tests {
     #[test]
     fn test_risk_level_clone() {
         let original = RiskLevel::High;
-        let cloned = original.clone();
+        let cloned = original;
         assert_eq!(original, cloned);
     }
 
@@ -1152,7 +1151,7 @@ mod tests {
     #[test]
     fn test_edit_request_preserves_reason_and_risk() {
         // Verify that Modify variant can carry an edited command
-        let original = ApprovalRequest::Command {
+        let _original = ApprovalRequest::Command {
             command: "rm".to_string(),
             args: vec!["-rf".to_string(), "/tmp/data".to_string()],
             reason: "Cleanup temp".to_string(),
@@ -1180,7 +1179,7 @@ mod tests {
 
     #[test]
     fn test_edit_request_file_operation() {
-        let original = ApprovalRequest::FileOperation {
+        let _original = ApprovalRequest::FileOperation {
             operation: "delete".to_string(),
             path: std::path::PathBuf::from("/etc/important"),
             description: "Remove config".to_string(),

@@ -152,7 +152,7 @@ pub fn get_default_entry() -> Result<BootEntry> {
         .entries
         .into_iter()
         .find(|e| e.is_default)
-        .or_else(|| None)
+        .or(None)
         .ok_or_else(|| SysError::Unknown("No default boot entry found".into()))
 }
 
@@ -395,7 +395,7 @@ fn parse_systemd_boot_entry(path: &Path, default_id: Option<&str>) -> Result<Boo
         }
     }
 
-    let is_default = default_id.map_or(false, |d| d == id);
+    let is_default = default_id.is_some_and(|d| d == id);
 
     Ok(BootEntry {
         id,

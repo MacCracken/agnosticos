@@ -348,7 +348,7 @@ impl SecretBackend for VaultSecretBackend {
     async fn get_secret(&self, key: &str) -> Result<Option<SecretValue>> {
         let resp = self
             .client
-            .get(&self.data_url(key))
+            .get(self.data_url(key))
             .header("X-Vault-Token", &self.token)
             .send()
             .await
@@ -404,7 +404,7 @@ impl SecretBackend for VaultSecretBackend {
 
         let resp = self
             .client
-            .post(&self.data_url(key))
+            .post(self.data_url(key))
             .header("X-Vault-Token", &self.token)
             .json(&body)
             .send()
@@ -425,7 +425,7 @@ impl SecretBackend for VaultSecretBackend {
     async fn delete_secret(&self, key: &str) -> Result<bool> {
         let resp = self
             .client
-            .delete(&self.metadata_url(key))
+            .delete(self.metadata_url(key))
             .header("X-Vault-Token", &self.token)
             .send()
             .await

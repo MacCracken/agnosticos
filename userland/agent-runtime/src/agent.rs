@@ -261,7 +261,7 @@ impl Agent {
             .and_then(|contents| {
                 for line in contents.lines() {
                     if let Some(val) = line.strip_prefix("VmRSS:") {
-                        let kb: u64 = val.trim().split_whitespace().next()?.parse().ok()?;
+                        let kb: u64 = val.split_whitespace().next()?.parse().ok()?;
                         return Some(kb * 1024);
                     }
                 }
@@ -734,7 +734,7 @@ mod tests {
 
         let (agent, _rx) = Agent::new(config).await.unwrap();
         assert!(!agent.id().to_string().is_empty());
-        assert!(agent.is_running().await == false);
+        assert!(!agent.is_running().await);
     }
 
     #[tokio::test]

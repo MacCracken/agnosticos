@@ -89,7 +89,7 @@ impl ResourceManager {
                 allocated_gpus.push(gpu.id);
                 info!("Allocated GPU {} to agent {}", gpu.id, agent_id);
                 
-                if allocated_gpus.len() >= 1 {
+                if !allocated_gpus.is_empty() {
                     // For now, only allocate one GPU per agent
                     break;
                 }
@@ -261,7 +261,7 @@ impl ResourceManager {
         use tokio::process::Command;
 
         let output = Command::new("nvidia-smi")
-            .args(&["--query-gpu=index,name,memory.total", "--format=csv,noheader,nounits"])
+            .args(["--query-gpu=index,name,memory.total", "--format=csv,noheader,nounits"])
             .output()
             .await
             .context("Failed to run nvidia-smi")?;
@@ -300,7 +300,7 @@ impl ResourceManager {
 
         // Try rocm-smi first for detailed info
         let output = Command::new("rocm-smi")
-            .args(&["--showid", "--showmeminfo", "vram", "--csv"])
+            .args(["--showid", "--showmeminfo", "vram", "--csv"])
             .output()
             .await;
 
@@ -311,7 +311,7 @@ impl ResourceManager {
                 // Parse CSV: skip header, each row has device info
                 for (idx, line) in stdout.lines().skip(1).enumerate() {
                     let parts: Vec<&str> = line.split(',').collect();
-                    let name = parts.get(0).unwrap_or(&"AMD GPU").trim().to_string();
+                    let name = parts.first().unwrap_or(&"AMD GPU").trim().to_string();
                     let total_mem = parts
                         .get(1)
                         .and_then(|s| s.trim().parse::<u64>().ok())

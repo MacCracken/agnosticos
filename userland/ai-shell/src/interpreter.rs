@@ -522,9 +522,7 @@ impl Interpreter {
                 "apply"
             } else if input_lower.contains("rollback") {
                 "rollback"
-            } else if input_lower.contains("status") {
-                "status"
-            } else if input_lower.contains("version") {
+            } else if input_lower.contains("status") || input_lower.contains("version") {
                 "status"
             } else {
                 "check"
@@ -598,7 +596,7 @@ impl Interpreter {
             return Intent::SystemInfo;
         }
 
-        if self.patterns.get("question").map_or(false, |p| p.is_match(&input_lower)) {
+        if self.patterns.get("question").is_some_and(|p| p.is_match(&input_lower)) {
             return Intent::Question {
                 query: input.to_string(),
             };
@@ -1219,6 +1217,7 @@ impl Default for Interpreter {
 }
 
 #[cfg(test)]
+#[allow(clippy::field_reassign_with_default)]
 mod tests {
     use super::*;
 

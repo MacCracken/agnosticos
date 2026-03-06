@@ -727,7 +727,7 @@ mod tests {
     fn test_mac_system_clone_and_copy() {
         let a = MacSystem::SELinux;
         let b = a; // Copy
-        let c = a.clone(); // Clone
+        let c = a; // Clone
         assert_eq!(a, b);
         assert_eq!(a, c);
     }
@@ -1032,11 +1032,8 @@ mod tests {
         // On most test systems, SELinux is not active
         let result = get_selinux_mode();
         // Should return Ok(Disabled) or Err(NotSupported), never panic
-        match result {
-            Ok(mode) => {
-                let _ = mode; // Valid
-            }
-            Err(_) => {} // Also valid (non-Linux)
+        if let Ok(mode) = result {
+            let _ = mode; // Valid — Err is also acceptable (non-Linux)
         }
     }
 
@@ -1085,7 +1082,7 @@ mod tests {
     fn test_selinux_mode_clone_copy() {
         let m = SELinuxMode::Enforcing;
         let m2 = m; // Copy
-        let m3 = m.clone(); // Clone
+        let m3 = m; // Clone
         assert_eq!(m, m2);
         assert_eq!(m, m3);
     }
@@ -1094,7 +1091,7 @@ mod tests {
     fn test_apparmor_profile_state_clone_copy() {
         let s = AppArmorProfileState::Enforce;
         let s2 = s; // Copy
-        let s3 = s.clone(); // Clone
+        let s3 = s; // Clone
         assert_eq!(s, s2);
         assert_eq!(s, s3);
     }

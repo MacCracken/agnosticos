@@ -9,10 +9,12 @@ use std::fmt;
 
 /// Shell operating modes
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum Mode {
     /// AI acts autonomously within constraints
     AiAutonomous,
     /// AI assists human user
+    #[default]
     AiAssisted,
     /// Human user in control
     Human,
@@ -20,11 +22,6 @@ pub enum Mode {
     Strict,
 }
 
-impl Default for Mode {
-    fn default() -> Self {
-        Mode::AiAssisted
-    }
-}
 
 impl fmt::Display for Mode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

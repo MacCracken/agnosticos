@@ -55,11 +55,8 @@ impl Agent for FileManagerAgent {
         tracing::debug!("Received message: {:?}", message);
         
         // Handle file operation commands
-        match message.message_type {
-            agnos_common::MessageType::Command => {
-                // Parse and execute command
-            }
-            _ => {}
+        if message.message_type == agnos_common::MessageType::Command {
+            // Parse and execute command
         }
         
         Ok(())

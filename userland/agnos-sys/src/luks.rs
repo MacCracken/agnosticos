@@ -1063,7 +1063,7 @@ mod tests {
     fn test_luks_filesystem_clone_copy_eq() {
         let fs = LuksFilesystem::Xfs;
         let fs2 = fs; // Copy
-        let fs3 = fs.clone(); // Clone
+        let fs3 = fs; // Clone
         assert_eq!(fs, fs2);
         assert_eq!(fs, fs3);
         assert_ne!(fs, LuksFilesystem::Ext4);
@@ -1098,7 +1098,7 @@ mod tests {
     fn test_luks_pbkdf_clone_copy_eq() {
         let p1 = LuksPbkdf::Argon2id;
         let p2 = p1; // Copy
-        let p3 = p1.clone(); // Clone
+        let p3 = p1; // Clone
         assert_eq!(p1, p2);
         assert_eq!(p1, p3);
         assert_ne!(p1, LuksPbkdf::Pbkdf2);
@@ -1193,7 +1193,7 @@ mod tests {
         let key = LuksKey::from_passphrase("héllo wörld 🔑").unwrap();
         assert_eq!(key.as_bytes(), "héllo wörld 🔑".as_bytes());
         assert!(!key.is_empty());
-        assert!(key.len() > 0);
+        assert!(!key.is_empty());
     }
 
     #[test]

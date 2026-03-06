@@ -393,9 +393,10 @@ pub fn parse_format(format: &str) -> Vec<&str> {
 }
 
 #[cfg(test)]
+#[allow(clippy::field_reassign_with_default)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_parse_format() {
         let modules = parse_format("$ai_mode$directory$git_branch$character");
