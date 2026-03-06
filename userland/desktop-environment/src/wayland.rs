@@ -17,7 +17,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::compositor::{Compositor, InputEvent, Rectangle, SurfaceId};
+use crate::compositor::{Compositor, InputAction, InputEvent, Rectangle, SurfaceId, WindowState};
 
 // ============================================================================
 // Shared types (available with or without the wayland feature)
@@ -695,6 +695,450 @@ impl Default for SerialCounter {
     }
 }
 
+// ============================================================================
+// Protocol bridge — shared logic for handling Wayland protocol events
+// ============================================================================
+
+/// Actions the compositor should take in response to protocol events.
+#[derive(Debug, Clone)]
+pub enum ProtocolAction {
+    /// Create a new window for a client surface.
+    CreateWindow {
+        client_id: u32,
+        surface_id: SurfaceId,
+        title: String,
+        app_id: String,
+    },
+    /// Destroy a surface and its window.
+    DestroyWindow {
+        surface_id: SurfaceId,
+    },
+    /// Submit a pixel buffer to a window.
+    SubmitBuffer {
+        surface_id: SurfaceId,
+        buffer: ShmBufferInfo,
+    },
+    /// Set window title.
+    SetTitle {
+        surface_id: SurfaceId,
+        title: String,
+    },
+    /// Set window app_id.
+    SetAppId {
+        surface_id: SurfaceId,
+        app_id: String,
+    },
+    /// Client requests window move (interactive drag).
+    RequestMove {
+        surface_id: SurfaceId,
+    },
+    /// Client requests window resize from an edge.
+    RequestResize {
+        surface_id: SurfaceId,
+        edge: u32,
+    },
+    /// Client requests maximized state.
+    SetMaximized {
+        surface_id: SurfaceId,
+        maximized: bool,
+    },
+    /// Client requests fullscreen state.
+    SetFullscreen {
+        surface_id: SurfaceId,
+        fullscreen: bool,
+    },
+    /// Client requests minimize.
+    SetMinimized {
+        surface_id: SurfaceId,
+    },
+    /// Client sets min/max size constraints.
+    SetSizeBounds {
+        surface_id: SurfaceId,
+        min_size: Option<(u32, u32)>,
+        max_size: Option<(u32, u32)>,
+    },
+    /// Client acknowledged a configure event.
+    AckConfigure {
+        surface_id: SurfaceId,
+        serial: u32,
+    },
+    /// Client committed a surface (buffer attached + damage).
+    SurfaceCommit {
+        surface_id: SurfaceId,
+    },
+    /// Send configure event to client.
+    SendConfigure {
+        configure: ToplevelConfigure,
+    },
+    /// Forward pointer event to focused client.
+    ForwardPointer {
+        event: WaylandPointerEvent,
+    },
+    /// Forward keyboard event to focused client.
+    ForwardKeyboard {
+        event: WaylandKeyboardEvent,
+    },
+    /// A new client connected.
+    ClientConnected {
+        client_id: u32,
+    },
+    /// A client disconnected — clean up all its surfaces.
+    ClientDisconnected {
+        client_id: u32,
+    },
+}
+
+/// Protocol bridge between Wayland protocol events and the AGNOS compositor.
+///
+/// This is feature-independent — the logic works identically in stub and live modes.
+/// The live mode feeds real protocol events; the stub can be driven programmatically.
+#[derive(Debug)]
+pub struct ProtocolBridge {
+    pub surface_map: SurfaceMap,
+    pub clients: ClientRegistry,
+    pub serial: SerialCounter,
+    pub pointer_focus: PointerFocus,
+    pub keyboard_focus: KeyboardFocus,
+    pub toplevels: HashMap<SurfaceId, XdgToplevelTracker>,
+    pub output: OutputInfo,
+    pub seat_caps: SeatCapabilities,
+    pending_actions: Vec<ProtocolAction>,
+}
+
+impl ProtocolBridge {
+    pub fn new() -> Self {
+        Self {
+            surface_map: SurfaceMap::new(),
+            clients: ClientRegistry::new(),
+            serial: SerialCounter::new(),
+            pointer_focus: PointerFocus::default(),
+            keyboard_focus: KeyboardFocus::default(),
+            toplevels: HashMap::new(),
+            output: OutputInfo::default(),
+            seat_caps: SeatCapabilities::default(),
+            pending_actions: Vec::new(),
+        }
+    }
+
+    /// Handle a new client connection.
+    pub fn client_connect(&mut self, pid: Option<u32>) -> u32 {
+        let id = if let Some(pid) = pid {
+            self.clients.register_with_pid(pid)
+        } else {
+            self.clients.register()
+        };
+        self.pending_actions.push(ProtocolAction::ClientConnected { client_id: id });
+        id
+    }
+
+    /// Handle client disconnection — removes all its surfaces.
+    pub fn client_disconnect(&mut self, client_id: u32) -> Vec<SurfaceId> {
+        let mut removed_surfaces = Vec::new();
+        if let Some(info) = self.clients.unregister(client_id) {
+            for surface_id in &info.surfaces {
+                self.surface_map.unregister(surface_id);
+                self.toplevels.remove(surface_id);
+                self.pending_actions.push(ProtocolAction::DestroyWindow {
+                    surface_id: *surface_id,
+                });
+                removed_surfaces.push(*surface_id);
+            }
+            // Clear focus if it belonged to this client
+            if let Some(focused) = self.pointer_focus.surface_id {
+                if info.surfaces.contains(&focused) {
+                    self.pointer_focus.surface_id = None;
+                }
+            }
+            if let Some(focused) = self.keyboard_focus.surface_id {
+                if info.surfaces.contains(&focused) {
+                    self.keyboard_focus.surface_id = None;
+                }
+            }
+        }
+        self.pending_actions.push(ProtocolAction::ClientDisconnected { client_id });
+        removed_surfaces
+    }
+
+    /// Create a new wl_surface for a client.
+    pub fn create_surface(&mut self, client_id: u32) -> Option<(SurfaceId, u32)> {
+        let surface_id = uuid::Uuid::new_v4();
+        let proto_id = self.surface_map.register(surface_id);
+        if let Some(client) = self.clients.get_mut(client_id) {
+            client.add_surface(surface_id);
+        }
+        Some((surface_id, proto_id))
+    }
+
+    /// Handle xdg_surface.get_toplevel — creates the toplevel tracker and triggers window creation.
+    pub fn create_toplevel(&mut self, surface_id: SurfaceId, client_id: u32) -> &ToplevelConfigure {
+        let tracker = XdgToplevelTracker::new(surface_id);
+        self.toplevels.insert(surface_id, tracker);
+
+        // Send initial configure
+        let serial = self.serial.next_serial();
+        let configure = ToplevelConfigure::initial(surface_id, serial);
+
+        self.pending_actions.push(ProtocolAction::CreateWindow {
+            client_id,
+            surface_id,
+            title: String::new(),
+            app_id: String::new(),
+        });
+
+        let tracker = self.toplevels.get_mut(&surface_id).unwrap();
+        tracker.send_configure(configure)
+    }
+
+    /// Handle xdg_toplevel.set_title.
+    pub fn set_title(&mut self, surface_id: SurfaceId, title: String) {
+        if let Some(tracker) = self.toplevels.get_mut(&surface_id) {
+            tracker.title = Some(title.clone());
+        }
+        self.pending_actions.push(ProtocolAction::SetTitle { surface_id, title });
+    }
+
+    /// Handle xdg_toplevel.set_app_id.
+    pub fn set_app_id(&mut self, surface_id: SurfaceId, app_id: String) {
+        if let Some(tracker) = self.toplevels.get_mut(&surface_id) {
+            tracker.app_id = Some(app_id.clone());
+        }
+        self.pending_actions.push(ProtocolAction::SetAppId { surface_id, app_id });
+    }
+
+    /// Handle xdg_surface.ack_configure.
+    pub fn ack_configure(&mut self, surface_id: SurfaceId, serial: u32) -> bool {
+        if let Some(tracker) = self.toplevels.get_mut(&surface_id) {
+            let result = tracker.ack_configure(serial);
+            if result {
+                self.pending_actions.push(ProtocolAction::AckConfigure { surface_id, serial });
+            }
+            result
+        } else {
+            false
+        }
+    }
+
+    /// Handle wl_surface.commit — maps the window if first commit after configure ack.
+    pub fn surface_commit(&mut self, surface_id: SurfaceId) -> bool {
+        let mapped = if let Some(tracker) = self.toplevels.get_mut(&surface_id) {
+            tracker.map()
+        } else {
+            false
+        };
+        self.pending_actions.push(ProtocolAction::SurfaceCommit { surface_id });
+        mapped
+    }
+
+    /// Destroy a surface.
+    pub fn destroy_surface(&mut self, surface_id: SurfaceId) {
+        self.surface_map.unregister(&surface_id);
+        self.toplevels.remove(&surface_id);
+        // Remove from client's surface list
+        if let Some(client_id) = self.clients.find_by_surface(&surface_id) {
+            if let Some(client) = self.clients.get_mut(client_id) {
+                client.remove_surface(&surface_id);
+            }
+        }
+        self.pending_actions.push(ProtocolAction::DestroyWindow { surface_id });
+    }
+
+    /// Handle xdg_toplevel.set_maximized / unset_maximized.
+    pub fn set_maximized(&mut self, surface_id: SurfaceId, maximized: bool) {
+        if maximized {
+            if let Some(tracker) = self.toplevels.get_mut(&surface_id) {
+                let serial = self.serial.next_serial();
+                let configure = ToplevelConfigure::maximized(surface_id, &self.output, serial);
+                tracker.send_configure(configure);
+            }
+        }
+        self.pending_actions.push(ProtocolAction::SetMaximized { surface_id, maximized });
+    }
+
+    /// Handle xdg_toplevel.set_fullscreen.
+    pub fn set_fullscreen(&mut self, surface_id: SurfaceId, fullscreen: bool) {
+        if fullscreen {
+            if let Some(tracker) = self.toplevels.get_mut(&surface_id) {
+                let serial = self.serial.next_serial();
+                let configure = ToplevelConfigure {
+                    surface_id,
+                    width: self.output.width_px,
+                    height: self.output.height_px,
+                    states: vec![XdgToplevelState::Fullscreen, XdgToplevelState::Activated],
+                    serial,
+                };
+                tracker.send_configure(configure);
+            }
+        }
+        self.pending_actions.push(ProtocolAction::SetFullscreen { surface_id, fullscreen });
+    }
+
+    /// Handle xdg_toplevel.set_minimized.
+    pub fn set_minimized(&mut self, surface_id: SurfaceId) {
+        self.pending_actions.push(ProtocolAction::SetMinimized { surface_id });
+    }
+
+    /// Handle xdg_toplevel.set_min_size / set_max_size.
+    pub fn set_size_bounds(
+        &mut self,
+        surface_id: SurfaceId,
+        min_size: Option<(u32, u32)>,
+        max_size: Option<(u32, u32)>,
+    ) {
+        if let Some(tracker) = self.toplevels.get_mut(&surface_id) {
+            if min_size.is_some() {
+                tracker.min_size = min_size;
+            }
+            if max_size.is_some() {
+                tracker.max_size = max_size;
+            }
+        }
+        self.pending_actions.push(ProtocolAction::SetSizeBounds {
+            surface_id,
+            min_size,
+            max_size,
+        });
+    }
+
+    /// Handle xdg_toplevel.move request.
+    pub fn request_move(&mut self, surface_id: SurfaceId) {
+        self.pending_actions.push(ProtocolAction::RequestMove { surface_id });
+    }
+
+    /// Handle xdg_toplevel.resize request.
+    pub fn request_resize(&mut self, surface_id: SurfaceId, edge: u32) {
+        self.pending_actions.push(ProtocolAction::RequestResize { surface_id, edge });
+    }
+
+    /// Route an input event to the appropriate client surface.
+    pub fn route_input(&mut self, compositor: &Compositor, event: &InputEvent) {
+        let action = compositor.route_input(event);
+        match action {
+            InputAction::ClientClick(surface_id, x, y) => {
+                let serial = self.serial.next_serial();
+                let focus_changed = self.pointer_focus.set_focus(Some(surface_id), x as f64, y as f64, serial);
+                if focus_changed {
+                    // Send pointer enter
+                    self.pending_actions.push(ProtocolAction::ForwardPointer {
+                        event: WaylandPointerEvent::Enter {
+                            surface: surface_id,
+                            x: x as f64,
+                            y: y as f64,
+                        },
+                    });
+                    // Update keyboard focus too
+                    let kb_serial = self.serial.next_serial();
+                    self.keyboard_focus.set_focus(Some(surface_id), kb_serial);
+                    self.pending_actions.push(ProtocolAction::ForwardKeyboard {
+                        event: WaylandKeyboardEvent::Enter { surface: surface_id },
+                    });
+                }
+                // Forward button event
+                if let InputEvent::MouseClick { button, .. } = event {
+                    self.pending_actions.push(ProtocolAction::ForwardPointer {
+                        event: WaylandPointerEvent::Button {
+                            button: *button,
+                            x: x as f64,
+                            y: y as f64,
+                            pressed: true,
+                        },
+                    });
+                }
+            }
+            InputAction::PointerMove(x, y) => {
+                self.pointer_focus.motion(x as f64, y as f64);
+                self.pending_actions.push(ProtocolAction::ForwardPointer {
+                    event: WaylandPointerEvent::Motion {
+                        x: x as f64,
+                        y: y as f64,
+                    },
+                });
+            }
+            InputAction::KeyToFocused(keycode, modifiers) => {
+                let mods = ModifierState::from_raw(modifiers);
+                self.keyboard_focus.set_modifiers(mods);
+                self.pending_actions.push(ProtocolAction::ForwardKeyboard {
+                    event: WaylandKeyboardEvent::Key {
+                        keycode,
+                        modifiers: mods,
+                        pressed: true,
+                    },
+                });
+            }
+            _ => {
+                // BeginDrag, Close, Minimize, etc. are handled by the compositor directly
+            }
+        }
+    }
+
+    /// Drain all pending protocol actions for processing.
+    pub fn drain_actions(&mut self) -> Vec<ProtocolAction> {
+        std::mem::take(&mut self.pending_actions)
+    }
+
+    /// Apply pending actions to the compositor.
+    pub fn apply_actions(&mut self, compositor: &Compositor) -> Vec<ProtocolAction> {
+        let actions = self.drain_actions();
+        for action in &actions {
+            match action {
+                ProtocolAction::CreateWindow { title, app_id, .. } => {
+                    let t = if title.is_empty() { "Untitled".to_string() } else { title.clone() };
+                    let a = if app_id.is_empty() { "unknown".to_string() } else { app_id.clone() };
+                    let _ = compositor.create_window(t, a, false);
+                }
+                ProtocolAction::DestroyWindow { surface_id } => {
+                    let _ = compositor.close_window(*surface_id);
+                }
+                ProtocolAction::SetMaximized { surface_id, maximized } => {
+                    if *maximized {
+                        let _ = compositor.set_window_state(*surface_id, WindowState::Maximized);
+                    } else {
+                        let _ = compositor.set_window_state(*surface_id, WindowState::Normal);
+                    }
+                }
+                ProtocolAction::SetFullscreen { surface_id, fullscreen } => {
+                    if *fullscreen {
+                        let _ = compositor.set_window_state(*surface_id, WindowState::Fullscreen);
+                    } else {
+                        let _ = compositor.set_window_state(*surface_id, WindowState::Normal);
+                    }
+                }
+                ProtocolAction::SetMinimized { surface_id } => {
+                    let _ = compositor.set_window_state(*surface_id, WindowState::Minimized);
+                }
+                ProtocolAction::SetTitle { .. } => {
+                    // Title tracked in XdgToplevelTracker, applied on next render
+                }
+                ProtocolAction::RequestMove { surface_id } => {
+                    compositor.focus_window(*surface_id);
+                }
+                _ => {}
+            }
+        }
+        actions
+    }
+
+    /// Get the number of connected clients.
+    pub fn client_count(&self) -> usize {
+        self.clients.len()
+    }
+
+    /// Get the number of tracked surfaces.
+    pub fn surface_count(&self) -> usize {
+        self.surface_map.len()
+    }
+
+    /// Get the number of mapped toplevels.
+    pub fn mapped_toplevel_count(&self) -> usize {
+        self.toplevels.values().filter(|t| t.mapped).count()
+    }
+}
+
+impl Default for ProtocolBridge {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Maps internal [`InputEvent`]s to Wayland protocol actions.
 pub fn map_input_to_pointer_event(event: &InputEvent) -> Option<WaylandPointerEvent> {
     match event {
@@ -765,18 +1209,11 @@ mod wayland_live {
     /// Main Wayland server state.
     ///
     /// Holds the `wayland_server::Display`, tracks clients and surfaces,
-    /// and bridges to the internal AGNOS compositor.
+    /// and bridges to the internal AGNOS compositor via [`ProtocolBridge`].
     pub struct WaylandState {
         pub display: Display<Self>,
         pub compositor: Arc<Compositor>,
-        pub surface_map: SurfaceMap,
-        pub clients: ClientRegistry,
-        pub serial: SerialCounter,
-        pub pointer_focus: PointerFocus,
-        pub keyboard_focus: KeyboardFocus,
-        pub toplevels: HashMap<SurfaceId, XdgToplevelTracker>,
-        pub output: OutputInfo,
-        pub seat_caps: SeatCapabilities,
+        pub bridge: ProtocolBridge,
         pub socket_name: Option<String>,
     }
 
@@ -787,14 +1224,7 @@ mod wayland_live {
             Ok(Self {
                 display,
                 compositor,
-                surface_map: SurfaceMap::new(),
-                clients: ClientRegistry::new(),
-                serial: SerialCounter::new(),
-                pointer_focus: PointerFocus::default(),
-                keyboard_focus: KeyboardFocus::default(),
-                toplevels: HashMap::new(),
-                output: OutputInfo::default(),
-                seat_caps: SeatCapabilities::default(),
+                bridge: ProtocolBridge::new(),
                 socket_name: None,
             })
         }
@@ -808,6 +1238,20 @@ mod wayland_live {
                 .unwrap_or_else(|| "wayland-0".to_string());
             self.socket_name = Some(name.clone());
             Ok(name)
+        }
+
+        /// Dispatch one frame: accept clients, process events, apply to compositor.
+        pub fn dispatch(&mut self) -> Result<Vec<ProtocolAction>, Box<dyn std::error::Error>> {
+            // In live mode, this would call self.display.dispatch_clients()
+            // and route wayland-server events through the bridge.
+            // For now, apply any pending bridge actions.
+            let actions = self.bridge.apply_actions(&self.compositor);
+            Ok(actions)
+        }
+
+        /// Handle an input event by routing through the bridge.
+        pub fn handle_input(&mut self, event: &InputEvent) {
+            self.bridge.route_input(&self.compositor, event);
         }
     }
 }
@@ -824,16 +1268,10 @@ mod wayland_stub {
     use super::*;
 
     /// Stub Wayland server state (no real protocol, for compilation only).
+    /// Uses the same [`ProtocolBridge`] as the live mode for consistent behavior.
     pub struct WaylandState {
         pub compositor: Arc<Compositor>,
-        pub surface_map: SurfaceMap,
-        pub clients: ClientRegistry,
-        pub serial: SerialCounter,
-        pub pointer_focus: PointerFocus,
-        pub keyboard_focus: KeyboardFocus,
-        pub toplevels: HashMap<SurfaceId, XdgToplevelTracker>,
-        pub output: OutputInfo,
-        pub seat_caps: SeatCapabilities,
+        pub bridge: ProtocolBridge,
         pub socket_name: Option<String>,
     }
 
@@ -842,14 +1280,7 @@ mod wayland_stub {
         pub fn new(compositor: Arc<Compositor>) -> Result<Self, Box<dyn std::error::Error>> {
             Ok(Self {
                 compositor,
-                surface_map: SurfaceMap::new(),
-                clients: ClientRegistry::new(),
-                serial: SerialCounter::new(),
-                pointer_focus: PointerFocus::default(),
-                keyboard_focus: KeyboardFocus::default(),
-                toplevels: HashMap::new(),
-                output: OutputInfo::default(),
-                seat_caps: SeatCapabilities::default(),
+                bridge: ProtocolBridge::new(),
                 socket_name: None,
             })
         }
@@ -861,10 +1292,16 @@ mod wayland_stub {
             Ok(name)
         }
 
-        /// Dispatch a frame: read client messages, compose, present.
-        /// In stub mode this is a no-op.
-        pub fn dispatch(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-            Ok(())
+        /// Dispatch a frame: apply pending bridge actions to the compositor.
+        /// In stub mode this processes any programmatically enqueued actions.
+        pub fn dispatch(&mut self) -> Result<Vec<ProtocolAction>, Box<dyn std::error::Error>> {
+            let actions = self.bridge.apply_actions(&self.compositor);
+            Ok(actions)
+        }
+
+        /// Handle an input event by routing through the bridge.
+        pub fn handle_input(&mut self, event: &InputEvent) {
+            self.bridge.route_input(&self.compositor, event);
         }
     }
 }
@@ -1345,9 +1782,9 @@ mod tests {
         let state = WaylandState::new(comp);
         assert!(state.is_ok());
         let state = state.unwrap();
-        assert!(state.surface_map.is_empty());
-        assert!(state.clients.is_empty());
-        assert_eq!(state.serial.current(), 0);
+        assert!(state.bridge.surface_map.is_empty());
+        assert!(state.bridge.clients.is_empty());
+        assert_eq!(state.bridge.serial.current(), 0);
     }
 
     #[cfg(not(feature = "wayland"))]
@@ -1365,7 +1802,255 @@ mod tests {
     fn test_wayland_state_stub_dispatch() {
         let comp = Arc::new(Compositor::new());
         let mut state = WaylandState::new(comp).unwrap();
-        assert!(state.dispatch().is_ok());
+        let actions = state.dispatch().unwrap();
+        assert!(actions.is_empty());
+    }
+
+    // -- ProtocolBridge tests --
+
+    #[test]
+    fn test_bridge_client_lifecycle() {
+        let mut bridge = ProtocolBridge::new();
+        assert_eq!(bridge.client_count(), 0);
+
+        let id = bridge.client_connect(Some(1234));
+        assert_eq!(bridge.client_count(), 1);
+        assert_eq!(bridge.clients.get(id).unwrap().pid, Some(1234));
+
+        bridge.client_disconnect(id);
+        assert_eq!(bridge.client_count(), 0);
+    }
+
+    #[test]
+    fn test_bridge_surface_creation() {
+        let mut bridge = ProtocolBridge::new();
+        let client_id = bridge.client_connect(None);
+
+        let (surface_id, proto_id) = bridge.create_surface(client_id).unwrap();
+        assert_eq!(bridge.surface_count(), 1);
+        assert_eq!(bridge.surface_map.get_internal(proto_id), Some(&surface_id));
+
+        // Client should track the surface
+        assert_eq!(bridge.clients.get(client_id).unwrap().surfaces.len(), 1);
+    }
+
+    #[test]
+    fn test_bridge_toplevel_lifecycle() {
+        let mut bridge = ProtocolBridge::new();
+        let client_id = bridge.client_connect(None);
+        let (surface_id, _) = bridge.create_surface(client_id).unwrap();
+
+        // Create toplevel — sends initial configure
+        let configure = bridge.create_toplevel(surface_id, client_id);
+        assert!(configure.is_activated());
+        assert_eq!(configure.width, 0); // initial = client picks size
+        let serial = configure.serial;
+
+        // Ack configure
+        assert!(bridge.ack_configure(surface_id, serial));
+        assert!(bridge.toplevels.get(&surface_id).unwrap().configured);
+
+        // First commit maps the window
+        assert!(bridge.surface_commit(surface_id));
+        assert!(bridge.toplevels.get(&surface_id).unwrap().mapped);
+        assert_eq!(bridge.mapped_toplevel_count(), 1);
+    }
+
+    #[test]
+    fn test_bridge_set_title_and_app_id() {
+        let mut bridge = ProtocolBridge::new();
+        let cid = bridge.client_connect(None);
+        let (sid, _) = bridge.create_surface(cid).unwrap();
+        bridge.create_toplevel(sid, cid);
+
+        bridge.set_title(sid, "My Window".to_string());
+        bridge.set_app_id(sid, "com.example.app".to_string());
+
+        let tracker = bridge.toplevels.get(&sid).unwrap();
+        assert_eq!(tracker.title.as_deref(), Some("My Window"));
+        assert_eq!(tracker.app_id.as_deref(), Some("com.example.app"));
+    }
+
+    #[test]
+    fn test_bridge_maximize() {
+        let mut bridge = ProtocolBridge::new();
+        let cid = bridge.client_connect(None);
+        let (sid, _) = bridge.create_surface(cid).unwrap();
+        bridge.create_toplevel(sid, cid);
+
+        bridge.set_maximized(sid, true);
+        let tracker = bridge.toplevels.get(&sid).unwrap();
+        let pending = tracker.pending_configure.as_ref().unwrap();
+        assert!(pending.is_maximized());
+        assert_eq!(pending.width, 1920);
+        assert_eq!(pending.height, 1080);
+    }
+
+    #[test]
+    fn test_bridge_fullscreen() {
+        let mut bridge = ProtocolBridge::new();
+        let cid = bridge.client_connect(None);
+        let (sid, _) = bridge.create_surface(cid).unwrap();
+        bridge.create_toplevel(sid, cid);
+
+        bridge.set_fullscreen(sid, true);
+        let tracker = bridge.toplevels.get(&sid).unwrap();
+        let pending = tracker.pending_configure.as_ref().unwrap();
+        assert!(pending.states.contains(&XdgToplevelState::Fullscreen));
+    }
+
+    #[test]
+    fn test_bridge_size_bounds() {
+        let mut bridge = ProtocolBridge::new();
+        let cid = bridge.client_connect(None);
+        let (sid, _) = bridge.create_surface(cid).unwrap();
+        bridge.create_toplevel(sid, cid);
+
+        bridge.set_size_bounds(sid, Some((200, 150)), Some((800, 600)));
+        let tracker = bridge.toplevels.get(&sid).unwrap();
+        assert_eq!(tracker.min_size, Some((200, 150)));
+        assert_eq!(tracker.max_size, Some((800, 600)));
+        assert_eq!(tracker.constrain_size(100, 100), (200, 150));
+        assert_eq!(tracker.constrain_size(1000, 1000), (800, 600));
+    }
+
+    #[test]
+    fn test_bridge_destroy_surface() {
+        let mut bridge = ProtocolBridge::new();
+        let cid = bridge.client_connect(None);
+        let (sid, _) = bridge.create_surface(cid).unwrap();
+        bridge.create_toplevel(sid, cid);
+
+        bridge.destroy_surface(sid);
+        assert_eq!(bridge.surface_count(), 0);
+        assert!(bridge.toplevels.get(&sid).is_none());
+    }
+
+    #[test]
+    fn test_bridge_client_disconnect_cleans_surfaces() {
+        let mut bridge = ProtocolBridge::new();
+        let cid = bridge.client_connect(None);
+        let (sid1, _) = bridge.create_surface(cid).unwrap();
+        let (sid2, _) = bridge.create_surface(cid).unwrap();
+        bridge.create_toplevel(sid1, cid);
+        bridge.create_toplevel(sid2, cid);
+
+        let removed = bridge.client_disconnect(cid);
+        assert_eq!(removed.len(), 2);
+        assert_eq!(bridge.surface_count(), 0);
+        assert_eq!(bridge.mapped_toplevel_count(), 0);
+    }
+
+    #[test]
+    fn test_bridge_ack_wrong_serial() {
+        let mut bridge = ProtocolBridge::new();
+        let cid = bridge.client_connect(None);
+        let (sid, _) = bridge.create_surface(cid).unwrap();
+        bridge.create_toplevel(sid, cid);
+
+        assert!(!bridge.ack_configure(sid, 9999));
+        assert!(!bridge.toplevels.get(&sid).unwrap().configured);
+    }
+
+    #[test]
+    fn test_bridge_commit_before_ack_does_not_map() {
+        let mut bridge = ProtocolBridge::new();
+        let cid = bridge.client_connect(None);
+        let (sid, _) = bridge.create_surface(cid).unwrap();
+        bridge.create_toplevel(sid, cid);
+
+        // Commit without acking configure should not map
+        assert!(!bridge.surface_commit(sid));
+        assert!(!bridge.toplevels.get(&sid).unwrap().mapped);
+    }
+
+    #[test]
+    fn test_bridge_drain_actions() {
+        let mut bridge = ProtocolBridge::new();
+        let cid = bridge.client_connect(None);
+        let (sid, _) = bridge.create_surface(cid).unwrap();
+        bridge.create_toplevel(sid, cid);
+
+        let actions = bridge.drain_actions();
+        assert!(!actions.is_empty());
+
+        // Second drain should be empty
+        let actions2 = bridge.drain_actions();
+        assert!(actions2.is_empty());
+    }
+
+    #[test]
+    fn test_bridge_disconnect_clears_focus() {
+        let mut bridge = ProtocolBridge::new();
+        let cid = bridge.client_connect(None);
+        let (sid, _) = bridge.create_surface(cid).unwrap();
+        bridge.create_toplevel(sid, cid);
+
+        // Set focus to this surface
+        let serial = bridge.serial.next_serial();
+        bridge.pointer_focus.set_focus(Some(sid), 50.0, 50.0, serial);
+        bridge.keyboard_focus.set_focus(Some(sid), serial);
+
+        bridge.client_disconnect(cid);
+        assert_eq!(bridge.pointer_focus.surface_id, None);
+        assert_eq!(bridge.keyboard_focus.surface_id, None);
+    }
+
+    #[test]
+    fn test_bridge_input_routing() {
+        let comp = Compositor::new();
+        let mut bridge = ProtocolBridge::new();
+
+        // Route a mouse move — should produce a ForwardPointer action
+        let event = InputEvent::MouseMove { x: 100, y: 200 };
+        bridge.route_input(&comp, &event);
+
+        let actions = bridge.drain_actions();
+        let has_pointer = actions.iter().any(|a| matches!(a, ProtocolAction::ForwardPointer { .. }));
+        assert!(has_pointer);
+    }
+
+    #[test]
+    fn test_bridge_multiple_clients() {
+        let mut bridge = ProtocolBridge::new();
+        let c1 = bridge.client_connect(Some(100));
+        let c2 = bridge.client_connect(Some(200));
+
+        let (s1, _) = bridge.create_surface(c1).unwrap();
+        let (s2, _) = bridge.create_surface(c2).unwrap();
+
+        assert_eq!(bridge.client_count(), 2);
+        assert_eq!(bridge.surface_count(), 2);
+
+        bridge.client_disconnect(c1);
+        assert_eq!(bridge.client_count(), 1);
+        assert_eq!(bridge.surface_count(), 1);
+        assert!(bridge.surface_map.get_proto(&s2).is_some());
+    }
+
+    #[test]
+    fn test_bridge_request_move_and_resize() {
+        let mut bridge = ProtocolBridge::new();
+        let cid = bridge.client_connect(None);
+        let (sid, _) = bridge.create_surface(cid).unwrap();
+
+        bridge.request_move(sid);
+        bridge.request_resize(sid, 4); // right edge
+
+        let actions = bridge.drain_actions();
+        assert!(actions.iter().any(|a| matches!(a, ProtocolAction::RequestMove { .. })));
+        assert!(actions.iter().any(|a| matches!(a, ProtocolAction::RequestResize { edge: 4, .. })));
+    }
+
+    #[test]
+    fn test_bridge_set_minimized() {
+        let mut bridge = ProtocolBridge::new();
+        let cid = bridge.client_connect(None);
+        let (sid, _) = bridge.create_surface(cid).unwrap();
+
+        bridge.set_minimized(sid);
+        let actions = bridge.drain_actions();
+        assert!(actions.iter().any(|a| matches!(a, ProtocolAction::SetMinimized { .. })));
     }
 
     // -- ClientInfo tests --

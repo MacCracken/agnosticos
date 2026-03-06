@@ -76,7 +76,9 @@ pub enum Intent {
     },
     /// Network scanning and diagnostics
     NetworkScan {
-        /// Tool action: port_scan, ping_sweep, dns_lookup, trace_route, packet_capture, web_scan
+        /// Tool action: port_scan, ping_sweep, dns_lookup, trace_route, packet_capture, web_scan,
+        /// mass_scan, arp_scan, network_diag, service_scan, dir_bust, dir_fuzz, vuln_scan,
+        /// socket_stats, dns_enum, deep_inspect, bandwidth_monitor
         action: String,
         /// Target host, IP, or network
         target: Option<String>,
@@ -255,6 +257,12 @@ impl Interpreter {
             Regex::new(r"(?i)^(scan\s+ports?\s+(?:on|for)\s+(.+)|ping\s+sweep\s+(.+)|lookup\s+dns\s+(?:for\s+)?(.+)|trace\s+route\s+to\s+(.+)|capture\s+packets?\s+(?:on|from)\s+(.+)|scan\s+web\s+servers?\s+(.+))$").unwrap(),
         );
 
+        // Extended network tool patterns
+        patterns.insert(
+            "network_extended".to_string(),
+            Regex::new(r"(?i)^(mass\s+scan\s+(.+)|arp\s+scan\s*(.+)?|network\s+diag(?:nostics?)?\s+(?:for\s+)?(.+)|detect\s+services?\s+(?:on\s+)?(.+)|fuzz\s+dir(?:ectories|s)?\s+(?:on\s+)?(.+)|vuln(?:erability)?\s+scan\s+(.+)|show\s+(?:open\s+)?sockets?|list\s+(?:network\s+)?connections?|enumerate\s+dns\s+(?:for\s+)?(.+)|deep\s+inspect\s+(?:traffic\s+)?(?:on\s+)?(.+)|monitor\s+bandwidth)$").unwrap(),
+        );
+
         // Journal view patterns
         patterns.insert(
             "journal".to_string(),
@@ -400,6 +408,73 @@ impl Interpreter {
                 return Intent::NetworkScan {
                     action: "web_scan".into(),
                     target: Some(target.as_str().trim().to_string()),
+                };
+            }
+        }
+
+        // Extended network tool patterns
+        if let Some(caps) = self.try_captures("network_extended", &input_lower) {
+            let full = caps.get(0).map(|m| m.as_str()).unwrap_or("");
+            if let Some(target) = caps.get(2) {
+                return Intent::NetworkScan {
+                    action: "mass_scan".into(),
+                    target: Some(target.as_str().trim().to_string()),
+                };
+            }
+            if caps.get(3).is_some() || full.contains("arp scan") {
+                let target = caps.get(3).map(|m| m.as_str().trim().to_string())
+                    .filter(|s| !s.is_empty());
+                return Intent::NetworkScan {
+                    action: "arp_scan".into(),
+                    target,
+                };
+            }
+            if let Some(target) = caps.get(4) {
+                return Intent::NetworkScan {
+                    action: "network_diag".into(),
+                    target: Some(target.as_str().trim().to_string()),
+                };
+            }
+            if let Some(target) = caps.get(5) {
+                return Intent::NetworkScan {
+                    action: "service_scan".into(),
+                    target: Some(target.as_str().trim().to_string()),
+                };
+            }
+            if let Some(target) = caps.get(6) {
+                return Intent::NetworkScan {
+                    action: "dir_fuzz".into(),
+                    target: Some(target.as_str().trim().to_string()),
+                };
+            }
+            if let Some(target) = caps.get(7) {
+                return Intent::NetworkScan {
+                    action: "vuln_scan".into(),
+                    target: Some(target.as_str().trim().to_string()),
+                };
+            }
+            if full.contains("socket") || full.contains("connection") {
+                return Intent::NetworkScan {
+                    action: "socket_stats".into(),
+                    target: None,
+                };
+            }
+            if let Some(target) = caps.get(8) {
+                return Intent::NetworkScan {
+                    action: "dns_enum".into(),
+                    target: Some(target.as_str().trim().to_string()),
+                };
+            }
+            if let Some(target) = caps.get(9) {
+                return Intent::NetworkScan {
+                    action: "deep_inspect".into(),
+                    target: Some(target.as_str().trim().to_string()),
+                };
+            }
+            if full.contains("bandwidth") {
+                return Intent::NetworkScan {
+                    action: "bandwidth_monitor".into(),
+                    target: None,
                 };
             }
         }
@@ -960,6 +1035,98 @@ impl Interpreter {
                             "nikto".to_string(),
                             vec!["-h".to_string(), t.to_string()],
                             format!("Web scan on {}", t),
+                            PermissionLevel::Admin,
+                        )
+                    }
+                    "mass_scan" => {
+                        let t = target.as_deref().unwrap_or("192.168.1.0/24");
+                        (
+                            "masscan".to_string(),
+                            vec!["--rate=1000".to_string(), "-p1-65535".to_string(), t.to_string()],
+                            format!("Mass scan on {}", t),
+                            PermissionLevel::Admin,
+                        )
+                    }
+                    "arp_scan" => {
+                        let args = if let Some(t) = target.as_deref() {
+                            vec![t.to_string()]
+                        } else {
+                            vec!["--localnet".to_string()]
+                        };
+                        (
+                            "arp-scan".to_string(),
+                            args,
+                            "ARP scan local network".to_string(),
+                            PermissionLevel::Admin,
+                        )
+                    }
+                    "network_diag" => {
+                        let t = target.as_deref().unwrap_or("localhost");
+                        (
+                            "mtr".to_string(),
+                            vec!["--report".to_string(), "-c".to_string(), "10".to_string(), t.to_string()],
+                            format!("Network diagnostics to {}", t),
+                            PermissionLevel::Admin,
+                        )
+                    }
+                    "service_scan" => {
+                        let t = target.as_deref().unwrap_or("localhost");
+                        (
+                            "nmap".to_string(),
+                            vec!["-sV".to_string(), t.to_string()],
+                            format!("Service detection on {}", t),
+                            PermissionLevel::Admin,
+                        )
+                    }
+                    "dir_fuzz" => {
+                        let t = target.as_deref().unwrap_or("http://localhost");
+                        (
+                            "ffuf".to_string(),
+                            vec!["-u".to_string(), format!("{}/FUZZ", t), "-w".to_string(), "/usr/share/wordlists/common.txt".to_string()],
+                            format!("Directory fuzzing on {}", t),
+                            PermissionLevel::Admin,
+                        )
+                    }
+                    "vuln_scan" => {
+                        let t = target.as_deref().unwrap_or("http://localhost");
+                        (
+                            "nuclei".to_string(),
+                            vec!["-u".to_string(), t.to_string(), "-silent".to_string()],
+                            format!("Vulnerability scan on {}", t),
+                            PermissionLevel::Admin,
+                        )
+                    }
+                    "socket_stats" => {
+                        (
+                            "ss".to_string(),
+                            vec!["-tunap".to_string()],
+                            "Show network sockets and connections".to_string(),
+                            PermissionLevel::Safe,
+                        )
+                    }
+                    "dns_enum" => {
+                        let t = target.as_deref().unwrap_or("localhost");
+                        (
+                            "dnsrecon".to_string(),
+                            vec!["-d".to_string(), t.to_string()],
+                            format!("DNS enumeration for {}", t),
+                            PermissionLevel::Admin,
+                        )
+                    }
+                    "deep_inspect" => {
+                        let iface = target.as_deref().unwrap_or("eth0");
+                        (
+                            "tshark".to_string(),
+                            vec!["-i".to_string(), iface.to_string(), "-c".to_string(), "100".to_string()],
+                            format!("Deep packet inspection on {}", iface),
+                            PermissionLevel::Admin,
+                        )
+                    }
+                    "bandwidth_monitor" => {
+                        (
+                            "nethogs".to_string(),
+                            vec![],
+                            "Monitor per-process bandwidth usage".to_string(),
                             PermissionLevel::Admin,
                         )
                     }

@@ -60,6 +60,30 @@ pub enum NetworkTool {
     WebScan,
     /// Directory brute-forcing (gobuster)
     DirBust,
+    /// High-speed port scanning (masscan)
+    MassScan,
+    /// ARP-based local network discovery (arp-scan)
+    ArpScan,
+    /// Network diagnostics combining traceroute + ping (mtr)
+    NetworkDiag,
+    /// Bidirectional data relay (socat)
+    DataRelay,
+    /// Deep packet inspection (tshark)
+    DeepInspect,
+    /// Network-level grep for packet content (ngrep)
+    NetworkGrep,
+    /// Socket statistics and connection info (ss)
+    SocketStats,
+    /// DNS enumeration and zone info (dnsrecon)
+    DnsEnum,
+    /// Directory/subdomain fuzzing (ffuf)
+    DirFuzz,
+    /// Template-based vulnerability scanning (nuclei)
+    VulnScanner,
+    /// Per-process bandwidth monitoring (nethogs)
+    BandwidthMonitor,
+    /// Passive OS fingerprinting (p0f)
+    PassiveFingerprint,
 }
 
 impl fmt::Display for NetworkTool {
@@ -76,6 +100,18 @@ impl fmt::Display for NetworkTool {
             NetworkTool::ServiceScan => write!(f, "ServiceScan"),
             NetworkTool::WebScan => write!(f, "WebScan"),
             NetworkTool::DirBust => write!(f, "DirBust"),
+            NetworkTool::MassScan => write!(f, "MassScan"),
+            NetworkTool::ArpScan => write!(f, "ArpScan"),
+            NetworkTool::NetworkDiag => write!(f, "NetworkDiag"),
+            NetworkTool::DataRelay => write!(f, "DataRelay"),
+            NetworkTool::DeepInspect => write!(f, "DeepInspect"),
+            NetworkTool::NetworkGrep => write!(f, "NetworkGrep"),
+            NetworkTool::SocketStats => write!(f, "SocketStats"),
+            NetworkTool::DnsEnum => write!(f, "DnsEnum"),
+            NetworkTool::DirFuzz => write!(f, "DirFuzz"),
+            NetworkTool::VulnScanner => write!(f, "VulnScanner"),
+            NetworkTool::BandwidthMonitor => write!(f, "BandwidthMonitor"),
+            NetworkTool::PassiveFingerprint => write!(f, "PassiveFingerprint"),
         }
     }
 }
@@ -202,6 +238,114 @@ impl NetworkToolConfig {
                 max_timeout_secs: 600,
                 allowed_in_sandbox: true,
             },
+            NetworkTool::MassScan => Self {
+                tool,
+                binary_name: "masscan",
+                required_capabilities: vec!["NET_RAW".into()],
+                risk_level: RiskLevel::High,
+                requires_approval: true,
+                max_timeout_secs: 600,
+                allowed_in_sandbox: true,
+            },
+            NetworkTool::ArpScan => Self {
+                tool,
+                binary_name: "arp-scan",
+                required_capabilities: vec!["NET_RAW".into()],
+                risk_level: RiskLevel::Medium,
+                requires_approval: true,
+                max_timeout_secs: 120,
+                allowed_in_sandbox: true,
+            },
+            NetworkTool::NetworkDiag => Self {
+                tool,
+                binary_name: "mtr",
+                required_capabilities: vec!["NET_RAW".into()],
+                risk_level: RiskLevel::Medium,
+                requires_approval: false,
+                max_timeout_secs: 120,
+                allowed_in_sandbox: true,
+            },
+            NetworkTool::DataRelay => Self {
+                tool,
+                binary_name: "socat",
+                required_capabilities: vec![],
+                risk_level: RiskLevel::High,
+                requires_approval: true,
+                max_timeout_secs: 300,
+                allowed_in_sandbox: true,
+            },
+            NetworkTool::DeepInspect => Self {
+                tool,
+                binary_name: "tshark",
+                required_capabilities: vec!["NET_RAW".into(), "NET_ADMIN".into()],
+                risk_level: RiskLevel::Critical,
+                requires_approval: true,
+                max_timeout_secs: 300,
+                allowed_in_sandbox: false,
+            },
+            NetworkTool::NetworkGrep => Self {
+                tool,
+                binary_name: "ngrep",
+                required_capabilities: vec!["NET_RAW".into()],
+                risk_level: RiskLevel::Critical,
+                requires_approval: true,
+                max_timeout_secs: 300,
+                allowed_in_sandbox: false,
+            },
+            NetworkTool::SocketStats => Self {
+                tool,
+                binary_name: "ss",
+                required_capabilities: vec![],
+                risk_level: RiskLevel::Low,
+                requires_approval: false,
+                max_timeout_secs: 30,
+                allowed_in_sandbox: true,
+            },
+            NetworkTool::DnsEnum => Self {
+                tool,
+                binary_name: "dnsrecon",
+                required_capabilities: vec![],
+                risk_level: RiskLevel::High,
+                requires_approval: true,
+                max_timeout_secs: 600,
+                allowed_in_sandbox: true,
+            },
+            NetworkTool::DirFuzz => Self {
+                tool,
+                binary_name: "ffuf",
+                required_capabilities: vec![],
+                risk_level: RiskLevel::High,
+                requires_approval: true,
+                max_timeout_secs: 600,
+                allowed_in_sandbox: true,
+            },
+            NetworkTool::VulnScanner => Self {
+                tool,
+                binary_name: "nuclei",
+                required_capabilities: vec![],
+                risk_level: RiskLevel::Critical,
+                requires_approval: true,
+                max_timeout_secs: 1800,
+                allowed_in_sandbox: true,
+            },
+            NetworkTool::BandwidthMonitor => Self {
+                tool,
+                binary_name: "nethogs",
+                required_capabilities: vec!["NET_RAW".into(), "NET_ADMIN".into()],
+                risk_level: RiskLevel::Medium,
+                requires_approval: true,
+                max_timeout_secs: 300,
+                allowed_in_sandbox: false,
+            },
+            NetworkTool::PassiveFingerprint => Self {
+                tool,
+                binary_name: "p0f",
+                required_capabilities: vec!["NET_RAW".into()],
+                risk_level: RiskLevel::Medium,
+                requires_approval: true,
+                max_timeout_secs: 300,
+                allowed_in_sandbox: false,
+            },
         }
     }
 }
@@ -219,6 +363,18 @@ pub const ALL_TOOLS: &[NetworkTool] = &[
     NetworkTool::ServiceScan,
     NetworkTool::WebScan,
     NetworkTool::DirBust,
+    NetworkTool::MassScan,
+    NetworkTool::ArpScan,
+    NetworkTool::NetworkDiag,
+    NetworkTool::DataRelay,
+    NetworkTool::DeepInspect,
+    NetworkTool::NetworkGrep,
+    NetworkTool::SocketStats,
+    NetworkTool::DnsEnum,
+    NetworkTool::DirFuzz,
+    NetworkTool::VulnScanner,
+    NetworkTool::BandwidthMonitor,
+    NetworkTool::PassiveFingerprint,
 ];
 
 /// Output captured from a tool execution
@@ -255,6 +411,382 @@ impl fmt::Display for ValidatedTarget {
             ValidatedTarget::Ip(ip) => write!(f, "{}", ip),
             ValidatedTarget::Cidr { addr, prefix } => write!(f, "{}/{}", addr, prefix),
             ValidatedTarget::Hostname(h) => write!(f, "{}", h),
+        }
+    }
+}
+
+// ============================================================================
+// Output parsing — structured results from raw tool stdout
+// ============================================================================
+
+/// A discovered open port from a scan
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DiscoveredPort {
+    pub port: u16,
+    pub protocol: String,
+    pub state: String,
+    pub service: Option<String>,
+    pub version: Option<String>,
+}
+
+/// A discovered host from a network scan
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DiscoveredHost {
+    pub address: String,
+    pub hostname: Option<String>,
+    pub mac_address: Option<String>,
+    pub vendor: Option<String>,
+    pub state: String,
+    pub ports: Vec<DiscoveredPort>,
+}
+
+/// A DNS record from a lookup
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DnsRecord {
+    pub name: String,
+    pub record_type: String,
+    pub value: String,
+    pub ttl: Option<u32>,
+}
+
+/// A hop from a traceroute/mtr
+#[derive(Debug, Clone, PartialEq)]
+pub struct TraceHop {
+    pub hop_number: u32,
+    pub address: Option<String>,
+    pub hostname: Option<String>,
+    pub rtt_ms: Option<f64>,
+    pub loss_pct: Option<f64>,
+}
+
+/// A socket/connection entry from ss
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SocketEntry {
+    pub state: String,
+    pub protocol: String,
+    pub local_addr: String,
+    pub remote_addr: String,
+    pub process: Option<String>,
+}
+
+/// Structured results parsed from tool output
+#[derive(Debug, Clone)]
+pub enum ParsedOutput {
+    /// Hosts and ports from nmap/masscan scans
+    HostScan {
+        hosts: Vec<DiscoveredHost>,
+        scan_type: String,
+    },
+    /// DNS records from dig/dnsrecon
+    DnsResult {
+        records: Vec<DnsRecord>,
+        query: String,
+    },
+    /// Route hops from traceroute/mtr
+    TraceResult {
+        hops: Vec<TraceHop>,
+        target: String,
+    },
+    /// Socket listing from ss
+    SocketList {
+        sockets: Vec<SocketEntry>,
+    },
+    /// Raw output when no parser is available
+    Raw {
+        summary: String,
+    },
+}
+
+/// Parse nmap/masscan output into structured hosts+ports
+pub fn parse_scan_output(stdout: &str, tool: NetworkTool) -> ParsedOutput {
+    let mut hosts: Vec<DiscoveredHost> = Vec::new();
+    let mut current_host: Option<DiscoveredHost> = None;
+
+    let scan_type = match tool {
+        NetworkTool::MassScan => "masscan",
+        NetworkTool::ServiceScan => "service",
+        NetworkTool::PingSweep => "ping",
+        _ => "port",
+    };
+
+    for line in stdout.lines() {
+        let line = line.trim();
+
+        // nmap: "Nmap scan report for <host> (<ip>)" or "Nmap scan report for <ip>"
+        if line.starts_with("Nmap scan report for ") {
+            if let Some(host) = current_host.take() {
+                hosts.push(host);
+            }
+            let rest = &line["Nmap scan report for ".len()..];
+            let (hostname, address) = if let Some(paren_start) = rest.find('(') {
+                let name = rest[..paren_start].trim().to_string();
+                let ip = rest[paren_start + 1..].trim_end_matches(')').to_string();
+                (Some(name), ip)
+            } else {
+                (None, rest.trim().to_string())
+            };
+            current_host = Some(DiscoveredHost {
+                address,
+                hostname,
+                mac_address: None,
+                vendor: None,
+                state: "up".to_string(),
+                ports: Vec::new(),
+            });
+        }
+
+        // nmap: "MAC Address: AA:BB:CC:DD:EE:FF (Vendor)"
+        if line.starts_with("MAC Address: ") {
+            if let Some(ref mut host) = current_host {
+                let rest = &line["MAC Address: ".len()..];
+                let parts: Vec<&str> = rest.splitn(2, ' ').collect();
+                host.mac_address = Some(parts[0].to_string());
+                if parts.len() > 1 {
+                    host.vendor = Some(parts[1].trim_matches(|c| c == '(' || c == ')').to_string());
+                }
+            }
+        }
+
+        // nmap port line: "80/tcp   open  http    Apache httpd 2.4.41"
+        if let Some(port_entry) = parse_nmap_port_line(line) {
+            if let Some(ref mut host) = current_host {
+                host.ports.push(port_entry);
+            }
+        }
+
+        // masscan: "Discovered open port 80/tcp on 192.168.1.1"
+        if line.starts_with("Discovered open port ") {
+            let rest = &line["Discovered open port ".len()..];
+            if let Some((port_proto, addr)) = rest.split_once(" on ") {
+                if let Some((port_str, proto)) = port_proto.split_once('/') {
+                    if let Ok(port) = port_str.parse::<u16>() {
+                        let host = hosts.iter_mut().find(|h| h.address == addr);
+                        let entry = DiscoveredPort {
+                            port,
+                            protocol: proto.to_string(),
+                            state: "open".to_string(),
+                            service: None,
+                            version: None,
+                        };
+                        if let Some(h) = host {
+                            h.ports.push(entry);
+                        } else {
+                            hosts.push(DiscoveredHost {
+                                address: addr.to_string(),
+                                hostname: None,
+                                mac_address: None,
+                                vendor: None,
+                                state: "up".to_string(),
+                                ports: vec![entry],
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        // nmap host down/up
+        if line.contains("Host is up") {
+            if let Some(ref mut host) = current_host {
+                host.state = "up".to_string();
+            }
+        }
+    }
+
+    if let Some(host) = current_host {
+        hosts.push(host);
+    }
+
+    ParsedOutput::HostScan {
+        hosts,
+        scan_type: scan_type.to_string(),
+    }
+}
+
+fn parse_nmap_port_line(line: &str) -> Option<DiscoveredPort> {
+    // Format: "80/tcp   open  http    Apache httpd 2.4.41"
+    let parts: Vec<&str> = line.split_whitespace().collect();
+    if parts.len() < 3 {
+        return None;
+    }
+    let (port_str, proto) = parts[0].split_once('/')?;
+    let port = port_str.parse::<u16>().ok()?;
+    let state = parts[1];
+    if !matches!(state, "open" | "closed" | "filtered" | "open|filtered") {
+        return None;
+    }
+    let service = parts.get(2).map(|s| s.to_string());
+    let version = if parts.len() > 3 {
+        Some(parts[3..].join(" "))
+    } else {
+        None
+    };
+    Some(DiscoveredPort {
+        port,
+        protocol: proto.to_string(),
+        state: state.to_string(),
+        service,
+        version,
+    })
+}
+
+/// Parse dig output into DNS records
+pub fn parse_dns_output(stdout: &str, query: &str) -> ParsedOutput {
+    let mut records = Vec::new();
+    let mut in_answer = false;
+
+    for line in stdout.lines() {
+        let line = line.trim();
+        if line.starts_with(";; ANSWER SECTION:") {
+            in_answer = true;
+            continue;
+        }
+        if in_answer {
+            if line.is_empty() || line.starts_with(";;") {
+                in_answer = false;
+                continue;
+            }
+            // Format: "example.com.     300     IN      A       93.184.216.34"
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 5 {
+                let ttl = parts[1].parse::<u32>().ok();
+                records.push(DnsRecord {
+                    name: parts[0].trim_end_matches('.').to_string(),
+                    record_type: parts[3].to_string(),
+                    value: parts[4..].join(" "),
+                    ttl,
+                });
+            }
+        }
+    }
+
+    ParsedOutput::DnsResult {
+        records,
+        query: query.to_string(),
+    }
+}
+
+/// Parse traceroute/mtr output into hops
+pub fn parse_trace_output(stdout: &str, target: &str) -> ParsedOutput {
+    let mut hops = Vec::new();
+
+    for line in stdout.lines() {
+        let line = line.trim();
+        // traceroute format: " 1  gateway (192.168.1.1)  0.595 ms  0.521 ms  0.497 ms"
+        // mtr report format: " 1.|-- 192.168.1.1  0.0%     5    0.6   0.5   0.4   0.7   0.1"
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.is_empty() {
+            continue;
+        }
+
+        // Try parsing hop number from first token
+        let hop_str = parts[0].trim_end_matches(".|--").trim_end_matches('.');
+        let hop_number = match hop_str.parse::<u32>() {
+            Ok(n) if n > 0 => n,
+            _ => continue,
+        };
+
+        if parts.len() >= 2 && parts[1] == "*" {
+            hops.push(TraceHop {
+                hop_number,
+                address: None,
+                hostname: None,
+                rtt_ms: None,
+                loss_pct: None,
+            });
+            continue;
+        }
+
+        // Extract address and optional hostname
+        let (hostname, address) = if parts.len() >= 3 && parts[2].starts_with('(') {
+            let addr = parts[2].trim_matches(|c: char| c == '(' || c == ')').to_string();
+            (Some(parts[1].to_string()), Some(addr))
+        } else if parts.len() >= 2 {
+            let addr = parts[1].trim_matches(|c: char| c == '(' || c == ')').to_string();
+            (None, Some(addr))
+        } else {
+            (None, None)
+        };
+
+        // Extract RTT (first ms value found)
+        let rtt_ms = parts.iter().find_map(|p| {
+            p.trim_end_matches("ms").parse::<f64>().ok()
+        });
+
+        // Extract loss percentage (mtr format: "0.0%")
+        let loss_pct = parts.iter().find_map(|p| {
+            p.trim_end_matches('%').parse::<f64>().ok().filter(|_| p.ends_with('%'))
+        });
+
+        hops.push(TraceHop {
+            hop_number,
+            address,
+            hostname,
+            rtt_ms,
+            loss_pct,
+        });
+    }
+
+    ParsedOutput::TraceResult {
+        hops,
+        target: target.to_string(),
+    }
+}
+
+/// Parse ss output into socket entries
+pub fn parse_socket_output(stdout: &str) -> ParsedOutput {
+    let mut sockets = Vec::new();
+
+    for line in stdout.lines().skip(1) {
+        // Format: "ESTAB  tcp  0  0  192.168.1.2:22  10.0.0.1:54321  users:(("sshd",pid=1234,fd=3))"
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() < 5 {
+            continue;
+        }
+        let state = parts[0].to_string();
+        if matches!(state.as_str(), "State" | "Netid") {
+            continue;
+        }
+        let protocol = parts[1].to_string();
+        let local_addr = parts.get(4).unwrap_or(&"").to_string();
+        let remote_addr = parts.get(5).unwrap_or(&"").to_string();
+        let process = parts.get(6).map(|p| {
+            p.trim_matches(|c: char| !c.is_alphanumeric() && c != ',' && c != '=' && c != '"')
+                .to_string()
+        });
+
+        sockets.push(SocketEntry {
+            state,
+            protocol,
+            local_addr,
+            remote_addr,
+            process,
+        });
+    }
+
+    ParsedOutput::SocketList { sockets }
+}
+
+/// Parse tool output into structured results based on tool type
+pub fn parse_output(output: &ToolOutput, target: Option<&str>) -> ParsedOutput {
+    match output.tool {
+        NetworkTool::PortScan | NetworkTool::PingSweep | NetworkTool::ServiceScan
+        | NetworkTool::MassScan => parse_scan_output(&output.stdout, output.tool),
+        NetworkTool::DnsLookup | NetworkTool::DnsEnum => {
+            parse_dns_output(&output.stdout, target.unwrap_or("unknown"))
+        }
+        NetworkTool::TraceRoute | NetworkTool::NetworkDiag => {
+            parse_trace_output(&output.stdout, target.unwrap_or("unknown"))
+        }
+        NetworkTool::SocketStats => parse_socket_output(&output.stdout),
+        _ => {
+            let line_count = output.stdout.lines().count();
+            let summary = if output.exit_code == 0 {
+                format!("{} completed ({} lines of output)", output.tool, line_count)
+            } else {
+                format!("{} exited with code {} ({} lines)", output.tool, output.exit_code, line_count)
+            };
+            ParsedOutput::Raw { summary }
         }
     }
 }
@@ -402,12 +934,48 @@ pub fn validate_args(tool: NetworkTool, args: &[String], allow_dangerous: bool) 
                 }
             }
         }
-        NetworkTool::PacketCapture => {
+        NetworkTool::PacketCapture | NetworkTool::DeepInspect | NetworkTool::NetworkGrep => {
             // Reject writing to files without approval
             if !allow_dangerous && (joined.contains("-w ") || joined.contains("-w\t")) {
                 return Err(anyhow!(
                     "Packet capture file output (-w) requires explicit approval"
                 ));
+            }
+        }
+        NetworkTool::MassScan => {
+            if !allow_dangerous {
+                for pattern in DANGEROUS_NMAP_ARGS.iter().filter(|p| p.starts_with("-o")) {
+                    if joined.contains(*pattern) {
+                        return Err(anyhow!(
+                            "Dangerous masscan argument '{}' requires explicit approval",
+                            pattern.trim()
+                        ));
+                    }
+                }
+                // Reject extremely high rates
+                if joined.contains("--rate") {
+                    if let Some(rate_val) = joined.split("--rate").nth(1)
+                        .and_then(|s| s.trim().split_whitespace().next())
+                        .and_then(|s| s.trim_start_matches('=').parse::<u64>().ok())
+                    {
+                        if rate_val > 10000 {
+                            return Err(anyhow!(
+                                "masscan rate {} exceeds safe limit (10000); requires explicit approval",
+                                rate_val
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+        NetworkTool::VulnScanner => {
+            if !allow_dangerous {
+                // Reject custom template paths (could be malicious)
+                if joined.contains("-t ") || joined.contains("--templates") {
+                    return Err(anyhow!(
+                        "Custom nuclei templates require explicit approval"
+                    ));
+                }
             }
         }
         _ => {}
@@ -496,6 +1064,30 @@ impl NetworkToolRunner {
             }
             NetworkTool::ServiceScan => {
                 cmd_args.push("-sV".into());
+            }
+            NetworkTool::MassScan => {
+                cmd_args.push("--rate=1000".into()); // safe default rate
+            }
+            NetworkTool::ArpScan => {
+                cmd_args.push("--localnet".into());
+            }
+            NetworkTool::NetworkDiag => {
+                cmd_args.push("--report".into()); // parseable report mode
+                cmd_args.push("-c".into());
+                cmd_args.push("10".into()); // 10 pings per hop
+            }
+            NetworkTool::DeepInspect => {
+                cmd_args.push("-c".into());
+                cmd_args.push("100".into()); // capture 100 packets by default
+            }
+            NetworkTool::SocketStats => {
+                cmd_args.push("-tunap".into()); // TCP, UDP, numeric, all, processes
+            }
+            NetworkTool::DnsEnum => {
+                cmd_args.push("-d".into()); // domain flag
+            }
+            NetworkTool::VulnScanner => {
+                cmd_args.push("-silent".into()); // parseable output
             }
             _ => {}
         }
@@ -844,7 +1436,7 @@ mod tests {
     fn test_list_all_tools_count() {
         let tools = NetworkToolRunner::list_all_tools();
         assert_eq!(tools.len(), ALL_TOOLS.len());
-        assert_eq!(tools.len(), 11);
+        assert_eq!(tools.len(), 23);
     }
 
     #[test]
@@ -905,5 +1497,322 @@ mod tests {
         assert!(configs.iter().any(|c| c.tool == NetworkTool::ServiceScan));
         assert!(configs.iter().any(|c| c.tool == NetworkTool::WebScan));
         assert!(configs.iter().any(|c| c.tool == NetworkTool::DirBust));
+        assert!(configs.iter().any(|c| c.tool == NetworkTool::MassScan));
+        assert!(configs.iter().any(|c| c.tool == NetworkTool::ArpScan));
+        assert!(configs.iter().any(|c| c.tool == NetworkTool::NetworkDiag));
+        assert!(configs.iter().any(|c| c.tool == NetworkTool::DataRelay));
+        assert!(configs.iter().any(|c| c.tool == NetworkTool::DeepInspect));
+        assert!(configs.iter().any(|c| c.tool == NetworkTool::NetworkGrep));
+        assert!(configs.iter().any(|c| c.tool == NetworkTool::SocketStats));
+        assert!(configs.iter().any(|c| c.tool == NetworkTool::DnsEnum));
+        assert!(configs.iter().any(|c| c.tool == NetworkTool::DirFuzz));
+        assert!(configs.iter().any(|c| c.tool == NetworkTool::VulnScanner));
+        assert!(configs.iter().any(|c| c.tool == NetworkTool::BandwidthMonitor));
+        assert!(configs.iter().any(|c| c.tool == NetworkTool::PassiveFingerprint));
+    }
+
+    // --- New tool config tests ---
+
+    #[test]
+    fn test_masscan_config() {
+        let cfg = NetworkToolConfig::for_tool(NetworkTool::MassScan);
+        assert_eq!(cfg.binary_name, "masscan");
+        assert_eq!(cfg.risk_level, RiskLevel::High);
+        assert!(cfg.requires_approval);
+    }
+
+    #[test]
+    fn test_mtr_config() {
+        let cfg = NetworkToolConfig::for_tool(NetworkTool::NetworkDiag);
+        assert_eq!(cfg.binary_name, "mtr");
+        assert_eq!(cfg.risk_level, RiskLevel::Medium);
+        assert!(!cfg.requires_approval);
+    }
+
+    #[test]
+    fn test_ss_config_low_risk() {
+        let cfg = NetworkToolConfig::for_tool(NetworkTool::SocketStats);
+        assert_eq!(cfg.binary_name, "ss");
+        assert_eq!(cfg.risk_level, RiskLevel::Low);
+        assert!(!cfg.requires_approval);
+    }
+
+    #[test]
+    fn test_nuclei_config_critical() {
+        let cfg = NetworkToolConfig::for_tool(NetworkTool::VulnScanner);
+        assert_eq!(cfg.binary_name, "nuclei");
+        assert_eq!(cfg.risk_level, RiskLevel::Critical);
+        assert!(cfg.requires_approval);
+    }
+
+    #[test]
+    fn test_tshark_config() {
+        let cfg = NetworkToolConfig::for_tool(NetworkTool::DeepInspect);
+        assert_eq!(cfg.binary_name, "tshark");
+        assert!(!cfg.allowed_in_sandbox);
+    }
+
+    #[test]
+    fn test_ffuf_config() {
+        let cfg = NetworkToolConfig::for_tool(NetworkTool::DirFuzz);
+        assert_eq!(cfg.binary_name, "ffuf");
+        assert!(cfg.requires_approval);
+    }
+
+    #[test]
+    fn test_p0f_config() {
+        let cfg = NetworkToolConfig::for_tool(NetworkTool::PassiveFingerprint);
+        assert_eq!(cfg.binary_name, "p0f");
+        assert!(!cfg.allowed_in_sandbox);
+    }
+
+    #[test]
+    fn test_arp_scan_config() {
+        let cfg = NetworkToolConfig::for_tool(NetworkTool::ArpScan);
+        assert_eq!(cfg.binary_name, "arp-scan");
+        assert_eq!(cfg.risk_level, RiskLevel::Medium);
+    }
+
+    // --- Dangerous arg rejection for new tools ---
+
+    #[test]
+    fn test_reject_masscan_high_rate() {
+        let args = vec!["--rate=100000".to_string()];
+        assert!(validate_args(NetworkTool::MassScan, &args, false).is_err());
+    }
+
+    #[test]
+    fn test_allow_masscan_safe_rate() {
+        let args = vec!["--rate=5000".to_string()];
+        assert!(validate_args(NetworkTool::MassScan, &args, false).is_ok());
+    }
+
+    #[test]
+    fn test_reject_nuclei_custom_templates() {
+        let args = vec!["-t".to_string(), "/tmp/evil.yaml".to_string()];
+        assert!(validate_args(NetworkTool::VulnScanner, &args, false).is_err());
+    }
+
+    #[test]
+    fn test_allow_nuclei_custom_templates_with_approval() {
+        let args = vec!["-t".to_string(), "/tmp/custom.yaml".to_string()];
+        assert!(validate_args(NetworkTool::VulnScanner, &args, true).is_ok());
+    }
+
+    #[test]
+    fn test_reject_tshark_write() {
+        let args = vec!["-w capture.pcap".to_string()];
+        assert!(validate_args(NetworkTool::DeepInspect, &args, false).is_err());
+    }
+
+    // --- Output parsing tests ---
+
+    #[test]
+    fn test_parse_nmap_scan_output() {
+        let stdout = "\
+Starting Nmap 7.94 ( https://nmap.org )
+Nmap scan report for example.com (93.184.216.34)
+Host is up (0.025s latency).
+80/tcp   open  http    Apache httpd 2.4.41
+443/tcp  open  https   nginx 1.18.0
+22/tcp   closed ssh
+
+Nmap done: 1 IP address (1 host up) scanned in 2.34 seconds";
+
+        let result = parse_scan_output(stdout, NetworkTool::PortScan);
+        match result {
+            ParsedOutput::HostScan { hosts, scan_type } => {
+                assert_eq!(scan_type, "port");
+                assert_eq!(hosts.len(), 1);
+                assert_eq!(hosts[0].address, "93.184.216.34");
+                assert_eq!(hosts[0].hostname.as_deref(), Some("example.com"));
+                assert_eq!(hosts[0].ports.len(), 3);
+                assert_eq!(hosts[0].ports[0].port, 80);
+                assert_eq!(hosts[0].ports[0].state, "open");
+                assert_eq!(hosts[0].ports[0].service.as_deref(), Some("http"));
+                assert_eq!(hosts[0].ports[1].port, 443);
+                assert_eq!(hosts[0].ports[2].state, "closed");
+            }
+            _ => panic!("Expected HostScan"),
+        }
+    }
+
+    #[test]
+    fn test_parse_nmap_ping_sweep() {
+        let stdout = "\
+Starting Nmap 7.94
+Nmap scan report for 192.168.1.1
+Host is up (0.001s latency).
+MAC Address: AA:BB:CC:DD:EE:FF (RouterVendor)
+
+Nmap scan report for 192.168.1.50
+Host is up (0.003s latency).
+
+Nmap done: 256 IP addresses (2 hosts up)";
+
+        let result = parse_scan_output(stdout, NetworkTool::PingSweep);
+        match result {
+            ParsedOutput::HostScan { hosts, .. } => {
+                assert_eq!(hosts.len(), 2);
+                assert_eq!(hosts[0].address, "192.168.1.1");
+                assert_eq!(hosts[0].mac_address.as_deref(), Some("AA:BB:CC:DD:EE:FF"));
+                assert_eq!(hosts[0].vendor.as_deref(), Some("RouterVendor"));
+                assert_eq!(hosts[1].address, "192.168.1.50");
+            }
+            _ => panic!("Expected HostScan"),
+        }
+    }
+
+    #[test]
+    fn test_parse_masscan_output() {
+        let stdout = "\
+Discovered open port 80/tcp on 10.0.0.1
+Discovered open port 443/tcp on 10.0.0.1
+Discovered open port 22/tcp on 10.0.0.2";
+
+        let result = parse_scan_output(stdout, NetworkTool::MassScan);
+        match result {
+            ParsedOutput::HostScan { hosts, scan_type } => {
+                assert_eq!(scan_type, "masscan");
+                assert_eq!(hosts.len(), 2);
+                let h1 = hosts.iter().find(|h| h.address == "10.0.0.1").unwrap();
+                assert_eq!(h1.ports.len(), 2);
+                let h2 = hosts.iter().find(|h| h.address == "10.0.0.2").unwrap();
+                assert_eq!(h2.ports.len(), 1);
+                assert_eq!(h2.ports[0].port, 22);
+            }
+            _ => panic!("Expected HostScan"),
+        }
+    }
+
+    #[test]
+    fn test_parse_dns_output() {
+        let stdout = "\
+; <<>> DiG 9.18.12 <<>> example.com
+;; ANSWER SECTION:
+example.com.     300     IN      A       93.184.216.34
+example.com.     300     IN      AAAA    2606:2800:220:1:248:1893:25c8:1946
+
+;; Query time: 25 msec";
+
+        let result = parse_dns_output(stdout, "example.com");
+        match result {
+            ParsedOutput::DnsResult { records, query } => {
+                assert_eq!(query, "example.com");
+                assert_eq!(records.len(), 2);
+                assert_eq!(records[0].record_type, "A");
+                assert_eq!(records[0].value, "93.184.216.34");
+                assert_eq!(records[0].ttl, Some(300));
+                assert_eq!(records[1].record_type, "AAAA");
+            }
+            _ => panic!("Expected DnsResult"),
+        }
+    }
+
+    #[test]
+    fn test_parse_traceroute_output() {
+        let stdout = "\
+traceroute to example.com (93.184.216.34), 30 hops max
+ 1  gateway (192.168.1.1)  0.595 ms  0.521 ms  0.497 ms
+ 2  10.0.0.1 (10.0.0.1)  2.123 ms  1.998 ms  2.045 ms
+ 3  * * *";
+
+        let result = parse_trace_output(stdout, "example.com");
+        match result {
+            ParsedOutput::TraceResult { hops, target } => {
+                assert_eq!(target, "example.com");
+                assert_eq!(hops.len(), 3);
+                assert_eq!(hops[0].hop_number, 1);
+                assert_eq!(hops[0].hostname.as_deref(), Some("gateway"));
+                assert_eq!(hops[0].address.as_deref(), Some("192.168.1.1"));
+                assert_eq!(hops[2].address, None); // timeout hop
+            }
+            _ => panic!("Expected TraceResult"),
+        }
+    }
+
+    #[test]
+    fn test_parse_mtr_report() {
+        let stdout = "\
+Start: 2026-03-06T10:00:00
+HOST: agnos                       Loss%   Snt   Last   Avg  Best  Wrst StDev
+  1.|-- 192.168.1.1                0.0%    10    0.5   0.6   0.4   0.9   0.1
+  2.|-- 10.0.0.1                   0.0%    10    2.1   2.0   1.8   2.4   0.2
+  3.|-- ???                       100.0%    10    0.0   0.0   0.0   0.0   0.0";
+
+        let result = parse_trace_output(stdout, "10.0.0.1");
+        match result {
+            ParsedOutput::TraceResult { hops, .. } => {
+                assert_eq!(hops.len(), 3);
+                assert_eq!(hops[0].hop_number, 1);
+                assert_eq!(hops[0].address.as_deref(), Some("192.168.1.1"));
+            }
+            _ => panic!("Expected TraceResult"),
+        }
+    }
+
+    #[test]
+    fn test_parse_ss_output() {
+        let stdout = "\
+State    Recv-Q  Send-Q  Local Address:Port  Peer Address:Port  Process
+ESTAB    0       0       192.168.1.2:22      10.0.0.1:54321     users:((\"sshd\",pid=1234,fd=3))
+LISTEN   0       128     0.0.0.0:80          0.0.0.0:*          users:((\"nginx\",pid=5678,fd=6))";
+
+        let result = parse_socket_output(stdout);
+        match result {
+            ParsedOutput::SocketList { sockets } => {
+                assert_eq!(sockets.len(), 2);
+                assert_eq!(sockets[0].state, "ESTAB");
+                assert_eq!(sockets[1].state, "LISTEN");
+            }
+            _ => panic!("Expected SocketList"),
+        }
+    }
+
+    #[test]
+    fn test_parse_output_dispatches_correctly() {
+        let output = ToolOutput {
+            stdout: "".into(),
+            stderr: String::new(),
+            exit_code: 0,
+            duration: Duration::from_secs(1),
+            tool: NetworkTool::SocketStats,
+            audit_entry: String::new(),
+        };
+        let result = parse_output(&output, None);
+        assert!(matches!(result, ParsedOutput::SocketList { .. }));
+
+        let output2 = ToolOutput {
+            stdout: "".into(),
+            stderr: String::new(),
+            exit_code: 0,
+            duration: Duration::from_secs(1),
+            tool: NetworkTool::HttpClient,
+            audit_entry: String::new(),
+        };
+        let result2 = parse_output(&output2, None);
+        assert!(matches!(result2, ParsedOutput::Raw { .. }));
+    }
+
+    #[test]
+    fn test_parse_empty_scan() {
+        let result = parse_scan_output("Nmap done: 0 IP addresses", NetworkTool::PortScan);
+        match result {
+            ParsedOutput::HostScan { hosts, .. } => {
+                assert!(hosts.is_empty());
+            }
+            _ => panic!("Expected HostScan"),
+        }
+    }
+
+    #[test]
+    fn test_parse_empty_dns() {
+        let result = parse_dns_output(";; Got answer:\n;; AUTHORITY SECTION:", "test.invalid");
+        match result {
+            ParsedOutput::DnsResult { records, .. } => {
+                assert!(records.is_empty());
+            }
+            _ => panic!("Expected DnsResult"),
+        }
     }
 }

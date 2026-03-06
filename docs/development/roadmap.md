@@ -51,7 +51,7 @@
 | Kernel Development Guide | Documentation | 3 days | TBD | Not started |
 | Support portal | Infrastructure | 2 weeks | TBD | Not started |
 | Interactive API explorer | Documentation | 1 week | TBD | Not started |
-| Wayland full protocol (wayland-server feature) | desktop-environment | 2+ weeks | TBD | Types ready, protocol layer stubbed |
+| Wayland full protocol (wayland-server feature) | desktop-environment | 2+ weeks | TBD | ProtocolBridge implemented, event routing done |
 
 ### Engineering Backlog (Code Audit — March 6)
 
@@ -114,7 +114,7 @@ AGNOS (AI-Native General Operating System) is in **Phase 5: Production**, focuse
 | 0-4 | Complete | 100% | Foundation through Desktop |
 | 5 | In Progress | 99% | Production hardening |
 | 5.6 | Complete | 100% | Internal implementation gaps (all P0-P2 stubs eliminated) |
-| 6 | In Progress | 15% | Advanced AI & Networking (toolkit framework done) |
+| 6 | In Progress | 30% | Advanced AI & Networking (23 tool wrappers + output parsers) |
 | 6.5 | Complete | 100% | OS-Level Features & Security Hardening (all 12 modules) |
 | 6.6 | Complete | 100% | Consumer Integration (9 features) |
 | 7+ | Planned | 0% | Ecosystem & Research |
@@ -226,10 +226,12 @@ AGNOS includes a networking toolkit framework (`agent-runtime/src/network_tools.
 - [ ] `aircrack-ng` suite — 802.11 analysis
 - [ ] `kismet` — wireless network detector
 
-**Agent Integration** ✅ Framework Complete
-- [x] Network tool runner with sandboxed execution (`network_tools.rs`, 37 tests)
-- [x] AI Shell understands natural language queries like "scan 192.168.1.0/24 for open ports"
-- [x] Target validation, risk levels, dangerous arg rejection
+**Agent Integration** ✅ Framework + Wrappers Complete
+- [x] Network tool runner with sandboxed execution (`network_tools.rs`, 60 tests)
+- [x] 23 tool variants: port scan, ping sweep, DNS, traceroute, bandwidth, packet capture, HTTP, netcat, service scan, web scan, dir bust, mass scan, ARP scan, mtr, socat, tshark, ngrep, ss, dnsrecon, ffuf, nuclei, nethogs, p0f
+- [x] Output parsers: structured results for nmap, masscan, dig, traceroute/mtr, ss
+- [x] AI Shell understands 17 network actions via natural language
+- [x] Target validation, risk levels, dangerous arg rejection (masscan rate limits, nuclei template restrictions)
 - [ ] Results piped through LLM Gateway for automated interpretation and reporting
 - [x] All tool invocations require user approval for sensitive operations (per Human Sovereignty principle)
 - [x] Audit trail for every network operation

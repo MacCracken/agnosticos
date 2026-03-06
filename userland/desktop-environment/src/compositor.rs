@@ -817,44 +817,90 @@ pub enum TouchPhase {
     Up,
 }
 
-pub struct WaylandBackend;
+/// Wayland compositor backend.
+///
+/// Bridges the [`CompositorBackend`] trait to the Wayland protocol layer
+/// via [`crate::wayland::ProtocolBridge`]. Input events are routed through
+/// the bridge, and renders trigger a compositor frame.
+pub struct WaylandBackend {
+    bridge: crate::wayland::ProtocolBridge,
+    compositor: Option<Arc<Compositor>>,
+}
+
+impl WaylandBackend {
+    pub fn new() -> Self {
+        Self {
+            bridge: crate::wayland::ProtocolBridge::new(),
+            compositor: None,
+        }
+    }
+
+    /// Attach a compositor instance for protocol bridge actions.
+    pub fn attach_compositor(&mut self, compositor: Arc<Compositor>) {
+        self.compositor = Some(compositor);
+    }
+
+    /// Access the protocol bridge directly.
+    pub fn bridge(&self) -> &crate::wayland::ProtocolBridge {
+        &self.bridge
+    }
+
+    /// Access the protocol bridge mutably.
+    pub fn bridge_mut(&mut self) -> &mut crate::wayland::ProtocolBridge {
+        &mut self.bridge
+    }
+}
+
+impl Default for WaylandBackend {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl CompositorBackend for WaylandBackend {
     fn initialize(&mut self) -> Result<(), CompositorError> {
-        info!("Initializing Wayland backend");
+        info!("Initializing Wayland backend with protocol bridge");
         Ok(())
     }
 
     fn handle_input(&mut self, event: InputEvent) -> Result<(), CompositorError> {
-        match event {
-            InputEvent::MouseMove { x, y } => {
-                tracing::debug!("Mouse move: ({}, {})", x, y);
-            }
-            InputEvent::MouseClick { button, x, y } => {
-                tracing::debug!("Mouse click: button={}, ({}, {})", button, x, y);
-            }
-            InputEvent::KeyPress { keycode, modifiers } => {
-                tracing::debug!("Key press: keycode={}, modifiers={}", keycode, modifiers);
-            }
-            InputEvent::TouchEvent {
-                finger_id,
-                x: x_pos,
-                y: y_pos,
-                phase,
-            } => {
-                tracing::debug!(
-                    "Touch: finger={}, x={}, y={}, phase={:?}",
+        if let Some(ref compositor) = self.compositor {
+            self.bridge.route_input(compositor, &event);
+        } else {
+            match &event {
+                InputEvent::MouseMove { x, y } => {
+                    tracing::debug!("Mouse move: ({}, {})", x, y);
+                }
+                InputEvent::MouseClick { button, x, y } => {
+                    tracing::debug!("Mouse click: button={}, ({}, {})", button, x, y);
+                }
+                InputEvent::KeyPress { keycode, modifiers } => {
+                    tracing::debug!("Key press: keycode={}, modifiers={}", keycode, modifiers);
+                }
+                InputEvent::TouchEvent {
                     finger_id,
-                    x_pos,
-                    y_pos,
-                    phase
-                );
+                    x: x_pos,
+                    y: y_pos,
+                    phase,
+                } => {
+                    tracing::debug!(
+                        "Touch: finger={}, x={}, y={}, phase={:?}",
+                        finger_id,
+                        x_pos,
+                        y_pos,
+                        phase
+                    );
+                }
             }
         }
         Ok(())
     }
 
     fn render(&mut self) -> Result<(), CompositorError> {
+        if let Some(ref compositor) = self.compositor {
+            self.bridge.apply_actions(compositor);
+            compositor.render();
+        }
         Ok(())
     }
 
@@ -1108,7 +1154,7 @@ mod tests {
 
     #[test]
     fn test_wayland_backend_initialize() {
-        let mut backend = WaylandBackend;
+        let mut backend = WaylandBackend::new();
         assert!(backend.initialize().is_ok());
         assert!(backend.render().is_ok());
         assert!(backend.shutdown().is_ok());
@@ -1116,28 +1162,28 @@ mod tests {
 
     #[test]
     fn test_wayland_backend_handle_input() {
-        let mut backend = WaylandBackend;
+        let mut backend = WaylandBackend::new();
         let event = InputEvent::MouseMove { x: 100, y: 200 };
         assert!(backend.handle_input(event).is_ok());
     }
 
     #[test]
     fn test_wayland_backend_handle_click() {
-        let mut backend = WaylandBackend;
+        let mut backend = WaylandBackend::new();
         let event = InputEvent::MouseClick { button: 1, x: 50, y: 50 };
         assert!(backend.handle_input(event).is_ok());
     }
 
     #[test]
     fn test_wayland_backend_handle_keypress() {
-        let mut backend = WaylandBackend;
+        let mut backend = WaylandBackend::new();
         let event = InputEvent::KeyPress { keycode: 65, modifiers: 0 };
         assert!(backend.handle_input(event).is_ok());
     }
 
     #[test]
     fn test_wayland_backend_handle_touch() {
-        let mut backend = WaylandBackend;
+        let mut backend = WaylandBackend::new();
         let event = InputEvent::TouchEvent { finger_id: 0, x: 100.0, y: 200.0, phase: TouchPhase::Down };
         assert!(backend.handle_input(event).is_ok());
     }
