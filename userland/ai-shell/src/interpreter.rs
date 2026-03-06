@@ -81,6 +81,47 @@ pub enum Intent {
         /// Target host, IP, or network
         target: Option<String>,
     },
+    /// View journald log entries
+    JournalView {
+        /// Optional systemd unit to filter by
+        unit: Option<String>,
+        /// Optional priority filter (e.g., "err", "warning", "info")
+        priority: Option<String>,
+        /// Maximum number of lines to display
+        lines: Option<usize>,
+        /// Time window (e.g., "1h ago", "today")
+        since: Option<String>,
+    },
+    /// View device information (udev)
+    DeviceInfo {
+        /// Optional subsystem filter (e.g., "usb", "block", "net")
+        subsystem: Option<String>,
+        /// Optional specific device path
+        device_path: Option<String>,
+    },
+    /// Mount/unmount filesystems (including FUSE)
+    MountControl {
+        /// Action: list, mount, unmount
+        action: String,
+        /// Optional mountpoint path
+        mountpoint: Option<String>,
+        /// Optional filesystem type
+        filesystem: Option<String>,
+    },
+    /// Bootloader configuration
+    BootConfig {
+        /// Action: list, default, timeout
+        action: String,
+        /// Optional boot entry identifier
+        entry: Option<String>,
+        /// Optional value (for set operations)
+        value: Option<String>,
+    },
+    /// System update management
+    SystemUpdate {
+        /// Action: check, apply, rollback, status
+        action: String,
+    },
     /// Question/Information request
     Question { query: String },
     /// Ambiguous - needs clarification
@@ -214,6 +255,66 @@ impl Interpreter {
             Regex::new(r"(?i)^(scan\s+ports?\s+(?:on|for)\s+(.+)|ping\s+sweep\s+(.+)|lookup\s+dns\s+(?:for\s+)?(.+)|trace\s+route\s+to\s+(.+)|capture\s+packets?\s+(?:on|from)\s+(.+)|scan\s+web\s+servers?\s+(.+))$").unwrap(),
         );
 
+        // Journal view patterns
+        patterns.insert(
+            "journal".to_string(),
+            Regex::new(r"(?i)^(show|view|display|check)\s+(the\s+)?(journal|journald?|systemd)\s*(logs?|entries|messages)?(\s+for\s+(.+?))?(\s+since\s+(.+))?$").unwrap(),
+        );
+
+        // Journal view — "show logs for <unit>" / "show error logs" / "show last N log entries"
+        patterns.insert(
+            "journal_alt".to_string(),
+            Regex::new(r"(?i)^(show|view|display)\s+(the\s+)?(last\s+(\d+)\s+)?(error|warning|critical|info|debug|notice|alert|emerg)?\s*(logs?|log\s+entries)(\s+for\s+(.+?))?(\s+since\s+(.+))?$").unwrap(),
+        );
+
+        // Device info patterns
+        patterns.insert(
+            "device_info".to_string(),
+            Regex::new(r"(?i)^(list|show|view|display)\s+(the\s+)?(all\s+)?(usb|block|net|pci|input|scsi)?\s*(devices?|hardware)(\s+(info|information|details))?(\s+for\s+(.+))?$").unwrap(),
+        );
+
+        // Device info — specific device path
+        patterns.insert(
+            "device_path".to_string(),
+            Regex::new(r"(?i)^(device|udev)\s+(info|information|details)\s+(for|on|about)\s+(.+)$").unwrap(),
+        );
+
+        // Mount control patterns
+        patterns.insert(
+            "mount".to_string(),
+            Regex::new(r"(?i)^(list|show|display)\s+(the\s+)?(all\s+)?(fuse\s+)?(mounts?|mounted\s+filesystems?|filesystems?)$").unwrap(),
+        );
+
+        // Mount control — unmount
+        patterns.insert(
+            "unmount".to_string(),
+            Regex::new(r"(?i)^(unmount|umount|eject|fusermount\s+-u)\s+(.+)$").unwrap(),
+        );
+
+        // Mount control — mount
+        patterns.insert(
+            "mount_action".to_string(),
+            Regex::new(r"(?i)^mount\s+(.+?)\s+(on|at|to)\s+(.+)$").unwrap(),
+        );
+
+        // Boot config patterns
+        patterns.insert(
+            "boot".to_string(),
+            Regex::new(r"(?i)^(list|show|view|display)\s+(the\s+)?(boot\s+(entries|config|configuration|menu)|bootloader)$").unwrap(),
+        );
+
+        // Boot config — set default/timeout
+        patterns.insert(
+            "boot_set".to_string(),
+            Regex::new(r"(?i)^set\s+(default\s+)?boot\s+(entry|default|timeout)\s+(to\s+)?(.+)$").unwrap(),
+        );
+
+        // System update patterns
+        patterns.insert(
+            "update".to_string(),
+            Regex::new(r"(?i)^(check\s+for\s+updates?|apply\s+(system\s+)?updates?|rollback\s+(system\s+)?updates?|update\s+status|show\s+(current\s+)?version|system\s+update\s+(check|apply|rollback|status))$").unwrap(),
+        );
+
         // Question patterns
         patterns.insert(
             "question".to_string(),
@@ -301,6 +402,136 @@ impl Interpreter {
                     target: Some(target.as_str().trim().to_string()),
                 };
             }
+        }
+
+        // Journal view
+        if let Some(caps) = self.try_captures("journal", &input_lower) {
+            let unit = caps.get(6).map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            let since = caps.get(8).map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            return Intent::JournalView {
+                unit,
+                priority: None,
+                lines: None,
+                since,
+            };
+        }
+
+        // Journal alt — "show error logs", "show last 50 log entries"
+        if let Some(caps) = self.try_captures("journal_alt", &input_lower) {
+            let lines = caps.get(4).and_then(|m| m.as_str().parse::<usize>().ok());
+            let priority = caps.get(5).map(|m| m.as_str().trim().to_string());
+            let unit = caps.get(8).map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            let since = caps.get(10).map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            return Intent::JournalView {
+                unit,
+                priority,
+                lines,
+                since,
+            };
+        }
+
+        // Device info
+        if let Some(caps) = self.try_captures("device_info", &input_lower) {
+            let subsystem = caps.get(4).map(|m| m.as_str().trim().to_string());
+            let device_path = caps.get(9).map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            return Intent::DeviceInfo {
+                subsystem,
+                device_path,
+            };
+        }
+
+        // Device info — specific path: "device info for /dev/sda"
+        if let Some(caps) = self.try_captures("device_path", &input_lower) {
+            let device_path = caps.get(4).map(|m| m.as_str().trim().to_string());
+            return Intent::DeviceInfo {
+                subsystem: None,
+                device_path,
+            };
+        }
+
+        // Mount control — unmount
+        if let Some(caps) = self.try_captures("unmount", &input_lower) {
+            let mountpoint = caps.get(2).map(|m| m.as_str().trim().to_string());
+            return Intent::MountControl {
+                action: "unmount".to_string(),
+                mountpoint,
+                filesystem: None,
+            };
+        }
+
+        // Mount control — mount <device> on <mountpoint>
+        if let Some(caps) = self.try_captures("mount_action", &input_lower) {
+            let filesystem = caps.get(1).map(|m| m.as_str().trim().to_string());
+            let mountpoint = caps.get(3).map(|m| m.as_str().trim().to_string());
+            return Intent::MountControl {
+                action: "mount".to_string(),
+                mountpoint,
+                filesystem,
+            };
+        }
+
+        // Mount control — list mounts
+        if let Some(caps) = self.try_captures("mount", &input_lower) {
+            let filesystem = if caps.get(4).is_some() {
+                Some("fuse".to_string())
+            } else {
+                None
+            };
+            return Intent::MountControl {
+                action: "list".to_string(),
+                mountpoint: None,
+                filesystem,
+            };
+        }
+
+        // Boot config — set
+        if let Some(caps) = self.try_captures("boot_set", &input_lower) {
+            let action_word = caps.get(2).map(|m| m.as_str().trim()).unwrap_or("default");
+            let action = match action_word {
+                "timeout" => "timeout".to_string(),
+                _ => "default".to_string(),
+            };
+            let value = caps.get(4).map(|m| m.as_str().trim().to_string());
+            let entry = if action == "default" { value.clone() } else { None };
+            return Intent::BootConfig {
+                action,
+                entry,
+                value,
+            };
+        }
+
+        // Boot config — list/show
+        if self.try_captures("boot", &input_lower).is_some() {
+            return Intent::BootConfig {
+                action: "list".to_string(),
+                entry: None,
+                value: None,
+            };
+        }
+
+        // System update
+        if let Some(_caps) = self.try_captures("update", &input_lower) {
+            let action = if input_lower.contains("check") {
+                "check"
+            } else if input_lower.contains("apply") {
+                "apply"
+            } else if input_lower.contains("rollback") {
+                "rollback"
+            } else if input_lower.contains("status") {
+                "status"
+            } else if input_lower.contains("version") {
+                "status"
+            } else {
+                "check"
+            };
+            return Intent::SystemUpdate {
+                action: action.to_string(),
+            };
         }
 
         if let Some(caps) = self.try_captures("list", &input_lower) {
@@ -740,6 +971,204 @@ impl Interpreter {
                 };
                 Ok(Translation {
                     command,
+                    args,
+                    description: desc.clone(),
+                    permission,
+                    explanation: desc,
+                })
+            }
+
+            Intent::JournalView {
+                unit,
+                priority,
+                lines,
+                since,
+            } => {
+                let mut args = Vec::new();
+                if let Some(u) = unit {
+                    args.push("-u".to_string());
+                    args.push(u.clone());
+                }
+                if let Some(p) = priority {
+                    args.push("-p".to_string());
+                    args.push(p.clone());
+                }
+                if let Some(n) = lines {
+                    args.push("-n".to_string());
+                    args.push(n.to_string());
+                }
+                if let Some(s) = since {
+                    args.push("--since".to_string());
+                    args.push(s.clone());
+                }
+                if args.is_empty() {
+                    // Default: show recent entries
+                    args.push("-n".to_string());
+                    args.push("50".to_string());
+                }
+                let desc = match (unit, priority) {
+                    (Some(u), Some(p)) => format!("Show {} priority journal logs for {}", p, u),
+                    (Some(u), None) => format!("Show journal logs for {}", u),
+                    (None, Some(p)) => format!("Show {} priority journal logs", p),
+                    (None, None) => "Show recent journal log entries".to_string(),
+                };
+                Ok(Translation {
+                    command: "journalctl".to_string(),
+                    args,
+                    description: desc.clone(),
+                    permission: PermissionLevel::ReadOnly,
+                    explanation: desc,
+                })
+            }
+
+            Intent::DeviceInfo {
+                subsystem,
+                device_path,
+            } => {
+                let (args, desc) = if let Some(path) = device_path {
+                    (
+                        vec!["info".to_string(), "--query=all".to_string(), "--name".to_string(), path.clone()],
+                        format!("Show device info for {}", path),
+                    )
+                } else if let Some(sub) = subsystem {
+                    (
+                        vec!["info".to_string(), "--subsystem-match".to_string(), sub.clone()],
+                        format!("List {} devices", sub),
+                    )
+                } else {
+                    (
+                        vec!["info".to_string(), "--export-db".to_string()],
+                        "List all devices".to_string(),
+                    )
+                };
+                Ok(Translation {
+                    command: "udevadm".to_string(),
+                    args,
+                    description: desc.clone(),
+                    permission: PermissionLevel::ReadOnly,
+                    explanation: desc,
+                })
+            }
+
+            Intent::MountControl {
+                action,
+                mountpoint,
+                filesystem,
+            } => {
+                let (command, args, desc, permission) = match action.as_str() {
+                    "list" => {
+                        let mut a = Vec::new();
+                        if let Some(fs) = filesystem {
+                            a.push("-t".to_string());
+                            a.push(fs.clone());
+                        }
+                        let d = if filesystem.is_some() {
+                            format!("List {} mounts", filesystem.as_deref().unwrap_or("all"))
+                        } else {
+                            "List all mounted filesystems".to_string()
+                        };
+                        ("findmnt".to_string(), a, d, PermissionLevel::Safe)
+                    }
+                    "unmount" => {
+                        let mp = mountpoint.as_deref().unwrap_or("/mnt");
+                        (
+                            "fusermount".to_string(),
+                            vec!["-u".to_string(), mp.to_string()],
+                            format!("Unmount {}", mp),
+                            PermissionLevel::Admin,
+                        )
+                    }
+                    "mount" => {
+                        let fs = filesystem.as_deref().unwrap_or("");
+                        let mp = mountpoint.as_deref().unwrap_or("/mnt");
+                        (
+                            "mount".to_string(),
+                            vec![fs.to_string(), mp.to_string()],
+                            format!("Mount {} on {}", fs, mp),
+                            PermissionLevel::Admin,
+                        )
+                    }
+                    other => {
+                        return Err(anyhow!("Unknown mount action: {}", other));
+                    }
+                };
+                Ok(Translation {
+                    command,
+                    args,
+                    description: desc.clone(),
+                    permission,
+                    explanation: desc,
+                })
+            }
+
+            Intent::BootConfig {
+                action,
+                entry,
+                value,
+            } => {
+                let (args, desc, permission) = match action.as_str() {
+                    "list" => (
+                        vec!["list".to_string()],
+                        "List boot entries".to_string(),
+                        PermissionLevel::ReadOnly,
+                    ),
+                    "default" => {
+                        let e = entry.as_deref().unwrap_or("unknown");
+                        (
+                            vec!["set-default".to_string(), e.to_string()],
+                            format!("Set default boot entry to {}", e),
+                            PermissionLevel::Admin,
+                        )
+                    }
+                    "timeout" => {
+                        let v = value.as_deref().unwrap_or("5");
+                        (
+                            vec!["set-timeout".to_string(), v.to_string()],
+                            format!("Set boot timeout to {}", v),
+                            PermissionLevel::Admin,
+                        )
+                    }
+                    other => {
+                        return Err(anyhow!("Unknown boot config action: {}", other));
+                    }
+                };
+                Ok(Translation {
+                    command: "bootctl".to_string(),
+                    args,
+                    description: desc.clone(),
+                    permission,
+                    explanation: desc,
+                })
+            }
+
+            Intent::SystemUpdate { action } => {
+                let (args, desc, permission) = match action.as_str() {
+                    "check" => (
+                        vec!["check".to_string()],
+                        "Check for available system updates".to_string(),
+                        PermissionLevel::Safe,
+                    ),
+                    "apply" => (
+                        vec!["apply".to_string()],
+                        "Apply system updates".to_string(),
+                        PermissionLevel::Admin,
+                    ),
+                    "rollback" => (
+                        vec!["rollback".to_string()],
+                        "Rollback last system update".to_string(),
+                        PermissionLevel::Admin,
+                    ),
+                    "status" => (
+                        vec!["status".to_string()],
+                        "Show current system version and update status".to_string(),
+                        PermissionLevel::Safe,
+                    ),
+                    other => {
+                        return Err(anyhow!("Unknown update action: {}", other));
+                    }
+                };
+                Ok(Translation {
+                    command: "agnos-update".to_string(),
                     args,
                     description: desc.clone(),
                     permission,
@@ -2018,6 +2447,546 @@ mod tests {
         let intent = Intent::NetworkScan {
             action: "invalid_action".into(),
             target: None,
+        };
+        assert!(interpreter.translate(&intent).is_err());
+    }
+
+    // ====================================================================
+    // JournalView intent tests
+    // ====================================================================
+
+    #[test]
+    fn test_parse_journal_show_logs() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("show journal logs");
+        assert!(matches!(intent, Intent::JournalView { .. }));
+    }
+
+    #[test]
+    fn test_parse_journal_view_logs_for_unit() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("view journal logs for llm-gateway");
+        if let Intent::JournalView { unit, .. } = intent {
+            assert_eq!(unit.as_deref(), Some("llm-gateway"));
+        } else {
+            panic!("Expected JournalView, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_parse_journal_since() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("show journal entries since 1h ago");
+        if let Intent::JournalView { since, .. } = intent {
+            assert_eq!(since.as_deref(), Some("1h ago"));
+        } else {
+            panic!("Expected JournalView, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_parse_journal_error_logs() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("show error logs");
+        if let Intent::JournalView { priority, .. } = intent {
+            assert_eq!(priority.as_deref(), Some("error"));
+        } else {
+            panic!("Expected JournalView, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_parse_journal_last_n_entries() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("show last 50 log entries");
+        if let Intent::JournalView { lines, .. } = intent {
+            assert_eq!(lines, Some(50));
+        } else {
+            panic!("Expected JournalView, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_translate_journal_view_basic() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::JournalView {
+            unit: None,
+            priority: None,
+            lines: None,
+            since: None,
+        };
+        let t = interpreter.translate(&intent).unwrap();
+        assert_eq!(t.command, "journalctl");
+        // Default: -n 50
+        assert!(t.args.contains(&"-n".to_string()));
+        assert!(t.args.contains(&"50".to_string()));
+        assert_eq!(t.permission, PermissionLevel::ReadOnly);
+    }
+
+    #[test]
+    fn test_translate_journal_view_with_unit_and_priority() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::JournalView {
+            unit: Some("llm-gateway".into()),
+            priority: Some("err".into()),
+            lines: Some(100),
+            since: None,
+        };
+        let t = interpreter.translate(&intent).unwrap();
+        assert_eq!(t.command, "journalctl");
+        assert!(t.args.contains(&"-u".to_string()));
+        assert!(t.args.contains(&"llm-gateway".to_string()));
+        assert!(t.args.contains(&"-p".to_string()));
+        assert!(t.args.contains(&"err".to_string()));
+        assert!(t.args.contains(&"-n".to_string()));
+        assert!(t.args.contains(&"100".to_string()));
+        assert_eq!(t.permission, PermissionLevel::ReadOnly);
+    }
+
+    #[test]
+    fn test_translate_journal_view_with_since() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::JournalView {
+            unit: None,
+            priority: None,
+            lines: None,
+            since: Some("1h ago".into()),
+        };
+        let t = interpreter.translate(&intent).unwrap();
+        assert_eq!(t.command, "journalctl");
+        assert!(t.args.contains(&"--since".to_string()));
+        assert!(t.args.contains(&"1h ago".to_string()));
+    }
+
+    // ====================================================================
+    // DeviceInfo intent tests
+    // ====================================================================
+
+    #[test]
+    fn test_parse_device_list_all() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("list devices");
+        assert!(matches!(intent, Intent::DeviceInfo { subsystem: None, .. }));
+    }
+
+    #[test]
+    fn test_parse_device_usb() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("show usb devices");
+        if let Intent::DeviceInfo { subsystem, .. } = intent {
+            assert_eq!(subsystem.as_deref(), Some("usb"));
+        } else {
+            panic!("Expected DeviceInfo, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_parse_device_block() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("show block devices");
+        if let Intent::DeviceInfo { subsystem, .. } = intent {
+            assert_eq!(subsystem.as_deref(), Some("block"));
+        } else {
+            panic!("Expected DeviceInfo, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_parse_device_info_for_path() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("device info for /dev/sda");
+        if let Intent::DeviceInfo { device_path, .. } = intent {
+            assert_eq!(device_path.as_deref(), Some("/dev/sda"));
+        } else {
+            panic!("Expected DeviceInfo, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_translate_device_info_all() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::DeviceInfo {
+            subsystem: None,
+            device_path: None,
+        };
+        let t = interpreter.translate(&intent).unwrap();
+        assert_eq!(t.command, "udevadm");
+        assert!(t.args.contains(&"--export-db".to_string()));
+        assert_eq!(t.permission, PermissionLevel::ReadOnly);
+    }
+
+    #[test]
+    fn test_translate_device_info_subsystem() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::DeviceInfo {
+            subsystem: Some("usb".into()),
+            device_path: None,
+        };
+        let t = interpreter.translate(&intent).unwrap();
+        assert_eq!(t.command, "udevadm");
+        assert!(t.args.contains(&"--subsystem-match".to_string()));
+        assert!(t.args.contains(&"usb".to_string()));
+    }
+
+    #[test]
+    fn test_translate_device_info_path() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::DeviceInfo {
+            subsystem: None,
+            device_path: Some("/dev/sda".into()),
+        };
+        let t = interpreter.translate(&intent).unwrap();
+        assert_eq!(t.command, "udevadm");
+        assert!(t.args.contains(&"--name".to_string()));
+        assert!(t.args.contains(&"/dev/sda".to_string()));
+    }
+
+    // ====================================================================
+    // MountControl intent tests
+    // ====================================================================
+
+    #[test]
+    fn test_parse_mount_list() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("list mounts");
+        if let Intent::MountControl { action, filesystem, .. } = intent {
+            assert_eq!(action, "list");
+            assert!(filesystem.is_none());
+        } else {
+            panic!("Expected MountControl, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_parse_mount_list_fuse() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("show fuse mounts");
+        if let Intent::MountControl { action, filesystem, .. } = intent {
+            assert_eq!(action, "list");
+            assert_eq!(filesystem.as_deref(), Some("fuse"));
+        } else {
+            panic!("Expected MountControl, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_parse_unmount() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("unmount /mnt/agent-data");
+        if let Intent::MountControl { action, mountpoint, .. } = intent {
+            assert_eq!(action, "unmount");
+            assert_eq!(mountpoint.as_deref(), Some("/mnt/agent-data"));
+        } else {
+            panic!("Expected MountControl, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_parse_list_filesystems() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("list filesystems");
+        if let Intent::MountControl { action, .. } = intent {
+            assert_eq!(action, "list");
+        } else {
+            panic!("Expected MountControl, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_translate_mount_list() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::MountControl {
+            action: "list".into(),
+            mountpoint: None,
+            filesystem: None,
+        };
+        let t = interpreter.translate(&intent).unwrap();
+        assert_eq!(t.command, "findmnt");
+        assert_eq!(t.permission, PermissionLevel::Safe);
+    }
+
+    #[test]
+    fn test_translate_mount_list_fuse() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::MountControl {
+            action: "list".into(),
+            mountpoint: None,
+            filesystem: Some("fuse".into()),
+        };
+        let t = interpreter.translate(&intent).unwrap();
+        assert_eq!(t.command, "findmnt");
+        assert!(t.args.contains(&"-t".to_string()));
+        assert!(t.args.contains(&"fuse".to_string()));
+        assert_eq!(t.permission, PermissionLevel::Safe);
+    }
+
+    #[test]
+    fn test_translate_mount_unmount() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::MountControl {
+            action: "unmount".into(),
+            mountpoint: Some("/mnt/data".into()),
+            filesystem: None,
+        };
+        let t = interpreter.translate(&intent).unwrap();
+        assert_eq!(t.command, "fusermount");
+        assert!(t.args.contains(&"-u".to_string()));
+        assert!(t.args.contains(&"/mnt/data".to_string()));
+        assert_eq!(t.permission, PermissionLevel::Admin);
+    }
+
+    #[test]
+    fn test_translate_mount_mount() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::MountControl {
+            action: "mount".into(),
+            mountpoint: Some("/mnt/data".into()),
+            filesystem: Some("/dev/sdb1".into()),
+        };
+        let t = interpreter.translate(&intent).unwrap();
+        assert_eq!(t.command, "mount");
+        assert_eq!(t.permission, PermissionLevel::Admin);
+    }
+
+    #[test]
+    fn test_translate_mount_unknown_action() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::MountControl {
+            action: "invalid".into(),
+            mountpoint: None,
+            filesystem: None,
+        };
+        assert!(interpreter.translate(&intent).is_err());
+    }
+
+    // ====================================================================
+    // BootConfig intent tests
+    // ====================================================================
+
+    #[test]
+    fn test_parse_boot_list_entries() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("list boot entries");
+        if let Intent::BootConfig { action, .. } = intent {
+            assert_eq!(action, "list");
+        } else {
+            panic!("Expected BootConfig, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_parse_boot_show_config() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("show boot config");
+        if let Intent::BootConfig { action, .. } = intent {
+            assert_eq!(action, "list");
+        } else {
+            panic!("Expected BootConfig, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_parse_boot_show_bootloader() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("show bootloader");
+        if let Intent::BootConfig { action, .. } = intent {
+            assert_eq!(action, "list");
+        } else {
+            panic!("Expected BootConfig, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_parse_boot_set_default() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("set default boot entry to agnos-latest");
+        if let Intent::BootConfig { action, entry, .. } = intent {
+            assert_eq!(action, "default");
+            assert_eq!(entry.as_deref(), Some("agnos-latest"));
+        } else {
+            panic!("Expected BootConfig, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_parse_boot_set_timeout() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("set boot timeout to 10");
+        if let Intent::BootConfig { action, value, .. } = intent {
+            assert_eq!(action, "timeout");
+            assert_eq!(value.as_deref(), Some("10"));
+        } else {
+            panic!("Expected BootConfig, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_translate_boot_list() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::BootConfig {
+            action: "list".into(),
+            entry: None,
+            value: None,
+        };
+        let t = interpreter.translate(&intent).unwrap();
+        assert_eq!(t.command, "bootctl");
+        assert!(t.args.contains(&"list".to_string()));
+        assert_eq!(t.permission, PermissionLevel::ReadOnly);
+    }
+
+    #[test]
+    fn test_translate_boot_set_default() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::BootConfig {
+            action: "default".into(),
+            entry: Some("agnos-latest".into()),
+            value: Some("agnos-latest".into()),
+        };
+        let t = interpreter.translate(&intent).unwrap();
+        assert_eq!(t.command, "bootctl");
+        assert!(t.args.contains(&"set-default".to_string()));
+        assert!(t.args.contains(&"agnos-latest".to_string()));
+        assert_eq!(t.permission, PermissionLevel::Admin);
+    }
+
+    #[test]
+    fn test_translate_boot_set_timeout() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::BootConfig {
+            action: "timeout".into(),
+            entry: None,
+            value: Some("10".into()),
+        };
+        let t = interpreter.translate(&intent).unwrap();
+        assert_eq!(t.command, "bootctl");
+        assert!(t.args.contains(&"set-timeout".to_string()));
+        assert!(t.args.contains(&"10".to_string()));
+        assert_eq!(t.permission, PermissionLevel::Admin);
+    }
+
+    #[test]
+    fn test_translate_boot_unknown_action() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::BootConfig {
+            action: "invalid".into(),
+            entry: None,
+            value: None,
+        };
+        assert!(interpreter.translate(&intent).is_err());
+    }
+
+    // ====================================================================
+    // SystemUpdate intent tests
+    // ====================================================================
+
+    #[test]
+    fn test_parse_update_check() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("check for updates");
+        if let Intent::SystemUpdate { action } = intent {
+            assert_eq!(action, "check");
+        } else {
+            panic!("Expected SystemUpdate, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_parse_update_apply() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("apply system update");
+        if let Intent::SystemUpdate { action } = intent {
+            assert_eq!(action, "apply");
+        } else {
+            panic!("Expected SystemUpdate, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_parse_update_rollback() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("rollback update");
+        if let Intent::SystemUpdate { action } = intent {
+            assert_eq!(action, "rollback");
+        } else {
+            panic!("Expected SystemUpdate, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_parse_update_status() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("update status");
+        if let Intent::SystemUpdate { action } = intent {
+            assert_eq!(action, "status");
+        } else {
+            panic!("Expected SystemUpdate, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_parse_update_show_version() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("show current version");
+        if let Intent::SystemUpdate { action } = intent {
+            assert_eq!(action, "status");
+        } else {
+            panic!("Expected SystemUpdate, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_translate_update_check() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::SystemUpdate {
+            action: "check".into(),
+        };
+        let t = interpreter.translate(&intent).unwrap();
+        assert_eq!(t.command, "agnos-update");
+        assert!(t.args.contains(&"check".to_string()));
+        assert_eq!(t.permission, PermissionLevel::Safe);
+    }
+
+    #[test]
+    fn test_translate_update_apply() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::SystemUpdate {
+            action: "apply".into(),
+        };
+        let t = interpreter.translate(&intent).unwrap();
+        assert_eq!(t.command, "agnos-update");
+        assert!(t.args.contains(&"apply".to_string()));
+        assert_eq!(t.permission, PermissionLevel::Admin);
+    }
+
+    #[test]
+    fn test_translate_update_rollback() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::SystemUpdate {
+            action: "rollback".into(),
+        };
+        let t = interpreter.translate(&intent).unwrap();
+        assert_eq!(t.command, "agnos-update");
+        assert!(t.args.contains(&"rollback".to_string()));
+        assert_eq!(t.permission, PermissionLevel::Admin);
+    }
+
+    #[test]
+    fn test_translate_update_status() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::SystemUpdate {
+            action: "status".into(),
+        };
+        let t = interpreter.translate(&intent).unwrap();
+        assert_eq!(t.command, "agnos-update");
+        assert!(t.args.contains(&"status".to_string()));
+        assert_eq!(t.permission, PermissionLevel::Safe);
+    }
+
+    #[test]
+    fn test_translate_update_unknown_action() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::SystemUpdate {
+            action: "invalid".into(),
         };
         assert!(interpreter.translate(&intent).is_err());
     }

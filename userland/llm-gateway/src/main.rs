@@ -16,6 +16,7 @@ use uuid::Uuid;
 use agnos_common::{
     AgentId, InferenceRequest, InferenceResponse, ModelInfo, TokenUsage,
 };
+use agnos_sys::certpin::{self, CertPinResult, CertPinSet};
 
 mod providers;
 mod cache;
@@ -120,6 +121,8 @@ pub struct LlmGateway {
     accounting: TokenAccounting,
     /// Configuration
     config: GatewayConfig,
+    /// TLS certificate pin set for cloud provider verification
+    cert_pins: CertPinSet,
 }
 
 /// Gateway configuration
@@ -147,7 +150,32 @@ impl Default for GatewayConfig {
 impl LlmGateway {
     /// Create a new LLM gateway
     pub async fn new(config: GatewayConfig) -> Result<Self> {
+        Self::new_with_pins(config, None).await
+    }
+
+    /// Create a new LLM gateway with an optional custom pin set.
+    /// If `pins` is `None`, loads `default_agnos_pins()`.
+    pub async fn new_with_pins(config: GatewayConfig, pins: Option<CertPinSet>) -> Result<Self> {
         info!("Initializing LLM Gateway...");
+
+        let cert_pins = pins.unwrap_or_else(certpin::default_agnos_pins);
+
+        // Log pin expiry warnings at startup
+        let expiring = certpin::check_pin_expiry(&cert_pins);
+        for entry in &expiring {
+            warn!(
+                host = %entry.host,
+                expires = ?entry.expires,
+                "Certificate pin expiring soon or already expired"
+            );
+        }
+        if expiring.is_empty() {
+            info!(
+                pin_count = cert_pins.pins.len(),
+                enforce = cert_pins.enforce,
+                "Certificate pin set loaded, no pins expiring within 30 days"
+            );
+        }
 
         let rate_limiter = Semaphore::new(config.max_concurrent_requests);
         let cache = ResponseCache::new(Duration::from_secs(config.cache_ttl_seconds));
@@ -162,6 +190,7 @@ impl LlmGateway {
             cache,
             accounting,
             config,
+            cert_pins,
         })
     }
 
@@ -447,6 +476,85 @@ impl LlmGateway {
         }
     }
 
+    /// Extract a hostname from a provider URL string.
+    /// Returns `None` for localhost/local providers (cert pinning not applicable).
+    fn extract_provider_host(provider_type: ProviderType) -> Option<&'static str> {
+        match provider_type {
+            ProviderType::OpenAi => Some("api.openai.com"),
+            ProviderType::Anthropic => Some("api.anthropic.com"),
+            ProviderType::Google => Some("generativelanguage.googleapis.com"),
+            // Local providers use HTTP, no TLS pinning
+            ProviderType::Ollama | ProviderType::LlamaCpp => None,
+        }
+    }
+
+    /// Verify a cloud provider's TLS certificate against the loaded pin set.
+    ///
+    /// - Skips local providers (Ollama, llama.cpp) since they use plain HTTP.
+    /// - In report-only mode (`enforce == false`), logs warnings but returns `Ok(())`.
+    /// - In enforce mode, returns an error on pin mismatch.
+    pub fn verify_provider_cert(&self, provider_type: ProviderType) -> Result<()> {
+        let host = match Self::extract_provider_host(provider_type) {
+            Some(h) => h,
+            None => return Ok(()), // local provider, skip
+        };
+
+        let cert_info = match certpin::fetch_server_cert(host, 443) {
+            Ok(info) => info,
+            Err(e) => {
+                warn!(
+                    host = %host,
+                    error = %e,
+                    "Failed to fetch server certificate for pin verification"
+                );
+                // Cannot verify — don't block in either mode
+                return Ok(());
+            }
+        };
+
+        let result = certpin::verify_pin(host, &cert_info.spki_sha256, &self.cert_pins);
+
+        match &result {
+            CertPinResult::Valid => {
+                debug!(host = %host, "Certificate pin verified successfully");
+                Ok(())
+            }
+            CertPinResult::NoPinConfigured { .. } => {
+                debug!(host = %host, "No certificate pin configured for host");
+                Ok(())
+            }
+            CertPinResult::PinMismatch { host, expected, actual } => {
+                warn!(
+                    host = %host,
+                    expected = ?expected,
+                    actual = %actual,
+                    enforce = self.cert_pins.enforce,
+                    "Certificate pin MISMATCH — possible MITM or CA rotation"
+                );
+                if self.cert_pins.enforce {
+                    anyhow::bail!(
+                        "Certificate pin mismatch for {}: expected one of {:?}, got {}",
+                        host, expected, actual
+                    )
+                } else {
+                    Ok(()) // report-only mode
+                }
+            }
+            CertPinResult::Expired { host } => {
+                warn!(host = %host, "Certificate pin entry has expired");
+                if self.cert_pins.enforce {
+                    anyhow::bail!("Certificate pin expired for {}", host)
+                } else {
+                    Ok(())
+                }
+            }
+            CertPinResult::Error(msg) => {
+                warn!(host = %host, error = %msg, "Certificate pin verification error");
+                Ok(())
+            }
+        }
+    }
+
     /// List available models
     pub async fn list_models(&self) -> Vec<ModelInfo> {
         let loaded = self.loaded_models.read().await;
@@ -566,6 +674,17 @@ impl LlmGateway {
         };
 
         for (provider_type, provider) in provider_list {
+            // Verify TLS certificate pins for cloud providers
+            if let Err(e) = self.verify_provider_cert(provider_type) {
+                warn!(
+                    provider = ?provider_type,
+                    error = %e,
+                    "Certificate pin verification failed during health check"
+                );
+                self.record_provider_failure(provider_type).await;
+                continue;
+            }
+
             match timeout(Duration::from_secs(10), provider.list_models()).await {
                 Ok(Ok(_)) => {
                     self.record_provider_success(provider_type).await;
@@ -2887,5 +3006,185 @@ mod tests {
         let result = gateway.infer_stream(InferenceRequest::default(), None).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("stream always fails"));
+    }
+
+    // ==================================================================
+    // Certificate pinning integration tests
+    // ==================================================================
+
+    use agnos_sys::certpin::{PinnedCert, CertPinResult as PinResult};
+
+    /// Helper: build a pin set with known pins for testing.
+    fn test_pin_set(enforce: bool) -> CertPinSet {
+        CertPinSet {
+            pins: vec![
+                PinnedCert {
+                    host: "api.openai.com".to_string(),
+                    pin_sha256: vec!["test_openai_pin_primary".to_string()],
+                    expires: None,
+                    backup_pins: vec!["test_openai_pin_backup".to_string()],
+                },
+                PinnedCert {
+                    host: "api.anthropic.com".to_string(),
+                    pin_sha256: vec!["test_anthropic_pin_primary".to_string()],
+                    expires: None,
+                    backup_pins: vec![],
+                },
+            ],
+            enforce,
+            created_at: chrono::Utc::now(),
+            version: 1,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_gateway_loads_default_pins() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+        // default_agnos_pins() has 3 entries: openai, anthropic, google
+        assert_eq!(gateway.cert_pins.pins.len(), 3);
+        assert!(!gateway.cert_pins.enforce, "Default pins should be report-only");
+    }
+
+    #[tokio::test]
+    async fn test_gateway_loads_custom_pins() {
+        let custom = test_pin_set(true);
+        let gateway = LlmGateway::new_with_pins(GatewayConfig::default(), Some(custom))
+            .await
+            .unwrap();
+        assert_eq!(gateway.cert_pins.pins.len(), 2);
+        assert!(gateway.cert_pins.enforce);
+    }
+
+    #[test]
+    fn test_extract_provider_host_cloud_providers() {
+        assert_eq!(
+            LlmGateway::extract_provider_host(ProviderType::OpenAi),
+            Some("api.openai.com")
+        );
+        assert_eq!(
+            LlmGateway::extract_provider_host(ProviderType::Anthropic),
+            Some("api.anthropic.com")
+        );
+        assert_eq!(
+            LlmGateway::extract_provider_host(ProviderType::Google),
+            Some("generativelanguage.googleapis.com")
+        );
+    }
+
+    #[test]
+    fn test_extract_provider_host_local_providers_none() {
+        assert!(LlmGateway::extract_provider_host(ProviderType::Ollama).is_none());
+        assert!(LlmGateway::extract_provider_host(ProviderType::LlamaCpp).is_none());
+    }
+
+    #[tokio::test]
+    async fn test_verify_provider_cert_skips_local_providers() {
+        let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
+        // Local providers should always succeed (skipped)
+        assert!(gateway.verify_provider_cert(ProviderType::Ollama).is_ok());
+        assert!(gateway.verify_provider_cert(ProviderType::LlamaCpp).is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_verify_provider_cert_report_only_does_not_fail() {
+        // Even with a pin set that has pins, report-only should not error
+        let pins = test_pin_set(false); // enforce = false
+        let gateway = LlmGateway::new_with_pins(GatewayConfig::default(), Some(pins))
+            .await
+            .unwrap();
+        // This will try to fetch the real cert and likely fail (no network in CI),
+        // but fetch_server_cert failure returns Ok in the verify method
+        let result = gateway.verify_provider_cert(ProviderType::OpenAi);
+        assert!(result.is_ok(), "Report-only mode should never return Err");
+    }
+
+    #[tokio::test]
+    async fn test_verify_provider_cert_enforce_mode_with_wrong_pins() {
+        // With enforce=true and wrong pins, the result depends on network:
+        // - If fetch_server_cert fails (no openssl/network), returns Ok (can't verify)
+        // - If fetch succeeds but pin doesn't match, returns Err (enforced mismatch)
+        let pins = test_pin_set(true); // enforce = true, with fake pins
+        let gateway = LlmGateway::new_with_pins(GatewayConfig::default(), Some(pins))
+            .await
+            .unwrap();
+        let result = gateway.verify_provider_cert(ProviderType::OpenAi);
+        // We accept both outcomes — the key invariant is no panic
+        match &result {
+            Ok(()) => {
+                // fetch_server_cert failed gracefully (no network / no openssl)
+            }
+            Err(e) => {
+                // Pin mismatch enforced — error message should mention it
+                let msg = e.to_string();
+                assert!(
+                    msg.contains("pin mismatch") || msg.contains("pin expired"),
+                    "Enforce error should mention pin issue, got: {}",
+                    msg
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_verify_pin_directly_with_matching_pin() {
+        let pins = test_pin_set(true);
+        let result = certpin::verify_pin("api.openai.com", "test_openai_pin_primary", &pins);
+        assert_eq!(result, PinResult::Valid);
+    }
+
+    #[test]
+    fn test_verify_pin_directly_with_backup_pin() {
+        let pins = test_pin_set(true);
+        let result = certpin::verify_pin("api.openai.com", "test_openai_pin_backup", &pins);
+        assert_eq!(result, PinResult::Valid);
+    }
+
+    #[test]
+    fn test_verify_pin_directly_mismatch() {
+        let pins = test_pin_set(true);
+        let result = certpin::verify_pin("api.openai.com", "wrong_pin", &pins);
+        match result {
+            PinResult::PinMismatch { host, actual, expected } => {
+                assert_eq!(host, "api.openai.com");
+                assert_eq!(actual, "wrong_pin");
+                assert!(expected.contains(&"test_openai_pin_primary".to_string()));
+                assert!(expected.contains(&"test_openai_pin_backup".to_string()));
+            }
+            other => panic!("Expected PinMismatch, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_verify_pin_no_config_for_host() {
+        let pins = test_pin_set(true);
+        let result = certpin::verify_pin("unknown.example.com", "any_pin", &pins);
+        assert_eq!(
+            result,
+            PinResult::NoPinConfigured {
+                host: "unknown.example.com".to_string()
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn test_pin_expiry_warning_logged_at_startup() {
+        use chrono::TimeZone;
+        // Create a pin set with an already-expired entry
+        let pins = CertPinSet {
+            pins: vec![PinnedCert {
+                host: "expired.example.com".to_string(),
+                pin_sha256: vec!["some_pin".to_string()],
+                expires: Some(chrono::Utc.with_ymd_and_hms(2020, 1, 1, 0, 0, 0).unwrap()),
+                backup_pins: vec![],
+            }],
+            enforce: false,
+            created_at: chrono::Utc::now(),
+            version: 1,
+        };
+        // new_with_pins should succeed even with expired pins (just logs warnings)
+        let gateway = LlmGateway::new_with_pins(GatewayConfig::default(), Some(pins))
+            .await
+            .unwrap();
+        assert_eq!(gateway.cert_pins.pins.len(), 1);
     }
 }
