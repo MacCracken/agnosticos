@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | Phase 5 Completion | 99% |
 | Phase 6 Completion | 55% |
 | Phase 6.5 Completion | 100% |
-| Test Coverage | ~80% (5700+ tests, 0 failures, 7 ignored) |
+| Test Coverage | ~80% (5800+ tests, 0 failures, 7 ignored) |
 | Compiler Warnings | 0 |
 | Clippy Warnings | 0 |
 | CIS Compliance | ~85% |
@@ -55,6 +55,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `SocketInspector` — wraps ss with listening/TCP/UDP filters, returns `Vec<SocketEntry>` (3 tests)
   - Network tools tests: 60 → 81
 
+### Added — Hardware Acceleration Module
+
+- **llm-gateway/acceleration.rs** — GPU/NPU detection and inference optimization:
+  - `AcceleratorType` enum: Cpu, CudaGpu, RocmGpu, MetalGpu, IntelNpu, AppleNpu with throughput multipliers
+  - `QuantizationLevel` enum: FP32/FP16/BF16/Int8/Int4 with memory reduction factors
+  - `ShardingStrategy` enum: None/PipelineParallel/TensorParallel/DataParallel with min device counts
+  - `AcceleratorRegistry`: system probing (nvidia-smi, rocm-smi, /sys/class/misc/intel_npu, /proc/device-tree), best device selection, memory estimation, automatic sharding plan generation
+  - `ShardingPlan` with memory fitting validation
+  - `InferenceConfig` for per-request acceleration settings
+  - 43 tests
+
+### Added — Remaining Network Tools (9 New Variants)
+
+- **agent-runtime/network_tools.rs** — Expanded from 23 to 32 tool variants:
+  - `netdiscover` (ARP scanning, Medium risk), `termshark` (TUI packet inspection, Critical), `bettercap` (network MITM analysis, Critical, --caplet validation)
+  - `dnsx` (fast DNS toolkit, Medium), `fierce` (DNS zone traversal, High)
+  - `wfuzz` (web fuzzer, High), `sqlmap` (SQL injection, Critical, --os-shell/--os-cmd/--file-write validation)
+  - `aircrack-ng` (802.11 analysis, Critical, NET_RAW+NET_ADMIN), `kismet` (wireless detector, Critical, NET_RAW+NET_ADMIN)
+  - Network tools tests: 81 → 100
+
+### Added — Interactive API Explorer
+
+- **docs/api/explorer.html** — Self-contained HTML/CSS/JS interactive API documentation:
+  - Dark theme, search/filter, color-coded method badges
+  - 11 endpoints: LLM Gateway (port 8088, 4 endpoints) + Agent Runtime (port 8090, 7 endpoints)
+  - Per-endpoint: request/response schemas, example JSON, "Try It" panel with editable URL/body and live fetch()
+  - No external dependencies
+
 ### Added — Phase 6.5: OS-Level Features (12 New Modules)
 
 - **agnos-sys/bootloader.rs** — systemd-boot + GRUB2 auto-detection, boot entry parsing, kernel cmdline validation, timeout management (27 tests)
@@ -95,11 +123,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Phase 6 completion: 30% → 55% (agent intelligence, multi-modal, swarm, LLM analysis, tool wrappers all done)
+- Phase 6 completion: 30% → 100% (agent intelligence, multi-modal, swarm, LLM analysis, tool wrappers, hardware acceleration, all networking tools)
 - agent-runtime lib.rs: added module declarations and re-exports for swarm, learning, multimodal
-- agent-runtime tests: 719 → 824 (lib)
+- agent-runtime tests: 719 → 843 (lib)
+- llm-gateway lib.rs: added acceleration module and AcceleratorRegistry re-export
+- llm-gateway tests: 206 → 249 (lib)
 - desktop-environment tests: 576 → 593 (lib)
 - NetworkToolRunner now derives Debug
+- ALL_TOOLS expanded from 23 to 32 variants
 - Roadmap fully updated to reflect Phase 6.5 completion and all new modules
 - Clippy warnings: 82 → 0 (auto-fix + manual fixes)
 - `DeviceSubsystem::from_str` / `DeviceEvent::from_str` renamed to `::parse` (clippy `should_implement_trait`)

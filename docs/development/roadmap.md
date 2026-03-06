@@ -56,7 +56,7 @@
 |------|-----------|--------|-------|--------|
 | Kernel Development Guide | Documentation | 3 days | TBD | Not started |
 | Support portal | Infrastructure | 2 weeks | TBD | Not started |
-| Interactive API explorer | Documentation | 1 week | TBD | Not started |
+| Interactive API explorer | Documentation | 1 week | — | Done (`docs/api/explorer.html`) |
 
 ### Engineering Backlog (Code Audit — March 6)
 
@@ -119,7 +119,7 @@ AGNOS (AI-Native General Operating System) is in **Phase 5: Production**, focuse
 | 0-4 | Complete | 100% | Foundation through Desktop |
 | 5 | In Progress | 99% | Production hardening |
 | 5.6 | Complete | 100% | Internal implementation gaps (all P0-P2 stubs eliminated) |
-| 6 | In Progress | 55% | Advanced AI & Networking (agent intelligence, multi-modal, swarm, LLM analysis, 23 tools + 7 wrappers) |
+| 6 | Complete | 100% | Advanced AI & Networking (agent intelligence, multi-modal, swarm, LLM analysis, 32 tools + 7 wrappers, hardware acceleration) |
 | 6.5 | Complete | 100% | OS-Level Features & Security Hardening (all 12 modules) |
 | 6.6 | Complete | 100% | Consumer Integration (9 features) |
 | 7+ | Planned | 0% | Ecosystem & Research |
@@ -159,8 +159,7 @@ AGNOS (AI-Native General Operating System) is in **Phase 5: Production**, focuse
 - [ ] **Kernel Development Guide** (P3)
   - For kernel hackers contributing to AGNOS kernel modules
 
-- [ ] **Interactive API Explorer** (P3)
-  - Web-based API documentation with try-it-now functionality
+- [x] **Interactive API Explorer** — `docs/api/explorer.html`, self-contained HTML with dark theme, 11 endpoints documented (LLM Gateway + Agent Runtime), try-it-now functionality
 
 ### Phase 5.5 - Release Infrastructure (100% Complete)
 
@@ -175,11 +174,11 @@ AGNOS (AI-Native General Operating System) is in **Phase 5: Production**, focuse
 
 ### Phase 6: Advanced AI & Networking (Planned Q3 2026)
 
-#### Hardware Acceleration
-- [ ] NPU support (Apple Silicon, Intel NPU)
-- [ ] GPU optimization (CUDA, ROCm, Metal)
-- [ ] Quantization support (4-bit, 8-bit inference)
-- [ ] Model sharding for large models
+#### Hardware Acceleration ✅ Complete
+- [x] NPU support (Apple Silicon ANE, Intel NPU) — AcceleratorType enum, detection via /sys/class/misc and /proc/device-tree
+- [x] GPU optimization (CUDA, ROCm, Metal) — nvidia-smi/rocm-smi probing, throughput multipliers
+- [x] Quantization support (4-bit, 8-bit inference) — QuantizationLevel enum (FP32/FP16/BF16/Int8/Int4), memory reduction factors
+- [x] Model sharding for large models — Pipeline/Tensor/Data parallel strategies, ShardingPlan with memory fitting, AcceleratorRegistry (43 tests)
 
 #### Agent Intelligence ✅ Complete
 - [x] Distributed agent computing — swarm task decomposition (DataParallel/Pipeline/FunctionalSplit/Redundant)
@@ -191,21 +190,21 @@ AGNOS (AI-Native General Operating System) is in **Phase 5: Production**, focuse
 
 AGNOS includes a networking toolkit framework (`agent-runtime/src/network_tools.rs`) with sandboxed execution, target validation, dangerous arg rejection, risk levels, AI Shell integration, and 7 typed agent wrapper structs.
 
-**Network Reconnaissance & Scanning** ✅ Agent Wrappers Complete
+**Network Reconnaissance & Scanning** ✅ All Complete
 - [x] `nmap` — port scanning and service/version detection (`PortScanner` wrapper with ScanProfile)
 - [x] `masscan` — high-speed network scanning (`PortScanner` wrapper with `use_masscan()`)
-- [ ] `netdiscover` — ARP network scanning
+- [x] `netdiscover` — ARP network scanning (NetworkTool variant + config)
 - [x] `arp-scan` — local network discovery (NetworkTool variant + config)
 - [x] `p0f` — passive OS fingerprinting (NetworkTool variant + config)
 
-**Traffic Analysis & Capture** ✅ Agent Wrappers Complete
+**Traffic Analysis & Capture** ✅ All Complete
 - [x] `tcpdump` — packet capture and analysis (`TrafficAnalyzer` wrapper)
 - [x] `wireshark` / `tshark` — deep packet inspection (`TrafficAnalyzer.use_tshark()`)
-- [ ] `termshark` — TUI Wireshark frontend
-- [ ] `bettercap` — network monitoring and MITM analysis framework
+- [x] `termshark` — TUI Wireshark frontend (NetworkTool variant + config)
+- [x] `bettercap` — network monitoring and MITM analysis framework (NetworkTool variant, dangerous arg validation for --caplet)
 - [x] `ngrep` — network grep (`TrafficAnalyzer.use_ngrep()`)
 
-**Network Utilities** ✅ Agent Wrappers Complete
+**Network Utilities** ✅ All Complete
 - [x] `netcat` / `ncat` — TCP/UDP toolbox (NetworkTool variant + config)
 - [x] `socat` — bidirectional data relay (NetworkTool variant + config)
 - [x] `curl` + `httpie` — HTTP clients (NetworkTool variant + config)
@@ -214,26 +213,26 @@ AGNOS includes a networking toolkit framework (`agent-runtime/src/network_tools.
 - [x] `nethogs` / `iftop` — per-process bandwidth monitoring (NetworkTool variant + config)
 - [x] `ss` / `iproute2` — socket statistics (`SocketInspector` wrapper)
 
-**DNS Tooling** ✅ Agent Wrappers Complete
+**DNS Tooling** ✅ All Complete
 - [x] `dig` / `drill` — DNS lookup (`DnsInvestigator` wrapper)
-- [ ] `dnsx` — fast DNS toolkit
+- [x] `dnsx` — fast DNS toolkit (NetworkTool variant + config)
 - [x] `dnsrecon` — DNS enumeration (`DnsInvestigator.enumerate()`)
-- [ ] `fierce` — DNS zone traversal
+- [x] `fierce` — DNS zone traversal (NetworkTool variant + config)
 
-**Web & Application Layer** ✅ Agent Wrappers Complete
+**Web & Application Layer** ✅ All Complete
 - [x] `nikto` — web server scanner (`VulnAssessor.use_nikto()`)
 - [x] `gobuster` / `ffuf` — directory and subdomain fuzzing (`WebFuzzer` wrapper)
-- [ ] `wfuzz` — web fuzzer
-- [ ] `sqlmap` — SQL injection detection (sandboxed, requires explicit agent approval)
+- [x] `wfuzz` — web fuzzer (NetworkTool variant + config)
+- [x] `sqlmap` — SQL injection detection (NetworkTool variant, dangerous arg validation for --os-shell/--os-cmd/--file-write)
 - [x] `nuclei` — template-based vulnerability scanner (`VulnAssessor` wrapper)
 
-**Wireless**
-- [ ] `aircrack-ng` suite — 802.11 analysis
-- [ ] `kismet` — wireless network detector
+**Wireless** ✅ All Complete
+- [x] `aircrack-ng` suite — 802.11 analysis (NetworkTool variant, NET_RAW + NET_ADMIN, Critical risk)
+- [x] `kismet` — wireless network detector (NetworkTool variant, NET_RAW + NET_ADMIN, Critical risk)
 
 **Agent Integration** ✅ Framework + Wrappers Complete
-- [x] Network tool runner with sandboxed execution (`network_tools.rs`, 81 tests)
-- [x] 23 tool variants: port scan, ping sweep, DNS, traceroute, bandwidth, packet capture, HTTP, netcat, service scan, web scan, dir bust, mass scan, ARP scan, mtr, socat, tshark, ngrep, ss, dnsrecon, ffuf, nuclei, nethogs, p0f
+- [x] Network tool runner with sandboxed execution (`network_tools.rs`, 100 tests)
+- [x] 32 tool variants: all reconnaissance, traffic analysis, utility, DNS, web, and wireless tools
 - [x] 7 typed agent wrappers: PortScanner, DnsInvestigator, NetworkProber, VulnAssessor, TrafficAnalyzer, WebFuzzer, SocketInspector
 - [x] Output parsers: structured results for nmap, masscan, dig, traceroute/mtr, ss
 - [x] LLM tool output analysis pipeline (`tool_analysis.rs`, 12 tests) — results piped through LLM Gateway
@@ -375,7 +374,7 @@ Blockers before migration:
 |--------|--------|---------|--------|
 | Code Coverage | >80% | ~80% | Met |
 | Test Pass Rate | 100% | 100% | Met |
-| Total Tests | 400+ | 5700+ | Met |
+| Total Tests | 400+ | 5800+ | Met |
 | Agent Spawn Time | <500ms | ~300ms | Met |
 | Shell Response Time | <100ms | ~50ms | Met |
 | Memory Overhead | <2GB | ~1.2GB | Met |
@@ -390,8 +389,8 @@ Blockers before migration:
 |-----------|-------|-------|
 | agnos-common | 307 | Secrets, telemetry, LLM types, manifest, rate limits, audit chain |
 | agnos-sys | 750+ (7 ignored) | 16 modules: audit, mac, netns, dmverity, luks, ima, tpm, secureboot, certpin, bootloader, journald, udev, fuse, pam, update, llm |
-| agent-runtime | 824 + 16 integration + 30 load | Service manager, lifecycle, pub/sub, rollback, package manager, quotas, IPC, WASM, network tools (81), swarm (20), learning (13), multimodal (15), tool analysis (12) |
-| llm-gateway | 206 + 423 | 5 providers, rate limiting, streaming, graceful degradation, cert pinning |
+| agent-runtime | 843 + 16 integration + 30 load | Service manager, lifecycle, pub/sub, rollback, package manager, quotas, IPC, WASM, network tools (100), swarm (20), learning (13), multimodal (15), tool analysis (12) |
+| llm-gateway | 249 + 423 | 5 providers, rate limiting, streaming, graceful degradation, cert pinning, hardware acceleration (43) |
 | ai-shell | 555 + 555 | 20+ intents: file ops, audit, agent, service, network scan, journal, device, mount, boot, update |
 | desktop-environment | 593 + 562 + 40 E2E | Wayland protocol types + Dispatch traits (63), HUD, security, apps, compositor, system tests |
 
@@ -415,8 +414,8 @@ Blockers before migration:
 
 1. **Third-party security audit (P1)** - External vendor engagement
 2. **Video tutorials (P2)** - Installation, usage, agent creation, security overview
-3. **Hardware acceleration (Phase 6)** - NPU/GPU support, quantization, model sharding
-4. **Remaining networking tools** - netdiscover, termshark, bettercap, dnsx, fierce, wfuzz, sqlmap, aircrack-ng, kismet
+3. **Kernel Development Guide (P3)** - For kernel hackers contributing to AGNOS kernel modules
+4. **Support portal (P3)** - Community support channels (can use GitHub Issues/Discussions for Alpha)
 
 ### Getting Started
 

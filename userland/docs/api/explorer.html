@@ -1,0 +1,1284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AGNOS API Explorer</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg-primary: #0d1117;
+  --bg-secondary: #161b22;
+  --bg-tertiary: #21262d;
+  --bg-input: #0d1117;
+  --border: #30363d;
+  --border-light: #3d444d;
+  --text-primary: #e6edf3;
+  --text-secondary: #8b949e;
+  --text-muted: #6e7681;
+  --accent: #58a6ff;
+  --accent-hover: #79c0ff;
+  --green: #3fb950;
+  --green-bg: rgba(63,185,80,0.12);
+  --blue: #58a6ff;
+  --blue-bg: rgba(88,166,255,0.12);
+  --yellow: #d29922;
+  --yellow-bg: rgba(210,153,34,0.12);
+  --red: #f85149;
+  --red-bg: rgba(248,81,73,0.12);
+  --purple: #bc8cff;
+  --purple-bg: rgba(188,140,255,0.12);
+  --orange: #d18616;
+  --font-mono: 'SF Mono', 'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  --radius: 6px;
+  --sidebar-width: 320px;
+}
+
+html { font-size: 14px; }
+body {
+  font-family: var(--font-sans);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  line-height: 1.6;
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* Sidebar */
+.sidebar {
+  width: var(--sidebar-width);
+  min-width: var(--sidebar-width);
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sidebar-header {
+  padding: 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sidebar-header h1 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin-bottom: 2px;
+}
+
+.sidebar-header .subtitle {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
+.search-box {
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.search-box input {
+  width: 100%;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  padding: 8px 12px;
+  font-size: 0.85rem;
+  font-family: var(--font-sans);
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.search-box input:focus {
+  border-color: var(--accent);
+}
+
+.search-box input::placeholder {
+  color: var(--text-muted);
+}
+
+.nav-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.nav-list::-webkit-scrollbar { width: 6px; }
+.nav-list::-webkit-scrollbar-track { background: transparent; }
+.nav-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+.nav-group-title {
+  padding: 12px 20px 6px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 20px;
+  cursor: pointer;
+  transition: background 0.1s;
+  font-size: 0.85rem;
+  border-left: 2px solid transparent;
+}
+
+.nav-item:hover {
+  background: var(--bg-tertiary);
+}
+
+.nav-item.active {
+  background: var(--bg-tertiary);
+  border-left-color: var(--accent);
+}
+
+.nav-item .method-badge {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 3px;
+  min-width: 52px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.method-GET .method-badge { background: var(--green-bg); color: var(--green); }
+.method-POST .method-badge { background: var(--blue-bg); color: var(--blue); }
+.method-PUT .method-badge { background: var(--yellow-bg); color: var(--yellow); }
+.method-DELETE .method-badge { background: var(--red-bg); color: var(--red); }
+
+.nav-item .endpoint-path {
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Main Content */
+.main {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0;
+}
+
+.main::-webkit-scrollbar { width: 8px; }
+.main::-webkit-scrollbar-track { background: transparent; }
+.main::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+.endpoint-detail {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 40px 48px;
+}
+
+.endpoint-header {
+  margin-bottom: 32px;
+}
+
+.endpoint-header .method-path {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.endpoint-header .method-badge-lg {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 4px 12px;
+  border-radius: 4px;
+}
+
+.method-GET .method-badge-lg { background: var(--green-bg); color: var(--green); }
+.method-POST .method-badge-lg { background: var(--blue-bg); color: var(--blue); }
+.method-PUT .method-badge-lg { background: var(--yellow-bg); color: var(--yellow); }
+.method-DELETE .method-badge-lg { background: var(--red-bg); color: var(--red); }
+
+.endpoint-header .path-text {
+  font-family: var(--font-mono);
+  font-size: 1.15rem;
+  font-weight: 500;
+}
+
+.endpoint-header .service-tag {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.service-runtime .service-tag { background: var(--purple-bg); color: var(--purple); }
+.service-gateway .service-tag { background: var(--yellow-bg); color: var(--orange); }
+
+.endpoint-header .description {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  line-height: 1.65;
+  margin-top: 8px;
+}
+
+.section {
+  margin-bottom: 28px;
+}
+
+.section-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.header-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.header-table th {
+  text-align: left;
+  padding: 6px 12px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.header-table td {
+  padding: 6px 12px;
+  border-top: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.header-table code {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  background: var(--bg-tertiary);
+  padding: 1px 6px;
+  border-radius: 3px;
+  color: var(--accent);
+}
+
+.header-table .optional {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-style: italic;
+}
+
+.header-table .required {
+  color: var(--red);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+/* Code blocks */
+.code-block {
+  position: relative;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.code-block-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 12px;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.code-block-header button {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  padding: 2px 8px;
+  font-size: 0.7rem;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  transition: all 0.15s;
+}
+
+.code-block-header button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.code-block pre {
+  padding: 14px 16px;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  line-height: 1.55;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+/* Try It panel */
+.try-it {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.try-it-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border);
+}
+
+.try-it-header h3 {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.try-it-body {
+  padding: 16px;
+}
+
+.form-group {
+  margin-bottom: 14px;
+}
+
+.form-group label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.form-group input {
+  width: 100%;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  padding: 8px 12px;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.form-group input:focus {
+  border-color: var(--accent);
+}
+
+.form-group textarea {
+  width: 100%;
+  min-height: 140px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  padding: 10px 12px;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  outline: none;
+  resize: vertical;
+  transition: border-color 0.15s;
+}
+
+.form-group textarea:focus {
+  border-color: var(--accent);
+}
+
+.btn-send {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius);
+  padding: 8px 24px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn-send:hover {
+  background: var(--accent-hover);
+}
+
+.btn-send:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Response display */
+.response-panel {
+  margin-top: 16px;
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+  display: none;
+}
+
+.response-panel.visible {
+  display: block;
+}
+
+.response-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  font-size: 0.85rem;
+}
+
+.response-status .status-code {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.status-2xx { background: var(--green-bg); color: var(--green); }
+.status-4xx { background: var(--yellow-bg); color: var(--yellow); }
+.status-5xx { background: var(--red-bg); color: var(--red); }
+.status-err { background: var(--red-bg); color: var(--red); }
+
+.response-status .status-time {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.response-headers-toggle {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 0.8rem;
+  cursor: pointer;
+  padding: 0;
+  margin-bottom: 8px;
+  font-family: var(--font-sans);
+}
+
+.response-headers-toggle:hover {
+  text-decoration: underline;
+}
+
+.response-headers {
+  display: none;
+  margin-bottom: 12px;
+}
+
+.response-headers.visible {
+  display: block;
+}
+
+.response-headers pre {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  overflow-x: auto;
+  margin: 0;
+}
+
+.response-body pre {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  overflow-x: auto;
+  max-height: 400px;
+  overflow-y: auto;
+  margin: 0;
+}
+
+/* Welcome screen */
+.welcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 48px;
+}
+
+.welcome h2 {
+  font-size: 1.4rem;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.welcome p {
+  font-size: 0.9rem;
+  max-width: 400px;
+  line-height: 1.6;
+}
+
+.welcome .version-info {
+  margin-top: 24px;
+  display: flex;
+  gap: 16px;
+  font-size: 0.8rem;
+}
+
+.welcome .version-info span {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  padding: 4px 12px;
+  border-radius: var(--radius);
+}
+
+/* JSON syntax highlighting (minimal) */
+.json-key { color: #79c0ff; }
+.json-string { color: #a5d6ff; }
+.json-number { color: #79c0ff; }
+.json-bool { color: #ff7b72; }
+.json-null { color: #ff7b72; }
+
+/* Scrollbar for code blocks */
+pre::-webkit-scrollbar { height: 6px; width: 6px; }
+pre::-webkit-scrollbar-track { background: transparent; }
+pre::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* Responsive */
+@media (max-width: 900px) {
+  :root { --sidebar-width: 260px; }
+  .endpoint-detail { padding: 24px; }
+}
+</style>
+</head>
+<body>
+
+<div class="sidebar">
+  <div class="sidebar-header">
+    <h1>AGNOS API Explorer</h1>
+    <div class="subtitle">Interactive API Documentation</div>
+  </div>
+  <div class="search-box">
+    <input type="text" id="searchInput" placeholder="Search endpoints..." autocomplete="off">
+  </div>
+  <div class="nav-list" id="navList"></div>
+</div>
+
+<div class="main" id="mainContent">
+  <div class="welcome">
+    <h2>AGNOS API Explorer</h2>
+    <p>Select an endpoint from the sidebar to view documentation and send test requests.</p>
+    <div class="version-info">
+      <span>LLM Gateway :8088</span>
+      <span>Agent Runtime :8090</span>
+    </div>
+  </div>
+</div>
+
+<script>
+const ENDPOINTS = [
+  // ── LLM Gateway (port 8088) ────────────────────────────────────────
+  {
+    id: 'gw-chat',
+    service: 'gateway',
+    serviceName: 'LLM Gateway',
+    port: 8088,
+    method: 'POST',
+    path: '/v1/chat/completions',
+    title: 'Chat Completion',
+    description: 'OpenAI-compatible chat completion endpoint. Sends messages to a model and returns the generated response. Supports temperature, max_tokens, and top_p parameters. When AGNOS_GATEWAY_API_KEY is set on the server, requests must include a Bearer token in the Authorization header.',
+    headers: [
+      { name: 'Content-Type', value: 'application/json', required: true },
+      { name: 'Authorization', value: 'Bearer <api-key>', required: false, note: 'Required only if AGNOS_GATEWAY_API_KEY is set on the server' },
+      { name: 'X-Agent-Id', value: '<uuid>', required: false, note: 'Agent UUID for token accounting and per-agent rate limiting' }
+    ],
+    requestBody: {
+      model: 'llama3',
+      messages: [
+        { role: 'system', content: 'You are a helpful assistant.' },
+        { role: 'user', content: 'Hello, what can you do?' }
+      ],
+      temperature: 0.7,
+      max_tokens: 1024,
+      top_p: 1.0
+    },
+    requestSchema: [
+      { field: 'model', type: 'string', required: true, desc: 'Model ID to use for completion' },
+      { field: 'messages', type: 'ChatMessage[]', required: true, desc: 'Array of messages with role and content' },
+      { field: 'temperature', type: 'float', required: false, desc: 'Sampling temperature (0.0-2.0, default: 0.7)' },
+      { field: 'max_tokens', type: 'u32', required: false, desc: 'Maximum tokens to generate (default: 1024)' },
+      { field: 'top_p', type: 'float', required: false, desc: 'Nucleus sampling threshold (default: 1.0)' },
+      { field: 'stream', type: 'bool', required: false, desc: 'Stream response (reserved, not yet implemented)' }
+    ],
+    responseExample: {
+      id: 'chatcmpl-a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+      object: 'chat.completion',
+      created: 1709737200,
+      model: 'llama3',
+      choices: [{
+        index: 0,
+        message: { role: 'assistant', content: 'Hello! I can help you with a wide variety of tasks...' },
+        finish_reason: 'stop'
+      }],
+      usage: { prompt_tokens: 24, completion_tokens: 42, total_tokens: 66 }
+    },
+    errorExample: {
+      error: {
+        message: 'Invalid API key',
+        type: 'invalid_request_error',
+        code: 'invalid_api_key'
+      }
+    }
+  },
+  {
+    id: 'gw-models',
+    service: 'gateway',
+    serviceName: 'LLM Gateway',
+    port: 8088,
+    method: 'GET',
+    path: '/v1/models',
+    title: 'List Models',
+    description: 'Returns a list of all available models across all configured providers (Ollama, llama.cpp, OpenAI, Google Gemini). Each model entry includes its ID, type, creation timestamp, and owner.',
+    headers: [],
+    requestBody: null,
+    requestSchema: null,
+    responseExample: {
+      object: 'list',
+      data: [
+        { id: 'llama3', object: 'model', created: 1709737200, owned_by: 'agnos' },
+        { id: 'mistral-7b', object: 'model', created: 1709737200, owned_by: 'agnos' }
+      ]
+    }
+  },
+  {
+    id: 'gw-health',
+    service: 'gateway',
+    serviceName: 'LLM Gateway',
+    port: 8088,
+    method: 'GET',
+    path: '/v1/health',
+    title: 'Health Check',
+    description: 'Returns the health status of the LLM Gateway and all configured providers. Each provider reports whether it is currently available.',
+    headers: [],
+    requestBody: null,
+    requestSchema: null,
+    responseExample: {
+      status: 'healthy',
+      providers: [
+        { name: 'Ollama', available: true },
+        { name: 'llama.cpp', available: false },
+        { name: 'OpenAI', available: true }
+      ]
+    }
+  },
+  {
+    id: 'gw-metrics',
+    service: 'gateway',
+    serviceName: 'LLM Gateway',
+    port: 8088,
+    method: 'GET',
+    path: '/v1/metrics',
+    title: 'Gateway Metrics',
+    description: 'Returns operational metrics for the LLM Gateway including cache statistics, token accounting aggregates, and per-provider health status with failure counts.',
+    headers: [],
+    requestBody: null,
+    requestSchema: null,
+    responseExample: {
+      cache: {
+        total_entries: 150,
+        active_entries: 120,
+        expired_entries: 30
+      },
+      accounting: {
+        total_agents: 5,
+        total_prompt_tokens: 48200,
+        total_completion_tokens: 32100,
+        total_tokens: 80300
+      },
+      providers: [
+        { name: 'Ollama', available: true, healthy: true, consecutive_failures: 0 },
+        { name: 'OpenAI', available: true, healthy: true, consecutive_failures: 0 }
+      ]
+    }
+  },
+
+  // ── Agent Runtime (port 8090) ──────────────────────────────────────
+  {
+    id: 'rt-register',
+    service: 'runtime',
+    serviceName: 'Agent Runtime',
+    port: 8090,
+    method: 'POST',
+    path: '/v1/agents/register',
+    title: 'Register Agent',
+    description: 'Register a new agent with the runtime. The agent name must be unique and between 1-256 characters. Returns the assigned UUID and registration timestamp. Duplicate names result in a 409 Conflict.',
+    headers: [
+      { name: 'Content-Type', value: 'application/json', required: true }
+    ],
+    requestBody: {
+      name: 'file-manager-agent',
+      capabilities: ['file:read', 'file:write', 'llm:inference'],
+      resource_needs: {
+        min_memory_mb: 512,
+        min_cpu_shares: 100
+      },
+      metadata: {
+        runtime: 'python',
+        version: '1.2.0'
+      }
+    },
+    requestSchema: [
+      { field: 'name', type: 'string', required: true, desc: 'Unique agent name (1-256 characters)' },
+      { field: 'capabilities', type: 'string[]', required: false, desc: 'List of capability strings (default: [])' },
+      { field: 'resource_needs', type: 'ResourceNeeds', required: false, desc: 'Minimum resource requirements' },
+      { field: 'resource_needs.min_memory_mb', type: 'u64', required: false, desc: 'Minimum memory in MB (default: 0)' },
+      { field: 'resource_needs.min_cpu_shares', type: 'u32', required: false, desc: 'Minimum CPU shares (default: 0)' },
+      { field: 'metadata', type: 'Map<string, string>', required: false, desc: 'Arbitrary key-value metadata (default: {})' }
+    ],
+    responseExample: {
+      id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+      name: 'file-manager-agent',
+      status: 'registered',
+      registered_at: '2026-03-06T14:30:00Z'
+    },
+    errorExample: {
+      error: "Agent 'file-manager-agent' already registered",
+      code: 409
+    }
+  },
+  {
+    id: 'rt-get-agent',
+    service: 'runtime',
+    serviceName: 'Agent Runtime',
+    port: 8090,
+    method: 'GET',
+    path: '/v1/agents/:id',
+    title: 'Get Agent',
+    description: 'Retrieve detailed information about a specific registered agent by its UUID. Returns full agent details including status, capabilities, resource needs, metadata, and last heartbeat data.',
+    headers: [],
+    requestBody: null,
+    requestSchema: null,
+    pathParams: [
+      { name: ':id', type: 'UUID', desc: 'Agent UUID returned from registration' }
+    ],
+    responseExample: {
+      id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+      name: 'file-manager-agent',
+      status: 'running',
+      capabilities: ['file:read', 'file:write', 'llm:inference'],
+      resource_needs: { min_memory_mb: 512, min_cpu_shares: 100 },
+      metadata: { runtime: 'python', version: '1.2.0' },
+      registered_at: '2026-03-06T14:30:00Z',
+      last_heartbeat: '2026-03-06T14:35:00Z',
+      current_task: 'indexing /home/user/documents',
+      cpu_percent: 35.2,
+      memory_mb: 480
+    },
+    errorExample: {
+      error: 'Agent a1b2c3d4-e5f6-7890-abcd-ef1234567890 not found',
+      code: 404
+    }
+  },
+  {
+    id: 'rt-heartbeat',
+    service: 'runtime',
+    serviceName: 'Agent Runtime',
+    port: 8090,
+    method: 'POST',
+    path: '/v1/agents/:id/heartbeat',
+    title: 'Agent Heartbeat',
+    description: 'Send a heartbeat for a registered agent. Updates the last_heartbeat timestamp. All fields in the body are optional -- only provided fields will be updated. An empty body ({}) is valid and will only update the timestamp.',
+    headers: [
+      { name: 'Content-Type', value: 'application/json', required: true }
+    ],
+    pathParams: [
+      { name: ':id', type: 'UUID', desc: 'Agent UUID returned from registration' }
+    ],
+    requestBody: {
+      status: 'running',
+      current_task: 'processing file batch #42',
+      cpu_percent: 45.2,
+      memory_mb: 512
+    },
+    requestSchema: [
+      { field: 'status', type: 'string', required: false, desc: 'Current agent status (e.g. "running", "idle", "error")' },
+      { field: 'current_task', type: 'string', required: false, desc: 'Description of current task' },
+      { field: 'cpu_percent', type: 'f32', required: false, desc: 'Current CPU usage percentage' },
+      { field: 'memory_mb', type: 'u64', required: false, desc: 'Current memory usage in MB' }
+    ],
+    responseExample: {
+      status: 'ok'
+    },
+    errorExample: {
+      error: 'Agent a1b2c3d4-e5f6-7890-abcd-ef1234567890 not found',
+      code: 404
+    }
+  },
+  {
+    id: 'rt-list-agents',
+    service: 'runtime',
+    serviceName: 'Agent Runtime',
+    port: 8090,
+    method: 'GET',
+    path: '/v1/agents',
+    title: 'List Agents',
+    description: 'List all currently registered agents with full details. Returns an array of agent objects and a total count.',
+    headers: [],
+    requestBody: null,
+    requestSchema: null,
+    responseExample: {
+      agents: [
+        {
+          id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+          name: 'file-manager-agent',
+          status: 'running',
+          capabilities: ['file:read', 'file:write'],
+          resource_needs: { min_memory_mb: 512, min_cpu_shares: 100 },
+          metadata: {},
+          registered_at: '2026-03-06T14:30:00Z',
+          last_heartbeat: '2026-03-06T14:35:00Z',
+          current_task: null,
+          cpu_percent: 12.5,
+          memory_mb: 256
+        }
+      ],
+      total: 1
+    }
+  },
+  {
+    id: 'rt-delete-agent',
+    service: 'runtime',
+    serviceName: 'Agent Runtime',
+    port: 8090,
+    method: 'DELETE',
+    path: '/v1/agents/:id',
+    title: 'Deregister Agent',
+    description: 'Remove a registered agent from the runtime. This also triggers cleanup of associated resources (network namespace, LUKS volumes, audit trail). The agent UUID becomes invalid after this call.',
+    headers: [],
+    requestBody: null,
+    requestSchema: null,
+    pathParams: [
+      { name: ':id', type: 'UUID', desc: 'Agent UUID returned from registration' }
+    ],
+    responseExample: {
+      status: 'deregistered',
+      id: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
+    },
+    errorExample: {
+      error: 'Agent a1b2c3d4-e5f6-7890-abcd-ef1234567890 not found',
+      code: 404
+    }
+  },
+  {
+    id: 'rt-health',
+    service: 'runtime',
+    serviceName: 'Agent Runtime',
+    port: 8090,
+    method: 'GET',
+    path: '/v1/health',
+    title: 'Health Check',
+    description: 'Returns the health status of the Agent Runtime service, including version information, number of registered agents, and uptime in seconds.',
+    headers: [],
+    requestBody: null,
+    requestSchema: null,
+    responseExample: {
+      status: 'ok',
+      service: 'agnos-agent-runtime',
+      version: '0.1.0',
+      agents_registered: 3,
+      uptime_seconds: 86400
+    }
+  },
+  {
+    id: 'rt-metrics',
+    service: 'runtime',
+    serviceName: 'Agent Runtime',
+    port: 8090,
+    method: 'GET',
+    path: '/v1/metrics',
+    title: 'Runtime Metrics',
+    description: 'Returns operational metrics for the Agent Runtime including total agent count, status breakdown, aggregate CPU and memory usage across all agents, and service uptime.',
+    headers: [],
+    requestBody: null,
+    requestSchema: null,
+    responseExample: {
+      total_agents: 5,
+      agents_by_status: {
+        running: 3,
+        idle: 1,
+        registered: 1
+      },
+      uptime_seconds: 86400,
+      avg_cpu_percent: 28.5,
+      total_memory_mb: 2048
+    }
+  }
+];
+
+// ── State ──────────────────────────────────────────────────────────────
+let activeEndpointId = null;
+
+// ── Render sidebar ─────────────────────────────────────────────────────
+function renderNav(filter = '') {
+  const navList = document.getElementById('navList');
+  const lowerFilter = filter.toLowerCase();
+
+  const gatewayEndpoints = ENDPOINTS.filter(e => e.service === 'gateway');
+  const runtimeEndpoints = ENDPOINTS.filter(e => e.service === 'runtime');
+
+  let html = '';
+
+  const renderGroup = (title, endpoints) => {
+    const filtered = endpoints.filter(e =>
+      !lowerFilter ||
+      e.path.toLowerCase().includes(lowerFilter) ||
+      e.title.toLowerCase().includes(lowerFilter) ||
+      e.method.toLowerCase().includes(lowerFilter) ||
+      e.description.toLowerCase().includes(lowerFilter)
+    );
+    if (filtered.length === 0) return '';
+    let h = `<div class="nav-group-title">${title}</div>`;
+    filtered.forEach(e => {
+      h += `<div class="nav-item method-${e.method} ${e.id === activeEndpointId ? 'active' : ''}" data-id="${e.id}">
+        <span class="method-badge">${e.method}</span>
+        <span class="endpoint-path">${e.path}</span>
+      </div>`;
+    });
+    return h;
+  };
+
+  html += renderGroup('LLM Gateway  :8088', gatewayEndpoints);
+  html += renderGroup('Agent Runtime  :8090', runtimeEndpoints);
+
+  navList.innerHTML = html;
+
+  navList.querySelectorAll('.nav-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const id = item.dataset.id;
+      selectEndpoint(id);
+    });
+  });
+}
+
+// ── JSON formatting with syntax highlighting ───────────────────────────
+function highlightJson(obj) {
+  const raw = JSON.stringify(obj, null, 2);
+  return raw.replace(
+    /("(?:\\.|[^"\\])*")\s*:/g,
+    '<span class="json-key">$1</span>:'
+  ).replace(
+    /:\s*("(?:\\.|[^"\\])*")/g,
+    ': <span class="json-string">$1</span>'
+  ).replace(
+    /:\s*(\d+\.?\d*)/g,
+    ': <span class="json-number">$1</span>'
+  ).replace(
+    /:\s*(true|false)/g,
+    ': <span class="json-bool">$1</span>'
+  ).replace(
+    /:\s*(null)/g,
+    ': <span class="json-null">$1</span>'
+  );
+}
+
+// ── Copy to clipboard ──────────────────────────────────────────────────
+function copyToClipboard(text, btn) {
+  navigator.clipboard.writeText(text).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = 'Copied';
+    setTimeout(() => btn.textContent = orig, 1500);
+  });
+}
+
+// ── Render endpoint detail ─────────────────────────────────────────────
+function selectEndpoint(id) {
+  activeEndpointId = id;
+  renderNav(document.getElementById('searchInput').value);
+
+  const ep = ENDPOINTS.find(e => e.id === id);
+  if (!ep) return;
+
+  const main = document.getElementById('mainContent');
+  const serviceClass = ep.service === 'gateway' ? 'service-gateway' : 'service-runtime';
+
+  let html = `<div class="endpoint-detail">`;
+
+  // Header
+  html += `<div class="endpoint-header ${serviceClass}">
+    <span class="service-tag">${ep.serviceName} :${ep.port}</span>
+    <div class="method-path method-${ep.method}">
+      <span class="method-badge-lg">${ep.method}</span>
+      <span class="path-text">${ep.path}</span>
+    </div>
+    <div class="description">${ep.description}</div>
+  </div>`;
+
+  // Path parameters
+  if (ep.pathParams && ep.pathParams.length > 0) {
+    html += `<div class="section">
+      <div class="section-title">Path Parameters</div>
+      <table class="header-table">
+        <thead><tr><th>Parameter</th><th>Type</th><th>Description</th></tr></thead>
+        <tbody>`;
+    ep.pathParams.forEach(p => {
+      html += `<tr>
+        <td><code>${p.name}</code></td>
+        <td><code>${p.type}</code></td>
+        <td>${p.desc}</td>
+      </tr>`;
+    });
+    html += `</tbody></table></div>`;
+  }
+
+  // Headers
+  if (ep.headers && ep.headers.length > 0) {
+    html += `<div class="section">
+      <div class="section-title">Headers</div>
+      <table class="header-table">
+        <thead><tr><th>Header</th><th>Value</th><th>Required</th><th>Notes</th></tr></thead>
+        <tbody>`;
+    ep.headers.forEach(h => {
+      html += `<tr>
+        <td><code>${h.name}</code></td>
+        <td><code>${h.value}</code></td>
+        <td><span class="${h.required ? 'required' : 'optional'}">${h.required ? 'Required' : 'Optional'}</span></td>
+        <td>${h.note || ''}</td>
+      </tr>`;
+    });
+    html += `</tbody></table></div>`;
+  }
+
+  // Request body schema
+  if (ep.requestSchema) {
+    html += `<div class="section">
+      <div class="section-title">Request Body Schema</div>
+      <table class="header-table">
+        <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
+        <tbody>`;
+    ep.requestSchema.forEach(f => {
+      html += `<tr>
+        <td><code>${f.field}</code></td>
+        <td><code>${f.type}</code></td>
+        <td><span class="${f.required ? 'required' : 'optional'}">${f.required ? 'Required' : 'Optional'}</span></td>
+        <td>${f.desc}</td>
+      </tr>`;
+    });
+    html += `</tbody></table></div>`;
+  }
+
+  // Request body example
+  if (ep.requestBody) {
+    const reqJson = JSON.stringify(ep.requestBody, null, 2);
+    html += `<div class="section">
+      <div class="section-title">Request Body Example</div>
+      <div class="code-block">
+        <div class="code-block-header">
+          <span>JSON</span>
+          <button onclick="copyToClipboard(${JSON.stringify(reqJson).replace(/"/g, '&quot;')}, this)">Copy</button>
+        </div>
+        <pre>${highlightJson(ep.requestBody)}</pre>
+      </div>
+    </div>`;
+  }
+
+  // Response example
+  if (ep.responseExample) {
+    const resJson = JSON.stringify(ep.responseExample, null, 2);
+    html += `<div class="section">
+      <div class="section-title">Response Example (200)</div>
+      <div class="code-block">
+        <div class="code-block-header">
+          <span>JSON</span>
+          <button onclick="copyToClipboard(${JSON.stringify(resJson).replace(/"/g, '&quot;')}, this)">Copy</button>
+        </div>
+        <pre>${highlightJson(ep.responseExample)}</pre>
+      </div>
+    </div>`;
+  }
+
+  // Error example
+  if (ep.errorExample) {
+    html += `<div class="section">
+      <div class="section-title">Error Response Example</div>
+      <div class="code-block">
+        <div class="code-block-header"><span>JSON</span></div>
+        <pre>${highlightJson(ep.errorExample)}</pre>
+      </div>
+    </div>`;
+  }
+
+  // Try It section
+  const defaultUrl = `http://localhost:${ep.port}${ep.path}`;
+  html += `<div class="section">
+    <div class="try-it">
+      <div class="try-it-header">
+        <h3>Try It</h3>
+      </div>
+      <div class="try-it-body">
+        <div class="form-group">
+          <label>Request URL</label>
+          <input type="text" id="tryUrl" value="${defaultUrl}">
+        </div>`;
+
+  if (ep.requestBody) {
+    html += `<div class="form-group">
+          <label>Request Body</label>
+          <textarea id="tryBody">${JSON.stringify(ep.requestBody, null, 2)}</textarea>
+        </div>`;
+  }
+
+  html += `<button class="btn-send" id="trySendBtn" onclick="sendRequest('${ep.id}')">Send Request</button>
+
+        <div class="response-panel" id="responsePanel">
+          <div class="response-status" id="responseStatus"></div>
+          <button class="response-headers-toggle" id="headersToggle" onclick="toggleHeaders()">Show Response Headers</button>
+          <div class="response-headers" id="responseHeaders"></div>
+          <div class="response-body">
+            <pre id="responseBody"></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+
+  html += `</div>`;
+  main.innerHTML = html;
+  main.scrollTop = 0;
+}
+
+// ── Send request ───────────────────────────────────────────────────────
+async function sendRequest(epId) {
+  const ep = ENDPOINTS.find(e => e.id === epId);
+  if (!ep) return;
+
+  const urlInput = document.getElementById('tryUrl');
+  const bodyInput = document.getElementById('tryBody');
+  const sendBtn = document.getElementById('trySendBtn');
+  const panel = document.getElementById('responsePanel');
+  const statusEl = document.getElementById('responseStatus');
+  const headersEl = document.getElementById('responseHeaders');
+  const bodyEl = document.getElementById('responseBody');
+
+  const url = urlInput.value.trim();
+  sendBtn.disabled = true;
+  sendBtn.textContent = 'Sending...';
+
+  const startTime = performance.now();
+
+  try {
+    const fetchOpts = {
+      method: ep.method,
+      headers: {}
+    };
+
+    if (ep.requestBody && bodyInput) {
+      fetchOpts.headers['Content-Type'] = 'application/json';
+      fetchOpts.body = bodyInput.value;
+    }
+
+    const resp = await fetch(url, fetchOpts);
+    const elapsed = Math.round(performance.now() - startTime);
+
+    const statusClass = resp.status < 300 ? 'status-2xx' : resp.status < 500 ? 'status-4xx' : 'status-5xx';
+    statusEl.innerHTML = `<span class="status-code ${statusClass}">${resp.status} ${resp.statusText}</span>
+      <span class="status-time">${elapsed}ms</span>`;
+
+    // Collect headers
+    let headersText = '';
+    resp.headers.forEach((value, key) => {
+      headersText += `${key}: ${value}\n`;
+    });
+    headersEl.innerHTML = `<pre>${headersText || '(no headers exposed by CORS)'}</pre>`;
+
+    // Parse body
+    const contentType = resp.headers.get('content-type') || '';
+    let bodyText;
+    if (contentType.includes('json')) {
+      const json = await resp.json();
+      bodyText = highlightJson(json);
+    } else {
+      bodyText = escapeHtml(await resp.text());
+    }
+    bodyEl.innerHTML = bodyText;
+
+  } catch (err) {
+    const elapsed = Math.round(performance.now() - startTime);
+    statusEl.innerHTML = `<span class="status-code status-err">Error</span>
+      <span class="status-time">${elapsed}ms</span>`;
+    bodyEl.textContent = `Network error: ${err.message}\n\nMake sure the service is running on the specified host and port, and that CORS is enabled.`;
+    document.getElementById('responseHeaders').innerHTML = '';
+  }
+
+  panel.classList.add('visible');
+  sendBtn.disabled = false;
+  sendBtn.textContent = 'Send Request';
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function toggleHeaders() {
+  const el = document.getElementById('responseHeaders');
+  const btn = document.getElementById('headersToggle');
+  if (el.classList.contains('visible')) {
+    el.classList.remove('visible');
+    btn.textContent = 'Show Response Headers';
+  } else {
+    el.classList.add('visible');
+    btn.textContent = 'Hide Response Headers';
+  }
+}
+
+// ── Search ─────────────────────────────────────────────────────────────
+document.getElementById('searchInput').addEventListener('input', (e) => {
+  renderNav(e.target.value);
+});
+
+// ── Keyboard shortcut ──────────────────────────────────────────────────
+document.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+    e.preventDefault();
+    document.getElementById('searchInput').focus();
+  }
+});
+
+// ── Init ───────────────────────────────────────────────────────────────
+renderNav();
+</script>
+</body>
+</html>

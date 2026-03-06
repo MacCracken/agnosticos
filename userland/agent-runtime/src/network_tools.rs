@@ -84,6 +84,24 @@ pub enum NetworkTool {
     BandwidthMonitor,
     /// Passive OS fingerprinting (p0f)
     PassiveFingerprint,
+    /// ARP network scanning — passive/active modes (netdiscover)
+    NetDiscover,
+    /// TUI Wireshark frontend (termshark wrapping tshark)
+    TermShark,
+    /// Network monitoring and MITM analysis framework (bettercap)
+    BetterCap,
+    /// Fast multi-purpose DNS toolkit (dnsx)
+    DnsX,
+    /// DNS zone traversal and subdomain discovery (fierce)
+    Fierce,
+    /// Web application fuzzer (wfuzz)
+    WebAppFuzz,
+    /// SQL injection detection and exploitation (sqlmap)
+    SqlMap,
+    /// 802.11 wireless analysis suite (aircrack-ng)
+    AircrackNg,
+    /// Wireless network detector and sniffer (kismet)
+    Kismet,
 }
 
 impl fmt::Display for NetworkTool {
@@ -112,6 +130,15 @@ impl fmt::Display for NetworkTool {
             NetworkTool::VulnScanner => write!(f, "VulnScanner"),
             NetworkTool::BandwidthMonitor => write!(f, "BandwidthMonitor"),
             NetworkTool::PassiveFingerprint => write!(f, "PassiveFingerprint"),
+            NetworkTool::NetDiscover => write!(f, "NetDiscover"),
+            NetworkTool::TermShark => write!(f, "TermShark"),
+            NetworkTool::BetterCap => write!(f, "BetterCap"),
+            NetworkTool::DnsX => write!(f, "DnsX"),
+            NetworkTool::Fierce => write!(f, "Fierce"),
+            NetworkTool::WebAppFuzz => write!(f, "WebAppFuzz"),
+            NetworkTool::SqlMap => write!(f, "SqlMap"),
+            NetworkTool::AircrackNg => write!(f, "AircrackNg"),
+            NetworkTool::Kismet => write!(f, "Kismet"),
         }
     }
 }
@@ -346,6 +373,87 @@ impl NetworkToolConfig {
                 max_timeout_secs: 300,
                 allowed_in_sandbox: false,
             },
+            NetworkTool::NetDiscover => Self {
+                tool,
+                binary_name: "netdiscover",
+                required_capabilities: vec!["NET_RAW".into()],
+                risk_level: RiskLevel::Medium,
+                requires_approval: true,
+                max_timeout_secs: 300,
+                allowed_in_sandbox: true,
+            },
+            NetworkTool::TermShark => Self {
+                tool,
+                binary_name: "termshark",
+                required_capabilities: vec!["NET_RAW".into(), "NET_ADMIN".into()],
+                risk_level: RiskLevel::Critical,
+                requires_approval: true,
+                max_timeout_secs: 600,
+                allowed_in_sandbox: false,
+            },
+            NetworkTool::BetterCap => Self {
+                tool,
+                binary_name: "bettercap",
+                required_capabilities: vec!["NET_RAW".into(), "NET_ADMIN".into()],
+                risk_level: RiskLevel::Critical,
+                requires_approval: true,
+                max_timeout_secs: 1800,
+                allowed_in_sandbox: false,
+            },
+            NetworkTool::DnsX => Self {
+                tool,
+                binary_name: "dnsx",
+                required_capabilities: vec![],
+                risk_level: RiskLevel::Medium,
+                requires_approval: false,
+                max_timeout_secs: 300,
+                allowed_in_sandbox: true,
+            },
+            NetworkTool::Fierce => Self {
+                tool,
+                binary_name: "fierce",
+                required_capabilities: vec![],
+                risk_level: RiskLevel::High,
+                requires_approval: true,
+                max_timeout_secs: 600,
+                allowed_in_sandbox: true,
+            },
+            NetworkTool::WebAppFuzz => Self {
+                tool,
+                binary_name: "wfuzz",
+                required_capabilities: vec![],
+                risk_level: RiskLevel::High,
+                requires_approval: true,
+                max_timeout_secs: 900,
+                allowed_in_sandbox: true,
+            },
+            NetworkTool::SqlMap => Self {
+                tool,
+                binary_name: "sqlmap",
+                required_capabilities: vec![],
+                risk_level: RiskLevel::Critical,
+                requires_approval: true,
+                max_timeout_secs: 1800,
+                allowed_in_sandbox: true,
+            },
+            NetworkTool::AircrackNg => Self {
+                tool,
+                binary_name: "aircrack-ng",
+                required_capabilities: vec!["NET_RAW".into(), "NET_ADMIN".into()],
+                risk_level: RiskLevel::Critical,
+                requires_approval: true,
+                max_timeout_secs: 1800,
+                allowed_in_sandbox: false,
+            },
+            NetworkTool::Kismet => Self {
+                tool,
+                binary_name: "kismet",
+                required_capabilities: vec!["NET_RAW".into(), "NET_ADMIN".into()],
+                risk_level: RiskLevel::Critical,
+                requires_approval: true,
+                max_timeout_secs: 1800,
+                allowed_in_sandbox: false,
+            },
         }
     }
 }
@@ -375,6 +483,15 @@ pub const ALL_TOOLS: &[NetworkTool] = &[
     NetworkTool::VulnScanner,
     NetworkTool::BandwidthMonitor,
     NetworkTool::PassiveFingerprint,
+    NetworkTool::NetDiscover,
+    NetworkTool::TermShark,
+    NetworkTool::BetterCap,
+    NetworkTool::DnsX,
+    NetworkTool::Fierce,
+    NetworkTool::WebAppFuzz,
+    NetworkTool::SqlMap,
+    NetworkTool::AircrackNg,
+    NetworkTool::Kismet,
 ];
 
 /// Output captured from a tool execution
@@ -974,6 +1091,28 @@ pub fn validate_args(tool: NetworkTool, args: &[String], allow_dangerous: bool) 
                 if joined.contains("-t ") || joined.contains("--templates") {
                     return Err(anyhow!(
                         "Custom nuclei templates require explicit approval"
+                    ));
+                }
+            }
+        }
+        NetworkTool::SqlMap => {
+            if !allow_dangerous {
+                let dangerous_sqlmap_args = &["--os-shell", "--os-cmd", "--file-write"];
+                for pattern in dangerous_sqlmap_args {
+                    if joined.contains(pattern) {
+                        return Err(anyhow!(
+                            "Dangerous sqlmap argument '{}' requires explicit approval (enables OS-level access)",
+                            pattern
+                        ));
+                    }
+                }
+            }
+        }
+        NetworkTool::BetterCap => {
+            if !allow_dangerous {
+                if joined.contains("--caplet") {
+                    return Err(anyhow!(
+                        "Dangerous bettercap argument '--caplet' requires explicit approval (arbitrary script execution)"
                     ));
                 }
             }
@@ -2122,7 +2261,7 @@ mod tests {
     fn test_list_all_tools_count() {
         let tools = NetworkToolRunner::list_all_tools();
         assert_eq!(tools.len(), ALL_TOOLS.len());
-        assert_eq!(tools.len(), 23);
+        assert_eq!(tools.len(), 32);
     }
 
     #[test]
@@ -2195,6 +2334,15 @@ mod tests {
         assert!(configs.iter().any(|c| c.tool == NetworkTool::VulnScanner));
         assert!(configs.iter().any(|c| c.tool == NetworkTool::BandwidthMonitor));
         assert!(configs.iter().any(|c| c.tool == NetworkTool::PassiveFingerprint));
+        assert!(configs.iter().any(|c| c.tool == NetworkTool::NetDiscover));
+        assert!(configs.iter().any(|c| c.tool == NetworkTool::TermShark));
+        assert!(configs.iter().any(|c| c.tool == NetworkTool::BetterCap));
+        assert!(configs.iter().any(|c| c.tool == NetworkTool::DnsX));
+        assert!(configs.iter().any(|c| c.tool == NetworkTool::Fierce));
+        assert!(configs.iter().any(|c| c.tool == NetworkTool::WebAppFuzz));
+        assert!(configs.iter().any(|c| c.tool == NetworkTool::SqlMap));
+        assert!(configs.iter().any(|c| c.tool == NetworkTool::AircrackNg));
+        assert!(configs.iter().any(|c| c.tool == NetworkTool::Kismet));
     }
 
     // --- New tool config tests ---
@@ -2740,5 +2888,167 @@ LISTEN   0       128     0.0.0.0:80          0.0.0.0:*          users:((\"nginx\
         assert_eq!(scanner.profile, ScanProfile::Standard);
         assert!(!scanner.use_masscan);
         assert!(scanner.ports.is_none());
+    }
+
+    // --- New tool (batch 2) config tests ---
+
+    #[test]
+    fn test_netdiscover_config() {
+        let cfg = NetworkToolConfig::for_tool(NetworkTool::NetDiscover);
+        assert_eq!(cfg.binary_name, "netdiscover");
+        assert_eq!(cfg.risk_level, RiskLevel::Medium);
+        assert!(cfg.requires_approval);
+        assert!(cfg.required_capabilities.contains(&"NET_RAW".to_string()));
+        assert!(cfg.allowed_in_sandbox);
+    }
+
+    #[test]
+    fn test_termshark_config() {
+        let cfg = NetworkToolConfig::for_tool(NetworkTool::TermShark);
+        assert_eq!(cfg.binary_name, "termshark");
+        assert_eq!(cfg.risk_level, RiskLevel::Critical);
+        assert!(cfg.requires_approval);
+        assert!(cfg.required_capabilities.contains(&"NET_RAW".to_string()));
+        assert!(cfg.required_capabilities.contains(&"NET_ADMIN".to_string()));
+        assert!(!cfg.allowed_in_sandbox);
+    }
+
+    #[test]
+    fn test_bettercap_config() {
+        let cfg = NetworkToolConfig::for_tool(NetworkTool::BetterCap);
+        assert_eq!(cfg.binary_name, "bettercap");
+        assert_eq!(cfg.risk_level, RiskLevel::Critical);
+        assert!(cfg.requires_approval);
+        assert!(cfg.required_capabilities.contains(&"NET_RAW".to_string()));
+        assert!(cfg.required_capabilities.contains(&"NET_ADMIN".to_string()));
+        assert!(!cfg.allowed_in_sandbox);
+    }
+
+    #[test]
+    fn test_dnsx_config() {
+        let cfg = NetworkToolConfig::for_tool(NetworkTool::DnsX);
+        assert_eq!(cfg.binary_name, "dnsx");
+        assert_eq!(cfg.risk_level, RiskLevel::Medium);
+        assert!(!cfg.requires_approval);
+        assert!(cfg.required_capabilities.is_empty());
+        assert!(cfg.allowed_in_sandbox);
+    }
+
+    #[test]
+    fn test_fierce_config() {
+        let cfg = NetworkToolConfig::for_tool(NetworkTool::Fierce);
+        assert_eq!(cfg.binary_name, "fierce");
+        assert_eq!(cfg.risk_level, RiskLevel::High);
+        assert!(cfg.requires_approval);
+        assert!(cfg.required_capabilities.is_empty());
+        assert!(cfg.allowed_in_sandbox);
+    }
+
+    #[test]
+    fn test_wfuzz_config() {
+        let cfg = NetworkToolConfig::for_tool(NetworkTool::WebAppFuzz);
+        assert_eq!(cfg.binary_name, "wfuzz");
+        assert_eq!(cfg.risk_level, RiskLevel::High);
+        assert!(cfg.requires_approval);
+        assert!(cfg.allowed_in_sandbox);
+    }
+
+    #[test]
+    fn test_sqlmap_config() {
+        let cfg = NetworkToolConfig::for_tool(NetworkTool::SqlMap);
+        assert_eq!(cfg.binary_name, "sqlmap");
+        assert_eq!(cfg.risk_level, RiskLevel::Critical);
+        assert!(cfg.requires_approval);
+        assert!(cfg.allowed_in_sandbox);
+    }
+
+    #[test]
+    fn test_aircrack_ng_config() {
+        let cfg = NetworkToolConfig::for_tool(NetworkTool::AircrackNg);
+        assert_eq!(cfg.binary_name, "aircrack-ng");
+        assert_eq!(cfg.risk_level, RiskLevel::Critical);
+        assert!(cfg.requires_approval);
+        assert!(cfg.required_capabilities.contains(&"NET_RAW".to_string()));
+        assert!(cfg.required_capabilities.contains(&"NET_ADMIN".to_string()));
+        assert!(!cfg.allowed_in_sandbox);
+    }
+
+    #[test]
+    fn test_kismet_config() {
+        let cfg = NetworkToolConfig::for_tool(NetworkTool::Kismet);
+        assert_eq!(cfg.binary_name, "kismet");
+        assert_eq!(cfg.risk_level, RiskLevel::Critical);
+        assert!(cfg.requires_approval);
+        assert!(cfg.required_capabilities.contains(&"NET_RAW".to_string()));
+        assert!(cfg.required_capabilities.contains(&"NET_ADMIN".to_string()));
+        assert!(!cfg.allowed_in_sandbox);
+    }
+
+    // --- Dangerous arg rejection for sqlmap and bettercap ---
+
+    #[test]
+    fn test_reject_sqlmap_os_shell() {
+        let args = vec!["--os-shell".to_string(), "-u".to_string(), "http://target.com".to_string()];
+        assert!(validate_args(NetworkTool::SqlMap, &args, false).is_err());
+    }
+
+    #[test]
+    fn test_reject_sqlmap_os_cmd() {
+        let args = vec!["--os-cmd=whoami".to_string()];
+        assert!(validate_args(NetworkTool::SqlMap, &args, false).is_err());
+    }
+
+    #[test]
+    fn test_reject_sqlmap_file_write() {
+        let args = vec!["--file-write=/tmp/shell.php".to_string()];
+        assert!(validate_args(NetworkTool::SqlMap, &args, false).is_err());
+    }
+
+    #[test]
+    fn test_allow_sqlmap_dangerous_with_approval() {
+        let args = vec!["--os-shell".to_string()];
+        assert!(validate_args(NetworkTool::SqlMap, &args, true).is_ok());
+    }
+
+    #[test]
+    fn test_allow_sqlmap_normal_args() {
+        let args = vec!["-u".to_string(), "http://target.com/page?id=1".to_string(), "--batch".to_string()];
+        assert!(validate_args(NetworkTool::SqlMap, &args, false).is_ok());
+    }
+
+    #[test]
+    fn test_reject_bettercap_caplet() {
+        let args = vec!["--caplet".to_string(), "http-req-dump".to_string()];
+        assert!(validate_args(NetworkTool::BetterCap, &args, false).is_err());
+    }
+
+    #[test]
+    fn test_allow_bettercap_caplet_with_approval() {
+        let args = vec!["--caplet".to_string(), "http-req-dump".to_string()];
+        assert!(validate_args(NetworkTool::BetterCap, &args, true).is_ok());
+    }
+
+    #[test]
+    fn test_allow_bettercap_normal_args() {
+        let args = vec!["-iface".to_string(), "eth0".to_string()];
+        assert!(validate_args(NetworkTool::BetterCap, &args, false).is_ok());
+    }
+
+    #[test]
+    fn test_all_tools_count_is_32() {
+        assert_eq!(ALL_TOOLS.len(), 32);
+    }
+
+    #[test]
+    fn test_new_tools_display() {
+        assert_eq!(NetworkTool::NetDiscover.to_string(), "NetDiscover");
+        assert_eq!(NetworkTool::TermShark.to_string(), "TermShark");
+        assert_eq!(NetworkTool::BetterCap.to_string(), "BetterCap");
+        assert_eq!(NetworkTool::DnsX.to_string(), "DnsX");
+        assert_eq!(NetworkTool::Fierce.to_string(), "Fierce");
+        assert_eq!(NetworkTool::WebAppFuzz.to_string(), "WebAppFuzz");
+        assert_eq!(NetworkTool::SqlMap.to_string(), "SqlMap");
+        assert_eq!(NetworkTool::AircrackNg.to_string(), "AircrackNg");
+        assert_eq!(NetworkTool::Kismet.to_string(), "Kismet");
     }
 }
