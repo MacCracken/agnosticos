@@ -5,13 +5,14 @@
 mod ai_features;
 mod apps;
 mod compositor;
+pub mod renderer;
 mod security_ui;
 mod shell;
 mod system_tests;
 
 pub use compositor::{
-    Compositor, CompositorBackend, CompositorError, ContextType, InputEvent, Rectangle, SurfaceId,
-    WaylandBackend, Window, WindowState, Workspace,
+    Compositor, CompositorBackend, CompositorError, ContextType, InputAction, InputEvent,
+    Rectangle, SurfaceId, WaylandBackend, Window, WindowState, Workspace,
 };
 
 pub use shell::{
@@ -29,6 +30,11 @@ pub use apps::{
     AgentInfo, AgentManagerApp, AppError, AppType, AppWindow, AuditEntry, AuditFilters,
     AuditViewerApp, DesktopApplications, FileManagerApp, ModelInfo, ModelManagerApp, TerminalApp,
     TimeRange,
+};
+
+pub use renderer::{
+    DamageTracker, DecorationHit, DesktopRenderer, Framebuffer, Layer, Pixel, ResizeEdge,
+    SceneGraph, SceneSurface,
 };
 
 pub use security_ui::{

@@ -30,6 +30,7 @@
 | Agent-to-agent pub/sub protocol | agent-runtime/ipc | Done (17 tests) |
 | Rollback / undo for agent actions | agent-runtime/sandbox | Done (15 tests) |
 | Interactive approval editing in agnsh | ai-shell | Done (3 new tests) |
+| Agent package manager (`agnos install`) | agent-runtime | Done (31 tests) |
 
 ### P2 - Alpha Polish (Tier 2)
 | Item | Component | Effort | Owner | Status |
@@ -39,7 +40,6 @@
 ### P3 - Beta/Post-Alpha (Tier 3)
 | Item | Component | Effort | Owner | Status |
 |------|-----------|--------|-------|--------|
-| Agent package manager (`agnos install`) | agent-runtime | 3 weeks | TBD | Not started |
 | Kernel Development Guide | Documentation | 3 days | TBD | Not started |
 | Support portal | Infrastructure | 2 weeks | TBD | Not started |
 | Interactive API explorer | Documentation | 1 week | TBD | Not started |
@@ -308,7 +308,7 @@ The `llm-gateway` (OpenAI-compatible on :8088) can serve as a unified AI provide
 |--------|--------|---------|--------|
 | Code Coverage | >80% | ~80% | Met |
 | Test Pass Rate | 100% | 100% | Met |
-| Total Tests | 400+ | 4730+ | Met |
+| Total Tests | 400+ | 4760+ | Met |
 | Agent Spawn Time | <500ms | ~300ms | Met |
 | Shell Response Time | <100ms | ~50ms | Met |
 | Memory Overhead | <2GB | ~1.2GB | Met |
@@ -323,7 +323,7 @@ The `llm-gateway` (OpenAI-compatible on :8088) can serve as a unified AI provide
 |-----------|-------|-------|
 | agnos-common | 297 | Secrets, telemetry, LLM types, manifest, rate limits |
 | agnos-sys | 523 (7 ignored) | LLM gateway delegation, audit, dmverity, luks, mac, netns |
-| agent-runtime | 651 + 16 integration + 30 load | Service manager, lifecycle hooks, pub/sub, rollback, resource quotas, IPC backpressure, WASM |
+| agent-runtime | 682 + 16 integration + 30 load | Service manager, lifecycle hooks, pub/sub, rollback, package manager, resource quotas, IPC backpressure, WASM |
 | llm-gateway | 206 + 423 | 5 providers, rate limiting, streaming, graceful degradation |
 | ai-shell | 545 + 545 | 16 intents, audit viewer, service control, interactive approval editing, formatting, session |
 | desktop-environment | 459 + 417 + 40 E2E | HUD, security, apps, compositor, system tests |

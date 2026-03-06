@@ -10,6 +10,7 @@ use tracing_subscriber::EnvFilter;
 use clap::Parser;
 
 mod compositor;
+pub mod renderer;
 mod shell;
 mod ai_features;
 mod apps;

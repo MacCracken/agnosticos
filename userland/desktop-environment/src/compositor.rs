@@ -1,8 +1,13 @@
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use thiserror::Error;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 use uuid::Uuid;
+
+use crate::renderer::{
+    self, DecorationHit, DesktopRenderer, Layer, ResizeEdge, SceneGraph, SceneSurface,
+    TITLEBAR_HEIGHT,
+};
 
 #[derive(Debug, Error)]
 pub enum CompositorError {
@@ -83,7 +88,29 @@ pub enum ContextType {
     User,
 }
 
-#[derive(Debug)]
+/// Result of routing an input event to a window.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InputAction {
+    /// Start dragging a window from its title bar.
+    BeginDrag(SurfaceId),
+    /// Close a window via its close button.
+    Close(SurfaceId),
+    /// Minimize a window.
+    Minimize(SurfaceId),
+    /// Maximize/restore a window.
+    ToggleMaximize(SurfaceId),
+    /// Begin resizing from an edge/corner.
+    BeginResize(SurfaceId, ResizeEdge),
+    /// Forward a click to the window's client area.
+    ClientClick(SurfaceId, i32, i32),
+    /// Forward a key press to the focused window.
+    KeyToFocused(u32, u32),
+    /// Pointer moved — update cursor position.
+    PointerMove(i32, i32),
+    /// No action (click on background, etc.).
+    None,
+}
+
 pub struct Compositor {
     windows: Arc<RwLock<HashMap<SurfaceId, Window>>>,
     workspaces: Arc<RwLock<Vec<Workspace>>>,
@@ -91,10 +118,21 @@ pub struct Compositor {
     current_output: Arc<RwLock<Rectangle>>,
     agent_aware_mode: Arc<RwLock<bool>>,
     secure_mode: Arc<RwLock<bool>>,
+    scene: Arc<RwLock<SceneGraph>>,
+    renderer: Arc<RwLock<DesktopRenderer>>,
+    focused_window: Arc<RwLock<Option<SurfaceId>>>,
+    /// Window being dragged: (id, offset_x, offset_y)
+    drag_state: Arc<RwLock<Option<(SurfaceId, i32, i32)>>>,
+    /// Window being resized: (id, edge, original_rect)
+    resize_state: Arc<RwLock<Option<(SurfaceId, ResizeEdge, Rectangle)>>>,
 }
 
 impl Compositor {
     pub fn new() -> Self {
+        Self::with_resolution(1920, 1080)
+    }
+
+    pub fn with_resolution(width: u32, height: u32) -> Self {
         let mut workspaces = Vec::new();
         for i in 0..4 {
             workspaces.push(Workspace {
@@ -110,9 +148,19 @@ impl Compositor {
             windows: Arc::new(RwLock::new(HashMap::new())),
             workspaces: Arc::new(RwLock::new(workspaces)),
             active_workspace: Arc::new(RwLock::new(0)),
-            current_output: Arc::new(RwLock::new(Rectangle::default())),
+            current_output: Arc::new(RwLock::new(Rectangle {
+                x: 0,
+                y: 0,
+                width,
+                height,
+            })),
             agent_aware_mode: Arc::new(RwLock::new(true)),
             secure_mode: Arc::new(RwLock::new(false)),
+            scene: Arc::new(RwLock::new(SceneGraph::new())),
+            renderer: Arc::new(RwLock::new(DesktopRenderer::new(width, height))),
+            focused_window: Arc::new(RwLock::new(None)),
+            drag_state: Arc::new(RwLock::new(None)),
+            resize_state: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -124,18 +172,49 @@ impl Compositor {
     ) -> Result<SurfaceId, CompositorError> {
         let id = Uuid::new_v4();
         let app_id_clone = app_id.clone();
+
+        // Calculate placement: cascade from top-left
+        let window_count = self.windows.read().unwrap().len();
+        let cascade_offset = (window_count as i32 * 30) % 300;
+        let output = self.current_output.read().unwrap().clone();
+        let default_width = (output.width / 2).max(400);
+        let default_height = (output.height / 2).max(300);
+
+        let geometry = Rectangle {
+            x: 50 + cascade_offset,
+            y: 50 + cascade_offset,
+            width: default_width,
+            height: default_height,
+        };
+
         let window = Window {
             id,
-            title,
+            title: title.clone(),
             app_id: app_id_clone,
             state: WindowState::Normal,
-            geometry: Rectangle::default(),
+            geometry: geometry.clone(),
             is_agent_window: is_agent,
             created_at: chrono::Utc::now(),
         };
 
         self.windows.write().unwrap().insert(id, window);
         self.add_window_to_workspace(id);
+
+        // Add to scene graph
+        let layer = if is_agent { Layer::Floating } else { Layer::Normal };
+        self.scene.write().unwrap().add_surface(SceneSurface {
+            id,
+            layer,
+            geometry,
+            visible: true,
+            opacity: 1.0,
+            title: title.clone(),
+            is_active: true,
+            window_state: WindowState::Normal,
+        });
+
+        // Focus the new window
+        *self.focused_window.write().unwrap() = Some(id);
 
         info!("Created window {} for {}", id, app_id);
         Ok(id)
@@ -167,6 +246,18 @@ impl Compositor {
             }
         }
 
+        // Remove from scene graph and renderer
+        self.scene.write().unwrap().remove_surface(id);
+        self.renderer.write().unwrap().remove_buffer(id);
+
+        // Update focus
+        let mut focused = self.focused_window.write().unwrap();
+        if *focused == Some(id) {
+            // Focus the next window in the workspace
+            let ws_windows = workspaces.get(active_ws).map(|ws| ws.windows.clone());
+            *focused = ws_windows.and_then(|w| w.last().copied());
+        }
+
         info!("Closed window {}", id);
         Ok(())
     }
@@ -180,8 +271,46 @@ impl Compositor {
         if !windows.contains_key(&id) {
             return Err(CompositorError::WindowNotFound(id));
         }
+
+        let output = self.current_output.read().unwrap().clone();
+
         if let Some(w) = windows.get_mut(&id) {
             w.state = state.clone();
+
+            // Sync geometry for maximize/fullscreen
+            match &state {
+                WindowState::Maximized => {
+                    w.geometry = Rectangle {
+                        x: 0,
+                        y: 0,
+                        width: output.width,
+                        height: output.height,
+                    };
+                }
+                WindowState::Fullscreen => {
+                    w.geometry = Rectangle {
+                        x: 0,
+                        y: 0,
+                        width: output.width,
+                        height: output.height,
+                    };
+                }
+                _ => {}
+            }
+
+            // Update scene graph
+            let mut scene = self.scene.write().unwrap();
+            if let Some(surface) = scene.get_surface_mut(id) {
+                surface.window_state = state.clone();
+                surface.visible = state != WindowState::Minimized;
+                match &state {
+                    WindowState::Maximized | WindowState::Fullscreen => {
+                        surface.geometry = w.geometry.clone();
+                    }
+                    _ => {}
+                }
+            }
+
             info!("Window {} state changed to {:?}", id, state);
         }
 
@@ -318,6 +447,284 @@ impl Compositor {
 
         lines.push("╚══════════════════════════════════════╝".to_string());
         lines.join("\n")
+    }
+
+    /// Route an input event through the scene graph and return the action.
+    pub fn route_input(&self, event: &InputEvent) -> InputAction {
+        match event {
+            InputEvent::MouseClick { button: 1, x, y } => {
+                self.handle_left_click(*x, *y)
+            }
+            InputEvent::MouseClick { button: 3, x, y } => {
+                // Right-click → just forward to client
+                let mut scene = self.scene.write().unwrap();
+                if let Some(id) = scene.surface_at(*x, *y) {
+                    InputAction::ClientClick(id, *x, *y)
+                } else {
+                    InputAction::None
+                }
+            }
+            InputEvent::MouseMove { x, y } => {
+                self.handle_mouse_move(*x, *y)
+            }
+            InputEvent::KeyPress { keycode, modifiers } => {
+                let focused = self.focused_window.read().unwrap();
+                if focused.is_some() {
+                    InputAction::KeyToFocused(*keycode, *modifiers)
+                } else {
+                    InputAction::None
+                }
+            }
+            _ => InputAction::None,
+        }
+    }
+
+    fn handle_left_click(&self, x: i32, y: i32) -> InputAction {
+        let mut scene = self.scene.write().unwrap();
+        let surface_id = match scene.surface_at(x, y) {
+            Some(id) => id,
+            None => return InputAction::None,
+        };
+
+        let surface: SceneSurface = match scene.get_surface(surface_id) {
+            Some(s) => s.clone(),
+            None => return InputAction::None,
+        };
+
+        // Hit-test against window decorations
+        let hit = renderer::decoration_hit_test(&surface.geometry, x, y, &surface.window_state);
+
+        // Focus and raise the window
+        drop(scene);
+        self.focus_window(surface_id);
+
+        match hit {
+            DecorationHit::TitleBar => {
+                // Start drag — store offset from window origin
+                let offset_x = x - surface.geometry.x;
+                let offset_y = y - surface.geometry.y;
+                *self.drag_state.write().unwrap() = Some((surface_id, offset_x, offset_y));
+                InputAction::BeginDrag(surface_id)
+            }
+            DecorationHit::CloseButton => InputAction::Close(surface_id),
+            DecorationHit::MinimizeButton => InputAction::Minimize(surface_id),
+            DecorationHit::MaximizeButton => InputAction::ToggleMaximize(surface_id),
+            DecorationHit::Border(edge) => {
+                *self.resize_state.write().unwrap() =
+                    Some((surface_id, edge.clone(), surface.geometry.clone()));
+                InputAction::BeginResize(surface_id, edge)
+            }
+            DecorationHit::ClientArea => {
+                let local_x = x - surface.geometry.x;
+                let local_y = y - surface.geometry.y - TITLEBAR_HEIGHT as i32;
+                InputAction::ClientClick(surface_id, local_x, local_y)
+            }
+            DecorationHit::Outside => InputAction::None,
+        }
+    }
+
+    fn handle_mouse_move(&self, x: i32, y: i32) -> InputAction {
+        // Handle active drag
+        let drag = self.drag_state.read().unwrap().clone();
+        if let Some((id, offset_x, offset_y)) = drag {
+            let new_x = x - offset_x;
+            let new_y = y - offset_y;
+            self.move_window(id, new_x, new_y);
+            return InputAction::PointerMove(x, y);
+        }
+
+        // Handle active resize
+        let resize = self.resize_state.read().unwrap().clone();
+        if let Some((id, ref edge, ref original)) = resize {
+            self.apply_resize(id, edge, original, x, y);
+            return InputAction::PointerMove(x, y);
+        }
+
+        InputAction::PointerMove(x, y)
+    }
+
+    /// End any active drag or resize operation (call on mouse button release).
+    pub fn end_interactive(&self) {
+        *self.drag_state.write().unwrap() = None;
+        *self.resize_state.write().unwrap() = None;
+    }
+
+    /// Move a window to a new position.
+    pub fn move_window(&self, id: SurfaceId, x: i32, y: i32) {
+        if let Some(w) = self.windows.write().unwrap().get_mut(&id) {
+            w.geometry.x = x;
+            w.geometry.y = y;
+        }
+        if let Some(s) = self.scene.write().unwrap().get_surface_mut(id) {
+            s.geometry.x = x;
+            s.geometry.y = y;
+        }
+        debug!("Moved window {} to ({}, {})", id, x, y);
+    }
+
+    /// Resize a window.
+    pub fn resize_window(&self, id: SurfaceId, width: u32, height: u32) {
+        let min_w = 200u32;
+        let min_h = 100u32;
+        let w = width.max(min_w);
+        let h = height.max(min_h);
+
+        if let Some(win) = self.windows.write().unwrap().get_mut(&id) {
+            win.geometry.width = w;
+            win.geometry.height = h;
+        }
+        if let Some(s) = self.scene.write().unwrap().get_surface_mut(id) {
+            s.geometry.width = w;
+            s.geometry.height = h;
+        }
+    }
+
+    fn apply_resize(&self, id: SurfaceId, edge: &ResizeEdge, original: &Rectangle, mx: i32, my: i32) {
+        let dx = mx - (original.x + original.width as i32);
+        let dy = my - (original.y + original.height as i32);
+
+        let (mut x, mut y, mut w, mut h) = (
+            original.x,
+            original.y,
+            original.width as i32,
+            original.height as i32,
+        );
+
+        match edge {
+            ResizeEdge::Right => w = original.width as i32 + dx,
+            ResizeEdge::Bottom => h = original.height as i32 + dy,
+            ResizeEdge::BottomRight => {
+                w = original.width as i32 + dx;
+                h = original.height as i32 + dy;
+            }
+            ResizeEdge::Left => {
+                let delta = mx - original.x;
+                x = original.x + delta;
+                w = original.width as i32 - delta;
+            }
+            ResizeEdge::Top => {
+                let delta = my - original.y;
+                y = original.y + delta;
+                h = original.height as i32 - delta;
+            }
+            ResizeEdge::TopLeft => {
+                let dx2 = mx - original.x;
+                let dy2 = my - original.y;
+                x = original.x + dx2;
+                y = original.y + dy2;
+                w = original.width as i32 - dx2;
+                h = original.height as i32 - dy2;
+            }
+            ResizeEdge::TopRight => {
+                let dy2 = my - original.y;
+                y = original.y + dy2;
+                w = original.width as i32 + dx;
+                h = original.height as i32 - dy2;
+            }
+            ResizeEdge::BottomLeft => {
+                let dx2 = mx - original.x;
+                x = original.x + dx2;
+                w = original.width as i32 - dx2;
+                h = original.height as i32 + dy;
+            }
+        }
+
+        let w = w.max(200) as u32;
+        let h = h.max(100) as u32;
+
+        if let Some(win) = self.windows.write().unwrap().get_mut(&id) {
+            win.geometry.x = x;
+            win.geometry.y = y;
+            win.geometry.width = w;
+            win.geometry.height = h;
+        }
+        if let Some(s) = self.scene.write().unwrap().get_surface_mut(id) {
+            s.geometry.x = x;
+            s.geometry.y = y;
+            s.geometry.width = w;
+            s.geometry.height = h;
+        }
+    }
+
+    /// Focus a window and raise it.
+    pub fn focus_window(&self, id: SurfaceId) {
+        // Unfocus previous
+        let prev = *self.focused_window.read().unwrap();
+        let mut scene = self.scene.write().unwrap();
+        if let Some(prev_id) = prev {
+            if let Some(s) = scene.get_surface_mut(prev_id) {
+                s.is_active = false;
+            }
+        }
+        // Focus new
+        if let Some(s) = scene.get_surface_mut(id) {
+            s.is_active = true;
+        }
+        scene.raise_surface(id);
+        drop(scene);
+
+        *self.focused_window.write().unwrap() = Some(id);
+    }
+
+    /// Get the currently focused window.
+    pub fn focused_window(&self) -> Option<SurfaceId> {
+        *self.focused_window.read().unwrap()
+    }
+
+    /// Render a frame using the scene graph and return the front buffer bytes.
+    pub fn render(&self) -> Vec<u8> {
+        let mut renderer = self.renderer.write().unwrap();
+        let mut scene = self.scene.write().unwrap();
+        renderer.render_frame(&mut scene);
+        renderer.front_buffer().as_bytes().to_vec()
+    }
+
+    /// Submit a window content buffer for rendering.
+    pub fn submit_window_buffer(&self, id: SurfaceId, buffer: renderer::Framebuffer) {
+        self.renderer.write().unwrap().submit_buffer(id, buffer);
+    }
+
+    /// Tile all visible windows in the active workspace in a grid layout.
+    pub fn tile_windows(&self) {
+        let active_ws = *self.active_workspace.read().unwrap();
+        let workspaces = self.workspaces.read().unwrap();
+        let ws_windows = match workspaces.get(active_ws) {
+            Some(ws) => ws.windows.clone(),
+            None => return,
+        };
+        drop(workspaces);
+
+        let output = self.current_output.read().unwrap().clone();
+        let count = ws_windows.len();
+        if count == 0 {
+            return;
+        }
+
+        let cols = ((count as f64).sqrt().ceil()) as u32;
+        let rows = ((count as f64) / cols as f64).ceil() as u32;
+        let tile_w = output.width / cols;
+        let tile_h = output.height / rows;
+
+        for (i, win_id) in ws_windows.iter().enumerate() {
+            let col = (i as u32) % cols;
+            let row = (i as u32) / cols;
+            let geom = Rectangle {
+                x: (col * tile_w) as i32,
+                y: (row * tile_h) as i32,
+                width: tile_w,
+                height: tile_h,
+            };
+
+            if let Some(w) = self.windows.write().unwrap().get_mut(win_id) {
+                w.geometry = geom.clone();
+                w.state = WindowState::Normal;
+            }
+            if let Some(s) = self.scene.write().unwrap().get_surface_mut(*win_id) {
+                s.geometry = geom;
+                s.window_state = WindowState::Normal;
+            }
+        }
+        info!("Tiled {} windows in {}x{} grid", count, cols, rows);
     }
 
     pub fn get_agent_windows(&self) -> Vec<Window> {
@@ -1115,5 +1522,325 @@ mod tests {
         compositor.move_window_to_workspace(id_ws0, 1).unwrap();
         let active_after = compositor.get_active_windows();
         assert_eq!(active_after.len(), 2);
+    }
+
+    // --- New: renderer integration tests ---
+
+    #[test]
+    fn test_compositor_with_resolution() {
+        let compositor = Compositor::with_resolution(800, 600);
+        let output = compositor.current_output.read().unwrap();
+        assert_eq!(output.width, 800);
+        assert_eq!(output.height, 600);
+    }
+
+    #[test]
+    fn test_compositor_create_window_adds_to_scene() {
+        let compositor = Compositor::new();
+        let id = compositor.create_window("Test".to_string(), "app".to_string(), false).unwrap();
+        let scene = compositor.scene.read().unwrap();
+        assert_eq!(scene.total_count(), 1);
+        let surface = scene.get_surface(id).unwrap();
+        assert_eq!(surface.title, "Test");
+        assert!(surface.is_active);
+        assert!(surface.visible);
+        assert_eq!(surface.layer, Layer::Normal);
+    }
+
+    #[test]
+    fn test_compositor_agent_window_gets_floating_layer() {
+        let compositor = Compositor::new();
+        let id = compositor.create_window("Agent".to_string(), "agent".to_string(), true).unwrap();
+        let scene = compositor.scene.read().unwrap();
+        let surface = scene.get_surface(id).unwrap();
+        assert_eq!(surface.layer, Layer::Floating);
+    }
+
+    #[test]
+    fn test_compositor_close_removes_from_scene() {
+        let compositor = Compositor::new();
+        let id = compositor.create_window("W".to_string(), "app".to_string(), false).unwrap();
+        assert_eq!(compositor.scene.read().unwrap().total_count(), 1);
+        compositor.close_window(id).unwrap();
+        assert_eq!(compositor.scene.read().unwrap().total_count(), 0);
+    }
+
+    #[test]
+    fn test_compositor_focus_window() {
+        let compositor = Compositor::new();
+        let id1 = compositor.create_window("W1".to_string(), "a".to_string(), false).unwrap();
+        let id2 = compositor.create_window("W2".to_string(), "b".to_string(), false).unwrap();
+        // id2 should be focused (last created)
+        assert_eq!(compositor.focused_window(), Some(id2));
+
+        // Focus id1
+        compositor.focus_window(id1);
+        assert_eq!(compositor.focused_window(), Some(id1));
+        let scene = compositor.scene.read().unwrap();
+        assert!(scene.get_surface(id1).unwrap().is_active);
+        assert!(!scene.get_surface(id2).unwrap().is_active);
+    }
+
+    #[test]
+    fn test_compositor_close_updates_focus() {
+        let compositor = Compositor::new();
+        let id1 = compositor.create_window("W1".to_string(), "a".to_string(), false).unwrap();
+        let id2 = compositor.create_window("W2".to_string(), "b".to_string(), false).unwrap();
+        assert_eq!(compositor.focused_window(), Some(id2));
+        compositor.close_window(id2).unwrap();
+        assert_eq!(compositor.focused_window(), Some(id1));
+    }
+
+    #[test]
+    fn test_compositor_move_window() {
+        let compositor = Compositor::new();
+        let id = compositor.create_window("W".to_string(), "app".to_string(), false).unwrap();
+        compositor.move_window(id, 300, 200);
+        let windows = compositor.get_windows();
+        assert_eq!(windows[0].geometry.x, 300);
+        assert_eq!(windows[0].geometry.y, 200);
+        let scene = compositor.scene.read().unwrap();
+        let s = scene.get_surface(id).unwrap();
+        assert_eq!(s.geometry.x, 300);
+        assert_eq!(s.geometry.y, 200);
+    }
+
+    #[test]
+    fn test_compositor_resize_window() {
+        let compositor = Compositor::new();
+        let id = compositor.create_window("W".to_string(), "app".to_string(), false).unwrap();
+        compositor.resize_window(id, 500, 400);
+        let windows = compositor.get_windows();
+        assert_eq!(windows[0].geometry.width, 500);
+        assert_eq!(windows[0].geometry.height, 400);
+    }
+
+    #[test]
+    fn test_compositor_resize_enforces_minimum() {
+        let compositor = Compositor::new();
+        let id = compositor.create_window("W".to_string(), "app".to_string(), false).unwrap();
+        compositor.resize_window(id, 50, 30);
+        let windows = compositor.get_windows();
+        assert_eq!(windows[0].geometry.width, 200); // min
+        assert_eq!(windows[0].geometry.height, 100); // min
+    }
+
+    #[test]
+    fn test_compositor_set_state_maximized_updates_geometry() {
+        let compositor = Compositor::with_resolution(1920, 1080);
+        let id = compositor.create_window("W".to_string(), "app".to_string(), false).unwrap();
+        compositor.set_window_state(id, WindowState::Maximized).unwrap();
+        let windows = compositor.get_windows();
+        assert_eq!(windows[0].geometry.x, 0);
+        assert_eq!(windows[0].geometry.y, 0);
+        assert_eq!(windows[0].geometry.width, 1920);
+        assert_eq!(windows[0].geometry.height, 1080);
+    }
+
+    #[test]
+    fn test_compositor_set_state_minimized_hides_in_scene() {
+        let compositor = Compositor::new();
+        let id = compositor.create_window("W".to_string(), "app".to_string(), false).unwrap();
+        compositor.set_window_state(id, WindowState::Minimized).unwrap();
+        let scene = compositor.scene.read().unwrap();
+        assert!(!scene.get_surface(id).unwrap().visible);
+    }
+
+    #[test]
+    fn test_compositor_render_produces_output() {
+        let compositor = Compositor::with_resolution(100, 100);
+        compositor.create_window("W".to_string(), "app".to_string(), false).unwrap();
+        let bytes = compositor.render();
+        assert_eq!(bytes.len(), 100 * 100 * 4);
+        // Not all zeros (background + window decorations should produce non-black pixels)
+        assert!(bytes.iter().any(|&b| b != 0));
+    }
+
+    #[test]
+    fn test_compositor_route_input_click_on_background() {
+        let compositor = Compositor::with_resolution(800, 600);
+        let event = InputEvent::MouseClick { button: 1, x: 0, y: 0 };
+        let action = compositor.route_input(&event);
+        assert_eq!(action, InputAction::None);
+    }
+
+    #[test]
+    fn test_compositor_route_input_click_on_titlebar() {
+        let compositor = Compositor::with_resolution(800, 600);
+        let id = compositor.create_window("W".to_string(), "app".to_string(), false).unwrap();
+        let win = compositor.get_windows().into_iter().find(|w| w.id == id).unwrap();
+        // Click in the middle of the title bar
+        let click_x = win.geometry.x + 20;
+        let click_y = win.geometry.y + 10;
+        let event = InputEvent::MouseClick { button: 1, x: click_x, y: click_y };
+        let action = compositor.route_input(&event);
+        assert_eq!(action, InputAction::BeginDrag(id));
+    }
+
+    #[test]
+    fn test_compositor_route_input_click_on_client() {
+        let compositor = Compositor::with_resolution(800, 600);
+        let id = compositor.create_window("W".to_string(), "app".to_string(), false).unwrap();
+        let win = compositor.get_windows().into_iter().find(|w| w.id == id).unwrap();
+        // Click inside the client area (below title bar, inside borders)
+        let click_x = win.geometry.x + 50;
+        let click_y = win.geometry.y + TITLEBAR_HEIGHT as i32 + 10;
+        let event = InputEvent::MouseClick { button: 1, x: click_x, y: click_y };
+        let action = compositor.route_input(&event);
+        match action {
+            InputAction::ClientClick(sid, _, _) => assert_eq!(sid, id),
+            other => panic!("Expected ClientClick, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_compositor_route_input_key_press_with_focus() {
+        let compositor = Compositor::new();
+        let _id = compositor.create_window("W".to_string(), "app".to_string(), false).unwrap();
+        let event = InputEvent::KeyPress { keycode: 65, modifiers: 0 };
+        let action = compositor.route_input(&event);
+        assert_eq!(action, InputAction::KeyToFocused(65, 0));
+    }
+
+    #[test]
+    fn test_compositor_route_input_key_press_no_focus() {
+        let compositor = Compositor::new();
+        let event = InputEvent::KeyPress { keycode: 65, modifiers: 0 };
+        let action = compositor.route_input(&event);
+        assert_eq!(action, InputAction::None);
+    }
+
+    #[test]
+    fn test_compositor_drag_workflow() {
+        let compositor = Compositor::with_resolution(800, 600);
+        let id = compositor.create_window("W".to_string(), "app".to_string(), false).unwrap();
+        let win = compositor.get_windows().into_iter().find(|w| w.id == id).unwrap();
+        let start_x = win.geometry.x;
+
+        // Click on title bar to start drag
+        let click_x = start_x + 20;
+        let click_y = win.geometry.y + 10;
+        let event = InputEvent::MouseClick { button: 1, x: click_x, y: click_y };
+        let action = compositor.route_input(&event);
+        assert_eq!(action, InputAction::BeginDrag(id));
+
+        // Move mouse
+        let move_event = InputEvent::MouseMove { x: click_x + 100, y: click_y + 50 };
+        compositor.route_input(&move_event);
+
+        // Window should have moved
+        let win_after = compositor.get_windows().into_iter().find(|w| w.id == id).unwrap();
+        assert_eq!(win_after.geometry.x, start_x + 100);
+
+        // End drag
+        compositor.end_interactive();
+    }
+
+    #[test]
+    fn test_compositor_tile_windows() {
+        let compositor = Compositor::with_resolution(800, 600);
+        let _id1 = compositor.create_window("W1".to_string(), "a".to_string(), false).unwrap();
+        let _id2 = compositor.create_window("W2".to_string(), "b".to_string(), false).unwrap();
+        compositor.tile_windows();
+
+        let windows = compositor.get_windows();
+        // Two windows should tile side-by-side or in a grid
+        let geometries: Vec<_> = windows.iter().map(|w| &w.geometry).collect();
+        // They should collectively cover the screen without being all at the same position
+        let positions: std::collections::HashSet<_> = geometries.iter().map(|g| (g.x, g.y)).collect();
+        assert_eq!(positions.len(), 2);
+    }
+
+    #[test]
+    fn test_compositor_tile_single_window() {
+        let compositor = Compositor::with_resolution(800, 600);
+        let id = compositor.create_window("W".to_string(), "app".to_string(), false).unwrap();
+        compositor.tile_windows();
+        let win = compositor.get_windows().into_iter().find(|w| w.id == id).unwrap();
+        assert_eq!(win.geometry.x, 0);
+        assert_eq!(win.geometry.y, 0);
+        assert_eq!(win.geometry.width, 800);
+        assert_eq!(win.geometry.height, 600);
+    }
+
+    #[test]
+    fn test_compositor_tile_no_windows() {
+        let compositor = Compositor::new();
+        compositor.tile_windows(); // Should not panic
+    }
+
+    #[test]
+    fn test_compositor_submit_window_buffer() {
+        use crate::renderer::Framebuffer;
+        let compositor = Compositor::with_resolution(200, 200);
+        let id = compositor.create_window("W".to_string(), "app".to_string(), false).unwrap();
+        let content = Framebuffer::new(50, 50, 0xFFFF0000); // Red
+        compositor.submit_window_buffer(id, content);
+        // Should render without panicking
+        let _bytes = compositor.render();
+    }
+
+    #[test]
+    fn test_compositor_end_interactive_clears_state() {
+        let compositor = Compositor::new();
+        let id = compositor.create_window("W".to_string(), "app".to_string(), false).unwrap();
+        *compositor.drag_state.write().unwrap() = Some((id, 10, 10));
+        compositor.end_interactive();
+        assert!(compositor.drag_state.read().unwrap().is_none());
+        assert!(compositor.resize_state.read().unwrap().is_none());
+    }
+
+    #[test]
+    fn test_compositor_cascade_placement() {
+        let compositor = Compositor::new();
+        let id1 = compositor.create_window("W1".to_string(), "a".to_string(), false).unwrap();
+        let id2 = compositor.create_window("W2".to_string(), "b".to_string(), false).unwrap();
+        let w1 = compositor.get_windows().into_iter().find(|w| w.id == id1).unwrap();
+        let w2 = compositor.get_windows().into_iter().find(|w| w.id == id2).unwrap();
+        // Windows should be cascaded (different positions)
+        assert_ne!(w1.geometry.x, w2.geometry.x);
+        assert_ne!(w1.geometry.y, w2.geometry.y);
+    }
+
+    #[test]
+    fn test_input_action_variants() {
+        let id = Uuid::new_v4();
+        let actions = vec![
+            InputAction::BeginDrag(id),
+            InputAction::Close(id),
+            InputAction::Minimize(id),
+            InputAction::ToggleMaximize(id),
+            InputAction::BeginResize(id, ResizeEdge::Bottom),
+            InputAction::ClientClick(id, 10, 20),
+            InputAction::KeyToFocused(65, 0),
+            InputAction::PointerMove(100, 200),
+            InputAction::None,
+        ];
+        assert_eq!(actions.len(), 9);
+    }
+
+    #[test]
+    fn test_compositor_mouse_move_no_drag() {
+        let compositor = Compositor::new();
+        let event = InputEvent::MouseMove { x: 100, y: 100 };
+        let action = compositor.route_input(&event);
+        assert_eq!(action, InputAction::PointerMove(100, 100));
+    }
+
+    #[test]
+    fn test_compositor_right_click_on_window() {
+        let compositor = Compositor::with_resolution(800, 600);
+        let id = compositor.create_window("W".to_string(), "app".to_string(), false).unwrap();
+        let win = compositor.get_windows().into_iter().find(|w| w.id == id).unwrap();
+        let event = InputEvent::MouseClick {
+            button: 3,
+            x: win.geometry.x + 50,
+            y: win.geometry.y + 50,
+        };
+        let action = compositor.route_input(&event);
+        match action {
+            InputAction::ClientClick(sid, _, _) => assert_eq!(sid, id),
+            other => panic!("Expected ClientClick, got {:?}", other),
+        }
     }
 }
