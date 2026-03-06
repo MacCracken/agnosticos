@@ -11,12 +11,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | Metric | Value |
 |--------|-------|
 | Phase 5 Completion | 99% |
+| Phase 6 Completion | 55% |
 | Phase 6.5 Completion | 100% |
-| Test Coverage | ~80% (5548 tests, 0 failures, 7 ignored) |
+| Test Coverage | ~80% (5700+ tests, 0 failures, 7 ignored) |
 | Compiler Warnings | 0 |
 | Clippy Warnings | 0 |
 | CIS Compliance | ~85% |
 | Alpha Blocker | Third-party security audit (vendor selection) |
+
+### Added — Phase 6: Agent Intelligence & Multi-Modal (3 New Modules)
+
+- **agent-runtime/swarm.rs** — Swarm intelligence protocols: consensus voting (Majority/SuperMajority/Unanimous/MinVotes/MinPercent quorum rules), task decomposition (DataParallel/Pipeline/FunctionalSplit/Redundant strategies), stigmergy signals with exponential decay, aggregation strategies (Merge/Vote/Concatenate/BestScore) (20 tests)
+- **agent-runtime/learning.rs** — Agent learning and adaptation: performance profiling with action outcome tracking, UCB1 (Upper Confidence Bound) strategy selection for exploration/exploitation balance, capability scoring with exponential moving average, score trend detection (13 tests)
+- **agent-runtime/multimodal.rs** — Multi-modal agent support: Modality enum (Text/Vision/Audio/ToolUse/StructuredData/Code), ModalityProfile with cost estimation, ContentBlock for mixed-content messages, ModalityRegistry with factory methods (text_only/vision_capable/full_multimodal), message validation against modality profiles (15 tests)
+
+### Added — LLM Tool Output Analysis Pipeline
+
+- **agent-runtime/tool_analysis.rs** — LLM-based network tool output analysis: tool-specific system prompts for port scan/DNS/vuln scan/trace/capture analysis, structured response parsing (SUMMARY/RISK/FINDINGS/RECOMMENDATIONS format), FindingSeverity levels (Critical/High/Medium/Low/Info), HTTP integration with LLM Gateway on port 8088 (12 tests)
+
+### Added — Wayland Dispatch Traits (Wire Protocol Handlers)
+
+- **desktop-environment/wayland.rs** — Full `wayland-server` `Dispatch` trait implementations behind `wayland` feature flag:
+  - `wl_compositor` — creates wl_surface instances with per-surface SurfaceData
+  - `wl_surface` — commit, destroy, attach, damage, frame callbacks
+  - `wl_shm` / `wl_shm_pool` / `wl_buffer` — shared memory buffer pipeline
+  - `wl_seat` — input device capability advertising
+  - `wl_output` — screen geometry/mode/scale via bind() hook
+  - `xdg_wm_base` — XDG Shell entry point, xdg_surface creation
+  - `xdg_surface` — get_toplevel, ack_configure
+  - `xdg_toplevel` — title, app_id, maximize/fullscreen/minimize, move/resize, size constraints
+  - `init_globals()` for registering all protocol objects on the display
+  - `dispatch()` now calls `display.dispatch_clients()` for real wire protocol
+
+### Added — Network Tool Agent Wrappers (7 Wrapper Structs)
+
+- **agent-runtime/network_tools.rs** — Dedicated agent wrapper structs with typed builder APIs:
+  - `PortScanner` — wraps nmap/masscan with ScanProfile (Quick/Standard/Thorough/Stealth), custom ports, returns `Vec<DiscoveredHost>` (5 tests)
+  - `DnsInvestigator` — wraps dig/dnsrecon with record type filtering, custom nameserver, enumeration mode, returns `Vec<DnsRecord>` (3 tests)
+  - `NetworkProber` — wraps traceroute/mtr/nmap with max hops, ping count, ping sweep, returns `Vec<TraceHop>` or `Vec<DiscoveredHost>` (2 tests)
+  - `VulnAssessor` — wraps nuclei/nikto with severity filter, tag filter (2 tests)
+  - `TrafficAnalyzer` — wraps tcpdump/tshark/ngrep with interface, BPF filters, packet count (3 tests)
+  - `WebFuzzer` — wraps gobuster/ffuf with wordlist, extensions, threads, status codes (2 tests)
+  - `SocketInspector` — wraps ss with listening/TCP/UDP filters, returns `Vec<SocketEntry>` (3 tests)
+  - Network tools tests: 60 → 81
 
 ### Added — Phase 6.5: OS-Level Features (12 New Modules)
 
@@ -30,8 +67,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **agnos-sys/ima.rs** — IMA/EVM file integrity, measurement parsing from sysfs, policy rule builder, xattr verification (31 tests)
 - **agnos-sys/tpm.rs** — TPM 2.0 PCR read/extend, sealed secrets, measured boot verification, hardware RNG (23 tests)
 - **agnos-sys/secureboot.rs** — UEFI secure boot state detection, key enrollment, kernel module signing verification (18 tests)
-- **agent-runtime/network_tools.rs** — Network tool framework with 11 tool types, target validation, dangerous arg rejection, risk levels, sandboxed execution (37 tests)
-- **desktop-environment/wayland.rs** — Wayland protocol abstraction layer (feature-gated), SHM buffers, xdg_shell tracking, surface map, seat capabilities, input event mapping (41 tests)
+- **agent-runtime/network_tools.rs** — Network tool framework with 23 tool types, 7 typed agent wrappers (PortScanner, DnsInvestigator, NetworkProber, VulnAssessor, TrafficAnalyzer, WebFuzzer, SocketInspector), target validation, dangerous arg rejection, risk levels, sandboxed execution, output parsers (81 tests)
+- **desktop-environment/wayland.rs** — Wayland protocol abstraction layer (feature-gated), SHM buffers, xdg_shell tracking, surface map, seat capabilities, input event mapping, full Dispatch trait implementations for wl_compositor/wl_surface/wl_shm/wl_seat/wl_output/xdg_wm_base/xdg_surface/xdg_toplevel (63 tests)
 
 ### Added — LLM Gateway Certificate Pinning Integration
 
@@ -58,6 +95,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Phase 6 completion: 30% → 55% (agent intelligence, multi-modal, swarm, LLM analysis, tool wrappers all done)
+- agent-runtime lib.rs: added module declarations and re-exports for swarm, learning, multimodal
+- agent-runtime tests: 719 → 824 (lib)
+- desktop-environment tests: 576 → 593 (lib)
+- NetworkToolRunner now derives Debug
 - Roadmap fully updated to reflect Phase 6.5 completion and all new modules
 - Clippy warnings: 82 → 0 (auto-fix + manual fixes)
 - `DeviceSubsystem::from_str` / `DeviceEvent::from_str` renamed to `::parse` (clippy `should_implement_trait`)

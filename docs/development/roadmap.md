@@ -32,10 +32,16 @@
 | Interactive approval editing in agnsh | ai-shell | Done (3 new tests) |
 | Agent package manager (`agnos install`) | agent-runtime | Done (31 tests) |
 | Wayland protocol layer (feature-gated) | desktop-environment | Done (41 tests) |
+| Wayland Dispatch traits (wire protocol handlers) | desktop-environment | Done (63 tests) |
 | IMA/EVM file integrity | agnos-sys | Done (31 tests) |
 | TPM 2.0 measured boot & sealed secrets | agnos-sys | Done (23 tests) |
 | UEFI Secure Boot integration | agnos-sys | Done (18 tests) |
-| Network tools framework + AI Shell intents | agent-runtime + ai-shell | Done (47 tests) |
+| Network tools framework + AI Shell intents | agent-runtime + ai-shell | Done (81 tests) |
+| Network tool agent wrappers (7 structs) | agent-runtime | Done (21 tests) |
+| Swarm intelligence protocols | agent-runtime | Done (20 tests) |
+| Agent learning & adaptation (UCB1) | agent-runtime | Done (13 tests) |
+| Multi-modal agent support | agent-runtime | Done (15 tests) |
+| LLM tool output analysis pipeline | agent-runtime | Done (12 tests) |
 | Bootloader config (systemd-boot + GRUB2) | agnos-sys | Done (27 tests) |
 | Journald integration | agnos-sys | Done (30 tests) |
 | Udev device management | agnos-sys | Done (26 tests) |
@@ -51,7 +57,6 @@
 | Kernel Development Guide | Documentation | 3 days | TBD | Not started |
 | Support portal | Infrastructure | 2 weeks | TBD | Not started |
 | Interactive API explorer | Documentation | 1 week | TBD | Not started |
-| Wayland full protocol (wayland-server feature) | desktop-environment | 2+ weeks | TBD | ProtocolBridge implemented, event routing done |
 
 ### Engineering Backlog (Code Audit — March 6)
 
@@ -114,14 +119,14 @@ AGNOS (AI-Native General Operating System) is in **Phase 5: Production**, focuse
 | 0-4 | Complete | 100% | Foundation through Desktop |
 | 5 | In Progress | 99% | Production hardening |
 | 5.6 | Complete | 100% | Internal implementation gaps (all P0-P2 stubs eliminated) |
-| 6 | In Progress | 30% | Advanced AI & Networking (23 tool wrappers + output parsers) |
+| 6 | In Progress | 55% | Advanced AI & Networking (agent intelligence, multi-modal, swarm, LLM analysis, 23 tools + 7 wrappers) |
 | 6.5 | Complete | 100% | OS-Level Features & Security Hardening (all 12 modules) |
 | 6.6 | Complete | 100% | Consumer Integration (9 features) |
 | 7+ | Planned | 0% | Ecosystem & Research |
 
 ### Alpha Release Criteria (Q2 2026)
 - [x] Core features fully wired (not stubbed) — P0/P1 stubs eliminated March 3
-- [x] 80%+ test coverage (~80%, 5450+ tests)
+- [x] 80%+ test coverage (~80%, 5700+ tests)
 - [x] Integration tests: agent-orchestrator (16 tests)
 - [x] Performance benchmarks established (58 benchmarks + docs)
 - [ ] Third-party security audit complete
@@ -176,63 +181,64 @@ AGNOS (AI-Native General Operating System) is in **Phase 5: Production**, focuse
 - [ ] Quantization support (4-bit, 8-bit inference)
 - [ ] Model sharding for large models
 
-#### Agent Intelligence
-- [ ] Distributed agent computing
-- [ ] Swarm intelligence protocols
-- [ ] Agent learning and adaptation
-- [ ] Multi-modal agents (vision, audio)
+#### Agent Intelligence ✅ Complete
+- [x] Distributed agent computing — swarm task decomposition (DataParallel/Pipeline/FunctionalSplit/Redundant)
+- [x] Swarm intelligence protocols — consensus voting with quorum rules (20 tests)
+- [x] Agent learning and adaptation — UCB1 strategy selection, capability scoring with EMA (13 tests)
+- [x] Multi-modal agents (vision, audio) — modality profiles, content blocks, registry (15 tests)
 
 #### Networking Toolkit (Kali Linux-Inspired)
 
-AGNOS includes a networking toolkit framework (`agent-runtime/src/network_tools.rs`) with sandboxed execution, target validation, dangerous arg rejection, risk levels, and AI Shell integration. Individual tool agent wrappers are planned:
+AGNOS includes a networking toolkit framework (`agent-runtime/src/network_tools.rs`) with sandboxed execution, target validation, dangerous arg rejection, risk levels, AI Shell integration, and 7 typed agent wrapper structs.
 
-**Network Reconnaissance & Scanning**
-- [ ] `nmap` — port scanning and service/version detection
-- [ ] `masscan` — high-speed network scanning
+**Network Reconnaissance & Scanning** ✅ Agent Wrappers Complete
+- [x] `nmap` — port scanning and service/version detection (`PortScanner` wrapper with ScanProfile)
+- [x] `masscan` — high-speed network scanning (`PortScanner` wrapper with `use_masscan()`)
 - [ ] `netdiscover` — ARP network scanning
-- [ ] `arp-scan` — local network discovery
-- [ ] `p0f` — passive OS fingerprinting
+- [x] `arp-scan` — local network discovery (NetworkTool variant + config)
+- [x] `p0f` — passive OS fingerprinting (NetworkTool variant + config)
 
-**Traffic Analysis & Capture**
-- [ ] `tcpdump` — packet capture and analysis
-- [ ] `wireshark` / `tshark` — deep packet inspection
+**Traffic Analysis & Capture** ✅ Agent Wrappers Complete
+- [x] `tcpdump` — packet capture and analysis (`TrafficAnalyzer` wrapper)
+- [x] `wireshark` / `tshark` — deep packet inspection (`TrafficAnalyzer.use_tshark()`)
 - [ ] `termshark` — TUI Wireshark frontend
 - [ ] `bettercap` — network monitoring and MITM analysis framework
-- [ ] `ngrep` — network grep
+- [x] `ngrep` — network grep (`TrafficAnalyzer.use_ngrep()`)
 
-**Network Utilities**
-- [ ] `netcat` / `ncat` — TCP/UDP toolbox
-- [ ] `socat` — bidirectional data relay
-- [ ] `curl` + `httpie` — HTTP clients
-- [ ] `mtr` — network diagnostics (traceroute + ping)
-- [ ] `iperf3` — bandwidth measurement
-- [ ] `nethogs` / `iftop` — per-process/per-connection bandwidth monitoring
-- [ ] `ss` / `iproute2` — socket statistics and routing
+**Network Utilities** ✅ Agent Wrappers Complete
+- [x] `netcat` / `ncat` — TCP/UDP toolbox (NetworkTool variant + config)
+- [x] `socat` — bidirectional data relay (NetworkTool variant + config)
+- [x] `curl` + `httpie` — HTTP clients (NetworkTool variant + config)
+- [x] `mtr` — network diagnostics (`NetworkProber.use_mtr()`)
+- [x] `iperf3` — bandwidth measurement (NetworkTool variant + config)
+- [x] `nethogs` / `iftop` — per-process bandwidth monitoring (NetworkTool variant + config)
+- [x] `ss` / `iproute2` — socket statistics (`SocketInspector` wrapper)
 
-**DNS Tooling**
-- [ ] `dig` / `drill` — DNS lookup
+**DNS Tooling** ✅ Agent Wrappers Complete
+- [x] `dig` / `drill` — DNS lookup (`DnsInvestigator` wrapper)
 - [ ] `dnsx` — fast DNS toolkit
-- [ ] `dnsrecon` — DNS enumeration
+- [x] `dnsrecon` — DNS enumeration (`DnsInvestigator.enumerate()`)
 - [ ] `fierce` — DNS zone traversal
 
-**Web & Application Layer**
-- [ ] `nikto` — web server scanner
-- [ ] `gobuster` / `ffuf` — directory and subdomain fuzzing
+**Web & Application Layer** ✅ Agent Wrappers Complete
+- [x] `nikto` — web server scanner (`VulnAssessor.use_nikto()`)
+- [x] `gobuster` / `ffuf` — directory and subdomain fuzzing (`WebFuzzer` wrapper)
 - [ ] `wfuzz` — web fuzzer
 - [ ] `sqlmap` — SQL injection detection (sandboxed, requires explicit agent approval)
-- [ ] `nuclei` — template-based vulnerability scanner
+- [x] `nuclei` — template-based vulnerability scanner (`VulnAssessor` wrapper)
 
 **Wireless**
 - [ ] `aircrack-ng` suite — 802.11 analysis
 - [ ] `kismet` — wireless network detector
 
 **Agent Integration** ✅ Framework + Wrappers Complete
-- [x] Network tool runner with sandboxed execution (`network_tools.rs`, 60 tests)
+- [x] Network tool runner with sandboxed execution (`network_tools.rs`, 81 tests)
 - [x] 23 tool variants: port scan, ping sweep, DNS, traceroute, bandwidth, packet capture, HTTP, netcat, service scan, web scan, dir bust, mass scan, ARP scan, mtr, socat, tshark, ngrep, ss, dnsrecon, ffuf, nuclei, nethogs, p0f
+- [x] 7 typed agent wrappers: PortScanner, DnsInvestigator, NetworkProber, VulnAssessor, TrafficAnalyzer, WebFuzzer, SocketInspector
 - [x] Output parsers: structured results for nmap, masscan, dig, traceroute/mtr, ss
+- [x] LLM tool output analysis pipeline (`tool_analysis.rs`, 12 tests) — results piped through LLM Gateway
 - [x] AI Shell understands 17 network actions via natural language
 - [x] Target validation, risk levels, dangerous arg rejection (masscan rate limits, nuclei template restrictions)
-- [ ] Results piped through LLM Gateway for automated interpretation and reporting
 - [x] All tool invocations require user approval for sensitive operations (per Human Sovereignty principle)
 - [x] Audit trail for every network operation
 
@@ -369,7 +375,7 @@ Blockers before migration:
 |--------|--------|---------|--------|
 | Code Coverage | >80% | ~80% | Met |
 | Test Pass Rate | 100% | 100% | Met |
-| Total Tests | 400+ | 5450+ | Met |
+| Total Tests | 400+ | 5700+ | Met |
 | Agent Spawn Time | <500ms | ~300ms | Met |
 | Shell Response Time | <100ms | ~50ms | Met |
 | Memory Overhead | <2GB | ~1.2GB | Met |
@@ -384,10 +390,10 @@ Blockers before migration:
 |-----------|-------|-------|
 | agnos-common | 307 | Secrets, telemetry, LLM types, manifest, rate limits, audit chain |
 | agnos-sys | 750+ (7 ignored) | 16 modules: audit, mac, netns, dmverity, luks, ima, tpm, secureboot, certpin, bootloader, journald, udev, fuse, pam, update, llm |
-| agent-runtime | 719 + 16 integration + 30 load | Service manager, lifecycle, pub/sub, rollback, package manager, quotas, IPC, WASM, network tools |
+| agent-runtime | 824 + 16 integration + 30 load | Service manager, lifecycle, pub/sub, rollback, package manager, quotas, IPC, WASM, network tools (81), swarm (20), learning (13), multimodal (15), tool analysis (12) |
 | llm-gateway | 206 + 423 | 5 providers, rate limiting, streaming, graceful degradation, cert pinning |
 | ai-shell | 555 + 555 | 20+ intents: file ops, audit, agent, service, network scan, journal, device, mount, boot, update |
-| desktop-environment | 576 + 562 + 40 E2E | Wayland protocol types, HUD, security, apps, compositor, system tests |
+| desktop-environment | 593 + 562 + 40 E2E | Wayland protocol types + Dispatch traits (63), HUD, security, apps, compositor, system tests |
 
 ---
 
@@ -409,8 +415,8 @@ Blockers before migration:
 
 1. **Third-party security audit (P1)** - External vendor engagement
 2. **Video tutorials (P2)** - Installation, usage, agent creation, security overview
-3. **Wayland full protocol (P3)** - Wire wayland-server feature in desktop-environment
-4. **Networking tool agents (P3)** - Build agent wrappers for top tools using network_tools framework
+3. **Hardware acceleration (Phase 6)** - NPU/GPU support, quantization, model sharding
+4. **Remaining networking tools** - netdiscover, termshark, bettercap, dnsx, fierce, wfuzz, sqlmap, aircrack-ng, kismet
 
 ### Getting Started
 
