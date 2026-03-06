@@ -184,11 +184,15 @@ async fn handle_connection(mut stream: UnixStream, tx: mpsc::Sender<Message>, ow
                 // Use try_send for backpressure: if the queue is full, NACK immediately
                 match tx.try_send(message) {
                     Ok(()) => {
-                        let _ = stream.write_all(&[ACK]).await;
+                        if let Err(e) = stream.write_all(&[ACK]).await {
+                            warn!(agent_id = %owner_agent_id, error = %e, "Failed to send ACK");
+                        }
                     }
                     Err(mpsc::error::TrySendError::Full(_)) => {
                         warn!(agent_id = %owner_agent_id, "Message queue full, sending NACK");
-                        let _ = stream.write_all(&[NACK_QUEUE_FULL]).await;
+                        if let Err(e) = stream.write_all(&[NACK_QUEUE_FULL]).await {
+                            warn!(agent_id = %owner_agent_id, error = %e, "Failed to send NACK");
+                        }
                     }
                     Err(mpsc::error::TrySendError::Closed(_)) => {
                         error!(agent_id = %owner_agent_id, "Message channel closed");
@@ -198,7 +202,9 @@ async fn handle_connection(mut stream: UnixStream, tx: mpsc::Sender<Message>, ow
             }
             Err(e) => {
                 warn!(error = %e, "Failed to parse message");
-                let _ = stream.write_all(&[NACK_INVALID]).await;
+                if let Err(write_err) = stream.write_all(&[NACK_INVALID]).await {
+                    warn!(error = %write_err, "Failed to send NACK_INVALID");
+                }
             }
         }
     }
@@ -299,7 +305,9 @@ impl MessageBus {
         // Send to global subscribers
         let globals = self.global_subscribers.read().await;
         for sender in globals.iter() {
-            let _ = sender.send(message.clone()).await;
+            if sender.send(message.clone()).await.is_err() {
+                debug!("Global subscriber channel closed, skipping");
+            }
         }
 
         Ok(())
@@ -571,7 +579,10 @@ impl RpcRouter {
             Err(_) => return,
         };
         if let Some(call) = pending.remove(&response.request_id) {
-            let _ = call.sender.send(response);
+            let req_id = response.request_id;
+            if call.sender.send(response).is_err() {
+                debug!(request_id = %req_id, "RPC caller dropped before receiving response");
+            }
         }
     }
 

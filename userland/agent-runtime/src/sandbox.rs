@@ -54,6 +54,23 @@ impl Sandbox {
 
         info!("Applying sandbox restrictions...");
 
+        if let Err(e) = self.apply_inner().await {
+            warn!("Sandbox apply failed, cleaning up partially applied resources: {}", e);
+            self.teardown().await;
+            return Err(e);
+        }
+
+        // Emit audit event
+        self.emit_audit_event("sandbox_applied").await;
+
+        self.applied = true;
+        info!("Sandbox restrictions applied successfully");
+
+        Ok(())
+    }
+
+    /// Inner apply sequence — separated so that `apply()` can clean up on failure.
+    async fn apply_inner(&mut self) -> Result<()> {
         // 1. Set up encrypted storage (before Landlock locks filesystem)
         self.apply_encrypted_storage().await?;
 
@@ -68,12 +85,6 @@ impl Sandbox {
 
         // 5. Apply network namespace isolation
         self.apply_network_isolation().await?;
-
-        // 6. Emit audit event
-        self.emit_audit_event("sandbox_applied").await;
-
-        self.applied = true;
-        info!("Sandbox restrictions applied successfully");
 
         Ok(())
     }
@@ -407,18 +418,9 @@ impl Sandbox {
 
         info!("Applying sandbox with seccomp profile...");
 
-        // Validate the profile first
+        // Validate the profile first (before touching any kernel state)
         crate::seccomp_profiles::validate_profile(profile)
             .map_err(|e| anyhow::anyhow!("Invalid seccomp profile: {}", e))?;
-
-        // 1. Encrypted storage (before Landlock)
-        self.apply_encrypted_storage().await?;
-
-        // 2. MAC profile (before seccomp)
-        self.apply_mac_profile().await?;
-
-        // 3. Apply Landlock filesystem restrictions
-        self.apply_landlock().await?;
 
         // Build the profile-specific filter spec (for logging/audit)
         let filter_spec = crate::seccomp_profiles::build_seccomp_filter(profile);
@@ -429,13 +431,12 @@ impl Sandbox {
             filter_spec.default_action
         );
 
-        // 4. Apply the actual seccomp filter via agnos-sys
-        self.apply_seccomp().await?;
+        if let Err(e) = self.apply_inner().await {
+            warn!("Sandbox apply (profile '{}') failed, cleaning up: {}", filter_spec.profile_name, e);
+            self.teardown().await;
+            return Err(e);
+        }
 
-        // 5. Apply network namespace isolation
-        self.apply_network_isolation().await?;
-
-        // 6. Emit audit event
         self.emit_audit_event("sandbox_applied").await;
 
         self.applied = true;

@@ -140,14 +140,14 @@ Comprehensive audit across all 6 crates. 80+ findings identified; all Critical a
 | 17 | O(n) front removal | agent-runtime/learning.rs | VecDeque |
 
 #### Remaining (Lower Priority, Not Blocking Alpha)
-- Sandbox partial application rollback
+- ~~Sandbox partial application rollback~~ — Done: `apply()` now calls `teardown()` on failure
 - Secret zeroing optimization (needs `zeroize` crate)
-- Thread-unsafe env var manipulation in secrets.rs
-- Various `let _ =` swallowed errors in IPC/service manager
-- Desktop environment blanket `#![allow(dead_code)]`
+- ~~Thread-unsafe env var manipulation in secrets.rs~~ — Done: Mutex guard + safety docs
+- ~~Various `let _ =` swallowed errors in IPC/service manager~~ — Done: logged in ipc.rs, service_manager.rs, supervisor.rs
+- ~~Desktop environment blanket `#![allow(dead_code)]`~~ — Done: narrowed to lib.rs only, main.rs improved docs
 - ~~AI Shell Question intent stub~~ — addressed in Phase 6.7
-- Placeholder certificate pins
-- Streaming parser O(n²) String::drain pattern
+- ~~Placeholder certificate pins~~ — Done: runtime warning + detailed docs on `default_agnos_pins()`
+- ~~Streaming parser O(n²) String::drain pattern~~ — Done: replaced with `split_off` in all 5 providers
 
 ---
 
@@ -603,6 +603,12 @@ All 34 items implemented. Features that make AGNOS meaningfully better than runn
 6. ADR-006: Testing Strategy and CI/CD
 7. ADR-007: OpenAI-compatible HTTP API for LLM Gateway
 8. ADR-008: Phase 6.7 Alpha Polish — Core Experience Gaps
+9. ADR-009: RAG & Embedded Knowledge Pipeline
+10. ADR-010: Advanced Agent Capabilities & Lifecycle
+11. ADR-011: Observability Stack
+12. ADR-012: Desktop Accessibility & Interaction Foundations
+13. ADR-013: Zero-Trust Security Hardening
+14. ADR-014: Cross-Project Integration Architecture
 
 ---
 

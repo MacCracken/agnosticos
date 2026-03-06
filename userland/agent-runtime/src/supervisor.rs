@@ -798,7 +798,9 @@ impl Supervisor {
             cpu_time_used: cpu_used_ms,
             ..ResourceUsage::default()
         };
-        let _ = self.registry.update_resource_usage(agent_id, usage).await;
+        if let Err(e) = self.registry.update_resource_usage(agent_id, usage).await {
+            debug!(agent_id = %agent_id, error = %e, "Failed to update resource usage in registry");
+        }
 
         // Get the quota for this agent (fall back to defaults if missing)
         let quota = {

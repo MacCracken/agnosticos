@@ -135,6 +135,7 @@ pub struct AccountingStats {
 // ---------------------------------------------------------------------------
 
 /// Summary of a single project's budget allocation and usage.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProjectBudget {
     pub name: String,
@@ -145,6 +146,7 @@ pub struct ProjectBudget {
 }
 
 /// Snapshot of a budget pool's state.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BudgetSummary {
     pub pool_name: String,
@@ -157,6 +159,8 @@ pub struct BudgetSummary {
 /// A shared token budget pool that multiple projects can draw from.
 ///
 /// Each project receives an allocation from the pool's total tokens.
+/// Not yet wired into the HTTP API — will be exposed in cross-project integration.
+#[allow(dead_code)]
 /// Usage is tracked per-project and the pool resets after its configured period.
 #[derive(Debug, Clone)]
 pub struct BudgetPool {
@@ -169,6 +173,7 @@ pub struct BudgetPool {
     pub period_duration: Duration,
 }
 
+#[allow(dead_code)]
 impl BudgetPool {
     /// Create a new budget pool with the given name, total token budget, and reset period.
     pub fn new(name: &str, total_tokens: u64, period: Duration) -> Self {
@@ -333,11 +338,13 @@ impl BudgetPool {
 }
 
 /// Manages multiple named budget pools.
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct BudgetManager {
     pools: HashMap<String, BudgetPool>,
 }
 
+#[allow(dead_code)]
 impl BudgetManager {
     /// Create a new empty budget manager.
     pub fn new() -> Self {

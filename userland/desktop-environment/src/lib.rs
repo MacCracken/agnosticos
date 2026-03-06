@@ -1,5 +1,6 @@
-// Desktop environment is deliberately incomplete (P3: Wayland compositor stub).
-// Struct fields define the public API surface for future rendering implementation.
+// Desktop environment library: many public types define the API surface for the
+// Wayland compositor and are not yet exercised by the binary. These will be
+// consumed by desktop integration, plugins, and tests as the compositor matures.
 #![allow(dead_code, unused_mut)]
 
 mod ai_features;

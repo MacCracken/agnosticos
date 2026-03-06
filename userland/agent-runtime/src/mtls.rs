@@ -4,8 +4,6 @@
 //! This module handles certificate metadata, issuance, verification, revocation,
 //! and rotation — without implementing actual TLS handshakes.
 
-use std::collections::HashMap;
-
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;

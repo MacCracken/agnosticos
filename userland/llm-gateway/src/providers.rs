@@ -127,8 +127,8 @@ impl LlmProvider for OllamaProvider {
                         buffer.push_str(&String::from_utf8_lossy(&bytes));
                         // Ollama streams newline-delimited JSON
                         while let Some(pos) = buffer.find('\n') {
-                            let line: String = buffer.drain(..pos).collect();
-                            buffer.drain(..1); // consume the '\n'
+                            let line = buffer[..pos].to_string();
+                            buffer = buffer.split_off(pos + 1);
                             if line.trim().is_empty() { continue; }
                             if let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) {
                                 if let Some(text) = json["response"].as_str() {
@@ -281,8 +281,8 @@ impl LlmProvider for LlamaCppProvider {
                         buffer.push_str(&String::from_utf8_lossy(&bytes));
                         // llama.cpp streams SSE: "data: {...}\n\n"
                         while let Some(pos) = buffer.find("\n\n") {
-                            let event: String = buffer.drain(..pos).collect();
-                            buffer.drain(..2); // consume the "\n\n"
+                            let event = buffer[..pos].to_string();
+                            buffer = buffer.split_off(pos + 2);
                             for line in event.lines() {
                                 if let Some(data) = line.strip_prefix("data: ") {
                                     if data.trim() == "[DONE]" { return; }
@@ -436,8 +436,8 @@ impl LlmProvider for OpenAiProvider {
                     Ok(bytes) => {
                         buffer.push_str(&String::from_utf8_lossy(&bytes));
                         while let Some(pos) = buffer.find("\n\n") {
-                            let event: String = buffer.drain(..pos).collect();
-                            buffer.drain(..2); // consume the "\n\n"
+                            let event = buffer[..pos].to_string();
+                            buffer = buffer.split_off(pos + 2);
                             for line in event.lines() {
                                 if let Some(data) = line.strip_prefix("data: ") {
                                     if data.trim() == "[DONE]" { return; }
@@ -614,8 +614,8 @@ impl LlmProvider for AnthropicProvider {
                     Ok(bytes) => {
                         buffer.push_str(&String::from_utf8_lossy(&bytes));
                         while let Some(pos) = buffer.find("\n\n") {
-                            let event: String = buffer.drain(..pos).collect();
-                            buffer.drain(..2); // consume the "\n\n"
+                            let event = buffer[..pos].to_string();
+                            buffer = buffer.split_off(pos + 2);
                             // Anthropic SSE: "event: <type>\ndata: <json>"
                             let mut data_str = None;
                             for line in event.lines() {
@@ -816,8 +816,8 @@ impl LlmProvider for GoogleProvider {
                         buffer.push_str(&String::from_utf8_lossy(&bytes));
                         // Gemini SSE: "data: <json>\n\n"
                         while let Some(pos) = buffer.find("\n\n") {
-                            let event: String = buffer.drain(..pos).collect();
-                            buffer.drain(..2); // consume the "\n\n"
+                            let event = buffer[..pos].to_string();
+                            buffer = buffer.split_off(pos + 2);
                             if let Some(data) = event.strip_prefix("data: ") {
                                 if let Ok(json) =
                                     serde_json::from_str::<serde_json::Value>(data)

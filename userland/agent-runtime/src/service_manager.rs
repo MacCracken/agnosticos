@@ -446,10 +446,12 @@ impl ServiceManager {
             if let Some(pid) = svc.pid {
                 #[cfg(unix)]
                 {
-                    let _ = nix::sys::signal::kill(
+                    if let Err(e) = nix::sys::signal::kill(
                         nix::unistd::Pid::from_raw(pid as i32),
                         nix::sys::signal::Signal::SIGTERM,
-                    );
+                    ) {
+                        warn!("Failed to send SIGTERM to service {} (pid {}): {}", name, pid, e);
+                    }
                 }
             }
 
@@ -467,7 +469,9 @@ impl ServiceManager {
                 }
                 _ => {
                     warn!("Service {} did not exit gracefully, sending SIGKILL", name);
-                    let _ = child.kill().await;
+                    if let Err(e) = child.kill().await {
+                        warn!("Failed to SIGKILL service {}: {}", name, e);
+                    }
                 }
             }
         }
@@ -692,7 +696,9 @@ impl ServiceManager {
             {
                 use std::os::unix::net::UnixDatagram;
                 if let Ok(sock) = UnixDatagram::unbound() {
-                    let _ = sock.send_to(b"READY=1", &socket_path);
+                    if let Err(e) = sock.send_to(b"READY=1", &socket_path) {
+                        warn!("Failed to send sd_notify READY=1: {}", e);
+                    }
                 }
             }
             info!("Sent sd_notify READY=1 to {}", socket_path);

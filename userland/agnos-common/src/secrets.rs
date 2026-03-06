@@ -68,23 +68,33 @@ pub trait SecretBackend: Send + Sync {
 // Environment Variable Backend
 // ---------------------------------------------------------------------------
 
-/// Reads secrets from environment variables.  Useful for dev/CI.
+/// Reads secrets from environment variables. Useful for dev/CI only.
 ///
 /// Keys are upper-cased and prefixed with `AGNOS_SECRET_`.
+///
+/// # Thread Safety
+///
+/// `set_secret` and `delete_secret` call `std::env::set_var` / `std::env::remove_var`,
+/// which are process-global and not thread-safe. A mutex serializes all env mutations
+/// within this backend, but external concurrent env access is still unsafe. This backend
+/// should **not** be used in production — use a file-backed or vault-based backend instead.
 pub struct EnvSecretBackend {
     prefix: String,
+    env_lock: std::sync::Mutex<()>,
 }
 
 impl EnvSecretBackend {
     pub fn new() -> Self {
         Self {
             prefix: "AGNOS_SECRET_".to_string(),
+            env_lock: std::sync::Mutex::new(()),
         }
     }
 
     pub fn with_prefix(prefix: &str) -> Self {
         Self {
             prefix: prefix.to_string(),
+            env_lock: std::sync::Mutex::new(()),
         }
     }
 
@@ -122,8 +132,9 @@ impl SecretBackend for EnvSecretBackend {
 
     async fn set_secret(&self, key: &str, value: SecretValue) -> Result<()> {
         let env_key = self.env_key(key);
-        // Safety: setting env vars is inherently process-global.
-        // This is acceptable for dev/test backends.
+        // Safety: env var mutations are serialized via env_lock to prevent
+        // concurrent set/remove races within this backend.
+        let _guard = self.env_lock.lock().unwrap_or_else(|e| e.into_inner());
         unsafe {
             std::env::set_var(&env_key, &value.data);
         }
@@ -133,6 +144,7 @@ impl SecretBackend for EnvSecretBackend {
 
     async fn delete_secret(&self, key: &str) -> Result<bool> {
         let env_key = self.env_key(key);
+        let _guard = self.env_lock.lock().unwrap_or_else(|e| e.into_inner());
         let existed = std::env::var(&env_key).is_ok();
         if existed {
             unsafe {
@@ -523,11 +535,12 @@ impl SecretInjector {
     }
 
     /// Convenience: inject all resolved secrets into the current process
-    /// environment (for testing / simple single-process agents).
+    /// environment. **Dev/test only** — env var mutation is not thread-safe.
     pub async fn inject_into_env(&self, mappings: &HashMap<String, String>) -> Result<()> {
         let resolved = self.resolve(mappings).await?;
+        // Safety: env var mutations are process-global. This method is intended
+        // for single-threaded test/dev scenarios only.
         for (k, v) in &resolved {
-            // Safety: setting env vars is inherently process-global.
             unsafe {
                 std::env::set_var(k, v);
             }

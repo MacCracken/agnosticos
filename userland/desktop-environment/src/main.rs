@@ -1,5 +1,6 @@
-// Desktop environment is deliberately incomplete (P3: Wayland compositor stub).
-// Struct fields define the public API surface for future rendering implementation.
+// Desktop environment binary — re-includes library modules for the compositor
+// runtime. Many types are defined for the public API surface but not yet
+// exercised by the main binary.
 #![allow(dead_code, unused_mut, unused_imports)]
 
 use std::sync::Arc;

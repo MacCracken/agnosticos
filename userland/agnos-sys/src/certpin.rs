@@ -450,9 +450,25 @@ pub fn check_pin_expiry(pin_set: &CertPinSet) -> Vec<PinnedCert> {
 
 /// Built-in pins for known AGNOS cloud provider hosts.
 ///
-/// These are placeholder pins — in production they MUST be updated with
-/// actual SPKI hashes fetched from the live servers and periodically rotated.
+/// # WARNING: Development-Only Placeholder Pins
+///
+/// These SPKI hashes are **not production-verified**. They were generated during
+/// development and may not match the current certificates served by these providers.
+/// Before any production deployment:
+///
+/// 1. Fetch live SPKI hashes: `openssl s_client -connect <host>:443 | openssl x509 -pubkey -noout | openssl pkey -pubin -outform DER | openssl dgst -sha256 -binary | base64`
+/// 2. Replace the pin values below
+/// 3. Set `enforce: true`
+/// 4. Set `expires` to a reasonable rotation date
+///
+/// The `enforce: false` default means pin mismatches are **logged but not blocked**.
+/// This is intentional for pre-alpha to avoid connectivity breakage from certificate rotations.
 pub fn default_agnos_pins() -> CertPinSet {
+    tracing::warn!(
+        "Using development placeholder certificate pins (enforce=false). \
+         Replace with live SPKI hashes before production deployment."
+    );
+
     CertPinSet {
         pins: vec![
             PinnedCert {
@@ -486,7 +502,7 @@ pub fn default_agnos_pins() -> CertPinSet {
                 ],
             },
         ],
-        enforce: false, // report-only by default until pins are verified
+        enforce: false, // report-only — see docstring above
         created_at: Utc::now(),
         version: 1,
     }
