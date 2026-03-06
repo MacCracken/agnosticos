@@ -7,16 +7,15 @@
 use std::path::PathBuf;
 
 #[cfg(feature = "wasm")]
-use std::sync::Arc;
-
-#[cfg(feature = "wasm")]
 use anyhow::{Context, Result};
 #[cfg(feature = "wasm")]
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 #[cfg(feature = "wasm")]
 use wasmtime::*;
 #[cfg(feature = "wasm")]
-use wasmtime_wasi::{WasiCtx, WasiCtxBuilder, WasiView};
+use wasmtime_wasi::{DirPerms, FilePerms, WasiCtxBuilder};
+#[cfg(feature = "wasm")]
+use wasmtime_wasi::preview1::WasiP1Ctx;
 
 /// Configuration for a WASM-based agent.
 #[derive(Debug, Clone)]
@@ -65,17 +64,13 @@ pub struct WasmExecutionResult {
 
 #[cfg(feature = "wasm")]
 struct WasiHostState {
-    wasi: WasiCtx,
-    table: wasmtime::component::ResourceTable,
+    wasi: WasiP1Ctx,
 }
 
 #[cfg(feature = "wasm")]
-impl WasiView for WasiHostState {
-    fn ctx(&mut self) -> &mut WasiCtx {
+impl WasiHostState {
+    fn wasi_ctx(&mut self) -> &mut WasiP1Ctx {
         &mut self.wasi
-    }
-    fn table(&mut self) -> &mut wasmtime::component::ResourceTable {
-        &mut self.table
     }
 }
 
@@ -146,22 +141,17 @@ impl WasmAgent {
         // Pre-opened directories
         for dir in &self.config.allowed_dirs {
             if dir.exists() {
-                let dir_fd = wasmtime_wasi::p2::DirPerms::all();
-                let file_perms = wasmtime_wasi::p2::FilePerms::all();
                 wasi_builder.preopened_dir(
                     dir,
                     dir.to_string_lossy().as_ref(),
-                    dir_fd,
-                    file_perms,
+                    DirPerms::all(),
+                    FilePerms::all(),
                 )?;
             }
         }
 
-        let wasi = wasi_builder.build();
-        let host_state = WasiHostState {
-            wasi,
-            table: wasmtime::component::ResourceTable::new(),
-        };
+        let wasi = wasi_builder.build_p1();
+        let host_state = WasiHostState { wasi };
 
         let mut store = Store::new(&self.engine, host_state);
 
@@ -171,7 +161,10 @@ impl WasmAgent {
         }
 
         // Instantiate and run
-        let linker = wasmtime_wasi::add_to_linker_sync::<WasiHostState>(&self.engine)?;
+        let mut linker = wasmtime::Linker::new(&self.engine);
+        wasmtime_wasi::preview1::add_to_linker_sync(&mut linker, |state: &mut WasiHostState| {
+            state.wasi_ctx()
+        })?;
         let instance = linker.instantiate(&mut store, &self.module)?;
 
         let start = instance

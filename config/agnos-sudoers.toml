@@ -1,0 +1,68 @@
+# AGNOS Sudoers Policy
+# Install to: /etc/agnos/sudoers.toml
+# This file MUST be owned by root:root with mode 0640.
+
+[defaults]
+# Credential cache TTL in seconds (0 = always prompt)
+timestamp_ttl = 300
+# Require password authentication
+require_auth = true
+# Log all sudo commands to /var/log/agnos/sudo.log
+audit_log = true
+# Environment variables to preserve (in addition to built-in safe list)
+env_keep = ["EDITOR", "VISUAL"]
+# Maximum total command + args length in bytes
+max_command_len = 4096
+
+# Root can do anything (identity passthrough)
+[[rules]]
+user = "root"
+run_as = "*"
+commands = []
+require_auth = false
+description = "Root always has full access"
+
+# Members of the 'wheel' group get full root access
+[[rules]]
+group = "wheel"
+run_as = "root"
+commands = []
+require_auth = true
+description = "Wheel group has full root access"
+
+# Members of the 'agnos-admin' group can manage AGNOS services
+[[rules]]
+group = "agnos-admin"
+run_as = "root"
+commands = [
+    "/usr/bin/systemctl",
+    "/usr/bin/journalctl",
+    "/usr/local/bin/agent-runtime",
+    "/usr/local/bin/llm-gateway",
+]
+deny_commands = [
+    "/usr/bin/systemctl stop firewall",
+    "/usr/bin/systemctl disable firewall",
+]
+require_auth = true
+description = "AGNOS admin group can manage services (except firewall)"
+
+# Agent runtime service account (NOPASSWD for automated operations)
+[[rules]]
+user = "agnos-agent"
+run_as = "root"
+commands = [
+    "/usr/bin/systemctl restart agent-runtime",
+    "/usr/bin/systemctl status *",
+    "/usr/local/bin/agent-runtime",
+]
+require_auth = false
+description = "Agent runtime service account for automated ops"
+
+# All users can change their own password
+[[rules]]
+user = "*"
+run_as = "root"
+commands = ["/usr/bin/passwd"]
+require_auth = true
+description = "Any user can change passwords via sudo"

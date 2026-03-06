@@ -6,6 +6,7 @@ members = [
     "ai-shell",
     "llm-gateway",
     "desktop-environment",
+    "agnos-sudo",
     "examples",
 ]
 resolver = "2"

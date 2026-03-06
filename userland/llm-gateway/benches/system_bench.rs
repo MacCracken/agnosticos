@@ -71,7 +71,7 @@ fn bench_cache_set_throughput(c: &mut Criterion) {
                 rt.block_on(async {
                     let cache = ResponseCache::new(Duration::from_secs(300));
                     for i in 0..n {
-                        cache.set(make_request(i), make_response(i)).await;
+                        cache.set(&make_request(i), make_response(i)).await;
                     }
                     let stats = cache.stats().await;
                     black_box(stats);
@@ -93,7 +93,7 @@ fn bench_cache_get_throughput(c: &mut Criterion) {
             let cache = rt.block_on(async {
                 let cache = ResponseCache::new(Duration::from_secs(300));
                 for i in 0..n {
-                    cache.set(make_request(i), make_response(i)).await;
+                    cache.set(&make_request(i), make_response(i)).await;
                 }
                 cache
             });
@@ -127,7 +127,7 @@ fn bench_cache_concurrent_set_get(c: &mut Criterion) {
                     for i in 0..n {
                         let cache = Arc::clone(&cache);
                         handles.push(tokio::spawn(async move {
-                            cache.set(make_request(i), make_response(i)).await;
+                            cache.set(&make_request(i), make_response(i)).await;
                         }));
                     }
 
@@ -160,7 +160,7 @@ fn bench_cache_hit_vs_miss(c: &mut Criterion) {
     let cache = rt.block_on(async {
         let cache = ResponseCache::new(Duration::from_secs(300));
         for i in 0..100 {
-            cache.set(make_request(i), make_response(i)).await;
+            cache.set(&make_request(i), make_response(i)).await;
         }
         cache
     });
@@ -483,7 +483,7 @@ fn bench_inference_pipeline_mock(c: &mut Criterion) {
                 accounting.record_usage(agent_id, response.usage).await;
 
                 // Step 5: Cache the response
-                cache.set(request, response.clone()).await;
+                cache.set(&request, response.clone()).await;
 
                 black_box(response);
             });
@@ -514,7 +514,7 @@ fn bench_inference_pipeline_mock(c: &mut Criterion) {
                     total_tokens: 20,
                 },
             };
-            cache.set(request, response).await;
+            cache.set(&request, response).await;
             cache
         });
 
@@ -563,7 +563,7 @@ fn bench_inference_pipeline_mock(c: &mut Criterion) {
                                 resp
                             } else {
                                 let resp = make_response(i);
-                                cache.set(request, resp.clone()).await;
+                                cache.set(&request, resp.clone()).await;
                                 resp
                             };
 
@@ -596,7 +596,7 @@ fn bench_cache_expiry_cleanup(c: &mut Criterion) {
 
                     // Fill cache with n entries
                     for i in 0..n {
-                        cache.set(make_request(i), make_response(i)).await;
+                        cache.set(&make_request(i), make_response(i)).await;
                     }
 
                     // Wait for entries to expire
@@ -626,7 +626,7 @@ fn bench_cache_mixed_expiry(c: &mut Criterion) {
 
                 // Insert first half (will expire)
                 for i in 0..250 {
-                    cache.set(make_request(i), make_response(i)).await;
+                    cache.set(&make_request(i), make_response(i)).await;
                 }
 
                 // Wait for those to expire
@@ -635,7 +635,7 @@ fn bench_cache_mixed_expiry(c: &mut Criterion) {
                 // Insert second half (still fresh)
                 let cache2 = ResponseCache::new(Duration::from_secs(300));
                 for i in 250..500 {
-                    cache2.set(make_request(i), make_response(i)).await;
+                    cache2.set(&make_request(i), make_response(i)).await;
                 }
 
                 // Stats on mixed cache (the short-TTL one)

@@ -113,9 +113,9 @@ mod tests {
     #[test]
     fn test_version_default() {
         let version = Version::default();
-        assert_eq!(version.major, 0);
-        assert_eq!(version.minor, 1);
-        assert_eq!(version.patch, 0);
+        assert_eq!(version.major, 2026);
+        assert_eq!(version.minor, 3);
+        assert_eq!(version.patch, 5);
         assert!(version.prerelease.is_none());
         assert!(version.build.is_none());
     }
