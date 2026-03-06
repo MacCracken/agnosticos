@@ -196,6 +196,32 @@ P0 kernel security items completed March 4 (auditd, MAC, netns, dm-verity, LUKS)
 | Artifact sandbox scoping (task-scoped `/tmp` via Landlock) | agnos-sys | Planned |
 | Process resource metrics export (for anomaly detection) | agent-runtime | Planned |
 
+#### Docker Base Image for Sibling Projects
+
+AGNOS is the target Docker base image for sibling projects once Alpha ships. Current readiness:
+
+| Project | Current Base | Migration Readiness | Notes |
+|---------|-------------|-------------------|-------|
+| SecureYeoman | `node:20-slim` | Medium | Node.js runtime needed; AGNOS base + Node layer. Benefits: sandboxed MCP tool execution via `agent-runtime`, audit chain for tool calls |
+| Agnostic | Per-agent Dockerfiles | High | Python/CrewAI agents map well to `agent-runtime` process model. 6 agent services could run as managed agents instead of separate containers |
+| BullShift | `rust:1.77` builder → `debian:bookworm-slim` | High | Already Rust; swap runtime stage to `agnos:latest`. Gains: sandboxed trading execution, audit chain for trade operations |
+| Photis Nadi | N/A (Flutter client) | N/A | No Docker component — client-only app |
+
+Blockers before migration:
+- [ ] **Alpha release** — third-party security audit must complete
+- [ ] **Node.js runtime layer** — publish `agnos:node20` variant for SecureYeoman (AGNOS is Rust-native; Node needs an additional layer)
+- [ ] **Python runtime layer** — publish `agnos:python3.12` variant for Agnostic's CrewAI agents
+
+#### LLM Gateway as Shared Provider
+
+The `llm-gateway` (OpenAI-compatible on :8088) can serve as a unified AI provider for all sibling projects:
+
+| Project | Current LLM Path | Gateway Benefit |
+|---------|------------------|-----------------|
+| SecureYeoman | Direct provider calls via `AiProviderConfig` | Centralized rate limiting, audit logging, model routing. Register as custom provider in SecureYeoman's provider management (Pro feature) |
+| Agnostic | `universal_llm_adapter.py` direct calls | Deduplicate adapter logic; route through gateway for audit trail |
+| BullShift | AI Bridge with multiple provider backends | Single endpoint replaces per-provider configuration |
+
 ### Phase 7: Ecosystem (Planned Q4 2026)
 
 #### Marketplace
