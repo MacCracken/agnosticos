@@ -3,6 +3,7 @@
 pub mod accounting;
 pub mod cache;
 pub mod providers;
+pub mod rate_limiter;
 
 // Re-export key types from main.rs that live in the binary.
 // The gateway struct itself lives in main.rs; for benchmarks we use

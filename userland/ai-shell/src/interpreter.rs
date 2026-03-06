@@ -53,6 +53,27 @@ pub enum Intent {
     InstallPackage { packages: Vec<String> },
     /// General shell command
     ShellCommand { command: String, args: Vec<String> },
+    /// View audit log entries
+    AuditView {
+        /// Optional agent ID to filter by
+        agent_id: Option<String>,
+        /// Time window (e.g., "1h", "30m", "1d")
+        time_window: Option<String>,
+        /// Maximum number of entries
+        count: Option<usize>,
+    },
+    /// View agent status and information
+    AgentInfo {
+        /// Optional agent ID (if None, list all agents)
+        agent_id: Option<String>,
+    },
+    /// Manage system services
+    ServiceControl {
+        /// Action: list, start, stop, restart, status
+        action: String,
+        /// Service name (for start/stop/restart/status)
+        service_name: Option<String>,
+    },
     /// Question/Information request
     Question { query: String },
     /// Ambiguous - needs clarification
@@ -162,6 +183,24 @@ impl Interpreter {
                 .unwrap(),
         );
 
+        // Audit patterns
+        patterns.insert(
+            "audit".to_string(),
+            Regex::new(r"(?i)^(show|view|display|check)\s+(the\s+)?(audit|security)\s*(log|trail|history|entries)?(\s+for\s+(agent\s+)?(.+?))?(\s+(in|from)\s+(the\s+)?(last\s+)?(.+))?$").unwrap(),
+        );
+
+        // Agent info patterns
+        patterns.insert(
+            "agent_info".to_string(),
+            Regex::new(r"(?i)^(show|list|view|display|what)\s+(me\s+)?(all\s+)?(running\s+)?(agents?|ai\s+agents?)\s*(status|info)?(\s+(.+))?$").unwrap(),
+        );
+
+        // Service control patterns
+        patterns.insert(
+            "service".to_string(),
+            Regex::new(r"(?i)^(list|show|start|stop|restart|status)\s+(the\s+)?(services?|daemons?)\s*(.+)?$").unwrap(),
+        );
+
         // Question patterns
         patterns.insert(
             "question".to_string(),
@@ -176,6 +215,33 @@ impl Interpreter {
         let input_lower = input.to_lowercase().trim().to_string();
 
         // Check each pattern
+        // AGNOS-specific intents matched first (more specific than generic list/show)
+        if let Some(caps) = self.patterns.get("audit").unwrap().captures(&input_lower) {
+            let agent_id = caps.get(7).map(|m| m.as_str().trim().to_string());
+            let time_window = caps.get(12).map(|m| m.as_str().trim().to_string());
+            return Intent::AuditView {
+                agent_id,
+                time_window,
+                count: None,
+            };
+        }
+
+        if let Some(caps) = self.patterns.get("agent_info").unwrap().captures(&input_lower) {
+            let agent_id = caps.get(8).map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            return Intent::AgentInfo { agent_id };
+        }
+
+        if let Some(caps) = self.patterns.get("service").unwrap().captures(&input_lower) {
+            let action = caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default();
+            let service_name = caps.get(4).map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            return Intent::ServiceControl {
+                action,
+                service_name,
+            };
+        }
+
         if let Some(caps) = self.patterns.get("list").unwrap().captures(&input_lower) {
             let path = caps.get(6).map(|m| m.as_str().trim().to_string());
             let all = input_lower.contains("all");
@@ -481,6 +547,83 @@ impl Interpreter {
                     description: format!("Install package(s): {}", packages.join(", ")),
                     permission: PermissionLevel::SystemWrite,
                     explanation: "Installs system packages (requires root)".to_string(),
+                })
+            }
+
+            Intent::AuditView {
+                agent_id,
+                time_window,
+                count,
+            } => {
+                let mut args = vec!["show".to_string()];
+                if let Some(id) = agent_id {
+                    args.push("--agent".to_string());
+                    args.push(id.clone());
+                }
+                if let Some(window) = time_window {
+                    args.push("--since".to_string());
+                    args.push(window.clone());
+                }
+                if let Some(n) = count {
+                    args.push("--count".to_string());
+                    args.push(n.to_string());
+                }
+                let desc = match (agent_id, time_window) {
+                    (Some(id), Some(w)) => format!("Show audit log for agent {} in last {}", id, w),
+                    (Some(id), None) => format!("Show audit log for agent {}", id),
+                    (None, Some(w)) => format!("Show audit log for last {}", w),
+                    (None, None) => "Show recent audit log entries".to_string(),
+                };
+                Ok(Translation {
+                    command: "agnos-audit".to_string(),
+                    args,
+                    description: desc.clone(),
+                    permission: PermissionLevel::Safe,
+                    explanation: desc,
+                })
+            }
+
+            Intent::AgentInfo { agent_id } => {
+                let args = if let Some(id) = agent_id {
+                    vec!["status".to_string(), id.clone()]
+                } else {
+                    vec!["list".to_string()]
+                };
+                let desc = agent_id
+                    .as_ref()
+                    .map(|id| format!("Show status for agent {}", id))
+                    .unwrap_or_else(|| "List all running agents".to_string());
+                Ok(Translation {
+                    command: "agent-runtime".to_string(),
+                    args,
+                    description: desc.clone(),
+                    permission: PermissionLevel::Safe,
+                    explanation: desc,
+                })
+            }
+
+            Intent::ServiceControl {
+                action,
+                service_name,
+            } => {
+                let mut args = vec!["service".to_string(), action.clone()];
+                if let Some(name) = service_name {
+                    args.push(name.clone());
+                }
+                let desc = match service_name {
+                    Some(name) => format!("{} service '{}'", action, name),
+                    None => format!("{} services", action),
+                };
+                let permission = match action.as_str() {
+                    "list" | "status" => PermissionLevel::Safe,
+                    _ => PermissionLevel::Admin,
+                };
+                Ok(Translation {
+                    command: "agent-runtime".to_string(),
+                    args,
+                    description: desc.clone(),
+                    permission,
+                    explanation: desc,
                 })
             }
 
@@ -1499,5 +1642,139 @@ mod tests {
         assert_eq!(cloned.long, opts.long);
         assert_eq!(cloned.human_readable, opts.human_readable);
         assert_eq!(cloned.recursive, opts.recursive);
+    }
+
+    // --- Audit, Agent, Service intent tests ---
+
+    #[test]
+    fn test_parse_audit_show() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("show audit log");
+        assert!(matches!(intent, Intent::AuditView { .. }));
+    }
+
+    #[test]
+    fn test_parse_audit_with_time() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("show audit log in last 1h");
+        if let Intent::AuditView { time_window, .. } = intent {
+            assert_eq!(time_window.as_deref(), Some("1h"));
+        } else {
+            panic!("Expected AuditView");
+        }
+    }
+
+    #[test]
+    fn test_parse_audit_for_agent() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("view security log for agent abc-123");
+        if let Intent::AuditView { agent_id, .. } = intent {
+            assert_eq!(agent_id.as_deref(), Some("abc-123"));
+        } else {
+            panic!("Expected AuditView");
+        }
+    }
+
+    #[test]
+    fn test_translate_audit_view() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::AuditView {
+            agent_id: Some("test-id".into()),
+            time_window: Some("30m".into()),
+            count: Some(50),
+        };
+        let t = interpreter.translate(&intent).unwrap();
+        assert_eq!(t.command, "agnos-audit");
+        assert!(t.args.contains(&"--agent".to_string()));
+        assert!(t.args.contains(&"test-id".to_string()));
+        assert!(t.args.contains(&"--since".to_string()));
+        assert!(t.args.contains(&"30m".to_string()));
+        assert!(t.args.contains(&"--count".to_string()));
+        assert_eq!(t.permission, PermissionLevel::Safe);
+    }
+
+    #[test]
+    fn test_parse_agent_list() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("show all running agents");
+        assert!(matches!(intent, Intent::AgentInfo { agent_id: None }));
+    }
+
+    #[test]
+    fn test_translate_agent_info_list() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::AgentInfo { agent_id: None };
+        let t = interpreter.translate(&intent).unwrap();
+        assert_eq!(t.command, "agent-runtime");
+        assert!(t.args.contains(&"list".to_string()));
+    }
+
+    #[test]
+    fn test_translate_agent_info_specific() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::AgentInfo {
+            agent_id: Some("my-agent".into()),
+        };
+        let t = interpreter.translate(&intent).unwrap();
+        assert_eq!(t.command, "agent-runtime");
+        assert!(t.args.contains(&"status".to_string()));
+        assert!(t.args.contains(&"my-agent".to_string()));
+    }
+
+    #[test]
+    fn test_parse_service_list() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("list services");
+        if let Intent::ServiceControl { action, service_name } = intent {
+            assert_eq!(action, "list");
+            assert!(service_name.is_none());
+        } else {
+            panic!("Expected ServiceControl");
+        }
+    }
+
+    #[test]
+    fn test_parse_service_start() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("start service llm-gateway");
+        if let Intent::ServiceControl { action, service_name } = intent {
+            assert_eq!(action, "start");
+            assert_eq!(service_name.as_deref(), Some("llm-gateway"));
+        } else {
+            panic!("Expected ServiceControl");
+        }
+    }
+
+    #[test]
+    fn test_translate_service_list_safe() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::ServiceControl {
+            action: "list".into(),
+            service_name: None,
+        };
+        let t = interpreter.translate(&intent).unwrap();
+        assert_eq!(t.permission, PermissionLevel::Safe);
+    }
+
+    #[test]
+    fn test_translate_service_start_requires_approval() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::ServiceControl {
+            action: "start".into(),
+            service_name: Some("test-svc".into()),
+        };
+        let t = interpreter.translate(&intent).unwrap();
+        assert_eq!(t.permission, PermissionLevel::Admin);
+    }
+
+    #[test]
+    fn test_translate_service_stop_requires_approval() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::ServiceControl {
+            action: "stop".into(),
+            service_name: Some("test-svc".into()),
+        };
+        let t = interpreter.translate(&intent).unwrap();
+        assert_eq!(t.permission, PermissionLevel::Admin);
     }
 }

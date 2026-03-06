@@ -21,11 +21,13 @@ mod providers;
 mod cache;
 mod accounting;
 mod http;
+pub mod rate_limiter;
 
 use crate::accounting::TokenAccounting;
 use crate::cache::ResponseCache;
 use crate::http::start_http_server;
 use crate::providers::{LlmProvider, ProviderType};
+use crate::rate_limiter::AgentRateLimiter;
 
 #[derive(Parser)]
 #[command(name = "llm-gateway")]
@@ -108,8 +110,10 @@ pub struct LlmGateway {
     loaded_models: RwLock<HashMap<String, ModelInfo>>,
     /// Per-provider health tracking
     provider_health: RwLock<HashMap<ProviderType, ProviderHealth>>,
-    /// Request rate limiter
+    /// Global request concurrency limiter
     rate_limiter: Semaphore,
+    /// Per-agent rate limiting (tokens/hour, requests/min, concurrent)
+    agent_rate_limiter: AgentRateLimiter,
     /// Response cache
     cache: ResponseCache,
     /// Token accounting for agents
@@ -154,6 +158,7 @@ impl LlmGateway {
             loaded_models: RwLock::new(HashMap::new()),
             provider_health: RwLock::new(HashMap::new()),
             rate_limiter,
+            agent_rate_limiter: AgentRateLimiter::new(),
             cache,
             accounting,
             config,
@@ -221,7 +226,8 @@ impl LlmGateway {
         Ok(())
     }
 
-    /// Run inference with the LLM, retrying with fallback providers on failure
+    /// Run inference with the LLM, retrying with fallback providers on failure.
+    /// Enforces per-agent rate limits before processing.
     pub async fn infer(
         &self,
         mut request: InferenceRequest,
@@ -229,6 +235,14 @@ impl LlmGateway {
     ) -> Result<InferenceResponse> {
         // Enforce parameter bounds before any processing
         request.validate();
+
+        // Check per-agent rate limits
+        if let Some(aid) = agent_id {
+            if let Err(reason) = self.agent_rate_limiter.check_request(aid).await {
+                anyhow::bail!("Rate limited for agent {}: {}", aid, reason);
+            }
+            self.agent_rate_limiter.record_request_start(aid).await;
+        }
 
         let _permit = self.rate_limiter.acquire().await?;
 
@@ -274,11 +288,14 @@ impl LlmGateway {
                     // Record success for health tracking
                     self.record_provider_success(provider_type).await;
 
-                    // Update token accounting
-                    if self.config.enable_token_accounting {
-                        if let Some(agent_id) = agent_id {
-                            self.accounting.record_usage(agent_id, response.usage).await;
+                    // Update token accounting and rate limiter
+                    if let Some(aid) = agent_id {
+                        if self.config.enable_token_accounting {
+                            self.accounting.record_usage(aid, response.usage).await;
                         }
+                        self.agent_rate_limiter
+                            .record_request_end(aid, response.usage.total_tokens as u64)
+                            .await;
                     }
 
                     // Cache the response
@@ -306,6 +323,11 @@ impl LlmGateway {
                     last_error = Some(anyhow::anyhow!("Inference request timed out"));
                 }
             }
+        }
+
+        // All attempts failed — still need to record request end for rate limiter
+        if let Some(aid) = agent_id {
+            self.agent_rate_limiter.record_request_end(aid, 0).await;
         }
 
         Err(last_error.unwrap_or_else(|| anyhow::anyhow!("No LLM provider available")))
@@ -507,6 +529,11 @@ impl LlmGateway {
     /// Return token accounting statistics
     pub async fn accounting_stats(&self) -> crate::accounting::AccountingStats {
         self.accounting.stats().await
+    }
+
+    /// Get a reference to the per-agent rate limiter.
+    pub fn rate_limits(&self) -> &AgentRateLimiter {
+        &self.agent_rate_limiter
     }
 
     /// Spawn a background task that pings each provider every 30 seconds via `list_models()`

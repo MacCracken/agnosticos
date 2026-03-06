@@ -28,6 +28,7 @@ async-trait = { workspace = true }
 dashmap = { workspace = true }
 chrono = { workspace = true }
 nix = { version = "0.27", features = ["process", "signal"] }
+toml = "0.8"
 libc = "0.2"
 axum = { workspace = true }
 tower = { workspace = true }

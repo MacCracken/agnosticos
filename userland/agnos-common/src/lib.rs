@@ -24,6 +24,7 @@ pub use types::*;
 // Re-export commonly used crates
 pub use serde_json;
 
+use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -252,6 +253,194 @@ pub enum Permission {
     ProcessSpawn,
     LlmInference,
     AuditRead,
+}
+
+/// Declarative agent manifest — describes what an agent will do,
+/// what resources it needs, and why. Shown to users before granting access.
+/// Loaded from `agent.toml` alongside the agent binary.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentManifest {
+    /// Human-readable agent name.
+    pub name: String,
+    /// Short description of what this agent does.
+    pub description: String,
+    /// Author / publisher.
+    #[serde(default)]
+    pub author: String,
+    /// Semantic version of the agent.
+    #[serde(default)]
+    pub version: String,
+    /// Homepage / source URL.
+    #[serde(default)]
+    pub homepage: String,
+    /// Permissions this agent requests (must be explicitly granted).
+    #[serde(default)]
+    pub requested_permissions: Vec<Permission>,
+    /// Human-readable justification for each permission.
+    #[serde(default)]
+    pub permission_rationale: HashMap<String, String>,
+    /// Filesystem paths the agent needs access to (maps to Landlock rules).
+    #[serde(default)]
+    pub filesystem_access: Vec<FilesystemRule>,
+    /// Network access scope.
+    #[serde(default)]
+    pub network_scope: ManifestNetworkScope,
+    /// Maximum resource limits the agent expects.
+    #[serde(default)]
+    pub resource_limits: ResourceLimits,
+    /// Data the agent will read/process (for user transparency).
+    #[serde(default)]
+    pub data_accessed: Vec<String>,
+    /// External services the agent will call.
+    #[serde(default)]
+    pub external_services: Vec<String>,
+}
+
+impl Default for AgentManifest {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            description: String::new(),
+            author: String::new(),
+            version: String::new(),
+            homepage: String::new(),
+            requested_permissions: Vec::new(),
+            permission_rationale: HashMap::new(),
+            filesystem_access: Vec::new(),
+            network_scope: ManifestNetworkScope::None,
+            resource_limits: ResourceLimits::default(),
+            data_accessed: Vec::new(),
+            external_services: Vec::new(),
+        }
+    }
+}
+
+impl AgentManifest {
+    /// Generate a human-readable summary for consent display.
+    pub fn consent_summary(&self) -> String {
+        let mut lines = Vec::new();
+
+        lines.push(format!("Agent: {} v{}", self.name, self.version));
+        if !self.author.is_empty() {
+            lines.push(format!("Author: {}", self.author));
+        }
+        lines.push(format!("Description: {}", self.description));
+        lines.push(String::new());
+
+        if !self.requested_permissions.is_empty() {
+            lines.push("Requested Permissions:".to_string());
+            for perm in &self.requested_permissions {
+                let perm_str = format!("{:?}", perm);
+                let rationale = self
+                    .permission_rationale
+                    .get(&perm_str)
+                    .map(|r| format!(" — {}", r))
+                    .unwrap_or_default();
+                lines.push(format!("  - {:?}{}", perm, rationale));
+            }
+            lines.push(String::new());
+        }
+
+        if !self.filesystem_access.is_empty() {
+            lines.push("Filesystem Access:".to_string());
+            for rule in &self.filesystem_access {
+                lines.push(format!("  - {} ({:?})", rule.path.display(), rule.access));
+            }
+            lines.push(String::new());
+        }
+
+        if self.network_scope != ManifestNetworkScope::None {
+            lines.push(format!("Network: {:?}", self.network_scope));
+            if !self.external_services.is_empty() {
+                for svc in &self.external_services {
+                    lines.push(format!("  - {}", svc));
+                }
+            }
+            lines.push(String::new());
+        }
+
+        if !self.data_accessed.is_empty() {
+            lines.push("Data Accessed:".to_string());
+            for data in &self.data_accessed {
+                lines.push(format!("  - {}", data));
+            }
+            lines.push(String::new());
+        }
+
+        lines.push(format!(
+            "Resource Limits: memory={} MB, cpu={}ms, fds={}, procs={}",
+            self.resource_limits.max_memory / (1024 * 1024),
+            self.resource_limits.max_cpu_time,
+            self.resource_limits.max_file_descriptors,
+            self.resource_limits.max_processes,
+        ));
+
+        lines.join("\n")
+    }
+
+    /// Build an AgentConfig from this manifest (applies manifest as the
+    /// source of truth for sandbox/permissions).
+    pub fn to_agent_config(&self) -> AgentConfig {
+        AgentConfig {
+            name: self.name.clone(),
+            agent_type: AgentType::User,
+            resource_limits: self.resource_limits.clone(),
+            sandbox: SandboxConfig {
+                filesystem_rules: self.filesystem_access.clone(),
+                network_access: match self.network_scope {
+                    ManifestNetworkScope::None => NetworkAccess::None,
+                    ManifestNetworkScope::LocalhostOnly => NetworkAccess::LocalhostOnly,
+                    ManifestNetworkScope::Restricted { .. } => NetworkAccess::Restricted,
+                    ManifestNetworkScope::Full => NetworkAccess::Full,
+                },
+                ..SandboxConfig::default()
+            },
+            permissions: self.requested_permissions.clone(),
+            metadata: serde_json::Value::Null,
+        }
+    }
+}
+
+/// Network scope declaration in agent manifest.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum ManifestNetworkScope {
+    /// No network access.
+    #[default]
+    None,
+    /// Localhost only (e.g., LLM Gateway on :8088).
+    LocalhostOnly,
+    /// Restricted to specific hosts/ports.
+    Restricted {
+        hosts: Vec<String>,
+        ports: Vec<u16>,
+    },
+    /// Full network access (requires explicit user approval).
+    Full,
+}
+
+/// Per-agent rate limit configuration for LLM Gateway.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentRateLimit {
+    /// Maximum tokens per hour (0 = unlimited).
+    #[serde(default)]
+    pub max_tokens_per_hour: u64,
+    /// Maximum requests per minute (0 = unlimited).
+    #[serde(default)]
+    pub max_requests_per_minute: u32,
+    /// Maximum concurrent requests (0 = unlimited).
+    #[serde(default)]
+    pub max_concurrent_requests: u32,
+}
+
+impl Default for AgentRateLimit {
+    fn default() -> Self {
+        Self {
+            max_tokens_per_hour: 0,
+            max_requests_per_minute: 0,
+            max_concurrent_requests: 0,
+        }
+    }
 }
 
 /// Agent status
@@ -709,5 +898,123 @@ mod tests {
         let status = AgentStatus::Running;
         let debug_str = format!("{:?}", status);
         assert_eq!(debug_str, "Running");
+    }
+
+    // --- AgentManifest tests ---
+
+    #[test]
+    fn test_agent_manifest_default() {
+        let m = AgentManifest::default();
+        assert!(m.name.is_empty());
+        assert!(m.requested_permissions.is_empty());
+        assert_eq!(m.network_scope, ManifestNetworkScope::None);
+    }
+
+    #[test]
+    fn test_agent_manifest_consent_summary() {
+        let m = AgentManifest {
+            name: "file-indexer".into(),
+            description: "Indexes files for search".into(),
+            author: "AGNOS Team".into(),
+            version: "1.0.0".into(),
+            requested_permissions: vec![Permission::FileRead],
+            filesystem_access: vec![FilesystemRule {
+                path: "/home/user/docs".into(),
+                access: FsAccess::ReadOnly,
+            }],
+            data_accessed: vec!["Documents in ~/docs".into()],
+            ..AgentManifest::default()
+        };
+
+        let summary = m.consent_summary();
+        assert!(summary.contains("file-indexer"));
+        assert!(summary.contains("AGNOS Team"));
+        assert!(summary.contains("FileRead"));
+        assert!(summary.contains("/home/user/docs"));
+        assert!(summary.contains("Documents in ~/docs"));
+    }
+
+    #[test]
+    fn test_agent_manifest_to_config() {
+        let m = AgentManifest {
+            name: "test-agent".into(),
+            requested_permissions: vec![Permission::FileRead, Permission::LlmInference],
+            network_scope: ManifestNetworkScope::LocalhostOnly,
+            ..AgentManifest::default()
+        };
+
+        let config = m.to_agent_config();
+        assert_eq!(config.name, "test-agent");
+        assert_eq!(config.permissions.len(), 2);
+        assert_eq!(config.sandbox.network_access, NetworkAccess::LocalhostOnly);
+    }
+
+    #[test]
+    fn test_agent_manifest_network_scopes() {
+        assert_eq!(ManifestNetworkScope::default(), ManifestNetworkScope::None);
+
+        let restricted = ManifestNetworkScope::Restricted {
+            hosts: vec!["api.example.com".into()],
+            ports: vec![443],
+        };
+        assert_ne!(restricted, ManifestNetworkScope::None);
+    }
+
+    #[test]
+    fn test_agent_manifest_serialization() {
+        let m = AgentManifest {
+            name: "test".into(),
+            description: "Test agent".into(),
+            version: "0.1.0".into(),
+            requested_permissions: vec![Permission::NetworkAccess],
+            network_scope: ManifestNetworkScope::Full,
+            external_services: vec!["https://api.openai.com".into()],
+            ..AgentManifest::default()
+        };
+
+        let json = serde_json::to_string(&m).unwrap();
+        let parsed: AgentManifest = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.name, "test");
+        assert_eq!(parsed.external_services.len(), 1);
+    }
+
+    #[test]
+    fn test_agent_manifest_permission_rationale() {
+        let mut rationale = HashMap::new();
+        rationale.insert("FileRead".to_string(), "Needs to read config files".to_string());
+
+        let m = AgentManifest {
+            name: "reader".into(),
+            description: "Reads things".into(),
+            requested_permissions: vec![Permission::FileRead],
+            permission_rationale: rationale,
+            ..AgentManifest::default()
+        };
+
+        let summary = m.consent_summary();
+        assert!(summary.contains("Needs to read config files"));
+    }
+
+    // --- AgentRateLimit tests ---
+
+    #[test]
+    fn test_rate_limit_default() {
+        let rl = AgentRateLimit::default();
+        assert_eq!(rl.max_tokens_per_hour, 0);
+        assert_eq!(rl.max_requests_per_minute, 0);
+        assert_eq!(rl.max_concurrent_requests, 0);
+    }
+
+    #[test]
+    fn test_rate_limit_serialization() {
+        let rl = AgentRateLimit {
+            max_tokens_per_hour: 100_000,
+            max_requests_per_minute: 60,
+            max_concurrent_requests: 5,
+        };
+        let json = serde_json::to_string(&rl).unwrap();
+        let parsed: AgentRateLimit = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.max_tokens_per_hour, 100_000);
+        assert_eq!(parsed.max_requests_per_minute, 60);
     }
 }

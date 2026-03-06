@@ -1,0 +1,16 @@
+name = "desktop-environment"
+exec_start = "/usr/bin/agnos-desktop"
+description = "AGNOS Desktop Environment (Wayland compositor)"
+service_type = "notify"
+restart = "onfailure"
+restart_delay_secs = 3
+max_restarts = 3
+user = "agnos"
+group = "agnos"
+after = ["agent-runtime", "llm-gateway"]
+enabled = false
+
+[resources]
+memory_max = 2147483648  # 2 GB
+cpu_quota_percent = 60
+tasks_max = 512

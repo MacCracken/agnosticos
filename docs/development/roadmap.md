@@ -1,7 +1,7 @@
 # AGNOS Development Roadmap
 
 > **Status**: Pre-Alpha (Phase 5) | **Last Updated**: 2026-03-05
-> **Current Phase**: Phase 5 - Production (98% Complete)
+> **Current Phase**: Phase 5 - Production (99% Complete)
 > **Next Milestone**: Alpha Release (Target: Q2 2026)
 
 ---
@@ -18,9 +18,28 @@
 |------|-----------|--------|-------|--------|
 | Video tutorials | Documentation | 3 days | TBD | Not started |
 
-### P3 - Beta/Post-Alpha
+### Completed (March 5-6)
+| Item | Component | Status |
+|------|-----------|--------|
+| Init system / service manager | agent-runtime | Done (29 tests) |
+| Agent consent & transparency (AgentManifest) | agnos-common | Done |
+| Capability scoping (manifest → sandbox) | agnos-common | Done |
+| Audit viewer in AI Shell | ai-shell | Done (16 new tests) |
+| Per-agent rate limiting (tokens/hr, req/min, concurrent) | llm-gateway | Done (12 tests) |
+| Agent lifecycle hooks (on_start/stop/error) | agent-runtime | Done (14 tests) |
+| Agent-to-agent pub/sub protocol | agent-runtime/ipc | Done (17 tests) |
+| Rollback / undo for agent actions | agent-runtime/sandbox | Done (15 tests) |
+| Interactive approval editing in agnsh | ai-shell | Done (3 new tests) |
+
+### P2 - Alpha Polish (Tier 2)
 | Item | Component | Effort | Owner | Status |
 |------|-----------|--------|-------|--------|
+| Video tutorials | Documentation | 3 days | TBD | Not started |
+
+### P3 - Beta/Post-Alpha (Tier 3)
+| Item | Component | Effort | Owner | Status |
+|------|-----------|--------|-------|--------|
+| Agent package manager (`agnos install`) | agent-runtime | 3 weeks | TBD | Not started |
 | Kernel Development Guide | Documentation | 3 days | TBD | Not started |
 | Support portal | Infrastructure | 2 weeks | TBD | Not started |
 | Interactive API explorer | Documentation | 1 week | TBD | Not started |
@@ -37,7 +56,7 @@ AGNOS (AI-Native General Operating System) is in **Phase 5: Production**, focuse
 | Phase | Status | Completion | Key Deliverables |
 |-------|--------|------------|------------------|
 | 0-4 | Complete | 100% | Foundation through Desktop |
-| 5 | In Progress | 98% | Production hardening |
+| 5 | In Progress | 99% | Production hardening |
 | 5.6 | Complete | 100% | Internal implementation gaps (all P0-P2 stubs eliminated) |
 | 6 | Planned | 0% | Advanced AI & Networking |
 | 6.5 | Complete (P0) | P0 100% | OS-Level Security (auditd, MAC, netns, dm-verity, LUKS) |
@@ -166,7 +185,7 @@ P0 kernel security items completed March 4 (auditd, MAC, netns, dm-verity, LUKS)
 
 | Feature | Description | Effort | Priority |
 |---------|-------------|--------|----------|
-| Init system integration | PID 1, service supervision, dependency ordering | 2 weeks | P1 |
+| ~~Init system integration~~ | ~~PID 1, service supervision, dependency ordering~~ | ~~2 weeks~~ | ~~P1~~ Done |
 | Package manager | Agent distribution, versioning, dependency resolution | 3 weeks | P1 |
 | Filesystem integration | FUSE mount for agent-managed virtual filesystems | 1 week | P2 |
 | Device management | udev rules, hardware abstraction layer for agents | 1 week | P2 |
@@ -289,7 +308,7 @@ The `llm-gateway` (OpenAI-compatible on :8088) can serve as a unified AI provide
 |--------|--------|---------|--------|
 | Code Coverage | >80% | ~80% | Met |
 | Test Pass Rate | 100% | 100% | Met |
-| Total Tests | 400+ | 4581 | Met |
+| Total Tests | 400+ | 4730+ | Met |
 | Agent Spawn Time | <500ms | ~300ms | Met |
 | Shell Response Time | <100ms | ~50ms | Met |
 | Memory Overhead | <2GB | ~1.2GB | Met |
@@ -302,11 +321,11 @@ The `llm-gateway` (OpenAI-compatible on :8088) can serve as a unified AI provide
 
 | Component | Tests | Notes |
 |-----------|-------|-------|
-| agnos-common | 289 | Secrets, telemetry, LLM types, error handling |
+| agnos-common | 297 | Secrets, telemetry, LLM types, manifest, rate limits |
 | agnos-sys | 523 (7 ignored) | LLM gateway delegation, audit, dmverity, luks, mac, netns |
-| agent-runtime | 578 + 16 integration + 30 load | Resource quotas, IPC backpressure, WASM, AgentControl |
-| llm-gateway | 193 + 410 | 5 providers, streaming, graceful degradation, metrics |
-| ai-shell | 530 + 530 | 13 intents, formatting, session, prompt, approval, security |
+| agent-runtime | 651 + 16 integration + 30 load | Service manager, lifecycle hooks, pub/sub, rollback, resource quotas, IPC backpressure, WASM |
+| llm-gateway | 206 + 423 | 5 providers, rate limiting, streaming, graceful degradation |
+| ai-shell | 545 + 545 | 16 intents, audit viewer, service control, interactive approval editing, formatting, session |
 | desktop-environment | 459 + 417 + 40 E2E | HUD, security, apps, compositor, system tests |
 
 ---

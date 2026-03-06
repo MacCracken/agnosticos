@@ -8,24 +8,29 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use tokio::sync::mpsc;
-use tracing::info;
+use tracing::{error, info};
 
 use agnos_common::{AgentConfig, AgentId};
 
 mod agent;
 pub mod http_api;
 pub mod ipc;
+pub mod lifecycle;
 pub mod orchestrator;
+pub mod pubsub;
 pub mod registry;
 pub mod resource;
+pub mod rollback;
 pub mod sandbox;
 pub mod seccomp_profiles;
+pub mod service_manager;
 pub mod supervisor;
 pub mod wasm_runtime;
 
 use crate::agent::Agent;
 use crate::orchestrator::Orchestrator;
 use crate::registry::AgentRegistry;
+use crate::service_manager::ServiceManager;
 use crate::supervisor::Supervisor;
 
 #[derive(Parser)]
@@ -71,6 +76,49 @@ enum Commands {
         /// Message payload (JSON)
         message: String,
     },
+    /// Manage system services
+    Service {
+        #[command(subcommand)]
+        action: ServiceCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum ServiceCommands {
+    /// List all services and their statuses
+    List,
+    /// Start a service
+    Start {
+        /// Service name
+        name: String,
+    },
+    /// Stop a service
+    Stop {
+        /// Service name
+        name: String,
+    },
+    /// Restart a service
+    Restart {
+        /// Service name
+        name: String,
+    },
+    /// Show service status
+    Status {
+        /// Service name
+        name: String,
+    },
+    /// Enable a service (start on boot)
+    Enable {
+        /// Service name
+        name: String,
+    },
+    /// Disable a service (do not start on boot)
+    Disable {
+        /// Service name
+        name: String,
+    },
+    /// Boot all enabled services in dependency order
+    Boot,
 }
 
 /// Runtime state shared across all components
@@ -102,15 +150,36 @@ async fn main() -> Result<()> {
         Commands::List => list_agents().await,
         Commands::Status { agent_id } => get_status(agent_id).await,
         Commands::Send { target, message } => send_message(target, message).await,
+        Commands::Service { action } => handle_service_command(action, &cli.config_dir).await,
     }
 }
 
-async fn run_daemon(_cli: Cli) -> Result<()> {
+async fn run_daemon(cli: Cli) -> Result<()> {
     info!("Starting agent runtime daemon...");
 
     let registry = Arc::new(AgentRegistry::new());
     let supervisor = Arc::new(Supervisor::new(registry.clone()));
     let orchestrator = Arc::new(Orchestrator::new(registry.clone()));
+
+    // Initialize the service manager and boot system services
+    let services_dir = cli.config_dir.join("services");
+    let service_manager = Arc::new(ServiceManager::new(&services_dir));
+    let loaded = service_manager.load_definitions().await?;
+    info!("Loaded {} service definitions from {}", loaded, services_dir.display());
+
+    // Boot all enabled services in dependency order
+    if let Err(e) = service_manager.boot().await {
+        error!("Service boot errors (non-fatal): {}", e);
+    }
+
+    // Start service health monitor in background
+    let monitor_mgr = service_manager.clone();
+    tokio::spawn(async move {
+        monitor_mgr.monitor_loop().await;
+    });
+
+    // Notify systemd we're ready (if running under systemd)
+    ServiceManager::notify_ready();
 
     let state = RuntimeState {
         registry,
@@ -132,8 +201,88 @@ async fn run_daemon(_cli: Cli) -> Result<()> {
     }
 
     info!("Shutting down agent runtime daemon...");
+    service_manager.shutdown_all().await?;
     state.supervisor.shutdown_all().await?;
     info!("Agent runtime daemon stopped");
+
+    Ok(())
+}
+
+async fn handle_service_command(action: ServiceCommands, config_dir: &PathBuf) -> Result<()> {
+    let services_dir = config_dir.join("services");
+    let mgr = ServiceManager::new(&services_dir);
+    mgr.load_definitions().await?;
+
+    match action {
+        ServiceCommands::List => {
+            let services = mgr.list_services().await;
+            if services.is_empty() {
+                println!("No services configured.");
+                println!("Add service definitions to: {}", services_dir.display());
+                return Ok(());
+            }
+            println!(
+                "{:<20} {:<10} {:<8} {:<10} {:<8} {}",
+                "NAME", "STATE", "PID", "UPTIME", "RESTARTS", "DESCRIPTION"
+            );
+            println!("{}", "-".repeat(80));
+            for svc in &services {
+                println!(
+                    "{:<20} {:<10} {:<8} {:<10} {:<8} {}",
+                    svc.name,
+                    svc.state.to_string(),
+                    svc.pid.map_or("-".to_string(), |p| p.to_string()),
+                    svc.uptime_display(),
+                    svc.restart_count,
+                    svc.description,
+                );
+            }
+            println!("\nTotal: {} service(s)", services.len());
+        }
+        ServiceCommands::Start { name } => {
+            mgr.start_service(&name).await?;
+            println!("Service '{}' started.", name);
+        }
+        ServiceCommands::Stop { name } => {
+            mgr.stop_service(&name).await?;
+            println!("Service '{}' stopped.", name);
+        }
+        ServiceCommands::Restart { name } => {
+            mgr.restart_service(&name).await?;
+            println!("Service '{}' restarted.", name);
+        }
+        ServiceCommands::Status { name } => {
+            match mgr.get_status(&name).await {
+                Some(status) => {
+                    println!("Service: {}", status.name);
+                    println!("  State:       {}", status.state);
+                    println!("  PID:         {}", status.pid.map_or("-".to_string(), |p| p.to_string()));
+                    println!("  Uptime:      {}", status.uptime_display());
+                    println!("  Restarts:    {}", status.restart_count);
+                    println!("  Enabled:     {}", status.enabled);
+                    println!("  Exit Code:   {}", status.exit_code.map_or("-".to_string(), |c| c.to_string()));
+                    if !status.description.is_empty() {
+                        println!("  Description: {}", status.description);
+                    }
+                }
+                None => {
+                    anyhow::bail!("Unknown service: {}", name);
+                }
+            }
+        }
+        ServiceCommands::Enable { name } => {
+            mgr.enable_service(&name).await?;
+            println!("Service '{}' enabled.", name);
+        }
+        ServiceCommands::Disable { name } => {
+            mgr.disable_service(&name).await?;
+            println!("Service '{}' disabled.", name);
+        }
+        ServiceCommands::Boot => {
+            mgr.boot().await?;
+            println!("All enabled services started.");
+        }
+    }
 
     Ok(())
 }

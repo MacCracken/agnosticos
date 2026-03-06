@@ -1,0 +1,14 @@
+name = "agnos-audit"
+exec_start = "/usr/bin/agnos-auditd"
+description = "AGNOS Audit Logging Service"
+service_type = "simple"
+restart = "always"
+restart_delay_secs = 1
+max_restarts = 10
+user = "root"
+group = "root"
+
+[resources]
+memory_max = 134217728  # 128 MB
+cpu_quota_percent = 10
+tasks_max = 32

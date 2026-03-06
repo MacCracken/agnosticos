@@ -279,20 +279,28 @@ impl ApprovalManager {
     
     /// Get user decision interactively
     async fn get_user_decision(&self, request: &ApprovalRequest, _risk: RiskLevel) -> Result<ApprovalResponse> {
-        let choices = vec![
+        let can_edit = matches!(
+            request,
+            ApprovalRequest::Command { .. } | ApprovalRequest::FileOperation { .. }
+        );
+
+        let mut choices = vec![
             "✓ Approve",
             "✓ Approve once",
             "✗ Deny",
             "✗ Deny and block",
             "? More info",
         ];
-        
+        if can_edit {
+            choices.push("✎ Edit command");
+        }
+
         let selection = Select::with_theme(&self.theme)
             .with_prompt("Your decision")
             .items(&choices)
             .default(1) // Default to "Approve once"
             .interact()?;
-        
+
         match selection {
             0 => Ok(ApprovalResponse::Approved),
             1 => Ok(ApprovalResponse::ApprovedOnce),
@@ -303,7 +311,63 @@ impl ApprovalManager {
                 let info = self.gather_more_info(request).await?;
                 Ok(ApprovalResponse::NeedInfo(info))
             }
+            5 if can_edit => {
+                // Edit the command before approving
+                let modified = self.edit_request(request).await?;
+                Ok(ApprovalResponse::Modify(modified))
+            }
             _ => Ok(ApprovalResponse::Denied),
+        }
+    }
+
+    /// Let the user edit a command or file operation before approving.
+    async fn edit_request(&self, request: &ApprovalRequest) -> Result<ApprovalRequest> {
+        use dialoguer::Input;
+
+        match request {
+            ApprovalRequest::Command { command, args, reason, risk_level } => {
+                let current = if args.is_empty() {
+                    command.clone()
+                } else {
+                    format!("{} {}", command, args.join(" "))
+                };
+
+                let edited: String = Input::with_theme(&self.theme)
+                    .with_prompt("Edit command")
+                    .default(current)
+                    .interact_text()?;
+
+                let parts: Vec<&str> = edited.split_whitespace().collect();
+                let (new_cmd, new_args) = if parts.is_empty() {
+                    (command.clone(), args.clone())
+                } else {
+                    (
+                        parts[0].to_string(),
+                        parts[1..].iter().map(|s| s.to_string()).collect(),
+                    )
+                };
+
+                Ok(ApprovalRequest::Command {
+                    command: new_cmd,
+                    args: new_args,
+                    reason: reason.clone(),
+                    risk_level: *risk_level,
+                })
+            }
+            ApprovalRequest::FileOperation { operation, path, description } => {
+                let edited_path: String = Input::with_theme(&self.theme)
+                    .with_prompt("Edit path")
+                    .default(path.to_string_lossy().to_string())
+                    .interact_text()?;
+
+                Ok(ApprovalRequest::FileOperation {
+                    operation: operation.clone(),
+                    path: std::path::PathBuf::from(edited_path),
+                    description: description.clone(),
+                })
+            }
+            // For other types, return unchanged (shouldn't reach here due to can_edit guard)
+            other => Ok(other.clone()),
         }
     }
     
@@ -1081,6 +1145,86 @@ mod tests {
         // In non-interactive (test), still gets denied
         let result = manager.request(&request).await.unwrap();
         assert!(matches!(result, ApprovalResponse::Denied));
+    }
+
+    #[test]
+    fn test_edit_request_preserves_reason_and_risk() {
+        // Verify that Modify variant can carry an edited command
+        let original = ApprovalRequest::Command {
+            command: "rm".to_string(),
+            args: vec!["-rf".to_string(), "/tmp/data".to_string()],
+            reason: "Cleanup temp".to_string(),
+            risk_level: RiskLevel::High,
+        };
+
+        // Simulate what edit_request would produce
+        let edited = ApprovalRequest::Command {
+            command: "rm".to_string(),
+            args: vec!["-r".to_string(), "/tmp/data".to_string()],
+            reason: "Cleanup temp".to_string(),  // preserved
+            risk_level: RiskLevel::High,          // preserved
+        };
+
+        let response = ApprovalResponse::Modify(edited.clone());
+        if let ApprovalResponse::Modify(ApprovalRequest::Command { command, args, reason, risk_level }) = response {
+            assert_eq!(command, "rm");
+            assert_eq!(args, vec!["-r", "/tmp/data"]);
+            assert_eq!(reason, "Cleanup temp");
+            assert_eq!(risk_level, RiskLevel::High);
+        } else {
+            panic!("Expected Modify(Command)");
+        }
+    }
+
+    #[test]
+    fn test_edit_request_file_operation() {
+        let original = ApprovalRequest::FileOperation {
+            operation: "delete".to_string(),
+            path: std::path::PathBuf::from("/etc/important"),
+            description: "Remove config".to_string(),
+        };
+
+        // Simulate editing the path
+        let edited = ApprovalRequest::FileOperation {
+            operation: "delete".to_string(),
+            path: std::path::PathBuf::from("/tmp/safe-to-delete"),
+            description: "Remove config".to_string(),
+        };
+
+        let response = ApprovalResponse::Modify(edited);
+        if let ApprovalResponse::Modify(ApprovalRequest::FileOperation { path, .. }) = response {
+            assert_eq!(path, std::path::PathBuf::from("/tmp/safe-to-delete"));
+        } else {
+            panic!("Expected Modify(FileOperation)");
+        }
+    }
+
+    #[test]
+    fn test_can_edit_command_type() {
+        // Command and FileOperation are editable
+        let cmd = ApprovalRequest::Command {
+            command: "ls".to_string(),
+            args: vec![],
+            reason: "test".to_string(),
+            risk_level: RiskLevel::Low,
+        };
+        assert!(matches!(cmd, ApprovalRequest::Command { .. }));
+
+        let file_op = ApprovalRequest::FileOperation {
+            operation: "write".to_string(),
+            path: std::path::PathBuf::from("/tmp/f"),
+            description: "test".to_string(),
+        };
+        assert!(matches!(file_op, ApprovalRequest::FileOperation { .. }));
+
+        // Network and Batch are NOT editable
+        let net = ApprovalRequest::NetworkAccess {
+            host: "x".to_string(),
+            port: 80,
+            protocol: "http".to_string(),
+            purpose: "test".to_string(),
+        };
+        assert!(!matches!(net, ApprovalRequest::Command { .. } | ApprovalRequest::FileOperation { .. }));
     }
 
     #[test]

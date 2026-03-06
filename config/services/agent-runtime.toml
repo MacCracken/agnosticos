@@ -1,0 +1,16 @@
+name = "agent-runtime"
+exec_start = "/usr/bin/agent-runtime"
+args = ["daemon"]
+description = "AGNOS Agent Runtime Daemon (API on :8090)"
+service_type = "notify"
+restart = "always"
+restart_delay_secs = 5
+max_restarts = 5
+user = "agnos"
+group = "agnos"
+after = ["agnos-audit", "llm-gateway"]
+
+[resources]
+memory_max = 536870912  # 512 MB
+cpu_quota_percent = 50
+tasks_max = 256

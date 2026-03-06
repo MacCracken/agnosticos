@@ -1,15 +1,23 @@
 pub mod agent;
 pub mod http_api;
 pub mod ipc;
+pub mod lifecycle;
 pub mod orchestrator;
+pub mod pubsub;
 pub mod registry;
 pub mod resource;
+pub mod rollback;
 pub mod sandbox;
 pub mod seccomp_profiles;
+pub mod service_manager;
 pub mod supervisor;
 pub mod wasm_runtime;
 
 pub use agent::{Agent, AgentHandle};
+pub use lifecycle::LifecycleManager;
 pub use orchestrator::Orchestrator;
+pub use pubsub::TopicBroker;
 pub use registry::AgentRegistry;
+pub use rollback::RollbackManager;
+pub use service_manager::ServiceManager;
 pub use supervisor::Supervisor;

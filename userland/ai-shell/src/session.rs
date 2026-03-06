@@ -240,6 +240,12 @@ impl Session {
                                 ApprovalResponse::Denied | ApprovalResponse::DenyAndBlock => {
                                     self.ui.show_info("Action cancelled by user");
                                 }
+                                ApprovalResponse::Modify(modified) => {
+                                    if let ApprovalRequest::Command { command, args, .. } = &modified {
+                                        self.ui.show_info(&format!("Executing modified: {} {}", command, args.join(" ")));
+                                        self.execute_command(command, args).await?;
+                                    }
+                                }
                                 _ => {}
                             }
                         } else {
@@ -299,6 +305,17 @@ impl Session {
         match self.approval.request(&request).await? {
             ApprovalResponse::Approved | ApprovalResponse::ApprovedOnce => {
                 self.execute_shell_command(input).await?;
+            }
+            ApprovalResponse::Modify(modified) => {
+                if let ApprovalRequest::Command { command, args, .. } = &modified {
+                    let full_cmd = if args.is_empty() {
+                        command.clone()
+                    } else {
+                        format!("{} {}", command, args.join(" "))
+                    };
+                    self.ui.show_info(&format!("Executing modified: {}", full_cmd));
+                    self.execute_shell_command(&full_cmd).await?;
+                }
             }
             _ => {
                 self.ui.show_info("Command cancelled");

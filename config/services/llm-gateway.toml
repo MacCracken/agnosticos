@@ -1,0 +1,15 @@
+name = "llm-gateway"
+exec_start = "/usr/bin/llm-gateway"
+description = "AGNOS LLM Gateway (OpenAI-compatible API on :8088)"
+service_type = "notify"
+restart = "always"
+restart_delay_secs = 5
+max_restarts = 5
+user = "agnos-llm"
+group = "agnos-llm"
+after = ["agnos-audit"]
+
+[resources]
+memory_max = 8589934592  # 8 GB
+cpu_quota_percent = 80
+tasks_max = 1024
