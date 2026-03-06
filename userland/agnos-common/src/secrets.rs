@@ -12,9 +12,12 @@ use tracing::{debug, info, warn};
 
 use crate::error::{AgnosError, Result};
 
-/// A secret value (zeroised on drop in a real implementation; here we rely on
-/// the OS page-zeroing guarantee for simplicity during pre-alpha).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// A secret value with best-effort zeroing on drop.
+///
+/// `Clone` is deliberately not derived — secrets should be passed by reference
+/// to avoid uncontrolled copies in memory. Use `SecretValue::duplicate()` if
+/// an explicit copy is genuinely needed (e.g. injecting into a child process).
+#[derive(Debug, Serialize, Deserialize)]
 pub struct SecretValue {
     /// The raw secret bytes, base64-encoded for serialisation safety.
     pub data: String,
@@ -22,6 +25,30 @@ pub struct SecretValue {
     pub metadata: HashMap<String, String>,
     /// Creation timestamp.
     pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+impl SecretValue {
+    /// Explicit, auditable copy for cases that genuinely need an owned value.
+    pub fn duplicate(&self) -> Self {
+        Self {
+            data: self.data.clone(),
+            metadata: self.metadata.clone(),
+            created_at: self.created_at,
+        }
+    }
+}
+
+impl Drop for SecretValue {
+    fn drop(&mut self) {
+        // Best-effort zeroing of secret data.
+        // SAFETY: We overwrite the String's bytes in place before it is freed.
+        // The compiler may optimise this away; for production use, integrate
+        // the `zeroize` crate.
+        unsafe {
+            let bytes = self.data.as_bytes_mut();
+            std::ptr::write_bytes(bytes.as_mut_ptr(), 0, bytes.len());
+        }
+    }
 }
 
 /// Trait for pluggable secret backends.
@@ -368,7 +395,7 @@ impl SecretBackend for VaultSecretBackend {
 
     async fn set_secret(&self, key: &str, value: SecretValue) -> Result<()> {
         let mut payload = serde_json::Map::new();
-        payload.insert("value".to_string(), serde_json::Value::String(value.data));
+        payload.insert("value".to_string(), serde_json::Value::String(value.data.clone()));
         for (k, v) in &value.metadata {
             payload.insert(k.clone(), serde_json::Value::String(v.clone()));
         }
@@ -478,7 +505,7 @@ impl SecretInjector {
         for (secret_key, env_var) in mappings {
             match self.backend.get_secret(secret_key).await? {
                 Some(secret) => {
-                    env.insert(env_var.clone(), secret.data);
+                    env.insert(env_var.clone(), secret.data.clone());
                     debug!("Injected secret '{}' as env '{}'", secret_key, env_var);
                 }
                 None => {
@@ -549,7 +576,7 @@ mod tests {
             metadata: HashMap::new(),
             created_at: chrono::Utc::now(),
         };
-        backend.set_secret("alpha", val.clone()).await.unwrap();
+        backend.set_secret("alpha", val.duplicate()).await.unwrap();
         backend.set_secret("beta", val).await.unwrap();
 
         let keys = backend.list_secrets().await.unwrap();
@@ -928,13 +955,13 @@ mod tests {
     }
 
     #[test]
-    fn test_secret_value_clone() {
+    fn test_secret_value_duplicate() {
         let val = SecretValue {
             data: "clone-test".to_string(),
             metadata: HashMap::from([("k".to_string(), "v".to_string())]),
             created_at: chrono::Utc::now(),
         };
-        let cloned = val.clone();
+        let cloned = val.duplicate();
         assert_eq!(cloned.data, val.data);
         assert_eq!(cloned.metadata, val.metadata);
     }

@@ -171,8 +171,6 @@ impl Compositor {
         is_agent: bool,
     ) -> Result<SurfaceId, CompositorError> {
         let id = Uuid::new_v4();
-        let app_id_clone = app_id.clone();
-
         // Calculate placement: cascade from top-left
         let window_count = self.windows.read().unwrap().len();
         let cascade_offset = (window_count as i32 * 30) % 300;
@@ -187,10 +185,12 @@ impl Compositor {
             height: default_height,
         };
 
+        info!("Created window {} for {}", id, app_id);
+
         let window = Window {
             id,
             title: title.clone(),
-            app_id: app_id_clone,
+            app_id,
             state: WindowState::Normal,
             geometry: geometry.clone(),
             is_agent_window: is_agent,
@@ -216,7 +216,6 @@ impl Compositor {
         // Focus the new window
         *self.focused_window.write().unwrap() = Some(id);
 
-        info!("Created window {} for {}", id, app_id);
         Ok(id)
     }
 
@@ -326,8 +325,6 @@ impl Compositor {
         if !windows.contains_key(&window_id) {
             return Err(CompositorError::WindowNotFound(window_id));
         }
-        let _window = windows.get(&window_id).unwrap().clone();
-
         let old_ws = *self.active_workspace.read().unwrap();
         let mut workspaces = self.workspaces.write().unwrap();
 
@@ -671,12 +668,27 @@ impl Compositor {
         *self.focused_window.read().unwrap()
     }
 
-    /// Render a frame using the scene graph and return the front buffer bytes.
-    pub fn render(&self) -> Vec<u8> {
+    /// Render a frame. Access the result via `with_front_buffer()` to avoid copying.
+    pub fn render(&self) {
         let mut renderer = self.renderer.write().unwrap();
         let mut scene = self.scene.write().unwrap();
         renderer.render_frame(&mut scene);
-        renderer.front_buffer().as_bytes().to_vec()
+    }
+
+    /// Access the front buffer bytes without copying.
+    /// The callback receives a slice of the rendered ARGB8888 pixels.
+    pub fn with_front_buffer<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(&[u8]) -> R,
+    {
+        let renderer = self.renderer.read().unwrap();
+        f(renderer.front_buffer().as_bytes())
+    }
+
+    /// Render and return a copy of the front buffer (convenience for tests/snapshots).
+    pub fn render_to_vec(&self) -> Vec<u8> {
+        self.render();
+        self.with_front_buffer(|bytes| bytes.to_vec())
     }
 
     /// Submit a window content buffer for rendering.
@@ -1650,10 +1662,12 @@ mod tests {
     fn test_compositor_render_produces_output() {
         let compositor = Compositor::with_resolution(100, 100);
         compositor.create_window("W".to_string(), "app".to_string(), false).unwrap();
-        let bytes = compositor.render();
-        assert_eq!(bytes.len(), 100 * 100 * 4);
-        // Not all zeros (background + window decorations should produce non-black pixels)
-        assert!(bytes.iter().any(|&b| b != 0));
+        compositor.render();
+        compositor.with_front_buffer(|bytes| {
+            assert_eq!(bytes.len(), 100 * 100 * 4);
+            // Not all zeros (background + window decorations should produce non-black pixels)
+            assert!(bytes.iter().any(|&b| b != 0));
+        });
     }
 
     #[test]
@@ -1777,7 +1791,7 @@ mod tests {
         let content = Framebuffer::new(50, 50, 0xFFFF0000); // Red
         compositor.submit_window_buffer(id, content);
         // Should render without panicking
-        let _bytes = compositor.render();
+        compositor.render();
     }
 
     #[test]

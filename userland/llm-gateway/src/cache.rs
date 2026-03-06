@@ -12,20 +12,36 @@ use tokio::time::{Duration, Instant};
 struct CacheEntry {
     response: InferenceResponse,
     expires_at: Instant,
+    last_accessed: Instant,
 }
 
-/// Simple LRU cache for LLM responses
+/// Default maximum cache entries.
+const DEFAULT_MAX_CAPACITY: usize = 500;
+
+/// LRU cache for LLM responses with max capacity and TTL eviction
 pub struct ResponseCache {
     cache: RwLock<HashMap<String, CacheEntry>>,
     ttl: Duration,
+    max_capacity: usize,
 }
 
 impl ResponseCache {
-    /// Create a new cache with the specified TTL
+    /// Create a new cache with the specified TTL and default max capacity (500).
     pub fn new(ttl: Duration) -> Self {
         Self {
             cache: RwLock::new(HashMap::new()),
             ttl,
+            max_capacity: DEFAULT_MAX_CAPACITY,
+        }
+    }
+
+    /// Create a new cache with a custom max capacity.
+    #[allow(dead_code)]
+    pub fn with_capacity(ttl: Duration, max_capacity: usize) -> Self {
+        Self {
+            cache: RwLock::new(HashMap::new()),
+            ttl,
+            max_capacity: max_capacity.max(1),
         }
     }
 
@@ -46,36 +62,51 @@ impl ResponseCache {
     /// Get a cached response if available and not expired
     pub async fn get(&self, request: &InferenceRequest) -> Option<InferenceResponse> {
         let key = Self::make_key(request);
-        let cache = self.cache.read().await;
-        
-        if let Some(entry) = cache.get(&key) {
+        let mut cache = self.cache.write().await;
+
+        if let Some(entry) = cache.get_mut(&key) {
             if entry.expires_at > Instant::now() {
+                entry.last_accessed = Instant::now();
                 return Some(entry.response.clone());
             }
         }
-        
+
         None
     }
 
     /// Store a response in the cache
-    pub async fn set(&self, request: InferenceRequest, response: InferenceResponse) {
+    pub async fn set(&self, request: &InferenceRequest, response: InferenceResponse) {
         let key = Self::make_key(&request);
+        let now = Instant::now();
         let entry = CacheEntry {
             response,
-            expires_at: Instant::now() + self.ttl,
+            expires_at: now + self.ttl,
+            last_accessed: now,
         };
-        
+
         let mut cache = self.cache.write().await;
         cache.insert(key, entry);
-        
-        // Simple cleanup: if cache gets too large, clear old entries
-        if cache.len() > 1000 {
-            self.cleanup_expired(&mut cache).await;
+
+        // Evict expired entries first
+        if cache.len() > self.max_capacity {
+            Self::cleanup_expired(&mut cache);
+        }
+        // If still over capacity, evict least-recently-accessed entries
+        while cache.len() > self.max_capacity {
+            if let Some(lru_key) = cache
+                .iter()
+                .min_by_key(|(_, e)| e.last_accessed)
+                .map(|(k, _)| k.clone())
+            {
+                cache.remove(&lru_key);
+            } else {
+                break;
+            }
         }
     }
 
     /// Clean up expired entries
-    async fn cleanup_expired(&self, cache: &mut HashMap<String, CacheEntry>) {
+    fn cleanup_expired(cache: &mut HashMap<String, CacheEntry>) {
         let now = Instant::now();
         cache.retain(|_, entry| entry.expires_at > now);
     }
@@ -147,7 +178,7 @@ mod tests {
             },
         };
         
-        cache.set(request.clone(), response.clone()).await;
+        cache.set(&request, response.clone()).await;
         
         let cached = cache.get(&request).await;
         assert!(cached.is_some());
@@ -184,7 +215,7 @@ mod tests {
             usage: TokenUsage::default(),
         };
         
-        cache.set(request, response).await;
+        cache.set(&request, response).await;
         cache.clear().await;
         
         let stats = cache.stats().await;
@@ -223,7 +254,7 @@ mod tests {
                 presence_penalty: 0.0,
                 frequency_penalty: 0.0,
             };
-            cache.set(request, response.clone()).await;
+            cache.set(&request, response.clone()).await;
         }
 
         // Wait for TTL to expire
@@ -239,7 +270,7 @@ mod tests {
             presence_penalty: 0.0,
             frequency_penalty: 0.0,
         };
-        cache.set(request, response).await;
+        cache.set(&request, response).await;
 
         // After cleanup, most expired entries should be removed
         let stats = cache.stats().await;
@@ -267,7 +298,7 @@ mod tests {
             usage: TokenUsage::default(),
         };
 
-        cache.set(request.clone(), response).await;
+        cache.set(&request, response).await;
         tokio::time::sleep(Duration::from_millis(5)).await;
 
         let cached = cache.get(&request).await;
@@ -379,7 +410,7 @@ mod tests {
             usage: TokenUsage::default(),
         };
 
-        cache.set(InferenceRequest {
+        cache.set(&InferenceRequest {
             prompt: "a".to_string(),
             model: "m".to_string(),
             ..InferenceRequest::default()
@@ -388,7 +419,7 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(5)).await;
 
         // Now insert a fresh entry
-        cache.set(InferenceRequest {
+        cache.set(&InferenceRequest {
             prompt: "b".to_string(),
             model: "m".to_string(),
             ..InferenceRequest::default()
@@ -429,8 +460,8 @@ mod tests {
             usage: TokenUsage::default(),
         };
 
-        cache.set(request.clone(), response1).await;
-        cache.set(request.clone(), response2).await;
+        cache.set(&request, response1).await;
+        cache.set(&request, response2).await;
 
         let cached = cache.get(&request).await.unwrap();
         assert_eq!(cached.text, "second", "Later set should overwrite earlier");
@@ -459,7 +490,7 @@ mod tests {
             usage: TokenUsage::default(),
         };
 
-        cache.set(request.clone(), response).await;
+        cache.set(&request, response).await;
 
         let mut handles = vec![];
         for _ in 0..10 {
@@ -497,7 +528,7 @@ mod tests {
             usage: TokenUsage::default(),
         };
 
-        cache.set(request.clone(), response).await;
+        cache.set(&request, response).await;
         let cached = cache.get(&request).await;
         assert!(cached.is_some());
     }
@@ -523,7 +554,7 @@ mod tests {
             usage: TokenUsage::default(),
         };
 
-        cache.set(request.clone(), response).await;
+        cache.set(&request, response).await;
         let cached = cache.get(&request).await;
         assert!(cached.is_some());
         // Key should still be fixed-length hash
@@ -542,7 +573,7 @@ mod tests {
             model: "m".to_string(),
             usage: TokenUsage::default(),
         };
-        cache.set(request.clone(), response).await;
+        cache.set(&request, response).await;
         cache.clear().await;
         assert!(cache.get(&request).await.is_none());
     }
@@ -626,7 +657,7 @@ mod tests {
             model: "test".to_string(),
             usage: TokenUsage::default(),
         };
-        cache.set(request.clone(), response).await;
+        cache.set(&request, response).await;
         // Immediately get should succeed
         assert!(cache.get(&request).await.is_some());
     }
@@ -654,7 +685,7 @@ mod tests {
                     model: "test".to_string(),
                     usage: TokenUsage::default(),
                 };
-                c.set(request, response).await;
+                c.set(&request, response).await;
             }));
         }
         for handle in handles {
@@ -683,7 +714,7 @@ mod tests {
             model: "test".to_string(),
             usage: TokenUsage::default(),
         };
-        cache.set(request.clone(), response).await;
+        cache.set(&request, response).await;
 
         let mut handles = vec![];
         // Concurrent readers
@@ -714,7 +745,7 @@ mod tests {
                     model: "test".to_string(),
                     usage: TokenUsage::default(),
                 };
-                c.set(req, resp).await;
+                c.set(&req, resp).await;
                 None // return type alignment
             }));
         }
@@ -734,7 +765,7 @@ mod tests {
             usage: TokenUsage::default(),
         };
         for i in 0..5 {
-            cache.set(InferenceRequest {
+            cache.set(&InferenceRequest {
                 prompt: format!("e-{}", i),
                 model: "m".to_string(),
                 ..InferenceRequest::default()
@@ -751,7 +782,7 @@ mod tests {
     async fn test_cache_clear_then_stats() {
         let cache = ResponseCache::new(Duration::from_secs(60));
         for i in 0..10 {
-            cache.set(InferenceRequest {
+            cache.set(&InferenceRequest {
                 prompt: format!("p-{}", i),
                 model: "m".to_string(),
                 ..InferenceRequest::default()
@@ -773,7 +804,7 @@ mod tests {
         let cache = ResponseCache::new(Duration::from_secs(60));
         for cycle in 0..3 {
             for i in 0..5 {
-                cache.set(InferenceRequest {
+                cache.set(&InferenceRequest {
                     prompt: format!("c{}-p{}", cycle, i),
                     model: "m".to_string(),
                     ..InferenceRequest::default()
@@ -849,7 +880,7 @@ mod tests {
                 total_tokens: 52,
             },
         };
-        cache.set(request.clone(), response).await;
+        cache.set(&request, response).await;
         let cached = cache.get(&request).await.unwrap();
         assert_eq!(cached.text, "expected response text");
         assert_eq!(cached.tokens_generated, 42);
@@ -876,7 +907,7 @@ mod tests {
             model: "test".to_string(),
             usage: TokenUsage::default(),
         };
-        cache.set(request.clone(), response).await;
+        cache.set(&request, response).await;
         assert!(cache.get(&request).await.is_some());
     }
 
@@ -891,7 +922,7 @@ mod tests {
             model: "m".to_string(),
             usage: TokenUsage::default(),
         };
-        cache.set(request.clone(), response).await;
+        cache.set(&request, response).await;
         // With 0 TTL, entry should be expired by the time we read it
         tokio::time::sleep(Duration::from_millis(1)).await;
         assert!(cache.get(&request).await.is_none());
@@ -919,9 +950,9 @@ mod tests {
             model: "test".to_string(),
             usage: TokenUsage::default(),
         };
-        cache.set(request.clone(), resp1).await;
+        cache.set(&request, resp1).await;
         tokio::time::sleep(Duration::from_millis(5)).await;
-        cache.set(request.clone(), resp2).await;
+        cache.set(&request, resp2).await;
         // Should get the second response with refreshed TTL
         let cached = cache.get(&request).await.unwrap();
         assert_eq!(cached.text, "second");

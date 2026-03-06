@@ -12,6 +12,7 @@ pub mod sandbox;
 pub mod seccomp_profiles;
 pub mod service_manager;
 pub mod supervisor;
+pub mod network_tools;
 pub mod wasm_runtime;
 
 pub use agent::{Agent, AgentHandle};

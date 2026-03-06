@@ -312,7 +312,11 @@ pub fn luks_format(config: &LuksConfig, key: &LuksKey) -> Result<PathBuf> {
         }
 
         // 1. Create backing file
-        let size_bytes = config.size_mb * 1024 * 1024;
+        let size_bytes = config.size_mb
+            .checked_mul(1024 * 1024)
+            .ok_or_else(|| SysError::InvalidArgument(format!(
+                "LUKS size overflow: {} MB exceeds u64 byte range", config.size_mb
+            )))?;
         run_cmd_with_output(
             "fallocate",
             &["-l", &size_bytes.to_string(), &path_str(&config.backing_path)],

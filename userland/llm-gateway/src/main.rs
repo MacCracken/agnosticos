@@ -238,10 +238,9 @@ impl LlmGateway {
 
         // Check per-agent rate limits
         if let Some(aid) = agent_id {
-            if let Err(reason) = self.agent_rate_limiter.check_request(aid).await {
+            if let Err(reason) = self.agent_rate_limiter.check_and_record(aid).await {
                 anyhow::bail!("Rate limited for agent {}: {}", aid, reason);
             }
-            self.agent_rate_limiter.record_request_start(aid).await;
         }
 
         let _permit = self.rate_limiter.acquire().await?;
@@ -280,7 +279,7 @@ impl LlmGateway {
 
             match timeout(
                 self.config.request_timeout,
-                provider.infer(request.clone()),
+                provider.infer(&request),
             )
             .await
             {
@@ -300,7 +299,7 @@ impl LlmGateway {
 
                     // Cache the response
                     if self.config.enable_caching {
-                        self.cache.set(request, response.clone()).await;
+                        self.cache.set(&request, response.clone()).await;
                     }
 
                     return Ok(response);
@@ -366,25 +365,36 @@ impl LlmGateway {
 
     /// Return an ordered list of healthy providers to try for a request.
     /// Unhealthy providers are appended at the end as last-resort fallbacks.
+    /// Acquires all 3 read locks in a single batch to minimize async yield points.
     async fn select_providers_ordered(
         &self,
         request: &InferenceRequest,
     ) -> Result<Vec<(ProviderType, Arc<dyn LlmProvider>)>> {
-        let providers = self.providers.read().await;
-        let health = self.provider_health.read().await;
-        let loaded = self.loaded_models.read().await;
+        // Snapshot all state under locks, then release immediately
+        let (provider_snapshot, health_snapshot, model_loaded) = {
+            let providers = self.providers.read().await;
+            let health = self.provider_health.read().await;
+            let loaded = self.loaded_models.read().await;
 
-        if providers.is_empty() {
-            return Err(anyhow::anyhow!("No LLM provider available"));
-        }
+            if providers.is_empty() {
+                return Err(anyhow::anyhow!("No LLM provider available"));
+            }
+
+            let ps: Vec<_> = providers.iter().map(|(&pt, p)| (pt, p.clone())).collect();
+            let hs: HashMap<ProviderType, bool> = health
+                .iter()
+                .map(|(&pt, h)| (pt, h.is_healthy))
+                .collect();
+            let ml = loaded.contains_key(&request.model);
+            (ps, hs, ml)
+        };
+        // All locks released here
 
         let mut healthy: Vec<(ProviderType, Arc<dyn LlmProvider>)> = Vec::new();
         let mut unhealthy: Vec<(ProviderType, Arc<dyn LlmProvider>)> = Vec::new();
 
-        // Helper: classify a provider as healthy or unhealthy
         let mut classify = |pt: ProviderType, p: Arc<dyn LlmProvider>| {
-            let is_healthy = health.get(&pt).map(|h| h.is_healthy).unwrap_or(true);
-            if is_healthy {
+            if *health_snapshot.get(&pt).unwrap_or(&true) {
                 healthy.push((pt, p));
             } else {
                 unhealthy.push((pt, p));
@@ -392,19 +402,18 @@ impl LlmGateway {
         };
 
         // Priority 1: If the model is loaded locally, prefer Ollama
-        if loaded.contains_key(&request.model) {
-            if let Some(provider) = providers.get(&ProviderType::Ollama) {
+        if model_loaded {
+            if let Some((_, provider)) = provider_snapshot.iter().find(|(pt, _)| *pt == ProviderType::Ollama) {
                 classify(ProviderType::Ollama, provider.clone());
             }
         }
 
         // Priority 2: All other providers in registration order
-        for (&pt, provider) in providers.iter() {
-            // Skip Ollama if already added above
-            if pt == ProviderType::Ollama && loaded.contains_key(&request.model) {
+        for (pt, provider) in &provider_snapshot {
+            if *pt == ProviderType::Ollama && model_loaded {
                 continue;
             }
-            classify(pt, provider.clone());
+            classify(*pt, provider.clone());
         }
 
         // Healthy first, unhealthy as last resort
@@ -1663,7 +1672,7 @@ mod tests {
             model: "test".to_string(),
             usage: TokenUsage::default(),
         };
-        gateway.cache.set(request.clone(), response).await;
+        gateway.cache.set(&request, response).await;
         let stats = gateway.cache.stats().await;
         assert_eq!(stats.total_entries, 1);
 
@@ -1691,7 +1700,7 @@ mod tests {
                 total_tokens: 8,
             },
         };
-        gateway.cache.set(request.clone(), response.clone()).await;
+        gateway.cache.set(&request, response.clone()).await;
         let cached = gateway.cache.get(&request).await;
         assert!(cached.is_some());
         assert_eq!(cached.unwrap().text, "cached response");
@@ -2227,7 +2236,7 @@ mod tests {
 
     #[async_trait::async_trait]
     impl providers::LlmProvider for MockProvider {
-        async fn infer(&self, _request: InferenceRequest) -> anyhow::Result<InferenceResponse> {
+        async fn infer(&self, _request: &InferenceRequest) -> anyhow::Result<InferenceResponse> {
             Ok(self.response.clone())
         }
 
@@ -2527,7 +2536,7 @@ mod tests {
             usage: TokenUsage { prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 },
         };
 
-        gateway.cache.set(request.clone(), response.clone()).await;
+        gateway.cache.set(&request, response.clone()).await;
 
         // infer should return cached result even without providers
         let result = gateway.infer(request, None).await;
@@ -2575,7 +2584,7 @@ mod tests {
 
     #[async_trait::async_trait]
     impl providers::LlmProvider for FailingProvider {
-        async fn infer(&self, _request: InferenceRequest) -> anyhow::Result<InferenceResponse> {
+        async fn infer(&self, _request: &InferenceRequest) -> anyhow::Result<InferenceResponse> {
             anyhow::bail!("provider always fails")
         }
         async fn infer_stream(&self, _request: InferenceRequest) -> anyhow::Result<mpsc::Receiver<anyhow::Result<String>>> {
@@ -2673,7 +2682,7 @@ mod tests {
             model: "cached".to_string(),
             usage: TokenUsage { prompt_tokens: 2, completion_tokens: 3, total_tokens: 5 },
         };
-        gateway.cache.set(request.clone(), response).await;
+        gateway.cache.set(&request, response).await;
 
         let agent_id = AgentId::new();
         let result = gateway.infer(request, Some(agent_id)).await;
@@ -2745,7 +2754,7 @@ mod tests {
             model: "test".to_string(),
             usage: TokenUsage::default(),
         };
-        gateway.cache.set(request, response).await;
+        gateway.cache.set(&request, response).await;
         let stats = gateway.cache_stats().await;
         assert_eq!(stats.total_entries, 1);
         assert_eq!(stats.active_entries, 1);

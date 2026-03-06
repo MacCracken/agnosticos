@@ -379,6 +379,11 @@ impl PackageManager {
 
     /// Find the agent binary in a source directory.
     fn find_binary(&self, source: &Path, name: &str) -> Result<PathBuf> {
+        // Validate name doesn't contain path separators (prevent traversal)
+        if name.contains('/') || name.contains('\\') || name.contains("..") {
+            anyhow::bail!("Invalid agent name (contains path separator): {}", name);
+        }
+
         // Try common binary locations/names
         let candidates = [
             source.join("agent"),
@@ -388,8 +393,18 @@ impl PackageManager {
             source.join("bin").join(name),
         ];
 
+        let source_canonical = source.canonicalize()
+            .unwrap_or_else(|_| source.to_path_buf());
+
         for path in &candidates {
             if path.exists() && path.is_file() {
+                // Verify resolved path stays within the source directory
+                let resolved = path.canonicalize()
+                    .unwrap_or_else(|_| path.clone());
+                if !resolved.starts_with(&source_canonical) {
+                    tracing::warn!("Skipping binary candidate outside source dir: {}", path.display());
+                    continue;
+                }
                 return Ok(path.clone());
             }
         }
@@ -558,8 +573,16 @@ fn count_files(dir: &Path) -> Result<usize> {
     Ok(count)
 }
 
-/// Copy a directory recursively.
+/// Maximum install size (100 MB).
+const MAX_INSTALL_BYTES: u64 = 100 * 1024 * 1024;
+
+/// Copy a directory recursively, enforcing a cumulative size limit.
 fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
+    let mut total_bytes = 0u64;
+    copy_dir_recursive_inner(src, dst, &mut total_bytes)
+}
+
+fn copy_dir_recursive_inner(src: &Path, dst: &Path, total_bytes: &mut u64) -> Result<()> {
     std::fs::create_dir_all(dst)?;
     for entry in std::fs::read_dir(src)? {
         let entry = entry?;
@@ -567,8 +590,18 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
         let dst_path = dst.join(entry.file_name());
 
         if src_path.is_dir() {
-            copy_dir_recursive(&src_path, &dst_path)?;
+            copy_dir_recursive_inner(&src_path, &dst_path, total_bytes)?;
         } else {
+            let size = std::fs::metadata(&src_path)
+                .map(|m| m.len())
+                .unwrap_or(0);
+            *total_bytes += size;
+            if *total_bytes > MAX_INSTALL_BYTES {
+                anyhow::bail!(
+                    "Package exceeds maximum install size ({} MB)",
+                    MAX_INSTALL_BYTES / (1024 * 1024)
+                );
+            }
             std::fs::copy(&src_path, &dst_path)?;
         }
     }

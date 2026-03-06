@@ -297,13 +297,7 @@ pub fn set_selinux_context(context: &str, on_exec: bool) -> Result<()> {
 pub fn load_selinux_module(module_path: &Path) -> Result<()> {
     #[cfg(target_os = "linux")]
     {
-        if !module_path.exists() {
-            return Err(SysError::InvalidArgument(format!(
-                "SELinux module file not found: {}",
-                module_path.display()
-            )));
-        }
-
+        // No exists() check — let semodule report the definitive error to avoid TOCTOU
         let output = std::process::Command::new("semodule")
             .arg("-i")
             .arg(module_path)
@@ -370,17 +364,9 @@ pub fn remove_selinux_module(module_name: &str) -> Result<()> {
 pub fn load_apparmor_profile(profile_path: &Path) -> Result<()> {
     #[cfg(target_os = "linux")]
     {
-        if !profile_path.exists() {
-            return Err(SysError::InvalidArgument(format!(
-                "AppArmor profile not found: {}",
-                profile_path.display()
-            )));
-        }
-
+        // No exists() checks — let the actual I/O operations report definitive errors
+        // to avoid TOCTOU race conditions
         let load_path = "/sys/kernel/security/apparmor/.load";
-        if !Path::new(load_path).exists() {
-            return Err(SysError::NotSupported);
-        }
 
         let profile_content = std::fs::read(profile_path)
             .map_err(|e| SysError::Unknown(format!("Failed to read profile: {}", e)))?;

@@ -43,7 +43,55 @@
 | Kernel Development Guide | Documentation | 3 days | TBD | Not started |
 | Support portal | Infrastructure | 2 weeks | TBD | Not started |
 | Interactive API explorer | Documentation | 1 week | TBD | Not started |
-| Wayland compositor rendering + input | desktop-environment | 2+ weeks | TBD | Full stub |
+| Wayland compositor rendering + input | desktop-environment | 2+ weeks | TBD | In progress (renderer+compositor wired) |
+
+### Engineering Backlog (Code Audit — March 6)
+
+Full codebase audit identified 32 items across 6 crates. Grouped by priority.
+
+#### Phase 1 — P0 Fixes (Crash / Security) ✅ ALL COMPLETE
+| # | Item | Component | Effort | Status |
+|---|------|-----------|--------|--------|
+| 1 | Production `unwrap()` panic in `AuditRule::validate()` | agnos-sys/audit.rs:154 | 5 min | Done |
+| 2 | nftables comment injection (unescaped `rule.comment`) | agnos-sys/netns.rs:506 | 10 min | Done |
+| 3 | JSON array index panic on empty provider response | llm-gateway/providers.rs:385 | 15 min | Done |
+| 4 | Regex HashMap `.unwrap()` crashes shell on init bug | ai-shell/interpreter.rs:261+ | 20 min | Done |
+| 5 | Path traversal in package install (agent name `../`) | agent-runtime/package_manager.rs:180 | 15 min | Done |
+| 6 | `SecretValue` derives Clone without zeroing on drop | agnos-common/secrets.rs:17-25 | 30 min | Done |
+
+#### Phase 2 — P1 Fixes (Performance / Memory / Correctness) ✅ ALL COMPLETE
+| # | Item | Component | Effort | Status |
+|---|------|-----------|--------|--------|
+| 7 | Hot-path Vec+clone every frame in `render_frame()` | desktop-env/renderer.rs:798 | 15 min | Done |
+| 8 | 8.3 MB `.to_vec()` per render call | desktop-env/compositor.rs:676 | 15 min | Done |
+| 9 | Unbounded LLM cache (no max capacity, only TTL) | llm-gateway/cache.rs:71 | 30 min | Done |
+| 10 | Rate limiter race (check-then-increment not atomic) | llm-gateway/rate_limiter.rs:117 | 30 min | Done |
+| 11 | String realloc per SSE chunk in streaming (3 providers) | llm-gateway/providers.rs:130+ | 20 min | Done |
+| 12 | `InferenceRequest.clone()` x2 per request (100KB+ prompts) | llm-gateway/main.rs:283,303 | 15 min | Done |
+| 13 | Unbounded file content in rollback snapshots | agent-runtime/rollback.rs:338 | 15 min | Done |
+| 14 | No install size limit in `copy_dir_recursive()` | agent-runtime/package_manager.rs:562 | 15 min | Done |
+| 15 | Integer overflow in `fill_rect()` u32 cast | desktop-env/renderer.rs:126 | 10 min | Done |
+| 16 | TOCTOU in MAC module (`exists()` then `Command`) | agnos-sys/mac.rs:300,373 | 15 min | Done |
+| 17 | LUKS size overflow (`size_mb * 1024 * 1024` unchecked) | agnos-sys/luks.rs:315 | 5 min | Done |
+| 18 | Audit hash chain has no `verify_chain()` function | agnos-common/audit.rs:43 | 30 min | Done |
+
+#### Phase 3 — P2 Polish ✅ ALL COMPLETE
+| # | Item | Component | Effort | Status |
+|---|------|-----------|--------|--------|
+| 19 | Unused Window clone (`_window`) | desktop-env/compositor.rs:329 | 2 min | Done |
+| 20 | Unnecessary `app_id.clone()` | desktop-env/compositor.rs:174 | 2 min | Done |
+| 21 | Blit not clipped upfront (per-pixel bounds check) | desktop-env/renderer.rs:186 | 20 min | Done |
+| 22 | O(n) task lookup in `get_task_status()` | agent-runtime/orchestrator.rs:169 | 20 min | Done |
+| 23 | O(n log n) result pruning on every insert | agent-runtime/orchestrator.rs:377 | 20 min | Done |
+| 24 | Token accounting never evicts dead agents | llm-gateway/accounting.rs:27 | 15 min | Done |
+| 25 | Telemetry clones `instance_id` per event | agnos-common/telemetry.rs:155 | 10 min | Done |
+| 26 | TOCTOU in netns cleanup (`exists()` before destroy) | agent-runtime/supervisor.rs:377 | 5 min | Done |
+| 27 | `ApprovalResponse::Denied` on timeout (no `TimedOut` variant) | ai-shell/approval.rs:168 | 15 min | Done |
+| 28 | Audit log rotation not enforced | agnos-common/audit.rs:61 | 30 min | Done |
+| 29 | Rollback uses non-crypto hash (DefaultHasher) | agent-runtime/rollback.rs:427 | 15 min | Done |
+| 30 | Missing `Debug` derive on renderer public types | desktop-env/renderer.rs | 5 min | Done |
+| 31 | `unsafe` in `as_bytes()` missing safety comment | desktop-env/renderer.rs:223 | 5 min | Done |
+| 32 | 3 separate lock acquisitions in provider selection | llm-gateway/main.rs:369 | 15 min | Done |
 
 ---
 

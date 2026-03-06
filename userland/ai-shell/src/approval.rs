@@ -111,6 +111,8 @@ pub enum ApprovalResponse {
     /// Modify the request
     #[allow(dead_code)]
     Modify(ApprovalRequest),
+    /// Request timed out without user response
+    TimedOut,
 }
 
 /// Manages approval workflows
@@ -179,7 +181,7 @@ impl ApprovalManager {
             Ok(Err(e)) => Err(e),
             Err(_) => {
                 warn!("Approval request timed out");
-                Ok(ApprovalResponse::Denied)
+                Ok(ApprovalResponse::TimedOut)
             }
         }
     }

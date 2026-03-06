@@ -71,6 +71,9 @@ pub struct RollbackResult {
 /// Maximum file size to include full content in snapshot (1 MB).
 const MAX_SNAPSHOT_FILE_SIZE: u64 = 1_048_576;
 
+/// Maximum total snapshot size (100 MB) — prevents runaway memory usage.
+const MAX_SNAPSHOT_TOTAL_BYTES: u64 = 100 * 1024 * 1024;
+
 /// Maximum snapshots to retain per agent.
 const MAX_SNAPSHOTS_PER_AGENT: usize = 20;
 
@@ -304,10 +307,21 @@ impl RollbackManager {
     // -----------------------------------------------------------------------
 
     /// Scan a directory tree and capture file states.
+    /// Enforces a cumulative size limit to prevent unbounded memory usage.
     fn scan_directory(
         base: &Path,
         dir: &Path,
         max_file_size: u64,
+    ) -> Result<Vec<FileSnapshot>> {
+        let mut total_bytes: u64 = 0;
+        Self::scan_directory_inner(base, dir, max_file_size, &mut total_bytes)
+    }
+
+    fn scan_directory_inner(
+        base: &Path,
+        dir: &Path,
+        max_file_size: u64,
+        total_bytes: &mut u64,
     ) -> Result<Vec<FileSnapshot>> {
         let mut files = Vec::new();
 
@@ -324,7 +338,7 @@ impl RollbackManager {
             let file_type = entry.file_type()?;
 
             if file_type.is_dir() {
-                let mut sub_files = Self::scan_directory(base, &path, max_file_size)?;
+                let mut sub_files = Self::scan_directory_inner(base, &path, max_file_size, total_bytes)?;
                 files.append(&mut sub_files);
             } else if file_type.is_file() {
                 let relative = path
@@ -335,8 +349,15 @@ impl RollbackManager {
                 let metadata = std::fs::metadata(&path)?;
                 let size = metadata.len();
 
+                // Check if capturing this file's content would exceed total limit
                 let content = if size <= max_file_size {
-                    Some(std::fs::read(&path)?)
+                    if *total_bytes + size > MAX_SNAPSHOT_TOTAL_BYTES {
+                        // Total budget exceeded — record checksum only
+                        None
+                    } else {
+                        *total_bytes += size;
+                        Some(std::fs::read(&path)?)
+                    }
                 } else {
                     None
                 };
@@ -388,16 +409,16 @@ impl RollbackManager {
         Ok(files)
     }
 
-    /// Compute a fingerprint hash of a byte slice.
+    /// Compute a SHA-256 hex digest of a byte slice.
     fn sha256_hex(data: &[u8]) -> String {
-        fingerprint_hex(data)
+        sha256_hex_digest(data)
     }
 
-    /// Compute a fingerprint hash of a file.
+    /// Compute a SHA-256 hex digest of a file.
     fn sha256_file(path: &Path) -> Result<String> {
         let data = std::fs::read(path)
             .with_context(|| format!("Failed to read file for checksum: {}", path.display()))?;
-        Ok(fingerprint_hex(&data))
+        Ok(sha256_hex_digest(&data))
     }
 }
 
@@ -416,30 +437,11 @@ pub struct SnapshotInfo {
     pub file_count: usize,
 }
 
-// ---------------------------------------------------------------------------
-// Minimal SHA-256 (avoid adding a dependency just for this)
-// We use the same pattern as agnos-common's audit hash chain.
-// ---------------------------------------------------------------------------
-
-/// Compute a fingerprint hash of data using std's DefaultHasher.
-/// NOT cryptographically secure — sufficient for detecting file changes
-/// in snapshot/rollback context. For production, use `ring` or `sha2`.
-fn fingerprint_hex(data: &[u8]) -> String {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-
-    let mut h1 = DefaultHasher::new();
-    data.hash(&mut h1);
-    let hash1 = h1.finish();
-
-    // Second hash with length salt for better distribution
-    let mut h2 = DefaultHasher::new();
-    (data.len() as u64).hash(&mut h2);
-    data.hash(&mut h2);
-    0xDEAD_BEEF_u64.hash(&mut h2);
-    let hash2 = h2.finish();
-
-    format!("{:016x}{:016x}", hash1, hash2)
+/// Compute a SHA-256 hex digest of data.
+fn sha256_hex_digest(data: &[u8]) -> String {
+    use sha2::{Sha256, Digest};
+    let hash = Sha256::digest(data);
+    hash.iter().map(|b| format!("{:02x}", b)).collect()
 }
 
 // ---------------------------------------------------------------------------

@@ -15,6 +15,7 @@ mod shell;
 mod ai_features;
 mod apps;
 mod security_ui;
+mod wayland;
 
 use compositor::{Compositor, WindowState, ContextType};
 use shell::{DesktopShell, Notification, NotificationPriority};

@@ -2,7 +2,7 @@
 //!
 //! Handles agent coordination, task distribution, workload balancing, and conflict resolution.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
@@ -78,6 +78,8 @@ pub struct Orchestrator {
     running_tasks: Arc<RwLock<HashMap<String, Task>>>,
     /// Task results (shared across clones)
     results: Arc<RwLock<HashMap<String, TaskResult>>>,
+    /// O(1) lookup set for queued task IDs
+    queued_task_ids: Arc<RwLock<HashSet<String>>>,
     /// Communication bus sender (cheap to clone)
     message_bus: mpsc::Sender<Message>,
     /// Receiver held until `start()` spawns the message loop
@@ -105,6 +107,7 @@ impl Orchestrator {
             task_queues: Arc::new(RwLock::new(queues)),
             running_tasks: Arc::new(RwLock::new(HashMap::new())),
             results: Arc::new(RwLock::new(HashMap::new())),
+            queued_task_ids: Arc::new(RwLock::new(HashSet::new())),
             message_bus,
             message_rx: Arc::new(RwLock::new(Some(message_rx))),
         }
@@ -142,6 +145,7 @@ impl Orchestrator {
         );
 
         let mut queues = self.task_queues.write().await;
+        self.queued_task_ids.write().await.insert(task.id.clone());
         queues
             .get_mut(&task.priority)
             .context("Invalid task priority")?
@@ -165,12 +169,9 @@ impl Orchestrator {
             return Some(TaskStatus::Completed(result.clone()));
         }
 
-        // Check if queued
-        let queues = self.task_queues.read().await;
-        for (_, queue) in queues.iter() {
-            if queue.iter().any(|t| t.id == task_id) {
-                return Some(TaskStatus::Queued);
-            }
+        // Check if queued (O(1) lookup via HashSet)
+        if self.queued_task_ids.read().await.contains(task_id) {
+            return Some(TaskStatus::Queued);
         }
 
         None
@@ -374,21 +375,20 @@ impl Orchestrator {
     }
 
     /// Prune results map if it exceeds MAX_RESULTS, keeping the most recent.
+    /// Uses O(n) partial sort instead of O(n log n) full sort.
     fn prune_results(results: &mut HashMap<String, TaskResult>) {
-        if results.len() > Self::MAX_RESULTS {
-            let mut entries: Vec<_> = results
-                .iter()
-                .map(|(k, v)| (k.clone(), v.completed_at))
-                .collect();
-            entries.sort_by_key(|(_, t)| *t);
-            let to_remove: Vec<_> = entries
-                .iter()
-                .take(entries.len() - Self::MAX_RESULTS)
-                .map(|(k, _)| k.clone())
-                .collect();
-            for key in to_remove {
-                results.remove(&key);
-            }
+        let excess = results.len().saturating_sub(Self::MAX_RESULTS);
+        if excess == 0 {
+            return;
+        }
+        let mut entries: Vec<_> = results
+            .iter()
+            .map(|(k, v)| (k.clone(), v.completed_at))
+            .collect();
+        // Partition so the `excess` oldest are in entries[..excess] — O(n)
+        entries.select_nth_unstable_by_key(excess - 1, |(_, t)| *t);
+        for (key, _) in &entries[..excess] {
+            results.remove(key);
         }
     }
 
@@ -475,7 +475,8 @@ impl Orchestrator {
 
                         drop(queues);
 
-                        // Add to running tasks
+                        // Move from queued set to running tasks
+                        orchestrator.queued_task_ids.write().await.remove(&task.id);
                         orchestrator.running_tasks.write().await.insert(task.id.clone(), task.clone());
 
                         // Distribute the task
@@ -587,6 +588,7 @@ impl Orchestrator {
             }
         }
 
+        self.queued_task_ids.write().await.remove(task_id);
         self.running_tasks.write().await.remove(task_id);
 
         Ok(())

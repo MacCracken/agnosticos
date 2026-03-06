@@ -74,6 +74,13 @@ pub enum Intent {
         /// Service name (for start/stop/restart/status)
         service_name: Option<String>,
     },
+    /// Network scanning and diagnostics
+    NetworkScan {
+        /// Tool action: port_scan, ping_sweep, dns_lookup, trace_route, packet_capture, web_scan
+        action: String,
+        /// Target host, IP, or network
+        target: Option<String>,
+    },
     /// Question/Information request
     Question { query: String },
     /// Ambiguous - needs clarification
@@ -201,6 +208,12 @@ impl Interpreter {
             Regex::new(r"(?i)^(list|show|start|stop|restart|status)\s+(the\s+)?(services?|daemons?)\s*(.+)?$").unwrap(),
         );
 
+        // Network scan patterns
+        patterns.insert(
+            "network_scan".to_string(),
+            Regex::new(r"(?i)^(scan\s+ports?\s+(?:on|for)\s+(.+)|ping\s+sweep\s+(.+)|lookup\s+dns\s+(?:for\s+)?(.+)|trace\s+route\s+to\s+(.+)|capture\s+packets?\s+(?:on|from)\s+(.+)|scan\s+web\s+servers?\s+(.+))$").unwrap(),
+        );
+
         // Question patterns
         patterns.insert(
             "question".to_string(),
@@ -210,13 +223,19 @@ impl Interpreter {
         Self { patterns }
     }
 
+    /// Try to capture against a named pattern. Returns None if the pattern
+    /// is missing from the map (defensive) or if it doesn't match.
+    fn try_captures<'a>(&'a self, name: &str, input: &'a str) -> Option<regex::Captures<'a>> {
+        self.patterns.get(name)?.captures(input)
+    }
+
     /// Parse natural language input into intent
     pub fn parse(&self, input: &str) -> Intent {
         let input_lower = input.to_lowercase().trim().to_string();
 
         // Check each pattern
         // AGNOS-specific intents matched first (more specific than generic list/show)
-        if let Some(caps) = self.patterns.get("audit").unwrap().captures(&input_lower) {
+        if let Some(caps) = self.try_captures("audit", &input_lower) {
             let agent_id = caps.get(7).map(|m| m.as_str().trim().to_string());
             let time_window = caps.get(12).map(|m| m.as_str().trim().to_string());
             return Intent::AuditView {
@@ -226,13 +245,13 @@ impl Interpreter {
             };
         }
 
-        if let Some(caps) = self.patterns.get("agent_info").unwrap().captures(&input_lower) {
+        if let Some(caps) = self.try_captures("agent_info", &input_lower) {
             let agent_id = caps.get(8).map(|m| m.as_str().trim().to_string())
                 .filter(|s| !s.is_empty());
             return Intent::AgentInfo { agent_id };
         }
 
-        if let Some(caps) = self.patterns.get("service").unwrap().captures(&input_lower) {
+        if let Some(caps) = self.try_captures("service", &input_lower) {
             let action = caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default();
             let service_name = caps.get(4).map(|m| m.as_str().trim().to_string())
                 .filter(|s| !s.is_empty());
@@ -242,7 +261,49 @@ impl Interpreter {
             };
         }
 
-        if let Some(caps) = self.patterns.get("list").unwrap().captures(&input_lower) {
+        if let Some(caps) = self.try_captures("network_scan", &input_lower) {
+            // Determine which alternative matched based on capture groups:
+            // group 2 = port scan target, 3 = ping sweep, 4 = dns lookup,
+            // 5 = traceroute, 6 = packet capture, 7 = web scan
+            if let Some(target) = caps.get(2) {
+                return Intent::NetworkScan {
+                    action: "port_scan".into(),
+                    target: Some(target.as_str().trim().to_string()),
+                };
+            }
+            if let Some(target) = caps.get(3) {
+                return Intent::NetworkScan {
+                    action: "ping_sweep".into(),
+                    target: Some(target.as_str().trim().to_string()),
+                };
+            }
+            if let Some(target) = caps.get(4) {
+                return Intent::NetworkScan {
+                    action: "dns_lookup".into(),
+                    target: Some(target.as_str().trim().to_string()),
+                };
+            }
+            if let Some(target) = caps.get(5) {
+                return Intent::NetworkScan {
+                    action: "trace_route".into(),
+                    target: Some(target.as_str().trim().to_string()),
+                };
+            }
+            if let Some(target) = caps.get(6) {
+                return Intent::NetworkScan {
+                    action: "packet_capture".into(),
+                    target: Some(target.as_str().trim().to_string()),
+                };
+            }
+            if let Some(target) = caps.get(7) {
+                return Intent::NetworkScan {
+                    action: "web_scan".into(),
+                    target: Some(target.as_str().trim().to_string()),
+                };
+            }
+        }
+
+        if let Some(caps) = self.try_captures("list", &input_lower) {
             let path = caps.get(6).map(|m| m.as_str().trim().to_string());
             let all = input_lower.contains("all");
 
@@ -255,12 +316,7 @@ impl Interpreter {
             };
         }
 
-        if let Some(caps) = self
-            .patterns
-            .get("show_file")
-            .unwrap()
-            .captures(&input_lower)
-        {
+        if let Some(caps) = self.try_captures("show_file", &input_lower) {
             if let Some(path) = caps.get(6) {
                 return Intent::ShowFile {
                     path: path.as_str().trim().to_string(),
@@ -269,7 +325,7 @@ impl Interpreter {
             }
         }
 
-        if let Some(caps) = self.patterns.get("cd").unwrap().captures(&input_lower) {
+        if let Some(caps) = self.try_captures("cd", &input_lower) {
             if let Some(path) = caps.get(4) {
                 return Intent::ChangeDirectory {
                     path: path.as_str().trim().to_string(),
@@ -277,7 +333,7 @@ impl Interpreter {
             }
         }
 
-        if let Some(caps) = self.patterns.get("mkdir").unwrap().captures(&input_lower) {
+        if let Some(caps) = self.try_captures("mkdir", &input_lower) {
             if let Some(path) = caps.get(6) {
                 return Intent::CreateDirectory {
                     path: path.as_str().trim().to_string(),
@@ -285,7 +341,7 @@ impl Interpreter {
             }
         }
 
-        if let Some(caps) = self.patterns.get("copy").unwrap().captures(&input_lower) {
+        if let Some(caps) = self.try_captures("copy", &input_lower) {
             if let (Some(source), Some(dest)) = (caps.get(2), caps.get(4)) {
                 return Intent::Copy {
                     source: source.as_str().trim().to_string(),
@@ -294,7 +350,7 @@ impl Interpreter {
             }
         }
 
-        if let Some(caps) = self.patterns.get("move").unwrap().captures(&input_lower) {
+        if let Some(caps) = self.try_captures("move", &input_lower) {
             if let (Some(source), Some(dest)) = (caps.get(2), caps.get(4)) {
                 return Intent::Move {
                     source: source.as_str().trim().to_string(),
@@ -303,20 +359,15 @@ impl Interpreter {
             }
         }
 
-        if let Some(_caps) = self.patterns.get("ps").unwrap().captures(&input_lower) {
+        if self.try_captures("ps", &input_lower).is_some() {
             return Intent::ShowProcesses;
         }
 
-        if let Some(_caps) = self.patterns.get("sysinfo").unwrap().captures(&input_lower) {
+        if self.try_captures("sysinfo", &input_lower).is_some() {
             return Intent::SystemInfo;
         }
 
-        if self
-            .patterns
-            .get("question")
-            .unwrap()
-            .is_match(&input_lower)
-        {
+        if self.patterns.get("question").map_or(false, |p| p.is_match(&input_lower)) {
             return Intent::Question {
                 query: input.to_string(),
             };
@@ -620,6 +671,75 @@ impl Interpreter {
                 };
                 Ok(Translation {
                     command: "agent-runtime".to_string(),
+                    args,
+                    description: desc.clone(),
+                    permission,
+                    explanation: desc,
+                })
+            }
+
+            Intent::NetworkScan { action, target } => {
+                let (command, args, desc, permission) = match action.as_str() {
+                    "port_scan" => {
+                        let t = target.as_deref().unwrap_or("localhost");
+                        (
+                            "nmap".to_string(),
+                            vec!["-sT".to_string(), t.to_string()],
+                            format!("Port scan on {}", t),
+                            PermissionLevel::Admin,
+                        )
+                    }
+                    "ping_sweep" => {
+                        let t = target.as_deref().unwrap_or("192.168.1.0/24");
+                        (
+                            "nmap".to_string(),
+                            vec!["-sn".to_string(), t.to_string()],
+                            format!("Ping sweep on {}", t),
+                            PermissionLevel::Admin,
+                        )
+                    }
+                    "dns_lookup" => {
+                        let t = target.as_deref().unwrap_or("localhost");
+                        (
+                            "dig".to_string(),
+                            vec![t.to_string()],
+                            format!("DNS lookup for {}", t),
+                            PermissionLevel::Safe,
+                        )
+                    }
+                    "trace_route" => {
+                        let t = target.as_deref().unwrap_or("localhost");
+                        (
+                            "traceroute".to_string(),
+                            vec![t.to_string()],
+                            format!("Trace route to {}", t),
+                            PermissionLevel::Admin,
+                        )
+                    }
+                    "packet_capture" => {
+                        let iface = target.as_deref().unwrap_or("eth0");
+                        (
+                            "tcpdump".to_string(),
+                            vec!["-i".to_string(), iface.to_string(), "-c".to_string(), "100".to_string()],
+                            format!("Capture packets on {}", iface),
+                            PermissionLevel::Admin,
+                        )
+                    }
+                    "web_scan" => {
+                        let t = target.as_deref().unwrap_or("http://localhost");
+                        (
+                            "nikto".to_string(),
+                            vec!["-h".to_string(), t.to_string()],
+                            format!("Web scan on {}", t),
+                            PermissionLevel::Admin,
+                        )
+                    }
+                    other => {
+                        return Err(anyhow!("Unknown network scan action: {}", other));
+                    }
+                };
+                Ok(Translation {
+                    command,
                     args,
                     description: desc.clone(),
                     permission,
@@ -1776,5 +1896,129 @@ mod tests {
         };
         let t = interpreter.translate(&intent).unwrap();
         assert_eq!(t.permission, PermissionLevel::Admin);
+    }
+
+    // --- Network scan intent tests ---
+
+    #[test]
+    fn test_parse_scan_ports() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("scan ports on 192.168.1.1");
+        if let Intent::NetworkScan { action, target } = intent {
+            assert_eq!(action, "port_scan");
+            assert_eq!(target.as_deref(), Some("192.168.1.1"));
+        } else {
+            panic!("Expected NetworkScan, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_parse_ping_sweep() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("ping sweep 10.0.0.0/24");
+        if let Intent::NetworkScan { action, target } = intent {
+            assert_eq!(action, "ping_sweep");
+            assert_eq!(target.as_deref(), Some("10.0.0.0/24"));
+        } else {
+            panic!("Expected NetworkScan, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_parse_dns_lookup() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("lookup dns for example.com");
+        if let Intent::NetworkScan { action, target } = intent {
+            assert_eq!(action, "dns_lookup");
+            assert_eq!(target.as_deref(), Some("example.com"));
+        } else {
+            panic!("Expected NetworkScan, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_parse_trace_route() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("trace route to 8.8.8.8");
+        if let Intent::NetworkScan { action, target } = intent {
+            assert_eq!(action, "trace_route");
+            assert_eq!(target.as_deref(), Some("8.8.8.8"));
+        } else {
+            panic!("Expected NetworkScan, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_parse_capture_packets() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("capture packets on eth0");
+        if let Intent::NetworkScan { action, target } = intent {
+            assert_eq!(action, "packet_capture");
+            assert_eq!(target.as_deref(), Some("eth0"));
+        } else {
+            panic!("Expected NetworkScan, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_parse_web_scan() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("scan web server http://target.com");
+        if let Intent::NetworkScan { action, target } = intent {
+            assert_eq!(action, "web_scan");
+            assert_eq!(target.as_deref(), Some("http://target.com"));
+        } else {
+            panic!("Expected NetworkScan, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_translate_network_port_scan() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::NetworkScan {
+            action: "port_scan".into(),
+            target: Some("192.168.1.1".into()),
+        };
+        let t = interpreter.translate(&intent).unwrap();
+        assert_eq!(t.command, "nmap");
+        assert!(t.args.contains(&"-sT".to_string()));
+        assert!(t.args.contains(&"192.168.1.1".to_string()));
+        assert_eq!(t.permission, PermissionLevel::Admin);
+    }
+
+    #[test]
+    fn test_translate_network_dns_lookup_safe() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::NetworkScan {
+            action: "dns_lookup".into(),
+            target: Some("example.com".into()),
+        };
+        let t = interpreter.translate(&intent).unwrap();
+        assert_eq!(t.command, "dig");
+        assert_eq!(t.permission, PermissionLevel::Safe);
+    }
+
+    #[test]
+    fn test_translate_network_packet_capture() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::NetworkScan {
+            action: "packet_capture".into(),
+            target: Some("wlan0".into()),
+        };
+        let t = interpreter.translate(&intent).unwrap();
+        assert_eq!(t.command, "tcpdump");
+        assert!(t.args.contains(&"-i".to_string()));
+        assert!(t.args.contains(&"wlan0".to_string()));
+        assert_eq!(t.permission, PermissionLevel::Admin);
+    }
+
+    #[test]
+    fn test_translate_network_unknown_action() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::NetworkScan {
+            action: "invalid_action".into(),
+            target: None,
+        };
+        assert!(interpreter.translate(&intent).is_err());
     }
 }

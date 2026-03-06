@@ -4,13 +4,23 @@
 
 pub mod agent;
 pub mod audit;
+pub mod bootloader;
+pub mod certpin;
 pub mod dmverity;
+pub mod fuse;
+pub mod ima;
+pub mod journald;
 pub mod llm;
 pub mod luks;
 pub mod mac;
 pub mod netns;
+pub mod pam;
+pub mod secureboot;
 pub mod security;
 pub mod syscall;
+pub mod tpm;
+pub mod udev;
+pub mod update;
 
 pub use agent::{Agent, AgentContext, AgentRuntime};
 pub use error::{Result, SysError};

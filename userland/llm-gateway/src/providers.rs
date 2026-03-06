@@ -10,7 +10,7 @@ use agnos_common::{InferenceRequest, InferenceResponse};
 #[async_trait]
 pub trait LlmProvider: Send + Sync {
     /// Run inference
-    async fn infer(&self, request: InferenceRequest) -> anyhow::Result<InferenceResponse>;
+    async fn infer(&self, request: &InferenceRequest) -> anyhow::Result<InferenceResponse>;
 
     /// Stream inference results
     async fn infer_stream(&self, request: InferenceRequest) -> anyhow::Result<mpsc::Receiver<anyhow::Result<String>>>;
@@ -60,7 +60,7 @@ impl OllamaProvider {
 
 #[async_trait]
 impl LlmProvider for OllamaProvider {
-    async fn infer(&self, request: InferenceRequest) -> anyhow::Result<InferenceResponse> {
+    async fn infer(&self, request: &InferenceRequest) -> anyhow::Result<InferenceResponse> {
         let response = self.client
             .post(format!("{}/api/generate", self.base_url))
             .json(&serde_json::json!({
@@ -82,7 +82,7 @@ impl LlmProvider for OllamaProvider {
             text: result["response"].as_str().unwrap_or("").to_string(),
             tokens_generated: result["eval_count"].as_u64().unwrap_or(0) as u32,
             finish_reason: agnos_common::FinishReason::Stop,
-            model: request.model,
+            model: request.model.clone(),
             usage: agnos_common::TokenUsage {
                 prompt_tokens: result["prompt_eval_count"].as_u64().unwrap_or(0) as u32,
                 completion_tokens: result["eval_count"].as_u64().unwrap_or(0) as u32,
@@ -127,8 +127,8 @@ impl LlmProvider for OllamaProvider {
                         buffer.push_str(&String::from_utf8_lossy(&bytes));
                         // Ollama streams newline-delimited JSON
                         while let Some(pos) = buffer.find('\n') {
-                            let line = buffer[..pos].to_string();
-                            buffer = buffer[pos + 1..].to_string();
+                            let line: String = buffer.drain(..pos).collect();
+                            buffer.drain(..1); // consume the '\n'
                             if line.trim().is_empty() { continue; }
                             if let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) {
                                 if let Some(text) = json["response"].as_str() {
@@ -222,7 +222,7 @@ impl LlamaCppProvider {
 
 #[async_trait]
 impl LlmProvider for LlamaCppProvider {
-    async fn infer(&self, request: InferenceRequest) -> anyhow::Result<InferenceResponse> {
+    async fn infer(&self, request: &InferenceRequest) -> anyhow::Result<InferenceResponse> {
         let response = self.client
             .post(format!("{}/completion", self.base_url))
             .json(&serde_json::json!({
@@ -240,7 +240,7 @@ impl LlmProvider for LlamaCppProvider {
             text: result["content"].as_str().unwrap_or("").to_string(),
             tokens_generated: result["tokens_predicted"].as_u64().unwrap_or(0) as u32,
             finish_reason: agnos_common::FinishReason::Stop,
-            model: request.model,
+            model: request.model.clone(),
             usage: agnos_common::TokenUsage {
                 prompt_tokens: result["tokens_evaluated"].as_u64().unwrap_or(0) as u32,
                 completion_tokens: result["tokens_predicted"].as_u64().unwrap_or(0) as u32,
@@ -282,8 +282,8 @@ impl LlmProvider for LlamaCppProvider {
                         buffer.push_str(&String::from_utf8_lossy(&bytes));
                         // llama.cpp streams SSE: "data: {...}\n\n"
                         while let Some(pos) = buffer.find("\n\n") {
-                            let event = buffer[..pos].to_string();
-                            buffer = buffer[pos + 2..].to_string();
+                            let event: String = buffer.drain(..pos).collect();
+                            buffer.drain(..2); // consume the "\n\n"
                             for line in event.lines() {
                                 if let Some(data) = line.strip_prefix("data: ") {
                                     if data.trim() == "[DONE]" { return; }
@@ -359,7 +359,7 @@ impl OpenAiProvider {
 
 #[async_trait]
 impl LlmProvider for OpenAiProvider {
-    async fn infer(&self, request: InferenceRequest) -> anyhow::Result<InferenceResponse> {
+    async fn infer(&self, request: &InferenceRequest) -> anyhow::Result<InferenceResponse> {
         let response = self.client
             .post(format!("{}/chat/completions", self.base_url))
             .bearer_auth(&self.api_key.0)
@@ -382,7 +382,9 @@ impl LlmProvider for OpenAiProvider {
         }
 
         let result: serde_json::Value = response.json().await?;
-        let choice = &result["choices"][0];
+        let choice = result["choices"]
+            .get(0)
+            .ok_or_else(|| anyhow::anyhow!("OpenAI response missing choices array"))?;
         let message_text = choice["message"]["content"].as_str().unwrap_or("").to_string();
         let finish = match choice["finish_reason"].as_str() {
             Some("length") => agnos_common::FinishReason::Length,
@@ -436,8 +438,8 @@ impl LlmProvider for OpenAiProvider {
                     Ok(bytes) => {
                         buffer.push_str(&String::from_utf8_lossy(&bytes));
                         while let Some(pos) = buffer.find("\n\n") {
-                            let event = buffer[..pos].to_string();
-                            buffer = buffer[pos + 2..].to_string();
+                            let event: String = buffer.drain(..pos).collect();
+                            buffer.drain(..2); // consume the "\n\n"
                             for line in event.lines() {
                                 if let Some(data) = line.strip_prefix("data: ") {
                                     if data.trim() == "[DONE]" { return; }
@@ -529,7 +531,7 @@ impl AnthropicProvider {
 
 #[async_trait]
 impl LlmProvider for AnthropicProvider {
-    async fn infer(&self, request: InferenceRequest) -> anyhow::Result<InferenceResponse> {
+    async fn infer(&self, request: &InferenceRequest) -> anyhow::Result<InferenceResponse> {
         let response = self.client
             .post(format!("{}/messages", self.base_url))
             .header("x-api-key", &self.api_key.0)
@@ -615,8 +617,8 @@ impl LlmProvider for AnthropicProvider {
                     Ok(bytes) => {
                         buffer.push_str(&String::from_utf8_lossy(&bytes));
                         while let Some(pos) = buffer.find("\n\n") {
-                            let event = buffer[..pos].to_string();
-                            buffer = buffer[pos + 2..].to_string();
+                            let event: String = buffer.drain(..pos).collect();
+                            buffer.drain(..2); // consume the "\n\n"
                             // Anthropic SSE: "event: <type>\ndata: <json>"
                             let mut data_str = None;
                             for line in event.lines() {
@@ -708,7 +710,7 @@ impl GoogleProvider {
 
 #[async_trait]
 impl LlmProvider for GoogleProvider {
-    async fn infer(&self, request: InferenceRequest) -> anyhow::Result<InferenceResponse> {
+    async fn infer(&self, request: &InferenceRequest) -> anyhow::Result<InferenceResponse> {
         let url = format!(
             "{}/models/{}:generateContent?key={}",
             self.base_url, request.model, self.api_key.0
@@ -766,7 +768,7 @@ impl LlmProvider for GoogleProvider {
             text,
             tokens_generated: completion_tokens,
             finish_reason: finish,
-            model: request.model,
+            model: request.model.clone(),
             usage: agnos_common::TokenUsage {
                 prompt_tokens,
                 completion_tokens,
@@ -818,8 +820,8 @@ impl LlmProvider for GoogleProvider {
                         buffer.push_str(&String::from_utf8_lossy(&bytes));
                         // Gemini SSE: "data: <json>\n\n"
                         while let Some(pos) = buffer.find("\n\n") {
-                            let event = buffer[..pos].to_string();
-                            buffer = buffer[pos + 2..].to_string();
+                            let event: String = buffer.drain(..pos).collect();
+                            buffer.drain(..2); // consume the "\n\n"
                             if let Some(data) = event.strip_prefix("data: ") {
                                 if let Ok(json) =
                                     serde_json::from_str::<serde_json::Value>(data)
@@ -1086,13 +1088,13 @@ mod tests {
             presence_penalty: 0.0,
             frequency_penalty: 0.0,
         };
-        assert!(provider.infer(request).await.is_err());
+        assert!(provider.infer(&request).await.is_err());
     }
 
     #[tokio::test]
     async fn test_ollama_infer_error_is_descriptive() {
         let provider = OllamaProvider::new().await.unwrap();
-        let err = provider.infer(InferenceRequest::default()).await.unwrap_err();
+        let err = provider.infer(&InferenceRequest::default()).await.unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("error") || msg.contains("connect") || msg.contains("Connection"));
     }
@@ -1109,13 +1111,13 @@ mod tests {
             presence_penalty: 0.0,
             frequency_penalty: 0.0,
         };
-        assert!(provider.infer(request).await.is_err());
+        assert!(provider.infer(&request).await.is_err());
     }
 
     #[tokio::test]
     async fn test_llama_cpp_infer_error_is_descriptive() {
         let provider = LlamaCppProvider::new().await.unwrap();
-        let err = provider.infer(InferenceRequest::default()).await.unwrap_err();
+        let err = provider.infer(&InferenceRequest::default()).await.unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("error") || msg.contains("connect") || msg.contains("Connection"));
     }
@@ -1378,7 +1380,7 @@ mod tests {
             presence_penalty: 0.0,
             frequency_penalty: 0.0,
         };
-        let result = provider.infer(request).await;
+        let result = provider.infer(&request).await;
         assert!(result.is_err());
     }
 
@@ -1406,7 +1408,7 @@ mod tests {
             presence_penalty: 0.0,
             frequency_penalty: 0.0,
         };
-        let result = provider.infer(request).await;
+        let result = provider.infer(&request).await;
         assert!(result.is_err());
     }
 
@@ -1633,7 +1635,7 @@ mod tests {
             presence_penalty: 0.0,
             frequency_penalty: 0.0,
         };
-        assert!(provider.infer(request).await.is_err());
+        assert!(provider.infer(&request).await.is_err());
     }
 
     #[tokio::test]
@@ -1722,7 +1724,7 @@ mod tests {
     #[tokio::test]
     async fn test_llama_cpp_infer_error_is_connection_related() {
         let provider = LlamaCppProvider::new().await.unwrap();
-        let err = provider.infer(InferenceRequest::default()).await.unwrap_err();
+        let err = provider.infer(&InferenceRequest::default()).await.unwrap_err();
         let msg = err.to_string().to_lowercase();
         assert!(
             msg.contains("error") || msg.contains("connect") || msg.contains("refused"),
@@ -1741,7 +1743,7 @@ mod tests {
             "goog-fake".to_string(),
             Some("http://127.0.0.1:19999".to_string()),
         ).unwrap();
-        let err = provider.infer(InferenceRequest::default()).await.unwrap_err();
+        let err = provider.infer(&InferenceRequest::default()).await.unwrap_err();
         let msg = err.to_string().to_lowercase();
         assert!(
             msg.contains("error") || msg.contains("connect") || msg.contains("refused"),
@@ -1975,7 +1977,7 @@ mod tests {
         let provider = OllamaProvider::new().await.unwrap();
         let request = InferenceRequest::default();
         // infer with default request (no server) should produce a connection error
-        let err = provider.infer(request).await.unwrap_err();
+        let err = provider.infer(&request).await.unwrap_err();
         assert!(!err.to_string().is_empty());
     }
 
@@ -1983,7 +1985,7 @@ mod tests {
     async fn test_llama_cpp_provider_default_request() {
         let provider = LlamaCppProvider::new().await.unwrap();
         let request = InferenceRequest::default();
-        let err = provider.infer(request).await.unwrap_err();
+        let err = provider.infer(&request).await.unwrap_err();
         assert!(!err.to_string().is_empty());
     }
 
@@ -2003,7 +2005,7 @@ mod tests {
             frequency_penalty: 0.0,
         };
         // Should fail with connection error, not panic on empty prompt
-        assert!(provider.infer(request).await.is_err());
+        assert!(provider.infer(&request).await.is_err());
     }
 
     #[tokio::test]
@@ -2021,7 +2023,7 @@ mod tests {
             presence_penalty: 0.0,
             frequency_penalty: 0.0,
         };
-        assert!(provider.infer(request).await.is_err());
+        assert!(provider.infer(&request).await.is_err());
     }
 
     #[tokio::test]
@@ -2039,7 +2041,7 @@ mod tests {
             presence_penalty: 0.0,
             frequency_penalty: 0.0,
         };
-        assert!(provider.infer(request).await.is_err());
+        assert!(provider.infer(&request).await.is_err());
     }
 
     #[tokio::test]

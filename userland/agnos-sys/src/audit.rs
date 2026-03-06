@@ -151,7 +151,9 @@ impl AuditRule {
                         "FileWatch rule requires a path".into(),
                     ));
                 }
-                let path = self.path.as_ref().unwrap();
+                let path = self.path.as_ref().ok_or_else(|| {
+                    SysError::InvalidArgument("FileWatch rule has None path after check".into())
+                })?;
                 if path.is_empty() {
                     return Err(SysError::InvalidArgument(
                         "FileWatch path cannot be empty".into(),

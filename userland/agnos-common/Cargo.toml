@@ -28,6 +28,7 @@ subtle = "2.5"
 [dev-dependencies]
 tokio-test = "0.4"
 criterion = "0.5"
+tempfile = "3"
 
 [[bench]]
 name = "agnos_common"

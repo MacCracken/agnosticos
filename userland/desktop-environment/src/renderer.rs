@@ -85,6 +85,16 @@ pub struct Framebuffer {
     pub pixels: Vec<Pixel>,
 }
 
+impl std::fmt::Debug for Framebuffer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Framebuffer")
+            .field("width", &self.width)
+            .field("height", &self.height)
+            .field("pixel_count", &self.pixels.len())
+            .finish()
+    }
+}
+
 impl Framebuffer {
     /// Create a framebuffer filled with a solid color.
     pub fn new(width: u32, height: u32, fill: Pixel) -> Self {
@@ -123,8 +133,10 @@ impl Framebuffer {
     pub fn fill_rect(&mut self, rect: &Rectangle, color: Pixel) {
         let x_start = rect.x.max(0) as u32;
         let y_start = rect.y.max(0) as u32;
-        let x_end = ((rect.x + rect.width as i32) as u32).min(self.width);
-        let y_end = ((rect.y + rect.height as i32) as u32).min(self.height);
+        let x_end = rect.x.saturating_add(rect.width as i32).max(0) as u32;
+        let x_end = x_end.min(self.width);
+        let y_end = rect.y.saturating_add(rect.height as i32).max(0) as u32;
+        let y_end = y_end.min(self.height);
 
         if x_start >= x_end || y_start >= y_end {
             return;
@@ -167,42 +179,43 @@ impl Framebuffer {
     }
 
     /// Blit another framebuffer onto this one at offset (dx, dy).
+    /// Pre-clips source ranges to avoid per-pixel bounds checks.
     pub fn blit(&mut self, src: &Framebuffer, dx: i32, dy: i32) {
-        for sy in 0..src.height {
-            let ty = dy + sy as i32;
-            if ty < 0 || ty >= self.height as i32 {
-                continue;
-            }
-            for sx in 0..src.width {
-                let tx = dx + sx as i32;
-                if tx < 0 || tx >= self.width as i32 {
-                    continue;
-                }
+        // Compute visible source row/col range upfront
+        let sy_start = if dy < 0 { (-dy) as u32 } else { 0 };
+        let sy_end = src.height.min(((self.height as i32) - dy).max(0) as u32);
+        let sx_start = if dx < 0 { (-dx) as u32 } else { 0 };
+        let sx_end = src.width.min(((self.width as i32) - dx).max(0) as u32);
+
+        for sy in sy_start..sy_end {
+            let ty = (dy + sy as i32) as u32;
+            for sx in sx_start..sx_end {
+                let tx = (dx + sx as i32) as u32;
                 let pixel = src.pixels[(sy * src.width + sx) as usize];
-                self.blend_pixel(tx as u32, ty as u32, pixel);
+                self.blend_pixel(tx, ty, pixel);
             }
         }
     }
 
     /// Blit with clipping to a damage region.
+    /// Pre-clips source ranges to avoid per-pixel bounds checks.
     pub fn blit_clipped(&mut self, src: &Framebuffer, dx: i32, dy: i32, clip: &Rectangle) {
         let cx0 = clip.x.max(0);
         let cy0 = clip.y.max(0);
-        let cx1 = clip.x + clip.width as i32;
-        let cy1 = clip.y + clip.height as i32;
+        let cx1 = (clip.x + clip.width as i32).min(self.width as i32);
+        let cy1 = (clip.y + clip.height as i32).min(self.height as i32);
 
-        for sy in 0..src.height {
-            let ty = dy + sy as i32;
-            if ty < cy0 || ty >= cy1 {
-                continue;
-            }
-            for sx in 0..src.width {
-                let tx = dx + sx as i32;
-                if tx < cx0 || tx >= cx1 {
-                    continue;
-                }
+        let sy_start = if dy < cy0 { (cy0 - dy) as u32 } else { 0 };
+        let sy_end = src.height.min((cy1 - dy).max(0) as u32);
+        let sx_start = if dx < cx0 { (cx0 - dx) as u32 } else { 0 };
+        let sx_end = src.width.min((cx1 - dx).max(0) as u32);
+
+        for sy in sy_start..sy_end {
+            let ty = (dy + sy as i32) as u32;
+            for sx in sx_start..sx_end {
+                let tx = (dx + sx as i32) as u32;
                 let pixel = src.pixels[(sy * src.width + sx) as usize];
-                self.blend_pixel(tx as u32, ty as u32, pixel);
+                self.blend_pixel(tx, ty, pixel);
             }
         }
     }
@@ -214,6 +227,9 @@ impl Framebuffer {
 
     /// Get raw byte slice (for DRM/KMS scanout or SHM buffer).
     pub fn as_bytes(&self) -> &[u8] {
+        // SAFETY: Pixel is u32 (4 bytes, no padding). Vec<u32> is a contiguous
+        // array, so reinterpreting as &[u8] of len * 4 bytes is valid.
+        // The resulting slice borrows self, preventing drop or reallocation.
         unsafe {
             std::slice::from_raw_parts(
                 self.pixels.as_ptr() as *const u8,
@@ -643,6 +659,7 @@ pub struct SceneSurface {
 }
 
 /// Scene graph managing all renderable surfaces.
+#[derive(Debug)]
 pub struct SceneGraph {
     surfaces: HashMap<SurfaceId, SceneSurface>,
     /// Cached z-ordered list (rebuilt on change).
@@ -759,6 +776,7 @@ impl Default for SceneGraph {
 // ---------------------------------------------------------------------------
 
 /// High-level renderer that composites the scene into a framebuffer.
+#[derive(Debug)]
 pub struct DesktopRenderer {
     /// Front buffer (displayed).
     pub front: Framebuffer,
@@ -795,11 +813,12 @@ impl DesktopRenderer {
         // Clear back buffer
         self.back.clear(COLOR_BG_DARK);
 
-        // Render surfaces in z-order
+        // Collect surface snapshots for rendering. We need owned data because
+        // render_decorations borrows self.back mutably (can't hold scene refs).
         let surfaces: Vec<SceneSurface> = scene
             .surfaces_in_order()
-            .into_iter()
-            .cloned()
+            .iter()
+            .map(|s| (*s).clone())
             .collect();
 
         for surface in &surfaces {

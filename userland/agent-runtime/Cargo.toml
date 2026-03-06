@@ -30,6 +30,7 @@ chrono = { workspace = true }
 nix = { version = "0.27", features = ["process", "signal"] }
 toml = "0.8"
 libc = "0.2"
+sha2 = "0.10"
 axum = { workspace = true }
 tower = { workspace = true }
 tower-http = { workspace = true }

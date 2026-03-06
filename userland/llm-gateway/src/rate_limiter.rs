@@ -112,17 +112,23 @@ impl AgentRateLimiter {
         self.default_limit.read().await.clone()
     }
 
-    /// Check if a request from this agent should be allowed.
-    /// Returns `Ok(())` if allowed, `Err(reason)` if rate-limited.
-    pub async fn check_request(&self, agent_id: AgentId) -> Result<(), RateLimitReason> {
+    /// Atomically check rate limits and record request start if allowed.
+    /// Returns `Ok(())` if the request was admitted, `Err(reason)` if rate-limited.
+    /// This combines check + record into a single operation to avoid race conditions
+    /// where concurrent requests could slip through between a separate check and record.
+    pub async fn check_and_record(&self, agent_id: AgentId) -> Result<(), RateLimitReason> {
         let limit = match self.get_limit(agent_id).await {
             Some(l) => l,
             None => return Ok(()), // No limit configured → allow
         };
 
+        // Acquire write locks to make check-and-increment atomic
+        let mut active = self.active_requests.write().await;
+        let mut windows = self.request_windows.write().await;
+        let mut buckets = self.hourly_tokens.write().await;
+
         // Check concurrent requests
         if limit.max_concurrent_requests > 0 {
-            let active = self.active_requests.read().await;
             let count = active.get(&agent_id).copied().unwrap_or(0);
             if count >= limit.max_concurrent_requests {
                 warn!(
@@ -140,7 +146,6 @@ impl AgentRateLimiter {
 
         // Check requests per minute
         if limit.max_requests_per_minute > 0 {
-            let windows = self.request_windows.read().await;
             if let Some(timestamps) = windows.get(&agent_id) {
                 let one_minute_ago = Instant::now() - std::time::Duration::from_secs(60);
                 let recent_count = timestamps.iter().filter(|t| **t > one_minute_ago).count() as u32;
@@ -161,7 +166,6 @@ impl AgentRateLimiter {
 
         // Check tokens per hour
         if limit.max_tokens_per_hour > 0 {
-            let mut buckets = self.hourly_tokens.write().await;
             let bucket = buckets
                 .entry(agent_id)
                 .or_insert_with(HourlyTokenBucket::new);
@@ -180,10 +184,73 @@ impl AgentRateLimiter {
             }
         }
 
+        // All checks passed — atomically record the request start
+        *active.entry(agent_id).or_insert(0) += 1;
+
+        let timestamps = windows.entry(agent_id).or_default();
+        timestamps.push(Instant::now());
+        // Prune old timestamps (keep only last 5 minutes for memory efficiency)
+        let cutoff = Instant::now() - std::time::Duration::from_secs(300);
+        timestamps.retain(|t| *t > cutoff);
+
+        Ok(())
+    }
+
+    /// Check if a request from this agent should be allowed (without recording).
+    /// Prefer `check_and_record()` for production use to avoid race conditions.
+    pub async fn check_request(&self, agent_id: AgentId) -> Result<(), RateLimitReason> {
+        let limit = match self.get_limit(agent_id).await {
+            Some(l) => l,
+            None => return Ok(()), // No limit configured → allow
+        };
+
+        // Check concurrent requests
+        if limit.max_concurrent_requests > 0 {
+            let active = self.active_requests.read().await;
+            let count = active.get(&agent_id).copied().unwrap_or(0);
+            if count >= limit.max_concurrent_requests {
+                return Err(RateLimitReason::ConcurrentRequestsExceeded {
+                    active: count,
+                    limit: limit.max_concurrent_requests,
+                });
+            }
+        }
+
+        // Check requests per minute
+        if limit.max_requests_per_minute > 0 {
+            let windows = self.request_windows.read().await;
+            if let Some(timestamps) = windows.get(&agent_id) {
+                let one_minute_ago = Instant::now() - std::time::Duration::from_secs(60);
+                let recent_count = timestamps.iter().filter(|t| **t > one_minute_ago).count() as u32;
+                if recent_count >= limit.max_requests_per_minute {
+                    return Err(RateLimitReason::RequestsPerMinuteExceeded {
+                        count: recent_count,
+                        limit: limit.max_requests_per_minute,
+                    });
+                }
+            }
+        }
+
+        // Check tokens per hour
+        if limit.max_tokens_per_hour > 0 {
+            let mut buckets = self.hourly_tokens.write().await;
+            let bucket = buckets
+                .entry(agent_id)
+                .or_insert_with(HourlyTokenBucket::new);
+            bucket.maybe_reset();
+            if bucket.tokens_used >= limit.max_tokens_per_hour {
+                return Err(RateLimitReason::TokensPerHourExceeded {
+                    used: bucket.tokens_used,
+                    limit: limit.max_tokens_per_hour,
+                });
+            }
+        }
+
         Ok(())
     }
 
     /// Record a request starting (increments active count and timestamps).
+    /// Note: prefer `check_and_record()` which atomically checks and records.
     pub async fn record_request_start(&self, agent_id: AgentId) {
         // Increment active requests
         let mut active = self.active_requests.write().await;

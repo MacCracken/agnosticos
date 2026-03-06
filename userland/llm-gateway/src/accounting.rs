@@ -74,6 +74,20 @@ impl TokenAccounting {
         debug!("Reset all token usage");
     }
 
+    /// Evict dead agents from the usage map.
+    /// Call periodically or when an agent is unregistered.
+    #[allow(dead_code)]
+    pub async fn evict_agents(&self, live_agents: &[AgentId]) {
+        let live_set: std::collections::HashSet<_> = live_agents.iter().collect();
+        let mut agent_usage = self.agent_usage.write().await;
+        let before = agent_usage.len();
+        agent_usage.retain(|id, _| live_set.contains(id));
+        let evicted = before - agent_usage.len();
+        if evicted > 0 {
+            debug!("Evicted {} dead agent(s) from token accounting", evicted);
+        }
+    }
+
     /// List all agents with usage
     #[allow(dead_code)]
     pub async fn list_agents(&self) -> Vec<(AgentId, TokenUsage)> {

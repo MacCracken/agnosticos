@@ -374,19 +374,16 @@ impl Supervisor {
             veth_agent: String::new(),
             netns_path: format!("/var/run/netns/{}", ns_name),
         };
-        if std::path::Path::new(&handle.netns_path).exists() {
-            if let Err(e) = agnos_sys::netns::destroy_agent_netns(&handle) {
-                debug!("Could not destroy netns for agent {}: {}", agent_id, e);
-            }
+        // No exists() check — let destroy report errors to avoid TOCTOU
+        if let Err(e) = agnos_sys::netns::destroy_agent_netns(&handle) {
+            debug!("Could not destroy netns for agent {}: {}", agent_id, e);
         }
 
         // Clean up LUKS encrypted volume (if one was created)
         let luks_name = format!("agnos-agent-{}", agent_id);
-        let mapper_path = format!("/dev/mapper/{}", luks_name);
-        if std::path::Path::new(&mapper_path).exists() {
-            if let Err(e) = agnos_sys::luks::teardown_agent_volume(&luks_name) {
-                debug!("Could not teardown LUKS for agent {}: {}", agent_id, e);
-            }
+        // No exists() check — let teardown report errors to avoid TOCTOU
+        if let Err(e) = agnos_sys::luks::teardown_agent_volume(&luks_name) {
+            debug!("Could not teardown LUKS for agent {}: {}", agent_id, e);
         }
 
         // Emit audit event for agent unregistration

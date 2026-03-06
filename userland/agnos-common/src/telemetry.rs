@@ -107,6 +107,8 @@ const MAX_CRASH_REPORTS: usize = 10;
 /// Main telemetry collector
 pub struct TelemetryCollector {
     config: TelemetryConfig,
+    /// Cached instance_id for cheap cloning in hot path
+    instance_id: Arc<str>,
     session: Arc<RwLock<TelemetrySession>>,
     events: Arc<RwLock<VecDeque<TelemetryEvent>>>,
     crash_reports: Arc<RwLock<VecDeque<CrashReport>>>,
@@ -123,8 +125,10 @@ impl TelemetryCollector {
             events_dropped: 0,
         };
         
+        let instance_id: Arc<str> = config.instance_id.as_str().into();
         Self {
             config,
+            instance_id,
             session: Arc::new(RwLock::new(session)),
             events: Arc::new(RwLock::new(VecDeque::new())),
             crash_reports: Arc::new(RwLock::new(VecDeque::new())),
@@ -152,7 +156,7 @@ impl TelemetryCollector {
         
         let event = TelemetryEvent {
             timestamp: chrono::Utc::now(),
-            instance_id: self.config.instance_id.clone(),
+            instance_id: (*self.instance_id).to_string(),
             event_type,
             category: category.to_string(),
             name: name.to_string(),

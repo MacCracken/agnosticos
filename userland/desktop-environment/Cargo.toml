@@ -15,7 +15,14 @@ path = "src/main.rs"
 [lib]
 path = "src/lib.rs"
 
+[features]
+default = []
+wayland = ["wayland-server", "wayland-protocols", "wayland-protocols-wlr"]
+
 [dependencies]
+wayland-server = { version = "0.31", optional = true }
+wayland-protocols = { version = "0.31", features = ["server"], optional = true }
+wayland-protocols-wlr = { version = "0.2", features = ["server"], optional = true }
 agnos-common = { workspace = true }
 agnos-sys = { workspace = true }
 tokio = { workspace = true, features = ["full"] }

@@ -503,7 +503,8 @@ fn format_nft_rule(rule: &FirewallRule) -> String {
 
     // Comment
     if !rule.comment.is_empty() {
-        parts.push(format!("comment \"{}\"", rule.comment));
+        let escaped = rule.comment.replace('\\', "\\\\").replace('"', "\\\"");
+        parts.push(format!("comment \"{}\"", escaped));
     }
 
     parts.join(" ")
