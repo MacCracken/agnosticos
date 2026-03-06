@@ -10,6 +10,8 @@ mod security_ui;
 mod shell;
 mod system_tests;
 pub mod wayland;
+pub mod accessibility;
+pub mod gestures;
 
 pub use compositor::{
     Compositor, CompositorBackend, CompositorError, ContextType, InputAction, InputEvent,

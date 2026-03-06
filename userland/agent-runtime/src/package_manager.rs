@@ -686,6 +686,260 @@ fn format_bytes(bytes: u64) -> String {
 }
 
 // ---------------------------------------------------------------------------
+// Agent Templates & Scaffolding
+// ---------------------------------------------------------------------------
+
+/// Type of agent template.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TemplateType {
+    /// Network/port scanner agent.
+    Scanner,
+    /// Log / system monitor agent.
+    Monitor,
+    /// Data analyzer agent.
+    Analyzer,
+    /// Generic worker agent.
+    Worker,
+    /// User-defined custom template.
+    Custom,
+}
+
+/// A single file within a template.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TemplateFile {
+    /// Relative path within the output directory.
+    pub path: String,
+    /// File contents (may contain `{{agent_name}}` and `{{timestamp}}` placeholders).
+    pub content: String,
+    /// Whether the file should be marked executable.
+    pub executable: bool,
+}
+
+/// An agent template used for scaffolding new agent projects.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentTemplate {
+    /// Template name (e.g. "scanner", "monitor").
+    pub name: String,
+    /// Human-readable description.
+    pub description: String,
+    /// Category of agent this template creates.
+    pub template_type: TemplateType,
+    /// Files to generate.
+    pub files: Vec<TemplateFile>,
+}
+
+/// Registry of available agent templates.
+pub struct TemplateRegistry {
+    templates: HashMap<String, AgentTemplate>,
+}
+
+impl TemplateRegistry {
+    /// Create a new registry pre-populated with built-in templates.
+    pub fn new() -> Self {
+        let mut reg = Self {
+            templates: HashMap::new(),
+        };
+        reg.register(Self::builtin_scanner());
+        reg.register(Self::builtin_monitor());
+        reg
+    }
+
+    /// Look up a template by name.
+    pub fn get(&self, name: &str) -> Option<&AgentTemplate> {
+        self.templates.get(name)
+    }
+
+    /// List all available templates.
+    pub fn list(&self) -> Vec<&AgentTemplate> {
+        self.templates.values().collect()
+    }
+
+    /// Register a custom template.
+    pub fn register(&mut self, template: AgentTemplate) {
+        self.templates.insert(template.name.clone(), template);
+    }
+
+    /// Scaffold a new agent project from a template.
+    ///
+    /// Substitutes `{{agent_name}}` and `{{timestamp}}` in file contents,
+    /// writes files to `output_dir`, and returns the list of created paths.
+    pub fn scaffold(
+        &self,
+        template_name: &str,
+        agent_name: &str,
+        output_dir: &Path,
+    ) -> Result<Vec<PathBuf>> {
+        let template = self.get(template_name)
+            .ok_or_else(|| anyhow::anyhow!("Template '{}' not found", template_name))?;
+
+        let timestamp = chrono::Utc::now().to_rfc3339();
+        let mut created = Vec::new();
+
+        for file in &template.files {
+            let content = file.content
+                .replace("{{agent_name}}", agent_name)
+                .replace("{{timestamp}}", &timestamp);
+
+            let file_path = output_dir.join(&file.path);
+            if let Some(parent) = file_path.parent() {
+                std::fs::create_dir_all(parent)
+                    .with_context(|| format!("Failed to create directory: {}", parent.display()))?;
+            }
+
+            std::fs::write(&file_path, &content)
+                .with_context(|| format!("Failed to write: {}", file_path.display()))?;
+
+            #[cfg(unix)]
+            if file.executable {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&file_path, std::fs::Permissions::from_mode(0o755))
+                    .with_context(|| format!("Failed to set permissions on: {}", file_path.display()))?;
+            }
+
+            created.push(file_path);
+        }
+
+        info!(
+            "Scaffolded agent '{}' from template '{}' ({} files)",
+            agent_name,
+            template_name,
+            created.len()
+        );
+
+        Ok(created)
+    }
+
+    // -----------------------------------------------------------------------
+    // Built-in templates
+    // -----------------------------------------------------------------------
+
+    fn builtin_scanner() -> AgentTemplate {
+        AgentTemplate {
+            name: "scanner".to_string(),
+            description: "Port scanner agent — scans target hosts for open ports".to_string(),
+            template_type: TemplateType::Scanner,
+            files: vec![
+                TemplateFile {
+                    path: "manifest.toml".to_string(),
+                    content: r#"name = "{{agent_name}}"
+description = "Port scanner agent"
+version = "0.1.0"
+author = "AGNOS"
+requested_permissions = ["NetworkAccess"]
+
+[permission_rationale]
+"NetworkAccess" = "Required to perform port scanning"
+"#.to_string(),
+                    executable: false,
+                },
+                TemplateFile {
+                    path: "main.rs".to_string(),
+                    content: r#"//! {{agent_name}} — Port Scanner Agent
+//! Generated at {{timestamp}}
+
+use std::net::TcpStream;
+use std::time::Duration;
+
+fn scan_port(host: &str, port: u16, timeout_ms: u64) -> bool {
+    let addr = format!("{}:{}", host, port);
+    TcpStream::connect_timeout(
+        &addr.parse().unwrap(),
+        Duration::from_millis(timeout_ms),
+    ).is_ok()
+}
+
+fn main() {
+    println!("{{agent_name}} starting...");
+    let common_ports = [22, 80, 443, 8080, 8443];
+    for port in common_ports {
+        let open = scan_port("127.0.0.1", port, 500);
+        println!("Port {}: {}", port, if open { "open" } else { "closed" });
+    }
+}
+"#.to_string(),
+                    executable: true,
+                },
+                TemplateFile {
+                    path: "config.toml".to_string(),
+                    content: r#"# Configuration for {{agent_name}}
+[scan]
+timeout_ms = 500
+max_concurrent = 100
+default_ports = [22, 80, 443, 8080, 8443]
+"#.to_string(),
+                    executable: false,
+                },
+            ],
+        }
+    }
+
+    fn builtin_monitor() -> AgentTemplate {
+        AgentTemplate {
+            name: "monitor".to_string(),
+            description: "Log monitor agent — watches system logs for patterns".to_string(),
+            template_type: TemplateType::Monitor,
+            files: vec![
+                TemplateFile {
+                    path: "manifest.toml".to_string(),
+                    content: r#"name = "{{agent_name}}"
+description = "Log monitor agent"
+version = "0.1.0"
+author = "AGNOS"
+requested_permissions = ["FileRead"]
+
+[permission_rationale]
+"FileRead" = "Required to read system log files"
+"#.to_string(),
+                    executable: false,
+                },
+                TemplateFile {
+                    path: "main.rs".to_string(),
+                    content: r#"//! {{agent_name}} — Log Monitor Agent
+//! Generated at {{timestamp}}
+
+use std::io::{BufRead, BufReader};
+use std::fs::File;
+
+fn main() {
+    println!("{{agent_name}} starting...");
+    let log_path = "/var/log/syslog";
+    match File::open(log_path) {
+        Ok(file) => {
+            let reader = BufReader::new(file);
+            for line in reader.lines().flatten().take(100) {
+                if line.contains("error") || line.contains("ERROR") {
+                    println!("[ALERT] {}", line);
+                }
+            }
+        }
+        Err(e) => eprintln!("Cannot open {}: {}", log_path, e),
+    }
+}
+"#.to_string(),
+                    executable: true,
+                },
+                TemplateFile {
+                    path: "config.toml".to_string(),
+                    content: r#"# Configuration for {{agent_name}}
+[monitor]
+log_paths = ["/var/log/syslog", "/var/log/auth.log"]
+patterns = ["error", "ERROR", "WARN", "failed"]
+poll_interval_secs = 5
+"#.to_string(),
+                    executable: false,
+                },
+            ],
+        }
+    }
+}
+
+impl Default for TemplateRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -1174,5 +1428,185 @@ version = "1.0.0"
 
         let pkg = mgr.validate_package(dir.path()).unwrap();
         assert_eq!(pkg.manifest.name, "custom");
+    }
+
+    // ==================================================================
+    // Template & Scaffolding tests
+    // ==================================================================
+
+    #[test]
+    fn test_template_registry_new_has_builtins() {
+        let reg = TemplateRegistry::new();
+        let list = reg.list();
+        assert!(list.len() >= 2);
+        assert!(reg.get("scanner").is_some());
+        assert!(reg.get("monitor").is_some());
+    }
+
+    #[test]
+    fn test_template_registry_get_scanner() {
+        let reg = TemplateRegistry::new();
+        let t = reg.get("scanner").unwrap();
+        assert_eq!(t.template_type, TemplateType::Scanner);
+        assert!(!t.files.is_empty());
+        assert!(t.description.contains("scanner") || t.description.contains("Port"));
+    }
+
+    #[test]
+    fn test_template_registry_get_monitor() {
+        let reg = TemplateRegistry::new();
+        let t = reg.get("monitor").unwrap();
+        assert_eq!(t.template_type, TemplateType::Monitor);
+        assert!(!t.files.is_empty());
+    }
+
+    #[test]
+    fn test_template_registry_get_nonexistent() {
+        let reg = TemplateRegistry::new();
+        assert!(reg.get("does-not-exist").is_none());
+    }
+
+    #[test]
+    fn test_template_registry_register_custom() {
+        let mut reg = TemplateRegistry::new();
+        let initial_count = reg.list().len();
+
+        reg.register(AgentTemplate {
+            name: "custom-worker".to_string(),
+            description: "Custom worker agent".to_string(),
+            template_type: TemplateType::Worker,
+            files: vec![TemplateFile {
+                path: "main.rs".to_string(),
+                content: "fn main() {}".to_string(),
+                executable: true,
+            }],
+        });
+
+        assert_eq!(reg.list().len(), initial_count + 1);
+        assert!(reg.get("custom-worker").is_some());
+    }
+
+    #[test]
+    fn test_template_scaffold_scanner() {
+        let reg = TemplateRegistry::new();
+        let dir = TempDir::new().unwrap();
+
+        let created = reg.scaffold("scanner", "my-scanner", dir.path()).unwrap();
+        assert_eq!(created.len(), 3); // manifest.toml, main.rs, config.toml
+
+        // Check manifest was written with substitution
+        let manifest = std::fs::read_to_string(dir.path().join("manifest.toml")).unwrap();
+        assert!(manifest.contains("my-scanner"));
+        assert!(!manifest.contains("{{agent_name}}"));
+
+        // Check main.rs was written
+        let main = std::fs::read_to_string(dir.path().join("main.rs")).unwrap();
+        assert!(main.contains("my-scanner"));
+        assert!(!main.contains("{{timestamp}}"));
+
+        // config.toml
+        assert!(dir.path().join("config.toml").exists());
+    }
+
+    #[test]
+    fn test_template_scaffold_monitor() {
+        let reg = TemplateRegistry::new();
+        let dir = TempDir::new().unwrap();
+
+        let created = reg.scaffold("monitor", "log-watcher", dir.path()).unwrap();
+        assert_eq!(created.len(), 3);
+
+        let manifest = std::fs::read_to_string(dir.path().join("manifest.toml")).unwrap();
+        assert!(manifest.contains("log-watcher"));
+    }
+
+    #[test]
+    fn test_template_scaffold_nonexistent_template() {
+        let reg = TemplateRegistry::new();
+        let dir = TempDir::new().unwrap();
+
+        let result = reg.scaffold("nonexistent", "agent", dir.path());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("not found"));
+    }
+
+    #[test]
+    fn test_template_scaffold_substitution() {
+        let mut reg = TemplateRegistry::new();
+        reg.register(AgentTemplate {
+            name: "test-tmpl".to_string(),
+            description: "Test".to_string(),
+            template_type: TemplateType::Custom,
+            files: vec![TemplateFile {
+                path: "hello.txt".to_string(),
+                content: "Hello {{agent_name}}, created at {{timestamp}}".to_string(),
+                executable: false,
+            }],
+        });
+
+        let dir = TempDir::new().unwrap();
+        reg.scaffold("test-tmpl", "my-agent", dir.path()).unwrap();
+
+        let content = std::fs::read_to_string(dir.path().join("hello.txt")).unwrap();
+        assert!(content.contains("Hello my-agent"));
+        assert!(!content.contains("{{agent_name}}"));
+        assert!(!content.contains("{{timestamp}}"));
+    }
+
+    #[test]
+    fn test_template_scaffold_nested_dirs() {
+        let mut reg = TemplateRegistry::new();
+        reg.register(AgentTemplate {
+            name: "nested".to_string(),
+            description: "Nested dirs".to_string(),
+            template_type: TemplateType::Custom,
+            files: vec![TemplateFile {
+                path: "src/lib/mod.rs".to_string(),
+                content: "// nested module".to_string(),
+                executable: false,
+            }],
+        });
+
+        let dir = TempDir::new().unwrap();
+        let created = reg.scaffold("nested", "deep-agent", dir.path()).unwrap();
+        assert_eq!(created.len(), 1);
+        assert!(dir.path().join("src/lib/mod.rs").exists());
+    }
+
+    #[test]
+    fn test_template_type_variants() {
+        // Ensure all variants are serializable
+        let types = [
+            TemplateType::Scanner,
+            TemplateType::Monitor,
+            TemplateType::Analyzer,
+            TemplateType::Worker,
+            TemplateType::Custom,
+        ];
+        for t in &types {
+            let json = serde_json::to_string(t).unwrap();
+            let deser: TemplateType = serde_json::from_str(&json).unwrap();
+            assert_eq!(&deser, t);
+        }
+    }
+
+    #[test]
+    fn test_template_file_serialization() {
+        let tf = TemplateFile {
+            path: "test.rs".to_string(),
+            content: "fn main() {}".to_string(),
+            executable: true,
+        };
+        let json = serde_json::to_string(&tf).unwrap();
+        let deser: TemplateFile = serde_json::from_str(&json).unwrap();
+        assert_eq!(deser.path, "test.rs");
+        assert!(deser.executable);
+    }
+
+    #[test]
+    fn test_template_registry_default() {
+        let reg = TemplateRegistry::default();
+        assert!(reg.get("scanner").is_some());
+        assert!(reg.get("monitor").is_some());
     }
 }

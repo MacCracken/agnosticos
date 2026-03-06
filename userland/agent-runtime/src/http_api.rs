@@ -8,10 +8,10 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use axum::routing::{delete, get, post};
+use axum::routing::{delete, get, post, put};
 use axum::{Json, Router};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -129,10 +129,69 @@ pub struct RegisteredAgentEntry {
     pub detail: AgentDetail,
 }
 
-#[derive(Debug, Clone)]
+/// In-memory per-agent key-value store for the REST API bridge.
+/// Maps agent_id -> key -> value.
+#[derive(Debug, Clone, Default)]
+pub struct ApiMemoryStore {
+    data: Arc<RwLock<HashMap<String, HashMap<String, serde_json::Value>>>>,
+}
+
+impl ApiMemoryStore {
+    pub fn new() -> Self {
+        Self {
+            data: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    pub async fn get(&self, agent_id: &str, key: &str) -> Option<serde_json::Value> {
+        let data = self.data.read().await;
+        data.get(agent_id).and_then(|m| m.get(key).cloned())
+    }
+
+    pub async fn set(&self, agent_id: &str, key: &str, value: serde_json::Value) {
+        let mut data = self.data.write().await;
+        data.entry(agent_id.to_string())
+            .or_default()
+            .insert(key.to_string(), value);
+    }
+
+    pub async fn delete(&self, agent_id: &str, key: &str) -> bool {
+        let mut data = self.data.write().await;
+        if let Some(agent_map) = data.get_mut(agent_id) {
+            agent_map.remove(key).is_some()
+        } else {
+            false
+        }
+    }
+
+    pub async fn list_keys(&self, agent_id: &str) -> Vec<String> {
+        let data = self.data.read().await;
+        data.get(agent_id)
+            .map(|m| {
+                let mut keys: Vec<String> = m.keys().cloned().collect();
+                keys.sort();
+                keys
+            })
+            .unwrap_or_default()
+    }
+}
+
+#[derive(Clone)]
 pub struct ApiState {
     agents: Arc<RwLock<HashMap<Uuid, RegisteredAgentEntry>>>,
     started_at: DateTime<Utc>,
+    pub webhooks: Arc<RwLock<Vec<WebhookRegistration>>>,
+    pub audit_buffer: Arc<RwLock<Vec<AuditEvent>>>,
+    pub memory_store: ApiMemoryStore,
+    pub traces: Arc<RwLock<Vec<serde_json::Value>>>,
+}
+
+impl std::fmt::Debug for ApiState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ApiState")
+            .field("started_at", &self.started_at)
+            .finish()
+    }
 }
 
 impl ApiState {
@@ -140,6 +199,10 @@ impl ApiState {
         Self {
             agents: Arc::new(RwLock::new(HashMap::new())),
             started_at: Utc::now(),
+            webhooks: Arc::new(RwLock::new(Vec::new())),
+            audit_buffer: Arc::new(RwLock::new(Vec::new())),
+            memory_store: ApiMemoryStore::new(),
+            traces: Arc::new(RwLock::new(Vec::new())),
         }
     }
 }
@@ -507,11 +570,23 @@ pub fn build_router(state: ApiState) -> Router {
     Router::new()
         .route("/v1/health", get(health_handler))
         .route("/v1/metrics", get(metrics_handler))
+        .route("/v1/metrics/prometheus", get(prometheus_metrics_handler))
         .route("/v1/agents/register", post(register_agent_handler))
         .route("/v1/agents/:id/heartbeat", post(heartbeat_handler))
         .route("/v1/agents", get(list_agents_handler))
         .route("/v1/agents/:id", get(get_agent_handler))
         .route("/v1/agents/:id", delete(deregister_agent_handler))
+        .route("/v1/webhooks", post(register_webhook_handler))
+        .route("/v1/webhooks", get(list_webhooks_handler))
+        .route("/v1/webhooks/:id", delete(delete_webhook_handler))
+        .route("/v1/audit/forward", post(forward_audit_handler))
+        .route("/v1/audit", get(list_audit_handler))
+        .route("/v1/agents/:id/memory", get(memory_list_handler))
+        .route("/v1/agents/:id/memory/:key", get(memory_get_handler))
+        .route("/v1/agents/:id/memory/:key", put(memory_set_handler))
+        .route("/v1/agents/:id/memory/:key", delete(memory_delete_handler))
+        .route("/v1/traces", post(submit_trace_handler))
+        .route("/v1/traces", get(list_traces_handler))
         .with_state(state)
 }
 
@@ -532,6 +607,369 @@ pub async fn start_server(port: u16) -> anyhow::Result<()> {
 
     Ok(())
 }
+
+// ===========================================================================
+// 3a. Prometheus Metrics Endpoint
+// ===========================================================================
+
+async fn prometheus_metrics_handler(State(state): State<ApiState>) -> impl IntoResponse {
+    let agents = state.agents.read().await;
+    let total = agents.len();
+
+    let mut by_status: HashMap<String, usize> = HashMap::new();
+    for entry in agents.values() {
+        *by_status.entry(entry.detail.status.clone()).or_default() += 1;
+    }
+
+    let mut lines = Vec::new();
+    lines.push("# HELP agnos_agents_total Total registered agents".to_string());
+    lines.push("# TYPE agnos_agents_total gauge".to_string());
+    lines.push(format!("agnos_agents_total {}", total));
+
+    lines.push("# HELP agnos_agent_status Agent status breakdown".to_string());
+    lines.push("# TYPE agnos_agent_status gauge".to_string());
+    for (status, count) in &by_status {
+        lines.push(format!("agnos_agent_status{{status=\"{}\"}} {}", status, count));
+    }
+
+    let uptime = (Utc::now() - state.started_at).num_seconds().max(0) as u64;
+    lines.push("# HELP agnos_uptime_seconds Uptime in seconds".to_string());
+    lines.push("# TYPE agnos_uptime_seconds gauge".to_string());
+    lines.push(format!("agnos_uptime_seconds {}", uptime));
+
+    (
+        StatusCode::OK,
+        [(axum::http::header::CONTENT_TYPE, "text/plain; version=0.0.4; charset=utf-8")],
+        lines.join("\n"),
+    )
+}
+
+// ===========================================================================
+// 3b. Webhook/Event Sink
+// ===========================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebhookRegistration {
+    pub id: Uuid,
+    pub url: String,
+    pub events: Vec<String>,
+    pub secret: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RegisterWebhookRequest {
+    pub url: String,
+    #[serde(default)]
+    pub events: Vec<String>,
+    #[serde(default)]
+    pub secret: Option<String>,
+}
+
+async fn register_webhook_handler(
+    State(state): State<ApiState>,
+    Json(req): Json<RegisterWebhookRequest>,
+) -> impl IntoResponse {
+    if req.url.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "Webhook URL is required", "code": 400})),
+        )
+            .into_response();
+    }
+
+    let wh = WebhookRegistration {
+        id: Uuid::new_v4(),
+        url: req.url,
+        events: req.events,
+        secret: req.secret,
+        created_at: Utc::now(),
+    };
+
+    let id = wh.id;
+    state.webhooks.write().await.push(wh);
+    info!("Webhook registered: {}", id);
+
+    (
+        StatusCode::CREATED,
+        Json(serde_json::json!({"id": id.to_string(), "status": "registered"})),
+    )
+        .into_response()
+}
+
+async fn list_webhooks_handler(State(state): State<ApiState>) -> impl IntoResponse {
+    let webhooks = state.webhooks.read().await;
+    let list: Vec<serde_json::Value> = webhooks
+        .iter()
+        .map(|w| {
+            serde_json::json!({
+                "id": w.id.to_string(),
+                "url": w.url,
+                "events": w.events,
+                "created_at": w.created_at.to_rfc3339(),
+            })
+        })
+        .collect();
+    Json(serde_json::json!({"webhooks": list, "total": list.len()}))
+}
+
+async fn delete_webhook_handler(
+    State(state): State<ApiState>,
+    Path(id): Path<Uuid>,
+) -> impl IntoResponse {
+    let mut webhooks = state.webhooks.write().await;
+    let before = webhooks.len();
+    webhooks.retain(|w| w.id != id);
+    if webhooks.len() < before {
+        info!("Webhook deleted: {}", id);
+        (
+            StatusCode::OK,
+            Json(serde_json::json!({"status": "deleted", "id": id.to_string()})),
+        )
+            .into_response()
+    } else {
+        (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": format!("Webhook {} not found", id), "code": 404})),
+        )
+            .into_response()
+    }
+}
+
+// ===========================================================================
+// 3c. Audit Log Forwarding
+// ===========================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuditEvent {
+    pub timestamp: String,
+    pub action: String,
+    #[serde(default)]
+    pub agent: Option<String>,
+    #[serde(default)]
+    pub details: serde_json::Value,
+    #[serde(default = "default_outcome")]
+    pub outcome: String,
+}
+
+fn default_outcome() -> String {
+    "unknown".to_string()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuditForwardRequest {
+    pub events: Vec<AuditEvent>,
+    pub source: String,
+    #[serde(default)]
+    pub correlation_id: Option<String>,
+}
+
+async fn forward_audit_handler(
+    State(state): State<ApiState>,
+    Json(req): Json<AuditForwardRequest>,
+) -> impl IntoResponse {
+    let count = req.events.len();
+    info!(
+        "Received {} audit events from source={} correlation_id={:?}",
+        count, req.source, req.correlation_id
+    );
+
+    let mut buffer = state.audit_buffer.write().await;
+    for event in req.events {
+        info!(
+            "Audit: action={} agent={:?} outcome={}",
+            event.action, event.agent, event.outcome
+        );
+        buffer.push(event);
+    }
+
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({"status": "accepted", "events_received": count})),
+    )
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AuditQueryParams {
+    #[serde(default)]
+    pub agent: Option<String>,
+    #[serde(default)]
+    pub action: Option<String>,
+    #[serde(default)]
+    pub limit: Option<usize>,
+}
+
+async fn list_audit_handler(
+    State(state): State<ApiState>,
+    Query(params): Query<AuditQueryParams>,
+) -> impl IntoResponse {
+    let buffer = state.audit_buffer.read().await;
+    let mut events: Vec<&AuditEvent> = buffer.iter().collect();
+
+    if let Some(ref agent) = params.agent {
+        events.retain(|e| e.agent.as_deref() == Some(agent.as_str()));
+    }
+    if let Some(ref action) = params.action {
+        events.retain(|e| e.action == *action);
+    }
+    if let Some(limit) = params.limit {
+        events.truncate(limit);
+    }
+
+    let result: Vec<&AuditEvent> = events;
+    Json(serde_json::json!({"events": result, "total": result.len()}))
+}
+
+// ===========================================================================
+// 3d. Agent Memory Bridge REST API
+// ===========================================================================
+
+async fn memory_get_handler(
+    State(state): State<ApiState>,
+    Path((id, key)): Path<(String, String)>,
+) -> impl IntoResponse {
+    match state.memory_store.get(&id, &key).await {
+        Some(value) => (
+            StatusCode::OK,
+            Json(serde_json::json!({"key": key, "agent_id": id, "value": value})),
+        )
+            .into_response(),
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": format!("Key '{}' not found", key), "code": 404})),
+        )
+            .into_response(),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MemorySetRequest {
+    pub value: serde_json::Value,
+    #[serde(default)]
+    pub tags: Vec<String>,
+}
+
+async fn memory_set_handler(
+    State(state): State<ApiState>,
+    Path((id, key)): Path<(String, String)>,
+    Json(req): Json<MemorySetRequest>,
+) -> impl IntoResponse {
+    state.memory_store.set(&id, &key, req.value).await;
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({"status": "stored", "key": key})),
+    )
+}
+
+async fn memory_list_handler(
+    State(state): State<ApiState>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    let keys = state.memory_store.list_keys(&id).await;
+    let total = keys.len();
+    Json(serde_json::json!({"keys": keys, "total": total}))
+}
+
+async fn memory_delete_handler(
+    State(state): State<ApiState>,
+    Path((id, key)): Path<(String, String)>,
+) -> impl IntoResponse {
+    if state.memory_store.delete(&id, &key).await {
+        (
+            StatusCode::OK,
+            Json(serde_json::json!({"status": "deleted", "key": key})),
+        )
+            .into_response()
+    } else {
+        (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": format!("Key '{}' not found", key), "code": 404})),
+        )
+            .into_response()
+    }
+}
+
+// ===========================================================================
+// 3e. Reasoning Trace Submission
+// ===========================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TraceStep {
+    pub name: String,
+    pub rationale: String,
+    #[serde(default)]
+    pub tool: Option<String>,
+    #[serde(default)]
+    pub output: Option<String>,
+    pub duration_ms: u64,
+    pub success: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TraceSubmitRequest {
+    pub agent_id: String,
+    pub input: String,
+    pub steps: Vec<TraceStep>,
+    #[serde(default)]
+    pub result: Option<String>,
+    pub duration_ms: u64,
+}
+
+async fn submit_trace_handler(
+    State(state): State<ApiState>,
+    Json(req): Json<TraceSubmitRequest>,
+) -> impl IntoResponse {
+    info!(
+        "Trace submitted: agent_id={} steps={} duration_ms={}",
+        req.agent_id,
+        req.steps.len(),
+        req.duration_ms
+    );
+
+    let trace_value = match serde_json::to_value(&req) {
+        Ok(v) => v,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": format!("Serialization error: {}", e), "code": 400})),
+            )
+                .into_response();
+        }
+    };
+
+    let mut traces = state.traces.write().await;
+    traces.push(trace_value);
+
+    (
+        StatusCode::CREATED,
+        Json(serde_json::json!({"status": "accepted", "trace_count": traces.len()})),
+    )
+        .into_response()
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TraceQueryParams {
+    #[serde(default)]
+    pub agent_id: Option<String>,
+}
+
+async fn list_traces_handler(
+    State(state): State<ApiState>,
+    Query(params): Query<TraceQueryParams>,
+) -> impl IntoResponse {
+    let traces = state.traces.read().await;
+    let mut result: Vec<&serde_json::Value> = traces.iter().collect();
+
+    if let Some(ref agent_id) = params.agent_id {
+        result.retain(|t| t.get("agent_id").and_then(|v| v.as_str()) == Some(agent_id.as_str()));
+    }
+
+    Json(serde_json::json!({"traces": result, "total": result.len()}))
+}
+
+// ===========================================================================
+// Tests
+// ===========================================================================
 
 #[cfg(test)]
 mod tests {
@@ -1209,5 +1647,652 @@ mod tests {
         assert!(detail.last_heartbeat.is_some());
         // Status should remain "registered" since no status was sent
         assert_eq!(detail.status, "registered");
+    }
+
+    // ==================================================================
+    // Phase 6.8: Prometheus, Webhooks, Audit, Memory, Traces tests
+    // ==================================================================
+
+    // --- 3a. Prometheus metrics ---
+
+    #[tokio::test]
+    async fn test_prometheus_metrics_empty() {
+        let app = test_app();
+        let req = Request::builder()
+            .uri("/v1/metrics/prometheus")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let text = String::from_utf8(body.to_vec()).unwrap();
+        assert!(text.contains("# HELP agnos_agents_total"));
+        assert!(text.contains("# TYPE agnos_agents_total gauge"));
+        assert!(text.contains("agnos_agents_total 0"));
+        assert!(text.contains("agnos_uptime_seconds"));
+    }
+
+    #[tokio::test]
+    async fn test_prometheus_metrics_with_agents() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        // Register an agent
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/agents/register")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&serde_json::json!({"name": "prom-agent"})).unwrap()))
+            .unwrap();
+        app.clone().oneshot(req).await.unwrap();
+
+        let req = Request::builder()
+            .uri("/v1/metrics/prometheus")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let text = String::from_utf8(body.to_vec()).unwrap();
+        assert!(text.contains("agnos_agents_total 1"));
+        assert!(text.contains("agnos_agent_status"));
+    }
+
+    // --- 3b. Webhook tests ---
+
+    #[tokio::test]
+    async fn test_register_webhook() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        let req_body = serde_json::json!({
+            "url": "https://example.com/hook",
+            "events": ["agent.registered", "agent.heartbeat"],
+            "secret": "s3cret"
+        });
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/webhooks")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(json["id"].as_str().is_some());
+        assert_eq!(json["status"], "registered");
+    }
+
+    #[tokio::test]
+    async fn test_register_webhook_empty_url() {
+        let app = test_app();
+        let req_body = serde_json::json!({"url": "", "events": []});
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/webhooks")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_list_webhooks() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        // Register a webhook
+        let req_body = serde_json::json!({"url": "https://example.com/hook", "events": ["test"]});
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/webhooks")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        app.clone().oneshot(req).await.unwrap();
+
+        // List
+        let req = Request::builder()
+            .uri("/v1/webhooks")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["total"], 1);
+    }
+
+    #[tokio::test]
+    async fn test_delete_webhook() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        // Register
+        let req_body = serde_json::json!({"url": "https://example.com/hook"});
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/webhooks")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let id = json["id"].as_str().unwrap();
+
+        // Delete
+        let req = Request::builder()
+            .method("DELETE")
+            .uri(format!("/v1/webhooks/{}", id))
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // Verify empty
+        let req = Request::builder()
+            .uri("/v1/webhooks")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["total"], 0);
+    }
+
+    #[tokio::test]
+    async fn test_delete_webhook_not_found() {
+        let app = test_app();
+        let req = Request::builder()
+            .method("DELETE")
+            .uri(format!("/v1/webhooks/{}", Uuid::new_v4()))
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_list_webhooks_empty() {
+        let app = test_app();
+        let req = Request::builder()
+            .uri("/v1/webhooks")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["total"], 0);
+    }
+
+    // --- 3c. Audit tests ---
+
+    #[tokio::test]
+    async fn test_forward_audit_events() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        let req_body = serde_json::json!({
+            "source": "agnostic-python",
+            "correlation_id": "corr-123",
+            "events": [
+                {
+                    "timestamp": "2026-03-06T12:00:00Z",
+                    "action": "file.read",
+                    "agent": "researcher",
+                    "details": {"path": "/tmp/data.csv"},
+                    "outcome": "success"
+                },
+                {
+                    "timestamp": "2026-03-06T12:01:00Z",
+                    "action": "llm.query",
+                    "details": {},
+                    "outcome": "success"
+                }
+            ]
+        });
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/audit/forward")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["events_received"], 2);
+    }
+
+    #[tokio::test]
+    async fn test_list_audit_events() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        // Forward some events
+        let req_body = serde_json::json!({
+            "source": "test",
+            "events": [
+                {"timestamp": "t1", "action": "read", "agent": "a1", "details": {}, "outcome": "ok"},
+                {"timestamp": "t2", "action": "write", "agent": "a2", "details": {}, "outcome": "ok"},
+                {"timestamp": "t3", "action": "read", "agent": "a1", "details": {}, "outcome": "fail"}
+            ]
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/audit/forward")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        app.clone().oneshot(req).await.unwrap();
+
+        // List all
+        let req = Request::builder()
+            .uri("/v1/audit")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["total"], 3);
+
+        // Filter by agent
+        let req = Request::builder()
+            .uri("/v1/audit?agent=a1")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["total"], 2);
+
+        // Filter by action
+        let req = Request::builder()
+            .uri("/v1/audit?action=write")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["total"], 1);
+
+        // Limit
+        let req = Request::builder()
+            .uri("/v1/audit?limit=1")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["total"], 1);
+    }
+
+    #[tokio::test]
+    async fn test_list_audit_empty() {
+        let app = test_app();
+        let req = Request::builder()
+            .uri("/v1/audit")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["total"], 0);
+    }
+
+    #[tokio::test]
+    async fn test_forward_audit_empty_events() {
+        let app = test_app();
+        let req_body = serde_json::json!({"source": "test", "events": []});
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/audit/forward")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["events_received"], 0);
+    }
+
+    #[test]
+    fn test_audit_event_serialization() {
+        let event = AuditEvent {
+            timestamp: "2026-03-06T00:00:00Z".to_string(),
+            action: "test".to_string(),
+            agent: Some("agent-1".to_string()),
+            details: serde_json::json!({"key": "value"}),
+            outcome: "success".to_string(),
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        let deser: AuditEvent = serde_json::from_str(&json).unwrap();
+        assert_eq!(deser.action, "test");
+        assert_eq!(deser.agent, Some("agent-1".to_string()));
+    }
+
+    // --- 3d. Memory bridge tests ---
+
+    #[tokio::test]
+    async fn test_memory_set_and_get() {
+        let state = test_state();
+        let app = build_router(state.clone());
+        let id = Uuid::new_v4();
+
+        // Set
+        let req_body = serde_json::json!({"value": {"greeting": "hello"}, "tags": ["test"]});
+        let req = Request::builder()
+            .method("PUT")
+            .uri(format!("/v1/agents/{}/memory/mykey", id))
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // Get
+        let req = Request::builder()
+            .uri(format!("/v1/agents/{}/memory/mykey", id))
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["key"], "mykey");
+        assert_eq!(json["value"]["greeting"], "hello");
+    }
+
+    #[tokio::test]
+    async fn test_memory_get_not_found() {
+        let state = test_state();
+        let app = build_router(state.clone());
+        let id = Uuid::new_v4();
+
+        let req = Request::builder()
+            .uri(format!("/v1/agents/{}/memory/nonexistent", id))
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_memory_list_keys() {
+        let state = test_state();
+        let app = build_router(state.clone());
+        let id = Uuid::new_v4();
+
+        // Set two keys
+        for key in ["alpha", "beta"] {
+            let req_body = serde_json::json!({"value": 1});
+            let req = Request::builder()
+                .method("PUT")
+                .uri(format!("/v1/agents/{}/memory/{}", id, key))
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+                .unwrap();
+            app.clone().oneshot(req).await.unwrap();
+        }
+
+        // List
+        let req = Request::builder()
+            .uri(format!("/v1/agents/{}/memory", id))
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["total"], 2);
+    }
+
+    #[tokio::test]
+    async fn test_memory_delete_key() {
+        let state = test_state();
+        let app = build_router(state.clone());
+        let id = Uuid::new_v4();
+
+        // Set
+        let req_body = serde_json::json!({"value": "data"});
+        let req = Request::builder()
+            .method("PUT")
+            .uri(format!("/v1/agents/{}/memory/delme", id))
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        app.clone().oneshot(req).await.unwrap();
+
+        // Delete
+        let req = Request::builder()
+            .method("DELETE")
+            .uri(format!("/v1/agents/{}/memory/delme", id))
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // Verify gone
+        let req = Request::builder()
+            .uri(format!("/v1/agents/{}/memory/delme", id))
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_memory_delete_not_found() {
+        let state = test_state();
+        let app = build_router(state.clone());
+        let id = Uuid::new_v4();
+
+        let req = Request::builder()
+            .method("DELETE")
+            .uri(format!("/v1/agents/{}/memory/ghost", id))
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_memory_list_empty() {
+        let state = test_state();
+        let app = build_router(state.clone());
+        let id = Uuid::new_v4();
+
+        let req = Request::builder()
+            .uri(format!("/v1/agents/{}/memory", id))
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["total"], 0);
+    }
+
+    #[tokio::test]
+    async fn test_memory_isolation_between_agents() {
+        let state = test_state();
+        let app = build_router(state.clone());
+        let id1 = Uuid::new_v4();
+        let id2 = Uuid::new_v4();
+
+        // Set same key for different agents
+        let req_body = serde_json::json!({"value": "agent1-data"});
+        let req = Request::builder()
+            .method("PUT")
+            .uri(format!("/v1/agents/{}/memory/shared", id1))
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        app.clone().oneshot(req).await.unwrap();
+
+        let req_body = serde_json::json!({"value": "agent2-data"});
+        let req = Request::builder()
+            .method("PUT")
+            .uri(format!("/v1/agents/{}/memory/shared", id2))
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        app.clone().oneshot(req).await.unwrap();
+
+        // Verify isolation
+        let req = Request::builder()
+            .uri(format!("/v1/agents/{}/memory/shared", id1))
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["value"], "agent1-data");
+    }
+
+    // --- 3e. Traces tests ---
+
+    #[tokio::test]
+    async fn test_submit_trace() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        let req_body = serde_json::json!({
+            "agent_id": "research-agent",
+            "input": "What is AGNOS?",
+            "steps": [
+                {
+                    "name": "search",
+                    "rationale": "Need to find information",
+                    "tool": "web_search",
+                    "output": "Found docs",
+                    "duration_ms": 150,
+                    "success": true
+                },
+                {
+                    "name": "summarize",
+                    "rationale": "Condense results",
+                    "duration_ms": 200,
+                    "success": true
+                }
+            ],
+            "result": "AGNOS is an AI-native operating system.",
+            "duration_ms": 350
+        });
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/traces")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["status"], "accepted");
+    }
+
+    #[tokio::test]
+    async fn test_list_traces() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        // Submit two traces
+        for agent in ["agent-a", "agent-b"] {
+            let req_body = serde_json::json!({
+                "agent_id": agent,
+                "input": "test",
+                "steps": [],
+                "duration_ms": 100
+            });
+            let req = Request::builder()
+                .method("POST")
+                .uri("/v1/traces")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+                .unwrap();
+            app.clone().oneshot(req).await.unwrap();
+        }
+
+        // List all
+        let req = Request::builder()
+            .uri("/v1/traces")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["total"], 2);
+
+        // Filter by agent_id
+        let req = Request::builder()
+            .uri("/v1/traces?agent_id=agent-a")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["total"], 1);
+    }
+
+    #[tokio::test]
+    async fn test_list_traces_empty() {
+        let app = test_app();
+        let req = Request::builder()
+            .uri("/v1/traces")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["total"], 0);
+    }
+
+    #[test]
+    fn test_trace_step_serialization() {
+        let step = TraceStep {
+            name: "analyze".to_string(),
+            rationale: "need to check".to_string(),
+            tool: Some("grep".to_string()),
+            output: Some("found 5 matches".to_string()),
+            duration_ms: 50,
+            success: true,
+        };
+        let json = serde_json::to_string(&step).unwrap();
+        let deser: TraceStep = serde_json::from_str(&json).unwrap();
+        assert_eq!(deser.name, "analyze");
+        assert!(deser.success);
+    }
+
+    #[test]
+    fn test_webhook_registration_serialization() {
+        let wh = WebhookRegistration {
+            id: Uuid::new_v4(),
+            url: "https://example.com/hook".to_string(),
+            events: vec!["test".to_string()],
+            secret: Some("key".to_string()),
+            created_at: Utc::now(),
+        };
+        let json = serde_json::to_string(&wh).unwrap();
+        let deser: WebhookRegistration = serde_json::from_str(&json).unwrap();
+        assert_eq!(deser.url, "https://example.com/hook");
     }
 }

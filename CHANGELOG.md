@@ -13,12 +13,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | Phase 5 Completion | 99% |
 | Phase 6 Completion | 100% |
 | Phase 6.5 Completion | 100% |
-| Test Coverage | ~80% (5800+ tests, 0 failures, 9 ignored) |
+| Phase 6.8 Completion | 100% |
+| Test Coverage | ~82% (7200+ tests, 0 failures) |
 | Compiler Warnings | 0 |
 | Clippy Warnings | 0 |
 | CIS Compliance | ~85% |
 | Phase 6.7 Completion | 100% |
 | Alpha Blocker | Third-party security audit (vendor selection) |
+
+### Added — Phase 6.8: Beta Features (34 Items)
+
+#### RAG & Knowledge (4 items)
+- **agent-runtime/vector_store.rs** — Embedded vector store: cosine similarity search, VectorIndex with insert/search/remove, JSON persistence, dimension validation (24 tests)
+- **agent-runtime/rag.rs** — RAG pipeline: text chunking with overlap, bag-of-words TF embeddings, retrieval-augmented context formatting for LLM injection (16 tests)
+- **agent-runtime/knowledge_base.rs** — System knowledge base: recursive directory indexing, keyword search with TF scoring, source filtering (ManPage/AgentManifest/AuditLog/ConfigFile), stats (17 tests)
+- **agent-runtime/file_watcher.rs** — Polling-based file watcher: mtime comparison, recursive watching, glob pattern filtering, WatchEvent stream (15 tests)
+
+#### Advanced Agent Capabilities (5 items)
+- **agent-runtime/ipc.rs** — Agent-to-agent RPC: typed RpcRequest/RpcResponse, RpcRegistry for method advertisement, RpcRouter with oneshot channels and timeout support (22 tests)
+- **agent-runtime/package_manager.rs** — Agent templates & scaffolding: TemplateRegistry with built-in scanner/monitor templates, variable substitution ({{agent_name}}/{{timestamp}}), file generation (13 tests)
+- **agent-runtime/capability.rs** — Capability negotiation: CapabilityRegistry for agent capability advertisement/discovery, schema-compatible matching, supports external agents (AGNOSTIC QA) (20 tests)
+- **agent-runtime/supervisor.rs** — Circuit breaker: Closed/Open/HalfOpen states, configurable failure threshold, automatic recovery timeout, half-open probing (14 tests)
+- **agent-runtime/service_manager.rs** — Scheduled/cron tasks: 5-field cron expression parser, TaskScheduler with due_tasks/mark_completed, next_run computation (18 tests)
+
+#### Observability Stack (4 items)
+- **agnos-common/telemetry.rs** — OpenTelemetry traces: TraceId/SpanId, W3C traceparent header injection/extraction, SpanCollector with OTLP-like JSON export, distributed tracing context propagation (32 tests)
+- **agent-runtime/resource_forecast.rs** — Resource forecasting: linear regression on CPU/memory samples, trend detection (Rising/Stable/Falling), breach prediction alerts (22 tests)
+- **agent-runtime/http_api.rs** — Prometheus `/v1/metrics/prometheus` endpoint with exposition format; webhook event sink (register/list/delete); audit log forwarding from external agents; agent memory bridge REST API (GET/PUT/DELETE); reasoning trace submission REST API (24 tests)
+
+#### Desktop & Accessibility (5 items)
+- **desktop-environment/accessibility.rs** — AT-SPI2 foundation: AccessibilityTree with 24 roles, keyboard navigation (next/prev), screen reader announcements, focus management, high-contrast themes (28 tests)
+- **desktop-environment/compositor.rs** — Clipboard integration: ClipboardManager with text/HTML/image/files support, history ring buffer, MIME type detection (12 tests)
+- **desktop-environment/security_ui.rs** — Window ownership badges: TrustLevel (System/Verified/Unverified/Untrusted/Sandboxed), SandboxStatus indicators, WindowBadgeManager (12 tests)
+- **desktop-environment/wayland.rs** — XDG popup/positioner: PopupManager with create/dismiss/reposition, Edge enum, ConstraintAdjustment flags (14 tests)
+- **desktop-environment/gestures.rs** — Multi-touch gestures: GestureRecognizer for tap/double-tap/long-press/swipe/pinch/rotate, configurable thresholds (17 tests)
+
+#### Security Hardening (4 items)
+- **agent-runtime/learning.rs** — Behavior anomaly detection: BehaviorBaseline with sliding window stats, sigma-based anomaly detection (Low/Medium/High/Critical severity), multi-agent AnomalyDetector (17 tests)
+- **agent-runtime/mtls.rs** — Zero-trust agent networking: CertificateAuthority for issuing/verifying/revoking/rotating agent certificates, expiry detection, MtlsPolicy enforcement (20 tests)
+- **agnos-common/secrets.rs** — Secrets rotation automation: RotationPolicy with interval/max_age/notify_before, SecretRotationManager with status checking and scheduling, RotationLog audit trail (20 tests)
+- **agent-runtime/integrity.rs** — Runtime integrity attestation: SHA-256 file verification, IntegrityVerifier with baseline creation and tamper detection, IntegrityReport with clean/mismatch/error summary (18 tests)
+
+#### Networking & Integration (3 items + 9 cross-project)
+- **llm-gateway/accounting.rs** — LLM token budget sharing: BudgetPool with per-project allocation/consumption/rebalancing, period-based reset, BudgetManager for multi-pool management (22 tests)
+- **llm-gateway/rate_limiter.rs** — Gateway Prometheus metrics: GatewayMetrics with per-model request/token/latency/cache tracking, Prometheus exposition format export (12 tests)
+- **docker/Dockerfile.python** — Python 3.12 base image with AGNOS agent directories and OpenTelemetry
+- **docker/Dockerfile.node** — Node.js 20 base image with AGNOS agent directories
+- **docker/envoy-sidecar.yaml** — Envoy sidecar proxy config for service mesh readiness
 
 ### Roadmap — Cross-Project Integration (AGNOSTIC + AGNOS)
 

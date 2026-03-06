@@ -536,6 +536,158 @@ impl SecretInjector {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Secrets Rotation Automation
+// ---------------------------------------------------------------------------
+
+/// Policy governing when a secret should be rotated.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RotationPolicy {
+    pub secret_name: String,
+    pub rotation_interval: std::time::Duration,
+    pub last_rotated: Option<chrono::DateTime<chrono::Utc>>,
+    pub max_age: std::time::Duration,
+    pub notify_before: std::time::Duration,
+}
+
+/// Current rotation status of a secret.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RotationStatus {
+    /// Secret is within its rotation interval.
+    Current,
+    /// Secret will need rotation soon (within notify_before).
+    DueSoon,
+    /// Secret has exceeded its max_age and must be rotated immediately.
+    Overdue,
+    /// Secret has never been rotated.
+    NeverRotated,
+}
+
+/// A record of a single rotation event.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RotationEvent {
+    pub secret_name: String,
+    pub old_version: u32,
+    pub new_version: u32,
+    pub rotated_at: chrono::DateTime<chrono::Utc>,
+    pub rotated_by: String,
+}
+
+/// Append-only log of rotation events.
+#[derive(Debug, Clone, Default)]
+pub struct RotationLog {
+    events: Vec<RotationEvent>,
+}
+
+impl RotationLog {
+    /// Record a new rotation event.
+    pub fn record(&mut self, event: RotationEvent) {
+        self.events.push(event);
+    }
+
+    /// Get the rotation history for a specific secret.
+    pub fn history(&self, name: &str) -> Vec<&RotationEvent> {
+        self.events.iter().filter(|e| e.secret_name == name).collect()
+    }
+
+    /// Get the most recent rotation event for a secret.
+    pub fn last_rotation(&self, name: &str) -> Option<&RotationEvent> {
+        self.events.iter().rev().find(|e| e.secret_name == name)
+    }
+}
+
+/// Manages rotation policies and tracks which secrets need rotation.
+pub struct SecretRotationManager {
+    policies: HashMap<String, RotationPolicy>,
+}
+
+impl SecretRotationManager {
+    /// Create a new rotation manager.
+    pub fn new() -> Self {
+        Self {
+            policies: HashMap::new(),
+        }
+    }
+
+    /// Add or replace a rotation policy.
+    pub fn add_policy(&mut self, policy: RotationPolicy) {
+        self.policies.insert(policy.secret_name.clone(), policy);
+    }
+
+    /// Remove a rotation policy by name.
+    pub fn remove_policy(&mut self, name: &str) -> Option<RotationPolicy> {
+        self.policies.remove(name)
+    }
+
+    /// Check the rotation status of a named secret.
+    pub fn check_status(&self, name: &str) -> RotationStatus {
+        let policy = match self.policies.get(name) {
+            Some(p) => p,
+            None => return RotationStatus::NeverRotated,
+        };
+
+        let last = match policy.last_rotated {
+            Some(t) => t,
+            None => return RotationStatus::NeverRotated,
+        };
+
+        let now = chrono::Utc::now();
+        let age = now.signed_duration_since(last);
+
+        let max_age = chrono::Duration::from_std(policy.max_age).unwrap_or(chrono::Duration::MAX);
+        if age > max_age {
+            return RotationStatus::Overdue;
+        }
+
+        let interval = chrono::Duration::from_std(policy.rotation_interval).unwrap_or(chrono::Duration::MAX);
+        let notify = chrono::Duration::from_std(policy.notify_before).unwrap_or(chrono::Duration::zero());
+        if age > interval - notify {
+            return RotationStatus::DueSoon;
+        }
+
+        RotationStatus::Current
+    }
+
+    /// Return all policies whose secrets are overdue or due-soon.
+    pub fn secrets_needing_rotation(&self) -> Vec<&RotationPolicy> {
+        self.policies
+            .values()
+            .filter(|p| {
+                let status = self.check_status(&p.secret_name);
+                status == RotationStatus::Overdue
+                    || status == RotationStatus::DueSoon
+                    || status == RotationStatus::NeverRotated
+            })
+            .collect()
+    }
+
+    /// Mark a secret as having been rotated at a given time.
+    pub fn record_rotation(&mut self, name: &str, rotated_at: chrono::DateTime<chrono::Utc>) {
+        if let Some(policy) = self.policies.get_mut(name) {
+            policy.last_rotated = Some(rotated_at);
+        }
+    }
+
+    /// List all registered policies.
+    pub fn all_policies(&self) -> Vec<&RotationPolicy> {
+        self.policies.values().collect()
+    }
+
+    /// Compute when the next rotation is due for a secret.
+    pub fn next_rotation(&self, name: &str) -> Option<chrono::DateTime<chrono::Utc>> {
+        let policy = self.policies.get(name)?;
+        let last = policy.last_rotated?;
+        let interval = chrono::Duration::from_std(policy.rotation_interval).ok()?;
+        Some(last + interval)
+    }
+}
+
+impl Default for SecretRotationManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1284,5 +1436,246 @@ mod tests {
         assert_eq!(retrieved.metadata.get("ver").unwrap(), "2");
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ── Secrets Rotation tests ───────────────────────────────────────
+
+    fn make_policy(name: &str, interval_secs: u64, max_age_secs: u64, notify_secs: u64) -> RotationPolicy {
+        RotationPolicy {
+            secret_name: name.to_string(),
+            rotation_interval: std::time::Duration::from_secs(interval_secs),
+            last_rotated: None,
+            max_age: std::time::Duration::from_secs(max_age_secs),
+            notify_before: std::time::Duration::from_secs(notify_secs),
+        }
+    }
+
+    #[test]
+    fn test_rotation_manager_new_empty() {
+        let mgr = SecretRotationManager::new();
+        assert!(mgr.all_policies().is_empty());
+    }
+
+    #[test]
+    fn test_rotation_manager_default() {
+        let mgr = SecretRotationManager::default();
+        assert!(mgr.all_policies().is_empty());
+    }
+
+    #[test]
+    fn test_add_and_remove_policy() {
+        let mut mgr = SecretRotationManager::new();
+        mgr.add_policy(make_policy("db-pass", 86400, 172800, 3600));
+        assert_eq!(mgr.all_policies().len(), 1);
+        let removed = mgr.remove_policy("db-pass");
+        assert!(removed.is_some());
+        assert_eq!(removed.unwrap().secret_name, "db-pass");
+        assert!(mgr.all_policies().is_empty());
+    }
+
+    #[test]
+    fn test_remove_nonexistent_policy() {
+        let mut mgr = SecretRotationManager::new();
+        assert!(mgr.remove_policy("nope").is_none());
+    }
+
+    #[test]
+    fn test_status_never_rotated() {
+        let mut mgr = SecretRotationManager::new();
+        mgr.add_policy(make_policy("api-key", 86400, 172800, 3600));
+        assert_eq!(mgr.check_status("api-key"), RotationStatus::NeverRotated);
+    }
+
+    #[test]
+    fn test_status_unknown_secret() {
+        let mgr = SecretRotationManager::new();
+        assert_eq!(mgr.check_status("unknown"), RotationStatus::NeverRotated);
+    }
+
+    #[test]
+    fn test_status_current() {
+        let mut mgr = SecretRotationManager::new();
+        let mut policy = make_policy("token", 86400, 172800, 3600);
+        policy.last_rotated = Some(chrono::Utc::now());
+        mgr.add_policy(policy);
+        assert_eq!(mgr.check_status("token"), RotationStatus::Current);
+    }
+
+    #[test]
+    fn test_status_overdue() {
+        let mut mgr = SecretRotationManager::new();
+        let mut policy = make_policy("old-key", 3600, 7200, 600);
+        // Last rotated 3 hours ago, max_age is 2 hours -> overdue
+        policy.last_rotated = Some(chrono::Utc::now() - chrono::Duration::seconds(10800));
+        mgr.add_policy(policy);
+        assert_eq!(mgr.check_status("old-key"), RotationStatus::Overdue);
+    }
+
+    #[test]
+    fn test_status_due_soon() {
+        let mut mgr = SecretRotationManager::new();
+        let mut policy = make_policy("soon-key", 3600, 7200, 1800);
+        // Last rotated 2500s ago, interval 3600, notify_before 1800
+        // age(2500) > interval(3600) - notify(1800) = 1800 -> DueSoon
+        policy.last_rotated = Some(chrono::Utc::now() - chrono::Duration::seconds(2500));
+        mgr.add_policy(policy);
+        assert_eq!(mgr.check_status("soon-key"), RotationStatus::DueSoon);
+    }
+
+    #[test]
+    fn test_record_rotation() {
+        let mut mgr = SecretRotationManager::new();
+        mgr.add_policy(make_policy("rotate-me", 86400, 172800, 3600));
+        assert_eq!(mgr.check_status("rotate-me"), RotationStatus::NeverRotated);
+
+        let now = chrono::Utc::now();
+        mgr.record_rotation("rotate-me", now);
+        assert_eq!(mgr.check_status("rotate-me"), RotationStatus::Current);
+    }
+
+    #[test]
+    fn test_secrets_needing_rotation() {
+        let mut mgr = SecretRotationManager::new();
+
+        // Current secret
+        let mut current = make_policy("current", 86400, 172800, 3600);
+        current.last_rotated = Some(chrono::Utc::now());
+        mgr.add_policy(current);
+
+        // Never rotated secret
+        mgr.add_policy(make_policy("never", 86400, 172800, 3600));
+
+        // Overdue secret
+        let mut overdue = make_policy("overdue", 3600, 7200, 600);
+        overdue.last_rotated = Some(chrono::Utc::now() - chrono::Duration::seconds(10800));
+        mgr.add_policy(overdue);
+
+        let needing = mgr.secrets_needing_rotation();
+        assert!(needing.len() >= 2); // "never" and "overdue"
+        let names: Vec<&str> = needing.iter().map(|p| p.secret_name.as_str()).collect();
+        assert!(names.contains(&"never"));
+        assert!(names.contains(&"overdue"));
+    }
+
+    #[test]
+    fn test_next_rotation() {
+        let mut mgr = SecretRotationManager::new();
+        let now = chrono::Utc::now();
+        let mut policy = make_policy("scheduled", 86400, 172800, 3600);
+        policy.last_rotated = Some(now);
+        mgr.add_policy(policy);
+
+        let next = mgr.next_rotation("scheduled").unwrap();
+        let diff = next.signed_duration_since(now);
+        assert!((diff.num_seconds() - 86400).abs() < 2);
+    }
+
+    #[test]
+    fn test_next_rotation_never_rotated() {
+        let mut mgr = SecretRotationManager::new();
+        mgr.add_policy(make_policy("norot", 86400, 172800, 3600));
+        assert!(mgr.next_rotation("norot").is_none());
+    }
+
+    #[test]
+    fn test_next_rotation_unknown() {
+        let mgr = SecretRotationManager::new();
+        assert!(mgr.next_rotation("unknown").is_none());
+    }
+
+    #[test]
+    fn test_rotation_log_record_and_history() {
+        let mut log = RotationLog::default();
+        log.record(RotationEvent {
+            secret_name: "db-pass".to_string(),
+            old_version: 1,
+            new_version: 2,
+            rotated_at: chrono::Utc::now(),
+            rotated_by: "admin".to_string(),
+        });
+        log.record(RotationEvent {
+            secret_name: "api-key".to_string(),
+            old_version: 3,
+            new_version: 4,
+            rotated_at: chrono::Utc::now(),
+            rotated_by: "system".to_string(),
+        });
+        log.record(RotationEvent {
+            secret_name: "db-pass".to_string(),
+            old_version: 2,
+            new_version: 3,
+            rotated_at: chrono::Utc::now(),
+            rotated_by: "admin".to_string(),
+        });
+
+        let db_history = log.history("db-pass");
+        assert_eq!(db_history.len(), 2);
+        let api_history = log.history("api-key");
+        assert_eq!(api_history.len(), 1);
+    }
+
+    #[test]
+    fn test_rotation_log_last_rotation() {
+        let mut log = RotationLog::default();
+        log.record(RotationEvent {
+            secret_name: "key".to_string(),
+            old_version: 1,
+            new_version: 2,
+            rotated_at: chrono::Utc::now(),
+            rotated_by: "a".to_string(),
+        });
+        log.record(RotationEvent {
+            secret_name: "key".to_string(),
+            old_version: 2,
+            new_version: 3,
+            rotated_at: chrono::Utc::now(),
+            rotated_by: "b".to_string(),
+        });
+
+        let last = log.last_rotation("key").unwrap();
+        assert_eq!(last.new_version, 3);
+        assert_eq!(last.rotated_by, "b");
+    }
+
+    #[test]
+    fn test_rotation_log_empty() {
+        let log = RotationLog::default();
+        assert!(log.history("anything").is_empty());
+        assert!(log.last_rotation("anything").is_none());
+    }
+
+    #[test]
+    fn test_rotation_policy_serialization() {
+        let mut policy = make_policy("ser-test", 86400, 172800, 3600);
+        policy.last_rotated = Some(chrono::Utc::now());
+        let json = serde_json::to_string(&policy).unwrap();
+        let deserialized: RotationPolicy = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.secret_name, "ser-test");
+        assert!(deserialized.last_rotated.is_some());
+    }
+
+    #[test]
+    fn test_rotation_event_serialization() {
+        let event = RotationEvent {
+            secret_name: "evt-test".to_string(),
+            old_version: 5,
+            new_version: 6,
+            rotated_at: chrono::Utc::now(),
+            rotated_by: "tester".to_string(),
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        let deserialized: RotationEvent = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.old_version, 5);
+        assert_eq!(deserialized.new_version, 6);
+    }
+
+    #[test]
+    fn test_add_policy_replaces_existing() {
+        let mut mgr = SecretRotationManager::new();
+        mgr.add_policy(make_policy("dup", 100, 200, 10));
+        mgr.add_policy(make_policy("dup", 999, 200, 10));
+        assert_eq!(mgr.all_policies().len(), 1);
+        let p = mgr.all_policies()[0];
+        assert_eq!(p.rotation_interval.as_secs(), 999);
     }
 }

@@ -1,0 +1,26 @@
+# AGNOS Node.js 20 Base Image
+# For running Node.js-based agents (SecureYeoman, etc.) with AGNOS sandbox
+FROM node:20-slim AS base
+
+# System dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    libseccomp2 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create agnos user and directories
+RUN useradd --system --create-home --shell /bin/bash agnos \
+    && mkdir -p /var/lib/agnos/agent-memory \
+    && mkdir -p /var/log/agnos \
+    && mkdir -p /run/agnos \
+    && chown -R agnos:agnos /var/lib/agnos /var/log/agnos /run/agnos
+
+# Labels
+LABEL org.opencontainers.image.title="AGNOS Node.js 20 Base"
+LABEL org.opencontainers.image.description="Node.js 20 base image with AGNOS agent runtime support"
+LABEL org.opencontainers.image.vendor="AGNOS"
+
+USER agnos
+WORKDIR /home/agnos
+
+ENTRYPOINT ["node"]

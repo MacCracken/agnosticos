@@ -1486,3 +1486,243 @@ mod tests {
         assert_eq!(cloned.agent_name, "test");
     }
 }
+
+// ============================================================================
+// Agent window ownership badges
+// ============================================================================
+
+use crate::compositor::SurfaceId;
+
+/// Trust level for an agent that owns a window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum TrustLevel {
+    System,
+    Verified,
+    Unverified,
+    Untrusted,
+    Sandboxed,
+}
+
+/// Sandbox enforcement status for a window's owning agent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum SandboxStatus {
+    FullSandbox,
+    PartialSandbox,
+    NoSandbox,
+}
+
+/// Visual icon type shown on the window badge.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum BadgeIcon {
+    Shield,
+    Lock,
+    Warning,
+    Agent,
+    System,
+}
+
+/// Badge displayed on a window to indicate agent ownership and trust.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct WindowOwnerBadge {
+    pub agent_id: Option<String>,
+    pub agent_name: String,
+    pub trust_level: TrustLevel,
+    pub sandbox_status: SandboxStatus,
+    pub badge_color: u32,
+    pub icon: BadgeIcon,
+}
+
+/// Manages assignment of ownership badges to window surfaces.
+#[derive(Debug)]
+pub struct WindowBadgeManager {
+    badges: HashMap<SurfaceId, WindowOwnerBadge>,
+}
+
+impl WindowBadgeManager {
+    /// Create a new badge manager.
+    pub fn new() -> Self {
+        Self {
+            badges: HashMap::new(),
+        }
+    }
+
+    /// Associate a badge with a window surface.
+    pub fn assign_badge(&mut self, surface_id: SurfaceId, badge: WindowOwnerBadge) {
+        self.badges.insert(surface_id, badge);
+    }
+
+    /// Retrieve the badge for a surface.
+    pub fn get_badge(&self, surface_id: &SurfaceId) -> Option<&WindowOwnerBadge> {
+        self.badges.get(surface_id)
+    }
+
+    /// Remove and return the badge for a surface.
+    pub fn remove_badge(&mut self, surface_id: &SurfaceId) -> Option<WindowOwnerBadge> {
+        self.badges.remove(surface_id)
+    }
+
+    /// Find all badges matching a given trust level.
+    pub fn badges_by_trust(&self, level: TrustLevel) -> Vec<(SurfaceId, &WindowOwnerBadge)> {
+        self.badges
+            .iter()
+            .filter(|(_, b)| b.trust_level == level)
+            .map(|(id, b)| (*id, b))
+            .collect()
+    }
+
+    /// Default color for a trust level.
+    pub fn badge_color_for_trust(level: &TrustLevel) -> u32 {
+        match level {
+            TrustLevel::System => 0xFF4488FF,     // blue
+            TrustLevel::Verified => 0xFF44CC44,   // green
+            TrustLevel::Unverified => 0xFFCCCC44,  // yellow
+            TrustLevel::Untrusted => 0xFFCC4444,   // red
+            TrustLevel::Sandboxed => 0xFFCC8844,   // orange
+        }
+    }
+
+    /// Total number of badges.
+    pub fn len(&self) -> usize {
+        self.badges.len()
+    }
+
+    /// Whether no badges are assigned.
+    pub fn is_empty(&self) -> bool {
+        self.badges.is_empty()
+    }
+}
+
+impl Default for WindowBadgeManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(test)]
+mod badge_tests {
+    use super::*;
+
+    fn make_badge(name: &str, trust: TrustLevel) -> WindowOwnerBadge {
+        WindowOwnerBadge {
+            agent_id: Some("agent-001".to_string()),
+            agent_name: name.to_string(),
+            trust_level: trust,
+            sandbox_status: SandboxStatus::FullSandbox,
+            badge_color: WindowBadgeManager::badge_color_for_trust(&trust),
+            icon: BadgeIcon::Agent,
+        }
+    }
+
+    #[test]
+    fn test_badge_manager_new_empty() {
+        let mgr = WindowBadgeManager::new();
+        assert!(mgr.is_empty());
+        assert_eq!(mgr.len(), 0);
+    }
+
+    #[test]
+    fn test_assign_and_get_badge() {
+        let mut mgr = WindowBadgeManager::new();
+        let sid = Uuid::new_v4();
+        mgr.assign_badge(sid, make_badge("test-agent", TrustLevel::Verified));
+        let badge = mgr.get_badge(&sid).unwrap();
+        assert_eq!(badge.agent_name, "test-agent");
+        assert_eq!(badge.trust_level, TrustLevel::Verified);
+    }
+
+    #[test]
+    fn test_get_badge_nonexistent() {
+        let mgr = WindowBadgeManager::new();
+        assert!(mgr.get_badge(&Uuid::new_v4()).is_none());
+    }
+
+    #[test]
+    fn test_remove_badge() {
+        let mut mgr = WindowBadgeManager::new();
+        let sid = Uuid::new_v4();
+        mgr.assign_badge(sid, make_badge("a", TrustLevel::System));
+        let removed = mgr.remove_badge(&sid);
+        assert!(removed.is_some());
+        assert!(mgr.is_empty());
+    }
+
+    #[test]
+    fn test_remove_badge_nonexistent() {
+        let mut mgr = WindowBadgeManager::new();
+        assert!(mgr.remove_badge(&Uuid::new_v4()).is_none());
+    }
+
+    #[test]
+    fn test_badges_by_trust() {
+        let mut mgr = WindowBadgeManager::new();
+        mgr.assign_badge(Uuid::new_v4(), make_badge("a", TrustLevel::Verified));
+        mgr.assign_badge(Uuid::new_v4(), make_badge("b", TrustLevel::Untrusted));
+        mgr.assign_badge(Uuid::new_v4(), make_badge("c", TrustLevel::Verified));
+
+        let verified = mgr.badges_by_trust(TrustLevel::Verified);
+        assert_eq!(verified.len(), 2);
+        let untrusted = mgr.badges_by_trust(TrustLevel::Untrusted);
+        assert_eq!(untrusted.len(), 1);
+        let system = mgr.badges_by_trust(TrustLevel::System);
+        assert!(system.is_empty());
+    }
+
+    #[test]
+    fn test_badge_color_for_trust() {
+        assert_eq!(WindowBadgeManager::badge_color_for_trust(&TrustLevel::System), 0xFF4488FF);
+        assert_eq!(WindowBadgeManager::badge_color_for_trust(&TrustLevel::Verified), 0xFF44CC44);
+        assert_eq!(WindowBadgeManager::badge_color_for_trust(&TrustLevel::Unverified), 0xFFCCCC44);
+        assert_eq!(WindowBadgeManager::badge_color_for_trust(&TrustLevel::Untrusted), 0xFFCC4444);
+        assert_eq!(WindowBadgeManager::badge_color_for_trust(&TrustLevel::Sandboxed), 0xFFCC8844);
+    }
+
+    #[test]
+    fn test_assign_badge_overwrite() {
+        let mut mgr = WindowBadgeManager::new();
+        let sid = Uuid::new_v4();
+        mgr.assign_badge(sid, make_badge("old", TrustLevel::Unverified));
+        mgr.assign_badge(sid, make_badge("new", TrustLevel::Verified));
+        assert_eq!(mgr.len(), 1);
+        assert_eq!(mgr.get_badge(&sid).unwrap().agent_name, "new");
+    }
+
+    #[test]
+    fn test_badge_default_manager() {
+        let mgr = WindowBadgeManager::default();
+        assert!(mgr.is_empty());
+    }
+
+    #[test]
+    fn test_trust_level_variants() {
+        let levels = vec![
+            TrustLevel::System,
+            TrustLevel::Verified,
+            TrustLevel::Unverified,
+            TrustLevel::Untrusted,
+            TrustLevel::Sandboxed,
+        ];
+        assert_eq!(levels.len(), 5);
+    }
+
+    #[test]
+    fn test_sandbox_status_variants() {
+        let statuses = vec![
+            SandboxStatus::FullSandbox,
+            SandboxStatus::PartialSandbox,
+            SandboxStatus::NoSandbox,
+        ];
+        assert_eq!(statuses.len(), 3);
+    }
+
+    #[test]
+    fn test_badge_icon_variants() {
+        let icons = vec![
+            BadgeIcon::Shield,
+            BadgeIcon::Lock,
+            BadgeIcon::Warning,
+            BadgeIcon::Agent,
+            BadgeIcon::System,
+        ];
+        assert_eq!(icons.len(), 5);
+    }
+}

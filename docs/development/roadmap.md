@@ -166,6 +166,7 @@ AGNOS (AI-Native General Operating System) is in **Phase 5: Production**, focuse
 | 6.5 | Complete | 100% | OS-Level Features & Security Hardening (all 12 modules) |
 | 6.6 | Complete | 100% | Consumer Integration (9 features) |
 | 6.7 | Complete | 100% | Alpha Polish (14 items: question intent, tab-completion, pipelines, aliases, agent KV store, conversation context, reasoning traces, dashboard, log viewer, output capture, enriched health, hot-reload, fleet config, environment profiles) |
+| 6.8 | Complete | 100% | Beta Features (34 items: vector store, RAG pipeline, knowledge base, file watcher, agent RPC, templates, capability negotiation, circuit breaker, cron tasks, OpenTelemetry, resource forecasting, Prometheus metrics, webhooks, audit forwarding, memory bridge REST, trace submission REST, accessibility, clipboard, window badges, popups, gestures, anomaly detection, mTLS, secrets rotation, integrity attestation, token budgets, gateway metrics, Docker base images, envoy sidecar, cross-project integration APIs) |
 | 7+ | Planned | 0% | Ecosystem & Research |
 
 ### Alpha Release Criteria (Q2 2026)
@@ -404,9 +405,9 @@ All 14 items implemented. See [Phase 6.7 Developer Guide](phase67-guide.md) for 
 
 ---
 
-### Phase 6.8: Beta Features — Depth & Differentiation (Planned Q3 2026)
+### Phase 6.8: Beta Features — Depth & Differentiation (Complete)
 
-Features that make AGNOS meaningfully better than running agents on a generic Linux box.
+All 34 items implemented. Features that make AGNOS meaningfully better than running agents on a generic Linux box.
 
 #### RAG & Knowledge (The Killer Feature Gap)
 

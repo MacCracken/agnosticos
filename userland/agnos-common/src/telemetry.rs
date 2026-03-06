@@ -1195,3 +1195,577 @@ mod tests {
         assert!(debug.contains("conn refused"));
     }
 }
+
+// ===========================================================================
+// OpenTelemetry Trace Export + Distributed Tracing
+// ===========================================================================
+
+/// A 128-bit trace identifier, displayed as a 32-character hex string.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct TraceId(pub [u8; 16]);
+
+impl TraceId {
+    /// Generate a new random TraceId.
+    pub fn generate() -> Self {
+        let mut bytes = [0u8; 16];
+        for b in &mut bytes {
+            *b = rand::random();
+        }
+        Self(bytes)
+    }
+}
+
+impl std::fmt::Display for TraceId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for b in &self.0 {
+            write!(f, "{:02x}", b)?;
+        }
+        Ok(())
+    }
+}
+
+/// A 64-bit span identifier, displayed as a 16-character hex string.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct SpanId(pub [u8; 8]);
+
+impl SpanId {
+    /// Generate a new random SpanId.
+    pub fn generate() -> Self {
+        let mut bytes = [0u8; 8];
+        for b in &mut bytes {
+            *b = rand::random();
+        }
+        Self(bytes)
+    }
+}
+
+impl std::fmt::Display for SpanId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for b in &self.0 {
+            write!(f, "{:02x}", b)?;
+        }
+        Ok(())
+    }
+}
+
+/// Status of a completed span.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SpanStatus {
+    Ok,
+    Error(String),
+    Unset,
+}
+
+/// A single span in a distributed trace.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Span {
+    pub trace_id: TraceId,
+    pub span_id: SpanId,
+    pub parent_span_id: Option<SpanId>,
+    pub operation_name: String,
+    pub service_name: String,
+    pub start_time: chrono::DateTime<chrono::Utc>,
+    pub end_time: Option<chrono::DateTime<chrono::Utc>>,
+    pub status: SpanStatus,
+    pub attributes: HashMap<String, String>,
+}
+
+impl Span {
+    /// Mark this span as completed with the given status.
+    pub fn finish(&mut self, status: SpanStatus) {
+        self.end_time = Some(chrono::Utc::now());
+        self.status = status;
+    }
+}
+
+/// Context for propagating trace information across service boundaries.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TraceContext {
+    pub trace_id: TraceId,
+    pub span_id: SpanId,
+    pub baggage: HashMap<String, String>,
+}
+
+impl TraceContext {
+    /// Start a new root trace for the given service.
+    pub fn new_root(service: &str) -> Self {
+        let _ = service; // service name is recorded on individual spans
+        Self {
+            trace_id: TraceId::generate(),
+            span_id: SpanId::generate(),
+            baggage: HashMap::new(),
+        }
+    }
+
+    /// Create a child span under this context.
+    pub fn child_span(&self, operation: &str, service: &str) -> Span {
+        Span {
+            trace_id: self.trace_id.clone(),
+            span_id: SpanId::generate(),
+            parent_span_id: Some(self.span_id.clone()),
+            operation_name: operation.to_string(),
+            service_name: service.to_string(),
+            start_time: chrono::Utc::now(),
+            end_time: None,
+            status: SpanStatus::Unset,
+            attributes: HashMap::new(),
+        }
+    }
+
+    /// Inject W3C Trace Context headers (`traceparent`, `tracestate`) into a header map.
+    pub fn inject_headers(&self) -> HashMap<String, String> {
+        let mut headers = HashMap::new();
+        // W3C traceparent: version-trace_id-parent_id-flags
+        let traceparent = format!("00-{}-{}-01", self.trace_id, self.span_id);
+        headers.insert("traceparent".to_string(), traceparent);
+
+        if !self.baggage.is_empty() {
+            let state_parts: Vec<String> = self
+                .baggage
+                .iter()
+                .map(|(k, v)| format!("{}={}", k, v))
+                .collect();
+            headers.insert("tracestate".to_string(), state_parts.join(","));
+        }
+        headers
+    }
+
+    /// Extract a `TraceContext` from W3C Trace Context headers.
+    pub fn extract_headers(headers: &HashMap<String, String>) -> Option<Self> {
+        let traceparent = headers.get("traceparent")?;
+        let parts: Vec<&str> = traceparent.split('-').collect();
+        if parts.len() != 4 {
+            return None;
+        }
+
+        let trace_hex = parts[1];
+        let span_hex = parts[2];
+
+        if trace_hex.len() != 32 || span_hex.len() != 16 {
+            return None;
+        }
+
+        let trace_bytes = hex_to_bytes_16(trace_hex)?;
+        let span_bytes = hex_to_bytes_8(span_hex)?;
+
+        let mut baggage = HashMap::new();
+        if let Some(state) = headers.get("tracestate") {
+            for pair in state.split(',') {
+                let pair = pair.trim();
+                if let Some((k, v)) = pair.split_once('=') {
+                    baggage.insert(k.to_string(), v.to_string());
+                }
+            }
+        }
+
+        Some(Self {
+            trace_id: TraceId(trace_bytes),
+            span_id: SpanId(span_bytes),
+            baggage,
+        })
+    }
+}
+
+/// Parse a 32-character hex string into [u8; 16].
+fn hex_to_bytes_16(hex: &str) -> Option<[u8; 16]> {
+    if hex.len() != 32 {
+        return None;
+    }
+    let mut bytes = [0u8; 16];
+    for i in 0..16 {
+        bytes[i] = u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16).ok()?;
+    }
+    Some(bytes)
+}
+
+/// Parse a 16-character hex string into [u8; 8].
+fn hex_to_bytes_8(hex: &str) -> Option<[u8; 8]> {
+    if hex.len() != 16 {
+        return None;
+    }
+    let mut bytes = [0u8; 8];
+    for i in 0..8 {
+        bytes[i] = u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16).ok()?;
+    }
+    Some(bytes)
+}
+
+/// Collects completed spans and exports them as JSON batches.
+pub struct SpanCollector {
+    spans: std::sync::Mutex<Vec<Span>>,
+}
+
+impl SpanCollector {
+    /// Create a new empty collector.
+    pub fn new() -> Self {
+        Self {
+            spans: std::sync::Mutex::new(Vec::new()),
+        }
+    }
+
+    /// Record a completed span.
+    pub fn record(&self, span: Span) {
+        if let Ok(mut spans) = self.spans.lock() {
+            spans.push(span);
+        }
+    }
+
+    /// Drain and return all collected spans.
+    pub fn export_batch(&self) -> Vec<Span> {
+        match self.spans.lock() {
+            Ok(mut spans) => spans.drain(..).collect(),
+            Err(_) => Vec::new(),
+        }
+    }
+
+    /// Export collected spans as an OTLP-like JSON string, then drain.
+    pub fn export_json(&self) -> String {
+        let batch = self.export_batch();
+        let resource_spans: Vec<serde_json::Value> = batch
+            .iter()
+            .map(|s| {
+                serde_json::json!({
+                    "traceId": s.trace_id.to_string(),
+                    "spanId": s.span_id.to_string(),
+                    "parentSpanId": s.parent_span_id.as_ref().map(|p| p.to_string()),
+                    "operationName": s.operation_name,
+                    "serviceName": s.service_name,
+                    "startTimeUnixNano": s.start_time.timestamp_nanos_opt().unwrap_or(0),
+                    "endTimeUnixNano": s.end_time.and_then(|e| e.timestamp_nanos_opt()),
+                    "status": match &s.status {
+                        SpanStatus::Ok => serde_json::json!({"code": "OK"}),
+                        SpanStatus::Error(msg) => serde_json::json!({"code": "ERROR", "message": msg}),
+                        SpanStatus::Unset => serde_json::json!({"code": "UNSET"}),
+                    },
+                    "attributes": s.attributes,
+                })
+            })
+            .collect();
+
+        serde_json::json!({
+            "resourceSpans": resource_spans
+        })
+        .to_string()
+    }
+}
+
+impl Default for SpanCollector {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ===========================================================================
+// Distributed Tracing Tests
+// ===========================================================================
+
+#[cfg(test)]
+mod tracing_tests {
+    use super::*;
+
+    #[test]
+    fn test_trace_id_generate_nonzero() {
+        let id = TraceId::generate();
+        // Extremely unlikely to be all-zero
+        assert!(id.0.iter().any(|&b| b != 0));
+    }
+
+    #[test]
+    fn test_trace_id_display_hex_length() {
+        let id = TraceId([0xab; 16]);
+        let hex = id.to_string();
+        assert_eq!(hex.len(), 32);
+        assert_eq!(hex, "abababababababababababababababab");
+    }
+
+    #[test]
+    fn test_trace_id_display_leading_zeros() {
+        let mut bytes = [0u8; 16];
+        bytes[15] = 1;
+        let id = TraceId(bytes);
+        let hex = id.to_string();
+        assert_eq!(hex, "00000000000000000000000000000001");
+    }
+
+    #[test]
+    fn test_span_id_generate_nonzero() {
+        let id = SpanId::generate();
+        assert!(id.0.iter().any(|&b| b != 0));
+    }
+
+    #[test]
+    fn test_span_id_display_hex_length() {
+        let id = SpanId([0xcd; 8]);
+        let hex = id.to_string();
+        assert_eq!(hex.len(), 16);
+        assert_eq!(hex, "cdcdcdcdcdcdcdcd");
+    }
+
+    #[test]
+    fn test_trace_context_new_root() {
+        let ctx = TraceContext::new_root("my-service");
+        assert!(ctx.trace_id.0.iter().any(|&b| b != 0));
+        assert!(ctx.span_id.0.iter().any(|&b| b != 0));
+        assert!(ctx.baggage.is_empty());
+    }
+
+    #[test]
+    fn test_child_span_inherits_trace_id() {
+        let ctx = TraceContext::new_root("parent-svc");
+        let child = ctx.child_span("do-work", "child-svc");
+        assert_eq!(child.trace_id, ctx.trace_id);
+        assert_eq!(child.parent_span_id, Some(ctx.span_id.clone()));
+        assert_eq!(child.operation_name, "do-work");
+        assert_eq!(child.service_name, "child-svc");
+        assert!(child.end_time.is_none());
+        assert_eq!(child.status, SpanStatus::Unset);
+    }
+
+    #[test]
+    fn test_child_span_has_unique_span_id() {
+        let ctx = TraceContext::new_root("svc");
+        let c1 = ctx.child_span("op1", "svc");
+        let c2 = ctx.child_span("op2", "svc");
+        assert_ne!(c1.span_id, c2.span_id);
+    }
+
+    #[test]
+    fn test_span_finish() {
+        let ctx = TraceContext::new_root("svc");
+        let mut span = ctx.child_span("op", "svc");
+        assert!(span.end_time.is_none());
+        span.finish(SpanStatus::Ok);
+        assert!(span.end_time.is_some());
+        assert_eq!(span.status, SpanStatus::Ok);
+    }
+
+    #[test]
+    fn test_span_finish_with_error() {
+        let ctx = TraceContext::new_root("svc");
+        let mut span = ctx.child_span("op", "svc");
+        span.finish(SpanStatus::Error("boom".to_string()));
+        assert_eq!(span.status, SpanStatus::Error("boom".to_string()));
+    }
+
+    #[test]
+    fn test_inject_headers_format() {
+        let ctx = TraceContext {
+            trace_id: TraceId([0xaa; 16]),
+            span_id: SpanId([0xbb; 8]),
+            baggage: HashMap::new(),
+        };
+        let headers = ctx.inject_headers();
+        let tp = headers.get("traceparent").unwrap();
+        assert_eq!(tp, "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01");
+        assert!(!headers.contains_key("tracestate"));
+    }
+
+    #[test]
+    fn test_inject_headers_with_baggage() {
+        let mut baggage = HashMap::new();
+        baggage.insert("tenant".to_string(), "acme".to_string());
+        let ctx = TraceContext {
+            trace_id: TraceId([0x01; 16]),
+            span_id: SpanId([0x02; 8]),
+            baggage,
+        };
+        let headers = ctx.inject_headers();
+        assert!(headers.contains_key("tracestate"));
+        assert!(headers["tracestate"].contains("tenant=acme"));
+    }
+
+    #[test]
+    fn test_extract_headers_roundtrip() {
+        let original = TraceContext {
+            trace_id: TraceId([0xde; 16]),
+            span_id: SpanId([0xad; 8]),
+            baggage: {
+                let mut m = HashMap::new();
+                m.insert("key".to_string(), "val".to_string());
+                m
+            },
+        };
+        let headers = original.inject_headers();
+        let extracted = TraceContext::extract_headers(&headers).unwrap();
+        assert_eq!(extracted.trace_id, original.trace_id);
+        assert_eq!(extracted.span_id, original.span_id);
+        assert_eq!(extracted.baggage.get("key").unwrap(), "val");
+    }
+
+    #[test]
+    fn test_extract_headers_invalid_format() {
+        let mut headers = HashMap::new();
+        headers.insert("traceparent".to_string(), "invalid".to_string());
+        assert!(TraceContext::extract_headers(&headers).is_none());
+    }
+
+    #[test]
+    fn test_extract_headers_missing() {
+        let headers = HashMap::new();
+        assert!(TraceContext::extract_headers(&headers).is_none());
+    }
+
+    #[test]
+    fn test_extract_headers_wrong_length() {
+        let mut headers = HashMap::new();
+        headers.insert("traceparent".to_string(), "00-abcd-ef01-01".to_string());
+        assert!(TraceContext::extract_headers(&headers).is_none());
+    }
+
+    #[test]
+    fn test_extract_headers_invalid_hex() {
+        let mut headers = HashMap::new();
+        // 32 chars but not valid hex
+        headers.insert(
+            "traceparent".to_string(),
+            "00-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz-0000000000000001-01".to_string(),
+        );
+        assert!(TraceContext::extract_headers(&headers).is_none());
+    }
+
+    #[test]
+    fn test_span_collector_record_and_export() {
+        let collector = SpanCollector::new();
+        let ctx = TraceContext::new_root("svc");
+        let mut span = ctx.child_span("op", "svc");
+        span.finish(SpanStatus::Ok);
+        collector.record(span);
+
+        let batch = collector.export_batch();
+        assert_eq!(batch.len(), 1);
+        assert_eq!(batch[0].operation_name, "op");
+
+        // After export, should be empty
+        let batch2 = collector.export_batch();
+        assert!(batch2.is_empty());
+    }
+
+    #[test]
+    fn test_span_collector_export_json() {
+        let collector = SpanCollector::new();
+        let ctx = TraceContext::new_root("json-svc");
+        let mut span = ctx.child_span("json-op", "json-svc");
+        span.finish(SpanStatus::Ok);
+        collector.record(span);
+
+        let json = collector.export_json();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert!(parsed["resourceSpans"].is_array());
+        assert_eq!(parsed["resourceSpans"].as_array().unwrap().len(), 1);
+        assert_eq!(parsed["resourceSpans"][0]["operationName"], "json-op");
+        assert_eq!(parsed["resourceSpans"][0]["status"]["code"], "OK");
+    }
+
+    #[test]
+    fn test_span_collector_export_json_empty() {
+        let collector = SpanCollector::new();
+        let json = collector.export_json();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed["resourceSpans"].as_array().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn test_span_collector_multiple_spans() {
+        let collector = SpanCollector::new();
+        let ctx = TraceContext::new_root("svc");
+        for i in 0..5 {
+            let mut span = ctx.child_span(&format!("op-{}", i), "svc");
+            span.finish(SpanStatus::Ok);
+            collector.record(span);
+        }
+        let batch = collector.export_batch();
+        assert_eq!(batch.len(), 5);
+    }
+
+    #[test]
+    fn test_span_status_variants() {
+        assert_eq!(SpanStatus::Ok, SpanStatus::Ok);
+        assert_ne!(SpanStatus::Ok, SpanStatus::Unset);
+        assert_ne!(SpanStatus::Ok, SpanStatus::Error("x".to_string()));
+    }
+
+    #[test]
+    fn test_span_attributes() {
+        let ctx = TraceContext::new_root("svc");
+        let mut span = ctx.child_span("op", "svc");
+        span.attributes.insert("http.method".to_string(), "GET".to_string());
+        span.attributes.insert("http.url".to_string(), "/api/v1".to_string());
+        assert_eq!(span.attributes.len(), 2);
+        assert_eq!(span.attributes["http.method"], "GET");
+    }
+
+    #[test]
+    fn test_hex_to_bytes_16_valid() {
+        let result = hex_to_bytes_16("0123456789abcdef0123456789abcdef");
+        assert!(result.is_some());
+        let bytes = result.unwrap();
+        assert_eq!(bytes[0], 0x01);
+        assert_eq!(bytes[7], 0xef);
+    }
+
+    #[test]
+    fn test_hex_to_bytes_16_invalid_length() {
+        assert!(hex_to_bytes_16("abcd").is_none());
+    }
+
+    #[test]
+    fn test_hex_to_bytes_8_valid() {
+        let result = hex_to_bytes_8("0123456789abcdef");
+        assert!(result.is_some());
+        let bytes = result.unwrap();
+        assert_eq!(bytes[0], 0x01);
+        assert_eq!(bytes[7], 0xef);
+    }
+
+    #[test]
+    fn test_hex_to_bytes_8_invalid_length() {
+        assert!(hex_to_bytes_8("abcd").is_none());
+    }
+
+    #[test]
+    fn test_trace_id_serialization_roundtrip() {
+        let id = TraceId([0x42; 16]);
+        let json = serde_json::to_string(&id).unwrap();
+        let deser: TraceId = serde_json::from_str(&json).unwrap();
+        assert_eq!(id, deser);
+    }
+
+    #[test]
+    fn test_span_id_serialization_roundtrip() {
+        let id = SpanId([0x99; 8]);
+        let json = serde_json::to_string(&id).unwrap();
+        let deser: SpanId = serde_json::from_str(&json).unwrap();
+        assert_eq!(id, deser);
+    }
+
+    #[test]
+    fn test_span_serialization() {
+        let ctx = TraceContext::new_root("svc");
+        let mut span = ctx.child_span("op", "svc");
+        span.finish(SpanStatus::Ok);
+        let json = serde_json::to_string(&span).unwrap();
+        let deser: Span = serde_json::from_str(&json).unwrap();
+        assert_eq!(deser.operation_name, "op");
+        assert_eq!(deser.status, SpanStatus::Ok);
+    }
+
+    #[test]
+    fn test_span_collector_default() {
+        let collector = SpanCollector::default();
+        assert!(collector.export_batch().is_empty());
+    }
+
+    #[test]
+    fn test_export_json_error_status() {
+        let collector = SpanCollector::new();
+        let ctx = TraceContext::new_root("svc");
+        let mut span = ctx.child_span("fail-op", "svc");
+        span.finish(SpanStatus::Error("timeout".to_string()));
+        collector.record(span);
+
+        let json = collector.export_json();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed["resourceSpans"][0]["status"]["code"], "ERROR");
+        assert_eq!(parsed["resourceSpans"][0]["status"]["message"], "timeout");
+    }
+}

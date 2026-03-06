@@ -349,6 +349,212 @@ pub struct AgentRateLimitUsage {
     pub tokens_this_hour: u64,
 }
 
+// ---------------------------------------------------------------------------
+// Prometheus-style Metrics Collection
+// ---------------------------------------------------------------------------
+
+/// Per-model request and token counters.
+#[derive(Debug, Clone, Default)]
+struct ModelMetrics {
+    success_count: u64,
+    error_count: u64,
+    tokens_prompt: u64,
+    tokens_completion: u64,
+    latency_sum_ms: u64,
+    request_count: u64,
+    cache_hits: u64,
+    cache_misses: u64,
+}
+
+/// Thread-safe Prometheus-style metrics collector for the LLM Gateway.
+///
+/// Tracks per-model request counts, token usage, latency, cache hit/miss,
+/// and per-agent rate-limit events.
+#[derive(Debug)]
+pub struct GatewayMetrics {
+    models: std::sync::Mutex<HashMap<String, ModelMetrics>>,
+    rate_limits: std::sync::Mutex<HashMap<String, u64>>,
+}
+
+impl GatewayMetrics {
+    /// Create a new metrics collector.
+    pub fn new() -> Self {
+        Self {
+            models: std::sync::Mutex::new(HashMap::new()),
+            rate_limits: std::sync::Mutex::new(HashMap::new()),
+        }
+    }
+
+    /// Record a completed LLM request.
+    pub fn record_request(
+        &self,
+        model: &str,
+        tokens_prompt: u64,
+        tokens_completion: u64,
+        latency_ms: u64,
+        success: bool,
+    ) {
+        let mut models = self.models.lock().expect("metrics lock poisoned");
+        let m = models.entry(model.to_string()).or_default();
+        if success {
+            m.success_count += 1;
+        } else {
+            m.error_count += 1;
+        }
+        m.tokens_prompt += tokens_prompt;
+        m.tokens_completion += tokens_completion;
+        m.latency_sum_ms += latency_ms;
+        m.request_count += 1;
+    }
+
+    /// Record a cache hit for a model.
+    pub fn record_cache_hit(&self, model: &str) {
+        let mut models = self.models.lock().expect("metrics lock poisoned");
+        models.entry(model.to_string()).or_default().cache_hits += 1;
+    }
+
+    /// Record a cache miss for a model.
+    pub fn record_cache_miss(&self, model: &str) {
+        let mut models = self.models.lock().expect("metrics lock poisoned");
+        models.entry(model.to_string()).or_default().cache_misses += 1;
+    }
+
+    /// Record a rate-limit event for an agent.
+    pub fn record_rate_limit(&self, agent_id: &str) {
+        let mut rl = self.rate_limits.lock().expect("metrics lock poisoned");
+        *rl.entry(agent_id.to_string()).or_insert(0) += 1;
+    }
+
+    /// Export all metrics in Prometheus exposition format.
+    pub fn export_prometheus(&self) -> String {
+        let models = self.models.lock().expect("metrics lock poisoned");
+        let rate_limits = self.rate_limits.lock().expect("metrics lock poisoned");
+
+        let mut out = String::new();
+
+        // --- requests total ---
+        out.push_str("# HELP llm_requests_total Total LLM requests\n");
+        out.push_str("# TYPE llm_requests_total counter\n");
+        let mut model_names: Vec<&String> = models.keys().collect();
+        model_names.sort();
+        for model in &model_names {
+            let m = &models[*model];
+            out.push_str(&format!(
+                "llm_requests_total{{model=\"{}\",status=\"success\"}} {}\n",
+                model, m.success_count
+            ));
+            out.push_str(&format!(
+                "llm_requests_total{{model=\"{}\",status=\"error\"}} {}\n",
+                model, m.error_count
+            ));
+        }
+
+        // --- tokens total ---
+        out.push_str("# HELP llm_tokens_total Total tokens consumed\n");
+        out.push_str("# TYPE llm_tokens_total counter\n");
+        for model in &model_names {
+            let m = &models[*model];
+            out.push_str(&format!(
+                "llm_tokens_total{{model=\"{}\",type=\"prompt\"}} {}\n",
+                model, m.tokens_prompt
+            ));
+            out.push_str(&format!(
+                "llm_tokens_total{{model=\"{}\",type=\"completion\"}} {}\n",
+                model, m.tokens_completion
+            ));
+        }
+
+        // --- request duration ---
+        out.push_str("# HELP llm_request_duration_ms LLM request latency\n");
+        out.push_str("# TYPE llm_request_duration_ms histogram\n");
+        for model in &model_names {
+            let m = &models[*model];
+            out.push_str(&format!(
+                "llm_request_duration_ms_sum{{model=\"{}\"}} {}\n",
+                model, m.latency_sum_ms
+            ));
+            out.push_str(&format!(
+                "llm_request_duration_ms_count{{model=\"{}\"}} {}\n",
+                model, m.request_count
+            ));
+        }
+
+        // --- cache hits ---
+        out.push_str("# HELP llm_cache_hits_total Cache hit count\n");
+        out.push_str("# TYPE llm_cache_hits_total counter\n");
+        for model in &model_names {
+            let m = &models[*model];
+            out.push_str(&format!(
+                "llm_cache_hits_total{{model=\"{}\"}} {}\n",
+                model, m.cache_hits
+            ));
+        }
+
+        // --- rate limits ---
+        out.push_str("# HELP llm_rate_limits_total Rate limit events\n");
+        out.push_str("# TYPE llm_rate_limits_total counter\n");
+        let mut agent_ids: Vec<&String> = rate_limits.keys().collect();
+        agent_ids.sort();
+        for agent_id in &agent_ids {
+            out.push_str(&format!(
+                "llm_rate_limits_total{{agent=\"{}\"}} {}\n",
+                agent_id, rate_limits[*agent_id]
+            ));
+        }
+
+        out
+    }
+
+    /// Reset all collected metrics.
+    pub fn reset(&self) {
+        self.models.lock().expect("metrics lock poisoned").clear();
+        self.rate_limits
+            .lock()
+            .expect("metrics lock poisoned")
+            .clear();
+    }
+
+    /// Total request count for a model (success + error).
+    pub fn request_count(&self, model: &str) -> u64 {
+        let models = self.models.lock().expect("metrics lock poisoned");
+        models
+            .get(model)
+            .map(|m| m.success_count + m.error_count)
+            .unwrap_or(0)
+    }
+
+    /// Total tokens (prompt, completion) for a model.
+    pub fn total_tokens(&self, model: &str) -> (u64, u64) {
+        let models = self.models.lock().expect("metrics lock poisoned");
+        models
+            .get(model)
+            .map(|m| (m.tokens_prompt, m.tokens_completion))
+            .unwrap_or((0, 0))
+    }
+
+    /// Cache hit rate for a model (0.0–1.0). Returns 0.0 if no cache events recorded.
+    pub fn cache_hit_rate(&self, model: &str) -> f64 {
+        let models = self.models.lock().expect("metrics lock poisoned");
+        match models.get(model) {
+            Some(m) => {
+                let total = m.cache_hits + m.cache_misses;
+                if total == 0 {
+                    0.0
+                } else {
+                    m.cache_hits as f64 / total as f64
+                }
+            }
+            None => 0.0,
+        }
+    }
+}
+
+impl Default for GatewayMetrics {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -614,5 +820,144 @@ mod tests {
 
         let agents = limiter.list_limited_agents().await;
         assert_eq!(agents.len(), 2);
+    }
+
+    // ------------------------------------------------------------------
+    // GatewayMetrics Tests
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn test_gateway_metrics_new() {
+        let metrics = GatewayMetrics::new();
+        assert_eq!(metrics.request_count("gpt-4"), 0);
+        assert_eq!(metrics.total_tokens("gpt-4"), (0, 0));
+    }
+
+    #[test]
+    fn test_gateway_metrics_record_request_success() {
+        let metrics = GatewayMetrics::new();
+        metrics.record_request("gpt-4", 100, 50, 200, true);
+        assert_eq!(metrics.request_count("gpt-4"), 1);
+        assert_eq!(metrics.total_tokens("gpt-4"), (100, 50));
+    }
+
+    #[test]
+    fn test_gateway_metrics_record_request_error() {
+        let metrics = GatewayMetrics::new();
+        metrics.record_request("gpt-4", 100, 0, 500, false);
+        assert_eq!(metrics.request_count("gpt-4"), 1);
+        let export = metrics.export_prometheus();
+        assert!(export.contains("status=\"error\"} 1"));
+    }
+
+    #[test]
+    fn test_gateway_metrics_multiple_requests() {
+        let metrics = GatewayMetrics::new();
+        metrics.record_request("gpt-4", 100, 50, 200, true);
+        metrics.record_request("gpt-4", 200, 100, 300, true);
+        metrics.record_request("gpt-4", 50, 25, 100, false);
+        assert_eq!(metrics.request_count("gpt-4"), 3);
+        assert_eq!(metrics.total_tokens("gpt-4"), (350, 175));
+    }
+
+    #[test]
+    fn test_gateway_metrics_per_model_isolation() {
+        let metrics = GatewayMetrics::new();
+        metrics.record_request("gpt-4", 100, 50, 200, true);
+        metrics.record_request("claude-3", 200, 100, 300, true);
+        assert_eq!(metrics.request_count("gpt-4"), 1);
+        assert_eq!(metrics.request_count("claude-3"), 1);
+        assert_eq!(metrics.total_tokens("gpt-4"), (100, 50));
+        assert_eq!(metrics.total_tokens("claude-3"), (200, 100));
+    }
+
+    #[test]
+    fn test_gateway_metrics_cache_hit() {
+        let metrics = GatewayMetrics::new();
+        metrics.record_cache_hit("gpt-4");
+        metrics.record_cache_hit("gpt-4");
+        metrics.record_cache_miss("gpt-4");
+        let rate = metrics.cache_hit_rate("gpt-4");
+        assert!((rate - 2.0 / 3.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_gateway_metrics_cache_hit_rate_no_events() {
+        let metrics = GatewayMetrics::new();
+        assert_eq!(metrics.cache_hit_rate("gpt-4"), 0.0);
+    }
+
+    #[test]
+    fn test_gateway_metrics_rate_limit() {
+        let metrics = GatewayMetrics::new();
+        metrics.record_rate_limit("agent-001");
+        metrics.record_rate_limit("agent-001");
+        metrics.record_rate_limit("agent-002");
+        let export = metrics.export_prometheus();
+        assert!(export.contains("llm_rate_limits_total{agent=\"agent-001\"} 2"));
+        assert!(export.contains("llm_rate_limits_total{agent=\"agent-002\"} 1"));
+    }
+
+    #[test]
+    fn test_gateway_metrics_reset() {
+        let metrics = GatewayMetrics::new();
+        metrics.record_request("gpt-4", 100, 50, 200, true);
+        metrics.record_cache_hit("gpt-4");
+        metrics.record_rate_limit("agent-001");
+        metrics.reset();
+        assert_eq!(metrics.request_count("gpt-4"), 0);
+        assert_eq!(metrics.total_tokens("gpt-4"), (0, 0));
+        assert_eq!(metrics.cache_hit_rate("gpt-4"), 0.0);
+        let export = metrics.export_prometheus();
+        assert!(!export.contains("agent-001"));
+    }
+
+    #[test]
+    fn test_gateway_metrics_export_format_headers() {
+        let metrics = GatewayMetrics::new();
+        metrics.record_request("gpt-4", 100, 50, 200, true);
+        let export = metrics.export_prometheus();
+        assert!(export.contains("# HELP llm_requests_total Total LLM requests"));
+        assert!(export.contains("# TYPE llm_requests_total counter"));
+        assert!(export.contains("# HELP llm_tokens_total Total tokens consumed"));
+        assert!(export.contains("# TYPE llm_tokens_total counter"));
+        assert!(export.contains("# HELP llm_request_duration_ms LLM request latency"));
+        assert!(export.contains("# TYPE llm_request_duration_ms histogram"));
+        assert!(export.contains("# HELP llm_cache_hits_total Cache hit count"));
+        assert!(export.contains("# TYPE llm_cache_hits_total counter"));
+        assert!(export.contains("# HELP llm_rate_limits_total Rate limit events"));
+        assert!(export.contains("# TYPE llm_rate_limits_total counter"));
+    }
+
+    #[test]
+    fn test_gateway_metrics_export_values() {
+        let metrics = GatewayMetrics::new();
+        metrics.record_request("gpt-4", 500, 200, 300, true);
+        metrics.record_request("gpt-4", 100, 50, 150, false);
+        metrics.record_cache_hit("gpt-4");
+
+        let export = metrics.export_prometheus();
+        assert!(export.contains("llm_requests_total{model=\"gpt-4\",status=\"success\"} 1"));
+        assert!(export.contains("llm_requests_total{model=\"gpt-4\",status=\"error\"} 1"));
+        assert!(export.contains("llm_tokens_total{model=\"gpt-4\",type=\"prompt\"} 600"));
+        assert!(export.contains("llm_tokens_total{model=\"gpt-4\",type=\"completion\"} 250"));
+        assert!(export.contains("llm_request_duration_ms_sum{model=\"gpt-4\"} 450"));
+        assert!(export.contains("llm_request_duration_ms_count{model=\"gpt-4\"} 2"));
+        assert!(export.contains("llm_cache_hits_total{model=\"gpt-4\"} 1"));
+    }
+
+    #[test]
+    fn test_gateway_metrics_export_empty() {
+        let metrics = GatewayMetrics::new();
+        let export = metrics.export_prometheus();
+        // Should still have section headers but no data lines with models
+        assert!(export.contains("# HELP"));
+        assert!(!export.contains("gpt-4"));
+    }
+
+    #[test]
+    fn test_gateway_metrics_default() {
+        let metrics = GatewayMetrics::default();
+        assert_eq!(metrics.request_count("any"), 0);
     }
 }

@@ -338,6 +338,257 @@ impl Default for MessageBus {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Agent-to-Agent RPC (typed request-response layer)
+// ---------------------------------------------------------------------------
+
+/// Error returned by an RPC handler.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RpcError {
+    /// Numeric error code (negative = system, positive = application).
+    pub code: i32,
+    /// Human-readable error message.
+    pub message: String,
+}
+
+impl RpcError {
+    pub fn new(code: i32, message: impl Into<String>) -> Self {
+        Self { code, message: message.into() }
+    }
+
+    /// Method not found in the registry.
+    pub fn method_not_found(method: &str) -> Self {
+        Self::new(-1, format!("Method not found: {}", method))
+    }
+
+    /// Request timed out waiting for a response.
+    pub fn timeout(method: &str, timeout_ms: u64) -> Self {
+        Self::new(-2, format!("RPC call to '{}' timed out after {}ms", method, timeout_ms))
+    }
+
+    /// Internal / unspecified error.
+    pub fn internal(msg: impl Into<String>) -> Self {
+        Self::new(-3, msg.into())
+    }
+}
+
+impl std::fmt::Display for RpcError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "RpcError({}): {}", self.code, self.message)
+    }
+}
+
+impl std::error::Error for RpcError {}
+
+/// A typed RPC request sent from one agent to another.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RpcRequest {
+    /// Unique request identifier.
+    pub id: uuid::Uuid,
+    /// Method name to invoke on the target agent.
+    pub method: String,
+    /// JSON parameters for the method.
+    pub params: serde_json::Value,
+    /// Timeout in milliseconds (0 = no timeout).
+    pub timeout_ms: u64,
+    /// Agent that initiated the request.
+    pub sender_id: AgentId,
+}
+
+impl RpcRequest {
+    pub fn new(sender_id: AgentId, method: impl Into<String>, params: serde_json::Value) -> Self {
+        Self {
+            id: uuid::Uuid::new_v4(),
+            method: method.into(),
+            params,
+            timeout_ms: 5000,
+            sender_id,
+        }
+    }
+
+    pub fn with_timeout(mut self, timeout_ms: u64) -> Self {
+        self.timeout_ms = timeout_ms;
+        self
+    }
+}
+
+/// Response to an RPC request.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RpcResponse {
+    /// The request this response corresponds to.
+    pub request_id: uuid::Uuid,
+    /// Success value or error.
+    pub result: Result<serde_json::Value, RpcError>,
+    /// How long the handler took (milliseconds).
+    pub duration_ms: u64,
+}
+
+impl RpcResponse {
+    /// Create a successful response.
+    pub fn success(request_id: uuid::Uuid, value: serde_json::Value, duration_ms: u64) -> Self {
+        Self { request_id, result: Ok(value), duration_ms }
+    }
+
+    /// Create an error response.
+    pub fn error(request_id: uuid::Uuid, err: RpcError, duration_ms: u64) -> Self {
+        Self { request_id, result: Err(err), duration_ms }
+    }
+}
+
+/// Registry of RPC methods advertised by agents.
+#[derive(Debug, Clone)]
+pub struct RpcRegistry {
+    /// method_name → agent that handles it
+    methods: HashMap<String, AgentId>,
+    /// agent_id → list of methods it provides
+    agent_methods: HashMap<AgentId, Vec<String>>,
+}
+
+impl RpcRegistry {
+    pub fn new() -> Self {
+        Self {
+            methods: HashMap::new(),
+            agent_methods: HashMap::new(),
+        }
+    }
+
+    /// Register a method as handled by the given agent.
+    pub fn register_method(&mut self, agent_id: AgentId, method: &str) {
+        self.methods.insert(method.to_string(), agent_id);
+        self.agent_methods
+            .entry(agent_id)
+            .or_default()
+            .push(method.to_string());
+    }
+
+    /// Find which agent handles the given method.
+    pub fn find_handler(&self, method: &str) -> Option<AgentId> {
+        self.methods.get(method).copied()
+    }
+
+    /// List all methods provided by a specific agent.
+    pub fn list_methods(&self, agent_id: &AgentId) -> Vec<String> {
+        self.agent_methods
+            .get(agent_id)
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    /// Return all registered methods and their handler agent IDs.
+    pub fn all_methods(&self) -> Vec<(String, AgentId)> {
+        self.methods
+            .iter()
+            .map(|(m, id)| (m.clone(), *id))
+            .collect()
+    }
+
+    /// Remove all methods for a given agent.
+    pub fn unregister_agent(&mut self, agent_id: &AgentId) {
+        if let Some(methods) = self.agent_methods.remove(agent_id) {
+            for m in methods {
+                self.methods.remove(&m);
+            }
+        }
+    }
+}
+
+impl Default for RpcRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Pending RPC call state.
+struct PendingCall {
+    sender: tokio::sync::oneshot::Sender<RpcResponse>,
+    _sent_at: std::time::Instant,
+}
+
+/// Routes RPC requests to handlers and manages pending calls with timeout.
+pub struct RpcRouter {
+    registry: RpcRegistry,
+    pending: std::sync::Mutex<HashMap<uuid::Uuid, PendingCall>>,
+}
+
+impl RpcRouter {
+    pub fn new(registry: RpcRegistry) -> Self {
+        Self {
+            registry,
+            pending: std::sync::Mutex::new(HashMap::new()),
+        }
+    }
+
+    /// Issue an RPC call. Returns the response or an error (timeout / no handler).
+    pub async fn call(&self, request: RpcRequest) -> Result<RpcResponse> {
+        // Verify a handler exists
+        let _handler = self.registry.find_handler(&request.method)
+            .ok_or_else(|| anyhow::anyhow!("{}", RpcError::method_not_found(&request.method)))?;
+
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        let request_id = request.id;
+        let timeout_ms = request.timeout_ms;
+        let method = request.method.clone();
+
+        {
+            let mut pending = self.pending.lock().map_err(|_| anyhow::anyhow!("Lock poisoned"))?;
+            pending.insert(request_id, PendingCall {
+                sender: tx,
+                _sent_at: std::time::Instant::now(),
+            });
+        }
+
+        // Wait for response with timeout
+        if timeout_ms > 0 {
+            match tokio::time::timeout(
+                std::time::Duration::from_millis(timeout_ms),
+                rx,
+            ).await {
+                Ok(Ok(response)) => Ok(response),
+                Ok(Err(_)) => {
+                    // Channel dropped — handler disappeared
+                    self.cleanup_pending(&request_id);
+                    Ok(RpcResponse::error(request_id, RpcError::internal("Handler dropped"), 0))
+                }
+                Err(_) => {
+                    // Timeout
+                    self.cleanup_pending(&request_id);
+                    Ok(RpcResponse::error(request_id, RpcError::timeout(&method, timeout_ms), timeout_ms))
+                }
+            }
+        } else {
+            // No timeout — wait indefinitely
+            match rx.await {
+                Ok(response) => Ok(response),
+                Err(_) => Ok(RpcResponse::error(request_id, RpcError::internal("Handler dropped"), 0)),
+            }
+        }
+    }
+
+    /// Deliver a response for a pending call.
+    pub fn handle_response(&self, response: RpcResponse) {
+        let mut pending = match self.pending.lock() {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        if let Some(call) = pending.remove(&response.request_id) {
+            let _ = call.sender.send(response);
+        }
+    }
+
+    /// Number of calls still waiting for a response.
+    pub fn pending_count(&self) -> usize {
+        self.pending.lock().map(|p| p.len()).unwrap_or(0)
+    }
+
+    fn cleanup_pending(&self, request_id: &uuid::Uuid) {
+        if let Ok(mut pending) = self.pending.lock() {
+            pending.remove(request_id);
+        }
+    }
+}
+
+use serde::{Serialize, Deserialize};
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1153,5 +1404,256 @@ mod tests {
             let received = rx.recv().await.unwrap();
             assert_eq!(received.id, format!("ipc-multi-{}", i));
         }
+    }
+
+    // ==================================================================
+    // RPC layer tests
+    // ==================================================================
+
+    #[test]
+    fn test_rpc_error_new() {
+        let err = RpcError::new(42, "something broke");
+        assert_eq!(err.code, 42);
+        assert_eq!(err.message, "something broke");
+    }
+
+    #[test]
+    fn test_rpc_error_method_not_found() {
+        let err = RpcError::method_not_found("scan_ports");
+        assert_eq!(err.code, -1);
+        assert!(err.message.contains("scan_ports"));
+    }
+
+    #[test]
+    fn test_rpc_error_timeout() {
+        let err = RpcError::timeout("ping", 3000);
+        assert_eq!(err.code, -2);
+        assert!(err.message.contains("3000"));
+    }
+
+    #[test]
+    fn test_rpc_error_display() {
+        let err = RpcError::internal("oops");
+        let s = format!("{}", err);
+        assert!(s.contains("oops"));
+        assert!(s.contains("-3"));
+    }
+
+    #[test]
+    fn test_rpc_request_new() {
+        let sender = AgentId::new();
+        let req = RpcRequest::new(sender, "scan", serde_json::json!({"port": 80}));
+        assert_eq!(req.method, "scan");
+        assert_eq!(req.sender_id, sender);
+        assert_eq!(req.timeout_ms, 5000); // default
+        assert_eq!(req.params["port"], 80);
+    }
+
+    #[test]
+    fn test_rpc_request_with_timeout() {
+        let sender = AgentId::new();
+        let req = RpcRequest::new(sender, "slow_op", serde_json::json!({}))
+            .with_timeout(30000);
+        assert_eq!(req.timeout_ms, 30000);
+    }
+
+    #[test]
+    fn test_rpc_response_success() {
+        let id = Uuid::new_v4();
+        let resp = RpcResponse::success(id, serde_json::json!({"ok": true}), 42);
+        assert_eq!(resp.request_id, id);
+        assert!(resp.result.is_ok());
+        assert_eq!(resp.duration_ms, 42);
+    }
+
+    #[test]
+    fn test_rpc_response_error() {
+        let id = Uuid::new_v4();
+        let resp = RpcResponse::error(id, RpcError::internal("fail"), 10);
+        assert!(resp.result.is_err());
+        assert_eq!(resp.result.unwrap_err().code, -3);
+    }
+
+    #[test]
+    fn test_rpc_request_serialization() {
+        let sender = AgentId::new();
+        let req = RpcRequest::new(sender, "test", serde_json::json!({"a": 1}));
+        let json = serde_json::to_string(&req).unwrap();
+        let deser: RpcRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(deser.method, "test");
+        assert_eq!(deser.sender_id, sender);
+    }
+
+    #[test]
+    fn test_rpc_response_serialization() {
+        let id = Uuid::new_v4();
+        let resp = RpcResponse::success(id, serde_json::json!("hello"), 5);
+        let json = serde_json::to_string(&resp).unwrap();
+        let deser: RpcResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(deser.request_id, id);
+        assert!(deser.result.is_ok());
+    }
+
+    #[test]
+    fn test_rpc_registry_new() {
+        let reg = RpcRegistry::new();
+        assert!(reg.all_methods().is_empty());
+    }
+
+    #[test]
+    fn test_rpc_registry_register_and_find() {
+        let mut reg = RpcRegistry::new();
+        let agent = AgentId::new();
+
+        reg.register_method(agent, "scan_ports");
+        reg.register_method(agent, "ping_host");
+
+        assert_eq!(reg.find_handler("scan_ports"), Some(agent));
+        assert_eq!(reg.find_handler("ping_host"), Some(agent));
+        assert_eq!(reg.find_handler("unknown"), None);
+    }
+
+    #[test]
+    fn test_rpc_registry_list_methods() {
+        let mut reg = RpcRegistry::new();
+        let agent = AgentId::new();
+
+        reg.register_method(agent, "method_a");
+        reg.register_method(agent, "method_b");
+
+        let methods = reg.list_methods(&agent);
+        assert_eq!(methods.len(), 2);
+        assert!(methods.contains(&"method_a".to_string()));
+        assert!(methods.contains(&"method_b".to_string()));
+
+        let other = AgentId::new();
+        assert!(reg.list_methods(&other).is_empty());
+    }
+
+    #[test]
+    fn test_rpc_registry_all_methods() {
+        let mut reg = RpcRegistry::new();
+        let a1 = AgentId::new();
+        let a2 = AgentId::new();
+
+        reg.register_method(a1, "m1");
+        reg.register_method(a2, "m2");
+
+        let all = reg.all_methods();
+        assert_eq!(all.len(), 2);
+    }
+
+    #[test]
+    fn test_rpc_registry_unregister_agent() {
+        let mut reg = RpcRegistry::new();
+        let agent = AgentId::new();
+
+        reg.register_method(agent, "foo");
+        reg.register_method(agent, "bar");
+        assert_eq!(reg.all_methods().len(), 2);
+
+        reg.unregister_agent(&agent);
+        assert!(reg.find_handler("foo").is_none());
+        assert!(reg.find_handler("bar").is_none());
+        assert!(reg.list_methods(&agent).is_empty());
+    }
+
+    #[test]
+    fn test_rpc_registry_default() {
+        let reg = RpcRegistry::default();
+        assert!(reg.all_methods().is_empty());
+    }
+
+    #[test]
+    fn test_rpc_router_pending_count_initial() {
+        let reg = RpcRegistry::new();
+        let router = RpcRouter::new(reg);
+        assert_eq!(router.pending_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_rpc_router_call_no_handler() {
+        let reg = RpcRegistry::new();
+        let router = RpcRouter::new(reg);
+
+        let req = RpcRequest::new(AgentId::new(), "missing_method", serde_json::json!({}));
+        let result = router.call(req).await;
+        assert!(result.is_err()); // no handler registered
+    }
+
+    #[tokio::test]
+    async fn test_rpc_router_call_with_response() {
+        let mut reg = RpcRegistry::new();
+        let handler_agent = AgentId::new();
+        reg.register_method(handler_agent, "echo");
+
+        let router = std::sync::Arc::new(RpcRouter::new(reg));
+
+        let req = RpcRequest::new(AgentId::new(), "echo", serde_json::json!({"msg": "hi"}))
+            .with_timeout(5000);
+        let req_id = req.id;
+
+        // Simulate handler responding after a short delay
+        let router2 = router.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            let resp = RpcResponse::success(req_id, serde_json::json!({"reply": "hello"}), 50);
+            router2.handle_response(resp);
+        });
+
+        let resp = router.call(req).await.unwrap();
+        assert!(resp.result.is_ok());
+        assert_eq!(resp.result.unwrap()["reply"], "hello");
+    }
+
+    #[tokio::test]
+    async fn test_rpc_router_call_timeout() {
+        let mut reg = RpcRegistry::new();
+        let handler = AgentId::new();
+        reg.register_method(handler, "slow");
+
+        let router = RpcRouter::new(reg);
+
+        let req = RpcRequest::new(AgentId::new(), "slow", serde_json::json!({}))
+            .with_timeout(50); // very short timeout
+
+        // Nobody delivers a response, so it should time out
+        let resp = router.call(req).await.unwrap();
+        assert!(resp.result.is_err());
+        assert_eq!(resp.result.unwrap_err().code, -2); // timeout code
+        assert_eq!(router.pending_count(), 0); // cleaned up
+    }
+
+    #[test]
+    fn test_rpc_router_handle_response_unknown_id() {
+        let reg = RpcRegistry::new();
+        let router = RpcRouter::new(reg);
+
+        // Delivering a response for an unknown request should not panic
+        let resp = RpcResponse::success(Uuid::new_v4(), serde_json::json!(null), 0);
+        router.handle_response(resp);
+        assert_eq!(router.pending_count(), 0);
+    }
+
+    #[test]
+    fn test_rpc_error_serialization_roundtrip() {
+        let err = RpcError::new(99, "custom error");
+        let json = serde_json::to_string(&err).unwrap();
+        let deser: RpcError = serde_json::from_str(&json).unwrap();
+        assert_eq!(deser.code, 99);
+        assert_eq!(deser.message, "custom error");
+    }
+
+    #[test]
+    fn test_rpc_registry_overwrite_handler() {
+        let mut reg = RpcRegistry::new();
+        let a1 = AgentId::new();
+        let a2 = AgentId::new();
+
+        reg.register_method(a1, "shared_method");
+        reg.register_method(a2, "shared_method");
+
+        // Latest registration wins
+        assert_eq!(reg.find_handler("shared_method"), Some(a2));
     }
 }

@@ -428,6 +428,237 @@ impl Default for ConversationContext {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Agent Behavior Anomaly Detection
+// ---------------------------------------------------------------------------
+
+/// A single behavior sample from an agent at a point in time.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BehaviorSample {
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+    pub syscall_count: u64,
+    pub network_bytes: u64,
+    pub file_ops: u64,
+    pub cpu_percent: f64,
+    pub memory_bytes: u64,
+}
+
+impl BehaviorSample {
+    /// Extract the value of a named metric.
+    fn metric_value(&self, metric: &str) -> Option<f64> {
+        match metric {
+            "syscall_count" => Some(self.syscall_count as f64),
+            "network_bytes" => Some(self.network_bytes as f64),
+            "file_ops" => Some(self.file_ops as f64),
+            "cpu_percent" => Some(self.cpu_percent),
+            "memory_bytes" => Some(self.memory_bytes as f64),
+            _ => None,
+        }
+    }
+
+    /// All known metric names.
+    fn metric_names() -> &'static [&'static str] {
+        &["syscall_count", "network_bytes", "file_ops", "cpu_percent", "memory_bytes"]
+    }
+}
+
+/// Severity classification for anomaly alerts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AnomalySeverity {
+    /// 1-2 standard deviations
+    Low,
+    /// 2-3 standard deviations
+    Medium,
+    /// 3-5 standard deviations
+    High,
+    /// 5+ standard deviations
+    Critical,
+}
+
+impl AnomalySeverity {
+    fn from_sigmas(sigmas: f64) -> Self {
+        let abs = sigmas.abs();
+        if abs >= 5.0 {
+            AnomalySeverity::Critical
+        } else if abs >= 3.0 {
+            AnomalySeverity::High
+        } else if abs >= 2.0 {
+            AnomalySeverity::Medium
+        } else {
+            AnomalySeverity::Low
+        }
+    }
+}
+
+/// An alert raised when agent behavior deviates significantly from baseline.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AnomalyAlert {
+    pub agent_id: AgentId,
+    pub metric: String,
+    pub current_value: f64,
+    pub baseline_mean: f64,
+    pub baseline_stddev: f64,
+    pub deviation_sigmas: f64,
+    pub severity: AnomalySeverity,
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+}
+
+/// Tracks a sliding window of behavior samples and computes baseline statistics.
+#[derive(Debug, Clone)]
+pub struct BehaviorBaseline {
+    agent_id: AgentId,
+    window_size: usize,
+    samples: VecDeque<BehaviorSample>,
+}
+
+impl BehaviorBaseline {
+    /// Create a new baseline tracker for an agent.
+    pub fn new(agent_id: AgentId, window_size: usize) -> Self {
+        Self {
+            agent_id,
+            window_size,
+            samples: VecDeque::with_capacity(window_size),
+        }
+    }
+
+    /// Record a new behavior sample into the sliding window.
+    pub fn record(&mut self, sample: BehaviorSample) {
+        self.samples.push_back(sample);
+        while self.samples.len() > self.window_size {
+            self.samples.pop_front();
+        }
+    }
+
+    /// Compute the mean of a named metric across the window.
+    pub fn mean(&self, metric: &str) -> Option<f64> {
+        if self.samples.is_empty() {
+            return None;
+        }
+        let mut sum = 0.0;
+        let mut count = 0u64;
+        for s in &self.samples {
+            if let Some(v) = s.metric_value(metric) {
+                sum += v;
+                count += 1;
+            }
+        }
+        if count == 0 {
+            return None;
+        }
+        Some(sum / count as f64)
+    }
+
+    /// Compute the standard deviation of a named metric across the window.
+    pub fn stddev(&self, metric: &str) -> Option<f64> {
+        let m = self.mean(metric)?;
+        if self.samples.len() < 2 {
+            return Some(0.0);
+        }
+        let mut sum_sq = 0.0;
+        let mut count = 0u64;
+        for s in &self.samples {
+            if let Some(v) = s.metric_value(metric) {
+                sum_sq += (v - m) * (v - m);
+                count += 1;
+            }
+        }
+        if count < 2 {
+            return Some(0.0);
+        }
+        Some((sum_sq / (count - 1) as f64).sqrt())
+    }
+
+    /// Check if a sample is anomalous (any metric exceeds threshold_sigmas from mean).
+    pub fn is_anomalous(&self, sample: &BehaviorSample, threshold_sigmas: f64) -> Vec<AnomalyAlert> {
+        let mut alerts = Vec::new();
+        if self.samples.len() < 2 {
+            return alerts;
+        }
+
+        for metric in BehaviorSample::metric_names() {
+            let mean = match self.mean(metric) {
+                Some(m) => m,
+                None => continue,
+            };
+            let sd = match self.stddev(metric) {
+                Some(s) if s > 0.0 => s,
+                _ => continue,
+            };
+            let value = match sample.metric_value(metric) {
+                Some(v) => v,
+                None => continue,
+            };
+
+            let deviation = (value - mean) / sd;
+            if deviation.abs() >= threshold_sigmas {
+                alerts.push(AnomalyAlert {
+                    agent_id: self.agent_id,
+                    metric: metric.to_string(),
+                    current_value: value,
+                    baseline_mean: mean,
+                    baseline_stddev: sd,
+                    deviation_sigmas: deviation,
+                    severity: AnomalySeverity::from_sigmas(deviation),
+                    timestamp: sample.timestamp,
+                });
+            }
+        }
+        alerts
+    }
+
+    /// Number of samples in the window.
+    pub fn sample_count(&self) -> usize {
+        self.samples.len()
+    }
+}
+
+/// Manages anomaly detection baselines for multiple agents.
+pub struct AnomalyDetector {
+    baselines: HashMap<AgentId, BehaviorBaseline>,
+    alerts: Vec<AnomalyAlert>,
+    default_window: usize,
+    default_threshold: f64,
+}
+
+impl AnomalyDetector {
+    /// Create a new detector with default window size and sigma threshold.
+    pub fn new(default_window: usize, default_threshold: f64) -> Self {
+        Self {
+            baselines: HashMap::new(),
+            alerts: Vec::new(),
+            default_window,
+            default_threshold,
+        }
+    }
+
+    /// Record a behavior sample for an agent and check for anomalies.
+    pub fn record_behavior(&mut self, agent_id: AgentId, sample: BehaviorSample) -> Vec<AnomalyAlert> {
+        let baseline = self.baselines
+            .entry(agent_id)
+            .or_insert_with(|| BehaviorBaseline::new(agent_id, self.default_window));
+
+        let new_alerts = baseline.is_anomalous(&sample, self.default_threshold);
+        self.alerts.extend(new_alerts.clone());
+        baseline.record(sample);
+        new_alerts
+    }
+
+    /// Get the baseline for an agent.
+    pub fn get_baseline(&self, agent_id: &AgentId) -> Option<&BehaviorBaseline> {
+        self.baselines.get(agent_id)
+    }
+
+    /// Get all recent alerts.
+    pub fn active_alerts(&self) -> Vec<&AnomalyAlert> {
+        self.alerts.iter().collect()
+    }
+
+    /// Clear alerts for a specific agent.
+    pub fn clear_alerts(&mut self, agent_id: &AgentId) {
+        self.alerts.retain(|a| a.agent_id != *agent_id);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -803,5 +1034,211 @@ mod tests {
         assert_eq!(got[0].content, "msg7");
         assert_eq!(got[1].content, "msg8");
         assert_eq!(got[2].content, "msg9");
+    }
+
+    // ── Anomaly Detection tests ──────────────────────────────────────
+
+    fn make_sample(syscall: u64, net: u64, file_ops: u64, cpu: f64, mem: u64) -> BehaviorSample {
+        BehaviorSample {
+            timestamp: chrono::Utc::now(),
+            syscall_count: syscall,
+            network_bytes: net,
+            file_ops: file_ops,
+            cpu_percent: cpu,
+            memory_bytes: mem,
+        }
+    }
+
+    #[test]
+    fn test_baseline_empty_mean() {
+        let baseline = BehaviorBaseline::new(agent(1), 100);
+        assert!(baseline.mean("syscall_count").is_none());
+        assert!(baseline.stddev("syscall_count").is_none());
+    }
+
+    #[test]
+    fn test_baseline_single_sample_mean() {
+        let mut baseline = BehaviorBaseline::new(agent(1), 100);
+        baseline.record(make_sample(100, 200, 10, 50.0, 1024));
+        assert!((baseline.mean("syscall_count").unwrap() - 100.0).abs() < 0.01);
+        assert!((baseline.mean("cpu_percent").unwrap() - 50.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_baseline_mean_multiple_samples() {
+        let mut baseline = BehaviorBaseline::new(agent(1), 100);
+        baseline.record(make_sample(100, 0, 0, 10.0, 0));
+        baseline.record(make_sample(200, 0, 0, 30.0, 0));
+        baseline.record(make_sample(300, 0, 0, 50.0, 0));
+        assert!((baseline.mean("syscall_count").unwrap() - 200.0).abs() < 0.01);
+        assert!((baseline.mean("cpu_percent").unwrap() - 30.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_baseline_stddev_identical_values() {
+        let mut baseline = BehaviorBaseline::new(agent(1), 100);
+        for _ in 0..10 {
+            baseline.record(make_sample(100, 0, 0, 50.0, 0));
+        }
+        assert!((baseline.stddev("syscall_count").unwrap()).abs() < 0.01);
+        assert!((baseline.stddev("cpu_percent").unwrap()).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_baseline_stddev_known_values() {
+        let mut baseline = BehaviorBaseline::new(agent(1), 100);
+        // Values: 2, 4, 4, 4, 5, 5, 7, 9 -> mean=5, sample stddev=2.138
+        for v in [2, 4, 4, 4, 5, 5, 7, 9] {
+            baseline.record(make_sample(v, 0, 0, 0.0, 0));
+        }
+        let sd = baseline.stddev("syscall_count").unwrap();
+        assert!((sd - 2.138).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_baseline_window_eviction() {
+        let mut baseline = BehaviorBaseline::new(agent(1), 5);
+        for i in 0..10 {
+            baseline.record(make_sample(i * 10, 0, 0, 0.0, 0));
+        }
+        assert_eq!(baseline.sample_count(), 5);
+        // Window should contain: 50, 60, 70, 80, 90 -> mean=70
+        assert!((baseline.mean("syscall_count").unwrap() - 70.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_anomaly_detection_no_anomaly() {
+        let mut baseline = BehaviorBaseline::new(agent(1), 100);
+        for _ in 0..20 {
+            baseline.record(make_sample(100, 1000, 10, 50.0, 4096));
+        }
+        // Normal sample within baseline
+        let normal = make_sample(102, 1010, 11, 51.0, 4100);
+        let alerts = baseline.is_anomalous(&normal, 2.0);
+        assert!(alerts.is_empty());
+    }
+
+    #[test]
+    fn test_anomaly_detection_high_cpu() {
+        let mut baseline = BehaviorBaseline::new(agent(1), 100);
+        for _ in 0..20 {
+            baseline.record(make_sample(100, 1000, 10, 10.0, 4096));
+        }
+        // Inject a little variance so stddev > 0
+        baseline.record(make_sample(100, 1000, 10, 11.0, 4096));
+        baseline.record(make_sample(100, 1000, 10, 9.0, 4096));
+
+        // Massive CPU spike
+        let spike = make_sample(100, 1000, 10, 99.0, 4096);
+        let alerts = baseline.is_anomalous(&spike, 2.0);
+        assert!(!alerts.is_empty());
+        let cpu_alert = alerts.iter().find(|a| a.metric == "cpu_percent").unwrap();
+        assert!(cpu_alert.deviation_sigmas > 2.0);
+    }
+
+    #[test]
+    fn test_anomaly_severity_classification() {
+        assert_eq!(AnomalySeverity::from_sigmas(1.5), AnomalySeverity::Low);
+        assert_eq!(AnomalySeverity::from_sigmas(2.5), AnomalySeverity::Medium);
+        assert_eq!(AnomalySeverity::from_sigmas(4.0), AnomalySeverity::High);
+        assert_eq!(AnomalySeverity::from_sigmas(6.0), AnomalySeverity::Critical);
+        assert_eq!(AnomalySeverity::from_sigmas(-5.5), AnomalySeverity::Critical);
+    }
+
+    #[test]
+    fn test_anomaly_too_few_samples() {
+        let mut baseline = BehaviorBaseline::new(agent(1), 100);
+        baseline.record(make_sample(100, 0, 0, 0.0, 0));
+        // With only 1 sample, stddev=0, no anomaly can be detected
+        let spike = make_sample(99999, 0, 0, 0.0, 0);
+        let alerts = baseline.is_anomalous(&spike, 2.0);
+        assert!(alerts.is_empty());
+    }
+
+    #[test]
+    fn test_anomaly_unknown_metric() {
+        let sample = make_sample(100, 0, 0, 0.0, 0);
+        assert!(sample.metric_value("nonexistent").is_none());
+    }
+
+    #[test]
+    fn test_detector_record_and_baseline() {
+        let mut detector = AnomalyDetector::new(100, 2.0);
+        let id = agent(1);
+        detector.record_behavior(id, make_sample(100, 0, 0, 0.0, 0));
+        assert!(detector.get_baseline(&id).is_some());
+        assert_eq!(detector.get_baseline(&id).unwrap().sample_count(), 1);
+    }
+
+    #[test]
+    fn test_detector_multi_agent() {
+        let mut detector = AnomalyDetector::new(100, 2.0);
+        detector.record_behavior(agent(1), make_sample(100, 0, 0, 0.0, 0));
+        detector.record_behavior(agent(2), make_sample(200, 0, 0, 0.0, 0));
+        assert!(detector.get_baseline(&agent(1)).is_some());
+        assert!(detector.get_baseline(&agent(2)).is_some());
+        assert!(detector.get_baseline(&agent(3)).is_none());
+    }
+
+    #[test]
+    fn test_detector_generates_alerts() {
+        let mut detector = AnomalyDetector::new(100, 2.0);
+        let id = agent(1);
+        // Build baseline with some variance
+        for i in 0..20 {
+            detector.record_behavior(id, make_sample(100 + (i % 3), 0, 0, 10.0 + (i as f64 % 2.0), 0));
+        }
+        // Send anomalous sample
+        let alerts = detector.record_behavior(id, make_sample(100, 0, 0, 999.0, 0));
+        assert!(!alerts.is_empty());
+        assert!(!detector.active_alerts().is_empty());
+    }
+
+    #[test]
+    fn test_detector_clear_alerts() {
+        let mut detector = AnomalyDetector::new(100, 2.0);
+        let id = agent(1);
+        for i in 0..20 {
+            detector.record_behavior(id, make_sample(100, 0, 0, 10.0 + (i as f64 % 2.0), 0));
+        }
+        detector.record_behavior(id, make_sample(100, 0, 0, 999.0, 0));
+        assert!(!detector.active_alerts().is_empty());
+        detector.clear_alerts(&id);
+        assert!(detector.active_alerts().is_empty());
+    }
+
+    #[test]
+    fn test_behavior_sample_all_metrics() {
+        let sample = make_sample(1, 2, 3, 4.0, 5);
+        assert_eq!(sample.metric_value("syscall_count"), Some(1.0));
+        assert_eq!(sample.metric_value("network_bytes"), Some(2.0));
+        assert_eq!(sample.metric_value("file_ops"), Some(3.0));
+        assert_eq!(sample.metric_value("cpu_percent"), Some(4.0));
+        assert_eq!(sample.metric_value("memory_bytes"), Some(5.0));
+    }
+
+    #[test]
+    fn test_baseline_single_sample_stddev() {
+        let mut baseline = BehaviorBaseline::new(agent(1), 100);
+        baseline.record(make_sample(100, 0, 0, 0.0, 0));
+        // Single sample -> stddev=0
+        assert!((baseline.stddev("syscall_count").unwrap()).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_anomaly_alert_fields() {
+        let mut baseline = BehaviorBaseline::new(agent(1), 100);
+        for i in 0..20 {
+            baseline.record(make_sample(100 + (i % 3), 0, 0, 10.0 + (i as f64 % 2.0), 0));
+        }
+        let spike = make_sample(100, 0, 0, 999.0, 0);
+        let alerts = baseline.is_anomalous(&spike, 2.0);
+        let cpu_alert = alerts.iter().find(|a| a.metric == "cpu_percent");
+        assert!(cpu_alert.is_some());
+        let alert = cpu_alert.unwrap();
+        assert_eq!(alert.agent_id, agent(1));
+        assert!(alert.current_value > 900.0);
+        assert!(alert.baseline_mean < 20.0);
+        assert!(alert.baseline_stddev > 0.0);
     }
 }

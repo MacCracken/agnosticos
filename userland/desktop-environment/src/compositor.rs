@@ -44,7 +44,7 @@ pub struct Window {
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct Rectangle {
     pub x: i32,
     pub y: i32,
@@ -1905,5 +1905,253 @@ mod tests {
             InputAction::ClientClick(sid, _, _) => assert_eq!(sid, id),
             other => panic!("Expected ClientClick, got {:?}", other),
         }
+    }
+}
+
+// ============================================================================
+// Clipboard integration
+// ============================================================================
+
+use std::path::PathBuf;
+
+/// Content stored on the clipboard.
+#[derive(Debug, Clone)]
+pub enum ClipboardContent {
+    Text(String),
+    Html(String),
+    Image {
+        width: u32,
+        height: u32,
+        data: Vec<u8>,
+    },
+    Files(Vec<PathBuf>),
+    Empty,
+}
+
+impl Default for ClipboardContent {
+    fn default() -> Self {
+        ClipboardContent::Empty
+    }
+}
+
+/// A single clipboard history entry.
+#[derive(Debug, Clone)]
+pub struct ClipboardEntry {
+    pub content: ClipboardContent,
+    pub source: SurfaceId,
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+    pub mime_type: String,
+}
+
+/// Manages clipboard state including content and history.
+#[derive(Debug)]
+pub struct ClipboardManager {
+    current: ClipboardContent,
+    current_source: Option<SurfaceId>,
+    history: Vec<ClipboardEntry>,
+    history_limit: usize,
+}
+
+impl ClipboardManager {
+    /// Create a new clipboard manager with a default history limit of 25.
+    pub fn new() -> Self {
+        Self {
+            current: ClipboardContent::Empty,
+            current_source: None,
+            history: Vec::new(),
+            history_limit: 25,
+        }
+    }
+
+    /// Copy content to the clipboard from the given surface.
+    pub fn set_content(&mut self, content: ClipboardContent, source: SurfaceId) {
+        let mime = Self::mime_for_content(&content).to_string();
+        let entry = ClipboardEntry {
+            content: content.clone(),
+            source,
+            timestamp: chrono::Utc::now(),
+            mime_type: mime,
+        };
+        self.current = content;
+        self.current_source = Some(source);
+        self.history.push(entry);
+        // Trim history to limit.
+        while self.history.len() > self.history_limit {
+            self.history.remove(0);
+        }
+    }
+
+    /// Get a reference to the current clipboard content.
+    pub fn get_content(&self) -> &ClipboardContent {
+        &self.current
+    }
+
+    /// Whether the clipboard has non-empty content.
+    pub fn has_content(&self) -> bool {
+        !matches!(self.current, ClipboardContent::Empty)
+    }
+
+    /// Clear the clipboard.
+    pub fn clear(&mut self) {
+        self.current = ClipboardContent::Empty;
+        self.current_source = None;
+    }
+
+    /// MIME type string for the current content.
+    pub fn content_type(&self) -> &str {
+        Self::mime_for_content(&self.current)
+    }
+
+    /// Get the clipboard history.
+    pub fn history(&self) -> &[ClipboardEntry] {
+        &self.history
+    }
+
+    /// Get the configured history limit.
+    pub fn history_limit(&self) -> usize {
+        self.history_limit
+    }
+
+    /// Determine MIME type for a clipboard content variant.
+    fn mime_for_content(content: &ClipboardContent) -> &str {
+        match content {
+            ClipboardContent::Text(_) => "text/plain",
+            ClipboardContent::Html(_) => "text/html",
+            ClipboardContent::Image { .. } => "image/png",
+            ClipboardContent::Files(_) => "text/uri-list",
+            ClipboardContent::Empty => "",
+        }
+    }
+}
+
+impl Default for ClipboardManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(test)]
+mod clipboard_tests {
+    use super::*;
+
+    #[test]
+    fn test_clipboard_new_is_empty() {
+        let cb = ClipboardManager::new();
+        assert!(!cb.has_content());
+        assert!(matches!(cb.get_content(), ClipboardContent::Empty));
+        assert_eq!(cb.content_type(), "");
+    }
+
+    #[test]
+    fn test_clipboard_set_text() {
+        let mut cb = ClipboardManager::new();
+        let source = Uuid::new_v4();
+        cb.set_content(ClipboardContent::Text("hello".into()), source);
+        assert!(cb.has_content());
+        assert_eq!(cb.content_type(), "text/plain");
+        match cb.get_content() {
+            ClipboardContent::Text(s) => assert_eq!(s, "hello"),
+            _ => panic!("Expected Text"),
+        }
+    }
+
+    #[test]
+    fn test_clipboard_set_html() {
+        let mut cb = ClipboardManager::new();
+        cb.set_content(
+            ClipboardContent::Html("<b>bold</b>".into()),
+            Uuid::new_v4(),
+        );
+        assert_eq!(cb.content_type(), "text/html");
+    }
+
+    #[test]
+    fn test_clipboard_set_image() {
+        let mut cb = ClipboardManager::new();
+        cb.set_content(
+            ClipboardContent::Image {
+                width: 10,
+                height: 10,
+                data: vec![0u8; 400],
+            },
+            Uuid::new_v4(),
+        );
+        assert_eq!(cb.content_type(), "image/png");
+    }
+
+    #[test]
+    fn test_clipboard_set_files() {
+        let mut cb = ClipboardManager::new();
+        cb.set_content(
+            ClipboardContent::Files(vec![PathBuf::from("/tmp/a.txt")]),
+            Uuid::new_v4(),
+        );
+        assert_eq!(cb.content_type(), "text/uri-list");
+    }
+
+    #[test]
+    fn test_clipboard_clear() {
+        let mut cb = ClipboardManager::new();
+        cb.set_content(ClipboardContent::Text("data".into()), Uuid::new_v4());
+        assert!(cb.has_content());
+        cb.clear();
+        assert!(!cb.has_content());
+    }
+
+    #[test]
+    fn test_clipboard_history() {
+        let mut cb = ClipboardManager::new();
+        let source = Uuid::new_v4();
+        cb.set_content(ClipboardContent::Text("first".into()), source);
+        cb.set_content(ClipboardContent::Text("second".into()), source);
+        assert_eq!(cb.history().len(), 2);
+        assert_eq!(cb.history()[0].mime_type, "text/plain");
+    }
+
+    #[test]
+    fn test_clipboard_history_limit() {
+        let mut cb = ClipboardManager::new();
+        let source = Uuid::new_v4();
+        let limit = cb.history_limit();
+        for i in 0..(limit + 10) {
+            cb.set_content(ClipboardContent::Text(format!("item {}", i)), source);
+        }
+        assert_eq!(cb.history().len(), limit);
+    }
+
+    #[test]
+    fn test_clipboard_default() {
+        let cb = ClipboardManager::default();
+        assert!(!cb.has_content());
+        assert_eq!(cb.history_limit(), 25);
+    }
+
+    #[test]
+    fn test_clipboard_overwrite_content() {
+        let mut cb = ClipboardManager::new();
+        let source = Uuid::new_v4();
+        cb.set_content(ClipboardContent::Text("old".into()), source);
+        cb.set_content(ClipboardContent::Text("new".into()), source);
+        match cb.get_content() {
+            ClipboardContent::Text(s) => assert_eq!(s, "new"),
+            _ => panic!("Expected Text"),
+        }
+    }
+
+    #[test]
+    fn test_clipboard_entry_timestamp() {
+        let mut cb = ClipboardManager::new();
+        let before = chrono::Utc::now();
+        cb.set_content(ClipboardContent::Text("ts".into()), Uuid::new_v4());
+        let after = chrono::Utc::now();
+        let entry = &cb.history()[0];
+        assert!(entry.timestamp >= before);
+        assert!(entry.timestamp <= after);
+    }
+
+    #[test]
+    fn test_clipboard_content_default() {
+        let content = ClipboardContent::default();
+        assert!(matches!(content, ClipboardContent::Empty));
     }
 }

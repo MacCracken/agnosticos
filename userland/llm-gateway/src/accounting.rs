@@ -3,6 +3,8 @@
 use std::collections::HashMap;
 
 use agnos_common::{AgentId, TokenUsage};
+use chrono::{DateTime, Duration, Utc};
+use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 use tracing::debug;
 
@@ -126,6 +128,259 @@ pub struct AccountingStats {
     pub total_prompt_tokens: u32,
     pub total_completion_tokens: u32,
     pub total_tokens: u32,
+}
+
+// ---------------------------------------------------------------------------
+// Token Budget Pool Management
+// ---------------------------------------------------------------------------
+
+/// Summary of a single project's budget allocation and usage.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProjectBudget {
+    pub name: String,
+    pub allocated: u64,
+    pub used: u64,
+    pub remaining: u64,
+    pub usage_percent: f64,
+}
+
+/// Snapshot of a budget pool's state.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BudgetSummary {
+    pub pool_name: String,
+    pub total: u64,
+    pub used: u64,
+    pub period_remaining_seconds: i64,
+    pub projects: Vec<ProjectBudget>,
+}
+
+/// A shared token budget pool that multiple projects can draw from.
+///
+/// Each project receives an allocation from the pool's total tokens.
+/// Usage is tracked per-project and the pool resets after its configured period.
+#[derive(Debug, Clone)]
+pub struct BudgetPool {
+    pub name: String,
+    pub total_tokens: u64,
+    pub used_tokens: u64,
+    pub allocated: HashMap<String, u64>,
+    used_per_project: HashMap<String, u64>,
+    pub period_start: DateTime<Utc>,
+    pub period_duration: Duration,
+}
+
+impl BudgetPool {
+    /// Create a new budget pool with the given name, total token budget, and reset period.
+    pub fn new(name: &str, total_tokens: u64, period: Duration) -> Self {
+        Self {
+            name: name.to_string(),
+            total_tokens,
+            used_tokens: 0,
+            allocated: HashMap::new(),
+            used_per_project: HashMap::new(),
+            period_start: Utc::now(),
+            period_duration: period,
+        }
+    }
+
+    /// Reserve quota for a project. Fails if there are not enough unallocated tokens.
+    pub fn allocate(&mut self, project: &str, tokens: u64) -> Result<(), String> {
+        let total_allocated: u64 = self.allocated.values().sum();
+        let available = self.total_tokens.saturating_sub(total_allocated);
+        if tokens > available {
+            return Err(format!(
+                "Cannot allocate {} tokens for '{}': only {} available",
+                tokens, project, available
+            ));
+        }
+        *self.allocated.entry(project.to_string()).or_insert(0) += tokens;
+        Ok(())
+    }
+
+    /// Consume tokens from a project's allocation. Fails if the project would exceed its quota.
+    pub fn consume(&mut self, project: &str, tokens: u64) -> Result<(), String> {
+        let allocation = self
+            .allocated
+            .get(project)
+            .copied()
+            .ok_or_else(|| format!("Project '{}' has no allocation in pool '{}'", project, self.name))?;
+        let used = self.used_per_project.get(project).copied().unwrap_or(0);
+        if used + tokens > allocation {
+            return Err(format!(
+                "Project '{}' would exceed budget: used={}, requesting={}, allocated={}",
+                project,
+                used,
+                tokens,
+                allocation
+            ));
+        }
+        *self.used_per_project.entry(project.to_string()).or_insert(0) += tokens;
+        self.used_tokens += tokens;
+        Ok(())
+    }
+
+    /// How many tokens remain in a project's allocation.
+    pub fn remaining(&self, project: &str) -> Option<u64> {
+        let allocated = self.allocated.get(project)?;
+        let used = self.used_per_project.get(project).copied().unwrap_or(0);
+        Some(allocated.saturating_sub(used))
+    }
+
+    /// Total unallocated tokens plus unused tokens across all projects.
+    pub fn total_remaining(&self) -> u64 {
+        self.total_tokens.saturating_sub(self.used_tokens)
+    }
+
+    /// Usage percentage (0.0–1.0) for a project relative to its allocation.
+    pub fn usage_percent(&self, project: &str) -> Option<f64> {
+        let allocated = *self.allocated.get(project)?;
+        if allocated == 0 {
+            return Some(0.0);
+        }
+        let used = self.used_per_project.get(project).copied().unwrap_or(0);
+        Some(used as f64 / allocated as f64)
+    }
+
+    /// If the period has elapsed, reset all usage counters and start a new period.
+    pub fn reset_if_expired(&mut self) {
+        let now = Utc::now();
+        let elapsed = now.signed_duration_since(self.period_start);
+        if elapsed >= self.period_duration {
+            self.used_tokens = 0;
+            self.used_per_project.clear();
+            self.period_start = now;
+        }
+    }
+
+    /// Redistribute unused tokens from under-utilizing projects to over-utilizing ones,
+    /// proportional to original allocation sizes.
+    pub fn rebalance(&mut self) {
+        if self.allocated.is_empty() {
+            return;
+        }
+
+        // Find total surplus from under-utilizing projects
+        let mut surplus: u64 = 0;
+        let mut needy_projects: Vec<(String, u64)> = Vec::new();
+
+        for (project, &allocation) in &self.allocated {
+            let used = self.used_per_project.get(project).copied().unwrap_or(0);
+            if used < allocation {
+                // Under-utilizing: reclaim half the unused portion
+                let unused = allocation - used;
+                let reclaimable = unused / 2;
+                surplus += reclaimable;
+            } else if used >= allocation {
+                // At or over allocation — they could use more
+                needy_projects.push((project.clone(), allocation));
+            }
+        }
+
+        if surplus == 0 || needy_projects.is_empty() {
+            return;
+        }
+
+        // Distribute surplus proportionally to original allocation
+        let total_needy_allocation: u64 = needy_projects.iter().map(|(_, a)| a).sum();
+        if total_needy_allocation == 0 {
+            return;
+        }
+
+        for (project, alloc) in &needy_projects {
+            let share = (surplus as f64 * (*alloc as f64 / total_needy_allocation as f64)) as u64;
+            if let Some(entry) = self.allocated.get_mut(project) {
+                *entry += share;
+            }
+        }
+    }
+
+    /// Create a snapshot summary of the pool.
+    pub fn summary(&self) -> BudgetSummary {
+        let now = Utc::now();
+        let elapsed = now.signed_duration_since(self.period_start);
+        let remaining_secs = (self.period_duration - elapsed).num_seconds().max(0);
+
+        let mut projects: Vec<ProjectBudget> = self
+            .allocated
+            .iter()
+            .map(|(name, &allocated)| {
+                let used = self.used_per_project.get(name).copied().unwrap_or(0);
+                let remaining = allocated.saturating_sub(used);
+                let usage_pct = if allocated > 0 {
+                    used as f64 / allocated as f64
+                } else {
+                    0.0
+                };
+                ProjectBudget {
+                    name: name.clone(),
+                    allocated,
+                    used,
+                    remaining,
+                    usage_percent: usage_pct,
+                }
+            })
+            .collect();
+        projects.sort_by(|a, b| a.name.cmp(&b.name));
+
+        BudgetSummary {
+            pool_name: self.name.clone(),
+            total: self.total_tokens,
+            used: self.used_tokens,
+            period_remaining_seconds: remaining_secs,
+            projects,
+        }
+    }
+}
+
+/// Manages multiple named budget pools.
+#[derive(Debug, Clone)]
+pub struct BudgetManager {
+    pools: HashMap<String, BudgetPool>,
+}
+
+impl BudgetManager {
+    /// Create a new empty budget manager.
+    pub fn new() -> Self {
+        Self {
+            pools: HashMap::new(),
+        }
+    }
+
+    /// Create a new named pool. Returns an error if the pool already exists.
+    pub fn create_pool(&mut self, name: &str, total_tokens: u64, period: Duration) -> Result<(), String> {
+        if self.pools.contains_key(name) {
+            return Err(format!("Pool '{}' already exists", name));
+        }
+        self.pools
+            .insert(name.to_string(), BudgetPool::new(name, total_tokens, period));
+        Ok(())
+    }
+
+    /// Get an immutable reference to a pool.
+    pub fn get_pool(&self, name: &str) -> Option<&BudgetPool> {
+        self.pools.get(name)
+    }
+
+    /// Get a mutable reference to a pool.
+    pub fn get_pool_mut(&mut self, name: &str) -> Option<&mut BudgetPool> {
+        self.pools.get_mut(name)
+    }
+
+    /// Delete a pool by name, returning it if it existed.
+    pub fn delete_pool(&mut self, name: &str) -> Option<BudgetPool> {
+        self.pools.remove(name)
+    }
+
+    /// Get references to all pools.
+    pub fn all_pools(&self) -> Vec<&BudgetPool> {
+        self.pools.values().collect()
+    }
+}
+
+impl Default for BudgetManager {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[cfg(test)]
@@ -740,5 +995,283 @@ mod tests {
         assert_eq!(stats.total_prompt_tokens, 0);
         assert_eq!(stats.total_completion_tokens, 0);
         assert_eq!(stats.total_tokens, 0);
+    }
+
+    // ------------------------------------------------------------------
+    // Budget Pool Tests
+    // ------------------------------------------------------------------
+
+    fn hour() -> Duration {
+        Duration::hours(1)
+    }
+
+    #[test]
+    fn test_budget_pool_new() {
+        let pool = BudgetPool::new("test", 100_000, hour());
+        assert_eq!(pool.name, "test");
+        assert_eq!(pool.total_tokens, 100_000);
+        assert_eq!(pool.used_tokens, 0);
+        assert!(pool.allocated.is_empty());
+    }
+
+    #[test]
+    fn test_budget_pool_allocate() {
+        let mut pool = BudgetPool::new("main", 10_000, hour());
+        assert!(pool.allocate("AGNOSTIC", 5_000).is_ok());
+        assert!(pool.allocate("SecureYeoman", 3_000).is_ok());
+        assert_eq!(pool.allocated["AGNOSTIC"], 5_000);
+        assert_eq!(pool.allocated["SecureYeoman"], 3_000);
+    }
+
+    #[test]
+    fn test_budget_pool_allocate_exceeds() {
+        let mut pool = BudgetPool::new("main", 10_000, hour());
+        assert!(pool.allocate("AGNOSTIC", 7_000).is_ok());
+        // Only 3000 left, requesting 5000
+        let result = pool.allocate("SecureYeoman", 5_000);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("only 3000 available"));
+    }
+
+    #[test]
+    fn test_budget_pool_consume() {
+        let mut pool = BudgetPool::new("main", 10_000, hour());
+        pool.allocate("AGNOSTIC", 5_000).unwrap();
+        assert!(pool.consume("AGNOSTIC", 2_000).is_ok());
+        assert_eq!(pool.used_tokens, 2_000);
+        assert_eq!(pool.remaining("AGNOSTIC"), Some(3_000));
+    }
+
+    #[test]
+    fn test_budget_pool_consume_exceeds_allocation() {
+        let mut pool = BudgetPool::new("main", 10_000, hour());
+        pool.allocate("AGNOSTIC", 1_000).unwrap();
+        pool.consume("AGNOSTIC", 800).unwrap();
+        let result = pool.consume("AGNOSTIC", 500);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("would exceed budget"));
+    }
+
+    #[test]
+    fn test_budget_pool_consume_no_allocation() {
+        let mut pool = BudgetPool::new("main", 10_000, hour());
+        let result = pool.consume("unknown", 100);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("no allocation"));
+    }
+
+    #[test]
+    fn test_budget_pool_remaining() {
+        let mut pool = BudgetPool::new("main", 10_000, hour());
+        pool.allocate("A", 5_000).unwrap();
+        pool.consume("A", 1_500).unwrap();
+        assert_eq!(pool.remaining("A"), Some(3_500));
+        assert_eq!(pool.remaining("nonexistent"), None);
+    }
+
+    #[test]
+    fn test_budget_pool_total_remaining() {
+        let mut pool = BudgetPool::new("main", 10_000, hour());
+        pool.allocate("A", 5_000).unwrap();
+        pool.consume("A", 2_000).unwrap();
+        // total_remaining = total - used = 10000 - 2000 = 8000
+        assert_eq!(pool.total_remaining(), 8_000);
+    }
+
+    #[test]
+    fn test_budget_pool_usage_percent() {
+        let mut pool = BudgetPool::new("main", 10_000, hour());
+        pool.allocate("A", 1_000).unwrap();
+        pool.consume("A", 500).unwrap();
+        let pct = pool.usage_percent("A").unwrap();
+        assert!((pct - 0.5).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_budget_pool_usage_percent_zero_allocation() {
+        let mut pool = BudgetPool::new("main", 10_000, hour());
+        pool.allocated.insert("empty".to_string(), 0);
+        assert_eq!(pool.usage_percent("empty"), Some(0.0));
+    }
+
+    #[test]
+    fn test_budget_pool_usage_percent_nonexistent() {
+        let pool = BudgetPool::new("main", 10_000, hour());
+        assert_eq!(pool.usage_percent("nope"), None);
+    }
+
+    #[test]
+    fn test_budget_pool_reset_if_expired() {
+        let mut pool = BudgetPool::new("main", 10_000, Duration::seconds(0));
+        pool.allocate("A", 5_000).unwrap();
+        pool.consume("A", 3_000).unwrap();
+        assert_eq!(pool.used_tokens, 3_000);
+
+        // Period of 0 seconds means it's always expired
+        pool.reset_if_expired();
+        assert_eq!(pool.used_tokens, 0);
+        assert_eq!(pool.remaining("A"), Some(5_000)); // allocation preserved, usage cleared
+    }
+
+    #[test]
+    fn test_budget_pool_rebalance() {
+        let mut pool = BudgetPool::new("main", 10_000, hour());
+        pool.allocate("under", 4_000).unwrap();
+        pool.allocate("over", 4_000).unwrap();
+        // "under" uses nothing, "over" uses all
+        pool.consume("over", 4_000).unwrap();
+
+        pool.rebalance();
+        // "under" had 4000 unused, reclaim half = 2000 surplus
+        // "over" is the only needy project, gets all 2000
+        assert_eq!(pool.allocated["over"], 6_000);
+    }
+
+    #[test]
+    fn test_budget_pool_rebalance_no_needy() {
+        let mut pool = BudgetPool::new("main", 10_000, hour());
+        pool.allocate("A", 5_000).unwrap();
+        pool.allocate("B", 5_000).unwrap();
+        // Both under-utilizing
+        pool.consume("A", 1_000).unwrap();
+        pool.consume("B", 1_000).unwrap();
+        let a_before = pool.allocated["A"];
+        pool.rebalance();
+        // No needy projects, nothing should change
+        assert_eq!(pool.allocated["A"], a_before);
+    }
+
+    #[test]
+    fn test_budget_pool_summary() {
+        let mut pool = BudgetPool::new("main", 10_000, hour());
+        pool.allocate("AGNOSTIC", 6_000).unwrap();
+        pool.allocate("SecureYeoman", 3_000).unwrap();
+        pool.consume("AGNOSTIC", 2_000).unwrap();
+
+        let summary = pool.summary();
+        assert_eq!(summary.pool_name, "main");
+        assert_eq!(summary.total, 10_000);
+        assert_eq!(summary.used, 2_000);
+        assert!(summary.period_remaining_seconds > 0);
+        assert_eq!(summary.projects.len(), 2);
+
+        // Projects are sorted by name
+        assert_eq!(summary.projects[0].name, "AGNOSTIC");
+        assert_eq!(summary.projects[0].used, 2_000);
+        assert_eq!(summary.projects[0].remaining, 4_000);
+        assert_eq!(summary.projects[1].name, "SecureYeoman");
+        assert_eq!(summary.projects[1].used, 0);
+    }
+
+    #[test]
+    fn test_budget_manager_new() {
+        let mgr = BudgetManager::new();
+        assert!(mgr.all_pools().is_empty());
+    }
+
+    #[test]
+    fn test_budget_manager_create_and_get() {
+        let mut mgr = BudgetManager::new();
+        mgr.create_pool("prod", 50_000, hour()).unwrap();
+        assert!(mgr.get_pool("prod").is_some());
+        assert_eq!(mgr.get_pool("prod").unwrap().total_tokens, 50_000);
+    }
+
+    #[test]
+    fn test_budget_manager_duplicate_pool() {
+        let mut mgr = BudgetManager::new();
+        mgr.create_pool("prod", 50_000, hour()).unwrap();
+        let result = mgr.create_pool("prod", 100_000, hour());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("already exists"));
+    }
+
+    #[test]
+    fn test_budget_manager_delete_pool() {
+        let mut mgr = BudgetManager::new();
+        mgr.create_pool("temp", 1_000, hour()).unwrap();
+        let deleted = mgr.delete_pool("temp");
+        assert!(deleted.is_some());
+        assert_eq!(deleted.unwrap().name, "temp");
+        assert!(mgr.get_pool("temp").is_none());
+    }
+
+    #[test]
+    fn test_budget_manager_delete_nonexistent() {
+        let mut mgr = BudgetManager::new();
+        assert!(mgr.delete_pool("nope").is_none());
+    }
+
+    #[test]
+    fn test_budget_manager_all_pools() {
+        let mut mgr = BudgetManager::new();
+        mgr.create_pool("a", 1_000, hour()).unwrap();
+        mgr.create_pool("b", 2_000, hour()).unwrap();
+        mgr.create_pool("c", 3_000, hour()).unwrap();
+        assert_eq!(mgr.all_pools().len(), 3);
+    }
+
+    #[test]
+    fn test_budget_manager_get_pool_mut() {
+        let mut mgr = BudgetManager::new();
+        mgr.create_pool("mutable", 10_000, hour()).unwrap();
+        {
+            let pool = mgr.get_pool_mut("mutable").unwrap();
+            pool.allocate("proj", 5_000).unwrap();
+            pool.consume("proj", 1_000).unwrap();
+        }
+        assert_eq!(mgr.get_pool("mutable").unwrap().used_tokens, 1_000);
+    }
+
+    #[test]
+    fn test_budget_manager_default() {
+        let mgr = BudgetManager::default();
+        assert!(mgr.all_pools().is_empty());
+    }
+
+    #[test]
+    fn test_budget_pool_multiple_consumes() {
+        let mut pool = BudgetPool::new("main", 10_000, hour());
+        pool.allocate("A", 5_000).unwrap();
+        pool.consume("A", 1_000).unwrap();
+        pool.consume("A", 1_000).unwrap();
+        pool.consume("A", 1_000).unwrap();
+        assert_eq!(pool.remaining("A"), Some(2_000));
+        assert_eq!(pool.used_tokens, 3_000);
+    }
+
+    #[test]
+    fn test_budget_pool_allocate_incremental() {
+        let mut pool = BudgetPool::new("main", 10_000, hour());
+        pool.allocate("A", 2_000).unwrap();
+        pool.allocate("A", 1_000).unwrap(); // adds to existing
+        assert_eq!(pool.allocated["A"], 3_000);
+    }
+
+    #[test]
+    fn test_project_budget_serialize() {
+        let pb = ProjectBudget {
+            name: "test".to_string(),
+            allocated: 1000,
+            used: 500,
+            remaining: 500,
+            usage_percent: 0.5,
+        };
+        let json = serde_json::to_string(&pb).unwrap();
+        assert!(json.contains("\"name\":\"test\""));
+        assert!(json.contains("\"allocated\":1000"));
+    }
+
+    #[test]
+    fn test_budget_summary_serialize() {
+        let summary = BudgetSummary {
+            pool_name: "pool".to_string(),
+            total: 10000,
+            used: 5000,
+            period_remaining_seconds: 3600,
+            projects: vec![],
+        };
+        let json = serde_json::to_string(&summary).unwrap();
+        assert!(json.contains("\"pool_name\":\"pool\""));
     }
 }

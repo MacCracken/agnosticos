@@ -1,0 +1,31 @@
+# AGNOS Python 3.12 Base Image
+# For running Python-based agents (AGNOSTIC QA, etc.) with AGNOS sandbox
+FROM python:3.12-slim-bookworm AS base
+
+# System dependencies for agent-runtime sidecar
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    libseccomp2 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create agnos user and directories
+RUN useradd --system --create-home --shell /bin/bash agnos \
+    && mkdir -p /var/lib/agnos/agent-memory \
+    && mkdir -p /var/log/agnos \
+    && mkdir -p /run/agnos \
+    && chown -R agnos:agnos /var/lib/agnos /var/log/agnos /run/agnos
+
+# Python dependencies common to all agents
+COPY docker/requirements-base.txt /tmp/requirements-base.txt
+RUN pip install --no-cache-dir -r /tmp/requirements-base.txt && rm /tmp/requirements-base.txt
+
+# Labels
+LABEL org.opencontainers.image.title="AGNOS Python 3.12 Base"
+LABEL org.opencontainers.image.description="Python 3.12 base image with AGNOS agent runtime support"
+LABEL org.opencontainers.image.vendor="AGNOS"
+
+USER agnos
+WORKDIR /home/agnos
+
+# Default entrypoint for agents
+ENTRYPOINT ["python", "-m"]

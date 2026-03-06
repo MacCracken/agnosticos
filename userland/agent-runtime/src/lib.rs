@@ -19,6 +19,14 @@ pub mod learning;
 pub mod memory_store;
 pub mod multimodal;
 pub mod wasm_runtime;
+pub mod vector_store;
+pub mod rag;
+pub mod knowledge_base;
+pub mod file_watcher;
+pub mod capability;
+pub mod resource_forecast;
+pub mod mtls;
+pub mod integrity;
 
 pub use agent::{Agent, AgentHandle};
 pub use lifecycle::LifecycleManager;

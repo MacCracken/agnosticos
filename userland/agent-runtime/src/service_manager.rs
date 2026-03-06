@@ -1011,6 +1011,247 @@ impl ReconciliationPlan {
 }
 
 // ---------------------------------------------------------------------------
+// Scheduled / Cron Agent Tasks
+// ---------------------------------------------------------------------------
+
+use chrono::{DateTime, Datelike, Timelike, Utc};
+use uuid::Uuid;
+
+/// Parsed cron-like schedule expression.
+///
+/// Supports standard 5-field cron: `minute hour day_of_month month day_of_week`
+///
+/// Field syntax:
+/// - `*` — match any value
+/// - `N` — match exact value
+/// - `*/N` — match every N-th value (step)
+///
+/// Examples: `*/5 * * * *` (every 5 min), `0 2 * * 0` (Sunday 2am), `0 */6 * * *` (every 6 hours)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CronSchedule {
+    /// The original expression string.
+    pub expression: String,
+    /// Human-readable description.
+    pub description: String,
+    // Parsed fields (private)
+    #[serde(skip)]
+    minute: CronField,
+    #[serde(skip)]
+    hour: CronField,
+    #[serde(skip)]
+    day_of_month: CronField,
+    #[serde(skip)]
+    month: CronField,
+    #[serde(skip)]
+    day_of_week: CronField,
+}
+
+#[derive(Debug, Clone)]
+enum CronField {
+    Any,
+    Exact(u32),
+    Step(u32),
+}
+
+impl Default for CronField {
+    fn default() -> Self {
+        CronField::Any
+    }
+}
+
+impl CronField {
+    fn matches(&self, value: u32) -> bool {
+        match self {
+            CronField::Any => true,
+            CronField::Exact(v) => *v == value,
+            CronField::Step(step) => {
+                if *step == 0 {
+                    return true;
+                }
+                value % step == 0
+            }
+        }
+    }
+
+    fn parse(field: &str) -> anyhow::Result<Self> {
+        if field == "*" {
+            return Ok(CronField::Any);
+        }
+        if let Some(step) = field.strip_prefix("*/") {
+            let n: u32 = step.parse()
+                .map_err(|_| anyhow::anyhow!("Invalid step value: {}", step))?;
+            if n == 0 {
+                anyhow::bail!("Step value must be > 0");
+            }
+            return Ok(CronField::Step(n));
+        }
+        let n: u32 = field.parse()
+            .map_err(|_| anyhow::anyhow!("Invalid cron field: {}", field))?;
+        Ok(CronField::Exact(n))
+    }
+}
+
+impl CronSchedule {
+    /// Parse a cron expression string (5 fields: minute hour day month weekday).
+    pub fn new(expression: &str) -> anyhow::Result<Self> {
+        let parts: Vec<&str> = expression.split_whitespace().collect();
+        if parts.len() != 5 {
+            anyhow::bail!(
+                "Invalid cron expression '{}': expected 5 fields (minute hour day month weekday), got {}",
+                expression,
+                parts.len()
+            );
+        }
+
+        let minute = CronField::parse(parts[0])?;
+        let hour = CronField::parse(parts[1])?;
+        let day_of_month = CronField::parse(parts[2])?;
+        let month = CronField::parse(parts[3])?;
+        let day_of_week = CronField::parse(parts[4])?;
+
+        Ok(Self {
+            expression: expression.to_string(),
+            description: String::new(),
+            minute,
+            hour,
+            day_of_month,
+            month,
+            day_of_week,
+        })
+    }
+
+    /// Set the description.
+    pub fn with_description(mut self, desc: impl Into<String>) -> Self {
+        self.description = desc.into();
+        self
+    }
+
+    /// Check if a given datetime matches this schedule.
+    pub fn matches(&self, dt: &DateTime<Utc>) -> bool {
+        self.minute.matches(dt.minute())
+            && self.hour.matches(dt.hour())
+            && self.day_of_month.matches(dt.day())
+            && self.month.matches(dt.month())
+            && self.day_of_week.matches(dt.weekday().num_days_from_sunday())
+    }
+
+    /// Compute the next run time after the given datetime.
+    ///
+    /// Scans forward minute-by-minute up to 366 days. Returns None if no match is found.
+    pub fn next_run_after(&self, after: DateTime<Utc>) -> Option<DateTime<Utc>> {
+        use chrono::Duration as CDuration;
+
+        // Start from the next minute boundary
+        let mut candidate = after
+            .with_second(0)?
+            .with_nanosecond(0)?
+            + CDuration::minutes(1);
+
+        // Scan up to 366 days (527040 minutes)
+        let max_iterations = 366 * 24 * 60;
+        for _ in 0..max_iterations {
+            if self.matches(&candidate) {
+                return Some(candidate);
+            }
+            candidate = candidate + CDuration::minutes(1);
+        }
+
+        None
+    }
+}
+
+/// A scheduled task bound to a service.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScheduledTask {
+    /// Unique task identifier.
+    pub id: Uuid,
+    /// Human-readable name.
+    pub name: String,
+    /// Name of the service to run.
+    pub service_name: String,
+    /// Schedule expression.
+    pub schedule: CronSchedule,
+    /// Whether the task is active.
+    pub enabled: bool,
+    /// When the task last ran.
+    pub last_run: Option<DateTime<Utc>>,
+    /// Computed next run time.
+    pub next_run: Option<DateTime<Utc>>,
+}
+
+impl ScheduledTask {
+    pub fn new(name: impl Into<String>, service_name: impl Into<String>, schedule: CronSchedule) -> Self {
+        let next = schedule.next_run_after(Utc::now());
+        Self {
+            id: Uuid::new_v4(),
+            name: name.into(),
+            service_name: service_name.into(),
+            schedule,
+            enabled: true,
+            last_run: None,
+            next_run: next,
+        }
+    }
+}
+
+/// Manages scheduled tasks and determines which are due.
+pub struct TaskScheduler {
+    tasks: HashMap<Uuid, ScheduledTask>,
+}
+
+impl TaskScheduler {
+    pub fn new() -> Self {
+        Self {
+            tasks: HashMap::new(),
+        }
+    }
+
+    /// Register a new scheduled task.
+    pub fn add_task(&mut self, task: ScheduledTask) -> anyhow::Result<()> {
+        if task.name.is_empty() {
+            anyhow::bail!("Task name cannot be empty");
+        }
+        info!(task_id = %task.id, name = %task.name, schedule = %task.schedule.expression, "Added scheduled task");
+        self.tasks.insert(task.id, task);
+        Ok(())
+    }
+
+    /// Remove a scheduled task by ID.
+    pub fn remove_task(&mut self, id: &Uuid) -> Option<ScheduledTask> {
+        self.tasks.remove(id)
+    }
+
+    /// Get all tasks whose next_run is at or before `now` and are enabled.
+    pub fn due_tasks(&self, now: &DateTime<Utc>) -> Vec<&ScheduledTask> {
+        self.tasks
+            .values()
+            .filter(|t| {
+                t.enabled && t.next_run.map_or(false, |nr| nr <= *now)
+            })
+            .collect()
+    }
+
+    /// List all tasks.
+    pub fn list_tasks(&self) -> Vec<&ScheduledTask> {
+        self.tasks.values().collect()
+    }
+
+    /// Mark a task as completed and compute the next run time.
+    pub fn mark_completed(&mut self, id: &Uuid, completed_at: DateTime<Utc>) {
+        if let Some(task) = self.tasks.get_mut(id) {
+            task.last_run = Some(completed_at);
+            task.next_run = task.schedule.next_run_after(completed_at);
+        }
+    }
+}
+
+impl Default for TaskScheduler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -1676,5 +1917,269 @@ enabled = false
         let plan = fleet.reconcile(&[]);
         assert_eq!(plan.to_start.len(), 1);
         assert!(plan.to_start.contains(&"gateway".to_string()));
+    }
+
+    // ==================================================================
+    // Cron Schedule & Task Scheduler tests
+    // ==================================================================
+
+    #[test]
+    fn test_cron_parse_every_5_min() {
+        let schedule = CronSchedule::new("*/5 * * * *").unwrap();
+        assert_eq!(schedule.expression, "*/5 * * * *");
+    }
+
+    #[test]
+    fn test_cron_parse_sunday_2am() {
+        let schedule = CronSchedule::new("0 2 * * 0").unwrap();
+        assert_eq!(schedule.expression, "0 2 * * 0");
+    }
+
+    #[test]
+    fn test_cron_parse_every_6_hours() {
+        let schedule = CronSchedule::new("0 */6 * * *").unwrap();
+        assert_eq!(schedule.expression, "0 */6 * * *");
+    }
+
+    #[test]
+    fn test_cron_parse_invalid_field_count() {
+        assert!(CronSchedule::new("* * *").is_err());
+        assert!(CronSchedule::new("* * * * * *").is_err());
+        assert!(CronSchedule::new("").is_err());
+    }
+
+    #[test]
+    fn test_cron_parse_invalid_field_value() {
+        assert!(CronSchedule::new("abc * * * *").is_err());
+        assert!(CronSchedule::new("*/0 * * * *").is_err());
+    }
+
+    #[test]
+    fn test_cron_matches_every_minute() {
+        let schedule = CronSchedule::new("* * * * *").unwrap();
+        let dt = chrono::Utc::now();
+        assert!(schedule.matches(&dt));
+    }
+
+    #[test]
+    fn test_cron_matches_specific_minute() {
+        let schedule = CronSchedule::new("30 * * * *").unwrap();
+        // 2026-03-06 12:30:00 UTC
+        let dt = chrono::NaiveDate::from_ymd_opt(2026, 3, 6).unwrap()
+            .and_hms_opt(12, 30, 0).unwrap()
+            .and_utc();
+        assert!(schedule.matches(&dt));
+
+        let dt_wrong = chrono::NaiveDate::from_ymd_opt(2026, 3, 6).unwrap()
+            .and_hms_opt(12, 15, 0).unwrap()
+            .and_utc();
+        assert!(!schedule.matches(&dt_wrong));
+    }
+
+    #[test]
+    fn test_cron_matches_step() {
+        let schedule = CronSchedule::new("*/15 * * * *").unwrap();
+        let dt0 = chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()
+            .and_hms_opt(0, 0, 0).unwrap().and_utc();
+        let dt15 = chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()
+            .and_hms_opt(0, 15, 0).unwrap().and_utc();
+        let dt7 = chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()
+            .and_hms_opt(0, 7, 0).unwrap().and_utc();
+
+        assert!(schedule.matches(&dt0));
+        assert!(schedule.matches(&dt15));
+        assert!(!schedule.matches(&dt7));
+    }
+
+    #[test]
+    fn test_cron_matches_specific_hour_and_minute() {
+        let schedule = CronSchedule::new("0 2 * * *").unwrap();
+        let dt = chrono::NaiveDate::from_ymd_opt(2026, 6, 15).unwrap()
+            .and_hms_opt(2, 0, 0).unwrap().and_utc();
+        assert!(schedule.matches(&dt));
+
+        let wrong_hour = chrono::NaiveDate::from_ymd_opt(2026, 6, 15).unwrap()
+            .and_hms_opt(3, 0, 0).unwrap().and_utc();
+        assert!(!schedule.matches(&wrong_hour));
+    }
+
+    #[test]
+    fn test_cron_matches_day_of_week() {
+        // 0 = Sunday
+        let schedule = CronSchedule::new("0 0 * * 0").unwrap();
+        // 2026-03-01 is a Sunday
+        let sunday = chrono::NaiveDate::from_ymd_opt(2026, 3, 1).unwrap()
+            .and_hms_opt(0, 0, 0).unwrap().and_utc();
+        assert!(sunday.weekday().num_days_from_sunday() == 0);
+        assert!(schedule.matches(&sunday));
+
+        // Monday
+        let monday = chrono::NaiveDate::from_ymd_opt(2026, 3, 2).unwrap()
+            .and_hms_opt(0, 0, 0).unwrap().and_utc();
+        assert!(!schedule.matches(&monday));
+    }
+
+    #[test]
+    fn test_cron_next_run_after() {
+        let schedule = CronSchedule::new("0 * * * *").unwrap(); // every hour at :00
+        let now = chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()
+            .and_hms_opt(12, 30, 0).unwrap().and_utc();
+
+        let next = schedule.next_run_after(now).unwrap();
+        assert_eq!(next.hour(), 13);
+        assert_eq!(next.minute(), 0);
+    }
+
+    #[test]
+    fn test_cron_next_run_every_5_min() {
+        let schedule = CronSchedule::new("*/5 * * * *").unwrap();
+        let now = chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()
+            .and_hms_opt(10, 3, 0).unwrap().and_utc();
+
+        let next = schedule.next_run_after(now).unwrap();
+        assert_eq!(next.minute(), 5);
+        assert_eq!(next.hour(), 10);
+    }
+
+    #[test]
+    fn test_cron_with_description() {
+        let schedule = CronSchedule::new("*/5 * * * *").unwrap()
+            .with_description("Every 5 minutes");
+        assert_eq!(schedule.description, "Every 5 minutes");
+    }
+
+    #[test]
+    fn test_scheduled_task_new() {
+        let schedule = CronSchedule::new("* * * * *").unwrap();
+        let task = ScheduledTask::new("test-task", "my-service", schedule);
+        assert_eq!(task.name, "test-task");
+        assert_eq!(task.service_name, "my-service");
+        assert!(task.enabled);
+        assert!(task.last_run.is_none());
+        assert!(task.next_run.is_some());
+    }
+
+    #[test]
+    fn test_task_scheduler_new() {
+        let scheduler = TaskScheduler::new();
+        assert!(scheduler.list_tasks().is_empty());
+    }
+
+    #[test]
+    fn test_task_scheduler_add_task() {
+        let mut scheduler = TaskScheduler::new();
+        let schedule = CronSchedule::new("*/5 * * * *").unwrap();
+        let task = ScheduledTask::new("scanner", "port-scanner-svc", schedule);
+
+        scheduler.add_task(task).unwrap();
+        assert_eq!(scheduler.list_tasks().len(), 1);
+    }
+
+    #[test]
+    fn test_task_scheduler_add_task_empty_name() {
+        let mut scheduler = TaskScheduler::new();
+        let schedule = CronSchedule::new("* * * * *").unwrap();
+        let task = ScheduledTask::new("", "svc", schedule);
+        assert!(scheduler.add_task(task).is_err());
+    }
+
+    #[test]
+    fn test_task_scheduler_remove_task() {
+        let mut scheduler = TaskScheduler::new();
+        let schedule = CronSchedule::new("* * * * *").unwrap();
+        let task = ScheduledTask::new("removable", "svc", schedule);
+        let id = task.id;
+
+        scheduler.add_task(task).unwrap();
+        let removed = scheduler.remove_task(&id);
+        assert!(removed.is_some());
+        assert_eq!(removed.unwrap().name, "removable");
+        assert!(scheduler.list_tasks().is_empty());
+    }
+
+    #[test]
+    fn test_task_scheduler_remove_nonexistent() {
+        let mut scheduler = TaskScheduler::new();
+        let id = Uuid::new_v4();
+        assert!(scheduler.remove_task(&id).is_none());
+    }
+
+    #[test]
+    fn test_task_scheduler_due_tasks() {
+        let mut scheduler = TaskScheduler::new();
+
+        // Task whose next_run is in the past
+        let schedule = CronSchedule::new("* * * * *").unwrap();
+        let mut task = ScheduledTask::new("due-task", "svc", schedule);
+        task.next_run = Some(Utc::now() - chrono::Duration::minutes(1));
+        scheduler.add_task(task).unwrap();
+
+        // Task whose next_run is in the future
+        let schedule2 = CronSchedule::new("* * * * *").unwrap();
+        let mut task2 = ScheduledTask::new("future-task", "svc2", schedule2);
+        task2.next_run = Some(Utc::now() + chrono::Duration::hours(1));
+        scheduler.add_task(task2).unwrap();
+
+        let due = scheduler.due_tasks(&Utc::now());
+        assert_eq!(due.len(), 1);
+        assert_eq!(due[0].name, "due-task");
+    }
+
+    #[test]
+    fn test_task_scheduler_due_tasks_disabled() {
+        let mut scheduler = TaskScheduler::new();
+        let schedule = CronSchedule::new("* * * * *").unwrap();
+        let mut task = ScheduledTask::new("disabled-task", "svc", schedule);
+        task.next_run = Some(Utc::now() - chrono::Duration::minutes(5));
+        task.enabled = false;
+        scheduler.add_task(task).unwrap();
+
+        let due = scheduler.due_tasks(&Utc::now());
+        assert!(due.is_empty());
+    }
+
+    #[test]
+    fn test_task_scheduler_mark_completed() {
+        let mut scheduler = TaskScheduler::new();
+        let schedule = CronSchedule::new("0 * * * *").unwrap(); // every hour at :00
+        let task = ScheduledTask::new("hourly", "svc", schedule);
+        let id = task.id;
+        scheduler.add_task(task).unwrap();
+
+        let completed_at = chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()
+            .and_hms_opt(12, 0, 0).unwrap().and_utc();
+        scheduler.mark_completed(&id, completed_at);
+
+        let tasks = scheduler.list_tasks();
+        let t = tasks.iter().find(|t| t.id == id).unwrap();
+        assert_eq!(t.last_run, Some(completed_at));
+        // next_run should be 13:00
+        assert!(t.next_run.is_some());
+        assert_eq!(t.next_run.unwrap().hour(), 13);
+    }
+
+    #[test]
+    fn test_task_scheduler_default() {
+        let scheduler = TaskScheduler::default();
+        assert!(scheduler.list_tasks().is_empty());
+    }
+
+    #[test]
+    fn test_cron_schedule_serialization() {
+        let schedule = CronSchedule::new("*/10 * * * *").unwrap()
+            .with_description("Every 10 min");
+        let json = serde_json::to_string(&schedule).unwrap();
+        assert!(json.contains("*/10 * * * *"));
+        assert!(json.contains("Every 10 min"));
+    }
+
+    #[test]
+    fn test_scheduled_task_serialization() {
+        let schedule = CronSchedule::new("0 0 * * *").unwrap();
+        let task = ScheduledTask::new("midnight", "cleanup-svc", schedule);
+        let json = serde_json::to_string(&task).unwrap();
+        let deser: ScheduledTask = serde_json::from_str(&json).unwrap();
+        assert_eq!(deser.name, "midnight");
+        assert_eq!(deser.service_name, "cleanup-svc");
     }
 }
