@@ -9,6 +9,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::time::{Duration, Instant};
 
+use serde::{Deserialize, Serialize};
 use tracing::debug;
 
 use agnos_common::AgentId;
@@ -321,6 +322,112 @@ impl Default for AgentLearner {
     }
 }
 
+/// Conversation context window for multi-turn agent reasoning.
+/// Maintains a sliding window of recent interactions per agent,
+/// persisted to the memory store.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContextEntry {
+    pub role: String, // "user", "agent", "system"
+    pub content: String,
+    pub timestamp: String,
+    #[serde(default)]
+    pub metadata: serde_json::Value,
+}
+
+/// Per-agent context window manager
+pub struct ConversationContext {
+    /// Maximum entries per agent
+    max_entries: usize,
+    /// In-memory context windows
+    contexts: HashMap<AgentId, VecDeque<ContextEntry>>,
+}
+
+impl ConversationContext {
+    pub fn new(max_entries: usize) -> Self {
+        Self {
+            max_entries,
+            contexts: HashMap::new(),
+        }
+    }
+
+    /// Add a message to an agent's context window
+    pub fn push(&mut self, agent_id: AgentId, entry: ContextEntry) {
+        let window = self
+            .contexts
+            .entry(agent_id)
+            .or_insert_with(VecDeque::new);
+        window.push_back(entry);
+        while window.len() > self.max_entries {
+            window.pop_front();
+        }
+    }
+
+    /// Get the current context window for an agent
+    pub fn get(&self, agent_id: AgentId) -> Vec<&ContextEntry> {
+        self.contexts
+            .get(&agent_id)
+            .map(|w| w.iter().collect())
+            .unwrap_or_default()
+    }
+
+    /// Get context as a formatted string for LLM injection
+    pub fn format_for_llm(&self, agent_id: AgentId) -> String {
+        let entries = self.get(agent_id);
+        if entries.is_empty() {
+            return String::new();
+        }
+
+        entries
+            .iter()
+            .map(|e| format!("[{}] {}: {}", e.timestamp, e.role, e.content))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    /// Clear context for an agent
+    pub fn clear(&mut self, agent_id: AgentId) {
+        self.contexts.remove(&agent_id);
+    }
+
+    /// Get the number of entries in an agent's context
+    pub fn len(&self, agent_id: AgentId) -> usize {
+        self.contexts.get(&agent_id).map(|w| w.len()).unwrap_or(0)
+    }
+
+    /// Check if an agent has any context
+    pub fn is_empty(&self, agent_id: AgentId) -> bool {
+        self.len(agent_id) == 0
+    }
+
+    /// Number of agents with active context
+    pub fn active_agents(&self) -> usize {
+        self.contexts.len()
+    }
+
+    /// Export context for persistence
+    pub fn export(&self, agent_id: AgentId) -> Vec<ContextEntry> {
+        self.contexts
+            .get(&agent_id)
+            .map(|w| w.iter().cloned().collect())
+            .unwrap_or_default()
+    }
+
+    /// Import context (e.g., from memory store on agent restart)
+    pub fn import(&mut self, agent_id: AgentId, entries: Vec<ContextEntry>) {
+        let mut window = VecDeque::from(entries);
+        while window.len() > self.max_entries {
+            window.pop_front();
+        }
+        self.contexts.insert(agent_id, window);
+    }
+}
+
+impl Default for ConversationContext {
+    fn default() -> Self {
+        Self::new(50)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -529,5 +636,172 @@ mod tests {
         let stats = StrategyStats::new("test".into());
         assert_eq!(stats.avg_reward(), 0.0);
         assert_eq!(stats.ucb1_score(10), f64::MAX);
+    }
+
+    // ── ConversationContext tests ──────────────────────────────────────
+
+    fn make_entry(role: &str, content: &str) -> ContextEntry {
+        ContextEntry {
+            role: role.to_string(),
+            content: content.to_string(),
+            timestamp: "2026-01-01T00:00:00Z".to_string(),
+            metadata: serde_json::Value::Null,
+        }
+    }
+
+    #[test]
+    fn test_context_push_and_get() {
+        let mut ctx = ConversationContext::new(10);
+        let id = agent(1);
+        ctx.push(id, make_entry("user", "hello"));
+        ctx.push(id, make_entry("agent", "hi there"));
+
+        let entries = ctx.get(id);
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].role, "user");
+        assert_eq!(entries[1].content, "hi there");
+    }
+
+    #[test]
+    fn test_context_sliding_window_eviction() {
+        let mut ctx = ConversationContext::new(3);
+        let id = agent(1);
+        for i in 0..5 {
+            ctx.push(id, make_entry("user", &format!("msg{}", i)));
+        }
+        let entries = ctx.get(id);
+        assert_eq!(entries.len(), 3);
+        // Oldest two should be evicted
+        assert_eq!(entries[0].content, "msg2");
+        assert_eq!(entries[1].content, "msg3");
+        assert_eq!(entries[2].content, "msg4");
+    }
+
+    #[test]
+    fn test_context_clear() {
+        let mut ctx = ConversationContext::new(10);
+        let id = agent(1);
+        ctx.push(id, make_entry("user", "test"));
+        ctx.clear(id);
+        assert!(ctx.is_empty(id));
+        assert_eq!(ctx.active_agents(), 0);
+    }
+
+    #[test]
+    fn test_format_for_llm_empty() {
+        let ctx = ConversationContext::new(10);
+        assert_eq!(ctx.format_for_llm(agent(1)), "");
+    }
+
+    #[test]
+    fn test_format_for_llm_populated() {
+        let mut ctx = ConversationContext::new(10);
+        let id = agent(1);
+        ctx.push(id, ContextEntry {
+            role: "user".into(),
+            content: "what is 2+2?".into(),
+            timestamp: "T1".into(),
+            metadata: serde_json::Value::Null,
+        });
+        ctx.push(id, ContextEntry {
+            role: "agent".into(),
+            content: "4".into(),
+            timestamp: "T2".into(),
+            metadata: serde_json::Value::Null,
+        });
+
+        let formatted = ctx.format_for_llm(id);
+        assert!(formatted.contains("[T1] user: what is 2+2?"));
+        assert!(formatted.contains("[T2] agent: 4"));
+    }
+
+    #[test]
+    fn test_context_is_empty() {
+        let mut ctx = ConversationContext::new(10);
+        let id = agent(1);
+        assert!(ctx.is_empty(id));
+        ctx.push(id, make_entry("user", "hi"));
+        assert!(!ctx.is_empty(id));
+    }
+
+    #[test]
+    fn test_context_active_agents() {
+        let mut ctx = ConversationContext::new(10);
+        assert_eq!(ctx.active_agents(), 0);
+        ctx.push(agent(1), make_entry("user", "a"));
+        ctx.push(agent(2), make_entry("user", "b"));
+        assert_eq!(ctx.active_agents(), 2);
+    }
+
+    #[test]
+    fn test_context_export_import_roundtrip() {
+        let mut ctx = ConversationContext::new(10);
+        let id = agent(1);
+        ctx.push(id, make_entry("user", "msg1"));
+        ctx.push(id, make_entry("agent", "msg2"));
+
+        let exported = ctx.export(id);
+        assert_eq!(exported.len(), 2);
+
+        let mut ctx2 = ConversationContext::new(10);
+        ctx2.import(id, exported);
+
+        let entries = ctx2.get(id);
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].content, "msg1");
+        assert_eq!(entries[1].content, "msg2");
+    }
+
+    #[test]
+    fn test_context_default_max() {
+        let ctx = ConversationContext::default();
+        assert_eq!(ctx.max_entries, 50);
+    }
+
+    #[test]
+    fn test_context_len_tracking() {
+        let mut ctx = ConversationContext::new(100);
+        let id = agent(1);
+        assert_eq!(ctx.len(id), 0);
+        ctx.push(id, make_entry("user", "a"));
+        assert_eq!(ctx.len(id), 1);
+        ctx.push(id, make_entry("agent", "b"));
+        assert_eq!(ctx.len(id), 2);
+    }
+
+    #[test]
+    fn test_context_multiple_agents_isolated() {
+        let mut ctx = ConversationContext::new(10);
+        let id1 = agent(1);
+        let id2 = agent(2);
+
+        ctx.push(id1, make_entry("user", "agent1-msg"));
+        ctx.push(id2, make_entry("user", "agent2-msg"));
+
+        let entries1 = ctx.get(id1);
+        let entries2 = ctx.get(id2);
+
+        assert_eq!(entries1.len(), 1);
+        assert_eq!(entries2.len(), 1);
+        assert_eq!(entries1[0].content, "agent1-msg");
+        assert_eq!(entries2[0].content, "agent2-msg");
+    }
+
+    #[test]
+    fn test_context_import_truncates() {
+        let mut ctx = ConversationContext::new(3);
+        let id = agent(1);
+
+        let entries: Vec<ContextEntry> = (0..10)
+            .map(|i| make_entry("user", &format!("msg{}", i)))
+            .collect();
+        ctx.import(id, entries);
+
+        assert_eq!(ctx.len(id), 3);
+        let got = ctx.get(id);
+        // Should keep the last 3 (oldest evicted from front)
+        assert_eq!(got[0].content, "msg7");
+        assert_eq!(got[1].content, "msg8");
+        assert_eq!(got[2].content, "msg9");
     }
 }

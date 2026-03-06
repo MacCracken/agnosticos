@@ -928,6 +928,89 @@ fn dependency_levels(
 }
 
 // ---------------------------------------------------------------------------
+// Fleet configuration
+// ---------------------------------------------------------------------------
+
+/// Declarative fleet configuration: defines the desired agent fleet state.
+/// Loaded from a TOML file (e.g., `/etc/agnos/fleet.toml`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FleetConfig {
+    /// Desired services to run
+    #[serde(default)]
+    pub services: Vec<ServiceDefinition>,
+}
+
+impl FleetConfig {
+    /// Load fleet config from a TOML file
+    pub async fn from_file(path: &Path) -> Result<Self> {
+        let content = tokio::fs::read_to_string(path)
+            .await
+            .context(format!(
+                "Failed to read fleet config from {}",
+                path.display()
+            ))?;
+        let config: FleetConfig =
+            toml::from_str(&content).context("Failed to parse fleet config TOML")?;
+        Ok(config)
+    }
+
+    /// Compute the reconciliation plan: which services to start, stop, or update
+    pub fn reconcile(&self, running: &[String]) -> ReconciliationPlan {
+        let desired: std::collections::HashSet<String> = self
+            .services
+            .iter()
+            .filter(|s| s.enabled)
+            .map(|s| s.name.clone())
+            .collect();
+        let current: std::collections::HashSet<String> = running.iter().cloned().collect();
+
+        let to_start: Vec<String> = desired.difference(&current).cloned().collect();
+        let to_stop: Vec<String> = current.difference(&desired).cloned().collect();
+        let unchanged: Vec<String> = desired.intersection(&current).cloned().collect();
+
+        ReconciliationPlan {
+            to_start,
+            to_stop,
+            unchanged,
+        }
+    }
+}
+
+/// Plan for reconciling desired vs actual fleet state
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReconciliationPlan {
+    pub to_start: Vec<String>,
+    pub to_stop: Vec<String>,
+    pub unchanged: Vec<String>,
+}
+
+impl ReconciliationPlan {
+    /// Whether any changes are needed
+    pub fn has_changes(&self) -> bool {
+        !self.to_start.is_empty() || !self.to_stop.is_empty()
+    }
+
+    /// Human-readable summary
+    pub fn summary(&self) -> String {
+        let mut parts = Vec::new();
+        if !self.to_start.is_empty() {
+            parts.push(format!("start: {}", self.to_start.join(", ")));
+        }
+        if !self.to_stop.is_empty() {
+            parts.push(format!("stop: {}", self.to_stop.join(", ")));
+        }
+        if !self.unchanged.is_empty() {
+            parts.push(format!("unchanged: {}", self.unchanged.join(", ")));
+        }
+        if parts.is_empty() {
+            "No changes needed".to_string()
+        } else {
+            parts.join(" | ")
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -1389,5 +1472,209 @@ exec_start = "/bin/true"
         assert_eq!(def.restart, RestartPolicy::Always);
         assert_eq!(def.service_type, ServiceType::Simple);
         assert!(def.enabled);
+    }
+
+    // -----------------------------------------------------------------------
+    // FleetConfig and ReconciliationPlan tests
+    // -----------------------------------------------------------------------
+
+    fn fleet_service(name: &str, enabled: bool) -> ServiceDefinition {
+        ServiceDefinition {
+            enabled,
+            ..make_def(name, &[])
+        }
+    }
+
+    #[test]
+    fn test_reconcile_empty_desired_empty_running() {
+        let fleet = FleetConfig { services: vec![] };
+        let plan = fleet.reconcile(&[]);
+        assert!(plan.to_start.is_empty());
+        assert!(plan.to_stop.is_empty());
+        assert!(plan.unchanged.is_empty());
+        assert!(!plan.has_changes());
+    }
+
+    #[test]
+    fn test_reconcile_start_new() {
+        let fleet = FleetConfig {
+            services: vec![fleet_service("svc-a", true), fleet_service("svc-b", true)],
+        };
+        let plan = fleet.reconcile(&[]);
+        assert_eq!(plan.to_start.len(), 2);
+        assert!(plan.to_stop.is_empty());
+        assert!(plan.unchanged.is_empty());
+        assert!(plan.has_changes());
+    }
+
+    #[test]
+    fn test_reconcile_stop_extra() {
+        let fleet = FleetConfig { services: vec![] };
+        let plan = fleet.reconcile(&["old-svc".to_string()]);
+        assert!(plan.to_start.is_empty());
+        assert_eq!(plan.to_stop, vec!["old-svc".to_string()]);
+        assert!(plan.unchanged.is_empty());
+        assert!(plan.has_changes());
+    }
+
+    #[test]
+    fn test_reconcile_mixed() {
+        let fleet = FleetConfig {
+            services: vec![
+                fleet_service("keep", true),
+                fleet_service("new-svc", true),
+            ],
+        };
+        let running = vec!["keep".to_string(), "remove-me".to_string()];
+        let plan = fleet.reconcile(&running);
+        assert!(plan.to_start.contains(&"new-svc".to_string()));
+        assert!(plan.to_stop.contains(&"remove-me".to_string()));
+        assert!(plan.unchanged.contains(&"keep".to_string()));
+    }
+
+    #[test]
+    fn test_reconcile_no_changes() {
+        let fleet = FleetConfig {
+            services: vec![fleet_service("svc-a", true)],
+        };
+        let plan = fleet.reconcile(&["svc-a".to_string()]);
+        assert!(plan.to_start.is_empty());
+        assert!(plan.to_stop.is_empty());
+        assert_eq!(plan.unchanged, vec!["svc-a".to_string()]);
+        assert!(!plan.has_changes());
+    }
+
+    #[test]
+    fn test_reconcile_disabled_services_excluded() {
+        let fleet = FleetConfig {
+            services: vec![
+                fleet_service("enabled", true),
+                fleet_service("disabled", false),
+            ],
+        };
+        let plan = fleet.reconcile(&[]);
+        assert_eq!(plan.to_start.len(), 1);
+        assert!(plan.to_start.contains(&"enabled".to_string()));
+    }
+
+    #[test]
+    fn test_has_changes_true() {
+        let plan = ReconciliationPlan {
+            to_start: vec!["a".to_string()],
+            to_stop: vec![],
+            unchanged: vec![],
+        };
+        assert!(plan.has_changes());
+    }
+
+    #[test]
+    fn test_has_changes_false() {
+        let plan = ReconciliationPlan {
+            to_start: vec![],
+            to_stop: vec![],
+            unchanged: vec!["a".to_string()],
+        };
+        assert!(!plan.has_changes());
+    }
+
+    #[test]
+    fn test_summary_formats_start() {
+        let plan = ReconciliationPlan {
+            to_start: vec!["svc-a".to_string()],
+            to_stop: vec![],
+            unchanged: vec![],
+        };
+        let s = plan.summary();
+        assert!(s.contains("start: svc-a"));
+    }
+
+    #[test]
+    fn test_summary_formats_stop() {
+        let plan = ReconciliationPlan {
+            to_start: vec![],
+            to_stop: vec!["old".to_string()],
+            unchanged: vec![],
+        };
+        let s = plan.summary();
+        assert!(s.contains("stop: old"));
+    }
+
+    #[test]
+    fn test_summary_formats_mixed() {
+        let plan = ReconciliationPlan {
+            to_start: vec!["new".to_string()],
+            to_stop: vec!["old".to_string()],
+            unchanged: vec!["keep".to_string()],
+        };
+        let s = plan.summary();
+        assert!(s.contains("start: new"));
+        assert!(s.contains("stop: old"));
+        assert!(s.contains("unchanged: keep"));
+        assert!(s.contains(" | "));
+    }
+
+    #[test]
+    fn test_summary_no_changes() {
+        let plan = ReconciliationPlan {
+            to_start: vec![],
+            to_stop: vec![],
+            unchanged: vec![],
+        };
+        assert_eq!(plan.summary(), "No changes needed");
+    }
+
+    #[test]
+    fn test_fleet_config_serialization() {
+        let fleet = FleetConfig {
+            services: vec![fleet_service("svc-a", true)],
+        };
+        let toml_str = toml::to_string_pretty(&fleet).unwrap();
+        let parsed: FleetConfig = toml::from_str(&toml_str).unwrap();
+        assert_eq!(parsed.services.len(), 1);
+        assert_eq!(parsed.services[0].name, "svc-a");
+    }
+
+    #[test]
+    fn test_reconciliation_plan_serialization() {
+        let plan = ReconciliationPlan {
+            to_start: vec!["a".to_string()],
+            to_stop: vec!["b".to_string()],
+            unchanged: vec!["c".to_string()],
+        };
+        let json = serde_json::to_string(&plan).unwrap();
+        let deser: ReconciliationPlan = serde_json::from_str(&json).unwrap();
+        assert_eq!(deser.to_start, vec!["a"]);
+        assert_eq!(deser.to_stop, vec!["b"]);
+        assert_eq!(deser.unchanged, vec!["c"]);
+    }
+
+    #[tokio::test]
+    async fn test_fleet_config_from_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let fleet_path = dir.path().join("fleet.toml");
+        let content = r#"
+[[services]]
+name = "gateway"
+exec_start = "/usr/bin/gateway"
+enabled = true
+
+[[services]]
+name = "monitor"
+exec_start = "/usr/bin/monitor"
+enabled = false
+"#;
+        tokio::fs::write(&fleet_path, content).await.unwrap();
+
+        let fleet = FleetConfig::from_file(&fleet_path).await.unwrap();
+        assert_eq!(fleet.services.len(), 2);
+        assert_eq!(fleet.services[0].name, "gateway");
+        assert!(fleet.services[0].enabled);
+        assert_eq!(fleet.services[1].name, "monitor");
+        assert!(!fleet.services[1].enabled);
+
+        // Reconcile: only gateway is enabled
+        let plan = fleet.reconcile(&[]);
+        assert_eq!(plan.to_start.len(), 1);
+        assert!(plan.to_start.contains(&"gateway".to_string()));
     }
 }

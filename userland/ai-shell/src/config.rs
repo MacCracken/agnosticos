@@ -2,6 +2,7 @@
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use crate::mode::Mode;
@@ -31,6 +32,9 @@ pub struct ShellConfig {
     pub show_explanations: bool,
     /// Theme
     pub theme: String,
+    /// User-defined command aliases
+    #[serde(default)]
+    pub aliases: HashMap<String, String>,
 }
 
 impl Default for ShellConfig {
@@ -49,6 +53,7 @@ impl Default for ShellConfig {
             audit_log: home.join(".agnsh_audit.log"),
             show_explanations: true,
             theme: "default".to_string(),
+            aliases: HashMap::new(),
         }
     }
 }

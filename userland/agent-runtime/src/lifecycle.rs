@@ -44,6 +44,11 @@ pub enum LifecycleEvent {
         agent_id: AgentId,
         attempt: u32,
     },
+    /// Agent configuration was reloaded
+    ConfigReloaded {
+        agent_id: AgentId,
+        changed_fields: Vec<String>,
+    },
 }
 
 impl fmt::Display for LifecycleEvent {
@@ -82,6 +87,18 @@ impl fmt::Display for LifecycleEvent {
             }
             Self::Restarting { agent_id, attempt } => {
                 write!(f, "agent {} restarting (attempt {})", agent_id, attempt)
+            }
+            Self::ConfigReloaded {
+                agent_id,
+                changed_fields,
+            } => {
+                write!(
+                    f,
+                    "agent {} config reloaded ({} fields: {})",
+                    agent_id,
+                    changed_fields.len(),
+                    changed_fields.join(", ")
+                )
             }
         }
     }
@@ -189,6 +206,60 @@ impl LifecycleManager {
     pub async fn clear_log(&self) {
         self.event_log.write().await.clear();
     }
+
+    /// Reload configuration for a running agent.
+    /// Returns the list of fields that changed.
+    pub async fn reload_config(
+        &self,
+        agent_id: AgentId,
+        new_config: agnos_common::AgentConfig,
+        current_config: &agnos_common::AgentConfig,
+    ) -> Result<Vec<String>> {
+        let mut changed = Vec::new();
+
+        if new_config.resource_limits.max_memory != current_config.resource_limits.max_memory {
+            changed.push("resource_limits.max_memory".to_string());
+        }
+        if new_config.resource_limits.max_cpu_time != current_config.resource_limits.max_cpu_time {
+            changed.push("resource_limits.max_cpu_time".to_string());
+        }
+        if new_config.resource_limits.max_file_descriptors
+            != current_config.resource_limits.max_file_descriptors
+        {
+            changed.push("resource_limits.max_file_descriptors".to_string());
+        }
+        if new_config.resource_limits.max_processes
+            != current_config.resource_limits.max_processes
+        {
+            changed.push("resource_limits.max_processes".to_string());
+        }
+        if new_config.sandbox.network_access != current_config.sandbox.network_access {
+            changed.push("sandbox.network_access".to_string());
+        }
+        if new_config.permissions != current_config.permissions {
+            changed.push("permissions".to_string());
+        }
+        if new_config.name != current_config.name {
+            changed.push("name".to_string());
+        }
+
+        if !changed.is_empty() {
+            let event = LifecycleEvent::ConfigReloaded {
+                agent_id,
+                changed_fields: changed.clone(),
+            };
+            self.emit(event).await;
+            info!(
+                "Agent {} config reloaded: {} fields changed",
+                agent_id,
+                changed.len()
+            );
+        } else {
+            debug!("Agent {} config reload: no changes detected", agent_id);
+        }
+
+        Ok(changed)
+    }
 }
 
 impl Default for LifecycleManager {
@@ -207,7 +278,8 @@ fn event_agent_id(event: &LifecycleEvent) -> AgentId {
         | LifecycleEvent::Error { agent_id, .. }
         | LifecycleEvent::StatusChanged { agent_id, .. }
         | LifecycleEvent::ApprovalDenied { agent_id, .. }
-        | LifecycleEvent::Restarting { agent_id, .. } => *agent_id,
+        | LifecycleEvent::Restarting { agent_id, .. }
+        | LifecycleEvent::ConfigReloaded { agent_id, .. } => *agent_id,
     }
 }
 
@@ -435,6 +507,10 @@ mod tests {
             },
             LifecycleEvent::ApprovalDenied { agent_id: id, operation: "rm -rf".into() },
             LifecycleEvent::Restarting { agent_id: id, attempt: 3 },
+            LifecycleEvent::ConfigReloaded {
+                agent_id: id,
+                changed_fields: vec!["name".to_string()],
+            },
         ];
 
         for event in events {
@@ -451,5 +527,93 @@ mod tests {
             error: "test".into(),
         };
         assert_eq!(event_agent_id(&event), id);
+    }
+
+    #[test]
+    fn test_event_agent_id_config_reloaded() {
+        let id = AgentId::new();
+        let event = LifecycleEvent::ConfigReloaded {
+            agent_id: id,
+            changed_fields: vec!["name".to_string()],
+        };
+        assert_eq!(event_agent_id(&event), id);
+    }
+
+    #[test]
+    fn test_config_reloaded_display() {
+        let id = AgentId::new();
+        let event = LifecycleEvent::ConfigReloaded {
+            agent_id: id,
+            changed_fields: vec![
+                "name".to_string(),
+                "permissions".to_string(),
+            ],
+        };
+        let s = event.to_string();
+        assert!(s.contains("config reloaded"));
+        assert!(s.contains("2 fields"));
+        assert!(s.contains("name"));
+        assert!(s.contains("permissions"));
+    }
+
+    #[tokio::test]
+    async fn test_reload_config_with_changes() {
+        let mgr = LifecycleManager::new();
+        let id = AgentId::new();
+
+        let current = agnos_common::AgentConfig::default();
+        let mut new_config = current.clone();
+        new_config.name = "updated-name".to_string();
+        new_config.resource_limits.max_memory = 999;
+
+        let changed = mgr.reload_config(id, new_config, &current).await.unwrap();
+        assert!(changed.contains(&"name".to_string()));
+        assert!(changed.contains(&"resource_limits.max_memory".to_string()));
+        assert_eq!(changed.len(), 2);
+
+        // Event should have been logged
+        let events = mgr.recent_events(10).await;
+        assert_eq!(events.len(), 1);
+        assert!(matches!(events[0], LifecycleEvent::ConfigReloaded { .. }));
+    }
+
+    #[tokio::test]
+    async fn test_reload_config_no_changes() {
+        let mgr = LifecycleManager::new();
+        let id = AgentId::new();
+
+        let config = agnos_common::AgentConfig::default();
+        let changed = mgr.reload_config(id, config.clone(), &config).await.unwrap();
+        assert!(changed.is_empty());
+
+        // No event should have been logged
+        let events = mgr.recent_events(10).await;
+        assert!(events.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_reload_config_emits_event() {
+        let mgr = LifecycleManager::new();
+        let id = AgentId::new();
+        let counter = Arc::new(AtomicU32::new(0));
+        let counter_clone = counter.clone();
+
+        mgr.on_agent(
+            id,
+            Arc::new(move |event| {
+                if matches!(event, LifecycleEvent::ConfigReloaded { .. }) {
+                    counter_clone.fetch_add(1, Ordering::SeqCst);
+                }
+                Ok(())
+            }),
+        )
+        .await;
+
+        let current = agnos_common::AgentConfig::default();
+        let mut new_config = current.clone();
+        new_config.name = "changed".to_string();
+
+        mgr.reload_config(id, new_config, &current).await.unwrap();
+        assert_eq!(counter.load(Ordering::SeqCst), 1);
     }
 }

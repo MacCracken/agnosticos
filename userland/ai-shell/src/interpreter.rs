@@ -124,6 +124,8 @@ pub enum Intent {
         /// Action: check, apply, rollback, status
         action: String,
     },
+    /// Piped command chain (cmd1 | cmd2)
+    Pipeline { commands: Vec<String> },
     /// Question/Information request
     Question { query: String },
     /// Ambiguous - needs clarification
@@ -341,6 +343,27 @@ impl Interpreter {
     /// Parse natural language input into intent
     pub fn parse(&self, input: &str) -> Intent {
         let input_lower = input.to_lowercase().trim().to_string();
+
+        // Pipeline detection: "X | Y" or "X then Y"
+        // Must be checked first to avoid greedy pattern matches consuming pipe chars
+        if input.contains(" | ") || input_lower.contains(" then ") {
+            let parts: Vec<String> = if input.contains(" | ") {
+                input
+                    .split(" | ")
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect()
+            } else {
+                input
+                    .split(" then ")
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect()
+            };
+            if parts.len() >= 2 {
+                return Intent::Pipeline { commands: parts };
+            }
+        }
 
         // Check each pattern
         // AGNOS-specific intents matched first (more specific than generic list/show)
@@ -1338,6 +1361,17 @@ impl Interpreter {
                     description: desc.clone(),
                     permission,
                     explanation: desc,
+                })
+            }
+
+            Intent::Pipeline { commands } => {
+                let pipeline = commands.join(" | ");
+                Ok(Translation {
+                    command: "sh".to_string(),
+                    args: vec!["-c".to_string(), pipeline.clone()],
+                    description: format!("Execute pipeline: {}", pipeline),
+                    permission: PermissionLevel::SystemWrite,
+                    explanation: format!("Piped command chain with {} stages", commands.len()),
                 })
             }
 
@@ -3155,5 +3189,90 @@ mod tests {
             action: "invalid".into(),
         };
         assert!(interpreter.translate(&intent).is_err());
+    }
+
+    // --- Pipeline tests ---
+
+    #[test]
+    fn test_parse_pipeline_pipe() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("cat /etc/passwd | grep root");
+        if let Intent::Pipeline { commands } = intent {
+            assert_eq!(commands.len(), 2);
+            assert_eq!(commands[0], "cat /etc/passwd");
+            assert_eq!(commands[1], "grep root");
+        } else {
+            panic!("Expected Pipeline, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_parse_pipeline_then() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("ls then wc -l");
+        if let Intent::Pipeline { commands } = intent {
+            assert_eq!(commands.len(), 2);
+            assert_eq!(commands[0], "ls");
+            assert_eq!(commands[1], "wc -l");
+        } else {
+            panic!("Expected Pipeline, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_parse_pipeline_three_stages() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("cat file | sort | uniq");
+        if let Intent::Pipeline { commands } = intent {
+            assert_eq!(commands.len(), 3);
+        } else {
+            panic!("Expected Pipeline, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_parse_pipeline_single_pipe_no_pipeline() {
+        let interpreter = Interpreter::new();
+        // A single command with no pipe should not be a pipeline
+        let intent = interpreter.parse("ls -la");
+        assert!(!matches!(intent, Intent::Pipeline { .. }));
+    }
+
+    #[test]
+    fn test_translate_pipeline() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::Pipeline {
+            commands: vec!["cat /etc/hosts".to_string(), "grep localhost".to_string()],
+        };
+        let t = interpreter.translate(&intent).unwrap();
+        assert_eq!(t.command, "sh");
+        assert_eq!(t.args[0], "-c");
+        assert!(t.args[1].contains("|"));
+        assert_eq!(t.permission, PermissionLevel::SystemWrite);
+        assert!(t.explanation.contains("2 stages"));
+    }
+
+    #[test]
+    fn test_translate_pipeline_description() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::Pipeline {
+            commands: vec!["ps aux".to_string(), "grep rust".to_string()],
+        };
+        let t = interpreter.translate(&intent).unwrap();
+        assert!(t.description.contains("pipeline"));
+    }
+
+    #[test]
+    fn test_parse_pipeline_empty_segments_filtered() {
+        let interpreter = Interpreter::new();
+        // Trailing pipe creates empty segment that should be filtered
+        let intent = interpreter.parse("cat foo |  | grep bar");
+        if let Intent::Pipeline { commands } = intent {
+            // Empty middle segment filtered out, still >= 2
+            assert!(commands.len() >= 2);
+            assert!(!commands.contains(&String::new()));
+        } else {
+            panic!("Expected Pipeline, got {:?}", intent);
+        }
     }
 }

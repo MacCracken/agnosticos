@@ -93,6 +93,25 @@ pub struct HealthResponse {
     pub version: String,
     pub agents_registered: usize,
     pub uptime_seconds: u64,
+    #[serde(default)]
+    pub components: HashMap<String, ComponentHealth>,
+    #[serde(default)]
+    pub system: Option<SystemHealth>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ComponentHealth {
+    pub status: String,
+    pub message: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SystemHealth {
+    pub hostname: String,
+    pub load_average: [f64; 3],
+    pub memory_total_mb: u64,
+    pub memory_available_mb: u64,
+    pub disk_free_mb: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -139,13 +158,140 @@ async fn health_handler(State(state): State<ApiState>) -> impl IntoResponse {
     let agents = state.agents.read().await;
     let uptime = (Utc::now() - state.started_at).num_seconds().max(0) as u64;
 
+    let mut components = HashMap::new();
+
+    // Check LLM Gateway reachability
+    let llm_status = check_llm_gateway().await;
+    components.insert("llm_gateway".to_string(), llm_status);
+
+    // Agent runtime status
+    components.insert(
+        "agent_registry".to_string(),
+        ComponentHealth {
+            status: "ok".to_string(),
+            message: Some(format!("{} agents registered", agents.len())),
+        },
+    );
+
+    // System health
+    let system = gather_system_health();
+
+    let overall_status = if components.values().all(|c| c.status == "ok") {
+        "ok"
+    } else if components.values().any(|c| c.status == "error") {
+        "degraded"
+    } else {
+        "ok"
+    };
+
     Json(HealthResponse {
-        status: "ok".to_string(),
+        status: overall_status.to_string(),
         service: "agnos-agent-runtime".to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
         agents_registered: agents.len(),
         uptime_seconds: uptime,
+        components,
+        system: Some(system),
     })
+}
+
+async fn check_llm_gateway() -> ComponentHealth {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(2))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
+
+    let gateway_url = std::env::var("AGNOS_GATEWAY_URL")
+        .unwrap_or_else(|_| "http://127.0.0.1:8088".to_string());
+
+    match client
+        .get(format!("{}/v1/health", gateway_url))
+        .send()
+        .await
+    {
+        Ok(resp) if resp.status().is_success() => ComponentHealth {
+            status: "ok".to_string(),
+            message: Some("LLM Gateway reachable".to_string()),
+        },
+        Ok(resp) => ComponentHealth {
+            status: "degraded".to_string(),
+            message: Some(format!("LLM Gateway returned {}", resp.status())),
+        },
+        Err(_) => ComponentHealth {
+            status: "unreachable".to_string(),
+            message: Some("LLM Gateway not responding".to_string()),
+        },
+    }
+}
+
+fn gather_system_health() -> SystemHealth {
+    let hostname = hostname::get()
+        .map(|h| h.to_string_lossy().to_string())
+        .unwrap_or_else(|_| "unknown".to_string());
+
+    // Read /proc/loadavg
+    let load_average = std::fs::read_to_string("/proc/loadavg")
+        .ok()
+        .and_then(|s| {
+            let parts: Vec<f64> = s
+                .split_whitespace()
+                .take(3)
+                .filter_map(|p| p.parse().ok())
+                .collect();
+            if parts.len() == 3 {
+                Some([parts[0], parts[1], parts[2]])
+            } else {
+                None
+            }
+        })
+        .unwrap_or([0.0, 0.0, 0.0]);
+
+    // Read /proc/meminfo
+    let (mem_total, mem_available) = std::fs::read_to_string("/proc/meminfo")
+        .ok()
+        .map(|s| {
+            let mut total = 0u64;
+            let mut avail = 0u64;
+            for line in s.lines() {
+                if line.starts_with("MemTotal:") {
+                    total = line
+                        .split_whitespace()
+                        .nth(1)
+                        .and_then(|v| v.parse().ok())
+                        .unwrap_or(0);
+                }
+                if line.starts_with("MemAvailable:") {
+                    avail = line
+                        .split_whitespace()
+                        .nth(1)
+                        .and_then(|v| v.parse().ok())
+                        .unwrap_or(0);
+                }
+            }
+            (total / 1024, avail / 1024) // kB to MB
+        })
+        .unwrap_or((0, 0));
+
+    // Disk free (/)
+    let disk_free = std::process::Command::new("df")
+        .args(["--output=avail", "-BM", "/"])
+        .output()
+        .ok()
+        .and_then(|o| {
+            String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .nth(1)
+                .and_then(|l| l.trim().trim_end_matches('M').parse::<u64>().ok())
+        })
+        .unwrap_or(0);
+
+    SystemHealth {
+        hostname,
+        load_average,
+        memory_total_mb: mem_total,
+        memory_available_mb: mem_available,
+        disk_free_mb: disk_free,
+    }
 }
 
 async fn register_agent_handler(
@@ -415,8 +561,12 @@ mod tests {
 
         let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
         let json: HealthResponse = serde_json::from_slice(&body).unwrap();
-        assert_eq!(json.status, "ok");
         assert_eq!(json.service, "agnos-agent-runtime");
+        // Components should exist
+        assert!(json.components.contains_key("agent_registry"));
+        assert!(json.components.contains_key("llm_gateway"));
+        // System health should be populated
+        assert!(json.system.is_some());
     }
 
     #[tokio::test]
@@ -868,17 +1018,79 @@ mod tests {
 
     #[test]
     fn test_health_response_serialization() {
+        let mut components = HashMap::new();
+        components.insert(
+            "agent_registry".to_string(),
+            ComponentHealth {
+                status: "ok".to_string(),
+                message: Some("5 agents registered".to_string()),
+            },
+        );
         let resp = HealthResponse {
             status: "ok".to_string(),
             service: "test".to_string(),
             version: "0.1.0".to_string(),
             agents_registered: 5,
             uptime_seconds: 3600,
+            components,
+            system: None,
         };
         let json = serde_json::to_string(&resp).unwrap();
         let deser: HealthResponse = serde_json::from_str(&json).unwrap();
         assert_eq!(deser.agents_registered, 5);
         assert_eq!(deser.uptime_seconds, 3600);
+        assert!(deser.components.contains_key("agent_registry"));
+    }
+
+    #[test]
+    fn test_component_health_serialization() {
+        let ch = ComponentHealth {
+            status: "ok".to_string(),
+            message: Some("all good".to_string()),
+        };
+        let json = serde_json::to_string(&ch).unwrap();
+        let deser: ComponentHealth = serde_json::from_str(&json).unwrap();
+        assert_eq!(deser.status, "ok");
+        assert_eq!(deser.message.unwrap(), "all good");
+
+        // With None message
+        let ch2 = ComponentHealth {
+            status: "degraded".to_string(),
+            message: None,
+        };
+        let json2 = serde_json::to_string(&ch2).unwrap();
+        let deser2: ComponentHealth = serde_json::from_str(&json2).unwrap();
+        assert_eq!(deser2.status, "degraded");
+        assert!(deser2.message.is_none());
+    }
+
+    #[test]
+    fn test_system_health_serialization() {
+        let sh = SystemHealth {
+            hostname: "test-host".to_string(),
+            load_average: [1.5, 2.0, 0.5],
+            memory_total_mb: 16384,
+            memory_available_mb: 8192,
+            disk_free_mb: 50000,
+        };
+        let json = serde_json::to_string(&sh).unwrap();
+        let deser: SystemHealth = serde_json::from_str(&json).unwrap();
+        assert_eq!(deser.hostname, "test-host");
+        assert_eq!(deser.load_average[0], 1.5);
+        assert_eq!(deser.memory_total_mb, 16384);
+        assert_eq!(deser.memory_available_mb, 8192);
+        assert_eq!(deser.disk_free_mb, 50000);
+    }
+
+    #[test]
+    fn test_gather_system_health() {
+        let health = gather_system_health();
+        // Should have a non-empty hostname on any system
+        assert!(!health.hostname.is_empty());
+        // On Linux these should be populated
+        if cfg!(target_os = "linux") {
+            assert!(health.memory_total_mb > 0);
+        }
     }
 
     #[test]

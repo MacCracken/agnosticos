@@ -6,6 +6,7 @@
 use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
+use serde::{Deserialize, Serialize};
 use tracing::info;
 
 use crate::network_tools::{
@@ -343,6 +344,195 @@ pub async fn analyze_via_gateway(
     Ok(parse_analysis_response(text, output.tool))
 }
 
+/// A structured reasoning trace capturing the full chain-of-thought
+/// for an agent task: input -> reasoning -> tool calls -> output.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReasoningTrace {
+    /// Unique trace ID
+    pub trace_id: String,
+    /// Agent that executed this trace
+    pub agent_id: String,
+    /// Task or query that triggered this trace
+    pub input: String,
+    /// Ordered steps in the reasoning chain
+    pub steps: Vec<ReasoningStep>,
+    /// Final output/conclusion
+    pub output: Option<String>,
+    /// Overall status
+    pub status: TraceStatus,
+    /// When the trace started
+    pub started_at: String,
+    /// When the trace completed
+    pub completed_at: Option<String>,
+    /// Total duration in milliseconds
+    pub duration_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReasoningStep {
+    /// Step number (1-indexed)
+    pub step: u32,
+    /// What the agent decided to do
+    pub action: String,
+    /// Why (reasoning)
+    pub rationale: String,
+    /// Tool invoked (if any)
+    pub tool_call: Option<String>,
+    /// Tool output (if any)
+    pub tool_output: Option<String>,
+    /// Duration of this step in milliseconds
+    pub duration_ms: u64,
+    /// Whether this step succeeded
+    pub success: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TraceStatus {
+    InProgress,
+    Completed,
+    Failed,
+    Cancelled,
+}
+
+impl std::fmt::Display for TraceStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TraceStatus::InProgress => write!(f, "IN_PROGRESS"),
+            TraceStatus::Completed => write!(f, "COMPLETED"),
+            TraceStatus::Failed => write!(f, "FAILED"),
+            TraceStatus::Cancelled => write!(f, "CANCELLED"),
+        }
+    }
+}
+
+/// Builder for constructing reasoning traces incrementally
+pub struct TraceBuilder {
+    trace: ReasoningTrace,
+    step_count: u32,
+}
+
+impl TraceBuilder {
+    pub fn new(agent_id: &str, input: &str) -> Self {
+        Self {
+            trace: ReasoningTrace {
+                trace_id: uuid::Uuid::new_v4().to_string(),
+                agent_id: agent_id.to_string(),
+                input: input.to_string(),
+                steps: Vec::new(),
+                output: None,
+                status: TraceStatus::InProgress,
+                started_at: chrono::Utc::now().to_rfc3339(),
+                completed_at: None,
+                duration_ms: None,
+            },
+            step_count: 0,
+        }
+    }
+
+    /// Add a reasoning step
+    pub fn add_step(
+        &mut self,
+        action: &str,
+        rationale: &str,
+        tool_call: Option<&str>,
+        tool_output: Option<&str>,
+        duration_ms: u64,
+        success: bool,
+    ) {
+        self.step_count += 1;
+        self.trace.steps.push(ReasoningStep {
+            step: self.step_count,
+            action: action.to_string(),
+            rationale: rationale.to_string(),
+            tool_call: tool_call.map(String::from),
+            tool_output: tool_output.map(String::from),
+            duration_ms,
+            success,
+        });
+    }
+
+    /// Complete the trace successfully
+    pub fn complete(mut self, output: &str) -> ReasoningTrace {
+        self.trace.output = Some(output.to_string());
+        self.trace.status = TraceStatus::Completed;
+        self.trace.completed_at = Some(chrono::Utc::now().to_rfc3339());
+        let total_ms: u64 = self.trace.steps.iter().map(|s| s.duration_ms).sum();
+        self.trace.duration_ms = Some(total_ms);
+        self.trace
+    }
+
+    /// Mark the trace as failed
+    pub fn fail(mut self, error: &str) -> ReasoningTrace {
+        self.trace.output = Some(error.to_string());
+        self.trace.status = TraceStatus::Failed;
+        self.trace.completed_at = Some(chrono::Utc::now().to_rfc3339());
+        let total_ms: u64 = self.trace.steps.iter().map(|s| s.duration_ms).sum();
+        self.trace.duration_ms = Some(total_ms);
+        self.trace
+    }
+
+    /// Cancel the trace
+    pub fn cancel(mut self) -> ReasoningTrace {
+        self.trace.status = TraceStatus::Cancelled;
+        self.trace.completed_at = Some(chrono::Utc::now().to_rfc3339());
+        self.trace
+    }
+
+    /// Get current step count
+    pub fn step_count(&self) -> u32 {
+        self.step_count
+    }
+
+    /// Get trace ID
+    pub fn trace_id(&self) -> &str {
+        &self.trace.trace_id
+    }
+}
+
+/// Format a reasoning trace for human-readable display
+pub fn format_trace(trace: &ReasoningTrace) -> String {
+    let mut lines = Vec::new();
+
+    lines.push(format!("Trace: {} [{}]", trace.trace_id, trace.status));
+    lines.push(format!("Agent: {}", trace.agent_id));
+    lines.push(format!("Input: {}", trace.input));
+    lines.push(format!("Started: {}", trace.started_at));
+    if let Some(ref completed) = trace.completed_at {
+        lines.push(format!("Completed: {}", completed));
+    }
+    if let Some(ms) = trace.duration_ms {
+        lines.push(format!("Duration: {}ms", ms));
+    }
+    lines.push("\u{2500}".repeat(60));
+
+    for step in &trace.steps {
+        let status_icon = if step.success { "OK" } else { "FAIL" };
+        lines.push(format!(
+            "Step {}: {} [{}] ({}ms)",
+            step.step, step.action, status_icon, step.duration_ms
+        ));
+        lines.push(format!("  Rationale: {}", step.rationale));
+        if let Some(ref tool) = step.tool_call {
+            lines.push(format!("  Tool: {}", tool));
+        }
+        if let Some(ref output) = step.tool_output {
+            let truncated = if output.len() > 200 {
+                format!("{}...", &output[..200])
+            } else {
+                output.clone()
+            };
+            lines.push(format!("  Output: {}", truncated));
+        }
+    }
+
+    lines.push("\u{2500}".repeat(60));
+    if let Some(ref output) = trace.output {
+        lines.push(format!("Result: {}", output));
+    }
+
+    lines.join("\n")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -531,5 +721,204 @@ RECOMMENDATIONS:
         assert!(FindingSeverity::Info < FindingSeverity::Low);
         assert!(FindingSeverity::Low < FindingSeverity::Medium);
         assert!(FindingSeverity::High < FindingSeverity::Critical);
+    }
+
+    // ── ReasoningTrace / TraceBuilder tests ───────────────────────────
+
+    #[test]
+    fn test_trace_builder_new() {
+        let builder = TraceBuilder::new("agent-1", "scan network");
+        assert_eq!(builder.step_count(), 0);
+        assert!(!builder.trace_id().is_empty());
+        // trace_id should be a valid UUID
+        assert!(uuid::Uuid::parse_str(builder.trace_id()).is_ok());
+    }
+
+    #[test]
+    fn test_trace_builder_add_step() {
+        let mut builder = TraceBuilder::new("agent-1", "scan network");
+        builder.add_step("lookup DNS", "need to resolve target", Some("dns_lookup"), Some("93.184.216.34"), 50, true);
+        assert_eq!(builder.step_count(), 1);
+
+        builder.add_step("port scan", "check open ports", Some("nmap"), None, 200, true);
+        assert_eq!(builder.step_count(), 2);
+    }
+
+    #[test]
+    fn test_trace_builder_complete() {
+        let mut builder = TraceBuilder::new("agent-1", "scan");
+        builder.add_step("step1", "reason", None, None, 100, true);
+        builder.add_step("step2", "reason2", None, None, 200, true);
+
+        let trace = builder.complete("All done");
+        assert_eq!(trace.status, TraceStatus::Completed);
+        assert_eq!(trace.output.as_deref(), Some("All done"));
+        assert!(trace.completed_at.is_some());
+        assert_eq!(trace.duration_ms, Some(300));
+        assert_eq!(trace.steps.len(), 2);
+        assert_eq!(trace.steps[0].step, 1);
+        assert_eq!(trace.steps[1].step, 2);
+    }
+
+    #[test]
+    fn test_trace_builder_fail() {
+        let mut builder = TraceBuilder::new("agent-1", "scan");
+        builder.add_step("attempt", "trying", Some("nmap"), None, 500, false);
+
+        let trace = builder.fail("connection refused");
+        assert_eq!(trace.status, TraceStatus::Failed);
+        assert_eq!(trace.output.as_deref(), Some("connection refused"));
+        assert!(trace.completed_at.is_some());
+        assert_eq!(trace.duration_ms, Some(500));
+    }
+
+    #[test]
+    fn test_trace_builder_cancel() {
+        let builder = TraceBuilder::new("agent-1", "long task");
+        let trace = builder.cancel();
+        assert_eq!(trace.status, TraceStatus::Cancelled);
+        assert!(trace.completed_at.is_some());
+        assert!(trace.output.is_none());
+        assert!(trace.duration_ms.is_none());
+    }
+
+    #[test]
+    fn test_trace_builder_step_count() {
+        let mut builder = TraceBuilder::new("a", "b");
+        assert_eq!(builder.step_count(), 0);
+        builder.add_step("x", "y", None, None, 10, true);
+        assert_eq!(builder.step_count(), 1);
+        builder.add_step("x2", "y2", None, None, 20, true);
+        assert_eq!(builder.step_count(), 2);
+    }
+
+    #[test]
+    fn test_trace_builder_trace_id() {
+        let b1 = TraceBuilder::new("a", "b");
+        let b2 = TraceBuilder::new("a", "b");
+        // Each builder gets a unique trace ID
+        assert_ne!(b1.trace_id(), b2.trace_id());
+    }
+
+    #[test]
+    fn test_format_trace_output() {
+        let mut builder = TraceBuilder::new("agent-1", "check host");
+        builder.add_step("ping", "verify host is up", Some("ping"), Some("64 bytes from 10.0.0.1"), 30, true);
+        let trace = builder.complete("Host is up");
+
+        let formatted = format_trace(&trace);
+        assert!(formatted.contains("agent-1"));
+        assert!(formatted.contains("check host"));
+        assert!(formatted.contains("Step 1: ping [OK] (30ms)"));
+        assert!(formatted.contains("Rationale: verify host is up"));
+        assert!(formatted.contains("Tool: ping"));
+        assert!(formatted.contains("Output: 64 bytes from 10.0.0.1"));
+        assert!(formatted.contains("Result: Host is up"));
+        assert!(formatted.contains("Duration: 30ms"));
+    }
+
+    #[test]
+    fn test_reasoning_trace_serialization_roundtrip() {
+        let mut builder = TraceBuilder::new("agent-x", "test task");
+        builder.add_step("do thing", "because", Some("tool"), Some("output"), 42, true);
+        let trace = builder.complete("done");
+
+        let json = serde_json::to_string(&trace).unwrap();
+        let restored: ReasoningTrace = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(restored.trace_id, trace.trace_id);
+        assert_eq!(restored.agent_id, "agent-x");
+        assert_eq!(restored.input, "test task");
+        assert_eq!(restored.steps.len(), 1);
+        assert_eq!(restored.steps[0].action, "do thing");
+        assert_eq!(restored.steps[0].tool_call.as_deref(), Some("tool"));
+        assert_eq!(restored.status, TraceStatus::Completed);
+        assert_eq!(restored.output.as_deref(), Some("done"));
+    }
+
+    #[test]
+    fn test_trace_status_display() {
+        assert_eq!(TraceStatus::InProgress.to_string(), "IN_PROGRESS");
+        assert_eq!(TraceStatus::Completed.to_string(), "COMPLETED");
+        assert_eq!(TraceStatus::Failed.to_string(), "FAILED");
+        assert_eq!(TraceStatus::Cancelled.to_string(), "CANCELLED");
+    }
+
+    #[test]
+    fn test_trace_multiple_steps() {
+        let mut builder = TraceBuilder::new("agent", "multi-step");
+        for i in 0..5 {
+            builder.add_step(
+                &format!("step{}", i),
+                &format!("reason{}", i),
+                None,
+                None,
+                10 * (i as u64 + 1),
+                i < 4, // last step fails
+            );
+        }
+        let trace = builder.complete("partial success");
+        assert_eq!(trace.steps.len(), 5);
+        assert!(trace.steps[0].success);
+        assert!(!trace.steps[4].success);
+        // Duration should be sum: 10+20+30+40+50 = 150
+        assert_eq!(trace.duration_ms, Some(150));
+    }
+
+    #[test]
+    fn test_format_trace_tool_output_truncation() {
+        let long_output = "A".repeat(300);
+        let mut builder = TraceBuilder::new("agent", "truncation test");
+        builder.add_step("action", "reason", Some("tool"), Some(&long_output), 10, true);
+        let trace = builder.complete("done");
+
+        let formatted = format_trace(&trace);
+        // The formatted output should truncate at 200 chars + "..."
+        assert!(formatted.contains(&format!("{}...", &"A".repeat(200))));
+        // Should NOT contain the full 300-char string
+        assert!(!formatted.contains(&"A".repeat(300)));
+    }
+
+    #[test]
+    fn test_trace_duration_calculation() {
+        let mut builder = TraceBuilder::new("agent", "test");
+        builder.add_step("a", "r", None, None, 100, true);
+        builder.add_step("b", "r", None, None, 250, true);
+        builder.add_step("c", "r", None, None, 50, true);
+        let trace = builder.complete("ok");
+        assert_eq!(trace.duration_ms, Some(400));
+    }
+
+    #[test]
+    fn test_format_trace_empty() {
+        let builder = TraceBuilder::new("agent", "empty task");
+        let trace = builder.complete("nothing to do");
+
+        let formatted = format_trace(&trace);
+        assert!(formatted.contains("empty task"));
+        assert!(formatted.contains("Result: nothing to do"));
+        assert!(formatted.contains("Duration: 0ms"));
+        // Should not contain any "Step" lines
+        assert!(!formatted.contains("Step "));
+    }
+
+    #[test]
+    fn test_reasoning_step_serialization() {
+        let step = ReasoningStep {
+            step: 1,
+            action: "scan".into(),
+            rationale: "need info".into(),
+            tool_call: Some("nmap".into()),
+            tool_output: Some("port 22 open".into()),
+            duration_ms: 150,
+            success: true,
+        };
+
+        let json = serde_json::to_string(&step).unwrap();
+        let restored: ReasoningStep = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored.step, 1);
+        assert_eq!(restored.action, "scan");
+        assert_eq!(restored.tool_call.as_deref(), Some("nmap"));
+        assert!(restored.success);
     }
 }

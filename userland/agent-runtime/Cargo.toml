@@ -35,6 +35,7 @@ axum = { workspace = true }
 tower = { workspace = true }
 tower-http = { workspace = true }
 reqwest = { workspace = true }
+hostname = "0.3"
 
 wasmtime = { version = "27", optional = true }
 wasmtime-wasi = { version = "27", optional = true }

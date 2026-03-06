@@ -16,6 +16,7 @@ pub mod network_tools;
 pub mod tool_analysis;
 pub mod swarm;
 pub mod learning;
+pub mod memory_store;
 pub mod multimodal;
 pub mod wasm_runtime;
 
@@ -30,4 +31,5 @@ pub use service_manager::ServiceManager;
 pub use supervisor::Supervisor;
 pub use swarm::SwarmCoordinator;
 pub use learning::AgentLearner;
+pub use memory_store::AgentMemoryStore;
 pub use multimodal::ModalityRegistry;

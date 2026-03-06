@@ -10,6 +10,7 @@ use crate::approval::{ApprovalManager, ApprovalRequest, ApprovalResponse};
 use crate::config::ShellConfig;
 use crate::history::CommandHistory;
 use crate::interpreter::{Interpreter, Intent};
+use crate::llm::LlmClient;
 use crate::mode::{Mode, ModeManager};
 use crate::output::OutputFormatter;
 use crate::prompt::{PromptConfig, PromptContext, PromptRenderer};
@@ -29,6 +30,7 @@ pub struct Session {
     cwd: PathBuf,
     prompt_renderer: PromptRenderer,
     prompt_context: PromptContext,
+    llm: LlmClient,
 }
 
 impl Session {
@@ -42,9 +44,10 @@ impl Session {
         let approval = ApprovalManager::new();
         let history = CommandHistory::new(&config.history_file).await?;
         let output = OutputFormatter::new(&config.output_format);
+        let llm = LlmClient::new(config.llm_endpoint.clone());
         let ui = Ui::new();
         let cwd = std::env::current_dir()?;
-        
+
         // Initialize starship-style prompt
         let prompt_config = PromptConfig::default();
         let prompt_renderer = PromptRenderer::new(prompt_config);
@@ -66,6 +69,7 @@ impl Session {
             cwd,
             prompt_renderer,
             prompt_context,
+            llm,
         })
     }
     
@@ -207,10 +211,11 @@ impl Session {
         
         match intent {
             Intent::Question { query } => {
-                // Answer question using LLM
-                self.ui.show_info("Let me help you with that...");
-                // TODO: Call LLM for explanation
-                self.ui.show_info(&format!("You asked: {}", query));
+                self.ui.show_info("Thinking...");
+                match self.llm.answer_question(&query).await {
+                    Ok(answer) => self.ui.show_info(&answer),
+                    Err(e) => self.ui.show_error(&format!("Failed to get answer: {}", e)),
+                }
             }
             Intent::Unknown => {
                 // Try to execute as shell command with warning
@@ -499,6 +504,7 @@ mod tests {
             audit_log: PathBuf::from("/custom/path/audit.log"),
             show_explanations: true,
             theme: "dark".to_string(),
+            aliases: std::collections::HashMap::new(),
         };
         assert_eq!(config.history_file, PathBuf::from("/custom/path/history"));
         assert_eq!(config.output_format, "json");
@@ -850,6 +856,7 @@ mod tests {
             audit_log: std::path::PathBuf::from("/tmp/audit.log"),
             show_explanations: false,
             theme: "dark".to_string(),
+            aliases: std::collections::HashMap::new(),
         };
 
         assert_eq!(config.approval_timeout, 600);

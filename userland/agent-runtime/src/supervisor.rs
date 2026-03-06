@@ -3,12 +3,13 @@
 //! Monitors agent health, enforces resource limits, and handles failures.
 //! Resource enforcement uses cgroups v2 on Linux for hard memory/CPU limits.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 use tokio::time::interval;
 use tracing::{debug, error, info, warn};
@@ -17,6 +18,111 @@ use agnos_common::{AgentId, AgentStatus, ResourceUsage, StopReason};
 use agnos_sys::audit as sys_audit;
 
 use crate::registry::AgentRegistry;
+
+// ---------------------------------------------------------------------------
+// Output capture
+// ---------------------------------------------------------------------------
+
+/// Ring buffer for capturing agent stdout/stderr output.
+/// Queryable via API and shell (`agent logs <id>`).
+#[derive(Debug, Clone)]
+pub struct OutputCapture {
+    buffer: VecDeque<OutputLine>,
+    max_lines: usize,
+}
+
+/// A single line of captured output
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OutputLine {
+    pub timestamp: String,
+    pub stream: OutputStream,
+    pub content: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum OutputStream {
+    Stdout,
+    Stderr,
+}
+
+impl OutputCapture {
+    pub fn new(max_lines: usize) -> Self {
+        Self {
+            buffer: VecDeque::new(),
+            max_lines,
+        }
+    }
+
+    /// Append a line to the buffer
+    pub fn push(&mut self, stream: OutputStream, content: String) {
+        let line = OutputLine {
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            stream,
+            content,
+        };
+        self.buffer.push_back(line);
+        while self.buffer.len() > self.max_lines {
+            self.buffer.pop_front();
+        }
+    }
+
+    /// Get the last N lines
+    pub fn tail(&self, n: usize) -> Vec<&OutputLine> {
+        let skip = self.buffer.len().saturating_sub(n);
+        self.buffer.iter().skip(skip).collect()
+    }
+
+    /// Get all lines
+    pub fn all(&self) -> Vec<&OutputLine> {
+        self.buffer.iter().collect()
+    }
+
+    /// Get lines from a specific stream only
+    pub fn filter_stream(&self, stream: OutputStream) -> Vec<&OutputLine> {
+        self.buffer.iter().filter(|l| l.stream == stream).collect()
+    }
+
+    /// Clear the buffer
+    pub fn clear(&mut self) {
+        self.buffer.clear();
+    }
+
+    /// Number of lines in the buffer
+    pub fn len(&self) -> usize {
+        self.buffer.len()
+    }
+
+    /// Check if empty
+    pub fn is_empty(&self) -> bool {
+        self.buffer.is_empty()
+    }
+
+    /// Format output for display
+    pub fn format_display(&self, n: usize) -> String {
+        let lines = self.tail(n);
+        if lines.is_empty() {
+            return "(no output captured)".to_string();
+        }
+
+        lines
+            .iter()
+            .map(|l| {
+                let prefix = match l.stream {
+                    OutputStream::Stdout => "OUT",
+                    OutputStream::Stderr => "ERR",
+                };
+                format!("[{}] {} | {}", l.timestamp, prefix, l.content)
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+}
+
+impl Default for OutputCapture {
+    fn default() -> Self {
+        Self::new(1000)
+    }
+}
 
 /// Base path for AGNOS cgroups v2 hierarchy
 const CGROUP_BASE: &str = "/sys/fs/cgroup/agnos";
@@ -2814,6 +2920,159 @@ mod tests {
         controller.set_cpu_limit(200_000, 100_000).unwrap();
         let written = std::fs::read_to_string(cg_path.join("cpu.max")).unwrap();
         assert_eq!(written, "200000 100000");
+    }
+
+    // -----------------------------------------------------------------------
+    // OutputCapture tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_output_capture_new() {
+        let cap = OutputCapture::new(50);
+        assert_eq!(cap.len(), 0);
+        assert!(cap.is_empty());
+        assert_eq!(cap.max_lines, 50);
+    }
+
+    #[test]
+    fn test_output_capture_push() {
+        let mut cap = OutputCapture::new(100);
+        cap.push(OutputStream::Stdout, "hello".to_string());
+        assert_eq!(cap.len(), 1);
+        assert!(!cap.is_empty());
+        assert_eq!(cap.all()[0].content, "hello");
+        assert_eq!(cap.all()[0].stream, OutputStream::Stdout);
+    }
+
+    #[test]
+    fn test_output_capture_tail() {
+        let mut cap = OutputCapture::new(100);
+        for i in 0..10 {
+            cap.push(OutputStream::Stdout, format!("line {}", i));
+        }
+        let tail = cap.tail(3);
+        assert_eq!(tail.len(), 3);
+        assert_eq!(tail[0].content, "line 7");
+        assert_eq!(tail[1].content, "line 8");
+        assert_eq!(tail[2].content, "line 9");
+    }
+
+    #[test]
+    fn test_output_capture_tail_more_than_available() {
+        let mut cap = OutputCapture::new(100);
+        cap.push(OutputStream::Stdout, "only one".to_string());
+        let tail = cap.tail(50);
+        assert_eq!(tail.len(), 1);
+        assert_eq!(tail[0].content, "only one");
+    }
+
+    #[test]
+    fn test_output_capture_all() {
+        let mut cap = OutputCapture::new(100);
+        cap.push(OutputStream::Stdout, "a".to_string());
+        cap.push(OutputStream::Stderr, "b".to_string());
+        cap.push(OutputStream::Stdout, "c".to_string());
+        let all = cap.all();
+        assert_eq!(all.len(), 3);
+        assert_eq!(all[0].content, "a");
+        assert_eq!(all[1].content, "b");
+        assert_eq!(all[2].content, "c");
+    }
+
+    #[test]
+    fn test_output_capture_filter_stream() {
+        let mut cap = OutputCapture::new(100);
+        cap.push(OutputStream::Stdout, "out1".to_string());
+        cap.push(OutputStream::Stderr, "err1".to_string());
+        cap.push(OutputStream::Stdout, "out2".to_string());
+        cap.push(OutputStream::Stderr, "err2".to_string());
+
+        let stdout = cap.filter_stream(OutputStream::Stdout);
+        assert_eq!(stdout.len(), 2);
+        assert_eq!(stdout[0].content, "out1");
+        assert_eq!(stdout[1].content, "out2");
+
+        let stderr = cap.filter_stream(OutputStream::Stderr);
+        assert_eq!(stderr.len(), 2);
+        assert_eq!(stderr[0].content, "err1");
+    }
+
+    #[test]
+    fn test_output_capture_clear() {
+        let mut cap = OutputCapture::new(100);
+        cap.push(OutputStream::Stdout, "data".to_string());
+        cap.push(OutputStream::Stderr, "more data".to_string());
+        assert_eq!(cap.len(), 2);
+        cap.clear();
+        assert_eq!(cap.len(), 0);
+        assert!(cap.is_empty());
+    }
+
+    #[test]
+    fn test_output_capture_len_and_is_empty() {
+        let mut cap = OutputCapture::new(100);
+        assert_eq!(cap.len(), 0);
+        assert!(cap.is_empty());
+        cap.push(OutputStream::Stdout, "x".to_string());
+        assert_eq!(cap.len(), 1);
+        assert!(!cap.is_empty());
+    }
+
+    #[test]
+    fn test_output_capture_default() {
+        let cap = OutputCapture::default();
+        assert_eq!(cap.max_lines, 1000);
+        assert!(cap.is_empty());
+    }
+
+    #[test]
+    fn test_output_capture_format_display_empty() {
+        let cap = OutputCapture::new(100);
+        assert_eq!(cap.format_display(10), "(no output captured)");
+    }
+
+    #[test]
+    fn test_output_capture_format_display_with_lines() {
+        let mut cap = OutputCapture::new(100);
+        cap.push(OutputStream::Stdout, "hello world".to_string());
+        cap.push(OutputStream::Stderr, "error msg".to_string());
+
+        let display = cap.format_display(10);
+        assert!(display.contains("OUT | hello world"));
+        assert!(display.contains("ERR | error msg"));
+        // Should have two lines separated by newline
+        assert_eq!(display.lines().count(), 2);
+    }
+
+    #[test]
+    fn test_output_capture_ring_buffer_eviction() {
+        let mut cap = OutputCapture::new(3);
+        cap.push(OutputStream::Stdout, "a".to_string());
+        cap.push(OutputStream::Stdout, "b".to_string());
+        cap.push(OutputStream::Stdout, "c".to_string());
+        assert_eq!(cap.len(), 3);
+
+        // Push a 4th — should evict "a"
+        cap.push(OutputStream::Stdout, "d".to_string());
+        assert_eq!(cap.len(), 3);
+
+        let all = cap.all();
+        assert_eq!(all[0].content, "b");
+        assert_eq!(all[1].content, "c");
+        assert_eq!(all[2].content, "d");
+    }
+
+    #[test]
+    fn test_output_capture_serialization() {
+        let line = OutputLine {
+            timestamp: "2026-03-06T12:00:00Z".to_string(),
+            stream: OutputStream::Stdout,
+            content: "test output".to_string(),
+        };
+        let json = serde_json::to_string(&line).unwrap();
+        let deser: OutputLine = serde_json::from_str(&json).unwrap();
+        assert_eq!(deser.content, "test output");
+        assert_eq!(deser.stream, OutputStream::Stdout);
     }
 }
 

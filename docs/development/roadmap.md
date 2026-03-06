@@ -145,7 +145,7 @@ Comprehensive audit across all 6 crates. 80+ findings identified; all Critical a
 - Thread-unsafe env var manipulation in secrets.rs
 - Various `let _ =` swallowed errors in IPC/service manager
 - Desktop environment blanket `#![allow(dead_code)]`
-- AI Shell Question intent stub
+- ~~AI Shell Question intent stub~~ — addressed in Phase 6.7
 - Placeholder certificate pins
 - Streaming parser O(n²) String::drain pattern
 
@@ -165,6 +165,7 @@ AGNOS (AI-Native General Operating System) is in **Phase 5: Production**, focuse
 | 6 | Complete | 100% | Advanced AI & Networking (agent intelligence, multi-modal, swarm, LLM analysis, 32 tools + 7 wrappers, hardware acceleration) |
 | 6.5 | Complete | 100% | OS-Level Features & Security Hardening (all 12 modules) |
 | 6.6 | Complete | 100% | Consumer Integration (9 features) |
+| 6.7 | Complete | 100% | Alpha Polish (14 items: question intent, tab-completion, pipelines, aliases, agent KV store, conversation context, reasoning traces, dashboard, log viewer, output capture, enriched health, hot-reload, fleet config, environment profiles) |
 | 7+ | Planned | 0% | Ecosystem & Research |
 
 ### Alpha Release Criteria (Q2 2026)
@@ -350,6 +351,107 @@ Blockers before migration:
 | Agnostic | `universal_llm_adapter.py` | Deduplicate adapter logic; route through gateway |
 | BullShift | AI Bridge backends | Single endpoint replaces per-provider config |
 
+### Phase 6.7: Alpha Polish — Core Experience Gaps (Complete) — [ADR-008](../adr/adr-008-phase67-alpha-polish.md)
+
+All 14 items implemented. See [Phase 6.7 Developer Guide](phase67-guide.md) for usage.
+
+#### AI Shell & User Interaction (4/4 Complete)
+
+| Item | Component | Status |
+|------|-----------|--------|
+| Wire Question intent to LLM | ai-shell/session.rs | Done |
+| Shell tab-completion for agents/services | ai-shell/completion.rs | Done (16 tests) |
+| Shell pipeline support | ai-shell/interpreter.rs | Done |
+| Shell aliases & user macros | ai-shell/aliases.rs | Done (12 tests) |
+
+#### Agent Intelligence & Memory (3/3 Complete)
+
+| Item | Component | Status |
+|------|-----------|--------|
+| Agent persistent memory (KV store) | agent-runtime/memory_store.rs | Done (20 tests) |
+| Agent conversation context window | agent-runtime/learning.rs | Done (10 tests) |
+| Structured reasoning traces | agent-runtime/tool_analysis.rs | Done (12 tests) |
+
+#### Observability & Debugging (4/4 Complete)
+
+| Item | Component | Status |
+|------|-----------|--------|
+| Agent activity dashboard (TUI) | ai-shell/dashboard.rs | Done (14 tests) |
+| Structured event log viewer | ai-shell/audit.rs | Done (8 tests) |
+| Agent stdout/stderr capture & replay | agent-runtime/supervisor.rs | Done (10 tests) |
+| Health check endpoint enrichment | agent-runtime/http_api.rs | Done |
+
+#### Configuration & Operations (3/3 Complete)
+
+| Item | Component | Status |
+|------|-----------|--------|
+| Agent hot-reload (config change without restart) | agent-runtime/lifecycle.rs | Done (8 tests) |
+| Declarative agent fleet config (TOML) | agent-runtime/service_manager.rs | Done (12 tests) |
+| Environment profiles (dev/staging/prod) | agnos-common/config.rs | Done (16 tests) |
+
+---
+
+### Phase 6.8: Beta Features — Depth & Differentiation (Planned Q3 2026)
+
+Features that make AGNOS meaningfully better than running agents on a generic Linux box.
+
+#### RAG & Knowledge (The Killer Feature Gap)
+
+| Item | Component | Effort | Priority | Description |
+|------|-----------|--------|----------|-------------|
+| Embedded vector store | agnos-common or new crate | 1 week | P1 | Local vector DB (usearch, qdrant-lite, or custom HNSW) for semantic search. Agents can index documents, code, logs and query by meaning |
+| RAG pipeline integration | llm-gateway | 1 week | P1 | Automatic context retrieval: query vector store → inject relevant chunks → LLM call. Configurable per agent (chunk size, top-k, reranking) |
+| System knowledge base | agent-runtime | 3 days | P2 | Auto-index system docs, man pages, agent manifests, audit logs. Every agent gets a searchable understanding of the OS |
+| File watcher + auto-indexing | agnos-sys/inotify | 2 days | P2 | inotify-based file change detection → automatic re-indexing into vector store. Keeps knowledge current |
+
+#### Advanced Agent Capabilities
+
+| Item | Component | Effort | Priority | Description |
+|------|-----------|--------|----------|-------------|
+| Agent-to-agent RPC (typed messages) | agent-runtime/ipc.rs | 3 days | P1 | Beyond pub/sub: request-response pattern with typed schemas, timeouts, and error propagation. Enables agent composition (agent A calls agent B's capabilities) |
+| Agent templates & scaffolding | agent-runtime/package_manager.rs | 2 days | P2 | `agnos new --template web-scanner` generates a ready-to-run agent with manifest, sandbox config, and tests. Lowers barrier to agent creation |
+| Agent capability negotiation | agent-runtime/registry.rs | 2 days | P2 | Agents advertise capabilities (e.g., "I can parse PDFs"). Orchestrator routes tasks to capable agents automatically |
+| Circuit breaker for agent failures | agent-runtime/supervisor.rs | 1 day | P2 | After N consecutive failures, circuit opens (agent paused), half-open after cooldown. Prevents cascade failures in agent chains |
+| Scheduled/cron agent tasks | agent-runtime/service_manager.rs | 2 days | P2 | Time-based task triggers (cron syntax). "Run vulnerability scan every Sunday at 02:00" without external scheduler |
+
+#### Observability Stack
+
+| Item | Component | Effort | Priority | Description |
+|------|-----------|--------|----------|-------------|
+| OpenTelemetry trace export | agnos-common/telemetry.rs | 3 days | P1 | OTLP export of traces/metrics/logs. Enables integration with Grafana, Jaeger, Datadog — standard observability |
+| Distributed tracing (cross-service) | all crates | 2 days | P1 | Trace ID propagated through AI Shell → Agent Runtime → LLM Gateway → agent process. See the full lifecycle of a request |
+| Prometheus metrics endpoint | agent-runtime + llm-gateway | 2 days | P2 | `/metrics` in Prometheus exposition format: agent counts, task latencies, LLM token rates, cache hit ratios, error rates |
+| Resource usage forecasting | agent-runtime/resource.rs | 3 days | P3 | Predict memory/CPU needs based on trailing usage patterns. Alert before OOM, suggest resource limit adjustments |
+
+#### Desktop & Accessibility
+
+| Item | Component | Effort | Priority | Description |
+|------|-----------|--------|----------|-------------|
+| Accessibility (a11y) foundation | desktop-environment | 1 week | P1 | AT-SPI2 bridge for screen readers, keyboard navigation for all UI, high-contrast theme, focus indicators. Non-negotiable for a real OS |
+| Clipboard integration | desktop-environment/compositor.rs | 2 days | P2 | wl_data_device protocol: copy/paste between agents, desktop apps, and AI Shell |
+| Agent window ownership indicators | desktop-environment/security_ui.rs | 1 day | P2 | Visual badge on windows showing which agent owns them, trust level, sandbox status |
+| XDG popup/positioner support | desktop-environment/wayland.rs | 2 days | P3 | Currently noted as unimplemented — needed for right-click menus, tooltips, dropdowns |
+| Multi-touch gesture support | desktop-environment/wayland.rs | 2 days | P3 | Pinch-to-zoom, swipe between workspaces — expected on modern touch devices |
+
+#### Security Hardening
+
+| Item | Component | Effort | Priority | Description |
+|------|-----------|--------|----------|-------------|
+| Agent behavior anomaly detection | agent-runtime/learning.rs | 3 days | P1 | Baseline normal syscall/network/file patterns per agent. Alert on deviation (compromised agent, misbehavior). Uses existing telemetry data |
+| Zero-trust agent networking (mTLS) | agent-runtime/ipc.rs + agnos-sys | 3 days | P2 | Mutual TLS for all agent-to-agent and agent-to-gateway communication. Certificate per agent, auto-rotated |
+| Secrets rotation automation | agnos-common/secrets.rs | 2 days | P2 | Automatic rotation of API keys, tokens, certificates with configurable schedules and zero-downtime swap |
+| Runtime integrity attestation | agnos-sys/ima.rs + tpm.rs | 2 days | P3 | Periodic runtime measurement: verify agent binaries, configs, and sandbox state haven't been tampered with post-boot |
+
+#### Networking & Integration
+
+| Item | Component | Effort | Priority | Description |
+|------|-----------|--------|----------|-------------|
+| Webhook/event sink support | agent-runtime/http_api.rs | 2 days | P2 | POST agent events (task complete, alert, approval needed) to external URLs. Enables integration with Slack, PagerDuty, CI/CD |
+| gRPC API (alongside REST) | agent-runtime + llm-gateway | 1 week | P3 | Protocol Buffers + gRPC for high-performance agent communication. Streaming, bidirectional, typed contracts |
+| Service mesh readiness (sidecar pattern) | agent-runtime | 3 days | P3 | Envoy/Linkerd sidecar injection for agents. Enables traffic shaping, retries, observability at network layer |
+
+---
+
 ### Phase 7: Ecosystem (Planned Q4 2026)
 
 #### Marketplace
@@ -363,6 +465,12 @@ Blockers before migration:
 - [ ] Cross-device agent sync
 - [ ] Collaborative agent workspaces
 
+#### Federation & Scale
+- [ ] Multi-node agent federation (agents span AGNOS instances)
+- [ ] Distributed task scheduling with consensus
+- [ ] Agent migration/checkpointing (pause, serialize, resume elsewhere)
+- [ ] Shared vector store across federated nodes
+
 ### Phase 8: Research (Planned Q1 2027)
 
 #### Advanced Research
@@ -370,6 +478,10 @@ Blockers before migration:
 - [ ] Novel sandboxing architectures
 - [ ] AI safety mechanisms
 - [ ] Human-AI collaboration research
+- [ ] Post-quantum cryptography (CRYSTALS-Kyber, Dilithium)
+- [ ] Agent explainability framework (attention visualization, decision trees)
+- [ ] Reinforcement learning loop for agent policy optimization
+- [ ] Fine-tuning pipeline (adapt local models to agent-specific tasks)
 
 ---
 
@@ -382,6 +494,13 @@ Blockers before migration:
 **Remaining criteria:**
 - [ ] Third-party security audit complete
 
+**Phase 6.7 Alpha Polish (all 14 items complete):**
+- [x] Wire Question intent to LLM Gateway
+- [x] Agent persistent memory (KV store)
+- [x] Agent activity dashboard (TUI)
+- [x] Structured reasoning traces
+- [x] Tab-completion, pipelines, aliases, log viewer, output capture, enriched health, hot-reload, fleet config, environment profiles
+
 **Target Date**: End of Q2 2026
 
 ### Beta Release - Q3 2026
@@ -393,6 +512,11 @@ Blockers before migration:
 - Update system operational and tested
 - Support channels open (Discord, forum)
 - Video tutorials published
+- RAG pipeline operational (embedded vector store + retrieval)
+- OpenTelemetry integration live
+- Accessibility foundation in desktop
+- Agent-to-agent RPC
+- Behavior anomaly detection
 
 **Target Date**: Mid-Q3 2026
 
@@ -400,12 +524,14 @@ Blockers before migration:
 
 **Criteria:**
 - Production ready (all critical bugs resolved)
-- Enterprise features complete (SSO, audit logging)
+- Enterprise features complete (SSO, audit logging, mTLS)
 - Certifications complete (if pursued)
 - Commercial support available
 - Migration guides published
-
-**Target Date**: End of Q4 2026
+- Full observability stack (Prometheus, tracing, dashboards)
+- Agent marketplace MVP
+- Secrets rotation automation
+- Scheduled agent tasks
 
 ---
 
@@ -448,6 +574,7 @@ Blockers before migration:
 5. ADR-005: Security Model and Human Override
 6. ADR-006: Testing Strategy and CI/CD
 7. ADR-007: OpenAI-compatible HTTP API for LLM Gateway
+8. ADR-008: Phase 6.7 Alpha Polish — Core Experience Gaps
 
 ---
 
@@ -456,9 +583,14 @@ Blockers before migration:
 ### Priority Contribution Areas
 
 1. **Third-party security audit (P1)** - External vendor engagement
-2. **Video tutorials (P2)** - Installation, usage, agent creation, security overview
-3. **Kernel Development Guide (P3)** - For kernel hackers contributing to AGNOS kernel modules
-4. **Support portal (P3)** - Community support channels (can use GitHub Issues/Discussions for Alpha)
+2. **RAG / vector store integration (P1)** - Embedded semantic search for agents — the key differentiator
+3. **Accessibility foundation (P1)** - AT-SPI2, keyboard nav, screen reader support
+4. **OpenTelemetry integration (P1)** - Distributed tracing and metrics export
+5. **Agent persistent memory (P1)** - SQLite/sled KV store per agent
+6. **Video tutorials (P2)** - Installation, usage, agent creation, security overview
+7. **Agent activity dashboard TUI (P2)** - Live operational view of agent fleet
+8. **Kernel Development Guide (P3)** - For kernel hackers contributing to AGNOS kernel modules
+9. **Support portal (P3)** - Community support channels (can use GitHub Issues/Discussions for Alpha)
 
 ### Getting Started
 
@@ -479,4 +611,4 @@ See [CONTRIBUTING.md](/CONTRIBUTING.md) for:
 
 ---
 
-*Last Updated: 2026-03-06 | Next Review: 2026-03-10*
+*Last Updated: 2026-03-06 | Next Review: 2026-03-13*

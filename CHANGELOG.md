@@ -17,7 +17,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | Compiler Warnings | 0 |
 | Clippy Warnings | 0 |
 | CIS Compliance | ~85% |
+| Phase 6.7 Completion | 100% |
 | Alpha Blocker | Third-party security audit (vendor selection) |
+
+### Added — Phase 6.7: Alpha Polish (14 Items) — [ADR-008](docs/adr/adr-008-phase67-alpha-polish.md)
+
+#### AI Shell & User Interaction
+- **ai-shell/completion.rs** — Tab-completion engine: BTreeSet-based prefix matching for built-in commands, intent keywords, all 34 network tools, dynamic agent/service names; context-aware completions after `start`/`stop`/`agent`/`mode` (16 tests)
+- **ai-shell/aliases.rs** — Shell alias manager: set/remove/expand/list/contains, persistent aliases via `ShellConfig.aliases` in `~/.agnsh_config.toml` (12 tests)
+- **ai-shell/interpreter.rs** — Pipeline support: `Intent::Pipeline` variant for `cmd1 | cmd2` pipe chains and NL `then` keyword chaining; executed via `sh -c` at `SystemWrite` permission level
+- **ai-shell/session.rs** — Question intent wired: `Intent::Question` now routes through `LlmClient::answer_question()` with graceful fallback when LLM Gateway is unreachable
+
+#### Agent Intelligence & Memory
+- **agent-runtime/memory_store.rs** — Per-agent persistent KV store: file-backed JSON under `/var/lib/agnos/agent-memory/<agent-id>/`, atomic writes via temp+rename, path traversal prevention (`..`/`/` rejected), 1 MB value limit, 256-byte key limit, tag-based listing, usage tracking (20 tests)
+- **agent-runtime/learning.rs** — Conversation context window: `ConversationContext` sliding window of recent interactions per agent, `format_for_llm()` export for LLM injection, import/export for persistence (10 tests)
+- **agent-runtime/tool_analysis.rs** — Structured reasoning traces: `TraceBuilder` + `ReasoningTrace` chain-of-thought logging with per-step rationale, tool calls, output, timing, and status; `format_trace()` for human-readable display (12 tests)
+
+#### Observability & Debugging
+- **ai-shell/dashboard.rs** — Agent activity dashboard: htop-style TUI view with agent ID, status, CPU%, memory, task count, errors, last action; `DashboardClient` fetches from Agent Runtime API `/v1/agents` (14 tests)
+- **ai-shell/audit.rs** — Structured event log viewer: `AuditViewer` with `AuditFilter` (agent, action, approved, time range, limit); tabular output formatting (8 tests)
+- **agent-runtime/supervisor.rs** — Agent output capture: `OutputCapture` ring buffer for stdout/stderr with `tail(n)`, `filter_stream()`, `format_display()` (10 tests)
+- **agent-runtime/http_api.rs** — Enriched health endpoint: `/v1/health` now returns component status (LLM Gateway reachability, agent registry), system metrics (hostname, load average, memory, disk)
+
+#### Configuration & Operations
+- **agent-runtime/lifecycle.rs** — Agent hot-reload: `LifecycleEvent::ConfigReloaded` variant + `reload_config()` method with diff-based change detection; hooks notified of changed fields without agent restart (8 tests)
+- **agent-runtime/service_manager.rs** — Declarative fleet config: `FleetConfig` TOML-defined desired state with `ReconciliationPlan` (start/stop/unchanged); `from_file()` async loader, `reconcile()` against running services (12 tests)
+- **agnos-common/config.rs** — Environment profiles: `EnvironmentProfile` (dev/staging/prod) with bind address, log level, security mode, auto-approve, max agents, audit verbosity; `from_env()` reads `AGNOS_PROFILE` env var (16 tests)
 
 ### Added — Phase 6: Agent Intelligence & Multi-Modal (3 New Modules)
 

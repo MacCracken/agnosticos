@@ -41,4 +41,5 @@ What other options were considered and why were they rejected?
 | 005 | Security Model and Human Override | Accepted | 2026-02-11 |
 | 006 | Testing Strategy and CI/CD | Proposed | 2026-02-12 |
 | 007 | Agnostic QA Platform Integration | Proposed | 2026-02-22 |
+| 008 | Phase 6.7 Alpha Polish — Core Experience Gaps | Accepted | 2026-03-06 |
 

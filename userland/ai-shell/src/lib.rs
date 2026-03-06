@@ -1,7 +1,10 @@
+pub mod aliases;
 pub mod approval;
 pub mod audit;
 pub mod commands;
+pub mod completion;
 pub mod config;
+pub mod dashboard;
 pub mod history;
 pub mod interpreter;
 pub mod llm;
