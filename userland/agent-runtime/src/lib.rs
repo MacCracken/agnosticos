@@ -13,6 +13,10 @@ pub mod seccomp_profiles;
 pub mod service_manager;
 pub mod supervisor;
 pub mod network_tools;
+pub mod tool_analysis;
+pub mod swarm;
+pub mod learning;
+pub mod multimodal;
 pub mod wasm_runtime;
 
 pub use agent::{Agent, AgentHandle};
@@ -24,3 +28,6 @@ pub use registry::AgentRegistry;
 pub use rollback::RollbackManager;
 pub use service_manager::ServiceManager;
 pub use supervisor::Supervisor;
+pub use swarm::SwarmCoordinator;
+pub use learning::AgentLearner;
+pub use multimodal::ModalityRegistry;

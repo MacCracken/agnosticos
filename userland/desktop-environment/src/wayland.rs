@@ -1204,7 +1204,36 @@ pub enum WaylandKeyboardEvent {
 #[cfg(feature = "wayland")]
 mod wayland_live {
     use super::*;
-    use wayland_server::{Display, ListeningSocket};
+    use wayland_server::{
+        Client, DataInit, Dispatch, Display, DisplayHandle, ListeningSocket, New, Resource,
+        protocol::{
+            wl_buffer, wl_compositor, wl_output, wl_seat, wl_shm, wl_shm_pool, wl_surface,
+        },
+    };
+    use wayland_protocols::xdg::shell::server::{
+        xdg_surface, xdg_toplevel, xdg_wm_base,
+    };
+
+    /// Per-surface user data stored on `wl_surface` resources.
+    #[derive(Debug)]
+    pub struct SurfaceData {
+        pub surface_id: SurfaceId,
+        pub client_id: u32,
+    }
+
+    /// Per-toplevel user data stored on `xdg_toplevel` resources.
+    #[derive(Debug)]
+    pub struct ToplevelData {
+        pub surface_id: SurfaceId,
+        pub client_id: u32,
+    }
+
+    /// Per-xdg_surface user data.
+    #[derive(Debug)]
+    pub struct XdgSurfaceData {
+        pub surface_id: SurfaceId,
+        pub client_id: u32,
+    }
 
     /// Main Wayland server state.
     ///
@@ -1215,17 +1244,21 @@ mod wayland_live {
         pub compositor: Arc<Compositor>,
         pub bridge: ProtocolBridge,
         pub socket_name: Option<String>,
+        pub dh: DisplayHandle,
     }
 
     impl WaylandState {
         /// Create a new Wayland server state bound to the given compositor.
         pub fn new(compositor: Arc<Compositor>) -> Result<Self, Box<dyn std::error::Error>> {
             let display = Display::new()?;
+            let dh = display.handle();
+
             Ok(Self {
                 display,
                 compositor,
                 bridge: ProtocolBridge::new(),
                 socket_name: None,
+                dh,
             })
         }
 
@@ -1242,9 +1275,7 @@ mod wayland_live {
 
         /// Dispatch one frame: accept clients, process events, apply to compositor.
         pub fn dispatch(&mut self) -> Result<Vec<ProtocolAction>, Box<dyn std::error::Error>> {
-            // In live mode, this would call self.display.dispatch_clients()
-            // and route wayland-server events through the bridge.
-            // For now, apply any pending bridge actions.
+            self.display.dispatch_clients(&mut self.bridge)?;
             let actions = self.bridge.apply_actions(&self.compositor);
             Ok(actions)
         }
@@ -1252,6 +1283,417 @@ mod wayland_live {
         /// Handle an input event by routing through the bridge.
         pub fn handle_input(&mut self, event: &InputEvent) {
             self.bridge.route_input(&self.compositor, event);
+        }
+
+        /// Initialize all global protocol objects on the display.
+        pub fn init_globals(&mut self) {
+            // wl_compositor v5
+            self.dh.create_global::<Self, wl_compositor::WlCompositor, ()>(5, ());
+            // wl_shm v1
+            self.dh.create_global::<Self, wl_shm::WlShm, ()>(1, ());
+            // wl_seat v7
+            self.dh.create_global::<Self, wl_seat::WlSeat, ()>(7, ());
+            // wl_output v4
+            self.dh.create_global::<Self, wl_output::WlOutput, ()>(4, ());
+            // xdg_wm_base v3
+            self.dh.create_global::<Self, xdg_wm_base::XdgWmBase, ()>(3, ());
+        }
+    }
+
+    // ========================================================================
+    // Dispatch: wl_compositor — creates wl_surface instances
+    // ========================================================================
+
+    impl Dispatch<wl_compositor::WlCompositor, ()> for WaylandState {
+        fn request(
+            state: &mut Self,
+            client: &Client,
+            _resource: &wl_compositor::WlCompositor,
+            request: wl_compositor::Request,
+            _data: &(),
+            _dhandle: &DisplayHandle,
+            data_init: &mut DataInit<'_, Self>,
+        ) {
+            match request {
+                wl_compositor::Request::CreateSurface { id } => {
+                    let client_id = client.id().protocol_id();
+                    if let Some((surface_id, _proto_id)) =
+                        state.bridge.create_surface(client_id)
+                    {
+                        data_init.init(id, SurfaceData { surface_id, client_id });
+                    }
+                }
+                wl_compositor::Request::CreateRegion { id: _ } => {
+                    // Region management — no-op for basic compositor
+                }
+                _ => {}
+            }
+        }
+    }
+
+    // ========================================================================
+    // Dispatch: wl_surface — surface commit, damage, attach
+    // ========================================================================
+
+    impl Dispatch<wl_surface::WlSurface, SurfaceData> for WaylandState {
+        fn request(
+            state: &mut Self,
+            _client: &Client,
+            _resource: &wl_surface::WlSurface,
+            request: wl_surface::Request,
+            data: &SurfaceData,
+            _dhandle: &DisplayHandle,
+            _data_init: &mut DataInit<'_, Self>,
+        ) {
+            match request {
+                wl_surface::Request::Commit => {
+                    state.bridge.surface_commit(data.surface_id);
+                }
+                wl_surface::Request::Destroy => {
+                    state.bridge.destroy_surface(data.surface_id);
+                }
+                wl_surface::Request::Attach { buffer: _, x: _, y: _ } => {
+                    // Buffer attachment tracked for SHM rendering pipeline
+                }
+                wl_surface::Request::Damage { x: _, y: _, width: _, height: _ } => {
+                    // Damage tracking — marks region for re-render
+                }
+                wl_surface::Request::Frame { callback: _ } => {
+                    // Frame callback — used for vsync signaling
+                }
+                wl_surface::Request::SetInputRegion { region: _ } => {}
+                wl_surface::Request::SetOpaqueRegion { region: _ } => {}
+                wl_surface::Request::SetBufferTransform { transform: _ } => {}
+                wl_surface::Request::SetBufferScale { scale: _ } => {}
+                wl_surface::Request::DamageBuffer { x: _, y: _, width: _, height: _ } => {}
+                wl_surface::Request::Offset { x: _, y: _ } => {}
+                _ => {}
+            }
+        }
+    }
+
+    // ========================================================================
+    // Dispatch: wl_shm — shared memory buffer management
+    // ========================================================================
+
+    impl Dispatch<wl_shm::WlShm, ()> for WaylandState {
+        fn request(
+            _state: &mut Self,
+            _client: &Client,
+            _resource: &wl_shm::WlShm,
+            request: wl_shm::Request,
+            _data: &(),
+            _dhandle: &DisplayHandle,
+            data_init: &mut DataInit<'_, Self>,
+        ) {
+            match request {
+                wl_shm::Request::CreatePool { id, fd: _, size: _ } => {
+                    data_init.init(id, ());
+                }
+                _ => {}
+            }
+        }
+    }
+
+    impl Dispatch<wl_shm_pool::WlShmPool, ()> for WaylandState {
+        fn request(
+            _state: &mut Self,
+            _client: &Client,
+            _resource: &wl_shm_pool::WlShmPool,
+            request: wl_shm_pool::Request,
+            _data: &(),
+            _dhandle: &DisplayHandle,
+            data_init: &mut DataInit<'_, Self>,
+        ) {
+            match request {
+                wl_shm_pool::Request::CreateBuffer {
+                    id,
+                    offset: _,
+                    width: _,
+                    height: _,
+                    stride: _,
+                    format: _,
+                } => {
+                    data_init.init(id, ());
+                }
+                wl_shm_pool::Request::Resize { size: _ } => {}
+                wl_shm_pool::Request::Destroy => {}
+                _ => {}
+            }
+        }
+    }
+
+    impl Dispatch<wl_buffer::WlBuffer, ()> for WaylandState {
+        fn request(
+            _state: &mut Self,
+            _client: &Client,
+            _resource: &wl_buffer::WlBuffer,
+            request: wl_buffer::Request,
+            _data: &(),
+            _dhandle: &DisplayHandle,
+            _data_init: &mut DataInit<'_, Self>,
+        ) {
+            match request {
+                wl_buffer::Request::Destroy => {}
+                _ => {}
+            }
+        }
+    }
+
+    // ========================================================================
+    // Dispatch: wl_seat — input device capabilities
+    // ========================================================================
+
+    impl Dispatch<wl_seat::WlSeat, ()> for WaylandState {
+        fn request(
+            state: &mut Self,
+            _client: &Client,
+            resource: &wl_seat::WlSeat,
+            request: wl_seat::Request,
+            _data: &(),
+            _dhandle: &DisplayHandle,
+            _data_init: &mut DataInit<'_, Self>,
+        ) {
+            match request {
+                wl_seat::Request::GetPointer { id: _ } => {
+                    // Pointer resource creation — input forwarded through bridge
+                }
+                wl_seat::Request::GetKeyboard { id: _ } => {
+                    // Keyboard resource creation — input forwarded through bridge
+                }
+                wl_seat::Request::GetTouch { id: _ } => {
+                    // Touch not yet supported
+                }
+                wl_seat::Request::Release => {}
+                _ => {}
+            }
+            // Advertise seat capabilities
+            let caps = state.bridge.seat_caps;
+            resource.capabilities(wl_seat::Capability::from_bits_truncate(caps.to_bitmask()));
+        }
+    }
+
+    // ========================================================================
+    // Dispatch: wl_output — screen geometry advertising
+    // ========================================================================
+
+    impl Dispatch<wl_output::WlOutput, ()> for WaylandState {
+        fn request(
+            _state: &mut Self,
+            _client: &Client,
+            _resource: &wl_output::WlOutput,
+            request: wl_output::Request,
+            _data: &(),
+            _dhandle: &DisplayHandle,
+            _data_init: &mut DataInit<'_, Self>,
+        ) {
+            match request {
+                wl_output::Request::Release => {}
+                _ => {}
+            }
+        }
+
+        fn bind(
+            state: &mut Self,
+            _client: &Client,
+            resource: New<wl_output::WlOutput>,
+            _global_data: &(),
+            _dhandle: &DisplayHandle,
+            data_init: &mut DataInit<'_, Self>,
+        ) {
+            let output = data_init.init(resource, ());
+            let info = &state.bridge.output;
+
+            // Send geometry event
+            output.geometry(
+                info.x,
+                info.y,
+                info.width_mm as i32,
+                info.height_mm as i32,
+                wl_output::Subpixel::Unknown,
+                info.make.clone(),
+                info.model.clone(),
+                wl_output::Transform::Normal,
+            );
+
+            // Send mode event
+            output.mode(
+                wl_output::Mode::Current | wl_output::Mode::Preferred,
+                info.width_px as i32,
+                info.height_px as i32,
+                info.refresh_mhz as i32,
+            );
+
+            // Send scale
+            output.scale(info.scale as i32);
+
+            // Send done to signal end of initial state
+            output.done();
+        }
+    }
+
+    // ========================================================================
+    // Dispatch: xdg_wm_base — XDG Shell entry point
+    // ========================================================================
+
+    impl Dispatch<xdg_wm_base::XdgWmBase, ()> for WaylandState {
+        fn request(
+            _state: &mut Self,
+            _client: &Client,
+            resource: &xdg_wm_base::XdgWmBase,
+            request: xdg_wm_base::Request,
+            _data: &(),
+            _dhandle: &DisplayHandle,
+            data_init: &mut DataInit<'_, Self>,
+        ) {
+            match request {
+                xdg_wm_base::Request::GetXdgSurface { id, surface } => {
+                    let sdata: &SurfaceData = surface.data().expect("surface missing data");
+                    data_init.init(
+                        id,
+                        XdgSurfaceData {
+                            surface_id: sdata.surface_id,
+                            client_id: sdata.client_id,
+                        },
+                    );
+                }
+                xdg_wm_base::Request::Pong { serial: _ } => {
+                    // Client responded to ping — connection is alive
+                }
+                xdg_wm_base::Request::CreatePositioner { id: _ } => {
+                    // Popup positioner — not yet implemented
+                }
+                xdg_wm_base::Request::Destroy => {}
+                _ => {}
+            }
+        }
+    }
+
+    // ========================================================================
+    // Dispatch: xdg_surface — surface role assignment
+    // ========================================================================
+
+    impl Dispatch<xdg_surface::XdgSurface, XdgSurfaceData> for WaylandState {
+        fn request(
+            state: &mut Self,
+            _client: &Client,
+            _resource: &xdg_surface::XdgSurface,
+            request: xdg_surface::Request,
+            data: &XdgSurfaceData,
+            _dhandle: &DisplayHandle,
+            data_init: &mut DataInit<'_, Self>,
+        ) {
+            match request {
+                xdg_surface::Request::GetToplevel { id } => {
+                    state.bridge.create_toplevel(data.surface_id, data.client_id);
+                    data_init.init(
+                        id,
+                        ToplevelData {
+                            surface_id: data.surface_id,
+                            client_id: data.client_id,
+                        },
+                    );
+                }
+                xdg_surface::Request::AckConfigure { serial } => {
+                    state.bridge.ack_configure(data.surface_id, serial);
+                }
+                xdg_surface::Request::SetWindowGeometry {
+                    x: _,
+                    y: _,
+                    width: _,
+                    height: _,
+                } => {
+                    // Window geometry hint from client
+                }
+                xdg_surface::Request::GetPopup { .. } => {
+                    // Popup surfaces — not yet implemented
+                }
+                xdg_surface::Request::Destroy => {}
+                _ => {}
+            }
+        }
+    }
+
+    // ========================================================================
+    // Dispatch: xdg_toplevel — window management requests
+    // ========================================================================
+
+    impl Dispatch<xdg_toplevel::XdgToplevel, ToplevelData> for WaylandState {
+        fn request(
+            state: &mut Self,
+            _client: &Client,
+            _resource: &xdg_toplevel::XdgToplevel,
+            request: xdg_toplevel::Request,
+            data: &ToplevelData,
+            _dhandle: &DisplayHandle,
+            _data_init: &mut DataInit<'_, Self>,
+        ) {
+            match request {
+                xdg_toplevel::Request::SetTitle { title } => {
+                    state.bridge.set_title(data.surface_id, title);
+                }
+                xdg_toplevel::Request::SetAppId { app_id } => {
+                    state.bridge.set_app_id(data.surface_id, app_id);
+                }
+                xdg_toplevel::Request::SetMaxSize { width, height } => {
+                    let max = if width > 0 && height > 0 {
+                        Some((width as u32, height as u32))
+                    } else {
+                        None
+                    };
+                    state.bridge.set_size_bounds(data.surface_id, None, max);
+                }
+                xdg_toplevel::Request::SetMinSize { width, height } => {
+                    let min = if width > 0 && height > 0 {
+                        Some((width as u32, height as u32))
+                    } else {
+                        None
+                    };
+                    state.bridge.set_size_bounds(data.surface_id, min, None);
+                }
+                xdg_toplevel::Request::SetMaximized => {
+                    state.bridge.set_maximized(data.surface_id, true);
+                }
+                xdg_toplevel::Request::UnsetMaximized => {
+                    state.bridge.set_maximized(data.surface_id, false);
+                }
+                xdg_toplevel::Request::SetFullscreen { output: _ } => {
+                    state.bridge.set_fullscreen(data.surface_id, true);
+                }
+                xdg_toplevel::Request::UnsetFullscreen => {
+                    state.bridge.set_fullscreen(data.surface_id, false);
+                }
+                xdg_toplevel::Request::SetMinimized => {
+                    state.bridge.set_minimized(data.surface_id);
+                }
+                xdg_toplevel::Request::Move { seat: _, serial: _ } => {
+                    state.bridge.request_move(data.surface_id);
+                }
+                xdg_toplevel::Request::Resize {
+                    seat: _,
+                    serial: _,
+                    edges,
+                } => {
+                    state
+                        .bridge
+                        .request_resize(data.surface_id, edges.into());
+                }
+                xdg_toplevel::Request::SetParent { parent: _ } => {
+                    // Parent window relationship — for dialog stacking
+                }
+                xdg_toplevel::Request::ShowWindowMenu {
+                    seat: _,
+                    serial: _,
+                    x: _,
+                    y: _,
+                } => {
+                    // Window menu (right-click titlebar) — not yet implemented
+                }
+                xdg_toplevel::Request::Destroy => {
+                    state.bridge.destroy_surface(data.surface_id);
+                }
+                _ => {}
+            }
         }
     }
 }

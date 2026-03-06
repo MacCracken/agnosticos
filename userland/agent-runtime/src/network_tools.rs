@@ -990,6 +990,7 @@ pub fn validate_args(tool: NetworkTool, args: &[String], allow_dangerous: bool) 
 }
 
 /// Runner that executes network tools inside sandboxed environments
+#[derive(Debug)]
 pub struct NetworkToolRunner {
     /// Whether dangerous arguments are allowed (requires elevated approval)
     pub allow_dangerous: bool,
@@ -1182,6 +1183,691 @@ impl NetworkToolRunner {
 }
 
 impl Default for NetworkToolRunner {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ============================================================================
+// Individual tool wrapper agents — typed argument builders + structured results
+// ============================================================================
+
+/// Scan profile controlling speed/stealth tradeoffs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScanProfile {
+    /// Quick scan — common ports only.
+    Quick,
+    /// Standard scan — top 1000 ports.
+    Standard,
+    /// Thorough scan — all 65535 ports, service detection.
+    Thorough,
+    /// Stealth scan — slower timing, randomized order.
+    Stealth,
+}
+
+/// Port scanner wrapping nmap/masscan with typed scan configuration.
+#[derive(Debug)]
+pub struct PortScanner {
+    runner: NetworkToolRunner,
+    profile: ScanProfile,
+    ports: Option<String>,
+    use_masscan: bool,
+}
+
+impl PortScanner {
+    pub fn new() -> Self {
+        Self {
+            runner: NetworkToolRunner::new(),
+            profile: ScanProfile::Standard,
+            ports: None,
+            use_masscan: false,
+        }
+    }
+
+    /// Set the scan profile.
+    pub fn profile(mut self, profile: ScanProfile) -> Self {
+        self.profile = profile;
+        self
+    }
+
+    /// Scan specific ports (e.g., "80,443,8080" or "1-1024").
+    pub fn ports(mut self, ports: &str) -> Self {
+        self.ports = Some(ports.to_string());
+        self
+    }
+
+    /// Use masscan instead of nmap (faster for large ranges).
+    pub fn use_masscan(mut self, yes: bool) -> Self {
+        self.use_masscan = yes;
+        self
+    }
+
+    /// Build the argument list for the configured scan.
+    pub fn build_args(&self) -> Vec<String> {
+        let mut args = Vec::new();
+
+        if self.use_masscan {
+            // masscan args
+            if let Some(ref ports) = self.ports {
+                args.push("-p".into());
+                args.push(ports.clone());
+            } else {
+                args.push("-p".into());
+                args.push("1-65535".into());
+            }
+            return args;
+        }
+
+        // nmap args based on profile
+        match self.profile {
+            ScanProfile::Quick => {
+                args.push("-F".into()); // fast mode (top 100 ports)
+                args.push("-T4".into());
+            }
+            ScanProfile::Standard => {
+                args.push("-T3".into());
+            }
+            ScanProfile::Thorough => {
+                args.push("-p-".into()); // all ports
+                args.push("-sV".into()); // version detection
+                args.push("-T3".into());
+            }
+            ScanProfile::Stealth => {
+                args.push("-T2".into()); // slower timing
+                args.push("--randomize-hosts".into());
+            }
+        }
+
+        if let Some(ref ports) = self.ports {
+            // Override profile port selection
+            args.retain(|a| a != "-F" && a != "-p-");
+            args.push("-p".into());
+            args.push(ports.clone());
+        }
+
+        args
+    }
+
+    /// Run the scan against a target. Returns structured host/port results.
+    pub async fn scan(&self, target: &str) -> Result<Vec<DiscoveredHost>> {
+        let tool = if self.use_masscan {
+            NetworkTool::MassScan
+        } else {
+            NetworkTool::PortScan
+        };
+        let config = NetworkToolConfig::for_tool(tool);
+        let args = self.build_args();
+        let output = self.runner.run(&config, &args, Some(target)).await?;
+        let parsed = parse_output(&output, Some(target));
+        match parsed {
+            ParsedOutput::HostScan { hosts, .. } => Ok(hosts),
+            _ => Ok(Vec::new()),
+        }
+    }
+}
+
+impl Default for PortScanner {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// DNS investigation wrapping dig and dnsrecon.
+#[derive(Debug)]
+pub struct DnsInvestigator {
+    runner: NetworkToolRunner,
+    record_types: Vec<String>,
+    use_dnsrecon: bool,
+    nameserver: Option<String>,
+}
+
+impl DnsInvestigator {
+    pub fn new() -> Self {
+        Self {
+            runner: NetworkToolRunner::new(),
+            record_types: Vec::new(),
+            use_dnsrecon: false,
+            nameserver: None,
+        }
+    }
+
+    /// Query specific record types (e.g., "A", "AAAA", "MX", "NS", "TXT").
+    pub fn record_type(mut self, rtype: &str) -> Self {
+        self.record_types.push(rtype.to_uppercase());
+        self
+    }
+
+    /// Use dnsrecon for enumeration instead of dig.
+    pub fn enumerate(mut self, yes: bool) -> Self {
+        self.use_dnsrecon = yes;
+        self
+    }
+
+    /// Use a specific nameserver.
+    pub fn nameserver(mut self, ns: &str) -> Self {
+        self.nameserver = Some(ns.to_string());
+        self
+    }
+
+    /// Build argument list.
+    pub fn build_args(&self, domain: &str) -> Vec<String> {
+        let mut args = Vec::new();
+
+        if self.use_dnsrecon {
+            args.push(domain.to_string());
+            return args;
+        }
+
+        // dig args
+        args.push(domain.to_string());
+        for rt in &self.record_types {
+            args.push(rt.clone());
+        }
+        if self.record_types.is_empty() {
+            args.push("ANY".into());
+        }
+        if let Some(ref ns) = self.nameserver {
+            args.push(format!("@{}", ns));
+        }
+        args
+    }
+
+    /// Run DNS lookup and return structured records.
+    pub async fn lookup(&self, domain: &str) -> Result<Vec<DnsRecord>> {
+        let tool = if self.use_dnsrecon {
+            NetworkTool::DnsEnum
+        } else {
+            NetworkTool::DnsLookup
+        };
+        let config = NetworkToolConfig::for_tool(tool);
+        let args = self.build_args(domain);
+        let output = self.runner.run(&config, &args, None).await?;
+        let parsed = parse_output(&output, Some(domain));
+        match parsed {
+            ParsedOutput::DnsResult { records, .. } => Ok(records),
+            _ => Ok(Vec::new()),
+        }
+    }
+}
+
+impl Default for DnsInvestigator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Network path probing wrapping traceroute and mtr.
+#[derive(Debug)]
+pub struct NetworkProber {
+    runner: NetworkToolRunner,
+    use_mtr: bool,
+    max_hops: Option<u32>,
+    count: Option<u32>,
+}
+
+impl NetworkProber {
+    pub fn new() -> Self {
+        Self {
+            runner: NetworkToolRunner::new(),
+            use_mtr: false,
+            max_hops: None,
+            count: None,
+        }
+    }
+
+    /// Use mtr instead of traceroute (combines ping + trace).
+    pub fn use_mtr(mut self, yes: bool) -> Self {
+        self.use_mtr = yes;
+        self
+    }
+
+    /// Set maximum hop count.
+    pub fn max_hops(mut self, hops: u32) -> Self {
+        self.max_hops = Some(hops);
+        self
+    }
+
+    /// Set ping count per hop (mtr only).
+    pub fn count(mut self, n: u32) -> Self {
+        self.count = Some(n);
+        self
+    }
+
+    /// Build argument list.
+    pub fn build_args(&self) -> Vec<String> {
+        let mut args = Vec::new();
+
+        if self.use_mtr {
+            if let Some(hops) = self.max_hops {
+                args.push("-m".into());
+                args.push(hops.to_string());
+            }
+        } else {
+            // traceroute
+            if let Some(hops) = self.max_hops {
+                args.push("-m".into());
+                args.push(hops.to_string());
+            }
+        }
+
+        args
+    }
+
+    /// Run trace and return structured hop list.
+    pub async fn trace(&self, target: &str) -> Result<Vec<TraceHop>> {
+        let tool = if self.use_mtr {
+            NetworkTool::NetworkDiag
+        } else {
+            NetworkTool::TraceRoute
+        };
+        let config = NetworkToolConfig::for_tool(tool);
+        let args = self.build_args();
+        let output = self.runner.run(&config, &args, Some(target)).await?;
+        let parsed = parse_output(&output, Some(target));
+        match parsed {
+            ParsedOutput::TraceResult { hops, .. } => Ok(hops),
+            _ => Ok(Vec::new()),
+        }
+    }
+
+    /// Run a simple ping sweep of a subnet.
+    pub async fn ping_sweep(&self, subnet: &str) -> Result<Vec<DiscoveredHost>> {
+        let config = NetworkToolConfig::for_tool(NetworkTool::PingSweep);
+        let output = self.runner.run(&config, &[], Some(subnet)).await?;
+        let parsed = parse_output(&output, Some(subnet));
+        match parsed {
+            ParsedOutput::HostScan { hosts, .. } => Ok(hosts),
+            _ => Ok(Vec::new()),
+        }
+    }
+}
+
+impl Default for NetworkProber {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Vulnerability assessment wrapping nuclei and nikto.
+#[derive(Debug)]
+pub struct VulnAssessor {
+    runner: NetworkToolRunner,
+    use_nikto: bool,
+    severity_filter: Option<String>,
+    tags: Vec<String>,
+}
+
+impl VulnAssessor {
+    pub fn new() -> Self {
+        Self {
+            runner: NetworkToolRunner {
+                allow_dangerous: false,
+                external_only: false,
+            },
+            use_nikto: false,
+            severity_filter: None,
+            tags: Vec::new(),
+        }
+    }
+
+    /// Use nikto instead of nuclei.
+    pub fn use_nikto(mut self, yes: bool) -> Self {
+        self.use_nikto = yes;
+        self
+    }
+
+    /// Filter by severity (nuclei: "critical,high,medium").
+    pub fn severity(mut self, sev: &str) -> Self {
+        self.severity_filter = Some(sev.to_string());
+        self
+    }
+
+    /// Filter by template tags (nuclei: "cve", "rce", "sqli").
+    pub fn tag(mut self, tag: &str) -> Self {
+        self.tags.push(tag.to_string());
+        self
+    }
+
+    /// Build argument list.
+    pub fn build_args(&self) -> Vec<String> {
+        let mut args = Vec::new();
+
+        if self.use_nikto {
+            args.push("-h".into());
+            return args;
+        }
+
+        // nuclei args
+        if let Some(ref sev) = self.severity_filter {
+            args.push("-severity".into());
+            args.push(sev.clone());
+        }
+        for tag in &self.tags {
+            args.push("-tags".into());
+            args.push(tag.clone());
+        }
+        args.push("-u".into());
+        args
+    }
+
+    /// Run vulnerability scan and return raw summary (structured parsing TODO).
+    pub async fn scan(&self, target: &str) -> Result<ToolOutput> {
+        let tool = if self.use_nikto {
+            NetworkTool::WebScan
+        } else {
+            NetworkTool::VulnScanner
+        };
+        let config = NetworkToolConfig::for_tool(tool);
+        let mut args = self.build_args();
+        args.push(target.to_string());
+        self.runner.run(&config, &args, None).await
+    }
+}
+
+impl Default for VulnAssessor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Traffic analysis wrapping tcpdump, tshark, and ngrep.
+#[derive(Debug)]
+pub struct TrafficAnalyzer {
+    runner: NetworkToolRunner,
+    tool_choice: NetworkTool,
+    interface: Option<String>,
+    filter: Option<String>,
+    packet_count: Option<u32>,
+}
+
+impl TrafficAnalyzer {
+    pub fn new() -> Self {
+        Self {
+            runner: NetworkToolRunner::new(),
+            tool_choice: NetworkTool::PacketCapture,
+            interface: None,
+            filter: None,
+            packet_count: Some(100),
+        }
+    }
+
+    /// Use tshark for deep inspection.
+    pub fn use_tshark(mut self) -> Self {
+        self.tool_choice = NetworkTool::DeepInspect;
+        self
+    }
+
+    /// Use ngrep for content matching.
+    pub fn use_ngrep(mut self) -> Self {
+        self.tool_choice = NetworkTool::NetworkGrep;
+        self
+    }
+
+    /// Capture on a specific interface.
+    pub fn interface(mut self, iface: &str) -> Self {
+        self.interface = Some(iface.to_string());
+        self
+    }
+
+    /// Set BPF filter expression.
+    pub fn filter(mut self, filter: &str) -> Self {
+        self.filter = Some(filter.to_string());
+        self
+    }
+
+    /// Number of packets to capture.
+    pub fn packet_count(mut self, n: u32) -> Self {
+        self.packet_count = Some(n);
+        self
+    }
+
+    /// Build argument list.
+    pub fn build_args(&self) -> Vec<String> {
+        let mut args = Vec::new();
+
+        match self.tool_choice {
+            NetworkTool::PacketCapture => {
+                // tcpdump
+                if let Some(ref iface) = self.interface {
+                    args.push("-i".into());
+                    args.push(iface.clone());
+                }
+                if let Some(n) = self.packet_count {
+                    args.push("-c".into());
+                    args.push(n.to_string());
+                }
+                args.push("-nn".into()); // numeric output
+            }
+            NetworkTool::DeepInspect => {
+                // tshark
+                if let Some(ref iface) = self.interface {
+                    args.push("-i".into());
+                    args.push(iface.clone());
+                }
+            }
+            NetworkTool::NetworkGrep => {
+                // ngrep
+                if let Some(ref iface) = self.interface {
+                    args.push("-d".into());
+                    args.push(iface.clone());
+                }
+            }
+            _ => {}
+        }
+
+        if let Some(ref f) = self.filter {
+            args.push(f.clone());
+        }
+
+        args
+    }
+
+    /// Run capture and return raw output.
+    pub async fn capture(&self) -> Result<ToolOutput> {
+        let config = NetworkToolConfig::for_tool(self.tool_choice);
+        let args = self.build_args();
+        self.runner.run(&config, &args, None).await
+    }
+}
+
+impl Default for TrafficAnalyzer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Web directory/path fuzzing wrapping gobuster, ffuf, and dirb.
+#[derive(Debug)]
+pub struct WebFuzzer {
+    runner: NetworkToolRunner,
+    tool_choice: NetworkTool,
+    wordlist: Option<String>,
+    extensions: Vec<String>,
+    threads: Option<u32>,
+    status_codes: Option<String>,
+}
+
+impl WebFuzzer {
+    pub fn new() -> Self {
+        Self {
+            runner: NetworkToolRunner::new(),
+            tool_choice: NetworkTool::DirBust,
+            wordlist: None,
+            extensions: Vec::new(),
+            threads: None,
+            status_codes: None,
+        }
+    }
+
+    /// Use ffuf instead of gobuster.
+    pub fn use_ffuf(mut self) -> Self {
+        self.tool_choice = NetworkTool::DirFuzz;
+        self
+    }
+
+    /// Set wordlist path.
+    pub fn wordlist(mut self, path: &str) -> Self {
+        self.wordlist = Some(path.to_string());
+        self
+    }
+
+    /// Add file extensions to check (e.g., "php", "html", "js").
+    pub fn extension(mut self, ext: &str) -> Self {
+        self.extensions.push(ext.to_string());
+        self
+    }
+
+    /// Set thread count.
+    pub fn threads(mut self, n: u32) -> Self {
+        self.threads = Some(n);
+        self
+    }
+
+    /// Filter by HTTP status codes (e.g., "200,301,302").
+    pub fn status_codes(mut self, codes: &str) -> Self {
+        self.status_codes = Some(codes.to_string());
+        self
+    }
+
+    /// Build argument list.
+    pub fn build_args(&self, target_url: &str) -> Vec<String> {
+        let mut args = Vec::new();
+
+        match self.tool_choice {
+            NetworkTool::DirBust => {
+                // gobuster
+                args.push("dir".into());
+                args.push("-u".into());
+                args.push(target_url.to_string());
+                if let Some(ref wl) = self.wordlist {
+                    args.push("-w".into());
+                    args.push(wl.clone());
+                }
+                if !self.extensions.is_empty() {
+                    args.push("-x".into());
+                    args.push(self.extensions.join(","));
+                }
+                if let Some(n) = self.threads {
+                    args.push("-t".into());
+                    args.push(n.to_string());
+                }
+                if let Some(ref codes) = self.status_codes {
+                    args.push("-s".into());
+                    args.push(codes.clone());
+                }
+            }
+            NetworkTool::DirFuzz => {
+                // ffuf
+                args.push("-u".into());
+                args.push(format!("{}/FUZZ", target_url));
+                if let Some(ref wl) = self.wordlist {
+                    args.push("-w".into());
+                    args.push(wl.clone());
+                }
+                if !self.extensions.is_empty() {
+                    args.push("-e".into());
+                    args.push(format!(".{}", self.extensions.join(",.")));
+                }
+                if let Some(n) = self.threads {
+                    args.push("-t".into());
+                    args.push(n.to_string());
+                }
+                if let Some(ref codes) = self.status_codes {
+                    args.push("-mc".into());
+                    args.push(codes.clone());
+                }
+            }
+            _ => {}
+        }
+
+        args
+    }
+
+    /// Run fuzzing and return raw output.
+    pub async fn fuzz(&self, target_url: &str) -> Result<ToolOutput> {
+        let config = NetworkToolConfig::for_tool(self.tool_choice);
+        let args = self.build_args(target_url);
+        self.runner.run(&config, &args, None).await
+    }
+}
+
+impl Default for WebFuzzer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Socket/connection inspector wrapping ss.
+#[derive(Debug)]
+pub struct SocketInspector {
+    runner: NetworkToolRunner,
+    listening_only: bool,
+    tcp_only: bool,
+    udp_only: bool,
+}
+
+impl SocketInspector {
+    pub fn new() -> Self {
+        Self {
+            runner: NetworkToolRunner::new(),
+            listening_only: false,
+            tcp_only: false,
+            udp_only: false,
+        }
+    }
+
+    /// Show only listening sockets.
+    pub fn listening_only(mut self, yes: bool) -> Self {
+        self.listening_only = yes;
+        self
+    }
+
+    /// Filter to TCP only.
+    pub fn tcp_only(mut self, yes: bool) -> Self {
+        self.tcp_only = yes;
+        self
+    }
+
+    /// Filter to UDP only.
+    pub fn udp_only(mut self, yes: bool) -> Self {
+        self.udp_only = yes;
+        self
+    }
+
+    /// Build argument list.
+    pub fn build_args(&self) -> Vec<String> {
+        let mut flags = String::from("-");
+        if self.listening_only {
+            flags.push('l');
+        }
+        if self.tcp_only {
+            flags.push('t');
+        } else if self.udp_only {
+            flags.push('u');
+        } else {
+            flags.push('t');
+            flags.push('u');
+        }
+        flags.push('n'); // numeric
+        flags.push('a'); // all
+        flags.push('p'); // processes
+        vec![flags]
+    }
+
+    /// Inspect sockets and return structured entries.
+    pub async fn inspect(&self) -> Result<Vec<SocketEntry>> {
+        let config = NetworkToolConfig::for_tool(NetworkTool::SocketStats);
+        let args = self.build_args();
+        let output = self.runner.run(&config, &args, None).await?;
+        let parsed = parse_output(&output, None);
+        match parsed {
+            ParsedOutput::SocketList { sockets } => Ok(sockets),
+            _ => Ok(Vec::new()),
+        }
+    }
+}
+
+impl Default for SocketInspector {
     fn default() -> Self {
         Self::new()
     }
@@ -1814,5 +2500,245 @@ LISTEN   0       128     0.0.0.0:80          0.0.0.0:*          users:((\"nginx\
             }
             _ => panic!("Expected DnsResult"),
         }
+    }
+
+    // --- Tool wrapper tests ---
+
+    #[test]
+    fn test_port_scanner_quick_args() {
+        let scanner = PortScanner::new().profile(ScanProfile::Quick);
+        let args = scanner.build_args();
+        assert!(args.contains(&"-F".to_string()));
+        assert!(args.contains(&"-T4".to_string()));
+    }
+
+    #[test]
+    fn test_port_scanner_thorough_args() {
+        let scanner = PortScanner::new().profile(ScanProfile::Thorough);
+        let args = scanner.build_args();
+        assert!(args.contains(&"-p-".to_string()));
+        assert!(args.contains(&"-sV".to_string()));
+    }
+
+    #[test]
+    fn test_port_scanner_stealth_args() {
+        let scanner = PortScanner::new().profile(ScanProfile::Stealth);
+        let args = scanner.build_args();
+        assert!(args.contains(&"-T2".to_string()));
+        assert!(args.contains(&"--randomize-hosts".to_string()));
+    }
+
+    #[test]
+    fn test_port_scanner_custom_ports() {
+        let scanner = PortScanner::new()
+            .profile(ScanProfile::Quick)
+            .ports("80,443,8080");
+        let args = scanner.build_args();
+        assert!(args.contains(&"-p".to_string()));
+        assert!(args.contains(&"80,443,8080".to_string()));
+        // -F should be removed when custom ports specified
+        assert!(!args.contains(&"-F".to_string()));
+    }
+
+    #[test]
+    fn test_port_scanner_masscan_args() {
+        let scanner = PortScanner::new()
+            .use_masscan(true)
+            .ports("1-1000");
+        let args = scanner.build_args();
+        assert!(args.contains(&"-p".to_string()));
+        assert!(args.contains(&"1-1000".to_string()));
+        // Should not have nmap-specific flags
+        assert!(!args.contains(&"-T3".to_string()));
+    }
+
+    #[test]
+    fn test_dns_investigator_build_args() {
+        let inv = DnsInvestigator::new()
+            .record_type("A")
+            .record_type("MX")
+            .nameserver("8.8.8.8");
+        let args = inv.build_args("example.com");
+        assert!(args.contains(&"example.com".to_string()));
+        assert!(args.contains(&"A".to_string()));
+        assert!(args.contains(&"MX".to_string()));
+        assert!(args.contains(&"@8.8.8.8".to_string()));
+    }
+
+    #[test]
+    fn test_dns_investigator_default_any() {
+        let inv = DnsInvestigator::new();
+        let args = inv.build_args("test.com");
+        assert!(args.contains(&"ANY".to_string()));
+    }
+
+    #[test]
+    fn test_dns_investigator_enumerate() {
+        let inv = DnsInvestigator::new().enumerate(true);
+        let args = inv.build_args("example.com");
+        assert!(args.contains(&"example.com".to_string()));
+        // Should not have dig-specific ANY
+        assert!(!args.contains(&"ANY".to_string()));
+    }
+
+    #[test]
+    fn test_network_prober_trace_args() {
+        let prober = NetworkProber::new().max_hops(20);
+        let args = prober.build_args();
+        assert!(args.contains(&"-m".to_string()));
+        assert!(args.contains(&"20".to_string()));
+    }
+
+    #[test]
+    fn test_network_prober_mtr_args() {
+        let prober = NetworkProber::new()
+            .use_mtr(true)
+            .max_hops(15);
+        let args = prober.build_args();
+        assert!(args.contains(&"-m".to_string()));
+        assert!(args.contains(&"15".to_string()));
+    }
+
+    #[test]
+    fn test_vuln_assessor_nuclei_args() {
+        let va = VulnAssessor::new()
+            .severity("critical,high")
+            .tag("cve")
+            .tag("rce");
+        let args = va.build_args();
+        assert!(args.contains(&"-severity".to_string()));
+        assert!(args.contains(&"critical,high".to_string()));
+        assert!(args.contains(&"-tags".to_string()));
+        assert!(args.contains(&"cve".to_string()));
+        assert!(args.contains(&"rce".to_string()));
+        assert!(args.contains(&"-u".to_string()));
+    }
+
+    #[test]
+    fn test_vuln_assessor_nikto_args() {
+        let va = VulnAssessor::new().use_nikto(true);
+        let args = va.build_args();
+        assert!(args.contains(&"-h".to_string()));
+    }
+
+    #[test]
+    fn test_traffic_analyzer_tcpdump_args() {
+        let ta = TrafficAnalyzer::new()
+            .interface("eth0")
+            .packet_count(50)
+            .filter("port 80");
+        let args = ta.build_args();
+        assert!(args.contains(&"-i".to_string()));
+        assert!(args.contains(&"eth0".to_string()));
+        assert!(args.contains(&"-c".to_string()));
+        assert!(args.contains(&"50".to_string()));
+        assert!(args.contains(&"-nn".to_string()));
+        assert!(args.contains(&"port 80".to_string()));
+    }
+
+    #[test]
+    fn test_traffic_analyzer_tshark() {
+        let ta = TrafficAnalyzer::new()
+            .use_tshark()
+            .interface("wlan0");
+        assert_eq!(ta.tool_choice, NetworkTool::DeepInspect);
+        let args = ta.build_args();
+        assert!(args.contains(&"-i".to_string()));
+        assert!(args.contains(&"wlan0".to_string()));
+    }
+
+    #[test]
+    fn test_traffic_analyzer_ngrep() {
+        let ta = TrafficAnalyzer::new()
+            .use_ngrep()
+            .interface("lo")
+            .filter("GET");
+        assert_eq!(ta.tool_choice, NetworkTool::NetworkGrep);
+        let args = ta.build_args();
+        assert!(args.contains(&"-d".to_string()));
+        assert!(args.contains(&"lo".to_string()));
+        assert!(args.contains(&"GET".to_string()));
+    }
+
+    #[test]
+    fn test_web_fuzzer_gobuster_args() {
+        let wf = WebFuzzer::new()
+            .wordlist("/usr/share/wordlists/common.txt")
+            .extension("php")
+            .extension("html")
+            .threads(20)
+            .status_codes("200,301");
+        let args = wf.build_args("http://target.com");
+        assert!(args.contains(&"dir".to_string()));
+        assert!(args.contains(&"-u".to_string()));
+        assert!(args.contains(&"http://target.com".to_string()));
+        assert!(args.contains(&"-w".to_string()));
+        assert!(args.contains(&"/usr/share/wordlists/common.txt".to_string()));
+        assert!(args.contains(&"-x".to_string()));
+        assert!(args.contains(&"php,html".to_string()));
+        assert!(args.contains(&"-t".to_string()));
+        assert!(args.contains(&"20".to_string()));
+        assert!(args.contains(&"-s".to_string()));
+        assert!(args.contains(&"200,301".to_string()));
+    }
+
+    #[test]
+    fn test_web_fuzzer_ffuf_args() {
+        let wf = WebFuzzer::new()
+            .use_ffuf()
+            .wordlist("/tmp/words.txt")
+            .extension("js")
+            .status_codes("200");
+        let args = wf.build_args("http://example.com");
+        assert!(args.contains(&"-u".to_string()));
+        assert!(args.contains(&"http://example.com/FUZZ".to_string()));
+        assert!(args.contains(&"-w".to_string()));
+        assert!(args.contains(&"/tmp/words.txt".to_string()));
+        assert!(args.contains(&"-e".to_string()));
+        assert!(args.contains(&".js".to_string()));
+        assert!(args.contains(&"-mc".to_string()));
+        assert!(args.contains(&"200".to_string()));
+    }
+
+    #[test]
+    fn test_socket_inspector_default_args() {
+        let si = SocketInspector::new();
+        let args = si.build_args();
+        assert_eq!(args.len(), 1);
+        let flags = &args[0];
+        assert!(flags.contains('t'));
+        assert!(flags.contains('u'));
+        assert!(flags.contains('n'));
+        assert!(flags.contains('a'));
+        assert!(flags.contains('p'));
+    }
+
+    #[test]
+    fn test_socket_inspector_listening_tcp() {
+        let si = SocketInspector::new()
+            .listening_only(true)
+            .tcp_only(true);
+        let args = si.build_args();
+        let flags = &args[0];
+        assert!(flags.contains('l'));
+        assert!(flags.contains('t'));
+        assert!(!flags.contains('u'));
+    }
+
+    #[test]
+    fn test_socket_inspector_udp_only() {
+        let si = SocketInspector::new().udp_only(true);
+        let args = si.build_args();
+        let flags = &args[0];
+        assert!(flags.contains('u'));
+        assert!(!flags.contains('t'));
+    }
+
+    #[test]
+    fn test_port_scanner_default() {
+        let scanner = PortScanner::default();
+        assert_eq!(scanner.profile, ScanProfile::Standard);
+        assert!(!scanner.use_masscan);
+        assert!(scanner.ports.is_none());
     }
 }
