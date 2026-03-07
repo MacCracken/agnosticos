@@ -5,6 +5,44 @@ All notable changes to AGNOS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2026.3.7-#2] - 2026-03-07
+
+### Changed — Code Audit, Refactoring & CI Hardening
+
+#### Module Refactoring
+- **agent-runtime/http_api.rs** (4874 lines) → **http_api/** module directory (18 files): mod.rs, types.rs, state.rs, middleware.rs, tests.rs + 13 domain handler files (agents, rpc, anomaly, rag, marketplace, ark, system_update, webhooks, audit, memory, traces, sandbox)
+- **ai-shell/interpreter.rs** (4348 lines) → **interpreter/** module directory (17 files): mod.rs, intent.rs, patterns.rs, parse.rs, explain.rs, tests.rs + 11 translate handler files (filesystem, process, network, agnos, system, knowledge, package, marketplace, photis, misc)
+- Public API unchanged for both modules — no downstream changes required
+
+#### Security Fixes (Code Audit Round 2)
+- **Timing-safe token comparison** in http_api.rs, llm-gateway/http.rs, and agnos-sys/certpin.rs — constant-time XOR comparison prevents timing side-channel attacks on Bearer tokens and certificate pins
+- **Request body size limit** (10 MB) added to agent-runtime HTTP API — prevents DoS via oversized payloads
+- **Path traversal protection** on `/v1/knowledge/index` endpoint — canonicalization + allowlist (`/var/agnos/`, `/usr/share/agnos/`, `/etc/agnos/`)
+- **kernel/agent_main.c** — replaced `strncpy` with `strscpy` (kernel-safe, auto null-terminates)
+
+#### Performance Improvements (Code Audit Round 2)
+- **VecDeque** for bounded buffers in http_api (audit_buffer, traces), pubsub (message log), mcp_server — O(1) front eviction vs O(n) Vec::remove(0)
+- **O(n+e) topological sort** in marketplace dependency resolver — replaced O(n²) naive scan with reverse dependency map
+- **Incremental RAG vocabulary** — ingest_text() now incrementally expands vocab_cache instead of full rebuild on every ingest
+- **Read lock for rate limiter** checks — check_request() no longer takes write lock when only reading token counts
+- **Batch LRU eviction** in llm-gateway cache — sort-based batch eviction replaces repeated O(n) min_by_key scans
+- **Removed --release from CI builds** — debug builds for verification (3-5x faster), release builds only in release workflows
+
+#### Reliability Fixes (Code Audit Round 1 & 2)
+- Replaced `.unwrap()` with proper error handling in scheduler.rs, argonaut.rs, marketplace/mod.rs
+- Converted blocking I/O to async in rollback.rs (tokio::fs for create_dir_all, write, remove_file, try_exists; spawn_blocking for list_files_relative)
+- Fixed capability cleanup leak in registry.rs (empty vecs now removed on agent unregister)
+- Added `max_entries` bound (50,000) to AuditChain with auto-pruning
+- Removed `tarpaulin-report.html` from git tracking, added to .gitignore
+
+#### CI/CD Fixes
+- **ci.yml** — Added `fail-fast: false` to matrix strategy, `timeout-minutes: 45`, `concurrency` group to cancel stale runs, debug builds for speed
+- **ci.yml, release.yml, release-automation.yml** — Fixed aarch64 cross-compilation: replaced manual `gcc-aarch64-linux-gnu` + `cargo install cross` with `taiki-e/install-action@cross` (prebuilt binary, proper Docker-based cross-compilation)
+- **fuzzing.yml** — `actions/cache@v3` → `v4`, added `--locked` to cargo install, `fail-fast: false`, fixed artifact paths, removed fragile `security-critical-fuzz` job that dynamically generated Rust source at CI time
+- **sbom.yml** — Replaced unmaintained `cargo-bom` with `cargo-cyclonedx`, removed Python `cyclonedx-bom`, `softprops/action-gh-release@v1` → `v2`, `dependency-review-action@v3` → `v4`, removed placeholder Dependency-Track job
+- **release.yml** — Replaced deprecated `actions/create-release@v1` with `softprops/action-gh-release@v2`, fixed binary packaging
+- **Clippy** — 0 warnings (added `PatternMatcher` type alias in safety.rs)
+
 ## [2026.3.7] - 2026-03-07
 
 ### Added — Phase 7: Ecosystem — Federation & Scale (199 tests)

@@ -1,7 +1,7 @@
 # AGNOS Development Roadmap
 
 > **Status**: Pre-Alpha | **Last Updated**: 2026-03-07
-> **All development phases complete** — 9072+ tests, ~82% coverage, 0 warnings
+> **All development phases complete** — 9082+ tests, ~82% coverage, 0 warnings
 > **Next Milestone**: Alpha Release (Target: Q2 2026)
 
 ---
@@ -33,7 +33,7 @@ All phases are complete. See [CHANGELOG.md](/CHANGELOG.md) for detailed implemen
 | Phase | Status | Tests | Key Deliverables |
 |-------|--------|-------|------------------|
 | 0-4 | Complete | — | Foundation through Desktop |
-| 5 | Complete (99%) | — | Production hardening, code audits, CI/CD |
+| 5 | Complete | — | Production hardening, code audits, CI/CD, module refactoring (http_api → 18 files, interpreter → 17 files) |
 | 5.6 | Complete | — | All P0-P2 stubs eliminated |
 | 6 | Complete | 200+ | Hardware acceleration, swarm intelligence, 32 networking tools, 7 agent wrappers |
 | 6.5 | Complete | 550+ | 16 OS-level modules (FUSE, udev, PAM, bootloader, journald, IMA, TPM, etc.) |

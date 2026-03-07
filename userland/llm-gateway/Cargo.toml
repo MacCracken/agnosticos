@@ -27,7 +27,7 @@ clap = { workspace = true }
 async-trait = { workspace = true }
 chrono = { workspace = true }
 nix = { version = "0.31", features = ["process", "signal"] }
-reqwest = { version = "0.11", features = ["json", "stream"] }
+reqwest = { workspace = true, features = ["stream"] }
 futures = { workspace = true }
 axum = { workspace = true }
 tower = { workspace = true }
