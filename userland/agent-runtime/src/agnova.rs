@@ -221,6 +221,40 @@ impl Default for UserConfig {
 // SecurityConfig
 // ---------------------------------------------------------------------------
 
+/// Trust enforcement mode for the installed system.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum TrustEnforcementMode {
+    Strict,
+    Permissive,
+    AuditOnly,
+}
+
+impl fmt::Display for TrustEnforcementMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Strict => write!(f, "strict"),
+            Self::Permissive => write!(f, "permissive"),
+            Self::AuditOnly => write!(f, "audit-only"),
+        }
+    }
+}
+
+/// Firewall default policy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum FirewallDefault {
+    Deny,
+    Allow,
+}
+
+impl fmt::Display for FirewallDefault {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Deny => write!(f, "deny"),
+            Self::Allow => write!(f, "allow"),
+        }
+    }
+}
+
 /// Security hardening options for the installed system.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SecurityConfig {
@@ -228,10 +262,8 @@ pub struct SecurityConfig {
     pub enable_secureboot: bool,
     pub enable_tpm: bool,
     pub enable_dmverity: bool,
-    /// One of "strict", "permissive", "audit-only".
-    pub trust_enforcement: String,
-    /// Firewall default policy: "deny" or "allow".
-    pub firewall_default: String,
+    pub trust_enforcement: TrustEnforcementMode,
+    pub firewall_default: FirewallDefault,
 }
 
 impl Default for SecurityConfig {
@@ -241,8 +273,8 @@ impl Default for SecurityConfig {
             enable_secureboot: true,
             enable_tpm: true,
             enable_dmverity: true,
-            trust_enforcement: "strict".to_string(),
-            firewall_default: "deny".to_string(),
+            trust_enforcement: TrustEnforcementMode::Strict,
+            firewall_default: FirewallDefault::Deny,
         }
     }
 }
@@ -338,8 +370,8 @@ impl InstallPhase {
     pub const ALL: &'static [InstallPhase] = &[
         Self::ValidateConfig,
         Self::PartitionDisk,
-        Self::FormatFilesystems,
         Self::SetupEncryption,
+        Self::FormatFilesystems,
         Self::MountFilesystems,
         Self::InstallBase,
         Self::InstallPackages,
@@ -354,7 +386,7 @@ impl InstallPhase {
 
     /// Zero-based index in the phase sequence.
     pub fn index(self) -> usize {
-        Self::ALL.iter().position(|&p| p == self).unwrap_or(0)
+        Self::ALL.iter().position(|&p| p == self).expect("phase must be in ALL")
     }
 
     /// Next phase, or `None` if this is `Complete`.
@@ -483,7 +515,7 @@ pub fn generate_fstab(partitions: &[PartitionSpec], encrypt: bool) -> String {
 
         let pass = if part.mount_point == "/" {
             "1"
-        } else if part.filesystem == Filesystem::Swap {
+        } else if part.filesystem == Filesystem::Swap || part.filesystem == Filesystem::Vfat {
             "0"
         } else {
             "2"
@@ -567,6 +599,27 @@ impl AgnovaInstaller {
             bail!("target device is not set");
         }
 
+        // HIGH 2: Validate device path
+        let dev = &self.config.disk.target_device;
+        if !dev.starts_with("/dev/") {
+            bail!("target device must start with /dev/");
+        }
+        if dev.contains("..") || dev.contains(' ') || dev.contains(';')
+            || dev.contains('|') || dev.contains('&') || dev.contains('`')
+            || dev.contains('\n')
+        {
+            bail!("target device path contains invalid characters");
+        }
+        // After "/dev/" the rest should be alphanumeric, slashes, or hyphens
+        let dev_suffix = &dev[5..];
+        if dev_suffix.is_empty()
+            || !dev_suffix
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '/' || c == '-' || c == '_')
+        {
+            bail!("target device path contains invalid characters after /dev/");
+        }
+
         // Must have at least one partition
         if self.config.disk.partitions.is_empty() {
             bail!("no partitions defined");
@@ -577,9 +630,60 @@ impl AgnovaInstaller {
             bail!("username is empty");
         }
 
+        // MEDIUM 2: Validate username
+        let uname = &self.config.user.username;
+        if uname == "root" {
+            bail!("username cannot be 'root'");
+        }
+        if uname.len() > 32 {
+            bail!("username must be 1-32 characters");
+        }
+        if !uname.starts_with(|c: char| c.is_ascii_lowercase()) {
+            bail!("username must start with a lowercase letter");
+        }
+        if !uname.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '-') {
+            bail!("username contains invalid characters (allowed: a-z, 0-9, _, -)");
+        }
+
         // Hostname should be set
         if self.config.network.hostname.is_empty() {
             bail!("hostname is empty");
+        }
+
+        // MEDIUM 1: Validate hostname
+        let hostname = &self.config.network.hostname;
+        if hostname.len() > 63 {
+            bail!("hostname must be 1-63 characters");
+        }
+        if hostname.starts_with('-') || hostname.ends_with('-') {
+            bail!("hostname must not start or end with a hyphen");
+        }
+        if hostname.starts_with('.') {
+            bail!("hostname must not start with a dot");
+        }
+        if !hostname.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+            bail!("hostname contains invalid characters (allowed: alphanumeric and hyphens)");
+        }
+
+        // MEDIUM 6: Static network requires static_ip
+        if !self.config.network.use_dhcp && self.config.network.static_ip.is_none() {
+            bail!("static network configuration requires a static_ip");
+        }
+
+        // CRITICAL 1: Validate kernel params
+        let dangerous_substrings = ["init=", "rd.break", "single", "rescue", "break="];
+        let dangerous_chars = ['|', ';', '&', '`', '\n'];
+        for param in &self.config.bootloader.kernel_params {
+            for substr in &dangerous_substrings {
+                if param.contains(substr) {
+                    bail!("dangerous kernel parameter detected: '{}'", param);
+                }
+            }
+            for ch in &dangerous_chars {
+                if param.contains(*ch) {
+                    bail!("kernel parameter contains dangerous character: '{}'", param);
+                }
+            }
         }
 
         // Check for a root partition
@@ -599,12 +703,12 @@ impl AgnovaInstaller {
         }
 
         // Warn about permissive trust enforcement
-        if self.config.security.trust_enforcement == "permissive" {
+        if self.config.security.trust_enforcement == TrustEnforcementMode::Permissive {
             warnings.push("trust enforcement is set to permissive".to_string());
         }
 
         // Warn about allow-all firewall
-        if self.config.security.firewall_default == "allow" {
+        if self.config.security.firewall_default == FirewallDefault::Allow {
             warnings.push("firewall default policy is allow — not recommended".to_string());
         }
 
@@ -709,6 +813,13 @@ impl AgnovaInstaller {
     /// `false` if the installation is already complete.
     pub fn advance_phase(&mut self) -> bool {
         let current = self.progress.current_phase;
+
+        // Block advancement if the current phase has a non-recoverable error
+        if self.errors.iter().any(|e| e.phase == current && !e.recoverable) {
+            warn!("agnova: cannot advance past non-recoverable failure at {}", current);
+            return false;
+        }
+
         if let Some(next) = current.next() {
             self.completed_phases.push(current);
             self.progress.current_phase = next;
@@ -732,8 +843,14 @@ impl AgnovaInstaller {
         self.errors.push(InstallError {
             phase,
             message: error.clone(),
-            recoverable: phase != InstallPhase::PartitionDisk
-                && phase != InstallPhase::FormatFilesystems,
+            recoverable: !matches!(
+                phase,
+                InstallPhase::PartitionDisk
+                    | InstallPhase::SetupEncryption
+                    | InstallPhase::FormatFilesystems
+                    | InstallPhase::InstallBase
+                    | InstallPhase::InstallBootloader
+            ),
         });
         self.log.push(format!("ERROR [{}]: {}", phase, error));
     }
@@ -1130,8 +1247,8 @@ mod tests {
             enable_secureboot: false,
             enable_tpm: false,
             enable_dmverity: false,
-            trust_enforcement: "audit-only".to_string(),
-            firewall_default: "deny".to_string(),
+            trust_enforcement: TrustEnforcementMode::AuditOnly,
+            firewall_default: FirewallDefault::Deny,
         };
         let params = default_kernel_params(&sec);
         assert!(!params.contains(&"rd.luks=1".to_string()));
@@ -1219,8 +1336,8 @@ mod tests {
         assert!(s.enable_secureboot);
         assert!(s.enable_tpm);
         assert!(s.enable_dmverity);
-        assert_eq!(s.trust_enforcement, "strict");
-        assert_eq!(s.firewall_default, "deny");
+        assert_eq!(s.trust_enforcement, TrustEnforcementMode::Strict);
+        assert_eq!(s.firewall_default, FirewallDefault::Deny);
     }
 
     // -- InstallError --
@@ -1259,5 +1376,139 @@ mod tests {
     fn phase_count_matches_all() {
         assert_eq!(AgnovaInstaller::phase_count(), 14);
         assert_eq!(AgnovaInstaller::phase_count(), InstallPhase::ALL.len());
+    }
+
+    // -- CRITICAL 1: Kernel param validation --
+
+    #[test]
+    fn validate_rejects_dangerous_kernel_param_init() {
+        let mut config = test_config();
+        config.bootloader.kernel_params = vec!["init=/bin/sh".to_string()];
+        let installer = AgnovaInstaller::new(config);
+        let err = installer.validate_config().unwrap_err();
+        assert!(err.to_string().contains("dangerous kernel parameter"));
+    }
+
+    #[test]
+    fn validate_accepts_safe_kernel_params() {
+        let mut config = test_config();
+        config.bootloader.kernel_params = vec!["quiet".to_string(), "loglevel=3".to_string()];
+        let installer = AgnovaInstaller::new(config);
+        assert!(installer.validate_config().is_ok());
+    }
+
+    // -- HIGH 2: Device path validation --
+
+    #[test]
+    fn validate_rejects_device_path_with_dotdot() {
+        let mut config = test_config();
+        config.disk.target_device = "/dev/../etc/passwd".to_string();
+        let installer = AgnovaInstaller::new(config);
+        assert!(installer.validate_config().is_err());
+    }
+
+    #[test]
+    fn validate_rejects_device_path_with_semicolon() {
+        let mut config = test_config();
+        config.disk.target_device = "/dev/sda;rm -rf /".to_string();
+        let installer = AgnovaInstaller::new(config);
+        assert!(installer.validate_config().is_err());
+    }
+
+    #[test]
+    fn validate_accepts_valid_device_path() {
+        let config = test_config(); // uses /dev/sda
+        let installer = AgnovaInstaller::new(config);
+        assert!(installer.validate_config().is_ok());
+    }
+
+    // -- MEDIUM 1: Hostname validation --
+
+    #[test]
+    fn validate_rejects_hostname_with_spaces() {
+        let mut config = test_config();
+        config.network.hostname = "my host".to_string();
+        let installer = AgnovaInstaller::new(config);
+        assert!(installer.validate_config().is_err());
+    }
+
+    #[test]
+    fn validate_accepts_valid_hostname() {
+        let mut config = test_config();
+        config.network.hostname = "my-server-01".to_string();
+        let installer = AgnovaInstaller::new(config);
+        assert!(installer.validate_config().is_ok());
+    }
+
+    // -- MEDIUM 2: Username validation --
+
+    #[test]
+    fn validate_rejects_username_root() {
+        let mut config = test_config();
+        config.user.username = "root".to_string();
+        let installer = AgnovaInstaller::new(config);
+        let err = installer.validate_config().unwrap_err();
+        assert!(err.to_string().contains("root"));
+    }
+
+    #[test]
+    fn validate_rejects_username_with_special_chars() {
+        let mut config = test_config();
+        config.user.username = "user!name".to_string();
+        let installer = AgnovaInstaller::new(config);
+        assert!(installer.validate_config().is_err());
+    }
+
+    // -- Phase ordering: SetupEncryption before FormatFilesystems --
+
+    #[test]
+    fn phase_ordering_encryption_before_format() {
+        assert!(
+            InstallPhase::SetupEncryption.index() < InstallPhase::FormatFilesystems.index(),
+            "SetupEncryption must come before FormatFilesystems"
+        );
+    }
+
+    // -- MEDIUM 5: advance_phase blocked after non-recoverable failure --
+
+    #[test]
+    fn advance_phase_blocked_after_non_recoverable_failure() {
+        let mut installer = AgnovaInstaller::new(test_config());
+        // Advance to PartitionDisk
+        installer.advance_phase();
+        assert_eq!(*installer.current_phase(), InstallPhase::PartitionDisk);
+        // Fail with non-recoverable error
+        installer.fail_phase("disk not found".to_string());
+        assert!(!installer.errors.last().unwrap().recoverable);
+        // Should not be able to advance
+        assert!(!installer.advance_phase());
+        assert_eq!(*installer.current_phase(), InstallPhase::PartitionDisk);
+    }
+
+    // -- MEDIUM 6: DHCP false without static IP --
+
+    #[test]
+    fn validate_rejects_no_dhcp_without_static_ip() {
+        let mut config = test_config();
+        config.network.use_dhcp = false;
+        config.network.static_ip = None;
+        let installer = AgnovaInstaller::new(config);
+        let err = installer.validate_config().unwrap_err();
+        assert!(err.to_string().contains("static_ip"));
+    }
+
+    // -- MEDIUM 3: Enum Display tests --
+
+    #[test]
+    fn trust_enforcement_mode_display() {
+        assert_eq!(TrustEnforcementMode::Strict.to_string(), "strict");
+        assert_eq!(TrustEnforcementMode::Permissive.to_string(), "permissive");
+        assert_eq!(TrustEnforcementMode::AuditOnly.to_string(), "audit-only");
+    }
+
+    #[test]
+    fn firewall_default_display() {
+        assert_eq!(FirewallDefault::Deny.to_string(), "deny");
+        assert_eq!(FirewallDefault::Allow.to_string(), "allow");
     }
 }

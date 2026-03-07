@@ -302,6 +302,13 @@ impl TakumiBuildSystem {
                 match Self::load_recipe(&path) {
                     Ok(recipe) => {
                         debug!(name = %recipe.package.name, "loaded recipe from dir");
+                        if self.loaded_recipes.contains_key(&recipe.package.name) {
+                            warn!(
+                                name = %recipe.package.name,
+                                path = %path.display(),
+                                "duplicate recipe name; overwriting previously loaded recipe"
+                            );
+                        }
                         self.loaded_recipes
                             .insert(recipe.package.name.clone(), recipe);
                         count += 1;
@@ -325,6 +332,29 @@ impl TakumiBuildSystem {
         if recipe.package.name.is_empty() {
             bail!("recipe has empty package name");
         }
+        // Validate package name for path traversal and shell injection safety
+        if recipe.package.name.contains('/')
+            || recipe.package.name.contains('\0')
+            || recipe.package.name.contains("..")
+            || recipe.package.name.contains(' ')
+            || recipe.package.name.contains('\\')
+        {
+            bail!(
+                "package name '{}' contains unsafe characters (/, .., \\0, space, or backslash)",
+                recipe.package.name
+            );
+        }
+        if !recipe
+            .package
+            .name
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '.')
+        {
+            bail!(
+                "package name '{}' contains invalid characters; only alphanumeric, hyphens, underscores, and dots are allowed",
+                recipe.package.name
+            );
+        }
         if recipe.package.version.is_empty() {
             bail!("recipe has empty package version");
         }
@@ -333,6 +363,28 @@ impl TakumiBuildSystem {
         }
         if recipe.source.sha256.is_empty() {
             bail!("recipe has empty source sha256");
+        }
+        // Validate source URL scheme — only https:// and http:// are allowed
+        if !recipe.source.url.starts_with("https://")
+            && !recipe.source.url.starts_with("http://")
+        {
+            bail!(
+                "source URL '{}' uses an unsupported scheme; only https:// and http:// are allowed",
+                recipe.source.url
+            );
+        }
+        // Validate sha256 format: exactly 64 lowercase hex characters
+        if recipe.source.sha256.len() != 64
+            || !recipe
+                .source
+                .sha256
+                .chars()
+                .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
+        {
+            warnings.push(format!(
+                "source sha256 '{}' is not a valid lowercase 64-character hex digest",
+                recipe.source.sha256
+            ));
         }
         if recipe.package.description.is_empty() {
             warnings.push("package description is empty".to_string());
@@ -432,10 +484,12 @@ impl TakumiBuildSystem {
             );
         }
 
-        // Kahn's produces reverse order (sources first, dependents last) but
-        // our in_degree counts how many packages *depend on* each node, so
-        // nodes with 0 in-degree are leaves (nothing depends on them). We
-        // want to build dependencies first, so reverse.
+        // Our adjacency list maps each package to its *build dependencies*,
+        // but in_degree counts incoming edges from those dependency edges —
+        // so a node with 0 in-degree has no packages depending on it (i.e. it
+        // is a leaf/consumer). Kahn's algorithm therefore emits leaves first
+        // and sources (depended-upon packages) last. We reverse to get the
+        // correct build order: sources first, dependents last.
         result.reverse();
 
         Ok(result)
@@ -465,14 +519,25 @@ impl TakumiBuildSystem {
     }
 
     /// Convert security flags to GCC LDFLAGS string.
+    ///
+    /// Avoids redundant flags: if `FullRelro` is present, `Relro` (already
+    /// implied by `-Wl,-z,relro,-z,now`) and `Bindnow` (already implied by
+    /// the `-z,now` portion) are skipped.
     pub fn generate_ldflags(flags: &SecurityFlags) -> String {
         let mut parts = Vec::new();
+        let has_full_relro = flags.hardening.contains(&HardeningFlag::FullRelro);
 
         for flag in &flags.hardening {
             match flag {
                 HardeningFlag::Pie => parts.push("-pie".to_string()),
+                HardeningFlag::Relro if has_full_relro => {
+                    // FullRelro already emits -Wl,-z,relro,-z,now; skip redundant relro
+                }
                 HardeningFlag::Relro => parts.push("-Wl,-z,relro".to_string()),
                 HardeningFlag::FullRelro => parts.push("-Wl,-z,relro,-z,now".to_string()),
+                HardeningFlag::Bindnow if has_full_relro => {
+                    // FullRelro already emits -z,now; skip redundant bindnow
+                }
                 HardeningFlag::Bindnow => parts.push("-Wl,-z,now".to_string()),
                 // Fortify and StackProtector are compiler flags, not linker flags
                 _ => {}
@@ -676,7 +741,7 @@ arch = "x86_64"
 
 [source]
 url = "https://www.openssl.org/source/openssl-3.5.2.tar.gz"
-sha256 = "e1f5c1c2b3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8"
+sha256 = "e1f5c1c2b3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0"
 patches = ["fix-musl.patch", "agnos-paths.patch"]
 
 [depends]
@@ -922,15 +987,39 @@ sha256 = "abc123"
     }
 
     #[test]
-    fn generate_ldflags_fullrelro_bindnow() {
+    fn generate_ldflags_fullrelro_bindnow_dedup() {
+        // When FullRelro is present, Bindnow is redundant and should be skipped
         let flags = SecurityFlags {
             hardening: vec![HardeningFlag::FullRelro, HardeningFlag::Bindnow],
             cflags: None,
             ldflags: None,
         };
         let ldflags = TakumiBuildSystem::generate_ldflags(&flags);
-        assert!(ldflags.contains("-Wl,-z,relro,-z,now"));
-        assert!(ldflags.contains("-Wl,-z,now"));
+        assert_eq!(ldflags, "-Wl,-z,relro,-z,now");
+    }
+
+    #[test]
+    fn generate_ldflags_fullrelro_skips_relro() {
+        // When FullRelro is present, plain Relro should be skipped
+        let flags = SecurityFlags {
+            hardening: vec![HardeningFlag::FullRelro, HardeningFlag::Relro],
+            cflags: None,
+            ldflags: None,
+        };
+        let ldflags = TakumiBuildSystem::generate_ldflags(&flags);
+        assert_eq!(ldflags, "-Wl,-z,relro,-z,now");
+    }
+
+    #[test]
+    fn generate_ldflags_bindnow_alone() {
+        // Bindnow without FullRelro should still emit -Wl,-z,now
+        let flags = SecurityFlags {
+            hardening: vec![HardeningFlag::Bindnow],
+            cflags: None,
+            ldflags: None,
+        };
+        let ldflags = TakumiBuildSystem::generate_ldflags(&flags);
+        assert_eq!(ldflags, "-Wl,-z,now");
     }
 
     #[test]
@@ -1395,5 +1484,122 @@ make = "make"
             ArkFileType::Symlink("/lib/libc.so".to_string()).to_string(),
             "symlink -> /lib/libc.so"
         );
+    }
+
+    // -- Audit fix tests ----------------------------------------------------
+
+    #[test]
+    fn validate_package_name_with_slash_rejected() {
+        let mut recipe: BuildRecipe = toml::from_str(MINIMAL_RECIPE).unwrap();
+        recipe.package.name = "../etc/passwd".to_string();
+        let result = TakumiBuildSystem::validate_recipe(&recipe);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unsafe characters"));
+    }
+
+    #[test]
+    fn validate_package_name_with_dotdot_rejected() {
+        let mut recipe: BuildRecipe = toml::from_str(MINIMAL_RECIPE).unwrap();
+        recipe.package.name = "foo..bar".to_string();
+        let result = TakumiBuildSystem::validate_recipe(&recipe);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unsafe characters"));
+    }
+
+    #[test]
+    fn validate_package_name_with_special_chars_rejected() {
+        let mut recipe: BuildRecipe = toml::from_str(MINIMAL_RECIPE).unwrap();
+        recipe.package.name = "hello world".to_string();
+        let result = TakumiBuildSystem::validate_recipe(&recipe);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn validate_package_name_valid_chars_accepted() {
+        let mut recipe: BuildRecipe = toml::from_str(MINIMAL_RECIPE).unwrap();
+        recipe.package.name = "lib-foo_bar.2".to_string();
+        let result = TakumiBuildSystem::validate_recipe(&recipe);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn validate_valid_url_schemes_accepted() {
+        let mut recipe: BuildRecipe = toml::from_str(MINIMAL_RECIPE).unwrap();
+        recipe.source.url = "https://example.com/foo.tar.gz".to_string();
+        assert!(TakumiBuildSystem::validate_recipe(&recipe).is_ok());
+
+        recipe.source.url = "http://example.com/foo.tar.gz".to_string();
+        assert!(TakumiBuildSystem::validate_recipe(&recipe).is_ok());
+    }
+
+    #[test]
+    fn validate_file_url_rejected() {
+        let mut recipe: BuildRecipe = toml::from_str(MINIMAL_RECIPE).unwrap();
+        recipe.source.url = "file:///etc/passwd".to_string();
+        let result = TakumiBuildSystem::validate_recipe(&recipe);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unsupported scheme"));
+    }
+
+    #[test]
+    fn validate_ftp_url_rejected() {
+        let mut recipe: BuildRecipe = toml::from_str(MINIMAL_RECIPE).unwrap();
+        recipe.source.url = "ftp://mirror.example.com/foo.tar.gz".to_string();
+        let result = TakumiBuildSystem::validate_recipe(&recipe);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("unsupported scheme"));
+    }
+
+    #[test]
+    fn validate_sha256_valid_format_no_warning() {
+        let mut recipe: BuildRecipe = toml::from_str(FULL_RECIPE).unwrap();
+        recipe.source.sha256 =
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855".to_string();
+        let warnings = TakumiBuildSystem::validate_recipe(&recipe).unwrap();
+        assert!(
+            !warnings.iter().any(|w| w.contains("sha256")),
+            "unexpected sha256 warning: {:?}",
+            warnings
+        );
+    }
+
+    #[test]
+    fn validate_sha256_invalid_format_warns() {
+        let mut recipe: BuildRecipe = toml::from_str(MINIMAL_RECIPE).unwrap();
+        // too short
+        recipe.source.sha256 = "abc123".to_string();
+        let warnings = TakumiBuildSystem::validate_recipe(&recipe).unwrap();
+        assert!(warnings.iter().any(|w| w.contains("sha256")));
+    }
+
+    #[test]
+    fn validate_sha256_uppercase_warns() {
+        let mut recipe: BuildRecipe = toml::from_str(MINIMAL_RECIPE).unwrap();
+        recipe.source.sha256 =
+            "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855".to_string();
+        let warnings = TakumiBuildSystem::validate_recipe(&recipe).unwrap();
+        assert!(warnings.iter().any(|w| w.contains("sha256")));
+    }
+
+    #[test]
+    fn load_all_recipes_duplicate_name_warning() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path();
+
+        // Write two recipe files with the same package name "hello"
+        fs::write(dir.join("hello1.toml"), MINIMAL_RECIPE).unwrap();
+        fs::write(dir.join("hello2.toml"), MINIMAL_RECIPE).unwrap();
+
+        let mut sys = TakumiBuildSystem::new(
+            dir.to_path_buf(),
+            PathBuf::from("/tmp/build"),
+            PathBuf::from("/tmp/output"),
+        );
+        let count = sys.load_all_recipes().unwrap();
+        // Both are counted (even though one overwrites the other)
+        assert_eq!(count, 2);
+        // Only one entry remains in the map
+        assert_eq!(sys.recipe_count(), 1);
+        assert!(sys.get_recipe("hello").is_some());
     }
 }

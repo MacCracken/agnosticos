@@ -266,6 +266,32 @@ pub enum ServiceState {
     Restarting,
 }
 
+impl ServiceState {
+    /// Check whether a transition from `self` to `to` is valid.
+    pub fn valid_transition(&self, to: &ServiceState) -> bool {
+        // Same state is always a no-op.
+        if self == to {
+            return true;
+        }
+        match self {
+            ServiceState::Stopped => matches!(to, ServiceState::Starting),
+            ServiceState::Starting => {
+                matches!(to, ServiceState::Running | ServiceState::Failed(_))
+            }
+            ServiceState::Running => {
+                matches!(to, ServiceState::Stopping | ServiceState::Failed(_))
+            }
+            ServiceState::Stopping => {
+                matches!(to, ServiceState::Stopped | ServiceState::Failed(_))
+            }
+            ServiceState::Failed(_) => {
+                matches!(to, ServiceState::Starting | ServiceState::Stopped)
+            }
+            ServiceState::Restarting => matches!(to, ServiceState::Starting),
+        }
+    }
+}
+
 impl fmt::Display for ServiceState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -617,8 +643,7 @@ impl ArgonautInit {
             in_degree.entry(svc.name.as_str()).or_insert(0);
             for dep in &svc.depends_on {
                 if !name_set.contains_key(dep.as_str()) {
-                    warn!(service = %svc.name, dependency = %dep, "dependency not found, skipping");
-                    continue;
+                    bail!("service '{}' depends on '{}' which is not defined", svc.name, dep);
                 }
                 *in_degree.entry(svc.name.as_str()).or_insert(0) += 1;
                 dependents
@@ -662,19 +687,26 @@ impl ArgonautInit {
         Ok(ordered)
     }
 
-    /// Register a new service definition.
+    /// Register a new service definition. If a service with the same
+    /// name already exists, the definition is updated but runtime state
+    /// (state, pid, restart_count, etc.) is preserved.
     pub fn register_service(&mut self, definition: ServiceDefinition) {
         let name = definition.name.clone();
-        let managed = ManagedService {
-            definition,
-            state: ServiceState::Stopped,
-            pid: None,
-            started_at: None,
-            restart_count: 0,
-            last_health_check: None,
-        };
-        info!(service = %name, "registered service");
-        self.services.insert(name, managed);
+        if let Some(existing) = self.services.get_mut(&name) {
+            warn!(service = %name, "service already registered — updating definition, preserving state");
+            existing.definition = definition;
+        } else {
+            let managed = ManagedService {
+                definition,
+                state: ServiceState::Stopped,
+                pid: None,
+                started_at: None,
+                restart_count: 0,
+                last_health_check: None,
+            };
+            info!(service = %name, "registered service");
+            self.services.insert(name, managed);
+        }
     }
 
     /// Look up a managed service by name.
@@ -688,16 +720,61 @@ impl ArgonautInit {
     }
 
     /// Transition a service to a new state. Returns `true` if the
-    /// service exists.
+    /// service exists and the transition is valid.
+    ///
+    /// Invalid transitions are rejected with a warning log and `false`
+    /// return value. When transitioning to `Starting`, all services
+    /// listed in `depends_on` must already be `Running`.
     pub fn set_service_state(&mut self, name: &str, state: ServiceState) -> bool {
-        if let Some(svc) = self.services.get_mut(name) {
+        // First, validate the transition and dependency constraints
+        // without holding a mutable borrow.
+        let validation = {
+            if let Some(svc) = self.services.get(name) {
+                if !svc.state.valid_transition(&state) {
+                    warn!(
+                        service = %name,
+                        from = %svc.state,
+                        to = %state,
+                        "invalid state transition"
+                    );
+                    return false;
+                }
+                // When transitioning to Starting, check that all
+                // dependencies are Running.
+                if matches!(state, ServiceState::Starting) {
+                    let mut unmet = Vec::new();
+                    for dep in &svc.definition.depends_on {
+                        let dep_running = self
+                            .services
+                            .get(dep.as_str())
+                            .map(|d| d.state == ServiceState::Running)
+                            .unwrap_or(false);
+                        if !dep_running {
+                            unmet.push(dep.clone());
+                        }
+                    }
+                    if !unmet.is_empty() {
+                        warn!(
+                            service = %name,
+                            unmet_deps = ?unmet,
+                            "cannot start: dependencies not running"
+                        );
+                        return false;
+                    }
+                }
+                true
+            } else {
+                warn!(service = %name, "set_service_state: unknown service");
+                return false;
+            }
+        };
+
+        if validation {
+            let svc = self.services.get_mut(name).unwrap();
             debug!(service = %name, from = %svc.state, to = %state, "state transition");
             svc.state = state;
-            true
-        } else {
-            warn!(service = %name, "set_service_state: unknown service");
-            false
         }
+        validation
     }
 
     /// Return service definitions that are required for the given mode.
@@ -713,9 +790,18 @@ impl ArgonautInit {
     /// found and updated.
     pub fn mark_step_complete(&mut self, stage: BootStage) -> bool {
         if let Some(step) = self.boot_sequence.iter_mut().find(|s| s.stage == stage) {
+            // Ensure started_at is populated.
+            if step.started_at.is_none() {
+                step.started_at = Some(Utc::now());
+            }
             step.status = BootStepStatus::Complete;
             step.completed_at = Some(Utc::now());
             info!(stage = %stage, "boot step complete");
+
+            // Set boot_started on the first step completion if not yet set.
+            if self.boot_started.is_none() {
+                self.boot_started = Some(Utc::now());
+            }
 
             // If this was the BootComplete stage, mark the overall boot time.
             if stage == BootStage::BootComplete {
@@ -732,9 +818,18 @@ impl ArgonautInit {
     pub fn mark_step_failed(&mut self, stage: BootStage, error: String) -> bool {
         if let Some(step) = self.boot_sequence.iter_mut().find(|s| s.stage == stage) {
             warn!(stage = %stage, error = %error, "boot step failed");
+            // Ensure started_at is populated.
+            if step.started_at.is_none() {
+                step.started_at = Some(Utc::now());
+            }
             step.status = BootStepStatus::Failed;
             step.completed_at = Some(Utc::now());
             step.error = Some(error);
+
+            // Set boot_started on the first step if not yet set.
+            if self.boot_started.is_none() {
+                self.boot_started = Some(Utc::now());
+            }
             true
         } else {
             false
@@ -779,22 +874,16 @@ impl ArgonautInit {
     }
 
     /// Return service names in shutdown order (reverse of startup order).
-    pub fn shutdown_order(&self) -> Vec<String> {
+    /// Returns an error if dependency resolution fails (e.g. cycles).
+    pub fn shutdown_order(&self) -> Result<Vec<String>> {
         let definitions: Vec<ServiceDefinition> = self
             .services
             .values()
             .map(|s| s.definition.clone())
             .collect();
-        match Self::resolve_service_order(&definitions) {
-            Ok(mut order) => {
-                order.reverse();
-                order
-            }
-            Err(_) => {
-                // If resolution fails, just return names in arbitrary order.
-                self.services.keys().cloned().collect()
-            }
-        }
+        let mut order = Self::resolve_service_order(&definitions)?;
+        order.reverse();
+        Ok(order)
     }
 
     /// Collect current statistics.
@@ -1086,13 +1175,15 @@ mod tests {
     // --- Service state transitions ---
 
     #[test]
-    fn set_service_state_transitions() {
+    fn set_service_state_valid_transitions() {
         let mut init = ArgonautInit::new(minimal_config());
+        // Stopped → Starting (agent-runtime has no deps)
         assert!(init.set_service_state("agent-runtime", ServiceState::Starting));
         assert_eq!(
             init.get_service_state("agent-runtime"),
             Some(&ServiceState::Starting)
         );
+        // Starting → Running
         assert!(init.set_service_state("agent-runtime", ServiceState::Running));
         assert_eq!(
             init.get_service_state("agent-runtime"),
@@ -1242,7 +1333,7 @@ mod tests {
             .map(|s| s.definition.clone())
             .collect();
         let startup = ArgonautInit::resolve_service_order(&definitions).unwrap();
-        let shutdown = init.shutdown_order();
+        let shutdown = init.shutdown_order().unwrap();
         let reversed_startup: Vec<String> = startup.into_iter().rev().collect();
         assert_eq!(shutdown, reversed_startup);
     }
@@ -1318,11 +1409,15 @@ mod tests {
     #[test]
     fn stats_accuracy() {
         let mut init = ArgonautInit::new(server_config());
-        init.set_service_state("agent-runtime", ServiceState::Running);
-        init.set_service_state(
+        // Valid transition path: Stopped → Starting → Running
+        assert!(init.set_service_state("agent-runtime", ServiceState::Starting));
+        assert!(init.set_service_state("agent-runtime", ServiceState::Running));
+        // llm-gateway depends on agent-runtime which is now Running
+        assert!(init.set_service_state("llm-gateway", ServiceState::Starting));
+        assert!(init.set_service_state(
             "llm-gateway",
             ServiceState::Failed("crash".into()),
-        );
+        ));
         if let Some(svc) = init.services.get_mut("agent-runtime") {
             svc.restart_count = 3;
         }
@@ -1375,5 +1470,162 @@ mod tests {
         assert!(rt_pos < shell_pos);
         // aethersafha before agnoshi (shell depends on compositor).
         assert!(comp_pos < shell_pos);
+    }
+
+    // --- Audit fix tests ---
+
+    #[test]
+    fn invalid_state_transition_stopped_to_running() {
+        let mut init = ArgonautInit::new(minimal_config());
+        // Stopped → Running is not valid (must go through Starting)
+        assert!(!init.set_service_state("agent-runtime", ServiceState::Running));
+        // State should remain Stopped
+        assert_eq!(
+            init.get_service_state("agent-runtime"),
+            Some(&ServiceState::Stopped)
+        );
+    }
+
+    #[test]
+    fn valid_state_transition_full_lifecycle() {
+        let mut init = ArgonautInit::new(minimal_config());
+        // Stopped → Starting → Running → Stopping → Stopped
+        assert!(init.set_service_state("agent-runtime", ServiceState::Starting));
+        assert!(init.set_service_state("agent-runtime", ServiceState::Running));
+        assert!(init.set_service_state("agent-runtime", ServiceState::Stopping));
+        assert!(init.set_service_state("agent-runtime", ServiceState::Stopped));
+        // Failed → Starting (restart), Failed → Stopped
+        assert!(init.set_service_state("agent-runtime", ServiceState::Starting));
+        assert!(init.set_service_state("agent-runtime", ServiceState::Failed("err".into())));
+        assert!(init.set_service_state("agent-runtime", ServiceState::Starting));
+        assert!(init.set_service_state("agent-runtime", ServiceState::Failed("err2".into())));
+        assert!(init.set_service_state("agent-runtime", ServiceState::Stopped));
+    }
+
+    #[test]
+    fn starting_blocked_when_dependency_not_running() {
+        let mut init = ArgonautInit::new(server_config());
+        // llm-gateway depends on agent-runtime. agent-runtime is Stopped.
+        assert!(!init.set_service_state("llm-gateway", ServiceState::Starting));
+        // Start agent-runtime but leave it in Starting (not Running).
+        assert!(init.set_service_state("agent-runtime", ServiceState::Starting));
+        assert!(!init.set_service_state("llm-gateway", ServiceState::Starting));
+        // Now make agent-runtime Running.
+        assert!(init.set_service_state("agent-runtime", ServiceState::Running));
+        assert!(init.set_service_state("llm-gateway", ServiceState::Starting));
+    }
+
+    #[test]
+    fn register_service_overwrites_definition_preserves_state() {
+        let mut init = ArgonautInit::new(minimal_config());
+        let svc = dummy_service("my-svc", vec![]);
+        init.register_service(svc);
+        // Transition to Starting
+        assert!(init.set_service_state("my-svc", ServiceState::Starting));
+        assert!(init.set_service_state("my-svc", ServiceState::Running));
+        if let Some(s) = init.services.get_mut("my-svc") {
+            s.restart_count = 5;
+        }
+        // Re-register with updated description
+        let mut svc2 = dummy_service("my-svc", vec![]);
+        svc2.description = "updated description".into();
+        init.register_service(svc2);
+        let got = init.get_service("my-svc").unwrap();
+        // Definition updated
+        assert_eq!(got.definition.description, "updated description");
+        // State preserved
+        assert_eq!(got.state, ServiceState::Running);
+        assert_eq!(got.restart_count, 5);
+    }
+
+    #[test]
+    fn boot_started_set_after_first_step_completes() {
+        let mut init = ArgonautInit::new(minimal_config());
+        assert!(init.boot_started.is_none());
+        init.mark_step_complete(BootStage::MountFilesystems);
+        assert!(init.boot_started.is_some());
+    }
+
+    #[test]
+    fn boot_started_set_after_first_step_fails() {
+        let mut init = ArgonautInit::new(minimal_config());
+        assert!(init.boot_started.is_none());
+        init.mark_step_failed(BootStage::MountFilesystems, "fail".into());
+        assert!(init.boot_started.is_some());
+    }
+
+    #[test]
+    fn started_at_populated_on_mark_step_complete() {
+        let mut init = ArgonautInit::new(minimal_config());
+        init.mark_step_complete(BootStage::MountFilesystems);
+        let step = init
+            .boot_sequence
+            .iter()
+            .find(|s| s.stage == BootStage::MountFilesystems)
+            .unwrap();
+        assert!(step.started_at.is_some());
+        assert!(step.completed_at.is_some());
+        // started_at should be <= completed_at
+        assert!(step.started_at.unwrap() <= step.completed_at.unwrap());
+    }
+
+    #[test]
+    fn started_at_populated_on_mark_step_failed() {
+        let mut init = ArgonautInit::new(minimal_config());
+        init.mark_step_failed(BootStage::MountFilesystems, "oops".into());
+        let step = init
+            .boot_sequence
+            .iter()
+            .find(|s| s.stage == BootStage::MountFilesystems)
+            .unwrap();
+        assert!(step.started_at.is_some());
+    }
+
+    #[test]
+    fn missing_dependency_returns_error() {
+        let services = vec![
+            dummy_service("a", vec!["nonexistent"]),
+        ];
+        let result = ArgonautInit::resolve_service_order(&services);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("depends on"));
+        assert!(err.contains("nonexistent"));
+        assert!(err.contains("not defined"));
+    }
+
+    #[test]
+    fn shutdown_order_returns_error_on_cycle() {
+        let mut init = ArgonautInit::new(minimal_config());
+        // Create a cycle: x depends on y, y depends on x
+        let svc_x = dummy_service("x", vec!["y"]);
+        let svc_y = dummy_service("y", vec!["x"]);
+        init.services.clear();
+        init.services.insert(
+            "x".into(),
+            ManagedService {
+                definition: svc_x,
+                state: ServiceState::Stopped,
+                pid: None,
+                started_at: None,
+                restart_count: 0,
+                last_health_check: None,
+            },
+        );
+        init.services.insert(
+            "y".into(),
+            ManagedService {
+                definition: svc_y,
+                state: ServiceState::Stopped,
+                pid: None,
+                started_at: None,
+                restart_count: 0,
+                last_health_check: None,
+            },
+        );
+        let result = init.shutdown_order();
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("cycle detected"));
     }
 }

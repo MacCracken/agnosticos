@@ -8,7 +8,7 @@
 # ---------------------------------------------------------------------------
 # Stage 1: Builder
 # ---------------------------------------------------------------------------
-FROM rust:1.77-bookworm AS builder
+FROM rust:1.85-bookworm AS builder
 
 WORKDIR /build
 
@@ -36,7 +36,7 @@ COPY userland/ userland/
 RUN cd userland && cargo build --release \
     --bin agent_runtime \
     --bin llm_gateway \
-    --bin ai_shell \
+    --bin agnsh \
     2>&1
 
 # ---------------------------------------------------------------------------
@@ -56,6 +56,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     libssl3 \
     tini \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
@@ -74,7 +75,7 @@ RUN mkdir -p \
 # Copy binaries from builder
 COPY --from=builder /build/userland/target/release/agent_runtime /usr/local/bin/
 COPY --from=builder /build/userland/target/release/llm_gateway   /usr/local/bin/
-COPY --from=builder /build/userland/target/release/ai_shell      /usr/local/bin/
+COPY --from=builder /build/userland/target/release/agnsh          /usr/local/bin/
 
 # Copy VERSION file and entrypoint
 COPY VERSION /etc/agnos/VERSION

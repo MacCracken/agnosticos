@@ -310,25 +310,35 @@ impl AegisSecurityDaemon {
         };
 
         if should_quarantine {
-            if let Some(ref aid) = agent_id {
-                if !self.quarantine.contains_key(aid) {
-                    warn!(agent_id = %aid, threat = %threat, "Aegis: auto-quarantining agent");
-                    let entry = self.build_quarantine_entry(aid, &description, threat, &event_id);
-                    self.quarantine.insert(aid.clone(), entry);
-                } else {
-                    // Already quarantined — link the new event.
-                    debug!(agent_id = %aid, "Aegis: agent already quarantined, linking event");
+            match agent_id {
+                Some(ref aid) => {
                     if let Some(q) = self.quarantine.get_mut(aid) {
+                        // Already quarantined — link event, escalate if more severe.
+                        debug!(agent_id = %aid, "Aegis: agent already quarantined, linking event");
                         q.events.push(event_id);
+                        if threat < q.threat_level {
+                            q.threat_level = threat;
+                        }
+                    } else {
+                        warn!(agent_id = %aid, threat = %threat, "Aegis: auto-quarantining agent");
+                        let entry = self.build_quarantine_entry(aid, &description, threat, Some(&event_id));
+                        self.quarantine.insert(aid.clone(), entry);
                     }
-                }
 
-                let action = match threat {
-                    ThreatLevel::Critical => QuarantineAction::Terminate,
-                    ThreatLevel::High => QuarantineAction::Suspend,
-                    _ => QuarantineAction::Isolate,
-                };
-                return Some(action);
+                    let action = match threat {
+                        ThreatLevel::Critical => QuarantineAction::Terminate,
+                        ThreatLevel::High => QuarantineAction::Suspend,
+                        _ => QuarantineAction::Isolate,
+                    };
+                    return Some(action);
+                }
+                None => {
+                    warn!(
+                        threat = %threat,
+                        event_id = %event_id,
+                        "Aegis: quarantine-severity event has no agent_id — cannot quarantine"
+                    );
+                }
             }
         }
 
@@ -336,7 +346,18 @@ impl AegisSecurityDaemon {
     }
 
     /// Scan an agent binary for basic security heuristics.
+    /// Respects `config.scan_on_execute` — returns a clean result if disabled.
     pub fn scan_agent(&mut self, agent_id: &str, binary_path: &Path) -> SecurityScanResult {
+        if !self.config.scan_on_execute {
+            debug!(agent_id = %agent_id, "Aegis: agent scan skipped (disabled in config)");
+            return SecurityScanResult {
+                scanned_at: Utc::now(),
+                target: format!("agent:{}", agent_id),
+                scan_type: ScanType::OnExecute,
+                findings: Vec::new(),
+                clean: true,
+            };
+        }
         debug!(agent_id = %agent_id, path = %binary_path.display(), "Aegis: scanning agent binary");
 
         let mut findings = Vec::new();
@@ -350,30 +371,39 @@ impl AegisSecurityDaemon {
                 recommendation: "Verify the agent installation is complete.".into(),
             });
         } else {
-            // Check file size — suspiciously small binaries are flagged.
-            if let Ok(meta) = std::fs::metadata(binary_path) {
-                if meta.len() == 0 {
-                    findings.push(SecurityFinding {
-                        severity: ThreatLevel::Medium,
-                        category: "empty_binary".into(),
-                        description: "Agent binary is empty (0 bytes).".into(),
-                        recommendation: "Re-install the agent.".into(),
-                    });
-                }
-
-                // Warn about world-writable.
-                #[cfg(unix)]
-                {
-                    use std::os::unix::fs::PermissionsExt;
-                    let mode = meta.permissions().mode();
-                    if mode & 0o002 != 0 {
+            match std::fs::metadata(binary_path) {
+                Ok(meta) => {
+                    if meta.len() == 0 {
                         findings.push(SecurityFinding {
-                            severity: ThreatLevel::High,
-                            category: "world_writable".into(),
-                            description: "Agent binary is world-writable.".into(),
-                            recommendation: "Fix permissions: chmod o-w on the binary.".into(),
+                            severity: ThreatLevel::Medium,
+                            category: "empty_binary".into(),
+                            description: "Agent binary is empty (0 bytes).".into(),
+                            recommendation: "Re-install the agent.".into(),
                         });
                     }
+
+                    // Warn about world-writable.
+                    #[cfg(unix)]
+                    {
+                        use std::os::unix::fs::PermissionsExt;
+                        let mode = meta.permissions().mode();
+                        if mode & 0o002 != 0 {
+                            findings.push(SecurityFinding {
+                                severity: ThreatLevel::High,
+                                category: "world_writable".into(),
+                                description: "Agent binary is world-writable.".into(),
+                                recommendation: "Fix permissions: chmod o-w on the binary.".into(),
+                            });
+                        }
+                    }
+                }
+                Err(e) => {
+                    findings.push(SecurityFinding {
+                        severity: ThreatLevel::Medium,
+                        category: "unreadable_metadata".into(),
+                        description: format!("Cannot read file metadata: {}", e),
+                        recommendation: "Check file permissions and ownership.".into(),
+                    });
                 }
             }
         }
@@ -392,7 +422,18 @@ impl AegisSecurityDaemon {
     }
 
     /// Scan a package archive before installation.
+    /// Respects `config.scan_on_install` — returns a clean result if disabled.
     pub fn scan_package(&mut self, package_path: &Path) -> SecurityScanResult {
+        if !self.config.scan_on_install {
+            debug!(path = %package_path.display(), "Aegis: package scan skipped (disabled in config)");
+            return SecurityScanResult {
+                scanned_at: Utc::now(),
+                target: format!("package:{}", package_path.display()),
+                scan_type: ScanType::OnInstall,
+                findings: Vec::new(),
+                clean: true,
+            };
+        }
         debug!(path = %package_path.display(), "Aegis: scanning package");
 
         let mut findings = Vec::new();
@@ -404,27 +445,39 @@ impl AegisSecurityDaemon {
                 description: format!("Package not found at {}", package_path.display()),
                 recommendation: "Verify download completed successfully.".into(),
             });
-        } else if let Ok(meta) = std::fs::metadata(package_path) {
-            if meta.len() == 0 {
-                findings.push(SecurityFinding {
-                    severity: ThreatLevel::Medium,
-                    category: "empty_package".into(),
-                    description: "Package file is empty (0 bytes).".into(),
-                    recommendation: "Re-download the package.".into(),
-                });
-            }
+        } else {
+            match std::fs::metadata(package_path) {
+                Ok(meta) => {
+                    if meta.len() == 0 {
+                        findings.push(SecurityFinding {
+                            severity: ThreatLevel::Medium,
+                            category: "empty_package".into(),
+                            description: "Package file is empty (0 bytes).".into(),
+                            recommendation: "Re-download the package.".into(),
+                        });
+                    }
 
-            // Very large packages get an informational flag.
-            if meta.len() > 500 * 1024 * 1024 {
-                findings.push(SecurityFinding {
-                    severity: ThreatLevel::Low,
-                    category: "large_package".into(),
-                    description: format!(
-                        "Package is very large ({:.1} MB).",
-                        meta.len() as f64 / (1024.0 * 1024.0)
-                    ),
-                    recommendation: "Review package contents for unnecessary data.".into(),
-                });
+                    // Very large packages get an informational flag.
+                    if meta.len() > 500 * 1024 * 1024 {
+                        findings.push(SecurityFinding {
+                            severity: ThreatLevel::Low,
+                            category: "large_package".into(),
+                            description: format!(
+                                "Package is very large ({:.1} MB).",
+                                meta.len() as f64 / (1024.0 * 1024.0)
+                            ),
+                            recommendation: "Review package contents for unnecessary data.".into(),
+                        });
+                    }
+                }
+                Err(e) => {
+                    findings.push(SecurityFinding {
+                        severity: ThreatLevel::Medium,
+                        category: "unreadable_metadata".into(),
+                        description: format!("Cannot read package metadata: {}", e),
+                        recommendation: "Check file permissions and download integrity.".into(),
+                    });
+                }
             }
         }
 
@@ -441,21 +494,31 @@ impl AegisSecurityDaemon {
         result
     }
 
-    /// Quarantine an agent by ID.
+    /// Quarantine an agent by ID. If already quarantined, escalates the threat
+    /// level if the new level is more severe, and appends the reason.
     pub fn quarantine_agent(
         &mut self,
         agent_id: &str,
         reason: &str,
         threat_level: ThreatLevel,
     ) -> QuarantineEntry {
+        if let Some(existing) = self.quarantine.get_mut(agent_id) {
+            debug!(agent_id = %agent_id, "Aegis: agent already quarantined, updating");
+            if threat_level < existing.threat_level {
+                existing.threat_level = threat_level;
+            }
+            existing.reason = format!("{}; {}", existing.reason, reason);
+            return existing.clone();
+        }
         warn!(agent_id = %agent_id, threat = %threat_level, "Aegis: quarantining agent");
-        let entry = self.build_quarantine_entry(agent_id, reason, threat_level, "");
+        let entry = self.build_quarantine_entry(agent_id, reason, threat_level, None);
         self.quarantine.insert(agent_id.to_string(), entry.clone());
         entry
     }
 
     /// Release an agent from quarantine. Returns `true` if the agent was
-    /// quarantined and has now been released.
+    /// quarantined and has now been released. Records the release in the
+    /// event log.
     pub fn release_agent(&mut self, agent_id: &str) -> bool {
         let removed = self.quarantine.remove(agent_id).is_some();
         if removed {
@@ -564,12 +627,11 @@ impl AegisSecurityDaemon {
         agent_id: &str,
         reason: &str,
         threat_level: ThreatLevel,
-        event_id: &str,
+        event_id: Option<&str>,
     ) -> QuarantineEntry {
-        let events = if event_id.is_empty() {
-            Vec::new()
-        } else {
-            vec![event_id.to_string()]
+        let events = match event_id {
+            Some(id) => vec![id.to_string()],
+            None => Vec::new(),
         };
 
         let auto_release_at = self
@@ -1173,5 +1235,94 @@ mod tests {
         // Should be roughly 300s in the future.
         let diff = entry.auto_release_at.unwrap() - Utc::now();
         assert!(diff.num_seconds() >= 298 && diff.num_seconds() <= 302);
+    }
+
+    // --- Audit fix tests ---
+
+    #[test]
+    fn quarantine_agent_does_not_overwrite_existing() {
+        let mut daemon = AegisSecurityDaemon::new(AegisConfig::default());
+        daemon.quarantine_agent("a1", "first reason", ThreatLevel::High);
+        let updated = daemon.quarantine_agent("a1", "second reason", ThreatLevel::Critical);
+        // Should escalate to Critical and append reason.
+        assert_eq!(updated.threat_level, ThreatLevel::Critical);
+        assert!(updated.reason.contains("first reason"));
+        assert!(updated.reason.contains("second reason"));
+    }
+
+    #[test]
+    fn quarantine_agent_no_downgrade() {
+        let mut daemon = AegisSecurityDaemon::new(AegisConfig::default());
+        daemon.quarantine_agent("a1", "critical issue", ThreatLevel::Critical);
+        let updated = daemon.quarantine_agent("a1", "lesser issue", ThreatLevel::Medium);
+        // Should stay at Critical (more severe).
+        assert_eq!(updated.threat_level, ThreatLevel::Critical);
+    }
+
+    #[test]
+    fn scan_disabled_by_config() {
+        let config = AegisConfig {
+            scan_on_install: false,
+            scan_on_execute: false,
+            ..AegisConfig::default()
+        };
+        let mut daemon = AegisSecurityDaemon::new(config);
+        let dir = tempfile::tempdir().unwrap();
+        let agent = dir.path().join("agent");
+        std::fs::write(&agent, b"binary").unwrap();
+
+        let result = daemon.scan_agent("test", &agent);
+        assert!(result.clean);
+
+        let pkg = dir.path().join("pkg.ark");
+        std::fs::write(&pkg, b"package").unwrap();
+        let result = daemon.scan_package(&pkg);
+        assert!(result.clean);
+    }
+
+    #[test]
+    fn scan_empty_binary_flagged() {
+        let mut daemon = AegisSecurityDaemon::new(AegisConfig::default());
+        let dir = tempfile::tempdir().unwrap();
+        let empty = dir.path().join("empty");
+        std::fs::write(&empty, b"").unwrap();
+        let result = daemon.scan_agent("test", &empty);
+        assert!(!result.clean);
+        assert!(result.findings.iter().any(|f| f.category == "empty_binary"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn scan_world_writable_flagged() {
+        use std::os::unix::fs::PermissionsExt;
+        let mut daemon = AegisSecurityDaemon::new(AegisConfig::default());
+        let dir = tempfile::tempdir().unwrap();
+        let ww = dir.path().join("writable");
+        std::fs::write(&ww, b"data").unwrap();
+        std::fs::set_permissions(&ww, std::fs::Permissions::from_mode(0o666)).unwrap();
+        let result = daemon.scan_agent("test", &ww);
+        assert!(!result.clean);
+        assert!(result.findings.iter().any(|f| f.category == "world_writable"));
+    }
+
+    #[test]
+    fn critical_event_no_agent_id_no_panic() {
+        let mut daemon = AegisSecurityDaemon::new(AegisConfig::default());
+        let event = SecurityEvent {
+            id: Uuid::new_v4().to_string(),
+            timestamp: Utc::now(),
+            event_type: SecurityEventType::SandboxEscape,
+            source: "test".into(),
+            agent_id: None,
+            threat_level: ThreatLevel::Critical,
+            description: "escape detected".into(),
+            metadata: HashMap::new(),
+            resolved: false,
+        };
+        // Should not panic, should return None (no agent to quarantine).
+        let action = daemon.report_event(event);
+        assert!(action.is_none());
+        // Event should still be recorded.
+        assert_eq!(daemon.stats().total_events, 1);
     }
 }

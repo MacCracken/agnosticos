@@ -49,7 +49,7 @@ What other options were considered and why were they rejected?
 | 013 | Zero-Trust Security Hardening | Accepted | 2026-03-06 |
 | 014 | Cross-Project Integration Architecture | Accepted | 2026-03-06 |
 | 015 | Agent Marketplace Architecture | Proposed | 2026-03-06 |
-| 016 | Multi-Node Agent Federation | Proposed | 2026-03-06 |
+| 016 | Multi-Node Agent Federation | Accepted | 2026-03-06 |
 | 017 | Desktop Plugin Architecture | Proposed | 2026-03-06 |
 | 018 | LFS-Native Distribution (Dropping Debian) | Accepted | 2026-03-07 |
 | 019 | Sigil — System-Wide Trust Verification | Accepted | 2026-03-07 |
@@ -57,4 +57,16 @@ What other options were considered and why were they rejected?
 | 021 | Takumi — Package Build System | Accepted | 2026-03-07 |
 | 022 | Argonaut — Custom Init System | Accepted | 2026-03-07 |
 | 023 | Agnova — OS Installer | Accepted | 2026-03-07 |
+| 024 | Agent Ratings & Reviews | Accepted | 2026-03-07 |
+| 025 | Agent Migration & Checkpointing | Accepted | 2026-03-07 |
+| 026 | Distributed Task Scheduling | Accepted | 2026-03-07 |
+| 027 | Post-Quantum Cryptography | Accepted | 2026-03-07 |
+| 028 | Agent Explainability Framework | Accepted | 2026-03-07 |
+| 029 | AI Safety Mechanisms | Accepted | 2026-03-07 |
+| 030 | Fine-Tuning Pipeline | Accepted | 2026-03-07 |
+| 031 | Formal Verification Framework | Accepted | 2026-03-07 |
+| 032 | Novel Sandboxing Architectures | Accepted | 2026-03-07 |
+| 033 | Reinforcement Learning Optimization | Accepted | 2026-03-07 |
+| 034 | Cloud Services | Accepted | 2026-03-07 |
+| 035 | Human-AI Collaboration Research | Accepted | 2026-03-07 |
 

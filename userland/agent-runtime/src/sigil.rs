@@ -15,7 +15,6 @@ use serde::{Deserialize, Serialize};
 use tracing::{debug, info, warn};
 
 use crate::integrity::{IntegrityPolicy, IntegrityReport, IntegrityVerifier};
-use crate::marketplace::transparency::TransparencyLog;
 use crate::marketplace::trust::{
     hash_data, key_id_from_verifying_key, sign_data, verify_signature, PublisherKeyring,
 };
@@ -261,8 +260,17 @@ impl RevocationList {
     }
 
     /// Add a revocation entry.
-    pub fn add(&mut self, entry: RevocationEntry) {
+    ///
+    /// At least one of `key_id` or `content_hash` must be `Some`,
+    /// otherwise an error is returned.
+    pub fn add(&mut self, entry: RevocationEntry) -> Result<()> {
+        if entry.key_id.is_none() && entry.content_hash.is_none() {
+            anyhow::bail!(
+                "RevocationEntry must have at least one of key_id or content_hash set"
+            );
+        }
         self.entries.push(entry);
+        Ok(())
     }
 
     /// Check whether a key ID has been revoked.
@@ -338,12 +346,7 @@ pub struct SigilVerifier {
     revocations: RevocationList,
     /// File integrity verifier (used by boot chain verification and future
     /// periodic integrity sweeps).
-    #[allow(dead_code)]
     integrity: IntegrityVerifier,
-    /// Transparency log for auditing (written to during sign operations and
-    /// future audit queries).
-    #[allow(dead_code)]
-    transparency_log: TransparencyLog,
     /// Trust store keyed by content hash.
     trust_store: HashMap<String, TrustedArtifact>,
 }
@@ -352,7 +355,6 @@ impl SigilVerifier {
     /// Create a new verifier with the given keyring and policy.
     pub fn new(keyring: PublisherKeyring, policy: TrustPolicy) -> Self {
         let integrity = IntegrityVerifier::new(IntegrityPolicy::default());
-        let transparency_log = TransparencyLog::new();
         info!(
             enforcement = %policy.enforcement,
             minimum_trust = %policy.minimum_trust_level,
@@ -363,7 +365,6 @@ impl SigilVerifier {
             policy,
             revocations: RevocationList::new(),
             integrity,
-            transparency_log,
             trust_store: HashMap::new(),
         }
     }
@@ -524,7 +525,8 @@ impl SigilVerifier {
                         "Audit-only: artifact would be blocked under strict policy"
                     );
                 }
-                true
+                // Revoked artifacts must NEVER pass regardless of enforcement mode
+                trust_level != TrustLevel::Revoked
             }
         };
 
@@ -562,6 +564,37 @@ impl SigilVerifier {
     /// In addition to standard artifact verification, checks that the file
     /// has execute permission and that unsigned agents are allowed by policy.
     pub fn verify_agent_binary(&self, path: &Path) -> Result<VerificationResult> {
+        // Early-return if policy says not to verify on execute
+        if !self.policy.verify_on_execute {
+            debug!(
+                path = %path.display(),
+                "Skipping agent binary verification (verify_on_execute=false)"
+            );
+            let data = std::fs::read(path)
+                .with_context(|| format!("Failed to read artifact: {}", path.display()))?;
+            let content_hash = hash_data(&data);
+            let now = Utc::now();
+            return Ok(VerificationResult {
+                artifact: TrustedArtifact {
+                    path: path.to_path_buf(),
+                    artifact_type: ArtifactType::AgentBinary,
+                    content_hash,
+                    signature: None,
+                    signer_key_id: None,
+                    trust_level: TrustLevel::Unverified,
+                    verified_at: Some(now),
+                    metadata: HashMap::new(),
+                },
+                passed: true,
+                checks: vec![TrustCheck {
+                    name: "skipped".to_string(),
+                    passed: true,
+                    detail: "Verification skipped: verify_on_execute is disabled".to_string(),
+                }],
+                verified_at: now,
+            });
+        }
+
         let mut result = self.verify_artifact(path, ArtifactType::AgentBinary)?;
 
         // Check execute permission
@@ -585,14 +618,17 @@ impl SigilVerifier {
             }
         }
 
-        // Unsigned agent check
+        // Unsigned agent check — blocks in both Strict and Permissive when
+        // allow_unsigned_agents is false.
         if result.artifact.signature.is_none() && !self.policy.allow_unsigned_agents {
             result.checks.push(TrustCheck {
                 name: "unsigned_agent".to_string(),
                 passed: false,
                 detail: "Unsigned agent binaries are not allowed by policy".to_string(),
             });
-            if self.policy.enforcement == TrustEnforcement::Strict {
+            if self.policy.enforcement == TrustEnforcement::Strict
+                || self.policy.enforcement == TrustEnforcement::Permissive
+            {
                 result.passed = false;
             }
         }
@@ -608,6 +644,37 @@ impl SigilVerifier {
         path: &Path,
         expected_hash: Option<&str>,
     ) -> Result<VerificationResult> {
+        // Early-return if policy says not to verify on install
+        if !self.policy.verify_on_install {
+            debug!(
+                path = %path.display(),
+                "Skipping package verification (verify_on_install=false)"
+            );
+            let data = std::fs::read(path)
+                .with_context(|| format!("Failed to read artifact: {}", path.display()))?;
+            let content_hash = hash_data(&data);
+            let now = Utc::now();
+            return Ok(VerificationResult {
+                artifact: TrustedArtifact {
+                    path: path.to_path_buf(),
+                    artifact_type: ArtifactType::Package,
+                    content_hash,
+                    signature: None,
+                    signer_key_id: None,
+                    trust_level: TrustLevel::Unverified,
+                    verified_at: Some(now),
+                    metadata: HashMap::new(),
+                },
+                passed: true,
+                checks: vec![TrustCheck {
+                    name: "skipped".to_string(),
+                    passed: true,
+                    detail: "Verification skipped: verify_on_install is disabled".to_string(),
+                }],
+                verified_at: now,
+            });
+        }
+
         let mut result = self.verify_artifact(path, ArtifactType::Package)?;
 
         if let Some(expected) = expected_hash {
@@ -651,13 +718,26 @@ impl SigilVerifier {
         let key_id = key_id_from_verifying_key(&vk);
         let now = Utc::now();
 
+        // Determine trust level based on whether the key is in the keyring
+        // and currently valid. Unknown signers get Community trust.
+        let trust_level = match self.keyring.get_current_key(&key_id) {
+            Some(_) => TrustLevel::Verified,
+            None => {
+                warn!(
+                    key_id = %key_id,
+                    "Signing key not found in keyring; assigning Community trust"
+                );
+                TrustLevel::Community
+            }
+        };
+
         let artifact = TrustedArtifact {
             path: path.to_path_buf(),
             artifact_type,
             content_hash: content_hash.clone(),
             signature: Some(signature),
             signer_key_id: Some(key_id.clone()),
-            trust_level: TrustLevel::Verified,
+            trust_level,
             verified_at: Some(now),
             metadata: HashMap::new(),
         };
@@ -674,7 +754,19 @@ impl SigilVerifier {
     }
 
     /// Register a pre-built `TrustedArtifact` in the trust store.
-    pub fn register_trusted(&mut self, artifact: TrustedArtifact) {
+    ///
+    /// `SystemCore` trust level is not allowed through this method — it will
+    /// be downgraded to `Verified`. Use `register_system_core()` for
+    /// system-critical components.
+    pub fn register_trusted(&mut self, mut artifact: TrustedArtifact) {
+        if artifact.trust_level == TrustLevel::SystemCore {
+            warn!(
+                path = %artifact.path.display(),
+                hash = %artifact.content_hash,
+                "SystemCore trust level not allowed via register_trusted; downgrading to Verified"
+            );
+            artifact.trust_level = TrustLevel::Verified;
+        }
         debug!(
             path = %artifact.path.display(),
             hash = %artifact.content_hash,
@@ -683,6 +775,22 @@ impl SigilVerifier {
         );
         self.trust_store
             .insert(artifact.content_hash.clone(), artifact);
+    }
+
+    /// Register a system-core artifact in the trust store.
+    ///
+    /// This is the only path to `SystemCore` trust. In the future this may
+    /// require additional attestation (e.g. TPM measurement).
+    pub fn register_system_core(&mut self, artifact: TrustedArtifact) {
+        debug!(
+            path = %artifact.path.display(),
+            hash = %artifact.content_hash,
+            "SystemCore artifact registered in trust store"
+        );
+        let mut art = artifact;
+        art.trust_level = TrustLevel::SystemCore;
+        self.trust_store
+            .insert(art.content_hash.clone(), art);
     }
 
     /// Check whether a key or artifact hash has been revoked.
@@ -701,14 +809,14 @@ impl SigilVerifier {
     }
 
     /// Add a revocation entry.
-    pub fn add_revocation(&mut self, entry: RevocationEntry) {
+    pub fn add_revocation(&mut self, entry: RevocationEntry) -> Result<()> {
         info!(
             key_id = ?entry.key_id,
             content_hash = ?entry.content_hash,
             reason = %entry.reason,
             "Revocation added"
         );
-        self.revocations.add(entry);
+        self.revocations.add(entry)
     }
 
     /// Look up the trust level for a content hash. Returns `Unverified` if
@@ -724,7 +832,19 @@ impl SigilVerifier {
     ///
     /// Builds an `IntegrityPolicy` from the trust store entries for the
     /// given paths and runs a full integrity check.
-    pub fn verify_boot_chain(&self, components: &[PathBuf]) -> Result<IntegrityReport> {
+    pub fn verify_boot_chain(&mut self, components: &[PathBuf]) -> Result<IntegrityReport> {
+        // Early-return if policy says not to verify on boot
+        if !self.policy.verify_on_boot {
+            debug!("Skipping boot chain verification (verify_on_boot=false)");
+            return Ok(IntegrityReport {
+                total: components.len(),
+                verified: components.len(),
+                mismatches: Vec::new(),
+                errors: Vec::new(),
+                checked_at: Utc::now(),
+            });
+        }
+
         let mut policy = IntegrityPolicy::default();
         policy.enforce = true;
 
@@ -754,8 +874,8 @@ impl SigilVerifier {
             policy.add_measurement(component.clone(), expected);
         }
 
-        let mut verifier = IntegrityVerifier::new(policy);
-        let report = verifier.verify_all();
+        self.integrity.set_policy(policy);
+        let report = self.integrity.verify_all();
 
         if report.is_clean() {
             info!(
@@ -771,6 +891,60 @@ impl SigilVerifier {
         }
 
         Ok(report)
+    }
+
+    /// Save the trust store to a JSON file on disk.
+    pub fn save_trust_store(&self, path: &Path) -> Result<()> {
+        let artifacts: Vec<&TrustedArtifact> = self.trust_store.values().collect();
+        let json = serde_json::to_string_pretty(&artifacts)
+            .context("Failed to serialize trust store")?;
+        std::fs::write(path, json)
+            .with_context(|| format!("Failed to write trust store to {}", path.display()))?;
+        info!(path = %path.display(), count = artifacts.len(), "Trust store saved");
+        Ok(())
+    }
+
+    /// Load trust store entries from a JSON file on disk.
+    ///
+    /// Returns the number of entries loaded. Existing entries with the same
+    /// content hash are overwritten.
+    pub fn load_trust_store(&mut self, path: &Path) -> Result<usize> {
+        let json = std::fs::read_to_string(path)
+            .with_context(|| format!("Failed to read trust store from {}", path.display()))?;
+        let artifacts: Vec<TrustedArtifact> = serde_json::from_str(&json)
+            .context("Failed to deserialize trust store")?;
+        let count = artifacts.len();
+        for artifact in artifacts {
+            self.trust_store
+                .insert(artifact.content_hash.clone(), artifact);
+        }
+        info!(path = %path.display(), count = count, "Trust store loaded");
+        Ok(count)
+    }
+
+    /// Save the revocation list to a JSON file on disk.
+    pub fn save_revocations(&self, path: &Path) -> Result<()> {
+        let json = self.revocations.to_json()?;
+        std::fs::write(path, json)
+            .with_context(|| format!("Failed to write revocations to {}", path.display()))?;
+        info!(path = %path.display(), count = self.revocations.len(), "Revocations saved");
+        Ok(())
+    }
+
+    /// Load revocation entries from a JSON file on disk.
+    ///
+    /// Returns the number of entries loaded. Entries are appended to the
+    /// existing revocation list.
+    pub fn load_revocations(&mut self, path: &Path) -> Result<usize> {
+        let json = std::fs::read_to_string(path)
+            .with_context(|| format!("Failed to read revocations from {}", path.display()))?;
+        let loaded = RevocationList::from_json(&json)?;
+        let count = loaded.len();
+        for entry in loaded.entries {
+            self.revocations.add(entry)?;
+        }
+        info!(path = %path.display(), count = count, "Revocations loaded");
+        Ok(count)
     }
 
     /// Return a reference to the active trust policy.
@@ -841,7 +1015,7 @@ mod tests {
         ed25519_dalek::VerifyingKey,
         String,
     ) {
-        use crate::marketplace::trust::{generate_keypair, key_id_from_verifying_key, KeyVersion};
+        use crate::marketplace::trust::{generate_keypair, KeyVersion};
 
         let (sk, vk, kid) = generate_keypair();
         let mut kr = PublisherKeyring::new(dir);
@@ -1045,7 +1219,7 @@ mod tests {
             reason: "Compromised".to_string(),
             revoked_at: Utc::now(),
             revoked_by: "admin".to_string(),
-        });
+        }).unwrap();
 
         let result = verifier
             .verify_artifact(&path, ArtifactType::AgentBinary)
@@ -1075,7 +1249,7 @@ mod tests {
             reason: "Malicious config".to_string(),
             revoked_at: Utc::now(),
             revoked_by: "audit-bot".to_string(),
-        });
+        }).unwrap();
 
         let result = verifier
             .verify_artifact(&path, ArtifactType::Config)
@@ -1099,7 +1273,7 @@ mod tests {
             reason: "test".to_string(),
             revoked_at: Utc::now(),
             revoked_by: "tester".to_string(),
-        });
+        }).unwrap();
         assert_eq!(rl.len(), 1);
         assert!(rl.is_key_revoked("key1"));
         assert!(!rl.is_key_revoked("key2"));
@@ -1115,7 +1289,7 @@ mod tests {
             reason: "bad".to_string(),
             revoked_at: Utc::now(),
             revoked_by: "admin".to_string(),
-        });
+        }).unwrap();
         assert!(rl.is_artifact_revoked("abc123"));
         assert!(!rl.is_artifact_revoked("def456"));
     }
@@ -1129,7 +1303,7 @@ mod tests {
             reason: "compromised".to_string(),
             revoked_at: Utc::now(),
             revoked_by: "root".to_string(),
-        });
+        }).unwrap();
 
         let json = rl.to_json().unwrap();
         let recovered = RevocationList::from_json(&json).unwrap();
@@ -1295,7 +1469,7 @@ mod tests {
         let p2 = temp_file(dir.path(), "initramfs", b"initramfs image");
 
         let kr = PublisherKeyring::new(dir.path());
-        let verifier = SigilVerifier::new(kr, TrustPolicy::default());
+        let mut verifier = SigilVerifier::new(kr, TrustPolicy::default());
 
         let report = verifier.verify_boot_chain(&[p1, p2]).unwrap();
         assert!(report.is_clean());
@@ -1316,8 +1490,8 @@ mod tests {
         let kr = PublisherKeyring::new(dir.path());
         let mut verifier = SigilVerifier::new(kr, TrustPolicy::default());
 
-        // Register baseline
-        verifier.register_trusted(TrustedArtifact {
+        // Register baseline via register_system_core (SystemCore trust)
+        verifier.register_system_core(TrustedArtifact {
             path: p1.clone(),
             artifact_type: ArtifactType::BootComponent,
             content_hash: hash1.clone(),
@@ -1563,7 +1737,7 @@ mod tests {
             reason: "Supply chain compromise".to_string(),
             revoked_at: Utc::now(),
             revoked_by: "security-team".to_string(),
-        });
+        }).unwrap();
 
         // Now should fail
         let result = verifier
@@ -1619,7 +1793,7 @@ mod tests {
             reason: "test".to_string(),
             revoked_at: Utc::now(),
             revoked_by: "test".to_string(),
-        });
+        }).unwrap();
 
         assert!(verifier.check_revocation(Some("k1"), "h1"));
         assert!(!verifier.check_revocation(Some("k2"), "h1"));
@@ -1667,5 +1841,265 @@ mod tests {
             .checks
             .iter()
             .any(|c| c.name == "execute_permission" && !c.passed));
+    }
+
+    // -----------------------------------------------------------------------
+    // AUDIT FIX TESTS
+    // -----------------------------------------------------------------------
+
+    // CRITICAL 1: AuditOnly mode blocks revoked artifacts
+    #[test]
+    fn audit_only_blocks_revoked_artifacts() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = temp_file(dir.path(), "revoked_audit.bin", b"audit revoked");
+
+        let (kr, sk, _vk, kid) = keyring_with_key(dir.path());
+        let mut policy = TrustPolicy::default();
+        policy.enforcement = TrustEnforcement::AuditOnly;
+        let mut verifier = SigilVerifier::new(kr, policy);
+
+        verifier
+            .sign_artifact(&path, &sk, ArtifactType::AgentBinary)
+            .unwrap();
+
+        // Revoke the signing key
+        verifier.add_revocation(RevocationEntry {
+            key_id: Some(kid),
+            content_hash: None,
+            reason: "Key compromised".to_string(),
+            revoked_at: Utc::now(),
+            revoked_by: "admin".to_string(),
+        }).unwrap();
+
+        let result = verifier
+            .verify_artifact(&path, ArtifactType::AgentBinary)
+            .unwrap();
+        // Even in AuditOnly, revoked must NOT pass
+        assert!(!result.passed);
+        assert_eq!(result.artifact.trust_level, TrustLevel::Revoked);
+    }
+
+    // CRITICAL 2: verify_on_execute=false skips verification
+    #[test]
+    fn verify_on_execute_false_skips_verification() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = temp_file(dir.path(), "skip_exec.bin", b"skip me");
+
+        let kr = PublisherKeyring::new(dir.path());
+        let mut policy = TrustPolicy::default();
+        policy.verify_on_execute = false;
+        let verifier = SigilVerifier::new(kr, policy);
+
+        let result = verifier.verify_agent_binary(&path).unwrap();
+        assert!(result.passed);
+        assert!(result
+            .checks
+            .iter()
+            .any(|c| c.name == "skipped" && c.passed));
+    }
+
+    // CRITICAL 2: verify_on_install=false skips verification
+    #[test]
+    fn verify_on_install_false_skips_verification() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = temp_file(dir.path(), "skip_pkg.ark", b"skip pkg");
+
+        let kr = PublisherKeyring::new(dir.path());
+        let mut policy = TrustPolicy::default();
+        policy.verify_on_install = false;
+        let verifier = SigilVerifier::new(kr, policy);
+
+        let result = verifier.verify_package(&path, Some("wrong_hash")).unwrap();
+        // Should pass even with wrong expected hash because verification is skipped
+        assert!(result.passed);
+        assert!(result
+            .checks
+            .iter()
+            .any(|c| c.name == "skipped" && c.passed));
+    }
+
+    // CRITICAL 2: verify_on_boot=false skips verification
+    #[test]
+    fn verify_on_boot_false_skips_verification() {
+        let dir = tempfile::tempdir().unwrap();
+        let p1 = temp_file(dir.path(), "vmlinuz", b"kernel");
+
+        let kr = PublisherKeyring::new(dir.path());
+        let mut policy = TrustPolicy::default();
+        policy.verify_on_boot = false;
+        let mut verifier = SigilVerifier::new(kr, policy);
+
+        let report = verifier.verify_boot_chain(&[p1]).unwrap();
+        assert!(report.is_clean());
+    }
+
+    // HIGH 1: sign_artifact with unknown key gets Community trust
+    #[test]
+    fn sign_artifact_unknown_key_gets_community_trust() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = temp_file(dir.path(), "community.bin", b"community data");
+
+        // Create a keyring but do NOT add the signing key to it
+        let kr = PublisherKeyring::new(dir.path());
+        let sk = SigningKey::generate(&mut rand::rngs::OsRng);
+        let mut verifier = SigilVerifier::new(kr, TrustPolicy::default());
+
+        let artifact = verifier
+            .sign_artifact(&path, &sk, ArtifactType::AgentBinary)
+            .unwrap();
+        assert_eq!(artifact.trust_level, TrustLevel::Community);
+    }
+
+    // HIGH 2: register_trusted downgrades SystemCore to Verified
+    #[test]
+    fn register_trusted_downgrades_system_core() {
+        let dir = tempfile::tempdir().unwrap();
+        let kr = PublisherKeyring::new(dir.path());
+        let mut verifier = SigilVerifier::new(kr, TrustPolicy::default());
+
+        let hash = "sys_core_hash".to_string();
+        verifier.register_trusted(TrustedArtifact {
+            path: PathBuf::from("/boot/vmlinuz"),
+            artifact_type: ArtifactType::BootComponent,
+            content_hash: hash.clone(),
+            signature: None,
+            signer_key_id: None,
+            trust_level: TrustLevel::SystemCore,
+            verified_at: Some(Utc::now()),
+            metadata: HashMap::new(),
+        });
+
+        // Should have been downgraded to Verified
+        assert_eq!(verifier.trust_level_for(&hash), TrustLevel::Verified);
+    }
+
+    // HIGH 2: register_system_core keeps SystemCore trust
+    #[test]
+    fn register_system_core_keeps_trust() {
+        let dir = tempfile::tempdir().unwrap();
+        let kr = PublisherKeyring::new(dir.path());
+        let mut verifier = SigilVerifier::new(kr, TrustPolicy::default());
+
+        let hash = "sys_core_hash2".to_string();
+        verifier.register_system_core(TrustedArtifact {
+            path: PathBuf::from("/boot/vmlinuz"),
+            artifact_type: ArtifactType::BootComponent,
+            content_hash: hash.clone(),
+            signature: None,
+            signer_key_id: None,
+            trust_level: TrustLevel::Verified, // even if lower is passed
+            verified_at: Some(Utc::now()),
+            metadata: HashMap::new(),
+        });
+
+        // Should be forced to SystemCore
+        assert_eq!(verifier.trust_level_for(&hash), TrustLevel::SystemCore);
+    }
+
+    // HIGH 3: save/load trust store roundtrip
+    #[test]
+    fn save_load_trust_store_roundtrip() {
+        let dir = tempfile::tempdir().unwrap();
+        let store_path = dir.path().join("trust_store.json");
+
+        let kr = PublisherKeyring::new(dir.path());
+        let mut verifier = SigilVerifier::new(kr, TrustPolicy::default());
+
+        verifier.register_trusted(TrustedArtifact {
+            path: PathBuf::from("/opt/agent1"),
+            artifact_type: ArtifactType::AgentBinary,
+            content_hash: "hash_a".to_string(),
+            signature: None,
+            signer_key_id: None,
+            trust_level: TrustLevel::Verified,
+            verified_at: Some(Utc::now()),
+            metadata: HashMap::new(),
+        });
+        verifier.register_trusted(TrustedArtifact {
+            path: PathBuf::from("/opt/agent2"),
+            artifact_type: ArtifactType::Config,
+            content_hash: "hash_b".to_string(),
+            signature: None,
+            signer_key_id: None,
+            trust_level: TrustLevel::Community,
+            verified_at: Some(Utc::now()),
+            metadata: HashMap::new(),
+        });
+
+        verifier.save_trust_store(&store_path).unwrap();
+
+        // Load into a fresh verifier
+        let kr2 = PublisherKeyring::new(dir.path());
+        let mut verifier2 = SigilVerifier::new(kr2, TrustPolicy::default());
+        let count = verifier2.load_trust_store(&store_path).unwrap();
+
+        assert_eq!(count, 2);
+        assert_eq!(verifier2.trust_level_for("hash_a"), TrustLevel::Verified);
+        assert_eq!(verifier2.trust_level_for("hash_b"), TrustLevel::Community);
+    }
+
+    // HIGH 3: save/load revocations roundtrip
+    #[test]
+    fn save_load_revocations_roundtrip() {
+        let dir = tempfile::tempdir().unwrap();
+        let rev_path = dir.path().join("revocations.json");
+
+        let kr = PublisherKeyring::new(dir.path());
+        let mut verifier = SigilVerifier::new(kr, TrustPolicy::default());
+
+        verifier.add_revocation(RevocationEntry {
+            key_id: Some("key_x".to_string()),
+            content_hash: None,
+            reason: "test revocation".to_string(),
+            revoked_at: Utc::now(),
+            revoked_by: "admin".to_string(),
+        }).unwrap();
+
+        verifier.save_revocations(&rev_path).unwrap();
+
+        // Load into a fresh verifier
+        let kr2 = PublisherKeyring::new(dir.path());
+        let mut verifier2 = SigilVerifier::new(kr2, TrustPolicy::default());
+        let count = verifier2.load_revocations(&rev_path).unwrap();
+
+        assert_eq!(count, 1);
+        assert!(verifier2.check_revocation(Some("key_x"), "any_hash"));
+    }
+
+    // HIGH 5: RevocationEntry with both None rejected
+    #[test]
+    fn revocation_entry_both_none_rejected() {
+        let mut rl = RevocationList::new();
+        let result = rl.add(RevocationEntry {
+            key_id: None,
+            content_hash: None,
+            reason: "invalid entry".to_string(),
+            revoked_at: Utc::now(),
+            revoked_by: "test".to_string(),
+        });
+        assert!(result.is_err());
+        assert!(rl.is_empty());
+    }
+
+    // MEDIUM: unsigned agent blocked in Permissive mode when allow_unsigned=false
+    #[test]
+    fn unsigned_agent_blocked_in_permissive_when_disallowed() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = temp_file(dir.path(), "unsigned_perm.bin", b"unsigned agent");
+        #[cfg(unix)]
+        make_executable(&path);
+
+        let kr = PublisherKeyring::new(dir.path());
+        let mut policy = TrustPolicy::default();
+        policy.enforcement = TrustEnforcement::Permissive;
+        policy.allow_unsigned_agents = false;
+        let verifier = SigilVerifier::new(kr, policy);
+
+        let result = verifier.verify_agent_binary(&path).unwrap();
+        assert!(!result.passed);
+        assert!(result
+            .checks
+            .iter()
+            .any(|c| c.name == "unsigned_agent" && !c.passed));
     }
 }

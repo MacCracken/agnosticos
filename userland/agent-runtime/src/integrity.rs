@@ -122,6 +122,12 @@ impl IntegrityVerifier {
         }
     }
 
+    /// Replace the current policy, clearing any cached report.
+    pub fn set_policy(&mut self, policy: IntegrityPolicy) {
+        self.policy = policy;
+        self.last_report = None;
+    }
+
     /// Compute the SHA-256 hash of a file's contents.
     pub fn compute_hash(path: &Path) -> anyhow::Result<String> {
         let data = std::fs::read(path)

@@ -6,6 +6,14 @@ set -e
 AGNOS_VERSION="$(cat /etc/agnos/VERSION 2>/dev/null || echo 'unknown')"
 echo "AGNOS v${AGNOS_VERSION} starting..."
 
+# Default to JSON logging in containers (override with AGNOS_LOG_FORMAT=text)
+export AGNOS_LOG_FORMAT="${AGNOS_LOG_FORMAT:-json}"
+# Default log level to info (override with RUST_LOG=debug, etc.)
+export RUST_LOG="${RUST_LOG:-info}"
+# Bind to all interfaces in containers (override with specific IP)
+export AGNOS_RUNTIME_BIND="${AGNOS_RUNTIME_BIND:-0.0.0.0}"
+export AGNOS_GATEWAY_BIND="${AGNOS_GATEWAY_BIND:-0.0.0.0}"
+
 # Drop all capabilities except the minimum set
 # (only effective if container started with --cap-add)
 if command -v capsh >/dev/null 2>&1; then
@@ -47,7 +55,7 @@ case "${1:-daemon}" in
 
         # Start LLM Gateway in the background
         echo "  Starting LLM Gateway on :8088..."
-        llm_gateway &
+        llm_gateway daemon &
         LLM_PID=$!
 
         # Start Agent Runtime daemon
@@ -65,7 +73,7 @@ case "${1:-daemon}" in
         ;;
     shell)
         echo "Starting AGNOS AI Shell..."
-        exec ai_shell "$@"
+        exec agnsh "$@"
         ;;
     *)
         exec "$@"

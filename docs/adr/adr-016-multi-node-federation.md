@@ -1,6 +1,6 @@
 # ADR-016: Multi-Node Agent Federation
 
-**Status:** Proposed
+**Status:** Accepted
 
 **Date:** 2026-03-06
 

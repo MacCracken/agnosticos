@@ -167,7 +167,11 @@ AGNOS (AI-Native General Operating System) is in **Phase 5: Production**, focuse
 | 6.6 | Complete | 100% | Consumer Integration (9 features) |
 | 6.7 | Complete | 100% | Alpha Polish (14 items: question intent, tab-completion, pipelines, aliases, agent KV store, conversation context, reasoning traces, dashboard, log viewer, output capture, enriched health, hot-reload, fleet config, environment profiles) |
 | 6.8 | Complete | 100% | Beta Features (34 items: vector store, RAG pipeline, knowledge base, file watcher, agent RPC, templates, capability negotiation, circuit breaker, cron tasks, OpenTelemetry, resource forecasting, Prometheus metrics, webhooks, audit forwarding, memory bridge REST, trace submission REST, accessibility, clipboard, window badges, popups, gestures, anomaly detection, mTLS, secrets rotation, integrity attestation, token budgets, gateway metrics, Docker base images, envoy sidecar, cross-project integration APIs) |
-| 7+ | Planned | 0% | Ecosystem & Research |
+| 7 | Complete | 100% | Ecosystem: federation (55 tests), migration (54 tests), scheduler (47 tests), ratings (43 tests) |
+| 8G | Complete | 100% | Post-quantum cryptography (68 tests) |
+| 8H-8J | Complete | 100% | Explainability (59), safety (77), fine-tuning (73) |
+| 8K-8M | Complete | 100% | Formal verification (76), novel sandboxing (77), RL optimization (68) |
+| 9 | Complete | 100% | Cloud services (82), human-AI collaboration (87) |
 
 ### Alpha Release Criteria (Q2 2026)
 - [x] Core features fully wired (not stubbed) — P0/P1 stubs eliminated March 3
@@ -477,36 +481,36 @@ AGNOS-side infrastructure that consumer projects (AGNOSTIC, SecureYeoman, BullSh
 
 ---
 
-### Phase 7: Ecosystem (Planned Q4 2026)
+### Phase 7: Ecosystem ✅ Complete (199 tests)
 
-#### Marketplace
-- [ ] Third-party agent marketplace
-- [ ] Plugin architecture for desktop
-- [ ] Integration marketplace
-- [ ] Agent rating and review system
+#### Marketplace ✅
+- [x] Third-party agent marketplace — mela module (88 tests, Phase 1A-1F)
+- [x] Plugin architecture for desktop — plugin_host.rs (31 tests)
+- [x] Integration marketplace — marketplace module with remote_client
+- [x] Agent rating and review system — marketplace/ratings.rs (43 tests) — [ADR-024](../adr/adr-024-agent-ratings-reviews.md)
 
-#### Cloud Services
-- [ ] AGNOS Cloud (optional hosted agents)
-- [ ] Cross-device agent sync
-- [ ] Collaborative agent workspaces
+#### Federation & Scale ✅
+- [x] Multi-node agent federation — federation.rs (55 tests) — [ADR-016](../adr/adr-016-multi-node-federation.md)
+- [x] Distributed task scheduling with consensus — scheduler.rs (47 tests) — [ADR-026](../adr/adr-026-distributed-task-scheduling.md)
+- [x] Agent migration/checkpointing — migration.rs (54 tests) — [ADR-025](../adr/adr-025-agent-migration-checkpointing.md)
+- [ ] Shared vector store across federated nodes — future enhancement
 
-#### Federation & Scale
-- [ ] Multi-node agent federation (agents span AGNOS instances)
-- [ ] Distributed task scheduling with consensus
-- [ ] Agent migration/checkpointing (pause, serialize, resume elsewhere)
-- [ ] Shared vector store across federated nodes
+#### Cloud Services ✅ Complete (82 tests) — [ADR-034](../adr/adr-034-cloud-services.md)
+- [x] AGNOS Cloud (optional hosted agents) — CloudDeploymentManager with 4 resource tiers
+- [x] Cross-device agent sync — SyncEngine with SHA-256 checksums, conflict resolution
+- [x] Collaborative agent workspaces — WorkspaceManager with role-based access
 
 ### Phase 8: Research (Planned Q1 2027)
 
 #### Advanced Research
-- [ ] Formal verification of security-critical components
-- [ ] Novel sandboxing architectures
-- [ ] AI safety mechanisms
-- [ ] Human-AI collaboration research
-- [ ] Post-quantum cryptography (CRYSTALS-Kyber, Dilithium)
-- [ ] Agent explainability framework (attention visualization, decision trees)
-- [ ] Reinforcement learning loop for agent policy optimization
-- [ ] Fine-tuning pipeline (adapt local models to agent-specific tasks)
+- [x] Formal verification — formal_verify.rs (76 tests) — [ADR-031](../adr/adr-031-formal-verification.md)
+- [x] Novel sandboxing architectures — sandbox_v2.rs (77 tests) — [ADR-032](../adr/adr-032-novel-sandboxing.md)
+- [x] AI safety mechanisms — safety.rs (77 tests) — [ADR-029](../adr/adr-029-ai-safety-mechanisms.md)
+- [x] Human-AI collaboration research — collaboration.rs (87 tests) — [ADR-035](../adr/adr-035-human-ai-collaboration.md)
+- [x] Post-quantum cryptography — pqc.rs (68 tests) — [ADR-027](../adr/adr-027-post-quantum-cryptography.md)
+- [x] Agent explainability framework — explainability.rs (59 tests) — [ADR-028](../adr/adr-028-agent-explainability.md)
+- [x] Reinforcement learning loop — rl_optimizer.rs (68 tests) — [ADR-033](../adr/adr-033-reinforcement-learning.md)
+- [x] Fine-tuning pipeline — finetune.rs (73 tests) — [ADR-030](../adr/adr-030-fine-tuning-pipeline.md)
 
 ---
 
@@ -674,7 +678,7 @@ Once marketplace and Flutter Wayland support are complete:
 |--------|--------|---------|--------|
 | Code Coverage | >80% | ~82% | Met |
 | Test Pass Rate | 100% | 100% | Met |
-| Total Tests | 400+ | 8098+ | Met |
+| Total Tests | 400+ | 9061+ | Met |
 | Agent Spawn Time | <500ms | ~300ms | Met |
 | Shell Response Time | <100ms | ~50ms | Met |
 | Memory Overhead | <2GB | ~1.2GB | Met |
@@ -689,7 +693,7 @@ Once marketplace and Flutter Wayland support are complete:
 |-----------|-------|-------|
 | agnos-common | 307 | Secrets, telemetry, LLM types, manifest, rate limits, audit chain |
 | agnos-sys | 750+ (7 ignored) | 16 modules: audit, mac, netns, dmverity, luks, ima, tpm, secureboot, certpin, bootloader, journald, udev, fuse, pam, update, llm |
-| agent-runtime | 1672 + 16 integration + 15 load | Service manager, lifecycle, pub/sub, rollback, package manager, quotas, IPC, WASM, network tools (100), swarm (20), learning (13), multimodal (15), tool analysis (12), marketplace (88), flutter packaging (21), flutter agpkg (15), sandbox profiles (18), MCP Photis bridge (20), **sigil (35), aegis (40), takumi (43), argonaut (46), agnova (41)** |
+| agent-runtime | 2538 + 16 integration + 15 load | Service manager, lifecycle, pub/sub, rollback, package manager, quotas, IPC, WASM, network tools (100), swarm (20), learning (13), multimodal (15), tool analysis (12), marketplace (88+43 ratings), flutter packaging (21), flutter agpkg (15), sandbox profiles (18), MCP Photis bridge (20), sigil (35), aegis (40), takumi (43), argonaut (46), agnova (41), federation (55), migration (54), scheduler (47), pqc (68), explainability (59), safety (77), finetune (73), formal_verify (76), sandbox_v2 (77), rl_optimizer (68), **cloud (82), collaboration (87)** |
 | llm-gateway | 249 + 423 | 5 providers, rate limiting, streaming, graceful degradation, cert pinning, hardware acceleration (43) |
 | ai-shell | 577 + 555 | 25+ intents: file ops, audit, agent, service, network scan, journal, device, mount, boot, update, marketplace, tasks, rituals, productivity |
 | desktop-environment | 792 + 562 + 40 E2E | Wayland protocol types + Dispatch traits (63), protocol extensions (49), plugin host (31), xwayland (20), shell integration (26), theme bridge (18), HUD, security, apps, compositor, system tests |
@@ -721,6 +725,18 @@ Once marketplace and Flutter Wayland support are complete:
 21. ADR-021: Takumi — Package Build System (Accepted)
 22. ADR-022: Argonaut — Custom Init System (Accepted)
 23. ADR-023: Agnova — OS Installer (Accepted)
+24. ADR-024: Agent Ratings & Reviews (Accepted)
+25. ADR-025: Agent Migration & Checkpointing (Accepted)
+26. ADR-026: Distributed Task Scheduling (Accepted)
+27. ADR-027: Post-Quantum Cryptography (Accepted)
+28. ADR-028: Agent Explainability Framework (Accepted)
+29. ADR-029: AI Safety Mechanisms (Accepted)
+30. ADR-030: Fine-Tuning Pipeline (Accepted)
+31. ADR-031: Formal Verification Framework (Accepted)
+32. ADR-032: Novel Sandboxing Architectures (Accepted)
+33. ADR-033: Reinforcement Learning Optimization (Accepted)
+34. ADR-034: Cloud Services (Accepted)
+35. ADR-035: Human-AI Collaboration Research (Accepted)
 
 ---
 

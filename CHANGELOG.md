@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [2026.3.7] - 2026-03-07
 
+### Added — Phase 7: Ecosystem — Federation & Scale (199 tests)
+
+#### Phase 7A — Agent Ratings & Reviews (43 tests) — [ADR-024](docs/adr/adr-024-agent-ratings-reviews.md)
+- **marketplace/ratings.rs** — Rating/review system: 1-5 star ratings, text reviews (max 2000 chars), RatingStore with per-agent deduplication, RatingStats with score distribution, RatingFilter (min_score, package, agent, date range), top_rated with min_ratings threshold, JSON persistence
+
+#### Phase 7B — Multi-Node Federation (55 tests) — [ADR-016](docs/adr/adr-016-multi-node-federation.md)
+- **agent-runtime/federation.rs** — Federation cluster: FederationNode with role/status/capabilities, simplified Raft coordinator election (term numbers, vote counting, split-brain prevention), node health tracking (online→suspect→dead), NodeScorer with weighted criteria (resource 40%, locality 30%, load 20%, affinity 10%), AgentPlacement, TOML config parsing, 3 scheduling strategies (Balanced/Packed/Spread)
+
+#### Phase 7C — Agent Migration & Checkpointing (54 tests) — [ADR-025](docs/adr/adr-025-agent-migration-checkpointing.md)
+- **agent-runtime/migration.rs** — Checkpoint/restore: Checkpoint with memory snapshot, vector indices, IPC queue, sandbox config; 3 migration types (Warm <500ms, Cold <5s, Live); 8-state migration state machine with validated transitions; MigrationTracker for lifecycle management and history; compression (~60% size reduction); checkpoint validation
+
+#### Phase 7D — Distributed Task Scheduling (47 tests) — [ADR-026](docs/adr/adr-026-distributed-task-scheduling.md)
+- **agent-runtime/scheduler.rs** — Task scheduler: priority-based scheduling (Normal/High/Critical/Emergency), resource-aware node placement, preemption logic, NodeCapacity tracking with utilization, CronScheduler for recurring tasks, task status state machine, SchedulerStats
+
+### Added — Phase 9: Cloud Services & Human-AI Collaboration (169 tests)
+
+#### Phase 9A — Cloud Services (82 tests) — [ADR-034](docs/adr/adr-034-cloud-services.md)
+- **agent-runtime/cloud.rs** — Optional cloud connectivity: CloudConnection with config validation and health checks, CloudDeploymentManager with 4 resource tiers (Free/Standard/Performance/Custom) and cost tracking, SyncEngine with SHA-256 checksummed items and conflict resolution (LocalWins/RemoteWins/Manual/Merge), WorkspaceManager with role-based access (Owner/Admin/Editor/Viewer), BillingTracker with per-workspace/agent usage attribution
+
+#### Phase 9B — Human-AI Collaboration Research (87 tests) — [ADR-035](docs/adr/adr-035-human-ai-collaboration.md)
+- **agent-runtime/collaboration.rs** — Collaboration framework: 5 CollaborationModes (FullAutonomy/Supervised/Paired/HumanLed/TeachingMode), SharedTask with ownership and status state machine, HandoffManager for human↔agent task transfers, TrustCalibrator with EMA-based metrics and calibration error tracking, CognitiveLoadManager (overload detection, break suggestions, adaptive batch sizing), FeedbackCollector (5 types with rating validation and application tracking), CollaborationAnalyzer with session analytics and mode effectiveness
+
+### Added — Phase 8K-8M: Research — Verification, Sandboxing & RL (221 tests)
+
+#### Phase 8K — Formal Verification Framework (76 tests) — [ADR-031](docs/adr/adr-031-formal-verification.md)
+- **agent-runtime/formal_verify.rs** — Property-based verification: 6 property types (Invariant/Precondition/Postcondition/Safety/Liveness/Refinement), PropertyChecker with invariant testing and counterexample detection, state machine verification (reachability, deadlock, determinism, unreachable states via BFS), trace refinement checking, InvariantMonitor for runtime verification, 15 built-in AGNOS security properties, VerificationReport with per-component coverage
+
+#### Phase 8L — Novel Sandboxing Architectures (77 tests) — [ADR-032](docs/adr/adr-032-novel-sandboxing.md)
+- **agent-runtime/sandbox_v2.rs** — Next-gen sandboxing: object-capability tokens (10 capability types, delegation chains, time-bounded, revocable), information flow control (5 security labels, no-downward-flow enforcement, data lineage tracking), TimeBoundedSandbox (wall-clock/CPU/operation budgets), PolicyLearner (derive sandbox profiles from observed behavior, tightening suggestions), ComposableSandbox (layered rules, most-restrictive-wins, merge), SandboxMetrics with security scoring
+
+#### Phase 8M — Reinforcement Learning Optimization (68 tests) — [ADR-033](docs/adr/adr-033-reinforcement-learning.md)
+- **agent-runtime/rl_optimizer.rs** — RL framework: State with feature vectors and Euclidean distance, Experience replay buffer (circular, prioritized sampling), QTable with Bellman updates, EpsilonGreedy exploration (decaying ε with floor), PolicyGradient (softmax + REINFORCE), RlOptimizer orchestrating train/select/episode lifecycle, RewardShaper with weighted components, OptimizerStats
+
+### Added — Phase 8H-8J: Research — AI Explainability, Safety & Fine-Tuning (209 tests)
+
+#### Phase 8H — Agent Explainability Framework (59 tests) — [ADR-028](docs/adr/adr-028-agent-explainability.md)
+- **agent-runtime/explainability.rs** — Decision transparency: DecisionRecord with factors/alternatives/outcomes, ExplainabilityEngine with human-readable explanations (factor breakdown, confidence labels, review recommendations), DecisionFilter and AgentDecisionStats, DecisionTree builder with text rendering, AuditTrail linking decisions to audit events
+
+#### Phase 8I — AI Safety Mechanisms (77 tests) — [ADR-029](docs/adr/adr-029-ai-safety-mechanisms.md)
+- **agent-runtime/safety.rs** — Safety enforcement: 8 rule types (ResourceLimit, ForbiddenAction, RequireApproval, RateLimit, ContentFilter, ScopeRestriction, EscalationRequired, OutputValidation), SafetyEngine with policy CRUD and action/output checking, PromptInjectionDetector (6 pattern categories), SafetyCircuitBreaker (Closed/Open/HalfOpen), default_policies() with sensible defaults, per-agent safety scoring
+
+#### Phase 8J — Fine-Tuning Pipeline (73 tests) — [ADR-030](docs/adr/adr-030-fine-tuning-pipeline.md)
+- **agent-runtime/finetune.rs** — Model adaptation: TrainingDataset with quality-scored examples from 4 sources, FineTuneConfig with 4 methods (Full/LoRA/QLoRA/Prefix), FineTuneJob with validated state machine, JobProgress with percentage/ETA, FineTunePipeline for full lifecycle orchestration, ModelRegistry with best_model_for_agent selection, VRAM estimation per method
+
+### Added — Phase 8G: Post-Quantum Cryptography (68 tests) — [ADR-027](docs/adr/adr-027-post-quantum-cryptography.md)
+- **agent-runtime/pqc.rs** — Hybrid classical+PQC cryptography: ML-KEM-768/1024 (FIPS 203) key encapsulation + ML-DSA-44/65/87 (FIPS 204) digital signatures, hybrid KEM (X25519+ML-KEM with SHA-256 secret combination), hybrid signatures (Ed25519+ML-DSA with AND verification), PqcKeyStore with CRUD and JSON persistence, PqcConfig with 3 migration modes (Disabled/Hybrid/PqcOnly), PqcMigrationStatus tracking. Simulated PQC ops isolated in 6 swap-ready functions.
+
 ### Added — Phase 8B-8F: AGNOS Distribution Subsystems (205 tests)
 
 #### Phase 8B — Sigil: System-Wide Trust Verification (35 tests) — [ADR-019](docs/adr/adr-019-sigil-trust-system.md)
@@ -24,10 +71,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Phase 8F — Aegis: Security Daemon (40 tests) — [ADR-020](docs/adr/adr-020-aegis-security-daemon.md)
 - **agent-runtime/aegis.rs** — Unified security daemon: 5 threat levels with auto-response, 10 security event types, quarantine system (Suspend/Terminate/Isolate/RateLimit), agent/package scanning, auto-quarantine on Critical/High threats, auto-release timeouts, event filtering and resolution tracking
 
+### Fixed — Code Audit: All 5 New Modules (54 additional tests)
+- **aegis.rs** — Quarantine escalation (no overwrite), scan config flags respected, metadata error reporting, empty agent_id warning
+- **argonaut.rs** — State machine transition validation, dependency-state checks before Starting, register preserves runtime state, boot timestamps, missing deps error, shutdown_order returns Result
+- **sigil.rs** — AuditOnly mode blocks revoked artifacts, policy flags enforced, sign_artifact trust level checks, RevocationEntry validation
+- **takumi.rs** — Package name path traversal prevention, URL scheme validation, SHA-256 format validation, duplicate recipe warning, flag deduplication
+- **agnova.rs** — Kernel param injection validation, device path validation, hostname/username validation, non-recoverable phase blocking, DHCP/static IP validation
+
 ### Status Update
 | Metric | Value |
 |--------|-------|
-| Total Tests | 8098+ (0 failures) |
+| Total Tests | 9061+ (0 failures) |
 | Compiler Warnings | 0 |
 | New ADRs | 019-023 |
 | New modules | sigil, aegis, takumi, argonaut, agnova |
