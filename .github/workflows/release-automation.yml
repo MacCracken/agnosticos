@@ -32,11 +32,9 @@ jobs:
         fetch-depth: 0
     
     - name: Setup Rust toolchain
-      uses: actions-rs/toolchain@v1
+      uses: dtolnay/rust-toolchain@stable
       with:
-        toolchain: stable
-        target: ${{ matrix.target }}
-        override: true
+        targets: ${{ matrix.target }}
     
     - name: Install cross-compilation tools
       if: matrix.target == 'aarch64-unknown-linux-gnu'

@@ -7,7 +7,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 OUTPUT_DIR="${PROJECT_ROOT}/sbom"
 VERSION=$(grep -E '^version' "${PROJECT_ROOT}/userland/Cargo.toml" | head -1 | sed 's/.*= *"\(.*\)".*/\1/')
 

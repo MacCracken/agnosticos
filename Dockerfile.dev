@@ -115,22 +115,7 @@ ENV CC="ccache gcc"
 ENV CXX="ccache g++"
 
 # Create entrypoint script
-RUN cat > /entrypoint.sh << 'EOF'
-#!/bin/bash
-set -e
-
-# Initialize caches if needed
-mkdir -p /cache/ccache /cache/cargo /cache/target
-
-# Run the provided command or default to bash
-if [ $# -eq 0 ]; then
-    exec /bin/bash
-else
-    exec "$@"
-fi
-EOF
-
-RUN chmod +x /entrypoint.sh
+RUN printf '#!/bin/bash\nset -e\n\n# Initialize caches if needed\nmkdir -p /cache/ccache /cache/cargo /cache/target\n\n# Run the provided command or default to bash\nif [ $# -eq 0 ]; then\n    exec /bin/bash\nelse\n    exec "$@"\nfi\n' > /entrypoint.sh && chmod +x /entrypoint.sh
 
 # Set the entrypoint
 ENTRYPOINT ["/entrypoint.sh"]

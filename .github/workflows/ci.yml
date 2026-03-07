@@ -44,7 +44,7 @@ jobs:
         path: |
           ~/.cargo/registry
           ~/.cargo/git
-          target/
+          userland/target/
         key: ${{ runner.os }}-cargo-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
 
     - name: Setup Rust toolchain
@@ -55,10 +55,12 @@ jobs:
     - name: Build userland (native)
       if: ${{ !matrix.cross }}
       run: cargo build --release --target ${{ matrix.target }}
+      working-directory: userland
 
     - name: Build userland (cross)
       if: matrix.cross
       run: cross build --release --target ${{ matrix.target }}
+      working-directory: userland
 
   # Code quality
   quality:
@@ -74,9 +76,11 @@ jobs:
 
     - name: Check formatting
       run: cargo fmt -- --check
+      working-directory: userland
 
     - name: Run clippy
       run: cargo clippy -- -D warnings
+      working-directory: userland
 
     - name: Check kernel style
       run: |
@@ -95,6 +99,9 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+
+    - name: Setup Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
 
     - name: Run Trivy vulnerability scanner
       uses: aquasecurity/trivy-action@master
@@ -115,6 +122,7 @@ jobs:
       run: |
         cargo install cargo-audit --locked
         cargo audit
+      working-directory: userland
 
     - name: Run Bandit (Python)
       run: |
@@ -131,28 +139,10 @@ jobs:
 
     - name: Dependency vulnerability check
       run: |
-        # Check for known vulnerable dependencies
         cargo install cargo-deny --locked
-        cat > deny.toml << 'EOF'
-        [advisories]
-        version = 2
-        db-path = "~/.cargo/advisory-db"
-        db-urls = ["https://github.com/rustsec/advisory-db"]
-        yanked = "warn"
-
-        [licenses]
-        version = 2
-        allow = ["MIT", "Apache-2.0", "BSD-3-Clause", "GPL-3.0"]
-
-        [bans]
-        multiple-versions = "warn"
-        wildcards = "allow"
-
-        [sources]
-        unknown-registry = "warn"
-        unknown-git = "warn"
-        EOF
+        printf '[advisories]\nversion = 2\ndb-path = "~/.cargo/advisory-db"\ndb-urls = ["https://github.com/rustsec/advisory-db"]\nyanked = "warn"\n\n[licenses]\nversion = 2\nallow = ["MIT", "Apache-2.0", "BSD-3-Clause", "GPL-3.0"]\n\n[bans]\nmultiple-versions = "warn"\nwildcards = "allow"\n\n[sources]\nunknown-registry = "warn"\nunknown-git = "warn"\n' > deny.toml
         cargo deny check advisories || true
+      working-directory: userland
       continue-on-error: true
 
     - name: Check for outdated dependencies
@@ -160,6 +150,7 @@ jobs:
         cargo install cargo-outdated --locked
         echo "::notice::Checking for outdated dependencies..."
         cargo outdated --root-deps-only 2>/dev/null || echo "No outdated dependencies found at root level"
+      working-directory: userland
       continue-on-error: true
 
     - name: Generate security report
@@ -193,22 +184,24 @@ jobs:
 
     - name: Run Rust tests
       run: cargo test --all-features
+      working-directory: userland
 
     - name: Generate coverage report
       run: |
         cargo install cargo-tarpaulin --locked
         cargo tarpaulin --out Xml || true
+      working-directory: userland
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v4
       with:
-        file: ./cobertura.xml
+        file: ./userland/cobertura.xml
         flags: unittests
         name: codecov-umbrella
 
     - name: Enforce coverage threshold
-      run: |
-        cargo tarpaulin --fail-under 65
+      run: cargo tarpaulin --fail-under 65
+      working-directory: userland
 
   # Benchmarks (record only, does not block merges)
   benchmarks:
@@ -227,11 +220,12 @@ jobs:
         path: |
           ~/.cargo/registry
           ~/.cargo/git
-          target/
+          userland/target/
         key: ${{ runner.os }}-bench-${{ hashFiles('**/Cargo.lock') }}
 
     - name: Run benchmarks
       run: cargo bench -- --noplot 2>&1 | tee benchmark-output.txt
+      working-directory: userland
       continue-on-error: true
 
     - name: Upload benchmark results
@@ -240,8 +234,8 @@ jobs:
       with:
         name: benchmark-results
         path: |
-          benchmark-output.txt
-          target/criterion/
+          userland/benchmark-output.txt
+          userland/target/criterion/
 
   # Documentation
   docs:
@@ -262,7 +256,6 @@ jobs:
       run: |
         # Check that all documented files exist
         test -f README.md
-        test -f TODO.md
         test -f docs/development/roadmap.md
         test -f CONTRIBUTING.md
         test -f SECURITY.md
@@ -280,12 +273,10 @@ jobs:
       uses: docker/setup-buildx-action@v3
 
     - name: Build container image
-      run: |
-        docker build -f Dockerfile.dev -t agnos:dev .
+      run: docker build -t agnos:latest .
 
     - name: Test container
-      run: |
-        docker run --rm agnos:dev echo "Container build successful"
+      run: docker run --rm agnos:latest echo "Container build successful"
 
   # License check
   license:

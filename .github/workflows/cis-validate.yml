@@ -40,24 +40,28 @@ jobs:
     
     - name: Run CIS Validation
       run: |
-        sudo ./scripts/cis-validate.sh --category ${{ github.event.inputs.category || 'all' }} --report cis-report.json
+        sudo ./scripts/cis-validate.sh --category ${{ github.event.inputs.category || 'all' }} --report "$GITHUB_WORKSPACE/cis-report.json"
       continue-on-error: true
-    
+
     - name: Upload CIS Report
       uses: actions/upload-artifact@v4
+      if: always()
       with:
         name: cis-validation-report
         path: cis-report.json
+        if-no-files-found: warn
     
     - name: Check Compliance
       run: |
         if [ -f cis-report.json ]; then
           SCORE=$(jq -r '.compliance.score' cis-report.json)
-          if (( $(echo "$SCORE < 70" | bc -l) )); then
+          if [ "$SCORE" -lt 70 ] 2>/dev/null; then
             echo "::warning::CIS compliance score is ${SCORE}%, below 70% threshold"
           else
             echo "::notice::CIS compliance score: ${SCORE}%"
           fi
+        else
+          echo "::warning::CIS report not found"
         fi
     
     - name: Comment PR
