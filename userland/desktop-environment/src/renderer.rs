@@ -12,6 +12,7 @@ use std::collections::HashMap;
 use tracing::debug;
 
 use crate::compositor::{Rectangle, SurfaceId, WindowState};
+use crate::accessibility::HighContrastTheme;
 
 // ---------------------------------------------------------------------------
 // Color & Pixel Types
@@ -789,6 +790,8 @@ pub struct DesktopRenderer {
     pub damage: DamageTracker,
     /// Per-window content buffers.
     window_buffers: HashMap<SurfaceId, Framebuffer>,
+    /// Optional high-contrast accessibility theme.
+    pub high_contrast: Option<HighContrastTheme>,
 }
 
 impl DesktopRenderer {
@@ -798,7 +801,13 @@ impl DesktopRenderer {
             back: Framebuffer::new(width, height, COLOR_BG_DARK),
             damage: DamageTracker::new(width, height),
             window_buffers: HashMap::new(),
+            high_contrast: None,
         }
+    }
+
+    /// Set or clear the high-contrast accessibility theme.
+    pub fn set_high_contrast(&mut self, theme: Option<HighContrastTheme>) {
+        self.high_contrast = theme;
     }
 
     /// Submit a window's content buffer.

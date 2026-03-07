@@ -39,7 +39,7 @@ name = "llm_gateway"
 path = "src/lib.rs"
 
 [dev-dependencies]
-criterion = "0.5"
+criterion = { version = "0.5", features = ["html_reports"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
 
 [[bench]]
@@ -48,4 +48,8 @@ harness = false
 
 [[bench]]
 name = "system_bench"
+harness = false
+
+[[bench]]
+name = "gateway_benchmarks"
 harness = false

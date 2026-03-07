@@ -27,6 +27,7 @@ pub mod capability;
 pub mod resource_forecast;
 pub mod mtls;
 pub mod integrity;
+pub mod marketplace;
 pub mod mcp_server;
 
 pub use agent::{Agent, AgentHandle};
@@ -42,3 +43,17 @@ pub use swarm::SwarmCoordinator;
 pub use learning::AgentLearner;
 pub use memory_store::AgentMemoryStore;
 pub use multimodal::ModalityRegistry;
+pub use vector_store::VectorIndex;
+pub use rag::{RagPipeline, RagConfig};
+pub use knowledge_base::KnowledgeBase;
+pub use file_watcher::FileWatcher;
+pub use ipc::{RpcRegistry, RpcRouter, RpcRequest, RpcResponse};
+pub use learning::{AnomalyDetector, BehaviorSample, AnomalyAlert, AnomalySeverity};
+pub use marketplace::{
+    MarketplaceCategory, MarketplaceManifest, PublisherInfo,
+    DependencyGraph, DepNode,
+    trust::{PublisherKeyring, KeyVersion},
+    transparency::TransparencyLog,
+    local_registry::LocalRegistry,
+    remote_client::RegistryClient,
+};

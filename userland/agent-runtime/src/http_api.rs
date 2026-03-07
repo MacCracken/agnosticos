@@ -22,10 +22,19 @@ use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 use agnos_common::{
-    FsAccess, FilesystemRule, NetworkAccess, NetworkPolicy, SandboxConfig, SeccompAction,
+    AgentId, FsAccess, FilesystemRule, NetworkAccess, NetworkPolicy, SandboxConfig, SeccompAction,
     SeccompRule,
     audit::AuditChain,
+    telemetry::{SpanCollector, TraceContext},
 };
+
+use crate::ipc::RpcRegistry;
+use crate::learning::{AnomalyDetector, BehaviorSample};
+
+use crate::rag::{RagPipeline, RagConfig};
+use crate::knowledge_base::{KnowledgeBase, KnowledgeSource};
+#[allow(unused_imports)]
+use crate::file_watcher::FileWatcher;
 
 /// Default listen port for the agent registration API.
 pub const DEFAULT_PORT: u16 = 8090;
@@ -135,6 +144,40 @@ pub struct ErrorResponse {
     pub code: u16,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RagIngestRequest {
+    pub text: String,
+    #[serde(default)]
+    pub metadata: HashMap<String, String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RagQueryRequest {
+    pub query: String,
+    #[serde(default = "default_top_k")]
+    pub top_k: usize,
+}
+
+fn default_top_k() -> usize { 5 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KnowledgeSearchRequest {
+    pub query: String,
+    #[serde(default)]
+    pub source: Option<String>,
+    #[serde(default = "default_limit")]
+    pub limit: usize,
+}
+
+fn default_limit() -> usize { 10 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KnowledgeIndexRequest {
+    pub path: String,
+    #[serde(default)]
+    pub source: Option<String>,
+}
+
 // ---------------------------------------------------------------------------
 // Shared state
 // ---------------------------------------------------------------------------
@@ -200,6 +243,16 @@ pub struct ApiState {
     pub audit_chain: Arc<RwLock<AuditChain>>,
     pub memory_store: ApiMemoryStore,
     pub traces: Arc<RwLock<Vec<serde_json::Value>>>,
+    pub rag_pipeline: Arc<RwLock<RagPipeline>>,
+    pub knowledge_base: Arc<RwLock<KnowledgeBase>>,
+    /// Distributed tracing span collector (OpenTelemetry-like).
+    pub span_collector: Arc<SpanCollector>,
+    /// Agent-to-agent RPC method registry.
+    pub rpc_registry: Arc<RwLock<RpcRegistry>>,
+    /// Behavior anomaly detector for agent monitoring.
+    pub anomaly_detector: Arc<RwLock<AnomalyDetector>>,
+    /// Marketplace local registry for package management.
+    pub marketplace_registry: Arc<RwLock<crate::marketplace::local_registry::LocalRegistry>>,
     /// Optional Bearer token for API authentication.
     /// When `Some`, all endpoints except `GET /v1/health` require it.
     pub api_key: Option<String>,
@@ -216,6 +269,18 @@ impl std::fmt::Debug for ApiState {
 impl ApiState {
     pub fn new() -> Self {
         let api_key = std::env::var("AGNOS_RUNTIME_API_KEY").ok().filter(|k| !k.is_empty());
+        let marketplace_dir = std::env::var("AGNOS_MARKETPLACE_DIR")
+            .unwrap_or_else(|_| crate::marketplace::local_registry::DEFAULT_MARKETPLACE_DIR.to_string());
+        let marketplace_registry = crate::marketplace::local_registry::LocalRegistry::new(
+            std::path::Path::new(&marketplace_dir),
+        )
+        .unwrap_or_else(|_| {
+            // Fallback to temp dir if default path is not writable
+            crate::marketplace::local_registry::LocalRegistry::new(
+                &std::env::temp_dir().join("agnos-marketplace"),
+            )
+            .expect("Failed to create marketplace registry")
+        });
         Self {
             agents: Arc::new(RwLock::new(HashMap::new())),
             started_at: Utc::now(),
@@ -224,12 +289,22 @@ impl ApiState {
             audit_chain: Arc::new(RwLock::new(AuditChain::new())),
             memory_store: ApiMemoryStore::new(),
             traces: Arc::new(RwLock::new(Vec::new())),
+            rag_pipeline: Arc::new(RwLock::new(RagPipeline::new(RagConfig::default()))),
+            knowledge_base: Arc::new(RwLock::new(KnowledgeBase::new())),
+            span_collector: Arc::new(SpanCollector::new()),
+            rpc_registry: Arc::new(RwLock::new(RpcRegistry::new())),
+            anomaly_detector: Arc::new(RwLock::new(AnomalyDetector::new(100, 2.0))),
+            marketplace_registry: Arc::new(RwLock::new(marketplace_registry)),
             api_key,
         }
     }
 
     /// Create a new `ApiState` with an explicit API key (useful for testing).
     pub fn with_api_key(api_key: Option<String>) -> Self {
+        let tmp_marketplace = crate::marketplace::local_registry::LocalRegistry::new(
+            &std::env::temp_dir().join("agnos-marketplace-test"),
+        )
+        .expect("Failed to create test marketplace registry");
         Self {
             agents: Arc::new(RwLock::new(HashMap::new())),
             started_at: Utc::now(),
@@ -238,6 +313,12 @@ impl ApiState {
             audit_chain: Arc::new(RwLock::new(AuditChain::new())),
             memory_store: ApiMemoryStore::new(),
             traces: Arc::new(RwLock::new(Vec::new())),
+            rag_pipeline: Arc::new(RwLock::new(RagPipeline::new(RagConfig::default()))),
+            knowledge_base: Arc::new(RwLock::new(KnowledgeBase::new())),
+            span_collector: Arc::new(SpanCollector::new()),
+            rpc_registry: Arc::new(RwLock::new(RpcRegistry::new())),
+            anomaly_detector: Arc::new(RwLock::new(AnomalyDetector::new(100, 2.0))),
+            marketplace_registry: Arc::new(RwLock::new(tmp_marketplace)),
             api_key,
         }
     }
@@ -322,10 +403,15 @@ async fn check_llm_gateway() -> ComponentHealth {
     let gateway_url = std::env::var("AGNOS_GATEWAY_URL")
         .unwrap_or_else(|_| "http://127.0.0.1:8088".to_string());
 
-    match client
-        .get(format!("{}/v1/health", gateway_url))
-        .send()
-        .await
+    let trace_ctx = TraceContext::new_root("agent-runtime");
+    let trace_headers = trace_ctx.inject_headers();
+
+    let mut request_builder = client.get(format!("{}/v1/health", gateway_url));
+    for (key, value) in &trace_headers {
+        request_builder = request_builder.header(key.as_str(), value.as_str());
+    }
+
+    match request_builder.send().await
     {
         Ok(resp) if resp.status().is_success() => ComponentHealth {
             status: "ok".to_string(),
@@ -667,6 +753,542 @@ async fn auth_middleware(
 }
 
 // ---------------------------------------------------------------------------
+// RPC request/response types
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RpcRegisterRequest {
+    pub agent_id: String,
+    pub methods: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RpcCallRequest {
+    pub method: String,
+    pub params: serde_json::Value,
+    #[serde(default = "default_rpc_timeout")]
+    pub timeout_ms: u64,
+    #[serde(default)]
+    pub sender_id: Option<String>,
+}
+
+fn default_rpc_timeout() -> u64 { 5000 }
+
+// ---------------------------------------------------------------------------
+// RPC handlers
+// ---------------------------------------------------------------------------
+
+async fn rpc_list_methods_handler(
+    State(state): State<ApiState>,
+) -> impl IntoResponse {
+    let registry = state.rpc_registry.read().await;
+    let methods: Vec<_> = registry.all_methods()
+        .into_iter()
+        .map(|(method, agent_id)| serde_json::json!({
+            "method": method,
+            "handler_agent": agent_id.to_string(),
+        }))
+        .collect();
+    Json(serde_json::json!({
+        "methods": methods,
+    }))
+}
+
+async fn rpc_agent_methods_handler(
+    State(state): State<ApiState>,
+    Path(agent_id): Path<String>,
+) -> impl IntoResponse {
+    let parsed = match Uuid::parse_str(&agent_id) {
+        Ok(u) => AgentId(u),
+        Err(_) => {
+            return (StatusCode::BAD_REQUEST, Json(serde_json::json!({
+                "error": "invalid agent_id UUID",
+                "agent_id": agent_id,
+            }))).into_response();
+        }
+    };
+    let registry = state.rpc_registry.read().await;
+    Json(serde_json::json!({
+        "agent_id": agent_id,
+        "methods": registry.list_methods(&parsed),
+    })).into_response()
+}
+
+async fn rpc_register_handler(
+    State(state): State<ApiState>,
+    Json(req): Json<RpcRegisterRequest>,
+) -> impl IntoResponse {
+    let parsed = match Uuid::parse_str(&req.agent_id) {
+        Ok(u) => AgentId(u),
+        Err(_) => {
+            return (StatusCode::BAD_REQUEST, Json(serde_json::json!({
+                "error": "invalid agent_id UUID",
+                "agent_id": req.agent_id,
+            }))).into_response();
+        }
+    };
+    let mut registry = state.rpc_registry.write().await;
+    for method in &req.methods {
+        registry.register_method(parsed, method);
+    }
+    (StatusCode::OK, Json(serde_json::json!({
+        "status": "registered",
+        "agent_id": req.agent_id,
+        "methods": req.methods,
+    }))).into_response()
+}
+
+async fn rpc_call_handler(
+    State(state): State<ApiState>,
+    Json(req): Json<RpcCallRequest>,
+) -> impl IntoResponse {
+    let registry = state.rpc_registry.read().await;
+    match registry.find_handler(&req.method) {
+        Some(handler_id) => {
+            Json(serde_json::json!({
+                "status": "routed",
+                "method": req.method,
+                "handler_agent": handler_id.to_string(),
+                "message": "RPC call dispatched (async response pending)"
+            })).into_response()
+        }
+        None => {
+            (StatusCode::NOT_FOUND, Json(serde_json::json!({
+                "error": "method_not_found",
+                "method": req.method,
+            }))).into_response()
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Anomaly detection request/response types
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BehaviorSampleRequest {
+    pub agent_id: String,
+    pub syscall_count: u64,
+    pub network_bytes: u64,
+    pub file_ops: u64,
+    pub cpu_percent: f64,
+    pub memory_bytes: u64,
+}
+
+// ---------------------------------------------------------------------------
+// Anomaly detection handlers
+// ---------------------------------------------------------------------------
+
+async fn anomaly_submit_handler(
+    State(state): State<ApiState>,
+    Json(req): Json<BehaviorSampleRequest>,
+) -> impl IntoResponse {
+    let parsed = match Uuid::parse_str(&req.agent_id) {
+        Ok(u) => AgentId(u),
+        Err(_) => {
+            return (StatusCode::BAD_REQUEST, Json(serde_json::json!({
+                "error": "invalid agent_id UUID",
+                "agent_id": req.agent_id,
+            }))).into_response();
+        }
+    };
+    let sample = BehaviorSample {
+        timestamp: chrono::Utc::now(),
+        syscall_count: req.syscall_count,
+        network_bytes: req.network_bytes,
+        file_ops: req.file_ops,
+        cpu_percent: req.cpu_percent,
+        memory_bytes: req.memory_bytes,
+    };
+    let mut detector = state.anomaly_detector.write().await;
+    let alerts = detector.record_behavior(parsed, sample);
+
+    // Log alerts to audit buffer if any
+    if !alerts.is_empty() {
+        let mut audit = state.audit_buffer.write().await;
+        for alert in &alerts {
+            if audit.len() < MAX_AUDIT_BUFFER {
+                audit.push(AuditEvent {
+                    timestamp: chrono::Utc::now().to_rfc3339(),
+                    action: format!("anomaly_detected:{}", alert.metric),
+                    agent: Some(req.agent_id.clone()),
+                    details: serde_json::json!({
+                        "severity": format!("{:?}", alert.severity),
+                        "metric": alert.metric,
+                        "current_value": alert.current_value,
+                        "baseline_mean": alert.baseline_mean,
+                        "deviation_sigmas": alert.deviation_sigmas,
+                    }),
+                    outcome: "alert".to_string(),
+                });
+            }
+        }
+    }
+
+    Json(serde_json::json!({
+        "status": "recorded",
+        "agent_id": req.agent_id,
+        "alerts": alerts.iter().map(|a| serde_json::json!({
+            "metric": a.metric,
+            "severity": format!("{:?}", a.severity),
+            "current_value": a.current_value,
+            "baseline_mean": a.baseline_mean,
+            "deviation_sigmas": a.deviation_sigmas,
+        })).collect::<Vec<_>>(),
+    })).into_response()
+}
+
+async fn anomaly_alerts_handler(
+    State(state): State<ApiState>,
+) -> impl IntoResponse {
+    let detector = state.anomaly_detector.read().await;
+    let alerts = detector.active_alerts();
+    Json(serde_json::json!({
+        "alerts": alerts.iter().map(|a| serde_json::json!({
+            "agent_id": a.agent_id.to_string(),
+            "metric": a.metric,
+            "severity": format!("{:?}", a.severity),
+            "current_value": a.current_value,
+            "baseline_mean": a.baseline_mean,
+            "baseline_stddev": a.baseline_stddev,
+            "deviation_sigmas": a.deviation_sigmas,
+            "timestamp": a.timestamp.to_rfc3339(),
+        })).collect::<Vec<_>>(),
+        "total": alerts.len(),
+    }))
+}
+
+async fn anomaly_baseline_handler(
+    State(state): State<ApiState>,
+    Path(agent_id): Path<String>,
+) -> impl IntoResponse {
+    let parsed = match Uuid::parse_str(&agent_id) {
+        Ok(u) => AgentId(u),
+        Err(_) => {
+            return (StatusCode::BAD_REQUEST, Json(serde_json::json!({
+                "error": "invalid agent_id UUID",
+                "agent_id": agent_id,
+            }))).into_response();
+        }
+    };
+    let detector = state.anomaly_detector.read().await;
+    match detector.get_baseline(&parsed) {
+        Some(baseline) => Json(serde_json::json!({
+            "agent_id": agent_id,
+            "sample_count": baseline.sample_count(),
+            "has_baseline": baseline.sample_count() > 0,
+        })).into_response(),
+        None => (StatusCode::NOT_FOUND, Json(serde_json::json!({
+            "error": "no baseline for agent",
+            "agent_id": agent_id,
+        }))).into_response(),
+    }
+}
+
+async fn anomaly_clear_handler(
+    State(state): State<ApiState>,
+    Path(agent_id): Path<String>,
+) -> impl IntoResponse {
+    let parsed = match Uuid::parse_str(&agent_id) {
+        Ok(u) => AgentId(u),
+        Err(_) => {
+            return (StatusCode::BAD_REQUEST, Json(serde_json::json!({
+                "error": "invalid agent_id UUID",
+                "agent_id": agent_id,
+            }))).into_response();
+        }
+    };
+    let mut detector = state.anomaly_detector.write().await;
+    detector.clear_alerts(&parsed);
+    Json(serde_json::json!({
+        "status": "cleared",
+        "agent_id": agent_id,
+    })).into_response()
+}
+
+// ---------------------------------------------------------------------------
+// RAG & Knowledge Base handlers
+// ---------------------------------------------------------------------------
+
+async fn rag_ingest_handler(
+    State(state): State<ApiState>,
+    Json(req): Json<RagIngestRequest>,
+) -> impl IntoResponse {
+    let metadata = serde_json::to_value(&req.metadata).unwrap_or_default();
+    let mut pipeline = state.rag_pipeline.write().await;
+    match pipeline.ingest_text(&req.text, metadata) {
+        Ok(ids) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "status": "ingested",
+                "chunks": ids.len()
+            })),
+        ).into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": e.to_string()})),
+        ).into_response(),
+    }
+}
+
+async fn rag_query_handler(
+    State(state): State<ApiState>,
+    Json(req): Json<RagQueryRequest>,
+) -> impl IntoResponse {
+    let pipeline = state.rag_pipeline.read().await;
+    let context = pipeline.query_text(&req.query);
+    Json(serde_json::json!({
+        "query": req.query,
+        "chunks": context.chunks.iter().map(|c| serde_json::json!({
+            "content": c.content,
+            "score": c.score,
+            "metadata": c.metadata,
+        })).collect::<Vec<_>>(),
+        "formatted_context": context.formatted_context,
+        "token_estimate": context.total_tokens_estimate,
+    }))
+}
+
+async fn rag_stats_handler(
+    State(state): State<ApiState>,
+) -> impl IntoResponse {
+    let pipeline = state.rag_pipeline.read().await;
+    Json(serde_json::json!({
+        "index_size": pipeline.index.len(),
+        "config": {
+            "top_k": pipeline.config.top_k,
+            "chunk_size": pipeline.config.chunk_size,
+            "overlap": pipeline.config.overlap,
+            "min_relevance_score": pipeline.config.min_relevance_score,
+        }
+    }))
+}
+
+async fn knowledge_search_handler(
+    State(state): State<ApiState>,
+    Json(req): Json<KnowledgeSearchRequest>,
+) -> impl IntoResponse {
+    let kb = state.knowledge_base.read().await;
+    let results = if let Some(ref src) = req.source {
+        let source = match src.as_str() {
+            "manpage" => KnowledgeSource::ManPage,
+            "manifest" => KnowledgeSource::AgentManifest,
+            "audit" => KnowledgeSource::AuditLog,
+            "config" => KnowledgeSource::ConfigFile,
+            other => KnowledgeSource::Custom(other.to_string()),
+        };
+        kb.search_by_source(&source, req.limit)
+            .into_iter()
+            .map(|entry| crate::knowledge_base::KnowledgeResult {
+                relevance_score: 1.0,
+                entry,
+            })
+            .collect::<Vec<_>>()
+    } else {
+        kb.search(&req.query, req.limit)
+    };
+    Json(serde_json::json!({
+        "query": req.query,
+        "results": results.iter().map(|r| serde_json::json!({
+            "id": r.entry.id.to_string(),
+            "source": format!("{:?}", r.entry.source),
+            "path": r.entry.path,
+            "relevance": r.relevance_score,
+            "content_preview": &r.entry.content[..r.entry.content.len().min(200)],
+        })).collect::<Vec<_>>(),
+        "total": results.len(),
+    }))
+}
+
+async fn knowledge_stats_handler(
+    State(state): State<ApiState>,
+) -> impl IntoResponse {
+    let kb = state.knowledge_base.read().await;
+    let stats = kb.stats();
+    Json(serde_json::json!({
+        "total_entries": stats.total_entries,
+        "total_bytes": stats.total_bytes,
+        "by_source": stats.entries_by_source,
+    }))
+}
+
+async fn knowledge_index_handler(
+    State(state): State<ApiState>,
+    Json(req): Json<KnowledgeIndexRequest>,
+) -> impl IntoResponse {
+    let source = match req.source.as_deref() {
+        Some("manpage") => KnowledgeSource::ManPage,
+        Some("manifest") => KnowledgeSource::AgentManifest,
+        Some("audit") => KnowledgeSource::AuditLog,
+        Some("config") => KnowledgeSource::ConfigFile,
+        Some(other) => KnowledgeSource::Custom(other.to_string()),
+        None => KnowledgeSource::ConfigFile,
+    };
+    let mut kb = state.knowledge_base.write().await;
+    match kb.index_directory(std::path::Path::new(&req.path), source) {
+        Ok(count) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "status": "indexed",
+                "path": req.path,
+                "entries_added": count,
+            })),
+        ).into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": e.to_string()})),
+        ).into_response(),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Marketplace handlers
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize)]
+pub struct MarketplaceSearchQuery {
+    #[serde(default)]
+    pub q: String,
+}
+
+async fn marketplace_installed_handler(
+    State(state): State<ApiState>,
+) -> impl IntoResponse {
+    let registry = state.marketplace_registry.read().await;
+    let packages: Vec<serde_json::Value> = registry
+        .list_installed()
+        .iter()
+        .map(|p| {
+            serde_json::json!({
+                "name": p.name(),
+                "version": p.version(),
+                "publisher": p.publisher(),
+                "category": format!("{}", p.manifest.category),
+                "installed_at": p.installed_at.to_rfc3339(),
+                "installed_size": p.installed_size,
+            })
+        })
+        .collect();
+    Json(serde_json::json!({
+        "packages": packages,
+        "total": packages.len(),
+    }))
+}
+
+async fn marketplace_search_handler(
+    State(state): State<ApiState>,
+    Query(params): Query<MarketplaceSearchQuery>,
+) -> impl IntoResponse {
+    let registry = state.marketplace_registry.read().await;
+    let results: Vec<serde_json::Value> = registry
+        .search(&params.q)
+        .iter()
+        .map(|p| {
+            serde_json::json!({
+                "name": p.name(),
+                "version": p.version(),
+                "publisher": p.publisher(),
+                "description": p.manifest.agent.description,
+                "category": format!("{}", p.manifest.category),
+            })
+        })
+        .collect();
+    Json(serde_json::json!({
+        "results": results,
+        "total": results.len(),
+        "query": params.q,
+    }))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MarketplaceInstallRequest {
+    pub path: String,
+}
+
+async fn marketplace_install_handler(
+    State(state): State<ApiState>,
+    Json(req): Json<MarketplaceInstallRequest>,
+) -> impl IntoResponse {
+    let mut registry = state.marketplace_registry.write().await;
+    let path = std::path::Path::new(&req.path);
+
+    match registry.install_package(path) {
+        Ok(result) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "status": "installed",
+                "name": result.name,
+                "version": result.version,
+                "install_dir": result.install_dir.to_string_lossy(),
+                "upgraded_from": result.upgraded_from,
+            })),
+        )
+            .into_response(),
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": e.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn marketplace_uninstall_handler(
+    State(state): State<ApiState>,
+    Path(name): Path<String>,
+) -> impl IntoResponse {
+    let mut registry = state.marketplace_registry.write().await;
+    match registry.uninstall_package(&name) {
+        Ok(result) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "status": "uninstalled",
+                "name": result.name,
+                "version": result.version,
+                "files_removed": result.files_removed,
+            })),
+        )
+            .into_response(),
+        Err(e) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": e.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn marketplace_info_handler(
+    State(state): State<ApiState>,
+    Path(name): Path<String>,
+) -> impl IntoResponse {
+    let registry = state.marketplace_registry.read().await;
+    match registry.get_package(&name) {
+        Some(pkg) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "name": pkg.name(),
+                "version": pkg.version(),
+                "publisher": pkg.publisher(),
+                "description": pkg.manifest.agent.description,
+                "category": format!("{}", pkg.manifest.category),
+                "runtime": pkg.manifest.runtime,
+                "installed_at": pkg.installed_at.to_rfc3339(),
+                "installed_size": pkg.installed_size,
+                "auto_update": pkg.auto_update,
+                "package_hash": pkg.package_hash,
+                "tags": pkg.manifest.tags,
+                "dependencies": pkg.manifest.dependencies,
+            })),
+        )
+            .into_response(),
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": format!("Package '{}' not found", name)})),
+        )
+            .into_response(),
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Router & server
 // ---------------------------------------------------------------------------
 
@@ -694,11 +1316,36 @@ pub fn build_router(state: ApiState) -> Router {
         .route("/v1/agents/:id/memory/:key", delete(memory_delete_handler))
         .route("/v1/traces", post(submit_trace_handler))
         .route("/v1/traces", get(list_traces_handler))
+        .route("/v1/traces/spans", get(list_spans_handler))
         .route("/v1/mcp/tools", get(crate::mcp_server::mcp_tools_handler))
         .route("/v1/mcp/tools/call", post(crate::mcp_server::mcp_tool_call_handler))
         .route("/v1/sandbox/profiles", post(translate_sandbox_profile_handler))
         .route("/v1/sandbox/profiles/default", get(default_sandbox_profile_handler))
         .route("/v1/sandbox/profiles/validate", post(validate_sandbox_profile_handler))
+        // Agent-to-agent RPC routes
+        .route("/v1/rpc/methods", get(rpc_list_methods_handler))
+        .route("/v1/rpc/methods/:agent_id", get(rpc_agent_methods_handler))
+        .route("/v1/rpc/register", post(rpc_register_handler))
+        .route("/v1/rpc/call", post(rpc_call_handler))
+        // Behavior anomaly detection routes
+        .route("/v1/anomaly/sample", post(anomaly_submit_handler))
+        .route("/v1/anomaly/alerts", get(anomaly_alerts_handler))
+        .route("/v1/anomaly/baseline/:agent_id", get(anomaly_baseline_handler))
+        .route("/v1/anomaly/alerts/:agent_id", delete(anomaly_clear_handler))
+        // RAG pipeline routes
+        .route("/v1/rag/ingest", post(rag_ingest_handler))
+        .route("/v1/rag/query", post(rag_query_handler))
+        .route("/v1/rag/stats", get(rag_stats_handler))
+        // Knowledge base routes
+        .route("/v1/knowledge/search", post(knowledge_search_handler))
+        .route("/v1/knowledge/stats", get(knowledge_stats_handler))
+        .route("/v1/knowledge/index", post(knowledge_index_handler))
+        // Marketplace routes
+        .route("/v1/marketplace/installed", get(marketplace_installed_handler))
+        .route("/v1/marketplace/search", get(marketplace_search_handler))
+        .route("/v1/marketplace/install", post(marketplace_install_handler))
+        .route("/v1/marketplace/:name", get(marketplace_info_handler))
+        .route("/v1/marketplace/:name", delete(marketplace_uninstall_handler))
         .layer(middleware::from_fn_with_state(state.clone(), auth_middleware))
         .with_state(state)
 }
@@ -1175,6 +1822,16 @@ async fn list_traces_handler(
     }
 
     Json(serde_json::json!({"traces": result, "total": result.len()}))
+}
+
+async fn list_spans_handler(
+    State(state): State<ApiState>,
+) -> impl IntoResponse {
+    let json = state.span_collector.export_json();
+    Json(serde_json::json!({
+        "spans": json,
+        "format": "otlp-like"
+    }))
 }
 
 // ===========================================================================

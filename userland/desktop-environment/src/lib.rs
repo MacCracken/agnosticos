@@ -45,3 +45,8 @@ pub use security_ui::{
     AgentPermission, OverrideRequest, PermissionCategory, PermissionDefinition, PermissionRequest,
     SecurityAlert, SecurityDashboard, SecurityLevel, SecurityUI, SecurityUIError, ThreatLevel,
 };
+
+pub use accessibility::{
+    AccessibilityTree, AccessibleNode, AccessibilityRole, AccessibilityState,
+    HighContrastTheme, KeyboardNavConfig, AccessibleAction,
+};

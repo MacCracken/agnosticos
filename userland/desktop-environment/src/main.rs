@@ -17,6 +17,7 @@ mod ai_features;
 mod apps;
 mod security_ui;
 mod wayland;
+mod accessibility;
 
 use compositor::{Compositor, WindowState, ContextType};
 use shell::{DesktopShell, Notification, NotificationPriority};
@@ -45,6 +46,14 @@ struct Args {
     #[arg(short, long)]
     #[arg(help = "Enable secure mode")]
     secure: bool,
+
+    #[arg(long)]
+    #[arg(help = "Enable accessibility features")]
+    accessibility: bool,
+
+    #[arg(long)]
+    #[arg(help = "Enable high-contrast theme (dark)")]
+    high_contrast: bool,
 }
 
 struct DesktopEnvironment {
@@ -74,6 +83,17 @@ impl DesktopEnvironment {
 
         if !args.no_ai {
             info!("AI features enabled");
+        }
+
+        if args.accessibility {
+            info!("Accessibility features enabled");
+            compositor.announce("AGNOS Desktop Environment started. Accessibility mode active.");
+        }
+
+        if args.high_contrast {
+            info!("High contrast theme enabled");
+            let theme = crate::accessibility::HighContrastTheme::default_dark_high_contrast();
+            compositor.set_high_contrast_theme(Some(theme));
         }
 
         Self {
@@ -289,12 +309,16 @@ mod tests {
             kiosk: false,
             no_ai: false,
             secure: false,
+            accessibility: false,
+            high_contrast: false,
         };
-        
+
         assert_eq!(args.backend, "wayland");
         assert!(!args.kiosk);
         assert!(!args.no_ai);
         assert!(!args.secure);
+        assert!(!args.accessibility);
+        assert!(!args.high_contrast);
     }
 
     #[test]
@@ -304,12 +328,16 @@ mod tests {
             kiosk: true,
             no_ai: true,
             secure: true,
+            accessibility: true,
+            high_contrast: true,
         };
-        
+
         assert_eq!(args.backend, "x11");
         assert!(args.kiosk);
         assert!(args.no_ai);
         assert!(args.secure);
+        assert!(args.accessibility);
+        assert!(args.high_contrast);
     }
 
     #[test]
@@ -485,6 +513,8 @@ mod tests {
             kiosk: false,
             no_ai: false,
             secure: false,
+            accessibility: false,
+            high_contrast: false,
         }
     }
 
@@ -503,6 +533,8 @@ mod tests {
             kiosk: false,
             no_ai: false,
             secure: true,
+            accessibility: false,
+            high_contrast: false,
         };
         let de = DesktopEnvironment::new(&args).await;
         // Secure mode sets compositor secure mode and elevated security level
@@ -518,6 +550,8 @@ mod tests {
             kiosk: true,
             no_ai: true,
             secure: false,
+            accessibility: false,
+            high_contrast: false,
         };
         let de = DesktopEnvironment::new(&args).await;
         let running = *de.running.lock().await;

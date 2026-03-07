@@ -4,6 +4,7 @@
 //! understanding and command generation.
 
 use anyhow::{Context, Result};
+use agnos_common::telemetry::TraceContext;
 use tracing::{debug, warn};
 
 /// Default LLM Gateway endpoint
@@ -40,9 +41,17 @@ impl LlmClient {
             "temperature": 0.3
         });
 
-        let resp = self.client
+        let trace_ctx = TraceContext::new_root("ai-shell");
+        let trace_headers = trace_ctx.inject_headers();
+
+        let mut request_builder = self.client
             .post(&url)
-            .json(&body)
+            .json(&body);
+        for (key, value) in &trace_headers {
+            request_builder = request_builder.header(key.as_str(), value.as_str());
+        }
+
+        let resp = request_builder
             .send()
             .await
             .context("Failed to connect to LLM Gateway")?;

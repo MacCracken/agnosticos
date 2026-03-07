@@ -31,6 +31,10 @@ nix = { version = "0.27", features = ["process", "signal"] }
 toml = "0.8"
 libc = "0.2"
 sha2 = "0.10"
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+flate2 = "1"
+tar = "0.4"
+rand = "0.8"
 axum = { workspace = true }
 tower = { workspace = true }
 tower-http = { workspace = true }
@@ -46,7 +50,7 @@ wasm = ["wasmtime", "wasmtime-wasi"]
 
 [dev-dependencies]
 tokio-test = "0.4"
-criterion = "0.5"
+criterion = { version = "0.5", features = ["html_reports"] }
 tempfile = "3"
 
 [[bench]]
@@ -55,4 +59,8 @@ harness = false
 
 [[bench]]
 name = "system_bench"
+harness = false
+
+[[bench]]
+name = "runtime_benchmarks"
 harness = false

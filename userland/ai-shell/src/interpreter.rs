@@ -125,6 +125,25 @@ pub enum Intent {
         /// Action: check, apply, rollback, status
         action: String,
     },
+    /// Search the knowledge base
+    KnowledgeSearch {
+        query: String,
+        source: Option<String>,
+    },
+    /// Query RAG pipeline for context-augmented answers
+    RagQuery {
+        query: String,
+    },
+    /// Install a marketplace package
+    MarketplaceInstall { package: String },
+    /// Uninstall a marketplace package
+    MarketplaceUninstall { package: String },
+    /// Search the marketplace
+    MarketplaceSearch { query: String },
+    /// List installed marketplace packages
+    MarketplaceList,
+    /// Update marketplace packages
+    MarketplaceUpdate,
     /// Piped command chain (cmd1 | cmd2)
     Pipeline { commands: Vec<String> },
     /// Question/Information request
@@ -189,6 +208,13 @@ static PATTERNS: Lazy<HashMap<String, Regex>> = Lazy::new(|| {
     r("boot_set", r"(?i)^set\s+(default\s+)?boot\s+(entry|default|timeout)\s+(to\s+)?(.+)$");
     r("update", r"(?i)^(check\s+for\s+updates?|apply\s+(system\s+)?updates?|rollback\s+(system\s+)?updates?|update\s+status|show\s+(current\s+)?version|system\s+update\s+(check|apply|rollback|status))$");
     r("question", r"(?i)^(what|who|when|where|why|how|is|are|can|do|does)\s+.+\??$");
+    r("knowledge", r"(?i)^(search|find|look\s+up)\s+(in\s+)?(knowledge|kb|docs|documentation)\s+(for\s+)?(.+)$");
+    r("rag_query", r"(?i)^(rag|retrieve|context)\s+(query|search|find|for)\s+(.+)$");
+    r("marketplace_install", r"(?i)^(install|add)\s+(package|agent|app)\s+(.+)$");
+    r("marketplace_uninstall", r"(?i)^(uninstall|remove)\s+(package|agent|app)\s+(.+)$");
+    r("marketplace_search", r"(?i)^(search|find|browse)\s+(marketplace|market|store|packages|agents)\s+(for\s+)?(.+)$");
+    r("marketplace_list", r"(?i)^(list|show)\s+(installed\s+)?(packages|marketplace|agents|apps)$");
+    r("marketplace_update", r"(?i)^(update|upgrade)\s+(packages|agents|all)$");
     p
 });
 
@@ -560,6 +586,49 @@ impl Interpreter {
 
         if self.try_captures("sysinfo", &input_lower).is_some() {
             return Intent::SystemInfo;
+        }
+
+        if let Some(caps) = self.try_captures("marketplace_install", &input_lower) {
+            let package = caps.get(3).map_or("", |m| m.as_str()).trim().to_string();
+            if !package.is_empty() {
+                return Intent::MarketplaceInstall { package };
+            }
+        }
+
+        if let Some(caps) = self.try_captures("marketplace_uninstall", &input_lower) {
+            let package = caps.get(3).map_or("", |m| m.as_str()).trim().to_string();
+            if !package.is_empty() {
+                return Intent::MarketplaceUninstall { package };
+            }
+        }
+
+        if let Some(caps) = self.try_captures("marketplace_search", &input_lower) {
+            let query = caps.get(4).map_or("", |m| m.as_str()).trim().to_string();
+            if !query.is_empty() {
+                return Intent::MarketplaceSearch { query };
+            }
+        }
+
+        if self.try_captures("marketplace_list", &input_lower).is_some() {
+            return Intent::MarketplaceList;
+        }
+
+        if self.try_captures("marketplace_update", &input_lower).is_some() {
+            return Intent::MarketplaceUpdate;
+        }
+
+        if let Some(caps) = self.try_captures("knowledge", &input_lower) {
+            let query = caps.get(5).map_or("", |m| m.as_str()).trim().to_string();
+            if !query.is_empty() {
+                return Intent::KnowledgeSearch { query, source: None };
+            }
+        }
+
+        if let Some(caps) = self.try_captures("rag_query", &input_lower) {
+            let query = caps.get(3).map_or("", |m| m.as_str()).trim().to_string();
+            if !query.is_empty() {
+                return Intent::RagQuery { query };
+            }
         }
 
         if self.patterns.get("question").is_some_and(|p| p.is_match(&input_lower)) {
@@ -1229,6 +1298,104 @@ impl Interpreter {
                     description: desc.clone(),
                     permission,
                     explanation: desc,
+                })
+            }
+
+            Intent::KnowledgeSearch { query, source } => {
+                let _source_flag = source.as_ref().map(|s| format!(" --source {}", s)).unwrap_or_default();
+                Ok(Translation {
+                    command: "curl".to_string(),
+                    args: vec![
+                        "-s".to_string(), "-X".to_string(), "POST".to_string(),
+                        "http://127.0.0.1:8090/v1/knowledge/search".to_string(),
+                        "-H".to_string(), "Content-Type: application/json".to_string(),
+                        "-d".to_string(), format!(r#"{{"query":"{}","limit":10}}"#, query),
+                    ],
+                    description: format!("Search knowledge base for: {}", query),
+                    permission: PermissionLevel::Safe,
+                    explanation: "Searches the local knowledge base index".to_string(),
+                })
+            }
+
+            Intent::RagQuery { query } => {
+                Ok(Translation {
+                    command: "curl".to_string(),
+                    args: vec![
+                        "-s".to_string(), "-X".to_string(), "POST".to_string(),
+                        "http://127.0.0.1:8090/v1/rag/query".to_string(),
+                        "-H".to_string(), "Content-Type: application/json".to_string(),
+                        "-d".to_string(), format!(r#"{{"query":"{}","top_k":5}}"#, query),
+                    ],
+                    description: format!("RAG query: {}", query),
+                    permission: PermissionLevel::Safe,
+                    explanation: "Retrieves context-augmented results from the RAG pipeline".to_string(),
+                })
+            }
+
+            Intent::MarketplaceInstall { package } => {
+                Ok(Translation {
+                    command: "curl".to_string(),
+                    args: vec![
+                        "-s".to_string(), "-X".to_string(), "POST".to_string(),
+                        "http://127.0.0.1:8090/v1/marketplace/install".to_string(),
+                        "-H".to_string(), "Content-Type: application/json".to_string(),
+                        "-d".to_string(), format!(r#"{{"path":"{}"}}"#, package),
+                    ],
+                    description: format!("Install marketplace package: {}", package),
+                    permission: PermissionLevel::SystemWrite,
+                    explanation: "Installs a package from the marketplace".to_string(),
+                })
+            }
+
+            Intent::MarketplaceUninstall { package } => {
+                Ok(Translation {
+                    command: "curl".to_string(),
+                    args: vec![
+                        "-s".to_string(), "-X".to_string(), "DELETE".to_string(),
+                        format!("http://127.0.0.1:8090/v1/marketplace/{}", package),
+                    ],
+                    description: format!("Uninstall marketplace package: {}", package),
+                    permission: PermissionLevel::SystemWrite,
+                    explanation: "Removes an installed marketplace package".to_string(),
+                })
+            }
+
+            Intent::MarketplaceSearch { query } => {
+                Ok(Translation {
+                    command: "curl".to_string(),
+                    args: vec![
+                        "-s".to_string(),
+                        format!("http://127.0.0.1:8090/v1/marketplace/search?q={}", query),
+                    ],
+                    description: format!("Search marketplace for: {}", query),
+                    permission: PermissionLevel::Safe,
+                    explanation: "Searches installed marketplace packages".to_string(),
+                })
+            }
+
+            Intent::MarketplaceList => {
+                Ok(Translation {
+                    command: "curl".to_string(),
+                    args: vec![
+                        "-s".to_string(),
+                        "http://127.0.0.1:8090/v1/marketplace/installed".to_string(),
+                    ],
+                    description: "List installed marketplace packages".to_string(),
+                    permission: PermissionLevel::Safe,
+                    explanation: "Shows all packages installed from the marketplace".to_string(),
+                })
+            }
+
+            Intent::MarketplaceUpdate => {
+                Ok(Translation {
+                    command: "curl".to_string(),
+                    args: vec![
+                        "-s".to_string(),
+                        "http://127.0.0.1:8090/v1/marketplace/installed".to_string(),
+                    ],
+                    description: "Check for marketplace package updates".to_string(),
+                    permission: PermissionLevel::Safe,
+                    explanation: "Checks for available updates to installed packages".to_string(),
                 })
             }
 

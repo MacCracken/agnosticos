@@ -28,6 +28,21 @@ pub mod service_manager;
 pub mod supervisor;
 pub mod wasm_runtime;
 pub mod mcp_server;
+pub mod network_tools;
+pub mod tool_analysis;
+pub mod swarm;
+pub mod learning;
+pub mod memory_store;
+pub mod multimodal;
+pub mod vector_store;
+pub mod rag;
+pub mod knowledge_base;
+pub mod file_watcher;
+pub mod capability;
+pub mod resource_forecast;
+pub mod mtls;
+pub mod integrity;
+pub mod marketplace;
 
 use crate::agent::Agent;
 use crate::orchestrator::Orchestrator;
@@ -232,6 +247,13 @@ async fn run_daemon(cli: Cli) -> Result<()> {
     };
 
     info!("Agent runtime daemon started successfully");
+
+    // Start the HTTP API server in the background
+    tokio::spawn(async move {
+        if let Err(e) = crate::http_api::start_server(crate::http_api::DEFAULT_PORT).await {
+            error!("HTTP API server error: {}", e);
+        }
+    });
 
     let (_shutdown_tx, mut shutdown_rx) = mpsc::channel::<()>(1);
 

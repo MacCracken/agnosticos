@@ -19,7 +19,7 @@ pub use agent::{AgentEvent, AgentInfo, AgentStats, StopReason};
 pub use error::{AgnosError, Result};
 pub use llm::*;
 pub use security::{Capability, SecurityContext, SecurityPolicy, PolicyEffect};
-pub use telemetry::{TelemetryConfig, TelemetryCollector, CrashReport, EventType};
+pub use telemetry::{TelemetryConfig, TelemetryCollector, CrashReport, EventType, TraceContext, SpanCollector, Span, SpanStatus, TraceId, SpanId};
 pub use types::*;
 
 // Re-export commonly used crates

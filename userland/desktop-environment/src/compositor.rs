@@ -8,6 +8,7 @@ use crate::renderer::{
     self, DecorationHit, DesktopRenderer, Layer, ResizeEdge, SceneGraph, SceneSurface,
     TITLEBAR_HEIGHT,
 };
+use crate::accessibility::{AccessibilityTree, AccessibleNode, AccessibilityRole, AccessibilityState, HighContrastTheme};
 
 #[derive(Debug, Error)]
 pub enum CompositorError {
@@ -122,6 +123,8 @@ pub struct Compositor {
     drag_state: Arc<RwLock<Option<(SurfaceId, i32, i32)>>>,
     /// Window being resized: (id, edge, original_rect)
     resize_state: Arc<RwLock<Option<(SurfaceId, ResizeEdge, Rectangle)>>>,
+    /// Accessibility tree for AT-SPI2 and keyboard navigation.
+    accessibility_tree: Arc<RwLock<AccessibilityTree>>,
 }
 
 impl Default for Compositor {
@@ -164,6 +167,7 @@ impl Compositor {
             focused_window: Arc::new(RwLock::new(None)),
             drag_state: Arc::new(RwLock::new(None)),
             resize_state: Arc::new(RwLock::new(None)),
+            accessibility_tree: Arc::new(RwLock::new(AccessibilityTree::new())),
         }
     }
 
@@ -219,6 +223,27 @@ impl Compositor {
         // Focus the new window
         *self.focused_window.write().unwrap() = Some(id);
 
+        // Create accessibility node for the new window
+        {
+            let mut tree = self.accessibility_tree.write().unwrap();
+            let node = AccessibleNode {
+                id,
+                role: AccessibilityRole::Window,
+                name: title.clone(),
+                state: AccessibilityState::default(),
+                children: Vec::new(),
+                parent: None,
+                bounds: geometry,
+                actions: vec![
+                    crate::accessibility::AccessibleAction::Focus,
+                    crate::accessibility::AccessibleAction::Click,
+                    crate::accessibility::AccessibleAction::Dismiss,
+                ],
+            };
+            tree.add_node(node);
+            tree.announce(&format!("Window opened: {}", title));
+        }
+
         Ok(id)
     }
 
@@ -237,6 +262,7 @@ impl Compositor {
             return Err(CompositorError::WindowNotFound(id));
         }
 
+        let window_title = windows.get(&id).map(|w| w.title.clone()).unwrap_or_default();
         windows.remove(&id);
 
         let active_ws = *self.active_workspace.read().unwrap();
@@ -261,6 +287,14 @@ impl Compositor {
         }
 
         info!("Closed window {}", id);
+
+        // Remove accessibility node
+        {
+            let mut tree = self.accessibility_tree.write().unwrap();
+            tree.remove_node(&id);
+            tree.announce(&format!("Window closed: {}", window_title));
+        }
+
         Ok(())
     }
 
@@ -664,11 +698,58 @@ impl Compositor {
         drop(scene);
 
         *self.focused_window.write().unwrap() = Some(id);
+
+        // Sync accessibility focus
+        {
+            let mut tree = self.accessibility_tree.write().unwrap();
+            let _ = tree.set_focus(&id);
+        }
     }
 
     /// Get the currently focused window.
     pub fn focused_window(&self) -> Option<SurfaceId> {
         *self.focused_window.read().unwrap()
+    }
+
+    /// Navigate accessibility tree forward or backward and focus the corresponding window.
+    pub fn navigate_accessibility(&self, forward: bool) -> Option<SurfaceId> {
+        let mut tree = self.accessibility_tree.write().unwrap();
+        let node_id = if forward {
+            tree.navigate_next().map(|n| n.id)
+        } else {
+            tree.navigate_prev().map(|n| n.id)
+        };
+
+        if let Some(nid) = node_id {
+            // Focus the window corresponding to this node
+            *self.focused_window.write().unwrap() = Some(nid);
+            // Update workspace active window
+            let ws_idx = *self.active_workspace.read().unwrap();
+            let mut workspaces = self.workspaces.write().unwrap();
+            if let Some(ws) = workspaces.get_mut(ws_idx) {
+                ws.active_window = Some(nid);
+            }
+            Some(nid)
+        } else {
+            None
+        }
+    }
+
+    /// Get a reference to the accessibility tree.
+    pub fn accessibility_tree(&self) -> &Arc<RwLock<AccessibilityTree>> {
+        &self.accessibility_tree
+    }
+
+    /// Queue a screen-reader announcement.
+    pub fn announce(&self, message: &str) {
+        let mut tree = self.accessibility_tree.write().unwrap();
+        tree.announce(message);
+    }
+
+    /// Set or clear the high-contrast theme on the renderer.
+    pub fn set_high_contrast_theme(&self, theme: Option<HighContrastTheme>) {
+        let mut renderer = self.renderer.write().unwrap();
+        renderer.high_contrast = theme;
     }
 
     /// Render a frame. Access the result via `with_front_buffer()` to avoid copying.

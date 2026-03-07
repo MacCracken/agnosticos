@@ -337,8 +337,10 @@ Publish runtime-specific base images for consumer projects (SecureYeoman, AGNOST
 
 Blockers before migration:
 - [ ] **Alpha release** — third-party security audit must complete
-- [ ] **Node.js runtime layer** — publish `agnos:node20` variant
-- [ ] **Python runtime layer** — publish `agnos:python3.12` variant
+- [ ] **Node.js 20 runtime layer** — publish `agnos:node20` variant (exists as `docker/Dockerfile.node`)
+- [ ] **Node.js 22 runtime layer** — publish `agnos:node22` variant for SecureYeoman (currently on `node:22-slim`)
+- [ ] **Python runtime layer** — publish `agnos:python3.12` variant (exists as `docker/Dockerfile.python`)
+- [ ] **Rust runtime layer** — publish `agnos:rust` variant for BullShift (currently on `debian:bookworm-slim`)
 
 ### Phase 6.7: Alpha Polish — Core Experience Gaps (Complete) — [ADR-008](../adr/adr-008-phase67-alpha-polish.md)
 
@@ -441,7 +443,7 @@ All 34 items implemented. Features that make AGNOS meaningfully better than runn
 
 #### Cross-Project Integration
 
-AGNOS-side infrastructure that consumer projects (AGNOSTIC, SecureYeoman) connect to.
+AGNOS-side infrastructure that consumer projects (AGNOSTIC, SecureYeoman, BullShift) connect to.
 
 | Item | Component | Effort | Priority | Description |
 |------|-----------|--------|----------|-------------|
@@ -528,18 +530,22 @@ AGNOS-side infrastructure that consumer projects (AGNOSTIC, SecureYeoman) connec
 
 ### Beta Release - Q3 2026
 
-**Criteria:**
-- Community testing program
-- Bug fixes from alpha feedback
-- Performance optimized based on benchmarks
-- Update system operational and tested
-- Support channels open (Discord, forum)
-- Video tutorials published
-- RAG pipeline operational (embedded vector store + retrieval)
-- OpenTelemetry integration live
-- Accessibility foundation in desktop
-- Agent-to-agent RPC
-- Behavior anomaly detection
+**Completed (wired in 2026.3.6):**
+- [x] RAG pipeline operational — 6 HTTP endpoints (`/v1/rag/*`, `/v1/knowledge/*`), shell intents, file watcher background task
+- [x] OpenTelemetry integration live — SpanCollector initialized, W3C traceparent injection/extraction in HTTP calls, `/v1/traces/spans` export
+- [x] Accessibility foundation in desktop — AccessibilityTree wired to compositor (window create/close/focus sync, Tab navigation, announcements), `--accessibility` and `--high-contrast` CLI flags, HighContrastTheme in renderer
+- [x] Agent-to-agent RPC — RpcRegistry + RpcRouter in ApiState, 4 HTTP endpoints (`/v1/rpc/*`), method discovery and invocation
+- [x] Behavior anomaly detection — AnomalyDetector in ApiState, 4 HTTP endpoints (`/v1/anomaly/*`), audit log integration for alerts
+- [x] Performance benchmarks — criterion benchmark suites for agent-runtime (vector search, RAG, RPC, anomaly), llm-gateway (metrics, acceleration), desktop-environment (renderer, scene graph, framebuffer)
+- [x] HTTP API server startup — `run_daemon()` now spawns the HTTP API server on port 8090
+
+**Remaining:**
+- [ ] Community testing program
+- [ ] Bug fixes from alpha feedback
+- [ ] Performance optimized based on benchmarks
+- [ ] Update system operational and tested
+- [ ] Support channels open (Discord, forum)
+- [ ] Video tutorials published
 
 **Target Date**: Mid-Q3 2026
 
@@ -552,21 +558,127 @@ AGNOS-side infrastructure that consumer projects (AGNOSTIC, SecureYeoman) connec
 - Commercial support available
 - Migration guides published
 - Full observability stack (Prometheus, tracing, dashboards)
-- Agent marketplace MVP
+- Agent marketplace MVP (ADR-015)
 - Secrets rotation automation
 - Scheduled agent tasks
+- Flutter runtime support (Wayland backend)
+- Photis Nadi desktop integration (see below)
+
+### Photis Nadi Desktop Support — v1.0+
+
+#### Prerequisite 1: Agent Marketplace MVP (ADR-015)
+
+Distribution channel for agents and desktop apps. Six sub-phases.
+
+**Phase 1A — Manifest Extensions** (14 tests) ✓
+- [x] `MarketplaceManifest` type in `marketplace/mod.rs` — extends `AgentManifest` with publisher, category, runtime, screenshots, changelog, min_agnos_version, dependencies, tags
+- [x] `PublisherInfo` struct, `MarketplaceCategory` enum (6 variants), qualified naming
+- [x] Manifest validation: name format, semver, required fields, length checks
+
+**Phase 1B — Trust & Signing** (22 tests) ✓
+- [x] `ed25519-dalek` + `rand` dependencies
+- [x] `marketplace/trust.rs`: `PublisherKeyring`, `KeyVersion` with validity windows, Ed25519 sign/verify, key generation, hex encoding
+- [x] `marketplace/transparency.rs`: `TransparencyLog` append-only hash chain, `LogEntry`, chain verification, JSON import/export
+- [x] SHA-256 content hashing via existing `sha2` crate
+
+**Phase 1C — Local Registry** (14 tests) ✓
+- [x] `marketplace/local_registry.rs`: `LocalRegistry` — file-backed index at `/var/lib/agnos/marketplace/`
+- [x] `install_package()` — extract gzip tarball, validate manifest, register; `uninstall_package()` — remove files, deregister
+- [x] `flate2` + `tar` dependencies; path traversal protection in extraction
+- [x] Storage quota enforcement, persistence (save/load JSON index), upgrade detection
+
+**Phase 1D — Remote Client** (12 tests) ✓
+- [x] `marketplace/remote_client.rs`: `RegistryClient` — HTTP client for remote registry
+- [x] `search()`, `fetch_manifest()`, `download_package()`, `check_updates()` with offline mode
+- [x] Local caching of search results and manifests; cert pinning via reqwest TLS
+
+**Phase 1E — CLI Integration** (5 intents + 5 HTTP endpoints) ✓
+- [x] `agnsh` intents: `install package`, `uninstall package`, `search marketplace`, `list packages`, `update packages`
+- [x] HTTP API: `GET /v1/marketplace/installed`, `GET /v1/marketplace/search`, `POST /v1/marketplace/install`, `GET /v1/marketplace/:name`, `DELETE /v1/marketplace/:name`
+
+**Phase 1F — Dependency Resolution** (7 tests) ✓
+- [x] `DependencyGraph` in `marketplace/mod.rs` — DAG with topological sort, cycle detection, missing dependency checks
+- [x] Diamond dependency support, deterministic install ordering
+
+**Marketplace total: 88 tests (all passing)**
+
+---
+
+#### Prerequisite 2: Flutter Wayland Support
+
+Enable Flutter desktop apps to run natively on AGNOS compositor. Four sub-phases.
+
+**Phase 2A — Wayland Protocol Completeness** (~15 tests)
+- [ ] Implement missing Wayland protocols in `desktop-environment/src/wayland.rs`:
+  - `wl_data_device_manager` / `wl_data_device` — clipboard and drag-and-drop
+  - `zwp_text_input_v3` — IME/text input for Flutter text fields
+  - `xdg_decoration_unstable_v1` — server-side decorations
+  - `wp_viewporter` — surface viewport scaling
+  - `wp_fractional_scale_v1` — fractional DPI scaling
+- [ ] Protocol dispatch integration with existing `WaylandServer` and `Dispatch` traits
+- [ ] Tests: protocol negotiation, capability advertisement, event sequencing
+
+**Phase 2B — Plugin Host Infrastructure** (~18 tests)
+- [ ] Create `desktop-environment/src/plugin_host.rs` (per ADR-017):
+  - `PluginHost` — manages plugin lifecycle over Unix domain sockets
+  - `PluginProcess` — spawn, monitor, restart plugin processes
+  - `PluginSandbox` — Landlock + seccomp profile for desktop plugins
+  - Plugin types: `Theme`, `PanelWidget`, `AppLauncher`, `Notification`, `DesktopApp`
+- [ ] IPC protocol: JSON-RPC over UDS at `/run/agnos/plugins/{plugin_id}.sock`
+- [ ] Resource limits: CPU/memory cgroup constraints per plugin
+- [ ] Health monitoring: heartbeat, OOM detection, crash recovery with backoff
+- [ ] Create `agent-runtime/src/sandbox_profiles/desktop_app.rs`:
+  - Pre-built sandbox profile for desktop applications
+  - Landlock: app data dir (rw), `/usr/share` (ro), no `/etc` access
+  - Seccomp: allow graphics syscalls (ioctl, mmap, poll), deny mount/ptrace/kexec
+  - Network: configurable per-app (Photis Nadi needs Supabase HTTPS)
+
+**Phase 2C — Flutter App Packaging Spec** (~12 tests)
+- [ ] Define `.agnos-agent` layout for Flutter apps:
+  - `bin/flutter_engine.so` — Flutter engine shared library
+  - `bin/<app_name>` — AOT-compiled app binary
+  - `assets/flutter_assets/` — Dart assets, fonts, shaders
+  - `manifest.json` — category: `DesktopApp`, `runtime: "flutter"`, Wayland requirements
+  - `sandbox.json` — per-app Landlock/seccomp/network rules
+- [ ] Packaging tool: `agpkg pack-flutter <flutter_build_dir>` → `.agnos-agent` tarball
+- [ ] Launch integration: `PluginHost` detects `runtime: "flutter"`, sets `GDK_BACKEND=wayland`, passes compositor socket
+- [ ] Theme bridge: platform channel to sync AGNOS theme → Flutter `ThemeData`
+
+**Phase 2D — XWayland Fallback** (~13 tests)
+- [ ] XWayland compatibility layer in `desktop-environment/src/wayland.rs`:
+  - `XWaylandManager` — spawn/manage Xwayland process
+  - `XWaylandSurface` — map X11 windows to Wayland surfaces
+  - Window property translation: X11 `_NET_WM_*` → `xdg_toplevel` states
+- [ ] Fallback detection: if Flutter app requests X11-only features, auto-launch XWayland
+- [ ] Security: XWayland runs in dedicated sandbox, no access to native Wayland clients' surfaces
+- [ ] Configuration: `xwayland_enabled: bool` in compositor config (default: false, opt-in)
+
+**Flutter Wayland total: ~58 estimated tests**
+
+---
+
+#### Integration Items (post-prerequisites)
+
+Once marketplace and Flutter Wayland support are complete:
+
+- [ ] Flutter app `.agpkg` packaging spec — bundle engine + app binary + assets, sandbox manifest
+- [ ] Photis Nadi sandbox profile — Landlock rules for `~/.local/share/photisnadi/` (Hive DB), network for Supabase, no process spawn
+- [ ] Desktop shell integration — map `system_tray` → AGNOS shell panel, `window_manager` → compositor window management, notifications → `DesktopShell::show_notification()`
+- [ ] MCP agent bridge — wire Photis Nadi's 6 MCP tools (list_tasks, create_task, update_task, get_rituals, analytics, sync) into AGNOS agent runtime via `/v1/mcp/tools`
+- [ ] AI Shell intents — natural language task management ("show my tasks", "create task: fix login bug", "how are my rituals today")
+- [ ] High-contrast theme sync — propagate AGNOS `HighContrastTheme` to Flutter's `ThemeData` via platform channel
 
 ---
 
 ## Key Performance Indicators (KPIs)
 
-### Current Status (as of 2026-03-06)
+### Current Status (as of 2026-03-07)
 
 | Metric | Target | Current | Status |
 |--------|--------|---------|--------|
-| Code Coverage | >80% | ~80% | Met |
+| Code Coverage | >80% | ~82% | Met |
 | Test Pass Rate | 100% | 100% | Met |
-| Total Tests | 400+ | 5800+ | Met |
+| Total Tests | 400+ | 7372+ | Met |
 | Agent Spawn Time | <500ms | ~300ms | Met |
 | Shell Response Time | <100ms | ~50ms | Met |
 | Memory Overhead | <2GB | ~1.2GB | Met |
@@ -581,7 +693,7 @@ AGNOS-side infrastructure that consumer projects (AGNOSTIC, SecureYeoman) connec
 |-----------|-------|-------|
 | agnos-common | 307 | Secrets, telemetry, LLM types, manifest, rate limits, audit chain |
 | agnos-sys | 750+ (7 ignored) | 16 modules: audit, mac, netns, dmverity, luks, ima, tpm, secureboot, certpin, bootloader, journald, udev, fuse, pam, update, llm |
-| agent-runtime | 843 + 16 integration + 30 load | Service manager, lifecycle, pub/sub, rollback, package manager, quotas, IPC, WASM, network tools (100), swarm (20), learning (13), multimodal (15), tool analysis (12) |
+| agent-runtime | 1339 + 16 integration + 15 load | Service manager, lifecycle, pub/sub, rollback, package manager, quotas, IPC, WASM, network tools (100), swarm (20), learning (13), multimodal (15), tool analysis (12), marketplace (88) |
 | llm-gateway | 249 + 423 | 5 providers, rate limiting, streaming, graceful degradation, cert pinning, hardware acceleration (43) |
 | ai-shell | 555 + 555 | 20+ intents: file ops, audit, agent, service, network scan, journal, device, mount, boot, update |
 | desktop-environment | 593 + 562 + 40 E2E | Wayland protocol types + Dispatch traits (63), HUD, security, apps, compositor, system tests |
