@@ -265,9 +265,7 @@ impl RevocationList {
     /// otherwise an error is returned.
     pub fn add(&mut self, entry: RevocationEntry) -> Result<()> {
         if entry.key_id.is_none() && entry.content_hash.is_none() {
-            anyhow::bail!(
-                "RevocationEntry must have at least one of key_id or content_hash set"
-            );
+            anyhow::bail!("RevocationEntry must have at least one of key_id or content_hash set");
         }
         self.entries.push(entry);
         Ok(())
@@ -299,8 +297,7 @@ impl RevocationList {
 
     /// Serialize to JSON.
     pub fn to_json(&self) -> Result<String> {
-        serde_json::to_string_pretty(&self.entries)
-            .context("Failed to serialize revocation list")
+        serde_json::to_string_pretty(&self.entries).context("Failed to serialize revocation list")
     }
 
     /// Deserialize from JSON.
@@ -538,9 +535,7 @@ impl SigilVerifier {
             signer_key_id: stored.and_then(|a| a.signer_key_id.clone()),
             trust_level,
             verified_at: Some(now),
-            metadata: stored
-                .map(|a| a.metadata.clone())
-                .unwrap_or_default(),
+            metadata: stored.map(|a| a.metadata.clone()).unwrap_or_default(),
         };
 
         debug!(
@@ -789,8 +784,7 @@ impl SigilVerifier {
         );
         let mut art = artifact;
         art.trust_level = TrustLevel::SystemCore;
-        self.trust_store
-            .insert(art.content_hash.clone(), art);
+        self.trust_store.insert(art.content_hash.clone(), art);
     }
 
     /// Check whether a key or artifact hash has been revoked.
@@ -863,10 +857,7 @@ impl SigilVerifier {
             } else {
                 // No baseline — compute fresh hash (first-time measurement).
                 let data = std::fs::read(component).with_context(|| {
-                    format!(
-                        "Failed to read boot component: {}",
-                        component.display()
-                    )
+                    format!("Failed to read boot component: {}", component.display())
                 })?;
                 hash_data(&data)
             };
@@ -878,10 +869,7 @@ impl SigilVerifier {
         let report = self.integrity.verify_all();
 
         if report.is_clean() {
-            info!(
-                count = components.len(),
-                "Boot chain verification passed"
-            );
+            info!(count = components.len(), "Boot chain verification passed");
         } else {
             warn!(
                 mismatches = report.mismatches.len(),
@@ -896,8 +884,8 @@ impl SigilVerifier {
     /// Save the trust store to a JSON file on disk.
     pub fn save_trust_store(&self, path: &Path) -> Result<()> {
         let artifacts: Vec<&TrustedArtifact> = self.trust_store.values().collect();
-        let json = serde_json::to_string_pretty(&artifacts)
-            .context("Failed to serialize trust store")?;
+        let json =
+            serde_json::to_string_pretty(&artifacts).context("Failed to serialize trust store")?;
         std::fs::write(path, json)
             .with_context(|| format!("Failed to write trust store to {}", path.display()))?;
         info!(path = %path.display(), count = artifacts.len(), "Trust store saved");
@@ -911,8 +899,8 @@ impl SigilVerifier {
     pub fn load_trust_store(&mut self, path: &Path) -> Result<usize> {
         let json = std::fs::read_to_string(path)
             .with_context(|| format!("Failed to read trust store from {}", path.display()))?;
-        let artifacts: Vec<TrustedArtifact> = serde_json::from_str(&json)
-            .context("Failed to deserialize trust store")?;
+        let artifacts: Vec<TrustedArtifact> =
+            serde_json::from_str(&json).context("Failed to deserialize trust store")?;
         let count = artifacts.len();
         for artifact in artifacts {
             self.trust_store
@@ -1122,7 +1110,10 @@ mod tests {
             .verify_artifact(&path, ArtifactType::AgentBinary)
             .unwrap();
         assert!(result.passed);
-        assert!(result.checks.iter().any(|c| c.name == "signature" && c.passed));
+        assert!(result
+            .checks
+            .iter()
+            .any(|c| c.name == "signature" && c.passed));
     }
 
     // -----------------------------------------------------------------------
@@ -1195,7 +1186,10 @@ mod tests {
             .verify_artifact(&path, ArtifactType::AgentBinary)
             .unwrap();
         // Signature check should fail
-        assert!(result.checks.iter().any(|c| c.name == "signature" && !c.passed));
+        assert!(result
+            .checks
+            .iter()
+            .any(|c| c.name == "signature" && !c.passed));
     }
 
     // -----------------------------------------------------------------------
@@ -1210,16 +1204,20 @@ mod tests {
         let (kr, sk, _vk, kid) = keyring_with_key(dir.path());
         let mut verifier = SigilVerifier::new(kr, TrustPolicy::default());
 
-        verifier.sign_artifact(&path, &sk, ArtifactType::AgentBinary).unwrap();
+        verifier
+            .sign_artifact(&path, &sk, ArtifactType::AgentBinary)
+            .unwrap();
 
         // Revoke the key
-        verifier.add_revocation(RevocationEntry {
-            key_id: Some(kid.clone()),
-            content_hash: None,
-            reason: "Compromised".to_string(),
-            revoked_at: Utc::now(),
-            revoked_by: "admin".to_string(),
-        }).unwrap();
+        verifier
+            .add_revocation(RevocationEntry {
+                key_id: Some(kid.clone()),
+                content_hash: None,
+                reason: "Compromised".to_string(),
+                revoked_at: Utc::now(),
+                revoked_by: "admin".to_string(),
+            })
+            .unwrap();
 
         let result = verifier
             .verify_artifact(&path, ArtifactType::AgentBinary)
@@ -1241,15 +1239,19 @@ mod tests {
         let (kr, sk, _vk, _kid) = keyring_with_key(dir.path());
         let mut verifier = SigilVerifier::new(kr, TrustPolicy::default());
 
-        verifier.sign_artifact(&path, &sk, ArtifactType::Config).unwrap();
+        verifier
+            .sign_artifact(&path, &sk, ArtifactType::Config)
+            .unwrap();
 
-        verifier.add_revocation(RevocationEntry {
-            key_id: None,
-            content_hash: Some(content_hash),
-            reason: "Malicious config".to_string(),
-            revoked_at: Utc::now(),
-            revoked_by: "audit-bot".to_string(),
-        }).unwrap();
+        verifier
+            .add_revocation(RevocationEntry {
+                key_id: None,
+                content_hash: Some(content_hash),
+                reason: "Malicious config".to_string(),
+                revoked_at: Utc::now(),
+                revoked_by: "audit-bot".to_string(),
+            })
+            .unwrap();
 
         let result = verifier
             .verify_artifact(&path, ArtifactType::Config)
@@ -1273,7 +1275,8 @@ mod tests {
             reason: "test".to_string(),
             revoked_at: Utc::now(),
             revoked_by: "tester".to_string(),
-        }).unwrap();
+        })
+        .unwrap();
         assert_eq!(rl.len(), 1);
         assert!(rl.is_key_revoked("key1"));
         assert!(!rl.is_key_revoked("key2"));
@@ -1289,7 +1292,8 @@ mod tests {
             reason: "bad".to_string(),
             revoked_at: Utc::now(),
             revoked_by: "admin".to_string(),
-        }).unwrap();
+        })
+        .unwrap();
         assert!(rl.is_artifact_revoked("abc123"));
         assert!(!rl.is_artifact_revoked("def456"));
     }
@@ -1303,7 +1307,8 @@ mod tests {
             reason: "compromised".to_string(),
             revoked_at: Utc::now(),
             revoked_by: "root".to_string(),
-        }).unwrap();
+        })
+        .unwrap();
 
         let json = rl.to_json().unwrap();
         let recovered = RevocationList::from_json(&json).unwrap();
@@ -1371,10 +1376,7 @@ mod tests {
         });
 
         assert_eq!(verifier.trust_level_for(&hash), TrustLevel::Community);
-        assert_eq!(
-            verifier.trust_level_for("unknown"),
-            TrustLevel::Unverified
-        );
+        assert_eq!(verifier.trust_level_for("unknown"), TrustLevel::Unverified);
     }
 
     // -----------------------------------------------------------------------
@@ -1555,8 +1557,14 @@ mod tests {
         assert_eq!(stats.total_artifacts, 3);
         assert_eq!(stats.verified_count, 2); // two have verified_at
         assert_eq!(stats.revoked_count, 1);
-        assert_eq!(*stats.trust_level_counts.get(&TrustLevel::Verified).unwrap(), 2);
-        assert_eq!(*stats.trust_level_counts.get(&TrustLevel::Revoked).unwrap(), 1);
+        assert_eq!(
+            *stats.trust_level_counts.get(&TrustLevel::Verified).unwrap(),
+            2
+        );
+        assert_eq!(
+            *stats.trust_level_counts.get(&TrustLevel::Revoked).unwrap(),
+            1
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -1731,13 +1739,15 @@ mod tests {
         assert!(result.passed);
 
         // Revoke by hash
-        verifier.add_revocation(RevocationEntry {
-            key_id: None,
-            content_hash: Some(artifact.content_hash.clone()),
-            reason: "Supply chain compromise".to_string(),
-            revoked_at: Utc::now(),
-            revoked_by: "security-team".to_string(),
-        }).unwrap();
+        verifier
+            .add_revocation(RevocationEntry {
+                key_id: None,
+                content_hash: Some(artifact.content_hash.clone()),
+                reason: "Supply chain compromise".to_string(),
+                revoked_at: Utc::now(),
+                revoked_by: "security-team".to_string(),
+            })
+            .unwrap();
 
         // Now should fail
         let result = verifier
@@ -1787,13 +1797,15 @@ mod tests {
 
         assert!(!verifier.check_revocation(Some("k1"), "h1"));
 
-        verifier.add_revocation(RevocationEntry {
-            key_id: Some("k1".to_string()),
-            content_hash: None,
-            reason: "test".to_string(),
-            revoked_at: Utc::now(),
-            revoked_by: "test".to_string(),
-        }).unwrap();
+        verifier
+            .add_revocation(RevocationEntry {
+                key_id: Some("k1".to_string()),
+                content_hash: None,
+                reason: "test".to_string(),
+                revoked_at: Utc::now(),
+                revoked_by: "test".to_string(),
+            })
+            .unwrap();
 
         assert!(verifier.check_revocation(Some("k1"), "h1"));
         assert!(!verifier.check_revocation(Some("k2"), "h1"));
@@ -1863,13 +1875,15 @@ mod tests {
             .unwrap();
 
         // Revoke the signing key
-        verifier.add_revocation(RevocationEntry {
-            key_id: Some(kid),
-            content_hash: None,
-            reason: "Key compromised".to_string(),
-            revoked_at: Utc::now(),
-            revoked_by: "admin".to_string(),
-        }).unwrap();
+        verifier
+            .add_revocation(RevocationEntry {
+                key_id: Some(kid),
+                content_hash: None,
+                reason: "Key compromised".to_string(),
+                revoked_at: Utc::now(),
+                revoked_by: "admin".to_string(),
+            })
+            .unwrap();
 
         let result = verifier
             .verify_artifact(&path, ArtifactType::AgentBinary)
@@ -2047,13 +2061,15 @@ mod tests {
         let kr = PublisherKeyring::new(dir.path());
         let mut verifier = SigilVerifier::new(kr, TrustPolicy::default());
 
-        verifier.add_revocation(RevocationEntry {
-            key_id: Some("key_x".to_string()),
-            content_hash: None,
-            reason: "test revocation".to_string(),
-            revoked_at: Utc::now(),
-            revoked_by: "admin".to_string(),
-        }).unwrap();
+        verifier
+            .add_revocation(RevocationEntry {
+                key_id: Some("key_x".to_string()),
+                content_hash: None,
+                reason: "test revocation".to_string(),
+                revoked_at: Utc::now(),
+                revoked_by: "admin".to_string(),
+            })
+            .unwrap();
 
         verifier.save_revocations(&rev_path).unwrap();
 

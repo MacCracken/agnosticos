@@ -90,7 +90,7 @@ impl Orchestrator {
     /// Create a new orchestrator
     pub fn new(registry: Arc<AgentRegistry>) -> Self {
         let (message_bus, message_rx) = mpsc::channel(1000);
-        
+
         let mut queues = HashMap::new();
         for priority in [
             TaskPriority::Critical,
@@ -199,8 +199,10 @@ impl Orchestrator {
                         payload: task.payload.clone(),
                         timestamp: chrono::Utc::now(),
                     };
-                    
-                    self.message_bus.send(message).await
+
+                    self.message_bus
+                        .send(message)
+                        .await
                         .map_err(|_| anyhow::anyhow!("Failed to send message"))?;
                 }
             }
@@ -211,7 +213,9 @@ impl Orchestrator {
 
     /// Auto-assign a task to the most suitable agent using load-aware scoring.
     async fn auto_assign_task(&self, task: &Task) -> Result<()> {
-        let available = self.registry.list_by_status(agnos_common::AgentStatus::Running);
+        let available = self
+            .registry
+            .list_by_status(agnos_common::AgentStatus::Running);
 
         if available.is_empty() {
             warn!("No available agents to execute task {}", task.id);
@@ -260,7 +264,9 @@ impl Orchestrator {
             timestamp: chrono::Utc::now(),
         };
 
-        self.message_bus.send(message).await
+        self.message_bus
+            .send(message)
+            .await
             .map_err(|_| anyhow::anyhow!("Failed to send message"))?;
 
         Ok(())
@@ -405,7 +411,9 @@ impl Orchestrator {
             match message.message_type {
                 MessageType::Response => {
                     // Try to deserialize as TaskResult
-                    if let Ok(result) = serde_json::from_value::<TaskResult>(message.payload.clone()) {
+                    if let Ok(result) =
+                        serde_json::from_value::<TaskResult>(message.payload.clone())
+                    {
                         let task_id = result.task_id.clone();
                         info!(
                             "Task {} completed by agent {}: success={}",
@@ -464,10 +472,7 @@ impl Orchestrator {
 
                             if !deps_satisfied {
                                 // Dependencies not yet met — push task back and skip
-                                debug!(
-                                    "Task {} has unsatisfied dependencies, deferring",
-                                    task.id
-                                );
+                                debug!("Task {} has unsatisfied dependencies, deferring", task.id);
                                 queue.push_back(task);
                                 continue;
                             }
@@ -477,7 +482,11 @@ impl Orchestrator {
 
                         // Move from queued set to running tasks
                         orchestrator.queued_task_ids.write().await.remove(&task.id);
-                        orchestrator.running_tasks.write().await.insert(task.id.clone(), task.clone());
+                        orchestrator
+                            .running_tasks
+                            .write()
+                            .await
+                            .insert(task.id.clone(), task.clone());
 
                         // Distribute the task
                         if let Err(e) = orchestrator.distribute_task(&task).await {
@@ -490,9 +499,13 @@ impl Orchestrator {
     }
 
     /// Broadcast a message to all agents
-    pub async fn broadcast(&self, message_type: MessageType, payload: serde_json::Value) -> Result<()> {
+    pub async fn broadcast(
+        &self,
+        message_type: MessageType,
+        payload: serde_json::Value,
+    ) -> Result<()> {
         let agents = self.registry.list_all();
-        
+
         for agent in agents {
             let message = Message {
                 id: Uuid::new_v4().to_string(),
@@ -502,8 +515,10 @@ impl Orchestrator {
                 payload: payload.clone(),
                 timestamp: chrono::Utc::now(),
             };
-            
-            self.message_bus.send(message).await
+
+            self.message_bus
+                .send(message)
+                .await
                 .map_err(|_| anyhow::anyhow!("Failed to broadcast message"))?;
         }
 
@@ -518,7 +533,13 @@ impl Orchestrator {
 
     /// Get queue statistics (for testing)
     pub async fn get_queue_stats(&self) -> QueueStats {
-        let queued_tasks: usize = self.task_queues.read().await.values().map(|q| q.len()).sum();
+        let queued_tasks: usize = self
+            .task_queues
+            .read()
+            .await
+            .values()
+            .map(|q| q.len())
+            .sum();
         let running_tasks = self.running_tasks.read().await.len();
 
         QueueStats {
@@ -531,7 +552,7 @@ impl Orchestrator {
     /// Peek at next task (for testing)
     pub async fn peek_next_task(&self) -> Option<Task> {
         let queues = self.task_queues.read().await;
-        
+
         for priority in [
             TaskPriority::Critical,
             TaskPriority::High,
@@ -552,7 +573,7 @@ impl Orchestrator {
     pub async fn get_overdue_tasks(&self) -> Vec<Task> {
         let queues = self.task_queues.read().await;
         let now = chrono::Utc::now();
-        
+
         let mut overdue = Vec::new();
         for queue in queues.values() {
             for task in queue.iter() {
@@ -570,7 +591,7 @@ impl Orchestrator {
     pub async fn get_agent_stats(&self) -> AgentOrchestratorStats {
         let agents = self.registry.list_all();
         let results = self.results.read().await;
-        
+
         AgentOrchestratorStats {
             registered_agents: agents.len(),
             total_tasks_processed: results.len(),
@@ -638,7 +659,7 @@ mod tests {
     #[tokio::test]
     async fn test_task_submission() {
         let orchestrator = create_test_orchestrator();
-        
+
         let task = Task {
             id: "test-task-1".to_string(),
             priority: TaskPriority::Normal,
@@ -682,10 +703,10 @@ mod tests {
             dependencies: vec![],
             requirements: TaskRequirements::default(),
         };
-        
+
         let _ = orchestrator.submit_task(low_task).await;
         let _ = orchestrator.submit_task(critical_task).await;
-        
+
         let next = orchestrator.peek_next_task().await;
         assert!(next.is_some());
         assert_eq!(next.unwrap().priority, TaskPriority::Critical);
@@ -694,7 +715,7 @@ mod tests {
     #[tokio::test]
     async fn test_task_completion() {
         let orchestrator = create_test_orchestrator();
-        
+
         let task = Task {
             id: "complete".to_string(),
             priority: TaskPriority::Normal,
@@ -717,9 +738,9 @@ mod tests {
             completed_at: chrono::Utc::now(),
             duration_ms: 100,
         };
-        
+
         orchestrator.store_result(result).await.unwrap();
-        
+
         let retrieved = orchestrator.get_result(&task.id).await;
         assert!(retrieved.is_some());
         assert!(retrieved.unwrap().success);
@@ -728,7 +749,7 @@ mod tests {
     #[tokio::test]
     async fn test_task_failure() {
         let orchestrator = create_test_orchestrator();
-        
+
         let task = Task {
             id: "fail".to_string(),
             priority: TaskPriority::Normal,
@@ -751,9 +772,9 @@ mod tests {
             completed_at: chrono::Utc::now(),
             duration_ms: 50,
         };
-        
+
         orchestrator.store_result(result).await.unwrap();
-        
+
         let retrieved = orchestrator.get_result(&task.id).await;
         assert!(retrieved.is_some());
         assert!(!retrieved.unwrap().success);
@@ -762,7 +783,7 @@ mod tests {
     #[tokio::test]
     async fn test_overdue_tasks() {
         let orchestrator = create_test_orchestrator();
-        
+
         let task = Task {
             id: "deadline".to_string(),
             priority: TaskPriority::Normal,
@@ -775,7 +796,7 @@ mod tests {
         };
 
         orchestrator.submit_task(task).await.unwrap();
-        
+
         let overdue = orchestrator.get_overdue_tasks().await;
         assert!(!overdue.is_empty());
     }
@@ -783,7 +804,7 @@ mod tests {
     #[tokio::test]
     async fn test_cancellation() {
         let orchestrator = create_test_orchestrator();
-        
+
         let task = Task {
             id: "cancel".to_string(),
             priority: TaskPriority::Normal,
@@ -794,12 +815,12 @@ mod tests {
             dependencies: vec![],
             requirements: TaskRequirements::default(),
         };
-        
+
         orchestrator.submit_task(task.clone()).await.unwrap();
-        
+
         // Try to cancel
         let _ = orchestrator.cancel_task(&task.id).await;
-        
+
         // The task may still be in the queue if scheduler hasn't processed it
         // Just verify the cancel doesn't error
         let queues = orchestrator.get_queue_stats().await;
@@ -908,7 +929,11 @@ mod tests {
 
         let score = Orchestrator::score_agent(&handle, Some(&config), &requirements, 0);
         // Idle agent with no requirements should get near-max score
-        assert!(score > 0.8, "Expected high score for idle agent, got {}", score);
+        assert!(
+            score > 0.8,
+            "Expected high score for idle agent, got {}",
+            score
+        );
     }
 
     #[test]
@@ -987,7 +1012,10 @@ mod tests {
         let score_0_tasks = Orchestrator::score_agent(&handle, Some(&config), &requirements, 0);
         let score_10_tasks = Orchestrator::score_agent(&handle, Some(&config), &requirements, 10);
 
-        assert!(score_0_tasks > score_10_tasks, "Agent with fewer tasks should score higher");
+        assert!(
+            score_0_tasks > score_10_tasks,
+            "Agent with fewer tasks should score higher"
+        );
     }
 
     #[test]
@@ -1482,16 +1510,19 @@ mod tests {
         // Manually insert a "running" task
         {
             let mut running = orchestrator.running_tasks.write().await;
-            running.insert("running-1".to_string(), Task {
-                id: "running-1".to_string(),
-                priority: TaskPriority::Normal,
-                target_agents: vec![],
-                payload: serde_json::json!({}),
-                created_at: chrono::Utc::now(),
-                deadline: None,
-                dependencies: vec![],
-                requirements: TaskRequirements::default(),
-            });
+            running.insert(
+                "running-1".to_string(),
+                Task {
+                    id: "running-1".to_string(),
+                    priority: TaskPriority::Normal,
+                    target_agents: vec![],
+                    payload: serde_json::json!({}),
+                    created_at: chrono::Utc::now(),
+                    deadline: None,
+                    dependencies: vec![],
+                    requirements: TaskRequirements::default(),
+                },
+            );
         }
 
         let result = TaskResult {
@@ -1523,16 +1554,19 @@ mod tests {
         // Insert directly into running_tasks
         {
             let mut running = orchestrator.running_tasks.write().await;
-            running.insert("r-task".to_string(), Task {
-                id: "r-task".to_string(),
-                priority: TaskPriority::High,
-                target_agents: vec![],
-                payload: serde_json::json!({}),
-                created_at: chrono::Utc::now(),
-                deadline: None,
-                dependencies: vec![],
-                requirements: TaskRequirements::default(),
-            });
+            running.insert(
+                "r-task".to_string(),
+                Task {
+                    id: "r-task".to_string(),
+                    priority: TaskPriority::High,
+                    target_agents: vec![],
+                    payload: serde_json::json!({}),
+                    created_at: chrono::Utc::now(),
+                    deadline: None,
+                    dependencies: vec![],
+                    requirements: TaskRequirements::default(),
+                },
+            );
         }
 
         let status = orchestrator.get_task_status("r-task").await;
@@ -1593,7 +1627,8 @@ mod tests {
         };
 
         let score_with_caps = Orchestrator::score_agent(&handle, Some(&config), &requirements, 0);
-        let score_no_caps = Orchestrator::score_agent(&handle, Some(&config), &TaskRequirements::default(), 0);
+        let score_no_caps =
+            Orchestrator::score_agent(&handle, Some(&config), &TaskRequirements::default(), 0);
 
         // Without matching capabilities, the score should be lower
         assert!(score_no_caps >= score_with_caps);
@@ -1606,16 +1641,19 @@ mod tests {
         // Insert task directly into running
         {
             let mut running = orchestrator.running_tasks.write().await;
-            running.insert("cancel-running".to_string(), Task {
-                id: "cancel-running".to_string(),
-                priority: TaskPriority::Normal,
-                target_agents: vec![],
-                payload: serde_json::json!({}),
-                created_at: chrono::Utc::now(),
-                deadline: None,
-                dependencies: vec![],
-                requirements: TaskRequirements::default(),
-            });
+            running.insert(
+                "cancel-running".to_string(),
+                Task {
+                    id: "cancel-running".to_string(),
+                    priority: TaskPriority::Normal,
+                    target_agents: vec![],
+                    payload: serde_json::json!({}),
+                    created_at: chrono::Utc::now(),
+                    deadline: None,
+                    dependencies: vec![],
+                    requirements: TaskRequirements::default(),
+                },
+            );
         }
 
         orchestrator.cancel_task("cancel-running").await.unwrap();
@@ -1848,8 +1886,16 @@ mod tests {
                 task_id: format!("multi-{}", i),
                 agent_id: AgentId::new(),
                 success: i % 2 == 0,
-                result: if i % 2 == 0 { Some(serde_json::json!({"i": i})) } else { None },
-                error: if i % 2 != 0 { Some(format!("error-{}", i)) } else { None },
+                result: if i % 2 == 0 {
+                    Some(serde_json::json!({"i": i}))
+                } else {
+                    None
+                },
+                error: if i % 2 != 0 {
+                    Some(format!("error-{}", i))
+                } else {
+                    None
+                },
                 completed_at: chrono::Utc::now(),
                 duration_ms: i as u64 * 10,
             };
@@ -1904,7 +1950,7 @@ mod tests {
             started_at: None,
             resource_usage: agnos_common::ResourceUsage {
                 memory_used: 1024 * 1024 * 1024, // 1 GB (same as default max)
-                cpu_time_used: 3_600_000,         // 1 hour (same as default max)
+                cpu_time_used: 3_600_000,        // 1 hour (same as default max)
                 file_descriptors_used: 0,
                 processes_used: 0,
             },
@@ -1916,7 +1962,11 @@ mod tests {
 
         let score = Orchestrator::score_agent(&handle, Some(&config), &requirements, 0);
         // Memory and CPU headroom are 0, so score should be low
-        assert!(score < 0.3, "Maxed agent should have low score, got {}", score);
+        assert!(
+            score < 0.3,
+            "Maxed agent should have low score, got {}",
+            score
+        );
     }
 
     #[test]
@@ -1941,7 +1991,8 @@ mod tests {
 
         let score = Orchestrator::score_agent(&handle, Some(&config), &requirements, 0);
         // Should not get affinity bonus
-        let score_no_pref = Orchestrator::score_agent(&handle, Some(&config), &TaskRequirements::default(), 0);
+        let score_no_pref =
+            Orchestrator::score_agent(&handle, Some(&config), &TaskRequirements::default(), 0);
         assert!((score - score_no_pref).abs() < 0.001);
     }
 
@@ -2074,7 +2125,10 @@ mod tests {
         let score_with_affinity = Orchestrator::score_agent(&handle, None, &reqs, 0);
         let reqs_no_affinity = TaskRequirements::default();
         let score_without = Orchestrator::score_agent(&handle, None, &reqs_no_affinity, 0);
-        assert!(score_with_affinity > score_without, "Affinity should boost score");
+        assert!(
+            score_with_affinity > score_without,
+            "Affinity should boost score"
+        );
     }
 
     #[test]
@@ -2092,7 +2146,10 @@ mod tests {
         let reqs = TaskRequirements::default();
         let score_idle = Orchestrator::score_agent(&handle, None, &reqs, 0);
         let score_busy = Orchestrator::score_agent(&handle, None, &reqs, 5);
-        assert!(score_idle > score_busy, "Idle agent should score higher than busy");
+        assert!(
+            score_idle > score_busy,
+            "Idle agent should score higher than busy"
+        );
     }
 
     #[test]
@@ -2128,7 +2185,11 @@ mod tests {
         let score = Orchestrator::score_agent(&handle, Some(&config), &reqs, 0);
         // Should get 0 for memory component since requirement can't be met
         // But still get points for CPU, capability
-        assert!(score < 0.7, "Score should be low when memory insufficient, got {}", score);
+        assert!(
+            score < 0.7,
+            "Score should be low when memory insufficient, got {}",
+            score
+        );
     }
 
     #[tokio::test]
@@ -2185,7 +2246,14 @@ mod tests {
     async fn test_queue_stats_with_multiple_priorities() {
         let orchestrator = create_test_orchestrator();
 
-        for (i, priority) in [TaskPriority::Critical, TaskPriority::Normal, TaskPriority::Low].iter().enumerate() {
+        for (i, priority) in [
+            TaskPriority::Critical,
+            TaskPriority::Normal,
+            TaskPriority::Low,
+        ]
+        .iter()
+        .enumerate()
+        {
             let task = Task {
                 id: format!("prio-{}", i),
                 priority: *priority,
@@ -2209,15 +2277,18 @@ mod tests {
     fn test_prune_results_small_set() {
         let mut results = HashMap::new();
         for i in 0..5 {
-            results.insert(format!("task-{}", i), TaskResult {
-                task_id: format!("task-{}", i),
-                agent_id: AgentId::new(),
-                success: true,
-                result: None,
-                error: None,
-                completed_at: chrono::Utc::now(),
-                duration_ms: 0,
-            });
+            results.insert(
+                format!("task-{}", i),
+                TaskResult {
+                    task_id: format!("task-{}", i),
+                    agent_id: AgentId::new(),
+                    success: true,
+                    result: None,
+                    error: None,
+                    completed_at: chrono::Utc::now(),
+                    duration_ms: 0,
+                },
+            );
         }
         Orchestrator::prune_results(&mut results);
         assert_eq!(results.len(), 5, "Should not prune when under limit");
@@ -2357,7 +2428,10 @@ mod tests {
             TaskPriority::Normal,
             TaskPriority::High,
             TaskPriority::Critical,
-        ].iter().enumerate() {
+        ]
+        .iter()
+        .enumerate()
+        {
             let task = Task {
                 id: format!("p-{}", i),
                 priority: *priority,
@@ -2457,26 +2531,32 @@ mod tests {
         // Move 2 to running
         {
             let mut running = orchestrator.running_tasks.write().await;
-            running.insert("running-a".to_string(), Task {
-                id: "running-a".to_string(),
-                priority: TaskPriority::High,
-                target_agents: vec![],
-                payload: serde_json::json!({}),
-                created_at: chrono::Utc::now(),
-                deadline: None,
-                dependencies: vec![],
-                requirements: TaskRequirements::default(),
-            });
-            running.insert("running-b".to_string(), Task {
-                id: "running-b".to_string(),
-                priority: TaskPriority::High,
-                target_agents: vec![],
-                payload: serde_json::json!({}),
-                created_at: chrono::Utc::now(),
-                deadline: None,
-                dependencies: vec![],
-                requirements: TaskRequirements::default(),
-            });
+            running.insert(
+                "running-a".to_string(),
+                Task {
+                    id: "running-a".to_string(),
+                    priority: TaskPriority::High,
+                    target_agents: vec![],
+                    payload: serde_json::json!({}),
+                    created_at: chrono::Utc::now(),
+                    deadline: None,
+                    dependencies: vec![],
+                    requirements: TaskRequirements::default(),
+                },
+            );
+            running.insert(
+                "running-b".to_string(),
+                Task {
+                    id: "running-b".to_string(),
+                    priority: TaskPriority::High,
+                    target_agents: vec![],
+                    payload: serde_json::json!({}),
+                    created_at: chrono::Utc::now(),
+                    deadline: None,
+                    dependencies: vec![],
+                    requirements: TaskRequirements::default(),
+                },
+            );
         }
 
         let stats = orchestrator.get_queue_stats().await;
@@ -2841,10 +2921,13 @@ mod tests {
         // Also add to running (simulating race)
         {
             let mut running = orchestrator.running_tasks.write().await;
-            running.insert(id.clone(), Task {
-                id: id.clone(),
-                ..task
-            });
+            running.insert(
+                id.clone(),
+                Task {
+                    id: id.clone(),
+                    ..task
+                },
+            );
         }
 
         // Cancel should remove from both

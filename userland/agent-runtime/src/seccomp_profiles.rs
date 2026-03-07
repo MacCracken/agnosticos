@@ -9,8 +9,7 @@ use serde::{Deserialize, Serialize};
 use tracing::info;
 
 /// Pre-defined seccomp profile for a language runtime.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum SeccompProfile {
     /// Python interpreter (~45 syscalls)
     Python,
@@ -24,7 +23,6 @@ pub enum SeccompProfile {
     /// Custom allowlist of syscall names
     Custom(Vec<String>),
 }
-
 
 /// Base syscalls required by any running process.
 fn base_syscalls() -> Vec<&'static str> {
@@ -296,10 +294,7 @@ pub fn validate_profile(profile: &SeccompProfile) -> Result<(), String> {
     let essential = ["exit", "exit_group", "read", "write", "mmap", "brk"];
     for &syscall in &essential {
         if !allowed.contains(syscall) {
-            return Err(format!(
-                "Profile missing essential syscall '{}'",
-                syscall
-            ));
+            return Err(format!("Profile missing essential syscall '{}'", syscall));
         }
     }
 
@@ -391,9 +386,8 @@ mod tests {
 
     #[test]
     fn test_validate_profile_custom_valid() {
-        let custom = SeccompProfile::Custom(
-            base_syscalls().into_iter().map(String::from).collect(),
-        );
+        let custom =
+            SeccompProfile::Custom(base_syscalls().into_iter().map(String::from).collect());
         assert!(validate_profile(&custom).is_ok());
     }
 
@@ -512,7 +506,8 @@ mod tests {
                 assert!(
                     allowed.contains(*syscall),
                     "Profile {:?} missing base syscall '{}'",
-                    profile, syscall
+                    profile,
+                    syscall
                 );
             }
         }
@@ -520,9 +515,10 @@ mod tests {
 
     #[test]
     fn test_validate_custom_with_all_essentials() {
-        let essentials: Vec<String> = vec![
-            "exit", "exit_group", "read", "write", "mmap", "brk",
-        ].into_iter().map(String::from).collect();
+        let essentials: Vec<String> = vec!["exit", "exit_group", "read", "write", "mmap", "brk"]
+            .into_iter()
+            .map(String::from)
+            .collect();
         let custom = SeccompProfile::Custom(essentials);
         assert!(validate_profile(&custom).is_ok());
     }
@@ -605,9 +601,8 @@ mod tests {
 
     #[test]
     fn test_custom_profile_serialization_with_many_syscalls() {
-        let custom = SeccompProfile::Custom(
-            base_syscalls().into_iter().map(String::from).collect(),
-        );
+        let custom =
+            SeccompProfile::Custom(base_syscalls().into_iter().map(String::from).collect());
         let json = serde_json::to_string(&custom).unwrap();
         let deser: SeccompProfile = serde_json::from_str(&json).unwrap();
         assert_eq!(deser, custom);
@@ -616,7 +611,10 @@ mod tests {
     #[test]
     fn test_shell_profile_has_execve() {
         let allowed = allowed_syscalls(&SeccompProfile::Shell);
-        assert!(allowed.contains("execve"), "Shell profile must allow execve");
+        assert!(
+            allowed.contains("execve"),
+            "Shell profile must allow execve"
+        );
     }
 
     #[test]
@@ -636,6 +634,9 @@ mod tests {
     #[test]
     fn test_node_profile_has_eventfd2() {
         let allowed = allowed_syscalls(&SeccompProfile::Node);
-        assert!(allowed.contains("eventfd2"), "Node profile needs eventfd2 for libuv");
+        assert!(
+            allowed.contains("eventfd2"),
+            "Node profile needs eventfd2 for libuv"
+        );
     }
 }

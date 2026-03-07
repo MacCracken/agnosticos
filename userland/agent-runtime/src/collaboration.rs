@@ -390,10 +390,7 @@ impl TrustCalibrator {
         predicted_confidence: f64,
         actual_success: bool,
     ) {
-        let samples = self
-            .samples
-            .entry(agent_id.to_string())
-            .or_default();
+        let samples = self.samples.entry(agent_id.to_string()).or_default();
         samples.push(CalibrationSample {
             predicted_confidence,
             actual_success,
@@ -510,8 +507,10 @@ impl TrustCalibrator {
                 TrustTrend::Stable
             }
         } else {
-            let earlier: f64 =
-                history[len.saturating_sub(6)..len.saturating_sub(3)].iter().sum::<f64>() / 3.0;
+            let earlier: f64 = history[len.saturating_sub(6)..len.saturating_sub(3)]
+                .iter()
+                .sum::<f64>()
+                / 3.0;
             let diff = recent - earlier;
             if diff > 0.05 {
                 TrustTrend::Improving
@@ -770,9 +769,7 @@ impl FeedbackCollector {
         self.feedback
             .iter()
             .filter(|f| {
-                f.agent_id == agent_id
-                    && f.feedback_type == FeedbackType::Correction
-                    && !f.applied
+                f.agent_id == agent_id && f.feedback_type == FeedbackType::Correction && !f.applied
             })
             .collect()
     }
@@ -821,9 +818,10 @@ impl CollaborationAnalyzer {
         let total_duration_mins = session.duration_mins();
 
         // Estimate active times from contribution ratios.
-        let (human_contrib_sum, agent_contrib_sum) = tasks.iter().fold((0.0_f64, 0.0_f64), |acc, t| {
-            (acc.0 + t.human_contribution, acc.1 + t.agent_contribution)
-        });
+        let (human_contrib_sum, agent_contrib_sum) =
+            tasks.iter().fold((0.0_f64, 0.0_f64), |acc, t| {
+                (acc.0 + t.human_contribution, acc.1 + t.agent_contribution)
+            });
         let total_contrib = human_contrib_sum + agent_contrib_sum;
         let (human_active_mins, agent_active_mins) = if total_contrib > 0.0 {
             (
@@ -926,8 +924,11 @@ impl CollaborationAnalyzer {
         let total_human_hours = sessions.iter().map(|s| s.human_active_mins).sum::<f64>() / 60.0;
         let total_agent_hours = sessions.iter().map(|s| s.agent_active_mins).sum::<f64>() / 60.0;
         let avg_efficiency = sessions.iter().map(|s| s.efficiency_score).sum::<f64>() / n;
-        let avg_handoff_overhead =
-            sessions.iter().map(|s| s.handoff_overhead_percent).sum::<f64>() / n;
+        let avg_handoff_overhead = sessions
+            .iter()
+            .map(|s| s.handoff_overhead_percent)
+            .sum::<f64>()
+            / n;
 
         let total_tasks: u32 = sessions.iter().map(|s| s.tasks_completed).sum();
 
@@ -1017,22 +1018,15 @@ mod tests {
 
     #[test]
     fn test_session_end() {
-        let mut s = CollaborationSession::new(
-            "h".into(),
-            "a".into(),
-            CollaborationMode::FullAutonomy,
-        );
+        let mut s =
+            CollaborationSession::new("h".into(), "a".into(), CollaborationMode::FullAutonomy);
         s.end();
         assert!(s.ended_at.is_some());
     }
 
     #[test]
     fn test_session_duration() {
-        let mut s = CollaborationSession::new(
-            "h".into(),
-            "a".into(),
-            CollaborationMode::HumanLed,
-        );
+        let mut s = CollaborationSession::new("h".into(), "a".into(), CollaborationMode::HumanLed);
         // Duration of an active session should be non-negative.
         assert!(s.duration_mins() >= 0.0);
         s.end();
@@ -1070,16 +1064,12 @@ mod tests {
 
     #[test]
     fn test_valid_transition_in_progress_to_awaiting_review() {
-        assert!(
-            SharedTaskStatus::InProgress.valid_transition(&SharedTaskStatus::AwaitingReview)
-        );
+        assert!(SharedTaskStatus::InProgress.valid_transition(&SharedTaskStatus::AwaitingReview));
     }
 
     #[test]
     fn test_valid_transition_in_progress_to_awaiting_approval() {
-        assert!(
-            SharedTaskStatus::InProgress.valid_transition(&SharedTaskStatus::AwaitingApproval)
-        );
+        assert!(SharedTaskStatus::InProgress.valid_transition(&SharedTaskStatus::AwaitingApproval));
     }
 
     #[test]
@@ -1091,9 +1081,7 @@ mod tests {
 
     #[test]
     fn test_valid_transition_awaiting_approval_to_complete() {
-        assert!(
-            SharedTaskStatus::AwaitingApproval.valid_transition(&SharedTaskStatus::Complete)
-        );
+        assert!(SharedTaskStatus::AwaitingApproval.valid_transition(&SharedTaskStatus::Complete));
     }
 
     #[test]
@@ -1108,16 +1096,12 @@ mod tests {
 
     #[test]
     fn test_valid_transition_rework_from_review() {
-        assert!(
-            SharedTaskStatus::AwaitingReview.valid_transition(&SharedTaskStatus::InProgress)
-        );
+        assert!(SharedTaskStatus::AwaitingReview.valid_transition(&SharedTaskStatus::InProgress));
     }
 
     #[test]
     fn test_valid_transition_rework_from_approval() {
-        assert!(
-            SharedTaskStatus::AwaitingApproval.valid_transition(&SharedTaskStatus::InProgress)
-        );
+        assert!(SharedTaskStatus::AwaitingApproval.valid_transition(&SharedTaskStatus::InProgress));
     }
 
     #[test]
@@ -1132,16 +1116,18 @@ mod tests {
 
     #[test]
     fn test_invalid_transition_same_state() {
-        assert!(
-            !SharedTaskStatus::InProgress.valid_transition(&SharedTaskStatus::InProgress)
-        );
+        assert!(!SharedTaskStatus::InProgress.valid_transition(&SharedTaskStatus::InProgress));
     }
 
     // -- SharedTask ---------------------------------------------------------
 
     #[test]
     fn test_shared_task_creation() {
-        let t = SharedTask::new("Fix bug".into(), "Segfault in parser".into(), TaskOwner::Shared);
+        let t = SharedTask::new(
+            "Fix bug".into(),
+            "Segfault in parser".into(),
+            TaskOwner::Shared,
+        );
         assert_eq!(t.title, "Fix bug");
         assert_eq!(t.status, SharedTaskStatus::Open);
         assert_eq!(t.human_contribution, 0.0);
@@ -1688,9 +1674,12 @@ mod tests {
     #[test]
     fn test_feedback_for_agent() {
         let mut col = FeedbackCollector::new();
-        col.record_feedback(make_feedback("a1", FeedbackType::Praise)).unwrap();
-        col.record_feedback(make_feedback("a2", FeedbackType::Suggestion)).unwrap();
-        col.record_feedback(make_feedback("a1", FeedbackType::Correction)).unwrap();
+        col.record_feedback(make_feedback("a1", FeedbackType::Praise))
+            .unwrap();
+        col.record_feedback(make_feedback("a2", FeedbackType::Suggestion))
+            .unwrap();
+        col.record_feedback(make_feedback("a1", FeedbackType::Correction))
+            .unwrap();
         assert_eq!(col.feedback_for_agent("a1").len(), 2);
         assert_eq!(col.feedback_for_agent("a2").len(), 1);
         assert_eq!(col.feedback_for_agent("a3").len(), 0);
@@ -1699,7 +1688,8 @@ mod tests {
     #[test]
     fn test_feedback_for_session() {
         let mut col = FeedbackCollector::new();
-        col.record_feedback(make_feedback("a1", FeedbackType::Praise)).unwrap();
+        col.record_feedback(make_feedback("a1", FeedbackType::Praise))
+            .unwrap();
         assert_eq!(col.feedback_for_session("sess-1").len(), 1);
         assert_eq!(col.feedback_for_session("other").len(), 0);
     }
@@ -1723,10 +1713,14 @@ mod tests {
     #[test]
     fn test_feedback_stats() {
         let mut col = FeedbackCollector::new();
-        col.record_feedback(make_feedback("a1", FeedbackType::Correction)).unwrap();
-        col.record_feedback(make_feedback("a1", FeedbackType::Rating(4))).unwrap();
-        col.record_feedback(make_feedback("a1", FeedbackType::Rating(2))).unwrap();
-        col.record_feedback(make_feedback("a1", FeedbackType::Praise)).unwrap();
+        col.record_feedback(make_feedback("a1", FeedbackType::Correction))
+            .unwrap();
+        col.record_feedback(make_feedback("a1", FeedbackType::Rating(4)))
+            .unwrap();
+        col.record_feedback(make_feedback("a1", FeedbackType::Rating(2)))
+            .unwrap();
+        col.record_feedback(make_feedback("a1", FeedbackType::Praise))
+            .unwrap();
 
         // Mark one as applied.
         let first_id = col.feedback_for_agent("a1")[0].feedback_id;
@@ -1757,8 +1751,10 @@ mod tests {
         let c1 = make_feedback("a1", FeedbackType::Correction);
         let c1_id = c1.feedback_id;
         col.record_feedback(c1).unwrap();
-        col.record_feedback(make_feedback("a1", FeedbackType::Correction)).unwrap();
-        col.record_feedback(make_feedback("a1", FeedbackType::Praise)).unwrap();
+        col.record_feedback(make_feedback("a1", FeedbackType::Correction))
+            .unwrap();
+        col.record_feedback(make_feedback("a1", FeedbackType::Praise))
+            .unwrap();
 
         assert_eq!(col.unapplied_corrections("a1").len(), 2);
         col.mark_applied(c1_id).unwrap();
@@ -1769,11 +1765,8 @@ mod tests {
 
     #[test]
     fn test_analyze_session_basic() {
-        let mut session = CollaborationSession::new(
-            "h".into(),
-            "a".into(),
-            CollaborationMode::Paired,
-        );
+        let mut session =
+            CollaborationSession::new("h".into(), "a".into(), CollaborationMode::Paired);
         session.tasks_completed = 3;
         session.handoffs = 1;
         session.end();
@@ -1790,11 +1783,8 @@ mod tests {
 
     #[test]
     fn test_analyze_session_no_tasks() {
-        let mut session = CollaborationSession::new(
-            "h".into(),
-            "a".into(),
-            CollaborationMode::Supervised,
-        );
+        let mut session =
+            CollaborationSession::new("h".into(), "a".into(), CollaborationMode::Supervised);
         session.end();
 
         let analytics = CollaborationAnalyzer::analyze_session(&session, &[], &[]);
@@ -1803,11 +1793,8 @@ mod tests {
 
     #[test]
     fn test_analyze_session_zero_duration() {
-        let mut session = CollaborationSession::new(
-            "h".into(),
-            "a".into(),
-            CollaborationMode::FullAutonomy,
-        );
+        let mut session =
+            CollaborationSession::new("h".into(), "a".into(), CollaborationMode::FullAutonomy);
         // End immediately — duration might be 0.
         session.ended_at = Some(session.started_at);
 

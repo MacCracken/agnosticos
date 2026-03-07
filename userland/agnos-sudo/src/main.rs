@@ -68,7 +68,15 @@ const UNSAFE_ENV_VARS: &[&str] = &[
 
 /// Environment variables preserved by default.
 const SAFE_ENV_VARS: &[&str] = &[
-    "TERM", "COLORTERM", "LANG", "LANGUAGE", "LC_ALL", "LC_CTYPE", "TZ", "DISPLAY", "XAUTHORITY",
+    "TERM",
+    "COLORTERM",
+    "LANG",
+    "LANGUAGE",
+    "LC_ALL",
+    "LC_CTYPE",
+    "TZ",
+    "DISPLAY",
+    "XAUTHORITY",
 ];
 
 // ---------------------------------------------------------------------------
@@ -193,8 +201,8 @@ pub fn load_policy(path: &Path) -> Result<SudoPolicy> {
         }
     }
 
-    let content =
-        std::fs::read_to_string(path).with_context(|| format!("Failed to read {}", path.display()))?;
+    let content = std::fs::read_to_string(path)
+        .with_context(|| format!("Failed to read {}", path.display()))?;
     let policy: SudoPolicy =
         toml::from_str(&content).with_context(|| format!("Failed to parse {}", path.display()))?;
 
@@ -346,14 +354,8 @@ pub fn sanitize_environment(
         "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin".to_string(),
     ));
     env.push(("SUDO_USER".to_string(), caller_user.to_string()));
-    env.push((
-        "SUDO_UID".to_string(),
-        nix::unistd::getuid().to_string(),
-    ));
-    env.push((
-        "SUDO_GID".to_string(),
-        nix::unistd::getgid().to_string(),
-    ));
+    env.push(("SUDO_UID".to_string(), nix::unistd::getuid().to_string()));
+    env.push(("SUDO_GID".to_string(), nix::unistd::getgid().to_string()));
 
     // Preserve safe vars from current environment
     let keep_set: HashSet<&str> = SAFE_ENV_VARS
@@ -396,17 +398,12 @@ pub fn update_timestamp(user: &str) -> Result<()> {
     let ts_path = timestamp_path(user);
     let dir = Path::new(DEFAULT_TIMESTAMP_DIR);
     if !dir.exists() {
-        std::fs::create_dir_all(dir).with_context(|| {
-            format!("Failed to create timestamp directory: {}", dir.display())
-        })?;
+        std::fs::create_dir_all(dir)
+            .with_context(|| format!("Failed to create timestamp directory: {}", dir.display()))?;
     }
     // Touch the file
-    std::fs::write(&ts_path, b"").with_context(|| {
-        format!(
-            "Failed to update timestamp: {}",
-            ts_path.display()
-        )
-    })?;
+    std::fs::write(&ts_path, b"")
+        .with_context(|| format!("Failed to update timestamp: {}", ts_path.display()))?;
     Ok(())
 }
 
@@ -435,11 +432,7 @@ pub fn validate_command(args: &[String], max_len: usize) -> Result<()> {
 
     let total_len: usize = args.iter().map(|a| a.len()).sum::<usize>() + args.len();
     if total_len > max_len {
-        bail!(
-            "Command too long ({} bytes, max {})",
-            total_len,
-            max_len
-        );
+        bail!("Command too long ({} bytes, max {})", total_len, max_len);
     }
 
     // Reject null bytes in arguments (could be used to truncate strings in C APIs)
@@ -478,8 +471,7 @@ pub fn resolve_command(cmd: &str) -> Result<PathBuf> {
     }
 
     // Search PATH
-    let search_path =
-        "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
+    let search_path = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
     for dir in search_path.split(':') {
         let candidate = PathBuf::from(dir).join(cmd);
         if candidate.exists() {
@@ -508,11 +500,7 @@ fn authenticate_user(username: &str) -> Result<bool> {
 
         // Read password (in a real implementation, we'd disable echo via termios)
         let stdin = io::stdin();
-        let password = stdin
-            .lock()
-            .lines()
-            .next()
-            .unwrap_or(Ok(String::new()))?;
+        let password = stdin.lock().lines().next().unwrap_or(Ok(String::new()))?;
         eprintln!(); // newline after password
 
         if password.is_empty() {
@@ -570,14 +558,7 @@ fn authenticate_user(_username: &str) -> Result<bool> {
 // Audit logging
 // ---------------------------------------------------------------------------
 
-fn audit_log(
-    action: &str,
-    caller: &str,
-    target: &str,
-    command: &str,
-    success: bool,
-    reason: &str,
-) {
+fn audit_log(action: &str, caller: &str, target: &str, command: &str, success: bool, reason: &str) {
     let status = if success { "ALLOWED" } else { "DENIED" };
     let msg = format!(
         "agnos-sudo: {} : {} ; USER={} ; COMMAND={} ; STATUS={} ; REASON={}",
@@ -788,7 +769,10 @@ Examples:
 // ---------------------------------------------------------------------------
 
 fn list_permissions(policy: &SudoPolicy, username: &str, groups: &[String]) {
-    println!("User {} may run the following commands on this host:", username);
+    println!(
+        "User {} may run the following commands on this host:",
+        username
+    );
     println!();
 
     let mut found = false;
@@ -808,11 +792,7 @@ fn list_permissions(policy: &SudoPolicy, username: &str, groups: &[String]) {
         }
 
         found = true;
-        let auth_tag = if rule.require_auth {
-            ""
-        } else {
-            "NOPASSWD: "
-        };
+        let auth_tag = if rule.require_auth { "" } else { "NOPASSWD: " };
         let run_as = &rule.run_as;
 
         if rule.commands.is_empty() {
@@ -904,11 +884,7 @@ fn run() -> Result<()> {
 
     // Resolve command to absolute path
     let resolved = resolve_command(&cli.command[0])?;
-    let cmd_str = format!(
-        "{} {}",
-        resolved.display(),
-        cli.command[1..].join(" ")
-    );
+    let cmd_str = format!("{} {}", resolved.display(), cli.command[1..].join(" "));
 
     // Authorization check
     let authz = check_authorization(
@@ -921,7 +897,14 @@ fn run() -> Result<()> {
 
     match authz {
         AuthzResult::Denied(reason) => {
-            audit_log("COMMAND", &caller, &cli.target_user, &cmd_str, false, &reason);
+            audit_log(
+                "COMMAND",
+                &caller,
+                &cli.target_user,
+                &cmd_str,
+                false,
+                &reason,
+            );
             eprintln!("agnos-sudo: {}", reason);
             // Log incident — 3 failures in a row should alert
             bail!("Permission denied");
@@ -986,14 +969,17 @@ fn run() -> Result<()> {
             unsafe {
                 cmd.pre_exec(move || {
                     // Set supplementary groups
-                    nix::unistd::setgroups(&[nix::unistd::Gid::from_raw(target_gid)])
-                        .map_err(|e| std::io::Error::new(std::io::ErrorKind::PermissionDenied, e))?;
+                    nix::unistd::setgroups(&[nix::unistd::Gid::from_raw(target_gid)]).map_err(
+                        |e| std::io::Error::new(std::io::ErrorKind::PermissionDenied, e),
+                    )?;
                     // Set GID first (must be done before setuid)
-                    nix::unistd::setgid(nix::unistd::Gid::from_raw(target_gid))
-                        .map_err(|e| std::io::Error::new(std::io::ErrorKind::PermissionDenied, e))?;
+                    nix::unistd::setgid(nix::unistd::Gid::from_raw(target_gid)).map_err(|e| {
+                        std::io::Error::new(std::io::ErrorKind::PermissionDenied, e)
+                    })?;
                     // Set UID last
-                    nix::unistd::setuid(nix::unistd::Uid::from_raw(target_uid))
-                        .map_err(|e| std::io::Error::new(std::io::ErrorKind::PermissionDenied, e))?;
+                    nix::unistd::setuid(nix::unistd::Uid::from_raw(target_uid)).map_err(|e| {
+                        std::io::Error::new(std::io::ErrorKind::PermissionDenied, e)
+                    })?;
                     Ok(())
                 });
             }
@@ -1107,8 +1093,7 @@ user = "bob"
     fn test_authz_wheel_group_allowed() {
         let policy = parse_policy(sample_policy()).unwrap();
         let groups = vec!["wheel".to_string()];
-        let result =
-            check_authorization(&policy, "jdoe", &groups, "root", "/usr/bin/systemctl");
+        let result = check_authorization(&policy, "jdoe", &groups, "root", "/usr/bin/systemctl");
         assert_eq!(result, AuthzResult::Allowed { require_auth: true });
     }
 
@@ -1116,8 +1101,7 @@ user = "bob"
     fn test_authz_wheel_group_denied_command() {
         let policy = parse_policy(sample_policy()).unwrap();
         let groups = vec!["wheel".to_string()];
-        let result =
-            check_authorization(&policy, "jdoe", &groups, "root", "/usr/bin/rm");
+        let result = check_authorization(&policy, "jdoe", &groups, "root", "/usr/bin/rm");
         // rm is not in wheel's allowed commands, but the wildcard rule matches
         // The wildcard rule is for /usr/bin/passwd only
         assert!(matches!(result, AuthzResult::Denied(_)));
@@ -1126,8 +1110,7 @@ user = "bob"
     #[test]
     fn test_authz_deploy_nopasswd() {
         let policy = parse_policy(sample_policy()).unwrap();
-        let result =
-            check_authorization(&policy, "deploy", &[], "root", "/usr/bin/docker");
+        let result = check_authorization(&policy, "deploy", &[], "root", "/usr/bin/docker");
         assert_eq!(
             result,
             AuthzResult::Allowed {
@@ -1152,34 +1135,21 @@ user = "bob"
     #[test]
     fn test_authz_wildcard_user() {
         let policy = parse_policy(sample_policy()).unwrap();
-        let result =
-            check_authorization(&policy, "anybody", &[], "root", "/usr/bin/passwd");
+        let result = check_authorization(&policy, "anybody", &[], "root", "/usr/bin/passwd");
         assert_eq!(result, AuthzResult::Allowed { require_auth: true });
     }
 
     #[test]
     fn test_authz_unknown_user_denied() {
         let policy = parse_policy(sample_policy()).unwrap();
-        let result = check_authorization(
-            &policy,
-            "unknown",
-            &[],
-            "root",
-            "/usr/bin/dangerous",
-        );
+        let result = check_authorization(&policy, "unknown", &[], "root", "/usr/bin/dangerous");
         assert!(matches!(result, AuthzResult::Denied(_)));
     }
 
     #[test]
     fn test_authz_wrong_target_user() {
         let policy = parse_policy(sample_policy()).unwrap();
-        let result = check_authorization(
-            &policy,
-            "admin",
-            &[],
-            "postgres",
-            "/usr/bin/anything",
-        );
+        let result = check_authorization(&policy, "admin", &[], "postgres", "/usr/bin/anything");
         // Admin rule says run_as = "root", so "postgres" won't match
         assert!(matches!(result, AuthzResult::Denied(_)));
     }
@@ -1195,16 +1165,14 @@ commands = []
 "#,
         )
         .unwrap();
-        let result =
-            check_authorization(&policy, "admin", &[], "postgres", "/usr/bin/psql");
+        let result = check_authorization(&policy, "admin", &[], "postgres", "/usr/bin/psql");
         assert_eq!(result, AuthzResult::Allowed { require_auth: true });
     }
 
     #[test]
     fn test_authz_no_rules() {
         let policy = parse_policy("").unwrap();
-        let result =
-            check_authorization(&policy, "admin", &[], "root", "/usr/bin/ls");
+        let result = check_authorization(&policy, "admin", &[], "root", "/usr/bin/ls");
         assert!(matches!(result, AuthzResult::Denied(_)));
     }
 
@@ -1225,8 +1193,7 @@ commands = ["/usr/bin/docker"]
 
         // User in group
         let groups = vec!["devops".to_string()];
-        let result =
-            check_authorization(&policy, "alice", &groups, "root", "/usr/bin/docker");
+        let result = check_authorization(&policy, "alice", &groups, "root", "/usr/bin/docker");
         assert_eq!(result, AuthzResult::Allowed { require_auth: true });
     }
 
@@ -1359,7 +1326,11 @@ commands = ["/usr/bin/docker"]
 
         let keys: HashSet<&str> = env.iter().map(|(k, _)| k.as_str()).collect();
         for var in UNSAFE_ENV_VARS {
-            assert!(!keys.contains(var), "Unsafe var {} should not be in env", var);
+            assert!(
+                !keys.contains(var),
+                "Unsafe var {} should not be in env",
+                var
+            );
         }
     }
 
@@ -1388,7 +1359,10 @@ env_keep = ["EDITOR"]
     #[test]
     fn test_check_timestamp_nonexistent() {
         // Random user that won't have a timestamp file
-        assert!(!check_timestamp("test_nonexistent_user_xyz", Duration::from_secs(300)));
+        assert!(!check_timestamp(
+            "test_nonexistent_user_xyz",
+            Duration::from_secs(300)
+        ));
     }
 
     // -----------------------------------------------------------------------
@@ -1490,13 +1464,11 @@ commands = ["ALL"]
         let groups = vec!["docker".to_string(), "admin".to_string()];
 
         // First matching rule wins — docker group matches first
-        let result =
-            check_authorization(&policy, "bob", &groups, "root", "/usr/bin/docker");
+        let result = check_authorization(&policy, "bob", &groups, "root", "/usr/bin/docker");
         assert_eq!(result, AuthzResult::Allowed { require_auth: true });
 
         // For non-docker command, first rule doesn't match, second does
-        let result =
-            check_authorization(&policy, "bob", &groups, "root", "/usr/bin/ls");
+        let result = check_authorization(&policy, "bob", &groups, "root", "/usr/bin/ls");
         assert_eq!(result, AuthzResult::Allowed { require_auth: true });
     }
 

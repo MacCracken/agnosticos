@@ -11,9 +11,7 @@ use chrono::Utc;
 use serde_json::json;
 use tower::ServiceExt; // for `oneshot`
 
-use agent_runtime::http_api::{
-    AgentListResponse, AgentMetricsResponse, ApiState, build_router,
-};
+use agent_runtime::http_api::{build_router, AgentListResponse, AgentMetricsResponse, ApiState};
 use agent_runtime::orchestrator::{Orchestrator, Task, TaskPriority, TaskRequirements, TaskResult};
 use agent_runtime::registry::AgentRegistry;
 use agnos_common::AgentId;
@@ -54,10 +52,7 @@ fn shared_orchestrator() -> Arc<Orchestrator> {
 }
 
 /// Register a uniquely-named agent via HTTP POST, return the response body as JSON.
-async fn register_via_http(
-    app: &axum::Router,
-    name: &str,
-) -> (StatusCode, serde_json::Value) {
+async fn register_via_http(app: &axum::Router, name: &str) -> (StatusCode, serde_json::Value) {
     let body = json!({
         "name": name,
         "capabilities": ["load-test"],
@@ -104,7 +99,10 @@ async fn load_100_concurrent_http_registrations() {
     }
 
     let statuses: Vec<StatusCode> = futures_collect(handles).await;
-    let created = statuses.iter().filter(|s| **s == StatusCode::CREATED).count();
+    let created = statuses
+        .iter()
+        .filter(|s| **s == StatusCode::CREATED)
+        .count();
     assert_eq!(created, 100, "All 100 registrations should succeed");
 
     // Verify via list endpoint
@@ -113,7 +111,9 @@ async fn load_100_concurrent_http_registrations() {
         .body(Body::empty())
         .unwrap();
     let resp = app.clone().oneshot(list_req).await.unwrap();
-    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let list: AgentListResponse = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(list.total, 100);
 }
@@ -129,7 +129,9 @@ async fn load_100_concurrent_task_submissions() {
     for _ in 0..100 {
         let o = orch.clone();
         handles.push(tokio::spawn(async move {
-            o.submit_task(make_task(TaskPriority::Normal)).await.unwrap();
+            o.submit_task(make_task(TaskPriority::Normal))
+                .await
+                .unwrap();
         }));
     }
 
@@ -254,7 +256,9 @@ async fn load_register_deregister_churn() {
         .body(Body::empty())
         .unwrap();
     let resp = app.clone().oneshot(list_req).await.unwrap();
-    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let list: AgentListResponse = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(list.total, 0, "All agents should be deregistered");
 }
@@ -269,7 +273,10 @@ async fn load_task_submit_and_result_race() {
     // Submit 50 tasks, collect their IDs
     let mut task_ids = Vec::new();
     for _ in 0..50 {
-        let id = orch.submit_task(make_task(TaskPriority::Normal)).await.unwrap();
+        let id = orch
+            .submit_task(make_task(TaskPriority::Normal))
+            .await
+            .unwrap();
         task_ids.push(id);
     }
 
@@ -314,7 +321,10 @@ async fn load_concurrent_task_cancellation() {
     // Submit 100 tasks
     let mut ids = Vec::new();
     for _ in 0..100 {
-        let id = orch.submit_task(make_task(TaskPriority::Normal)).await.unwrap();
+        let id = orch
+            .submit_task(make_task(TaskPriority::Normal))
+            .await
+            .unwrap();
         ids.push(id);
     }
     assert_eq!(orch.get_queue_stats().await.queued_tasks, 100);
@@ -341,7 +351,10 @@ async fn load_concurrent_task_cancellation() {
 
     // 100 - 50 cancelled + 50 new = 100
     let stats = orch.get_queue_stats().await;
-    assert_eq!(stats.queued_tasks, 100, "Should have 100 tasks after cancel+submit");
+    assert_eq!(
+        stats.queued_tasks, 100,
+        "Should have 100 tasks after cancel+submit"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -383,7 +396,9 @@ async fn load_queue_stats_consistency() {
     for _ in 0..50 {
         let o = orch.clone();
         handles.push(tokio::spawn(async move {
-            o.submit_task(make_task(TaskPriority::Normal)).await.unwrap();
+            o.submit_task(make_task(TaskPriority::Normal))
+                .await
+                .unwrap();
         }));
     }
 
@@ -396,7 +411,10 @@ async fn load_queue_stats_consistency() {
             // that the arithmetic didn't wrap around via underflow).
             assert!(stats.total_tasks <= 1_000_000, "total_tasks looks wrong");
             assert!(stats.queued_tasks <= 1_000_000, "queued_tasks looks wrong");
-            assert!(stats.running_tasks <= 1_000_000, "running_tasks looks wrong");
+            assert!(
+                stats.running_tasks <= 1_000_000,
+                "running_tasks looks wrong"
+            );
             // total = queued + running must always hold
             assert_eq!(stats.total_tasks, stats.queued_tasks + stats.running_tasks);
         }));
@@ -512,7 +530,9 @@ async fn load_agent_metrics_aggregation() {
         .unwrap();
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
-    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let metrics: AgentMetricsResponse = serde_json::from_slice(&bytes).unwrap();
 
     assert_eq!(metrics.total_agents, 100);
@@ -547,7 +567,9 @@ async fn load_rapid_register_get_cycles() {
             let resp = router.clone().oneshot(req).await.unwrap();
             assert_eq!(resp.status(), StatusCode::CREATED);
 
-            let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+            let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+                .await
+                .unwrap();
             let reg: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
             let id = reg["id"].as_str().unwrap().to_string();
 
@@ -559,7 +581,9 @@ async fn load_rapid_register_get_cycles() {
             let get_resp = router.oneshot(get_req).await.unwrap();
             assert_eq!(get_resp.status(), StatusCode::OK);
 
-            let get_bytes = axum::body::to_bytes(get_resp.into_body(), usize::MAX).await.unwrap();
+            let get_bytes = axum::body::to_bytes(get_resp.into_body(), usize::MAX)
+                .await
+                .unwrap();
             let detail: serde_json::Value = serde_json::from_slice(&get_bytes).unwrap();
             assert_eq!(detail["name"], name);
         }));
@@ -597,7 +621,10 @@ async fn load_task_dependency_chain() {
     // The first task has no dependencies, so it should be peek-able.
     // (All are Normal priority; peek returns the first in the Normal queue.)
     let next = orch.peek_next_task().await.unwrap();
-    assert!(next.dependencies.is_empty(), "First task should have no dependencies");
+    assert!(
+        next.dependencies.is_empty(),
+        "First task should have no dependencies"
+    );
 
     // Now simulate completing task_0 and store its result
     let result = TaskResult {
@@ -651,7 +678,11 @@ async fn load_concurrent_result_storage() {
     // All 200 should be stored (MAX_RESULTS is 10_000 so no pruning yet)
     let mut found = 0;
     for i in 0..200 {
-        if orch.get_result(&format!("prune-task-{}", i)).await.is_some() {
+        if orch
+            .get_result(&format!("prune-task-{}", i))
+            .await
+            .is_some()
+        {
             found += 1;
         }
     }
@@ -661,9 +692,7 @@ async fn load_concurrent_result_storage() {
 // ---------------------------------------------------------------------------
 // Utility: collect JoinHandle results
 // ---------------------------------------------------------------------------
-async fn futures_collect<T: Send + 'static>(
-    handles: Vec<tokio::task::JoinHandle<T>>,
-) -> Vec<T> {
+async fn futures_collect<T: Send + 'static>(handles: Vec<tokio::task::JoinHandle<T>>) -> Vec<T> {
     let mut results = Vec::with_capacity(handles.len());
     for h in handles {
         results.push(h.await.unwrap());

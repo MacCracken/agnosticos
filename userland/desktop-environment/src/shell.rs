@@ -401,7 +401,11 @@ impl DesktopShell {
             .cloned()
             .collect();
 
-        results.sort_by(|a, b| b.relevance_score.partial_cmp(&a.relevance_score).unwrap_or(std::cmp::Ordering::Equal));
+        results.sort_by(|a, b| {
+            b.relevance_score
+                .partial_cmp(&a.relevance_score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         if !query.is_empty() {
             for item in &mut results {
@@ -796,8 +800,19 @@ mod tests {
     #[test]
     fn test_desktop_shell_launch_all_registered_apps() {
         let shell = DesktopShell::new();
-        for app_id in ["terminal", "filemanager", "settings", "agent-manager", "audit-viewer", "model-manager"] {
-            assert!(shell.launch_app(app_id).is_ok(), "Failed to launch {}", app_id);
+        for app_id in [
+            "terminal",
+            "filemanager",
+            "settings",
+            "agent-manager",
+            "audit-viewer",
+            "model-manager",
+        ] {
+            assert!(
+                shell.launch_app(app_id).is_ok(),
+                "Failed to launch {}",
+                app_id
+            );
         }
     }
 
@@ -975,17 +990,29 @@ mod tests {
     #[test]
     fn test_desktop_shell_toggle_quick_setting_double_toggle() {
         let shell = DesktopShell::new();
-        let initial = shell.get_quick_settings().iter()
-            .find(|s| s.id == "bluetooth").unwrap().is_active;
+        let initial = shell
+            .get_quick_settings()
+            .iter()
+            .find(|s| s.id == "bluetooth")
+            .unwrap()
+            .is_active;
 
         shell.toggle_quick_setting("bluetooth").unwrap();
-        let after_first = shell.get_quick_settings().iter()
-            .find(|s| s.id == "bluetooth").unwrap().is_active;
+        let after_first = shell
+            .get_quick_settings()
+            .iter()
+            .find(|s| s.id == "bluetooth")
+            .unwrap()
+            .is_active;
         assert_ne!(initial, after_first);
 
         shell.toggle_quick_setting("bluetooth").unwrap();
-        let after_second = shell.get_quick_settings().iter()
-            .find(|s| s.id == "bluetooth").unwrap().is_active;
+        let after_second = shell
+            .get_quick_settings()
+            .iter()
+            .find(|s| s.id == "bluetooth")
+            .unwrap()
+            .is_active;
         assert_eq!(initial, after_second);
     }
 
@@ -1016,7 +1043,14 @@ mod tests {
     #[test]
     fn test_desktop_shell_launch_each_registered_app() {
         let shell = DesktopShell::new();
-        let app_ids = ["terminal", "filemanager", "settings", "agent-manager", "audit-viewer", "model-manager"];
+        let app_ids = [
+            "terminal",
+            "filemanager",
+            "settings",
+            "agent-manager",
+            "audit-viewer",
+            "model-manager",
+        ];
         for id in app_ids {
             assert!(shell.launch_app(id).is_ok(), "Failed to launch {}", id);
         }

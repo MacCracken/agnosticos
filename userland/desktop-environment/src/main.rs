@@ -3,29 +3,31 @@
 // exercised by the main binary.
 #![allow(dead_code, unused_mut, unused_imports)]
 
+use clap::Parser;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::signal;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
-use clap::Parser;
 
-mod compositor;
-pub mod renderer;
-mod shell;
+mod accessibility;
 mod ai_features;
 mod apps;
-mod security_ui;
-mod wayland;
-mod accessibility;
+mod compositor;
 mod plugin_host;
+pub mod renderer;
+mod security_ui;
+mod shell;
+mod wayland;
 mod xwayland;
 
-use compositor::{Compositor, WindowState, ContextType};
-use shell::{DesktopShell, Notification, NotificationPriority};
-use ai_features::{AIDesktopFeatures, AISuggestion, SuggestionType, ContextEvent, ContextEventType};
+use ai_features::{
+    AIDesktopFeatures, AISuggestion, ContextEvent, ContextEventType, SuggestionType,
+};
 use apps::DesktopApplications;
-use security_ui::{SecurityUI, SecurityAlert, ThreatLevel, SecurityLevel};
+use compositor::{Compositor, ContextType, WindowState};
+use security_ui::{SecurityAlert, SecurityLevel, SecurityUI, ThreatLevel};
+use shell::{DesktopShell, Notification, NotificationPriority};
 
 #[derive(Debug, clap::Parser)]
 #[command(name = "desktop-environment")]
@@ -278,8 +280,7 @@ fn read_disk_usage() -> Option<f32> {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let fmt = tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env());
+    let fmt = tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env());
     if std::env::var("AGNOS_LOG_FORMAT").as_deref() == Ok("json") {
         fmt.json().init();
     } else {
@@ -381,21 +382,51 @@ mod tests {
 
     #[test]
     fn test_suggestion_type_variants() {
-        assert_eq!(format!("{:?}", SuggestionType::WindowPlacement), "WindowPlacement");
-        assert_eq!(format!("{:?}", SuggestionType::ContextSwitch), "ContextSwitch");
-        assert_eq!(format!("{:?}", SuggestionType::TaskRecommendation), "TaskRecommendation");
-        assert_eq!(format!("{:?}", SuggestionType::ResourceOptimization), "ResourceOptimization");
-        assert_eq!(format!("{:?}", SuggestionType::SecurityAlert), "SecurityAlert");
-        assert_eq!(format!("{:?}", SuggestionType::Productivity), "Productivity");
+        assert_eq!(
+            format!("{:?}", SuggestionType::WindowPlacement),
+            "WindowPlacement"
+        );
+        assert_eq!(
+            format!("{:?}", SuggestionType::ContextSwitch),
+            "ContextSwitch"
+        );
+        assert_eq!(
+            format!("{:?}", SuggestionType::TaskRecommendation),
+            "TaskRecommendation"
+        );
+        assert_eq!(
+            format!("{:?}", SuggestionType::ResourceOptimization),
+            "ResourceOptimization"
+        );
+        assert_eq!(
+            format!("{:?}", SuggestionType::SecurityAlert),
+            "SecurityAlert"
+        );
+        assert_eq!(
+            format!("{:?}", SuggestionType::Productivity),
+            "Productivity"
+        );
     }
 
     #[test]
     fn test_context_event_type_variants() {
-        assert_eq!(format!("{:?}", ContextEventType::WindowOpened), "WindowOpened");
-        assert_eq!(format!("{:?}", ContextEventType::WindowClosed), "WindowClosed");
-        assert_eq!(format!("{:?}", ContextEventType::AppSwitched), "AppSwitched");
+        assert_eq!(
+            format!("{:?}", ContextEventType::WindowOpened),
+            "WindowOpened"
+        );
+        assert_eq!(
+            format!("{:?}", ContextEventType::WindowClosed),
+            "WindowClosed"
+        );
+        assert_eq!(
+            format!("{:?}", ContextEventType::AppSwitched),
+            "AppSwitched"
+        );
         assert_eq!(format!("{:?}", ContextEventType::FileOpened), "FileOpened");
-        assert_eq!(format!("{:?}", ContextEventType::CommandExecuted), "CommandExecuted");
+        assert_eq!(
+            format!("{:?}", ContextEventType::CommandExecuted),
+            "CommandExecuted"
+        );
     }
 
     #[test]

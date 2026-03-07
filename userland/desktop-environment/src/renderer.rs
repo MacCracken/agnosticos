@@ -11,8 +11,8 @@ use std::collections::HashMap;
 
 use tracing::debug;
 
-use crate::compositor::{Rectangle, SurfaceId, WindowState};
 use crate::accessibility::HighContrastTheme;
+use crate::compositor::{Rectangle, SurfaceId, WindowState};
 
 // ---------------------------------------------------------------------------
 // Color & Pixel Types
@@ -54,7 +54,12 @@ pub fn blend(src: Pixel, dst: Pixel) -> Pixel {
     let b = sb as u32 + (db as u32 * inv_alpha / 255);
     let a = sa as u32 + (255u32.saturating_sub(sa as u32)); // result alpha
 
-    argb(a.min(255) as u8, r.min(255) as u8, g.min(255) as u8, b.min(255) as u8)
+    argb(
+        a.min(255) as u8,
+        r.min(255) as u8,
+        g.min(255) as u8,
+        b.min(255) as u8,
+    )
 }
 
 // Well-known colors
@@ -232,14 +237,12 @@ impl Framebuffer {
         // array, so reinterpreting as &[u8] of len * 4 bytes is valid.
         // The resulting slice borrows self, preventing drop or reallocation.
         // The checked_mul guards against theoretical overflow on 32-bit platforms.
-        let byte_len = self.pixels.len().checked_mul(4)
+        let byte_len = self
+            .pixels
+            .len()
+            .checked_mul(4)
             .expect("framebuffer byte length overflow");
-        unsafe {
-            std::slice::from_raw_parts(
-                self.pixels.as_ptr() as *const u8,
-                byte_len,
-            )
-        }
+        unsafe { std::slice::from_raw_parts(self.pixels.as_ptr() as *const u8, byte_len) }
     }
 }
 
@@ -559,12 +562,7 @@ pub fn render_decorations(
 }
 
 /// Hit-test a point against window decorations.
-pub fn decoration_hit_test(
-    rect: &Rectangle,
-    x: i32,
-    y: i32,
-    state: &WindowState,
-) -> DecorationHit {
+pub fn decoration_hit_test(rect: &Rectangle, x: i32, y: i32, state: &WindowState) -> DecorationHit {
     // Check if point is inside the window at all
     if x < rect.x
         || y < rect.y
@@ -730,11 +728,7 @@ impl SceneGraph {
                     continue;
                 }
                 let r = &surface.geometry;
-                if x >= r.x
-                    && y >= r.y
-                    && x < r.x + r.width as i32
-                    && y < r.y + r.height as i32
-                {
+                if x >= r.x && y >= r.y && x < r.x + r.width as i32 && y < r.y + r.height as i32 {
                     return Some(*id);
                 }
             }
@@ -879,8 +873,7 @@ impl DesktopRenderer {
                 }
                 Layer::Notification => {
                     self.back.fill_rect(&surface.geometry, COLOR_PANEL_BG);
-                    self.back
-                        .draw_rect_outline(&surface.geometry, COLOR_ACCENT);
+                    self.back.draw_rect_outline(&surface.geometry, COLOR_ACCENT);
                     draw_text(
                         &mut self.back,
                         &surface.title,
@@ -975,7 +968,12 @@ mod tests {
     #[test]
     fn test_framebuffer_fill_rect() {
         let mut fb = Framebuffer::new(100, 100, COLOR_BLACK);
-        let rect = Rectangle { x: 10, y: 10, width: 20, height: 20 };
+        let rect = Rectangle {
+            x: 10,
+            y: 10,
+            width: 20,
+            height: 20,
+        };
         fb.fill_rect(&rect, COLOR_WHITE);
         assert_eq!(fb.get(10, 10), Some(COLOR_WHITE));
         assert_eq!(fb.get(29, 29), Some(COLOR_WHITE));
@@ -986,7 +984,12 @@ mod tests {
     #[test]
     fn test_framebuffer_draw_rect_outline() {
         let mut fb = Framebuffer::new(100, 100, COLOR_BLACK);
-        let rect = Rectangle { x: 10, y: 10, width: 20, height: 20 };
+        let rect = Rectangle {
+            x: 10,
+            y: 10,
+            width: 20,
+            height: 20,
+        };
         fb.draw_rect_outline(&rect, COLOR_WHITE);
         assert_eq!(fb.get(10, 10), Some(COLOR_WHITE)); // top-left corner
         assert_eq!(fb.get(15, 10), Some(COLOR_WHITE)); // top edge
@@ -1057,7 +1060,12 @@ mod tests {
         dt.flush(); // Clear initial full damage
         assert!(!dt.has_damage());
 
-        dt.add_damage(Rectangle { x: 10, y: 20, width: 100, height: 50 });
+        dt.add_damage(Rectangle {
+            x: 10,
+            y: 20,
+            width: 100,
+            height: 50,
+        });
         assert!(dt.has_damage());
         assert_eq!(dt.region_count(), 1);
 
@@ -1073,8 +1081,18 @@ mod tests {
         let mut dt = DamageTracker::new(1920, 1080);
         dt.flush();
 
-        dt.add_damage(Rectangle { x: 0, y: 0, width: 100, height: 100 });
-        dt.add_damage(Rectangle { x: 500, y: 500, width: 200, height: 200 });
+        dt.add_damage(Rectangle {
+            x: 0,
+            y: 0,
+            width: 100,
+            height: 100,
+        });
+        dt.add_damage(Rectangle {
+            x: 500,
+            y: 500,
+            width: 200,
+            height: 200,
+        });
         assert_eq!(dt.region_count(), 2);
 
         let bounds = dt.get_damage_bounds();
@@ -1125,13 +1143,26 @@ mod tests {
 
     #[test]
     fn test_decoration_hit_test_outside() {
-        let rect = Rectangle { x: 100, y: 100, width: 200, height: 150 };
-        assert_eq!(decoration_hit_test(&rect, 50, 50, &WindowState::Normal), DecorationHit::Outside);
+        let rect = Rectangle {
+            x: 100,
+            y: 100,
+            width: 200,
+            height: 150,
+        };
+        assert_eq!(
+            decoration_hit_test(&rect, 50, 50, &WindowState::Normal),
+            DecorationHit::Outside
+        );
     }
 
     #[test]
     fn test_decoration_hit_test_titlebar() {
-        let rect = Rectangle { x: 100, y: 100, width: 200, height: 150 };
+        let rect = Rectangle {
+            x: 100,
+            y: 100,
+            width: 200,
+            height: 150,
+        };
         assert_eq!(
             decoration_hit_test(&rect, 150, 110, &WindowState::Normal),
             DecorationHit::TitleBar
@@ -1140,7 +1171,12 @@ mod tests {
 
     #[test]
     fn test_decoration_hit_test_client_area() {
-        let rect = Rectangle { x: 100, y: 100, width: 200, height: 150 };
+        let rect = Rectangle {
+            x: 100,
+            y: 100,
+            width: 200,
+            height: 150,
+        };
         assert_eq!(
             decoration_hit_test(&rect, 150, 140, &WindowState::Normal),
             DecorationHit::ClientArea
@@ -1149,7 +1185,12 @@ mod tests {
 
     #[test]
     fn test_decoration_hit_test_fullscreen() {
-        let rect = Rectangle { x: 0, y: 0, width: 1920, height: 1080 };
+        let rect = Rectangle {
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1080,
+        };
         // Everything is client area in fullscreen
         assert_eq!(
             decoration_hit_test(&rect, 100, 10, &WindowState::Fullscreen),
@@ -1159,7 +1200,12 @@ mod tests {
 
     #[test]
     fn test_decoration_hit_test_close_button() {
-        let rect = Rectangle { x: 100, y: 100, width: 200, height: 150 };
+        let rect = Rectangle {
+            x: 100,
+            y: 100,
+            width: 200,
+            height: 150,
+        };
         let close_x = 100 + 200 - BUTTON_SIZE as i32 - 6;
         let btn_y = 100 + (TITLEBAR_HEIGHT as i32 - BUTTON_SIZE as i32) / 2;
         assert_eq!(
@@ -1170,7 +1216,12 @@ mod tests {
 
     #[test]
     fn test_decoration_hit_test_border_bottom() {
-        let rect = Rectangle { x: 100, y: 100, width: 200, height: 150 };
+        let rect = Rectangle {
+            x: 100,
+            y: 100,
+            width: 200,
+            height: 150,
+        };
         assert_eq!(
             decoration_hit_test(&rect, 150, 249, &WindowState::Normal),
             DecorationHit::Border(ResizeEdge::Bottom)
@@ -1180,7 +1231,12 @@ mod tests {
     #[test]
     fn test_render_decorations_normal() {
         let mut fb = Framebuffer::new(400, 300, COLOR_BG_DARK);
-        let rect = Rectangle { x: 10, y: 10, width: 200, height: 150 };
+        let rect = Rectangle {
+            x: 10,
+            y: 10,
+            width: 200,
+            height: 150,
+        };
         render_decorations(&mut fb, &rect, "Test Window", true, &WindowState::Normal);
         // Title bar should have active color
         assert_ne!(fb.get(15, 15), Some(COLOR_BG_DARK));
@@ -1189,7 +1245,12 @@ mod tests {
     #[test]
     fn test_render_decorations_fullscreen_noop() {
         let mut fb = Framebuffer::new(400, 300, COLOR_BG_DARK);
-        let rect = Rectangle { x: 0, y: 0, width: 400, height: 300 };
+        let rect = Rectangle {
+            x: 0,
+            y: 0,
+            width: 400,
+            height: 300,
+        };
         render_decorations(&mut fb, &rect, "FS", true, &WindowState::Fullscreen);
         // Should not draw decorations — pixel at (0,0) remains background
         assert_eq!(fb.get(0, 0), Some(COLOR_BG_DARK));
@@ -1202,7 +1263,12 @@ mod tests {
         sg.add_surface(SceneSurface {
             id,
             layer: Layer::Normal,
-            geometry: Rectangle { x: 0, y: 0, width: 100, height: 100 },
+            geometry: Rectangle {
+                x: 0,
+                y: 0,
+                width: 100,
+                height: 100,
+            },
             visible: true,
             opacity: 1.0,
             title: "Test".to_string(),
@@ -1258,7 +1324,12 @@ mod tests {
         sg.add_surface(SceneSurface {
             id,
             layer: Layer::Normal,
-            geometry: Rectangle { x: 50, y: 50, width: 100, height: 100 },
+            geometry: Rectangle {
+                x: 50,
+                y: 50,
+                width: 100,
+                height: 100,
+            },
             visible: true,
             opacity: 1.0,
             title: "W".to_string(),
@@ -1278,7 +1349,12 @@ mod tests {
         sg.add_surface(SceneSurface {
             id,
             layer: Layer::Normal,
-            geometry: Rectangle { x: 0, y: 0, width: 100, height: 100 },
+            geometry: Rectangle {
+                x: 0,
+                y: 0,
+                width: 100,
+                height: 100,
+            },
             visible: false,
             opacity: 1.0,
             title: "Hidden".to_string(),
@@ -1300,7 +1376,12 @@ mod tests {
         sg.add_surface(SceneSurface {
             id: id1,
             layer: Layer::Normal,
-            geometry: Rectangle { x: 0, y: 0, width: 100, height: 100 },
+            geometry: Rectangle {
+                x: 0,
+                y: 0,
+                width: 100,
+                height: 100,
+            },
             visible: true,
             opacity: 1.0,
             title: "Back".to_string(),
@@ -1310,7 +1391,12 @@ mod tests {
         sg.add_surface(SceneSurface {
             id: id2,
             layer: Layer::Floating,
-            geometry: Rectangle { x: 50, y: 50, width: 100, height: 100 },
+            geometry: Rectangle {
+                x: 50,
+                y: 50,
+                width: 100,
+                height: 100,
+            },
             visible: true,
             opacity: 1.0,
             title: "Front".to_string(),
@@ -1340,7 +1426,12 @@ mod tests {
         scene.add_surface(SceneSurface {
             id,
             layer: Layer::Normal,
-            geometry: Rectangle { x: 50, y: 50, width: 200, height: 150 },
+            geometry: Rectangle {
+                x: 50,
+                y: 50,
+                width: 200,
+                height: 150,
+            },
             visible: true,
             opacity: 1.0,
             title: "Test Window".to_string(),
@@ -1365,7 +1456,12 @@ mod tests {
         scene.add_surface(SceneSurface {
             id,
             layer: Layer::Normal,
-            geometry: Rectangle { x: 0, y: 0, width: 102, height: 125 },
+            geometry: Rectangle {
+                x: 0,
+                y: 0,
+                width: 102,
+                height: 125,
+            },
             visible: true,
             opacity: 1.0,
             title: "W".to_string(),
@@ -1392,10 +1488,14 @@ mod tests {
     #[test]
     fn test_resize_edge_variants() {
         let edges = [
-            ResizeEdge::Top, ResizeEdge::Bottom,
-            ResizeEdge::Left, ResizeEdge::Right,
-            ResizeEdge::TopLeft, ResizeEdge::TopRight,
-            ResizeEdge::BottomLeft, ResizeEdge::BottomRight,
+            ResizeEdge::Top,
+            ResizeEdge::Bottom,
+            ResizeEdge::Left,
+            ResizeEdge::Right,
+            ResizeEdge::TopLeft,
+            ResizeEdge::TopRight,
+            ResizeEdge::BottomLeft,
+            ResizeEdge::BottomRight,
         ];
         assert_eq!(edges.len(), 8);
     }
@@ -1404,7 +1504,12 @@ mod tests {
     fn test_framebuffer_fill_rect_clipped() {
         let mut fb = Framebuffer::new(10, 10, COLOR_BLACK);
         // Rectangle extends beyond framebuffer
-        let rect = Rectangle { x: 5, y: 5, width: 100, height: 100 };
+        let rect = Rectangle {
+            x: 5,
+            y: 5,
+            width: 100,
+            height: 100,
+        };
         fb.fill_rect(&rect, COLOR_WHITE);
         assert_eq!(fb.get(5, 5), Some(COLOR_WHITE));
         assert_eq!(fb.get(9, 9), Some(COLOR_WHITE));
@@ -1414,7 +1519,12 @@ mod tests {
     fn test_blit_clipped() {
         let mut dst = Framebuffer::new(100, 100, COLOR_BLACK);
         let src = Framebuffer::new(50, 50, COLOR_WHITE);
-        let clip = Rectangle { x: 10, y: 10, width: 20, height: 20 };
+        let clip = Rectangle {
+            x: 10,
+            y: 10,
+            width: 20,
+            height: 20,
+        };
         dst.blit_clipped(&src, 0, 0, &clip);
         assert_eq!(dst.get(10, 10), Some(COLOR_WHITE));
         assert_eq!(dst.get(29, 29), Some(COLOR_WHITE));
@@ -1492,8 +1602,11 @@ mod tests {
         for ch in 'a'..='z' {
             let upper = ch.to_ascii_uppercase();
             assert_eq!(
-                get_glyph(ch), get_glyph(upper),
-                "Lowercase '{}' should map to uppercase '{}'", ch, upper
+                get_glyph(ch),
+                get_glyph(upper),
+                "Lowercase '{}' should map to uppercase '{}'",
+                ch,
+                upper
             );
         }
     }

@@ -127,9 +127,9 @@ pub fn read_boot_config() -> Result<BootConfig> {
         match bootloader {
             Bootloader::SystemdBoot => read_systemd_boot_config(),
             Bootloader::Grub2 => read_grub2_config(),
-            Bootloader::Unknown => Err(SysError::Unknown(
-                "No supported bootloader detected".into(),
-            )),
+            Bootloader::Unknown => {
+                Err(SysError::Unknown("No supported bootloader detected".into()))
+            }
         }
     }
 
@@ -166,9 +166,9 @@ pub fn set_default_entry(id: &str) -> Result<()> {
         match bootloader {
             Bootloader::SystemdBoot => set_systemd_boot_default(id),
             Bootloader::Grub2 => set_grub2_default(id),
-            Bootloader::Unknown => Err(SysError::Unknown(
-                "No supported bootloader detected".into(),
-            )),
+            Bootloader::Unknown => {
+                Err(SysError::Unknown("No supported bootloader detected".into()))
+            }
         }
     }
 
@@ -190,9 +190,9 @@ pub fn set_kernel_cmdline(entry_id: &str, options: &str) -> Result<()> {
         match bootloader {
             Bootloader::SystemdBoot => set_systemd_boot_cmdline(entry_id, options),
             Bootloader::Grub2 => set_grub2_cmdline(entry_id, options),
-            Bootloader::Unknown => Err(SysError::Unknown(
-                "No supported bootloader detected".into(),
-            )),
+            Bootloader::Unknown => {
+                Err(SysError::Unknown("No supported bootloader detected".into()))
+            }
         }
     }
 
@@ -218,9 +218,9 @@ pub fn set_timeout(seconds: u32) -> Result<()> {
         match bootloader {
             Bootloader::SystemdBoot => set_systemd_boot_timeout(seconds),
             Bootloader::Grub2 => set_grub2_timeout(seconds),
-            Bootloader::Unknown => Err(SysError::Unknown(
-                "No supported bootloader detected".into(),
-            )),
+            Bootloader::Unknown => {
+                Err(SysError::Unknown("No supported bootloader detected".into()))
+            }
         }
     }
 
@@ -257,7 +257,10 @@ pub fn validate_kernel_cmdline(options: &str) -> Result<()> {
     }
 
     // Reject non-printable / non-ASCII characters
-    if options.chars().any(|c| !c.is_ascii() || c.is_ascii_control()) {
+    if options
+        .chars()
+        .any(|c| !c.is_ascii() || c.is_ascii_control())
+    {
         return Err(SysError::InvalidArgument(
             "Kernel command line contains non-printable or non-ASCII characters".into(),
         ));
@@ -269,12 +272,19 @@ pub fn validate_kernel_cmdline(options: &str) -> Result<()> {
 /// Validate that a boot-entry ID is well-formed.
 fn validate_entry_id(id: &str) -> Result<()> {
     if id.is_empty() {
-        return Err(SysError::InvalidArgument("Boot entry ID cannot be empty".into()));
+        return Err(SysError::InvalidArgument(
+            "Boot entry ID cannot be empty".into(),
+        ));
     }
     if id.len() > 256 {
-        return Err(SysError::InvalidArgument("Boot entry ID too long (max 256)".into()));
+        return Err(SysError::InvalidArgument(
+            "Boot entry ID too long (max 256)".into(),
+        ));
     }
-    if !id.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '.') {
+    if !id
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '.')
+    {
         return Err(SysError::InvalidArgument(format!(
             "Boot entry ID contains invalid characters: {}",
             id
@@ -291,7 +301,8 @@ fn validate_entry_id(id: &str) -> Result<()> {
 #[cfg(target_os = "linux")]
 fn read_systemd_boot_config() -> Result<BootConfig> {
     let (timeout, default_id) = parse_loader_conf(Path::new(SYSTEMD_LOADER_CONF))?;
-    let entries = parse_systemd_boot_entries(Path::new(SYSTEMD_ENTRIES_DIR), default_id.as_deref())?;
+    let entries =
+        parse_systemd_boot_entries(Path::new(SYSTEMD_ENTRIES_DIR), default_id.as_deref())?;
 
     Ok(BootConfig {
         bootloader: Bootloader::SystemdBoot,
@@ -304,9 +315,8 @@ fn read_systemd_boot_config() -> Result<BootConfig> {
 /// Parse `loader.conf` for `timeout` and `default` directives.
 #[cfg(target_os = "linux")]
 fn parse_loader_conf(path: &Path) -> Result<(u32, Option<String>)> {
-    let content = std::fs::read_to_string(path).map_err(|e| {
-        SysError::Unknown(format!("Failed to read {}: {}", path.display(), e))
-    })?;
+    let content = std::fs::read_to_string(path)
+        .map_err(|e| SysError::Unknown(format!("Failed to read {}: {}", path.display(), e)))?;
 
     let mut timeout: u32 = 5; // sensible default
     let mut default_id: Option<String> = None;
@@ -338,7 +348,11 @@ fn parse_systemd_boot_entries(dir: &Path, default_id: Option<&str>) -> Result<Ve
     let mut entries = Vec::new();
 
     let read_dir = std::fs::read_dir(dir).map_err(|e| {
-        SysError::Unknown(format!("Failed to read entries dir {}: {}", dir.display(), e))
+        SysError::Unknown(format!(
+            "Failed to read entries dir {}: {}",
+            dir.display(),
+            e
+        ))
     })?;
 
     for entry in read_dir {
@@ -411,9 +425,8 @@ fn parse_systemd_boot_entry(path: &Path, default_id: Option<&str>) -> Result<Boo
 #[cfg(target_os = "linux")]
 fn set_systemd_boot_default(id: &str) -> Result<()> {
     let conf_path = Path::new(SYSTEMD_LOADER_CONF);
-    let content = std::fs::read_to_string(conf_path).map_err(|e| {
-        SysError::Unknown(format!("Failed to read {}: {}", conf_path.display(), e))
-    })?;
+    let content = std::fs::read_to_string(conf_path)
+        .map_err(|e| SysError::Unknown(format!("Failed to read {}: {}", conf_path.display(), e)))?;
 
     let mut lines: Vec<String> = Vec::new();
     let mut found = false;
@@ -478,9 +491,8 @@ fn set_systemd_boot_cmdline(entry_id: &str, options: &str) -> Result<()> {
 #[cfg(target_os = "linux")]
 fn set_systemd_boot_timeout(seconds: u32) -> Result<()> {
     let conf_path = Path::new(SYSTEMD_LOADER_CONF);
-    let content = std::fs::read_to_string(conf_path).map_err(|e| {
-        SysError::Unknown(format!("Failed to read {}: {}", conf_path.display(), e))
-    })?;
+    let content = std::fs::read_to_string(conf_path)
+        .map_err(|e| SysError::Unknown(format!("Failed to read {}: {}", conf_path.display(), e)))?;
 
     let mut lines: Vec<String> = Vec::new();
     let mut found = false;
@@ -526,9 +538,8 @@ fn read_grub2_config() -> Result<BootConfig> {
 /// Parse `GRUB_TIMEOUT` from `/etc/default/grub`.
 #[cfg(target_os = "linux")]
 fn parse_grub_default_timeout() -> Result<u32> {
-    let content = std::fs::read_to_string(GRUB_DEFAULT_FILE).map_err(|e| {
-        SysError::Unknown(format!("Failed to read {}: {}", GRUB_DEFAULT_FILE, e))
-    })?;
+    let content = std::fs::read_to_string(GRUB_DEFAULT_FILE)
+        .map_err(|e| SysError::Unknown(format!("Failed to read {}: {}", GRUB_DEFAULT_FILE, e)))?;
 
     for line in content.lines() {
         let line = line.trim();
@@ -548,9 +559,8 @@ fn parse_grub_default_timeout() -> Result<u32> {
 /// Extracts title, linux, initrd, and options from each menuentry.
 #[cfg(target_os = "linux")]
 fn parse_grub_cfg(path: &Path) -> Result<(Vec<BootEntry>, Option<String>)> {
-    let content = std::fs::read_to_string(path).map_err(|e| {
-        SysError::Unknown(format!("Failed to read {}: {}", path.display(), e))
-    })?;
+    let content = std::fs::read_to_string(path)
+        .map_err(|e| SysError::Unknown(format!("Failed to read {}: {}", path.display(), e)))?;
 
     let mut entries = Vec::new();
     let mut default_entry: Option<String> = None;
@@ -662,9 +672,8 @@ fn set_grub2_cmdline(entry_id: &str, options: &str) -> Result<()> {
     // GRUB2 kernel cmdline is typically set via /etc/default/grub
     // For per-entry modification, we update GRUB_CMDLINE_LINUX_DEFAULT
     // and regenerate grub.cfg.
-    let content = std::fs::read_to_string(GRUB_DEFAULT_FILE).map_err(|e| {
-        SysError::Unknown(format!("Failed to read {}: {}", GRUB_DEFAULT_FILE, e))
-    })?;
+    let content = std::fs::read_to_string(GRUB_DEFAULT_FILE)
+        .map_err(|e| SysError::Unknown(format!("Failed to read {}: {}", GRUB_DEFAULT_FILE, e)))?;
 
     let mut lines: Vec<String> = Vec::new();
     let mut found = false;
@@ -681,9 +690,8 @@ fn set_grub2_cmdline(entry_id: &str, options: &str) -> Result<()> {
     }
 
     let new_content = lines.join("\n") + "\n";
-    std::fs::write(GRUB_DEFAULT_FILE, new_content).map_err(|e| {
-        SysError::Unknown(format!("Failed to write {}: {}", GRUB_DEFAULT_FILE, e))
-    })?;
+    std::fs::write(GRUB_DEFAULT_FILE, new_content)
+        .map_err(|e| SysError::Unknown(format!("Failed to write {}: {}", GRUB_DEFAULT_FILE, e)))?;
 
     // Regenerate grub.cfg
     let output = std::process::Command::new("grub-mkconfig")
@@ -709,9 +717,8 @@ fn set_grub2_cmdline(entry_id: &str, options: &str) -> Result<()> {
 
 #[cfg(target_os = "linux")]
 fn set_grub2_timeout(seconds: u32) -> Result<()> {
-    let content = std::fs::read_to_string(GRUB_DEFAULT_FILE).map_err(|e| {
-        SysError::Unknown(format!("Failed to read {}: {}", GRUB_DEFAULT_FILE, e))
-    })?;
+    let content = std::fs::read_to_string(GRUB_DEFAULT_FILE)
+        .map_err(|e| SysError::Unknown(format!("Failed to read {}: {}", GRUB_DEFAULT_FILE, e)))?;
 
     let mut lines: Vec<String> = Vec::new();
     let mut found = false;
@@ -728,9 +735,8 @@ fn set_grub2_timeout(seconds: u32) -> Result<()> {
     }
 
     let new_content = lines.join("\n") + "\n";
-    std::fs::write(GRUB_DEFAULT_FILE, new_content).map_err(|e| {
-        SysError::Unknown(format!("Failed to write {}: {}", GRUB_DEFAULT_FILE, e))
-    })?;
+    std::fs::write(GRUB_DEFAULT_FILE, new_content)
+        .map_err(|e| SysError::Unknown(format!("Failed to write {}: {}", GRUB_DEFAULT_FILE, e)))?;
 
     tracing::info!("Set GRUB2 timeout to: {}s", seconds);
     Ok(())

@@ -55,7 +55,10 @@ impl Sandbox {
         info!("Applying sandbox restrictions...");
 
         if let Err(e) = self.apply_inner().await {
-            warn!("Sandbox apply failed, cleaning up partially applied resources: {}", e);
+            warn!(
+                "Sandbox apply failed, cleaning up partially applied resources: {}",
+                e
+            );
             self.teardown().await;
             return Err(e);
         }
@@ -117,10 +120,7 @@ impl Sandbox {
 
         match security::apply_landlock(&sys_rules) {
             Ok(()) => {
-                info!(
-                    "Landlock restrictions applied ({} rules)",
-                    sys_rules.len()
-                );
+                info!("Landlock restrictions applied ({} rules)", sys_rules.len());
             }
             Err(e) => {
                 // On non-Linux or unsupported kernels, agnos-sys returns Ok
@@ -139,8 +139,7 @@ impl Sandbox {
 
         let filter = if self.config.seccomp_rules.is_empty() {
             // No per-agent rules — use the basic filter
-            security::create_basic_seccomp_filter()
-                .context("Failed to create seccomp filter")?
+            security::create_basic_seccomp_filter().context("Failed to create seccomp filter")?
         } else {
             // Build custom filter from per-agent rules
             let base_allowed: &[u32] = &[
@@ -154,17 +153,26 @@ impl Sandbox {
                 if let Some(nr) = security::syscall_name_to_nr(&rule.syscall) {
                     match rule.action {
                         agnos_common::SeccompAction::Allow => extra_allowed.push(nr),
-                        agnos_common::SeccompAction::Deny => denied.push((nr, security::SECCOMP_RET_KILL_PROCESS)),
-                        agnos_common::SeccompAction::Trap => denied.push((nr, security::SECCOMP_RET_TRAP)),
+                        agnos_common::SeccompAction::Deny => {
+                            denied.push((nr, security::SECCOMP_RET_KILL_PROCESS))
+                        }
+                        agnos_common::SeccompAction::Trap => {
+                            denied.push((nr, security::SECCOMP_RET_TRAP))
+                        }
                     }
                 } else {
-                    warn!("Unknown syscall name '{}' in seccomp rules, skipping", rule.syscall);
+                    warn!(
+                        "Unknown syscall name '{}' in seccomp rules, skipping",
+                        rule.syscall
+                    );
                 }
             }
 
             debug!(
                 "Custom seccomp filter: {} base + {} extra allowed, {} denied",
-                base_allowed.len(), extra_allowed.len(), denied.len()
+                base_allowed.len(),
+                extra_allowed.len(),
+                denied.len()
             );
 
             security::create_custom_seccomp_filter(base_allowed, &extra_allowed, &denied)
@@ -227,7 +235,10 @@ impl Sandbox {
                     }
                     Err(e) => {
                         // Fall back to plain namespace isolation
-                        warn!("Failed to create agent netns: {} — falling back to basic namespace", e);
+                        warn!(
+                            "Failed to create agent netns: {} — falling back to basic namespace",
+                            e
+                        );
                         security::create_namespace(NamespaceFlags::NETWORK)
                             .context("Failed to create network namespace for restricted access")?;
                     }
@@ -337,7 +348,10 @@ impl Sandbox {
             }
         };
 
-        debug!("Setting up encrypted storage ({} MB)", storage_config.size_mb);
+        debug!(
+            "Setting up encrypted storage ({} MB)",
+            storage_config.size_mb
+        );
 
         let agent_id = format!("sandbox-{}", std::process::id());
         let luks_config = luks::LuksConfig::for_agent(&agent_id, storage_config.size_mb);
@@ -355,7 +369,10 @@ impl Sandbox {
                 self.luks_name = Some(status.name);
             }
             Err(e) => {
-                warn!("Failed to set up encrypted storage: {} — continuing without it", e);
+                warn!(
+                    "Failed to set up encrypted storage: {} — continuing without it",
+                    e
+                );
             }
         }
 
@@ -373,7 +390,10 @@ impl Sandbox {
         );
 
         if let Err(e) = audit::agnos_audit_log_syscall(event, &msg, 0) {
-            debug!("Audit event '{}' not logged (expected on non-AGNOS kernels): {}", event, e);
+            debug!(
+                "Audit event '{}' not logged (expected on non-AGNOS kernels): {}",
+                event, e
+            );
         }
     }
 
@@ -384,7 +404,10 @@ impl Sandbox {
         // Destroy network namespace
         if let Some(ref handle) = self.netns_handle {
             if let Err(e) = netns::destroy_agent_netns(handle) {
-                warn!("Failed to destroy network namespace '{}': {}", handle.name, e);
+                warn!(
+                    "Failed to destroy network namespace '{}': {}",
+                    handle.name, e
+                );
             }
         }
         self.netns_handle = None;
@@ -432,7 +455,10 @@ impl Sandbox {
         );
 
         if let Err(e) = self.apply_inner().await {
-            warn!("Sandbox apply (profile '{}') failed, cleaning up: {}", filter_spec.profile_name, e);
+            warn!(
+                "Sandbox apply (profile '{}') failed, cleaning up: {}",
+                filter_spec.profile_name, e
+            );
             self.teardown().await;
             return Err(e);
         }
@@ -505,8 +531,8 @@ impl SeccompFilter {
 
     /// Build and load the filter using real seccomp syscalls
     pub fn load(&self) -> Result<()> {
-        let filter = security::create_basic_seccomp_filter()
-            .context("Failed to create seccomp filter")?;
+        let filter =
+            security::create_basic_seccomp_filter().context("Failed to create seccomp filter")?;
 
         if filter.is_empty() {
             debug!("Empty seccomp filter (non-Linux platform), skipping");
@@ -1075,12 +1101,10 @@ mod tests {
     #[test]
     fn test_sandbox_new_preserves_all_config_fields() {
         let config = SandboxConfig {
-            filesystem_rules: vec![
-                agnos_common::FilesystemRule {
-                    path: "/home".into(),
-                    access: agnos_common::FsAccess::ReadWrite,
-                },
-            ],
+            filesystem_rules: vec![agnos_common::FilesystemRule {
+                path: "/home".into(),
+                access: agnos_common::FsAccess::ReadWrite,
+            }],
             network_access: agnos_common::NetworkAccess::Restricted,
             seccomp_rules: vec![
                 agnos_common::SeccompRule {
@@ -1109,7 +1133,10 @@ mod tests {
 
         let sandbox = Sandbox::new(&config).unwrap();
         assert_eq!(sandbox.config.filesystem_rules.len(), 1);
-        assert_eq!(sandbox.config.network_access, agnos_common::NetworkAccess::Restricted);
+        assert_eq!(
+            sandbox.config.network_access,
+            agnos_common::NetworkAccess::Restricted
+        );
         assert_eq!(sandbox.config.seccomp_rules.len(), 2);
         assert!(sandbox.config.isolate_network);
         assert!(sandbox.config.network_policy.is_some());
@@ -1238,10 +1265,23 @@ mod tests {
         let filter = SeccompFilter::new();
         // Verify all essential syscalls from new()
         let expected = [
-            "read", "write", "openat", "close", "exit", "exit_group",
-            "mmap", "munmap", "mprotect", "brk",
-            "fstat", "lseek", "pread64", "pwrite64",
-            "getpid", "getppid", "gettid",
+            "read",
+            "write",
+            "openat",
+            "close",
+            "exit",
+            "exit_group",
+            "mmap",
+            "munmap",
+            "mprotect",
+            "brk",
+            "fstat",
+            "lseek",
+            "pread64",
+            "pwrite64",
+            "getpid",
+            "getppid",
+            "gettid",
         ];
         for syscall in expected {
             assert!(
@@ -1341,12 +1381,10 @@ mod tests {
     #[tokio::test]
     async fn test_sandbox_apply_landlock_with_rules() {
         let config = SandboxConfig {
-            filesystem_rules: vec![
-                agnos_common::FilesystemRule {
-                    path: "/tmp".into(),
-                    access: agnos_common::FsAccess::ReadWrite,
-                },
-            ],
+            filesystem_rules: vec![agnos_common::FilesystemRule {
+                path: "/tmp".into(),
+                access: agnos_common::FsAccess::ReadWrite,
+            }],
             ..SandboxConfig::default()
         };
         let sandbox = Sandbox::new(&config).unwrap();
@@ -1391,12 +1429,10 @@ mod tests {
     #[ignore] // Seccomp filters persist per-process; run in isolation
     async fn test_sandbox_apply_seccomp_unknown_syscall_warns() {
         let config = SandboxConfig {
-            seccomp_rules: vec![
-                agnos_common::SeccompRule {
-                    syscall: "nonexistent_call".to_string(),
-                    action: agnos_common::SeccompAction::Allow,
-                },
-            ],
+            seccomp_rules: vec![agnos_common::SeccompRule {
+                syscall: "nonexistent_call".to_string(),
+                action: agnos_common::SeccompAction::Allow,
+            }],
             ..SandboxConfig::default()
         };
         let sandbox = Sandbox::new(&config).unwrap();

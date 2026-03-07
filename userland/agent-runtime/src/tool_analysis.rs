@@ -9,9 +9,7 @@ use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
-use crate::network_tools::{
-    NetworkTool, ParsedOutput, ToolOutput,
-};
+use crate::network_tools::{NetworkTool, ParsedOutput, ToolOutput};
 
 /// Analysis result from the LLM.
 #[derive(Debug, Clone)]
@@ -129,17 +127,27 @@ fn format_parsed_output(parsed: &ParsedOutput) -> String {
         ParsedOutput::HostScan { hosts, scan_type } => {
             let mut out = format!("Scan type: {}\nHosts found: {}\n\n", scan_type, hosts.len());
             for host in hosts {
-                out.push_str(&format!("Host: {} ({})\n", host.address,
-                    host.hostname.as_deref().unwrap_or("no hostname")));
+                out.push_str(&format!(
+                    "Host: {} ({})\n",
+                    host.address,
+                    host.hostname.as_deref().unwrap_or("no hostname")
+                ));
                 if let Some(mac) = &host.mac_address {
-                    out.push_str(&format!("  MAC: {} ({})\n", mac,
-                        host.vendor.as_deref().unwrap_or("unknown vendor")));
+                    out.push_str(&format!(
+                        "  MAC: {} ({})\n",
+                        mac,
+                        host.vendor.as_deref().unwrap_or("unknown vendor")
+                    ));
                 }
                 for port in &host.ports {
-                    out.push_str(&format!("  {}/{} {} - {} {}\n",
-                        port.port, port.protocol, port.state,
+                    out.push_str(&format!(
+                        "  {}/{} {} - {} {}\n",
+                        port.port,
+                        port.protocol,
+                        port.state,
                         port.service.as_deref().unwrap_or("unknown"),
-                        port.version.as_deref().unwrap_or("")));
+                        port.version.as_deref().unwrap_or("")
+                    ));
                 }
                 out.push('\n');
             }
@@ -148,9 +156,13 @@ fn format_parsed_output(parsed: &ParsedOutput) -> String {
         ParsedOutput::DnsResult { records, query } => {
             let mut out = format!("DNS query: {}\nRecords: {}\n\n", query, records.len());
             for record in records {
-                out.push_str(&format!("{} {} {} (TTL: {})\n",
-                    record.name, record.record_type, record.value,
-                    record.ttl.map(|t| t.to_string()).unwrap_or("N/A".into())));
+                out.push_str(&format!(
+                    "{} {} {} (TTL: {})\n",
+                    record.name,
+                    record.record_type,
+                    record.value,
+                    record.ttl.map(|t| t.to_string()).unwrap_or("N/A".into())
+                ));
             }
             out
         }
@@ -159,24 +171,36 @@ fn format_parsed_output(parsed: &ParsedOutput) -> String {
             for hop in hops {
                 let addr = hop.address.as_deref().unwrap_or("*");
                 let host = hop.hostname.as_deref().unwrap_or("");
-                let rtt = hop.rtt_ms.map(|r| format!("{:.1}ms", r)).unwrap_or("timeout".into());
-                let loss = hop.loss_pct.map(|l| format!(" ({:.0}% loss)", l)).unwrap_or_default();
-                out.push_str(&format!("  {:>2}. {} {} {}{}\n", hop.hop_number, addr, host, rtt, loss));
+                let rtt = hop
+                    .rtt_ms
+                    .map(|r| format!("{:.1}ms", r))
+                    .unwrap_or("timeout".into());
+                let loss = hop
+                    .loss_pct
+                    .map(|l| format!(" ({:.0}% loss)", l))
+                    .unwrap_or_default();
+                out.push_str(&format!(
+                    "  {:>2}. {} {} {}{}\n",
+                    hop.hop_number, addr, host, rtt, loss
+                ));
             }
             out
         }
         ParsedOutput::SocketList { sockets } => {
             let mut out = format!("Active sockets: {}\n\n", sockets.len());
             for sock in sockets {
-                out.push_str(&format!("{} {} {} -> {} {}\n",
-                    sock.state, sock.protocol, sock.local_addr, sock.remote_addr,
-                    sock.process.as_deref().unwrap_or("")));
+                out.push_str(&format!(
+                    "{} {} {} -> {} {}\n",
+                    sock.state,
+                    sock.protocol,
+                    sock.local_addr,
+                    sock.remote_addr,
+                    sock.process.as_deref().unwrap_or("")
+                ));
             }
             out
         }
-        ParsedOutput::Raw { summary } => {
-            summary.clone()
-        }
+        ParsedOutput::Raw { summary } => summary.clone(),
     }
 }
 
@@ -248,7 +272,11 @@ pub fn parse_analysis_response(response: &str, tool: NetworkTool) -> ToolAnalysi
 
     // Fallback if parsing found nothing
     if summary.is_empty() {
-        summary = response.lines().next().unwrap_or("Analysis complete").to_string();
+        summary = response
+            .lines()
+            .next()
+            .unwrap_or("Analysis complete")
+            .to_string();
     }
 
     ToolAnalysis {
@@ -334,7 +362,9 @@ pub async fn analyze_via_gateway(
         return Err(anyhow!("LLM Gateway returned {}: {}", status, text));
     }
 
-    let resp: serde_json::Value = response.json().await
+    let resp: serde_json::Value = response
+        .json()
+        .await
         .context("Failed to parse LLM Gateway response")?;
 
     let text = resp["choices"][0]["message"]["content"]
@@ -536,7 +566,7 @@ pub fn format_trace(trace: &ReasoningTrace) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::network_tools::{DiscoveredHost, DiscoveredPort, DnsRecord, TraceHop, SocketEntry};
+    use crate::network_tools::{DiscoveredHost, DiscoveredPort, DnsRecord, SocketEntry, TraceHop};
 
     #[test]
     fn test_build_system_prompt_port_scan() {
@@ -567,12 +597,13 @@ mod tests {
                 mac_address: None,
                 vendor: None,
                 state: "up".into(),
-                ports: vec![
-                    DiscoveredPort {
-                        port: 22, protocol: "tcp".into(), state: "open".into(),
-                        service: Some("ssh".into()), version: Some("OpenSSH 8.9".into()),
-                    },
-                ],
+                ports: vec![DiscoveredPort {
+                    port: 22,
+                    protocol: "tcp".into(),
+                    state: "open".into(),
+                    service: Some("ssh".into()),
+                    version: Some("OpenSSH 8.9".into()),
+                }],
             }],
             scan_type: "port".into(),
         };
@@ -603,8 +634,20 @@ mod tests {
     fn test_format_trace_result() {
         let parsed = ParsedOutput::TraceResult {
             hops: vec![
-                TraceHop { hop_number: 1, address: Some("10.0.0.1".into()), hostname: None, rtt_ms: Some(0.5), loss_pct: None },
-                TraceHop { hop_number: 2, address: None, hostname: None, rtt_ms: None, loss_pct: None },
+                TraceHop {
+                    hop_number: 1,
+                    address: Some("10.0.0.1".into()),
+                    hostname: None,
+                    rtt_ms: Some(0.5),
+                    loss_pct: None,
+                },
+                TraceHop {
+                    hop_number: 2,
+                    address: None,
+                    hostname: None,
+                    rtt_ms: None,
+                    loss_pct: None,
+                },
             ],
             target: "example.com".into(),
         };
@@ -646,7 +689,10 @@ RECOMMENDATIONS:
 
         let analysis = parse_analysis_response(response, NetworkTool::PortScan);
 
-        assert_eq!(analysis.summary, "Found 3 open ports with 1 critical vulnerability.");
+        assert_eq!(
+            analysis.summary,
+            "Found 3 open ports with 1 critical vulnerability."
+        );
         assert!((analysis.risk_score - 0.7).abs() < 0.01);
         assert_eq!(analysis.findings.len(), 3);
         assert_eq!(analysis.findings[0].severity, FindingSeverity::Critical);
@@ -669,7 +715,10 @@ RECOMMENDATIONS:
 
     #[test]
     fn test_parse_finding_line() {
-        let finding = parse_finding_line("- [HIGH] Network: Exposed admin panel | /admin accessible without auth").unwrap();
+        let finding = parse_finding_line(
+            "- [HIGH] Network: Exposed admin panel | /admin accessible without auth",
+        )
+        .unwrap();
         assert_eq!(finding.severity, FindingSeverity::High);
         assert_eq!(finding.category, "Network");
         assert!(finding.description.contains("admin panel"));
@@ -678,7 +727,8 @@ RECOMMENDATIONS:
 
     #[test]
     fn test_parse_finding_no_evidence() {
-        let finding = parse_finding_line("- [LOW] Configuration: Default credentials may be in use").unwrap();
+        let finding =
+            parse_finding_line("- [LOW] Configuration: Default credentials may be in use").unwrap();
         assert_eq!(finding.severity, FindingSeverity::Low);
         assert!(finding.evidence.is_empty());
     }
@@ -737,10 +787,24 @@ RECOMMENDATIONS:
     #[test]
     fn test_trace_builder_add_step() {
         let mut builder = TraceBuilder::new("agent-1", "scan network");
-        builder.add_step("lookup DNS", "need to resolve target", Some("dns_lookup"), Some("93.184.216.34"), 50, true);
+        builder.add_step(
+            "lookup DNS",
+            "need to resolve target",
+            Some("dns_lookup"),
+            Some("93.184.216.34"),
+            50,
+            true,
+        );
         assert_eq!(builder.step_count(), 1);
 
-        builder.add_step("port scan", "check open ports", Some("nmap"), None, 200, true);
+        builder.add_step(
+            "port scan",
+            "check open ports",
+            Some("nmap"),
+            None,
+            200,
+            true,
+        );
         assert_eq!(builder.step_count(), 2);
     }
 
@@ -803,7 +867,14 @@ RECOMMENDATIONS:
     #[test]
     fn test_format_trace_output() {
         let mut builder = TraceBuilder::new("agent-1", "check host");
-        builder.add_step("ping", "verify host is up", Some("ping"), Some("64 bytes from 10.0.0.1"), 30, true);
+        builder.add_step(
+            "ping",
+            "verify host is up",
+            Some("ping"),
+            Some("64 bytes from 10.0.0.1"),
+            30,
+            true,
+        );
         let trace = builder.complete("Host is up");
 
         let formatted = format_trace(&trace);
@@ -820,7 +891,14 @@ RECOMMENDATIONS:
     #[test]
     fn test_reasoning_trace_serialization_roundtrip() {
         let mut builder = TraceBuilder::new("agent-x", "test task");
-        builder.add_step("do thing", "because", Some("tool"), Some("output"), 42, true);
+        builder.add_step(
+            "do thing",
+            "because",
+            Some("tool"),
+            Some("output"),
+            42,
+            true,
+        );
         let trace = builder.complete("done");
 
         let json = serde_json::to_string(&trace).unwrap();
@@ -869,7 +947,14 @@ RECOMMENDATIONS:
     fn test_format_trace_tool_output_truncation() {
         let long_output = "A".repeat(300);
         let mut builder = TraceBuilder::new("agent", "truncation test");
-        builder.add_step("action", "reason", Some("tool"), Some(&long_output), 10, true);
+        builder.add_step(
+            "action",
+            "reason",
+            Some("tool"),
+            Some(&long_output),
+            10,
+            true,
+        );
         let trace = builder.complete("done");
 
         let formatted = format_trace(&trace);

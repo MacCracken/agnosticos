@@ -400,22 +400,19 @@ impl AcceleratorRegistry {
     ///
     /// Priority: CUDA GPU > ROCm GPU > Metal GPU > Apple NPU > Intel NPU > CPU.
     pub fn best_available(&self) -> Option<&AcceleratorProfile> {
-        self.profiles
-            .iter()
-            .filter(|p| p.available)
-            .max_by(|a, b| {
-                let rank = |p: &AcceleratorProfile| -> u32 {
-                    match &p.accelerator {
-                        AcceleratorType::CudaGpu { .. } => 60,
-                        AcceleratorType::RocmGpu { .. } => 50,
-                        AcceleratorType::MetalGpu => 40,
-                        AcceleratorType::AppleNpu => 30,
-                        AcceleratorType::IntelNpu => 20,
-                        AcceleratorType::Cpu => 10,
-                    }
-                };
-                rank(a).cmp(&rank(b))
-            })
+        self.profiles.iter().filter(|p| p.available).max_by(|a, b| {
+            let rank = |p: &AcceleratorProfile| -> u32 {
+                match &p.accelerator {
+                    AcceleratorType::CudaGpu { .. } => 60,
+                    AcceleratorType::RocmGpu { .. } => 50,
+                    AcceleratorType::MetalGpu => 40,
+                    AcceleratorType::AppleNpu => 30,
+                    AcceleratorType::IntelNpu => 20,
+                    AcceleratorType::Cpu => 10,
+                }
+            };
+            rank(a).cmp(&rank(b))
+        })
     }
 
     /// Total memory across all **available** devices.
@@ -446,11 +443,7 @@ impl AcceleratorRegistry {
     /// - If the model fits on the best single device, use `None` (no sharding).
     /// - If multiple GPUs exist, use `PipelineParallel`.
     /// - Otherwise fall back to CPU with `None`.
-    pub fn plan_sharding(
-        &self,
-        model_params: u64,
-        quant: &QuantizationLevel,
-    ) -> ShardingPlan {
+    pub fn plan_sharding(&self, model_params: u64, quant: &QuantizationLevel) -> ShardingPlan {
         let needed = Self::estimate_memory(model_params, quant);
         let best = match self.best_available() {
             Some(b) => b,
@@ -514,8 +507,7 @@ impl AcceleratorRegistry {
                 .iter()
                 .map(|d| d.accelerator.throughput_multiplier())
                 .fold(f64::INFINITY, f64::min);
-            let tps = slowest_multiplier * 10.0
-                / (quant.bits_per_param() as f64 / 4.0);
+            let tps = slowest_multiplier * 10.0 / (quant.bits_per_param() as f64 / 4.0);
 
             return ShardingPlan {
                 shards,
@@ -890,8 +882,7 @@ mod tests {
     #[test]
     fn test_estimate_memory_fp16() {
         // 7 billion params at FP16 = 2 bytes each = 14 GB + 20% = 16.8 GB
-        let est =
-            AcceleratorRegistry::estimate_memory(7_000_000_000, &QuantizationLevel::Float16);
+        let est = AcceleratorRegistry::estimate_memory(7_000_000_000, &QuantizationLevel::Float16);
         assert_eq!(est, 16_800_000_000);
     }
 
@@ -1058,7 +1049,10 @@ mod tests {
 
     #[test]
     fn test_throughput_multiplier_ordering() {
-        assert!(AcceleratorType::Cpu.throughput_multiplier() < AcceleratorType::IntelNpu.throughput_multiplier());
+        assert!(
+            AcceleratorType::Cpu.throughput_multiplier()
+                < AcceleratorType::IntelNpu.throughput_multiplier()
+        );
         assert!(
             AcceleratorType::IntelNpu.throughput_multiplier()
                 < AcceleratorType::CudaGpu { device_id: 0 }.throughput_multiplier()

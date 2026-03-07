@@ -102,15 +102,21 @@ impl SandboxCapability {
         match (self, requested) {
             // File variants: glob-prefix matching
             (
-                SandboxCapability::FileRead { path_pattern: granted },
+                SandboxCapability::FileRead {
+                    path_pattern: granted,
+                },
                 SandboxCapability::FileRead { path_pattern: req },
             )
             | (
-                SandboxCapability::FileWrite { path_pattern: granted },
+                SandboxCapability::FileWrite {
+                    path_pattern: granted,
+                },
                 SandboxCapability::FileWrite { path_pattern: req },
             )
             | (
-                SandboxCapability::FileExecute { path_pattern: granted },
+                SandboxCapability::FileExecute {
+                    path_pattern: granted,
+                },
                 SandboxCapability::FileExecute { path_pattern: req },
             ) => {
                 if granted == req {
@@ -147,29 +153,49 @@ impl SandboxCapability {
             }
             // List-based: requested items must be subset of granted
             (
-                SandboxCapability::ProcessSpawn { allowed_binaries: granted },
-                SandboxCapability::ProcessSpawn { allowed_binaries: req },
+                SandboxCapability::ProcessSpawn {
+                    allowed_binaries: granted,
+                },
+                SandboxCapability::ProcessSpawn {
+                    allowed_binaries: req,
+                },
             ) => req.iter().all(|r| granted.contains(r)),
             (
-                SandboxCapability::IpcSend { target_agents: granted },
+                SandboxCapability::IpcSend {
+                    target_agents: granted,
+                },
                 SandboxCapability::IpcSend { target_agents: req },
             ) => req.iter().all(|r| granted.contains(r)),
             (
-                SandboxCapability::IpcReceive { source_agents: granted },
+                SandboxCapability::IpcReceive {
+                    source_agents: granted,
+                },
                 SandboxCapability::IpcReceive { source_agents: req },
             ) => req.iter().all(|r| granted.contains(r)),
             (
-                SandboxCapability::SystemCall { allowed_syscalls: granted },
-                SandboxCapability::SystemCall { allowed_syscalls: req },
+                SandboxCapability::SystemCall {
+                    allowed_syscalls: granted,
+                },
+                SandboxCapability::SystemCall {
+                    allowed_syscalls: req,
+                },
             ) => req.iter().all(|r| granted.contains(r)),
             // Exact-match variants
             (
-                SandboxCapability::GpuAccess { max_vram_mb: granted },
+                SandboxCapability::GpuAccess {
+                    max_vram_mb: granted,
+                },
                 SandboxCapability::GpuAccess { max_vram_mb: req },
             ) => req <= granted,
             (
-                SandboxCapability::Custom { name: gn, parameters: gp },
-                SandboxCapability::Custom { name: rn, parameters: rp },
+                SandboxCapability::Custom {
+                    name: gn,
+                    parameters: gp,
+                },
+                SandboxCapability::Custom {
+                    name: rn,
+                    parameters: rp,
+                },
             ) => gn == rn && gp == rp,
             // Mismatched variant types
             _ => false,
@@ -188,9 +214,7 @@ fn validate_path_pattern(pattern: &str) -> Result<()> {
 impl CapabilityStore {
     /// Create an empty capability store.
     pub fn new() -> Self {
-        Self {
-            tokens: Vec::new(),
-        }
+        Self { tokens: Vec::new() }
     }
 
     /// Grant a capability to an agent.
@@ -307,10 +331,7 @@ impl CapabilityStore {
             bail!("Cannot delegate revoked token: {}", parent_token_id);
         }
         if !parent.delegatable {
-            bail!(
-                "Token is not delegatable: {}",
-                parent_token_id
-            );
+            bail!("Token is not delegatable: {}", parent_token_id);
         }
         if let Some(exp) = parent.expires_at {
             if exp < now {
@@ -706,7 +727,10 @@ impl TimeBoundedSandbox {
         BudgetRemaining {
             time_seconds: time_remaining.num_seconds(),
             cpu_seconds: (self.config.max_cpu_seconds as f64) - self.cpu_used,
-            operations: self.config.max_operations.saturating_sub(self.operations_used),
+            operations: self
+                .config
+                .max_operations
+                .saturating_sub(self.operations_used),
         }
     }
 
@@ -1013,10 +1037,7 @@ impl ComposableSandbox {
                 merged.layers.push(layer.clone());
             }
         }
-        info!(
-            layers = merged.layers.len(),
-            "Sandbox profiles merged"
-        );
+        info!(layers = merged.layers.len(), "Sandbox profiles merged");
         merged
     }
 }
@@ -1061,8 +1082,7 @@ impl SandboxMetrics {
         {
             entry.1 += 1;
         } else {
-            self.most_denied_actions
-                .push((action.to_string(), 1));
+            self.most_denied_actions.push((action.to_string(), 1));
         }
         // Keep sorted by count descending
         self.most_denied_actions.sort_by(|a, b| b.1.cmp(&a.1));
@@ -1098,14 +1118,16 @@ mod tests {
     #[test]
     fn test_grant_capability() {
         let mut store = CapabilityStore::new();
-        let token = store.grant(
-            "agent-1",
-            SandboxCapability::FileRead {
-                path_pattern: "/tmp/*".to_string(),
-            },
-            None,
-            false,
-        ).unwrap();
+        let token = store
+            .grant(
+                "agent-1",
+                SandboxCapability::FileRead {
+                    path_pattern: "/tmp/*".to_string(),
+                },
+                None,
+                false,
+            )
+            .unwrap();
         assert_eq!(token.agent_id, "agent-1");
         assert!(!token.revoked);
         assert!(token.expires_at.is_none());
@@ -1114,14 +1136,16 @@ mod tests {
     #[test]
     fn test_grant_with_duration() {
         let mut store = CapabilityStore::new();
-        let token = store.grant(
-            "agent-1",
-            SandboxCapability::FileRead {
-                path_pattern: "/tmp/*".to_string(),
-            },
-            Some(Duration::hours(1)),
-            true,
-        ).unwrap();
+        let token = store
+            .grant(
+                "agent-1",
+                SandboxCapability::FileRead {
+                    path_pattern: "/tmp/*".to_string(),
+                },
+                Some(Duration::hours(1)),
+                true,
+            )
+            .unwrap();
         assert!(token.expires_at.is_some());
         assert!(token.delegatable);
     }
@@ -1129,14 +1153,16 @@ mod tests {
     #[test]
     fn test_revoke_capability() {
         let mut store = CapabilityStore::new();
-        let token = store.grant(
-            "agent-1",
-            SandboxCapability::FileRead {
-                path_pattern: "/tmp/*".to_string(),
-            },
-            None,
-            false,
-        ).unwrap();
+        let token = store
+            .grant(
+                "agent-1",
+                SandboxCapability::FileRead {
+                    path_pattern: "/tmp/*".to_string(),
+                },
+                None,
+                false,
+            )
+            .unwrap();
         assert!(store.revoke(token.token_id).is_ok());
         assert!(store.tokens[0].revoked);
     }
@@ -1150,14 +1176,16 @@ mod tests {
     #[test]
     fn test_revoke_already_revoked() {
         let mut store = CapabilityStore::new();
-        let token = store.grant(
-            "agent-1",
-            SandboxCapability::FileRead {
-                path_pattern: "/tmp/*".to_string(),
-            },
-            None,
-            false,
-        ).unwrap();
+        let token = store
+            .grant(
+                "agent-1",
+                SandboxCapability::FileRead {
+                    path_pattern: "/tmp/*".to_string(),
+                },
+                None,
+                false,
+            )
+            .unwrap();
         store.revoke(token.token_id).unwrap();
         assert!(store.revoke(token.token_id).is_err());
     }
@@ -1199,55 +1227,60 @@ mod tests {
             path_pattern: "/tmp/*".to_string(),
         };
         // Grant with negative duration -> already expired
-        store.grant("agent-1", cap.clone(), Some(Duration::seconds(-1)), false).unwrap();
+        store
+            .grant("agent-1", cap.clone(), Some(Duration::seconds(-1)), false)
+            .unwrap();
         assert_eq!(store.check("agent-1", &cap), CapabilityVerdict::Expired);
     }
 
     #[test]
     fn test_delegate_token() {
         let mut store = CapabilityStore::new();
-        let parent = store.grant(
-            "agent-1",
-            SandboxCapability::FileRead {
-                path_pattern: "/data/*".to_string(),
-            },
-            None,
-            true,
-        ).unwrap();
+        let parent = store
+            .grant(
+                "agent-1",
+                SandboxCapability::FileRead {
+                    path_pattern: "/data/*".to_string(),
+                },
+                None,
+                true,
+            )
+            .unwrap();
         let child = store.delegate(parent.token_id, "agent-2").unwrap();
         assert_eq!(child.agent_id, "agent-2");
-        assert_eq!(
-            child.parent_token,
-            Some(parent.token_id.to_string())
-        );
+        assert_eq!(child.parent_token, Some(parent.token_id.to_string()));
         assert!(!child.delegatable); // delegated tokens are not re-delegatable
     }
 
     #[test]
     fn test_delegate_non_delegatable() {
         let mut store = CapabilityStore::new();
-        let parent = store.grant(
-            "agent-1",
-            SandboxCapability::FileRead {
-                path_pattern: "/data/*".to_string(),
-            },
-            None,
-            false, // not delegatable
-        ).unwrap();
+        let parent = store
+            .grant(
+                "agent-1",
+                SandboxCapability::FileRead {
+                    path_pattern: "/data/*".to_string(),
+                },
+                None,
+                false, // not delegatable
+            )
+            .unwrap();
         assert!(store.delegate(parent.token_id, "agent-2").is_err());
     }
 
     #[test]
     fn test_delegate_revoked_parent() {
         let mut store = CapabilityStore::new();
-        let parent = store.grant(
-            "agent-1",
-            SandboxCapability::FileRead {
-                path_pattern: "/data/*".to_string(),
-            },
-            None,
-            true,
-        ).unwrap();
+        let parent = store
+            .grant(
+                "agent-1",
+                SandboxCapability::FileRead {
+                    path_pattern: "/data/*".to_string(),
+                },
+                None,
+                true,
+            )
+            .unwrap();
         store.revoke(parent.token_id).unwrap();
         assert!(store.delegate(parent.token_id, "agent-2").is_err());
     }
@@ -1255,42 +1288,48 @@ mod tests {
     #[test]
     fn test_delegate_expired_parent() {
         let mut store = CapabilityStore::new();
-        let parent = store.grant(
-            "agent-1",
-            SandboxCapability::FileRead {
-                path_pattern: "/data/*".to_string(),
-            },
-            Some(Duration::seconds(-1)), // already expired
-            true,
-        ).unwrap();
+        let parent = store
+            .grant(
+                "agent-1",
+                SandboxCapability::FileRead {
+                    path_pattern: "/data/*".to_string(),
+                },
+                Some(Duration::seconds(-1)), // already expired
+                true,
+            )
+            .unwrap();
         assert!(store.delegate(parent.token_id, "agent-2").is_err());
     }
 
     #[test]
     fn test_self_delegation_denied() {
         let mut store = CapabilityStore::new();
-        let parent = store.grant(
-            "agent-1",
-            SandboxCapability::FileRead {
-                path_pattern: "/data/*".to_string(),
-            },
-            None,
-            true,
-        ).unwrap();
+        let parent = store
+            .grant(
+                "agent-1",
+                SandboxCapability::FileRead {
+                    path_pattern: "/data/*".to_string(),
+                },
+                None,
+                true,
+            )
+            .unwrap();
         assert!(store.delegate(parent.token_id, "agent-1").is_err());
     }
 
     #[test]
     fn test_delegation_chain() {
         let mut store = CapabilityStore::new();
-        let root = store.grant(
-            "agent-1",
-            SandboxCapability::FileRead {
-                path_pattern: "/data/*".to_string(),
-            },
-            None,
-            true,
-        ).unwrap();
+        let root = store
+            .grant(
+                "agent-1",
+                SandboxCapability::FileRead {
+                    path_pattern: "/data/*".to_string(),
+                },
+                None,
+                true,
+            )
+            .unwrap();
         let child = store.delegate(root.token_id, "agent-2").unwrap();
         // Child is not re-delegatable by default
         assert!(!child.delegatable);
@@ -1300,30 +1339,36 @@ mod tests {
     #[test]
     fn test_tokens_for_agent() {
         let mut store = CapabilityStore::new();
-        store.grant(
-            "agent-1",
-            SandboxCapability::FileRead {
-                path_pattern: "/a".to_string(),
-            },
-            None,
-            false,
-        ).unwrap();
-        store.grant(
-            "agent-1",
-            SandboxCapability::FileWrite {
-                path_pattern: "/b".to_string(),
-            },
-            None,
-            false,
-        ).unwrap();
-        store.grant(
-            "agent-2",
-            SandboxCapability::FileRead {
-                path_pattern: "/c".to_string(),
-            },
-            None,
-            false,
-        ).unwrap();
+        store
+            .grant(
+                "agent-1",
+                SandboxCapability::FileRead {
+                    path_pattern: "/a".to_string(),
+                },
+                None,
+                false,
+            )
+            .unwrap();
+        store
+            .grant(
+                "agent-1",
+                SandboxCapability::FileWrite {
+                    path_pattern: "/b".to_string(),
+                },
+                None,
+                false,
+            )
+            .unwrap();
+        store
+            .grant(
+                "agent-2",
+                SandboxCapability::FileRead {
+                    path_pattern: "/c".to_string(),
+                },
+                None,
+                false,
+            )
+            .unwrap();
         assert_eq!(store.tokens_for_agent("agent-1").len(), 2);
         assert_eq!(store.tokens_for_agent("agent-2").len(), 1);
         assert_eq!(store.tokens_for_agent("agent-3").len(), 0);
@@ -1332,30 +1377,36 @@ mod tests {
     #[test]
     fn test_active_tokens() {
         let mut store = CapabilityStore::new();
-        let t1 = store.grant(
-            "agent-1",
-            SandboxCapability::FileRead {
-                path_pattern: "/a".to_string(),
-            },
-            None,
-            false,
-        ).unwrap();
-        store.grant(
-            "agent-1",
-            SandboxCapability::FileWrite {
-                path_pattern: "/b".to_string(),
-            },
-            Some(Duration::seconds(-1)), // expired
-            false,
-        ).unwrap();
-        let t3 = store.grant(
-            "agent-2",
-            SandboxCapability::FileRead {
-                path_pattern: "/c".to_string(),
-            },
-            None,
-            false,
-        ).unwrap();
+        let t1 = store
+            .grant(
+                "agent-1",
+                SandboxCapability::FileRead {
+                    path_pattern: "/a".to_string(),
+                },
+                None,
+                false,
+            )
+            .unwrap();
+        store
+            .grant(
+                "agent-1",
+                SandboxCapability::FileWrite {
+                    path_pattern: "/b".to_string(),
+                },
+                Some(Duration::seconds(-1)), // expired
+                false,
+            )
+            .unwrap();
+        let t3 = store
+            .grant(
+                "agent-2",
+                SandboxCapability::FileRead {
+                    path_pattern: "/c".to_string(),
+                },
+                None,
+                false,
+            )
+            .unwrap();
         store.revoke(t3.token_id).unwrap();
 
         // Only t1 should be active (t2 expired, t3 revoked)
@@ -1367,30 +1418,36 @@ mod tests {
     #[test]
     fn test_expired_cleanup() {
         let mut store = CapabilityStore::new();
-        store.grant(
-            "agent-1",
-            SandboxCapability::FileRead {
-                path_pattern: "/a".to_string(),
-            },
-            Some(Duration::seconds(-10)), // expired
-            false,
-        ).unwrap();
-        store.grant(
-            "agent-1",
-            SandboxCapability::FileWrite {
-                path_pattern: "/b".to_string(),
-            },
-            Some(Duration::seconds(-5)), // expired
-            false,
-        ).unwrap();
-        store.grant(
-            "agent-2",
-            SandboxCapability::FileRead {
-                path_pattern: "/c".to_string(),
-            },
-            None, // no expiry
-            false,
-        ).unwrap();
+        store
+            .grant(
+                "agent-1",
+                SandboxCapability::FileRead {
+                    path_pattern: "/a".to_string(),
+                },
+                Some(Duration::seconds(-10)), // expired
+                false,
+            )
+            .unwrap();
+        store
+            .grant(
+                "agent-1",
+                SandboxCapability::FileWrite {
+                    path_pattern: "/b".to_string(),
+                },
+                Some(Duration::seconds(-5)), // expired
+                false,
+            )
+            .unwrap();
+        store
+            .grant(
+                "agent-2",
+                SandboxCapability::FileRead {
+                    path_pattern: "/c".to_string(),
+                },
+                None, // no expiry
+                false,
+            )
+            .unwrap();
         let removed = store.expired_cleanup();
         assert_eq!(removed, 2);
         assert_eq!(store.tokens.len(), 1);
@@ -1399,14 +1456,16 @@ mod tests {
     #[test]
     fn test_expired_cleanup_none_expired() {
         let mut store = CapabilityStore::new();
-        store.grant(
-            "agent-1",
-            SandboxCapability::FileRead {
-                path_pattern: "/a".to_string(),
-            },
-            None,
-            false,
-        ).unwrap();
+        store
+            .grant(
+                "agent-1",
+                SandboxCapability::FileRead {
+                    path_pattern: "/a".to_string(),
+                },
+                None,
+                false,
+            )
+            .unwrap();
         assert_eq!(store.expired_cleanup(), 0);
     }
 
@@ -1531,11 +1590,23 @@ mod tests {
     #[test]
     fn test_flow_policy_all_levels() {
         // Public can flow anywhere
-        assert!(FlowPolicy::can_flow(SecurityLabel::Public, SecurityLabel::Public));
-        assert!(FlowPolicy::can_flow(SecurityLabel::Public, SecurityLabel::TopSecret));
+        assert!(FlowPolicy::can_flow(
+            SecurityLabel::Public,
+            SecurityLabel::Public
+        ));
+        assert!(FlowPolicy::can_flow(
+            SecurityLabel::Public,
+            SecurityLabel::TopSecret
+        ));
         // TopSecret can only flow to TopSecret
-        assert!(FlowPolicy::can_flow(SecurityLabel::TopSecret, SecurityLabel::TopSecret));
-        assert!(!FlowPolicy::can_flow(SecurityLabel::TopSecret, SecurityLabel::Secret));
+        assert!(FlowPolicy::can_flow(
+            SecurityLabel::TopSecret,
+            SecurityLabel::TopSecret
+        ));
+        assert!(!FlowPolicy::can_flow(
+            SecurityLabel::TopSecret,
+            SecurityLabel::Secret
+        ));
     }
 
     #[test]
@@ -1551,10 +1622,7 @@ mod tests {
         let mut tracker = FlowTracker::new();
         tracker.label_data("doc-1", SecurityLabel::Internal, "agent-1");
         tracker.set_agent_label("agent-2", SecurityLabel::Secret);
-        assert_eq!(
-            tracker.check_flow("doc-1", "agent-2"),
-            FlowVerdict::Allowed
-        );
+        assert_eq!(tracker.check_flow("doc-1", "agent-2"), FlowVerdict::Allowed);
     }
 
     #[test]
@@ -1912,7 +1980,11 @@ mod tests {
 
     // -- Composable Sandbox --
 
-    fn make_layer(name: &str, layer_type: LayerType, rules: Vec<(&str, RuleVerdict)>) -> SandboxLayer {
+    fn make_layer(
+        name: &str,
+        layer_type: LayerType,
+        rules: Vec<(&str, RuleVerdict)>,
+    ) -> SandboxLayer {
         SandboxLayer {
             name: name.to_string(),
             layer_type,
@@ -1929,7 +2001,11 @@ mod tests {
     #[test]
     fn test_add_layer() {
         let mut sandbox = ComposableSandbox::new();
-        sandbox.add_layer(make_layer("fs", LayerType::Filesystem, vec![("file_read", RuleVerdict::Allow)]));
+        sandbox.add_layer(make_layer(
+            "fs",
+            LayerType::Filesystem,
+            vec![("file_read", RuleVerdict::Allow)],
+        ));
         assert_eq!(sandbox.layers.len(), 1);
     }
 
@@ -1965,7 +2041,10 @@ mod tests {
             LayerType::Filesystem,
             vec![("file_read", RuleVerdict::Allow)],
         ));
-        assert_eq!(sandbox.evaluate("file_read /tmp/a"), CompositeVerdict::Allow);
+        assert_eq!(
+            sandbox.evaluate("file_read /tmp/a"),
+            CompositeVerdict::Allow
+        );
     }
 
     #[test]
@@ -2001,7 +2080,10 @@ mod tests {
             LayerType::Filesystem,
             vec![("file_read", RuleVerdict::Allow)],
         ));
-        assert_eq!(sandbox.evaluate("net_connect 10.0.0.1"), CompositeVerdict::NoMatch);
+        assert_eq!(
+            sandbox.evaluate("net_connect 10.0.0.1"),
+            CompositeVerdict::NoMatch
+        );
     }
 
     #[test]
@@ -2053,16 +2135,27 @@ mod tests {
             LayerType::Custom,
             vec![("file_read", RuleVerdict::Allow)],
         ));
-        assert_eq!(sandbox.evaluate("file_read /tmp/a"), CompositeVerdict::Allow);
+        assert_eq!(
+            sandbox.evaluate("file_read /tmp/a"),
+            CompositeVerdict::Allow
+        );
     }
 
     #[test]
     fn test_merge_disjoint() {
         let mut s1 = ComposableSandbox::new();
-        s1.add_layer(make_layer("fs", LayerType::Filesystem, vec![("file_read", RuleVerdict::Allow)]));
+        s1.add_layer(make_layer(
+            "fs",
+            LayerType::Filesystem,
+            vec![("file_read", RuleVerdict::Allow)],
+        ));
 
         let mut s2 = ComposableSandbox::new();
-        s2.add_layer(make_layer("net", LayerType::Network, vec![("net_connect", RuleVerdict::Deny)]));
+        s2.add_layer(make_layer(
+            "net",
+            LayerType::Network,
+            vec![("net_connect", RuleVerdict::Deny)],
+        ));
 
         let merged = s1.merge(&s2);
         assert_eq!(merged.layers.len(), 2);
@@ -2071,10 +2164,18 @@ mod tests {
     #[test]
     fn test_merge_overlapping_layers() {
         let mut s1 = ComposableSandbox::new();
-        s1.add_layer(make_layer("fs", LayerType::Filesystem, vec![("file_read", RuleVerdict::Allow)]));
+        s1.add_layer(make_layer(
+            "fs",
+            LayerType::Filesystem,
+            vec![("file_read", RuleVerdict::Allow)],
+        ));
 
         let mut s2 = ComposableSandbox::new();
-        s2.add_layer(make_layer("fs", LayerType::Filesystem, vec![("file_write", RuleVerdict::Deny)]));
+        s2.add_layer(make_layer(
+            "fs",
+            LayerType::Filesystem,
+            vec![("file_write", RuleVerdict::Deny)],
+        ));
 
         let merged = s1.merge(&s2);
         assert_eq!(merged.layers.len(), 1);
@@ -2106,8 +2207,14 @@ mod tests {
         metrics.record_denied("file_write");
         metrics.record_denied("net_connect");
         assert_eq!(metrics.denied_count, 3);
-        assert_eq!(metrics.most_denied_actions[0], ("file_write".to_string(), 2));
-        assert_eq!(metrics.most_denied_actions[1], ("net_connect".to_string(), 1));
+        assert_eq!(
+            metrics.most_denied_actions[0],
+            ("file_write".to_string(), 2)
+        );
+        assert_eq!(
+            metrics.most_denied_actions[1],
+            ("net_connect".to_string(), 1)
+        );
     }
 
     #[test]

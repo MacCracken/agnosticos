@@ -23,9 +23,15 @@ pub enum LifecycleEvent {
     /// Agent process has started successfully.
     Started { agent_id: AgentId, pid: Option<u32> },
     /// Agent is stopping (before SIGTERM).
-    Stopping { agent_id: AgentId, reason: StopReason },
+    Stopping {
+        agent_id: AgentId,
+        reason: StopReason,
+    },
     /// Agent has stopped (process exited).
-    Stopped { agent_id: AgentId, exit_code: Option<i32> },
+    Stopped {
+        agent_id: AgentId,
+        exit_code: Option<i32>,
+    },
     /// Agent encountered a non-fatal error.
     Error { agent_id: AgentId, error: String },
     /// Agent status changed.
@@ -40,10 +46,7 @@ pub enum LifecycleEvent {
         operation: String,
     },
     /// Agent is being restarted (after stop, before start).
-    Restarting {
-        agent_id: AgentId,
-        attempt: u32,
-    },
+    Restarting { agent_id: AgentId, attempt: u32 },
     /// Agent configuration was reloaded
     ConfigReloaded {
         agent_id: AgentId,
@@ -68,7 +71,10 @@ impl fmt::Display for LifecycleEvent {
             Self::Stopping { agent_id, reason } => {
                 write!(f, "agent {} stopping: {:?}", agent_id, reason)
             }
-            Self::Stopped { agent_id, exit_code } => {
+            Self::Stopped {
+                agent_id,
+                exit_code,
+            } => {
                 write!(
                     f,
                     "agent {} stopped (exit: {})",
@@ -82,7 +88,10 @@ impl fmt::Display for LifecycleEvent {
             Self::StatusChanged { agent_id, from, to } => {
                 write!(f, "agent {} status: {:?} → {:?}", agent_id, from, to)
             }
-            Self::ApprovalDenied { agent_id, operation } => {
+            Self::ApprovalDenied {
+                agent_id,
+                operation,
+            } => {
                 write!(f, "agent {} approval denied: {}", agent_id, operation)
             }
             Self::Restarting { agent_id, attempt } => {
@@ -228,8 +237,7 @@ impl LifecycleManager {
         {
             changed.push("resource_limits.max_file_descriptors".to_string());
         }
-        if new_config.resource_limits.max_processes
-            != current_config.resource_limits.max_processes
+        if new_config.resource_limits.max_processes != current_config.resource_limits.max_processes
         {
             changed.push("resource_limits.max_processes".to_string());
         }
@@ -374,11 +382,8 @@ mod tests {
         let mgr = LifecycleManager::new();
         let id = AgentId::new();
 
-        mgr.on_agent(
-            id,
-            Arc::new(|_| Err(anyhow::anyhow!("hook failure"))),
-        )
-        .await;
+        mgr.on_agent(id, Arc::new(|_| Err(anyhow::anyhow!("hook failure"))))
+            .await;
 
         // Should not panic
         mgr.emit(LifecycleEvent::Error {
@@ -495,18 +500,39 @@ mod tests {
         let id = AgentId::new();
 
         let events = vec![
-            LifecycleEvent::Starting { agent_id: id, name: "a".into() },
-            LifecycleEvent::Started { agent_id: id, pid: Some(42) },
-            LifecycleEvent::Stopping { agent_id: id, reason: StopReason::Normal },
-            LifecycleEvent::Stopped { agent_id: id, exit_code: Some(0) },
-            LifecycleEvent::Error { agent_id: id, error: "oops".into() },
+            LifecycleEvent::Starting {
+                agent_id: id,
+                name: "a".into(),
+            },
+            LifecycleEvent::Started {
+                agent_id: id,
+                pid: Some(42),
+            },
+            LifecycleEvent::Stopping {
+                agent_id: id,
+                reason: StopReason::Normal,
+            },
+            LifecycleEvent::Stopped {
+                agent_id: id,
+                exit_code: Some(0),
+            },
+            LifecycleEvent::Error {
+                agent_id: id,
+                error: "oops".into(),
+            },
             LifecycleEvent::StatusChanged {
                 agent_id: id,
                 from: AgentStatus::Running,
                 to: AgentStatus::Stopped,
             },
-            LifecycleEvent::ApprovalDenied { agent_id: id, operation: "rm -rf".into() },
-            LifecycleEvent::Restarting { agent_id: id, attempt: 3 },
+            LifecycleEvent::ApprovalDenied {
+                agent_id: id,
+                operation: "rm -rf".into(),
+            },
+            LifecycleEvent::Restarting {
+                agent_id: id,
+                attempt: 3,
+            },
             LifecycleEvent::ConfigReloaded {
                 agent_id: id,
                 changed_fields: vec!["name".to_string()],
@@ -544,10 +570,7 @@ mod tests {
         let id = AgentId::new();
         let event = LifecycleEvent::ConfigReloaded {
             agent_id: id,
-            changed_fields: vec![
-                "name".to_string(),
-                "permissions".to_string(),
-            ],
+            changed_fields: vec!["name".to_string(), "permissions".to_string()],
         };
         let s = event.to_string();
         assert!(s.contains("config reloaded"));
@@ -583,7 +606,10 @@ mod tests {
         let id = AgentId::new();
 
         let config = agnos_common::AgentConfig::default();
-        let changed = mgr.reload_config(id, config.clone(), &config).await.unwrap();
+        let changed = mgr
+            .reload_config(id, config.clone(), &config)
+            .await
+            .unwrap();
         assert!(changed.is_empty());
 
         // No event should have been logged

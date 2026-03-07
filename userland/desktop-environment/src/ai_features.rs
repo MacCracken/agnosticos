@@ -294,7 +294,11 @@ impl AIDesktopFeatures {
         });
 
         suggestions.push(suggestion);
-        suggestions.sort_by(|a, b| b.confidence.partial_cmp(&a.confidence).unwrap_or(std::cmp::Ordering::Equal));
+        suggestions.sort_by(|a, b| {
+            b.confidence
+                .partial_cmp(&a.confidence)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         debug!("Suggestion added: {}", title);
     }
@@ -392,7 +396,12 @@ impl AIDesktopFeatures {
         self.current_context.read().unwrap().clone()
     }
 
-    pub fn suggest_workspace_switch(&self, _from: usize, to: usize, reason: String) -> AISuggestion {
+    pub fn suggest_workspace_switch(
+        &self,
+        _from: usize,
+        to: usize,
+        reason: String,
+    ) -> AISuggestion {
         self.generate_suggestion(
             SuggestionType::ContextSwitch,
             format!("Switch to Workspace {}", to + 1),
@@ -448,10 +457,7 @@ impl AIDesktopFeatures {
     async fn poll_agents(
         client: &reqwest::Client,
     ) -> Result<Vec<AgentHUDState>, Box<dyn std::error::Error + Send + Sync>> {
-        let resp = client
-            .get("http://localhost:8090/v1/agents")
-            .send()
-            .await?;
+        let resp = client.get("http://localhost:8090/v1/agents").send().await?;
 
         if !resp.status().is_success() {
             return Err(format!("API returned {}", resp.status()).into());
@@ -484,10 +490,7 @@ impl AIDesktopFeatures {
                     agent_id,
                     agent_name: agent["name"].as_str().unwrap_or("unknown").to_string(),
                     status,
-                    current_task: agent["current_task"]
-                        .as_str()
-                        .unwrap_or("")
-                        .to_string(),
+                    current_task: agent["current_task"].as_str().unwrap_or("").to_string(),
                     progress: 0.0,
                     last_activity: last_hb,
                     resource_usage: ResourceMetrics {

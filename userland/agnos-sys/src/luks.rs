@@ -51,10 +51,7 @@ impl LuksConfig {
     pub fn for_agent(agent_id: &str, size_mb: u64) -> Self {
         Self {
             name: format!("agnos-agent-{}", agent_id),
-            backing_path: PathBuf::from(format!(
-                "/var/lib/agnos/agents/{}/volume.img",
-                agent_id
-            )),
+            backing_path: PathBuf::from(format!("/var/lib/agnos/agents/{}/volume.img", agent_id)),
             size_mb,
             mount_point: PathBuf::from(format!("/var/lib/agnos/agents/{}/data", agent_id)),
             filesystem: LuksFilesystem::Ext4,
@@ -67,13 +64,21 @@ impl LuksConfig {
     /// Validate the configuration.
     pub fn validate(&self) -> Result<()> {
         if self.name.is_empty() {
-            return Err(SysError::InvalidArgument("LUKS volume name cannot be empty".into()));
+            return Err(SysError::InvalidArgument(
+                "LUKS volume name cannot be empty".into(),
+            ));
         }
         if self.name.len() > 128 {
-            return Err(SysError::InvalidArgument("LUKS volume name too long (max 128)".into()));
+            return Err(SysError::InvalidArgument(
+                "LUKS volume name too long (max 128)".into(),
+            ));
         }
         // Name should only contain safe characters for dm-crypt mapping
-        if !self.name.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+        if !self
+            .name
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+        {
             return Err(SysError::InvalidArgument(format!(
                 "LUKS volume name contains invalid characters: {}",
                 self.name
@@ -210,7 +215,9 @@ impl LuksKey {
     /// Create a key from a passphrase string.
     pub fn from_passphrase(passphrase: &str) -> Result<Self> {
         if passphrase.is_empty() {
-            return Err(SysError::InvalidArgument("Passphrase cannot be empty".into()));
+            return Err(SysError::InvalidArgument(
+                "Passphrase cannot be empty".into(),
+            ));
         }
         Ok(Self {
             data: passphrase.as_bytes().to_vec(),
@@ -223,7 +230,9 @@ impl LuksKey {
             return Err(SysError::InvalidArgument("Key size must be > 0".into()));
         }
         if size > 1024 {
-            return Err(SysError::InvalidArgument("Key size too large (max 1024 bytes)".into()));
+            return Err(SysError::InvalidArgument(
+                "Key size too large (max 1024 bytes)".into(),
+            ));
         }
 
         #[cfg(target_os = "linux")]
@@ -308,14 +317,19 @@ pub fn luks_format(config: &LuksConfig, key: &LuksKey) -> Result<PathBuf> {
         }
 
         // 1. Create backing file
-        let size_bytes = config.size_mb
-            .checked_mul(1024 * 1024)
-            .ok_or_else(|| SysError::InvalidArgument(format!(
-                "LUKS size overflow: {} MB exceeds u64 byte range", config.size_mb
-            )))?;
+        let size_bytes = config.size_mb.checked_mul(1024 * 1024).ok_or_else(|| {
+            SysError::InvalidArgument(format!(
+                "LUKS size overflow: {} MB exceeds u64 byte range",
+                config.size_mb
+            ))
+        })?;
         run_cmd_with_output(
             "fallocate",
-            &["-l", &size_bytes.to_string(), &path_str(&config.backing_path)],
+            &[
+                "-l",
+                &size_bytes.to_string(),
+                &path_str(&config.backing_path),
+            ],
         )?;
 
         // 2. Set up loop device
@@ -334,12 +348,17 @@ pub fn luks_format(config: &LuksConfig, key: &LuksKey) -> Result<PathBuf> {
             "cryptsetup",
             &[
                 "luksFormat",
-                "--type", "luks2",
-                "--cipher", &cipher,
-                "--key-size", &key_size,
-                "--pbkdf", pbkdf,
+                "--type",
+                "luks2",
+                "--cipher",
+                &cipher,
+                "--key-size",
+                &key_size,
+                "--pbkdf",
+                pbkdf,
                 "--batch-mode",
-                "--key-file", "-",
+                "--key-file",
+                "-",
                 &loop_dev,
             ],
             key.as_bytes(),
@@ -378,10 +397,7 @@ pub fn luks_open(config: &LuksConfig, key: &LuksKey) -> Result<PathBuf> {
         config.validate()?;
 
         // Find the loop device for the backing file
-        let loop_dev = run_cmd_with_output(
-            "losetup",
-            &["-j", &path_str(&config.backing_path)],
-        )?;
+        let loop_dev = run_cmd_with_output("losetup", &["-j", &path_str(&config.backing_path)])?;
 
         let loop_dev = loop_dev
             .split(':')
@@ -403,7 +419,11 @@ pub fn luks_open(config: &LuksConfig, key: &LuksKey) -> Result<PathBuf> {
         }
 
         let mapper_path = PathBuf::from(format!("/dev/mapper/{}", config.name));
-        tracing::info!("Opened LUKS volume '{}' at {}", config.name, mapper_path.display());
+        tracing::info!(
+            "Opened LUKS volume '{}' at {}",
+            config.name,
+            mapper_path.display()
+        );
         Ok(mapper_path)
     }
 
@@ -421,7 +441,9 @@ pub fn luks_close(name: &str) -> Result<()> {
     #[cfg(target_os = "linux")]
     {
         if name.is_empty() {
-            return Err(SysError::InvalidArgument("Volume name cannot be empty".into()));
+            return Err(SysError::InvalidArgument(
+                "Volume name cannot be empty".into(),
+            ));
         }
 
         let mapper_path = format!("/dev/mapper/{}", name);
@@ -479,17 +501,14 @@ pub fn luks_mount(device: &Path, mount_point: &Path, filesystem: LuksFilesystem)
         run_cmd_checked(
             "mount",
             &[
-                "-t", filesystem.as_str(),
+                "-t",
+                filesystem.as_str(),
                 &path_str_ref(device),
                 &path_str_ref(mount_point),
             ],
         )?;
 
-        tracing::info!(
-            "Mounted {} at {}",
-            device.display(),
-            mount_point.display()
-        );
+        tracing::info!("Mounted {} at {}", device.display(), mount_point.display());
         Ok(())
     }
 
@@ -561,11 +580,16 @@ pub fn teardown_agent_volume(name: &str) -> Result<()> {
     #[cfg(target_os = "linux")]
     {
         if name.is_empty() {
-            return Err(SysError::InvalidArgument("Volume name cannot be empty".into()));
+            return Err(SysError::InvalidArgument(
+                "Volume name cannot be empty".into(),
+            ));
         }
 
         // Try to unmount first (may not be mounted)
-        let mount_point = format!("/var/lib/agnos/agents/{}/data", name.trim_start_matches("agnos-agent-"));
+        let mount_point = format!(
+            "/var/lib/agnos/agents/{}/data",
+            name.trim_start_matches("agnos-agent-")
+        );
         if Path::new(&mount_point).exists() {
             let _ = luks_unmount(Path::new(&mount_point));
         }
@@ -695,9 +719,9 @@ fn run_cmd_stdin(cmd: &str, args: &[&str], stdin_data: &[u8]) -> Result<()> {
         .map_err(|e| SysError::Unknown(format!("Failed to spawn '{}': {}", cmd, e)))?;
 
     if let Some(mut stdin) = child.stdin.take() {
-        stdin.write_all(stdin_data).map_err(|e| {
-            SysError::Unknown(format!("Failed to write to {} stdin: {}", cmd, e))
-        })?;
+        stdin
+            .write_all(stdin_data)
+            .map_err(|e| SysError::Unknown(format!("Failed to write to {} stdin: {}", cmd, e)))?;
     }
 
     let output = child
@@ -976,7 +1000,11 @@ mod tests {
         };
         let err = config.validate().unwrap_err();
         let msg = format!("{}", err);
-        assert!(msg.contains("maximum size"), "Expected 'maximum size' in: {}", msg);
+        assert!(
+            msg.contains("maximum size"),
+            "Expected 'maximum size' in: {}",
+            msg
+        );
     }
 
     #[test]
@@ -1015,7 +1043,11 @@ mod tests {
         let err = config.validate().unwrap_err();
         let msg = format!("{}", err);
         assert!(msg.contains("1024"), "Expected '1024' in: {}", msg);
-        assert!(msg.contains("256 or 512"), "Expected '256 or 512' in: {}", msg);
+        assert!(
+            msg.contains("256 or 512"),
+            "Expected '256 or 512' in: {}",
+            msg
+        );
     }
 
     #[test]
@@ -1026,7 +1058,11 @@ mod tests {
         };
         let err = config.validate().unwrap_err();
         let msg = format!("{}", err);
-        assert!(msg.contains("invalid characters"), "Expected 'invalid characters' in: {}", msg);
+        assert!(
+            msg.contains("invalid characters"),
+            "Expected 'invalid characters' in: {}",
+            msg
+        );
         assert!(msg.contains("bad/name"), "Expected name in error: {}", msg);
     }
 
@@ -1209,7 +1245,11 @@ mod tests {
     fn test_luks_key_generate_boundary_1025() {
         let err = LuksKey::generate(1025).unwrap_err();
         let msg = format!("{}", err);
-        assert!(msg.contains("too large"), "Expected 'too large' in: {}", msg);
+        assert!(
+            msg.contains("too large"),
+            "Expected 'too large' in: {}",
+            msg
+        );
     }
 
     #[test]
@@ -1290,7 +1330,11 @@ mod tests {
         };
         let err = config.validate().unwrap_err();
         let msg = format!("{}", err);
-        assert!(msg.contains("at least 4 MB"), "Expected 'at least 4 MB' in: {}", msg);
+        assert!(
+            msg.contains("at least 4 MB"),
+            "Expected 'at least 4 MB' in: {}",
+            msg
+        );
     }
 
     #[test]
@@ -1347,7 +1391,11 @@ mod tests {
 
     #[test]
     fn test_luks_filesystem_serialization() {
-        for fs in [LuksFilesystem::Ext4, LuksFilesystem::Xfs, LuksFilesystem::Btrfs] {
+        for fs in [
+            LuksFilesystem::Ext4,
+            LuksFilesystem::Xfs,
+            LuksFilesystem::Btrfs,
+        ] {
             let json = serde_json::to_string(&fs).unwrap();
             let de: LuksFilesystem = serde_json::from_str(&json).unwrap();
             assert_eq!(de, fs);
@@ -1481,7 +1529,11 @@ mod tests {
         // for_agent should always produce a valid config with reasonable agent IDs
         for id in &["agent-1", "myagent", "a", "test_agent_123"] {
             let config = LuksConfig::for_agent(id, 8);
-            assert!(config.validate().is_ok(), "Config for '{}' should be valid", id);
+            assert!(
+                config.validate().is_ok(),
+                "Config for '{}' should be valid",
+                id
+            );
         }
     }
 
@@ -1496,7 +1548,11 @@ mod tests {
 
     #[test]
     fn test_luks_filesystem_serde_each_variant() {
-        let variants = [LuksFilesystem::Ext4, LuksFilesystem::Xfs, LuksFilesystem::Btrfs];
+        let variants = [
+            LuksFilesystem::Ext4,
+            LuksFilesystem::Xfs,
+            LuksFilesystem::Btrfs,
+        ];
         for fs in &variants {
             let json = serde_json::to_string(fs).unwrap();
             let de: LuksFilesystem = serde_json::from_str(&json).unwrap();

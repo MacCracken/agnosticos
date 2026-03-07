@@ -98,11 +98,18 @@ pub fn apply_landlock(rules: &[FilesystemRule]) -> Result<()> {
 
         if ruleset_fd < 0 {
             let err = std::io::Error::last_os_error();
-            if err.raw_os_error() == Some(libc::ENOSYS) || err.raw_os_error() == Some(libc::EOPNOTSUPP) {
-                tracing::warn!("Landlock not supported by kernel, skipping filesystem restrictions");
+            if err.raw_os_error() == Some(libc::ENOSYS)
+                || err.raw_os_error() == Some(libc::EOPNOTSUPP)
+            {
+                tracing::warn!(
+                    "Landlock not supported by kernel, skipping filesystem restrictions"
+                );
                 return Ok(());
             }
-            return Err(SysError::Unknown(format!("landlock_create_ruleset failed: {}", err)));
+            return Err(SysError::Unknown(format!(
+                "landlock_create_ruleset failed: {}",
+                err
+            )));
         }
 
         // Add rules for each path
@@ -111,7 +118,9 @@ pub fn apply_landlock(rules: &[FilesystemRule]) -> Result<()> {
                 FsAccess::NoAccess => 0u64,
                 FsAccess::ReadOnly => LANDLOCK_ACCESS_FS_READ_FILE | LANDLOCK_ACCESS_FS_READ_DIR,
                 FsAccess::ReadWrite => {
-                    LANDLOCK_ACCESS_FS_READ_FILE | LANDLOCK_ACCESS_FS_READ_DIR | LANDLOCK_ACCESS_FS_WRITE_FILE
+                    LANDLOCK_ACCESS_FS_READ_FILE
+                        | LANDLOCK_ACCESS_FS_READ_DIR
+                        | LANDLOCK_ACCESS_FS_WRITE_FILE
                 }
             };
 
@@ -121,18 +130,24 @@ pub fn apply_landlock(rules: &[FilesystemRule]) -> Result<()> {
 
             // Open the path to get a file descriptor
             let path_fd: RawFd = unsafe {
-                let c_path = std::ffi::CString::new(
-                    rule.path.as_os_str().as_encoded_bytes()
-                ).map_err(|_| SysError::InvalidArgument("Path contains null byte".into()))?;
+                let c_path = std::ffi::CString::new(rule.path.as_os_str().as_encoded_bytes())
+                    .map_err(|_| SysError::InvalidArgument("Path contains null byte".into()))?;
                 libc::open(c_path.as_ptr(), libc::O_PATH | libc::O_CLOEXEC)
             };
 
             if path_fd < 0 {
                 let err = std::io::Error::last_os_error();
-                tracing::warn!("Cannot open path {:?} for Landlock rule: {}", rule.path, err);
-                unsafe { libc::close(ruleset_fd); }
+                tracing::warn!(
+                    "Cannot open path {:?} for Landlock rule: {}",
+                    rule.path,
+                    err
+                );
+                unsafe {
+                    libc::close(ruleset_fd);
+                }
                 return Err(SysError::Unknown(format!(
-                    "Cannot open path {:?} for Landlock: {}", rule.path, err
+                    "Cannot open path {:?} for Landlock: {}",
+                    rule.path, err
                 )));
             }
 
@@ -151,13 +166,18 @@ pub fn apply_landlock(rules: &[FilesystemRule]) -> Result<()> {
                 )
             };
 
-            unsafe { libc::close(path_fd); }
+            unsafe {
+                libc::close(path_fd);
+            }
 
             if ret < 0 {
                 let err = std::io::Error::last_os_error();
-                unsafe { libc::close(ruleset_fd); }
+                unsafe {
+                    libc::close(ruleset_fd);
+                }
                 return Err(SysError::Unknown(format!(
-                    "landlock_add_rule failed for {:?}: {}", rule.path, err
+                    "landlock_add_rule failed for {:?}: {}",
+                    rule.path, err
                 )));
             }
         }
@@ -167,19 +187,27 @@ pub fn apply_landlock(rules: &[FilesystemRule]) -> Result<()> {
         let ret = unsafe { libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) };
         if ret < 0 {
             let err = std::io::Error::last_os_error();
-            unsafe { libc::close(ruleset_fd); }
-            return Err(SysError::Unknown(format!("PR_SET_NO_NEW_PRIVS failed: {}", err)));
+            unsafe {
+                libc::close(ruleset_fd);
+            }
+            return Err(SysError::Unknown(format!(
+                "PR_SET_NO_NEW_PRIVS failed: {}",
+                err
+            )));
         }
 
-        let ret = unsafe {
-            libc::syscall(SYS_LANDLOCK_RESTRICT_SELF, ruleset_fd, 0u32)
-        };
+        let ret = unsafe { libc::syscall(SYS_LANDLOCK_RESTRICT_SELF, ruleset_fd, 0u32) };
 
-        unsafe { libc::close(ruleset_fd); }
+        unsafe {
+            libc::close(ruleset_fd);
+        }
 
         if ret < 0 {
             let err = std::io::Error::last_os_error();
-            return Err(SysError::Unknown(format!("landlock_restrict_self failed: {}", err)));
+            return Err(SysError::Unknown(format!(
+                "landlock_restrict_self failed: {}",
+                err
+            )));
         }
 
         tracing::debug!("Applied {} Landlock rules", rules.len());
@@ -213,19 +241,27 @@ pub fn load_seccomp(filter: &[u8]) -> Result<()> {
         }
 
         if filter.len() % 8 != 0 {
-            return Err(SysError::InvalidArgument(
-                format!("Filter size {} is not a multiple of 8 (sock_filter size)", filter.len()),
-            ));
+            return Err(SysError::InvalidArgument(format!(
+                "Filter size {} is not a multiple of 8 (sock_filter size)",
+                filter.len()
+            )));
         }
 
         let num_instructions = filter.len() / 8;
-        tracing::debug!("Loading seccomp filter ({} instructions, {} bytes)", num_instructions, filter.len());
+        tracing::debug!(
+            "Loading seccomp filter ({} instructions, {} bytes)",
+            num_instructions,
+            filter.len()
+        );
 
         // Require no_new_privs before installing seccomp filter
         let ret = unsafe { libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) };
         if ret < 0 {
             let err = std::io::Error::last_os_error();
-            return Err(SysError::Unknown(format!("PR_SET_NO_NEW_PRIVS failed: {}", err)));
+            return Err(SysError::Unknown(format!(
+                "PR_SET_NO_NEW_PRIVS failed: {}",
+                err
+            )));
         }
 
         // Build sock_fprog struct
@@ -579,10 +615,12 @@ fn map_namespace_error(operation: &str) -> SysError {
         Some(libc::ENOMEM) => SysError::Unknown(format!("{}: out of memory", operation)),
         Some(libc::EINVAL) => SysError::InvalidArgument(format!("{}: invalid flags", operation)),
         Some(libc::ENOSPC) => SysError::Unknown(format!(
-            "{}: namespace limit reached (see /proc/sys/user/max_*_namespaces)", operation
+            "{}: namespace limit reached (see /proc/sys/user/max_*_namespaces)",
+            operation
         )),
         Some(libc::EUSERS) => SysError::Unknown(format!(
-            "{}: nesting limit for user namespaces exceeded", operation
+            "{}: nesting limit for user namespaces exceeded",
+            operation
         )),
         _ => SysError::Unknown(format!("{}: {}", operation, err)),
     }
@@ -661,15 +699,13 @@ impl FilesystemRule {
 }
 
 /// Filesystem access levels
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum FsAccess {
     #[default]
     NoAccess,
     ReadOnly,
     ReadWrite,
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -714,7 +750,6 @@ mod tests {
         let result = apply_landlock(&rules);
         assert!(result.is_ok());
     }
-
 
     #[test]
     fn test_load_seccomp_empty() {
@@ -765,7 +800,10 @@ mod tests {
 
     #[test]
     fn test_namespace_flags_all_combinations() {
-        let all = NamespaceFlags::NETWORK | NamespaceFlags::MOUNT | NamespaceFlags::PID | NamespaceFlags::USER;
+        let all = NamespaceFlags::NETWORK
+            | NamespaceFlags::MOUNT
+            | NamespaceFlags::PID
+            | NamespaceFlags::USER;
         assert!(all.contains(NamespaceFlags::NETWORK));
         assert!(all.contains(NamespaceFlags::MOUNT));
         assert!(all.contains(NamespaceFlags::PID));
@@ -859,7 +897,10 @@ mod tests {
         assert_eq!(bytes[2], 1);
         assert_eq!(bytes[3], 2);
         // Verify k field (last 4 bytes in native endian)
-        assert_eq!(u32::from_ne_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]), 0xDEAD);
+        assert_eq!(
+            u32::from_ne_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]),
+            0xDEAD
+        );
     }
 
     #[test]
@@ -1010,7 +1051,10 @@ mod tests {
         assert_eq!(u16::from_ne_bytes([bytes[0], bytes[1]]), u16::MAX);
         assert_eq!(bytes[2], u8::MAX);
         assert_eq!(bytes[3], u8::MAX);
-        assert_eq!(u32::from_ne_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]), u32::MAX);
+        assert_eq!(
+            u32::from_ne_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]),
+            u32::MAX
+        );
     }
 
     #[test]
@@ -1227,9 +1271,9 @@ mod tests {
 
     #[test]
     fn test_apply_landlock_nonexistent_path() {
-        let rules = vec![
-            FilesystemRule::read_only("/nonexistent_path_that_does_not_exist_12345"),
-        ];
+        let rules = vec![FilesystemRule::read_only(
+            "/nonexistent_path_that_does_not_exist_12345",
+        )];
         let result = apply_landlock(&rules);
         // On Linux: open() will fail → should return Err
         // On non-Linux: no-op → Ok

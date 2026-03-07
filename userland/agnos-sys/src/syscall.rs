@@ -198,7 +198,10 @@ mod tests {
     fn test_kernel_modules_available_returns_bool() {
         let available = kernel_modules_available();
         // On a standard kernel, AGNOS modules are not available
-        assert!(!available, "AGNOS modules should not be available on a standard kernel");
+        assert!(
+            !available,
+            "AGNOS modules should not be available on a standard kernel"
+        );
     }
 
     #[test]

@@ -16,25 +16,25 @@ use axum::routing::{delete, get, post, put};
 use axum::{Json, Router};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use tokio::sync::RwLock;
 use std::path::PathBuf;
+use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 use agnos_common::{
-    AgentId, FsAccess, FilesystemRule, NetworkAccess, NetworkPolicy, SandboxConfig, SeccompAction,
-    SeccompRule,
     audit::AuditChain,
     telemetry::{SpanCollector, TraceContext},
+    AgentId, FilesystemRule, FsAccess, NetworkAccess, NetworkPolicy, SandboxConfig, SeccompAction,
+    SeccompRule,
 };
 
 use crate::ipc::RpcRegistry;
 use crate::learning::{AnomalyDetector, BehaviorSample};
 
-use crate::rag::{RagPipeline, RagConfig};
-use crate::knowledge_base::{KnowledgeBase, KnowledgeSource};
 #[allow(unused_imports)]
 use crate::file_watcher::FileWatcher;
+use crate::knowledge_base::{KnowledgeBase, KnowledgeSource};
+use crate::rag::{RagConfig, RagPipeline};
 
 /// Default listen port for the agent registration API.
 pub const DEFAULT_PORT: u16 = 8090;
@@ -158,7 +158,9 @@ pub struct RagQueryRequest {
     pub top_k: usize,
 }
 
-fn default_top_k() -> usize { 5 }
+fn default_top_k() -> usize {
+    5
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KnowledgeSearchRequest {
@@ -169,7 +171,9 @@ pub struct KnowledgeSearchRequest {
     pub limit: usize,
 }
 
-fn default_limit() -> usize { 10 }
+fn default_limit() -> usize {
+    10
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KnowledgeIndexRequest {
@@ -268,9 +272,12 @@ impl std::fmt::Debug for ApiState {
 
 impl ApiState {
     pub fn new() -> Self {
-        let api_key = std::env::var("AGNOS_RUNTIME_API_KEY").ok().filter(|k| !k.is_empty());
-        let marketplace_dir = std::env::var("AGNOS_MARKETPLACE_DIR")
-            .unwrap_or_else(|_| crate::marketplace::local_registry::DEFAULT_MARKETPLACE_DIR.to_string());
+        let api_key = std::env::var("AGNOS_RUNTIME_API_KEY")
+            .ok()
+            .filter(|k| !k.is_empty());
+        let marketplace_dir = std::env::var("AGNOS_MARKETPLACE_DIR").unwrap_or_else(|_| {
+            crate::marketplace::local_registry::DEFAULT_MARKETPLACE_DIR.to_string()
+        });
         let marketplace_registry = crate::marketplace::local_registry::LocalRegistry::new(
             std::path::Path::new(&marketplace_dir),
         )
@@ -400,8 +407,8 @@ async fn check_llm_gateway() -> ComponentHealth {
         .build()
         .unwrap_or_else(|_| reqwest::Client::new());
 
-    let gateway_url = std::env::var("AGNOS_GATEWAY_URL")
-        .unwrap_or_else(|_| "http://127.0.0.1:8088".to_string());
+    let gateway_url =
+        std::env::var("AGNOS_GATEWAY_URL").unwrap_or_else(|_| "http://127.0.0.1:8088".to_string());
 
     let trace_ctx = TraceContext::new_root("agent-runtime");
     let trace_headers = trace_ctx.inject_headers();
@@ -411,8 +418,7 @@ async fn check_llm_gateway() -> ComponentHealth {
         request_builder = request_builder.header(key.as_str(), value.as_str());
     }
 
-    match request_builder.send().await
-    {
+    match request_builder.send().await {
         Ok(resp) if resp.status().is_success() => ComponentHealth {
             status: "ok".to_string(),
             message: Some("LLM Gateway reachable".to_string()),
@@ -546,9 +552,12 @@ async fn register_agent_handler(
         memory_mb: None,
     };
 
-    agents.insert(id, RegisteredAgentEntry {
-        detail: detail.clone(),
-    });
+    agents.insert(
+        id,
+        RegisteredAgentEntry {
+            detail: detail.clone(),
+        },
+    );
 
     info!("Agent registered: {} ({})", req.name, id);
 
@@ -564,7 +573,8 @@ async fn register_agent_handler(
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({"error": format!("Serialization error: {}", e), "code": 500})),
-        ).into_response(),
+        )
+            .into_response(),
     }
 }
 
@@ -644,7 +654,11 @@ async fn deregister_agent_handler(
     match agents.remove(&id) {
         Some(entry) => {
             info!("Agent deregistered: {} ({})", entry.detail.name, id);
-            (StatusCode::OK, Json(serde_json::json!({"status": "deregistered", "id": id.to_string()}))).into_response()
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({"status": "deregistered", "id": id.to_string()})),
+            )
+                .into_response()
         }
         None => (
             StatusCode::NOT_FOUND,
@@ -772,22 +786,25 @@ pub struct RpcCallRequest {
     pub sender_id: Option<String>,
 }
 
-fn default_rpc_timeout() -> u64 { 5000 }
+fn default_rpc_timeout() -> u64 {
+    5000
+}
 
 // ---------------------------------------------------------------------------
 // RPC handlers
 // ---------------------------------------------------------------------------
 
-async fn rpc_list_methods_handler(
-    State(state): State<ApiState>,
-) -> impl IntoResponse {
+async fn rpc_list_methods_handler(State(state): State<ApiState>) -> impl IntoResponse {
     let registry = state.rpc_registry.read().await;
-    let methods: Vec<_> = registry.all_methods()
+    let methods: Vec<_> = registry
+        .all_methods()
         .into_iter()
-        .map(|(method, agent_id)| serde_json::json!({
-            "method": method,
-            "handler_agent": agent_id.to_string(),
-        }))
+        .map(|(method, agent_id)| {
+            serde_json::json!({
+                "method": method,
+                "handler_agent": agent_id.to_string(),
+            })
+        })
         .collect();
     Json(serde_json::json!({
         "methods": methods,
@@ -801,17 +818,22 @@ async fn rpc_agent_methods_handler(
     let parsed = match Uuid::parse_str(&agent_id) {
         Ok(u) => AgentId(u),
         Err(_) => {
-            return (StatusCode::BAD_REQUEST, Json(serde_json::json!({
-                "error": "invalid agent_id UUID",
-                "agent_id": agent_id,
-            }))).into_response();
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "error": "invalid agent_id UUID",
+                    "agent_id": agent_id,
+                })),
+            )
+                .into_response();
         }
     };
     let registry = state.rpc_registry.read().await;
     Json(serde_json::json!({
         "agent_id": agent_id,
         "methods": registry.list_methods(&parsed),
-    })).into_response()
+    }))
+    .into_response()
 }
 
 async fn rpc_register_handler(
@@ -821,21 +843,29 @@ async fn rpc_register_handler(
     let parsed = match Uuid::parse_str(&req.agent_id) {
         Ok(u) => AgentId(u),
         Err(_) => {
-            return (StatusCode::BAD_REQUEST, Json(serde_json::json!({
-                "error": "invalid agent_id UUID",
-                "agent_id": req.agent_id,
-            }))).into_response();
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "error": "invalid agent_id UUID",
+                    "agent_id": req.agent_id,
+                })),
+            )
+                .into_response();
         }
     };
     let mut registry = state.rpc_registry.write().await;
     for method in &req.methods {
         registry.register_method(parsed, method);
     }
-    (StatusCode::OK, Json(serde_json::json!({
-        "status": "registered",
-        "agent_id": req.agent_id,
-        "methods": req.methods,
-    }))).into_response()
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "status": "registered",
+            "agent_id": req.agent_id,
+            "methods": req.methods,
+        })),
+    )
+        .into_response()
 }
 
 async fn rpc_call_handler(
@@ -844,20 +874,21 @@ async fn rpc_call_handler(
 ) -> impl IntoResponse {
     let registry = state.rpc_registry.read().await;
     match registry.find_handler(&req.method) {
-        Some(handler_id) => {
+        Some(handler_id) => Json(serde_json::json!({
+            "status": "routed",
+            "method": req.method,
+            "handler_agent": handler_id.to_string(),
+            "message": "RPC call dispatched (async response pending)"
+        }))
+        .into_response(),
+        None => (
+            StatusCode::NOT_FOUND,
             Json(serde_json::json!({
-                "status": "routed",
-                "method": req.method,
-                "handler_agent": handler_id.to_string(),
-                "message": "RPC call dispatched (async response pending)"
-            })).into_response()
-        }
-        None => {
-            (StatusCode::NOT_FOUND, Json(serde_json::json!({
                 "error": "method_not_found",
                 "method": req.method,
-            }))).into_response()
-        }
+            })),
+        )
+            .into_response(),
     }
 }
 
@@ -886,10 +917,14 @@ async fn anomaly_submit_handler(
     let parsed = match Uuid::parse_str(&req.agent_id) {
         Ok(u) => AgentId(u),
         Err(_) => {
-            return (StatusCode::BAD_REQUEST, Json(serde_json::json!({
-                "error": "invalid agent_id UUID",
-                "agent_id": req.agent_id,
-            }))).into_response();
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "error": "invalid agent_id UUID",
+                    "agent_id": req.agent_id,
+                })),
+            )
+                .into_response();
         }
     };
     let sample = BehaviorSample {
@@ -935,12 +970,11 @@ async fn anomaly_submit_handler(
             "baseline_mean": a.baseline_mean,
             "deviation_sigmas": a.deviation_sigmas,
         })).collect::<Vec<_>>(),
-    })).into_response()
+    }))
+    .into_response()
 }
 
-async fn anomaly_alerts_handler(
-    State(state): State<ApiState>,
-) -> impl IntoResponse {
+async fn anomaly_alerts_handler(State(state): State<ApiState>) -> impl IntoResponse {
     let detector = state.anomaly_detector.read().await;
     let alerts = detector.active_alerts();
     Json(serde_json::json!({
@@ -965,10 +999,14 @@ async fn anomaly_baseline_handler(
     let parsed = match Uuid::parse_str(&agent_id) {
         Ok(u) => AgentId(u),
         Err(_) => {
-            return (StatusCode::BAD_REQUEST, Json(serde_json::json!({
-                "error": "invalid agent_id UUID",
-                "agent_id": agent_id,
-            }))).into_response();
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "error": "invalid agent_id UUID",
+                    "agent_id": agent_id,
+                })),
+            )
+                .into_response();
         }
     };
     let detector = state.anomaly_detector.read().await;
@@ -977,11 +1015,16 @@ async fn anomaly_baseline_handler(
             "agent_id": agent_id,
             "sample_count": baseline.sample_count(),
             "has_baseline": baseline.sample_count() > 0,
-        })).into_response(),
-        None => (StatusCode::NOT_FOUND, Json(serde_json::json!({
-            "error": "no baseline for agent",
-            "agent_id": agent_id,
-        }))).into_response(),
+        }))
+        .into_response(),
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({
+                "error": "no baseline for agent",
+                "agent_id": agent_id,
+            })),
+        )
+            .into_response(),
     }
 }
 
@@ -992,10 +1035,14 @@ async fn anomaly_clear_handler(
     let parsed = match Uuid::parse_str(&agent_id) {
         Ok(u) => AgentId(u),
         Err(_) => {
-            return (StatusCode::BAD_REQUEST, Json(serde_json::json!({
-                "error": "invalid agent_id UUID",
-                "agent_id": agent_id,
-            }))).into_response();
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "error": "invalid agent_id UUID",
+                    "agent_id": agent_id,
+                })),
+            )
+                .into_response();
         }
     };
     let mut detector = state.anomaly_detector.write().await;
@@ -1003,7 +1050,8 @@ async fn anomaly_clear_handler(
     Json(serde_json::json!({
         "status": "cleared",
         "agent_id": agent_id,
-    })).into_response()
+    }))
+    .into_response()
 }
 
 // ---------------------------------------------------------------------------
@@ -1023,11 +1071,13 @@ async fn rag_ingest_handler(
                 "status": "ingested",
                 "chunks": ids.len()
             })),
-        ).into_response(),
+        )
+            .into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({"error": e.to_string()})),
-        ).into_response(),
+        )
+            .into_response(),
     }
 }
 
@@ -1049,9 +1099,7 @@ async fn rag_query_handler(
     }))
 }
 
-async fn rag_stats_handler(
-    State(state): State<ApiState>,
-) -> impl IntoResponse {
+async fn rag_stats_handler(State(state): State<ApiState>) -> impl IntoResponse {
     let pipeline = state.rag_pipeline.read().await;
     Json(serde_json::json!({
         "index_size": pipeline.index.len(),
@@ -1100,9 +1148,7 @@ async fn knowledge_search_handler(
     }))
 }
 
-async fn knowledge_stats_handler(
-    State(state): State<ApiState>,
-) -> impl IntoResponse {
+async fn knowledge_stats_handler(State(state): State<ApiState>) -> impl IntoResponse {
     let kb = state.knowledge_base.read().await;
     let stats = kb.stats();
     Json(serde_json::json!({
@@ -1133,11 +1179,13 @@ async fn knowledge_index_handler(
                 "path": req.path,
                 "entries_added": count,
             })),
-        ).into_response(),
+        )
+            .into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({"error": e.to_string()})),
-        ).into_response(),
+        )
+            .into_response(),
     }
 }
 
@@ -1151,9 +1199,7 @@ pub struct MarketplaceSearchQuery {
     pub q: String,
 }
 
-async fn marketplace_installed_handler(
-    State(state): State<ApiState>,
-) -> impl IntoResponse {
+async fn marketplace_installed_handler(State(state): State<ApiState>) -> impl IntoResponse {
     let registry = state.marketplace_registry.read().await;
     let packages: Vec<serde_json::Value> = registry
         .list_installed()
@@ -1319,11 +1365,14 @@ async fn ark_install_handler(
         return (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": "No packages specified"})),
-        ).into_response();
+        )
+            .into_response();
     }
-    let steps: Vec<serde_json::Value> = req.packages.iter().map(|p| {
-        serde_json::json!({"action": "install", "package": p, "source": "auto"})
-    }).collect();
+    let steps: Vec<serde_json::Value> = req
+        .packages
+        .iter()
+        .map(|p| serde_json::json!({"action": "install", "package": p, "source": "auto"}))
+        .collect();
     (
         StatusCode::OK,
         Json(serde_json::json!({
@@ -1332,7 +1381,8 @@ async fn ark_install_handler(
             "message": format!("Planned installation of {} package(s)", req.packages.len()),
             "force": req.force,
         })),
-    ).into_response()
+    )
+        .into_response()
 }
 
 async fn ark_remove_handler(
@@ -1343,11 +1393,14 @@ async fn ark_remove_handler(
         return (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": "No packages specified"})),
-        ).into_response();
+        )
+            .into_response();
     }
-    let steps: Vec<serde_json::Value> = req.packages.iter().map(|p| {
-        serde_json::json!({"action": "remove", "package": p, "purge": req.purge})
-    }).collect();
+    let steps: Vec<serde_json::Value> = req
+        .packages
+        .iter()
+        .map(|p| serde_json::json!({"action": "remove", "package": p, "purge": req.purge}))
+        .collect();
     (
         StatusCode::OK,
         Json(serde_json::json!({
@@ -1355,7 +1408,8 @@ async fn ark_remove_handler(
             "steps": steps,
             "message": format!("Planned removal of {} package(s)", req.packages.len()),
         })),
-    ).into_response()
+    )
+        .into_response()
 }
 
 async fn ark_search_handler(
@@ -1367,7 +1421,8 @@ async fn ark_search_handler(
         return (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": "Missing query parameter 'q'"})),
-        ).into_response();
+        )
+            .into_response();
     }
     (
         StatusCode::OK,
@@ -1377,7 +1432,8 @@ async fn ark_search_handler(
             "sources_searched": ["marketplace", "system"],
             "total": 0,
         })),
-    ).into_response()
+    )
+        .into_response()
 }
 
 async fn ark_info_handler(
@@ -1395,9 +1451,7 @@ async fn ark_info_handler(
     )
 }
 
-async fn ark_update_handler(
-    State(_state): State<ApiState>,
-) -> impl IntoResponse {
+async fn ark_update_handler(State(_state): State<ApiState>) -> impl IntoResponse {
     (
         StatusCode::OK,
         Json(serde_json::json!({
@@ -1417,9 +1471,10 @@ async fn ark_upgrade_handler(
         None => "Planned upgrade of all outdated packages".to_string(),
     };
     let steps: Vec<serde_json::Value> = match &req.packages {
-        Some(pkgs) => pkgs.iter().map(|p| {
-            serde_json::json!({"action": "upgrade", "package": p})
-        }).collect(),
+        Some(pkgs) => pkgs
+            .iter()
+            .map(|p| serde_json::json!({"action": "upgrade", "package": p}))
+            .collect(),
         None => vec![serde_json::json!({"action": "upgrade_all"})],
     };
     (
@@ -1473,10 +1528,22 @@ pub fn build_router(state: ApiState) -> Router {
         .route("/v1/traces", get(list_traces_handler))
         .route("/v1/traces/spans", get(list_spans_handler))
         .route("/v1/mcp/tools", get(crate::mcp_server::mcp_tools_handler))
-        .route("/v1/mcp/tools/call", post(crate::mcp_server::mcp_tool_call_handler))
-        .route("/v1/sandbox/profiles", post(translate_sandbox_profile_handler))
-        .route("/v1/sandbox/profiles/default", get(default_sandbox_profile_handler))
-        .route("/v1/sandbox/profiles/validate", post(validate_sandbox_profile_handler))
+        .route(
+            "/v1/mcp/tools/call",
+            post(crate::mcp_server::mcp_tool_call_handler),
+        )
+        .route(
+            "/v1/sandbox/profiles",
+            post(translate_sandbox_profile_handler),
+        )
+        .route(
+            "/v1/sandbox/profiles/default",
+            get(default_sandbox_profile_handler),
+        )
+        .route(
+            "/v1/sandbox/profiles/validate",
+            post(validate_sandbox_profile_handler),
+        )
         // Agent-to-agent RPC routes
         .route("/v1/rpc/methods", get(rpc_list_methods_handler))
         .route("/v1/rpc/methods/:agent_id", get(rpc_agent_methods_handler))
@@ -1485,8 +1552,14 @@ pub fn build_router(state: ApiState) -> Router {
         // Behavior anomaly detection routes
         .route("/v1/anomaly/sample", post(anomaly_submit_handler))
         .route("/v1/anomaly/alerts", get(anomaly_alerts_handler))
-        .route("/v1/anomaly/baseline/:agent_id", get(anomaly_baseline_handler))
-        .route("/v1/anomaly/alerts/:agent_id", delete(anomaly_clear_handler))
+        .route(
+            "/v1/anomaly/baseline/:agent_id",
+            get(anomaly_baseline_handler),
+        )
+        .route(
+            "/v1/anomaly/alerts/:agent_id",
+            delete(anomaly_clear_handler),
+        )
         // RAG pipeline routes
         .route("/v1/rag/ingest", post(rag_ingest_handler))
         .route("/v1/rag/query", post(rag_query_handler))
@@ -1504,12 +1577,21 @@ pub fn build_router(state: ApiState) -> Router {
         .route("/v1/ark/upgrade", post(ark_upgrade_handler))
         .route("/v1/ark/status", get(ark_status_handler))
         // Marketplace routes
-        .route("/v1/marketplace/installed", get(marketplace_installed_handler))
+        .route(
+            "/v1/marketplace/installed",
+            get(marketplace_installed_handler),
+        )
         .route("/v1/marketplace/search", get(marketplace_search_handler))
         .route("/v1/marketplace/install", post(marketplace_install_handler))
         .route("/v1/marketplace/:name", get(marketplace_info_handler))
-        .route("/v1/marketplace/:name", delete(marketplace_uninstall_handler))
-        .layer(middleware::from_fn_with_state(state.clone(), auth_middleware))
+        .route(
+            "/v1/marketplace/:name",
+            delete(marketplace_uninstall_handler),
+        )
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            auth_middleware,
+        ))
         .with_state(state)
 }
 
@@ -1558,7 +1640,10 @@ async fn prometheus_metrics_handler(State(state): State<ApiState>) -> impl IntoR
     lines.push("# HELP agnos_agent_status Agent status breakdown".to_string());
     lines.push("# TYPE agnos_agent_status gauge".to_string());
     for (status, count) in &by_status {
-        lines.push(format!("agnos_agent_status{{status=\"{}\"}} {}", status, count));
+        lines.push(format!(
+            "agnos_agent_status{{status=\"{}\"}} {}",
+            status, count
+        ));
     }
 
     let uptime = (Utc::now() - state.started_at).num_seconds().max(0) as u64;
@@ -1568,7 +1653,10 @@ async fn prometheus_metrics_handler(State(state): State<ApiState>) -> impl IntoR
 
     (
         StatusCode::OK,
-        [(axum::http::header::CONTENT_TYPE, "text/plain; version=0.0.4; charset=utf-8")],
+        [(
+            axum::http::header::CONTENT_TYPE,
+            "text/plain; version=0.0.4; charset=utf-8",
+        )],
         lines.join("\n"),
     )
 }
@@ -1817,9 +1905,7 @@ async fn audit_chain_handler(
     }))
 }
 
-async fn audit_chain_verify_handler(
-    State(state): State<ApiState>,
-) -> impl IntoResponse {
+async fn audit_chain_verify_handler(State(state): State<ApiState>) -> impl IntoResponse {
     let chain = state.audit_chain.read().await;
     match chain.verify() {
         Ok(()) => (
@@ -1987,9 +2073,7 @@ async fn list_traces_handler(
     Json(serde_json::json!({"traces": result, "total": result.len()}))
 }
 
-async fn list_spans_handler(
-    State(state): State<ApiState>,
-) -> impl IntoResponse {
+async fn list_spans_handler(State(state): State<ApiState>) -> impl IntoResponse {
     let json = state.span_collector.export_json();
     Json(serde_json::json!({
         "spans": json,
@@ -2003,50 +2087,248 @@ async fn list_spans_handler(
 
 /// Well-known x86_64 syscall names used for validation.
 const KNOWN_SYSCALLS: &[&str] = &[
-    "read", "write", "open", "close", "stat", "fstat", "lstat", "poll", "lseek",
-    "mmap", "mprotect", "munmap", "brk", "ioctl", "access", "pipe", "select",
-    "sched_yield", "mremap", "msync", "mincore", "madvise", "shmget", "shmat",
-    "shmctl", "dup", "dup2", "pause", "nanosleep", "getitimer", "alarm",
-    "setitimer", "getpid", "sendfile", "socket", "connect", "accept", "sendto",
-    "recvfrom", "sendmsg", "recvmsg", "shutdown", "bind", "listen",
-    "getsockname", "getpeername", "socketpair", "setsockopt", "getsockopt",
-    "clone", "fork", "vfork", "execve", "exit", "wait4", "kill", "uname",
-    "fcntl", "flock", "fsync", "fdatasync", "truncate", "ftruncate",
-    "getdents", "getcwd", "chdir", "fchdir", "rename", "mkdir", "rmdir",
-    "creat", "link", "unlink", "symlink", "readlink", "chmod", "fchmod",
-    "chown", "fchown", "lchown", "umask", "gettimeofday", "getrlimit",
-    "getrusage", "sysinfo", "times", "ptrace", "getuid", "syslog", "getgid",
-    "setuid", "setgid", "geteuid", "getegid", "setpgid", "getppid",
-    "getpgrp", "setsid", "setreuid", "setregid", "getgroups", "setgroups",
-    "setresuid", "getresuid", "setresgid", "getresgid", "getpgid", "setfsuid",
-    "setfsgid", "getsid", "capget", "capset", "rt_sigpending",
-    "rt_sigtimedwait", "rt_sigqueueinfo", "rt_sigsuspend", "sigaltstack",
-    "utime", "mknod", "personality", "statfs", "fstatfs", "sysfs",
-    "getpriority", "setpriority", "sched_setparam", "sched_getparam",
-    "sched_setscheduler", "sched_getscheduler", "sched_get_priority_max",
-    "sched_get_priority_min", "sched_rr_get_interval", "mlock", "munlock",
-    "mlockall", "munlockall", "vhangup", "pivot_root", "prctl",
-    "arch_prctl", "adjtimex", "setrlimit", "chroot", "sync", "acct",
-    "settimeofday", "mount", "umount2", "swapon", "swapoff", "reboot",
-    "sethostname", "setdomainname", "ioperm", "iopl", "create_module",
-    "init_module", "delete_module", "clock_gettime", "clock_settime",
-    "clock_getres", "clock_nanosleep", "exit_group", "epoll_wait",
-    "epoll_ctl", "tgkill", "utimes", "openat", "mkdirat", "fchownat",
-    "unlinkat", "renameat", "linkat", "symlinkat", "readlinkat", "fchmodat",
-    "faccessat", "pselect6", "ppoll", "set_robust_list", "get_robust_list",
-    "splice", "tee", "sync_file_range", "vmsplice", "move_pages",
-    "epoll_pwait", "signalfd", "timerfd_create", "eventfd", "fallocate",
-    "timerfd_settime", "timerfd_gettime", "accept4", "signalfd4", "eventfd2",
-    "epoll_create1", "dup3", "pipe2", "inotify_init1", "preadv", "pwritev",
-    "rt_tgsigqueueinfo", "perf_event_open", "recvmmsg", "fanotify_init",
-    "fanotify_mark", "prlimit64", "name_to_handle_at", "open_by_handle_at",
-    "syncfs", "sendmmsg", "setns", "getcpu", "process_vm_readv",
-    "process_vm_writev", "kcmp", "finit_module", "sched_setattr",
-    "sched_getattr", "renameat2", "seccomp", "getrandom", "memfd_create",
-    "bpf", "execveat", "membarrier", "mlock2", "copy_file_range",
-    "preadv2", "pwritev2", "statx", "io_uring_setup", "io_uring_enter",
-    "io_uring_register", "pidfd_open", "clone3", "close_range",
-    "openat2", "pidfd_getfd", "faccessat2", "epoll_pwait2",
+    "read",
+    "write",
+    "open",
+    "close",
+    "stat",
+    "fstat",
+    "lstat",
+    "poll",
+    "lseek",
+    "mmap",
+    "mprotect",
+    "munmap",
+    "brk",
+    "ioctl",
+    "access",
+    "pipe",
+    "select",
+    "sched_yield",
+    "mremap",
+    "msync",
+    "mincore",
+    "madvise",
+    "shmget",
+    "shmat",
+    "shmctl",
+    "dup",
+    "dup2",
+    "pause",
+    "nanosleep",
+    "getitimer",
+    "alarm",
+    "setitimer",
+    "getpid",
+    "sendfile",
+    "socket",
+    "connect",
+    "accept",
+    "sendto",
+    "recvfrom",
+    "sendmsg",
+    "recvmsg",
+    "shutdown",
+    "bind",
+    "listen",
+    "getsockname",
+    "getpeername",
+    "socketpair",
+    "setsockopt",
+    "getsockopt",
+    "clone",
+    "fork",
+    "vfork",
+    "execve",
+    "exit",
+    "wait4",
+    "kill",
+    "uname",
+    "fcntl",
+    "flock",
+    "fsync",
+    "fdatasync",
+    "truncate",
+    "ftruncate",
+    "getdents",
+    "getcwd",
+    "chdir",
+    "fchdir",
+    "rename",
+    "mkdir",
+    "rmdir",
+    "creat",
+    "link",
+    "unlink",
+    "symlink",
+    "readlink",
+    "chmod",
+    "fchmod",
+    "chown",
+    "fchown",
+    "lchown",
+    "umask",
+    "gettimeofday",
+    "getrlimit",
+    "getrusage",
+    "sysinfo",
+    "times",
+    "ptrace",
+    "getuid",
+    "syslog",
+    "getgid",
+    "setuid",
+    "setgid",
+    "geteuid",
+    "getegid",
+    "setpgid",
+    "getppid",
+    "getpgrp",
+    "setsid",
+    "setreuid",
+    "setregid",
+    "getgroups",
+    "setgroups",
+    "setresuid",
+    "getresuid",
+    "setresgid",
+    "getresgid",
+    "getpgid",
+    "setfsuid",
+    "setfsgid",
+    "getsid",
+    "capget",
+    "capset",
+    "rt_sigpending",
+    "rt_sigtimedwait",
+    "rt_sigqueueinfo",
+    "rt_sigsuspend",
+    "sigaltstack",
+    "utime",
+    "mknod",
+    "personality",
+    "statfs",
+    "fstatfs",
+    "sysfs",
+    "getpriority",
+    "setpriority",
+    "sched_setparam",
+    "sched_getparam",
+    "sched_setscheduler",
+    "sched_getscheduler",
+    "sched_get_priority_max",
+    "sched_get_priority_min",
+    "sched_rr_get_interval",
+    "mlock",
+    "munlock",
+    "mlockall",
+    "munlockall",
+    "vhangup",
+    "pivot_root",
+    "prctl",
+    "arch_prctl",
+    "adjtimex",
+    "setrlimit",
+    "chroot",
+    "sync",
+    "acct",
+    "settimeofday",
+    "mount",
+    "umount2",
+    "swapon",
+    "swapoff",
+    "reboot",
+    "sethostname",
+    "setdomainname",
+    "ioperm",
+    "iopl",
+    "create_module",
+    "init_module",
+    "delete_module",
+    "clock_gettime",
+    "clock_settime",
+    "clock_getres",
+    "clock_nanosleep",
+    "exit_group",
+    "epoll_wait",
+    "epoll_ctl",
+    "tgkill",
+    "utimes",
+    "openat",
+    "mkdirat",
+    "fchownat",
+    "unlinkat",
+    "renameat",
+    "linkat",
+    "symlinkat",
+    "readlinkat",
+    "fchmodat",
+    "faccessat",
+    "pselect6",
+    "ppoll",
+    "set_robust_list",
+    "get_robust_list",
+    "splice",
+    "tee",
+    "sync_file_range",
+    "vmsplice",
+    "move_pages",
+    "epoll_pwait",
+    "signalfd",
+    "timerfd_create",
+    "eventfd",
+    "fallocate",
+    "timerfd_settime",
+    "timerfd_gettime",
+    "accept4",
+    "signalfd4",
+    "eventfd2",
+    "epoll_create1",
+    "dup3",
+    "pipe2",
+    "inotify_init1",
+    "preadv",
+    "pwritev",
+    "rt_tgsigqueueinfo",
+    "perf_event_open",
+    "recvmmsg",
+    "fanotify_init",
+    "fanotify_mark",
+    "prlimit64",
+    "name_to_handle_at",
+    "open_by_handle_at",
+    "syncfs",
+    "sendmmsg",
+    "setns",
+    "getcpu",
+    "process_vm_readv",
+    "process_vm_writev",
+    "kcmp",
+    "finit_module",
+    "sched_setattr",
+    "sched_getattr",
+    "renameat2",
+    "seccomp",
+    "getrandom",
+    "memfd_create",
+    "bpf",
+    "execveat",
+    "membarrier",
+    "mlock2",
+    "copy_file_range",
+    "preadv2",
+    "pwritev2",
+    "statx",
+    "io_uring_setup",
+    "io_uring_enter",
+    "io_uring_register",
+    "pidfd_open",
+    "clone3",
+    "close_range",
+    "openat2",
+    "pidfd_getfd",
+    "faccessat2",
+    "epoll_pwait2",
 ];
 
 fn is_known_syscall(name: &str) -> bool {
@@ -2119,7 +2401,8 @@ fn map_network_access(s: &str) -> Option<NetworkAccess> {
 
 fn path_has_traversal(p: &str) -> bool {
     let path = std::path::Path::new(p);
-    path.components().any(|c| matches!(c, std::path::Component::ParentDir))
+    path.components()
+        .any(|c| matches!(c, std::path::Component::ParentDir))
 }
 
 /// POST /v1/sandbox/profiles — translate an external sandbox profile to AGNOS SandboxConfig.
@@ -2213,7 +2496,9 @@ async fn translate_sandbox_profile_handler(
         None
     };
 
-    let isolate_network = req.isolate_network.unwrap_or(network_access != NetworkAccess::Full);
+    let isolate_network = req
+        .isolate_network
+        .unwrap_or(network_access != NetworkAccess::Full);
 
     let config = SandboxConfig {
         filesystem_rules,
@@ -2235,9 +2520,7 @@ async fn default_sandbox_profile_handler() -> impl IntoResponse {
 }
 
 /// POST /v1/sandbox/profiles/validate — validate a SandboxConfig for issues.
-async fn validate_sandbox_profile_handler(
-    Json(config): Json<SandboxConfig>,
-) -> impl IntoResponse {
+async fn validate_sandbox_profile_handler(Json(config): Json<SandboxConfig>) -> impl IntoResponse {
     let mut errors = Vec::new();
     let mut warnings = Vec::new();
 
@@ -2248,7 +2531,10 @@ async fn validate_sandbox_profile_handler(
             errors.push(format!("Path traversal detected in filesystem rule: {}", p));
         }
         if !rule.path.is_absolute() {
-            warnings.push(format!("Relative path in filesystem rule: {} — should be absolute", p));
+            warnings.push(format!(
+                "Relative path in filesystem rule: {} — should be absolute",
+                p
+            ));
         }
     }
 
@@ -2264,13 +2550,22 @@ async fn validate_sandbox_profile_handler(
         warnings.push("network_access is Restricted but no network_policy is provided".to_string());
     }
     if config.network_access != NetworkAccess::Restricted && config.network_policy.is_some() {
-        warnings.push("network_policy is set but network_access is not Restricted — policy will be ignored".to_string());
+        warnings.push(
+            "network_policy is set but network_access is not Restricted — policy will be ignored"
+                .to_string(),
+        );
     }
     if config.network_access == NetworkAccess::Full && config.isolate_network {
-        warnings.push("isolate_network is true with Full network access — this may cause unexpected behavior".to_string());
+        warnings.push(
+            "isolate_network is true with Full network access — this may cause unexpected behavior"
+                .to_string(),
+        );
     }
     if config.network_access == NetworkAccess::None && !config.isolate_network {
-        warnings.push("network_access is None but isolate_network is false — consider enabling isolation".to_string());
+        warnings.push(
+            "network_access is None but isolate_network is false — consider enabling isolation"
+                .to_string(),
+        );
     }
 
     let valid = errors.is_empty();
@@ -2312,7 +2607,9 @@ mod tests {
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: HealthResponse = serde_json::from_slice(&body).unwrap();
         assert_eq!(json.service, "agnos-agent-runtime");
         // Components should exist
@@ -2341,7 +2638,9 @@ mod tests {
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::CREATED);
 
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["name"], "test-agent");
         assert_eq!(json["status"], "registered");
@@ -2417,7 +2716,9 @@ mod tests {
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: AgentListResponse = serde_json::from_slice(&body).unwrap();
         assert_eq!(json.total, 2);
     }
@@ -2437,7 +2738,9 @@ mod tests {
             ))
             .unwrap();
         let resp = app.clone().oneshot(req).await.unwrap();
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let reg: serde_json::Value = serde_json::from_slice(&body).unwrap();
         let id = reg["id"].as_str().unwrap();
 
@@ -2476,7 +2779,9 @@ mod tests {
             ))
             .unwrap();
         let resp = app.clone().oneshot(req).await.unwrap();
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let reg: serde_json::Value = serde_json::from_slice(&body).unwrap();
         let id = reg["id"].as_str().unwrap();
 
@@ -2502,7 +2807,9 @@ mod tests {
             .body(Body::empty())
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let detail: AgentDetail = serde_json::from_slice(&body).unwrap();
         assert_eq!(detail.status, "running");
         assert_eq!(detail.current_task, Some("processing".to_string()));
@@ -2539,7 +2846,9 @@ mod tests {
             ))
             .unwrap();
         let resp = app.clone().oneshot(req).await.unwrap();
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let reg: serde_json::Value = serde_json::from_slice(&body).unwrap();
         let id = reg["id"].as_str().unwrap();
 
@@ -2618,7 +2927,9 @@ mod tests {
             ))
             .unwrap();
         let resp = app.clone().oneshot(req).await.unwrap();
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let reg: serde_json::Value = serde_json::from_slice(&body).unwrap();
         let id = reg["id"].as_str().unwrap();
 
@@ -2644,7 +2955,9 @@ mod tests {
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: AgentListResponse = serde_json::from_slice(&body).unwrap();
         assert_eq!(json.total, 0);
         assert!(json.agents.is_empty());
@@ -2660,7 +2973,9 @@ mod tests {
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: AgentMetricsResponse = serde_json::from_slice(&body).unwrap();
         assert_eq!(json.total_agents, 0);
         assert!(json.agents_by_status.is_empty());
@@ -2688,7 +3003,9 @@ mod tests {
             assert_eq!(resp.status(), StatusCode::CREATED);
 
             // Get agent ID for heartbeat
-            let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+            let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+                .await
+                .unwrap();
             let reg: serde_json::Value = serde_json::from_slice(&body).unwrap();
             let id = reg["id"].as_str().unwrap();
 
@@ -2715,7 +3032,9 @@ mod tests {
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: AgentMetricsResponse = serde_json::from_slice(&body).unwrap();
         assert_eq!(json.total_agents, 2);
         assert_eq!(json.agents_by_status.get("running"), Some(&2));
@@ -2733,7 +3052,10 @@ mod tests {
         let req = RegisterAgentRequest {
             name: "test".to_string(),
             capabilities: vec!["file:read".to_string()],
-            resource_needs: ResourceNeeds { min_memory_mb: 256, min_cpu_shares: 50 },
+            resource_needs: ResourceNeeds {
+                min_memory_mb: 256,
+                min_cpu_shares: 50,
+            },
             metadata: {
                 let mut m = HashMap::new();
                 m.insert("version".to_string(), "1.0".to_string());
@@ -2909,7 +3231,9 @@ mod tests {
 
         let resp = app.clone().oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::CREATED);
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let reg: serde_json::Value = serde_json::from_slice(&body).unwrap();
         let id = reg["id"].as_str().unwrap();
 
@@ -2919,7 +3243,9 @@ mod tests {
             .body(Body::empty())
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let detail: AgentDetail = serde_json::from_slice(&body).unwrap();
         assert_eq!(detail.metadata.get("runtime").unwrap(), "python");
     }
@@ -2934,10 +3260,14 @@ mod tests {
             .method("POST")
             .uri("/v1/agents/register")
             .header("content-type", "application/json")
-            .body(Body::from(serde_json::to_vec(&serde_json::json!({"name": "hb-empty"})).unwrap()))
+            .body(Body::from(
+                serde_json::to_vec(&serde_json::json!({"name": "hb-empty"})).unwrap(),
+            ))
             .unwrap();
         let resp = app.clone().oneshot(req).await.unwrap();
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let reg: serde_json::Value = serde_json::from_slice(&body).unwrap();
         let id = reg["id"].as_str().unwrap();
 
@@ -2957,7 +3287,9 @@ mod tests {
             .body(Body::empty())
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let detail: AgentDetail = serde_json::from_slice(&body).unwrap();
         assert!(detail.last_heartbeat.is_some());
         // Status should remain "registered" since no status was sent
@@ -2980,7 +3312,9 @@ mod tests {
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let text = String::from_utf8(body.to_vec()).unwrap();
         assert!(text.contains("# HELP agnos_agents_total"));
         assert!(text.contains("# TYPE agnos_agents_total gauge"));
@@ -2998,7 +3332,9 @@ mod tests {
             .method("POST")
             .uri("/v1/agents/register")
             .header("content-type", "application/json")
-            .body(Body::from(serde_json::to_vec(&serde_json::json!({"name": "prom-agent"})).unwrap()))
+            .body(Body::from(
+                serde_json::to_vec(&serde_json::json!({"name": "prom-agent"})).unwrap(),
+            ))
             .unwrap();
         app.clone().oneshot(req).await.unwrap();
 
@@ -3007,7 +3343,9 @@ mod tests {
             .body(Body::empty())
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let text = String::from_utf8(body.to_vec()).unwrap();
         assert!(text.contains("agnos_agents_total 1"));
         assert!(text.contains("agnos_agent_status"));
@@ -3035,7 +3373,9 @@ mod tests {
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::CREATED);
 
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert!(json["id"].as_str().is_some());
         assert_eq!(json["status"], "registered");
@@ -3079,7 +3419,9 @@ mod tests {
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["total"], 1);
     }
@@ -3098,7 +3440,9 @@ mod tests {
             .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
             .unwrap();
         let resp = app.clone().oneshot(req).await.unwrap();
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         let id = json["id"].as_str().unwrap();
 
@@ -3117,7 +3461,9 @@ mod tests {
             .body(Body::empty())
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["total"], 0);
     }
@@ -3143,7 +3489,9 @@ mod tests {
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["total"], 0);
     }
@@ -3184,7 +3532,9 @@ mod tests {
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["events_received"], 2);
     }
@@ -3217,7 +3567,9 @@ mod tests {
             .body(Body::empty())
             .unwrap();
         let resp = app.clone().oneshot(req).await.unwrap();
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["total"], 3);
 
@@ -3227,7 +3579,9 @@ mod tests {
             .body(Body::empty())
             .unwrap();
         let resp = app.clone().oneshot(req).await.unwrap();
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["total"], 2);
 
@@ -3237,7 +3591,9 @@ mod tests {
             .body(Body::empty())
             .unwrap();
         let resp = app.clone().oneshot(req).await.unwrap();
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["total"], 1);
 
@@ -3247,7 +3603,9 @@ mod tests {
             .body(Body::empty())
             .unwrap();
         let resp = app.clone().oneshot(req).await.unwrap();
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["total"], 1);
     }
@@ -3261,7 +3619,9 @@ mod tests {
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["total"], 0);
     }
@@ -3278,7 +3638,9 @@ mod tests {
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["events_received"], 0);
     }
@@ -3325,7 +3687,9 @@ mod tests {
         let resp = app.clone().oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["key"], "mykey");
         assert_eq!(json["value"]["greeting"], "hello");
@@ -3371,7 +3735,9 @@ mod tests {
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["total"], 2);
     }
@@ -3438,7 +3804,9 @@ mod tests {
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["total"], 0);
     }
@@ -3475,7 +3843,9 @@ mod tests {
             .body(Body::empty())
             .unwrap();
         let resp = app.clone().oneshot(req).await.unwrap();
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["value"], "agent1-data");
     }
@@ -3519,7 +3889,9 @@ mod tests {
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::CREATED);
 
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["status"], "accepted");
     }
@@ -3552,7 +3924,9 @@ mod tests {
             .body(Body::empty())
             .unwrap();
         let resp = app.clone().oneshot(req).await.unwrap();
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["total"], 2);
 
@@ -3562,7 +3936,9 @@ mod tests {
             .body(Body::empty())
             .unwrap();
         let resp = app.clone().oneshot(req).await.unwrap();
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["total"], 1);
     }
@@ -3576,7 +3952,9 @@ mod tests {
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["total"], 0);
     }
@@ -3622,7 +4000,9 @@ mod tests {
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["total"], 0);
         assert_eq!(json["entries"].as_array().unwrap().len(), 0);
@@ -3637,7 +4017,9 @@ mod tests {
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["valid"], true);
     }
@@ -3669,7 +4051,9 @@ mod tests {
             .body(Body::empty())
             .unwrap();
         let resp = app.clone().oneshot(req).await.unwrap();
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["total"], 2);
         let entries = json["entries"].as_array().unwrap();
@@ -3684,7 +4068,9 @@ mod tests {
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["valid"], true);
         assert_eq!(json["entries"], 2);
@@ -3696,14 +4082,16 @@ mod tests {
         let app = build_router(state.clone());
 
         // Forward 5 events
-        let events: Vec<serde_json::Value> = (0..5).map(|i| {
-            serde_json::json!({
-                "timestamp": format!("2026-03-06T12:0{}:00Z", i),
-                "action": format!("action_{}", i),
-                "details": {},
-                "outcome": "success"
+        let events: Vec<serde_json::Value> = (0..5)
+            .map(|i| {
+                serde_json::json!({
+                    "timestamp": format!("2026-03-06T12:0{}:00Z", i),
+                    "action": format!("action_{}", i),
+                    "details": {},
+                    "outcome": "success"
+                })
             })
-        }).collect();
+            .collect();
         let req_body = serde_json::json!({"source": "test", "events": events});
         let req = Request::builder()
             .method("POST")
@@ -3719,7 +4107,9 @@ mod tests {
             .body(Body::empty())
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["total"], 5);
         assert_eq!(json["offset"], 1);
@@ -3751,7 +4141,9 @@ mod tests {
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["network_access"], "LocalhostOnly");
         assert_eq!(json["isolate_network"], true);
@@ -3797,7 +4189,9 @@ mod tests {
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert!(json["error"].as_str().unwrap().contains("traversal"));
     }
@@ -3851,9 +4245,14 @@ mod tests {
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        assert!(json["error"].as_str().unwrap().contains("totally_fake_syscall"));
+        assert!(json["error"]
+            .as_str()
+            .unwrap()
+            .contains("totally_fake_syscall"));
     }
 
     #[tokio::test]
@@ -3873,7 +4272,9 @@ mod tests {
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["network_access"], "Restricted");
         let policy = &json["network_policy"];
@@ -3892,7 +4293,9 @@ mod tests {
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["network_access"], "LocalhostOnly");
         assert_eq!(json["isolate_network"], true);
@@ -3922,7 +4325,9 @@ mod tests {
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["valid"], true);
         assert!(json["errors"].as_array().unwrap().is_empty());
@@ -3951,15 +4356,25 @@ mod tests {
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["valid"], false);
         let errors = json["errors"].as_array().unwrap();
-        assert!(errors.iter().any(|e| e.as_str().unwrap().contains("traversal")));
-        assert!(errors.iter().any(|e| e.as_str().unwrap().contains("bogus_call")));
+        assert!(errors
+            .iter()
+            .any(|e| e.as_str().unwrap().contains("traversal")));
+        assert!(errors
+            .iter()
+            .any(|e| e.as_str().unwrap().contains("bogus_call")));
         let warnings = json["warnings"].as_array().unwrap();
-        assert!(warnings.iter().any(|e| e.as_str().unwrap().contains("Relative path")));
-        assert!(warnings.iter().any(|e| e.as_str().unwrap().contains("no network_policy")));
+        assert!(warnings
+            .iter()
+            .any(|e| e.as_str().unwrap().contains("Relative path")));
+        assert!(warnings
+            .iter()
+            .any(|e| e.as_str().unwrap().contains("no network_policy")));
     }
 
     #[tokio::test]
@@ -3987,12 +4402,18 @@ mod tests {
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["valid"], true);
         let warnings = json["warnings"].as_array().unwrap();
-        assert!(warnings.iter().any(|w| w.as_str().unwrap().contains("not Restricted")));
-        assert!(warnings.iter().any(|w| w.as_str().unwrap().contains("Full network access")));
+        assert!(warnings
+            .iter()
+            .any(|w| w.as_str().unwrap().contains("not Restricted")));
+        assert!(warnings
+            .iter()
+            .any(|w| w.as_str().unwrap().contains("Full network access")));
     }
 
     #[tokio::test]
@@ -4011,7 +4432,9 @@ mod tests {
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["network_access"], "Full");
         assert_eq!(json["isolate_network"], false);
@@ -4029,7 +4452,9 @@ mod tests {
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert!(json["version"].as_str().is_some());
         assert_eq!(json["resolver"], "nous");
@@ -4049,7 +4474,9 @@ mod tests {
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["status"], "planned");
         let steps = json["steps"].as_array().unwrap();
@@ -4068,7 +4495,9 @@ mod tests {
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["status"], "planned");
         let steps = json["steps"].as_array().unwrap();
@@ -4084,7 +4513,9 @@ mod tests {
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["query"], "nginx");
         assert_eq!(json["total"], 0);
@@ -4103,7 +4534,9 @@ mod tests {
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["status"], "planned");
         assert!(json["message"].as_str().unwrap().contains("all"));
@@ -4121,7 +4554,9 @@ mod tests {
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["status"], "planned");
         let steps = json["steps"].as_array().unwrap();

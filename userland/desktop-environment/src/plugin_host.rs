@@ -143,9 +143,7 @@ pub enum PluginMessage {
         height: u32,
     },
     /// Compositor requests the plugin to render its content.
-    RenderRequest {
-        surface_id: u64,
-    },
+    RenderRequest { surface_id: u64 },
     /// Plugin responds with rendered content metadata.
     RenderResponse {
         surface_id: u64,
@@ -154,14 +152,9 @@ pub enum PluginMessage {
         height: u32,
     },
     /// Input event forwarded to the plugin.
-    InputEvent {
-        event_type: String,
-        data: String,
-    },
+    InputEvent { event_type: String, data: String },
     /// Theme palette update broadcast to all plugins.
-    ThemeUpdate {
-        palette: HashMap<String, String>,
-    },
+    ThemeUpdate { palette: HashMap<String, String> },
     /// Periodic liveness check.
     Heartbeat,
     /// Graceful shutdown request.
@@ -277,18 +270,11 @@ impl PluginHost {
 
     /// List plugins in a specific state.
     pub fn list_by_state(&self, state: PluginState) -> Vec<&PluginInfo> {
-        self.plugins
-            .values()
-            .filter(|p| p.state == state)
-            .collect()
+        self.plugins.values().filter(|p| p.state == state).collect()
     }
 
     /// Update the lifecycle state of a plugin.
-    pub fn update_state(
-        &mut self,
-        id: Uuid,
-        state: PluginState,
-    ) -> Result<(), PluginHostError> {
+    pub fn update_state(&mut self, id: Uuid, state: PluginState) -> Result<(), PluginHostError> {
         let plugin = self
             .plugins
             .get_mut(&id)
@@ -374,10 +360,7 @@ impl PluginHost {
                 max_cpu_percent: 5.0,
             },
             PluginType::PanelWidget => PluginSandboxProfile {
-                allowed_paths: vec![
-                    PathBuf::from("/usr/share/icons"),
-                    PathBuf::from("/tmp"),
-                ],
+                allowed_paths: vec![PathBuf::from("/usr/share/icons"), PathBuf::from("/tmp")],
                 allowed_syscalls: base_syscalls,
                 network_allowed: false,
                 max_memory_bytes: 64 * 1024 * 1024, // 64 MB
@@ -418,10 +401,7 @@ impl PluginHost {
                 max_cpu_percent: 5.0,
             },
             PluginType::DesktopApp => PluginSandboxProfile {
-                allowed_paths: vec![
-                    PathBuf::from("/tmp"),
-                    PathBuf::from("/home"),
-                ],
+                allowed_paths: vec![PathBuf::from("/tmp"), PathBuf::from("/home")],
                 allowed_syscalls: {
                     let mut syscalls = base_syscalls;
                     syscalls.extend_from_slice(&[
@@ -491,8 +471,16 @@ mod tests {
         let mut host = make_host();
         let id = register_test_plugin(&mut host);
         let plugin = host.get_plugin(id).unwrap();
-        assert!(plugin.socket_path.to_str().unwrap().contains(&id.to_string()));
-        assert!(plugin.socket_path.to_str().unwrap().starts_with("/run/agnos/plugins/"));
+        assert!(plugin
+            .socket_path
+            .to_str()
+            .unwrap()
+            .contains(&id.to_string()));
+        assert!(plugin
+            .socket_path
+            .to_str()
+            .unwrap()
+            .starts_with("/run/agnos/plugins/"));
     }
 
     #[test]
@@ -517,7 +505,10 @@ mod tests {
         let mut host = make_host();
         let result = host.unregister_plugin(Uuid::new_v4());
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), PluginHostError::PluginNotFound(_)));
+        assert!(matches!(
+            result.unwrap_err(),
+            PluginHostError::PluginNotFound(_)
+        ));
     }
 
     // --- Max plugins limit ---
@@ -707,7 +698,9 @@ mod tests {
         assert!(!profile.network_allowed);
         assert_eq!(profile.max_memory_bytes, 32 * 1024 * 1024);
         assert!(profile.max_cpu_percent <= 5.0);
-        assert!(profile.allowed_paths.contains(&PathBuf::from("/usr/share/themes")));
+        assert!(profile
+            .allowed_paths
+            .contains(&PathBuf::from("/usr/share/themes")));
     }
 
     #[test]
@@ -727,7 +720,9 @@ mod tests {
         let profile = host.sandbox_profile_for(PluginType::InputMethod);
         assert!(!profile.network_allowed);
         assert_eq!(profile.max_memory_bytes, 128 * 1024 * 1024);
-        assert!(profile.allowed_paths.contains(&PathBuf::from("/usr/share/locale")));
+        assert!(profile
+            .allowed_paths
+            .contains(&PathBuf::from("/usr/share/locale")));
     }
 
     // --- Message serialization ---
@@ -745,7 +740,10 @@ mod tests {
         let msg = PluginMessage::Init {
             plugin_type: PluginType::PanelWidget,
             version: "2.0.0".to_string(),
-            capabilities: vec![PluginCapability::WaylandSurface, PluginCapability::InputEvents],
+            capabilities: vec![
+                PluginCapability::WaylandSurface,
+                PluginCapability::InputEvents,
+            ],
         };
         let json = msg.to_json();
         let parsed = PluginMessage::from_json(&json).unwrap();
@@ -800,14 +798,8 @@ mod tests {
             width: 1920,
             height: 1080,
         };
-        assert_eq!(
-            PluginMessage::from_json(&req.to_json()).unwrap(),
-            req
-        );
-        assert_eq!(
-            PluginMessage::from_json(&resp.to_json()).unwrap(),
-            resp
-        );
+        assert_eq!(PluginMessage::from_json(&req.to_json()).unwrap(), req);
+        assert_eq!(PluginMessage::from_json(&resp.to_json()).unwrap(), resp);
     }
 
     #[test]

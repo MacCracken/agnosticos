@@ -13,8 +13,8 @@ use std::sync::Arc;
 
 use agnos_common::{AgentId, FinishReason, InferenceRequest, InferenceResponse, TokenUsage};
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
-use llm_gateway::cache::ResponseCache;
 use llm_gateway::accounting::TokenAccounting;
+use llm_gateway::cache::ResponseCache;
 use tokio::runtime::Runtime;
 use tokio::time::Duration;
 
@@ -317,8 +317,8 @@ fn bench_accounting_read_after_write(c: &mut Criterion) {
 // ---------------------------------------------------------------------------
 
 fn bench_provider_health_tracking(c: &mut Criterion) {
-    use std::collections::HashMap;
     use llm_gateway::providers::ProviderType;
+    use std::collections::HashMap;
 
     // Simulate the ProviderHealth struct inline (it lives in main.rs, not lib).
     // We measure the cost of HashMap lookups + mutation for health tracking.
@@ -366,12 +366,30 @@ fn bench_provider_health_tracking(c: &mut Criterion) {
             health.insert(pt, ProviderHealth::new());
         }
         // Mark two as unhealthy
-        health.get_mut(&ProviderType::LlamaCpp).unwrap().record_failure();
-        health.get_mut(&ProviderType::LlamaCpp).unwrap().record_failure();
-        health.get_mut(&ProviderType::LlamaCpp).unwrap().record_failure();
-        health.get_mut(&ProviderType::Google).unwrap().record_failure();
-        health.get_mut(&ProviderType::Google).unwrap().record_failure();
-        health.get_mut(&ProviderType::Google).unwrap().record_failure();
+        health
+            .get_mut(&ProviderType::LlamaCpp)
+            .unwrap()
+            .record_failure();
+        health
+            .get_mut(&ProviderType::LlamaCpp)
+            .unwrap()
+            .record_failure();
+        health
+            .get_mut(&ProviderType::LlamaCpp)
+            .unwrap()
+            .record_failure();
+        health
+            .get_mut(&ProviderType::Google)
+            .unwrap()
+            .record_failure();
+        health
+            .get_mut(&ProviderType::Google)
+            .unwrap()
+            .record_failure();
+        health
+            .get_mut(&ProviderType::Google)
+            .unwrap()
+            .record_failure();
 
         b.iter(|| {
             let mut healthy = Vec::new();
@@ -661,10 +679,7 @@ criterion_group!(
     bench_cache_concurrent_set_get
 );
 
-criterion_group!(
-    cache_hit_miss_benches,
-    bench_cache_hit_vs_miss
-);
+criterion_group!(cache_hit_miss_benches, bench_cache_hit_vs_miss);
 
 criterion_group!(
     accounting_benches,
@@ -673,15 +688,9 @@ criterion_group!(
     bench_accounting_read_after_write
 );
 
-criterion_group!(
-    provider_benches,
-    bench_provider_health_tracking
-);
+criterion_group!(provider_benches, bench_provider_health_tracking);
 
-criterion_group!(
-    pipeline_benches,
-    bench_inference_pipeline_mock
-);
+criterion_group!(pipeline_benches, bench_inference_pipeline_mock);
 
 criterion_group!(
     cleanup_benches,

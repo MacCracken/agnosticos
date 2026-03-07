@@ -1,8 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
-use llm_gateway::acceleration::{
-    AcceleratorRegistry, QuantizationLevel,
-};
+use llm_gateway::acceleration::{AcceleratorRegistry, QuantizationLevel};
 use llm_gateway::rate_limiter::GatewayMetrics;
 
 fn bench_gateway_metrics_record(c: &mut Criterion) {

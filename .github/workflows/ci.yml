@@ -35,7 +35,15 @@ jobs:
     - name: Install cross-compilation toolchain (aarch64)
       if: matrix.cross
       run: |
-        sudo apt-get install -y gcc-aarch64-linux-gnu
+        sudo apt-get install -y gcc-aarch64-linux-gnu libssl-dev:arm64
+        sudo dpkg --add-architecture arm64
+        sudo apt-get update
+        sudo apt-get install -y libssl-dev:arm64 || true
+        echo "PKG_CONFIG_SYSROOT_DIR=/usr/aarch64-linux-gnu" >> $GITHUB_ENV
+        echo "PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig" >> $GITHUB_ENV
+        echo "OPENSSL_DIR=/usr" >> $GITHUB_ENV
+        echo "OPENSSL_LIB_DIR=/usr/lib/aarch64-linux-gnu" >> $GITHUB_ENV
+        echo "OPENSSL_INCLUDE_DIR=/usr/include" >> $GITHUB_ENV
         cargo install cross --locked
 
     - name: Cache build artifacts

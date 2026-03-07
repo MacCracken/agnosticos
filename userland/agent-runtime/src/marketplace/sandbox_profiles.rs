@@ -89,10 +89,7 @@ pub fn build_photis_nadi_profile() -> PredefinedProfile {
         seccomp_mode: "desktop".to_string(),
         network: NetworkRule {
             enabled: true,
-            allowed_hosts: vec![
-                "*.supabase.co".to_string(),
-                "*.supabase.in".to_string(),
-            ],
+            allowed_hosts: vec!["*.supabase.co".to_string(), "*.supabase.in".to_string()],
         },
         max_memory_mb: 512,
         allow_process_spawn: false,
@@ -428,8 +425,7 @@ mod tests {
 
     #[test]
     fn test_game_preset() {
-        let profile =
-            build_profile_for_preset(SandboxPreset::GameApp, "test-game", "/data/game");
+        let profile = build_profile_for_preset(SandboxPreset::GameApp, "test-game", "/data/game");
         assert_eq!(profile.preset, SandboxPreset::GameApp);
         assert_eq!(profile.max_memory_mb, 4096);
         assert!(!profile.allow_process_spawn);
@@ -438,8 +434,7 @@ mod tests {
 
     #[test]
     fn test_cli_tool_preset() {
-        let profile =
-            build_profile_for_preset(SandboxPreset::CliTool, "test-cli", "/data/cli");
+        let profile = build_profile_for_preset(SandboxPreset::CliTool, "test-cli", "/data/cli");
         assert_eq!(profile.preset, SandboxPreset::CliTool);
         assert_eq!(profile.seccomp_mode, "basic");
         assert!(!profile.network.enabled);
@@ -500,10 +495,7 @@ mod tests {
         profile.max_memory_mb = 0;
         let result = validate_profile(&profile);
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("max_memory_mb"));
+        assert!(result.unwrap_err().to_string().contains("max_memory_mb"));
     }
 
     #[test]
@@ -513,10 +505,7 @@ mod tests {
         // allowed_hosts is still non-empty
         let result = validate_profile(&profile);
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("allowed_hosts"));
+        assert!(result.unwrap_err().to_string().contains("allowed_hosts"));
     }
 
     // --- Serialization ---

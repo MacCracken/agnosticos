@@ -148,15 +148,9 @@ impl RollbackManager {
     /// Files that existed at snapshot time are restored. Files created after
     /// the snapshot are removed. Files that were only checksummed (too large
     /// for content capture) are skipped with an error entry.
-    pub async fn rollback(
-        &self,
-        agent_id: AgentId,
-        snapshot_id: &str,
-    ) -> Result<RollbackResult> {
+    pub async fn rollback(&self, agent_id: AgentId, snapshot_id: &str) -> Result<RollbackResult> {
         let snapshots = self.snapshots.read().await;
-        let agent_snaps = snapshots
-            .get(&agent_id)
-            .context("No snapshots for agent")?;
+        let agent_snaps = snapshots.get(&agent_id).context("No snapshots for agent")?;
 
         let snapshot = agent_snaps
             .iter()
@@ -276,15 +270,9 @@ impl RollbackManager {
     }
 
     /// Delete a specific snapshot.
-    pub async fn delete_snapshot(
-        &self,
-        agent_id: AgentId,
-        snapshot_id: &str,
-    ) -> Result<()> {
+    pub async fn delete_snapshot(&self, agent_id: AgentId, snapshot_id: &str) -> Result<()> {
         let mut snapshots = self.snapshots.write().await;
-        let agent_snaps = snapshots
-            .entry(agent_id)
-            .or_default();
+        let agent_snaps = snapshots.entry(agent_id).or_default();
 
         let before = agent_snaps.len();
         agent_snaps.retain(|s| s.id != snapshot_id);
@@ -308,11 +296,7 @@ impl RollbackManager {
 
     /// Scan a directory tree and capture file states.
     /// Enforces a cumulative size limit to prevent unbounded memory usage.
-    fn scan_directory(
-        base: &Path,
-        dir: &Path,
-        max_file_size: u64,
-    ) -> Result<Vec<FileSnapshot>> {
+    fn scan_directory(base: &Path, dir: &Path, max_file_size: u64) -> Result<Vec<FileSnapshot>> {
         let mut total_bytes: u64 = 0;
         Self::scan_directory_inner(base, dir, max_file_size, &mut total_bytes)
     }
@@ -338,13 +322,11 @@ impl RollbackManager {
             let file_type = entry.file_type()?;
 
             if file_type.is_dir() {
-                let mut sub_files = Self::scan_directory_inner(base, &path, max_file_size, total_bytes)?;
+                let mut sub_files =
+                    Self::scan_directory_inner(base, &path, max_file_size, total_bytes)?;
                 files.append(&mut sub_files);
             } else if file_type.is_file() {
-                let relative = path
-                    .strip_prefix(base)
-                    .unwrap_or(&path)
-                    .to_path_buf();
+                let relative = path.strip_prefix(base).unwrap_or(&path).to_path_buf();
 
                 let metadata = std::fs::metadata(&path)?;
                 let size = metadata.len();
@@ -439,7 +421,7 @@ pub struct SnapshotInfo {
 
 /// Compute a SHA-256 hex digest of data.
 fn sha256_hex_digest(data: &[u8]) -> String {
-    use sha2::{Sha256, Digest};
+    use sha2::{Digest, Sha256};
     let hash = Sha256::digest(data);
     hash.iter().map(|b| format!("{:02x}", b)).collect()
 }
@@ -629,10 +611,7 @@ mod tests {
         let id = AgentId::new();
         let dir = TempDir::new().unwrap();
 
-        let snap_id = mgr
-            .create_snapshot(id, dir.path(), "empty")
-            .await
-            .unwrap();
+        let snap_id = mgr.create_snapshot(id, dir.path(), "empty").await.unwrap();
 
         let snaps = mgr.list_snapshots(id).await;
         assert_eq!(snaps[0].file_count, 0);
@@ -658,8 +637,7 @@ mod tests {
         std::fs::write(dir.path().join("subdir/nested.txt"), "CHANGED").unwrap();
 
         let result = mgr.rollback(id, &snap_id).await.unwrap();
-        let content =
-            std::fs::read_to_string(dir.path().join("subdir/nested.txt")).unwrap();
+        let content = std::fs::read_to_string(dir.path().join("subdir/nested.txt")).unwrap();
         assert_eq!(content, "nested content");
         assert!(result.errors.is_empty());
     }

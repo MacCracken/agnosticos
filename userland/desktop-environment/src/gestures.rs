@@ -131,7 +131,11 @@ impl GestureRecognizer {
 
     /// Update the position of an existing touch contact.
     pub fn touch_move(&mut self, point: TouchPoint) {
-        if let Some(tracker) = self.active_touches.iter_mut().find(|t| t.start.id == point.id) {
+        if let Some(tracker) = self
+            .active_touches
+            .iter_mut()
+            .find(|t| t.start.id == point.id)
+        {
             tracker.current = point;
         }
 
@@ -456,7 +460,9 @@ mod tests {
         r.touch_move(point(1, 50.0, 100.0, 100));
         r.touch_move(point(2, 160.0, 100.0, 100));
         let gestures = r.recognized_gestures();
-        let pinch = gestures.iter().find(|g| matches!(g.gesture, GestureType::Pinch { .. }));
+        let pinch = gestures
+            .iter()
+            .find(|g| matches!(g.gesture, GestureType::Pinch { .. }));
         assert!(pinch.is_some());
         if let GestureType::Pinch { scale } = &pinch.unwrap().gesture {
             assert!(*scale > 1.0); // fingers moved apart

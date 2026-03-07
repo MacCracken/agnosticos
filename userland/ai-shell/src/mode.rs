@@ -8,8 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 
 /// Shell operating modes
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum Mode {
     /// AI acts autonomously within constraints
     AiAutonomous,
@@ -21,7 +20,6 @@ pub enum Mode {
     /// Strict mode - all actions require approval
     Strict,
 }
-
 
 impl fmt::Display for Mode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -39,17 +37,17 @@ impl Mode {
     pub fn ai_autonomous(&self) -> bool {
         matches!(self, Mode::AiAutonomous)
     }
-    
+
     /// Check if AI assistance is available
     pub fn ai_available(&self) -> bool {
         !matches!(self, Mode::Human)
     }
-    
+
     /// Check if strict approval is required
     pub fn strict_approval(&self) -> bool {
         matches!(self, Mode::Strict)
     }
-    
+
     /// Get description of mode
     pub fn description(&self) -> &'static str {
         match self {
@@ -59,7 +57,7 @@ impl Mode {
             Mode::Strict => "All actions require explicit human approval",
         }
     }
-    
+
     /// Get prompt prefix for this mode
     pub fn prompt_prefix(&self) -> &'static str {
         match self {
@@ -86,24 +84,24 @@ impl ModeManager {
             allow_switching,
         }
     }
-    
+
     /// Get current mode
     pub fn current(&self) -> &Mode {
         &self.current
     }
-    
+
     /// Switch to a new mode
     pub fn switch(&mut self, mode: Mode) -> Result<()> {
         if !self.allow_switching && self.current != mode {
             return Err(anyhow::anyhow!("Mode switching is disabled"));
         }
-        
+
         self.previous = Some(self.current.clone());
         self.current = mode;
-        
+
         Ok(())
     }
-    
+
     /// Switch back to previous mode
     pub fn revert(&mut self) -> Result<()> {
         if let Some(prev) = self.previous.take() {
@@ -113,7 +111,7 @@ impl ModeManager {
             Err(anyhow::anyhow!("No previous mode to revert to"))
         }
     }
-    
+
     /// Toggle between AI and human modes
     pub fn toggle(&mut self) {
         let new_mode = match self.current {
@@ -122,11 +120,11 @@ impl ModeManager {
             Mode::AiAutonomous => Mode::Human,
             Mode::Strict => Mode::AiAssisted,
         };
-        
+
         self.previous = Some(self.current.clone());
         self.current = new_mode;
     }
-    
+
     /// List all available modes
     pub fn available_modes(&self) -> Vec<Mode> {
         vec![
@@ -141,20 +139,20 @@ impl ModeManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_mode_switching() {
         let mut manager = ModeManager::new(Mode::Human, true);
-        
+
         assert_eq!(manager.current(), &Mode::Human);
-        
+
         manager.switch(Mode::AiAssisted).unwrap();
         assert_eq!(manager.current(), &Mode::AiAssisted);
-        
+
         manager.revert().unwrap();
         assert_eq!(manager.current(), &Mode::Human);
     }
-    
+
     #[test]
     fn test_ai_permissions() {
         assert!(Mode::AiAutonomous.ai_autonomous());

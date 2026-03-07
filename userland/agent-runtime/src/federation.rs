@@ -224,13 +224,16 @@ impl FederationConfig {
         let raw: FederationToml = toml::from_str(toml_str)?;
         let section = raw.federation;
 
-        let bind_addr: SocketAddr = section.bind_addr.parse()
+        let bind_addr: SocketAddr = section
+            .bind_addr
+            .parse()
             .map_err(|e| anyhow::anyhow!("Invalid bind_addr '{}': {}", section.bind_addr, e))?;
 
         let mut peers = HashMap::new();
         for (name, addr_str) in &section.peers {
-            let addr: SocketAddr = addr_str.parse()
-                .map_err(|e| anyhow::anyhow!("Invalid peer addr '{}' for '{}': {}", addr_str, name, e))?;
+            let addr: SocketAddr = addr_str.parse().map_err(|e| {
+                anyhow::anyhow!("Invalid peer addr '{}' for '{}': {}", addr_str, name, e)
+            })?;
             peers.insert(name.clone(), addr);
         }
 
@@ -309,11 +312,8 @@ impl FederationCluster {
 
     /// Create a cluster from configuration.
     pub fn from_config(config: &FederationConfig, capabilities: NodeCapabilities) -> Self {
-        let local_node = FederationNode::new(
-            config.node_name.clone(),
-            config.bind_addr,
-            capabilities,
-        );
+        let local_node =
+            FederationNode::new(config.node_name.clone(), config.bind_addr, capabilities);
         let mut cluster = Self::new(local_node);
         cluster.scheduling_strategy = config.scheduling_strategy;
         cluster
@@ -322,7 +322,10 @@ impl FederationCluster {
     /// Register a new node in the cluster.
     pub fn register_node(&mut self, node: FederationNode) -> anyhow::Result<()> {
         if self.nodes.contains_key(&node.node_id) {
-            return Err(anyhow::anyhow!("Node '{}' already registered", node.node_id));
+            return Err(anyhow::anyhow!(
+                "Node '{}' already registered",
+                node.node_id
+            ));
         }
         info!(node_id = %node.node_id, name = %node.name, "Registered federation node");
         self.nodes.insert(node.node_id.clone(), node);
@@ -381,7 +384,9 @@ impl FederationCluster {
 
     /// Record a heartbeat from a node.
     pub fn record_heartbeat(&mut self, node_id: &str) -> anyhow::Result<()> {
-        let node = self.nodes.get_mut(node_id)
+        let node = self
+            .nodes
+            .get_mut(node_id)
             .ok_or_else(|| anyhow::anyhow!("Unknown node '{}'", node_id))?;
         node.last_heartbeat = Utc::now();
         if node.status != NodeStatus::Online {
@@ -424,14 +429,17 @@ impl FederationCluster {
 
     /// Get all nodes with Online status.
     pub fn get_live_nodes(&self) -> Vec<&FederationNode> {
-        self.nodes.values()
+        self.nodes
+            .values()
             .filter(|n| n.status == NodeStatus::Online)
             .collect()
     }
 
     /// Set a node's heartbeat to a specific time (for testing).
     pub fn set_heartbeat_time(&mut self, node_id: &str, time: DateTime<Utc>) -> anyhow::Result<()> {
-        let node = self.nodes.get_mut(node_id)
+        let node = self
+            .nodes
+            .get_mut(node_id)
             .ok_or_else(|| anyhow::anyhow!("Unknown node '{}'", node_id))?;
         node.last_heartbeat = time;
         Ok(())
@@ -444,7 +452,9 @@ impl FederationCluster {
     /// Start an election — the local node becomes a candidate and votes for itself.
     /// Returns the new term number.
     pub fn start_election(&mut self) -> anyhow::Result<u64> {
-        let local = self.nodes.get_mut(&self.local_node_id)
+        let local = self
+            .nodes
+            .get_mut(&self.local_node_id)
             .ok_or_else(|| anyhow::anyhow!("Local node not found"))?;
 
         let new_term = local.current_term + 1;
@@ -453,10 +463,8 @@ impl FederationCluster {
         local.voted_for = Some(self.local_node_id.clone());
 
         // Record self-vote
-        self.votes_received.insert(
-            self.local_node_id.clone(),
-            vec![self.local_node_id.clone()],
-        );
+        self.votes_received
+            .insert(self.local_node_id.clone(), vec![self.local_node_id.clone()]);
 
         info!(
             node_id = %self.local_node_id,
@@ -556,16 +564,13 @@ impl FederationCluster {
 
     /// Record a vote received by a candidate.
     /// Returns true if the candidate now has a majority and should become coordinator.
-    pub fn receive_vote(
-        &mut self,
-        candidate_id: &str,
-        vote: VoteResponse,
-    ) -> bool {
+    pub fn receive_vote(&mut self, candidate_id: &str, vote: VoteResponse) -> bool {
         if !vote.granted {
             return false;
         }
 
-        let voters = self.votes_received
+        let voters = self
+            .votes_received
             .entry(candidate_id.to_string())
             .or_insert_with(Vec::new);
 
@@ -619,7 +624,9 @@ impl FederationCluster {
 
     /// Step down from coordinator/candidate to follower (e.g., on seeing higher term).
     pub fn step_down(&mut self, node_id: &str, new_term: u64) -> anyhow::Result<()> {
-        let node = self.nodes.get_mut(node_id)
+        let node = self
+            .nodes
+            .get_mut(node_id)
             .ok_or_else(|| anyhow::anyhow!("Node '{}' not found", node_id))?;
 
         node.role = NodeRole::Follower;
@@ -640,7 +647,9 @@ impl FederationCluster {
 
     /// Get cluster statistics.
     pub fn stats(&self) -> FederationStats {
-        let live_count = self.nodes.values()
+        let live_count = self
+            .nodes
+            .values()
             .filter(|n| n.status == NodeStatus::Online)
             .count();
 
@@ -649,8 +658,16 @@ impl FederationCluster {
         FederationStats {
             total_nodes: self.nodes.len(),
             live_nodes: live_count,
-            suspect_nodes: self.nodes.values().filter(|n| n.status == NodeStatus::Suspect).count(),
-            dead_nodes: self.nodes.values().filter(|n| n.status == NodeStatus::Dead).count(),
+            suspect_nodes: self
+                .nodes
+                .values()
+                .filter(|n| n.status == NodeStatus::Suspect)
+                .count(),
+            dead_nodes: self
+                .nodes
+                .values()
+                .filter(|n| n.status == NodeStatus::Dead)
+                .count(),
             coordinator_id: self.coordinator_id.clone(),
             cluster_uptime_secs: uptime_secs,
             scheduling_strategy: self.scheduling_strategy,
@@ -757,20 +774,14 @@ impl NodeScorer {
     /// Score a single node for a given set of agent requirements.
     ///
     /// Weights: resource headroom 40%, locality 30%, load balance 20%, affinity 10%.
-    pub fn score_node(
-        &self,
-        node: &FederationNode,
-        requirements: &AgentRequirements,
-    ) -> NodeScore {
+    pub fn score_node(&self, node: &FederationNode, requirements: &AgentRequirements) -> NodeScore {
         let resource_headroom = self.score_resource_headroom(node, requirements);
         let locality = self.score_locality(node, requirements);
         let load_balance = self.score_load_balance(node);
         let affinity = self.score_affinity(node, requirements);
 
-        let total_score = resource_headroom * 0.4
-            + locality * 0.3
-            + load_balance * 0.2
-            + affinity * 0.1;
+        let total_score =
+            resource_headroom * 0.4 + locality * 0.3 + load_balance * 0.2 + affinity * 0.1;
 
         NodeScore {
             node_id: node.node_id.clone(),
@@ -814,19 +825,17 @@ impl NodeScorer {
             return 0.0;
         }
 
-        let cpu_headroom = (effective_cpu - requirements.cpu_cores) as f64 / caps.cpu_cores.max(1) as f64;
-        let mem_headroom = (effective_mem - requirements.memory_mb) as f64 / caps.memory_mb.max(1) as f64;
+        let cpu_headroom =
+            (effective_cpu - requirements.cpu_cores) as f64 / caps.cpu_cores.max(1) as f64;
+        let mem_headroom =
+            (effective_mem - requirements.memory_mb) as f64 / caps.memory_mb.max(1) as f64;
 
         // Average of CPU and memory headroom
         (cpu_headroom + mem_headroom) / 2.0
     }
 
     /// Locality: 1.0 if the node matches the preferred node, 0.0 otherwise.
-    fn score_locality(
-        &self,
-        node: &FederationNode,
-        requirements: &AgentRequirements,
-    ) -> f64 {
+    fn score_locality(&self, node: &FederationNode, requirements: &AgentRequirements) -> f64 {
         match &requirements.preferred_node {
             Some(preferred) if node.name == *preferred => 1.0,
             Some(_) => 0.0,
@@ -842,11 +851,7 @@ impl NodeScorer {
     }
 
     /// Affinity: 1.0 if the node is in the affinity set, 0.0 otherwise.
-    fn score_affinity(
-        &self,
-        node: &FederationNode,
-        requirements: &AgentRequirements,
-    ) -> f64 {
+    fn score_affinity(&self, node: &FederationNode, requirements: &AgentRequirements) -> f64 {
         if requirements.affinity_nodes.is_empty() {
             return 0.5; // No affinity — neutral
         }
@@ -881,7 +886,8 @@ impl AgentPlacement {
         cluster: &FederationCluster,
         requirements: &AgentRequirements,
     ) -> anyhow::Result<NodeScore> {
-        let eligible: Vec<&FederationNode> = cluster.get_live_nodes()
+        let eligible: Vec<&FederationNode> = cluster
+            .get_live_nodes()
             .into_iter()
             .filter(|n| self.node_eligible(n, requirements))
             .collect();
@@ -895,7 +901,11 @@ impl AgentPlacement {
             .map(|n| self.scorer.score_node(n, requirements))
             .collect();
 
-        scores.sort_by(|a, b| b.total_score.partial_cmp(&a.total_score).unwrap_or(std::cmp::Ordering::Equal));
+        scores.sort_by(|a, b| {
+            b.total_score
+                .partial_cmp(&a.total_score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         let best = scores.into_iter().next().unwrap();
 
@@ -1076,7 +1086,10 @@ mod tests {
         cluster.register_node(peer).unwrap();
 
         cluster.record_heartbeat(&peer_id).unwrap();
-        assert_eq!(cluster.get_node(&peer_id).unwrap().status, NodeStatus::Online);
+        assert_eq!(
+            cluster.get_node(&peer_id).unwrap().status,
+            NodeStatus::Online
+        );
     }
 
     // -------------------------------------------------------------------
@@ -1107,7 +1120,10 @@ mod tests {
         cluster.set_heartbeat_time(&peer_id, old_time).unwrap();
 
         cluster.check_health();
-        assert_eq!(cluster.get_node(&peer_id).unwrap().status, NodeStatus::Suspect);
+        assert_eq!(
+            cluster.get_node(&peer_id).unwrap().status,
+            NodeStatus::Suspect
+        );
     }
 
     #[test]
@@ -1177,7 +1193,10 @@ mod tests {
         let term = cluster.start_election().unwrap();
         assert_eq!(term, 1);
         assert_eq!(cluster.coordinator_id(), Some(local_id.as_str()));
-        assert_eq!(cluster.get_node(&local_id).unwrap().role, NodeRole::Coordinator);
+        assert_eq!(
+            cluster.get_node(&local_id).unwrap().role,
+            NodeRole::Coordinator
+        );
     }
 
     #[test]
@@ -1194,7 +1213,10 @@ mod tests {
         assert_eq!(term, 1);
 
         // Candidate has 1 self-vote, needs 2 (majority of 2 = 2)
-        assert!(cluster.coordinator_id().is_none() || cluster.coordinator_id() == Some(local_id.as_str()));
+        assert!(
+            cluster.coordinator_id().is_none()
+                || cluster.coordinator_id() == Some(local_id.as_str())
+        );
 
         // Simulate peer voting for local
         let vote = VoteResponse {
@@ -1207,7 +1229,10 @@ mod tests {
 
         cluster.become_coordinator(&local_id).unwrap();
         assert_eq!(cluster.coordinator_id(), Some(local_id.as_str()));
-        assert_eq!(cluster.get_node(&local_id).unwrap().role, NodeRole::Coordinator);
+        assert_eq!(
+            cluster.get_node(&local_id).unwrap().role,
+            NodeRole::Coordinator
+        );
         assert_eq!(cluster.get_node(&peer_id).unwrap().role, NodeRole::Follower);
     }
 
@@ -1257,7 +1282,10 @@ mod tests {
         // Peer requests vote at term 2 — local should step down and grant
         let response = cluster.receive_vote_request("external-candidate", 2);
         assert!(response.granted);
-        assert_eq!(cluster.get_node(&local_id).unwrap().role, NodeRole::Follower);
+        assert_eq!(
+            cluster.get_node(&local_id).unwrap().role,
+            NodeRole::Follower
+        );
         assert_eq!(cluster.get_node(&local_id).unwrap().current_term, 2);
     }
 
@@ -1329,7 +1357,10 @@ mod tests {
 
         cluster.step_down(&local_id, 2).unwrap();
         assert!(cluster.coordinator_id().is_none());
-        assert_eq!(cluster.get_node(&local_id).unwrap().role, NodeRole::Follower);
+        assert_eq!(
+            cluster.get_node(&local_id).unwrap().role,
+            NodeRole::Follower
+        );
     }
 
     #[test]
@@ -1625,7 +1656,10 @@ strategy = "packed"
         let config = FederationConfig::from_toml(toml_str).unwrap();
         assert!(config.enabled);
         assert_eq!(config.node_name, "node-1");
-        assert_eq!(config.bind_addr, "0.0.0.0:8092".parse::<SocketAddr>().unwrap());
+        assert_eq!(
+            config.bind_addr,
+            "0.0.0.0:8092".parse::<SocketAddr>().unwrap()
+        );
         assert_eq!(config.peers.len(), 2);
         assert_eq!(config.scheduling_strategy, SchedulingStrategy::Packed);
     }
@@ -1683,10 +1717,22 @@ strategy = "yolo"
 
     #[test]
     fn test_scheduling_strategy_from_str() {
-        assert_eq!("balanced".parse::<SchedulingStrategy>().unwrap(), SchedulingStrategy::Balanced);
-        assert_eq!("packed".parse::<SchedulingStrategy>().unwrap(), SchedulingStrategy::Packed);
-        assert_eq!("spread".parse::<SchedulingStrategy>().unwrap(), SchedulingStrategy::Spread);
-        assert_eq!("BALANCED".parse::<SchedulingStrategy>().unwrap(), SchedulingStrategy::Balanced);
+        assert_eq!(
+            "balanced".parse::<SchedulingStrategy>().unwrap(),
+            SchedulingStrategy::Balanced
+        );
+        assert_eq!(
+            "packed".parse::<SchedulingStrategy>().unwrap(),
+            SchedulingStrategy::Packed
+        );
+        assert_eq!(
+            "spread".parse::<SchedulingStrategy>().unwrap(),
+            SchedulingStrategy::Spread
+        );
+        assert_eq!(
+            "BALANCED".parse::<SchedulingStrategy>().unwrap(),
+            SchedulingStrategy::Balanced
+        );
         assert!("invalid".parse::<SchedulingStrategy>().is_err());
     }
 
@@ -1750,7 +1796,11 @@ strategy = "yolo"
             peers: HashMap::new(),
             scheduling_strategy: SchedulingStrategy::Spread,
         };
-        let caps = NodeCapabilities { cpu_cores: 16, memory_mb: 65536, gpu_count: 4 };
+        let caps = NodeCapabilities {
+            cpu_cores: 16,
+            memory_mb: 65536,
+            gpu_count: 4,
+        };
         let cluster = FederationCluster::from_config(&config, caps);
 
         assert_eq!(cluster.node_count(), 1);

@@ -94,10 +94,7 @@ pub enum X11WmState {
 pub enum WindowStateChange {
     SetTitle(String),
     SetState(WindowState),
-    SetSizeBounds {
-        min: (u32, u32),
-        max: (u32, u32),
-    },
+    SetSizeBounds { min: (u32, u32), max: (u32, u32) },
     SetParent(SurfaceId),
     NoChange,
 }
@@ -169,9 +166,7 @@ impl XWaylandManager {
     /// [`WindowStateChange`].
     pub fn translate_property(&self, property: &X11Property) -> Option<WindowStateChange> {
         match property {
-            X11Property::NetWmName(name) => {
-                Some(WindowStateChange::SetTitle(name.clone()))
-            }
+            X11Property::NetWmName(name) => Some(WindowStateChange::SetTitle(name.clone())),
             X11Property::NetWmState(states) => {
                 if states.contains(&X11WmState::Fullscreen) {
                     Some(WindowStateChange::SetState(WindowState::Fullscreen))
@@ -196,12 +191,11 @@ impl XWaylandManager {
                 min: (*min_w, *min_h),
                 max: (*max_w, *max_h),
             }),
-            X11Property::WmTransientFor(parent_x11_id) => {
-                self.surfaces
-                    .get(parent_x11_id)
-                    .copied()
-                    .map(WindowStateChange::SetParent)
-            }
+            X11Property::WmTransientFor(parent_x11_id) => self
+                .surfaces
+                .get(parent_x11_id)
+                .copied()
+                .map(WindowStateChange::SetParent),
         }
     }
 
@@ -355,9 +349,7 @@ mod tests {
     #[test]
     fn test_translate_net_wm_state_fullscreen() {
         let mgr = XWaylandManager::new(enabled_config());
-        let change = mgr.translate_property(&X11Property::NetWmState(vec![
-            X11WmState::Fullscreen,
-        ]));
+        let change = mgr.translate_property(&X11Property::NetWmState(vec![X11WmState::Fullscreen]));
         assert_eq!(
             change,
             Some(WindowStateChange::SetState(WindowState::Fullscreen))
@@ -367,9 +359,7 @@ mod tests {
     #[test]
     fn test_translate_net_wm_state_maximized() {
         let mgr = XWaylandManager::new(enabled_config());
-        let change = mgr.translate_property(&X11Property::NetWmState(vec![
-            X11WmState::Maximized,
-        ]));
+        let change = mgr.translate_property(&X11Property::NetWmState(vec![X11WmState::Maximized]));
         assert_eq!(
             change,
             Some(WindowStateChange::SetState(WindowState::Maximized))
@@ -379,9 +369,7 @@ mod tests {
     #[test]
     fn test_translate_net_wm_state_hidden() {
         let mgr = XWaylandManager::new(enabled_config());
-        let change = mgr.translate_property(&X11Property::NetWmState(vec![
-            X11WmState::Hidden,
-        ]));
+        let change = mgr.translate_property(&X11Property::NetWmState(vec![X11WmState::Hidden]));
         assert_eq!(
             change,
             Some(WindowStateChange::SetState(WindowState::Minimized))
@@ -391,9 +379,7 @@ mod tests {
     #[test]
     fn test_translate_net_wm_state_normal() {
         let mgr = XWaylandManager::new(enabled_config());
-        let change = mgr.translate_property(&X11Property::NetWmState(vec![
-            X11WmState::Sticky,
-        ]));
+        let change = mgr.translate_property(&X11Property::NetWmState(vec![X11WmState::Sticky]));
         assert_eq!(
             change,
             Some(WindowStateChange::SetState(WindowState::Normal))

@@ -176,10 +176,10 @@ impl TrainingDataset {
             return DatasetStats::default();
         }
 
-        let avg_input = self.examples.iter().map(|e| e.input.len()).sum::<usize>() as f64
-            / total as f64;
-        let avg_output = self.examples.iter().map(|e| e.output.len()).sum::<usize>() as f64
-            / total as f64;
+        let avg_input =
+            self.examples.iter().map(|e| e.input.len()).sum::<usize>() as f64 / total as f64;
+        let avg_output =
+            self.examples.iter().map(|e| e.output.len()).sum::<usize>() as f64 / total as f64;
 
         let mut quality_dist: HashMap<String, usize> = HashMap::new();
         for e in &self.examples {
@@ -436,11 +436,7 @@ impl FineTuneJob {
     /// Attempt a status transition; returns an error on invalid transitions.
     fn transition(&mut self, to: JobStatus) -> Result<()> {
         if !self.status.valid_transition(&to) {
-            bail!(
-                "invalid job status transition: {} -> {}",
-                self.status,
-                to
-            );
+            bail!("invalid job status transition: {} -> {}", self.status, to);
         }
         debug!(job_id = %self.job_id, from = %self.status, to = %to, "job status transition");
         self.status = to;
@@ -553,9 +549,7 @@ pub struct ModelRegistry {
 
 impl ModelRegistry {
     pub fn new() -> Self {
-        Self {
-            models: Vec::new(),
-        }
+        Self { models: Vec::new() }
     }
 
     pub fn register_model(&mut self, model: FineTunedModel) -> Result<()> {
@@ -572,7 +566,10 @@ impl ModelRegistry {
     }
 
     pub fn models_for_agent(&self, agent_id: &str) -> Vec<&FineTunedModel> {
-        self.models.iter().filter(|m| m.agent_id == agent_id).collect()
+        self.models
+            .iter()
+            .filter(|m| m.agent_id == agent_id)
+            .collect()
     }
 
     pub fn list_models(&self) -> &[FineTunedModel] {
@@ -653,7 +650,9 @@ impl FineTunePipeline {
     }
 
     pub fn get_dataset_mut(&mut self, dataset_id: &str) -> Option<&mut TrainingDataset> {
-        self.datasets.iter_mut().find(|d| d.dataset_id == dataset_id)
+        self.datasets
+            .iter_mut()
+            .find(|d| d.dataset_id == dataset_id)
     }
 
     /// Add examples to a dataset; returns the count actually added.
@@ -808,7 +807,10 @@ impl FineTunePipeline {
 
     /// Return all jobs that are not in a terminal state.
     pub fn active_jobs(&self) -> Vec<&FineTuneJob> {
-        self.jobs.iter().filter(|j| !j.status.is_terminal()).collect()
+        self.jobs
+            .iter()
+            .filter(|j| !j.status.is_terminal())
+            .collect()
     }
 
     /// Return all jobs whose dataset belongs to the given agent.
@@ -892,7 +894,12 @@ mod tests {
     // -- Helpers ------------------------------------------------------------
 
     fn make_example(agent: &str, source: ExampleSource) -> TrainingExample {
-        TrainingExample::new(agent, "What is Rust?", "Rust is a systems language.", source)
+        TrainingExample::new(
+            agent,
+            "What is Rust?",
+            "Rust is a systems language.",
+            source,
+        )
     }
 
     fn make_example_with_quality(agent: &str, score: f64) -> TrainingExample {
@@ -1039,7 +1046,10 @@ mod tests {
         ds.add_example(make_example("a", ExampleSource::ConversationLog));
         let stats = ds.compute_stats();
         assert_eq!(stats.source_distribution[&ExampleSource::UserFeedback], 2);
-        assert_eq!(stats.source_distribution[&ExampleSource::ConversationLog], 1);
+        assert_eq!(
+            stats.source_distribution[&ExampleSource::ConversationLog],
+            1
+        );
     }
 
     #[test]
@@ -1533,7 +1543,8 @@ mod tests {
                     eval_loss: None,
                     perplexity: None,
                 },
-            }).unwrap();
+            })
+            .unwrap();
         }
         assert_eq!(reg.models_for_agent("a1").len(), 2);
         assert_eq!(reg.models_for_agent("a2").len(), 1);
@@ -1558,7 +1569,8 @@ mod tests {
                 eval_loss: None,
                 perplexity: None,
             },
-        }).unwrap();
+        })
+        .unwrap();
         assert_eq!(reg.list_models().len(), 1);
     }
 
@@ -1583,7 +1595,8 @@ mod tests {
                     eval_loss: None,
                     perplexity: None,
                 },
-            }).unwrap();
+            })
+            .unwrap();
         }
         let best = reg.best_model_for_agent("a1").unwrap();
         assert_eq!(best.model_id, "m2");
@@ -1601,7 +1614,7 @@ mod tests {
     fn vram_full_finetune() {
         let config = FineTuneConfig::new("base", "ds", FineTuneMethod::FullFineTune, "out");
         let est = estimate_vram(&config, 7000); // 7B params
-        // Base model ~13 GB fp16, total ~4x = ~52 GB
+                                                // Base model ~13 GB fp16, total ~4x = ~52 GB
         assert!(est.total_gb > 40.0);
         assert!(est.model_vram_gb > 10.0);
         assert!(est.optimizer_vram_gb > est.model_vram_gb); // 2x model
@@ -1680,12 +1693,8 @@ mod tests {
 
     #[test]
     fn vram_prefix() {
-        let config = FineTuneConfig::new(
-            "b",
-            "d",
-            FineTuneMethod::Prefix { prefix_length: 20 },
-            "o",
-        );
+        let config =
+            FineTuneConfig::new("b", "d", FineTuneMethod::Prefix { prefix_length: 20 }, "o");
         let est = estimate_vram(&config, 7000);
         // Prefix ~1.1x base
         assert!(est.total_gb > 13.0);
@@ -1699,17 +1708,17 @@ mod tests {
         assert_eq!(ExampleSource::UserFeedback.to_string(), "UserFeedback");
         assert_eq!(ExampleSource::AgentSelfPlay.to_string(), "AgentSelfPlay");
         assert_eq!(ExampleSource::CuratedDataset.to_string(), "CuratedDataset");
-        assert_eq!(ExampleSource::ConversationLog.to_string(), "ConversationLog");
+        assert_eq!(
+            ExampleSource::ConversationLog.to_string(),
+            "ConversationLog"
+        );
     }
 
     #[test]
     fn job_status_display() {
         assert_eq!(JobStatus::Queued.to_string(), "Queued");
         assert_eq!(JobStatus::Training.to_string(), "Training");
-        assert_eq!(
-            JobStatus::Failed("oops".into()).to_string(),
-            "Failed(oops)"
-        );
+        assert_eq!(JobStatus::Failed("oops".into()).to_string(), "Failed(oops)");
     }
 
     #[test]

@@ -131,11 +131,12 @@ pub enum Intent {
         source: Option<String>,
     },
     /// Query RAG pipeline for context-augmented answers
-    RagQuery {
-        query: String,
-    },
+    RagQuery { query: String },
     /// Unified package install via ark
-    ArkInstall { packages: Vec<String>, source: Option<String> },
+    ArkInstall {
+        packages: Vec<String>,
+        source: Option<String>,
+    },
     /// Unified package remove via ark
     ArkRemove { packages: Vec<String> },
     /// Unified package search via ark
@@ -161,9 +162,15 @@ pub enum Intent {
     /// List tasks from Photis Nadi
     TaskList { status: Option<String> },
     /// Create a task in Photis Nadi
-    TaskCreate { title: String, priority: Option<String> },
+    TaskCreate {
+        title: String,
+        priority: Option<String>,
+    },
     /// Update a task in Photis Nadi
-    TaskUpdate { task_id: String, status: Option<String> },
+    TaskUpdate {
+        task_id: String,
+        status: Option<String>,
+    },
     /// Check daily rituals/habits
     RitualCheck { date: Option<String> },
     /// Show productivity statistics
@@ -203,37 +210,121 @@ static PATTERNS: Lazy<HashMap<String, Regex>> = Lazy::new(|| {
     let mut r = |name: &str, pat: &str| {
         p.insert(name.to_string(), Regex::new(pat).unwrap());
     };
-    r("list", r"(?i)^(show|list|display|what|see)?\s*(me\s+)?(all\s+)?(files|directories|dirs|folders|contents?)?\s*(in\s+)?(.+)?$");
-    r("show_file", r"(?i)^(show|display|view|read|cat|open|print)\s+(me\s+)?(the\s+)?(content|file|contents)?\s*(of\s+)?(.+)$");
-    r("find", r"(?i)^(find|locate|search\s+for|look\s+for)\s+(files?\s+(named|called)?\s+)?(.+)(\s+in\s+(.+))?$");
-    r("grep", r"(?i)^(search|grep|find)\s+(for\s+)?(.+?)\s+(in|within|inside)\s+(.+)$");
-    r("cd", r"(?i)^(go\s+to|change\s+(to\s+)?|cd\s+(to\s+)?|switch\s+to)\s*(directory\s+)?(.+)$");
-    r("mkdir", r"(?i)^(create|make|new)\s+(a\s+)?(new\s+)?(directory|folder)\s+(named|called)?\s*(.+)$");
+    r(
+        "list",
+        r"(?i)^(show|list|display|what|see)?\s*(me\s+)?(all\s+)?(files|directories|dirs|folders|contents?)?\s*(in\s+)?(.+)?$",
+    );
+    r(
+        "show_file",
+        r"(?i)^(show|display|view|read|cat|open|print)\s+(me\s+)?(the\s+)?(content|file|contents)?\s*(of\s+)?(.+)$",
+    );
+    r(
+        "find",
+        r"(?i)^(find|locate|search\s+for|look\s+for)\s+(files?\s+(named|called)?\s+)?(.+)(\s+in\s+(.+))?$",
+    );
+    r(
+        "grep",
+        r"(?i)^(search|grep|find)\s+(for\s+)?(.+?)\s+(in|within|inside)\s+(.+)$",
+    );
+    r(
+        "cd",
+        r"(?i)^(go\s+to|change\s+(to\s+)?|cd\s+(to\s+)?|switch\s+to)\s*(directory\s+)?(.+)$",
+    );
+    r(
+        "mkdir",
+        r"(?i)^(create|make|new)\s+(a\s+)?(new\s+)?(directory|folder)\s+(named|called)?\s*(.+)$",
+    );
     r("copy", r"(?i)^(copy|duplicate)\s+(.+?)\s+(to|into)\s+(.+)$");
     r("move", r"(?i)^(move|rename)\s+(.+?)\s+(to|into|as)\s+(.+)$");
-    r("remove", r"(?i)^(remove|delete|rm)\s+(the\s+)?(file|directory|folder)?\s*(.+)$");
-    r("ps", r"(?i)^(show|list|display|what|view)\s+(me\s+)?(all\s+)?(running\s+)?(processes|tasks|programs|apps)$");
-    r("sysinfo", r"(?i)^(show|display|what|get|view)\s+(me\s+)?(system|computer|machine)\s*(info|information|status|stats)?$");
-    r("du", r"(?i)^(how\s+much\s+)?(disk\s+)?(space|usage|size)\s+(is\s+)?(used\s+)?(by\s+)?(in\s+)?(.+)?$");
-    r("install", r"(?i)^(install|add|get)\s+(package|program|software|app)?\s*(.+)$");
-    r("audit", r"(?i)^(show|view|display|check)\s+(the\s+)?(audit|security)\s*(log|trail|history|entries)?(\s+for\s+(agent\s+)?(.+?))?(\s+(in|from)\s+(the\s+)?(last\s+)?(.+))?$");
-    r("agent_info", r"(?i)^(show|list|view|display|what)\s+(me\s+)?(all\s+)?(running\s+)?(agents?|ai\s+agents?)\s*(status|info)?(\s+(.+))?$");
-    r("service", r"(?i)^(list|show|start|stop|restart|status)\s+(the\s+)?(services?|daemons?)\s*(.+)?$");
-    r("network_scan", r"(?i)^(scan\s+ports?\s+(?:on|for)\s+(.+)|ping\s+sweep\s+(.+)|lookup\s+dns\s+(?:for\s+)?(.+)|trace\s+route\s+to\s+(.+)|capture\s+packets?\s+(?:on|from)\s+(.+)|scan\s+web\s+servers?\s+(.+))$");
-    r("network_extended", r"(?i)^(mass\s+scan\s+(.+)|arp\s+scan\s*(.+)?|network\s+diag(?:nostics?)?\s+(?:for\s+)?(.+)|detect\s+services?\s+(?:on\s+)?(.+)|fuzz\s+dir(?:ectories|s)?\s+(?:on\s+)?(.+)|vuln(?:erability)?\s+scan\s+(.+)|show\s+(?:open\s+)?sockets?|list\s+(?:network\s+)?connections?|enumerate\s+dns\s+(?:for\s+)?(.+)|deep\s+inspect\s+(?:traffic\s+)?(?:on\s+)?(.+)|monitor\s+bandwidth)$");
-    r("journal", r"(?i)^(show|view|display|check)\s+(the\s+)?(journal|journald?|systemd)\s*(logs?|entries|messages)?(\s+for\s+(.+?))?(\s+since\s+(.+))?$");
-    r("journal_alt", r"(?i)^(show|view|display)\s+(the\s+)?(last\s+(\d+)\s+)?(error|warning|critical|info|debug|notice|alert|emerg)?\s*(logs?|log\s+entries)(\s+for\s+(.+?))?(\s+since\s+(.+))?$");
-    r("device_info", r"(?i)^(list|show|view|display)\s+(the\s+)?(all\s+)?(usb|block|net|pci|input|scsi)?\s*(devices?|hardware)(\s+(info|information|details))?(\s+for\s+(.+))?$");
-    r("device_path", r"(?i)^(device|udev)\s+(info|information|details)\s+(for|on|about)\s+(.+)$");
-    r("mount", r"(?i)^(list|show|display)\s+(the\s+)?(all\s+)?(fuse\s+)?(mounts?|mounted\s+filesystems?|filesystems?)$");
-    r("unmount", r"(?i)^(unmount|umount|eject|fusermount\s+-u)\s+(.+)$");
+    r(
+        "remove",
+        r"(?i)^(remove|delete|rm)\s+(the\s+)?(file|directory|folder)?\s*(.+)$",
+    );
+    r(
+        "ps",
+        r"(?i)^(show|list|display|what|view)\s+(me\s+)?(all\s+)?(running\s+)?(processes|tasks|programs|apps)$",
+    );
+    r(
+        "sysinfo",
+        r"(?i)^(show|display|what|get|view)\s+(me\s+)?(system|computer|machine)\s*(info|information|status|stats)?$",
+    );
+    r(
+        "du",
+        r"(?i)^(how\s+much\s+)?(disk\s+)?(space|usage|size)\s+(is\s+)?(used\s+)?(by\s+)?(in\s+)?(.+)?$",
+    );
+    r(
+        "install",
+        r"(?i)^(install|add|get)\s+(package|program|software|app)?\s*(.+)$",
+    );
+    r(
+        "audit",
+        r"(?i)^(show|view|display|check)\s+(the\s+)?(audit|security)\s*(log|trail|history|entries)?(\s+for\s+(agent\s+)?(.+?))?(\s+(in|from)\s+(the\s+)?(last\s+)?(.+))?$",
+    );
+    r(
+        "agent_info",
+        r"(?i)^(show|list|view|display|what)\s+(me\s+)?(all\s+)?(running\s+)?(agents?|ai\s+agents?)\s*(status|info)?(\s+(.+))?$",
+    );
+    r(
+        "service",
+        r"(?i)^(list|show|start|stop|restart|status)\s+(the\s+)?(services?|daemons?)\s*(.+)?$",
+    );
+    r(
+        "network_scan",
+        r"(?i)^(scan\s+ports?\s+(?:on|for)\s+(.+)|ping\s+sweep\s+(.+)|lookup\s+dns\s+(?:for\s+)?(.+)|trace\s+route\s+to\s+(.+)|capture\s+packets?\s+(?:on|from)\s+(.+)|scan\s+web\s+servers?\s+(.+))$",
+    );
+    r(
+        "network_extended",
+        r"(?i)^(mass\s+scan\s+(.+)|arp\s+scan\s*(.+)?|network\s+diag(?:nostics?)?\s+(?:for\s+)?(.+)|detect\s+services?\s+(?:on\s+)?(.+)|fuzz\s+dir(?:ectories|s)?\s+(?:on\s+)?(.+)|vuln(?:erability)?\s+scan\s+(.+)|show\s+(?:open\s+)?sockets?|list\s+(?:network\s+)?connections?|enumerate\s+dns\s+(?:for\s+)?(.+)|deep\s+inspect\s+(?:traffic\s+)?(?:on\s+)?(.+)|monitor\s+bandwidth)$",
+    );
+    r(
+        "journal",
+        r"(?i)^(show|view|display|check)\s+(the\s+)?(journal|journald?|systemd)\s*(logs?|entries|messages)?(\s+for\s+(.+?))?(\s+since\s+(.+))?$",
+    );
+    r(
+        "journal_alt",
+        r"(?i)^(show|view|display)\s+(the\s+)?(last\s+(\d+)\s+)?(error|warning|critical|info|debug|notice|alert|emerg)?\s*(logs?|log\s+entries)(\s+for\s+(.+?))?(\s+since\s+(.+))?$",
+    );
+    r(
+        "device_info",
+        r"(?i)^(list|show|view|display)\s+(the\s+)?(all\s+)?(usb|block|net|pci|input|scsi)?\s*(devices?|hardware)(\s+(info|information|details))?(\s+for\s+(.+))?$",
+    );
+    r(
+        "device_path",
+        r"(?i)^(device|udev)\s+(info|information|details)\s+(for|on|about)\s+(.+)$",
+    );
+    r(
+        "mount",
+        r"(?i)^(list|show|display)\s+(the\s+)?(all\s+)?(fuse\s+)?(mounts?|mounted\s+filesystems?|filesystems?)$",
+    );
+    r(
+        "unmount",
+        r"(?i)^(unmount|umount|eject|fusermount\s+-u)\s+(.+)$",
+    );
     r("mount_action", r"(?i)^mount\s+(.+?)\s+(on|at|to)\s+(.+)$");
-    r("boot", r"(?i)^(list|show|view|display)\s+(the\s+)?(boot\s+(entries|config|configuration|menu)|bootloader)$");
-    r("boot_set", r"(?i)^set\s+(default\s+)?boot\s+(entry|default|timeout)\s+(to\s+)?(.+)$");
-    r("update", r"(?i)^(check\s+for\s+updates?|apply\s+(system\s+)?updates?|rollback\s+(system\s+)?updates?|update\s+status|show\s+(current\s+)?version|system\s+update\s+(check|apply|rollback|status))$");
-    r("question", r"(?i)^(what|who|when|where|why|how|is|are|can|do|does)\s+.+\??$");
-    r("knowledge", r"(?i)^(search|find|look\s+up)\s+(in\s+)?(knowledge|kb|docs|documentation)\s+(for\s+)?(.+)$");
-    r("rag_query", r"(?i)^(rag|retrieve|context)\s+(query|search|find|for)\s+(.+)$");
+    r(
+        "boot",
+        r"(?i)^(list|show|view|display)\s+(the\s+)?(boot\s+(entries|config|configuration|menu)|bootloader)$",
+    );
+    r(
+        "boot_set",
+        r"(?i)^set\s+(default\s+)?boot\s+(entry|default|timeout)\s+(to\s+)?(.+)$",
+    );
+    r(
+        "update",
+        r"(?i)^(check\s+for\s+updates?|apply\s+(system\s+)?updates?|rollback\s+(system\s+)?updates?|update\s+status|show\s+(current\s+)?version|system\s+update\s+(check|apply|rollback|status))$",
+    );
+    r(
+        "question",
+        r"(?i)^(what|who|when|where|why|how|is|are|can|do|does)\s+.+\??$",
+    );
+    r(
+        "knowledge",
+        r"(?i)^(search|find|look\s+up)\s+(in\s+)?(knowledge|kb|docs|documentation)\s+(for\s+)?(.+)$",
+    );
+    r(
+        "rag_query",
+        r"(?i)^(rag|retrieve|context)\s+(query|search|find|for)\s+(.+)$",
+    );
     r("ark_install", r"(?i)^ark\s+install\s+(.+)$");
     r("ark_remove", r"(?i)^ark\s+(remove|uninstall)\s+(.+)$");
     r("ark_search", r"(?i)^ark\s+search\s+(.+)$");
@@ -241,16 +332,46 @@ static PATTERNS: Lazy<HashMap<String, Regex>> = Lazy::new(|| {
     r("ark_update", r"(?i)^ark\s+update$");
     r("ark_upgrade", r"(?i)^ark\s+upgrade(\s+(.+))?$");
     r("ark_status", r"(?i)^ark\s+status$");
-    r("marketplace_install", r"(?i)^(install|add)\s+(package|agent|app)\s+(.+)$");
-    r("marketplace_uninstall", r"(?i)^(uninstall|remove)\s+(package|agent|app)\s+(.+)$");
-    r("marketplace_search", r"(?i)^(search|find|browse)\s+(marketplace|market|store|packages|agents)\s+(for\s+)?(.+)$");
-    r("marketplace_list", r"(?i)^(list|show)\s+(installed\s+)?(packages|marketplace|agents|apps)$");
-    r("marketplace_update", r"(?i)^(update|upgrade)\s+(packages|agents|all)$");
-    r("task_list", r"(?i)^(show|list|view)\s+(my\s+)?tasks(\s+(?:that are\s+|in\s+|with status\s+)(\w+))?$");
-    r("task_create", r"(?i)^(create|add|new)\s+task[:\s]+(.+?)(\s+priority\s+(low|medium|high))?$");
-    r("task_update", r"(?i)^(mark|update|set)\s+task\s+(\S+)\s+(?:as\s+|status\s+(?:to\s+)?)(\w+)$");
-    r("ritual_check", r"(?i)^(?:show|check|how are)\s+(?:my\s+)?(?:rituals|habits)(\s+today|\s+(\d{4}-\d{2}-\d{2}))?$");
-    r("productivity_stats", r"(?i)^(?:show\s+)?(?:my\s+)?(?:productivity|stats|statistics|analytics)(\s+(daily|weekly|monthly|this week|this month))?$");
+    r(
+        "marketplace_install",
+        r"(?i)^(install|add)\s+(package|agent|app)\s+(.+)$",
+    );
+    r(
+        "marketplace_uninstall",
+        r"(?i)^(uninstall|remove)\s+(package|agent|app)\s+(.+)$",
+    );
+    r(
+        "marketplace_search",
+        r"(?i)^(search|find|browse)\s+(marketplace|market|store|packages|agents)\s+(for\s+)?(.+)$",
+    );
+    r(
+        "marketplace_list",
+        r"(?i)^(list|show)\s+(installed\s+)?(packages|marketplace|agents|apps)$",
+    );
+    r(
+        "marketplace_update",
+        r"(?i)^(update|upgrade)\s+(packages|agents|all)$",
+    );
+    r(
+        "task_list",
+        r"(?i)^(show|list|view)\s+(my\s+)?tasks(\s+(?:that are\s+|in\s+|with status\s+)(\w+))?$",
+    );
+    r(
+        "task_create",
+        r"(?i)^(create|add|new)\s+task[:\s]+(.+?)(\s+priority\s+(low|medium|high))?$",
+    );
+    r(
+        "task_update",
+        r"(?i)^(mark|update|set)\s+task\s+(\S+)\s+(?:as\s+|status\s+(?:to\s+)?)(\w+)$",
+    );
+    r(
+        "ritual_check",
+        r"(?i)^(?:show|check|how are)\s+(?:my\s+)?(?:rituals|habits)(\s+today|\s+(\d{4}-\d{2}-\d{2}))?$",
+    );
+    r(
+        "productivity_stats",
+        r"(?i)^(?:show\s+)?(?:my\s+)?(?:productivity|stats|statistics|analytics)(\s+(daily|weekly|monthly|this week|this month))?$",
+    );
     p
 });
 
@@ -261,7 +382,9 @@ pub struct Interpreter {
 
 impl Interpreter {
     pub fn new() -> Self {
-        Self { patterns: &PATTERNS }
+        Self {
+            patterns: &PATTERNS,
+        }
     }
 
     /// Try to capture against a named pattern. Returns None if the pattern
@@ -308,7 +431,9 @@ impl Interpreter {
         }
 
         if let Some(caps) = self.try_captures("agent_info", &input_lower) {
-            let agent_id = caps.get(8).map(|m| m.as_str().trim().to_string())
+            let agent_id = caps
+                .get(8)
+                .map(|m| m.as_str().trim().to_string())
                 .filter(|s| !s.is_empty());
             return Intent::AgentInfo { agent_id };
         }
@@ -341,20 +466,23 @@ impl Interpreter {
         }
 
         if let Some(caps) = self.try_captures("productivity_stats", &input_lower) {
-            let period = caps.get(2).map(|m| {
-                match m.as_str().trim() {
-                    "daily" => "day".to_string(),
-                    "weekly" | "this week" => "week".to_string(),
-                    "monthly" | "this month" => "month".to_string(),
-                    other => other.to_string(),
-                }
+            let period = caps.get(2).map(|m| match m.as_str().trim() {
+                "daily" => "day".to_string(),
+                "weekly" | "this week" => "week".to_string(),
+                "monthly" | "this month" => "month".to_string(),
+                other => other.to_string(),
             });
             return Intent::ProductivityStats { period };
         }
 
         if let Some(caps) = self.try_captures("service", &input_lower) {
-            let action = caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default();
-            let service_name = caps.get(4).map(|m| m.as_str().trim().to_string())
+            let action = caps
+                .get(1)
+                .map(|m| m.as_str().to_string())
+                .unwrap_or_default();
+            let service_name = caps
+                .get(4)
+                .map(|m| m.as_str().trim().to_string())
                 .filter(|s| !s.is_empty());
             return Intent::ServiceControl {
                 action,
@@ -414,7 +542,9 @@ impl Interpreter {
                 };
             }
             if caps.get(3).is_some() || full.contains("arp scan") {
-                let target = caps.get(3).map(|m| m.as_str().trim().to_string())
+                let target = caps
+                    .get(3)
+                    .map(|m| m.as_str().trim().to_string())
                     .filter(|s| !s.is_empty());
                 return Intent::NetworkScan {
                     action: "arp_scan".into(),
@@ -473,9 +603,13 @@ impl Interpreter {
 
         // Journal view
         if let Some(caps) = self.try_captures("journal", &input_lower) {
-            let unit = caps.get(6).map(|m| m.as_str().trim().to_string())
+            let unit = caps
+                .get(6)
+                .map(|m| m.as_str().trim().to_string())
                 .filter(|s| !s.is_empty());
-            let since = caps.get(8).map(|m| m.as_str().trim().to_string())
+            let since = caps
+                .get(8)
+                .map(|m| m.as_str().trim().to_string())
                 .filter(|s| !s.is_empty());
             return Intent::JournalView {
                 unit,
@@ -489,9 +623,13 @@ impl Interpreter {
         if let Some(caps) = self.try_captures("journal_alt", &input_lower) {
             let lines = caps.get(4).and_then(|m| m.as_str().parse::<usize>().ok());
             let priority = caps.get(5).map(|m| m.as_str().trim().to_string());
-            let unit = caps.get(8).map(|m| m.as_str().trim().to_string())
+            let unit = caps
+                .get(8)
+                .map(|m| m.as_str().trim().to_string())
                 .filter(|s| !s.is_empty());
-            let since = caps.get(10).map(|m| m.as_str().trim().to_string())
+            let since = caps
+                .get(10)
+                .map(|m| m.as_str().trim().to_string())
                 .filter(|s| !s.is_empty());
             return Intent::JournalView {
                 unit,
@@ -504,7 +642,9 @@ impl Interpreter {
         // Device info
         if let Some(caps) = self.try_captures("device_info", &input_lower) {
             let subsystem = caps.get(4).map(|m| m.as_str().trim().to_string());
-            let device_path = caps.get(9).map(|m| m.as_str().trim().to_string())
+            let device_path = caps
+                .get(9)
+                .map(|m| m.as_str().trim().to_string())
                 .filter(|s| !s.is_empty());
             return Intent::DeviceInfo {
                 subsystem,
@@ -564,7 +704,11 @@ impl Interpreter {
                 _ => "default".to_string(),
             };
             let value = caps.get(4).map(|m| m.as_str().trim().to_string());
-            let entry = if action == "default" { value.clone() } else { None };
+            let entry = if action == "default" {
+                value.clone()
+            } else {
+                None
+            };
             return Intent::BootConfig {
                 action,
                 entry,
@@ -603,15 +747,24 @@ impl Interpreter {
         if let Some(caps) = self.try_captures("ark_install", &input_lower) {
             let packages_str = caps.get(1).map_or("", |m| m.as_str()).trim();
             if !packages_str.is_empty() {
-                let packages: Vec<String> = packages_str.split_whitespace().map(|s| s.to_string()).collect();
-                return Intent::ArkInstall { packages, source: None };
+                let packages: Vec<String> = packages_str
+                    .split_whitespace()
+                    .map(|s| s.to_string())
+                    .collect();
+                return Intent::ArkInstall {
+                    packages,
+                    source: None,
+                };
             }
         }
 
         if let Some(caps) = self.try_captures("ark_remove", &input_lower) {
             let packages_str = caps.get(2).map_or("", |m| m.as_str()).trim();
             if !packages_str.is_empty() {
-                let packages: Vec<String> = packages_str.split_whitespace().map(|s| s.to_string()).collect();
+                let packages: Vec<String> = packages_str
+                    .split_whitespace()
+                    .map(|s| s.to_string())
+                    .collect();
                 return Intent::ArkRemove { packages };
             }
         }
@@ -635,10 +788,15 @@ impl Interpreter {
         }
 
         if let Some(caps) = self.try_captures("ark_upgrade", &input_lower) {
-            let packages = caps.get(2)
+            let packages = caps
+                .get(2)
                 .map(|m| m.as_str().trim())
                 .filter(|s| !s.is_empty())
-                .map(|s| s.split_whitespace().map(|p| p.to_string()).collect::<Vec<String>>());
+                .map(|s| {
+                    s.split_whitespace()
+                        .map(|p| p.to_string())
+                        .collect::<Vec<String>>()
+                });
             return Intent::ArkUpgrade { packages };
         }
 
@@ -731,18 +889,27 @@ impl Interpreter {
             }
         }
 
-        if self.try_captures("marketplace_list", &input_lower).is_some() {
+        if self
+            .try_captures("marketplace_list", &input_lower)
+            .is_some()
+        {
             return Intent::MarketplaceList;
         }
 
-        if self.try_captures("marketplace_update", &input_lower).is_some() {
+        if self
+            .try_captures("marketplace_update", &input_lower)
+            .is_some()
+        {
             return Intent::MarketplaceUpdate;
         }
 
         if let Some(caps) = self.try_captures("knowledge", &input_lower) {
             let query = caps.get(5).map_or("", |m| m.as_str()).trim().to_string();
             if !query.is_empty() {
-                return Intent::KnowledgeSearch { query, source: None };
+                return Intent::KnowledgeSearch {
+                    query,
+                    source: None,
+                };
             }
         }
 
@@ -753,7 +920,11 @@ impl Interpreter {
             }
         }
 
-        if self.patterns.get("question").is_some_and(|p| p.is_match(&input_lower)) {
+        if self
+            .patterns
+            .get("question")
+            .is_some_and(|p| p.is_match(&input_lower))
+        {
             return Intent::Question {
                 query: input.to_string(),
             };
@@ -1106,7 +1277,12 @@ impl Interpreter {
                         let iface = target.as_deref().unwrap_or("eth0");
                         (
                             "tcpdump".to_string(),
-                            vec!["-i".to_string(), iface.to_string(), "-c".to_string(), "100".to_string()],
+                            vec![
+                                "-i".to_string(),
+                                iface.to_string(),
+                                "-c".to_string(),
+                                "100".to_string(),
+                            ],
                             format!("Capture packets on {}", iface),
                             PermissionLevel::Admin,
                         )
@@ -1124,7 +1300,11 @@ impl Interpreter {
                         let t = target.as_deref().unwrap_or("192.168.1.0/24");
                         (
                             "masscan".to_string(),
-                            vec!["--rate=1000".to_string(), "-p1-65535".to_string(), t.to_string()],
+                            vec![
+                                "--rate=1000".to_string(),
+                                "-p1-65535".to_string(),
+                                t.to_string(),
+                            ],
                             format!("Mass scan on {}", t),
                             PermissionLevel::Admin,
                         )
@@ -1146,7 +1326,12 @@ impl Interpreter {
                         let t = target.as_deref().unwrap_or("localhost");
                         (
                             "mtr".to_string(),
-                            vec!["--report".to_string(), "-c".to_string(), "10".to_string(), t.to_string()],
+                            vec![
+                                "--report".to_string(),
+                                "-c".to_string(),
+                                "10".to_string(),
+                                t.to_string(),
+                            ],
                             format!("Network diagnostics to {}", t),
                             PermissionLevel::Admin,
                         )
@@ -1164,7 +1349,12 @@ impl Interpreter {
                         let t = target.as_deref().unwrap_or("http://localhost");
                         (
                             "ffuf".to_string(),
-                            vec!["-u".to_string(), format!("{}/FUZZ", t), "-w".to_string(), "/usr/share/wordlists/common.txt".to_string()],
+                            vec![
+                                "-u".to_string(),
+                                format!("{}/FUZZ", t),
+                                "-w".to_string(),
+                                "/usr/share/wordlists/common.txt".to_string(),
+                            ],
                             format!("Directory fuzzing on {}", t),
                             PermissionLevel::Admin,
                         )
@@ -1178,14 +1368,12 @@ impl Interpreter {
                             PermissionLevel::Admin,
                         )
                     }
-                    "socket_stats" => {
-                        (
-                            "ss".to_string(),
-                            vec!["-tunap".to_string()],
-                            "Show network sockets and connections".to_string(),
-                            PermissionLevel::Safe,
-                        )
-                    }
+                    "socket_stats" => (
+                        "ss".to_string(),
+                        vec!["-tunap".to_string()],
+                        "Show network sockets and connections".to_string(),
+                        PermissionLevel::Safe,
+                    ),
                     "dns_enum" => {
                         let t = target.as_deref().unwrap_or("localhost");
                         (
@@ -1199,19 +1387,22 @@ impl Interpreter {
                         let iface = target.as_deref().unwrap_or("eth0");
                         (
                             "tshark".to_string(),
-                            vec!["-i".to_string(), iface.to_string(), "-c".to_string(), "100".to_string()],
+                            vec![
+                                "-i".to_string(),
+                                iface.to_string(),
+                                "-c".to_string(),
+                                "100".to_string(),
+                            ],
                             format!("Deep packet inspection on {}", iface),
                             PermissionLevel::Admin,
                         )
                     }
-                    "bandwidth_monitor" => {
-                        (
-                            "nethogs".to_string(),
-                            vec![],
-                            "Monitor per-process bandwidth usage".to_string(),
-                            PermissionLevel::Admin,
-                        )
-                    }
+                    "bandwidth_monitor" => (
+                        "nethogs".to_string(),
+                        vec![],
+                        "Monitor per-process bandwidth usage".to_string(),
+                        PermissionLevel::Admin,
+                    ),
                     other => {
                         return Err(anyhow!("Unknown network scan action: {}", other));
                     }
@@ -1274,12 +1465,21 @@ impl Interpreter {
             } => {
                 let (args, desc) = if let Some(path) = device_path {
                     (
-                        vec!["info".to_string(), "--query=all".to_string(), "--name".to_string(), path.clone()],
+                        vec![
+                            "info".to_string(),
+                            "--query=all".to_string(),
+                            "--name".to_string(),
+                            path.clone(),
+                        ],
                         format!("Show device info for {}", path),
                     )
                 } else if let Some(sub) = subsystem {
                     (
-                        vec!["info".to_string(), "--subsystem-match".to_string(), sub.clone()],
+                        vec![
+                            "info".to_string(),
+                            "--subsystem-match".to_string(),
+                            sub.clone(),
+                        ],
                         format!("List {} devices", sub),
                     )
                 } else {
@@ -1424,14 +1624,21 @@ impl Interpreter {
             }
 
             Intent::KnowledgeSearch { query, source } => {
-                let _source_flag = source.as_ref().map(|s| format!(" --source {}", s)).unwrap_or_default();
+                let _source_flag = source
+                    .as_ref()
+                    .map(|s| format!(" --source {}", s))
+                    .unwrap_or_default();
                 Ok(Translation {
                     command: "curl".to_string(),
                     args: vec![
-                        "-s".to_string(), "-X".to_string(), "POST".to_string(),
+                        "-s".to_string(),
+                        "-X".to_string(),
+                        "POST".to_string(),
                         "http://127.0.0.1:8090/v1/knowledge/search".to_string(),
-                        "-H".to_string(), "Content-Type: application/json".to_string(),
-                        "-d".to_string(), format!(r#"{{"query":"{}","limit":10}}"#, query),
+                        "-H".to_string(),
+                        "Content-Type: application/json".to_string(),
+                        "-d".to_string(),
+                        format!(r#"{{"query":"{}","limit":10}}"#, query),
                     ],
                     description: format!("Search knowledge base for: {}", query),
                     permission: PermissionLevel::Safe,
@@ -1439,34 +1646,45 @@ impl Interpreter {
                 })
             }
 
-            Intent::RagQuery { query } => {
-                Ok(Translation {
-                    command: "curl".to_string(),
-                    args: vec![
-                        "-s".to_string(), "-X".to_string(), "POST".to_string(),
-                        "http://127.0.0.1:8090/v1/rag/query".to_string(),
-                        "-H".to_string(), "Content-Type: application/json".to_string(),
-                        "-d".to_string(), format!(r#"{{"query":"{}","top_k":5}}"#, query),
-                    ],
-                    description: format!("RAG query: {}", query),
-                    permission: PermissionLevel::Safe,
-                    explanation: "Retrieves context-augmented results from the RAG pipeline".to_string(),
-                })
-            }
+            Intent::RagQuery { query } => Ok(Translation {
+                command: "curl".to_string(),
+                args: vec![
+                    "-s".to_string(),
+                    "-X".to_string(),
+                    "POST".to_string(),
+                    "http://127.0.0.1:8090/v1/rag/query".to_string(),
+                    "-H".to_string(),
+                    "Content-Type: application/json".to_string(),
+                    "-d".to_string(),
+                    format!(r#"{{"query":"{}","top_k":5}}"#, query),
+                ],
+                description: format!("RAG query: {}", query),
+                permission: PermissionLevel::Safe,
+                explanation: "Retrieves context-augmented results from the RAG pipeline"
+                    .to_string(),
+            }),
 
-            Intent::ArkInstall { packages, source: _ } => {
+            Intent::ArkInstall {
+                packages,
+                source: _,
+            } => {
                 let body = serde_json::json!({"packages": packages});
                 Ok(Translation {
                     command: "curl".to_string(),
                     args: vec![
-                        "-s".to_string(), "-X".to_string(), "POST".to_string(),
+                        "-s".to_string(),
+                        "-X".to_string(),
+                        "POST".to_string(),
                         "http://127.0.0.1:8090/v1/ark/install".to_string(),
-                        "-H".to_string(), "Content-Type: application/json".to_string(),
-                        "-d".to_string(), serde_json::to_string(&body).unwrap(),
+                        "-H".to_string(),
+                        "Content-Type: application/json".to_string(),
+                        "-d".to_string(),
+                        serde_json::to_string(&body).unwrap(),
                     ],
                     description: format!("Install packages via ark: {}", packages.join(", ")),
                     permission: PermissionLevel::SystemWrite,
-                    explanation: "Installs packages using the AGNOS unified package manager".to_string(),
+                    explanation: "Installs packages using the AGNOS unified package manager"
+                        .to_string(),
                 })
             }
 
@@ -1475,152 +1693,155 @@ impl Interpreter {
                 Ok(Translation {
                     command: "curl".to_string(),
                     args: vec![
-                        "-s".to_string(), "-X".to_string(), "POST".to_string(),
+                        "-s".to_string(),
+                        "-X".to_string(),
+                        "POST".to_string(),
                         "http://127.0.0.1:8090/v1/ark/remove".to_string(),
-                        "-H".to_string(), "Content-Type: application/json".to_string(),
-                        "-d".to_string(), serde_json::to_string(&body).unwrap(),
+                        "-H".to_string(),
+                        "Content-Type: application/json".to_string(),
+                        "-d".to_string(),
+                        serde_json::to_string(&body).unwrap(),
                     ],
                     description: format!("Remove packages via ark: {}", packages.join(", ")),
                     permission: PermissionLevel::SystemWrite,
-                    explanation: "Removes packages using the AGNOS unified package manager".to_string(),
+                    explanation: "Removes packages using the AGNOS unified package manager"
+                        .to_string(),
                 })
             }
 
-            Intent::ArkSearch { query } => {
-                Ok(Translation {
-                    command: "curl".to_string(),
-                    args: vec![
-                        "-s".to_string(),
-                        format!("http://127.0.0.1:8090/v1/ark/search?q={}", query),
-                    ],
-                    description: format!("Search packages via ark: {}", query),
-                    permission: PermissionLevel::Safe,
-                    explanation: "Searches for packages across all configured sources".to_string(),
-                })
-            }
+            Intent::ArkSearch { query } => Ok(Translation {
+                command: "curl".to_string(),
+                args: vec![
+                    "-s".to_string(),
+                    format!("http://127.0.0.1:8090/v1/ark/search?q={}", query),
+                ],
+                description: format!("Search packages via ark: {}", query),
+                permission: PermissionLevel::Safe,
+                explanation: "Searches for packages across all configured sources".to_string(),
+            }),
 
-            Intent::ArkInfo { package } => {
-                Ok(Translation {
-                    command: "curl".to_string(),
-                    args: vec![
-                        "-s".to_string(),
-                        format!("http://127.0.0.1:8090/v1/ark/info/{}", package),
-                    ],
-                    description: format!("Show ark package info: {}", package),
-                    permission: PermissionLevel::Safe,
-                    explanation: "Retrieves detailed information about a package".to_string(),
-                })
-            }
+            Intent::ArkInfo { package } => Ok(Translation {
+                command: "curl".to_string(),
+                args: vec![
+                    "-s".to_string(),
+                    format!("http://127.0.0.1:8090/v1/ark/info/{}", package),
+                ],
+                description: format!("Show ark package info: {}", package),
+                permission: PermissionLevel::Safe,
+                explanation: "Retrieves detailed information about a package".to_string(),
+            }),
 
-            Intent::ArkUpdate => {
-                Ok(Translation {
-                    command: "curl".to_string(),
-                    args: vec![
-                        "-s".to_string(), "-X".to_string(), "POST".to_string(),
-                        "http://127.0.0.1:8090/v1/ark/update".to_string(),
-                    ],
-                    description: "Check for package updates via ark".to_string(),
-                    permission: PermissionLevel::Safe,
-                    explanation: "Refreshes package index from all configured sources".to_string(),
-                })
-            }
+            Intent::ArkUpdate => Ok(Translation {
+                command: "curl".to_string(),
+                args: vec![
+                    "-s".to_string(),
+                    "-X".to_string(),
+                    "POST".to_string(),
+                    "http://127.0.0.1:8090/v1/ark/update".to_string(),
+                ],
+                description: "Check for package updates via ark".to_string(),
+                permission: PermissionLevel::Safe,
+                explanation: "Refreshes package index from all configured sources".to_string(),
+            }),
 
             Intent::ArkUpgrade { packages } => {
                 let body = serde_json::json!({"packages": packages});
                 Ok(Translation {
                     command: "curl".to_string(),
                     args: vec![
-                        "-s".to_string(), "-X".to_string(), "POST".to_string(),
+                        "-s".to_string(),
+                        "-X".to_string(),
+                        "POST".to_string(),
                         "http://127.0.0.1:8090/v1/ark/upgrade".to_string(),
-                        "-H".to_string(), "Content-Type: application/json".to_string(),
-                        "-d".to_string(), serde_json::to_string(&body).unwrap(),
+                        "-H".to_string(),
+                        "Content-Type: application/json".to_string(),
+                        "-d".to_string(),
+                        serde_json::to_string(&body).unwrap(),
                     ],
-                    description: format!("Upgrade packages via ark{}",
-                        packages.as_ref().map_or(String::new(), |p| format!(": {}", p.join(", ")))),
+                    description: format!(
+                        "Upgrade packages via ark{}",
+                        packages
+                            .as_ref()
+                            .map_or(String::new(), |p| format!(": {}", p.join(", ")))
+                    ),
                     permission: PermissionLevel::SystemWrite,
                     explanation: "Upgrades packages to latest versions".to_string(),
                 })
             }
 
-            Intent::ArkStatus => {
-                Ok(Translation {
-                    command: "curl".to_string(),
-                    args: vec![
-                        "-s".to_string(),
-                        "http://127.0.0.1:8090/v1/ark/status".to_string(),
-                    ],
-                    description: "Show ark package manager status".to_string(),
-                    permission: PermissionLevel::Safe,
-                    explanation: "Displays the status of the AGNOS unified package manager".to_string(),
-                })
-            }
+            Intent::ArkStatus => Ok(Translation {
+                command: "curl".to_string(),
+                args: vec![
+                    "-s".to_string(),
+                    "http://127.0.0.1:8090/v1/ark/status".to_string(),
+                ],
+                description: "Show ark package manager status".to_string(),
+                permission: PermissionLevel::Safe,
+                explanation: "Displays the status of the AGNOS unified package manager".to_string(),
+            }),
 
-            Intent::MarketplaceInstall { package } => {
-                Ok(Translation {
-                    command: "curl".to_string(),
-                    args: vec![
-                        "-s".to_string(), "-X".to_string(), "POST".to_string(),
-                        "http://127.0.0.1:8090/v1/marketplace/install".to_string(),
-                        "-H".to_string(), "Content-Type: application/json".to_string(),
-                        "-d".to_string(), format!(r#"{{"path":"{}"}}"#, package),
-                    ],
-                    description: format!("Install marketplace package: {}", package),
-                    permission: PermissionLevel::SystemWrite,
-                    explanation: "Installs a package from the marketplace".to_string(),
-                })
-            }
+            Intent::MarketplaceInstall { package } => Ok(Translation {
+                command: "curl".to_string(),
+                args: vec![
+                    "-s".to_string(),
+                    "-X".to_string(),
+                    "POST".to_string(),
+                    "http://127.0.0.1:8090/v1/marketplace/install".to_string(),
+                    "-H".to_string(),
+                    "Content-Type: application/json".to_string(),
+                    "-d".to_string(),
+                    format!(r#"{{"path":"{}"}}"#, package),
+                ],
+                description: format!("Install marketplace package: {}", package),
+                permission: PermissionLevel::SystemWrite,
+                explanation: "Installs a package from the marketplace".to_string(),
+            }),
 
-            Intent::MarketplaceUninstall { package } => {
-                Ok(Translation {
-                    command: "curl".to_string(),
-                    args: vec![
-                        "-s".to_string(), "-X".to_string(), "DELETE".to_string(),
-                        format!("http://127.0.0.1:8090/v1/marketplace/{}", package),
-                    ],
-                    description: format!("Uninstall marketplace package: {}", package),
-                    permission: PermissionLevel::SystemWrite,
-                    explanation: "Removes an installed marketplace package".to_string(),
-                })
-            }
+            Intent::MarketplaceUninstall { package } => Ok(Translation {
+                command: "curl".to_string(),
+                args: vec![
+                    "-s".to_string(),
+                    "-X".to_string(),
+                    "DELETE".to_string(),
+                    format!("http://127.0.0.1:8090/v1/marketplace/{}", package),
+                ],
+                description: format!("Uninstall marketplace package: {}", package),
+                permission: PermissionLevel::SystemWrite,
+                explanation: "Removes an installed marketplace package".to_string(),
+            }),
 
-            Intent::MarketplaceSearch { query } => {
-                Ok(Translation {
-                    command: "curl".to_string(),
-                    args: vec![
-                        "-s".to_string(),
-                        format!("http://127.0.0.1:8090/v1/marketplace/search?q={}", query),
-                    ],
-                    description: format!("Search marketplace for: {}", query),
-                    permission: PermissionLevel::Safe,
-                    explanation: "Searches installed marketplace packages".to_string(),
-                })
-            }
+            Intent::MarketplaceSearch { query } => Ok(Translation {
+                command: "curl".to_string(),
+                args: vec![
+                    "-s".to_string(),
+                    format!("http://127.0.0.1:8090/v1/marketplace/search?q={}", query),
+                ],
+                description: format!("Search marketplace for: {}", query),
+                permission: PermissionLevel::Safe,
+                explanation: "Searches installed marketplace packages".to_string(),
+            }),
 
-            Intent::MarketplaceList => {
-                Ok(Translation {
-                    command: "curl".to_string(),
-                    args: vec![
-                        "-s".to_string(),
-                        "http://127.0.0.1:8090/v1/marketplace/installed".to_string(),
-                    ],
-                    description: "List installed marketplace packages".to_string(),
-                    permission: PermissionLevel::Safe,
-                    explanation: "Shows all packages installed from the marketplace".to_string(),
-                })
-            }
+            Intent::MarketplaceList => Ok(Translation {
+                command: "curl".to_string(),
+                args: vec![
+                    "-s".to_string(),
+                    "http://127.0.0.1:8090/v1/marketplace/installed".to_string(),
+                ],
+                description: "List installed marketplace packages".to_string(),
+                permission: PermissionLevel::Safe,
+                explanation: "Shows all packages installed from the marketplace".to_string(),
+            }),
 
-            Intent::MarketplaceUpdate => {
-                Ok(Translation {
-                    command: "curl".to_string(),
-                    args: vec![
-                        "-s".to_string(),
-                        "http://127.0.0.1:8090/v1/marketplace/installed".to_string(),
-                    ],
-                    description: "Check for marketplace package updates".to_string(),
-                    permission: PermissionLevel::Safe,
-                    explanation: "Checks for available updates to installed packages".to_string(),
-                })
-            }
+            Intent::MarketplaceUpdate => Ok(Translation {
+                command: "curl".to_string(),
+                args: vec![
+                    "-s".to_string(),
+                    "http://127.0.0.1:8090/v1/marketplace/installed".to_string(),
+                ],
+                description: "Check for marketplace package updates".to_string(),
+                permission: PermissionLevel::Safe,
+                explanation: "Checks for available updates to installed packages".to_string(),
+            }),
 
             Intent::TaskList { status } => {
                 let mut args_json = serde_json::Map::new();
@@ -1631,12 +1852,21 @@ impl Interpreter {
                 Ok(Translation {
                     command: "curl".to_string(),
                     args: vec![
-                        "-s".to_string(), "-X".to_string(), "POST".to_string(),
+                        "-s".to_string(),
+                        "-X".to_string(),
+                        "POST".to_string(),
                         "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
-                        "-H".to_string(), "Content-Type: application/json".to_string(),
-                        "-d".to_string(), serde_json::to_string(&body).unwrap(),
+                        "-H".to_string(),
+                        "Content-Type: application/json".to_string(),
+                        "-d".to_string(),
+                        serde_json::to_string(&body).unwrap(),
                     ],
-                    description: format!("List tasks{}", status.as_ref().map_or(String::new(), |s| format!(" with status {}", s))),
+                    description: format!(
+                        "List tasks{}",
+                        status
+                            .as_ref()
+                            .map_or(String::new(), |s| format!(" with status {}", s))
+                    ),
                     permission: PermissionLevel::Safe,
                     explanation: "Lists tasks from Photis Nadi via MCP bridge".to_string(),
                 })
@@ -1644,18 +1874,26 @@ impl Interpreter {
 
             Intent::TaskCreate { title, priority } => {
                 let mut args_json = serde_json::Map::new();
-                args_json.insert("title".to_string(), serde_json::Value::String(title.clone()));
+                args_json.insert(
+                    "title".to_string(),
+                    serde_json::Value::String(title.clone()),
+                );
                 if let Some(p) = priority {
                     args_json.insert("priority".to_string(), serde_json::Value::String(p.clone()));
                 }
-                let body = serde_json::json!({"name": "photis_create_task", "arguments": args_json});
+                let body =
+                    serde_json::json!({"name": "photis_create_task", "arguments": args_json});
                 Ok(Translation {
                     command: "curl".to_string(),
                     args: vec![
-                        "-s".to_string(), "-X".to_string(), "POST".to_string(),
+                        "-s".to_string(),
+                        "-X".to_string(),
+                        "POST".to_string(),
                         "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
-                        "-H".to_string(), "Content-Type: application/json".to_string(),
-                        "-d".to_string(), serde_json::to_string(&body).unwrap(),
+                        "-H".to_string(),
+                        "Content-Type: application/json".to_string(),
+                        "-d".to_string(),
+                        serde_json::to_string(&body).unwrap(),
                     ],
                     description: format!("Create task: {}", title),
                     permission: PermissionLevel::Safe,
@@ -1665,18 +1903,26 @@ impl Interpreter {
 
             Intent::TaskUpdate { task_id, status } => {
                 let mut args_json = serde_json::Map::new();
-                args_json.insert("task_id".to_string(), serde_json::Value::String(task_id.clone()));
+                args_json.insert(
+                    "task_id".to_string(),
+                    serde_json::Value::String(task_id.clone()),
+                );
                 if let Some(s) = status {
                     args_json.insert("status".to_string(), serde_json::Value::String(s.clone()));
                 }
-                let body = serde_json::json!({"name": "photis_update_task", "arguments": args_json});
+                let body =
+                    serde_json::json!({"name": "photis_update_task", "arguments": args_json});
                 Ok(Translation {
                     command: "curl".to_string(),
                     args: vec![
-                        "-s".to_string(), "-X".to_string(), "POST".to_string(),
+                        "-s".to_string(),
+                        "-X".to_string(),
+                        "POST".to_string(),
                         "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
-                        "-H".to_string(), "Content-Type: application/json".to_string(),
-                        "-d".to_string(), serde_json::to_string(&body).unwrap(),
+                        "-H".to_string(),
+                        "Content-Type: application/json".to_string(),
+                        "-d".to_string(),
+                        serde_json::to_string(&body).unwrap(),
                     ],
                     description: format!("Update task {}", task_id),
                     permission: PermissionLevel::Safe,
@@ -1689,18 +1935,24 @@ impl Interpreter {
                 if let Some(d) = date {
                     args_json.insert("date".to_string(), serde_json::Value::String(d.clone()));
                 }
-                let body = serde_json::json!({"name": "photis_get_rituals", "arguments": args_json});
+                let body =
+                    serde_json::json!({"name": "photis_get_rituals", "arguments": args_json});
                 Ok(Translation {
                     command: "curl".to_string(),
                     args: vec![
-                        "-s".to_string(), "-X".to_string(), "POST".to_string(),
+                        "-s".to_string(),
+                        "-X".to_string(),
+                        "POST".to_string(),
                         "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
-                        "-H".to_string(), "Content-Type: application/json".to_string(),
-                        "-d".to_string(), serde_json::to_string(&body).unwrap(),
+                        "-H".to_string(),
+                        "Content-Type: application/json".to_string(),
+                        "-d".to_string(),
+                        serde_json::to_string(&body).unwrap(),
                     ],
                     description: "Check daily rituals".to_string(),
                     permission: PermissionLevel::Safe,
-                    explanation: "Retrieves ritual/habit status from Photis Nadi via MCP bridge".to_string(),
+                    explanation: "Retrieves ritual/habit status from Photis Nadi via MCP bridge"
+                        .to_string(),
                 })
             }
 
@@ -1713,14 +1965,24 @@ impl Interpreter {
                 Ok(Translation {
                     command: "curl".to_string(),
                     args: vec![
-                        "-s".to_string(), "-X".to_string(), "POST".to_string(),
+                        "-s".to_string(),
+                        "-X".to_string(),
+                        "POST".to_string(),
                         "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
-                        "-H".to_string(), "Content-Type: application/json".to_string(),
-                        "-d".to_string(), serde_json::to_string(&body).unwrap(),
+                        "-H".to_string(),
+                        "Content-Type: application/json".to_string(),
+                        "-d".to_string(),
+                        serde_json::to_string(&body).unwrap(),
                     ],
-                    description: format!("Productivity analytics{}", period.as_ref().map_or(String::new(), |p| format!(" for {}", p))),
+                    description: format!(
+                        "Productivity analytics{}",
+                        period
+                            .as_ref()
+                            .map_or(String::new(), |p| format!(" for {}", p))
+                    ),
                     permission: PermissionLevel::Safe,
-                    explanation: "Retrieves productivity analytics from Photis Nadi via MCP bridge".to_string(),
+                    explanation: "Retrieves productivity analytics from Photis Nadi via MCP bridge"
+                        .to_string(),
                 })
             }
 
@@ -2222,7 +2484,10 @@ mod tests {
         let interpreter = Interpreter::new();
         // "show" triggers the list pattern first
         let intent = interpreter.parse("show me the content of config.toml");
-        assert!(matches!(intent, Intent::ListFiles { .. } | Intent::ShowFile { .. }));
+        assert!(matches!(
+            intent,
+            Intent::ListFiles { .. } | Intent::ShowFile { .. }
+        ));
     }
 
     #[test]
@@ -2329,7 +2594,9 @@ mod tests {
     #[test]
     fn test_translate_disk_usage() {
         let interpreter = Interpreter::new();
-        let intent = Intent::DiskUsage { path: Some("/home".to_string()) };
+        let intent = Intent::DiskUsage {
+            path: Some("/home".to_string()),
+        };
         let translation = interpreter.translate(&intent).unwrap();
         assert_eq!(translation.command, "df");
         assert!(translation.args.contains(&"-h".to_string()));
@@ -2412,7 +2679,11 @@ mod tests {
     fn test_explain_grep() {
         let interpreter = Interpreter::new();
         let explanation = interpreter.explain("grep", &[]);
-        assert!(explanation.contains("text") || explanation.contains("pattern") || explanation.contains("Search"));
+        assert!(
+            explanation.contains("text")
+                || explanation.contains("pattern")
+                || explanation.contains("Search")
+        );
     }
 
     #[test]
@@ -2427,22 +2698,32 @@ mod tests {
         let interpreter = Interpreter::new();
 
         // ReadOnly for listing
-        let intent = Intent::ListFiles { path: None, options: ListOptions::default() };
+        let intent = Intent::ListFiles {
+            path: None,
+            options: ListOptions::default(),
+        };
         let t = interpreter.translate(&intent).unwrap();
         assert_eq!(t.permission, PermissionLevel::ReadOnly);
 
         // Safe for cd
-        let intent = Intent::ChangeDirectory { path: "/tmp".to_string() };
+        let intent = Intent::ChangeDirectory {
+            path: "/tmp".to_string(),
+        };
         let t = interpreter.translate(&intent).unwrap();
         assert_eq!(t.permission, PermissionLevel::Safe);
 
         // UserWrite for mkdir
-        let intent = Intent::CreateDirectory { path: "/tmp/new".to_string() };
+        let intent = Intent::CreateDirectory {
+            path: "/tmp/new".to_string(),
+        };
         let t = interpreter.translate(&intent).unwrap();
         assert_eq!(t.permission, PermissionLevel::UserWrite);
 
         // UserWrite for copy
-        let intent = Intent::Copy { source: "a".to_string(), destination: "b".to_string() };
+        let intent = Intent::Copy {
+            source: "a".to_string(),
+            destination: "b".to_string(),
+        };
         let t = interpreter.translate(&intent).unwrap();
         assert_eq!(t.permission, PermissionLevel::UserWrite);
     }
@@ -2606,9 +2887,7 @@ mod tests {
     #[test]
     fn test_translate_install_package_empty() {
         let interpreter = Interpreter::new();
-        let intent = Intent::InstallPackage {
-            packages: vec![],
-        };
+        let intent = Intent::InstallPackage { packages: vec![] };
         let t = interpreter.translate(&intent).unwrap();
         assert_eq!(t.command, "apt-get");
         // args should be ["install", "-y"] only
@@ -2641,7 +2920,11 @@ mod tests {
     fn test_translate_ambiguous_error_message_contains_alternatives() {
         let interpreter = Interpreter::new();
         let intent = Intent::Ambiguous {
-            alternatives: vec!["option A".to_string(), "option B".to_string(), "option C".to_string()],
+            alternatives: vec![
+                "option A".to_string(),
+                "option B".to_string(),
+                "option C".to_string(),
+            ],
         };
         let err = interpreter.translate(&intent).unwrap_err();
         let msg = err.to_string();
@@ -2671,9 +2954,18 @@ mod tests {
     #[test]
     fn test_explain_case_insensitive() {
         let interpreter = Interpreter::new();
-        assert_eq!(interpreter.explain("LS", &[]), interpreter.explain("ls", &[]));
-        assert_eq!(interpreter.explain("CAT", &[]), interpreter.explain("cat", &[]));
-        assert_eq!(interpreter.explain("RM", &[]), interpreter.explain("rm", &[]));
+        assert_eq!(
+            interpreter.explain("LS", &[]),
+            interpreter.explain("ls", &[])
+        );
+        assert_eq!(
+            interpreter.explain("CAT", &[]),
+            interpreter.explain("cat", &[])
+        );
+        assert_eq!(
+            interpreter.explain("RM", &[]),
+            interpreter.explain("rm", &[])
+        );
     }
 
     #[test]
@@ -2834,7 +3126,11 @@ mod tests {
     fn test_parse_service_list() {
         let interpreter = Interpreter::new();
         let intent = interpreter.parse("list services");
-        if let Intent::ServiceControl { action, service_name } = intent {
+        if let Intent::ServiceControl {
+            action,
+            service_name,
+        } = intent
+        {
             assert_eq!(action, "list");
             assert!(service_name.is_none());
         } else {
@@ -2846,7 +3142,11 @@ mod tests {
     fn test_parse_service_start() {
         let interpreter = Interpreter::new();
         let intent = interpreter.parse("start service llm-gateway");
-        if let Intent::ServiceControl { action, service_name } = intent {
+        if let Intent::ServiceControl {
+            action,
+            service_name,
+        } = intent
+        {
             assert_eq!(action, "start");
             assert_eq!(service_name.as_deref(), Some("llm-gateway"));
         } else {
@@ -3126,7 +3426,13 @@ mod tests {
     fn test_parse_device_list_all() {
         let interpreter = Interpreter::new();
         let intent = interpreter.parse("list devices");
-        assert!(matches!(intent, Intent::DeviceInfo { subsystem: None, .. }));
+        assert!(matches!(
+            intent,
+            Intent::DeviceInfo {
+                subsystem: None,
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -3209,7 +3515,10 @@ mod tests {
     fn test_parse_mount_list() {
         let interpreter = Interpreter::new();
         let intent = interpreter.parse("list mounts");
-        if let Intent::MountControl { action, filesystem, .. } = intent {
+        if let Intent::MountControl {
+            action, filesystem, ..
+        } = intent
+        {
             assert_eq!(action, "list");
             assert!(filesystem.is_none());
         } else {
@@ -3221,7 +3530,10 @@ mod tests {
     fn test_parse_mount_list_fuse() {
         let interpreter = Interpreter::new();
         let intent = interpreter.parse("show fuse mounts");
-        if let Intent::MountControl { action, filesystem, .. } = intent {
+        if let Intent::MountControl {
+            action, filesystem, ..
+        } = intent
+        {
             assert_eq!(action, "list");
             assert_eq!(filesystem.as_deref(), Some("fuse"));
         } else {
@@ -3233,7 +3545,10 @@ mod tests {
     fn test_parse_unmount() {
         let interpreter = Interpreter::new();
         let intent = interpreter.parse("unmount /mnt/agent-data");
-        if let Intent::MountControl { action, mountpoint, .. } = intent {
+        if let Intent::MountControl {
+            action, mountpoint, ..
+        } = intent
+        {
             assert_eq!(action, "unmount");
             assert_eq!(mountpoint.as_deref(), Some("/mnt/agent-data"));
         } else {
@@ -3798,7 +4113,9 @@ mod tests {
     #[test]
     fn test_translate_task_list() {
         let interpreter = Interpreter::new();
-        let intent = Intent::TaskList { status: Some("in_progress".to_string()) };
+        let intent = Intent::TaskList {
+            status: Some("in_progress".to_string()),
+        };
         let t = interpreter.translate(&intent).unwrap();
         assert_eq!(t.command, "curl");
         let body = t.args.last().unwrap();
@@ -3809,7 +4126,10 @@ mod tests {
     #[test]
     fn test_translate_task_create() {
         let interpreter = Interpreter::new();
-        let intent = Intent::TaskCreate { title: "fix bug".to_string(), priority: Some("high".to_string()) };
+        let intent = Intent::TaskCreate {
+            title: "fix bug".to_string(),
+            priority: Some("high".to_string()),
+        };
         let t = interpreter.translate(&intent).unwrap();
         assert_eq!(t.command, "curl");
         let body = t.args.last().unwrap();
@@ -3821,7 +4141,10 @@ mod tests {
     #[test]
     fn test_translate_task_update() {
         let interpreter = Interpreter::new();
-        let intent = Intent::TaskUpdate { task_id: "abc".to_string(), status: Some("done".to_string()) };
+        let intent = Intent::TaskUpdate {
+            task_id: "abc".to_string(),
+            status: Some("done".to_string()),
+        };
         let t = interpreter.translate(&intent).unwrap();
         assert_eq!(t.command, "curl");
         let body = t.args.last().unwrap();
@@ -3843,7 +4166,9 @@ mod tests {
     #[test]
     fn test_translate_productivity_stats() {
         let interpreter = Interpreter::new();
-        let intent = Intent::ProductivityStats { period: Some("week".to_string()) };
+        let intent = Intent::ProductivityStats {
+            period: Some("week".to_string()),
+        };
         let t = interpreter.translate(&intent).unwrap();
         assert_eq!(t.command, "curl");
         let body = t.args.last().unwrap();
@@ -3857,7 +4182,9 @@ mod tests {
         let intent = Intent::TaskList { status: None };
         let t = interpreter.translate(&intent).unwrap();
         assert_eq!(t.command, "curl");
-        assert!(t.args.contains(&"http://127.0.0.1:8090/v1/mcp/tools/call".to_string()));
+        assert!(t
+            .args
+            .contains(&"http://127.0.0.1:8090/v1/mcp/tools/call".to_string()));
     }
 
     // Negative tests - ensure non-matching inputs don't produce task intents
@@ -4012,7 +4339,9 @@ mod tests {
         };
         let t = interpreter.translate(&intent).unwrap();
         assert_eq!(t.command, "curl");
-        assert!(t.args.contains(&"http://127.0.0.1:8090/v1/ark/install".to_string()));
+        assert!(t
+            .args
+            .contains(&"http://127.0.0.1:8090/v1/ark/install".to_string()));
         let body = t.args.last().unwrap();
         assert!(body.contains("nginx"));
     }

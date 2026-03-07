@@ -97,8 +97,8 @@ impl ForecastWindow {
 
         // Threshold for "stable" — small absolute slope
         let threshold = match metric {
-            "cpu" => 0.001,     // % per second
-            "memory" => 100.0,  // bytes per second
+            "cpu" => 0.001,    // % per second
+            "memory" => 100.0, // bytes per second
             _ => 0.001,
         };
 
@@ -122,11 +122,7 @@ impl ForecastWindow {
         let mut alerts = Vec::new();
 
         if let Some(predicted_cpu) = self.forecast_cpu(within_minutes) {
-            let current_cpu = self
-                .samples
-                .last()
-                .map(|s| s.cpu_percent)
-                .unwrap_or(0.0);
+            let current_cpu = self.samples.last().map(|s| s.cpu_percent).unwrap_or(0.0);
             if predicted_cpu > cpu_limit {
                 let ttb = self.time_to_breach_cpu(cpu_limit);
                 alerts.push(ResourceAlert {
@@ -350,7 +346,7 @@ mod tests {
         fw.add_sample(make_sample(120, 30.0, 1000));
 
         let predicted = fw.forecast_cpu(1).unwrap(); // 1 minute ahead
-        // Slope is ~0.1667 %/s, so at 180s: ~40%
+                                                     // Slope is ~0.1667 %/s, so at 180s: ~40%
         assert!(predicted > 30.0, "predicted {} should be > 30", predicted);
     }
 
@@ -362,7 +358,11 @@ mod tests {
         fw.add_sample(make_sample(120, 10.0, 3_000_000));
 
         let predicted = fw.forecast_memory(1).unwrap();
-        assert!(predicted > 3_000_000, "predicted {} should be > 3M", predicted);
+        assert!(
+            predicted > 3_000_000,
+            "predicted {} should be > 3M",
+            predicted
+        );
     }
 
     #[test]

@@ -600,18 +600,11 @@ pub enum ParsedOutput {
         query: String,
     },
     /// Route hops from traceroute/mtr
-    TraceResult {
-        hops: Vec<TraceHop>,
-        target: String,
-    },
+    TraceResult { hops: Vec<TraceHop>, target: String },
     /// Socket listing from ss
-    SocketList {
-        sockets: Vec<SocketEntry>,
-    },
+    SocketList { sockets: Vec<SocketEntry> },
     /// Raw output when no parser is available
-    Raw {
-        summary: String,
-    },
+    Raw { summary: String },
 }
 
 /// Parse nmap/masscan output into structured hosts+ports
@@ -816,23 +809,30 @@ pub fn parse_trace_output(stdout: &str, target: &str) -> ParsedOutput {
 
         // Extract address and optional hostname
         let (hostname, address) = if parts.len() >= 3 && parts[2].starts_with('(') {
-            let addr = parts[2].trim_matches(|c: char| c == '(' || c == ')').to_string();
+            let addr = parts[2]
+                .trim_matches(|c: char| c == '(' || c == ')')
+                .to_string();
             (Some(parts[1].to_string()), Some(addr))
         } else if parts.len() >= 2 {
-            let addr = parts[1].trim_matches(|c: char| c == '(' || c == ')').to_string();
+            let addr = parts[1]
+                .trim_matches(|c: char| c == '(' || c == ')')
+                .to_string();
             (None, Some(addr))
         } else {
             (None, None)
         };
 
         // Extract RTT (first ms value found)
-        let rtt_ms = parts.iter().find_map(|p| {
-            p.trim_end_matches("ms").parse::<f64>().ok()
-        });
+        let rtt_ms = parts
+            .iter()
+            .find_map(|p| p.trim_end_matches("ms").parse::<f64>().ok());
 
         // Extract loss percentage (mtr format: "0.0%")
         let loss_pct = parts.iter().find_map(|p| {
-            p.trim_end_matches('%').parse::<f64>().ok().filter(|_| p.ends_with('%'))
+            p.trim_end_matches('%')
+                .parse::<f64>()
+                .ok()
+                .filter(|_| p.ends_with('%'))
         });
 
         hops.push(TraceHop {
@@ -887,7 +887,9 @@ pub fn parse_socket_output(stdout: &str) -> ParsedOutput {
 /// Parse tool output into structured results based on tool type
 pub fn parse_output(output: &ToolOutput, target: Option<&str>) -> ParsedOutput {
     match output.tool {
-        NetworkTool::PortScan | NetworkTool::PingSweep | NetworkTool::ServiceScan
+        NetworkTool::PortScan
+        | NetworkTool::PingSweep
+        | NetworkTool::ServiceScan
         | NetworkTool::MassScan => parse_scan_output(&output.stdout, output.tool),
         NetworkTool::DnsLookup | NetworkTool::DnsEnum => {
             parse_dns_output(&output.stdout, target.unwrap_or("unknown"))
@@ -901,7 +903,10 @@ pub fn parse_output(output: &ToolOutput, target: Option<&str>) -> ParsedOutput {
             let summary = if output.exit_code == 0 {
                 format!("{} completed ({} lines of output)", output.tool, line_count)
             } else {
-                format!("{} exited with code {} ({} lines)", output.tool, output.exit_code, line_count)
+                format!(
+                    "{} exited with code {} ({} lines)",
+                    output.tool, output.exit_code, line_count
+                )
             };
             ParsedOutput::Raw { summary }
         }
@@ -942,7 +947,12 @@ pub fn validate_target(target: &str) -> Result<ValidatedTarget> {
     }
 
     // Reject shell metacharacters
-    if target.chars().any(|c| matches!(c, ';' | '|' | '&' | '$' | '`' | '(' | ')' | '{' | '}' | '>' | '<' | '!' | '\\')) {
+    if target.chars().any(|c| {
+        matches!(
+            c,
+            ';' | '|' | '&' | '$' | '`' | '(' | ')' | '{' | '}' | '>' | '<' | '!' | '\\'
+        )
+    }) {
         return Err(anyhow!("Target contains illegal characters"));
     }
 
@@ -998,12 +1008,12 @@ fn validate_hostname(host: &str) -> Result<()> {
     }
     for label in host.split('.') {
         if label.is_empty() || label.len() > 63 {
-            return Err(anyhow!("Hostname label '{}' must be 1-63 characters", label));
+            return Err(anyhow!(
+                "Hostname label '{}' must be 1-63 characters",
+                label
+            ));
         }
-        if !label
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-')
-        {
+        if !label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
             return Err(anyhow!(
                 "Hostname label '{}' contains invalid characters",
                 label
@@ -1071,7 +1081,9 @@ pub fn validate_args(tool: NetworkTool, args: &[String], allow_dangerous: bool) 
                 }
                 // Reject extremely high rates
                 if joined.contains("--rate") {
-                    if let Some(rate_val) = joined.split("--rate").nth(1)
+                    if let Some(rate_val) = joined
+                        .split("--rate")
+                        .nth(1)
                         .and_then(|s| s.trim().split_whitespace().next())
                         .and_then(|s| s.trim_start_matches('=').parse::<u64>().ok())
                     {
@@ -1089,9 +1101,7 @@ pub fn validate_args(tool: NetworkTool, args: &[String], allow_dangerous: bool) 
             if !allow_dangerous {
                 // Reject custom template paths (could be malicious)
                 if joined.contains("-t ") || joined.contains("--templates") {
-                    return Err(anyhow!(
-                        "Custom nuclei templates require explicit approval"
-                    ));
+                    return Err(anyhow!("Custom nuclei templates require explicit approval"));
                 }
             }
         }
@@ -1317,7 +1327,10 @@ impl NetworkToolRunner {
 
     /// List all known tool configurations (whether installed or not)
     pub fn list_all_tools() -> Vec<NetworkToolConfig> {
-        ALL_TOOLS.iter().map(|t| NetworkToolConfig::for_tool(*t)).collect()
+        ALL_TOOLS
+            .iter()
+            .map(|t| NetworkToolConfig::for_tool(*t))
+            .collect()
     }
 }
 
@@ -2143,10 +2156,7 @@ mod tests {
     #[test]
     fn test_validate_target_hostname() {
         let result = validate_target("example.com").unwrap();
-        assert_eq!(
-            result,
-            ValidatedTarget::Hostname("example.com".to_string())
-        );
+        assert_eq!(result, ValidatedTarget::Hostname("example.com".to_string()));
     }
 
     #[test]
@@ -2311,7 +2321,10 @@ mod tests {
     #[test]
     fn test_all_tools_constant_matches_variants() {
         // Verify ALL_TOOLS covers every variant
-        let configs: Vec<_> = ALL_TOOLS.iter().map(|t| NetworkToolConfig::for_tool(*t)).collect();
+        let configs: Vec<_> = ALL_TOOLS
+            .iter()
+            .map(|t| NetworkToolConfig::for_tool(*t))
+            .collect();
         assert!(configs.iter().any(|c| c.tool == NetworkTool::PortScan));
         assert!(configs.iter().any(|c| c.tool == NetworkTool::PingSweep));
         assert!(configs.iter().any(|c| c.tool == NetworkTool::DnsLookup));
@@ -2333,8 +2346,12 @@ mod tests {
         assert!(configs.iter().any(|c| c.tool == NetworkTool::DnsEnum));
         assert!(configs.iter().any(|c| c.tool == NetworkTool::DirFuzz));
         assert!(configs.iter().any(|c| c.tool == NetworkTool::VulnScanner));
-        assert!(configs.iter().any(|c| c.tool == NetworkTool::BandwidthMonitor));
-        assert!(configs.iter().any(|c| c.tool == NetworkTool::PassiveFingerprint));
+        assert!(configs
+            .iter()
+            .any(|c| c.tool == NetworkTool::BandwidthMonitor));
+        assert!(configs
+            .iter()
+            .any(|c| c.tool == NetworkTool::PassiveFingerprint));
         assert!(configs.iter().any(|c| c.tool == NetworkTool::NetDiscover));
         assert!(configs.iter().any(|c| c.tool == NetworkTool::TermShark));
         assert!(configs.iter().any(|c| c.tool == NetworkTool::BetterCap));
@@ -2691,9 +2708,7 @@ LISTEN   0       128     0.0.0.0:80          0.0.0.0:*          users:((\"nginx\
 
     #[test]
     fn test_port_scanner_masscan_args() {
-        let scanner = PortScanner::new()
-            .use_masscan(true)
-            .ports("1-1000");
+        let scanner = PortScanner::new().use_masscan(true).ports("1-1000");
         let args = scanner.build_args();
         assert!(args.contains(&"-p".to_string()));
         assert!(args.contains(&"1-1000".to_string()));
@@ -2740,9 +2755,7 @@ LISTEN   0       128     0.0.0.0:80          0.0.0.0:*          users:((\"nginx\
 
     #[test]
     fn test_network_prober_mtr_args() {
-        let prober = NetworkProber::new()
-            .use_mtr(true)
-            .max_hops(15);
+        let prober = NetworkProber::new().use_mtr(true).max_hops(15);
         let args = prober.build_args();
         assert!(args.contains(&"-m".to_string()));
         assert!(args.contains(&"15".to_string()));
@@ -2787,9 +2800,7 @@ LISTEN   0       128     0.0.0.0:80          0.0.0.0:*          users:((\"nginx\
 
     #[test]
     fn test_traffic_analyzer_tshark() {
-        let ta = TrafficAnalyzer::new()
-            .use_tshark()
-            .interface("wlan0");
+        let ta = TrafficAnalyzer::new().use_tshark().interface("wlan0");
         assert_eq!(ta.tool_choice, NetworkTool::DeepInspect);
         let args = ta.build_args();
         assert!(args.contains(&"-i".to_string()));
@@ -2864,9 +2875,7 @@ LISTEN   0       128     0.0.0.0:80          0.0.0.0:*          users:((\"nginx\
 
     #[test]
     fn test_socket_inspector_listening_tcp() {
-        let si = SocketInspector::new()
-            .listening_only(true)
-            .tcp_only(true);
+        let si = SocketInspector::new().listening_only(true).tcp_only(true);
         let args = si.build_args();
         let flags = &args[0];
         assert!(flags.contains('l'));
@@ -2989,7 +2998,11 @@ LISTEN   0       128     0.0.0.0:80          0.0.0.0:*          users:((\"nginx\
 
     #[test]
     fn test_reject_sqlmap_os_shell() {
-        let args = vec!["--os-shell".to_string(), "-u".to_string(), "http://target.com".to_string()];
+        let args = vec![
+            "--os-shell".to_string(),
+            "-u".to_string(),
+            "http://target.com".to_string(),
+        ];
         assert!(validate_args(NetworkTool::SqlMap, &args, false).is_err());
     }
 
@@ -3013,7 +3026,11 @@ LISTEN   0       128     0.0.0.0:80          0.0.0.0:*          users:((\"nginx\
 
     #[test]
     fn test_allow_sqlmap_normal_args() {
-        let args = vec!["-u".to_string(), "http://target.com/page?id=1".to_string(), "--batch".to_string()];
+        let args = vec![
+            "-u".to_string(),
+            "http://target.com/page?id=1".to_string(),
+            "--batch".to_string(),
+        ];
         assert!(validate_args(NetworkTool::SqlMap, &args, false).is_ok());
     }
 

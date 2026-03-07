@@ -11,9 +11,9 @@ use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::{mpsc, RwLock};
 use tracing::{debug, error, info, warn};
 
-use agnos_common::{AgentId, Message};
 #[cfg(test)]
 use agnos_common::MessageType;
+use agnos_common::{AgentId, Message};
 #[cfg(test)]
 use uuid::Uuid;
 
@@ -39,7 +39,7 @@ impl AgentIpc {
     pub fn new(agent_id: AgentId) -> Result<(Self, mpsc::Receiver<Message>)> {
         let socket_path = std::path::PathBuf::from(format!("/run/agnos/agents/{}.sock", agent_id));
         let (message_tx, message_rx) = mpsc::channel(100);
-        
+
         let ipc = Self {
             agent_id,
             socket_path,
@@ -75,11 +75,16 @@ impl AgentIpc {
                 .with_context(|| "Failed to set socket permissions")?;
         }
 
-        info!("Agent {} IPC listening on {}", self.agent_id, self.socket_path.display());
+        info!(
+            "Agent {} IPC listening on {}",
+            self.agent_id,
+            self.socket_path.display()
+        );
 
         let tx = self.message_tx.clone();
         let agent_id = self.agent_id;
-        let conn_semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(MAX_CONCURRENT_CONNECTIONS));
+        let conn_semaphore =
+            std::sync::Arc::new(tokio::sync::Semaphore::new(MAX_CONCURRENT_CONNECTIONS));
 
         tokio::spawn(async move {
             loop {
@@ -112,7 +117,9 @@ impl AgentIpc {
 
     /// Send a message to this agent
     pub async fn send(&self, message: Message) -> Result<()> {
-        self.message_tx.send(message).await
+        self.message_tx
+            .send(message)
+            .await
             .map_err(|_| anyhow::anyhow!("Failed to send message"))?;
         Ok(())
     }
@@ -139,7 +146,11 @@ const NACK_INVALID: u8 = 0x03;
 /// Messages larger than `MAX_MESSAGE_SIZE` are rejected and the connection is closed.
 /// When the agent's message queue is full, the sender receives NACK_QUEUE_FULL and
 /// can choose to retry after a delay, providing explicit flow-control signalling.
-async fn handle_connection(mut stream: UnixStream, tx: mpsc::Sender<Message>, owner_agent_id: AgentId) {
+async fn handle_connection(
+    mut stream: UnixStream,
+    tx: mpsc::Sender<Message>,
+    owner_agent_id: AgentId,
+) {
     let mut len_buf = [0u8; 4];
 
     loop {
@@ -234,17 +245,20 @@ impl MessageBus {
     pub async fn subscribe(&self, agent_id: AgentId, sender: mpsc::Sender<Message>) {
         self.subscribers.write().await.insert(agent_id, sender);
     }
-    
+
     /// Register an agent by name for routing
     pub async fn register_agent_name(&self, agent_id: AgentId, name: &str) {
-        self.agent_names.write().await.insert(name.to_string(), agent_id);
+        self.agent_names
+            .write()
+            .await
+            .insert(name.to_string(), agent_id);
     }
-    
+
     /// Unregister an agent name
     pub async fn unregister_agent_name(&self, name: &str) {
         self.agent_names.write().await.remove(name);
     }
-    
+
     /// Get agent ID by name
     pub async fn get_agent_id(&self, name: &str) -> Option<AgentId> {
         self.agent_names.read().await.get(name).cloned()
@@ -279,17 +293,19 @@ impl MessageBus {
                 let names = self.agent_names.read().await;
                 names.get(&message.target).cloned()
             };
-            
+
             if let Some(target_id) = agent_id {
                 // Send to specific agent
                 let subscribers = self.subscribers.read().await;
                 if let Some(sender) = subscribers.get(&target_id) {
-                    sender.send(message).await
+                    sender
+                        .send(message)
+                        .await
                         .map_err(|_| anyhow::anyhow!("Failed to send message to agent"))?;
                 }
                 return Ok(());
             }
-            
+
             // Agent not found - could broadcast instead or return error
             debug!("Message target {} not found, broadcasting", message.target);
         }
@@ -316,23 +332,25 @@ impl MessageBus {
     /// Send a message to a specific agent
     pub async fn send_to(&self, agent_id: AgentId, message: Message) -> Result<()> {
         let subscribers = self.subscribers.read().await;
-        
+
         if let Some(sender) = subscribers.get(&agent_id) {
-            sender.send(message).await
+            sender
+                .send(message)
+                .await
                 .map_err(|_| anyhow::anyhow!("Failed to send message"))?;
             Ok(())
         } else {
             Err(anyhow::anyhow!("Agent {} not subscribed", agent_id))
         }
     }
-    
+
     /// Send a message to a specific agent by name
     pub async fn send_to_name(&self, name: &str, message: Message) -> Result<()> {
         let agent_id = {
             let names = self.agent_names.read().await;
             names.get(name).cloned()
         };
-        
+
         match agent_id {
             Some(id) => self.send_to(id, message).await,
             None => Err(anyhow::anyhow!("Agent {} not found", name)),
@@ -361,7 +379,10 @@ pub struct RpcError {
 
 impl RpcError {
     pub fn new(code: i32, message: impl Into<String>) -> Self {
-        Self { code, message: message.into() }
+        Self {
+            code,
+            message: message.into(),
+        }
     }
 
     /// Method not found in the registry.
@@ -371,7 +392,10 @@ impl RpcError {
 
     /// Request timed out waiting for a response.
     pub fn timeout(method: &str, timeout_ms: u64) -> Self {
-        Self::new(-2, format!("RPC call to '{}' timed out after {}ms", method, timeout_ms))
+        Self::new(
+            -2,
+            format!("RPC call to '{}' timed out after {}ms", method, timeout_ms),
+        )
     }
 
     /// Internal / unspecified error.
@@ -434,12 +458,20 @@ pub struct RpcResponse {
 impl RpcResponse {
     /// Create a successful response.
     pub fn success(request_id: uuid::Uuid, value: serde_json::Value, duration_ms: u64) -> Self {
-        Self { request_id, result: Ok(value), duration_ms }
+        Self {
+            request_id,
+            result: Ok(value),
+            duration_ms,
+        }
     }
 
     /// Create an error response.
     pub fn error(request_id: uuid::Uuid, err: RpcError, duration_ms: u64) -> Self {
-        Self { request_id, result: Err(err), duration_ms }
+        Self {
+            request_id,
+            result: Err(err),
+            duration_ms,
+        }
     }
 }
 
@@ -529,7 +561,9 @@ impl RpcRouter {
     /// Issue an RPC call. Returns the response or an error (timeout / no handler).
     pub async fn call(&self, request: RpcRequest) -> Result<RpcResponse> {
         // Verify a handler exists
-        let _handler = self.registry.find_handler(&request.method)
+        let _handler = self
+            .registry
+            .find_handler(&request.method)
             .ok_or_else(|| anyhow::anyhow!("{}", RpcError::method_not_found(&request.method)))?;
 
         let (tx, rx) = tokio::sync::oneshot::channel();
@@ -538,36 +572,51 @@ impl RpcRouter {
         let method = request.method.clone();
 
         {
-            let mut pending = self.pending.lock().map_err(|_| anyhow::anyhow!("Lock poisoned"))?;
-            pending.insert(request_id, PendingCall {
-                sender: tx,
-                _sent_at: std::time::Instant::now(),
-            });
+            let mut pending = self
+                .pending
+                .lock()
+                .map_err(|_| anyhow::anyhow!("Lock poisoned"))?;
+            pending.insert(
+                request_id,
+                PendingCall {
+                    sender: tx,
+                    _sent_at: std::time::Instant::now(),
+                },
+            );
         }
 
         // Wait for response with timeout
         if timeout_ms > 0 {
-            match tokio::time::timeout(
-                std::time::Duration::from_millis(timeout_ms),
-                rx,
-            ).await {
+            match tokio::time::timeout(std::time::Duration::from_millis(timeout_ms), rx).await {
                 Ok(Ok(response)) => Ok(response),
                 Ok(Err(_)) => {
                     // Channel dropped — handler disappeared
                     self.cleanup_pending(&request_id);
-                    Ok(RpcResponse::error(request_id, RpcError::internal("Handler dropped"), 0))
+                    Ok(RpcResponse::error(
+                        request_id,
+                        RpcError::internal("Handler dropped"),
+                        0,
+                    ))
                 }
                 Err(_) => {
                     // Timeout
                     self.cleanup_pending(&request_id);
-                    Ok(RpcResponse::error(request_id, RpcError::timeout(&method, timeout_ms), timeout_ms))
+                    Ok(RpcResponse::error(
+                        request_id,
+                        RpcError::timeout(&method, timeout_ms),
+                        timeout_ms,
+                    ))
                 }
             }
         } else {
             // No timeout — wait indefinitely
             match rx.await {
                 Ok(response) => Ok(response),
-                Err(_) => Ok(RpcResponse::error(request_id, RpcError::internal("Handler dropped"), 0)),
+                Err(_) => Ok(RpcResponse::error(
+                    request_id,
+                    RpcError::internal("Handler dropped"),
+                    0,
+                )),
             }
         }
     }
@@ -598,7 +647,7 @@ impl RpcRouter {
     }
 }
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[cfg(test)]
 mod tests {
@@ -623,9 +672,9 @@ mod tests {
         let bus = MessageBus::new();
         let agent_id = AgentId::new();
         let (tx, _rx) = mpsc::channel(10);
-        
+
         bus.subscribe(agent_id, tx).await;
-        
+
         let subscribers = bus.subscribers.read().await;
         assert!(subscribers.contains_key(&agent_id));
     }
@@ -635,10 +684,10 @@ mod tests {
         let bus = MessageBus::new();
         let agent_id = AgentId::new();
         let (tx, _rx) = mpsc::channel(10);
-        
+
         bus.subscribe(agent_id, tx).await;
         bus.unsubscribe(agent_id).await;
-        
+
         let subscribers = bus.subscribers.read().await;
         assert!(!subscribers.contains_key(&agent_id));
     }
@@ -694,9 +743,9 @@ mod tests {
         let bus = MessageBus::new();
         let agent_id = AgentId::new();
         let (tx, mut rx) = mpsc::channel(10);
-        
+
         bus.subscribe(agent_id, tx).await;
-        
+
         let message = Message {
             id: Uuid::new_v4().to_string(),
             source: "test".to_string(),
@@ -705,10 +754,10 @@ mod tests {
             payload: serde_json::json!({"test": "data"}),
             timestamp: chrono::Utc::now(),
         };
-        
+
         let result = bus.send_to(agent_id, message).await;
         assert!(result.is_ok());
-        
+
         let received = rx.recv().await;
         assert!(received.is_some());
     }
@@ -717,7 +766,7 @@ mod tests {
     async fn test_message_bus_send_to_nonexistent() {
         let bus = MessageBus::new();
         let agent_id = AgentId::new();
-        
+
         let message = Message {
             id: Uuid::new_v4().to_string(),
             source: "test".to_string(),
@@ -726,7 +775,7 @@ mod tests {
             payload: serde_json::json!({}),
             timestamp: chrono::Utc::now(),
         };
-        
+
         let result = bus.send_to(agent_id, message).await;
         assert!(result.is_err());
     }
@@ -736,9 +785,9 @@ mod tests {
         let bus = MessageBus::new();
         let agent_id = AgentId::new();
         let (tx, mut rx) = mpsc::channel(10);
-        
+
         bus.subscribe(agent_id, tx).await;
-        
+
         let message = Message {
             id: Uuid::new_v4().to_string(),
             source: "test".to_string(),
@@ -747,10 +796,10 @@ mod tests {
             payload: serde_json::json!({}),
             timestamp: chrono::Utc::now(),
         };
-        
+
         let result = bus.publish(message).await;
         assert!(result.is_ok());
-        
+
         let received = rx.recv().await;
         assert!(received.is_some());
     }
@@ -766,35 +815,35 @@ mod tests {
     async fn test_message_bus_register_agent_name() {
         let bus = MessageBus::new();
         let agent_id = AgentId::new();
-        
+
         bus.register_agent_name(agent_id, "test-agent").await;
-        
+
         let resolved = bus.get_agent_id("test-agent").await;
         assert!(resolved.is_some());
         assert_eq!(resolved.unwrap(), agent_id);
     }
-    
+
     #[tokio::test]
     async fn test_message_bus_unregister_agent_name() {
         let bus = MessageBus::new();
         let agent_id = AgentId::new();
-        
+
         bus.register_agent_name(agent_id, "test-agent").await;
         bus.unregister_agent_name("test-agent").await;
-        
+
         let resolved = bus.get_agent_id("test-agent").await;
         assert!(resolved.is_none());
     }
-    
+
     #[tokio::test]
     async fn test_message_bus_send_to_name() {
         let bus = MessageBus::new();
         let agent_id = AgentId::new();
         let (tx, mut rx) = mpsc::channel(10);
-        
+
         bus.subscribe(agent_id, tx).await;
         bus.register_agent_name(agent_id, "my-agent").await;
-        
+
         let message = Message {
             id: Uuid::new_v4().to_string(),
             source: "test".to_string(),
@@ -803,18 +852,18 @@ mod tests {
             payload: serde_json::json!({"test": "data"}),
             timestamp: chrono::Utc::now(),
         };
-        
+
         let result = bus.send_to_name("my-agent", message).await;
         assert!(result.is_ok());
-        
+
         let received = rx.recv().await;
         assert!(received.is_some());
     }
-    
+
     #[tokio::test]
     async fn test_message_bus_send_to_name_not_found() {
         let bus = MessageBus::new();
-        
+
         let message = Message {
             id: Uuid::new_v4().to_string(),
             source: "test".to_string(),
@@ -823,11 +872,11 @@ mod tests {
             payload: serde_json::json!({}),
             timestamp: chrono::Utc::now(),
         };
-        
+
         let result = bus.send_to_name("nonexistent", message).await;
         assert!(result.is_err());
     }
-    
+
     #[tokio::test]
     async fn test_message_bus_publish_routes_by_name() {
         let bus = MessageBus::new();
@@ -1071,10 +1120,9 @@ mod tests {
         drop(client); // Close connection
 
         // Should receive the message
-        let received = tokio::time::timeout(
-            std::time::Duration::from_secs(2),
-            rx.recv(),
-        ).await.unwrap();
+        let received = tokio::time::timeout(std::time::Duration::from_secs(2), rx.recv())
+            .await
+            .unwrap();
         assert!(received.is_some());
         assert_eq!(received.unwrap().id, "conn-test");
 
@@ -1106,10 +1154,7 @@ mod tests {
         drop(client);
 
         // Handler should close the connection without forwarding any message
-        let received = tokio::time::timeout(
-            std::time::Duration::from_millis(500),
-            rx.recv(),
-        ).await;
+        let received = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv()).await;
         // Either timeout or None
         assert!(received.is_err() || received.unwrap().is_none());
 
@@ -1148,7 +1193,10 @@ mod tests {
             timestamp: chrono::Utc::now(),
         };
         let bytes = serde_json::to_vec(&msg).unwrap();
-        client.write_all(&(bytes.len() as u32).to_be_bytes()).await.unwrap();
+        client
+            .write_all(&(bytes.len() as u32).to_be_bytes())
+            .await
+            .unwrap();
         client.write_all(&bytes).await.unwrap();
 
         // Read ACK
@@ -1158,10 +1206,9 @@ mod tests {
 
         drop(client);
 
-        let received = tokio::time::timeout(
-            std::time::Duration::from_secs(2),
-            rx.recv(),
-        ).await.unwrap();
+        let received = tokio::time::timeout(std::time::Duration::from_secs(2), rx.recv())
+            .await
+            .unwrap();
         assert!(received.is_some());
         assert_eq!(received.unwrap().id, "after-zero");
 
@@ -1189,7 +1236,10 @@ mod tests {
 
         // Send invalid JSON bytes
         let garbage = b"this is not json";
-        client.write_all(&(garbage.len() as u32).to_be_bytes()).await.unwrap();
+        client
+            .write_all(&(garbage.len() as u32).to_be_bytes())
+            .await
+            .unwrap();
         client.write_all(garbage).await.unwrap();
 
         // Should receive a NACK_INVALID response
@@ -1200,10 +1250,7 @@ mod tests {
         drop(client);
 
         // Handler should not forward any message
-        let received = tokio::time::timeout(
-            std::time::Duration::from_millis(500),
-            rx.recv(),
-        ).await;
+        let received = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv()).await;
         assert!(received.is_err() || received.unwrap().is_none());
 
         let _ = std::fs::remove_file(&sock_path);
@@ -1265,7 +1312,10 @@ mod tests {
 
         // First message: should get ACK
         let bytes = make_msg("msg-1");
-        client.write_all(&(bytes.len() as u32).to_be_bytes()).await.unwrap();
+        client
+            .write_all(&(bytes.len() as u32).to_be_bytes())
+            .await
+            .unwrap();
         client.write_all(&bytes).await.unwrap();
         let mut resp = [0u8; 1];
         client.read_exact(&mut resp).await.unwrap();
@@ -1273,7 +1323,10 @@ mod tests {
 
         // Second message: queue full, should get NACK
         let bytes = make_msg("msg-2");
-        client.write_all(&(bytes.len() as u32).to_be_bytes()).await.unwrap();
+        client
+            .write_all(&(bytes.len() as u32).to_be_bytes())
+            .await
+            .unwrap();
         client.write_all(&bytes).await.unwrap();
         client.read_exact(&mut resp).await.unwrap();
         assert_eq!(resp[0], NACK_QUEUE_FULL);
@@ -1463,8 +1516,7 @@ mod tests {
     #[test]
     fn test_rpc_request_with_timeout() {
         let sender = AgentId::new();
-        let req = RpcRequest::new(sender, "slow_op", serde_json::json!({}))
-            .with_timeout(30000);
+        let req = RpcRequest::new(sender, "slow_op", serde_json::json!({})).with_timeout(30000);
         assert_eq!(req.timeout_ms, 30000);
     }
 
@@ -1625,8 +1677,7 @@ mod tests {
 
         let router = RpcRouter::new(reg);
 
-        let req = RpcRequest::new(AgentId::new(), "slow", serde_json::json!({}))
-            .with_timeout(50); // very short timeout
+        let req = RpcRequest::new(AgentId::new(), "slow", serde_json::json!({})).with_timeout(50); // very short timeout
 
         // Nobody delivers a response, so it should time out
         let resp = router.call(req).await.unwrap();

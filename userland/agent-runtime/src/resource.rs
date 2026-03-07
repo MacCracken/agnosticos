@@ -54,10 +54,10 @@ impl ResourceManager {
 
         // Detect GPUs
         let gpus = Self::detect_gpus().await?;
-        
+
         // Detect system memory
         let total_memory = Self::detect_system_memory().await?;
-        
+
         info!("Detected {} GPU(s)", gpus.len());
         info!("Total system memory: {} MB", total_memory / (1024 * 1024));
 
@@ -72,23 +72,27 @@ impl ResourceManager {
 
     /// Allocate GPU resources to an agent
     pub async fn allocate_gpu(&self, agent_id: AgentId, memory_required: u64) -> Result<Vec<u32>> {
-        debug!("Allocating GPU for agent {} ({} bytes)", agent_id, memory_required);
+        debug!(
+            "Allocating GPU for agent {} ({} bytes)",
+            agent_id, memory_required
+        );
 
         let mut gpus = self.gpus.write().await;
         let mut allocations = self.gpu_allocations.write().await;
 
         // Find GPU with sufficient memory
         let mut allocated_gpus = Vec::new();
-        
+
         for gpu in gpus.iter_mut() {
             let available = gpu.available_memory.load(Ordering::Relaxed);
 
             if available >= memory_required {
-                gpu.available_memory.fetch_sub(memory_required, Ordering::Relaxed);
-                
+                gpu.available_memory
+                    .fetch_sub(memory_required, Ordering::Relaxed);
+
                 allocated_gpus.push(gpu.id);
                 info!("Allocated GPU {} to agent {}", gpu.id, agent_id);
-                
+
                 if !allocated_gpus.is_empty() {
                     // For now, only allocate one GPU per agent
                     break;
@@ -109,14 +113,15 @@ impl ResourceManager {
         debug!("Releasing GPU allocation for agent {}", agent_id);
 
         let mut allocations = self.gpu_allocations.write().await;
-        
+
         if let Some(gpu_ids) = allocations.remove(&agent_id) {
             let mut gpus = self.gpus.write().await;
-            
+
             for gpu_id in gpu_ids {
                 if let Some(gpu) = gpus.iter_mut().find(|g| g.id == gpu_id) {
                     // Restore full GPU memory (simplified)
-                    gpu.available_memory.store(gpu.total_memory, Ordering::Relaxed);
+                    gpu.available_memory
+                        .store(gpu.total_memory, Ordering::Relaxed);
                     info!("Released GPU {} from agent {}", gpu_id, agent_id);
                 }
             }
@@ -140,35 +145,39 @@ impl ResourceManager {
         debug!("Allocating {} CPU cores for agent {}", cores, agent_id);
 
         let num_cores = Self::detect_cpu_cores().await?;
-        
+
         if cores > num_cores {
             return Err(anyhow::anyhow!(
                 "Requested {} cores but only {} available",
-                cores, num_cores
+                cores,
+                num_cores
             ));
         }
 
         // Simple allocation: assign cores 0 to N-1
         let allocated_cores: Vec<usize> = (0..cores).collect();
-        
+
         let mut allocations = self.cpu_allocations.write().await;
         allocations.insert(agent_id, allocated_cores.clone());
-        
-        info!("Allocated CPU cores {:?} to agent {}", allocated_cores, agent_id);
-        
+
+        info!(
+            "Allocated CPU cores {:?} to agent {}",
+            allocated_cores, agent_id
+        );
+
         Ok(allocated_cores)
     }
 
     /// Release CPU allocation
     pub async fn release_cpu(&self, agent_id: AgentId) -> Result<()> {
         debug!("Releasing CPU allocation for agent {}", agent_id);
-        
+
         let mut allocations = self.cpu_allocations.write().await;
-        
+
         if allocations.remove(&agent_id).is_some() {
             info!("Released CPU allocation for agent {}", agent_id);
         }
-        
+
         Ok(())
     }
 
@@ -185,18 +194,21 @@ impl ResourceManager {
     /// Reserve memory for an agent
     pub async fn reserve_memory(&self, agent_id: AgentId, bytes: u64) -> Result<()> {
         let mut available = self.available_memory.write().await;
-        
+
         if *available < bytes {
             return Err(anyhow::anyhow!(
                 "Insufficient memory: requested {} bytes, {} available",
-                bytes, *available
+                bytes,
+                *available
             ));
         }
-        
+
         *available -= bytes;
-        debug!("Reserved {} bytes for agent {} ({} remaining)", 
-               bytes, agent_id, *available);
-        
+        debug!(
+            "Reserved {} bytes for agent {} ({} remaining)",
+            bytes, agent_id, *available
+        );
+
         Ok(())
     }
 
@@ -204,7 +216,10 @@ impl ResourceManager {
     pub async fn release_memory(&self, bytes: u64) {
         let mut available = self.available_memory.write().await;
         *available = (*available + bytes).min(self.total_memory);
-        debug!("Released {} bytes of memory ({} available)", bytes, *available);
+        debug!(
+            "Released {} bytes of memory ({} available)",
+            bytes, *available
+        );
     }
 
     /// Detect available GPUs
@@ -261,7 +276,10 @@ impl ResourceManager {
         use tokio::process::Command;
 
         let output = Command::new("nvidia-smi")
-            .args(["--query-gpu=index,name,memory.total", "--format=csv,noheader,nounits"])
+            .args([
+                "--query-gpu=index,name,memory.total",
+                "--format=csv,noheader,nounits",
+            ])
             .output()
             .await
             .context("Failed to run nvidia-smi")?;
@@ -346,10 +364,9 @@ impl ResourceManager {
                         let vendor = vendor.trim();
                         // AMD vendor ID
                         if vendor == "0x1002" {
-                            let device_name = std::fs::read_to_string(
-                                entry.path().join("device/label"),
-                            )
-                            .unwrap_or_else(|_| format!("AMD GPU {}", idx));
+                            let device_name =
+                                std::fs::read_to_string(entry.path().join("device/label"))
+                                    .unwrap_or_else(|_| format!("AMD GPU {}", idx));
                             let mem_path = entry.path().join("device/mem_info_vram_total");
                             let total_memory = std::fs::read_to_string(&mem_path)
                                 .ok()
@@ -428,7 +445,7 @@ impl ResourceManager {
         #[cfg(target_os = "linux")]
         {
             let meminfo = tokio::fs::read_to_string("/proc/meminfo").await?;
-            
+
             for line in meminfo.lines() {
                 if line.starts_with("MemTotal:") {
                     let parts: Vec<&str> = line.split_whitespace().collect();
@@ -477,7 +494,7 @@ mod tests {
             available_memory: AtomicU64::new(24 * 1024 * 1024 * 1024),
             compute_capability: Some("8.9".to_string()),
         };
-        
+
         let cloned = gpu.clone();
         assert_eq!(cloned.name, "RTX 4090");
         assert_eq!(cloned.total_memory, gpu.total_memory);
@@ -588,7 +605,10 @@ mod tests {
         // Try to reserve more than total
         let result = rm.reserve_memory(agent_id, total + 1).await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Insufficient memory"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Insufficient memory"));
     }
 
     #[tokio::test]
@@ -710,7 +730,10 @@ mod tests {
         }
 
         let agent_id = AgentId::new();
-        let allocated = rm.allocate_gpu(agent_id, 4 * 1024 * 1024 * 1024).await.unwrap();
+        let allocated = rm
+            .allocate_gpu(agent_id, 4 * 1024 * 1024 * 1024)
+            .await
+            .unwrap();
         assert!(allocated.contains(&99));
 
         // Check allocations
@@ -759,7 +782,9 @@ mod tests {
         }
 
         let agent_id = AgentId::new();
-        rm.allocate_gpu(agent_id, 4 * 1024 * 1024 * 1024).await.unwrap();
+        rm.allocate_gpu(agent_id, 4 * 1024 * 1024 * 1024)
+            .await
+            .unwrap();
 
         // After allocation, available should be reduced
         {
@@ -1172,7 +1197,8 @@ mod tests {
         assert_eq!(gpu.available_memory.load(Ordering::Relaxed), 700);
 
         // Simulate release
-        gpu.available_memory.store(gpu.total_memory, Ordering::Relaxed);
+        gpu.available_memory
+            .store(gpu.total_memory, Ordering::Relaxed);
         assert_eq!(gpu.available_memory.load(Ordering::Relaxed), 1000);
     }
 
@@ -1257,7 +1283,10 @@ mod tests {
         let cloned = gpu.clone();
         assert_eq!(cloned.total_memory, 10000);
         assert_eq!(cloned.available_memory.load(Ordering::Relaxed), 3000);
-        assert_ne!(cloned.available_memory.load(Ordering::Relaxed), cloned.total_memory);
+        assert_ne!(
+            cloned.available_memory.load(Ordering::Relaxed),
+            cloned.total_memory
+        );
     }
 
     // --- Coverage batch 3: GPU edge cases, memory tracking, CPU share calculations ---

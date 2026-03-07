@@ -227,7 +227,8 @@ impl IntegrityVerifier {
             measured_at: Utc::now(),
             status: MeasurementStatus::Verified,
         };
-        self.policy.add_measurement(path.to_path_buf(), measurement.expected_hash.clone());
+        self.policy
+            .add_measurement(path.to_path_buf(), measurement.expected_hash.clone());
         Ok(measurement)
     }
 
@@ -258,7 +259,10 @@ mod tests {
         let path = create_temp_file(dir.path(), "known.txt", b"hello world");
         let hash = IntegrityVerifier::compute_hash(&path).unwrap();
         // SHA-256 of "hello world"
-        assert_eq!(hash, "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9");
+        assert_eq!(
+            hash,
+            "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
+        );
     }
 
     #[test]
@@ -267,12 +271,16 @@ mod tests {
         let path = create_temp_file(dir.path(), "empty.txt", b"");
         let hash = IntegrityVerifier::compute_hash(&path).unwrap();
         // SHA-256 of empty string
-        assert_eq!(hash, "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+        assert_eq!(
+            hash,
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
     }
 
     #[test]
     fn test_compute_hash_nonexistent_file() {
-        let result = IntegrityVerifier::compute_hash(Path::new("/tmp/this_file_does_not_exist_12345"));
+        let result =
+            IntegrityVerifier::compute_hash(Path::new("/tmp/this_file_does_not_exist_12345"));
         assert!(result.is_err());
     }
 
@@ -382,7 +390,10 @@ mod tests {
 
         let mut policy = IntegrityPolicy::default();
         policy.add_measurement(p1, h1);
-        policy.add_measurement(PathBuf::from("/tmp/missing_integrity_test_999"), "hash".to_string());
+        policy.add_measurement(
+            PathBuf::from("/tmp/missing_integrity_test_999"),
+            "hash".to_string(),
+        );
 
         let mut verifier = IntegrityVerifier::new(policy);
         let report = verifier.verify_all();
@@ -482,7 +493,10 @@ mod tests {
     fn test_measurement_status_equality() {
         assert_eq!(MeasurementStatus::Verified, MeasurementStatus::Verified);
         assert_eq!(MeasurementStatus::Mismatch, MeasurementStatus::Mismatch);
-        assert_eq!(MeasurementStatus::FileNotFound, MeasurementStatus::FileNotFound);
+        assert_eq!(
+            MeasurementStatus::FileNotFound,
+            MeasurementStatus::FileNotFound
+        );
         assert_eq!(
             MeasurementStatus::Error("a".to_string()),
             MeasurementStatus::Error("a".to_string())

@@ -212,8 +212,8 @@ impl VectorIndex {
 
     /// Persist the index to a JSON file.
     pub fn save(&self, path: &Path) -> Result<()> {
-        let json = serde_json::to_string_pretty(self)
-            .context("failed to serialize vector index")?;
+        let json =
+            serde_json::to_string_pretty(self).context("failed to serialize vector index")?;
         std::fs::write(path, json).context("failed to write vector index file")?;
         debug!(path = %path.display(), entries = self.entries.len(), "vector_store: saved index");
         Ok(())

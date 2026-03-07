@@ -232,9 +232,8 @@ impl ImaPolicy {
             return Err(SysError::InvalidArgument("IMA policy has no rules".into()));
         }
         for (i, rule) in self.rules.iter().enumerate() {
-            rule.validate().map_err(|e| {
-                SysError::InvalidArgument(format!("Rule {} invalid: {}", i, e))
-            })?;
+            rule.validate()
+                .map_err(|e| SysError::InvalidArgument(format!("Rule {} invalid: {}", i, e)))?;
         }
         Ok(())
     }
@@ -242,8 +241,7 @@ impl ImaPolicy {
     /// Render the full policy as a string (newline-separated rules).
     pub fn to_policy_string(&self) -> Result<String> {
         self.validate()?;
-        let lines: Result<Vec<String>> =
-            self.rules.iter().map(|r| r.to_policy_line()).collect();
+        let lines: Result<Vec<String>> = self.rules.iter().map(|r| r.to_policy_line()).collect();
         Ok(lines?.join("\n"))
     }
 }
@@ -439,9 +437,7 @@ pub fn verify_file_integrity(path: &Path) -> Result<bool> {
             .args(["-n", "security.ima", "--only-values", "--dump"])
             .arg(path)
             .output()
-            .map_err(|e| {
-                SysError::Unknown(format!("Failed to run getfattr: {}", e))
-            })?;
+            .map_err(|e| SysError::Unknown(format!("Failed to run getfattr: {}", e)))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -460,9 +456,8 @@ pub fn verify_file_integrity(path: &Path) -> Result<bool> {
         let stored_raw = output.stdout;
 
         // Compute SHA-256 of the file
-        let file_data = std::fs::read(path).map_err(|e| {
-            SysError::Unknown(format!("Failed to read {}: {}", path.display(), e))
-        })?;
+        let file_data = std::fs::read(path)
+            .map_err(|e| SysError::Unknown(format!("Failed to read {}: {}", path.display(), e)))?;
 
         let mut hasher = Sha256::new();
         hasher.update(&file_data);
@@ -624,24 +619,22 @@ mod tests {
 
     #[test]
     fn test_rule_validate_bad_fsuuid_wrong_length() {
-        let rule = ImaPolicyRule::new(ImaAction::Measure, ImaTarget::BprmCheck)
-            .with_fsuuid("aabb");
+        let rule = ImaPolicyRule::new(ImaAction::Measure, ImaTarget::BprmCheck).with_fsuuid("aabb");
         let err = rule.validate().unwrap_err();
         assert!(err.to_string().contains("32 hex"));
     }
 
     #[test]
     fn test_rule_validate_bad_fsuuid_empty() {
-        let rule = ImaPolicyRule::new(ImaAction::Measure, ImaTarget::BprmCheck)
-            .with_fsuuid("");
+        let rule = ImaPolicyRule::new(ImaAction::Measure, ImaTarget::BprmCheck).with_fsuuid("");
         let err = rule.validate().unwrap_err();
         assert!(err.to_string().contains("empty"));
     }
 
     #[test]
     fn test_rule_validate_bad_mask() {
-        let rule = ImaPolicyRule::new(ImaAction::Measure, ImaTarget::BprmCheck)
-            .with_mask("INVALID");
+        let rule =
+            ImaPolicyRule::new(ImaAction::Measure, ImaTarget::BprmCheck).with_mask("INVALID");
         let err = rule.validate().unwrap_err();
         assert!(err.to_string().contains("Invalid mask"));
     }
@@ -649,8 +642,8 @@ mod tests {
     #[test]
     fn test_rule_validate_all_valid_masks() {
         for mask in &["MAY_READ", "MAY_WRITE", "MAY_EXEC", "MAY_APPEND"] {
-            let rule = ImaPolicyRule::new(ImaAction::Measure, ImaTarget::BprmCheck)
-                .with_mask(*mask);
+            let rule =
+                ImaPolicyRule::new(ImaAction::Measure, ImaTarget::BprmCheck).with_mask(*mask);
             assert!(rule.validate().is_ok(), "mask '{}' should be valid", mask);
         }
     }
@@ -673,10 +666,7 @@ mod tests {
     fn test_policy_add_rule_and_render() {
         let policy = ImaPolicy::new()
             .add_rule(ImaPolicyRule::new(ImaAction::Measure, ImaTarget::BprmCheck))
-            .add_rule(
-                ImaPolicyRule::new(ImaAction::Appraise, ImaTarget::FileCheck)
-                    .with_uid(0),
-            );
+            .add_rule(ImaPolicyRule::new(ImaAction::Appraise, ImaTarget::FileCheck).with_uid(0));
 
         assert_eq!(policy.rules.len(), 2);
         let rendered = policy.to_policy_string().unwrap();
@@ -691,8 +681,7 @@ mod tests {
         let policy = ImaPolicy::new()
             .add_rule(ImaPolicyRule::new(ImaAction::Measure, ImaTarget::BprmCheck))
             .add_rule(
-                ImaPolicyRule::new(ImaAction::Audit, ImaTarget::FileCheck)
-                    .with_mask("GARBAGE"),
+                ImaPolicyRule::new(ImaAction::Audit, ImaTarget::FileCheck).with_mask("GARBAGE"),
             );
         let err = policy.validate().unwrap_err();
         assert!(err.to_string().contains("Rule 1"));
@@ -703,8 +692,7 @@ mod tests {
         let policy = ImaPolicy::new()
             .add_rule(ImaPolicyRule::new(ImaAction::Measure, ImaTarget::BprmCheck))
             .add_rule(
-                ImaPolicyRule::new(ImaAction::Appraise, ImaTarget::ModuleCheck)
-                    .with_fowner(0),
+                ImaPolicyRule::new(ImaAction::Appraise, ImaTarget::ModuleCheck).with_fowner(0),
             );
         let json = serde_json::to_string(&policy).unwrap();
         let back: ImaPolicy = serde_json::from_str(&json).unwrap();
@@ -817,8 +805,7 @@ mod tests {
 
     #[test]
     fn test_rule_clone_eq() {
-        let rule = ImaPolicyRule::new(ImaAction::Audit, ImaTarget::MmapCheck)
-            .with_uid(500);
+        let rule = ImaPolicyRule::new(ImaAction::Audit, ImaTarget::MmapCheck).with_uid(500);
         let cloned = rule.clone();
         assert_eq!(rule, cloned);
     }

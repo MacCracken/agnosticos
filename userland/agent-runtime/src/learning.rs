@@ -84,8 +84,8 @@ impl PerformanceProfile {
         self.min_duration_ms = self.min_duration_ms.min(dur_ms);
         self.max_duration_ms = self.max_duration_ms.max(dur_ms);
         // Running average
-        self.avg_duration_ms = self.avg_duration_ms
-            + (dur_ms - self.avg_duration_ms) / self.total_attempts as f64;
+        self.avg_duration_ms =
+            self.avg_duration_ms + (dur_ms - self.avg_duration_ms) / self.total_attempts as f64;
         self.last_updated = Instant::now();
     }
 }
@@ -178,13 +178,14 @@ impl AgentLearner {
         let key = (outcome.agent_id, outcome.action_type.clone());
 
         // Update performance profile
-        let profile = self.profiles
-            .entry(key)
-            .or_insert_with(|| PerformanceProfile::new(outcome.agent_id, outcome.action_type.clone()));
+        let profile = self.profiles.entry(key).or_insert_with(|| {
+            PerformanceProfile::new(outcome.agent_id, outcome.action_type.clone())
+        });
         profile.record(&outcome);
 
         // Update strategy stats
-        let action_strategies = self.strategies
+        let action_strategies = self
+            .strategies
             .entry(outcome.action_type.clone())
             .or_default();
         let stats = action_strategies
@@ -288,12 +289,17 @@ impl AgentLearner {
 
     /// List all capability scores for an agent, sorted by confidence.
     pub fn agent_capabilities(&self, agent_id: AgentId) -> Vec<&CapabilityScore> {
-        let mut caps: Vec<&CapabilityScore> = self.capabilities
+        let mut caps: Vec<&CapabilityScore> = self
+            .capabilities
             .iter()
             .filter(|((aid, _), _)| *aid == agent_id)
             .map(|(_, v)| v)
             .collect();
-        caps.sort_by(|a, b| b.confidence.partial_cmp(&a.confidence).unwrap_or(std::cmp::Ordering::Equal));
+        caps.sort_by(|a, b| {
+            b.confidence
+                .partial_cmp(&a.confidence)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         caps
     }
 
@@ -352,10 +358,7 @@ impl ConversationContext {
 
     /// Add a message to an agent's context window
     pub fn push(&mut self, agent_id: AgentId, entry: ContextEntry) {
-        let window = self
-            .contexts
-            .entry(agent_id)
-            .or_insert_with(VecDeque::new);
+        let window = self.contexts.entry(agent_id).or_insert_with(VecDeque::new);
         window.push_back(entry);
         while window.len() > self.max_entries {
             window.pop_front();
@@ -458,7 +461,13 @@ impl BehaviorSample {
 
     /// All known metric names.
     fn metric_names() -> &'static [&'static str] {
-        &["syscall_count", "network_bytes", "file_ops", "cpu_percent", "memory_bytes"]
+        &[
+            "syscall_count",
+            "network_bytes",
+            "file_ops",
+            "cpu_percent",
+            "memory_bytes",
+        ]
     }
 }
 
@@ -569,7 +578,11 @@ impl BehaviorBaseline {
     }
 
     /// Check if a sample is anomalous (any metric exceeds threshold_sigmas from mean).
-    pub fn is_anomalous(&self, sample: &BehaviorSample, threshold_sigmas: f64) -> Vec<AnomalyAlert> {
+    pub fn is_anomalous(
+        &self,
+        sample: &BehaviorSample,
+        threshold_sigmas: f64,
+    ) -> Vec<AnomalyAlert> {
         let mut alerts = Vec::new();
         if self.samples.len() < 2 {
             return alerts;
@@ -632,8 +645,13 @@ impl AnomalyDetector {
     }
 
     /// Record a behavior sample for an agent and check for anomalies.
-    pub fn record_behavior(&mut self, agent_id: AgentId, sample: BehaviorSample) -> Vec<AnomalyAlert> {
-        let baseline = self.baselines
+    pub fn record_behavior(
+        &mut self,
+        agent_id: AgentId,
+        sample: BehaviorSample,
+    ) -> Vec<AnomalyAlert> {
+        let baseline = self
+            .baselines
             .entry(agent_id)
             .or_insert_with(|| BehaviorBaseline::new(agent_id, self.default_window));
 
@@ -668,7 +686,13 @@ mod tests {
         AgentId(Uuid::from_bytes([n; 16]))
     }
 
-    fn outcome(agent_id: AgentId, action: &str, strategy: &str, success: bool, reward: f64) -> ActionOutcome {
+    fn outcome(
+        agent_id: AgentId,
+        action: &str,
+        strategy: &str,
+        success: bool,
+        reward: f64,
+    ) -> ActionOutcome {
         ActionOutcome {
             agent_id,
             action_type: action.to_string(),
@@ -756,7 +780,10 @@ mod tests {
             learner.record_outcome(outcome(agent(1), "scan", "known", true, 1.0));
         }
         // Add an unexplored strategy
-        learner.strategies.entry("scan".into()).or_default()
+        learner
+            .strategies
+            .entry("scan".into())
+            .or_default()
             .insert("new".into(), StrategyStats::new("new".into()));
 
         let selected = learner.select_strategy("scan").unwrap();
@@ -928,18 +955,24 @@ mod tests {
     fn test_format_for_llm_populated() {
         let mut ctx = ConversationContext::new(10);
         let id = agent(1);
-        ctx.push(id, ContextEntry {
-            role: "user".into(),
-            content: "what is 2+2?".into(),
-            timestamp: "T1".into(),
-            metadata: serde_json::Value::Null,
-        });
-        ctx.push(id, ContextEntry {
-            role: "agent".into(),
-            content: "4".into(),
-            timestamp: "T2".into(),
-            metadata: serde_json::Value::Null,
-        });
+        ctx.push(
+            id,
+            ContextEntry {
+                role: "user".into(),
+                content: "what is 2+2?".into(),
+                timestamp: "T1".into(),
+                metadata: serde_json::Value::Null,
+            },
+        );
+        ctx.push(
+            id,
+            ContextEntry {
+                role: "agent".into(),
+                content: "4".into(),
+                timestamp: "T2".into(),
+                metadata: serde_json::Value::Null,
+            },
+        );
 
         let formatted = ctx.format_for_llm(id);
         assert!(formatted.contains("[T1] user: what is 2+2?"));
@@ -1142,7 +1175,10 @@ mod tests {
         assert_eq!(AnomalySeverity::from_sigmas(2.5), AnomalySeverity::Medium);
         assert_eq!(AnomalySeverity::from_sigmas(4.0), AnomalySeverity::High);
         assert_eq!(AnomalySeverity::from_sigmas(6.0), AnomalySeverity::Critical);
-        assert_eq!(AnomalySeverity::from_sigmas(-5.5), AnomalySeverity::Critical);
+        assert_eq!(
+            AnomalySeverity::from_sigmas(-5.5),
+            AnomalySeverity::Critical
+        );
     }
 
     #[test]
@@ -1186,7 +1222,10 @@ mod tests {
         let id = agent(1);
         // Build baseline with some variance
         for i in 0..20 {
-            detector.record_behavior(id, make_sample(100 + (i % 3), 0, 0, 10.0 + (i as f64 % 2.0), 0));
+            detector.record_behavior(
+                id,
+                make_sample(100 + (i % 3), 0, 0, 10.0 + (i as f64 % 2.0), 0),
+            );
         }
         // Send anomalous sample
         let alerts = detector.record_behavior(id, make_sample(100, 0, 0, 999.0, 0));

@@ -139,7 +139,8 @@ impl CertificateAuthority {
     /// Rotate a certificate: issue a new one and revoke the old.
     pub fn rotate_certificate(&mut self, agent_id: AgentId) -> AgentCertificate {
         // Revoke all existing certificates for this agent
-        let old_serials: Vec<String> = self.certificates
+        let old_serials: Vec<String> = self
+            .certificates
             .iter()
             .filter(|c| c.agent_id == agent_id && !self.revoked_serials.contains(&c.serial))
             .map(|c| c.serial.clone())
@@ -218,7 +219,10 @@ mod tests {
         let mut ca = CertificateAuthority::new("AGNOS-CA");
         let mut cert = ca.issue_certificate(agent(1), 365);
         cert.issuer = "EVIL-CA".to_string();
-        assert_eq!(ca.verify_certificate(&cert), CertVerifyResult::UnknownIssuer);
+        assert_eq!(
+            ca.verify_certificate(&cert),
+            CertVerifyResult::UnknownIssuer
+        );
     }
 
     #[test]
@@ -243,7 +247,7 @@ mod tests {
         let cert = ca.issue_certificate(agent(1), 365);
         assert!(ca.revoke_certificate(&cert.serial));
         assert!(ca.revoke_certificate(&cert.serial)); // second call still true
-        // Only one entry in revoked list
+                                                      // Only one entry in revoked list
         assert_eq!(ca.revoked_serials.len(), 1);
     }
 
@@ -281,7 +285,11 @@ mod tests {
         // Override to expire in 5 days
         short.not_after = Utc::now() + Duration::days(5);
         // Replace in CA's list
-        if let Some(c) = ca.certificates.iter_mut().find(|c| c.serial == short.serial) {
+        if let Some(c) = ca
+            .certificates
+            .iter_mut()
+            .find(|c| c.serial == short.serial)
+        {
             c.not_after = short.not_after;
         }
 

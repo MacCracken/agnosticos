@@ -195,8 +195,7 @@ pub fn pack_flutter_app(
         serde_json::to_string_pretty(&sandbox).context("failed to serialize sandbox profile")?;
 
     // Create output directory if needed
-    std::fs::create_dir_all(output_dir)
-        .context("failed to create output directory")?;
+    std::fs::create_dir_all(output_dir).context("failed to create output directory")?;
 
     // Build tarball
     let tarball_name = format!("{}-{}.agnos-agent", config.app_name, config.version);
@@ -391,16 +390,8 @@ mod tests {
         fs::write(root.join("lib/app.so"), b"fake aot").unwrap();
 
         // Flutter assets
-        fs::write(
-            root.join("flutter_assets/AssetManifest.json"),
-            b"{}",
-        )
-        .unwrap();
-        fs::write(
-            root.join("flutter_assets/FontManifest.json"),
-            b"[]",
-        )
-        .unwrap();
+        fs::write(root.join("flutter_assets/AssetManifest.json"), b"{}").unwrap();
+        fs::write(root.join("flutter_assets/FontManifest.json"), b"[]").unwrap();
 
         root
     }

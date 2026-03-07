@@ -139,10 +139,14 @@ impl AuditRule {
     /// Validate that the rule is well-formed.
     pub fn validate(&self) -> Result<()> {
         if self.key.is_empty() {
-            return Err(SysError::InvalidArgument("Audit rule key cannot be empty".into()));
+            return Err(SysError::InvalidArgument(
+                "Audit rule key cannot be empty".into(),
+            ));
         }
         if self.key.len() > 256 {
-            return Err(SysError::InvalidArgument("Audit rule key too long (max 256)".into()));
+            return Err(SysError::InvalidArgument(
+                "Audit rule key too long (max 256)".into(),
+            ));
         }
         match self.rule_type {
             AuditRuleType::FileWatch => {
@@ -220,7 +224,10 @@ pub fn open_audit(config: &AuditConfig) -> Result<AuditHandle> {
                 return match err.raw_os_error() {
                     Some(libc::EPERM) | Some(libc::EACCES) => Err(SysError::PermissionDenied),
                     Some(libc::EPROTONOSUPPORT) => Err(SysError::NotSupported),
-                    _ => Err(SysError::Unknown(format!("socket(NETLINK_AUDIT) failed: {}", err))),
+                    _ => Err(SysError::Unknown(format!(
+                        "socket(NETLINK_AUDIT) failed: {}",
+                        err
+                    ))),
                 };
             }
 
@@ -240,8 +247,13 @@ pub fn open_audit(config: &AuditConfig) -> Result<AuditHandle> {
 
             if ret < 0 {
                 let err = std::io::Error::last_os_error();
-                unsafe { libc::close(fd); }
-                return Err(SysError::Unknown(format!("bind(NETLINK_AUDIT) failed: {}", err)));
+                unsafe {
+                    libc::close(fd);
+                }
+                return Err(SysError::Unknown(format!(
+                    "bind(NETLINK_AUDIT) failed: {}",
+                    err
+                )));
             }
 
             tracing::debug!("Opened netlink audit socket (fd={})", fd);
@@ -253,7 +265,9 @@ pub fn open_audit(config: &AuditConfig) -> Result<AuditHandle> {
         // Verify proc path if configured
         if config.use_agnos_proc && !Path::new(&config.proc_path).exists() {
             if fd >= 0 {
-                unsafe { libc::close(fd); }
+                unsafe {
+                    libc::close(fd);
+                }
             }
             tracing::warn!("AGNOS proc audit path does not exist: {}", config.proc_path);
         }
@@ -284,10 +298,14 @@ pub fn send_audit_event(handle: &AuditHandle, event_type: &str, message: &str) -
         }
 
         if event_type.is_empty() {
-            return Err(SysError::InvalidArgument("Event type cannot be empty".into()));
+            return Err(SysError::InvalidArgument(
+                "Event type cannot be empty".into(),
+            ));
         }
         if message.len() > 8192 {
-            return Err(SysError::InvalidArgument("Audit message too large (max 8192)".into()));
+            return Err(SysError::InvalidArgument(
+                "Audit message too large (max 8192)".into(),
+            ));
         }
 
         let payload = format!("op={} {}", event_type, message);
@@ -312,16 +330,22 @@ pub fn send_audit_event(handle: &AuditHandle, event_type: &str, message: &str) -
         // payload
         buf[NLMSG_HDRLEN..].copy_from_slice(payload_bytes);
 
-        let ret = unsafe {
-            libc::send(handle.fd, buf.as_ptr() as *const libc::c_void, total_len, 0)
-        };
+        let ret =
+            unsafe { libc::send(handle.fd, buf.as_ptr() as *const libc::c_void, total_len, 0) };
 
         if ret < 0 {
             let err = std::io::Error::last_os_error();
-            return Err(SysError::Unknown(format!("send(audit event) failed: {}", err)));
+            return Err(SysError::Unknown(format!(
+                "send(audit event) failed: {}",
+                err
+            )));
         }
 
-        tracing::debug!("Sent audit event: op={} ({} bytes)", event_type, payload_bytes.len());
+        tracing::debug!(
+            "Sent audit event: op={} ({} bytes)",
+            event_type,
+            payload_bytes.len()
+        );
         Ok(())
     }
 
@@ -352,12 +376,14 @@ pub fn get_audit_status(handle: &AuditHandle) -> Result<AuditStatus> {
         let pid = unsafe { libc::getpid() } as u32;
         buf[12..16].copy_from_slice(&pid.to_ne_bytes());
 
-        let ret = unsafe {
-            libc::send(handle.fd, buf.as_ptr() as *const libc::c_void, total_len, 0)
-        };
+        let ret =
+            unsafe { libc::send(handle.fd, buf.as_ptr() as *const libc::c_void, total_len, 0) };
         if ret < 0 {
             let err = std::io::Error::last_os_error();
-            return Err(SysError::Unknown(format!("send(AUDIT_GET) failed: {}", err)));
+            return Err(SysError::Unknown(format!(
+                "send(AUDIT_GET) failed: {}",
+                err
+            )));
         }
 
         // Read response
@@ -373,14 +399,15 @@ pub fn get_audit_status(handle: &AuditHandle) -> Result<AuditStatus> {
 
         if n < 0 {
             let err = std::io::Error::last_os_error();
-            return Err(SysError::Unknown(format!("recv(AUDIT_GET) failed: {}", err)));
+            return Err(SysError::Unknown(format!(
+                "recv(AUDIT_GET) failed: {}",
+                err
+            )));
         }
 
         if (n as usize) < NLMSG_HDRLEN + 24 {
             // Minimum: header + audit_status struct fields we care about
-            return Err(SysError::Unknown(
-                "AUDIT_GET response too short".into(),
-            ));
+            return Err(SysError::Unknown("AUDIT_GET response too short".into()));
         }
 
         // Parse audit_status from the payload after nlmsghdr.
@@ -401,12 +428,12 @@ pub fn get_audit_status(handle: &AuditHandle) -> Result<AuditStatus> {
         };
 
         Ok(AuditStatus {
-            enabled: read_u32(4),         // offset 4
-            failure_action: read_u32(8),  // offset 8
-            pid: read_u32(12),            // offset 12
-            backlog_limit: read_u32(20),  // offset 20
-            lost: read_u32(24),           // offset 24
-            backlog: read_u32(28),        // offset 28
+            enabled: read_u32(4),        // offset 4
+            failure_action: read_u32(8), // offset 8
+            pid: read_u32(12),           // offset 12
+            backlog_limit: read_u32(20), // offset 20
+            lost: read_u32(24),          // offset 24
+            backlog: read_u32(28),       // offset 28
         })
     }
 
@@ -448,15 +475,20 @@ pub fn set_audit_enabled(handle: &AuditHandle, enabled: bool) -> Result<()> {
         let val: u32 = if enabled { 1 } else { 0 };
         buf[NLMSG_HDRLEN + 4..NLMSG_HDRLEN + 8].copy_from_slice(&val.to_ne_bytes());
 
-        let ret = unsafe {
-            libc::send(handle.fd, buf.as_ptr() as *const libc::c_void, total_len, 0)
-        };
+        let ret =
+            unsafe { libc::send(handle.fd, buf.as_ptr() as *const libc::c_void, total_len, 0) };
         if ret < 0 {
             let err = std::io::Error::last_os_error();
-            return Err(SysError::Unknown(format!("send(AUDIT_SET) failed: {}", err)));
+            return Err(SysError::Unknown(format!(
+                "send(AUDIT_SET) failed: {}",
+                err
+            )));
         }
 
-        tracing::info!("Audit subsystem {}", if enabled { "enabled" } else { "disabled" });
+        tracing::info!(
+            "Audit subsystem {}",
+            if enabled { "enabled" } else { "disabled" }
+        );
         Ok(())
     }
 
@@ -521,11 +553,7 @@ fn send_rule_message(handle: &AuditHandle, rule: &AuditRule, msg_type: u16) -> R
             )
         }
         AuditRuleType::SyscallWatch => {
-            format!(
-                "syscall={} key={}",
-                rule.syscall.unwrap_or(0),
-                rule.key
-            )
+            format!("syscall={} key={}", rule.syscall.unwrap_or(0), rule.key)
         }
     };
 
@@ -541,9 +569,7 @@ fn send_rule_message(handle: &AuditHandle, rule: &AuditRule, msg_type: u16) -> R
     buf[12..16].copy_from_slice(&pid.to_ne_bytes());
     buf[NLMSG_HDRLEN..].copy_from_slice(payload);
 
-    let ret = unsafe {
-        libc::send(handle.fd, buf.as_ptr() as *const libc::c_void, total_len, 0)
-    };
+    let ret = unsafe { libc::send(handle.fd, buf.as_ptr() as *const libc::c_void, total_len, 0) };
     if ret < 0 {
         let err = std::io::Error::last_os_error();
         return Err(SysError::Unknown(format!(
@@ -592,13 +618,19 @@ pub fn agnos_audit_log_syscall(action: &str, data: &str, result: i32) -> Result<
     #[cfg(target_os = "linux")]
     {
         if action.is_empty() {
-            return Err(SysError::InvalidArgument("Audit action cannot be empty".into()));
+            return Err(SysError::InvalidArgument(
+                "Audit action cannot be empty".into(),
+            ));
         }
         if action.len() > 256 {
-            return Err(SysError::InvalidArgument("Audit action too long (max 256)".into()));
+            return Err(SysError::InvalidArgument(
+                "Audit action too long (max 256)".into(),
+            ));
         }
         if data.len() > 4096 {
-            return Err(SysError::InvalidArgument("Audit data too long (max 4096)".into()));
+            return Err(SysError::InvalidArgument(
+                "Audit data too long (max 4096)".into(),
+            ));
         }
 
         let action_cstr = std::ffi::CString::new(action)
@@ -620,7 +652,10 @@ pub fn agnos_audit_log_syscall(action: &str, data: &str, result: i32) -> Result<
             return match err.raw_os_error() {
                 Some(libc::ENOSYS) => Err(SysError::NotSupported),
                 Some(libc::EPERM) => Err(SysError::PermissionDenied),
-                _ => Err(SysError::Unknown(format!("SYS_AGNOS_AUDIT_LOG failed: {}", err))),
+                _ => Err(SysError::Unknown(format!(
+                    "SYS_AGNOS_AUDIT_LOG failed: {}",
+                    err
+                ))),
             };
         }
 
@@ -640,7 +675,9 @@ pub fn close_audit(handle: AuditHandle) {
     #[cfg(target_os = "linux")]
     {
         if handle.fd >= 0 {
-            unsafe { libc::close(handle.fd); }
+            unsafe {
+                libc::close(handle.fd);
+            }
             tracing::debug!("Closed audit handle (fd={})", handle.fd);
         }
     }
@@ -1038,7 +1075,11 @@ mod tests {
             key: String::new(),
         };
         let err = rule.validate().unwrap_err();
-        assert!(err.to_string().contains("empty"), "Expected 'empty' in: {}", err);
+        assert!(
+            err.to_string().contains("empty"),
+            "Expected 'empty' in: {}",
+            err
+        );
 
         // No path for FileWatch
         let rule = AuditRule {
@@ -1048,7 +1089,11 @@ mod tests {
             key: "test".to_string(),
         };
         let err = rule.validate().unwrap_err();
-        assert!(err.to_string().contains("requires a path"), "Expected 'requires a path' in: {}", err);
+        assert!(
+            err.to_string().contains("requires a path"),
+            "Expected 'requires a path' in: {}",
+            err
+        );
 
         // Relative path
         let rule = AuditRule {
@@ -1058,7 +1103,11 @@ mod tests {
             key: "test".to_string(),
         };
         let err = rule.validate().unwrap_err();
-        assert!(err.to_string().contains("absolute"), "Expected 'absolute' in: {}", err);
+        assert!(
+            err.to_string().contains("absolute"),
+            "Expected 'absolute' in: {}",
+            err
+        );
 
         // No syscall for SyscallWatch
         let rule = AuditRule {
@@ -1068,7 +1117,11 @@ mod tests {
             key: "test".to_string(),
         };
         let err = rule.validate().unwrap_err();
-        assert!(err.to_string().contains("requires a syscall"), "Expected 'requires a syscall' in: {}", err);
+        assert!(
+            err.to_string().contains("requires a syscall"),
+            "Expected 'requires a syscall' in: {}",
+            err
+        );
     }
 
     // --- RawAuditEntry tests ---
@@ -1191,7 +1244,11 @@ mod tests {
                 action_type: format!("action_{}", i),
                 result: 0,
                 hash: format!("hash_{}", i),
-                prev_hash: if i > 0 { format!("hash_{}", i - 1) } else { String::new() },
+                prev_hash: if i > 0 {
+                    format!("hash_{}", i - 1)
+                } else {
+                    String::new()
+                },
                 payload: format!("payload_{}", i),
             };
             lines.push(serde_json::to_string(&entry).unwrap());
@@ -1230,11 +1287,18 @@ mod tests {
     fn test_send_audit_event_no_socket() {
         let handle = AuditHandle {
             fd: -1,
-            _config: AuditConfig { use_netlink: false, use_agnos_proc: false, proc_path: String::new() },
+            _config: AuditConfig {
+                use_netlink: false,
+                use_agnos_proc: false,
+                proc_path: String::new(),
+            },
         };
         let result = send_audit_event(&handle, "test", "hello");
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("no netlink socket"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("no netlink socket"));
     }
 
     #[cfg(target_os = "linux")]
@@ -1251,7 +1315,9 @@ mod tests {
         let result = send_audit_event(&handle, "", "message");
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("empty"));
-        unsafe { libc::close(fd); }
+        unsafe {
+            libc::close(fd);
+        }
     }
 
     #[cfg(target_os = "linux")]
@@ -1267,7 +1333,9 @@ mod tests {
         let result = send_audit_event(&handle, "test", &big_message);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("too large"));
-        unsafe { libc::close(fd); }
+        unsafe {
+            libc::close(fd);
+        }
     }
 
     #[cfg(target_os = "linux")]
@@ -1275,11 +1343,18 @@ mod tests {
     fn test_get_audit_status_no_socket() {
         let handle = AuditHandle {
             fd: -1,
-            _config: AuditConfig { use_netlink: false, use_agnos_proc: false, proc_path: String::new() },
+            _config: AuditConfig {
+                use_netlink: false,
+                use_agnos_proc: false,
+                proc_path: String::new(),
+            },
         };
         let result = get_audit_status(&handle);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("no netlink socket"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("no netlink socket"));
     }
 
     #[cfg(target_os = "linux")]
@@ -1287,11 +1362,18 @@ mod tests {
     fn test_set_audit_enabled_no_socket() {
         let handle = AuditHandle {
             fd: -1,
-            _config: AuditConfig { use_netlink: false, use_agnos_proc: false, proc_path: String::new() },
+            _config: AuditConfig {
+                use_netlink: false,
+                use_agnos_proc: false,
+                proc_path: String::new(),
+            },
         };
         let result = set_audit_enabled(&handle, true);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("no netlink socket"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("no netlink socket"));
 
         let result = set_audit_enabled(&handle, false);
         assert!(result.is_err());
@@ -1302,7 +1384,11 @@ mod tests {
     fn test_add_audit_rule_validates_rule() {
         let handle = AuditHandle {
             fd: -1,
-            _config: AuditConfig { use_netlink: false, use_agnos_proc: false, proc_path: String::new() },
+            _config: AuditConfig {
+                use_netlink: false,
+                use_agnos_proc: false,
+                proc_path: String::new(),
+            },
         };
         // Invalid rule (empty key) should fail validation before checking fd
         let bad_rule = AuditRule {
@@ -1320,7 +1406,11 @@ mod tests {
     fn test_delete_audit_rule_validates_rule() {
         let handle = AuditHandle {
             fd: -1,
-            _config: AuditConfig { use_netlink: false, use_agnos_proc: false, proc_path: String::new() },
+            _config: AuditConfig {
+                use_netlink: false,
+                use_agnos_proc: false,
+                proc_path: String::new(),
+            },
         };
         let bad_rule = AuditRule {
             rule_type: AuditRuleType::SyscallWatch,
@@ -1337,13 +1427,20 @@ mod tests {
     fn test_add_audit_rule_no_socket() {
         let handle = AuditHandle {
             fd: -1,
-            _config: AuditConfig { use_netlink: false, use_agnos_proc: false, proc_path: String::new() },
+            _config: AuditConfig {
+                use_netlink: false,
+                use_agnos_proc: false,
+                proc_path: String::new(),
+            },
         };
         // Valid rule but fd=-1 should fail in send_rule_message
         let rule = AuditRule::file_watch("/etc/passwd", "test_key");
         let result = add_audit_rule(&handle, &rule);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("no netlink socket"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("no netlink socket"));
     }
 
     #[cfg(target_os = "linux")]
@@ -1351,12 +1448,19 @@ mod tests {
     fn test_delete_audit_rule_no_socket() {
         let handle = AuditHandle {
             fd: -1,
-            _config: AuditConfig { use_netlink: false, use_agnos_proc: false, proc_path: String::new() },
+            _config: AuditConfig {
+                use_netlink: false,
+                use_agnos_proc: false,
+                proc_path: String::new(),
+            },
         };
         let rule = AuditRule::syscall_watch(59, "test_key");
         let result = delete_audit_rule(&handle, &rule);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("no netlink socket"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("no netlink socket"));
     }
 
     // --- close_audit tests ---
@@ -1452,8 +1556,16 @@ mod tests {
         // Will fail with ENOSYS (no such syscall 520) or succeed — either way, no validation error
         if let Err(e) = result {
             let msg = e.to_string();
-            assert!(!msg.contains("too long"), "Should not fail validation: {}", msg);
-            assert!(!msg.contains("empty"), "Should not fail validation: {}", msg);
+            assert!(
+                !msg.contains("too long"),
+                "Should not fail validation: {}",
+                msg
+            );
+            assert!(
+                !msg.contains("empty"),
+                "Should not fail validation: {}",
+                msg
+            );
         }
     }
 
@@ -1463,7 +1575,11 @@ mod tests {
         let result = agnos_audit_log_syscall("test", &"d".repeat(4096), 0);
         if let Err(e) = result {
             let msg = e.to_string();
-            assert!(!msg.contains("too long"), "Should not fail validation: {}", msg);
+            assert!(
+                !msg.contains("too long"),
+                "Should not fail validation: {}",
+                msg
+            );
         }
     }
 
@@ -1481,7 +1597,10 @@ mod tests {
     #[test]
     fn test_send_audit_event_not_supported() {
         // Can't easily create an AuditHandle on non-Linux, so this tests the branch
-        let handle = AuditHandle { fd: -1, _config: AuditConfig::default() };
+        let handle = AuditHandle {
+            fd: -1,
+            _config: AuditConfig::default(),
+        };
         let result = send_audit_event(&handle, "test", "msg");
         assert!(result.is_err());
     }

@@ -98,11 +98,7 @@ impl OutputFormatter {
 
         // If it contains tabs or multi-space separators with multiple lines, format as table
         let lines: Vec<&str> = output.lines().collect();
-        if lines.len() > 1
-            && lines
-                .iter()
-                .any(|l| l.contains('\t') || l.contains("  "))
-        {
+        if lines.len() > 1 && lines.iter().any(|l| l.contains('\t') || l.contains("  ")) {
             return self.format_table(output);
         }
 

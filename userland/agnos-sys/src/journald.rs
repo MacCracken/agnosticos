@@ -144,13 +144,12 @@ pub fn build_journalctl_args(filter: &JournalFilter) -> Vec<String> {
 
 /// Parse a single JSON line from `journalctl --output=json` into a `JournalEntry`.
 pub fn parse_journal_json(json_line: &str) -> Result<JournalEntry> {
-    let raw: serde_json::Value = serde_json::from_str(json_line).map_err(|e| {
-        SysError::InvalidArgument(format!("Failed to parse journal JSON: {}", e))
-    })?;
+    let raw: serde_json::Value = serde_json::from_str(json_line)
+        .map_err(|e| SysError::InvalidArgument(format!("Failed to parse journal JSON: {}", e)))?;
 
-    let obj = raw.as_object().ok_or_else(|| {
-        SysError::InvalidArgument("Journal JSON is not an object".into())
-    })?;
+    let obj = raw
+        .as_object()
+        .ok_or_else(|| SysError::InvalidArgument("Journal JSON is not an object".into()))?;
 
     // __REALTIME_TIMESTAMP is microseconds since epoch
     let timestamp = obj
@@ -274,12 +273,7 @@ pub fn get_journal_stats() -> Result<JournalStats> {
 
     // Get oldest and newest timestamps via short queries
     let oldest = get_boundary_timestamp(&["--output=json", "--lines=1", "--no-pager"]);
-    let newest = get_boundary_timestamp(&[
-        "--output=json",
-        "--lines=1",
-        "--reverse",
-        "--no-pager",
-    ]);
+    let newest = get_boundary_timestamp(&["--output=json", "--lines=1", "--reverse", "--no-pager"]);
 
     Ok(JournalStats {
         total_entries,
@@ -377,11 +371,7 @@ pub fn vacuum_journal(max_size: &str) -> Result<()> {
     }
     // Validate format: digits followed by optional unit suffix
     let trimmed = max_size.trim();
-    let has_valid_format = trimmed
-        .chars()
-        .take_while(|c| c.is_ascii_digit())
-        .count()
-        > 0;
+    let has_valid_format = trimmed.chars().take_while(|c| c.is_ascii_digit()).count() > 0;
     if !has_valid_format {
         return Err(SysError::InvalidArgument(format!(
             "Invalid vacuum size format: {}",
@@ -679,7 +669,10 @@ mod tests {
 
     #[test]
     fn test_priority_from_u8_valid() {
-        assert_eq!(JournalPriority::from_u8(0), Some(JournalPriority::Emergency));
+        assert_eq!(
+            JournalPriority::from_u8(0),
+            Some(JournalPriority::Emergency)
+        );
         assert_eq!(JournalPriority::from_u8(3), Some(JournalPriority::Error));
         assert_eq!(JournalPriority::from_u8(7), Some(JournalPriority::Debug));
     }

@@ -87,9 +87,9 @@ impl TaskStatus {
 /// Priority classification for tasks.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub enum TaskPriority {
-    Normal,   // 1-3
-    High,     // 4-6
-    Critical, // 7-9
+    Normal,    // 1-3
+    High,      // 4-6
+    Critical,  // 7-9
     Emergency, // 10
 }
 
@@ -263,7 +263,8 @@ impl NodeCapacity {
     /// Release resources after a task completes.
     pub fn release(&mut self, req: &ResourceReq) {
         self.available_cpu = (self.available_cpu + req.cpu_cores).min(self.total_cpu);
-        self.available_memory_mb = (self.available_memory_mb + req.memory_mb).min(self.total_memory_mb);
+        self.available_memory_mb =
+            (self.available_memory_mb + req.memory_mb).min(self.total_memory_mb);
         self.available_disk_mb = (self.available_disk_mb + req.disk_mb).min(self.total_disk_mb);
         self.running_tasks = self.running_tasks.saturating_sub(1);
     }
@@ -388,12 +389,7 @@ impl TaskScheduler {
         self.tasks
             .values()
             .filter(|t| t.node_preference.as_deref() == Some(node_id))
-            .filter(|t| {
-                matches!(
-                    t.status,
-                    TaskStatus::Scheduled | TaskStatus::Running
-                )
-            })
+            .filter(|t| matches!(t.status, TaskStatus::Scheduled | TaskStatus::Running))
             .collect()
     }
 
@@ -420,11 +416,7 @@ impl TaskScheduler {
 
             // Try preferred node first, then best-fit
             let chosen = if let Some(ref pref_id) = pref {
-                if self
-                    .nodes
-                    .get(pref_id)
-                    .map_or(false, |n| n.can_fit(&req))
-                {
+                if self.nodes.get(pref_id).map_or(false, |n| n.can_fit(&req)) {
                     Some(pref_id.clone())
                 } else {
                     self.best_fit_node(&req)
@@ -787,9 +779,7 @@ mod tests {
         let mut task = make_task("t", 5);
         task.transition(TaskStatus::Scheduled).unwrap();
         task.transition(TaskStatus::Running).unwrap();
-        assert!(task
-            .transition(TaskStatus::Failed("oops".into()))
-            .is_ok());
+        assert!(task.transition(TaskStatus::Failed("oops".into())).is_ok());
     }
 
     #[test]

@@ -483,20 +483,12 @@ mod tests {
 
         // Fill the queue
         broker
-            .publish(TopicMessage::new(
-                "flood",
-                sender,
-                serde_json::json!({}),
-            ))
+            .publish(TopicMessage::new("flood", sender, serde_json::json!({})))
             .await;
 
         // This should drop (queue full), not panic
         let delivered = broker
-            .publish(TopicMessage::new(
-                "flood",
-                sender,
-                serde_json::json!({}),
-            ))
+            .publish(TopicMessage::new("flood", sender, serde_json::json!({})))
             .await;
         assert_eq!(delivered, 0);
     }

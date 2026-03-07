@@ -3,8 +3,8 @@
 //! Connects to the AGNOS LLM Gateway (port 8088) for natural language
 //! understanding and command generation.
 
-use anyhow::{Context, Result};
 use agnos_common::telemetry::TraceContext;
+use anyhow::{Context, Result};
 use tracing::{debug, warn};
 
 /// Default LLM Gateway endpoint
@@ -44,9 +44,7 @@ impl LlmClient {
         let trace_ctx = TraceContext::new_root("ai-shell");
         let trace_headers = trace_ctx.inject_headers();
 
-        let mut request_builder = self.client
-            .post(&url)
-            .json(&body);
+        let mut request_builder = self.client.post(&url).json(&body);
         for (key, value) in &trace_headers {
             request_builder = request_builder.header(key.as_str(), value.as_str());
         }
@@ -57,8 +55,8 @@ impl LlmClient {
             .context("Failed to connect to LLM Gateway")?;
 
         let status = resp.status();
-        let result: serde_json::Value = resp.json().await
-            .context("Failed to parse LLM response")?;
+        let result: serde_json::Value =
+            resp.json().await.context("Failed to parse LLM response")?;
 
         if status.is_success() {
             let text = result["choices"][0]["message"]["content"]
@@ -85,7 +83,10 @@ impl LlmClient {
             Ok(cmd) => Ok(cmd),
             Err(e) => {
                 warn!("LLM suggestion failed, falling back to hint: {}", e);
-                Ok(format!("# Suggested command for: {}\n# (LLM Gateway unavailable: {})", request, e))
+                Ok(format!(
+                    "# Suggested command for: {}\n# (LLM Gateway unavailable: {})",
+                    request, e
+                ))
             }
         }
     }
@@ -102,7 +103,10 @@ impl LlmClient {
             Ok(explanation) => Ok(explanation),
             Err(e) => {
                 warn!("LLM explanation failed, falling back: {}", e);
-                Ok(format!("Command: {}\n(Explanation unavailable — LLM Gateway error: {})", command, e))
+                Ok(format!(
+                    "Command: {}\n(Explanation unavailable — LLM Gateway error: {})",
+                    command, e
+                ))
             }
         }
     }
@@ -117,7 +121,10 @@ impl LlmClient {
             Ok(answer) => Ok(answer),
             Err(e) => {
                 warn!("LLM answer failed, falling back: {}", e);
-                Ok(format!("Question: {}\n(Answer unavailable — LLM Gateway error: {})", question, e))
+                Ok(format!(
+                    "Question: {}\n(Answer unavailable — LLM Gateway error: {})",
+                    question, e
+                ))
             }
         }
     }
@@ -230,7 +237,10 @@ mod tests {
     #[tokio::test]
     async fn test_answer_question_fallback_contains_question() {
         let client = LlmClient::default();
-        let result = client.answer_question("How do I compile Rust?").await.unwrap();
+        let result = client
+            .answer_question("How do I compile Rust?")
+            .await
+            .unwrap();
         assert!(
             result.contains("Rust") || result.contains("Answer"),
             "Fallback should reference the question"
@@ -261,7 +271,9 @@ mod tests {
     #[tokio::test]
     async fn test_suggest_command_special_chars() {
         let client = LlmClient::default();
-        let result = client.suggest_command("find / -name '*.rs' | xargs grep \"TODO\"").await;
+        let result = client
+            .suggest_command("find / -name '*.rs' | xargs grep \"TODO\"")
+            .await;
         assert!(result.is_ok());
         assert!(!result.unwrap().is_empty());
     }

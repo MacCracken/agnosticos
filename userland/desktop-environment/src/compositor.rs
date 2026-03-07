@@ -4,11 +4,13 @@ use thiserror::Error;
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
+use crate::accessibility::{
+    AccessibilityRole, AccessibilityState, AccessibilityTree, AccessibleNode, HighContrastTheme,
+};
 use crate::renderer::{
     self, DecorationHit, DesktopRenderer, Layer, ResizeEdge, SceneGraph, SceneSurface,
     TITLEBAR_HEIGHT,
 };
-use crate::accessibility::{AccessibilityTree, AccessibleNode, AccessibilityRole, AccessibilityState, HighContrastTheme};
 
 #[derive(Debug, Error)]
 pub enum CompositorError {
@@ -22,8 +24,7 @@ pub enum CompositorError {
 
 pub type SurfaceId = Uuid;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum WindowState {
     #[default]
     Normal,
@@ -32,7 +33,6 @@ pub enum WindowState {
     Fullscreen,
     Floating,
 }
-
 
 #[derive(Debug, Clone)]
 pub struct Window {
@@ -208,7 +208,11 @@ impl Compositor {
         self.add_window_to_workspace(id);
 
         // Add to scene graph
-        let layer = if is_agent { Layer::Floating } else { Layer::Normal };
+        let layer = if is_agent {
+            Layer::Floating
+        } else {
+            Layer::Normal
+        };
         self.scene.write().unwrap().add_surface(SceneSurface {
             id,
             layer,
@@ -262,7 +266,10 @@ impl Compositor {
             return Err(CompositorError::WindowNotFound(id));
         }
 
-        let window_title = windows.get(&id).map(|w| w.title.clone()).unwrap_or_default();
+        let window_title = windows
+            .get(&id)
+            .map(|w| w.title.clone())
+            .unwrap_or_default();
         windows.remove(&id);
 
         let active_ws = *self.active_workspace.read().unwrap();
@@ -442,10 +449,7 @@ impl Compositor {
     /// Returns a formatted string suitable for compositing onto the desktop.
     /// The actual rendering will be handled by the Wayland compositor once
     /// we have a real buffer allocation path; this method provides the content.
-    pub fn render_hud_overlay(
-        &self,
-        agents: &[crate::ai_features::AgentHUDState],
-    ) -> String {
+    pub fn render_hud_overlay(&self, agents: &[crate::ai_features::AgentHUDState]) -> String {
         if agents.is_empty() {
             return String::new();
         }
@@ -472,10 +476,7 @@ impl Compositor {
 
             lines.push(format!(
                 "║ {} {:<20} {:>5.1}% {:>4}MB ║",
-                status_icon,
-                name,
-                agent.resource_usage.cpu_percent,
-                agent.resource_usage.memory_mb,
+                status_icon, name, agent.resource_usage.cpu_percent, agent.resource_usage.memory_mb,
             ));
         }
 
@@ -486,9 +487,7 @@ impl Compositor {
     /// Route an input event through the scene graph and return the action.
     pub fn route_input(&self, event: &InputEvent) -> InputAction {
         match event {
-            InputEvent::MouseClick { button: 1, x, y } => {
-                self.handle_left_click(*x, *y)
-            }
+            InputEvent::MouseClick { button: 1, x, y } => self.handle_left_click(*x, *y),
             InputEvent::MouseClick { button: 3, x, y } => {
                 // Right-click → just forward to client
                 let mut scene = self.scene.write().unwrap();
@@ -498,9 +497,7 @@ impl Compositor {
                     InputAction::None
                 }
             }
-            InputEvent::MouseMove { x, y } => {
-                self.handle_mouse_move(*x, *y)
-            }
+            InputEvent::MouseMove { x, y } => self.handle_mouse_move(*x, *y),
             InputEvent::KeyPress { keycode, modifiers } => {
                 let focused = self.focused_window.read().unwrap();
                 if focused.is_some() {
@@ -613,7 +610,14 @@ impl Compositor {
         }
     }
 
-    fn apply_resize(&self, id: SurfaceId, edge: &ResizeEdge, original: &Rectangle, mx: i32, my: i32) {
+    fn apply_resize(
+        &self,
+        id: SurfaceId,
+        edge: &ResizeEdge,
+        original: &Rectangle,
+        mx: i32,
+        my: i32,
+    ) {
         let dx = mx - (original.x + original.width as i32);
         let dy = my - (original.y + original.height as i32);
 
@@ -1251,21 +1255,33 @@ mod tests {
     #[test]
     fn test_wayland_backend_handle_click() {
         let mut backend = WaylandBackend::new();
-        let event = InputEvent::MouseClick { button: 1, x: 50, y: 50 };
+        let event = InputEvent::MouseClick {
+            button: 1,
+            x: 50,
+            y: 50,
+        };
         assert!(backend.handle_input(event).is_ok());
     }
 
     #[test]
     fn test_wayland_backend_handle_keypress() {
         let mut backend = WaylandBackend::new();
-        let event = InputEvent::KeyPress { keycode: 65, modifiers: 0 };
+        let event = InputEvent::KeyPress {
+            keycode: 65,
+            modifiers: 0,
+        };
         assert!(backend.handle_input(event).is_ok());
     }
 
     #[test]
     fn test_wayland_backend_handle_touch() {
         let mut backend = WaylandBackend::new();
-        let event = InputEvent::TouchEvent { finger_id: 0, x: 100.0, y: 200.0, phase: TouchPhase::Down };
+        let event = InputEvent::TouchEvent {
+            finger_id: 0,
+            x: 100.0,
+            y: 200.0,
+            phase: TouchPhase::Down,
+        };
         assert!(backend.handle_input(event).is_ok());
     }
 
@@ -1415,7 +1431,9 @@ mod tests {
     #[test]
     fn test_compositor_window_added_to_active_workspace() {
         let compositor = Compositor::new();
-        let id = compositor.create_window("W".to_string(), "app".to_string(), false).unwrap();
+        let id = compositor
+            .create_window("W".to_string(), "app".to_string(), false)
+            .unwrap();
         let workspaces = compositor.workspaces.read().unwrap();
         assert!(workspaces[0].windows.contains(&id));
         assert_eq!(workspaces[0].active_window, Some(id));
@@ -1424,8 +1442,12 @@ mod tests {
     #[test]
     fn test_compositor_close_updates_active_window() {
         let compositor = Compositor::new();
-        let id1 = compositor.create_window("W1".to_string(), "app".to_string(), false).unwrap();
-        let id2 = compositor.create_window("W2".to_string(), "app".to_string(), false).unwrap();
+        let id1 = compositor
+            .create_window("W1".to_string(), "app".to_string(), false)
+            .unwrap();
+        let id2 = compositor
+            .create_window("W2".to_string(), "app".to_string(), false)
+            .unwrap();
         // Close the active (last created) window
         compositor.close_window(id2).unwrap();
         let workspaces = compositor.workspaces.read().unwrap();
@@ -1436,7 +1458,9 @@ mod tests {
     #[test]
     fn test_compositor_close_last_window_clears_active() {
         let compositor = Compositor::new();
-        let id = compositor.create_window("W".to_string(), "app".to_string(), false).unwrap();
+        let id = compositor
+            .create_window("W".to_string(), "app".to_string(), false)
+            .unwrap();
         compositor.close_window(id).unwrap();
         let workspaces = compositor.workspaces.read().unwrap();
         assert!(workspaces[0].active_window.is_none());
@@ -1445,9 +1469,17 @@ mod tests {
     #[test]
     fn test_compositor_set_all_window_states() {
         let compositor = Compositor::new();
-        let id = compositor.create_window("W".to_string(), "app".to_string(), false).unwrap();
+        let id = compositor
+            .create_window("W".to_string(), "app".to_string(), false)
+            .unwrap();
 
-        for state in [WindowState::Minimized, WindowState::Maximized, WindowState::Fullscreen, WindowState::Floating, WindowState::Normal] {
+        for state in [
+            WindowState::Minimized,
+            WindowState::Maximized,
+            WindowState::Fullscreen,
+            WindowState::Floating,
+            WindowState::Normal,
+        ] {
             compositor.set_window_state(id, state.clone()).unwrap();
             let windows = compositor.get_windows();
             assert_eq!(windows[0].state, state);
@@ -1457,7 +1489,9 @@ mod tests {
     #[test]
     fn test_compositor_move_window_removes_from_source() {
         let compositor = Compositor::new();
-        let id = compositor.create_window("W".to_string(), "app".to_string(), false).unwrap();
+        let id = compositor
+            .create_window("W".to_string(), "app".to_string(), false)
+            .unwrap();
         compositor.move_window_to_workspace(id, 2).unwrap();
         let workspaces = compositor.workspaces.read().unwrap();
         assert!(!workspaces[0].windows.contains(&id));
@@ -1467,9 +1501,13 @@ mod tests {
     #[test]
     fn test_compositor_get_active_windows_after_workspace_switch() {
         let compositor = Compositor::new();
-        let _id1 = compositor.create_window("W1".to_string(), "app".to_string(), false).unwrap();
+        let _id1 = compositor
+            .create_window("W1".to_string(), "app".to_string(), false)
+            .unwrap();
         compositor.switch_workspace(1).unwrap();
-        let _id2 = compositor.create_window("W2".to_string(), "app".to_string(), false).unwrap();
+        let _id2 = compositor
+            .create_window("W2".to_string(), "app".to_string(), false)
+            .unwrap();
         // Active workspace is 1, so only W2 should be returned
         let active = compositor.get_active_windows();
         assert_eq!(active.len(), 1);
@@ -1479,9 +1517,15 @@ mod tests {
     #[test]
     fn test_compositor_agent_windows_filter() {
         let compositor = Compositor::new();
-        compositor.create_window("Normal".to_string(), "app".to_string(), false).unwrap();
-        compositor.create_window("Agent1".to_string(), "agent".to_string(), true).unwrap();
-        compositor.create_window("Agent2".to_string(), "agent".to_string(), true).unwrap();
+        compositor
+            .create_window("Normal".to_string(), "app".to_string(), false)
+            .unwrap();
+        compositor
+            .create_window("Agent1".to_string(), "agent".to_string(), true)
+            .unwrap();
+        compositor
+            .create_window("Agent2".to_string(), "agent".to_string(), true)
+            .unwrap();
         assert_eq!(compositor.get_agent_windows().len(), 2);
         assert_eq!(compositor.get_windows().len(), 3);
     }
@@ -1518,7 +1562,7 @@ mod tests {
             .collect();
         assert_eq!(compositor.get_windows().len(), 5);
         assert_eq!(compositor.get_agent_windows().len(), 3); // 0,2,4 are agent
-        // Last created window should be active
+                                                             // Last created window should be active
         let workspaces = compositor.workspaces.read().unwrap();
         assert_eq!(workspaces[0].active_window, Some(ids[4]));
     }
@@ -1526,9 +1570,15 @@ mod tests {
     #[test]
     fn test_compositor_close_middle_window_preserves_others() {
         let compositor = Compositor::new();
-        let id1 = compositor.create_window("W1".to_string(), "a".to_string(), false).unwrap();
-        let id2 = compositor.create_window("W2".to_string(), "b".to_string(), false).unwrap();
-        let id3 = compositor.create_window("W3".to_string(), "c".to_string(), false).unwrap();
+        let id1 = compositor
+            .create_window("W1".to_string(), "a".to_string(), false)
+            .unwrap();
+        let id2 = compositor
+            .create_window("W2".to_string(), "b".to_string(), false)
+            .unwrap();
+        let id3 = compositor
+            .create_window("W3".to_string(), "c".to_string(), false)
+            .unwrap();
         compositor.close_window(id2).unwrap();
         let windows = compositor.get_windows();
         assert_eq!(windows.len(), 2);
@@ -1549,7 +1599,9 @@ mod tests {
     #[test]
     fn test_compositor_window_state_transitions_full_cycle() {
         let compositor = Compositor::new();
-        let id = compositor.create_window("W".to_string(), "app".to_string(), false).unwrap();
+        let id = compositor
+            .create_window("W".to_string(), "app".to_string(), false)
+            .unwrap();
         // Normal -> Maximized -> Fullscreen -> Minimized -> Floating -> Normal
         let transitions = vec![
             WindowState::Maximized,
@@ -1560,7 +1612,11 @@ mod tests {
         ];
         for state in transitions {
             compositor.set_window_state(id, state.clone()).unwrap();
-            let w = compositor.get_windows().into_iter().find(|w| w.id == id).unwrap();
+            let w = compositor
+                .get_windows()
+                .into_iter()
+                .find(|w| w.id == id)
+                .unwrap();
             assert_eq!(w.state, state);
         }
     }
@@ -1568,7 +1624,9 @@ mod tests {
     #[test]
     fn test_compositor_move_window_to_same_workspace() {
         let compositor = Compositor::new();
-        let id = compositor.create_window("W".to_string(), "app".to_string(), false).unwrap();
+        let id = compositor
+            .create_window("W".to_string(), "app".to_string(), false)
+            .unwrap();
         // Move to workspace 0 (same as active)
         compositor.move_window_to_workspace(id, 0).unwrap();
         let workspaces = compositor.workspaces.read().unwrap();
@@ -1579,7 +1637,9 @@ mod tests {
     #[test]
     fn test_compositor_move_window_to_last_workspace() {
         let compositor = Compositor::new();
-        let id = compositor.create_window("W".to_string(), "app".to_string(), false).unwrap();
+        let id = compositor
+            .create_window("W".to_string(), "app".to_string(), false)
+            .unwrap();
         compositor.move_window_to_workspace(id, 3).unwrap();
         let workspaces = compositor.workspaces.read().unwrap();
         assert!(workspaces[3].windows.contains(&id));
@@ -1590,7 +1650,9 @@ mod tests {
     fn test_compositor_window_created_at_is_recent() {
         let before = chrono::Utc::now();
         let compositor = Compositor::new();
-        let _id = compositor.create_window("W".to_string(), "app".to_string(), false).unwrap();
+        let _id = compositor
+            .create_window("W".to_string(), "app".to_string(), false)
+            .unwrap();
         let after = chrono::Utc::now();
         let window = &compositor.get_windows()[0];
         assert!(window.created_at >= before);
@@ -1600,7 +1662,9 @@ mod tests {
     #[test]
     fn test_compositor_close_window_double_close_fails() {
         let compositor = Compositor::new();
-        let id = compositor.create_window("W".to_string(), "app".to_string(), false).unwrap();
+        let id = compositor
+            .create_window("W".to_string(), "app".to_string(), false)
+            .unwrap();
         compositor.close_window(id).unwrap();
         let result = compositor.close_window(id);
         assert!(result.is_err());
@@ -1631,9 +1695,15 @@ mod tests {
     #[test]
     fn test_compositor_workspace_active_window_after_multiple_creates() {
         let compositor = Compositor::new();
-        let _id1 = compositor.create_window("W1".to_string(), "a".to_string(), false).unwrap();
-        let _id2 = compositor.create_window("W2".to_string(), "b".to_string(), false).unwrap();
-        let id3 = compositor.create_window("W3".to_string(), "c".to_string(), false).unwrap();
+        let _id1 = compositor
+            .create_window("W1".to_string(), "a".to_string(), false)
+            .unwrap();
+        let _id2 = compositor
+            .create_window("W2".to_string(), "b".to_string(), false)
+            .unwrap();
+        let id3 = compositor
+            .create_window("W3".to_string(), "c".to_string(), false)
+            .unwrap();
         let workspaces = compositor.workspaces.read().unwrap();
         // Active window should be the last one created
         assert_eq!(workspaces[0].active_window, Some(id3));
@@ -1651,9 +1721,13 @@ mod tests {
     fn test_compositor_windows_across_workspaces() {
         let compositor = Compositor::new();
         compositor.switch_workspace(0).unwrap();
-        let id_ws0 = compositor.create_window("WS0".to_string(), "a".to_string(), false).unwrap();
+        let id_ws0 = compositor
+            .create_window("WS0".to_string(), "a".to_string(), false)
+            .unwrap();
         compositor.switch_workspace(1).unwrap();
-        let _id_ws1 = compositor.create_window("WS1".to_string(), "b".to_string(), false).unwrap();
+        let _id_ws1 = compositor
+            .create_window("WS1".to_string(), "b".to_string(), false)
+            .unwrap();
         // get_windows returns all windows regardless of workspace
         assert_eq!(compositor.get_windows().len(), 2);
         // get_active_windows only returns windows in active workspace (1)
@@ -1679,7 +1753,9 @@ mod tests {
     #[test]
     fn test_compositor_create_window_adds_to_scene() {
         let compositor = Compositor::new();
-        let id = compositor.create_window("Test".to_string(), "app".to_string(), false).unwrap();
+        let id = compositor
+            .create_window("Test".to_string(), "app".to_string(), false)
+            .unwrap();
         let scene = compositor.scene.read().unwrap();
         assert_eq!(scene.total_count(), 1);
         let surface = scene.get_surface(id).unwrap();
@@ -1692,7 +1768,9 @@ mod tests {
     #[test]
     fn test_compositor_agent_window_gets_floating_layer() {
         let compositor = Compositor::new();
-        let id = compositor.create_window("Agent".to_string(), "agent".to_string(), true).unwrap();
+        let id = compositor
+            .create_window("Agent".to_string(), "agent".to_string(), true)
+            .unwrap();
         let scene = compositor.scene.read().unwrap();
         let surface = scene.get_surface(id).unwrap();
         assert_eq!(surface.layer, Layer::Floating);
@@ -1701,7 +1779,9 @@ mod tests {
     #[test]
     fn test_compositor_close_removes_from_scene() {
         let compositor = Compositor::new();
-        let id = compositor.create_window("W".to_string(), "app".to_string(), false).unwrap();
+        let id = compositor
+            .create_window("W".to_string(), "app".to_string(), false)
+            .unwrap();
         assert_eq!(compositor.scene.read().unwrap().total_count(), 1);
         compositor.close_window(id).unwrap();
         assert_eq!(compositor.scene.read().unwrap().total_count(), 0);
@@ -1710,8 +1790,12 @@ mod tests {
     #[test]
     fn test_compositor_focus_window() {
         let compositor = Compositor::new();
-        let id1 = compositor.create_window("W1".to_string(), "a".to_string(), false).unwrap();
-        let id2 = compositor.create_window("W2".to_string(), "b".to_string(), false).unwrap();
+        let id1 = compositor
+            .create_window("W1".to_string(), "a".to_string(), false)
+            .unwrap();
+        let id2 = compositor
+            .create_window("W2".to_string(), "b".to_string(), false)
+            .unwrap();
         // id2 should be focused (last created)
         assert_eq!(compositor.focused_window(), Some(id2));
 
@@ -1726,8 +1810,12 @@ mod tests {
     #[test]
     fn test_compositor_close_updates_focus() {
         let compositor = Compositor::new();
-        let id1 = compositor.create_window("W1".to_string(), "a".to_string(), false).unwrap();
-        let id2 = compositor.create_window("W2".to_string(), "b".to_string(), false).unwrap();
+        let id1 = compositor
+            .create_window("W1".to_string(), "a".to_string(), false)
+            .unwrap();
+        let id2 = compositor
+            .create_window("W2".to_string(), "b".to_string(), false)
+            .unwrap();
         assert_eq!(compositor.focused_window(), Some(id2));
         compositor.close_window(id2).unwrap();
         assert_eq!(compositor.focused_window(), Some(id1));
@@ -1736,7 +1824,9 @@ mod tests {
     #[test]
     fn test_compositor_move_window() {
         let compositor = Compositor::new();
-        let id = compositor.create_window("W".to_string(), "app".to_string(), false).unwrap();
+        let id = compositor
+            .create_window("W".to_string(), "app".to_string(), false)
+            .unwrap();
         compositor.move_window(id, 300, 200);
         let windows = compositor.get_windows();
         assert_eq!(windows[0].geometry.x, 300);
@@ -1750,7 +1840,9 @@ mod tests {
     #[test]
     fn test_compositor_resize_window() {
         let compositor = Compositor::new();
-        let id = compositor.create_window("W".to_string(), "app".to_string(), false).unwrap();
+        let id = compositor
+            .create_window("W".to_string(), "app".to_string(), false)
+            .unwrap();
         compositor.resize_window(id, 500, 400);
         let windows = compositor.get_windows();
         assert_eq!(windows[0].geometry.width, 500);
@@ -1760,7 +1852,9 @@ mod tests {
     #[test]
     fn test_compositor_resize_enforces_minimum() {
         let compositor = Compositor::new();
-        let id = compositor.create_window("W".to_string(), "app".to_string(), false).unwrap();
+        let id = compositor
+            .create_window("W".to_string(), "app".to_string(), false)
+            .unwrap();
         compositor.resize_window(id, 50, 30);
         let windows = compositor.get_windows();
         assert_eq!(windows[0].geometry.width, 200); // min
@@ -1770,8 +1864,12 @@ mod tests {
     #[test]
     fn test_compositor_set_state_maximized_updates_geometry() {
         let compositor = Compositor::with_resolution(1920, 1080);
-        let id = compositor.create_window("W".to_string(), "app".to_string(), false).unwrap();
-        compositor.set_window_state(id, WindowState::Maximized).unwrap();
+        let id = compositor
+            .create_window("W".to_string(), "app".to_string(), false)
+            .unwrap();
+        compositor
+            .set_window_state(id, WindowState::Maximized)
+            .unwrap();
         let windows = compositor.get_windows();
         assert_eq!(windows[0].geometry.x, 0);
         assert_eq!(windows[0].geometry.y, 0);
@@ -1782,8 +1880,12 @@ mod tests {
     #[test]
     fn test_compositor_set_state_minimized_hides_in_scene() {
         let compositor = Compositor::new();
-        let id = compositor.create_window("W".to_string(), "app".to_string(), false).unwrap();
-        compositor.set_window_state(id, WindowState::Minimized).unwrap();
+        let id = compositor
+            .create_window("W".to_string(), "app".to_string(), false)
+            .unwrap();
+        compositor
+            .set_window_state(id, WindowState::Minimized)
+            .unwrap();
         let scene = compositor.scene.read().unwrap();
         assert!(!scene.get_surface(id).unwrap().visible);
     }
@@ -1791,7 +1893,9 @@ mod tests {
     #[test]
     fn test_compositor_render_produces_output() {
         let compositor = Compositor::with_resolution(100, 100);
-        compositor.create_window("W".to_string(), "app".to_string(), false).unwrap();
+        compositor
+            .create_window("W".to_string(), "app".to_string(), false)
+            .unwrap();
         compositor.render();
         compositor.with_front_buffer(|bytes| {
             assert_eq!(bytes.len(), 100 * 100 * 4);
@@ -1803,7 +1907,11 @@ mod tests {
     #[test]
     fn test_compositor_route_input_click_on_background() {
         let compositor = Compositor::with_resolution(800, 600);
-        let event = InputEvent::MouseClick { button: 1, x: 0, y: 0 };
+        let event = InputEvent::MouseClick {
+            button: 1,
+            x: 0,
+            y: 0,
+        };
         let action = compositor.route_input(&event);
         assert_eq!(action, InputAction::None);
     }
@@ -1811,12 +1919,22 @@ mod tests {
     #[test]
     fn test_compositor_route_input_click_on_titlebar() {
         let compositor = Compositor::with_resolution(800, 600);
-        let id = compositor.create_window("W".to_string(), "app".to_string(), false).unwrap();
-        let win = compositor.get_windows().into_iter().find(|w| w.id == id).unwrap();
+        let id = compositor
+            .create_window("W".to_string(), "app".to_string(), false)
+            .unwrap();
+        let win = compositor
+            .get_windows()
+            .into_iter()
+            .find(|w| w.id == id)
+            .unwrap();
         // Click in the middle of the title bar
         let click_x = win.geometry.x + 20;
         let click_y = win.geometry.y + 10;
-        let event = InputEvent::MouseClick { button: 1, x: click_x, y: click_y };
+        let event = InputEvent::MouseClick {
+            button: 1,
+            x: click_x,
+            y: click_y,
+        };
         let action = compositor.route_input(&event);
         assert_eq!(action, InputAction::BeginDrag(id));
     }
@@ -1824,12 +1942,22 @@ mod tests {
     #[test]
     fn test_compositor_route_input_click_on_client() {
         let compositor = Compositor::with_resolution(800, 600);
-        let id = compositor.create_window("W".to_string(), "app".to_string(), false).unwrap();
-        let win = compositor.get_windows().into_iter().find(|w| w.id == id).unwrap();
+        let id = compositor
+            .create_window("W".to_string(), "app".to_string(), false)
+            .unwrap();
+        let win = compositor
+            .get_windows()
+            .into_iter()
+            .find(|w| w.id == id)
+            .unwrap();
         // Click inside the client area (below title bar, inside borders)
         let click_x = win.geometry.x + 50;
         let click_y = win.geometry.y + TITLEBAR_HEIGHT as i32 + 10;
-        let event = InputEvent::MouseClick { button: 1, x: click_x, y: click_y };
+        let event = InputEvent::MouseClick {
+            button: 1,
+            x: click_x,
+            y: click_y,
+        };
         let action = compositor.route_input(&event);
         match action {
             InputAction::ClientClick(sid, _, _) => assert_eq!(sid, id),
@@ -1840,8 +1968,13 @@ mod tests {
     #[test]
     fn test_compositor_route_input_key_press_with_focus() {
         let compositor = Compositor::new();
-        let _id = compositor.create_window("W".to_string(), "app".to_string(), false).unwrap();
-        let event = InputEvent::KeyPress { keycode: 65, modifiers: 0 };
+        let _id = compositor
+            .create_window("W".to_string(), "app".to_string(), false)
+            .unwrap();
+        let event = InputEvent::KeyPress {
+            keycode: 65,
+            modifiers: 0,
+        };
         let action = compositor.route_input(&event);
         assert_eq!(action, InputAction::KeyToFocused(65, 0));
     }
@@ -1849,7 +1982,10 @@ mod tests {
     #[test]
     fn test_compositor_route_input_key_press_no_focus() {
         let compositor = Compositor::new();
-        let event = InputEvent::KeyPress { keycode: 65, modifiers: 0 };
+        let event = InputEvent::KeyPress {
+            keycode: 65,
+            modifiers: 0,
+        };
         let action = compositor.route_input(&event);
         assert_eq!(action, InputAction::None);
     }
@@ -1857,23 +1993,40 @@ mod tests {
     #[test]
     fn test_compositor_drag_workflow() {
         let compositor = Compositor::with_resolution(800, 600);
-        let id = compositor.create_window("W".to_string(), "app".to_string(), false).unwrap();
-        let win = compositor.get_windows().into_iter().find(|w| w.id == id).unwrap();
+        let id = compositor
+            .create_window("W".to_string(), "app".to_string(), false)
+            .unwrap();
+        let win = compositor
+            .get_windows()
+            .into_iter()
+            .find(|w| w.id == id)
+            .unwrap();
         let start_x = win.geometry.x;
 
         // Click on title bar to start drag
         let click_x = start_x + 20;
         let click_y = win.geometry.y + 10;
-        let event = InputEvent::MouseClick { button: 1, x: click_x, y: click_y };
+        let event = InputEvent::MouseClick {
+            button: 1,
+            x: click_x,
+            y: click_y,
+        };
         let action = compositor.route_input(&event);
         assert_eq!(action, InputAction::BeginDrag(id));
 
         // Move mouse
-        let move_event = InputEvent::MouseMove { x: click_x + 100, y: click_y + 50 };
+        let move_event = InputEvent::MouseMove {
+            x: click_x + 100,
+            y: click_y + 50,
+        };
         compositor.route_input(&move_event);
 
         // Window should have moved
-        let win_after = compositor.get_windows().into_iter().find(|w| w.id == id).unwrap();
+        let win_after = compositor
+            .get_windows()
+            .into_iter()
+            .find(|w| w.id == id)
+            .unwrap();
         assert_eq!(win_after.geometry.x, start_x + 100);
 
         // End drag
@@ -1883,24 +2036,35 @@ mod tests {
     #[test]
     fn test_compositor_tile_windows() {
         let compositor = Compositor::with_resolution(800, 600);
-        let _id1 = compositor.create_window("W1".to_string(), "a".to_string(), false).unwrap();
-        let _id2 = compositor.create_window("W2".to_string(), "b".to_string(), false).unwrap();
+        let _id1 = compositor
+            .create_window("W1".to_string(), "a".to_string(), false)
+            .unwrap();
+        let _id2 = compositor
+            .create_window("W2".to_string(), "b".to_string(), false)
+            .unwrap();
         compositor.tile_windows();
 
         let windows = compositor.get_windows();
         // Two windows should tile side-by-side or in a grid
         let geometries: Vec<_> = windows.iter().map(|w| &w.geometry).collect();
         // They should collectively cover the screen without being all at the same position
-        let positions: std::collections::HashSet<_> = geometries.iter().map(|g| (g.x, g.y)).collect();
+        let positions: std::collections::HashSet<_> =
+            geometries.iter().map(|g| (g.x, g.y)).collect();
         assert_eq!(positions.len(), 2);
     }
 
     #[test]
     fn test_compositor_tile_single_window() {
         let compositor = Compositor::with_resolution(800, 600);
-        let id = compositor.create_window("W".to_string(), "app".to_string(), false).unwrap();
+        let id = compositor
+            .create_window("W".to_string(), "app".to_string(), false)
+            .unwrap();
         compositor.tile_windows();
-        let win = compositor.get_windows().into_iter().find(|w| w.id == id).unwrap();
+        let win = compositor
+            .get_windows()
+            .into_iter()
+            .find(|w| w.id == id)
+            .unwrap();
         assert_eq!(win.geometry.x, 0);
         assert_eq!(win.geometry.y, 0);
         assert_eq!(win.geometry.width, 800);
@@ -1917,7 +2081,9 @@ mod tests {
     fn test_compositor_submit_window_buffer() {
         use crate::renderer::Framebuffer;
         let compositor = Compositor::with_resolution(200, 200);
-        let id = compositor.create_window("W".to_string(), "app".to_string(), false).unwrap();
+        let id = compositor
+            .create_window("W".to_string(), "app".to_string(), false)
+            .unwrap();
         let content = Framebuffer::new(50, 50, 0xFFFF0000); // Red
         compositor.submit_window_buffer(id, content);
         // Should render without panicking
@@ -1927,7 +2093,9 @@ mod tests {
     #[test]
     fn test_compositor_end_interactive_clears_state() {
         let compositor = Compositor::new();
-        let id = compositor.create_window("W".to_string(), "app".to_string(), false).unwrap();
+        let id = compositor
+            .create_window("W".to_string(), "app".to_string(), false)
+            .unwrap();
         *compositor.drag_state.write().unwrap() = Some((id, 10, 10));
         compositor.end_interactive();
         assert!(compositor.drag_state.read().unwrap().is_none());
@@ -1937,10 +2105,22 @@ mod tests {
     #[test]
     fn test_compositor_cascade_placement() {
         let compositor = Compositor::new();
-        let id1 = compositor.create_window("W1".to_string(), "a".to_string(), false).unwrap();
-        let id2 = compositor.create_window("W2".to_string(), "b".to_string(), false).unwrap();
-        let w1 = compositor.get_windows().into_iter().find(|w| w.id == id1).unwrap();
-        let w2 = compositor.get_windows().into_iter().find(|w| w.id == id2).unwrap();
+        let id1 = compositor
+            .create_window("W1".to_string(), "a".to_string(), false)
+            .unwrap();
+        let id2 = compositor
+            .create_window("W2".to_string(), "b".to_string(), false)
+            .unwrap();
+        let w1 = compositor
+            .get_windows()
+            .into_iter()
+            .find(|w| w.id == id1)
+            .unwrap();
+        let w2 = compositor
+            .get_windows()
+            .into_iter()
+            .find(|w| w.id == id2)
+            .unwrap();
         // Windows should be cascaded (different positions)
         assert_ne!(w1.geometry.x, w2.geometry.x);
         assert_ne!(w1.geometry.y, w2.geometry.y);
@@ -1974,8 +2154,14 @@ mod tests {
     #[test]
     fn test_compositor_right_click_on_window() {
         let compositor = Compositor::with_resolution(800, 600);
-        let id = compositor.create_window("W".to_string(), "app".to_string(), false).unwrap();
-        let win = compositor.get_windows().into_iter().find(|w| w.id == id).unwrap();
+        let id = compositor
+            .create_window("W".to_string(), "app".to_string(), false)
+            .unwrap();
+        let win = compositor
+            .get_windows()
+            .into_iter()
+            .find(|w| w.id == id)
+            .unwrap();
         let event = InputEvent::MouseClick {
             button: 3,
             x: win.geometry.x + 50,
@@ -2139,10 +2325,7 @@ mod clipboard_tests {
     #[test]
     fn test_clipboard_set_html() {
         let mut cb = ClipboardManager::new();
-        cb.set_content(
-            ClipboardContent::Html("<b>bold</b>".into()),
-            Uuid::new_v4(),
-        );
+        cb.set_content(ClipboardContent::Html("<b>bold</b>".into()), Uuid::new_v4());
         assert_eq!(cb.content_type(), "text/html");
     }
 

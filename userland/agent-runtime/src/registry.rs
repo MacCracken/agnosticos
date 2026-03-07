@@ -73,10 +73,7 @@ impl AgentRegistry {
 
         // Index by capabilities
         for cap in capabilities {
-            self.by_capability
-                .entry(cap)
-                .or_default()
-                .push(id);
+            self.by_capability.entry(cap).or_default().push(id);
         }
 
         let mut stats = self.stats.write().await;
@@ -92,7 +89,7 @@ impl AgentRegistry {
     pub async fn unregister(&self, id: AgentId) -> Result<()> {
         if let Some((_, agent)) = self.agents.remove(&id) {
             self.by_name.remove(&agent.handle.name);
-            
+
             // Remove from capability indices
             for cap in &agent.capabilities {
                 if let Some(mut agents) = self.by_capability.get_mut(cap) {
@@ -133,10 +130,7 @@ impl AgentRegistry {
 
     /// List all agents
     pub fn list_all(&self) -> Vec<AgentHandle> {
-        self.agents
-            .iter()
-            .map(|a| a.handle.clone())
-            .collect()
+        self.agents.iter().map(|a| a.handle.clone()).collect()
     }
 
     /// List agents by status
@@ -196,7 +190,7 @@ impl AgentRegistry {
     /// Extract capabilities from agent configuration
     fn extract_capabilities(config: &AgentConfig) -> Vec<String> {
         let mut caps = vec![format!("type:{:?}", config.agent_type).to_lowercase()];
-        
+
         // Add capability based on permissions
         for perm in &config.permissions {
             caps.push(format!("perm:{:?}", perm).to_lowercase());
@@ -211,7 +205,6 @@ impl Default for AgentRegistry {
         Self::new()
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -474,7 +467,10 @@ mod tests {
         let (agent, _rx) = Agent::new(config.clone()).await.unwrap();
         let handle = registry.register(&agent, config).await.unwrap();
 
-        registry.update_status(handle.id, AgentStatus::Running).await.unwrap();
+        registry
+            .update_status(handle.id, AgentStatus::Running)
+            .await
+            .unwrap();
         let updated = registry.get(handle.id).unwrap();
         assert_eq!(updated.status, AgentStatus::Running);
     }
@@ -482,7 +478,9 @@ mod tests {
     #[tokio::test]
     async fn test_registry_update_status_nonexistent() {
         let registry = AgentRegistry::new();
-        let result = registry.update_status(AgentId::new(), AgentStatus::Running).await;
+        let result = registry
+            .update_status(AgentId::new(), AgentStatus::Running)
+            .await;
         assert!(result.is_err());
     }
 
@@ -504,7 +502,10 @@ mod tests {
             file_descriptors_used: 5,
             processes_used: 1,
         };
-        registry.update_resource_usage(handle.id, usage).await.unwrap();
+        registry
+            .update_resource_usage(handle.id, usage)
+            .await
+            .unwrap();
 
         let updated = registry.get(handle.id).unwrap();
         assert_eq!(updated.resource_usage.memory_used, 1024);
@@ -551,8 +552,14 @@ mod tests {
         let h1 = registry.register(&a1, config1).await.unwrap();
         let h2 = registry.register(&a2, config2).await.unwrap();
 
-        registry.update_status(h1.id, AgentStatus::Running).await.unwrap();
-        registry.update_status(h2.id, AgentStatus::Stopped).await.unwrap();
+        registry
+            .update_status(h1.id, AgentStatus::Running)
+            .await
+            .unwrap();
+        registry
+            .update_status(h2.id, AgentStatus::Stopped)
+            .await
+            .unwrap();
 
         let running = registry.list_by_status(AgentStatus::Running);
         assert_eq!(running.len(), 1);
@@ -602,7 +609,10 @@ mod tests {
 
         let retrieved_config = registry.get_config(handle.id).unwrap();
         assert_eq!(retrieved_config.name, "config-agent");
-        assert!(matches!(retrieved_config.agent_type, agnos_common::AgentType::System));
+        assert!(matches!(
+            retrieved_config.agent_type,
+            agnos_common::AgentType::System
+        ));
     }
 
     #[tokio::test]
@@ -629,7 +639,12 @@ mod tests {
     #[tokio::test]
     async fn test_registry_update_resource_usage_nonexistent() {
         let registry = AgentRegistry::new();
-        let usage = ResourceUsage { memory_used: 100, cpu_time_used: 50, file_descriptors_used: 2, processes_used: 1 };
+        let usage = ResourceUsage {
+            memory_used: 100,
+            cpu_time_used: 50,
+            file_descriptors_used: 2,
+            processes_used: 1,
+        };
         // Should not error — just a no-op
         let result = registry.update_resource_usage(AgentId::new(), usage).await;
         assert!(result.is_ok());

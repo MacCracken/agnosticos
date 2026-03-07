@@ -37,35 +37,35 @@ struct Args {
     /// Start in AI mode
     #[arg(short, long)]
     ai: bool,
-    
+
     /// Start in human mode (default)
     #[arg(short, long)]
     human: bool,
-    
+
     /// Execute command and exit
     #[arg(short, long)]
     command: Option<String>,
-    
+
     /// Configuration file path
     #[arg(short, long)]
     config: Option<PathBuf>,
-    
+
     /// Disable AI assistance
     #[arg(long)]
     no_ai: bool,
-    
+
     /// Require approval for all AI actions
     #[arg(long)]
     strict: bool,
-    
+
     /// Start as restricted user (no privilege escalation)
     #[arg(long)]
     restricted: bool,
-    
+
     /// Use starship-style prompt
     #[arg(long)]
     starship: bool,
-    
+
     /// Custom prompt format (starship-style)
     #[arg(long)]
     prompt_format: Option<String>,
@@ -80,22 +80,26 @@ async fn main() -> Result<()> {
     } else {
         fmt.init();
     }
-    
+
     let args = Args::parse();
-    
+
     // Load configuration
     let config = if let Some(config_path) = args.config {
         ShellConfig::from_file(config_path).await?
     } else {
         ShellConfig::default()
     };
-    
+
     // Initialize security context
     let security = SecurityContext::new(args.restricted)?;
-    
+
     info!("Starting AGNOS AI Shell v{}", env!("CARGO_PKG_VERSION"));
-    info!("User: {}, Restricted: {}", security.username(), security.is_restricted());
-    
+    info!(
+        "User: {}, Restricted: {}",
+        security.username(),
+        security.is_restricted()
+    );
+
     // Determine initial mode
     let initial_mode = if args.ai {
         Mode::AiAutonomous
@@ -104,18 +108,18 @@ async fn main() -> Result<()> {
     } else {
         config.default_mode.clone()
     };
-    
+
     // Create session
     let mut session = Session::new(config, security, initial_mode).await?;
-    
+
     // Handle one-shot command execution
     if let Some(cmd) = args.command {
         session.execute_one_shot(cmd).await?;
         return Ok(());
     }
-    
+
     // Run interactive shell
     session.run_interactive().await?;
-    
+
     Ok(())
 }

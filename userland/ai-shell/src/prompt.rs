@@ -94,7 +94,7 @@ impl PromptContext {
             start_time: SystemTime::now(),
         }
     }
-    
+
     fn get_hostname() -> String {
         hostname::get()
             .ok()
@@ -111,7 +111,7 @@ impl PromptModule for AiModeModule {
         if context.ai_mode.is_empty() {
             return None;
         }
-        
+
         let (icon, color) = match context.ai_mode.as_str() {
             "AI-AUTO" => ("🤖", Color::Purple),
             "AI-ASSIST" => ("👤🤖", Color::Cyan),
@@ -119,11 +119,11 @@ impl PromptModule for AiModeModule {
             "STRICT" => ("🔒", Color::Red),
             _ => ("●", Color::White),
         };
-        
+
         let style = Style::new().fg(color).bold();
         Some(format!("{} ", style.paint(icon)))
     }
-    
+
     fn name(&self) -> &'static str {
         "ai_mode"
     }
@@ -141,13 +141,13 @@ impl PromptModule for DirectoryModule {
         } else {
             path.clone()
         };
-        
+
         let path_str = display_path.to_string_lossy();
         let style = Style::new().fg(Color::Blue).bold();
-        
+
         Some(format!("{} ", style.paint(path_str.to_string())))
     }
-    
+
     fn name(&self) -> &'static str {
         "directory"
     }
@@ -160,30 +160,32 @@ impl PromptModule for GitBranchModule {
     fn render(&self, context: &PromptContext) -> Option<String> {
         // Check if we're in a git repository
         let mut current = context.cwd.clone();
-        
+
         loop {
             let git_dir = current.join(".git");
             if git_dir.exists() {
                 // Try to read branch name
                 let head_file = git_dir.join("HEAD");
                 if let Ok(content) = std::fs::read_to_string(&head_file) {
-                    let branch = content.trim().strip_prefix("ref: refs/heads/")
+                    let branch = content
+                        .trim()
+                        .strip_prefix("ref: refs/heads/")
                         .unwrap_or(content.trim());
-                    
+
                     let style = Style::new().fg(Color::Yellow);
                     return Some(format!("{} ", style.paint(format!("({})", branch))));
                 }
                 break;
             }
-            
+
             if !current.pop() {
                 break;
             }
         }
-        
+
         None
     }
-    
+
     fn name(&self) -> &'static str {
         "git_branch"
     }
@@ -205,7 +207,7 @@ impl PromptModule for ExecutionTimeModule {
         if context.cmd_duration_ms < self.threshold_ms {
             return None;
         }
-        
+
         let duration = if context.cmd_duration_ms < 1000 {
             format!("{}ms", context.cmd_duration_ms)
         } else {
@@ -213,11 +215,11 @@ impl PromptModule for ExecutionTimeModule {
             let ms = context.cmd_duration_ms % 1000;
             format!("{}.{:03}s", secs, ms)
         };
-        
+
         let style = Style::new().fg(Color::Yellow).dimmed();
         Some(format!("{} ", style.paint(format!("took {}", duration))))
     }
-    
+
     fn name(&self) -> &'static str {
         "execution_time"
     }
@@ -231,11 +233,14 @@ impl PromptModule for ExitStatusModule {
         if context.last_exit_code == 0 {
             return None;
         }
-        
+
         let style = Style::new().fg(Color::Red).bold();
-        Some(format!("{} ", style.paint(format!("✗ {}", context.last_exit_code))))
+        Some(format!(
+            "{} ",
+            style.paint(format!("✗ {}", context.last_exit_code))
+        ))
     }
-    
+
     fn name(&self) -> &'static str {
         "exit_status"
     }
@@ -251,11 +256,11 @@ impl PromptModule for CharacterModule {
         } else {
             ("❯", Color::Red)
         };
-        
+
         let style = Style::new().fg(color).bold();
         Some(format!("{} ", style.paint(symbol)))
     }
-    
+
     fn name(&self) -> &'static str {
         "character"
     }
@@ -269,14 +274,15 @@ impl PromptModule for ContextModule {
         let user_style = Style::new().fg(Color::Yellow);
         let host_style = Style::new().fg(Color::Green);
         let sep_style = Style::new().dimmed();
-        
-        Some(format!("{}{}{} ",
+
+        Some(format!(
+            "{}{}{} ",
             user_style.paint(&context.username),
             sep_style.paint("@"),
             host_style.paint(&context.hostname)
         ))
     }
-    
+
     fn name(&self) -> &'static str {
         "context"
     }
@@ -294,65 +300,67 @@ impl PromptRenderer {
             config,
             modules: Vec::new(),
         };
-        
+
         renderer.register_default_modules();
         renderer
     }
-    
+
     fn register_default_modules(&mut self) {
         if self.config.show_ai_mode {
             self.modules.push(Box::new(AiModeModule));
         }
-        
+
         if self.config.show_context {
             self.modules.push(Box::new(ContextModule));
         }
-        
+
         if self.config.show_directory {
             self.modules.push(Box::new(DirectoryModule));
         }
-        
+
         if self.config.show_git_status {
             self.modules.push(Box::new(GitBranchModule));
         }
-        
+
         if self.config.show_execution_time {
             self.modules.push(Box::new(ExecutionTimeModule::new(
-                self.config.execution_time_threshold
+                self.config.execution_time_threshold,
             )));
         }
-        
+
         if self.config.show_exit_status {
             self.modules.push(Box::new(ExitStatusModule));
         }
-        
+
         self.modules.push(Box::new(CharacterModule));
     }
-    
+
     /// Register a custom module
     pub fn register_module(&mut self, module: Box<dyn PromptModule>) {
         self.modules.push(module);
     }
-    
+
     /// Render the full prompt
     pub fn render(&self, context: &PromptContext) -> String {
         let mut parts = Vec::new();
-        
+
         for module in &self.modules {
             if let Some(rendered) = module.render(context) {
                 parts.push(rendered);
             }
         }
-        
+
         parts.join("")
     }
-    
+
     /// Render right-side prompt (RPROMPT style)
     pub fn render_right(&self, context: &PromptContext) -> Option<String> {
         let mut parts = Vec::new();
 
         // Show execution time if above threshold
-        if self.config.show_execution_time && context.cmd_duration_ms >= self.config.execution_time_threshold {
+        if self.config.show_execution_time
+            && context.cmd_duration_ms >= self.config.execution_time_threshold
+        {
             let duration = if context.cmd_duration_ms < 1000 {
                 format!("{}ms", context.cmd_duration_ms)
             } else {
@@ -367,7 +375,11 @@ impl PromptRenderer {
         // Show current time
         let now = chrono::Local::now();
         let time_style = Style::new().dimmed();
-        parts.push(time_style.paint(now.format("%H:%M:%S").to_string()).to_string());
+        parts.push(
+            time_style
+                .paint(now.format("%H:%M:%S").to_string())
+                .to_string(),
+        );
 
         if parts.is_empty() {
             None
@@ -385,9 +397,14 @@ impl Default for PromptRenderer {
 
 /// Parse format string and extract module names
 pub fn parse_format(format: &str) -> Vec<&str> {
-    format.split('$')
+    format
+        .split('$')
         .skip(1) // Skip empty first element
-        .map(|s| s.split(|c: char| !c.is_alphanumeric() && c != '_').next().unwrap_or(s))
+        .map(|s| {
+            s.split(|c: char| !c.is_alphanumeric() && c != '_')
+                .next()
+                .unwrap_or(s)
+        })
         .filter(|s| !s.is_empty())
         .collect()
 }
@@ -400,22 +417,25 @@ mod tests {
     #[test]
     fn test_parse_format() {
         let modules = parse_format("$ai_mode$directory$git_branch$character");
-        assert_eq!(modules, vec!["ai_mode", "directory", "git_branch", "character"]);
+        assert_eq!(
+            modules,
+            vec!["ai_mode", "directory", "git_branch", "character"]
+        );
     }
-    
+
     #[test]
     fn test_directory_module() {
         let module = DirectoryModule;
         let ctx = PromptContext::new(
             PathBuf::from("/home/user/projects"),
             "user".to_string(),
-            "HUMAN".to_string()
+            "HUMAN".to_string(),
         );
-        
+
         let rendered = module.render(&ctx);
         assert!(rendered.is_some());
     }
-    
+
     #[test]
     fn test_ai_mode_rendering() {
         let module = AiModeModule;
@@ -423,7 +443,7 @@ mod tests {
         let ctx_auto = PromptContext::new(
             PathBuf::from("/"),
             "user".to_string(),
-            "AI-AUTO".to_string()
+            "AI-AUTO".to_string(),
         );
         let rendered = module.render(&ctx_auto);
         assert!(rendered.is_some());
@@ -615,7 +635,10 @@ mod tests {
         let renderer = PromptRenderer::default();
         let ctx = PromptContext::new(PathBuf::from("/"), "u".into(), "HUMAN".into());
         let right = renderer.render_right(&ctx);
-        assert!(right.is_some(), "right prompt should contain at least the time");
+        assert!(
+            right.is_some(),
+            "right prompt should contain at least the time"
+        );
     }
 
     #[test]

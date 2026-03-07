@@ -1,6 +1,5 @@
 use agent_runtime::agent::AgentHandle;
 use agent_runtime::orchestrator::{Task, TaskPriority, TaskRequirements, TaskResult};
-use agent_runtime::registry::AgentRegistry;
 use agnos_common::{AgentConfig, AgentId, AgentStatus, AgentType, ResourceLimits, SandboxConfig};
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use uuid::Uuid;

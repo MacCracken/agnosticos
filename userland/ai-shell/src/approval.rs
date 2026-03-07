@@ -73,7 +73,7 @@ impl RiskLevel {
             PermissionLevel::Blocked => RiskLevel::Critical,
         }
     }
-    
+
     pub fn color(&self) -> impl Fn(&str) -> String {
         match self {
             RiskLevel::Low => |s: &str| format!("\x1b[32m{}\x1b[0m", s),
@@ -82,7 +82,7 @@ impl RiskLevel {
             RiskLevel::Critical => |s: &str| format!("\x1b[1;31m{}\x1b[0m", s),
         }
     }
-    
+
     pub fn icon(&self) -> &'static str {
         match self {
             RiskLevel::Low => "✓",
@@ -132,47 +132,48 @@ impl ApprovalManager {
             blocked_patterns: Vec::new(),
         }
     }
-    
+
     /// Configure auto-approval for low-risk operations
     #[allow(dead_code)]
     pub fn set_auto_approve_low_risk(&mut self, enabled: bool) {
         self.auto_approve_low_risk = enabled;
     }
-    
+
     /// Request approval for an operation
     pub async fn request(&self, request: &ApprovalRequest) -> Result<ApprovalResponse> {
         info!("Approval requested: {:?}", request);
-        
+
         // Check if pattern is blocked
         if self.is_blocked(request) {
             warn!("Request matches blocked pattern, auto-denying");
             return Ok(ApprovalResponse::Denied);
         }
-        
+
         // Determine risk level
         let risk = self.assess_risk(request);
-        
+
         // Auto-approve low risk if configured
         if self.auto_approve_low_risk && risk == RiskLevel::Low {
             info!("Auto-approved low-risk operation");
             return Ok(ApprovalResponse::Approved);
         }
-        
+
         // Display request and get user input
         self.display_request(request, risk)?;
-        
+
         // For non-interactive environments, deny by default
         if !std::io::stdin().is_terminal() {
             warn!("Non-interactive environment, denying by default");
             return Ok(ApprovalResponse::Denied);
         }
-        
+
         // Get user decision with timeout
         let response = timeout(
             Duration::from_secs(self.timeout_seconds),
-            self.get_user_decision(request, risk)
-        ).await;
-        
+            self.get_user_decision(request, risk),
+        )
+        .await;
+
         match response {
             Ok(Ok(resp)) => {
                 info!("User responded: {:?}", resp);
@@ -185,19 +186,23 @@ impl ApprovalManager {
             }
         }
     }
-    
+
     /// Assess risk level of a request
     fn assess_risk(&self, request: &ApprovalRequest) -> RiskLevel {
         match request {
             ApprovalRequest::Command { risk_level, .. } => *risk_level,
             ApprovalRequest::PrivilegeEscalation { .. } => RiskLevel::Critical,
-            ApprovalRequest::FileOperation { operation, path, .. } => {
+            ApprovalRequest::FileOperation {
+                operation, path, ..
+            } => {
                 let path_str = path.to_string_lossy();
-                if path_str.starts_with("/etc/") ||
-                   path_str.starts_with("/usr/") ||
-                   path_str.starts_with("/bin/") ||
-                   path_str.starts_with("/sbin/") ||
-                   operation.contains("delete") || operation.contains("remove") {
+                if path_str.starts_with("/etc/")
+                    || path_str.starts_with("/usr/")
+                    || path_str.starts_with("/bin/")
+                    || path_str.starts_with("/sbin/")
+                    || operation.contains("delete")
+                    || operation.contains("remove")
+                {
                     RiskLevel::High
                 } else {
                     RiskLevel::Medium
@@ -213,7 +218,7 @@ impl ApprovalManager {
             }
         }
     }
-    
+
     /// Check if request matches blocked pattern
     fn is_blocked(&self, request: &ApprovalRequest) -> bool {
         let cmd = match request {
@@ -221,43 +226,74 @@ impl ApprovalManager {
             ApprovalRequest::PrivilegeEscalation { command, .. } => command.clone(),
             _ => return false,
         };
-        
-        self.blocked_patterns.iter().any(|pattern| {
-            cmd.contains(pattern)
-        })
+
+        self.blocked_patterns
+            .iter()
+            .any(|pattern| cmd.contains(pattern))
     }
-    
+
     /// Display the approval request to user
     fn display_request(&self, request: &ApprovalRequest, risk: RiskLevel) -> Result<()> {
         println!("\n{}", style("─".repeat(60)).dim());
         println!("{}", style("  APPROVAL REQUIRED").bold().yellow());
         println!("{}\n", style("─".repeat(60)).dim());
-        
+
         match request {
-            ApprovalRequest::Command { command, args, reason, .. } => {
+            ApprovalRequest::Command {
+                command,
+                args,
+                reason,
+                ..
+            } => {
                 println!("  {} {}", style("Command:").bold(), command);
                 if !args.is_empty() {
                     println!("  {} {}", style("Args:").bold(), args.join(" "));
                 }
                 println!("  {} {}", style("Reason:").dim(), reason);
             }
-            ApprovalRequest::PrivilegeEscalation { command, user, reason } => {
+            ApprovalRequest::PrivilegeEscalation {
+                command,
+                user,
+                reason,
+            } => {
                 println!("  {}", style("⚠️  PRIVILEGE ESCALATION").red().bold());
                 println!("  {} {} as {}", style("Command:").bold(), command, user);
                 println!("  {} {}", style("Reason:").dim(), reason);
             }
-            ApprovalRequest::FileOperation { operation, path, description } => {
+            ApprovalRequest::FileOperation {
+                operation,
+                path,
+                description,
+            } => {
                 println!("  {} {}", style("Operation:").bold(), operation);
                 println!("  {} {}", style("Path:").bold(), path.display());
                 println!("  {} {}", style("Description:").dim(), description);
             }
-            ApprovalRequest::NetworkAccess { host, port, protocol, purpose } => {
-                println!("  {} {}://{}:{}", style("Network:").bold(), protocol, host, port);
+            ApprovalRequest::NetworkAccess {
+                host,
+                port,
+                protocol,
+                purpose,
+            } => {
+                println!(
+                    "  {} {}://{}:{}",
+                    style("Network:").bold(),
+                    protocol,
+                    host,
+                    port
+                );
                 println!("  {} {}", style("Purpose:").dim(), purpose);
             }
-            ApprovalRequest::Batch { operations, summary } => {
+            ApprovalRequest::Batch {
+                operations,
+                summary,
+            } => {
                 println!("  {} {}", style("Batch Operation:").bold(), summary);
-                println!("  {} {} operations", style("Count:").bold(), operations.len());
+                println!(
+                    "  {} {} operations",
+                    style("Count:").bold(),
+                    operations.len()
+                );
                 for (i, op) in operations.iter().take(5).enumerate() {
                     println!("    {}. {}", i + 1, op);
                 }
@@ -266,20 +302,25 @@ impl ApprovalManager {
                 }
             }
         }
-        
-        println!("\n  {} {} {}", 
+
+        println!(
+            "\n  {} {} {}",
             style("Risk Level:").bold(),
             risk.icon(),
             risk.color()(&format!("{:?}", risk))
         );
-        
+
         println!("{}", style("─".repeat(60)).dim());
-        
+
         Ok(())
     }
-    
+
     /// Get user decision interactively
-    async fn get_user_decision(&self, request: &ApprovalRequest, _risk: RiskLevel) -> Result<ApprovalResponse> {
+    async fn get_user_decision(
+        &self,
+        request: &ApprovalRequest,
+        _risk: RiskLevel,
+    ) -> Result<ApprovalResponse> {
         let can_edit = matches!(
             request,
             ApprovalRequest::Command { .. } | ApprovalRequest::FileOperation { .. }
@@ -326,7 +367,12 @@ impl ApprovalManager {
         use dialoguer::Input;
 
         match request {
-            ApprovalRequest::Command { command, args, reason, risk_level } => {
+            ApprovalRequest::Command {
+                command,
+                args,
+                reason,
+                risk_level,
+            } => {
                 let current = if args.is_empty() {
                     command.clone()
                 } else {
@@ -363,7 +409,11 @@ impl ApprovalManager {
                     risk_level: new_risk,
                 })
             }
-            ApprovalRequest::FileOperation { operation, path, description } => {
+            ApprovalRequest::FileOperation {
+                operation,
+                path,
+                description,
+            } => {
                 let edited_path: String = Input::with_theme(&self.theme)
                     .with_prompt("Edit path")
                     .default(path.to_string_lossy().to_string())
@@ -379,18 +429,18 @@ impl ApprovalManager {
             other => Ok(other.clone()),
         }
     }
-    
+
     /// Gather additional information from user
     async fn gather_more_info(&self, _request: &ApprovalRequest) -> Result<String> {
         use dialoguer::Input;
-        
+
         let info: String = Input::with_theme(&self.theme)
             .with_prompt("What would you like to know?")
             .interact_text()?;
-        
+
         Ok(info)
     }
-    
+
     /// Add a blocked pattern
     #[allow(dead_code)]
     pub fn block_pattern(&mut self, pattern: String) {
@@ -411,38 +461,40 @@ pub async fn batch_approve(
     operations: Vec<ApprovalRequest>,
 ) -> Result<Vec<(ApprovalRequest, ApprovalResponse)>> {
     let mut results = Vec::new();
-    
+
     // Group by risk level
-    let low_risk: Vec<_> = operations.iter()
+    let low_risk: Vec<_> = operations
+        .iter()
         .filter(|op| manager.assess_risk(op) == RiskLevel::Low)
         .cloned()
         .collect();
-    
-    let high_risk: Vec<_> = operations.iter()
+
+    let high_risk: Vec<_> = operations
+        .iter()
         .filter(|op| manager.assess_risk(op) != RiskLevel::Low)
         .cloned()
         .collect();
-    
+
     // Auto-approve low risk
     for op in low_risk {
         results.push((op, ApprovalResponse::Approved));
     }
-    
+
     // Request approval for high risk as batch
     if !high_risk.is_empty() {
         let batch_request = ApprovalRequest::Batch {
             operations: high_risk.iter().map(|op| format!("{:?}", op)).collect(),
             summary: format!("{} high-risk operations", high_risk.len()),
         };
-        
+
         let response = manager.request(&batch_request).await?;
-        
+
         // Apply response to all high-risk operations
         for op in high_risk {
             results.push((op, response.clone()));
         }
     }
-    
+
     Ok(results)
 }
 
@@ -1063,7 +1115,9 @@ mod tests {
             user: "root".to_string(),
             reason: "Restart web server".to_string(),
         };
-        assert!(manager.display_request(&request, RiskLevel::Critical).is_ok());
+        assert!(manager
+            .display_request(&request, RiskLevel::Critical)
+            .is_ok());
     }
 
     #[test]
@@ -1170,12 +1224,18 @@ mod tests {
         let edited = ApprovalRequest::Command {
             command: "rm".to_string(),
             args: vec!["-r".to_string(), "/tmp/data".to_string()],
-            reason: "Cleanup temp".to_string(),  // preserved
-            risk_level: RiskLevel::High,          // preserved
+            reason: "Cleanup temp".to_string(), // preserved
+            risk_level: RiskLevel::High,        // preserved
         };
 
         let response = ApprovalResponse::Modify(edited.clone());
-        if let ApprovalResponse::Modify(ApprovalRequest::Command { command, args, reason, risk_level }) = response {
+        if let ApprovalResponse::Modify(ApprovalRequest::Command {
+            command,
+            args,
+            reason,
+            risk_level,
+        }) = response
+        {
             assert_eq!(command, "rm");
             assert_eq!(args, vec!["-r", "/tmp/data"]);
             assert_eq!(reason, "Cleanup temp");
@@ -1233,7 +1293,10 @@ mod tests {
             protocol: "http".to_string(),
             purpose: "test".to_string(),
         };
-        assert!(!matches!(net, ApprovalRequest::Command { .. } | ApprovalRequest::FileOperation { .. }));
+        assert!(!matches!(
+            net,
+            ApprovalRequest::Command { .. } | ApprovalRequest::FileOperation { .. }
+        ));
     }
 
     #[test]

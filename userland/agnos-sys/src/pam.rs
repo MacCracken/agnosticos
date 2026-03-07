@@ -213,9 +213,7 @@ impl fmt::Display for PamControl {
 /// metacharacters.
 pub fn validate_username(name: &str) -> Result<()> {
     if name.is_empty() {
-        return Err(SysError::InvalidArgument(
-            "Username cannot be empty".into(),
-        ));
+        return Err(SysError::InvalidArgument("Username cannot be empty".into()));
     }
     if name.len() > 32 {
         return Err(SysError::InvalidArgument(format!(
@@ -451,18 +449,13 @@ pub fn get_pam_service_path(service: &PamService) -> PathBuf {
 pub fn get_user_info(username: &str) -> Result<UserInfo> {
     validate_username(username)?;
 
-    let passwd_content = std::fs::read_to_string("/etc/passwd").map_err(|e| {
-        SysError::Unknown(format!("Failed to read /etc/passwd: {}", e))
-    })?;
+    let passwd_content = std::fs::read_to_string("/etc/passwd")
+        .map_err(|e| SysError::Unknown(format!("Failed to read /etc/passwd: {}", e)))?;
 
     let mut info = passwd_content
         .lines()
-        .find(|line| {
-            line.split(':').next() == Some(username)
-        })
-        .ok_or_else(|| {
-            SysError::InvalidArgument(format!("User not found: {}", username))
-        })
+        .find(|line| line.split(':').next() == Some(username))
+        .ok_or_else(|| SysError::InvalidArgument(format!("User not found: {}", username)))
         .and_then(parse_passwd_line)?;
 
     // Resolve groups via `id`
@@ -490,9 +483,8 @@ pub fn get_user_info(_username: &str) -> Result<UserInfo> {
 /// List all users from `/etc/passwd`.
 #[cfg(target_os = "linux")]
 pub fn list_users() -> Result<Vec<UserInfo>> {
-    let passwd_content = std::fs::read_to_string("/etc/passwd").map_err(|e| {
-        SysError::Unknown(format!("Failed to read /etc/passwd: {}", e))
-    })?;
+    let passwd_content = std::fs::read_to_string("/etc/passwd")
+        .map_err(|e| SysError::Unknown(format!("Failed to read /etc/passwd: {}", e)))?;
 
     let mut users = Vec::new();
     for line in passwd_content.lines() {
@@ -598,9 +590,8 @@ pub fn delete_user(_username: &str) -> Result<()> {
 pub fn add_user_to_group(username: &str, group: &str) -> Result<()> {
     validate_username(username)?;
     // Validate group name with same rules
-    validate_username(group).map_err(|_| {
-        SysError::InvalidArgument(format!("Invalid group name: {}", group))
-    })?;
+    validate_username(group)
+        .map_err(|_| SysError::InvalidArgument(format!("Invalid group name: {}", group)))?;
 
     let output = std::process::Command::new("usermod")
         .args(["-aG", group, username])
@@ -745,10 +736,7 @@ mod tests {
         assert_eq!(sessions[0].user, "alice");
         assert_eq!(sessions[0].tty, Some("pts/0".to_string()));
         assert_eq!(sessions[0].login_time, "2026-03-06 10:30");
-        assert_eq!(
-            sessions[0].remote_host,
-            Some("192.168.1.5".to_string())
-        );
+        assert_eq!(sessions[0].remote_host, Some("192.168.1.5".to_string()));
 
         assert_eq!(sessions[1].user, "bob");
         assert_eq!(sessions[1].tty, Some("tty1".to_string()));
@@ -779,7 +767,8 @@ mod tests {
 
     #[test]
     fn test_parse_pam_config_basic() {
-        let content = "# PAM config\nauth\trequired\tpam_unix.so\naccount\tsufficient\tpam_permit.so\n";
+        let content =
+            "# PAM config\nauth\trequired\tpam_unix.so\naccount\tsufficient\tpam_permit.so\n";
         let rules = parse_pam_config(content).unwrap();
         assert_eq!(rules.len(), 2);
         assert_eq!(rules[0].rule_type, PamRuleType::Auth);
@@ -952,12 +941,8 @@ mod tests {
         assert!(AuthResult::Denied("bad password".into())
             .to_string()
             .contains("bad password"));
-        assert!(AuthResult::AccountExpired
-            .to_string()
-            .contains("expired"));
-        assert!(AuthResult::PasswordExpired
-            .to_string()
-            .contains("expired"));
+        assert!(AuthResult::AccountExpired.to_string().contains("expired"));
+        assert!(AuthResult::PasswordExpired.to_string().contains("expired"));
         assert!(AuthResult::SessionError("oops".into())
             .to_string()
             .contains("oops"));

@@ -13,9 +13,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
-use crate::http_api::{
-    AuditEvent, ApiState, RegisterAgentRequest, ResourceNeeds,
-};
+use crate::http_api::{ApiState, AuditEvent, RegisterAgentRequest, ResourceNeeds};
 
 // ---------------------------------------------------------------------------
 // MCP Protocol Types
@@ -328,7 +326,9 @@ fn error_result(message: String) -> McpToolResult {
 }
 
 fn get_string_arg(args: &serde_json::Value, key: &str) -> Option<String> {
-    args.get(key).and_then(|v| v.as_str()).map(|s| s.to_string())
+    args.get(key)
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
 }
 
 fn get_optional_string_arg(args: &serde_json::Value, key: &str) -> Option<String> {
@@ -343,7 +343,9 @@ fn get_optional_string_arg(args: &serde_json::Value, key: &str) -> Option<String
 
 async fn handle_health(state: &ApiState) -> McpToolResult {
     let agents = state.agents_read().await;
-    let uptime = (chrono::Utc::now() - state.started_at()).num_seconds().max(0) as u64;
+    let uptime = (chrono::Utc::now() - state.started_at())
+        .num_seconds()
+        .max(0) as u64;
 
     success_result(serde_json::json!({
         "status": "ok",
@@ -436,9 +438,12 @@ async fn handle_register_agent(state: &ApiState, args: &serde_json::Value) -> Mc
         memory_mb: None,
     };
 
-    agents.insert(id, crate::http_api::RegisteredAgentEntry {
-        detail: detail.clone(),
-    });
+    agents.insert(
+        id,
+        crate::http_api::RegisteredAgentEntry {
+            detail: detail.clone(),
+        },
+    );
 
     info!(agent_name = %req.name, agent_id = %id, "Agent registered via MCP");
 
@@ -507,7 +512,9 @@ async fn handle_heartbeat(state: &ApiState, args: &serde_json::Value) -> McpTool
 
 async fn handle_get_metrics(state: &ApiState) -> McpToolResult {
     let agents = state.agents_read().await;
-    let uptime = (chrono::Utc::now() - state.started_at()).num_seconds().max(0) as u64;
+    let uptime = (chrono::Utc::now() - state.started_at())
+        .num_seconds()
+        .max(0) as u64;
 
     let mut by_status: HashMap<String, usize> = HashMap::new();
     let mut total_cpu: f32 = 0.0;
@@ -552,8 +559,7 @@ async fn handle_forward_audit(state: &ApiState, args: &serde_json::Value) -> Mcp
     };
 
     let agent = get_optional_string_arg(args, "agent");
-    let outcome = get_optional_string_arg(args, "outcome")
-        .unwrap_or_else(|| "unknown".to_string());
+    let outcome = get_optional_string_arg(args, "outcome").unwrap_or_else(|| "unknown".to_string());
     let details = args
         .get("details")
         .cloned()
@@ -644,7 +650,10 @@ async fn handle_photis_list_tasks(args: &serde_json::Value) -> McpToolResult {
     // Validate status if provided
     if let Some(ref s) = status {
         if !["todo", "in_progress", "done"].contains(&s.as_str()) {
-            return error_result(format!("Invalid status '{}': must be todo, in_progress, or done", s));
+            return error_result(format!(
+                "Invalid status '{}': must be todo, in_progress, or done",
+                s
+            ));
         }
     }
 
@@ -679,13 +688,16 @@ async fn handle_photis_create_task(args: &serde_json::Value) -> McpToolResult {
     }
 
     let description = get_optional_string_arg(args, "description");
-    let board_id = get_optional_string_arg(args, "board_id")
-        .unwrap_or_else(|| "default".to_string());
-    let priority = get_optional_string_arg(args, "priority")
-        .unwrap_or_else(|| "medium".to_string());
+    let board_id =
+        get_optional_string_arg(args, "board_id").unwrap_or_else(|| "default".to_string());
+    let priority =
+        get_optional_string_arg(args, "priority").unwrap_or_else(|| "medium".to_string());
 
     if !["low", "medium", "high"].contains(&priority.as_str()) {
-        return error_result(format!("Invalid priority '{}': must be low, medium, or high", priority));
+        return error_result(format!(
+            "Invalid priority '{}': must be low, medium, or high",
+            priority
+        ));
     }
 
     let task_id = Uuid::new_v4().to_string();
@@ -714,12 +726,18 @@ async fn handle_photis_update_task(args: &serde_json::Value) -> McpToolResult {
 
     if let Some(ref s) = status {
         if !["todo", "in_progress", "done"].contains(&s.as_str()) {
-            return error_result(format!("Invalid status '{}': must be todo, in_progress, or done", s));
+            return error_result(format!(
+                "Invalid status '{}': must be todo, in_progress, or done",
+                s
+            ));
         }
     }
     if let Some(ref p) = priority {
         if !["low", "medium", "high"].contains(&p.as_str()) {
-            return error_result(format!("Invalid priority '{}': must be low, medium, or high", p));
+            return error_result(format!(
+                "Invalid priority '{}': must be low, medium, or high",
+                p
+            ));
         }
     }
 
@@ -751,17 +769,22 @@ async fn handle_photis_get_rituals(args: &serde_json::Value) -> McpToolResult {
 }
 
 async fn handle_photis_analytics(args: &serde_json::Value) -> McpToolResult {
-    let period = get_optional_string_arg(args, "period")
-        .unwrap_or_else(|| "week".to_string());
+    let period = get_optional_string_arg(args, "period").unwrap_or_else(|| "week".to_string());
     let metric = get_optional_string_arg(args, "metric");
 
     if !["day", "week", "month"].contains(&period.as_str()) {
-        return error_result(format!("Invalid period '{}': must be day, week, or month", period));
+        return error_result(format!(
+            "Invalid period '{}': must be day, week, or month",
+            period
+        ));
     }
 
     if let Some(ref m) = metric {
         if !["tasks_completed", "streak", "velocity"].contains(&m.as_str()) {
-            return error_result(format!("Invalid metric '{}': must be tasks_completed, streak, or velocity", m));
+            return error_result(format!(
+                "Invalid metric '{}': must be tasks_completed, streak, or velocity",
+                m
+            ));
         }
     }
 
@@ -778,11 +801,14 @@ async fn handle_photis_analytics(args: &serde_json::Value) -> McpToolResult {
 }
 
 async fn handle_photis_sync(args: &serde_json::Value) -> McpToolResult {
-    let direction = get_optional_string_arg(args, "direction")
-        .unwrap_or_else(|| "both".to_string());
+    let direction =
+        get_optional_string_arg(args, "direction").unwrap_or_else(|| "both".to_string());
 
     if !["push", "pull", "both"].contains(&direction.as_str()) {
-        return error_result(format!("Invalid direction '{}': must be push, pull, or both", direction));
+        return error_result(format!(
+            "Invalid direction '{}': must be push, pull, or both",
+            direction
+        ));
     }
 
     info!(direction = %direction, "Photis: sync");
@@ -815,7 +841,11 @@ mod tests {
         crate::http_api::build_router(state)
     }
 
-    async fn call_tool(router: &axum::Router, name: &str, args: serde_json::Value) -> McpToolResult {
+    async fn call_tool(
+        router: &axum::Router,
+        name: &str,
+        args: serde_json::Value,
+    ) -> McpToolResult {
         let body = serde_json::to_string(&McpToolCall {
             name: name.to_string(),
             arguments: args,
@@ -830,7 +860,9 @@ mod tests {
             .unwrap();
 
         let resp = router.clone().oneshot(req).await.unwrap();
-        let body = axum::body::to_bytes(resp.into_body(), 1_048_576).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), 1_048_576)
+            .await
+            .unwrap();
         serde_json::from_slice(&body).unwrap()
     }
 
@@ -846,7 +878,9 @@ mod tests {
         let resp = router.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let body = axum::body::to_bytes(resp.into_body(), 1_048_576).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), 1_048_576)
+            .await
+            .unwrap();
         let manifest: McpToolManifest = serde_json::from_slice(&body).unwrap();
         assert_eq!(manifest.tools.len(), 16);
     }
@@ -953,12 +987,7 @@ mod tests {
     #[tokio::test]
     async fn test_register_missing_name() {
         let router = build_test_router();
-        let result = call_tool(
-            &router,
-            "agnos_register_agent",
-            serde_json::json!({}),
-        )
-        .await;
+        let result = call_tool(&router, "agnos_register_agent", serde_json::json!({})).await;
         assert!(result.is_error);
         assert!(result.content[0].text.contains("Missing"));
     }
@@ -1164,11 +1193,22 @@ mod tests {
         assert_eq!(manifest.tools.len(), 16);
         let names: Vec<&str> = manifest.tools.iter().map(|t| t.name.as_str()).collect();
         for expected in &[
-            "agnos_health", "agnos_list_agents", "agnos_get_agent",
-            "agnos_register_agent", "agnos_deregister_agent", "agnos_heartbeat",
-            "agnos_get_metrics", "agnos_forward_audit", "agnos_memory_get", "agnos_memory_set",
-            "photis_list_tasks", "photis_create_task", "photis_update_task",
-            "photis_get_rituals", "photis_analytics", "photis_sync",
+            "agnos_health",
+            "agnos_list_agents",
+            "agnos_get_agent",
+            "agnos_register_agent",
+            "agnos_deregister_agent",
+            "agnos_heartbeat",
+            "agnos_get_metrics",
+            "agnos_forward_audit",
+            "agnos_memory_get",
+            "agnos_memory_set",
+            "photis_list_tasks",
+            "photis_create_task",
+            "photis_update_task",
+            "photis_get_rituals",
+            "photis_analytics",
+            "photis_sync",
         ] {
             assert!(names.contains(expected), "Missing tool: {}", expected);
         }
@@ -1213,7 +1253,8 @@ mod tests {
             &router,
             "photis_list_tasks",
             serde_json::json!({"status": "done"}),
-        ).await;
+        )
+        .await;
         assert!(!result.is_error);
         let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
         assert_eq!(parsed["total"], 1);
@@ -1226,7 +1267,8 @@ mod tests {
             &router,
             "photis_list_tasks",
             serde_json::json!({"status": "invalid"}),
-        ).await;
+        )
+        .await;
         assert!(result.is_error);
         assert!(result.content[0].text.contains("Invalid status"));
     }
@@ -1238,7 +1280,8 @@ mod tests {
             &router,
             "photis_create_task",
             serde_json::json!({"title": "Fix login bug", "priority": "high"}),
-        ).await;
+        )
+        .await;
         assert!(!result.is_error);
         let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
         assert_eq!(parsed["title"], "Fix login bug");
@@ -1254,9 +1297,12 @@ mod tests {
             &router,
             "photis_create_task",
             serde_json::json!({"priority": "low"}),
-        ).await;
+        )
+        .await;
         assert!(result.is_error);
-        assert!(result.content[0].text.contains("Missing required argument: title"));
+        assert!(result.content[0]
+            .text
+            .contains("Missing required argument: title"));
     }
 
     #[tokio::test]
@@ -1266,7 +1312,8 @@ mod tests {
             &router,
             "photis_create_task",
             serde_json::json!({"title": ""}),
-        ).await;
+        )
+        .await;
         assert!(result.is_error);
         assert!(result.content[0].text.contains("empty"));
     }
@@ -1278,7 +1325,8 @@ mod tests {
             &router,
             "photis_create_task",
             serde_json::json!({"title": "Test", "priority": "urgent"}),
-        ).await;
+        )
+        .await;
         assert!(result.is_error);
         assert!(result.content[0].text.contains("Invalid priority"));
     }
@@ -1290,7 +1338,8 @@ mod tests {
             &router,
             "photis_update_task",
             serde_json::json!({"task_id": "task-001", "status": "done", "priority": "low"}),
-        ).await;
+        )
+        .await;
         assert!(!result.is_error);
         let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
         assert_eq!(parsed["id"], "task-001");
@@ -1305,9 +1354,12 @@ mod tests {
             &router,
             "photis_update_task",
             serde_json::json!({"status": "done"}),
-        ).await;
+        )
+        .await;
         assert!(result.is_error);
-        assert!(result.content[0].text.contains("Missing required argument: task_id"));
+        assert!(result.content[0]
+            .text
+            .contains("Missing required argument: task_id"));
     }
 
     #[tokio::test]
@@ -1317,7 +1369,8 @@ mod tests {
             &router,
             "photis_get_rituals",
             serde_json::json!({"date": "2026-03-06"}),
-        ).await;
+        )
+        .await;
         assert!(!result.is_error);
         let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
         assert_eq!(parsed["date"], "2026-03-06");
@@ -1327,11 +1380,7 @@ mod tests {
     #[tokio::test]
     async fn test_photis_get_rituals_no_date() {
         let router = build_test_router();
-        let result = call_tool(
-            &router,
-            "photis_get_rituals",
-            serde_json::json!({}),
-        ).await;
+        let result = call_tool(&router, "photis_get_rituals", serde_json::json!({})).await;
         assert!(!result.is_error);
         let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
         assert!(parsed["date"].as_str().is_some());
@@ -1345,7 +1394,8 @@ mod tests {
             &router,
             "photis_analytics",
             serde_json::json!({"period": "month", "metric": "velocity"}),
-        ).await;
+        )
+        .await;
         assert!(!result.is_error);
         let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
         assert_eq!(parsed["period"], "month");
@@ -1359,7 +1409,8 @@ mod tests {
             &router,
             "photis_analytics",
             serde_json::json!({"period": "year"}),
-        ).await;
+        )
+        .await;
         assert!(result.is_error);
         assert!(result.content[0].text.contains("Invalid period"));
     }
@@ -1371,7 +1422,8 @@ mod tests {
             &router,
             "photis_analytics",
             serde_json::json!({"period": "week", "metric": "unknown"}),
-        ).await;
+        )
+        .await;
         assert!(result.is_error);
         assert!(result.content[0].text.contains("Invalid metric"));
     }
@@ -1383,7 +1435,8 @@ mod tests {
             &router,
             "photis_sync",
             serde_json::json!({"direction": "push"}),
-        ).await;
+        )
+        .await;
         assert!(!result.is_error);
         let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
         assert_eq!(parsed["status"], "synced");
@@ -1393,11 +1446,7 @@ mod tests {
     #[tokio::test]
     async fn test_photis_sync_default_direction() {
         let router = build_test_router();
-        let result = call_tool(
-            &router,
-            "photis_sync",
-            serde_json::json!({}),
-        ).await;
+        let result = call_tool(&router, "photis_sync", serde_json::json!({})).await;
         assert!(!result.is_error);
         let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
         assert_eq!(parsed["direction"], "both");
@@ -1410,7 +1459,8 @@ mod tests {
             &router,
             "photis_sync",
             serde_json::json!({"direction": "sideways"}),
-        ).await;
+        )
+        .await;
         assert!(result.is_error);
         assert!(result.content[0].text.contains("Invalid direction"));
     }

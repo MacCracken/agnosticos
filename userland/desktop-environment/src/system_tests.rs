@@ -6,10 +6,9 @@
 #[cfg(test)]
 mod desktop_system_tests {
     use crate::{
-        AIDesktopFeatures, AgentStatus, AppType, Compositor, ContextEventType,
-        DesktopApplications, DesktopShell, Notification, NotificationPriority,
-        PermissionRequest, SecurityAlert, SecurityLevel, SecurityUI,
-        ThreatLevel, WindowState,
+        AIDesktopFeatures, AgentStatus, AppType, Compositor, ContextEventType, DesktopApplications,
+        DesktopShell, Notification, NotificationPriority, PermissionRequest, SecurityAlert,
+        SecurityLevel, SecurityUI, ThreatLevel, WindowState,
     };
     use uuid::Uuid;
 
@@ -591,12 +590,7 @@ mod desktop_system_tests {
         assert_eq!(state.progress, 0.75);
 
         // Update again
-        ai.update_agent_hud(
-            agent_id,
-            AgentStatus::Idle,
-            "Complete".to_string(),
-            1.0,
-        );
+        ai.update_agent_hud(agent_id, AgentStatus::Idle, "Complete".to_string(), 1.0);
         let state = &ai.get_agent_hud_states()[0];
         assert_eq!(state.status, AgentStatus::Idle);
         assert_eq!(state.progress, 1.0);
@@ -1424,13 +1418,22 @@ mod desktop_system_tests {
 
         // Start multiple agents
         let id1 = agent_mgr
-            .start_agent("web-scraper".to_string(), vec!["network:outbound".to_string()])
+            .start_agent(
+                "web-scraper".to_string(),
+                vec!["network:outbound".to_string()],
+            )
             .unwrap();
         let id2 = agent_mgr
-            .start_agent("data-processor".to_string(), vec!["file:read".to_string(), "file:write".to_string()])
+            .start_agent(
+                "data-processor".to_string(),
+                vec!["file:read".to_string(), "file:write".to_string()],
+            )
             .unwrap();
         let id3 = agent_mgr
-            .start_agent("report-generator".to_string(), vec!["file:write".to_string()])
+            .start_agent(
+                "report-generator".to_string(),
+                vec!["file:write".to_string()],
+            )
             .unwrap();
 
         assert_eq!(agent_mgr.running_agents.len(), 3);

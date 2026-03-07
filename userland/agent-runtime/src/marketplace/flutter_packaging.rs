@@ -172,10 +172,16 @@ pub fn validate_flutter_manifest(manifest: &FlutterAppManifest) -> Vec<String> {
     }
 
     // wayland_protocols must include at least Core and XdgShell
-    if !manifest.wayland_protocols.contains(&WaylandRequirement::Core) {
+    if !manifest
+        .wayland_protocols
+        .contains(&WaylandRequirement::Core)
+    {
         errors.push("wayland_protocols must include Core".to_string());
     }
-    if !manifest.wayland_protocols.contains(&WaylandRequirement::XdgShell) {
+    if !manifest
+        .wayland_protocols
+        .contains(&WaylandRequirement::XdgShell)
+    {
         errors.push("wayland_protocols must include XdgShell".to_string());
     }
 
@@ -188,7 +194,9 @@ fn is_dotted_version(v: &str) -> bool {
     if parts.len() != 3 {
         return false;
     }
-    parts.iter().all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()))
+    parts
+        .iter()
+        .all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()))
 }
 
 // ---------------------------------------------------------------------------
@@ -225,7 +233,10 @@ pub fn build_launch_config(
     compositor_socket: &str,
     scale: f64,
 ) -> FlutterLaunchConfig {
-    let backend = if manifest.wayland_protocols.contains(&WaylandRequirement::XWayland) {
+    let backend = if manifest
+        .wayland_protocols
+        .contains(&WaylandRequirement::XWayland)
+    {
         DisplayBackend::XWayland
     } else {
         DisplayBackend::Wayland
@@ -263,7 +274,10 @@ pub fn build_env_vars(config: &FlutterLaunchConfig) -> HashMap<String, String> {
     match config.display_backend {
         DisplayBackend::Wayland => {
             env.insert("GDK_BACKEND".to_string(), "wayland".to_string());
-            env.insert("WAYLAND_DISPLAY".to_string(), config.compositor_socket.clone());
+            env.insert(
+                "WAYLAND_DISPLAY".to_string(),
+                config.compositor_socket.clone(),
+            );
             env.insert(
                 "FLUTTER_ENGINE_SWITCH_GL".to_string(),
                 "wayland".to_string(),
@@ -272,10 +286,7 @@ pub fn build_env_vars(config: &FlutterLaunchConfig) -> HashMap<String, String> {
         DisplayBackend::XWayland => {
             env.insert("GDK_BACKEND".to_string(), "x11".to_string());
             env.insert("DISPLAY".to_string(), ":0".to_string());
-            env.insert(
-                "FLUTTER_ENGINE_SWITCH_GL".to_string(),
-                "x11".to_string(),
-            );
+            env.insert("FLUTTER_ENGINE_SWITCH_GL".to_string(), "x11".to_string());
         }
     }
 
@@ -285,10 +296,7 @@ pub fn build_env_vars(config: &FlutterLaunchConfig) -> HashMap<String, String> {
     );
 
     if config.accessibility_enabled {
-        env.insert(
-            "FLUTTER_ACCESSIBILITY".to_string(),
-            "true".to_string(),
-        );
+        env.insert("FLUTTER_ACCESSIBILITY".to_string(), "true".to_string());
     }
 
     if let Some(ref theme) = config.theme_channel {
@@ -319,10 +327,7 @@ mod tests {
                 WaylandRequirement::XdgDecoration,
                 WaylandRequirement::TextInputV3,
             ],
-            platform_channels: vec![
-                "flutter/textinput".to_string(),
-                "flutter/theme".to_string(),
-            ],
+            platform_channels: vec!["flutter/textinput".to_string(), "flutter/theme".to_string()],
             aot_compiled: true,
         }
     }
@@ -340,7 +345,9 @@ mod tests {
         let mut m = valid_manifest();
         m.engine_version = String::new();
         let errors = validate_flutter_manifest(&m);
-        assert!(errors.iter().any(|e| e.contains("engine_version is required")));
+        assert!(errors
+            .iter()
+            .any(|e| e.contains("engine_version is required")));
     }
 
     #[test]
@@ -348,7 +355,9 @@ mod tests {
         let mut m = valid_manifest();
         m.engine_version = "not-a-version".to_string();
         let errors = validate_flutter_manifest(&m);
-        assert!(errors.iter().any(|e| e.contains("engine_version") && e.contains("not a valid")));
+        assert!(errors
+            .iter()
+            .any(|e| e.contains("engine_version") && e.contains("not a valid")));
     }
 
     #[test]
@@ -356,7 +365,9 @@ mod tests {
         let mut m = valid_manifest();
         m.dart_version = String::new();
         let errors = validate_flutter_manifest(&m);
-        assert!(errors.iter().any(|e| e.contains("dart_version is required")));
+        assert!(errors
+            .iter()
+            .any(|e| e.contains("dart_version is required")));
     }
 
     #[test]
@@ -372,7 +383,9 @@ mod tests {
         let mut m = valid_manifest();
         m.runtime = "native".to_string();
         let errors = validate_flutter_manifest(&m);
-        assert!(errors.iter().any(|e| e.contains("runtime must be 'flutter'")));
+        assert!(errors
+            .iter()
+            .any(|e| e.contains("runtime must be 'flutter'")));
     }
 
     #[test]
@@ -527,7 +540,10 @@ mod tests {
     #[test]
     fn test_wayland_requirement_display() {
         assert_eq!(WaylandRequirement::Core.to_string(), "core");
-        assert_eq!(WaylandRequirement::FractionalScale.to_string(), "fractional_scale");
+        assert_eq!(
+            WaylandRequirement::FractionalScale.to_string(),
+            "fractional_scale"
+        );
         assert_eq!(WaylandRequirement::XWayland.to_string(), "xwayland");
     }
 

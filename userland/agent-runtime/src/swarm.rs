@@ -234,7 +234,9 @@ impl SwarmCoordinator {
         weight: f64,
         reason: Option<String>,
     ) -> Result<()> {
-        let proposal = self.proposals.get_mut(proposal_id)
+        let proposal = self
+            .proposals
+            .get_mut(proposal_id)
             .ok_or_else(|| anyhow!("Proposal not found: {}", proposal_id))?;
 
         if proposal.status != ProposalStatus::Open {
@@ -324,7 +326,9 @@ impl SwarmCoordinator {
 
     /// Cancel a proposal (only the proposer can cancel).
     pub fn cancel_proposal(&mut self, proposal_id: &str, agent_id: AgentId) -> Result<()> {
-        let proposal = self.proposals.get_mut(proposal_id)
+        let proposal = self
+            .proposals
+            .get_mut(proposal_id)
             .ok_or_else(|| anyhow!("Proposal not found"))?;
         if proposal.proposer != agent_id {
             return Err(anyhow!("Only the proposer can cancel"));
@@ -413,18 +417,23 @@ impl SwarmCoordinator {
         subtask_id: &str,
         agent_id: AgentId,
     ) -> Result<()> {
-        let plan = self.decompositions.get_mut(task_id)
+        let plan = self
+            .decompositions
+            .get_mut(task_id)
             .ok_or_else(|| anyhow!("Decomposition plan not found: {}", task_id))?;
 
         // Find the subtask index and collect its dependencies
-        let subtask_idx = plan.subtasks.iter()
+        let subtask_idx = plan
+            .subtasks
+            .iter()
             .position(|s| s.id == subtask_id)
             .ok_or_else(|| anyhow!("Subtask not found: {}", subtask_id))?;
 
         let deps: Vec<String> = plan.subtasks[subtask_idx].dependencies.clone();
 
         // Build O(1) lookup for subtask statuses
-        let status_map: HashMap<&str, &SubTaskStatus> = plan.subtasks
+        let status_map: HashMap<&str, &SubTaskStatus> = plan
+            .subtasks
             .iter()
             .map(|s| (s.id.as_str(), &s.status))
             .collect();
@@ -448,10 +457,14 @@ impl SwarmCoordinator {
         subtask_id: &str,
         result: serde_json::Value,
     ) -> Result<bool> {
-        let plan = self.decompositions.get_mut(task_id)
+        let plan = self
+            .decompositions
+            .get_mut(task_id)
             .ok_or_else(|| anyhow!("Decomposition plan not found"))?;
 
-        let subtask = plan.subtasks.iter_mut()
+        let subtask = plan
+            .subtasks
+            .iter_mut()
             .find(|s| s.id == subtask_id)
             .ok_or_else(|| anyhow!("Subtask not found"))?;
 
@@ -459,9 +472,10 @@ impl SwarmCoordinator {
         subtask.result = Some(result);
 
         // Check if all subtasks are done
-        let all_done = plan.subtasks.iter().all(|s| {
-            s.status == SubTaskStatus::Completed || s.status == SubTaskStatus::Failed
-        });
+        let all_done = plan
+            .subtasks
+            .iter()
+            .all(|s| s.status == SubTaskStatus::Completed || s.status == SubTaskStatus::Failed);
 
         Ok(all_done)
     }
@@ -474,7 +488,8 @@ impl SwarmCoordinator {
         };
 
         // Build O(1) lookup for subtask statuses
-        let status_map: HashMap<&str, &SubTaskStatus> = plan.subtasks
+        let status_map: HashMap<&str, &SubTaskStatus> = plan
+            .subtasks
             .iter()
             .map(|s| (s.id.as_str(), &s.status))
             .collect();
@@ -492,10 +507,14 @@ impl SwarmCoordinator {
 
     /// Aggregate results from completed subtasks.
     pub fn aggregate_results(&self, task_id: &str) -> Result<serde_json::Value> {
-        let plan = self.decompositions.get(task_id)
+        let plan = self
+            .decompositions
+            .get(task_id)
             .ok_or_else(|| anyhow!("Decomposition plan not found"))?;
 
-        let results: Vec<&serde_json::Value> = plan.subtasks.iter()
+        let results: Vec<&serde_json::Value> = plan
+            .subtasks
+            .iter()
             .filter_map(|s| s.result.as_ref())
             .collect();
 
@@ -504,12 +523,10 @@ impl SwarmCoordinator {
         }
 
         match plan.aggregation {
-            AggregationStrategy::Concatenate => {
-                Ok(serde_json::Value::Array(results.into_iter().cloned().collect()))
-            }
-            AggregationStrategy::FirstSuccess => {
-                Ok(results[0].clone())
-            }
+            AggregationStrategy::Concatenate => Ok(serde_json::Value::Array(
+                results.into_iter().cloned().collect(),
+            )),
+            AggregationStrategy::FirstSuccess => Ok(results[0].clone()),
             AggregationStrategy::MajorityVote => {
                 // Count occurrences of each distinct result
                 let mut counts: HashMap<String, (usize, serde_json::Value)> = HashMap::new();
@@ -517,7 +534,8 @@ impl SwarmCoordinator {
                     let key = r.to_string();
                     counts.entry(key).or_insert((0, (*r).clone())).0 += 1;
                 }
-                let winner = counts.into_values()
+                let winner = counts
+                    .into_values()
                     .max_by_key(|(count, _)| *count)
                     .map(|(_, val)| val)
                     .unwrap();
@@ -534,9 +552,9 @@ impl SwarmCoordinator {
                 }
                 Ok(serde_json::Value::Object(merged))
             }
-            AggregationStrategy::Custom => {
-                Ok(serde_json::Value::Array(results.into_iter().cloned().collect()))
-            }
+            AggregationStrategy::Custom => Ok(serde_json::Value::Array(
+                results.into_iter().cloned().collect(),
+            )),
         }
     }
 
@@ -567,11 +585,16 @@ impl SwarmCoordinator {
 
     /// Read signals on a topic, sorted by effective strength.
     pub fn read_signals(&self, topic: &str) -> Vec<&StigmergySignal> {
-        let mut matching: Vec<&StigmergySignal> = self.signals
+        let mut matching: Vec<&StigmergySignal> = self
+            .signals
             .iter()
             .filter(|s| s.topic == topic && !s.is_expired())
             .collect();
-        matching.sort_by(|a, b| b.current_strength().partial_cmp(&a.current_strength()).unwrap_or(std::cmp::Ordering::Equal));
+        matching.sort_by(|a, b| {
+            b.current_strength()
+                .partial_cmp(&a.current_strength())
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         matching
     }
 
@@ -587,7 +610,10 @@ impl SwarmCoordinator {
 
     /// Number of active proposals.
     pub fn active_proposal_count(&self) -> usize {
-        self.proposals.values().filter(|p| p.status == ProposalStatus::Open).count()
+        self.proposals
+            .values()
+            .filter(|p| p.status == ProposalStatus::Open)
+            .count()
     }
 
     /// Number of active decompositions.
@@ -618,13 +644,15 @@ mod tests {
     #[test]
     fn test_create_proposal() {
         let mut coord = SwarmCoordinator::new();
-        let id = coord.create_proposal(
-            agent(1),
-            "Which model?".into(),
-            vec!["GPT-4".into(), "Claude".into()],
-            Duration::from_secs(60),
-            QuorumRule::Majority,
-        ).unwrap();
+        let id = coord
+            .create_proposal(
+                agent(1),
+                "Which model?".into(),
+                vec!["GPT-4".into(), "Claude".into()],
+                Duration::from_secs(60),
+                QuorumRule::Majority,
+            )
+            .unwrap();
         assert!(coord.get_proposal(&id).is_some());
         assert_eq!(coord.active_proposal_count(), 1);
     }
@@ -633,8 +661,11 @@ mod tests {
     fn test_proposal_requires_two_options() {
         let mut coord = SwarmCoordinator::new();
         let result = coord.create_proposal(
-            agent(1), "Bad".into(), vec!["Only one".into()],
-            Duration::from_secs(60), QuorumRule::Majority,
+            agent(1),
+            "Bad".into(),
+            vec!["Only one".into()],
+            Duration::from_secs(60),
+            QuorumRule::Majority,
         );
         assert!(result.is_err());
     }
@@ -646,17 +677,24 @@ mod tests {
         coord.register_participant(agent(2));
         coord.register_participant(agent(3));
 
-        let id = coord.create_proposal(
-            agent(1), "Choose".into(),
-            vec!["A".into(), "B".into()],
-            Duration::from_secs(60), QuorumRule::Majority,
-        ).unwrap();
+        let id = coord
+            .create_proposal(
+                agent(1),
+                "Choose".into(),
+                vec!["A".into(), "B".into()],
+                Duration::from_secs(60),
+                QuorumRule::Majority,
+            )
+            .unwrap();
 
         coord.cast_vote(&id, agent(1), 0, 1.0, None).unwrap();
         coord.cast_vote(&id, agent(2), 0, 1.0, None).unwrap();
 
         let proposal = coord.get_proposal(&id).unwrap();
-        assert_eq!(proposal.status, ProposalStatus::Decided { winning_option: 0 });
+        assert_eq!(
+            proposal.status,
+            ProposalStatus::Decided { winning_option: 0 }
+        );
     }
 
     #[test]
@@ -665,16 +703,23 @@ mod tests {
         coord.register_participant(agent(1));
         coord.register_participant(agent(2));
 
-        let id = coord.create_proposal(
-            agent(1), "Choose".into(),
-            vec!["A".into(), "B".into()],
-            Duration::from_secs(60), QuorumRule::MinVotes(2),
-        ).unwrap();
+        let id = coord
+            .create_proposal(
+                agent(1),
+                "Choose".into(),
+                vec!["A".into(), "B".into()],
+                Duration::from_secs(60),
+                QuorumRule::MinVotes(2),
+            )
+            .unwrap();
 
         coord.cast_vote(&id, agent(1), 0, 1.0, None).unwrap();
         coord.cast_vote(&id, agent(2), 1, 1.0, None).unwrap();
 
-        assert_eq!(coord.get_proposal(&id).unwrap().status, ProposalStatus::Tied);
+        assert_eq!(
+            coord.get_proposal(&id).unwrap().status,
+            ProposalStatus::Tied
+        );
     }
 
     #[test]
@@ -683,11 +728,15 @@ mod tests {
         coord.register_participant(agent(1));
         coord.register_participant(agent(2));
 
-        let id = coord.create_proposal(
-            agent(1), "Choose".into(),
-            vec!["A".into(), "B".into()],
-            Duration::from_secs(60), QuorumRule::MinVotes(2),
-        ).unwrap();
+        let id = coord
+            .create_proposal(
+                agent(1),
+                "Choose".into(),
+                vec!["A".into(), "B".into()],
+                Duration::from_secs(60),
+                QuorumRule::MinVotes(2),
+            )
+            .unwrap();
 
         // Agent 1 votes A with weight 1, Agent 2 votes B with weight 5
         coord.cast_vote(&id, agent(1), 0, 1.0, None).unwrap();
@@ -703,11 +752,15 @@ mod tests {
     fn test_invalid_vote_choice() {
         let mut coord = SwarmCoordinator::new();
         coord.register_participant(agent(1));
-        let id = coord.create_proposal(
-            agent(1), "Choose".into(),
-            vec!["A".into(), "B".into()],
-            Duration::from_secs(60), QuorumRule::MinVotes(1),
-        ).unwrap();
+        let id = coord
+            .create_proposal(
+                agent(1),
+                "Choose".into(),
+                vec!["A".into(), "B".into()],
+                Duration::from_secs(60),
+                QuorumRule::MinVotes(1),
+            )
+            .unwrap();
 
         assert!(coord.cast_vote(&id, agent(1), 5, 1.0, None).is_err());
     }
@@ -715,17 +768,24 @@ mod tests {
     #[test]
     fn test_cancel_proposal() {
         let mut coord = SwarmCoordinator::new();
-        let id = coord.create_proposal(
-            agent(1), "Choose".into(),
-            vec!["A".into(), "B".into()],
-            Duration::from_secs(60), QuorumRule::Majority,
-        ).unwrap();
+        let id = coord
+            .create_proposal(
+                agent(1),
+                "Choose".into(),
+                vec!["A".into(), "B".into()],
+                Duration::from_secs(60),
+                QuorumRule::Majority,
+            )
+            .unwrap();
 
         // Non-proposer can't cancel
         assert!(coord.cancel_proposal(&id, agent(2)).is_err());
         // Proposer can cancel
         coord.cancel_proposal(&id, agent(1)).unwrap();
-        assert_eq!(coord.get_proposal(&id).unwrap().status, ProposalStatus::Cancelled);
+        assert_eq!(
+            coord.get_proposal(&id).unwrap().status,
+            ProposalStatus::Cancelled
+        );
     }
 
     #[test]
@@ -734,11 +794,15 @@ mod tests {
         coord.register_participant(agent(1));
         coord.register_participant(agent(2));
 
-        let id = coord.create_proposal(
-            agent(1), "Choose".into(),
-            vec!["A".into(), "B".into()],
-            Duration::from_secs(60), QuorumRule::MinVotes(3),
-        ).unwrap();
+        let id = coord
+            .create_proposal(
+                agent(1),
+                "Choose".into(),
+                vec!["A".into(), "B".into()],
+                Duration::from_secs(60),
+                QuorumRule::MinVotes(3),
+            )
+            .unwrap();
 
         coord.cast_vote(&id, agent(1), 0, 1.0, None).unwrap();
         coord.unregister_participant(&agent(1));
@@ -749,16 +813,22 @@ mod tests {
     #[test]
     fn test_task_decomposition() {
         let mut coord = SwarmCoordinator::new();
-        let task_id = coord.decompose_task(
-            "task-1".into(),
-            vec![
-                ("Part A".into(), serde_json::json!({"chunk": 0}), vec![]),
-                ("Part B".into(), serde_json::json!({"chunk": 1}), vec![]),
-                ("Combine".into(), serde_json::json!({}), vec!["task-1-sub-0".into(), "task-1-sub-1".into()]),
-            ],
-            DecompositionStrategy::DataParallel,
-            AggregationStrategy::Concatenate,
-        ).unwrap();
+        let task_id = coord
+            .decompose_task(
+                "task-1".into(),
+                vec![
+                    ("Part A".into(), serde_json::json!({"chunk": 0}), vec![]),
+                    ("Part B".into(), serde_json::json!({"chunk": 1}), vec![]),
+                    (
+                        "Combine".into(),
+                        serde_json::json!({}),
+                        vec!["task-1-sub-0".into(), "task-1-sub-1".into()],
+                    ),
+                ],
+                DecompositionStrategy::DataParallel,
+                AggregationStrategy::Concatenate,
+            )
+            .unwrap();
 
         let plan = coord.get_plan(&task_id).unwrap();
         assert_eq!(plan.subtasks.len(), 3);
@@ -771,56 +841,72 @@ mod tests {
     #[test]
     fn test_subtask_assignment_and_completion() {
         let mut coord = SwarmCoordinator::new();
-        coord.decompose_task(
-            "t1".into(),
-            vec![
-                ("A".into(), serde_json::json!({}), vec![]),
-                ("B".into(), serde_json::json!({}), vec![]),
-            ],
-            DecompositionStrategy::DataParallel,
-            AggregationStrategy::Concatenate,
-        ).unwrap();
+        coord
+            .decompose_task(
+                "t1".into(),
+                vec![
+                    ("A".into(), serde_json::json!({}), vec![]),
+                    ("B".into(), serde_json::json!({}), vec![]),
+                ],
+                DecompositionStrategy::DataParallel,
+                AggregationStrategy::Concatenate,
+            )
+            .unwrap();
 
         coord.assign_subtask("t1", "t1-sub-0", agent(1)).unwrap();
-        let all_done = coord.complete_subtask("t1", "t1-sub-0", serde_json::json!("result-a")).unwrap();
+        let all_done = coord
+            .complete_subtask("t1", "t1-sub-0", serde_json::json!("result-a"))
+            .unwrap();
         assert!(!all_done);
 
         coord.assign_subtask("t1", "t1-sub-1", agent(2)).unwrap();
-        let all_done = coord.complete_subtask("t1", "t1-sub-1", serde_json::json!("result-b")).unwrap();
+        let all_done = coord
+            .complete_subtask("t1", "t1-sub-1", serde_json::json!("result-b"))
+            .unwrap();
         assert!(all_done);
     }
 
     #[test]
     fn test_dependency_enforcement() {
         let mut coord = SwarmCoordinator::new();
-        coord.decompose_task(
-            "t1".into(),
-            vec![
-                ("First".into(), serde_json::json!({}), vec![]),
-                ("Second".into(), serde_json::json!({}), vec!["t1-sub-0".into()]),
-            ],
-            DecompositionStrategy::PipelineParallel,
-            AggregationStrategy::Concatenate,
-        ).unwrap();
+        coord
+            .decompose_task(
+                "t1".into(),
+                vec![
+                    ("First".into(), serde_json::json!({}), vec![]),
+                    (
+                        "Second".into(),
+                        serde_json::json!({}),
+                        vec!["t1-sub-0".into()],
+                    ),
+                ],
+                DecompositionStrategy::PipelineParallel,
+                AggregationStrategy::Concatenate,
+            )
+            .unwrap();
 
         // Can't assign second before first completes
         assert!(coord.assign_subtask("t1", "t1-sub-1", agent(1)).is_err());
 
         // Complete first, then second can be assigned
         coord.assign_subtask("t1", "t1-sub-0", agent(1)).unwrap();
-        coord.complete_subtask("t1", "t1-sub-0", serde_json::json!("done")).unwrap();
+        coord
+            .complete_subtask("t1", "t1-sub-0", serde_json::json!("done"))
+            .unwrap();
         assert!(coord.assign_subtask("t1", "t1-sub-1", agent(2)).is_ok());
     }
 
     #[test]
     fn test_redundant_decomposition() {
         let mut coord = SwarmCoordinator::new();
-        coord.decompose_task(
-            "t1".into(),
-            vec![("Task".into(), serde_json::json!({}), vec![])],
-            DecompositionStrategy::Redundant { copies: 3 },
-            AggregationStrategy::MajorityVote,
-        ).unwrap();
+        coord
+            .decompose_task(
+                "t1".into(),
+                vec![("Task".into(), serde_json::json!({}), vec![])],
+                DecompositionStrategy::Redundant { copies: 3 },
+                AggregationStrategy::MajorityVote,
+            )
+            .unwrap();
 
         let plan = coord.get_plan("t1").unwrap();
         assert_eq!(plan.subtasks.len(), 3);
@@ -829,20 +915,26 @@ mod tests {
     #[test]
     fn test_aggregate_concatenate() {
         let mut coord = SwarmCoordinator::new();
-        coord.decompose_task(
-            "t1".into(),
-            vec![
-                ("A".into(), serde_json::json!({}), vec![]),
-                ("B".into(), serde_json::json!({}), vec![]),
-            ],
-            DecompositionStrategy::DataParallel,
-            AggregationStrategy::Concatenate,
-        ).unwrap();
+        coord
+            .decompose_task(
+                "t1".into(),
+                vec![
+                    ("A".into(), serde_json::json!({}), vec![]),
+                    ("B".into(), serde_json::json!({}), vec![]),
+                ],
+                DecompositionStrategy::DataParallel,
+                AggregationStrategy::Concatenate,
+            )
+            .unwrap();
 
         coord.assign_subtask("t1", "t1-sub-0", agent(1)).unwrap();
-        coord.complete_subtask("t1", "t1-sub-0", serde_json::json!("r1")).unwrap();
+        coord
+            .complete_subtask("t1", "t1-sub-0", serde_json::json!("r1"))
+            .unwrap();
         coord.assign_subtask("t1", "t1-sub-1", agent(2)).unwrap();
-        coord.complete_subtask("t1", "t1-sub-1", serde_json::json!("r2")).unwrap();
+        coord
+            .complete_subtask("t1", "t1-sub-1", serde_json::json!("r2"))
+            .unwrap();
 
         let result = coord.aggregate_results("t1").unwrap();
         assert_eq!(result, serde_json::json!(["r1", "r2"]));
@@ -851,20 +943,26 @@ mod tests {
     #[test]
     fn test_aggregate_merge() {
         let mut coord = SwarmCoordinator::new();
-        coord.decompose_task(
-            "t1".into(),
-            vec![
-                ("A".into(), serde_json::json!({}), vec![]),
-                ("B".into(), serde_json::json!({}), vec![]),
-            ],
-            DecompositionStrategy::FunctionalSplit,
-            AggregationStrategy::Merge,
-        ).unwrap();
+        coord
+            .decompose_task(
+                "t1".into(),
+                vec![
+                    ("A".into(), serde_json::json!({}), vec![]),
+                    ("B".into(), serde_json::json!({}), vec![]),
+                ],
+                DecompositionStrategy::FunctionalSplit,
+                AggregationStrategy::Merge,
+            )
+            .unwrap();
 
         coord.assign_subtask("t1", "t1-sub-0", agent(1)).unwrap();
-        coord.complete_subtask("t1", "t1-sub-0", serde_json::json!({"hosts": 5})).unwrap();
+        coord
+            .complete_subtask("t1", "t1-sub-0", serde_json::json!({"hosts": 5}))
+            .unwrap();
         coord.assign_subtask("t1", "t1-sub-1", agent(2)).unwrap();
-        coord.complete_subtask("t1", "t1-sub-1", serde_json::json!({"ports": 80})).unwrap();
+        coord
+            .complete_subtask("t1", "t1-sub-1", serde_json::json!({"ports": 80}))
+            .unwrap();
 
         let result = coord.aggregate_results("t1").unwrap();
         assert_eq!(result, serde_json::json!({"hosts": 5, "ports": 80}));
@@ -874,12 +972,18 @@ mod tests {
     fn test_stigmergy_signals() {
         let mut coord = SwarmCoordinator::new();
         coord.emit_signal(
-            "scan.target".into(), agent(1), 10.0,
-            serde_json::json!({"ip": "10.0.0.1"}), 0.1,
+            "scan.target".into(),
+            agent(1),
+            10.0,
+            serde_json::json!({"ip": "10.0.0.1"}),
+            0.1,
         );
         coord.emit_signal(
-            "scan.target".into(), agent(2), 5.0,
-            serde_json::json!({"ip": "10.0.0.2"}), 0.1,
+            "scan.target".into(),
+            agent(2),
+            5.0,
+            serde_json::json!({"ip": "10.0.0.2"}),
+            0.1,
         );
 
         let signals = coord.read_signals("scan.target");
@@ -919,17 +1023,20 @@ mod tests {
     #[test]
     fn test_expire_stale_proposals() {
         let mut coord = SwarmCoordinator::new();
-        coord.proposals.insert("old".into(), SwarmProposal {
-            id: "old".into(),
-            proposer: agent(1),
-            description: "Old".into(),
-            options: vec!["A".into(), "B".into()],
-            created_at: Instant::now() - Duration::from_secs(120),
-            deadline: Duration::from_secs(60),
-            quorum: QuorumRule::Majority,
-            votes: HashMap::new(),
-            status: ProposalStatus::Open,
-        });
+        coord.proposals.insert(
+            "old".into(),
+            SwarmProposal {
+                id: "old".into(),
+                proposer: agent(1),
+                description: "Old".into(),
+                options: vec!["A".into(), "B".into()],
+                created_at: Instant::now() - Duration::from_secs(120),
+                deadline: Duration::from_secs(60),
+                quorum: QuorumRule::Majority,
+                votes: HashMap::new(),
+                status: ProposalStatus::Open,
+            },
+        );
 
         let expired = coord.expire_stale_proposals();
         assert_eq!(expired, 1);
@@ -942,24 +1049,37 @@ mod tests {
             coord.register_participant(agent(i));
         }
 
-        let id = coord.create_proposal(
-            agent(0), "Choose".into(),
-            vec!["A".into(), "B".into()],
-            Duration::from_secs(60), QuorumRule::SuperMajority,
-        ).unwrap();
+        let id = coord
+            .create_proposal(
+                agent(0),
+                "Choose".into(),
+                vec!["A".into(), "B".into()],
+                Duration::from_secs(60),
+                QuorumRule::SuperMajority,
+            )
+            .unwrap();
 
         // 3/6 = 50%, not enough for super majority
         coord.cast_vote(&id, agent(0), 0, 1.0, None).unwrap();
         coord.cast_vote(&id, agent(1), 0, 1.0, None).unwrap();
         coord.cast_vote(&id, agent(2), 0, 1.0, None).unwrap();
-        assert_eq!(coord.get_proposal(&id).unwrap().status, ProposalStatus::Open);
+        assert_eq!(
+            coord.get_proposal(&id).unwrap().status,
+            ProposalStatus::Open
+        );
 
         // 4/6 = 66.7%, not > 66.7% (need strictly > 2/3)
         coord.cast_vote(&id, agent(3), 0, 1.0, None).unwrap();
-        assert_eq!(coord.get_proposal(&id).unwrap().status, ProposalStatus::Open);
+        assert_eq!(
+            coord.get_proposal(&id).unwrap().status,
+            ProposalStatus::Open
+        );
 
         // 5/6 > 2/3
         coord.cast_vote(&id, agent(4), 0, 1.0, None).unwrap();
-        assert!(matches!(coord.get_proposal(&id).unwrap().status, ProposalStatus::Decided { .. }));
+        assert!(matches!(
+            coord.get_proposal(&id).unwrap().status,
+            ProposalStatus::Decided { .. }
+        ));
     }
 }

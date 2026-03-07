@@ -1,165 +1,163 @@
-pub mod agent;
-pub mod http_api;
-pub mod ipc;
-pub mod lifecycle;
-pub mod orchestrator;
-pub mod package_manager;
-pub mod pubsub;
-pub mod registry;
-pub mod resource;
-pub mod rollback;
-pub mod sandbox;
-pub mod seccomp_profiles;
-pub mod service_manager;
-pub mod supervisor;
-pub mod network_tools;
-pub mod tool_analysis;
-pub mod swarm;
-pub mod learning;
-pub mod memory_store;
-pub mod multimodal;
-pub mod wasm_runtime;
-pub mod vector_store;
-pub mod rag;
-pub mod knowledge_base;
-pub mod file_watcher;
-pub mod capability;
-pub mod resource_forecast;
-pub mod mtls;
-pub mod integrity;
 pub mod aegis;
+pub mod agent;
 pub mod agnova;
-pub mod ark;
-pub mod marketplace;
-pub mod mcp_server;
-pub mod nous;
-pub mod sigil;
-pub mod takumi;
 pub mod argonaut;
+pub mod ark;
+pub mod capability;
 pub mod cloud;
 pub mod collaboration;
 pub mod explainability;
 pub mod federation;
+pub mod file_watcher;
 pub mod finetune;
-pub mod migration;
-pub mod pqc;
 pub mod formal_verify;
+pub mod http_api;
+pub mod integrity;
+pub mod ipc;
+pub mod knowledge_base;
+pub mod learning;
+pub mod lifecycle;
+pub mod marketplace;
+pub mod mcp_server;
+pub mod memory_store;
+pub mod migration;
+pub mod mtls;
+pub mod multimodal;
+pub mod network_tools;
+pub mod nous;
+pub mod orchestrator;
+pub mod package_manager;
+pub mod pqc;
+pub mod pubsub;
+pub mod rag;
+pub mod registry;
+pub mod resource;
+pub mod resource_forecast;
 pub mod rl_optimizer;
+pub mod rollback;
 pub mod safety;
+pub mod sandbox;
 pub mod sandbox_v2;
 pub mod scheduler;
+pub mod seccomp_profiles;
+pub mod service_manager;
+pub mod sigil;
+pub mod supervisor;
+pub mod swarm;
+pub mod takumi;
+pub mod tool_analysis;
+pub mod vector_store;
+pub mod wasm_runtime;
 
-pub use agent::{Agent, AgentHandle};
-pub use lifecycle::LifecycleManager;
-pub use orchestrator::Orchestrator;
-pub use pubsub::TopicBroker;
-pub use package_manager::PackageManager;
-pub use registry::AgentRegistry;
-pub use rollback::RollbackManager;
-pub use service_manager::ServiceManager;
-pub use supervisor::Supervisor;
-pub use swarm::SwarmCoordinator;
-pub use learning::AgentLearner;
-pub use memory_store::AgentMemoryStore;
-pub use multimodal::ModalityRegistry;
-pub use vector_store::VectorIndex;
-pub use rag::{RagPipeline, RagConfig};
-pub use knowledge_base::KnowledgeBase;
-pub use file_watcher::FileWatcher;
-pub use ipc::{RpcRegistry, RpcRouter, RpcRequest, RpcResponse};
-pub use learning::{AnomalyDetector, BehaviorSample, AnomalyAlert, AnomalySeverity};
-pub use marketplace::{
-    MarketplaceCategory, MarketplaceManifest, PublisherInfo,
-    DependencyGraph, DepNode,
-    trust::{PublisherKeyring, KeyVersion},
-    transparency::TransparencyLog,
-    local_registry::LocalRegistry,
-    remote_client::RegistryClient,
-    flutter_agpkg::{FlutterBuildDir, PackFlutterConfig, SandboxProfile, LandlockRule, NetworkRule},
-    sandbox_profiles::{SandboxPreset, PredefinedProfile},
-};
-pub use nous::{
-    NousResolver, PackageSource, ResolvedPackage, InstalledPackage,
-    AvailableUpdate, UnifiedSearchResult, SystemPackageDb,
-};
-pub use ark::{ArkPackageManager, ArkCommand, ArkConfig, ArkResult, ArkOutput, InstallPlan, InstallStep};
 pub use aegis::{
-    AegisSecurityDaemon, AegisConfig, AegisStats,
-    ThreatLevel, SecurityEvent, SecurityEventType,
-    QuarantineEntry, QuarantineAction,
-    SecurityScanResult, ScanType, SecurityFinding,
+    AegisConfig, AegisSecurityDaemon, AegisStats, QuarantineAction, QuarantineEntry, ScanType,
+    SecurityEvent, SecurityEventType, SecurityFinding, SecurityScanResult, ThreatLevel,
 };
-pub use sigil::{
-    SigilVerifier, TrustLevel, TrustPolicy, TrustEnforcement, ArtifactType,
-    TrustedArtifact, VerificationResult, TrustCheck, RevocationEntry, RevocationList, SigilStats,
-};
-pub use takumi::{
-    TakumiBuildSystem, BuildRecipe, PackageMetadata, SourceSpec, DependencySpec,
-    BuildSteps, SecurityFlags, HardeningFlag, ArkPackage, ArkManifest, ArkFileEntry,
-    ArkFileType, BuildContext, BuildStatus, BuildLogEntry,
-};
+pub use agent::{Agent, AgentHandle};
 pub use agnova::{
-    AgnovaInstaller, InstallConfig, InstallMode, InstallPhase, InstallProgress,
-    InstallResult, InstallError, DiskLayout, PartitionSpec, Filesystem, PartitionFlag,
-    BootloaderConfig, BootloaderType, NetworkConfig, UserConfig, SecurityConfig,
-    PackageSelection,
+    AgnovaInstaller, BootloaderConfig, BootloaderType, DiskLayout, Filesystem, InstallConfig,
+    InstallError, InstallMode, InstallPhase, InstallProgress, InstallResult, NetworkConfig,
+    PackageSelection, PartitionFlag, PartitionSpec, SecurityConfig, UserConfig,
 };
 pub use argonaut::{
-    ArgonautInit, ArgonautConfig, ArgonautStats, BootMode, BootStage, BootStep,
-    BootStepStatus, ServiceDefinition, ServiceState, ManagedService, RestartPolicy,
-    HealthCheck, HealthCheckType, ReadyCheck,
+    ArgonautConfig, ArgonautInit, ArgonautStats, BootMode, BootStage, BootStep, BootStepStatus,
+    HealthCheck, HealthCheckType, ManagedService, ReadyCheck, RestartPolicy, ServiceDefinition,
+    ServiceState,
 };
-pub use federation::{
-    FederationCluster, FederationNode, FederationConfig, FederationStats,
-    NodeRole, NodeStatus, SchedulingStrategy, NodeScorer, NodeScore,
-};
-pub use migration::{
-    MigrationManager, MigrationTracker, MigrationPlan, MigrationRecord,
-    MigrationState, MigrationType, Checkpoint, CheckpointType, PendingMessage,
-};
-pub use scheduler::{
-    TaskScheduler, ScheduledTask, TaskStatus, TaskPriority, ResourceReq,
-    NodeCapacity, SchedulingDecision, PreemptionAction, SchedulerStats,
-    CronScheduler, CronEntry,
-};
-pub use marketplace::ratings::{Rating, RatingStore, RatingStats, RatingFilter};
-pub use pqc::{
-    PqcAlgorithm, PqcConfig, PqcMode, PqcKeyStore, PqcMigrationStatus,
-    HybridKemKeypair, HybridSigningKeypair, HybridEncapsulation, HybridSignature,
-};
-pub use explainability::{
-    ExplainabilityEngine, DecisionRecord, DecisionExplanation, DecisionFilter,
-    DecisionFactor, FactorType, Alternative, DecisionOutcome, AgentDecisionStats,
-    ConfidenceLabel, AuditTrail,
-};
-pub use safety::{
-    SafetyEngine, SafetyPolicy, SafetyRule, SafetyRuleType, SafetyEnforcement,
-    SafetySeverity, SafetyAction, ActionType, SafetyVerdict, SafetyViolation,
-    PromptInjectionDetector, SafetyCircuitBreaker,
-};
-pub use finetune::{
-    FineTunePipeline, FineTuneConfig, FineTuneMethod, FineTuneJob, JobStatus,
-    JobProgress, TrainingDataset, TrainingExample, ExampleSource, DatasetStats,
-    ModelRegistry, FineTunedModel, ModelMetrics, PipelineStats, VramEstimate,
-};
-pub use formal_verify::{
-    PropertyChecker, Property, PropertyType, ComponentId, ProofMethod,
-    VerificationStatus, StateMachineProperty, InvariantMonitor, VerificationReport,
-};
-pub use sandbox_v2::{
-    CapabilityToken, CapabilityStore, FlowTracker, TimeBoundedSandbox,
-    PolicyLearner, ComposableSandbox, SandboxMetrics,
-};
-pub use rl_optimizer::{
-    RlOptimizer, RlConfig, QTable, EpsilonGreedy, PolicyGradient,
-    ReplayBuffer, RewardShaper, OptimizerStats,
+pub use ark::{
+    ArkCommand, ArkConfig, ArkOutput, ArkPackageManager, ArkResult, InstallPlan, InstallStep,
 };
 pub use cloud::{
-    CloudConfig, CloudRegion, CloudConnection, CloudDeploymentManager,
-    SyncEngine, SyncItem, WorkspaceManager, Workspace, BillingTracker,
+    BillingTracker, CloudConfig, CloudConnection, CloudDeploymentManager, CloudRegion, SyncEngine,
+    SyncItem, Workspace, WorkspaceManager,
 };
 pub use collaboration::{
-    CollaborationSession, CollaborationMode, SharedTask, TaskOwner,
-    HandoffManager, TrustCalibrator, TrustMetrics,
-    FeedbackCollector, CollaborationAnalyzer,
+    CollaborationAnalyzer, CollaborationMode, CollaborationSession, FeedbackCollector,
+    HandoffManager, SharedTask, TaskOwner, TrustCalibrator, TrustMetrics,
 };
+pub use explainability::{
+    AgentDecisionStats, Alternative, AuditTrail, ConfidenceLabel, DecisionExplanation,
+    DecisionFactor, DecisionFilter, DecisionOutcome, DecisionRecord, ExplainabilityEngine,
+    FactorType,
+};
+pub use federation::{
+    FederationCluster, FederationConfig, FederationNode, FederationStats, NodeRole, NodeScore,
+    NodeScorer, NodeStatus, SchedulingStrategy,
+};
+pub use file_watcher::FileWatcher;
+pub use finetune::{
+    DatasetStats, ExampleSource, FineTuneConfig, FineTuneJob, FineTuneMethod, FineTunePipeline,
+    FineTunedModel, JobProgress, JobStatus, ModelMetrics, ModelRegistry, PipelineStats,
+    TrainingDataset, TrainingExample, VramEstimate,
+};
+pub use formal_verify::{
+    ComponentId, InvariantMonitor, ProofMethod, Property, PropertyChecker, PropertyType,
+    StateMachineProperty, VerificationReport, VerificationStatus,
+};
+pub use ipc::{RpcRegistry, RpcRequest, RpcResponse, RpcRouter};
+pub use knowledge_base::KnowledgeBase;
+pub use learning::AgentLearner;
+pub use learning::{AnomalyAlert, AnomalyDetector, AnomalySeverity, BehaviorSample};
+pub use lifecycle::LifecycleManager;
+pub use marketplace::ratings::{Rating, RatingFilter, RatingStats, RatingStore};
+pub use marketplace::{
+    flutter_agpkg::{
+        FlutterBuildDir, LandlockRule, NetworkRule, PackFlutterConfig, SandboxProfile,
+    },
+    local_registry::LocalRegistry,
+    remote_client::RegistryClient,
+    sandbox_profiles::{PredefinedProfile, SandboxPreset},
+    transparency::TransparencyLog,
+    trust::{KeyVersion, PublisherKeyring},
+    DepNode, DependencyGraph, MarketplaceCategory, MarketplaceManifest, PublisherInfo,
+};
+pub use memory_store::AgentMemoryStore;
+pub use migration::{
+    Checkpoint, CheckpointType, MigrationManager, MigrationPlan, MigrationRecord, MigrationState,
+    MigrationTracker, MigrationType, PendingMessage,
+};
+pub use multimodal::ModalityRegistry;
+pub use nous::{
+    AvailableUpdate, InstalledPackage, NousResolver, PackageSource, ResolvedPackage,
+    SystemPackageDb, UnifiedSearchResult,
+};
+pub use orchestrator::Orchestrator;
+pub use package_manager::PackageManager;
+pub use pqc::{
+    HybridEncapsulation, HybridKemKeypair, HybridSignature, HybridSigningKeypair, PqcAlgorithm,
+    PqcConfig, PqcKeyStore, PqcMigrationStatus, PqcMode,
+};
+pub use pubsub::TopicBroker;
+pub use rag::{RagConfig, RagPipeline};
+pub use registry::AgentRegistry;
+pub use rl_optimizer::{
+    EpsilonGreedy, OptimizerStats, PolicyGradient, QTable, ReplayBuffer, RewardShaper, RlConfig,
+    RlOptimizer,
+};
+pub use rollback::RollbackManager;
+pub use safety::{
+    ActionType, PromptInjectionDetector, SafetyAction, SafetyCircuitBreaker, SafetyEnforcement,
+    SafetyEngine, SafetyPolicy, SafetyRule, SafetyRuleType, SafetySeverity, SafetyVerdict,
+    SafetyViolation,
+};
+pub use sandbox_v2::{
+    CapabilityStore, CapabilityToken, ComposableSandbox, FlowTracker, PolicyLearner,
+    SandboxMetrics, TimeBoundedSandbox,
+};
+pub use scheduler::{
+    CronEntry, CronScheduler, NodeCapacity, PreemptionAction, ResourceReq, ScheduledTask,
+    SchedulerStats, SchedulingDecision, TaskPriority, TaskScheduler, TaskStatus,
+};
+pub use service_manager::ServiceManager;
+pub use sigil::{
+    ArtifactType, RevocationEntry, RevocationList, SigilStats, SigilVerifier, TrustCheck,
+    TrustEnforcement, TrustLevel, TrustPolicy, TrustedArtifact, VerificationResult,
+};
+pub use supervisor::Supervisor;
+pub use swarm::SwarmCoordinator;
+pub use takumi::{
+    ArkFileEntry, ArkFileType, ArkManifest, ArkPackage, BuildContext, BuildLogEntry, BuildRecipe,
+    BuildStatus, BuildSteps, DependencySpec, HardeningFlag, PackageMetadata, SecurityFlags,
+    SourceSpec, TakumiBuildSystem,
+};
+pub use vector_store::VectorIndex;

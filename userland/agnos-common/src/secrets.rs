@@ -192,7 +192,13 @@ impl FileSecretBackend {
         // Sanitise key to prevent path traversal
         let safe_key: String = key
             .chars()
-            .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+            .map(|c| {
+                if c.is_alphanumeric() || c == '-' || c == '_' {
+                    c
+                } else {
+                    '_'
+                }
+            })
             .collect();
         self.base_dir.join(format!("{}.secret", safe_key))
     }
@@ -381,10 +387,7 @@ impl SecretBackend for VaultSecretBackend {
             .map_err(|e| AgnosError::Unknown(format!("Vault response parse error: {}", e)))?;
 
         let data = &body["data"]["data"];
-        let secret_data = data["value"]
-            .as_str()
-            .unwrap_or_default()
-            .to_string();
+        let secret_data = data["value"].as_str().unwrap_or_default().to_string();
 
         let mut metadata = HashMap::new();
         if let Some(obj) = data.as_object() {
@@ -405,7 +408,10 @@ impl SecretBackend for VaultSecretBackend {
 
     async fn set_secret(&self, key: &str, value: SecretValue) -> Result<()> {
         let mut payload = serde_json::Map::new();
-        payload.insert("value".to_string(), serde_json::Value::String(value.data.clone()));
+        payload.insert(
+            "value".to_string(),
+            serde_json::Value::String(value.data.clone()),
+        );
         for (k, v) in &value.metadata {
             payload.insert(k.clone(), serde_json::Value::String(v.clone()));
         }
@@ -598,7 +604,10 @@ impl RotationLog {
 
     /// Get the rotation history for a specific secret.
     pub fn history(&self, name: &str) -> Vec<&RotationEvent> {
-        self.events.iter().filter(|e| e.secret_name == name).collect()
+        self.events
+            .iter()
+            .filter(|e| e.secret_name == name)
+            .collect()
     }
 
     /// Get the most recent rotation event for a secret.
@@ -650,8 +659,10 @@ impl SecretRotationManager {
             return RotationStatus::Overdue;
         }
 
-        let interval = chrono::Duration::from_std(policy.rotation_interval).unwrap_or(chrono::Duration::MAX);
-        let notify = chrono::Duration::from_std(policy.notify_before).unwrap_or(chrono::Duration::zero());
+        let interval =
+            chrono::Duration::from_std(policy.rotation_interval).unwrap_or(chrono::Duration::MAX);
+        let notify =
+            chrono::Duration::from_std(policy.notify_before).unwrap_or(chrono::Duration::zero());
         if age > interval - notify {
             return RotationStatus::DueSoon;
         }
@@ -1092,7 +1103,10 @@ mod tests {
         mappings.insert("inject-test".to_string(), "MY_INJECTED_VAR".to_string());
         injector.inject_into_env(&mappings).await.unwrap();
 
-        assert_eq!(std::env::var("MY_INJECTED_VAR").unwrap(), "injected-env-val");
+        assert_eq!(
+            std::env::var("MY_INJECTED_VAR").unwrap(),
+            "injected-env-val"
+        );
 
         // Cleanup
         unsafe {
@@ -1305,14 +1319,21 @@ mod tests {
                 metadata: HashMap::new(),
                 created_at: chrono::Utc::now(),
             };
-            backend.set_secret(&format!("key-{}", i), val).await.unwrap();
+            backend
+                .set_secret(&format!("key-{}", i), val)
+                .await
+                .unwrap();
         }
 
         let keys = backend.list_secrets().await.unwrap();
         assert_eq!(keys.len(), 5);
 
         for i in 0..5 {
-            let retrieved = backend.get_secret(&format!("key-{}", i)).await.unwrap().unwrap();
+            let retrieved = backend
+                .get_secret(&format!("key-{}", i))
+                .await
+                .unwrap()
+                .unwrap();
             assert_eq!(retrieved.data, format!("secret-{}", i));
         }
 
@@ -1342,10 +1363,7 @@ mod tests {
     #[test]
     fn test_vault_backend_empty_key() {
         let backend = VaultSecretBackend::new("http://vault:8200", "tok", "secret");
-        assert_eq!(
-            backend.data_url(""),
-            "http://vault:8200/v1/secret/data/"
-        );
+        assert_eq!(backend.data_url(""), "http://vault:8200/v1/secret/data/");
     }
 
     #[test]
@@ -1451,7 +1469,12 @@ mod tests {
 
     // ── Secrets Rotation tests ───────────────────────────────────────
 
-    fn make_policy(name: &str, interval_secs: u64, max_age_secs: u64, notify_secs: u64) -> RotationPolicy {
+    fn make_policy(
+        name: &str,
+        interval_secs: u64,
+        max_age_secs: u64,
+        notify_secs: u64,
+    ) -> RotationPolicy {
         RotationPolicy {
             secret_name: name.to_string(),
             rotation_interval: std::time::Duration::from_secs(interval_secs),

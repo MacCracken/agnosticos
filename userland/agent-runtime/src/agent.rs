@@ -9,9 +9,7 @@ use tokio::process::{Child, Command};
 use tokio::sync::{mpsc, RwLock};
 use tracing::{info, warn};
 
-use agnos_common::{
-    AgentConfig, AgentId, AgentStatus, Message, ResourceUsage, StopReason,
-};
+use agnos_common::{AgentConfig, AgentId, AgentStatus, Message, ResourceUsage, StopReason};
 
 use crate::ipc::AgentIpc;
 use crate::sandbox::Sandbox;
@@ -48,8 +46,8 @@ impl Agent {
         let id = AgentId::new();
         let (message_tx, message_rx) = mpsc::channel(100);
 
-        let sandbox = Sandbox::new(&config.sandbox)
-            .with_context(|| "Failed to create agent sandbox")?;
+        let sandbox =
+            Sandbox::new(&config.sandbox).with_context(|| "Failed to create agent sandbox")?;
 
         let agent = Self {
             id,
@@ -88,9 +86,12 @@ impl Agent {
     /// Start the agent process
     pub async fn start(&mut self) -> Result<()> {
         let mut status = self.status.write().await;
-        
+
         if *status != AgentStatus::Pending && *status != AgentStatus::Stopped {
-            return Err(anyhow::anyhow!("Agent is not in a startable state: {:?}", *status));
+            return Err(anyhow::anyhow!(
+                "Agent is not in a startable state: {:?}",
+                *status
+            ));
         }
 
         *status = AgentStatus::Starting;
@@ -103,7 +104,7 @@ impl Agent {
 
         // Spawn agent process
         let executable = self.find_agent_executable().await?;
-        
+
         let mut cmd = Command::new(&executable);
         cmd.arg("--agent-id")
             .arg(self.id.to_string())
@@ -123,14 +124,15 @@ impl Agent {
             }
         }
 
-        let child = cmd.spawn()
+        let child = cmd
+            .spawn()
             .with_context(|| format!("Failed to spawn agent process: {}", executable.display()))?;
 
         info!("Agent {} started with PID {:?}", self.id, child.id());
 
         self.process = Some(child);
         self.started_at = Some(Instant::now());
-        
+
         let mut status = self.status.write().await;
         *status = AgentStatus::Running;
 
@@ -140,7 +142,7 @@ impl Agent {
     /// Stop the agent gracefully
     pub async fn stop(&mut self, reason: StopReason) -> Result<()> {
         info!("Stopping agent {}: {:?}", self.id, reason);
-        
+
         let mut status = self.status.write().await;
         *status = AgentStatus::Stopping;
         drop(status);
@@ -151,7 +153,7 @@ impl Agent {
             {
                 use nix::sys::signal::{self, Signal};
                 use nix::unistd::Pid;
-                
+
                 if let Some(pid) = process.id() {
                     let _ = signal::kill(Pid::from_raw(pid as i32), Signal::SIGTERM);
                 }
@@ -183,7 +185,10 @@ impl Agent {
     pub async fn pause(&mut self) -> Result<()> {
         let mut status = self.status.write().await;
         if *status != AgentStatus::Running {
-            return Err(anyhow::anyhow!("Cannot pause agent in state: {:?}", *status));
+            return Err(anyhow::anyhow!(
+                "Cannot pause agent in state: {:?}",
+                *status
+            ));
         }
 
         // Send SIGSTOP to actually suspend the process
@@ -193,8 +198,9 @@ impl Agent {
                 {
                     use nix::sys::signal::{self, Signal};
                     use nix::unistd::Pid;
-                    signal::kill(Pid::from_raw(pid as i32), Signal::SIGSTOP)
-                        .map_err(|e| anyhow::anyhow!("Failed to SIGSTOP agent {}: {}", self.id, e))?;
+                    signal::kill(Pid::from_raw(pid as i32), Signal::SIGSTOP).map_err(|e| {
+                        anyhow::anyhow!("Failed to SIGSTOP agent {}: {}", self.id, e)
+                    })?;
                 }
             }
         }
@@ -208,7 +214,10 @@ impl Agent {
     pub async fn resume(&mut self) -> Result<()> {
         let mut status = self.status.write().await;
         if *status != AgentStatus::Paused {
-            return Err(anyhow::anyhow!("Cannot resume agent in state: {:?}", *status));
+            return Err(anyhow::anyhow!(
+                "Cannot resume agent in state: {:?}",
+                *status
+            ));
         }
 
         // Send SIGCONT to resume the process
@@ -218,8 +227,9 @@ impl Agent {
                 {
                     use nix::sys::signal::{self, Signal};
                     use nix::unistd::Pid;
-                    signal::kill(Pid::from_raw(pid as i32), Signal::SIGCONT)
-                        .map_err(|e| anyhow::anyhow!("Failed to SIGCONT agent {}: {}", self.id, e))?;
+                    signal::kill(Pid::from_raw(pid as i32), Signal::SIGCONT).map_err(|e| {
+                        anyhow::anyhow!("Failed to SIGCONT agent {}: {}", self.id, e)
+                    })?;
                 }
             }
         }
@@ -309,7 +319,9 @@ impl Agent {
 
     /// Send a message to the agent
     pub async fn send_message(&self, message: Message) -> Result<()> {
-        self.message_tx.send(message).await
+        self.message_tx
+            .send(message)
+            .await
             .map_err(|_| anyhow::anyhow!("Failed to send message to agent"))?;
         Ok(())
     }
@@ -400,7 +412,7 @@ impl ResourceLimits {
         #[cfg(unix)]
         {
             use libc::{rlimit, setrlimit, RLIMIT_AS, RLIMIT_CPU};
-            
+
             // Set memory limit
             if self.max_memory > 0 {
                 let limit = rlimit {
@@ -411,7 +423,7 @@ impl ResourceLimits {
                     setrlimit(RLIMIT_AS, &limit);
                 }
             }
-            
+
             // Set CPU time limit
             if self.max_cpu_time > 0 {
                 let limit = rlimit {
@@ -423,7 +435,7 @@ impl ResourceLimits {
                 }
             }
         }
-        
+
         Ok(())
     }
 }
@@ -443,7 +455,7 @@ mod tests {
             resource_usage: ResourceUsage::default(),
             pid: None,
         };
-        
+
         assert_eq!(handle.name, "test-agent");
         assert_eq!(handle.status, AgentStatus::Pending);
         assert!(handle.pid.is_none());
@@ -465,7 +477,7 @@ mod tests {
             },
             pid: Some(12345),
         };
-        
+
         assert_eq!(handle.status, AgentStatus::Running);
         assert!(handle.pid.is_some());
         assert_eq!(handle.pid, Some(12345));
@@ -483,7 +495,7 @@ mod tests {
             resource_usage: ResourceUsage::default(),
             pid: None,
         };
-        
+
         let debug_str = format!("{:?}", handle);
         assert!(debug_str.contains("debug-agent"));
         assert!(debug_str.contains("Stopped"));
@@ -495,7 +507,7 @@ mod tests {
             max_memory: 0,
             max_cpu_time: 0,
         };
-        
+
         assert_eq!(limits.max_memory, 0);
         assert_eq!(limits.max_cpu_time, 0);
     }
@@ -506,7 +518,7 @@ mod tests {
             max_memory: 1024 * 1024 * 1024,
             max_cpu_time: 3600,
         };
-        
+
         assert_eq!(limits.max_memory, 1024 * 1024 * 1024);
         assert_eq!(limits.max_cpu_time, 3600);
     }
@@ -517,7 +529,7 @@ mod tests {
             max_memory: 0,
             max_cpu_time: 0,
         };
-        
+
         let result = limits.apply();
         assert!(result.is_ok());
     }
@@ -526,7 +538,7 @@ mod tests {
     fn test_agent_id_new_unique() {
         let id1 = AgentId::new();
         let id2 = AgentId::new();
-        
+
         assert_ne!(id1, id2);
     }
 
@@ -660,7 +672,7 @@ mod tests {
             started_at: Some(chrono::Utc::now()),
             resource_usage: ResourceUsage {
                 memory_used: 16 * 1024 * 1024 * 1024, // 16 GB
-                cpu_time_used: 86_400_000,             // 24 hours in ms
+                cpu_time_used: 86_400_000,            // 24 hours in ms
                 file_descriptors_used: 65535,
                 processes_used: 1024,
             },
@@ -721,7 +733,10 @@ mod tests {
     fn test_count_threads_current_process() {
         let pid = std::process::id();
         let threads = Agent::count_threads(pid);
-        assert!(threads >= 1, "Current process should have at least 1 thread");
+        assert!(
+            threads >= 1,
+            "Current process should have at least 1 thread"
+        );
     }
 
     #[tokio::test]
@@ -1316,8 +1331,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_agent_new_unique_ids() {
-        let config1 = AgentConfig { name: "a1".to_string(), ..Default::default() };
-        let config2 = AgentConfig { name: "a2".to_string(), ..Default::default() };
+        let config1 = AgentConfig {
+            name: "a1".to_string(),
+            ..Default::default()
+        };
+        let config2 = AgentConfig {
+            name: "a2".to_string(),
+            ..Default::default()
+        };
         let (agent1, _rx1) = Agent::new(config1).await.unwrap();
         let (agent2, _rx2) = Agent::new(config2).await.unwrap();
         assert_ne!(agent1.id(), agent2.id());

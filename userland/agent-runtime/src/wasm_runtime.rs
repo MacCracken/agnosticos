@@ -13,9 +13,9 @@ use tracing::{info, warn};
 #[cfg(feature = "wasm")]
 use wasmtime::*;
 #[cfg(feature = "wasm")]
-use wasmtime_wasi::{DirPerms, FilePerms, WasiCtxBuilder};
-#[cfg(feature = "wasm")]
 use wasmtime_wasi::preview1::WasiP1Ctx;
+#[cfg(feature = "wasm")]
+use wasmtime_wasi::{DirPerms, FilePerms, WasiCtxBuilder};
 
 /// Configuration for a WASM-based agent.
 #[derive(Debug, Clone)]
@@ -39,7 +39,7 @@ impl Default for WasmAgentConfig {
         Self {
             module_path: PathBuf::new(),
             memory_limit: 256 * 1024 * 1024, // 256 MB
-            fuel: 1_000_000_000,              // 1 billion fuel units
+            fuel: 1_000_000_000,             // 1 billion fuel units
             allowed_dirs: Vec::new(),
             env_vars: Vec::new(),
             args: Vec::new(),
@@ -91,20 +91,16 @@ impl WasmAgent {
 
         // Memory limit
         let memory_pages = (config.memory_limit / 65536).max(1) as u64;
-        engine_config.memory_guaranteed_dense_image_size(
-            memory_pages.min(1024) * 65536,
-        );
+        engine_config.memory_guaranteed_dense_image_size(memory_pages.min(1024) * 65536);
 
-        let engine = Engine::new(&engine_config)
-            .context("Failed to create Wasmtime engine")?;
+        let engine = Engine::new(&engine_config).context("Failed to create Wasmtime engine")?;
 
-        let module = Module::from_file(&engine, &config.module_path)
-            .with_context(|| {
-                format!(
-                    "Failed to load WASM module from {}",
-                    config.module_path.display()
-                )
-            })?;
+        let module = Module::from_file(&engine, &config.module_path).with_context(|| {
+            format!(
+                "Failed to load WASM module from {}",
+                config.module_path.display()
+            )
+        })?;
 
         info!(
             "WASM module loaded: {} (fuel={}, mem_limit={}MB)",

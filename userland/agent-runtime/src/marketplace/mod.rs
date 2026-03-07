@@ -3,14 +3,14 @@
 //! Distribution, discovery, trust, and installation of agents and desktop apps.
 //! Implements the marketplace architecture defined in ADR-015.
 
-pub mod trust;
-pub mod transparency;
-pub mod local_registry;
-pub mod remote_client;
-pub mod flutter_packaging;
 pub mod flutter_agpkg;
+pub mod flutter_packaging;
+pub mod local_registry;
 pub mod ratings;
+pub mod remote_client;
 pub mod sandbox_profiles;
+pub mod transparency;
+pub mod trust;
 
 use std::collections::HashMap;
 
@@ -144,13 +144,17 @@ impl MarketplaceManifest {
                 .chars()
                 .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
         {
-            errors.push("name must contain only lowercase letters, digits, and hyphens".to_string());
+            errors
+                .push("name must contain only lowercase letters, digits, and hyphens".to_string());
         }
         if self.agent.version.is_empty() {
             errors.push("version is required".to_string());
         }
         if !self.agent.version.is_empty() && !is_valid_semver(&self.agent.version) {
-            errors.push(format!("version '{}' is not valid semver", self.agent.version));
+            errors.push(format!(
+                "version '{}' is not valid semver",
+                self.agent.version
+            ));
         }
         if self.agent.description.is_empty() {
             errors.push("description is required".to_string());

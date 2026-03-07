@@ -13,15 +13,13 @@ use tokio::time::{timeout, Duration, Instant};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
-use agnos_common::{
-    AgentId, InferenceRequest, InferenceResponse, ModelInfo, TokenUsage,
-};
+use agnos_common::{AgentId, InferenceRequest, InferenceResponse, ModelInfo, TokenUsage};
 use agnos_sys::certpin::{self, CertPinResult, CertPinSet};
 
-mod providers;
-mod cache;
 mod accounting;
+mod cache;
 mod http;
+mod providers;
 pub mod rate_limiter;
 
 use crate::accounting::TokenAccounting;
@@ -48,13 +46,9 @@ enum Commands {
     /// List available models
     ListModels,
     /// Load a model
-    Load {
-        model_id: String,
-    },
+    Load { model_id: String },
     /// Unload a model
-    Unload {
-        model_id: String,
-    },
+    Unload { model_id: String },
     /// Run inference
     Infer {
         #[arg(short, long)]
@@ -239,7 +233,10 @@ impl LlmGateway {
         }
 
         if let Ok(api_key) = std::env::var("ANTHROPIC_API_KEY") {
-            match providers::AnthropicProvider::new(api_key, std::env::var("ANTHROPIC_BASE_URL").ok()) {
+            match providers::AnthropicProvider::new(
+                api_key,
+                std::env::var("ANTHROPIC_BASE_URL").ok(),
+            ) {
                 Ok(provider) => {
                     providers.insert(ProviderType::Anthropic, Arc::new(provider));
                     health.insert(ProviderType::Anthropic, ProviderHealth::new());
@@ -297,7 +294,8 @@ impl LlmGateway {
         let max_attempts = candidates.len().min(3);
         let mut last_error = None;
 
-        for (i, (provider_type, provider)) in candidates.into_iter().take(max_attempts).enumerate() {
+        for (i, (provider_type, provider)) in candidates.into_iter().take(max_attempts).enumerate()
+        {
             if i > 0 {
                 info!(
                     provider = ?provider_type,
@@ -306,12 +304,7 @@ impl LlmGateway {
                 );
             }
 
-            match timeout(
-                self.config.request_timeout,
-                provider.infer(&request),
-            )
-            .await
-            {
+            match timeout(self.config.request_timeout, provider.infer(&request)).await {
                 Ok(Ok(response)) => {
                     // Record success for health tracking
                     self.record_provider_success(provider_type).await;
@@ -368,7 +361,7 @@ impl LlmGateway {
         agent_id: Option<AgentId>,
     ) -> Result<mpsc::Receiver<Result<String>>> {
         let _permit = self.rate_limiter.acquire().await?;
-        
+
         info!(
             model = %request.model,
             agent_id = ?agent_id,
@@ -410,10 +403,8 @@ impl LlmGateway {
             }
 
             let ps: Vec<_> = providers.iter().map(|(&pt, p)| (pt, p.clone())).collect();
-            let hs: HashMap<ProviderType, bool> = health
-                .iter()
-                .map(|(&pt, h)| (pt, h.is_healthy))
-                .collect();
+            let hs: HashMap<ProviderType, bool> =
+                health.iter().map(|(&pt, h)| (pt, h.is_healthy)).collect();
             let ml = loaded.contains_key(&request.model);
             (ps, hs, ml)
         };
@@ -432,7 +423,10 @@ impl LlmGateway {
 
         // Priority 1: If the model is loaded locally, prefer Ollama
         if model_loaded {
-            if let Some((_, provider)) = provider_snapshot.iter().find(|(pt, _)| *pt == ProviderType::Ollama) {
+            if let Some((_, provider)) = provider_snapshot
+                .iter()
+                .find(|(pt, _)| *pt == ProviderType::Ollama)
+            {
                 classify(ProviderType::Ollama, provider.clone());
             }
         }
@@ -523,7 +517,11 @@ impl LlmGateway {
                 debug!(host = %host, "No certificate pin configured for host");
                 Ok(())
             }
-            CertPinResult::PinMismatch { host, expected, actual } => {
+            CertPinResult::PinMismatch {
+                host,
+                expected,
+                actual,
+            } => {
                 warn!(
                     host = %host,
                     expected = ?expected,
@@ -534,7 +532,9 @@ impl LlmGateway {
                 if self.cert_pins.enforce {
                     anyhow::bail!(
                         "Certificate pin mismatch for {}: expected one of {:?}, got {}",
-                        host, expected, actual
+                        host,
+                        expected,
+                        actual
                     )
                 } else {
                     Ok(()) // report-only mode
@@ -566,7 +566,7 @@ impl LlmGateway {
         info!(model_id = %model_id, "Loading model");
 
         let providers = self.providers.read().await;
-        
+
         // Try to load from available providers
         for (provider_type, provider) in providers.iter() {
             match provider.load_model(model_id).await {
@@ -582,7 +582,10 @@ impl LlmGateway {
             }
         }
 
-        Err(anyhow::anyhow!("Failed to load model {} from any provider", model_id))
+        Err(anyhow::anyhow!(
+            "Failed to load model {} from any provider",
+            model_id
+        ))
     }
 
     /// Unload a model
@@ -590,7 +593,7 @@ impl LlmGateway {
         info!(model_id = %model_id, "Unloading model");
 
         let mut loaded = self.loaded_models.write().await;
-        
+
         if loaded.remove(model_id).is_some() {
             info!(model_id = %model_id, "Model unloaded");
         }
@@ -612,11 +615,11 @@ impl LlmGateway {
     pub async fn reset_agent_usage(&self, agent_id: AgentId) {
         self.accounting.reset_usage(agent_id).await;
     }
-    
+
     /// List available providers and their status
     pub async fn list_providers(&self) -> Vec<crate::http::ProviderStatus> {
         let providers = self.providers.read().await;
-        
+
         vec![
             crate::http::ProviderStatus {
                 name: "Ollama".to_string(),
@@ -768,7 +771,7 @@ async fn run_daemon() -> Result<()> {
 
     let config = GatewayConfig::default();
     let gateway = Arc::new(LlmGateway::new(config.clone()).await?);
-    
+
     gateway.init_providers().await?;
 
     // Start background health checks (every 30s)
@@ -787,7 +790,7 @@ async fn run_daemon() -> Result<()> {
 
     // Keep running until shutdown signal
     tokio::signal::ctrl_c().await?;
-    
+
     info!("Shutting down LLM Gateway daemon...");
     Ok(())
 }
@@ -808,7 +811,9 @@ async fn list_models() -> Result<()> {
 
     match client.get(&url).send().await {
         Ok(resp) => {
-            let body: serde_json::Value = resp.json().await
+            let body: serde_json::Value = resp
+                .json()
+                .await
                 .context("Failed to parse models response")?;
 
             println!("Available models:");
@@ -841,10 +846,10 @@ async fn load_model(model_id: &str) -> Result<()> {
 
     match client.get(&url).send().await {
         Ok(resp) => {
-            let body: serde_json::Value = resp.json().await
-                .context("Failed to parse response")?;
+            let body: serde_json::Value = resp.json().await.context("Failed to parse response")?;
 
-            let found = body["data"].as_array()
+            let found = body["data"]
+                .as_array()
                 .map(|models| models.iter().any(|m| m["id"].as_str() == Some(model_id)))
                 .unwrap_or(false);
 
@@ -891,7 +896,9 @@ async fn run_inference(model: Option<String>, prompt: String) -> Result<()> {
     match client.post(&url).json(&body).send().await {
         Ok(resp) => {
             let status = resp.status();
-            let result: serde_json::Value = resp.json().await
+            let result: serde_json::Value = resp
+                .json()
+                .await
                 .context("Failed to parse inference response")?;
 
             if status.is_success() {
@@ -905,7 +912,9 @@ async fn run_inference(model: Option<String>, prompt: String) -> Result<()> {
                     );
                 }
             } else {
-                let msg = result["error"]["message"].as_str().unwrap_or("Unknown error");
+                let msg = result["error"]["message"]
+                    .as_str()
+                    .unwrap_or("Unknown error");
                 eprintln!("Inference failed ({}): {}", status, msg);
             }
         }
@@ -924,7 +933,9 @@ async fn show_stats() -> Result<()> {
 
     match client.get(&url).send().await {
         Ok(resp) => {
-            let body: serde_json::Value = resp.json().await
+            let body: serde_json::Value = resp
+                .json()
+                .await
                 .context("Failed to parse health response")?;
 
             println!("LLM Gateway Statistics:");
@@ -970,7 +981,10 @@ mod tests {
     fn test_gateway_config_clone() {
         let config = GatewayConfig::default();
         let cloned = config.clone();
-        assert_eq!(cloned.max_concurrent_requests, config.max_concurrent_requests);
+        assert_eq!(
+            cloned.max_concurrent_requests,
+            config.max_concurrent_requests
+        );
         assert_eq!(cloned.cache_ttl_seconds, config.cache_ttl_seconds);
     }
 
@@ -1131,7 +1145,10 @@ mod tests {
             frequency_penalty: 0.0,
         };
         let json = serde_json::to_string(&req);
-        assert!(json.is_ok(), "InferenceRequest must be serializable to JSON");
+        assert!(
+            json.is_ok(),
+            "InferenceRequest must be serializable to JSON"
+        );
         let json_str = json.unwrap();
         assert!(json_str.contains("llama2"));
         assert!(json_str.contains("Hello"));
@@ -1143,7 +1160,10 @@ mod tests {
         // If this constant ever changes, both ADR-007 and agnostic models.json
         // must be updated simultaneously.
         let expected_port: u16 = 8088;
-        assert_eq!(expected_port, 8088, "AGNOS LLM Gateway HTTP port must be 8088 per ADR-007");
+        assert_eq!(
+            expected_port, 8088,
+            "AGNOS LLM Gateway HTTP port must be 8088 per ADR-007"
+        );
     }
 
     // ------------------------------------------------------------------
@@ -1211,11 +1231,17 @@ mod tests {
         let agent_id = AgentId::new();
 
         // Record usage directly through accounting
-        gateway.accounting.record_usage(agent_id, TokenUsage {
-            prompt_tokens: 50,
-            completion_tokens: 30,
-            total_tokens: 80,
-        }).await;
+        gateway
+            .accounting
+            .record_usage(
+                agent_id,
+                TokenUsage {
+                    prompt_tokens: 50,
+                    completion_tokens: 30,
+                    total_tokens: 80,
+                },
+            )
+            .await;
 
         let usage = gateway.get_agent_usage(agent_id).await;
         assert!(usage.is_some());
@@ -1234,12 +1260,28 @@ mod tests {
         let agent1 = AgentId::new();
         let agent2 = AgentId::new();
 
-        gateway.accounting.record_usage(agent1, TokenUsage {
-            prompt_tokens: 10, completion_tokens: 20, total_tokens: 30,
-        }).await;
-        gateway.accounting.record_usage(agent2, TokenUsage {
-            prompt_tokens: 40, completion_tokens: 50, total_tokens: 90,
-        }).await;
+        gateway
+            .accounting
+            .record_usage(
+                agent1,
+                TokenUsage {
+                    prompt_tokens: 10,
+                    completion_tokens: 20,
+                    total_tokens: 30,
+                },
+            )
+            .await;
+        gateway
+            .accounting
+            .record_usage(
+                agent2,
+                TokenUsage {
+                    prompt_tokens: 40,
+                    completion_tokens: 50,
+                    total_tokens: 90,
+                },
+            )
+            .await;
 
         let total = gateway.get_total_usage().await;
         assert_eq!(total.total_tokens, 120);
@@ -1252,9 +1294,17 @@ mod tests {
         let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
         let agent_id = AgentId::new();
 
-        gateway.accounting.record_usage(agent_id, TokenUsage {
-            prompt_tokens: 100, completion_tokens: 200, total_tokens: 300,
-        }).await;
+        gateway
+            .accounting
+            .record_usage(
+                agent_id,
+                TokenUsage {
+                    prompt_tokens: 100,
+                    completion_tokens: 200,
+                    total_tokens: 300,
+                },
+            )
+            .await;
 
         gateway.reset_agent_usage(agent_id).await;
         assert!(gateway.get_agent_usage(agent_id).await.is_none());
@@ -1270,9 +1320,17 @@ mod tests {
         let agent_id = AgentId::new();
 
         for _ in 0..3 {
-            gateway.accounting.record_usage(agent_id, TokenUsage {
-                prompt_tokens: 10, completion_tokens: 5, total_tokens: 15,
-            }).await;
+            gateway
+                .accounting
+                .record_usage(
+                    agent_id,
+                    TokenUsage {
+                        prompt_tokens: 10,
+                        completion_tokens: 5,
+                        total_tokens: 15,
+                    },
+                )
+                .await;
         }
 
         let usage = gateway.get_agent_usage(agent_id).await.unwrap();
@@ -1403,12 +1461,28 @@ mod tests {
         let agent1 = AgentId::new();
         let agent2 = AgentId::new();
 
-        gateway.accounting.record_usage(agent1, TokenUsage {
-            prompt_tokens: 10, completion_tokens: 20, total_tokens: 30,
-        }).await;
-        gateway.accounting.record_usage(agent2, TokenUsage {
-            prompt_tokens: 100, completion_tokens: 200, total_tokens: 300,
-        }).await;
+        gateway
+            .accounting
+            .record_usage(
+                agent1,
+                TokenUsage {
+                    prompt_tokens: 10,
+                    completion_tokens: 20,
+                    total_tokens: 30,
+                },
+            )
+            .await;
+        gateway
+            .accounting
+            .record_usage(
+                agent2,
+                TokenUsage {
+                    prompt_tokens: 100,
+                    completion_tokens: 200,
+                    total_tokens: 300,
+                },
+            )
+            .await;
 
         gateway.reset_agent_usage(agent1).await;
         assert!(gateway.get_agent_usage(agent1).await.is_none());
@@ -1422,7 +1496,10 @@ mod tests {
         let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
         let _ = gateway.load_model("nonexistent").await; // will fail
         let models = gateway.list_models().await;
-        assert!(models.is_empty(), "Failed load should not add models to the list");
+        assert!(
+            models.is_empty(),
+            "Failed load should not add models to the list"
+        );
     }
 
     #[tokio::test]
@@ -1486,8 +1563,13 @@ mod tests {
     #[tokio::test]
     async fn test_gateway_create_shared_session_needs_providers() {
         let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
-        let result = gateway.create_shared_session("model", vec![AgentId::new(), AgentId::new()]).await;
-        assert!(result.is_err(), "Should fail without providers to load the model");
+        let result = gateway
+            .create_shared_session("model", vec![AgentId::new(), AgentId::new()])
+            .await;
+        assert!(
+            result.is_err(),
+            "Should fail without providers to load the model"
+        );
     }
 
     #[tokio::test]
@@ -1511,15 +1593,18 @@ mod tests {
         // Manually insert a model into loaded_models
         {
             let mut loaded = gateway.loaded_models.write().await;
-            loaded.insert("my-model".to_string(), agnos_common::ModelInfo {
-                id: "my-model".to_string(),
-                name: "My Model".to_string(),
-                provider: agnos_common::Provider::Local,
-                capabilities: vec![],
-                max_tokens: 4096,
-                size_bytes: 7_000_000_000,
-                loaded: true,
-            });
+            loaded.insert(
+                "my-model".to_string(),
+                agnos_common::ModelInfo {
+                    id: "my-model".to_string(),
+                    name: "My Model".to_string(),
+                    provider: agnos_common::Provider::Local,
+                    capabilities: vec![],
+                    max_tokens: 4096,
+                    size_bytes: 7_000_000_000,
+                    loaded: true,
+                },
+            );
         }
 
         // Still no providers registered, so should fail
@@ -1538,15 +1623,18 @@ mod tests {
         // Manually add a model
         {
             let mut loaded = gateway.loaded_models.write().await;
-            loaded.insert("test-model".to_string(), agnos_common::ModelInfo {
-                id: "test-model".to_string(),
-                name: "Test".to_string(),
-                provider: agnos_common::Provider::Local,
-                capabilities: vec![],
-                max_tokens: 2048,
-                size_bytes: 1_000_000,
-                loaded: true,
-            });
+            loaded.insert(
+                "test-model".to_string(),
+                agnos_common::ModelInfo {
+                    id: "test-model".to_string(),
+                    name: "Test".to_string(),
+                    provider: agnos_common::Provider::Local,
+                    capabilities: vec![],
+                    max_tokens: 2048,
+                    size_bytes: 1_000_000,
+                    loaded: true,
+                },
+            );
         }
 
         assert_eq!(gateway.list_models().await.len(), 1);
@@ -1561,15 +1649,18 @@ mod tests {
         {
             let mut loaded = gateway.loaded_models.write().await;
             for i in 0..5 {
-                loaded.insert(format!("model-{}", i), agnos_common::ModelInfo {
-                    id: format!("model-{}", i),
-                    name: format!("Model {}", i),
-                    provider: agnos_common::Provider::Local,
-                    capabilities: vec![],
-                    max_tokens: 4096,
-                    size_bytes: i as u64 * 1_000_000,
-                    loaded: true,
-                });
+                loaded.insert(
+                    format!("model-{}", i),
+                    agnos_common::ModelInfo {
+                        id: format!("model-{}", i),
+                        name: format!("Model {}", i),
+                        provider: agnos_common::Provider::Local,
+                        capabilities: vec![],
+                        max_tokens: 4096,
+                        size_bytes: i as u64 * 1_000_000,
+                        loaded: true,
+                    },
+                );
             }
         }
 
@@ -1626,15 +1717,39 @@ mod tests {
         let a2 = AgentId::new();
         let a3 = AgentId::new();
 
-        gateway.accounting.record_usage(a1, TokenUsage {
-            prompt_tokens: 100, completion_tokens: 50, total_tokens: 150,
-        }).await;
-        gateway.accounting.record_usage(a2, TokenUsage {
-            prompt_tokens: 200, completion_tokens: 100, total_tokens: 300,
-        }).await;
-        gateway.accounting.record_usage(a3, TokenUsage {
-            prompt_tokens: 50, completion_tokens: 25, total_tokens: 75,
-        }).await;
+        gateway
+            .accounting
+            .record_usage(
+                a1,
+                TokenUsage {
+                    prompt_tokens: 100,
+                    completion_tokens: 50,
+                    total_tokens: 150,
+                },
+            )
+            .await;
+        gateway
+            .accounting
+            .record_usage(
+                a2,
+                TokenUsage {
+                    prompt_tokens: 200,
+                    completion_tokens: 100,
+                    total_tokens: 300,
+                },
+            )
+            .await;
+        gateway
+            .accounting
+            .record_usage(
+                a3,
+                TokenUsage {
+                    prompt_tokens: 50,
+                    completion_tokens: 25,
+                    total_tokens: 75,
+                },
+            )
+            .await;
 
         let total = gateway.get_total_usage().await;
         assert_eq!(total.prompt_tokens, 350);
@@ -1657,24 +1772,30 @@ mod tests {
 
         {
             let mut loaded = gateway.loaded_models.write().await;
-            loaded.insert("model-a".to_string(), agnos_common::ModelInfo {
-                id: "model-a".to_string(),
-                name: "A".to_string(),
-                provider: agnos_common::Provider::Local,
-                capabilities: vec![],
-                max_tokens: 0,
-                size_bytes: 0,
-                loaded: true,
-            });
-            loaded.insert("model-b".to_string(), agnos_common::ModelInfo {
-                id: "model-b".to_string(),
-                name: "B".to_string(),
-                provider: agnos_common::Provider::Local,
-                capabilities: vec![],
-                max_tokens: 0,
-                size_bytes: 0,
-                loaded: true,
-            });
+            loaded.insert(
+                "model-a".to_string(),
+                agnos_common::ModelInfo {
+                    id: "model-a".to_string(),
+                    name: "A".to_string(),
+                    provider: agnos_common::Provider::Local,
+                    capabilities: vec![],
+                    max_tokens: 0,
+                    size_bytes: 0,
+                    loaded: true,
+                },
+            );
+            loaded.insert(
+                "model-b".to_string(),
+                agnos_common::ModelInfo {
+                    id: "model-b".to_string(),
+                    name: "B".to_string(),
+                    provider: agnos_common::Provider::Local,
+                    capabilities: vec![],
+                    max_tokens: 0,
+                    size_bytes: 0,
+                    loaded: true,
+                },
+            );
         }
 
         gateway.unload_model("model-a").await.unwrap();
@@ -1840,15 +1961,18 @@ mod tests {
         // Load a model
         {
             let mut loaded = gateway.loaded_models.write().await;
-            loaded.insert("my-loaded-model".to_string(), agnos_common::ModelInfo {
-                id: "my-loaded-model".to_string(),
-                name: "Loaded".to_string(),
-                provider: agnos_common::Provider::Local,
-                capabilities: vec![],
-                max_tokens: 4096,
-                size_bytes: 0,
-                loaded: true,
-            });
+            loaded.insert(
+                "my-loaded-model".to_string(),
+                agnos_common::ModelInfo {
+                    id: "my-loaded-model".to_string(),
+                    name: "Loaded".to_string(),
+                    provider: agnos_common::Provider::Local,
+                    capabilities: vec![],
+                    max_tokens: 4096,
+                    size_bytes: 0,
+                    loaded: true,
+                },
+            );
         }
 
         // select_provider should find the Ollama provider for the loaded model
@@ -1894,15 +2018,18 @@ mod tests {
         // Load a model — but no Ollama provider
         {
             let mut loaded = gateway.loaded_models.write().await;
-            loaded.insert("model-x".to_string(), agnos_common::ModelInfo {
-                id: "model-x".to_string(),
-                name: "X".to_string(),
-                provider: agnos_common::Provider::Local,
-                capabilities: vec![],
-                max_tokens: 4096,
-                size_bytes: 0,
-                loaded: true,
-            });
+            loaded.insert(
+                "model-x".to_string(),
+                agnos_common::ModelInfo {
+                    id: "model-x".to_string(),
+                    name: "X".to_string(),
+                    provider: agnos_common::Provider::Local,
+                    capabilities: vec![],
+                    max_tokens: 4096,
+                    size_bytes: 0,
+                    loaded: true,
+                },
+            );
         }
 
         let request = agnos_common::InferenceRequest {
@@ -1980,15 +2107,18 @@ mod tests {
         {
             let mut loaded = gateway.loaded_models.write().await;
             for i in 0..10 {
-                loaded.insert(format!("m-{}", i), agnos_common::ModelInfo {
-                    id: format!("m-{}", i),
-                    name: format!("Model {}", i),
-                    provider: agnos_common::Provider::Local,
-                    capabilities: vec![],
-                    max_tokens: 4096,
-                    size_bytes: 0,
-                    loaded: true,
-                });
+                loaded.insert(
+                    format!("m-{}", i),
+                    agnos_common::ModelInfo {
+                        id: format!("m-{}", i),
+                        name: format!("Model {}", i),
+                        provider: agnos_common::Provider::Local,
+                        capabilities: vec![],
+                        max_tokens: 4096,
+                        size_bytes: 0,
+                        loaded: true,
+                    },
+                );
             }
         }
 
@@ -1996,9 +2126,7 @@ mod tests {
         let mut handles = vec![];
         for _ in 0..5 {
             let gw = gateway.clone();
-            handles.push(tokio::spawn(async move {
-                gw.list_models().await
-            }));
+            handles.push(tokio::spawn(async move { gw.list_models().await }));
         }
 
         for handle in handles {
@@ -2013,12 +2141,28 @@ mod tests {
         let a1 = AgentId::new();
         let a2 = AgentId::new();
 
-        gateway.accounting.record_usage(a1, TokenUsage {
-            prompt_tokens: 10, completion_tokens: 20, total_tokens: 30,
-        }).await;
-        gateway.accounting.record_usage(a2, TokenUsage {
-            prompt_tokens: 5, completion_tokens: 10, total_tokens: 15,
-        }).await;
+        gateway
+            .accounting
+            .record_usage(
+                a1,
+                TokenUsage {
+                    prompt_tokens: 10,
+                    completion_tokens: 20,
+                    total_tokens: 30,
+                },
+            )
+            .await;
+        gateway
+            .accounting
+            .record_usage(
+                a2,
+                TokenUsage {
+                    prompt_tokens: 5,
+                    completion_tokens: 10,
+                    total_tokens: 15,
+                },
+            )
+            .await;
 
         let stats = gateway.accounting.stats().await;
         assert_eq!(stats.total_agents, 2);
@@ -2033,12 +2177,28 @@ mod tests {
         let a1 = AgentId::new();
         let a2 = AgentId::new();
 
-        gateway.accounting.record_usage(a1, TokenUsage {
-            prompt_tokens: 1, completion_tokens: 2, total_tokens: 3,
-        }).await;
-        gateway.accounting.record_usage(a2, TokenUsage {
-            prompt_tokens: 4, completion_tokens: 5, total_tokens: 9,
-        }).await;
+        gateway
+            .accounting
+            .record_usage(
+                a1,
+                TokenUsage {
+                    prompt_tokens: 1,
+                    completion_tokens: 2,
+                    total_tokens: 3,
+                },
+            )
+            .await;
+        gateway
+            .accounting
+            .record_usage(
+                a2,
+                TokenUsage {
+                    prompt_tokens: 4,
+                    completion_tokens: 5,
+                    total_tokens: 9,
+                },
+            )
+            .await;
 
         let agents = gateway.accounting.list_agents().await;
         assert_eq!(agents.len(), 2);
@@ -2052,9 +2212,17 @@ mod tests {
         let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
         let a1 = AgentId::new();
 
-        gateway.accounting.record_usage(a1, TokenUsage {
-            prompt_tokens: 100, completion_tokens: 200, total_tokens: 300,
-        }).await;
+        gateway
+            .accounting
+            .record_usage(
+                a1,
+                TokenUsage {
+                    prompt_tokens: 100,
+                    completion_tokens: 200,
+                    total_tokens: 300,
+                },
+            )
+            .await;
 
         gateway.accounting.reset_all().await;
         let total = gateway.get_total_usage().await;
@@ -2091,7 +2259,10 @@ mod tests {
         health.record_failure();
         health.record_failure();
         health.record_failure();
-        assert!(!health.is_healthy, "3 consecutive failures should mark unhealthy");
+        assert!(
+            !health.is_healthy,
+            "3 consecutive failures should mark unhealthy"
+        );
         assert_eq!(health.consecutive_failures, 3);
     }
 
@@ -2132,7 +2303,10 @@ mod tests {
     async fn test_gateway_provider_health_empty_initially() {
         let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
         let health = gateway.provider_health().await;
-        assert!(health.is_empty(), "No providers registered => empty health map");
+        assert!(
+            health.is_empty(),
+            "No providers registered => empty health map"
+        );
     }
 
     #[tokio::test]
@@ -2166,13 +2340,31 @@ mod tests {
 
         // Make it unhealthy
         for _ in 0..4 {
-            gateway.record_provider_failure(ProviderType::LlamaCpp).await;
+            gateway
+                .record_provider_failure(ProviderType::LlamaCpp)
+                .await;
         }
-        assert!(!gateway.provider_health().await.get(&ProviderType::LlamaCpp).unwrap().is_healthy);
+        assert!(
+            !gateway
+                .provider_health()
+                .await
+                .get(&ProviderType::LlamaCpp)
+                .unwrap()
+                .is_healthy
+        );
 
         // One success restores
-        gateway.record_provider_success(ProviderType::LlamaCpp).await;
-        assert!(gateway.provider_health().await.get(&ProviderType::LlamaCpp).unwrap().is_healthy);
+        gateway
+            .record_provider_success(ProviderType::LlamaCpp)
+            .await;
+        assert!(
+            gateway
+                .provider_health()
+                .await
+                .get(&ProviderType::LlamaCpp)
+                .unwrap()
+                .is_healthy
+        );
     }
 
     #[tokio::test]
@@ -2190,7 +2382,9 @@ mod tests {
 
         // Initialize health entries
         gateway.record_provider_success(ProviderType::Ollama).await;
-        gateway.record_provider_success(ProviderType::LlamaCpp).await;
+        gateway
+            .record_provider_success(ProviderType::LlamaCpp)
+            .await;
 
         // Mark Ollama unhealthy
         for _ in 0..3 {
@@ -2272,7 +2466,9 @@ mod tests {
             let p = providers::LlamaCppProvider::new().await.unwrap();
             providers.insert(ProviderType::LlamaCpp, Arc::new(p));
         }
-        gateway.record_provider_success(ProviderType::LlamaCpp).await;
+        gateway
+            .record_provider_success(ProviderType::LlamaCpp)
+            .await;
 
         let before = {
             let h = gateway.provider_health().await;
@@ -2286,7 +2482,10 @@ mod tests {
 
         let health = gateway.provider_health().await;
         let h = health.get(&ProviderType::LlamaCpp).unwrap();
-        assert!(h.last_check > before, "Health check should update last_check timestamp");
+        assert!(
+            h.last_check > before,
+            "Health check should update last_check timestamp"
+        );
     }
 
     #[tokio::test]
@@ -2310,7 +2509,10 @@ mod tests {
         let request = agnos_common::InferenceRequest::default();
         let result = gateway.infer(request, None).await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("No LLM provider available"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("No LLM provider available"));
     }
 
     #[tokio::test]
@@ -2359,7 +2561,10 @@ mod tests {
             Ok(self.response.clone())
         }
 
-        async fn infer_stream(&self, _request: InferenceRequest) -> anyhow::Result<mpsc::Receiver<anyhow::Result<String>>> {
+        async fn infer_stream(
+            &self,
+            _request: InferenceRequest,
+        ) -> anyhow::Result<mpsc::Receiver<anyhow::Result<String>>> {
             let (tx, rx) = mpsc::channel(10);
             tx.send(Ok("streamed".to_string())).await.unwrap();
             drop(tx);
@@ -2418,7 +2623,9 @@ mod tests {
             let mut providers = gateway.providers.write().await;
             providers.insert(
                 ProviderType::Ollama,
-                Arc::new(MockProvider { response: mock_response() }),
+                Arc::new(MockProvider {
+                    response: mock_response(),
+                }),
             );
         }
 
@@ -2442,7 +2649,9 @@ mod tests {
             let mut providers = gateway.providers.write().await;
             providers.insert(
                 ProviderType::Ollama,
-                Arc::new(MockProvider { response: mock_response() }),
+                Arc::new(MockProvider {
+                    response: mock_response(),
+                }),
             );
         }
 
@@ -2464,7 +2673,9 @@ mod tests {
             let mut providers = gateway.providers.write().await;
             providers.insert(
                 ProviderType::Ollama,
-                Arc::new(MockProvider { response: mock_response() }),
+                Arc::new(MockProvider {
+                    response: mock_response(),
+                }),
             );
         }
 
@@ -2496,7 +2707,9 @@ mod tests {
             let mut providers = gateway.providers.write().await;
             providers.insert(
                 ProviderType::Ollama,
-                Arc::new(MockProvider { response: mock_response() }),
+                Arc::new(MockProvider {
+                    response: mock_response(),
+                }),
             );
         }
 
@@ -2504,7 +2717,10 @@ mod tests {
         let _ = gateway.infer(request.clone(), None).await.unwrap();
 
         let cached = gateway.cache.get(&request).await;
-        assert!(cached.is_none(), "Should not cache when caching is disabled");
+        assert!(
+            cached.is_none(),
+            "Should not cache when caching is disabled"
+        );
     }
 
     #[tokio::test]
@@ -2519,12 +2735,17 @@ mod tests {
             let mut providers = gateway.providers.write().await;
             providers.insert(
                 ProviderType::Ollama,
-                Arc::new(MockProvider { response: mock_response() }),
+                Arc::new(MockProvider {
+                    response: mock_response(),
+                }),
             );
         }
 
         let agent_id = AgentId::new();
-        let _ = gateway.infer(InferenceRequest::default(), Some(agent_id)).await.unwrap();
+        let _ = gateway
+            .infer(InferenceRequest::default(), Some(agent_id))
+            .await
+            .unwrap();
 
         assert!(
             gateway.get_agent_usage(agent_id).await.is_none(),
@@ -2540,11 +2761,16 @@ mod tests {
             let mut providers = gateway.providers.write().await;
             providers.insert(
                 ProviderType::Ollama,
-                Arc::new(MockProvider { response: mock_response() }),
+                Arc::new(MockProvider {
+                    response: mock_response(),
+                }),
             );
         }
 
-        let _ = gateway.infer(InferenceRequest::default(), None).await.unwrap();
+        let _ = gateway
+            .infer(InferenceRequest::default(), None)
+            .await
+            .unwrap();
 
         let health = gateway.provider_health().await;
         let h = health.get(&ProviderType::Ollama).unwrap();
@@ -2560,7 +2786,9 @@ mod tests {
             let mut providers = gateway.providers.write().await;
             providers.insert(
                 ProviderType::Ollama,
-                Arc::new(MockProvider { response: mock_response() }),
+                Arc::new(MockProvider {
+                    response: mock_response(),
+                }),
             );
         }
 
@@ -2581,7 +2809,9 @@ mod tests {
             let mut providers = gateway.providers.write().await;
             providers.insert(
                 ProviderType::Ollama,
-                Arc::new(MockProvider { response: mock_response() }),
+                Arc::new(MockProvider {
+                    response: mock_response(),
+                }),
             );
         }
 
@@ -2601,7 +2831,9 @@ mod tests {
             let mut providers = gateway.providers.write().await;
             providers.insert(
                 ProviderType::Ollama,
-                Arc::new(MockProvider { response: mock_response() }),
+                Arc::new(MockProvider {
+                    response: mock_response(),
+                }),
             );
         }
 
@@ -2621,7 +2853,9 @@ mod tests {
             let mut providers = gateway.providers.write().await;
             providers.insert(
                 ProviderType::Ollama,
-                Arc::new(MockProvider { response: mock_response() }),
+                Arc::new(MockProvider {
+                    response: mock_response(),
+                }),
             );
         }
 
@@ -2652,7 +2886,11 @@ mod tests {
             tokens_generated: 2,
             finish_reason: agnos_common::FinishReason::Stop,
             model: "cached-model".to_string(),
-            usage: TokenUsage { prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 },
+            usage: TokenUsage {
+                prompt_tokens: 1,
+                completion_tokens: 2,
+                total_tokens: 3,
+            },
         };
 
         gateway.cache.set(&request, response.clone()).await;
@@ -2706,7 +2944,10 @@ mod tests {
         async fn infer(&self, _request: &InferenceRequest) -> anyhow::Result<InferenceResponse> {
             anyhow::bail!("provider always fails")
         }
-        async fn infer_stream(&self, _request: InferenceRequest) -> anyhow::Result<mpsc::Receiver<anyhow::Result<String>>> {
+        async fn infer_stream(
+            &self,
+            _request: InferenceRequest,
+        ) -> anyhow::Result<mpsc::Receiver<anyhow::Result<String>>> {
             anyhow::bail!("stream always fails")
         }
         async fn load_model(&self, _model_id: &str) -> anyhow::Result<ModelInfo> {
@@ -2740,7 +2981,12 @@ mod tests {
         {
             let mut providers = gateway.providers.write().await;
             providers.insert(ProviderType::Ollama, Arc::new(FailingProvider));
-            providers.insert(ProviderType::LlamaCpp, Arc::new(MockProvider { response: mock_response() }));
+            providers.insert(
+                ProviderType::LlamaCpp,
+                Arc::new(MockProvider {
+                    response: mock_response(),
+                }),
+            );
         }
         let request = InferenceRequest::default();
         let result = gateway.infer(request, None).await;
@@ -2755,7 +3001,12 @@ mod tests {
         {
             let mut providers = gateway.providers.write().await;
             providers.insert(ProviderType::Ollama, Arc::new(FailingProvider));
-            providers.insert(ProviderType::LlamaCpp, Arc::new(MockProvider { response: mock_response() }));
+            providers.insert(
+                ProviderType::LlamaCpp,
+                Arc::new(MockProvider {
+                    response: mock_response(),
+                }),
+            );
         }
         let request = InferenceRequest::default();
         let _ = gateway.infer(request, None).await;
@@ -2774,7 +3025,12 @@ mod tests {
         let gateway = LlmGateway::new(config).await.unwrap();
         {
             let mut providers = gateway.providers.write().await;
-            providers.insert(ProviderType::Ollama, Arc::new(MockProvider { response: mock_response() }));
+            providers.insert(
+                ProviderType::Ollama,
+                Arc::new(MockProvider {
+                    response: mock_response(),
+                }),
+            );
         }
         // MockProvider returns immediately, so even a nanosecond timeout might succeed
         // The key test is that it doesn't panic
@@ -2799,7 +3055,11 @@ mod tests {
             tokens_generated: 3,
             finish_reason: agnos_common::FinishReason::Stop,
             model: "cached".to_string(),
-            usage: TokenUsage { prompt_tokens: 2, completion_tokens: 3, total_tokens: 5 },
+            usage: TokenUsage {
+                prompt_tokens: 2,
+                completion_tokens: 3,
+                total_tokens: 5,
+            },
         };
         gateway.cache.set(&request, response).await;
 
@@ -2815,20 +3075,33 @@ mod tests {
         let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
         {
             let mut providers = gateway.providers.write().await;
-            providers.insert(ProviderType::Ollama, Arc::new(MockProvider { response: mock_response() }));
-            providers.insert(ProviderType::OpenAi, Arc::new(MockProvider { response: mock_response() }));
+            providers.insert(
+                ProviderType::Ollama,
+                Arc::new(MockProvider {
+                    response: mock_response(),
+                }),
+            );
+            providers.insert(
+                ProviderType::OpenAi,
+                Arc::new(MockProvider {
+                    response: mock_response(),
+                }),
+            );
         }
         {
             let mut loaded = gateway.loaded_models.write().await;
-            loaded.insert("local-model".to_string(), ModelInfo {
-                id: "local-model".to_string(),
-                name: "Local".to_string(),
-                provider: agnos_common::Provider::Local,
-                capabilities: vec![],
-                max_tokens: 4096,
-                size_bytes: 0,
-                loaded: true,
-            });
+            loaded.insert(
+                "local-model".to_string(),
+                ModelInfo {
+                    id: "local-model".to_string(),
+                    name: "Local".to_string(),
+                    provider: agnos_common::Provider::Local,
+                    capabilities: vec![],
+                    max_tokens: 4096,
+                    size_bytes: 0,
+                    loaded: true,
+                },
+            );
         }
         let request = InferenceRequest {
             model: "local-model".to_string(),
@@ -2841,13 +3114,22 @@ mod tests {
 
     #[tokio::test]
     async fn test_concurrent_infer_with_mock() {
-        let gateway = Arc::new(LlmGateway::new(GatewayConfig {
-            max_concurrent_requests: 5,
-            ..GatewayConfig::default()
-        }).await.unwrap());
+        let gateway = Arc::new(
+            LlmGateway::new(GatewayConfig {
+                max_concurrent_requests: 5,
+                ..GatewayConfig::default()
+            })
+            .await
+            .unwrap(),
+        );
         {
             let mut providers = gateway.providers.write().await;
-            providers.insert(ProviderType::Ollama, Arc::new(MockProvider { response: mock_response() }));
+            providers.insert(
+                ProviderType::Ollama,
+                Arc::new(MockProvider {
+                    response: mock_response(),
+                }),
+            );
         }
         let mut handles = vec![];
         for _ in 0..5 {
@@ -2884,9 +3166,17 @@ mod tests {
     async fn test_gateway_accounting_stats_after_recording() {
         let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
         let agent = AgentId::new();
-        gateway.accounting.record_usage(agent, TokenUsage {
-            prompt_tokens: 25, completion_tokens: 75, total_tokens: 100,
-        }).await;
+        gateway
+            .accounting
+            .record_usage(
+                agent,
+                TokenUsage {
+                    prompt_tokens: 25,
+                    completion_tokens: 75,
+                    total_tokens: 100,
+                },
+            )
+            .await;
         let stats = gateway.accounting_stats().await;
         assert_eq!(stats.total_agents, 1);
         assert_eq!(stats.total_prompt_tokens, 25);
@@ -2919,7 +3209,12 @@ mod tests {
         let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
         {
             let mut providers = gateway.providers.write().await;
-            providers.insert(ProviderType::Ollama, Arc::new(MockProvider { response: mock_response() }));
+            providers.insert(
+                ProviderType::Ollama,
+                Arc::new(MockProvider {
+                    response: mock_response(),
+                }),
+            );
         }
         let request = InferenceRequest {
             model: "".to_string(),
@@ -2955,12 +3250,23 @@ mod tests {
         let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
         {
             let mut providers = gateway.providers.write().await;
-            providers.insert(ProviderType::Ollama, Arc::new(MockProvider { response: mock_response() }));
+            providers.insert(
+                ProviderType::Ollama,
+                Arc::new(MockProvider {
+                    response: mock_response(),
+                }),
+            );
         }
         let a1 = AgentId::new();
         let a2 = AgentId::new();
-        let _ = gateway.infer(InferenceRequest::default(), Some(a1)).await.unwrap();
-        let _ = gateway.infer(InferenceRequest::default(), Some(a2)).await.unwrap();
+        let _ = gateway
+            .infer(InferenceRequest::default(), Some(a1))
+            .await
+            .unwrap();
+        let _ = gateway
+            .infer(InferenceRequest::default(), Some(a2))
+            .await
+            .unwrap();
         // Cache should hit for second call with same request, so only first agent gets accounting
         // Both should have usage since cache returns before accounting
         let u1 = gateway.get_agent_usage(a1).await;
@@ -2991,7 +3297,10 @@ mod tests {
         }
         let result = gateway.load_model("any-model").await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Failed to load model"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Failed to load model"));
         // Model should NOT be in loaded_models
         assert!(gateway.list_models().await.is_empty());
     }
@@ -3003,16 +3312,21 @@ mod tests {
             let mut providers = gateway.providers.write().await;
             providers.insert(ProviderType::Ollama, Arc::new(FailingProvider));
         }
-        let result = gateway.infer_stream(InferenceRequest::default(), None).await;
+        let result = gateway
+            .infer_stream(InferenceRequest::default(), None)
+            .await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("stream always fails"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("stream always fails"));
     }
 
     // ==================================================================
     // Certificate pinning integration tests
     // ==================================================================
 
-    use agnos_sys::certpin::{PinnedCert, CertPinResult as PinResult};
+    use agnos_sys::certpin::{CertPinResult as PinResult, PinnedCert};
 
     /// Helper: build a pin set with known pins for testing.
     fn test_pin_set(enforce: bool) -> CertPinSet {
@@ -3042,7 +3356,10 @@ mod tests {
         let gateway = LlmGateway::new(GatewayConfig::default()).await.unwrap();
         // default_agnos_pins() has 3 entries: openai, anthropic, google
         assert_eq!(gateway.cert_pins.pins.len(), 3);
-        assert!(!gateway.cert_pins.enforce, "Default pins should be report-only");
+        assert!(
+            !gateway.cert_pins.enforce,
+            "Default pins should be report-only"
+        );
     }
 
     #[tokio::test]
@@ -3144,7 +3461,11 @@ mod tests {
         let pins = test_pin_set(true);
         let result = certpin::verify_pin("api.openai.com", "wrong_pin", &pins);
         match result {
-            PinResult::PinMismatch { host, actual, expected } => {
+            PinResult::PinMismatch {
+                host,
+                actual,
+                expected,
+            } => {
                 assert_eq!(host, "api.openai.com");
                 assert_eq!(actual, "wrong_pin");
                 assert!(expected.contains(&"test_openai_pin_primary".to_string()));

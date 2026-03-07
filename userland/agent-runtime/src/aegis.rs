@@ -321,7 +321,8 @@ impl AegisSecurityDaemon {
                         }
                     } else {
                         warn!(agent_id = %aid, threat = %threat, "Aegis: auto-quarantining agent");
-                        let entry = self.build_quarantine_entry(aid, &description, threat, Some(&event_id));
+                        let entry =
+                            self.build_quarantine_entry(aid, &description, threat, Some(&event_id));
                         self.quarantine.insert(aid.clone(), entry);
                     }
 
@@ -790,7 +791,11 @@ mod tests {
 
     #[test]
     fn event_metadata() {
-        let mut event = make_event(SecurityEventType::NetworkViolation, ThreatLevel::Medium, None);
+        let mut event = make_event(
+            SecurityEventType::NetworkViolation,
+            ThreatLevel::Medium,
+            None,
+        );
         event.metadata.insert("ip".into(), "10.0.0.1".into());
         event.metadata.insert("port".into(), "443".into());
         assert_eq!(event.metadata.len(), 2);
@@ -854,7 +859,11 @@ mod tests {
     #[test]
     fn no_quarantine_without_agent_id() {
         let mut daemon = default_daemon();
-        let event = make_event(SecurityEventType::SandboxEscape, ThreatLevel::Critical, None);
+        let event = make_event(
+            SecurityEventType::SandboxEscape,
+            ThreatLevel::Critical,
+            None,
+        );
         let action = daemon.report_event(event);
         assert!(action.is_none());
     }
@@ -994,7 +1003,11 @@ mod tests {
     #[test]
     fn resolve_event_marks_resolved() {
         let mut daemon = default_daemon();
-        let event = make_event(SecurityEventType::NetworkViolation, ThreatLevel::Medium, None);
+        let event = make_event(
+            SecurityEventType::NetworkViolation,
+            ThreatLevel::Medium,
+            None,
+        );
         let id = event.id.clone();
         daemon.report_event(event);
         assert!(daemon.resolve_event(&id));
@@ -1216,7 +1229,12 @@ mod tests {
         assert_eq!(daemon.events.len(), 5);
         // Oldest (0, 1, 2) should be gone; 3..7 remain.
         assert!(daemon.events.iter().all(|e| {
-            let n: usize = e.description.strip_prefix("event-").unwrap().parse().unwrap();
+            let n: usize = e
+                .description
+                .strip_prefix("event-")
+                .unwrap()
+                .parse()
+                .unwrap();
             n >= 3
         }));
     }
@@ -1302,7 +1320,10 @@ mod tests {
         std::fs::set_permissions(&ww, std::fs::Permissions::from_mode(0o666)).unwrap();
         let result = daemon.scan_agent("test", &ww);
         assert!(!result.clean);
-        assert!(result.findings.iter().any(|f| f.category == "world_writable"));
+        assert!(result
+            .findings
+            .iter()
+            .any(|f| f.category == "world_writable"));
     }
 
     #[test]

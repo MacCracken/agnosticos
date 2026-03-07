@@ -128,15 +128,13 @@ pub struct SecurityUI {
     human_override_enabled: Arc<RwLock<bool>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum SecurityLevel {
     #[default]
     Standard,
     Elevated,
     Lockdown,
 }
-
 
 impl Default for SecurityUI {
     fn default() -> Self {
@@ -448,7 +446,11 @@ impl SecurityUI {
     ///
     /// Sends SIGKILL, removes cgroup, deregisters via API, and writes an
     /// audit log entry.
-    pub fn emergency_kill_agent(&self, agent_id: Uuid, pid: Option<u32>) -> Result<(), SecurityUIError> {
+    pub fn emergency_kill_agent(
+        &self,
+        agent_id: Uuid,
+        pid: Option<u32>,
+    ) -> Result<(), SecurityUIError> {
         info!("EMERGENCY KILL: agent {} (pid: {:?})", agent_id, pid);
 
         // Send SIGKILL to the process if PID is known
@@ -456,10 +458,14 @@ impl SecurityUI {
             #[cfg(unix)]
             {
                 let Some(safe_pid) = i32::try_from(pid).ok().filter(|&p| p > 0) else {
-                    warn!("Invalid PID {} for agent {}, skipping SIGKILL", pid, agent_id);
-                    return Err(SecurityUIError::ActionBlocked(
-                        format!("Invalid PID: {}", pid),
-                    ));
+                    warn!(
+                        "Invalid PID {} for agent {}, skipping SIGKILL",
+                        pid, agent_id
+                    );
+                    return Err(SecurityUIError::ActionBlocked(format!(
+                        "Invalid PID: {}",
+                        pid
+                    )));
                 };
                 let result = unsafe { libc::kill(safe_pid, libc::SIGKILL) };
                 if result == 0 {
@@ -492,7 +498,11 @@ impl SecurityUI {
         });
 
         // Write audit log entry
-        Self::write_audit_log("emergency_kill", &agent_id.to_string(), "Agent killed via emergency kill switch");
+        Self::write_audit_log(
+            "emergency_kill",
+            &agent_id.to_string(),
+            "Agent killed via emergency kill switch",
+        );
 
         // Record a critical alert
         self.show_security_alert(SecurityAlert {
@@ -556,7 +566,10 @@ impl SecurityUI {
             &format!("Permission '{}' granted to '{}'", permission, agent_name),
         );
 
-        info!("Permission '{}' granted to agent {} ({})", permission, agent_name, agent_id);
+        info!(
+            "Permission '{}' granted to agent {} ({})",
+            permission, agent_name, agent_id
+        );
         Ok(())
     }
 
@@ -591,7 +604,10 @@ impl SecurityUI {
                 &format!("Permission '{}' revoked", permission),
             );
 
-            info!("Permission '{}' revoked from agent {}", permission, agent_id);
+            info!(
+                "Permission '{}' revoked from agent {}",
+                permission, agent_id
+            );
             Ok(())
         } else {
             Err(SecurityUIError::PermissionNotFound(format!(
@@ -1026,7 +1042,8 @@ mod tests {
         let agent_id = Uuid::new_v4();
 
         // First grant
-        ui.grant_permission_enforced(agent_id, "test-agent", "file:read").unwrap();
+        ui.grant_permission_enforced(agent_id, "test-agent", "file:read")
+            .unwrap();
 
         // Then revoke (no PID)
         let result = ui.revoke_permission_enforced(agent_id, "file:read", None);
@@ -1047,13 +1064,19 @@ mod tests {
         let ui = SecurityUI::new();
         let agent_id = Uuid::new_v4();
 
-        ui.grant_permission_enforced(agent_id, "agent", "file:read").unwrap();
-        ui.grant_permission_enforced(agent_id, "agent", "file:read").unwrap();
+        ui.grant_permission_enforced(agent_id, "agent", "file:read")
+            .unwrap();
+        ui.grant_permission_enforced(agent_id, "agent", "file:read")
+            .unwrap();
 
         // Should only appear once
         let perms = ui.agent_permissions.read().unwrap();
         let entry = perms.get(&agent_id).unwrap();
-        let count = entry.permissions.iter().filter(|p| *p == "file:read").count();
+        let count = entry
+            .permissions
+            .iter()
+            .filter(|p| *p == "file:read")
+            .count();
         assert_eq!(count, 1);
     }
 
@@ -1151,7 +1174,8 @@ mod tests {
     #[test]
     fn test_emergency_kill_switch_revokes_overrides() {
         let ui = SecurityUI::new();
-        let id = ui.request_human_override("agent".to_string(), "act".to_string(), "reason".to_string());
+        let id =
+            ui.request_human_override("agent".to_string(), "act".to_string(), "reason".to_string());
         ui.approve_override(id, "admin".to_string()).unwrap();
         // Now kill switch
         ui.emergency_kill_switch();
@@ -1165,8 +1189,10 @@ mod tests {
     fn test_grant_permission_enforced_multiple_permissions() {
         let ui = SecurityUI::new();
         let agent_id = Uuid::new_v4();
-        ui.grant_permission_enforced(agent_id, "agent", "file:read").unwrap();
-        ui.grant_permission_enforced(agent_id, "agent", "network:outbound").unwrap();
+        ui.grant_permission_enforced(agent_id, "agent", "file:read")
+            .unwrap();
+        ui.grant_permission_enforced(agent_id, "agent", "network:outbound")
+            .unwrap();
         let perms = ui.agent_permissions.read().unwrap();
         let entry = perms.get(&agent_id).unwrap();
         assert_eq!(entry.permissions.len(), 2);
@@ -1372,14 +1398,17 @@ mod tests {
     fn test_revoke_permission_enforced_removes_only_specified() {
         let ui = SecurityUI::new();
         let agent_id = Uuid::new_v4();
-        ui.grant_permission_enforced(agent_id, "agent", "file:read").unwrap();
-        ui.grant_permission_enforced(agent_id, "agent", "network:outbound").unwrap();
+        ui.grant_permission_enforced(agent_id, "agent", "file:read")
+            .unwrap();
+        ui.grant_permission_enforced(agent_id, "agent", "network:outbound")
+            .unwrap();
 
         let perms_before = ui.agent_permissions.read().unwrap();
         assert_eq!(perms_before.get(&agent_id).unwrap().permissions.len(), 2);
         drop(perms_before);
 
-        ui.revoke_permission_enforced(agent_id, "file:read", None).unwrap();
+        ui.revoke_permission_enforced(agent_id, "file:read", None)
+            .unwrap();
 
         let perms_after = ui.agent_permissions.read().unwrap();
         let entry = perms_after.get(&agent_id).unwrap();
@@ -1583,9 +1612,9 @@ impl WindowBadgeManager {
         match level {
             TrustLevel::System => 0xFF4488FF,     // blue
             TrustLevel::Verified => 0xFF44CC44,   // green
-            TrustLevel::Unverified => 0xFFCCCC44,  // yellow
-            TrustLevel::Untrusted => 0xFFCC4444,   // red
-            TrustLevel::Sandboxed => 0xFFCC8844,   // orange
+            TrustLevel::Unverified => 0xFFCCCC44, // yellow
+            TrustLevel::Untrusted => 0xFFCC4444,  // red
+            TrustLevel::Sandboxed => 0xFFCC8844,  // orange
         }
     }
 
@@ -1677,11 +1706,26 @@ mod badge_tests {
 
     #[test]
     fn test_badge_color_for_trust() {
-        assert_eq!(WindowBadgeManager::badge_color_for_trust(&TrustLevel::System), 0xFF4488FF);
-        assert_eq!(WindowBadgeManager::badge_color_for_trust(&TrustLevel::Verified), 0xFF44CC44);
-        assert_eq!(WindowBadgeManager::badge_color_for_trust(&TrustLevel::Unverified), 0xFFCCCC44);
-        assert_eq!(WindowBadgeManager::badge_color_for_trust(&TrustLevel::Untrusted), 0xFFCC4444);
-        assert_eq!(WindowBadgeManager::badge_color_for_trust(&TrustLevel::Sandboxed), 0xFFCC8844);
+        assert_eq!(
+            WindowBadgeManager::badge_color_for_trust(&TrustLevel::System),
+            0xFF4488FF
+        );
+        assert_eq!(
+            WindowBadgeManager::badge_color_for_trust(&TrustLevel::Verified),
+            0xFF44CC44
+        );
+        assert_eq!(
+            WindowBadgeManager::badge_color_for_trust(&TrustLevel::Unverified),
+            0xFFCCCC44
+        );
+        assert_eq!(
+            WindowBadgeManager::badge_color_for_trust(&TrustLevel::Untrusted),
+            0xFFCC4444
+        );
+        assert_eq!(
+            WindowBadgeManager::badge_color_for_trust(&TrustLevel::Sandboxed),
+            0xFFCC8844
+        );
     }
 
     #[test]

@@ -144,15 +144,7 @@ impl CompletionEngine {
                 .cloned()
                 .collect(),
             ["scan", partial] | ["network", partial] => {
-                let actions = [
-                    "ports",
-                    "web",
-                    "dns",
-                    "arp",
-                    "vuln",
-                    "bandwidth",
-                    "sockets",
-                ];
+                let actions = ["ports", "web", "dns", "arp", "vuln", "bandwidth", "sockets"];
                 actions
                     .iter()
                     .filter(|a| a.starts_with(partial))

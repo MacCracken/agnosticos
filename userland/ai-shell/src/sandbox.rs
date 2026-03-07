@@ -6,9 +6,7 @@
 use anyhow::{Context, Result};
 use tracing::{debug, info, warn};
 
-use agnos_sys::security::{
-    self, FilesystemRule,
-};
+use agnos_sys::security::{self, FilesystemRule};
 
 /// Sandboxed execution context
 pub struct Sandbox {
@@ -42,7 +40,10 @@ impl Sandbox {
 
         match security::apply_landlock(&rules) {
             Ok(()) => {
-                info!("Shell Landlock restrictions applied ({} rules)", rules.len());
+                info!(
+                    "Shell Landlock restrictions applied ({} rules)",
+                    rules.len()
+                );
             }
             Err(e) => {
                 warn!("Landlock enforcement failed (may not be supported): {}", e);
@@ -62,8 +63,8 @@ impl Sandbox {
             return Ok(());
         }
 
-        let filter = security::create_basic_seccomp_filter()
-            .context("Failed to create seccomp filter")?;
+        let filter =
+            security::create_basic_seccomp_filter().context("Failed to create seccomp filter")?;
 
         if filter.is_empty() {
             debug!("Empty seccomp filter (non-Linux platform), skipping");

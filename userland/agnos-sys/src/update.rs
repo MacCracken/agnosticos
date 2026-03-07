@@ -302,12 +302,10 @@ pub fn get_current_slot() -> Result<UpdateSlot> {
     // Fallback: read state file at the default location.
     let default_state = PathBuf::from("/var/lib/agnos/update-state.json");
     if default_state.exists() {
-        let data = std::fs::read_to_string(&default_state).map_err(|e| {
-            SysError::Unknown(format!("Failed to read state file: {e}"))
-        })?;
-        let state: UpdateState = serde_json::from_str(&data).map_err(|e| {
-            SysError::InvalidArgument(format!("Malformed state file: {e}"))
-        })?;
+        let data = std::fs::read_to_string(&default_state)
+            .map_err(|e| SysError::Unknown(format!("Failed to read state file: {e}")))?;
+        let state: UpdateState = serde_json::from_str(&data)
+            .map_err(|e| SysError::InvalidArgument(format!("Malformed state file: {e}")))?;
         return Ok(state.current_slot);
     }
 
@@ -332,9 +330,8 @@ pub fn get_update_state(config: &UpdateConfig) -> Result<UpdateState> {
             config.state_file.display()
         ))
     })?;
-    serde_json::from_str(&data).map_err(|e| {
-        SysError::InvalidArgument(format!("Malformed update state: {e}"))
-    })
+    serde_json::from_str(&data)
+        .map_err(|e| SysError::InvalidArgument(format!("Malformed update state: {e}")))
 }
 
 /// Persist `state` as JSON to `path`.
@@ -347,9 +344,8 @@ pub fn save_update_state(state: &UpdateState, path: &Path) -> Result<()> {
             ))
         })?;
     }
-    let json = serde_json::to_string_pretty(state).map_err(|e| {
-        SysError::Unknown(format!("Failed to serialize update state: {e}"))
-    })?;
+    let json = serde_json::to_string_pretty(state)
+        .map_err(|e| SysError::Unknown(format!("Failed to serialize update state: {e}")))?;
     std::fs::write(path, json).map_err(|e| {
         SysError::Unknown(format!(
             "Failed to write update state to {}: {e}",
@@ -364,9 +360,8 @@ pub fn save_update_state(state: &UpdateState, path: &Path) -> Result<()> {
 
 /// Parse a JSON string into an `UpdateManifest`.
 pub fn parse_update_manifest(json: &str) -> Result<UpdateManifest> {
-    serde_json::from_str(json).map_err(|e| {
-        SysError::InvalidArgument(format!("Failed to parse update manifest: {e}"))
-    })
+    serde_json::from_str(json)
+        .map_err(|e| SysError::InvalidArgument(format!("Failed to parse update manifest: {e}")))
 }
 
 /// Verify the integrity of a manifest: check that the SHA-256 digest field
@@ -460,9 +455,8 @@ pub fn check_for_update(
 ) -> Result<Option<UpdateManifest>> {
     let json = if config.update_url.starts_with("file://") {
         let path = config.update_url.trim_start_matches("file://");
-        std::fs::read_to_string(path).map_err(|e| {
-            SysError::Unknown(format!("Failed to read local manifest {path}: {e}"))
-        })?
+        std::fs::read_to_string(path)
+            .map_err(|e| SysError::Unknown(format!("Failed to read local manifest {path}: {e}")))?
     } else if config.update_url.starts_with('/') {
         std::fs::read_to_string(&config.update_url).map_err(|e| {
             SysError::Unknown(format!(
@@ -527,9 +521,7 @@ pub fn apply_update(config: &UpdateConfig, manifest: &UpdateManifest) -> Result<
     // Validate image path: must be absolute, within the staging dir, and contain no traversal
     let staging_dir = "/var/lib/agnos/updates";
     let canonical = std::path::Path::new(image_path);
-    if !canonical.is_absolute()
-        || image_path.contains("..")
-        || !image_path.starts_with(staging_dir)
+    if !canonical.is_absolute() || image_path.contains("..") || !image_path.starts_with(staging_dir)
     {
         return Err(SysError::InvalidArgument(format!(
             "Update image path must be absolute within {staging_dir}, got: {image_path}"
@@ -566,12 +558,9 @@ pub fn apply_update(config: &UpdateConfig, manifest: &UpdateManifest) -> Result<
     state.rollback_available = true;
     save_update_state(&state, &config.state_file)?;
 
-    if config.verify_after_apply
-        && !verify_update(config, manifest)? {
-            return Err(SysError::Unknown(
-                "Post-apply verification failed".into(),
-            ));
-        }
+    if config.verify_after_apply && !verify_update(config, manifest)? {
+        return Err(SysError::Unknown("Post-apply verification failed".into()));
+    }
 
     Ok(())
 }
@@ -628,7 +617,10 @@ pub fn verify_update(_config: &UpdateConfig, _manifest: &UpdateManifest) -> Resu
 pub fn switch_active_slot(config: &UpdateConfig, slot: UpdateSlot) -> Result<()> {
     // Try bootctl first (systemd-boot).
     let bootctl = std::process::Command::new("bootctl")
-        .args(["set-default", &format!("agnos-{}.conf", slot.partition_suffix())])
+        .args([
+            "set-default",
+            &format!("agnos-{}.conf", slot.partition_suffix()),
+        ])
         .status();
 
     match bootctl {
@@ -636,9 +628,8 @@ pub fn switch_active_slot(config: &UpdateConfig, slot: UpdateSlot) -> Result<()>
         _ => {
             // Fallback: write slot marker file.
             let marker = PathBuf::from("/var/lib/agnos/next-slot");
-            std::fs::write(&marker, slot.partition_suffix()).map_err(|e| {
-                SysError::Unknown(format!("Failed to write slot marker: {e}"))
-            })?;
+            std::fs::write(&marker, slot.partition_suffix())
+                .map_err(|e| SysError::Unknown(format!("Failed to write slot marker: {e}")))?;
         }
     }
 
@@ -1099,9 +1090,6 @@ mod tests {
 
     #[test]
     fn test_compare_versions_year_boundary() {
-        assert_eq!(
-            compare_versions("2026.31.12", "2027.1.1"),
-            Ordering::Less
-        );
+        assert_eq!(compare_versions("2026.31.12", "2027.1.1"), Ordering::Less);
     }
 }

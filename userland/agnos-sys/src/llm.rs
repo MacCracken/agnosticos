@@ -53,13 +53,22 @@ pub fn load_model(model_id: &str) -> Result<u64> {
     let url = format!("{}/v1/models", LLM_GATEWAY_ADDR);
     match blocking_client().get(&url).send() {
         Ok(resp) if resp.status().is_success() => {
-            debug!("LLM Gateway reachable, model '{}' registration accepted", model_id);
+            debug!(
+                "LLM Gateway reachable, model '{}' registration accepted",
+                model_id
+            );
         }
         Ok(resp) => {
-            warn!("LLM Gateway returned {}, proceeding with local handle", resp.status());
+            warn!(
+                "LLM Gateway returned {}, proceeding with local handle",
+                resp.status()
+            );
         }
         Err(e) => {
-            warn!("LLM Gateway unreachable ({}), creating local handle anyway", e);
+            warn!(
+                "LLM Gateway unreachable ({}), creating local handle anyway",
+                e
+            );
         }
     }
 
@@ -87,12 +96,10 @@ pub fn unload_model(model_handle: u64) -> Result<()> {
             info!("Unloaded model '{}' (handle {})", id, model_handle);
             Ok(())
         }
-        None => {
-            Err(SysError::InvalidArgument(format!(
-                "no model loaded with handle {}",
-                model_handle
-            )))
-        }
+        None => Err(SysError::InvalidArgument(format!(
+            "no model loaded with handle {}",
+            model_handle
+        ))),
     }
 }
 
@@ -108,12 +115,9 @@ pub fn inference(model_handle: u64, input: &[u8], output: &mut [u8]) -> Result<u
         let models = LOADED_MODELS
             .read()
             .map_err(|e| SysError::Unknown(format!("lock poisoned: {}", e)))?;
-        models
-            .get(&model_handle)
-            .cloned()
-            .ok_or_else(|| {
-                SysError::InvalidArgument(format!("no model loaded with handle {}", model_handle))
-            })?
+        models.get(&model_handle).cloned().ok_or_else(|| {
+            SysError::InvalidArgument(format!("no model loaded with handle {}", model_handle))
+        })?
     };
 
     let prompt = std::str::from_utf8(input)

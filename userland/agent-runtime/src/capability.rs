@@ -33,7 +33,11 @@ pub struct Capability {
 
 impl Capability {
     /// Create a new capability with the given name and version.
-    pub fn new(name: impl Into<String>, version: impl Into<String>, description: impl Into<String>) -> Self {
+    pub fn new(
+        name: impl Into<String>,
+        version: impl Into<String>,
+        description: impl Into<String>,
+    ) -> Self {
         Self {
             name: name.into(),
             version: version.into(),
@@ -144,7 +148,11 @@ impl CapabilityRegistry {
     /// If `input` is provided and a provider has an `input_schema`, we check that the
     /// input's top-level keys are a subset of the schema's `properties` (basic check).
     /// Returns the first compatible provider, or falls back to any provider with the name.
-    pub fn find_best_match(&self, name: &str, input: &serde_json::Value) -> Option<&CapabilityProvider> {
+    pub fn find_best_match(
+        &self,
+        name: &str,
+        input: &serde_json::Value,
+    ) -> Option<&CapabilityProvider> {
         let candidates = self.find_capability(name);
         if candidates.is_empty() {
             return None;
@@ -277,8 +285,7 @@ mod tests {
 
     #[test]
     fn test_capability_query_with_input() {
-        let q = CapabilityQuery::new("scan")
-            .with_input(serde_json::json!({"host": "127.0.0.1"}));
+        let q = CapabilityQuery::new("scan").with_input(serde_json::json!({"host": "127.0.0.1"}));
         assert!(q.input.is_some());
     }
 
@@ -293,10 +300,10 @@ mod tests {
         let mut reg = CapabilityRegistry::new();
         let agent = AgentId::new();
 
-        reg.register(agent, vec![
-            make_cap("port_scan", "1.0.0"),
-            make_cap("ping", "1.0.0"),
-        ]);
+        reg.register(
+            agent,
+            vec![make_cap("port_scan", "1.0.0"), make_cap("ping", "1.0.0")],
+        );
 
         let providers = reg.find_capability("port_scan");
         assert_eq!(providers.len(), 1);
@@ -326,10 +333,10 @@ mod tests {
         let mut reg = CapabilityRegistry::new();
         let agent = AgentId::new();
 
-        reg.register(agent, vec![
-            make_cap("cap_a", "1.0.0"),
-            make_cap("cap_b", "2.0.0"),
-        ]);
+        reg.register(
+            agent,
+            vec![make_cap("cap_a", "1.0.0"), make_cap("cap_b", "2.0.0")],
+        );
 
         let caps = reg.agent_capabilities(&agent).unwrap();
         assert_eq!(caps.len(), 2);
@@ -344,8 +351,14 @@ mod tests {
         let a1 = AgentId::new();
         let a2 = AgentId::new();
 
-        reg.register(a1, vec![make_cap("scan", "1.0.0"), make_cap("ping", "1.0.0")]);
-        reg.register(a2, vec![make_cap("scan", "2.0.0"), make_cap("analyze", "1.0.0")]);
+        reg.register(
+            a1,
+            vec![make_cap("scan", "1.0.0"), make_cap("ping", "1.0.0")],
+        );
+        reg.register(
+            a2,
+            vec![make_cap("scan", "2.0.0"), make_cap("analyze", "1.0.0")],
+        );
 
         let all = reg.all_capabilities();
         // Should have 3 unique capability names: scan, ping, analyze
@@ -390,8 +403,8 @@ mod tests {
         let mut reg = CapabilityRegistry::new();
         let agent = AgentId::new();
 
-        let cap = Capability::new("scan", "1.0.0", "Port scanner")
-            .with_input_schema(serde_json::json!({
+        let cap =
+            Capability::new("scan", "1.0.0", "Port scanner").with_input_schema(serde_json::json!({
                 "type": "object",
                 "properties": {
                     "host": {"type": "string"},
@@ -410,8 +423,8 @@ mod tests {
         let mut reg = CapabilityRegistry::new();
         let agent = AgentId::new();
 
-        let cap = Capability::new("scan", "1.0.0", "Port scanner")
-            .with_input_schema(serde_json::json!({
+        let cap =
+            Capability::new("scan", "1.0.0", "Port scanner").with_input_schema(serde_json::json!({
                 "type": "object",
                 "properties": {
                     "host": {"type": "string"}
@@ -459,7 +472,10 @@ mod tests {
     #[test]
     fn test_schema_compatible_no_properties() {
         let schema = serde_json::json!({"type": "object"});
-        assert!(is_schema_compatible(&schema, &serde_json::json!({"any": "key"})));
+        assert!(is_schema_compatible(
+            &schema,
+            &serde_json::json!({"any": "key"})
+        ));
     }
 
     #[test]
@@ -467,8 +483,14 @@ mod tests {
         let schema = serde_json::json!({
             "properties": {"host": {}, "port": {}}
         });
-        assert!(is_schema_compatible(&schema, &serde_json::json!({"host": "x"})));
-        assert!(is_schema_compatible(&schema, &serde_json::json!({"host": "x", "port": 80})));
+        assert!(is_schema_compatible(
+            &schema,
+            &serde_json::json!({"host": "x"})
+        ));
+        assert!(is_schema_compatible(
+            &schema,
+            &serde_json::json!({"host": "x", "port": 80})
+        ));
     }
 
     #[test]
@@ -476,7 +498,10 @@ mod tests {
         let schema = serde_json::json!({
             "properties": {"host": {}}
         });
-        assert!(!is_schema_compatible(&schema, &serde_json::json!({"host": "x", "extra": 1})));
+        assert!(!is_schema_compatible(
+            &schema,
+            &serde_json::json!({"host": "x", "extra": 1})
+        ));
     }
 
     #[test]

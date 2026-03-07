@@ -72,9 +72,9 @@ pub fn color_u32_to_hex(color: u32) -> String {
 
 /// Parse a `"#RRGGBB"` hex string to `0xFF_RRGGBB`.
 pub fn color_hex_to_u32(hex: &str) -> Result<u32, String> {
-    let hex = hex.strip_prefix('#').ok_or_else(|| {
-        format!("Expected '#' prefix in color string: {}", hex)
-    })?;
+    let hex = hex
+        .strip_prefix('#')
+        .ok_or_else(|| format!("Expected '#' prefix in color string: {}", hex))?;
     if hex.len() != 6 {
         return Err(format!(
             "Expected 6 hex digits after '#', got {}: {}",
@@ -82,8 +82,7 @@ pub fn color_hex_to_u32(hex: &str) -> Result<u32, String> {
             hex
         ));
     }
-    let rgb = u32::from_str_radix(hex, 16)
-        .map_err(|e| format!("Invalid hex color: {}", e))?;
+    let rgb = u32::from_str_radix(hex, 16).map_err(|e| format!("Invalid hex color: {}", e))?;
     Ok(0xFF000000 | rgb)
 }
 
@@ -137,7 +136,8 @@ impl ThemeBridge {
         PlatformChannelMessage {
             channel: "agnos/theme".to_string(),
             method: "setTheme".to_string(),
-            args: serde_json::to_value(theme_data).expect("FlutterThemeData is always serialisable"),
+            args: serde_json::to_value(theme_data)
+                .expect("FlutterThemeData is always serialisable"),
         }
     }
 
@@ -186,9 +186,7 @@ impl ThemeBridge {
             font_size_multiplier: overrides
                 .font_size_multiplier
                 .unwrap_or(base.font_size_multiplier),
-            use_material3: overrides
-                .use_material3
-                .unwrap_or(base.use_material3),
+            use_material3: overrides.use_material3.unwrap_or(base.use_material3),
         }
     }
 }

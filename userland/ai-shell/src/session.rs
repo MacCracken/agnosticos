@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use crate::approval::{ApprovalManager, ApprovalRequest, ApprovalResponse};
 use crate::config::ShellConfig;
 use crate::history::CommandHistory;
-use crate::interpreter::{Interpreter, Intent};
+use crate::interpreter::{Intent, Interpreter};
 use crate::llm::LlmClient;
 use crate::mode::{Mode, ModeManager};
 use crate::output::OutputFormatter;
@@ -56,7 +56,7 @@ impl Session {
             security.username().to_string(),
             initial_mode.to_string(),
         );
-        
+
         Ok(Self {
             _config: config,
             _security: security,
@@ -72,21 +72,21 @@ impl Session {
             llm,
         })
     }
-    
+
     /// Run the interactive shell loop
     pub async fn run_interactive(&mut self) -> Result<()> {
         self.ui.show_welcome();
-        
+
         loop {
             // Show prompt
             let prompt = self.build_prompt();
-            
+
             // Get input
             let input = match self.ui.read_input(&prompt).await? {
                 Some(line) => line,
                 None => break, // EOF
             };
-            
+
             // Limit input length to prevent DoS
             if input.len() > 65536 {
                 self.ui.show_error("Input too long (max 64KB)");
@@ -97,32 +97,32 @@ impl Session {
             if input.trim().is_empty() {
                 continue;
             }
-            
+
             // Add to history
             self.history.add(&input).await?;
-            
+
             // Process input
             if let Err(e) = self.process_input(&input).await {
                 self.ui.show_error(&e.to_string());
             }
         }
-        
+
         self.ui.show_goodbye();
         Ok(())
     }
-    
+
     /// Execute one-shot command
     pub async fn execute_one_shot(&mut self, command: String) -> Result<()> {
         self.process_input(&command).await
     }
-    
+
     /// Process a single input line
     async fn process_input(&mut self, input: &str) -> Result<()> {
         // Check for special commands
         if let Some(result) = self.handle_builtin(input).await? {
             return result;
         }
-        
+
         // Parse input based on current mode
         match self.mode_manager.current() {
             Mode::Human => {
@@ -142,14 +142,14 @@ impl Session {
                 self.execute_with_approval(input).await?;
             }
         }
-        
+
         Ok(())
     }
-    
+
     /// Handle builtin commands
     async fn handle_builtin(&mut self, input: &str) -> Result<Option<Result<()>>> {
         let cmd = input.trim().to_lowercase();
-        
+
         match cmd.as_str() {
             "exit" | "quit" => {
                 return Ok(Some(Err(anyhow!("Exit requested"))));
@@ -197,18 +197,19 @@ impl Session {
             }
             _ => {}
         }
-        
+
         Ok(None)
     }
-    
+
     /// Execute with AI assistance
     async fn execute_with_assistance(&mut self, input: &str) -> Result<()> {
         // Parse intent
         let intent = self.interpreter.parse(input);
-        
+
         // Show AI interpretation
-        self.ui.show_ai_thinking(&format!("Parsed intent: {:?}", intent));
-        
+        self.ui
+            .show_ai_thinking(&format!("Parsed intent: {:?}", intent));
+
         match intent {
             Intent::Question { query } => {
                 self.ui.show_info("Thinking...");
@@ -219,7 +220,8 @@ impl Session {
             }
             Intent::Unknown => {
                 // Try to execute as shell command with warning
-                self.ui.show_warning("I didn't understand. Executing as shell command.");
+                self.ui
+                    .show_warning("I didn't understand. Executing as shell command.");
                 self.execute_shell_command(input).await?;
             }
             _ => {
@@ -228,27 +230,36 @@ impl Session {
                     Ok(translation) => {
                         // Show what we'll do
                         self.ui.show_proposed_action(&translation);
-                        
+
                         // Check if approval needed
                         if translation.permission.requires_approval() {
                             let request = ApprovalRequest::Command {
                                 command: translation.command.clone(),
                                 args: translation.args.clone(),
                                 reason: translation.explanation.clone(),
-                                risk_level: crate::approval::RiskLevel::from_permission(&translation.permission),
+                                risk_level: crate::approval::RiskLevel::from_permission(
+                                    &translation.permission,
+                                ),
                             };
-                            
+
                             #[allow(clippy::collapsible_match)]
                             match self.approval.request(&request).await? {
                                 ApprovalResponse::Approved | ApprovalResponse::ApprovedOnce => {
-                                    self.execute_command(&translation.command, &translation.args).await?;
+                                    self.execute_command(&translation.command, &translation.args)
+                                        .await?;
                                 }
                                 ApprovalResponse::Denied | ApprovalResponse::DenyAndBlock => {
                                     self.ui.show_info("Action cancelled by user");
                                 }
                                 ApprovalResponse::Modify(modified) => {
-                                    if let ApprovalRequest::Command { command, args, .. } = &modified {
-                                        self.ui.show_info(&format!("Executing modified: {} {}", command, args.join(" ")));
+                                    if let ApprovalRequest::Command { command, args, .. } =
+                                        &modified
+                                    {
+                                        self.ui.show_info(&format!(
+                                            "Executing modified: {} {}",
+                                            command,
+                                            args.join(" ")
+                                        ));
                                         self.execute_command(command, args).await?;
                                     }
                                 }
@@ -256,7 +267,8 @@ impl Session {
                             }
                         } else {
                             // Safe to execute
-                            self.execute_command(&translation.command, &translation.args).await?;
+                            self.execute_command(&translation.command, &translation.args)
+                                .await?;
                         }
                     }
                     Err(e) => {
@@ -265,29 +277,29 @@ impl Session {
                 }
             }
         }
-        
+
         Ok(())
     }
-    
+
     /// Execute autonomously (AI mode)
     async fn execute_autonomously(&mut self, input: &str) -> Result<()> {
         let intent = self.interpreter.parse(input);
-        
+
         match intent {
             Intent::ShellCommand { command, args } => {
                 // Check permissions
                 let perm = analyze_command_permission(&command, &args);
-                
+
                 if !perm.ai_allowed() {
                     self.ui.show_error("This command is blocked in AI mode");
                     return Ok(());
                 }
-                
+
                 if perm.requires_approval() {
                     self.ui.show_info("This requires approval...");
                     return self.execute_with_assistance(input).await;
                 }
-                
+
                 // Safe to execute
                 self.execute_command(&command, &args).await?;
             }
@@ -295,10 +307,10 @@ impl Session {
                 return self.execute_with_assistance(input).await;
             }
         }
-        
+
         Ok(())
     }
-    
+
     /// Execute with mandatory approval
     async fn execute_with_approval(&mut self, input: &str) -> Result<()> {
         let request = ApprovalRequest::Command {
@@ -307,7 +319,7 @@ impl Session {
             reason: "Strict mode requires approval for all commands".to_string(),
             risk_level: crate::approval::RiskLevel::Medium,
         };
-        
+
         match self.approval.request(&request).await? {
             ApprovalResponse::Approved | ApprovalResponse::ApprovedOnce => {
                 self.execute_shell_command(input).await?;
@@ -319,7 +331,8 @@ impl Session {
                     } else {
                         format!("{} {}", command, args.join(" "))
                     };
-                    self.ui.show_info(&format!("Executing modified: {}", full_cmd));
+                    self.ui
+                        .show_info(&format!("Executing modified: {}", full_cmd));
                     self.execute_shell_command(&full_cmd).await?;
                 }
             }
@@ -327,10 +340,10 @@ impl Session {
                 self.ui.show_info("Command cancelled");
             }
         }
-        
+
         Ok(())
     }
-    
+
     /// Execute raw shell command
     async fn execute_shell_command(&mut self, command: &str) -> Result<()> {
         // Parse command
@@ -347,7 +360,7 @@ impl Session {
 
         let cmd = parts[0].clone();
         let args: Vec<String> = parts[1..].to_vec();
-        
+
         // Check for cd (special handling)
         if cmd == "cd" {
             let path = args.first().map(|s| s.as_str()).unwrap_or("~");
@@ -363,21 +376,22 @@ impl Session {
             }
             return Ok(());
         }
-        
+
         self.execute_command(&cmd, &args).await
     }
-    
+
     /// Execute a command with proper formatting
     async fn execute_command(&mut self, cmd: &str, args: &[String]) -> Result<()> {
         use std::process::Stdio;
         use tokio::process::Command;
-        
+
         let mut command = Command::new(cmd);
-        command.args(args)
+        command
+            .args(args)
             .current_dir(&self.cwd)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        
+
         match command.spawn() {
             Ok(mut child) => {
                 match child.wait().await {
@@ -391,9 +405,11 @@ impl Session {
                                 status.signal().map(|s| 128 + s).unwrap_or(-1)
                             }
                             #[cfg(not(unix))]
-                            { -1 }
+                            {
+                                -1
+                            }
                         });
-                        
+
                         if let Some(stdout) = child.stdout.take() {
                             let reader = tokio::io::BufReader::new(stdout);
                             use tokio::io::AsyncBufReadExt;
@@ -402,7 +418,7 @@ impl Session {
                                 self.ui.show_output(&line);
                             }
                         }
-                        
+
                         if !status.success() {
                             if let Some(stderr) = child.stderr.take() {
                                 let reader = tokio::io::BufReader::new(stderr);
@@ -415,20 +431,22 @@ impl Session {
                         }
                     }
                     Err(e) => {
-                        self.ui.show_error(&format!("Failed to wait for process: {}", e));
+                        self.ui
+                            .show_error(&format!("Failed to wait for process: {}", e));
                         self.prompt_context.last_exit_code = -1;
                     }
                 }
             }
             Err(e) => {
-                self.ui.show_error(&format!("Failed to execute '{}': {}", cmd, e));
+                self.ui
+                    .show_error(&format!("Failed to execute '{}': {}", cmd, e));
                 self.prompt_context.last_exit_code = -1;
             }
         }
-        
+
         Ok(())
     }
-    
+
     /// Build the shell prompt using starship-style renderer
     fn build_prompt(&self) -> String {
         self.prompt_renderer.render(&self.prompt_context)
@@ -443,11 +461,7 @@ mod tests {
     #[tokio::test]
     async fn test_prompt_context_new() {
         let cwd = std::path::PathBuf::from("/home/user");
-        let context = PromptContext::new(
-            cwd.clone(),
-            "testuser".to_string(),
-            "human".to_string(),
-        );
+        let context = PromptContext::new(cwd.clone(), "testuser".to_string(), "human".to_string());
         assert_eq!(context.cwd, cwd);
         assert_eq!(context.username, "testuser");
         assert_eq!(context.ai_mode, "human");
@@ -457,11 +471,7 @@ mod tests {
     #[tokio::test]
     async fn test_prompt_context_new_fields() {
         let cwd = std::path::PathBuf::from("/home/user");
-        let context = PromptContext::new(
-            cwd.clone(),
-            "testuser".to_string(),
-            "human".to_string(),
-        );
+        let context = PromptContext::new(cwd.clone(), "testuser".to_string(), "human".to_string());
         assert_eq!(context.cwd, cwd);
         assert_eq!(context.username, "testuser");
         assert_eq!(context.ai_mode, "human");
@@ -472,11 +482,8 @@ mod tests {
     #[tokio::test]
     async fn test_prompt_context_update_cwd() {
         let cwd = std::path::PathBuf::from("/home/user");
-        let mut context = PromptContext::new(
-            cwd.clone(),
-            "testuser".to_string(),
-            "human".to_string(),
-        );
+        let mut context =
+            PromptContext::new(cwd.clone(), "testuser".to_string(), "human".to_string());
         let new_cwd = std::path::PathBuf::from("/tmp");
         context.cwd = new_cwd.clone();
         assert_eq!(context.cwd, new_cwd);
@@ -485,7 +492,10 @@ mod tests {
     #[test]
     fn test_shell_config_default() {
         let config = ShellConfig::default();
-        assert!(config.history_file.to_string_lossy().ends_with(".agnsh_history"));
+        assert!(config
+            .history_file
+            .to_string_lossy()
+            .ends_with(".agnsh_history"));
         assert_eq!(config.output_format, "auto");
         assert!(config.ai_enabled);
     }
@@ -523,10 +533,10 @@ mod tests {
     async fn test_command_history_add_and_get() {
         let temp_path = std::env::temp_dir().join("agnos_test_history2");
         let mut history = CommandHistory::new(&temp_path).await.unwrap();
-        
+
         history.add("ls -la").await.unwrap();
         history.add("pwd").await.unwrap();
-        
+
         let entries = history.get_recent(10);
         assert_eq!(entries.len(), 2);
         let _ = std::fs::remove_file(&temp_path);
@@ -536,11 +546,11 @@ mod tests {
     async fn test_command_history_search() {
         let temp_path = std::env::temp_dir().join("agnos_test_history3");
         let mut history = CommandHistory::new(&temp_path).await.unwrap();
-        
+
         history.add("ls -la").await.unwrap();
         history.add("git status").await.unwrap();
         history.add("git log").await.unwrap();
-        
+
         let results = history.search("git");
         assert_eq!(results.len(), 2);
         let _ = std::fs::remove_file(&temp_path);
@@ -549,14 +559,14 @@ mod tests {
     #[tokio::test]
     async fn test_command_history_save() {
         let temp_path = std::env::temp_dir().join("agnos_test_history4");
-        
+
         {
             let mut history = CommandHistory::new(&temp_path).await.unwrap();
             history.add("command1").await.unwrap();
             history.add("command2").await.unwrap();
             history.save().await.unwrap();
         }
-        
+
         {
             let history = CommandHistory::new(&temp_path).await.unwrap();
             let entries = history.get_recent(10);
@@ -575,7 +585,7 @@ mod tests {
     fn test_interpreter_parse_shell_command() {
         let interpreter = Interpreter::new();
         let intent = interpreter.parse("ls -la /home");
-        
+
         if let Intent::ShellCommand { command, args } = intent {
             assert_eq!(command, "ls");
             assert_eq!(args, vec!["-la", "/home"]);
@@ -586,7 +596,7 @@ mod tests {
     fn test_interpreter_parse_question() {
         let interpreter = Interpreter::new();
         let intent = interpreter.parse("what is my IP address?");
-        
+
         if let Intent::Question { query } = intent {
             assert!(query.contains("IP"));
         }
@@ -596,7 +606,7 @@ mod tests {
     fn test_interpreter_parse_unknown() {
         let interpreter = Interpreter::new();
         let intent = interpreter.parse("show me the files");
-        
+
         assert!(matches!(intent, Intent::ListFiles { .. }));
     }
 
@@ -607,7 +617,7 @@ mod tests {
             command: "ls".to_string(),
             args: vec!["-la".to_string()],
         };
-        
+
         let translation = interpreter.translate(&intent).unwrap();
         assert_eq!(translation.command, "ls");
     }
@@ -628,10 +638,10 @@ mod tests {
     #[test]
     fn test_mode_manager_switch() {
         let mut manager = ModeManager::new(Mode::Human, true);
-        
+
         manager.switch(Mode::AiAssisted).unwrap();
         assert_eq!(manager.current(), &Mode::AiAssisted);
-        
+
         manager.switch(Mode::Strict).unwrap();
         assert_eq!(manager.current(), &Mode::Strict);
     }
@@ -639,7 +649,7 @@ mod tests {
     #[test]
     fn test_mode_manager_switch_invalid() {
         let mut manager = ModeManager::new(Mode::Human, false);
-        
+
         let result = manager.switch(Mode::Human);
         assert!(result.is_ok());
     }
@@ -647,7 +657,7 @@ mod tests {
     #[test]
     fn test_mode_manager_revert() {
         let mut manager = ModeManager::new(Mode::Human, true);
-        
+
         manager.switch(Mode::AiAssisted).unwrap();
         manager.revert().unwrap();
         assert_eq!(manager.current(), &Mode::Human);
@@ -675,7 +685,7 @@ mod tests {
         let ai = Mode::AiAssisted.to_string();
         let auto = Mode::AiAutonomous.to_string();
         let strict = Mode::Strict.to_string();
-        
+
         assert_eq!(human, "HUMAN");
         assert_eq!(ai, "AI-ASSIST");
         assert_eq!(auto, "AI-AUTO");
@@ -735,7 +745,7 @@ mod tests {
     fn test_security_context_is_restricted() {
         let unrestricted = SecurityContext::new(false).unwrap();
         assert!(!unrestricted.is_restricted());
-        
+
         let restricted = SecurityContext::new(true).unwrap();
         assert!(restricted.is_restricted());
     }
@@ -773,7 +783,7 @@ mod tests {
     fn test_analyze_command_permission_readonly() {
         let perm = analyze_command_permission("ls", &[]);
         assert!(matches!(perm, PermissionLevel::ReadOnly));
-        
+
         let perm = analyze_command_permission("cat", &["file.txt".to_string()]);
         assert!(matches!(perm, PermissionLevel::ReadOnly));
     }
@@ -896,7 +906,9 @@ mod tests {
     async fn test_session_execute_one_shot_invalid() {
         let mut session = make_test_session().await;
         // Nonexistent command — execute_shell_command shows error via ui but returns Ok
-        let result = session.execute_one_shot("___nonexistent_cmd_12345___".to_string()).await;
+        let result = session
+            .execute_one_shot("___nonexistent_cmd_12345___".to_string())
+            .await;
         assert!(result.is_ok());
         // Exit code should be set to error
         assert_ne!(session.prompt_context.last_exit_code, 0);
@@ -1004,7 +1016,9 @@ mod tests {
     #[tokio::test]
     async fn test_execute_command_echo() {
         let mut session = make_test_session().await;
-        let result = session.execute_command("echo", &["hello".to_string()]).await;
+        let result = session
+            .execute_command("echo", &["hello".to_string()])
+            .await;
         assert!(result.is_ok());
         assert_eq!(session.prompt_context.last_exit_code, 0);
     }
@@ -1044,7 +1058,9 @@ mod tests {
     #[tokio::test]
     async fn test_execute_shell_command_cd_invalid() {
         let mut session = make_test_session().await;
-        let result = session.execute_shell_command("cd /nonexistent_dir_12345").await;
+        let result = session
+            .execute_shell_command("cd /nonexistent_dir_12345")
+            .await;
         assert!(result.is_ok()); // Shows error via UI but returns Ok
     }
 
@@ -1064,7 +1080,9 @@ mod tests {
         let mut session = make_test_session().await;
         session.mode_manager.switch(Mode::AiAssisted).unwrap();
         // execute_with_assistance handles Question by showing info, no error
-        let result = session.execute_with_assistance("what is my IP address?").await;
+        let result = session
+            .execute_with_assistance("what is my IP address?")
+            .await;
         assert!(result.is_ok());
     }
 
@@ -1168,7 +1186,9 @@ mod tests {
     #[tokio::test]
     async fn test_execute_command_with_args() {
         let mut session = make_test_session().await;
-        let result = session.execute_command("echo", &["hello".to_string(), "world".to_string()]).await;
+        let result = session
+            .execute_command("echo", &["hello".to_string(), "world".to_string()])
+            .await;
         assert!(result.is_ok());
         assert_eq!(session.prompt_context.last_exit_code, 0);
     }
@@ -1405,7 +1425,10 @@ mod tests {
     async fn test_execute_command_updates_duration() {
         let mut session = make_test_session().await;
         // Execute a command
-        session.execute_command("echo", &["test".to_string()]).await.unwrap();
+        session
+            .execute_command("echo", &["test".to_string()])
+            .await
+            .unwrap();
         // last_exit_code should be set to 0 for successful command
         assert_eq!(session.prompt_context.last_exit_code, 0);
     }

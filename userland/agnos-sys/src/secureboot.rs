@@ -274,10 +274,7 @@ pub fn enroll_key(der_path: &Path) -> Result<()> {
             )));
         }
 
-        let ext = der_path
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("");
+        let ext = der_path.extension().and_then(|e| e.to_str()).unwrap_or("");
         if !["der", "cer", "crt", "pem"].contains(&ext) {
             return Err(SysError::InvalidArgument(format!(
                 "Unexpected certificate extension '{}', expected .der/.cer/.crt/.pem",
@@ -388,10 +385,7 @@ pub fn verify_module_signature(module_path: &Path) -> Result<ModuleSignatureInfo
             )));
         }
 
-        let output = run_command(
-            "modinfo",
-            &[&module_path.to_string_lossy()],
-        )?;
+        let output = run_command("modinfo", &[&module_path.to_string_lossy()])?;
 
         let has_signature = output.contains("sig_id:") || output.contains("signature:");
         let signer = output
@@ -443,14 +437,12 @@ pub fn get_efi_variables() -> Result<Vec<EfiVariable>> {
 
         let mut variables = Vec::new();
 
-        let entries = std::fs::read_dir(efivars_dir).map_err(|e| {
-            SysError::Unknown(format!("Failed to read efivars: {}", e))
-        })?;
+        let entries = std::fs::read_dir(efivars_dir)
+            .map_err(|e| SysError::Unknown(format!("Failed to read efivars: {}", e)))?;
 
         for entry in entries {
-            let entry = entry.map_err(|e| {
-                SysError::Unknown(format!("Failed to read efivars entry: {}", e))
-            })?;
+            let entry = entry
+                .map_err(|e| SysError::Unknown(format!("Failed to read efivars entry: {}", e)))?;
             let name = entry.file_name().to_string_lossy().to_string();
 
             if !relevant_prefixes.iter().any(|p| name.starts_with(p)) {

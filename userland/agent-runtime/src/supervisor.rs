@@ -138,8 +138,9 @@ impl CgroupController {
     /// Create (or ensure existence of) a cgroup for the given agent.
     fn new(agent_id: AgentId) -> Result<Self> {
         let path = PathBuf::from(CGROUP_BASE).join(agent_id.to_string());
-        std::fs::create_dir_all(&path)
-            .map_err(|e| anyhow::anyhow!("Failed to create cgroup dir {}: {}", path.display(), e))?;
+        std::fs::create_dir_all(&path).map_err(|e| {
+            anyhow::anyhow!("Failed to create cgroup dir {}: {}", path.display(), e)
+        })?;
         Ok(Self { path, agent_id })
     }
 
@@ -229,11 +230,7 @@ impl CgroupController {
     fn pids(&self) -> Vec<u32> {
         std::fs::read_to_string(self.path.join("cgroup.procs"))
             .ok()
-            .map(|s| {
-                s.lines()
-                    .filter_map(|l| l.trim().parse().ok())
-                    .collect()
-            })
+            .map(|s| s.lines().filter_map(|l| l.trim().parse().ok()).collect())
             .unwrap_or_default()
     }
 
@@ -408,13 +405,19 @@ impl Supervisor {
             self.quotas.write().await.insert(agent_id, quota);
         } else {
             // No config available — use default quota (no limits enforced)
-            self.quotas.write().await.insert(agent_id, ResourceQuota::default());
+            self.quotas
+                .write()
+                .await
+                .insert(agent_id, ResourceQuota::default());
         }
 
         // Attempt to set up cgroups enforcement for this agent
         if let Err(e) = self.setup_cgroup(agent_id).await {
             // cgroups are best-effort — log but don't fail registration
-            warn!("Could not set up cgroup for agent {}: {} (resource enforcement unavailable)", agent_id, e);
+            warn!(
+                "Could not set up cgroup for agent {}: {} (resource enforcement unavailable)",
+                agent_id, e
+            );
         }
 
         info!("Registered agent {} for supervision", agent_id);
@@ -423,9 +426,13 @@ impl Supervisor {
 
     /// Create a cgroup for the agent and apply resource limits from its config.
     async fn setup_cgroup(&self, agent_id: AgentId) -> Result<()> {
-        let agent = self.registry.get(agent_id)
+        let agent = self
+            .registry
+            .get(agent_id)
             .ok_or_else(|| anyhow::anyhow!("Agent {} not in registry", agent_id))?;
-        let config = self.registry.get_config(agent_id)
+        let config = self
+            .registry
+            .get_config(agent_id)
             .ok_or_else(|| anyhow::anyhow!("Config not found for agent {}", agent_id))?;
 
         let cg = CgroupController::new(agent_id)?;
@@ -510,11 +517,15 @@ impl Supervisor {
         info!("Shutting down all supervised agents...");
 
         let agents: Vec<_> = self.running_agents.write().await.keys().copied().collect();
-        
+
         for agent_id in agents {
             info!("Stopping agent {}", agent_id);
             // Send stop signal via registry
-            if let Err(e) = self.registry.update_status(agent_id, AgentStatus::Stopping).await {
+            if let Err(e) = self
+                .registry
+                .update_status(agent_id, AgentStatus::Stopping)
+                .await
+            {
                 warn!("Failed to update agent {} status: {}", agent_id, e);
             }
         }
@@ -568,7 +579,9 @@ impl Supervisor {
     /// Verifies that the agent's process is alive (via /proc on Linux or
     /// `kill(pid, 0)`) and that it hasn't exceeded its health check timeout.
     async fn check_agent_health(&self, agent_id: AgentId) -> Result<bool> {
-        let agent = self.registry.get(agent_id)
+        let agent = self
+            .registry
+            .get(agent_id)
             .ok_or_else(|| anyhow::anyhow!("Agent {} not found in registry", agent_id))?;
 
         // Only check running agents
@@ -580,7 +593,10 @@ impl Supervisor {
         if let Some(pid) = agent.pid {
             let alive = Self::is_process_alive(pid);
             if !alive {
-                warn!("Agent {} (pid {}) process is no longer alive", agent_id, pid);
+                warn!(
+                    "Agent {} (pid {}) process is no longer alive",
+                    agent_id, pid
+                );
                 return Ok(false);
             }
 
@@ -595,7 +611,10 @@ impl Supervisor {
                 .await
                 {
                     Ok(Ok(_stream)) => {
-                        debug!("Agent {} health check passed (process alive + socket responsive)", agent_id);
+                        debug!(
+                            "Agent {} health check passed (process alive + socket responsive)",
+                            agent_id
+                        );
                         return Ok(true);
                     }
                     Ok(Err(e)) => {
@@ -604,14 +623,20 @@ impl Supervisor {
                         return Ok(true);
                     }
                     Err(_) => {
-                        warn!("Agent {} health check timed out after {:?}", agent_id, self.config.timeout);
+                        warn!(
+                            "Agent {} health check timed out after {:?}",
+                            agent_id, self.config.timeout
+                        );
                         return Ok(false);
                     }
                 }
             }
 
             // No socket but process is alive — agent may not use IPC
-            debug!("Agent {} health check passed (process alive, no socket)", agent_id);
+            debug!(
+                "Agent {} health check passed (process alive, no socket)",
+                agent_id
+            );
             return Ok(true);
         }
 
@@ -637,7 +662,7 @@ impl Supervisor {
     /// Update health status based on check result
     async fn update_health_status(&self, agent_id: AgentId, healthy: bool) {
         let mut checks = self.health_checks.write().await;
-        
+
         if let Some(health) = checks.get_mut(&agent_id) {
             health.last_check = Instant::now();
 
@@ -646,23 +671,25 @@ impl Supervisor {
                 health.consecutive_failures = 0;
 
                 if health.consecutive_successes >= self.config.healthy_threshold
-                    && !health.is_healthy {
-                        info!("Agent {} is now healthy", agent_id);
-                        health.is_healthy = true;
-                    }
+                    && !health.is_healthy
+                {
+                    info!("Agent {} is now healthy", agent_id);
+                    health.is_healthy = true;
+                }
             } else {
                 health.consecutive_failures += 1;
                 health.consecutive_successes = 0;
 
                 if health.consecutive_failures >= self.config.unhealthy_threshold
-                    && health.is_healthy {
-                        warn!("Agent {} is now unhealthy", agent_id);
-                        health.is_healthy = false;
-                        
-                        // Trigger recovery action
-                        drop(checks);
-                        self.handle_unhealthy_agent(agent_id).await;
-                    }
+                    && health.is_healthy
+                {
+                    warn!("Agent {} is now unhealthy", agent_id);
+                    health.is_healthy = false;
+
+                    // Trigger recovery action
+                    drop(checks);
+                    self.handle_unhealthy_agent(agent_id).await;
+                }
             }
         }
     }
@@ -697,7 +724,11 @@ impl Supervisor {
                 "Agent {} has exceeded max restart attempts ({}), marking as permanently failed",
                 agent_id, MAX_RESTART_ATTEMPTS
             );
-            if let Err(e) = self.registry.update_status(agent_id, AgentStatus::Failed).await {
+            if let Err(e) = self
+                .registry
+                .update_status(agent_id, AgentStatus::Failed)
+                .await
+            {
                 error!("Failed to update agent {} status: {}", agent_id, e);
             }
             return;
@@ -705,15 +736,26 @@ impl Supervisor {
 
         // Exponential backoff: 2s, 4s, 8s, 16s, 32s — capped at 300s (5 min)
         const MAX_BACKOFF_SECS: u64 = 300;
-        let backoff = Duration::from_secs(BASE_BACKOFF_SECS.saturating_pow(failure_count).min(MAX_BACKOFF_SECS));
+        let backoff = Duration::from_secs(
+            BASE_BACKOFF_SECS
+                .saturating_pow(failure_count)
+                .min(MAX_BACKOFF_SECS),
+        );
         info!(
             "Restarting agent {} (attempt {}/{}) after {:?} backoff",
             agent_id, failure_count, MAX_RESTART_ATTEMPTS, backoff
         );
 
         // Mark as restarting
-        if let Err(e) = self.registry.update_status(agent_id, AgentStatus::Starting).await {
-            error!("Failed to update agent {} status for restart: {}", agent_id, e);
+        if let Err(e) = self
+            .registry
+            .update_status(agent_id, AgentStatus::Starting)
+            .await
+        {
+            error!(
+                "Failed to update agent {} status for restart: {}",
+                agent_id, e
+            );
             return;
         }
 
@@ -732,8 +774,15 @@ impl Supervisor {
         match restart_result {
             Some(Ok(())) => {
                 info!("Agent {} restarted successfully", agent_id);
-                if let Err(e) = self.registry.update_status(agent_id, AgentStatus::Running).await {
-                    error!("Failed to update agent {} status after restart: {}", agent_id, e);
+                if let Err(e) = self
+                    .registry
+                    .update_status(agent_id, AgentStatus::Running)
+                    .await
+                {
+                    error!(
+                        "Failed to update agent {} status after restart: {}",
+                        agent_id, e
+                    );
                 }
                 // Reset health counters on successful restart
                 let mut checks = self.health_checks.write().await;
@@ -745,7 +794,11 @@ impl Supervisor {
             }
             Some(Err(e)) => {
                 error!("Failed to restart agent {}: {}", agent_id, e);
-                if let Err(e) = self.registry.update_status(agent_id, AgentStatus::Failed).await {
+                if let Err(e) = self
+                    .registry
+                    .update_status(agent_id, AgentStatus::Failed)
+                    .await
+                {
                     error!("Failed to update agent {} status: {}", agent_id, e);
                 }
             }
@@ -755,7 +808,11 @@ impl Supervisor {
                     "No AgentControl registered for agent {}, marking as failed",
                     agent_id
                 );
-                if let Err(e) = self.registry.update_status(agent_id, AgentStatus::Failed).await {
+                if let Err(e) = self
+                    .registry
+                    .update_status(agent_id, AgentStatus::Failed)
+                    .await
+                {
                     error!("Failed to update agent {} status: {}", agent_id, e);
                 }
             }
@@ -775,7 +832,9 @@ impl Supervisor {
     ///
     /// If cgroups are unavailable, we fall back to `/proc/{pid}/` reads.
     async fn check_resource_limits(&self, agent_id: AgentId) -> Result<()> {
-        let agent = self.registry.get(agent_id)
+        let agent = self
+            .registry
+            .get(agent_id)
             .ok_or_else(|| anyhow::anyhow!("Agent {} not found", agent_id))?;
 
         let (mem_used, cpu_used_us) = if let Some(cg) = CgroupController::open(agent_id) {
@@ -882,7 +941,10 @@ impl Supervisor {
         }
 
         // Store current reading for next interval
-        self.last_cpu_readings.write().await.insert(agent_id, (now, cpu_used_us));
+        self.last_cpu_readings
+            .write()
+            .await
+            .insert(agent_id, (now, cpu_used_us));
 
         // --- CPU total time enforcement (existing behavior) ---
         if quota.cpu_time_limit > 0 && cpu_used_ms > quota.cpu_time_limit {
@@ -916,7 +978,10 @@ impl Supervisor {
                     if ret == 0 {
                         info!("Sent signal {} to agent {} (pid {})", signal, agent_id, pid);
                     } else {
-                        error!("Failed to send signal {} to agent {} (pid {})", signal, agent_id, pid);
+                        error!(
+                            "Failed to send signal {} to agent {} (pid {})",
+                            signal, agent_id, pid
+                        );
                     }
                 }
                 #[cfg(not(target_os = "linux"))]
@@ -989,9 +1054,8 @@ fn read_proc_cpu_time_us(pid: u32) -> u64 {
             // Convert clock ticks to microseconds (typically 100 ticks/sec on Linux).
             // Cache the result since the clock tick rate never changes at runtime.
             static CLK_TCK: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
-            let ticks_per_sec = *CLK_TCK.get_or_init(|| {
-                (unsafe { libc::sysconf(libc::_SC_CLK_TCK) }) as u64
-            });
+            let ticks_per_sec =
+                *CLK_TCK.get_or_init(|| (unsafe { libc::sysconf(libc::_SC_CLK_TCK) }) as u64);
             if ticks_per_sec > 0 {
                 Some(ticks * 1_000_000 / ticks_per_sec)
             } else {
@@ -1275,7 +1339,7 @@ mod tests {
             path: PathBuf::from(format!("/tmp/test-cgroup-{}", agent_id)),
             agent_id,
         };
-        
+
         assert_eq!(controller.memory_current(), 0);
     }
 
@@ -1283,11 +1347,8 @@ mod tests {
     fn test_cgroup_controller_new_requires_path() {
         let agent_id = AgentId::new();
         let path = PathBuf::from("/nonexistent/path/that/should/not/exist");
-        let controller = CgroupController {
-            path,
-            agent_id,
-        };
-        
+        let controller = CgroupController { path, agent_id };
+
         let result = controller.set_memory_limit(1024 * 1024 * 1024);
         assert!(result.is_err());
     }
@@ -1315,7 +1376,7 @@ mod tests {
     fn test_supervisor_config() {
         let registry = Arc::new(AgentRegistry::new());
         let supervisor = Supervisor::new(registry);
-        
+
         assert_eq!(supervisor.config.interval, Duration::from_secs(30));
         assert_eq!(supervisor.config.timeout, Duration::from_secs(5));
         assert_eq!(supervisor.config.unhealthy_threshold, 3);
@@ -1326,14 +1387,14 @@ mod tests {
     async fn test_supervisor_register_agent() {
         let registry = Arc::new(AgentRegistry::new());
         let supervisor = Supervisor::new(registry.clone());
-        
+
         let agent_id = AgentId::new();
         let result = supervisor.register_agent(agent_id).await;
         assert!(result.is_ok());
-        
+
         let health_map = supervisor.health_checks.read().await;
         assert!(health_map.contains_key(&agent_id));
-        
+
         let health = health_map.get(&agent_id).unwrap();
         assert!(health.is_healthy);
         assert_eq!(health.consecutive_failures, 0);
@@ -1344,13 +1405,13 @@ mod tests {
     async fn test_supervisor_unregister_agent() {
         let registry = Arc::new(AgentRegistry::new());
         let supervisor = Supervisor::new(registry.clone());
-        
+
         let agent_id = AgentId::new();
         supervisor.register_agent(agent_id).await.unwrap();
-        
+
         let result = supervisor.unregister_agent(agent_id).await;
         assert!(result.is_ok());
-        
+
         let health_map = supervisor.health_checks.read().await;
         assert!(!health_map.contains_key(&agent_id));
     }
@@ -1359,7 +1420,7 @@ mod tests {
     async fn test_supervisor_unregister_nonexistent() {
         let registry = Arc::new(AgentRegistry::new());
         let supervisor = Supervisor::new(registry.clone());
-        
+
         let agent_id = AgentId::new();
         let result = supervisor.unregister_agent(agent_id).await;
         assert!(result.is_ok());
@@ -1392,13 +1453,13 @@ mod tests {
     fn test_agent_control_trait_object() {
         let mock = MockAgentControl { healthy: true };
         let boxed: Box<dyn AgentControl> = Box::new(mock);
-        
+
         let health = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .unwrap()
             .block_on(boxed.check_health());
-        
+
         assert!(health.unwrap());
     }
 
@@ -1406,13 +1467,13 @@ mod tests {
     fn test_agent_control_trait_object_unhealthy() {
         let mock = MockAgentControl { healthy: false };
         let boxed: Box<dyn AgentControl> = Box::new(mock);
-        
+
         let health = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .unwrap()
             .block_on(boxed.check_health());
-        
+
         assert!(!health.unwrap());
     }
 
@@ -1717,11 +1778,20 @@ mod tests {
         let cloned = supervisor.clone();
 
         // Both should share the same Arc pointers
-        assert!(Arc::ptr_eq(&supervisor.health_checks, &cloned.health_checks));
-        assert!(Arc::ptr_eq(&supervisor.running_agents, &cloned.running_agents));
+        assert!(Arc::ptr_eq(
+            &supervisor.health_checks,
+            &cloned.health_checks
+        ));
+        assert!(Arc::ptr_eq(
+            &supervisor.running_agents,
+            &cloned.running_agents
+        ));
         assert!(Arc::ptr_eq(&supervisor.cgroups, &cloned.cgroups));
         assert!(Arc::ptr_eq(&supervisor.quotas, &cloned.quotas));
-        assert!(Arc::ptr_eq(&supervisor.last_cpu_readings, &cloned.last_cpu_readings));
+        assert!(Arc::ptr_eq(
+            &supervisor.last_cpu_readings,
+            &cloned.last_cpu_readings
+        ));
     }
 
     #[tokio::test]
@@ -2483,12 +2553,20 @@ mod tests {
         let agent_id = AgentId::new();
 
         // Manually insert a CPU reading
-        supervisor.last_cpu_readings.write().await.insert(agent_id, (Instant::now(), 12345));
+        supervisor
+            .last_cpu_readings
+            .write()
+            .await
+            .insert(agent_id, (Instant::now(), 12345));
 
         supervisor.register_agent(agent_id).await.unwrap();
         supervisor.unregister_agent(agent_id).await.unwrap();
 
-        assert!(!supervisor.last_cpu_readings.read().await.contains_key(&agent_id));
+        assert!(!supervisor
+            .last_cpu_readings
+            .read()
+            .await
+            .contains_key(&agent_id));
     }
 
     #[test]
@@ -2507,21 +2585,31 @@ mod tests {
         let id1 = AgentId::new();
         let id2 = AgentId::new();
 
-        supervisor.set_quota(id1, ResourceQuota {
-            memory_warn_pct: 60.0,
-            memory_kill_pct: 80.0,
-            cpu_throttle_pct: 70.0,
-            memory_limit: 1024,
-            cpu_time_limit: 500,
-        }).await;
+        supervisor
+            .set_quota(
+                id1,
+                ResourceQuota {
+                    memory_warn_pct: 60.0,
+                    memory_kill_pct: 80.0,
+                    cpu_throttle_pct: 70.0,
+                    memory_limit: 1024,
+                    cpu_time_limit: 500,
+                },
+            )
+            .await;
 
-        supervisor.set_quota(id2, ResourceQuota {
-            memory_warn_pct: 90.0,
-            memory_kill_pct: 99.0,
-            cpu_throttle_pct: 95.0,
-            memory_limit: 2048,
-            cpu_time_limit: 1000,
-        }).await;
+        supervisor
+            .set_quota(
+                id2,
+                ResourceQuota {
+                    memory_warn_pct: 90.0,
+                    memory_kill_pct: 99.0,
+                    cpu_throttle_pct: 95.0,
+                    memory_limit: 2048,
+                    cpu_time_limit: 1000,
+                },
+            )
+            .await;
 
         let q1 = supervisor.get_quota(id1).await.unwrap();
         let q2 = supervisor.get_quota(id2).await.unwrap();
@@ -2544,7 +2632,10 @@ mod tests {
         // We can't call CgroupController::new (needs /sys/fs/cgroup) but
         // verify the path would be correct via open() returning None.
         let result = CgroupController::open(id);
-        assert!(result.is_none(), "No cgroup should exist for a random agent ID");
+        assert!(
+            result.is_none(),
+            "No cgroup should exist for a random agent ID"
+        );
         // Verify path format
         assert!(expected.starts_with(CGROUP_BASE));
         assert!(expected.to_string_lossy().contains(&id.to_string()));
@@ -2930,7 +3021,8 @@ mod tests {
         std::fs::write(
             cg_path.join("cpu.stat"),
             "user_usec 100\nsystem_usec 200\nusage_usec 999",
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(controller.cpu_usage_usec(), 999);
     }
 
@@ -2954,7 +3046,9 @@ mod tests {
         let supervisor = Supervisor::new(registry.clone());
         let id = AgentId::new();
 
-        supervisor.set_quota(id, ResourceQuota::from_limits(999, 888)).await;
+        supervisor
+            .set_quota(id, ResourceQuota::from_limits(999, 888))
+            .await;
         assert!(supervisor.get_quota(id).await.is_some());
 
         supervisor.unregister_agent(id).await.unwrap();
@@ -2968,7 +3062,11 @@ mod tests {
         let id = AgentId::new();
 
         // Simulate a reading
-        supervisor.last_cpu_readings.write().await.insert(id, (Instant::now(), 500_000));
+        supervisor
+            .last_cpu_readings
+            .write()
+            .await
+            .insert(id, (Instant::now(), 500_000));
         assert!(supervisor.last_cpu_readings.read().await.contains_key(&id));
 
         supervisor.unregister_agent(id).await.unwrap();
@@ -3047,7 +3145,9 @@ mod tests {
 
         // Override multiple times
         for i in 1..=5u64 {
-            supervisor.set_quota(id, ResourceQuota::from_limits(i * 1000, i * 100)).await;
+            supervisor
+                .set_quota(id, ResourceQuota::from_limits(i * 1000, i * 100))
+                .await;
         }
 
         let q = supervisor.get_quota(id).await.unwrap();
@@ -3387,7 +3487,11 @@ mod tests {
 
     #[test]
     fn test_circuit_state_serialization() {
-        let states = [CircuitState::Closed, CircuitState::Open, CircuitState::HalfOpen];
+        let states = [
+            CircuitState::Closed,
+            CircuitState::Open,
+            CircuitState::HalfOpen,
+        ];
         for state in &states {
             let json = serde_json::to_string(state).unwrap();
             let deser: CircuitState = serde_json::from_str(&json).unwrap();
@@ -3403,4 +3507,3 @@ mod tests {
         assert_eq!(deser.failure_threshold, config.failure_threshold);
     }
 }
-

@@ -149,10 +149,7 @@ impl RegistryClient {
             .context("Failed to reach registry")?;
 
         if !response.status().is_success() {
-            anyhow::bail!(
-                "Registry search failed: HTTP {}",
-                response.status()
-            );
+            anyhow::bail!("Registry search failed: HTTP {}", response.status());
         }
 
         let results: SearchResults = response
@@ -167,19 +164,12 @@ impl RegistryClient {
     }
 
     /// Fetch manifest for a specific package version.
-    pub async fn fetch_manifest(
-        &self,
-        name: &str,
-        version: &str,
-    ) -> Result<MarketplaceManifest> {
+    pub async fn fetch_manifest(&self, name: &str, version: &str) -> Result<MarketplaceManifest> {
         if self.offline {
             return self.cached_manifest(name, version);
         }
 
-        let url = format!(
-            "{}/v1/packages/{}/{}",
-            self.base_url, name, version
-        );
+        let url = format!("{}/v1/packages/{}/{}", self.base_url, name, version);
 
         debug!("Fetching manifest: {}", url);
 
@@ -199,10 +189,8 @@ impl RegistryClient {
             );
         }
 
-        let manifest: MarketplaceManifest = response
-            .json()
-            .await
-            .context("Failed to parse manifest")?;
+        let manifest: MarketplaceManifest =
+            response.json().await.context("Failed to parse manifest")?;
 
         // Cache manifest
         self.cache_manifest(name, version, &manifest)?;
@@ -211,11 +199,7 @@ impl RegistryClient {
     }
 
     /// Download a package tarball.
-    pub async fn download_package(
-        &self,
-        name: &str,
-        version: &str,
-    ) -> Result<PathBuf> {
+    pub async fn download_package(&self, name: &str, version: &str) -> Result<PathBuf> {
         if self.offline {
             anyhow::bail!("Cannot download in offline mode");
         }
@@ -280,11 +264,7 @@ impl RegistryClient {
         let mut updates = Vec::new();
 
         for pkg in installed {
-            let url = format!(
-                "{}/v1/packages/{}/latest",
-                self.base_url,
-                pkg.name()
-            );
+            let url = format!("{}/v1/packages/{}/latest", self.base_url, pkg.name());
 
             match self.client.get(&url).send().await {
                 Ok(response) if response.status().is_success() => {
@@ -340,7 +320,12 @@ impl RegistryClient {
         Ok(serde_json::from_str(&content)?)
     }
 
-    fn cache_manifest(&self, name: &str, version: &str, manifest: &MarketplaceManifest) -> Result<()> {
+    fn cache_manifest(
+        &self,
+        name: &str,
+        version: &str,
+        manifest: &MarketplaceManifest,
+    ) -> Result<()> {
         let cache_dir = self.cache_dir.join("manifests").join(name);
         std::fs::create_dir_all(&cache_dir)?;
         let path = cache_dir.join(format!("{}.json", version));
@@ -535,7 +520,9 @@ mod tests {
             dependencies: std::collections::HashMap::new(),
             tags: vec![],
         };
-        client.cache_manifest("test-pkg", "1.0.0", &manifest).unwrap();
+        client
+            .cache_manifest("test-pkg", "1.0.0", &manifest)
+            .unwrap();
 
         let cached = client.cached_manifest("test-pkg", "1.0.0").unwrap();
         assert_eq!(cached.agent.name, "test-pkg");

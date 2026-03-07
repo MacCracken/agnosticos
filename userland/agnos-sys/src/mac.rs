@@ -81,10 +81,7 @@ impl AgentMacProfile {
         let agent_type = agent_type.into();
         let lower = agent_type.to_lowercase();
         Self {
-            selinux_context: Some(format!(
-                "system_u:system_r:agnos_agent_{}_t:s0",
-                lower
-            )),
+            selinux_context: Some(format!("system_u:system_r:agnos_agent_{}_t:s0", lower)),
             apparmor_profile: Some(format!("agnos-agent-{}", lower)),
             agent_type,
         }
@@ -93,7 +90,9 @@ impl AgentMacProfile {
     /// Validate that the profile has the required fields for the given MAC system.
     pub fn validate(&self, mac_system: MacSystem) -> Result<()> {
         if self.agent_type.is_empty() {
-            return Err(SysError::InvalidArgument("Agent type cannot be empty".into()));
+            return Err(SysError::InvalidArgument(
+                "Agent type cannot be empty".into(),
+            ));
         }
         match mac_system {
             MacSystem::SELinux => {
@@ -156,7 +155,11 @@ pub fn detect_mac_system() -> MacSystem {
                 MacSystem::None
             }
             Err(e) => {
-                tracing::debug!("Cannot read {}: {} (MAC detection unavailable)", lsm_path, e);
+                tracing::debug!(
+                    "Cannot read {}: {} (MAC detection unavailable)",
+                    lsm_path,
+                    e
+                );
                 MacSystem::None
             }
         }
@@ -208,11 +211,10 @@ pub fn set_selinux_mode(mode: SELinuxMode) -> Result<()> {
                 ));
             }
         };
-        std::fs::write(enforce_path, val)
-            .map_err(|e| match e.kind() {
-                std::io::ErrorKind::PermissionDenied => SysError::PermissionDenied,
-                _ => SysError::Unknown(format!("Failed to write {}: {}", enforce_path, e)),
-            })?;
+        std::fs::write(enforce_path, val).map_err(|e| match e.kind() {
+            std::io::ErrorKind::PermissionDenied => SysError::PermissionDenied,
+            _ => SysError::Unknown(format!("Failed to write {}: {}", enforce_path, e)),
+        })?;
         tracing::info!("SELinux mode set to {}", mode);
         Ok(())
     }
@@ -252,7 +254,9 @@ pub fn set_selinux_context(context: &str, on_exec: bool) -> Result<()> {
     #[cfg(target_os = "linux")]
     {
         if context.is_empty() {
-            return Err(SysError::InvalidArgument("SELinux context cannot be empty".into()));
+            return Err(SysError::InvalidArgument(
+                "SELinux context cannot be empty".into(),
+            ));
         }
         if context.split(':').count() < 4 {
             return Err(SysError::InvalidArgument(format!(
@@ -273,14 +277,13 @@ pub fn set_selinux_context(context: &str, on_exec: bool) -> Result<()> {
 
         std::fs::write(path, context).map_err(|e| match e.kind() {
             std::io::ErrorKind::PermissionDenied => SysError::PermissionDenied,
-            _ => SysError::Unknown(format!("Failed to write SELinux context to {}: {}", path, e)),
+            _ => SysError::Unknown(format!(
+                "Failed to write SELinux context to {}: {}",
+                path, e
+            )),
         })?;
 
-        tracing::debug!(
-            "Set SELinux context to {} (on_exec={})",
-            context,
-            on_exec
-        );
+        tracing::debug!("Set SELinux context to {} (on_exec={})", context, on_exec);
         Ok(())
     }
 
@@ -330,7 +333,9 @@ pub fn remove_selinux_module(module_name: &str) -> Result<()> {
     #[cfg(target_os = "linux")]
     {
         if module_name.is_empty() {
-            return Err(SysError::InvalidArgument("Module name cannot be empty".into()));
+            return Err(SysError::InvalidArgument(
+                "Module name cannot be empty".into(),
+            ));
         }
 
         let output = std::process::Command::new("semodule")
@@ -440,14 +445,14 @@ pub fn default_agent_profiles() -> Vec<AgentMacProfile> {
 ///
 /// Finds the matching profile for `agent_type` from the provided list.
 /// If no MAC system is active, logs a warning and returns Ok.
-pub fn apply_agent_mac_profile(
-    agent_type: &str,
-    profiles: &[AgentMacProfile],
-) -> Result<()> {
+pub fn apply_agent_mac_profile(agent_type: &str, profiles: &[AgentMacProfile]) -> Result<()> {
     let mac_system = detect_mac_system();
 
     if mac_system == MacSystem::None {
-        tracing::warn!("No MAC system active — skipping MAC profile application for agent type '{}'", agent_type);
+        tracing::warn!(
+            "No MAC system active — skipping MAC profile application for agent type '{}'",
+            agent_type
+        );
         return Ok(());
     }
 
@@ -703,7 +708,11 @@ mod tests {
 
     #[test]
     fn test_selinux_mode_serde_roundtrip() {
-        for variant in &[SELinuxMode::Enforcing, SELinuxMode::Permissive, SELinuxMode::Disabled] {
+        for variant in &[
+            SELinuxMode::Enforcing,
+            SELinuxMode::Permissive,
+            SELinuxMode::Disabled,
+        ] {
             let json = serde_json::to_string(variant).unwrap();
             let back: SELinuxMode = serde_json::from_str(&json).unwrap();
             assert_eq!(*variant, back);
@@ -753,7 +762,10 @@ mod tests {
     fn test_apparmor_profile_state_debug() {
         assert_eq!(format!("{:?}", AppArmorProfileState::Enforce), "Enforce");
         assert_eq!(format!("{:?}", AppArmorProfileState::Complain), "Complain");
-        assert_eq!(format!("{:?}", AppArmorProfileState::Unconfined), "Unconfined");
+        assert_eq!(
+            format!("{:?}", AppArmorProfileState::Unconfined),
+            "Unconfined"
+        );
     }
 
     #[test]
@@ -983,8 +995,14 @@ mod tests {
     #[test]
     fn test_apparmor_profile_state_eq_and_ne() {
         assert_eq!(AppArmorProfileState::Enforce, AppArmorProfileState::Enforce);
-        assert_ne!(AppArmorProfileState::Enforce, AppArmorProfileState::Complain);
-        assert_ne!(AppArmorProfileState::Complain, AppArmorProfileState::Unconfined);
+        assert_ne!(
+            AppArmorProfileState::Enforce,
+            AppArmorProfileState::Complain
+        );
+        assert_ne!(
+            AppArmorProfileState::Complain,
+            AppArmorProfileState::Unconfined
+        );
     }
 
     #[test]
@@ -1045,7 +1063,11 @@ mod tests {
             // When no MAC system is active, apply should succeed for all types
             for agent_type in &["User", "Service", "System"] {
                 let result = apply_agent_mac_profile(agent_type, &profiles);
-                assert!(result.is_ok(), "Should succeed for '{}' with no MAC", agent_type);
+                assert!(
+                    result.is_ok(),
+                    "Should succeed for '{}' with no MAC",
+                    agent_type
+                );
             }
         }
     }

@@ -215,12 +215,7 @@ impl FileWatcher {
     }
 
     /// Collect all files (and their mtimes) under `root`.
-    fn collect_files(
-        &self,
-        root: &Path,
-        recursive: bool,
-        out: &mut HashMap<PathBuf, SystemTime>,
-    ) {
+    fn collect_files(&self, root: &Path, recursive: bool, out: &mut HashMap<PathBuf, SystemTime>) {
         if root.is_file() {
             if let Ok(meta) = root.metadata() {
                 if let Ok(mtime) = meta.modified() {
@@ -440,7 +435,10 @@ mod tests {
         fw.watch(dir.path(), false).unwrap();
 
         let events = fw.poll_events();
-        assert!(events.is_empty(), "no changes expected on first poll after seed");
+        assert!(
+            events.is_empty(),
+            "no changes expected on first poll after seed"
+        );
     }
 
     #[test]

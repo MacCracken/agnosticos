@@ -241,10 +241,7 @@ impl InvariantMonitor {
         self.invariant_names
             .iter()
             .map(|name| {
-                let passed = checks
-                    .get(name)
-                    .map(|f| f())
-                    .unwrap_or(false);
+                let passed = checks.get(name).map(|f| f()).unwrap_or(false);
                 if !passed {
                     warn!(invariant = %name, "invariant check failed");
                 }
@@ -287,10 +284,7 @@ impl PropertyChecker {
             bail!("property name must not be empty");
         }
         if self.properties.contains_key(&property.property_id) {
-            bail!(
-                "property '{}' is already registered",
-                property.property_id
-            );
+            bail!("property '{}' is already registered", property.property_id);
         }
         debug!(id = %property.property_id, name = %property.name, "registered property");
         self.properties
@@ -358,10 +352,7 @@ impl PropertyChecker {
                 VerificationStatus::Verified { confidence: 1.0 }
             } else {
                 VerificationStatus::Failed {
-                    counterexample: result
-                        .counterexample
-                        .clone()
-                        .unwrap_or_default(),
+                    counterexample: result.counterexample.clone().unwrap_or_default(),
                 }
             };
             prop.last_verified = Some(Utc::now());
@@ -420,10 +411,7 @@ impl PropertyChecker {
                 } else {
                     (
                         false,
-                        Some(format!(
-                            "deadlocked states: {}",
-                            deadlocked.join(", ")
-                        )),
+                        Some(format!("deadlocked states: {}", deadlocked.join(", "))),
                     )
                 }
             }
@@ -463,10 +451,7 @@ impl PropertyChecker {
                 } else {
                     (
                         false,
-                        Some(format!(
-                            "unreachable states: {}",
-                            unreachable.join(", ")
-                        )),
+                        Some(format!("unreachable states: {}", unreachable.join(", "))),
                     )
                 }
             }
@@ -534,11 +519,7 @@ impl PropertyChecker {
     }
 
     /// Update the status of a registered property.
-    pub fn update_status(
-        &mut self,
-        property_id: &str,
-        status: VerificationStatus,
-    ) -> Result<()> {
+    pub fn update_status(&mut self, property_id: &str, status: VerificationStatus) -> Result<()> {
         match self.properties.get_mut(property_id) {
             Some(prop) => {
                 debug!(id = %property_id, "updating property status");
@@ -557,13 +538,10 @@ impl PropertyChecker {
         let mut unverified_count = 0usize;
         let mut skipped_count = 0usize;
 
-        let mut component_map: HashMap<ComponentId, (usize, usize, usize)> =
-            HashMap::new();
+        let mut component_map: HashMap<ComponentId, (usize, usize, usize)> = HashMap::new();
 
         for prop in self.properties.values() {
-            let entry = component_map
-                .entry(prop.component)
-                .or_insert((0, 0, 0));
+            let entry = component_map.entry(prop.component).or_insert((0, 0, 0));
             entry.0 += 1; // total
 
             match &prop.status {
@@ -587,27 +565,26 @@ impl PropertyChecker {
             }
         }
 
-        let component_coverage: HashMap<ComponentId, ComponentCoverage> =
-            component_map
-                .into_iter()
-                .map(|(comp, (total, verified, failed))| {
-                    let coverage_percent = if total > 0 {
-                        (verified as f64 / total as f64) * 100.0
-                    } else {
-                        0.0
-                    };
-                    (
-                        comp,
-                        ComponentCoverage {
-                            component: comp,
-                            total_properties: total,
-                            verified,
-                            failed,
-                            coverage_percent,
-                        },
-                    )
-                })
-                .collect();
+        let component_coverage: HashMap<ComponentId, ComponentCoverage> = component_map
+            .into_iter()
+            .map(|(comp, (total, verified, failed))| {
+                let coverage_percent = if total > 0 {
+                    (verified as f64 / total as f64) * 100.0
+                } else {
+                    0.0
+                };
+                (
+                    comp,
+                    ComponentCoverage {
+                        component: comp,
+                        total_properties: total,
+                        verified,
+                        failed,
+                        coverage_percent,
+                    },
+                )
+            })
+            .collect();
 
         VerificationReport {
             total_properties: self.properties.len(),
@@ -950,9 +927,7 @@ mod tests {
             .register_property(make_property("a1", ComponentId::AuditChain))
             .unwrap();
         assert_eq!(
-            checker
-                .properties_for_component(ComponentId::Sandbox)
-                .len(),
+            checker.properties_for_component(ComponentId::Sandbox).len(),
             2
         );
         assert_eq!(
@@ -966,11 +941,9 @@ mod tests {
     #[test]
     fn test_properties_for_component_empty() {
         let checker = PropertyChecker::new();
-        assert!(
-            checker
-                .properties_for_component(ComponentId::IpcProtocol)
-                .is_empty()
-        );
+        assert!(checker
+            .properties_for_component(ComponentId::IpcProtocol)
+            .is_empty());
     }
 
     #[test]
@@ -986,8 +959,7 @@ mod tests {
             ComponentId::ResourceLimits,
             ComponentId::IpcProtocol,
         ];
-        let set: std::collections::HashSet<ComponentId> =
-            components.iter().copied().collect();
+        let set: std::collections::HashSet<ComponentId> = components.iter().copied().collect();
         assert_eq!(set.len(), 8);
     }
 
@@ -1137,12 +1109,8 @@ mod tests {
         let states = vec![s("A"), s("B"), s("C")];
         let transitions = vec![(s("A"), s("B"))];
         // B and C have no outgoing transitions -> deadlock
-        let result = checker.check_state_machine(
-            &states,
-            &transitions,
-            "A",
-            StateMachineProperty::Deadlock,
-        );
+        let result =
+            checker.check_state_machine(&states, &transitions, "A", StateMachineProperty::Deadlock);
         assert!(!result.passed);
         assert!(result.counterexample.as_ref().unwrap().contains("B"));
         assert!(result.counterexample.as_ref().unwrap().contains("C"));
@@ -1153,12 +1121,8 @@ mod tests {
         let mut checker = PropertyChecker::new();
         let states = vec![s("A"), s("B")];
         let transitions = vec![(s("A"), s("B")), (s("B"), s("A"))];
-        let result = checker.check_state_machine(
-            &states,
-            &transitions,
-            "A",
-            StateMachineProperty::Deadlock,
-        );
+        let result =
+            checker.check_state_machine(&states, &transitions, "A", StateMachineProperty::Deadlock);
         assert!(result.passed);
     }
 
@@ -1167,12 +1131,8 @@ mod tests {
         let mut checker = PropertyChecker::new();
         let states = vec![s("A"), s("B")];
         let transitions = vec![(s("A"), s("B")), (s("B"), s("B"))];
-        let result = checker.check_state_machine(
-            &states,
-            &transitions,
-            "A",
-            StateMachineProperty::Deadlock,
-        );
+        let result =
+            checker.check_state_machine(&states, &transitions, "A", StateMachineProperty::Deadlock);
         assert!(result.passed);
     }
 
@@ -1306,12 +1266,8 @@ mod tests {
         let mut checker = PropertyChecker::new();
         let states = vec![s("A")];
         let transitions = vec![(s("A"), s("A"))];
-        let result = checker.check_state_machine(
-            &states,
-            &transitions,
-            "A",
-            StateMachineProperty::Deadlock,
-        );
+        let result =
+            checker.check_state_machine(&states, &transitions, "A", StateMachineProperty::Deadlock);
         assert!(result.passed);
     }
 
@@ -1375,10 +1331,7 @@ mod tests {
     #[test]
     fn test_refinement_multiple_abstract_traces() {
         let mut checker = PropertyChecker::new();
-        let abs = vec![
-            vec![s("A"), s("B"), s("C")],
-            vec![s("A"), s("D"), s("E")],
-        ];
+        let abs = vec![vec![s("A"), s("B"), s("C")], vec![s("A"), s("D"), s("E")]];
         let conc = vec![vec![s("A"), s("D")]];
         let result = checker.verify_refinement(&abs, &conc);
         assert!(result.passed);
@@ -1826,8 +1779,7 @@ mod tests {
         }
 
         // Verify one invariant.
-        let result =
-            checker.check_invariant("agnos.audit.chain_integrity", || true, 50);
+        let result = checker.check_invariant("agnos.audit.chain_integrity", || true, 50);
         assert!(result.passed);
 
         // Mark another as skipped.

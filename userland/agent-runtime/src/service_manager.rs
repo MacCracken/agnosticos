@@ -271,7 +271,10 @@ impl ServiceManager {
     pub async fn load_definitions(&self) -> Result<usize> {
         let dir = &self.config_dir;
         if !dir.is_dir() {
-            info!("Service config dir {} does not exist, creating it", dir.display());
+            info!(
+                "Service config dir {} does not exist, creating it",
+                dir.display()
+            );
             tokio::fs::create_dir_all(dir)
                 .await
                 .with_context(|| format!("Failed to create {}", dir.display()))?;
@@ -354,10 +357,7 @@ impl ServiceManager {
         }
 
         let order = topological_sort(&enabled)?;
-        info!(
-            "Boot order: {}",
-            order.join(" -> ")
-        );
+        info!("Boot order: {}", order.join(" -> "));
 
         // Group by dependency level for parallel startup
         let levels = dependency_levels(&enabled, &order);
@@ -450,17 +450,16 @@ impl ServiceManager {
                         nix::unistd::Pid::from_raw(pid as i32),
                         nix::sys::signal::Signal::SIGTERM,
                     ) {
-                        warn!("Failed to send SIGTERM to service {} (pid {}): {}", name, pid, e);
+                        warn!(
+                            "Failed to send SIGTERM to service {} (pid {}): {}",
+                            name, pid, e
+                        );
                     }
                 }
             }
 
             // Wait up to 10 seconds for graceful shutdown
-            let timeout_result = tokio::time::timeout(
-                Duration::from_secs(10),
-                child.wait(),
-            )
-            .await;
+            let timeout_result = tokio::time::timeout(Duration::from_secs(10), child.wait()).await;
 
             match timeout_result {
                 Ok(Ok(status)) => {
@@ -659,21 +658,14 @@ impl ServiceManager {
                 }
             };
 
-            info!(
-                "Restarting service {} in {}s (attempt {})",
-                name,
-                delay,
-                {
-                    let svcs = self.services.read().await;
-                    svcs.get(&name).map_or(0, |s| s.restart_count + 1)
-                }
-            );
+            info!("Restarting service {} in {}s (attempt {})", name, delay, {
+                let svcs = self.services.read().await;
+                svcs.get(&name).map_or(0, |s| s.restart_count + 1)
+            });
 
             tokio::time::sleep(Duration::from_secs(delay)).await;
 
-            if let Err(e) =
-                start_service_inner(&self.services, &self.definitions, &name).await
-            {
+            if let Err(e) = start_service_inner(&self.services, &self.definitions, &name).await {
                 error!("Failed to restart service {}: {}", name, e);
                 let mut svcs = self.services.write().await;
                 if let Some(svc) = svcs.get_mut(&name) {
@@ -949,12 +941,10 @@ pub struct FleetConfig {
 impl FleetConfig {
     /// Load fleet config from a TOML file
     pub async fn from_file(path: &Path) -> Result<Self> {
-        let content = tokio::fs::read_to_string(path)
-            .await
-            .context(format!(
-                "Failed to read fleet config from {}",
-                path.display()
-            ))?;
+        let content = tokio::fs::read_to_string(path).await.context(format!(
+            "Failed to read fleet config from {}",
+            path.display()
+        ))?;
         let config: FleetConfig =
             toml::from_str(&content).context("Failed to parse fleet config TOML")?;
         Ok(config)
@@ -1084,14 +1074,16 @@ impl CronField {
             return Ok(CronField::Any);
         }
         if let Some(step) = field.strip_prefix("*/") {
-            let n: u32 = step.parse()
+            let n: u32 = step
+                .parse()
                 .map_err(|_| anyhow::anyhow!("Invalid step value: {}", step))?;
             if n == 0 {
                 anyhow::bail!("Step value must be > 0");
             }
             return Ok(CronField::Step(n));
         }
-        let n: u32 = field.parse()
+        let n: u32 = field
+            .parse()
             .map_err(|_| anyhow::anyhow!("Invalid cron field: {}", field))?;
         Ok(CronField::Exact(n))
     }
@@ -1138,7 +1130,9 @@ impl CronSchedule {
             && self.hour.matches(dt.hour())
             && self.day_of_month.matches(dt.day())
             && self.month.matches(dt.month())
-            && self.day_of_week.matches(dt.weekday().num_days_from_sunday())
+            && self
+                .day_of_week
+                .matches(dt.weekday().num_days_from_sunday())
     }
 
     /// Compute the next run time after the given datetime.
@@ -1148,10 +1142,7 @@ impl CronSchedule {
         use chrono::Duration as CDuration;
 
         // Start from the next minute boundary
-        let mut candidate = after
-            .with_second(0)?
-            .with_nanosecond(0)?
-            + CDuration::minutes(1);
+        let mut candidate = after.with_second(0)?.with_nanosecond(0)? + CDuration::minutes(1);
 
         // Scan up to 366 days (527040 minutes)
         let max_iterations = 366 * 24 * 60;
@@ -1186,7 +1177,11 @@ pub struct ScheduledTask {
 }
 
 impl ScheduledTask {
-    pub fn new(name: impl Into<String>, service_name: impl Into<String>, schedule: CronSchedule) -> Self {
+    pub fn new(
+        name: impl Into<String>,
+        service_name: impl Into<String>,
+        schedule: CronSchedule,
+    ) -> Self {
         let next = schedule.next_run_after(Utc::now());
         Self {
             id: Uuid::new_v4(),
@@ -1231,9 +1226,7 @@ impl TaskScheduler {
     pub fn due_tasks(&self, now: &DateTime<Utc>) -> Vec<&ScheduledTask> {
         self.tasks
             .values()
-            .filter(|t| {
-                t.enabled && t.next_run.map_or(false, |nr| nr <= *now)
-            })
+            .filter(|t| t.enabled && t.next_run.map_or(false, |nr| nr <= *now))
             .collect()
     }
 
@@ -1767,10 +1760,7 @@ exec_start = "/bin/true"
     #[test]
     fn test_reconcile_mixed() {
         let fleet = FleetConfig {
-            services: vec![
-                fleet_service("keep", true),
-                fleet_service("new-svc", true),
-            ],
+            services: vec![fleet_service("keep", true), fleet_service("new-svc", true)],
         };
         let running = vec!["keep".to_string(), "remove-me".to_string()];
         let plan = fleet.reconcile(&running);
@@ -1971,13 +1961,17 @@ enabled = false
     fn test_cron_matches_specific_minute() {
         let schedule = CronSchedule::new("30 * * * *").unwrap();
         // 2026-03-06 12:30:00 UTC
-        let dt = chrono::NaiveDate::from_ymd_opt(2026, 3, 6).unwrap()
-            .and_hms_opt(12, 30, 0).unwrap()
+        let dt = chrono::NaiveDate::from_ymd_opt(2026, 3, 6)
+            .unwrap()
+            .and_hms_opt(12, 30, 0)
+            .unwrap()
             .and_utc();
         assert!(schedule.matches(&dt));
 
-        let dt_wrong = chrono::NaiveDate::from_ymd_opt(2026, 3, 6).unwrap()
-            .and_hms_opt(12, 15, 0).unwrap()
+        let dt_wrong = chrono::NaiveDate::from_ymd_opt(2026, 3, 6)
+            .unwrap()
+            .and_hms_opt(12, 15, 0)
+            .unwrap()
             .and_utc();
         assert!(!schedule.matches(&dt_wrong));
     }
@@ -1985,12 +1979,21 @@ enabled = false
     #[test]
     fn test_cron_matches_step() {
         let schedule = CronSchedule::new("*/15 * * * *").unwrap();
-        let dt0 = chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()
-            .and_hms_opt(0, 0, 0).unwrap().and_utc();
-        let dt15 = chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()
-            .and_hms_opt(0, 15, 0).unwrap().and_utc();
-        let dt7 = chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()
-            .and_hms_opt(0, 7, 0).unwrap().and_utc();
+        let dt0 = chrono::NaiveDate::from_ymd_opt(2026, 1, 1)
+            .unwrap()
+            .and_hms_opt(0, 0, 0)
+            .unwrap()
+            .and_utc();
+        let dt15 = chrono::NaiveDate::from_ymd_opt(2026, 1, 1)
+            .unwrap()
+            .and_hms_opt(0, 15, 0)
+            .unwrap()
+            .and_utc();
+        let dt7 = chrono::NaiveDate::from_ymd_opt(2026, 1, 1)
+            .unwrap()
+            .and_hms_opt(0, 7, 0)
+            .unwrap()
+            .and_utc();
 
         assert!(schedule.matches(&dt0));
         assert!(schedule.matches(&dt15));
@@ -2000,12 +2003,18 @@ enabled = false
     #[test]
     fn test_cron_matches_specific_hour_and_minute() {
         let schedule = CronSchedule::new("0 2 * * *").unwrap();
-        let dt = chrono::NaiveDate::from_ymd_opt(2026, 6, 15).unwrap()
-            .and_hms_opt(2, 0, 0).unwrap().and_utc();
+        let dt = chrono::NaiveDate::from_ymd_opt(2026, 6, 15)
+            .unwrap()
+            .and_hms_opt(2, 0, 0)
+            .unwrap()
+            .and_utc();
         assert!(schedule.matches(&dt));
 
-        let wrong_hour = chrono::NaiveDate::from_ymd_opt(2026, 6, 15).unwrap()
-            .and_hms_opt(3, 0, 0).unwrap().and_utc();
+        let wrong_hour = chrono::NaiveDate::from_ymd_opt(2026, 6, 15)
+            .unwrap()
+            .and_hms_opt(3, 0, 0)
+            .unwrap()
+            .and_utc();
         assert!(!schedule.matches(&wrong_hour));
     }
 
@@ -2014,22 +2023,31 @@ enabled = false
         // 0 = Sunday
         let schedule = CronSchedule::new("0 0 * * 0").unwrap();
         // 2026-03-01 is a Sunday
-        let sunday = chrono::NaiveDate::from_ymd_opt(2026, 3, 1).unwrap()
-            .and_hms_opt(0, 0, 0).unwrap().and_utc();
+        let sunday = chrono::NaiveDate::from_ymd_opt(2026, 3, 1)
+            .unwrap()
+            .and_hms_opt(0, 0, 0)
+            .unwrap()
+            .and_utc();
         assert!(sunday.weekday().num_days_from_sunday() == 0);
         assert!(schedule.matches(&sunday));
 
         // Monday
-        let monday = chrono::NaiveDate::from_ymd_opt(2026, 3, 2).unwrap()
-            .and_hms_opt(0, 0, 0).unwrap().and_utc();
+        let monday = chrono::NaiveDate::from_ymd_opt(2026, 3, 2)
+            .unwrap()
+            .and_hms_opt(0, 0, 0)
+            .unwrap()
+            .and_utc();
         assert!(!schedule.matches(&monday));
     }
 
     #[test]
     fn test_cron_next_run_after() {
         let schedule = CronSchedule::new("0 * * * *").unwrap(); // every hour at :00
-        let now = chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()
-            .and_hms_opt(12, 30, 0).unwrap().and_utc();
+        let now = chrono::NaiveDate::from_ymd_opt(2026, 1, 1)
+            .unwrap()
+            .and_hms_opt(12, 30, 0)
+            .unwrap()
+            .and_utc();
 
         let next = schedule.next_run_after(now).unwrap();
         assert_eq!(next.hour(), 13);
@@ -2039,8 +2057,11 @@ enabled = false
     #[test]
     fn test_cron_next_run_every_5_min() {
         let schedule = CronSchedule::new("*/5 * * * *").unwrap();
-        let now = chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()
-            .and_hms_opt(10, 3, 0).unwrap().and_utc();
+        let now = chrono::NaiveDate::from_ymd_opt(2026, 1, 1)
+            .unwrap()
+            .and_hms_opt(10, 3, 0)
+            .unwrap()
+            .and_utc();
 
         let next = schedule.next_run_after(now).unwrap();
         assert_eq!(next.minute(), 5);
@@ -2049,7 +2070,8 @@ enabled = false
 
     #[test]
     fn test_cron_with_description() {
-        let schedule = CronSchedule::new("*/5 * * * *").unwrap()
+        let schedule = CronSchedule::new("*/5 * * * *")
+            .unwrap()
             .with_description("Every 5 minutes");
         assert_eq!(schedule.description, "Every 5 minutes");
     }
@@ -2152,8 +2174,11 @@ enabled = false
         let id = task.id;
         scheduler.add_task(task).unwrap();
 
-        let completed_at = chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()
-            .and_hms_opt(12, 0, 0).unwrap().and_utc();
+        let completed_at = chrono::NaiveDate::from_ymd_opt(2026, 1, 1)
+            .unwrap()
+            .and_hms_opt(12, 0, 0)
+            .unwrap()
+            .and_utc();
         scheduler.mark_completed(&id, completed_at);
 
         let tasks = scheduler.list_tasks();
@@ -2172,7 +2197,8 @@ enabled = false
 
     #[test]
     fn test_cron_schedule_serialization() {
-        let schedule = CronSchedule::new("*/10 * * * *").unwrap()
+        let schedule = CronSchedule::new("*/10 * * * *")
+            .unwrap()
             .with_description("Every 10 min");
         let json = serde_json::to_string(&schedule).unwrap();
         assert!(json.contains("*/10 * * * *"));

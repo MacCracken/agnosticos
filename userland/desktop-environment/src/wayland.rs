@@ -167,7 +167,9 @@ impl ShmBufferInfo {
         if self.width == 0 || self.height == 0 {
             return Err("Buffer dimensions must be non-zero".to_string());
         }
-        let min_stride = self.width.checked_mul(self.format.bpp())
+        let min_stride = self
+            .width
+            .checked_mul(self.format.bpp())
             .ok_or("Stride overflow")?;
         if self.stride < min_stride {
             return Err(format!(
@@ -178,9 +180,13 @@ impl ShmBufferInfo {
                 min_stride,
             ));
         }
-        let total = self.stride.checked_mul(self.height)
+        let total = self
+            .stride
+            .checked_mul(self.height)
             .ok_or("Buffer size overflow")?;
-        let total_with_offset = self.offset.checked_add(total)
+        let total_with_offset = self
+            .offset
+            .checked_add(total)
             .ok_or("Offset + buffer size overflow")?;
         let _ = total_with_offset; // just checking for overflow
         Ok(())
@@ -277,19 +283,30 @@ impl ModifierState {
     /// Encode back to a raw bitmask.
     pub fn to_raw(self) -> u32 {
         let mut raw = 0u32;
-        if self.shift { raw |= 0x01; }
-        if self.caps_lock { raw |= 0x02; }
-        if self.ctrl { raw |= 0x04; }
-        if self.alt { raw |= 0x08; }
-        if self.num_lock { raw |= 0x10; }
-        if self.logo { raw |= 0x40; }
+        if self.shift {
+            raw |= 0x01;
+        }
+        if self.caps_lock {
+            raw |= 0x02;
+        }
+        if self.ctrl {
+            raw |= 0x04;
+        }
+        if self.alt {
+            raw |= 0x08;
+        }
+        if self.num_lock {
+            raw |= 0x10;
+        }
+        if self.logo {
+            raw |= 0x40;
+        }
         raw
     }
 
     /// True if no modifiers are active.
     pub fn is_empty(&self) -> bool {
-        !self.shift && !self.ctrl && !self.alt && !self.logo
-            && !self.caps_lock && !self.num_lock
+        !self.shift && !self.ctrl && !self.alt && !self.logo && !self.caps_lock && !self.num_lock
     }
 }
 
@@ -710,9 +727,7 @@ pub enum ProtocolAction {
         app_id: String,
     },
     /// Destroy a surface and its window.
-    DestroyWindow {
-        surface_id: SurfaceId,
-    },
+    DestroyWindow { surface_id: SurfaceId },
     /// Submit a pixel buffer to a window.
     SubmitBuffer {
         surface_id: SurfaceId,
@@ -729,14 +744,9 @@ pub enum ProtocolAction {
         app_id: String,
     },
     /// Client requests window move (interactive drag).
-    RequestMove {
-        surface_id: SurfaceId,
-    },
+    RequestMove { surface_id: SurfaceId },
     /// Client requests window resize from an edge.
-    RequestResize {
-        surface_id: SurfaceId,
-        edge: u32,
-    },
+    RequestResize { surface_id: SurfaceId, edge: u32 },
     /// Client requests maximized state.
     SetMaximized {
         surface_id: SurfaceId,
@@ -748,9 +758,7 @@ pub enum ProtocolAction {
         fullscreen: bool,
     },
     /// Client requests minimize.
-    SetMinimized {
-        surface_id: SurfaceId,
-    },
+    SetMinimized { surface_id: SurfaceId },
     /// Client sets min/max size constraints.
     SetSizeBounds {
         surface_id: SurfaceId,
@@ -758,34 +766,19 @@ pub enum ProtocolAction {
         max_size: Option<(u32, u32)>,
     },
     /// Client acknowledged a configure event.
-    AckConfigure {
-        surface_id: SurfaceId,
-        serial: u32,
-    },
+    AckConfigure { surface_id: SurfaceId, serial: u32 },
     /// Client committed a surface (buffer attached + damage).
-    SurfaceCommit {
-        surface_id: SurfaceId,
-    },
+    SurfaceCommit { surface_id: SurfaceId },
     /// Send configure event to client.
-    SendConfigure {
-        configure: ToplevelConfigure,
-    },
+    SendConfigure { configure: ToplevelConfigure },
     /// Forward pointer event to focused client.
-    ForwardPointer {
-        event: WaylandPointerEvent,
-    },
+    ForwardPointer { event: WaylandPointerEvent },
     /// Forward keyboard event to focused client.
-    ForwardKeyboard {
-        event: WaylandKeyboardEvent,
-    },
+    ForwardKeyboard { event: WaylandKeyboardEvent },
     /// A new client connected.
-    ClientConnected {
-        client_id: u32,
-    },
+    ClientConnected { client_id: u32 },
     /// A client disconnected — clean up all its surfaces.
-    ClientDisconnected {
-        client_id: u32,
-    },
+    ClientDisconnected { client_id: u32 },
     /// Set clipboard selection for a surface.
     SetSelection {
         surface_id: SurfaceId,
@@ -798,18 +791,11 @@ pub enum ProtocolAction {
         mime_types: Vec<String>,
     },
     /// Enable text input on a surface.
-    TextInputEnable {
-        surface_id: SurfaceId,
-    },
+    TextInputEnable { surface_id: SurfaceId },
     /// Disable text input on a surface.
-    TextInputDisable {
-        surface_id: SurfaceId,
-    },
+    TextInputDisable { surface_id: SurfaceId },
     /// Commit text input.
-    TextInputCommit {
-        surface_id: SurfaceId,
-        text: String,
-    },
+    TextInputCommit { surface_id: SurfaceId, text: String },
     /// Set decoration mode for a surface.
     SetDecorationMode {
         surface_id: SurfaceId,
@@ -1052,7 +1038,12 @@ impl ViewportState {
     }
 
     pub fn set_source(&mut self, x: f64, y: f64, width: f64, height: f64) {
-        self.source = Some(ViewportSource { x, y, width, height });
+        self.source = Some(ViewportSource {
+            x,
+            y,
+            width,
+            height,
+        });
     }
 
     pub fn set_destination(&mut self, width: u32, height: u32) {
@@ -1080,7 +1071,10 @@ pub struct FractionalScale {
 
 impl FractionalScale {
     pub fn new(surface_id: SurfaceId, scale_120: u32) -> Self {
-        Self { surface_id, scale_120 }
+        Self {
+            surface_id,
+            scale_120,
+        }
     }
 
     pub fn scale_factor(&self) -> f64 {
@@ -1134,7 +1128,8 @@ impl ProtocolBridge {
         } else {
             self.clients.register()
         };
-        self.pending_actions.push(ProtocolAction::ClientConnected { client_id: id });
+        self.pending_actions
+            .push(ProtocolAction::ClientConnected { client_id: id });
         id
     }
 
@@ -1162,7 +1157,8 @@ impl ProtocolBridge {
                 }
             }
         }
-        self.pending_actions.push(ProtocolAction::ClientDisconnected { client_id });
+        self.pending_actions
+            .push(ProtocolAction::ClientDisconnected { client_id });
         removed_surfaces
     }
 
@@ -1201,7 +1197,8 @@ impl ProtocolBridge {
         if let Some(tracker) = self.toplevels.get_mut(&surface_id) {
             tracker.title = Some(title.clone());
         }
-        self.pending_actions.push(ProtocolAction::SetTitle { surface_id, title });
+        self.pending_actions
+            .push(ProtocolAction::SetTitle { surface_id, title });
     }
 
     /// Handle xdg_toplevel.set_app_id.
@@ -1209,7 +1206,8 @@ impl ProtocolBridge {
         if let Some(tracker) = self.toplevels.get_mut(&surface_id) {
             tracker.app_id = Some(app_id.clone());
         }
-        self.pending_actions.push(ProtocolAction::SetAppId { surface_id, app_id });
+        self.pending_actions
+            .push(ProtocolAction::SetAppId { surface_id, app_id });
     }
 
     /// Handle xdg_surface.ack_configure.
@@ -1217,7 +1215,8 @@ impl ProtocolBridge {
         if let Some(tracker) = self.toplevels.get_mut(&surface_id) {
             let result = tracker.ack_configure(serial);
             if result {
-                self.pending_actions.push(ProtocolAction::AckConfigure { surface_id, serial });
+                self.pending_actions
+                    .push(ProtocolAction::AckConfigure { surface_id, serial });
             }
             result
         } else {
@@ -1232,7 +1231,8 @@ impl ProtocolBridge {
         } else {
             false
         };
-        self.pending_actions.push(ProtocolAction::SurfaceCommit { surface_id });
+        self.pending_actions
+            .push(ProtocolAction::SurfaceCommit { surface_id });
         mapped
     }
 
@@ -1246,7 +1246,8 @@ impl ProtocolBridge {
                 client.remove_surface(&surface_id);
             }
         }
-        self.pending_actions.push(ProtocolAction::DestroyWindow { surface_id });
+        self.pending_actions
+            .push(ProtocolAction::DestroyWindow { surface_id });
     }
 
     /// Handle xdg_toplevel.set_maximized / unset_maximized.
@@ -1258,7 +1259,10 @@ impl ProtocolBridge {
                 tracker.send_configure(configure);
             }
         }
-        self.pending_actions.push(ProtocolAction::SetMaximized { surface_id, maximized });
+        self.pending_actions.push(ProtocolAction::SetMaximized {
+            surface_id,
+            maximized,
+        });
     }
 
     /// Handle xdg_toplevel.set_fullscreen.
@@ -1276,12 +1280,16 @@ impl ProtocolBridge {
                 tracker.send_configure(configure);
             }
         }
-        self.pending_actions.push(ProtocolAction::SetFullscreen { surface_id, fullscreen });
+        self.pending_actions.push(ProtocolAction::SetFullscreen {
+            surface_id,
+            fullscreen,
+        });
     }
 
     /// Handle xdg_toplevel.set_minimized.
     pub fn set_minimized(&mut self, surface_id: SurfaceId) {
-        self.pending_actions.push(ProtocolAction::SetMinimized { surface_id });
+        self.pending_actions
+            .push(ProtocolAction::SetMinimized { surface_id });
     }
 
     /// Handle xdg_toplevel.set_min_size / set_max_size.
@@ -1308,12 +1316,14 @@ impl ProtocolBridge {
 
     /// Handle xdg_toplevel.move request.
     pub fn request_move(&mut self, surface_id: SurfaceId) {
-        self.pending_actions.push(ProtocolAction::RequestMove { surface_id });
+        self.pending_actions
+            .push(ProtocolAction::RequestMove { surface_id });
     }
 
     /// Handle xdg_toplevel.resize request.
     pub fn request_resize(&mut self, surface_id: SurfaceId, edge: u32) {
-        self.pending_actions.push(ProtocolAction::RequestResize { surface_id, edge });
+        self.pending_actions
+            .push(ProtocolAction::RequestResize { surface_id, edge });
     }
 
     /// Route an input event to the appropriate client surface.
@@ -1322,7 +1332,9 @@ impl ProtocolBridge {
         match action {
             InputAction::ClientClick(surface_id, x, y) => {
                 let serial = self.serial.next_serial();
-                let focus_changed = self.pointer_focus.set_focus(Some(surface_id), x as f64, y as f64, serial);
+                let focus_changed =
+                    self.pointer_focus
+                        .set_focus(Some(surface_id), x as f64, y as f64, serial);
                 if focus_changed {
                     // Send pointer enter
                     self.pending_actions.push(ProtocolAction::ForwardPointer {
@@ -1336,7 +1348,9 @@ impl ProtocolBridge {
                     let kb_serial = self.serial.next_serial();
                     self.keyboard_focus.set_focus(Some(surface_id), kb_serial);
                     self.pending_actions.push(ProtocolAction::ForwardKeyboard {
-                        event: WaylandKeyboardEvent::Enter { surface: surface_id },
+                        event: WaylandKeyboardEvent::Enter {
+                            surface: surface_id,
+                        },
                     });
                 }
                 // Forward button event
@@ -1388,21 +1402,35 @@ impl ProtocolBridge {
         for action in &actions {
             match action {
                 ProtocolAction::CreateWindow { title, app_id, .. } => {
-                    let t = if title.is_empty() { "Untitled".to_string() } else { title.clone() };
-                    let a = if app_id.is_empty() { "unknown".to_string() } else { app_id.clone() };
+                    let t = if title.is_empty() {
+                        "Untitled".to_string()
+                    } else {
+                        title.clone()
+                    };
+                    let a = if app_id.is_empty() {
+                        "unknown".to_string()
+                    } else {
+                        app_id.clone()
+                    };
                     let _ = compositor.create_window(t, a, false);
                 }
                 ProtocolAction::DestroyWindow { surface_id } => {
                     let _ = compositor.close_window(*surface_id);
                 }
-                ProtocolAction::SetMaximized { surface_id, maximized } => {
+                ProtocolAction::SetMaximized {
+                    surface_id,
+                    maximized,
+                } => {
                     if *maximized {
                         let _ = compositor.set_window_state(*surface_id, WindowState::Maximized);
                     } else {
                         let _ = compositor.set_window_state(*surface_id, WindowState::Normal);
                     }
                 }
-                ProtocolAction::SetFullscreen { surface_id, fullscreen } => {
+                ProtocolAction::SetFullscreen {
+                    surface_id,
+                    fullscreen,
+                } => {
                     if *fullscreen {
                         let _ = compositor.set_window_state(*surface_id, WindowState::Fullscreen);
                     } else {
@@ -1478,11 +1506,28 @@ pub fn map_input_to_keyboard_event(event: &InputEvent) -> Option<WaylandKeyboard
 /// Wayland pointer event (protocol-level).
 #[derive(Debug, Clone)]
 pub enum WaylandPointerEvent {
-    Motion { x: f64, y: f64 },
-    Button { button: u32, x: f64, y: f64, pressed: bool },
-    Axis { horizontal: f64, vertical: f64 },
-    Enter { surface: SurfaceId, x: f64, y: f64 },
-    Leave { surface: SurfaceId },
+    Motion {
+        x: f64,
+        y: f64,
+    },
+    Button {
+        button: u32,
+        x: f64,
+        y: f64,
+        pressed: bool,
+    },
+    Axis {
+        horizontal: f64,
+        vertical: f64,
+    },
+    Enter {
+        surface: SurfaceId,
+        x: f64,
+        y: f64,
+    },
+    Leave {
+        surface: SurfaceId,
+    },
 }
 
 /// Wayland keyboard event (protocol-level).
@@ -1511,14 +1556,13 @@ pub enum WaylandKeyboardEvent {
 #[cfg(feature = "wayland")]
 mod wayland_live {
     use super::*;
+    use std::collections::HashMap as StdHashMap;
+    use wayland_protocols::xdg::shell::server::{xdg_surface, xdg_toplevel, xdg_wm_base};
     use wayland_server::{
-        Client, DataInit, Dispatch, Display, DisplayHandle, ListeningSocket, New, Resource,
-        protocol::{
-            wl_buffer, wl_compositor, wl_output, wl_seat, wl_shm, wl_shm_pool, wl_surface,
-        },
-    };
-    use wayland_protocols::xdg::shell::server::{
-        xdg_surface, xdg_toplevel, xdg_wm_base,
+        backend::ClientId,
+        protocol::{wl_buffer, wl_compositor, wl_output, wl_seat, wl_shm, wl_shm_pool, wl_surface},
+        Client, DataInit, Dispatch, Display, DisplayHandle, GlobalDispatch, ListeningSocket, New,
+        Resource,
     };
 
     /// Per-surface user data stored on `wl_surface` resources.
@@ -1542,30 +1586,56 @@ mod wayland_live {
         pub client_id: u32,
     }
 
-    /// Main Wayland server state.
-    ///
-    /// Holds the `wayland_server::Display`, tracks clients and surfaces,
-    /// and bridges to the internal AGNOS compositor via [`ProtocolBridge`].
-    pub struct WaylandState {
-        pub display: Display<Self>,
+    /// Internal dispatch state — separated from Display so
+    /// `Display::dispatch_clients(&mut inner)` can borrow correctly.
+    pub struct WaylandInner {
         pub compositor: Arc<Compositor>,
         pub bridge: ProtocolBridge,
-        pub socket_name: Option<String>,
         pub dh: DisplayHandle,
+        client_ids: StdHashMap<ClientId, u32>,
+        next_client_id: u32,
+    }
+
+    impl WaylandInner {
+        fn get_client_id(&mut self, client: &Client) -> u32 {
+            let cid = client.id();
+            if let Some(&id) = self.client_ids.get(&cid) {
+                return id;
+            }
+            let id = self.next_client_id;
+            self.next_client_id = self.next_client_id.wrapping_add(1);
+            self.client_ids.insert(cid, id);
+            id
+        }
+    }
+
+    /// Main Wayland server state.
+    ///
+    /// Holds the `wayland_server::Display` separately from the dispatch state
+    /// (`WaylandInner`) so that `dispatch_clients` can borrow the inner state
+    /// mutably without conflicting with the display borrow.
+    pub struct WaylandState {
+        display: Display<WaylandInner>,
+        inner: WaylandInner,
+        socket_name: Option<String>,
     }
 
     impl WaylandState {
         /// Create a new Wayland server state bound to the given compositor.
         pub fn new(compositor: Arc<Compositor>) -> Result<Self, Box<dyn std::error::Error>> {
-            let display = Display::new()?;
+            let display: Display<WaylandInner> = Display::new()?;
             let dh = display.handle();
 
             Ok(Self {
                 display,
-                compositor,
-                bridge: ProtocolBridge::new(),
+                inner: WaylandInner {
+                    compositor,
+                    bridge: ProtocolBridge::new(),
+                    dh,
+                    client_ids: StdHashMap::new(),
+                    next_client_id: 1,
+                },
                 socket_name: None,
-                dh,
             })
         }
 
@@ -1582,28 +1652,117 @@ mod wayland_live {
 
         /// Dispatch one frame: accept clients, process events, apply to compositor.
         pub fn dispatch(&mut self) -> Result<Vec<ProtocolAction>, Box<dyn std::error::Error>> {
-            self.display.dispatch_clients(&mut self.bridge)?;
-            let actions = self.bridge.apply_actions(&self.compositor);
+            self.display.dispatch_clients(&mut self.inner)?;
+            let actions = self.inner.bridge.apply_actions(&self.inner.compositor);
             Ok(actions)
         }
 
         /// Handle an input event by routing through the bridge.
         pub fn handle_input(&mut self, event: &InputEvent) {
-            self.bridge.route_input(&self.compositor, event);
+            self.inner.bridge.route_input(&self.inner.compositor, event);
         }
 
         /// Initialize all global protocol objects on the display.
         pub fn init_globals(&mut self) {
-            // wl_compositor v5
-            self.dh.create_global::<Self, wl_compositor::WlCompositor, ()>(5, ());
-            // wl_shm v1
-            self.dh.create_global::<Self, wl_shm::WlShm, ()>(1, ());
-            // wl_seat v7
-            self.dh.create_global::<Self, wl_seat::WlSeat, ()>(7, ());
-            // wl_output v4
-            self.dh.create_global::<Self, wl_output::WlOutput, ()>(4, ());
-            // xdg_wm_base v3
-            self.dh.create_global::<Self, xdg_wm_base::XdgWmBase, ()>(3, ());
+            let dh = &self.inner.dh;
+            dh.create_global::<WaylandInner, wl_compositor::WlCompositor, ()>(5, ());
+            dh.create_global::<WaylandInner, wl_shm::WlShm, ()>(1, ());
+            dh.create_global::<WaylandInner, wl_seat::WlSeat, ()>(7, ());
+            dh.create_global::<WaylandInner, wl_output::WlOutput, ()>(4, ());
+            dh.create_global::<WaylandInner, xdg_wm_base::XdgWmBase, ()>(3, ());
+        }
+    }
+
+    // ========================================================================
+    // GlobalDispatch impls — called when a client binds to a global
+    // ========================================================================
+
+    impl GlobalDispatch<wl_compositor::WlCompositor, ()> for WaylandInner {
+        fn bind(
+            _state: &mut Self,
+            _client: &Client,
+            resource: New<wl_compositor::WlCompositor>,
+            _global_data: &(),
+            _dhandle: &DisplayHandle,
+            data_init: &mut DataInit<'_, Self>,
+        ) {
+            data_init.init(resource, ());
+        }
+    }
+
+    impl GlobalDispatch<wl_shm::WlShm, ()> for WaylandInner {
+        fn bind(
+            _state: &mut Self,
+            _client: &Client,
+            resource: New<wl_shm::WlShm>,
+            _global_data: &(),
+            _dhandle: &DisplayHandle,
+            data_init: &mut DataInit<'_, Self>,
+        ) {
+            let shm = data_init.init(resource, ());
+            shm.format(wl_shm::Format::Argb8888);
+            shm.format(wl_shm::Format::Xrgb8888);
+        }
+    }
+
+    impl GlobalDispatch<wl_seat::WlSeat, ()> for WaylandInner {
+        fn bind(
+            state: &mut Self,
+            _client: &Client,
+            resource: New<wl_seat::WlSeat>,
+            _global_data: &(),
+            _dhandle: &DisplayHandle,
+            data_init: &mut DataInit<'_, Self>,
+        ) {
+            let seat = data_init.init(resource, ());
+            let caps = state.bridge.seat_caps;
+            seat.capabilities(wl_seat::Capability::from_bits_truncate(caps.to_bitmask()));
+        }
+    }
+
+    impl GlobalDispatch<wl_output::WlOutput, ()> for WaylandInner {
+        fn bind(
+            state: &mut Self,
+            _client: &Client,
+            resource: New<wl_output::WlOutput>,
+            _global_data: &(),
+            _dhandle: &DisplayHandle,
+            data_init: &mut DataInit<'_, Self>,
+        ) {
+            let output = data_init.init(resource, ());
+            let info = &state.bridge.output;
+
+            output.geometry(
+                info.x,
+                info.y,
+                info.width_mm as i32,
+                info.height_mm as i32,
+                wl_output::Subpixel::Unknown,
+                info.make.clone(),
+                info.model.clone(),
+                wl_output::Transform::Normal,
+            );
+            output.mode(
+                wl_output::Mode::Current | wl_output::Mode::Preferred,
+                info.width_px as i32,
+                info.height_px as i32,
+                info.refresh_mhz as i32,
+            );
+            output.scale(info.scale as i32);
+            output.done();
+        }
+    }
+
+    impl GlobalDispatch<xdg_wm_base::XdgWmBase, ()> for WaylandInner {
+        fn bind(
+            _state: &mut Self,
+            _client: &Client,
+            resource: New<xdg_wm_base::XdgWmBase>,
+            _global_data: &(),
+            _dhandle: &DisplayHandle,
+            data_init: &mut DataInit<'_, Self>,
+        ) {
+            data_init.init(resource, ());
         }
     }
 
@@ -1611,7 +1770,7 @@ mod wayland_live {
     // Dispatch: wl_compositor — creates wl_surface instances
     // ========================================================================
 
-    impl Dispatch<wl_compositor::WlCompositor, ()> for WaylandState {
+    impl Dispatch<wl_compositor::WlCompositor, ()> for WaylandInner {
         fn request(
             state: &mut Self,
             client: &Client,
@@ -1623,11 +1782,15 @@ mod wayland_live {
         ) {
             match request {
                 wl_compositor::Request::CreateSurface { id } => {
-                    let client_id = client.id().protocol_id();
-                    if let Some((surface_id, _proto_id)) =
-                        state.bridge.create_surface(client_id)
-                    {
-                        data_init.init(id, SurfaceData { surface_id, client_id });
+                    let client_id = state.get_client_id(client);
+                    if let Some((surface_id, _proto_id)) = state.bridge.create_surface(client_id) {
+                        data_init.init(
+                            id,
+                            SurfaceData {
+                                surface_id,
+                                client_id,
+                            },
+                        );
                     }
                 }
                 wl_compositor::Request::CreateRegion { id: _ } => {
@@ -1642,7 +1805,7 @@ mod wayland_live {
     // Dispatch: wl_surface — surface commit, damage, attach
     // ========================================================================
 
-    impl Dispatch<wl_surface::WlSurface, SurfaceData> for WaylandState {
+    impl Dispatch<wl_surface::WlSurface, SurfaceData> for WaylandInner {
         fn request(
             state: &mut Self,
             _client: &Client,
@@ -1659,20 +1822,28 @@ mod wayland_live {
                 wl_surface::Request::Destroy => {
                     state.bridge.destroy_surface(data.surface_id);
                 }
-                wl_surface::Request::Attach { buffer: _, x: _, y: _ } => {
-                    // Buffer attachment tracked for SHM rendering pipeline
-                }
-                wl_surface::Request::Damage { x: _, y: _, width: _, height: _ } => {
-                    // Damage tracking — marks region for re-render
-                }
-                wl_surface::Request::Frame { callback: _ } => {
-                    // Frame callback — used for vsync signaling
-                }
+                wl_surface::Request::Attach {
+                    buffer: _,
+                    x: _,
+                    y: _,
+                } => {}
+                wl_surface::Request::Damage {
+                    x: _,
+                    y: _,
+                    width: _,
+                    height: _,
+                } => {}
+                wl_surface::Request::Frame { callback: _ } => {}
                 wl_surface::Request::SetInputRegion { region: _ } => {}
                 wl_surface::Request::SetOpaqueRegion { region: _ } => {}
                 wl_surface::Request::SetBufferTransform { transform: _ } => {}
                 wl_surface::Request::SetBufferScale { scale: _ } => {}
-                wl_surface::Request::DamageBuffer { x: _, y: _, width: _, height: _ } => {}
+                wl_surface::Request::DamageBuffer {
+                    x: _,
+                    y: _,
+                    width: _,
+                    height: _,
+                } => {}
                 wl_surface::Request::Offset { x: _, y: _ } => {}
                 _ => {}
             }
@@ -1683,7 +1854,7 @@ mod wayland_live {
     // Dispatch: wl_shm — shared memory buffer management
     // ========================================================================
 
-    impl Dispatch<wl_shm::WlShm, ()> for WaylandState {
+    impl Dispatch<wl_shm::WlShm, ()> for WaylandInner {
         fn request(
             _state: &mut Self,
             _client: &Client,
@@ -1702,7 +1873,7 @@ mod wayland_live {
         }
     }
 
-    impl Dispatch<wl_shm_pool::WlShmPool, ()> for WaylandState {
+    impl Dispatch<wl_shm_pool::WlShmPool, ()> for WaylandInner {
         fn request(
             _state: &mut Self,
             _client: &Client,
@@ -1730,7 +1901,7 @@ mod wayland_live {
         }
     }
 
-    impl Dispatch<wl_buffer::WlBuffer, ()> for WaylandState {
+    impl Dispatch<wl_buffer::WlBuffer, ()> for WaylandInner {
         fn request(
             _state: &mut Self,
             _client: &Client,
@@ -1751,7 +1922,7 @@ mod wayland_live {
     // Dispatch: wl_seat — input device capabilities
     // ========================================================================
 
-    impl Dispatch<wl_seat::WlSeat, ()> for WaylandState {
+    impl Dispatch<wl_seat::WlSeat, ()> for WaylandInner {
         fn request(
             state: &mut Self,
             _client: &Client,
@@ -1762,19 +1933,12 @@ mod wayland_live {
             _data_init: &mut DataInit<'_, Self>,
         ) {
             match request {
-                wl_seat::Request::GetPointer { id: _ } => {
-                    // Pointer resource creation — input forwarded through bridge
-                }
-                wl_seat::Request::GetKeyboard { id: _ } => {
-                    // Keyboard resource creation — input forwarded through bridge
-                }
-                wl_seat::Request::GetTouch { id: _ } => {
-                    // Touch not yet supported
-                }
+                wl_seat::Request::GetPointer { id: _ } => {}
+                wl_seat::Request::GetKeyboard { id: _ } => {}
+                wl_seat::Request::GetTouch { id: _ } => {}
                 wl_seat::Request::Release => {}
                 _ => {}
             }
-            // Advertise seat capabilities
             let caps = state.bridge.seat_caps;
             resource.capabilities(wl_seat::Capability::from_bits_truncate(caps.to_bitmask()));
         }
@@ -1784,7 +1948,7 @@ mod wayland_live {
     // Dispatch: wl_output — screen geometry advertising
     // ========================================================================
 
-    impl Dispatch<wl_output::WlOutput, ()> for WaylandState {
+    impl Dispatch<wl_output::WlOutput, ()> for WaylandInner {
         fn request(
             _state: &mut Self,
             _client: &Client,
@@ -1799,55 +1963,17 @@ mod wayland_live {
                 _ => {}
             }
         }
-
-        fn bind(
-            state: &mut Self,
-            _client: &Client,
-            resource: New<wl_output::WlOutput>,
-            _global_data: &(),
-            _dhandle: &DisplayHandle,
-            data_init: &mut DataInit<'_, Self>,
-        ) {
-            let output = data_init.init(resource, ());
-            let info = &state.bridge.output;
-
-            // Send geometry event
-            output.geometry(
-                info.x,
-                info.y,
-                info.width_mm as i32,
-                info.height_mm as i32,
-                wl_output::Subpixel::Unknown,
-                info.make.clone(),
-                info.model.clone(),
-                wl_output::Transform::Normal,
-            );
-
-            // Send mode event
-            output.mode(
-                wl_output::Mode::Current | wl_output::Mode::Preferred,
-                info.width_px as i32,
-                info.height_px as i32,
-                info.refresh_mhz as i32,
-            );
-
-            // Send scale
-            output.scale(info.scale as i32);
-
-            // Send done to signal end of initial state
-            output.done();
-        }
     }
 
     // ========================================================================
     // Dispatch: xdg_wm_base — XDG Shell entry point
     // ========================================================================
 
-    impl Dispatch<xdg_wm_base::XdgWmBase, ()> for WaylandState {
+    impl Dispatch<xdg_wm_base::XdgWmBase, ()> for WaylandInner {
         fn request(
             _state: &mut Self,
             _client: &Client,
-            resource: &xdg_wm_base::XdgWmBase,
+            _resource: &xdg_wm_base::XdgWmBase,
             request: xdg_wm_base::Request,
             _data: &(),
             _dhandle: &DisplayHandle,
@@ -1867,12 +1993,8 @@ mod wayland_live {
                         },
                     );
                 }
-                xdg_wm_base::Request::Pong { serial: _ } => {
-                    // Client responded to ping — connection is alive
-                }
-                xdg_wm_base::Request::CreatePositioner { id: _ } => {
-                    // Popup positioner — not yet implemented
-                }
+                xdg_wm_base::Request::Pong { serial: _ } => {}
+                xdg_wm_base::Request::CreatePositioner { id: _ } => {}
                 xdg_wm_base::Request::Destroy => {}
                 _ => {}
             }
@@ -1883,7 +2005,7 @@ mod wayland_live {
     // Dispatch: xdg_surface — surface role assignment
     // ========================================================================
 
-    impl Dispatch<xdg_surface::XdgSurface, XdgSurfaceData> for WaylandState {
+    impl Dispatch<xdg_surface::XdgSurface, XdgSurfaceData> for WaylandInner {
         fn request(
             state: &mut Self,
             _client: &Client,
@@ -1895,7 +2017,9 @@ mod wayland_live {
         ) {
             match request {
                 xdg_surface::Request::GetToplevel { id } => {
-                    state.bridge.create_toplevel(data.surface_id, data.client_id);
+                    state
+                        .bridge
+                        .create_toplevel(data.surface_id, data.client_id);
                     data_init.init(
                         id,
                         ToplevelData {
@@ -1912,12 +2036,8 @@ mod wayland_live {
                     y: _,
                     width: _,
                     height: _,
-                } => {
-                    // Window geometry hint from client
-                }
-                xdg_surface::Request::GetPopup { .. } => {
-                    // Popup surfaces — not yet implemented
-                }
+                } => {}
+                xdg_surface::Request::GetPopup { .. } => {}
                 xdg_surface::Request::Destroy => {}
                 _ => {}
             }
@@ -1928,7 +2048,7 @@ mod wayland_live {
     // Dispatch: xdg_toplevel — window management requests
     // ========================================================================
 
-    impl Dispatch<xdg_toplevel::XdgToplevel, ToplevelData> for WaylandState {
+    impl Dispatch<xdg_toplevel::XdgToplevel, ToplevelData> for WaylandInner {
         fn request(
             state: &mut Self,
             _client: &Client,
@@ -1984,21 +2104,15 @@ mod wayland_live {
                     serial: _,
                     edges,
                 } => {
-                    state
-                        .bridge
-                        .request_resize(data.surface_id, edges.into());
+                    state.bridge.request_resize(data.surface_id, edges.into());
                 }
-                xdg_toplevel::Request::SetParent { parent: _ } => {
-                    // Parent window relationship — for dialog stacking
-                }
+                xdg_toplevel::Request::SetParent { parent: _ } => {}
                 xdg_toplevel::Request::ShowWindowMenu {
                     seat: _,
                     serial: _,
                     x: _,
                     y: _,
-                } => {
-                    // Window menu (right-click titlebar) — not yet implemented
-                }
+                } => {}
                 xdg_toplevel::Request::Destroy => {
                     state.bridge.destroy_surface(data.surface_id);
                 }
@@ -2448,7 +2562,10 @@ mod tests {
         assert!(result.is_some());
         match result.unwrap() {
             WaylandPointerEvent::Button {
-                button, x, y, pressed,
+                button,
+                x,
+                y,
+                pressed,
             } => {
                 assert_eq!(button, 1);
                 assert_eq!(x, 50.0);
@@ -2469,7 +2586,9 @@ mod tests {
         assert!(result.is_some());
         match result.unwrap() {
             WaylandKeyboardEvent::Key {
-                keycode, modifiers, pressed,
+                keycode,
+                modifiers,
+                pressed,
             } => {
                 assert_eq!(keycode, 30);
                 assert!(modifiers.shift);
@@ -2740,7 +2859,9 @@ mod tests {
 
         // Set focus to this surface
         let serial = bridge.serial.next_serial();
-        bridge.pointer_focus.set_focus(Some(sid), 50.0, 50.0, serial);
+        bridge
+            .pointer_focus
+            .set_focus(Some(sid), 50.0, 50.0, serial);
         bridge.keyboard_focus.set_focus(Some(sid), serial);
 
         bridge.client_disconnect(cid);
@@ -2758,7 +2879,9 @@ mod tests {
         bridge.route_input(&comp, &event);
 
         let actions = bridge.drain_actions();
-        let has_pointer = actions.iter().any(|a| matches!(a, ProtocolAction::ForwardPointer { .. }));
+        let has_pointer = actions
+            .iter()
+            .any(|a| matches!(a, ProtocolAction::ForwardPointer { .. }));
         assert!(has_pointer);
     }
 
@@ -2790,8 +2913,12 @@ mod tests {
         bridge.request_resize(sid, 4); // right edge
 
         let actions = bridge.drain_actions();
-        assert!(actions.iter().any(|a| matches!(a, ProtocolAction::RequestMove { .. })));
-        assert!(actions.iter().any(|a| matches!(a, ProtocolAction::RequestResize { edge: 4, .. })));
+        assert!(actions
+            .iter()
+            .any(|a| matches!(a, ProtocolAction::RequestMove { .. })));
+        assert!(actions
+            .iter()
+            .any(|a| matches!(a, ProtocolAction::RequestResize { edge: 4, .. })));
     }
 
     #[test]
@@ -2802,7 +2929,9 @@ mod tests {
 
         bridge.set_minimized(sid);
         let actions = bridge.drain_actions();
-        assert!(actions.iter().any(|a| matches!(a, ProtocolAction::SetMinimized { .. })));
+        assert!(actions
+            .iter()
+            .any(|a| matches!(a, ProtocolAction::SetMinimized { .. })));
     }
 
     // -- ClientInfo tests --
@@ -3584,7 +3713,10 @@ mod protocol_extension_tests {
             mime_types: vec!["text/plain".into()],
         };
         match action {
-            ProtocolAction::SetSelection { surface_id, mime_types } => {
+            ProtocolAction::SetSelection {
+                surface_id,
+                mime_types,
+            } => {
                 assert_eq!(surface_id, sid);
                 assert_eq!(mime_types, vec!["text/plain"]);
             }
@@ -3602,7 +3734,11 @@ mod protocol_extension_tests {
             mime_types: vec![],
         };
         match action {
-            ProtocolAction::StartDrag { source, icon: i, mime_types } => {
+            ProtocolAction::StartDrag {
+                source,
+                icon: i,
+                mime_types,
+            } => {
                 assert_eq!(source, src);
                 assert_eq!(i, Some(icon));
                 assert!(mime_types.is_empty());
@@ -3658,11 +3794,20 @@ mod protocol_extension_tests {
         let sid = test_surface_id();
         let action = ProtocolAction::SetViewport {
             surface_id: sid,
-            source: Some(ViewportSource { x: 0.0, y: 0.0, width: 100.0, height: 100.0 }),
+            source: Some(ViewportSource {
+                x: 0.0,
+                y: 0.0,
+                width: 100.0,
+                height: 100.0,
+            }),
             destination: Some((50, 50)),
         };
         match action {
-            ProtocolAction::SetViewport { source, destination, .. } => {
+            ProtocolAction::SetViewport {
+                source,
+                destination,
+                ..
+            } => {
                 assert!(source.is_some());
                 assert_eq!(destination, Some((50, 50)));
             }

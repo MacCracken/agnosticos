@@ -386,7 +386,10 @@ impl InstallPhase {
 
     /// Zero-based index in the phase sequence.
     pub fn index(self) -> usize {
-        Self::ALL.iter().position(|&p| p == self).expect("phase must be in ALL")
+        Self::ALL
+            .iter()
+            .position(|&p| p == self)
+            .expect("phase must be in ALL")
     }
 
     /// Next phase, or `None` if this is `Complete`.
@@ -538,10 +541,7 @@ pub fn generate_fstab(partitions: &[PartitionSpec], encrypt: bool) -> String {
 
 /// Default kernel command-line parameters based on security settings.
 pub fn default_kernel_params(security: &SecurityConfig) -> Vec<String> {
-    let mut params = vec![
-        "quiet".to_string(),
-        "loglevel=3".to_string(),
-    ];
+    let mut params = vec!["quiet".to_string(), "loglevel=3".to_string()];
 
     if security.enable_luks {
         params.push("rd.luks=1".to_string());
@@ -604,8 +604,12 @@ impl AgnovaInstaller {
         if !dev.starts_with("/dev/") {
             bail!("target device must start with /dev/");
         }
-        if dev.contains("..") || dev.contains(' ') || dev.contains(';')
-            || dev.contains('|') || dev.contains('&') || dev.contains('`')
+        if dev.contains("..")
+            || dev.contains(' ')
+            || dev.contains(';')
+            || dev.contains('|')
+            || dev.contains('&')
+            || dev.contains('`')
             || dev.contains('\n')
         {
             bail!("target device path contains invalid characters");
@@ -641,7 +645,10 @@ impl AgnovaInstaller {
         if !uname.starts_with(|c: char| c.is_ascii_lowercase()) {
             bail!("username must start with a lowercase letter");
         }
-        if !uname.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '-') {
+        if !uname
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '-')
+        {
             bail!("username contains invalid characters (allowed: a-z, 0-9, _, -)");
         }
 
@@ -661,7 +668,10 @@ impl AgnovaInstaller {
         if hostname.starts_with('.') {
             bail!("hostname must not start with a dot");
         }
-        if !hostname.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+        if !hostname
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-')
+        {
             bail!("hostname contains invalid characters (allowed: alphanumeric and hyphens)");
         }
 
@@ -712,7 +722,10 @@ impl AgnovaInstaller {
             warnings.push("firewall default policy is allow — not recommended".to_string());
         }
 
-        debug!("agnova: config validation passed with {} warning(s)", warnings.len());
+        debug!(
+            "agnova: config validation passed with {} warning(s)",
+            warnings.len()
+        );
         Ok(warnings)
     }
 
@@ -744,12 +757,37 @@ impl AgnovaInstaller {
     /// Default package selection for a given installation mode.
     pub fn default_packages(mode: &InstallMode) -> PackageSelection {
         let base_packages: Vec<String> = [
-            "linux-kernel", "linux-firmware", "agnos-init", "agnos-sys",
-            "agnos-common", "agnoshi", "shakti", "daimon", "hoosh",
-            "systemd", "dbus", "networkmanager", "nftables", "openssh",
-            "coreutils", "util-linux", "bash", "zsh", "curl", "wget",
-            "ca-certificates", "gnupg", "tar", "gzip", "xz", "bzip2",
-            "iproute2", "iputils", "less", "nano", "man-pages",
+            "linux-kernel",
+            "linux-firmware",
+            "agnos-init",
+            "agnos-sys",
+            "agnos-common",
+            "agnoshi",
+            "shakti",
+            "daimon",
+            "hoosh",
+            "systemd",
+            "dbus",
+            "networkmanager",
+            "nftables",
+            "openssh",
+            "coreutils",
+            "util-linux",
+            "bash",
+            "zsh",
+            "curl",
+            "wget",
+            "ca-certificates",
+            "gnupg",
+            "tar",
+            "gzip",
+            "xz",
+            "bzip2",
+            "iproute2",
+            "iputils",
+            "less",
+            "nano",
+            "man-pages",
         ]
         .iter()
         .map(|s| s.to_string())
@@ -758,8 +796,13 @@ impl AgnovaInstaller {
         let (mode_packages, size) = match mode {
             InstallMode::Server => {
                 let pkgs: Vec<String> = [
-                    "hoosh-server", "daimon-server", "ark", "nous",
-                    "prometheus-node-exporter", "fail2ban", "tmux",
+                    "hoosh-server",
+                    "daimon-server",
+                    "ark",
+                    "nous",
+                    "prometheus-node-exporter",
+                    "fail2ban",
+                    "tmux",
                 ]
                 .iter()
                 .map(|s| s.to_string())
@@ -768,22 +811,29 @@ impl AgnovaInstaller {
             }
             InstallMode::Desktop => {
                 let pkgs: Vec<String> = [
-                    "aethersafha", "pipewire", "wireplumber", "mesa",
-                    "vulkan-loader", "fonts-noto", "fonts-jetbrains-mono",
-                    "ark", "nous", "hoosh-server", "daimon-server",
-                    "xdg-utils", "nautilus", "evince", "firefox",
+                    "aethersafha",
+                    "pipewire",
+                    "wireplumber",
+                    "mesa",
+                    "vulkan-loader",
+                    "fonts-noto",
+                    "fonts-jetbrains-mono",
+                    "ark",
+                    "nous",
+                    "hoosh-server",
+                    "daimon-server",
+                    "xdg-utils",
+                    "nautilus",
+                    "evince",
+                    "firefox",
                 ]
                 .iter()
                 .map(|s| s.to_string())
                 .collect();
                 (pkgs, 4800)
             }
-            InstallMode::Minimal => {
-                (Vec::new(), 800)
-            }
-            InstallMode::Custom => {
-                (Vec::new(), 1200)
-            }
+            InstallMode::Minimal => (Vec::new(), 800),
+            InstallMode::Custom => (Vec::new(), 1200),
         };
 
         PackageSelection {
@@ -815,8 +865,15 @@ impl AgnovaInstaller {
         let current = self.progress.current_phase;
 
         // Block advancement if the current phase has a non-recoverable error
-        if self.errors.iter().any(|e| e.phase == current && !e.recoverable) {
-            warn!("agnova: cannot advance past non-recoverable failure at {}", current);
+        if self
+            .errors
+            .iter()
+            .any(|e| e.phase == current && !e.recoverable)
+        {
+            warn!(
+                "agnova: cannot advance past non-recoverable failure at {}",
+                current
+            );
             return false;
         }
 
@@ -1000,10 +1057,7 @@ mod tests {
             InstallPhase::ValidateConfig.to_string(),
             "Validating configuration"
         );
-        assert_eq!(
-            InstallPhase::Complete.to_string(),
-            "Installation complete"
-        );
+        assert_eq!(InstallPhase::Complete.to_string(), "Installation complete");
     }
 
     #[test]

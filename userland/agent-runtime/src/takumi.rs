@@ -365,9 +365,7 @@ impl TakumiBuildSystem {
             bail!("recipe has empty source sha256");
         }
         // Validate source URL scheme — only https:// and http:// are allowed
-        if !recipe.source.url.starts_with("https://")
-            && !recipe.source.url.starts_with("http://")
-        {
+        if !recipe.source.url.starts_with("https://") && !recipe.source.url.starts_with("http://") {
             bail!(
                 "source URL '{}' uses an unsupported scheme; only https:// and http:// are allowed",
                 recipe.source.url
@@ -552,10 +550,7 @@ impl TakumiBuildSystem {
     }
 
     /// Create an `.ark` manifest by scanning the fake-root install directory.
-    pub fn create_ark_manifest(
-        recipe: &BuildRecipe,
-        package_dir: &Path,
-    ) -> Result<ArkManifest> {
+    pub fn create_ark_manifest(recipe: &BuildRecipe, package_dir: &Path) -> Result<ArkManifest> {
         let size = Self::compute_dir_size(package_dir)?;
         let arch = recipe
             .package
@@ -608,11 +603,7 @@ impl TakumiBuildSystem {
     // -----------------------------------------------------------------------
 
     /// Recursively walk a directory, recording all files relative to `root`.
-    fn walk_dir(
-        root: &Path,
-        dir: &Path,
-        entries: &mut Vec<ArkFileEntry>,
-    ) -> Result<()> {
+    fn walk_dir(root: &Path, dir: &Path, entries: &mut Vec<ArkFileEntry>) -> Result<()> {
         let read_dir = std::fs::read_dir(dir)
             .with_context(|| format!("cannot read directory: {}", dir.display()))?;
 
@@ -787,9 +778,15 @@ ldflags = "-Wl,--as-needed"
         assert_eq!(recipe.source.patches.len(), 2);
         assert_eq!(recipe.depends.runtime, vec!["glibc", "zlib"]);
         assert_eq!(recipe.depends.build, vec!["perl", "make"]);
-        assert_eq!(recipe.build.pre_build.as_deref(), Some("sed -i 's/foo/bar/' Makefile.in"));
+        assert_eq!(
+            recipe.build.pre_build.as_deref(),
+            Some("sed -i 's/foo/bar/' Makefile.in")
+        );
         assert_eq!(recipe.build.check.as_deref(), Some("make test"));
-        assert_eq!(recipe.build.post_install.as_deref(), Some("rm -rf $PKG/usr/share/doc"));
+        assert_eq!(
+            recipe.build.post_install.as_deref(),
+            Some("rm -rf $PKG/usr/share/doc")
+        );
         assert_eq!(recipe.security.hardening.len(), 4);
         assert_eq!(recipe.security.cflags.as_deref(), Some("-O2"));
     }
@@ -855,7 +852,10 @@ sha256 = "deadbeef"
         recipe.package.name = String::new();
         let result = TakumiBuildSystem::validate_recipe(&recipe);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("empty package name"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("empty package name"));
     }
 
     #[test]
@@ -911,12 +911,30 @@ sha256 = "abc123"
 
     #[test]
     fn hardening_flag_from_str_all_variants() {
-        assert_eq!(HardeningFlag::from_str_loose("pie").unwrap(), HardeningFlag::Pie);
-        assert_eq!(HardeningFlag::from_str_loose("relro").unwrap(), HardeningFlag::Relro);
-        assert_eq!(HardeningFlag::from_str_loose("fullrelro").unwrap(), HardeningFlag::FullRelro);
-        assert_eq!(HardeningFlag::from_str_loose("full_relro").unwrap(), HardeningFlag::FullRelro);
-        assert_eq!(HardeningFlag::from_str_loose("full-relro").unwrap(), HardeningFlag::FullRelro);
-        assert_eq!(HardeningFlag::from_str_loose("fortify").unwrap(), HardeningFlag::Fortify);
+        assert_eq!(
+            HardeningFlag::from_str_loose("pie").unwrap(),
+            HardeningFlag::Pie
+        );
+        assert_eq!(
+            HardeningFlag::from_str_loose("relro").unwrap(),
+            HardeningFlag::Relro
+        );
+        assert_eq!(
+            HardeningFlag::from_str_loose("fullrelro").unwrap(),
+            HardeningFlag::FullRelro
+        );
+        assert_eq!(
+            HardeningFlag::from_str_loose("full_relro").unwrap(),
+            HardeningFlag::FullRelro
+        );
+        assert_eq!(
+            HardeningFlag::from_str_loose("full-relro").unwrap(),
+            HardeningFlag::FullRelro
+        );
+        assert_eq!(
+            HardeningFlag::from_str_loose("fortify").unwrap(),
+            HardeningFlag::Fortify
+        );
         assert_eq!(
             HardeningFlag::from_str_loose("stackprotector").unwrap(),
             HardeningFlag::StackProtector
@@ -925,8 +943,14 @@ sha256 = "abc123"
             HardeningFlag::from_str_loose("stack-protector").unwrap(),
             HardeningFlag::StackProtector
         );
-        assert_eq!(HardeningFlag::from_str_loose("bindnow").unwrap(), HardeningFlag::Bindnow);
-        assert_eq!(HardeningFlag::from_str_loose("bind_now").unwrap(), HardeningFlag::Bindnow);
+        assert_eq!(
+            HardeningFlag::from_str_loose("bindnow").unwrap(),
+            HardeningFlag::Bindnow
+        );
+        assert_eq!(
+            HardeningFlag::from_str_loose("bind_now").unwrap(),
+            HardeningFlag::Bindnow
+        );
     }
 
     #[test]
@@ -1171,11 +1195,8 @@ make = "make"
     #[test]
     fn resolve_build_order_simple_chain() {
         // c depends on b, b depends on a => build order: a, b, c
-        let sys = build_system_with_recipes(vec![
-            ("a", vec![]),
-            ("b", vec!["a"]),
-            ("c", vec!["b"]),
-        ]);
+        let sys =
+            build_system_with_recipes(vec![("a", vec![]), ("b", vec!["a"]), ("c", vec!["b"])]);
         let order = sys
             .resolve_build_order(&["a".into(), "b".into(), "c".into()])
             .unwrap();
@@ -1210,10 +1231,7 @@ make = "make"
 
     #[test]
     fn resolve_build_order_cycle_detection() {
-        let sys = build_system_with_recipes(vec![
-            ("a", vec!["b"]),
-            ("b", vec!["a"]),
-        ]);
+        let sys = build_system_with_recipes(vec![("a", vec!["b"]), ("b", vec!["a"])]);
         let result = sys.resolve_build_order(&["a".into(), "b".into()]);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("cycle"));
@@ -1221,11 +1239,7 @@ make = "make"
 
     #[test]
     fn resolve_build_order_independent_packages() {
-        let sys = build_system_with_recipes(vec![
-            ("x", vec![]),
-            ("y", vec![]),
-            ("z", vec![]),
-        ]);
+        let sys = build_system_with_recipes(vec![("x", vec![]), ("y", vec![]), ("z", vec![])]);
         let order = sys
             .resolve_build_order(&["x".into(), "y".into(), "z".into()])
             .unwrap();
@@ -1276,7 +1290,10 @@ make = "make"
             .collect();
         assert!(dirs.len() >= 3); // a, b, c
 
-        let deep = entries.iter().find(|e| e.path == "/a/b/c/deep.txt").unwrap();
+        let deep = entries
+            .iter()
+            .find(|e| e.path == "/a/b/c/deep.txt")
+            .unwrap();
         assert_eq!(deep.file_type, ArkFileType::Regular);
     }
 
@@ -1454,8 +1471,7 @@ make = "make"
         fs::write(pkg_dir.join("usr/bin/hello"), b"binary content here").unwrap();
 
         let recipe: BuildRecipe = toml::from_str(MINIMAL_RECIPE).unwrap();
-        let manifest =
-            TakumiBuildSystem::create_ark_manifest(&recipe, pkg_dir).unwrap();
+        let manifest = TakumiBuildSystem::create_ark_manifest(&recipe, pkg_dir).unwrap();
 
         assert_eq!(manifest.name, "hello");
         assert_eq!(manifest.version, "1.0.0");
@@ -1494,7 +1510,10 @@ make = "make"
         recipe.package.name = "../etc/passwd".to_string();
         let result = TakumiBuildSystem::validate_recipe(&recipe);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("unsafe characters"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("unsafe characters"));
     }
 
     #[test]
@@ -1503,7 +1522,10 @@ make = "make"
         recipe.package.name = "foo..bar".to_string();
         let result = TakumiBuildSystem::validate_recipe(&recipe);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("unsafe characters"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("unsafe characters"));
     }
 
     #[test]
@@ -1538,7 +1560,10 @@ make = "make"
         recipe.source.url = "file:///etc/passwd".to_string();
         let result = TakumiBuildSystem::validate_recipe(&recipe);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("unsupported scheme"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("unsupported scheme"));
     }
 
     #[test]
@@ -1547,7 +1572,10 @@ make = "make"
         recipe.source.url = "ftp://mirror.example.com/foo.tar.gz".to_string();
         let result = TakumiBuildSystem::validate_recipe(&recipe);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("unsupported scheme"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("unsupported scheme"));
     }
 
     #[test]

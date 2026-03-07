@@ -614,7 +614,8 @@ pub struct RlOptimizer {
 
 impl RlOptimizer {
     pub fn new(config: RlConfig) -> Self {
-        let epsilon_greedy = EpsilonGreedy::new(config.epsilon, config.epsilon_decay, config.epsilon_min);
+        let epsilon_greedy =
+            EpsilonGreedy::new(config.epsilon, config.epsilon_decay, config.epsilon_min);
         let replay_buffer = ReplayBuffer::new(config.replay_buffer_size);
         Self {
             config,
@@ -679,11 +680,8 @@ impl RlOptimizer {
                         0.0
                     } else {
                         // Collect actions seen for the next state.
-                        let next_actions: Vec<String> = self
-                            .unique_actions
-                            .keys()
-                            .cloned()
-                            .collect();
+                        let next_actions: Vec<String> =
+                            self.unique_actions.keys().cloned().collect();
                         next_actions
                             .iter()
                             .map(|a| self.q_table.get_q(&exp.next_state.state_id, a))
@@ -713,14 +711,12 @@ impl RlOptimizer {
             RlAlgorithm::PolicyGradient => {
                 // Gather a full episode from the most recent completed episode, or
                 // fall back to the batch as individual steps.
-                let episodes: Vec<Vec<Experience>> = self
-                    .episode_experiences
-                    .values()
-                    .cloned()
-                    .collect();
+                let episodes: Vec<Vec<Experience>> =
+                    self.episode_experiences.values().cloned().collect();
                 if let Some(ep) = episodes.last() {
                     self.policy.update_weights(ep, self.config.learning_rate);
-                    total_loss = ep.iter().map(|e| e.reward.value.abs()).sum::<f64>() / ep.len() as f64;
+                    total_loss =
+                        ep.iter().map(|e| e.reward.value.abs()).sum::<f64>() / ep.len() as f64;
                     total_q = 0.0;
                 }
             }
@@ -760,8 +756,10 @@ impl RlOptimizer {
 
         match self.config.algorithm {
             RlAlgorithm::QLearning | RlAlgorithm::Bandit => {
-                let action_ids: Vec<String> =
-                    available_actions.iter().map(|a| a.action_id.clone()).collect();
+                let action_ids: Vec<String> = available_actions
+                    .iter()
+                    .map(|a| a.action_id.clone())
+                    .collect();
                 let (chosen_id, was_explore) =
                     self.epsilon_greedy
                         .select_action(&self.q_table, &state.state_id, &action_ids);
@@ -777,8 +775,10 @@ impl RlOptimizer {
                     .unwrap_or_else(|| available_actions[0].clone())
             }
             RlAlgorithm::PolicyGradient => {
-                let action_ids: Vec<String> =
-                    available_actions.iter().map(|a| a.action_id.clone()).collect();
+                let action_ids: Vec<String> = available_actions
+                    .iter()
+                    .map(|a| a.action_id.clone())
+                    .collect();
                 let chosen_id = self.policy.select_action(&action_ids);
                 debug!(action = %chosen_id, "action selected (policy gradient)");
                 available_actions
@@ -965,7 +965,14 @@ mod tests {
     fn test_replay_buffer_capacity_overflow() {
         let mut buf = ReplayBuffer::new(3);
         for i in 0..5 {
-            buf.add(make_experience(&format!("s{i}"), "a0", i as f64, "s_next", false, "ep1"));
+            buf.add(make_experience(
+                &format!("s{i}"),
+                "a0",
+                i as f64,
+                "s_next",
+                false,
+                "ep1",
+            ));
         }
         assert_eq!(buf.len(), 3);
     }
@@ -978,7 +985,11 @@ mod tests {
         buf.add(make_experience("third", "a0", 0.0, "s1", false, "ep1"));
         assert_eq!(buf.len(), 2);
         // "first" should have been overwritten.
-        let ids: Vec<&str> = buf.buffer.iter().map(|e| e.state.state_id.as_str()).collect();
+        let ids: Vec<&str> = buf
+            .buffer
+            .iter()
+            .map(|e| e.state.state_id.as_str())
+            .collect();
         assert!(ids.contains(&"third"));
         assert!(ids.contains(&"second") || ids.contains(&"third"));
         assert!(!ids.contains(&"first") || buf.len() < 3);
@@ -995,7 +1006,14 @@ mod tests {
     fn test_replay_buffer_sample_returns_correct_count() {
         let mut buf = ReplayBuffer::new(100);
         for i in 0..50 {
-            buf.add(make_experience(&format!("s{i}"), "a0", 1.0, "sn", false, "ep"));
+            buf.add(make_experience(
+                &format!("s{i}"),
+                "a0",
+                1.0,
+                "sn",
+                false,
+                "ep",
+            ));
         }
         let s = buf.sample(10);
         assert_eq!(s.len(), 10);
@@ -1050,10 +1068,7 @@ mod tests {
     fn test_replay_buffer_prioritized_bias() {
         // High-priority item should be sampled more frequently.
         let mut buf = ReplayBuffer::new(10);
-        buf.add_with_priority(
-            make_experience("low", "a0", 0.0, "sn", false, "ep"),
-            0.001,
-        );
+        buf.add_with_priority(make_experience("low", "a0", 0.0, "sn", false, "ep"), 0.001);
         buf.add_with_priority(
             make_experience("high", "a0", 1.0, "sn", false, "ep"),
             1000.0,
@@ -1065,7 +1080,10 @@ mod tests {
                 high_count += 1;
             }
         }
-        assert!(high_count > 80, "high priority should dominate: got {high_count}/100");
+        assert!(
+            high_count > 80,
+            "high priority should dominate: got {high_count}/100"
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -1118,9 +1136,7 @@ mod tests {
     fn test_qtable_best_action_all_equal() {
         let q = QTable::new();
         // All unseen => all 0.0 => first should win.
-        let best = q
-            .best_action("s0", &["a1".into(), "a2".into()])
-            .unwrap();
+        let best = q.best_action("s0", &["a1".into(), "a2".into()]).unwrap();
         assert_eq!(best, "a1");
     }
 

@@ -83,6 +83,7 @@ fn make_temp_config() -> ShellConfig {
         audit_log: tmp.join("bench_audit.log"),
         show_explanations: false,
         theme: "default".to_string(),
+        aliases: std::collections::HashMap::new(),
     }
 }
 
@@ -447,8 +448,16 @@ fn bench_explain_unknown_commands(c: &mut Criterion) {
     let interpreter = Interpreter::new();
 
     let unknown_cmds = [
-        "mycustomtool", "zig", "bun", "deno", "nix-build", "podman",
-        "wasmtime", "ollama", "kubectl", "terraform",
+        "mycustomtool",
+        "zig",
+        "bun",
+        "deno",
+        "nix-build",
+        "podman",
+        "wasmtime",
+        "ollama",
+        "kubectl",
+        "terraform",
     ];
 
     c.bench_function("system/explain_10_unknown_commands", |b| {

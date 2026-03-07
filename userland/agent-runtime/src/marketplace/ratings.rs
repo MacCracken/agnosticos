@@ -295,9 +295,8 @@ impl RatingStore {
     pub fn save(&self, path: &Path) -> Result<()> {
         let json =
             serde_json::to_string_pretty(self).context("Failed to serialize rating store")?;
-        std::fs::write(path, json).with_context(|| {
-            format!("Failed to write rating store to {}", path.display())
-        })?;
+        std::fs::write(path, json)
+            .with_context(|| format!("Failed to write rating store to {}", path.display()))?;
         debug!(path = %path.display(), "Rating store saved");
         Ok(())
     }
@@ -311,9 +310,8 @@ impl RatingStore {
             );
             return Ok(Self::new());
         }
-        let data = std::fs::read_to_string(path).with_context(|| {
-            format!("Failed to read rating store from {}", path.display())
-        })?;
+        let data = std::fs::read_to_string(path)
+            .with_context(|| format!("Failed to read rating store from {}", path.display()))?;
         let store: Self =
             serde_json::from_str(&data).context("Failed to deserialize rating store")?;
         debug!(
@@ -355,13 +353,7 @@ mod tests {
             )
             .unwrap();
         store
-            .add_rating(
-                "agent-2".into(),
-                "pkg-a".into(),
-                3,
-                None,
-                "1.0.0".into(),
-            )
+            .add_rating("agent-2".into(), "pkg-a".into(), 3, None, "1.0.0".into())
             .unwrap();
         store
             .add_rating(
@@ -401,13 +393,7 @@ mod tests {
     fn test_add_rating_no_review() {
         let mut store = RatingStore::new();
         let r = store
-            .add_rating(
-                "agent-1".into(),
-                "pkg".into(),
-                3,
-                None,
-                "0.1.0".into(),
-            )
+            .add_rating("agent-1".into(), "pkg".into(), 3, None, "0.1.0".into())
             .unwrap();
         assert!(r.review.is_none());
     }
@@ -481,13 +467,7 @@ mod tests {
         let mut store = RatingStore::new();
         let long_review = "x".repeat(2001);
         let err = store
-            .add_rating(
-                "a".into(),
-                "p".into(),
-                4,
-                Some(long_review),
-                "1.0.0".into(),
-            )
+            .add_rating("a".into(), "p".into(), 4, Some(long_review), "1.0.0".into())
             .unwrap_err();
         assert!(err.to_string().contains("exceeds maximum length"));
     }

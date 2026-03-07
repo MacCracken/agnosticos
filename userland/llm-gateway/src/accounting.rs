@@ -29,7 +29,9 @@ impl TokenAccounting {
     pub async fn record_usage(&self, agent_id: AgentId, usage: TokenUsage) {
         // Update agent-specific usage
         let mut agent_usage = self.agent_usage.write().await;
-        let entry = agent_usage.entry(agent_id).or_insert_with(TokenUsage::default);
+        let entry = agent_usage
+            .entry(agent_id)
+            .or_insert_with(TokenUsage::default);
         entry.prompt_tokens += usage.prompt_tokens;
         entry.completion_tokens += usage.completion_tokens;
         entry.total_tokens += usage.total_tokens;
@@ -69,10 +71,10 @@ impl TokenAccounting {
     pub async fn reset_all(&self) {
         let mut agent_usage = self.agent_usage.write().await;
         agent_usage.clear();
-        
+
         let mut total = self.total_usage.write().await;
         *total = TokenUsage::default();
-        
+
         debug!("Reset all token usage");
     }
 
@@ -105,7 +107,7 @@ impl TokenAccounting {
     pub async fn stats(&self) -> AccountingStats {
         let agents = self.agent_usage.read().await;
         let total = self.total_usage.read().await;
-        
+
         AccountingStats {
             total_agents: agents.len(),
             total_prompt_tokens: total.prompt_tokens,
@@ -204,22 +206,23 @@ impl BudgetPool {
 
     /// Consume tokens from a project's allocation. Fails if the project would exceed its quota.
     pub fn consume(&mut self, project: &str, tokens: u64) -> Result<(), String> {
-        let allocation = self
-            .allocated
-            .get(project)
-            .copied()
-            .ok_or_else(|| format!("Project '{}' has no allocation in pool '{}'", project, self.name))?;
+        let allocation = self.allocated.get(project).copied().ok_or_else(|| {
+            format!(
+                "Project '{}' has no allocation in pool '{}'",
+                project, self.name
+            )
+        })?;
         let used = self.used_per_project.get(project).copied().unwrap_or(0);
         if used + tokens > allocation {
             return Err(format!(
                 "Project '{}' would exceed budget: used={}, requesting={}, allocated={}",
-                project,
-                used,
-                tokens,
-                allocation
+                project, used, tokens, allocation
             ));
         }
-        *self.used_per_project.entry(project.to_string()).or_insert(0) += tokens;
+        *self
+            .used_per_project
+            .entry(project.to_string())
+            .or_insert(0) += tokens;
         self.used_tokens += tokens;
         Ok(())
     }
@@ -354,12 +357,19 @@ impl BudgetManager {
     }
 
     /// Create a new named pool. Returns an error if the pool already exists.
-    pub fn create_pool(&mut self, name: &str, total_tokens: u64, period: Duration) -> Result<(), String> {
+    pub fn create_pool(
+        &mut self,
+        name: &str,
+        total_tokens: u64,
+        period: Duration,
+    ) -> Result<(), String> {
         if self.pools.contains_key(name) {
             return Err(format!("Pool '{}' already exists", name));
         }
-        self.pools
-            .insert(name.to_string(), BudgetPool::new(name, total_tokens, period));
+        self.pools.insert(
+            name.to_string(),
+            BudgetPool::new(name, total_tokens, period),
+        );
         Ok(())
     }
 
@@ -407,15 +417,15 @@ mod tests {
     async fn test_record_usage() {
         let accounting = TokenAccounting::new();
         let agent_id = AgentId::new();
-        
+
         let usage = TokenUsage {
             prompt_tokens: 100,
             completion_tokens: 200,
             total_tokens: 300,
         };
-        
+
         accounting.record_usage(agent_id, usage).await;
-        
+
         let agent_usage = accounting.get_usage(agent_id).await;
         assert!(agent_usage.is_some());
         assert_eq!(agent_usage.unwrap().total_tokens, 300);
@@ -425,15 +435,15 @@ mod tests {
     async fn test_get_total_usage() {
         let accounting = TokenAccounting::new();
         let agent_id = AgentId::new();
-        
+
         let usage = TokenUsage {
             prompt_tokens: 50,
             completion_tokens: 100,
             total_tokens: 150,
         };
-        
+
         accounting.record_usage(agent_id, usage).await;
-        
+
         let total = accounting.get_total_usage().await;
         assert_eq!(total.total_tokens, 150);
     }
@@ -442,16 +452,16 @@ mod tests {
     async fn test_reset_usage() {
         let accounting = TokenAccounting::new();
         let agent_id = AgentId::new();
-        
+
         let usage = TokenUsage {
             prompt_tokens: 10,
             completion_tokens: 20,
             total_tokens: 30,
         };
-        
+
         accounting.record_usage(agent_id, usage).await;
         accounting.reset_usage(agent_id).await;
-        
+
         let agent_usage = accounting.get_usage(agent_id).await;
         assert!(agent_usage.is_none());
     }
@@ -460,16 +470,16 @@ mod tests {
     async fn test_reset_all() {
         let accounting = TokenAccounting::new();
         let agent_id = AgentId::new();
-        
+
         let usage = TokenUsage {
             prompt_tokens: 10,
             completion_tokens: 20,
             total_tokens: 30,
         };
-        
+
         accounting.record_usage(agent_id, usage).await;
         accounting.reset_all().await;
-        
+
         let stats = accounting.stats().await;
         assert_eq!(stats.total_agents, 0);
         assert_eq!(stats.total_tokens, 0);
@@ -478,13 +488,31 @@ mod tests {
     #[tokio::test]
     async fn test_list_agents() {
         let accounting = TokenAccounting::new();
-        
+
         let agent1 = AgentId::new();
         let agent2 = AgentId::new();
-        
-        accounting.record_usage(agent1, TokenUsage { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 }).await;
-        accounting.record_usage(agent2, TokenUsage { prompt_tokens: 15, completion_tokens: 25, total_tokens: 40 }).await;
-        
+
+        accounting
+            .record_usage(
+                agent1,
+                TokenUsage {
+                    prompt_tokens: 10,
+                    completion_tokens: 20,
+                    total_tokens: 30,
+                },
+            )
+            .await;
+        accounting
+            .record_usage(
+                agent2,
+                TokenUsage {
+                    prompt_tokens: 15,
+                    completion_tokens: 25,
+                    total_tokens: 40,
+                },
+            )
+            .await;
+
         let agents = accounting.list_agents().await;
         assert_eq!(agents.len(), 2);
     }
@@ -496,8 +524,26 @@ mod tests {
         let agent1 = AgentId::new();
         let agent2 = AgentId::new();
 
-        accounting.record_usage(agent1, TokenUsage { prompt_tokens: 100, completion_tokens: 200, total_tokens: 300 }).await;
-        accounting.record_usage(agent2, TokenUsage { prompt_tokens: 50, completion_tokens: 100, total_tokens: 150 }).await;
+        accounting
+            .record_usage(
+                agent1,
+                TokenUsage {
+                    prompt_tokens: 100,
+                    completion_tokens: 200,
+                    total_tokens: 300,
+                },
+            )
+            .await;
+        accounting
+            .record_usage(
+                agent2,
+                TokenUsage {
+                    prompt_tokens: 50,
+                    completion_tokens: 100,
+                    total_tokens: 150,
+                },
+            )
+            .await;
 
         let total = accounting.get_total_usage().await;
         assert_eq!(total.total_tokens, 450);
@@ -509,8 +555,26 @@ mod tests {
         let agent1 = AgentId::new();
         let agent2 = AgentId::new();
 
-        accounting.record_usage(agent1, TokenUsage { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 }).await;
-        accounting.record_usage(agent2, TokenUsage { prompt_tokens: 5, completion_tokens: 15, total_tokens: 20 }).await;
+        accounting
+            .record_usage(
+                agent1,
+                TokenUsage {
+                    prompt_tokens: 10,
+                    completion_tokens: 20,
+                    total_tokens: 30,
+                },
+            )
+            .await;
+        accounting
+            .record_usage(
+                agent2,
+                TokenUsage {
+                    prompt_tokens: 5,
+                    completion_tokens: 15,
+                    total_tokens: 20,
+                },
+            )
+            .await;
 
         let stats = accounting.stats().await;
         assert_eq!(stats.total_agents, 2);
@@ -538,8 +602,26 @@ mod tests {
         let accounting = TokenAccounting::new();
         let agent = AgentId::new();
 
-        accounting.record_usage(agent, TokenUsage { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 }).await;
-        accounting.record_usage(agent, TokenUsage { prompt_tokens: 5, completion_tokens: 10, total_tokens: 15 }).await;
+        accounting
+            .record_usage(
+                agent,
+                TokenUsage {
+                    prompt_tokens: 10,
+                    completion_tokens: 20,
+                    total_tokens: 30,
+                },
+            )
+            .await;
+        accounting
+            .record_usage(
+                agent,
+                TokenUsage {
+                    prompt_tokens: 5,
+                    completion_tokens: 10,
+                    total_tokens: 15,
+                },
+            )
+            .await;
 
         let usage = accounting.get_usage(agent).await.unwrap();
         assert_eq!(usage.prompt_tokens, 15);
@@ -552,11 +634,16 @@ mod tests {
         let accounting = TokenAccounting::new();
         let agent = AgentId::new();
 
-        accounting.record_usage(agent, TokenUsage {
-            prompt_tokens: 0,
-            completion_tokens: 0,
-            total_tokens: 0,
-        }).await;
+        accounting
+            .record_usage(
+                agent,
+                TokenUsage {
+                    prompt_tokens: 0,
+                    completion_tokens: 0,
+                    total_tokens: 0,
+                },
+            )
+            .await;
 
         let usage = accounting.get_usage(agent).await;
         assert!(usage.is_some(), "Zero-token usage should still be recorded");
@@ -569,9 +656,16 @@ mod tests {
         let accounting = TokenAccounting::new();
         let agent = AgentId::new();
 
-        accounting.record_usage(agent, TokenUsage {
-            prompt_tokens: 50, completion_tokens: 50, total_tokens: 100,
-        }).await;
+        accounting
+            .record_usage(
+                agent,
+                TokenUsage {
+                    prompt_tokens: 50,
+                    completion_tokens: 50,
+                    total_tokens: 100,
+                },
+            )
+            .await;
 
         accounting.reset_usage(agent).await;
 
@@ -585,9 +679,16 @@ mod tests {
         let accounting = TokenAccounting::new();
         let agent = AgentId::new();
 
-        accounting.record_usage(agent, TokenUsage {
-            prompt_tokens: 100, completion_tokens: 200, total_tokens: 300,
-        }).await;
+        accounting
+            .record_usage(
+                agent,
+                TokenUsage {
+                    prompt_tokens: 100,
+                    completion_tokens: 200,
+                    total_tokens: 300,
+                },
+            )
+            .await;
 
         accounting.reset_all().await;
 
@@ -612,9 +713,16 @@ mod tests {
 
         for _ in 0..100 {
             let agent = AgentId::new();
-            accounting.record_usage(agent, TokenUsage {
-                prompt_tokens: 1, completion_tokens: 1, total_tokens: 2,
-            }).await;
+            accounting
+                .record_usage(
+                    agent,
+                    TokenUsage {
+                        prompt_tokens: 1,
+                        completion_tokens: 1,
+                        total_tokens: 2,
+                    },
+                )
+                .await;
         }
 
         let stats = accounting.stats().await;
@@ -634,9 +742,15 @@ mod tests {
             let acct = accounting.clone();
             let aid = agent;
             handles.push(tokio::spawn(async move {
-                acct.record_usage(aid, TokenUsage {
-                    prompt_tokens: 1, completion_tokens: 2, total_tokens: 3,
-                }).await;
+                acct.record_usage(
+                    aid,
+                    TokenUsage {
+                        prompt_tokens: 1,
+                        completion_tokens: 2,
+                        total_tokens: 3,
+                    },
+                )
+                .await;
             }));
         }
 
@@ -657,9 +771,36 @@ mod tests {
         let agent2 = AgentId::new();
         let agent3 = AgentId::new();
 
-        accounting.record_usage(agent1, TokenUsage { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }).await;
-        accounting.record_usage(agent2, TokenUsage { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }).await;
-        accounting.record_usage(agent3, TokenUsage { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }).await;
+        accounting
+            .record_usage(
+                agent1,
+                TokenUsage {
+                    prompt_tokens: 1,
+                    completion_tokens: 1,
+                    total_tokens: 2,
+                },
+            )
+            .await;
+        accounting
+            .record_usage(
+                agent2,
+                TokenUsage {
+                    prompt_tokens: 1,
+                    completion_tokens: 1,
+                    total_tokens: 2,
+                },
+            )
+            .await;
+        accounting
+            .record_usage(
+                agent3,
+                TokenUsage {
+                    prompt_tokens: 1,
+                    completion_tokens: 1,
+                    total_tokens: 2,
+                },
+            )
+            .await;
 
         accounting.reset_usage(agent2).await;
 
@@ -677,12 +818,26 @@ mod tests {
         let a1 = AgentId::new();
         let a2 = AgentId::new();
 
-        accounting.record_usage(a1, TokenUsage {
-            prompt_tokens: 100, completion_tokens: 50, total_tokens: 150,
-        }).await;
-        accounting.record_usage(a2, TokenUsage {
-            prompt_tokens: 200, completion_tokens: 300, total_tokens: 500,
-        }).await;
+        accounting
+            .record_usage(
+                a1,
+                TokenUsage {
+                    prompt_tokens: 100,
+                    completion_tokens: 50,
+                    total_tokens: 150,
+                },
+            )
+            .await;
+        accounting
+            .record_usage(
+                a2,
+                TokenUsage {
+                    prompt_tokens: 200,
+                    completion_tokens: 300,
+                    total_tokens: 500,
+                },
+            )
+            .await;
 
         let stats = accounting.stats().await;
         assert_eq!(stats.total_prompt_tokens, 300);
@@ -725,11 +880,16 @@ mod tests {
     async fn test_record_usage_large_values() {
         let accounting = TokenAccounting::new();
         let agent = AgentId::new();
-        accounting.record_usage(agent, TokenUsage {
-            prompt_tokens: u32::MAX / 2,
-            completion_tokens: u32::MAX / 2,
-            total_tokens: u32::MAX - 1,
-        }).await;
+        accounting
+            .record_usage(
+                agent,
+                TokenUsage {
+                    prompt_tokens: u32::MAX / 2,
+                    completion_tokens: u32::MAX / 2,
+                    total_tokens: u32::MAX - 1,
+                },
+            )
+            .await;
         let usage = accounting.get_usage(agent).await.unwrap();
         assert_eq!(usage.prompt_tokens, u32::MAX / 2);
         assert_eq!(usage.completion_tokens, u32::MAX / 2);
@@ -739,16 +899,30 @@ mod tests {
     async fn test_record_usage_then_reset_then_record_again() {
         let accounting = TokenAccounting::new();
         let agent = AgentId::new();
-        accounting.record_usage(agent, TokenUsage {
-            prompt_tokens: 100, completion_tokens: 200, total_tokens: 300,
-        }).await;
+        accounting
+            .record_usage(
+                agent,
+                TokenUsage {
+                    prompt_tokens: 100,
+                    completion_tokens: 200,
+                    total_tokens: 300,
+                },
+            )
+            .await;
         accounting.reset_usage(agent).await;
         assert!(accounting.get_usage(agent).await.is_none());
 
         // Record again after reset
-        accounting.record_usage(agent, TokenUsage {
-            prompt_tokens: 50, completion_tokens: 50, total_tokens: 100,
-        }).await;
+        accounting
+            .record_usage(
+                agent,
+                TokenUsage {
+                    prompt_tokens: 50,
+                    completion_tokens: 50,
+                    total_tokens: 100,
+                },
+            )
+            .await;
         let usage = accounting.get_usage(agent).await.unwrap();
         assert_eq!(usage.prompt_tokens, 50);
         assert_eq!(usage.total_tokens, 100);
@@ -759,18 +933,39 @@ mod tests {
         let accounting = TokenAccounting::new();
         let a1 = AgentId::new();
         let a2 = AgentId::new();
-        accounting.record_usage(a1, TokenUsage {
-            prompt_tokens: 10, completion_tokens: 20, total_tokens: 30,
-        }).await;
-        accounting.record_usage(a2, TokenUsage {
-            prompt_tokens: 40, completion_tokens: 50, total_tokens: 90,
-        }).await;
+        accounting
+            .record_usage(
+                a1,
+                TokenUsage {
+                    prompt_tokens: 10,
+                    completion_tokens: 20,
+                    total_tokens: 30,
+                },
+            )
+            .await;
+        accounting
+            .record_usage(
+                a2,
+                TokenUsage {
+                    prompt_tokens: 40,
+                    completion_tokens: 50,
+                    total_tokens: 90,
+                },
+            )
+            .await;
         accounting.reset_all().await;
 
         // Record after reset
-        accounting.record_usage(a1, TokenUsage {
-            prompt_tokens: 5, completion_tokens: 5, total_tokens: 10,
-        }).await;
+        accounting
+            .record_usage(
+                a1,
+                TokenUsage {
+                    prompt_tokens: 5,
+                    completion_tokens: 5,
+                    total_tokens: 10,
+                },
+            )
+            .await;
         let stats = accounting.stats().await;
         assert_eq!(stats.total_agents, 1);
         assert_eq!(stats.total_tokens, 10);
@@ -789,9 +984,16 @@ mod tests {
     async fn test_list_agents_after_reset_all() {
         let accounting = TokenAccounting::new();
         let agent = AgentId::new();
-        accounting.record_usage(agent, TokenUsage {
-            prompt_tokens: 1, completion_tokens: 1, total_tokens: 2,
-        }).await;
+        accounting
+            .record_usage(
+                agent,
+                TokenUsage {
+                    prompt_tokens: 1,
+                    completion_tokens: 1,
+                    total_tokens: 2,
+                },
+            )
+            .await;
         accounting.reset_all().await;
         assert!(accounting.list_agents().await.is_empty());
     }
@@ -805,9 +1007,15 @@ mod tests {
         for &agent in &agents {
             let acct = accounting.clone();
             handles.push(tokio::spawn(async move {
-                acct.record_usage(agent, TokenUsage {
-                    prompt_tokens: 10, completion_tokens: 5, total_tokens: 15,
-                }).await;
+                acct.record_usage(
+                    agent,
+                    TokenUsage {
+                        prompt_tokens: 10,
+                        completion_tokens: 5,
+                        total_tokens: 15,
+                    },
+                )
+                .await;
             }));
         }
 
@@ -828,9 +1036,16 @@ mod tests {
         let agent = AgentId::new();
 
         // Pre-populate
-        accounting.record_usage(agent, TokenUsage {
-            prompt_tokens: 100, completion_tokens: 100, total_tokens: 200,
-        }).await;
+        accounting
+            .record_usage(
+                agent,
+                TokenUsage {
+                    prompt_tokens: 100,
+                    completion_tokens: 100,
+                    total_tokens: 200,
+                },
+            )
+            .await;
 
         let mut handles = vec![];
         // Concurrent records and resets
@@ -839,9 +1054,15 @@ mod tests {
             let a = agent;
             handles.push(tokio::spawn(async move {
                 if i % 2 == 0 {
-                    acct.record_usage(a, TokenUsage {
-                        prompt_tokens: 1, completion_tokens: 1, total_tokens: 2,
-                    }).await;
+                    acct.record_usage(
+                        a,
+                        TokenUsage {
+                            prompt_tokens: 1,
+                            completion_tokens: 1,
+                            total_tokens: 2,
+                        },
+                    )
+                    .await;
                 } else {
                     acct.reset_usage(a).await;
                 }
@@ -854,7 +1075,10 @@ mod tests {
 
         // Should not panic; state may vary but total should be consistent
         let total = accounting.get_total_usage().await;
-        assert!(total.total_tokens >= 200, "Total should at least have initial value");
+        assert!(
+            total.total_tokens >= 200,
+            "Total should at least have initial value"
+        );
     }
 
     #[tokio::test]
@@ -864,11 +1088,16 @@ mod tests {
 
         for (i, &agent) in agents.iter().enumerate() {
             let tokens = (i as u32 + 1) * 10;
-            accounting.record_usage(agent, TokenUsage {
-                prompt_tokens: tokens,
-                completion_tokens: tokens * 2,
-                total_tokens: tokens * 3,
-            }).await;
+            accounting
+                .record_usage(
+                    agent,
+                    TokenUsage {
+                        prompt_tokens: tokens,
+                        completion_tokens: tokens * 2,
+                        total_tokens: tokens * 3,
+                    },
+                )
+                .await;
         }
 
         let stats = accounting.stats().await;
@@ -887,9 +1116,16 @@ mod tests {
         let agent = AgentId::new();
 
         for _ in 0..100 {
-            accounting.record_usage(agent, TokenUsage {
-                prompt_tokens: 1, completion_tokens: 2, total_tokens: 3,
-            }).await;
+            accounting
+                .record_usage(
+                    agent,
+                    TokenUsage {
+                        prompt_tokens: 1,
+                        completion_tokens: 2,
+                        total_tokens: 3,
+                    },
+                )
+                .await;
         }
 
         let usage = accounting.get_usage(agent).await.unwrap();
@@ -905,9 +1141,16 @@ mod tests {
     async fn test_reset_usage_returns_cleanly() {
         let accounting = TokenAccounting::new();
         let agent = AgentId::new();
-        accounting.record_usage(agent, TokenUsage {
-            prompt_tokens: 1, completion_tokens: 1, total_tokens: 2,
-        }).await;
+        accounting
+            .record_usage(
+                agent,
+                TokenUsage {
+                    prompt_tokens: 1,
+                    completion_tokens: 1,
+                    total_tokens: 2,
+                },
+            )
+            .await;
         // reset_usage returns nothing; just ensure no panic
         accounting.reset_usage(agent).await;
         accounting.reset_usage(agent).await; // Double reset
@@ -945,13 +1188,27 @@ mod tests {
         let others: Vec<AgentId> = (0..10).map(|_| AgentId::new()).collect();
 
         for &other in &others {
-            accounting.record_usage(other, TokenUsage {
-                prompt_tokens: 99, completion_tokens: 99, total_tokens: 198,
-            }).await;
+            accounting
+                .record_usage(
+                    other,
+                    TokenUsage {
+                        prompt_tokens: 99,
+                        completion_tokens: 99,
+                        total_tokens: 198,
+                    },
+                )
+                .await;
         }
-        accounting.record_usage(target, TokenUsage {
-            prompt_tokens: 7, completion_tokens: 13, total_tokens: 20,
-        }).await;
+        accounting
+            .record_usage(
+                target,
+                TokenUsage {
+                    prompt_tokens: 7,
+                    completion_tokens: 13,
+                    total_tokens: 20,
+                },
+            )
+            .await;
 
         let usage = accounting.get_usage(target).await.unwrap();
         assert_eq!(usage.prompt_tokens, 7);
@@ -966,9 +1223,36 @@ mod tests {
         let a2 = AgentId::new();
         let a3 = AgentId::new();
 
-        accounting.record_usage(a1, TokenUsage { prompt_tokens: 10, completion_tokens: 10, total_tokens: 20 }).await;
-        accounting.record_usage(a2, TokenUsage { prompt_tokens: 20, completion_tokens: 20, total_tokens: 40 }).await;
-        accounting.record_usage(a3, TokenUsage { prompt_tokens: 30, completion_tokens: 30, total_tokens: 60 }).await;
+        accounting
+            .record_usage(
+                a1,
+                TokenUsage {
+                    prompt_tokens: 10,
+                    completion_tokens: 10,
+                    total_tokens: 20,
+                },
+            )
+            .await;
+        accounting
+            .record_usage(
+                a2,
+                TokenUsage {
+                    prompt_tokens: 20,
+                    completion_tokens: 20,
+                    total_tokens: 40,
+                },
+            )
+            .await;
+        accounting
+            .record_usage(
+                a3,
+                TokenUsage {
+                    prompt_tokens: 30,
+                    completion_tokens: 30,
+                    total_tokens: 60,
+                },
+            )
+            .await;
 
         // Reset a2
         accounting.reset_usage(a2).await;

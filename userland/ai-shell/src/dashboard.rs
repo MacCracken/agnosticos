@@ -149,10 +149,7 @@ impl DashboardClient {
                     status: agent["status"].as_str().unwrap_or("unknown").to_string(),
                     cpu_percent: agent["cpu_percent"].as_f64().map(|v| v as f32),
                     memory_mb: agent["memory_mb"].as_u64(),
-                    task_count: agent["current_task"]
-                        .as_str()
-                        .map(|_| 1)
-                        .unwrap_or(0),
+                    task_count: agent["current_task"].as_str().map(|_| 1).unwrap_or(0),
                     error_count: 0,
                     last_action: agent["current_task"].as_str().map(String::from),
                     last_heartbeat: agent["last_heartbeat"]
@@ -177,7 +174,13 @@ impl Default for DashboardClient {
 mod tests {
     use super::*;
 
-    fn make_entry(id: &str, status: &str, cpu: Option<f32>, mem: Option<u64>, errors: u32) -> AgentDashboardEntry {
+    fn make_entry(
+        id: &str,
+        status: &str,
+        cpu: Option<f32>,
+        mem: Option<u64>,
+        errors: u32,
+    ) -> AgentDashboardEntry {
         AgentDashboardEntry {
             id: id.to_string(),
             name: id.to_string(),
@@ -266,9 +269,13 @@ mod tests {
 
     #[test]
     fn test_render_table_with_agents() {
-        let entries = vec![
-            make_entry("agent-alpha", "running", Some(15.2), Some(256), 1),
-        ];
+        let entries = vec![make_entry(
+            "agent-alpha",
+            "running",
+            Some(15.2),
+            Some(256),
+            1,
+        )];
         let state = DashboardState::from_entries(entries);
         let table = state.render_table();
         assert!(table.contains("agent-alpha"));

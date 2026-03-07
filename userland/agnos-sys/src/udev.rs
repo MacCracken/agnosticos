@@ -148,14 +148,30 @@ const DANGEROUS_ACTIONS: &[&str] = &["RUN", "PROGRAM", "IMPORT{program}", "IMPOR
 
 /// Valid udev assignment action keys.
 const VALID_ACTION_KEYS: &[&str] = &[
-    "MODE", "OWNER", "GROUP", "TAG", "TAG+=", "SYMLINK", "SYMLINK+=",
-    "ENV", "ATTR", "NAME", "OPTIONS",
+    "MODE",
+    "OWNER",
+    "GROUP",
+    "TAG",
+    "TAG+=",
+    "SYMLINK",
+    "SYMLINK+=",
+    "ENV",
+    "ATTR",
+    "NAME",
+    "OPTIONS",
 ];
 
 /// Valid udev match keys.
 const VALID_MATCH_KEYS: &[&str] = &[
-    "SUBSYSTEM", "KERNEL", "DRIVER", "ATTR", "ATTRS",
-    "ACTION", "DEVPATH", "ENV", "TAG",
+    "SUBSYSTEM",
+    "KERNEL",
+    "DRIVER",
+    "ATTR",
+    "ATTRS",
+    "ACTION",
+    "DEVPATH",
+    "ENV",
+    "TAG",
 ];
 
 // ---------------------------------------------------------------------------
@@ -175,17 +191,17 @@ pub fn list_devices(subsystem: Option<&str>) -> Result<Vec<DeviceInfo>> {
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(SysError::Unknown(format!("udevadm info --export-db failed: {}", stderr)));
+            return Err(SysError::Unknown(format!(
+                "udevadm info --export-db failed: {}",
+                stderr
+            )));
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
         let devices = parse_export_db(&stdout)?;
 
         match subsystem {
-            Some(sub) => Ok(devices
-                .into_iter()
-                .filter(|d| d.subsystem == sub)
-                .collect()),
+            Some(sub) => Ok(devices.into_iter().filter(|d| d.subsystem == sub).collect()),
             None => Ok(devices),
         }
     }
@@ -212,7 +228,10 @@ pub fn get_device_info(syspath: &str) -> Result<DeviceInfo> {
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(SysError::Unknown(format!("udevadm info failed: {}", stderr)));
+            return Err(SysError::Unknown(format!(
+                "udevadm info failed: {}",
+                stderr
+            )));
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
@@ -249,9 +268,7 @@ pub fn parse_udevadm_info(output: &str) -> Result<DeviceInfo> {
             devnode = Some(format!("/dev/{}", val));
         } else if let Some(val) = line.strip_prefix("S: ") {
             // Accumulate symlinks into property
-            let existing = properties
-                .entry("DEVLINKS".to_string())
-                .or_default();
+            let existing = properties.entry("DEVLINKS".to_string()).or_default();
             if !existing.is_empty() {
                 existing.push(' ');
             }
@@ -270,10 +287,7 @@ pub fn parse_udevadm_info(output: &str) -> Result<DeviceInfo> {
     }
 
     let syspath = format!("/sys{}", devpath);
-    let subsystem = properties
-        .get("SUBSYSTEM")
-        .cloned()
-        .unwrap_or_default();
+    let subsystem = properties.get("SUBSYSTEM").cloned().unwrap_or_default();
     let devtype = properties.get("DEVTYPE").cloned();
     let driver = properties.get("DRIVER").cloned();
 
@@ -345,7 +359,10 @@ pub fn trigger_device(syspath: &str) -> Result<()> {
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(SysError::Unknown(format!("udevadm trigger failed: {}", stderr)));
+            return Err(SysError::Unknown(format!(
+                "udevadm trigger failed: {}",
+                stderr
+            )));
         }
         Ok(())
     }
@@ -422,7 +439,9 @@ pub fn remove_udev_rule(name: &str, rules_dir: &Path) -> Result<()> {
     #[cfg(target_os = "linux")]
     {
         if name.is_empty() {
-            return Err(SysError::InvalidArgument("Rule name cannot be empty".into()));
+            return Err(SysError::InvalidArgument(
+                "Rule name cannot be empty".into(),
+            ));
         }
         // Prevent path traversal
         if name.contains('/') || name.contains("..") {
@@ -478,7 +497,10 @@ pub fn reload_udev_rules() -> Result<()> {
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(SysError::Unknown(format!("udevadm trigger failed: {}", stderr)));
+            return Err(SysError::Unknown(format!(
+                "udevadm trigger failed: {}",
+                stderr
+            )));
         }
 
         Ok(())
@@ -533,12 +555,20 @@ pub fn monitor_devices(config: &DeviceMonitorConfig) -> Result<std::process::Chi
 pub fn validate_rule(rule: &UdevRule) -> Result<()> {
     // Name validation
     if rule.name.is_empty() {
-        return Err(SysError::InvalidArgument("Rule name cannot be empty".into()));
+        return Err(SysError::InvalidArgument(
+            "Rule name cannot be empty".into(),
+        ));
     }
     if rule.name.len() > 128 {
-        return Err(SysError::InvalidArgument("Rule name too long (max 128)".into()));
+        return Err(SysError::InvalidArgument(
+            "Rule name too long (max 128)".into(),
+        ));
     }
-    if !rule.name.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+    if !rule
+        .name
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+    {
         return Err(SysError::InvalidArgument(format!(
             "Rule name contains invalid characters: {}",
             rule.name
@@ -620,8 +650,14 @@ E: DEVNAME=/dev/sda
 E: DRIVER=sd
 ";
         let info = parse_udevadm_info(output).unwrap();
-        assert_eq!(info.devpath, "/devices/pci0000:00/0000:00:1f.2/ata1/host0/target0:0:0/0:0:0:0/block/sda");
-        assert_eq!(info.syspath, "/sys/devices/pci0000:00/0000:00:1f.2/ata1/host0/target0:0:0/0:0:0:0/block/sda");
+        assert_eq!(
+            info.devpath,
+            "/devices/pci0000:00/0000:00:1f.2/ata1/host0/target0:0:0/0:0:0:0/block/sda"
+        );
+        assert_eq!(
+            info.syspath,
+            "/sys/devices/pci0000:00/0000:00:1f.2/ata1/host0/target0:0:0/0:0:0:0/block/sda"
+        );
         assert_eq!(info.subsystem, "block");
         assert_eq!(info.devtype, Some("disk".into()));
         assert_eq!(info.devnode, Some("/dev/sda".into()));

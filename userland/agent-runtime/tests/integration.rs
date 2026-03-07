@@ -258,10 +258,9 @@ async fn test_broadcast_to_agents() {
     let orchestrator = Orchestrator::new(registry);
 
     // Broadcast should not error even without registered agents
-    let result = orchestrator.broadcast(
-        MessageType::Event,
-        serde_json::json!({"event": "test"}),
-    ).await;
+    let result = orchestrator
+        .broadcast(MessageType::Event, serde_json::json!({"event": "test"}))
+        .await;
 
     assert!(result.is_ok());
 }
@@ -278,7 +277,11 @@ async fn test_queue_stats_computation() {
     for i in 0..7 {
         let task = Task {
             id: String::new(),
-            priority: if i % 2 == 0 { TaskPriority::High } else { TaskPriority::Normal },
+            priority: if i % 2 == 0 {
+                TaskPriority::High
+            } else {
+                TaskPriority::Normal
+            },
             target_agents: vec![],
             payload: serde_json::json!({}),
             created_at: chrono::Utc::now(),
@@ -295,9 +298,9 @@ async fn test_queue_stats_computation() {
 
 #[tokio::test]
 async fn test_task_get_status_queued() {
+    use agent_runtime::orchestrator::TaskStatus;
     use agent_runtime::orchestrator::{Orchestrator, Task, TaskPriority};
     use agent_runtime::registry::AgentRegistry;
-    use agent_runtime::orchestrator::TaskStatus;
 
     let registry = Arc::new(AgentRegistry::new());
     let orchestrator = Orchestrator::new(registry);
@@ -321,9 +324,9 @@ async fn test_task_get_status_queued() {
 
 #[tokio::test]
 async fn test_task_get_status_completed() {
+    use agent_runtime::orchestrator::TaskStatus;
     use agent_runtime::orchestrator::{Orchestrator, Task, TaskPriority, TaskResult};
     use agent_runtime::registry::AgentRegistry;
-    use agent_runtime::orchestrator::TaskStatus;
     use agnos_common::AgentId;
 
     let registry = Arc::new(AgentRegistry::new());

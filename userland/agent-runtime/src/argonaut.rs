@@ -643,7 +643,11 @@ impl ArgonautInit {
             in_degree.entry(svc.name.as_str()).or_insert(0);
             for dep in &svc.depends_on {
                 if !name_set.contains_key(dep.as_str()) {
-                    bail!("service '{}' depends on '{}' which is not defined", svc.name, dep);
+                    bail!(
+                        "service '{}' depends on '{}' which is not defined",
+                        svc.name,
+                        dep
+                    );
                 }
                 *in_degree.entry(svc.name.as_str()).or_insert(0) += 1;
                 dependents
@@ -1143,10 +1147,7 @@ mod tests {
 
     #[test]
     fn resolve_service_order_cycle_detection() {
-        let services = vec![
-            dummy_service("a", vec!["b"]),
-            dummy_service("b", vec!["a"]),
-        ];
+        let services = vec![dummy_service("a", vec!["b"]), dummy_service("b", vec!["a"])];
         let result = ArgonautInit::resolve_service_order(&services);
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
@@ -1215,10 +1216,7 @@ mod tests {
     #[test]
     fn mark_step_failed() {
         let mut init = ArgonautInit::new(minimal_config());
-        assert!(init.mark_step_failed(
-            BootStage::VerifyRootfs,
-            "dm-verity mismatch".into()
-        ));
+        assert!(init.mark_step_failed(BootStage::VerifyRootfs, "dm-verity mismatch".into()));
         let step = init
             .boot_sequence
             .iter()
@@ -1369,7 +1367,10 @@ mod tests {
         let agent_rt = &svcs[0];
         assert!(agent_rt.ready_check.is_some());
         let rc = agent_rt.ready_check.as_ref().unwrap();
-        assert!(matches!(rc.check_type, HealthCheckType::TcpConnect(_, 8090)));
+        assert!(matches!(
+            rc.check_type,
+            HealthCheckType::TcpConnect(_, 8090)
+        ));
         assert_eq!(rc.retry_delay_ms, 200);
     }
 
@@ -1414,10 +1415,7 @@ mod tests {
         assert!(init.set_service_state("agent-runtime", ServiceState::Running));
         // llm-gateway depends on agent-runtime which is now Running
         assert!(init.set_service_state("llm-gateway", ServiceState::Starting));
-        assert!(init.set_service_state(
-            "llm-gateway",
-            ServiceState::Failed("crash".into()),
-        ));
+        assert!(init.set_service_state("llm-gateway", ServiceState::Failed("crash".into()),));
         if let Some(svc) = init.services.get_mut("agent-runtime") {
             svc.restart_count = 3;
         }
@@ -1446,11 +1444,20 @@ mod tests {
     #[test]
     fn boot_step_timeout_values() {
         let steps = ArgonautInit::build_boot_sequence(BootMode::Desktop);
-        let fs_step = steps.iter().find(|s| s.stage == BootStage::MountFilesystems).unwrap();
+        let fs_step = steps
+            .iter()
+            .find(|s| s.stage == BootStage::MountFilesystems)
+            .unwrap();
         assert_eq!(fs_step.timeout_ms, 2000);
-        let verify_step = steps.iter().find(|s| s.stage == BootStage::VerifyRootfs).unwrap();
+        let verify_step = steps
+            .iter()
+            .find(|s| s.stage == BootStage::VerifyRootfs)
+            .unwrap();
         assert_eq!(verify_step.timeout_ms, 5000);
-        let complete_step = steps.iter().find(|s| s.stage == BootStage::BootComplete).unwrap();
+        let complete_step = steps
+            .iter()
+            .find(|s| s.stage == BootStage::BootComplete)
+            .unwrap();
         assert_eq!(complete_step.timeout_ms, 1000);
     }
 
@@ -1583,9 +1590,7 @@ mod tests {
 
     #[test]
     fn missing_dependency_returns_error() {
-        let services = vec![
-            dummy_service("a", vec!["nonexistent"]),
-        ];
+        let services = vec![dummy_service("a", vec!["nonexistent"])];
         let result = ArgonautInit::resolve_service_order(&services);
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();

@@ -155,7 +155,10 @@ impl PackageManager {
         let version = package.manifest.version.clone();
 
         // Check for existing installation (upgrade)
-        let upgraded_from = self.installed.get(&name).map(|p| p.manifest.version.clone());
+        let upgraded_from = self
+            .installed
+            .get(&name)
+            .map(|p| p.manifest.version.clone());
 
         // Create install directory
         let install_dir = self.package_dir.join(&name);
@@ -166,14 +169,12 @@ impl PackageManager {
         let manifest_src = source.join(MANIFEST_FILENAME);
         let manifest_dst = install_dir.join(MANIFEST_FILENAME);
         if manifest_src.exists() {
-            std::fs::copy(&manifest_src, &manifest_dst)
-                .context("Failed to copy manifest")?;
+            std::fs::copy(&manifest_src, &manifest_dst).context("Failed to copy manifest")?;
         } else {
             // Write manifest from parsed struct
             let toml_str = toml::to_string_pretty(&package.manifest)
                 .context("Failed to serialize manifest")?;
-            std::fs::write(&manifest_dst, toml_str)
-                .context("Failed to write manifest")?;
+            std::fs::write(&manifest_dst, toml_str).context("Failed to write manifest")?;
         }
 
         // Copy binary (look for common names)
@@ -206,7 +207,12 @@ impl PackageManager {
         self.installed.insert(name.clone(), record);
         self.save_index()?;
 
-        info!("Installed agent '{}' v{} to {}", name, version, install_dir.display());
+        info!(
+            "Installed agent '{}' v{} to {}",
+            name,
+            version,
+            install_dir.display()
+        );
 
         Ok(InstallResult {
             name,
@@ -218,7 +224,9 @@ impl PackageManager {
 
     /// Uninstall an agent package by name.
     pub fn uninstall(&mut self, name: &str) -> Result<UninstallResult> {
-        let record = self.installed.remove(name)
+        let record = self
+            .installed
+            .remove(name)
             .ok_or_else(|| anyhow::anyhow!("Package '{}' is not installed", name))?;
 
         let version = record.manifest.version.clone();
@@ -233,7 +241,10 @@ impl PackageManager {
 
         self.save_index()?;
 
-        info!("Uninstalled agent '{}' v{} ({} files)", name, version, files_removed);
+        info!(
+            "Uninstalled agent '{}' v{} ({} files)",
+            name, version, files_removed
+        );
 
         Ok(UninstallResult {
             name: name.to_string(),
@@ -244,16 +255,18 @@ impl PackageManager {
 
     /// List all installed packages.
     pub fn list_installed(&self) -> Vec<PackageInfo> {
-        let mut packages: Vec<_> = self.installed.values().map(|record| {
-            PackageInfo {
+        let mut packages: Vec<_> = self
+            .installed
+            .values()
+            .map(|record| PackageInfo {
                 name: record.manifest.name.clone(),
                 version: record.manifest.version.clone(),
                 description: record.manifest.description.clone(),
                 author: record.manifest.author.clone(),
                 installed: true,
                 installed_version: None,
-            }
-        }).collect();
+            })
+            .collect();
 
         packages.sort_by(|a, b| a.name.cmp(&b.name));
         packages
@@ -283,17 +296,26 @@ impl PackageManager {
 
     /// Verify integrity of an installed package.
     pub fn verify(&self, name: &str) -> Result<bool> {
-        let record = self.installed.get(name)
+        let record = self
+            .installed
+            .get(name)
             .ok_or_else(|| anyhow::anyhow!("Package '{}' is not installed", name))?;
 
         if !record.binary_path.exists() {
-            warn!("Binary missing for '{}': {}", name, record.binary_path.display());
+            warn!(
+                "Binary missing for '{}': {}",
+                name,
+                record.binary_path.display()
+            );
             return Ok(false);
         }
 
         let current_hash = file_fingerprint(&record.binary_path)?;
         if current_hash != record.binary_hash {
-            warn!("Binary hash mismatch for '{}': expected {}, got {}", name, record.binary_hash, current_hash);
+            warn!(
+                "Binary hash mismatch for '{}': expected {}, got {}",
+                name, record.binary_hash, current_hash
+            );
             return Ok(false);
         }
 
@@ -357,11 +379,7 @@ impl PackageManager {
     pub fn load_manifest(&self, source: &Path) -> Result<AgentManifest> {
         let manifest_path = source.join(MANIFEST_FILENAME);
         if !manifest_path.exists() {
-            anyhow::bail!(
-                "No {} found in {}",
-                MANIFEST_FILENAME,
-                source.display()
-            );
+            anyhow::bail!("No {} found in {}", MANIFEST_FILENAME, source.display());
         }
 
         let content = std::fs::read_to_string(&manifest_path)
@@ -393,16 +411,19 @@ impl PackageManager {
             source.join("bin").join(name),
         ];
 
-        let source_canonical = source.canonicalize()
+        let source_canonical = source
+            .canonicalize()
             .unwrap_or_else(|_| source.to_path_buf());
 
         for path in &candidates {
             if path.exists() && path.is_file() {
                 // Verify resolved path stays within the source directory
-                let resolved = path.canonicalize()
-                    .unwrap_or_else(|_| path.clone());
+                let resolved = path.canonicalize().unwrap_or_else(|_| path.clone());
                 if !resolved.starts_with(&source_canonical) {
-                    tracing::warn!("Skipping binary candidate outside source dir: {}", path.display());
+                    tracing::warn!(
+                        "Skipping binary candidate outside source dir: {}",
+                        path.display()
+                    );
                     continue;
                 }
                 return Ok(path.clone());
@@ -456,27 +477,27 @@ impl PackageManager {
             return Ok(());
         }
 
-        let content = std::fs::read_to_string(&index_path)
-            .context("Failed to read package index")?;
+        let content =
+            std::fs::read_to_string(&index_path).context("Failed to read package index")?;
 
-        self.installed = serde_json::from_str(&content)
-            .context("Failed to parse package index")?;
+        self.installed = serde_json::from_str(&content).context("Failed to parse package index")?;
 
-        debug!("Loaded {} installed packages from index", self.installed.len());
+        debug!(
+            "Loaded {} installed packages from index",
+            self.installed.len()
+        );
         Ok(())
     }
 
     /// Save the package index to disk.
     fn save_index(&self) -> Result<()> {
-        std::fs::create_dir_all(&self.package_dir)
-            .context("Failed to create package directory")?;
+        std::fs::create_dir_all(&self.package_dir).context("Failed to create package directory")?;
 
         let index_path = self.package_dir.join("index.json");
         let content = serde_json::to_string_pretty(&self.installed)
             .context("Failed to serialize package index")?;
 
-        std::fs::write(&index_path, content)
-            .context("Failed to write package index")?;
+        std::fs::write(&index_path, content).context("Failed to write package index")?;
 
         debug!("Saved package index ({} packages)", self.installed.len());
         Ok(())
@@ -541,8 +562,8 @@ fn file_fingerprint(path: &Path) -> Result<String> {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
 
-    let data = std::fs::read(path)
-        .with_context(|| format!("Failed to read file: {}", path.display()))?;
+    let data =
+        std::fs::read(path).with_context(|| format!("Failed to read file: {}", path.display()))?;
 
     let mut h1 = DefaultHasher::new();
     data.hash(&mut h1);
@@ -592,9 +613,7 @@ fn copy_dir_recursive_inner(src: &Path, dst: &Path, total_bytes: &mut u64) -> Re
         if src_path.is_dir() {
             copy_dir_recursive_inner(&src_path, &dst_path, total_bytes)?;
         } else {
-            let size = std::fs::metadata(&src_path)
-                .map(|m| m.len())
-                .unwrap_or(0);
+            let size = std::fs::metadata(&src_path).map(|m| m.len()).unwrap_or(0);
             *total_bytes += size;
             if *total_bytes > MAX_INSTALL_BYTES {
                 anyhow::bail!(
@@ -620,7 +639,10 @@ pub fn consent_prompt(package: &AgentPackage) -> String {
         lines.push(format!("│ Author:  {:<41}│", package.manifest.author));
     }
 
-    lines.push(format!("│ Size:    {:<41}│", format_bytes(package.binary_size)));
+    lines.push(format!(
+        "│ Size:    {:<41}│",
+        format_bytes(package.binary_size)
+    ));
     lines.push("├──────────────────────────────────────────────────┤".to_string());
 
     // Description
@@ -769,14 +791,16 @@ impl TemplateRegistry {
         agent_name: &str,
         output_dir: &Path,
     ) -> Result<Vec<PathBuf>> {
-        let template = self.get(template_name)
+        let template = self
+            .get(template_name)
             .ok_or_else(|| anyhow::anyhow!("Template '{}' not found", template_name))?;
 
         let timestamp = chrono::Utc::now().to_rfc3339();
         let mut created = Vec::new();
 
         for file in &template.files {
-            let content = file.content
+            let content = file
+                .content
                 .replace("{{agent_name}}", agent_name)
                 .replace("{{timestamp}}", &timestamp);
 
@@ -793,7 +817,9 @@ impl TemplateRegistry {
             if file.executable {
                 use std::os::unix::fs::PermissionsExt;
                 std::fs::set_permissions(&file_path, std::fs::Permissions::from_mode(0o755))
-                    .with_context(|| format!("Failed to set permissions on: {}", file_path.display()))?;
+                    .with_context(|| {
+                        format!("Failed to set permissions on: {}", file_path.display())
+                    })?;
             }
 
             created.push(file_path);
@@ -829,7 +855,8 @@ requested_permissions = ["NetworkAccess"]
 
 [permission_rationale]
 "NetworkAccess" = "Required to perform port scanning"
-"#.to_string(),
+"#
+                    .to_string(),
                     executable: false,
                 },
                 TemplateFile {
@@ -856,7 +883,8 @@ fn main() {
         println!("Port {}: {}", port, if open { "open" } else { "closed" });
     }
 }
-"#.to_string(),
+"#
+                    .to_string(),
                     executable: true,
                 },
                 TemplateFile {
@@ -866,7 +894,8 @@ fn main() {
 timeout_ms = 500
 max_concurrent = 100
 default_ports = [22, 80, 443, 8080, 8443]
-"#.to_string(),
+"#
+                    .to_string(),
                     executable: false,
                 },
             ],
@@ -889,7 +918,8 @@ requested_permissions = ["FileRead"]
 
 [permission_rationale]
 "FileRead" = "Required to read system log files"
-"#.to_string(),
+"#
+                    .to_string(),
                     executable: false,
                 },
                 TemplateFile {
@@ -915,7 +945,8 @@ fn main() {
         Err(e) => eprintln!("Cannot open {}: {}", log_path, e),
     }
 }
-"#.to_string(),
+"#
+                    .to_string(),
                     executable: true,
                 },
                 TemplateFile {
@@ -925,7 +956,8 @@ fn main() {
 log_paths = ["/var/log/syslog", "/var/log/auth.log"]
 patterns = ["error", "ERROR", "WARN", "failed"]
 poll_interval_secs = 5
-"#.to_string(),
+"#
+                    .to_string(),
                     executable: false,
                 },
             ],
@@ -970,11 +1002,8 @@ requested_permissions = ["FileRead"]
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(
-                dir.join("agent"),
-                std::fs::Permissions::from_mode(0o755),
-            )
-            .unwrap();
+            std::fs::set_permissions(dir.join("agent"), std::fs::Permissions::from_mode(0o755))
+                .unwrap();
         }
     }
 
@@ -1386,7 +1415,10 @@ version = "1.0.0"
 
         assert!(target.join("a.txt").exists());
         assert!(target.join("sub/b.txt").exists());
-        assert_eq!(std::fs::read_to_string(target.join("sub/b.txt")).unwrap(), "bbb");
+        assert_eq!(
+            std::fs::read_to_string(target.join("sub/b.txt")).unwrap(),
+            "bbb"
+        );
     }
 
     #[test]

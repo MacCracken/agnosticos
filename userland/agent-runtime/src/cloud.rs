@@ -335,10 +335,7 @@ impl CloudDeploymentManager {
             .get_mut(agent_id)
             .ok_or_else(|| anyhow::anyhow!("agent not found: {agent_id}"))?;
         if !agent.status.valid_transition(&CloudAgentStatus::Stopped) {
-            bail!(
-                "cannot stop agent in {:?} state",
-                agent.status
-            );
+            bail!("cannot stop agent in {:?} state", agent.status);
         }
         agent.status = CloudAgentStatus::Stopped;
         info!(agent_id, "cloud agent stopped");
@@ -352,10 +349,7 @@ impl CloudDeploymentManager {
             .get_mut(agent_id)
             .ok_or_else(|| anyhow::anyhow!("agent not found: {agent_id}"))?;
         if !agent.status.valid_transition(&CloudAgentStatus::Terminated) {
-            bail!(
-                "cannot terminate agent in {:?} state",
-                agent.status
-            );
+            bail!("cannot terminate agent in {:?} state", agent.status);
         }
         agent.status = CloudAgentStatus::Terminated;
         info!(agent_id, "cloud agent terminated");
@@ -742,7 +736,10 @@ impl WorkspaceManager {
             .ok_or_else(|| anyhow::anyhow!("workspace not found"))?;
 
         if ws.members.len() as u32 >= ws.settings.max_members {
-            bail!("workspace has reached its member limit ({})", ws.settings.max_members);
+            bail!(
+                "workspace has reached its member limit ({})",
+                ws.settings.max_members
+            );
         }
         if ws.members.iter().any(|m| m.user_id == member.user_id) {
             bail!("user {} is already a member", member.user_id);
@@ -946,10 +943,7 @@ mod tests {
         assert_eq!(CloudRegion::EuWest.to_string(), "eu-west");
         assert_eq!(CloudRegion::EuCentral.to_string(), "eu-central");
         assert_eq!(CloudRegion::AsiaPacific.to_string(), "asia-pacific");
-        assert_eq!(
-            CloudRegion::Custom("mars-1".into()).to_string(),
-            "mars-1"
-        );
+        assert_eq!(CloudRegion::Custom("mars-1".into()).to_string(), "mars-1");
     }
 
     #[test]
@@ -1117,7 +1111,12 @@ mod tests {
     fn test_deploy_agent() {
         let mut mgr = CloudDeploymentManager::new();
         let agent = mgr
-            .deploy_agent("a1".into(), "Agent One".into(), CloudRegion::UsEast, ResourceTier::Standard)
+            .deploy_agent(
+                "a1".into(),
+                "Agent One".into(),
+                CloudRegion::UsEast,
+                ResourceTier::Standard,
+            )
             .unwrap();
         assert_eq!(agent.agent_id, "a1");
         assert_eq!(agent.status, CloudAgentStatus::Pending);
@@ -1127,38 +1126,65 @@ mod tests {
     #[test]
     fn test_deploy_duplicate_agent() {
         let mut mgr = CloudDeploymentManager::new();
-        mgr.deploy_agent("a1".into(), "Agent".into(), CloudRegion::UsEast, ResourceTier::Free)
-            .unwrap();
-        assert!(
-            mgr.deploy_agent("a1".into(), "Dup".into(), CloudRegion::UsWest, ResourceTier::Free)
-                .is_err()
-        );
+        mgr.deploy_agent(
+            "a1".into(),
+            "Agent".into(),
+            CloudRegion::UsEast,
+            ResourceTier::Free,
+        )
+        .unwrap();
+        assert!(mgr
+            .deploy_agent(
+                "a1".into(),
+                "Dup".into(),
+                CloudRegion::UsWest,
+                ResourceTier::Free
+            )
+            .is_err());
     }
 
     #[test]
     fn test_stop_running_agent() {
         let mut mgr = CloudDeploymentManager::new();
-        mgr.deploy_agent("a1".into(), "A".into(), CloudRegion::UsEast, ResourceTier::Free)
-            .unwrap();
+        mgr.deploy_agent(
+            "a1".into(),
+            "A".into(),
+            CloudRegion::UsEast,
+            ResourceTier::Free,
+        )
+        .unwrap();
         // Transition Pending → Provisioning → Running → Stopped
         mgr.agents.get_mut("a1").unwrap().status = CloudAgentStatus::Running;
         assert!(mgr.stop_agent("a1").is_ok());
-        assert_eq!(mgr.get_agent("a1").unwrap().status, CloudAgentStatus::Stopped);
+        assert_eq!(
+            mgr.get_agent("a1").unwrap().status,
+            CloudAgentStatus::Stopped
+        );
     }
 
     #[test]
     fn test_stop_pending_agent_fails() {
         let mut mgr = CloudDeploymentManager::new();
-        mgr.deploy_agent("a1".into(), "A".into(), CloudRegion::UsEast, ResourceTier::Free)
-            .unwrap();
+        mgr.deploy_agent(
+            "a1".into(),
+            "A".into(),
+            CloudRegion::UsEast,
+            ResourceTier::Free,
+        )
+        .unwrap();
         assert!(mgr.stop_agent("a1").is_err());
     }
 
     #[test]
     fn test_terminate_stopped_agent() {
         let mut mgr = CloudDeploymentManager::new();
-        mgr.deploy_agent("a1".into(), "A".into(), CloudRegion::UsEast, ResourceTier::Free)
-            .unwrap();
+        mgr.deploy_agent(
+            "a1".into(),
+            "A".into(),
+            CloudRegion::UsEast,
+            ResourceTier::Free,
+        )
+        .unwrap();
         mgr.agents.get_mut("a1").unwrap().status = CloudAgentStatus::Stopped;
         assert!(mgr.terminate_agent("a1").is_ok());
         assert_eq!(
@@ -1182,22 +1208,47 @@ mod tests {
     #[test]
     fn test_list_agents() {
         let mut mgr = CloudDeploymentManager::new();
-        mgr.deploy_agent("a1".into(), "A".into(), CloudRegion::UsEast, ResourceTier::Free)
-            .unwrap();
-        mgr.deploy_agent("a2".into(), "B".into(), CloudRegion::UsWest, ResourceTier::Standard)
-            .unwrap();
+        mgr.deploy_agent(
+            "a1".into(),
+            "A".into(),
+            CloudRegion::UsEast,
+            ResourceTier::Free,
+        )
+        .unwrap();
+        mgr.deploy_agent(
+            "a2".into(),
+            "B".into(),
+            CloudRegion::UsWest,
+            ResourceTier::Standard,
+        )
+        .unwrap();
         assert_eq!(mgr.list_agents().len(), 2);
     }
 
     #[test]
     fn test_agents_by_region() {
         let mut mgr = CloudDeploymentManager::new();
-        mgr.deploy_agent("a1".into(), "A".into(), CloudRegion::UsEast, ResourceTier::Free)
-            .unwrap();
-        mgr.deploy_agent("a2".into(), "B".into(), CloudRegion::UsWest, ResourceTier::Free)
-            .unwrap();
-        mgr.deploy_agent("a3".into(), "C".into(), CloudRegion::UsEast, ResourceTier::Free)
-            .unwrap();
+        mgr.deploy_agent(
+            "a1".into(),
+            "A".into(),
+            CloudRegion::UsEast,
+            ResourceTier::Free,
+        )
+        .unwrap();
+        mgr.deploy_agent(
+            "a2".into(),
+            "B".into(),
+            CloudRegion::UsWest,
+            ResourceTier::Free,
+        )
+        .unwrap();
+        mgr.deploy_agent(
+            "a3".into(),
+            "C".into(),
+            CloudRegion::UsEast,
+            ResourceTier::Free,
+        )
+        .unwrap();
         assert_eq!(mgr.agents_by_region(&CloudRegion::UsEast).len(), 2);
         assert_eq!(mgr.agents_by_region(&CloudRegion::UsWest).len(), 1);
         assert_eq!(mgr.agents_by_region(&CloudRegion::EuWest).len(), 0);
@@ -1206,10 +1257,20 @@ mod tests {
     #[test]
     fn test_total_monthly_cost_excludes_terminated() {
         let mut mgr = CloudDeploymentManager::new();
-        mgr.deploy_agent("a1".into(), "A".into(), CloudRegion::UsEast, ResourceTier::Standard)
-            .unwrap();
-        mgr.deploy_agent("a2".into(), "B".into(), CloudRegion::UsEast, ResourceTier::Performance)
-            .unwrap();
+        mgr.deploy_agent(
+            "a1".into(),
+            "A".into(),
+            CloudRegion::UsEast,
+            ResourceTier::Standard,
+        )
+        .unwrap();
+        mgr.deploy_agent(
+            "a2".into(),
+            "B".into(),
+            CloudRegion::UsEast,
+            ResourceTier::Performance,
+        )
+        .unwrap();
         mgr.agents.get_mut("a2").unwrap().status = CloudAgentStatus::Terminated;
         assert_eq!(mgr.total_monthly_cost(), 1999);
     }
@@ -1217,10 +1278,20 @@ mod tests {
     #[test]
     fn test_deployment_stats() {
         let mut mgr = CloudDeploymentManager::new();
-        mgr.deploy_agent("a1".into(), "A".into(), CloudRegion::UsEast, ResourceTier::Free)
-            .unwrap();
-        mgr.deploy_agent("a2".into(), "B".into(), CloudRegion::UsEast, ResourceTier::Free)
-            .unwrap();
+        mgr.deploy_agent(
+            "a1".into(),
+            "A".into(),
+            CloudRegion::UsEast,
+            ResourceTier::Free,
+        )
+        .unwrap();
+        mgr.deploy_agent(
+            "a2".into(),
+            "B".into(),
+            CloudRegion::UsEast,
+            ResourceTier::Free,
+        )
+        .unwrap();
         mgr.agents.get_mut("a1").unwrap().status = CloudAgentStatus::Running;
         mgr.agents.get_mut("a2").unwrap().status = CloudAgentStatus::Stopped;
         let stats = mgr.deployment_stats();
@@ -1413,9 +1484,10 @@ mod tests {
         };
         let result = engine.resolve_conflict(&conflict);
         assert!(result.is_err());
-        assert!(
-            result.unwrap_err().to_string().contains("manual conflict resolution requires user input")
-        );
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("manual conflict resolution requires user input"));
     }
 
     #[test]
@@ -1486,7 +1558,9 @@ mod tests {
     #[test]
     fn test_create_workspace() {
         let mut mgr = WorkspaceManager::new();
-        let ws = mgr.create_workspace("Team Alpha".into(), "user-1".into()).unwrap();
+        let ws = mgr
+            .create_workspace("Team Alpha".into(), "user-1".into())
+            .unwrap();
         assert_eq!(ws.name, "Team Alpha");
         assert_eq!(ws.owner, "user-1");
         assert_eq!(ws.members.len(), 1);
@@ -1544,7 +1618,11 @@ mod tests {
         let mut mgr = WorkspaceManager::new();
         let ws = mgr.create_workspace("WS".into(), "owner".into()).unwrap();
         // Set max_members to 2 (owner already occupies one slot)
-        mgr.workspaces.get_mut(&ws.workspace_id).unwrap().settings.max_members = 2;
+        mgr.workspaces
+            .get_mut(&ws.workspace_id)
+            .unwrap()
+            .settings
+            .max_members = 2;
         let m1 = WorkspaceMember {
             user_id: "u2".into(),
             role: WorkspaceRole::Viewer,
@@ -1581,7 +1659,10 @@ mod tests {
         };
         mgr.add_member(&ws.workspace_id, member).unwrap();
         assert!(mgr.remove_member(&ws.workspace_id, "u2").is_ok());
-        assert_eq!(mgr.get_workspace(&ws.workspace_id).unwrap().members.len(), 1);
+        assert_eq!(
+            mgr.get_workspace(&ws.workspace_id).unwrap().members.len(),
+            1
+        );
     }
 
     #[test]
@@ -1608,7 +1689,9 @@ mod tests {
             joined_at: Utc::now(),
         };
         mgr.add_member(&ws.workspace_id, member).unwrap();
-        assert!(mgr.update_role(&ws.workspace_id, "u2", WorkspaceRole::Admin).is_ok());
+        assert!(mgr
+            .update_role(&ws.workspace_id, "u2", WorkspaceRole::Admin)
+            .is_ok());
         let ws2 = mgr.get_workspace(&ws.workspace_id).unwrap();
         let m = ws2.members.iter().find(|m| m.user_id == "u2").unwrap();
         assert_eq!(m.role, WorkspaceRole::Admin);
@@ -1618,14 +1701,18 @@ mod tests {
     fn test_update_owner_role_fails() {
         let mut mgr = WorkspaceManager::new();
         let ws = mgr.create_workspace("WS".into(), "u1".into()).unwrap();
-        assert!(mgr.update_role(&ws.workspace_id, "u1", WorkspaceRole::Viewer).is_err());
+        assert!(mgr
+            .update_role(&ws.workspace_id, "u1", WorkspaceRole::Viewer)
+            .is_err());
     }
 
     #[test]
     fn test_update_role_nonexistent_user() {
         let mut mgr = WorkspaceManager::new();
         let ws = mgr.create_workspace("WS".into(), "u1".into()).unwrap();
-        assert!(mgr.update_role(&ws.workspace_id, "ghost", WorkspaceRole::Admin).is_err());
+        assert!(mgr
+            .update_role(&ws.workspace_id, "ghost", WorkspaceRole::Admin)
+            .is_err());
     }
 
     #[test]
@@ -1822,7 +1909,12 @@ mod tests {
     fn test_deploy_free_agent_zero_cost() {
         let mut mgr = CloudDeploymentManager::new();
         let agent = mgr
-            .deploy_agent("free1".into(), "Free".into(), CloudRegion::AsiaPacific, ResourceTier::Free)
+            .deploy_agent(
+                "free1".into(),
+                "Free".into(),
+                CloudRegion::AsiaPacific,
+                ResourceTier::Free,
+            )
             .unwrap();
         assert_eq!(agent.monthly_cost_cents, 0);
     }

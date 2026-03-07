@@ -147,7 +147,10 @@ impl ShellIntegrationManager {
     // -- Tray item CRUD -----------------------------------------------------
 
     /// Register a new system tray item. Returns an error if the id is already taken.
-    pub fn register_tray_item(&mut self, item: SystemTrayItem) -> Result<(), ShellIntegrationError> {
+    pub fn register_tray_item(
+        &mut self,
+        item: SystemTrayItem,
+    ) -> Result<(), ShellIntegrationError> {
         if self.tray_items.iter().any(|t| t.id == item.id) {
             return Err(ShellIntegrationError::DuplicateTrayItem(item.id));
         }
@@ -177,7 +180,10 @@ impl ShellIntegrationManager {
     ///
     /// In a full implementation this would forward to the compositor; here we
     /// validate the request and return `Accepted`.
-    pub fn process_window_request(&self, request: &WindowManagementRequest) -> WindowManagementResult {
+    pub fn process_window_request(
+        &self,
+        request: &WindowManagementRequest,
+    ) -> WindowManagementResult {
         match request {
             WindowManagementRequest::SetSize(_, w, h) => {
                 if *w == 0 || *h == 0 {
@@ -189,9 +195,7 @@ impl ShellIntegrationManager {
             }
             WindowManagementRequest::SetTitle(_, title) => {
                 if title.is_empty() {
-                    return WindowManagementResult::Denied(
-                        "Title must not be empty".to_string(),
-                    );
+                    return WindowManagementResult::Denied("Title must not be empty".to_string());
                 }
                 WindowManagementResult::Accepted
             }
@@ -391,29 +395,20 @@ mod tests {
     #[test]
     fn test_process_set_size_valid() {
         let mgr = ShellIntegrationManager::new();
-        let result = mgr.process_window_request(&WindowManagementRequest::SetSize(
-            Uuid::new_v4(),
-            800,
-            600,
-        ));
+        let result =
+            mgr.process_window_request(&WindowManagementRequest::SetSize(Uuid::new_v4(), 800, 600));
         assert_eq!(result, WindowManagementResult::Accepted);
     }
 
     #[test]
     fn test_process_set_size_zero_denied() {
         let mgr = ShellIntegrationManager::new();
-        let result = mgr.process_window_request(&WindowManagementRequest::SetSize(
-            Uuid::new_v4(),
-            0,
-            600,
-        ));
+        let result =
+            mgr.process_window_request(&WindowManagementRequest::SetSize(Uuid::new_v4(), 0, 600));
         assert!(matches!(result, WindowManagementResult::Denied(_)));
 
-        let result2 = mgr.process_window_request(&WindowManagementRequest::SetSize(
-            Uuid::new_v4(),
-            800,
-            0,
-        ));
+        let result2 =
+            mgr.process_window_request(&WindowManagementRequest::SetSize(Uuid::new_v4(), 800, 0));
         assert!(matches!(result2, WindowManagementResult::Denied(_)));
     }
 

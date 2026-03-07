@@ -252,7 +252,11 @@ pub fn build_tree(factors: &[DecisionFactor], action: &str) -> DecisionNode {
 
     // Sort by weight descending.
     let mut sorted: Vec<&DecisionFactor> = factors.iter().collect();
-    sorted.sort_by(|a, b| b.weight.partial_cmp(&a.weight).unwrap_or(std::cmp::Ordering::Equal));
+    sorted.sort_by(|a, b| {
+        b.weight
+            .partial_cmp(&a.weight)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     build_tree_recursive(&sorted, action)
 }
@@ -310,7 +314,10 @@ fn render_tree_inner(node: &DecisionNode, depth: usize, buf: &mut String) {
         buf.push_str(&format!("{indent}-> {action}\n"));
         return;
     }
-    buf.push_str(&format!("{indent}[{condition}]\n", condition = node.condition));
+    buf.push_str(&format!(
+        "{indent}[{condition}]\n",
+        condition = node.condition
+    ));
     if let Some(ref yes) = node.true_branch {
         buf.push_str(&format!("{indent}  YES:\n"));
         render_tree_inner(yes, depth + 2, buf);
@@ -351,10 +358,7 @@ impl AuditTrail {
 
     /// Return all audit event IDs linked to a decision.
     pub fn trail_for_decision(&self, decision_id: &str) -> Vec<String> {
-        self.links
-            .get(decision_id)
-            .cloned()
-            .unwrap_or_default()
+        self.links.get(decision_id).cloned().unwrap_or_default()
     }
 }
 
@@ -423,7 +427,11 @@ impl ExplainabilityEngine {
             let top = record
                 .factors
                 .iter()
-                .max_by(|a, b| a.weight.partial_cmp(&b.weight).unwrap_or(std::cmp::Ordering::Equal))
+                .max_by(|a, b| {
+                    a.weight
+                        .partial_cmp(&b.weight)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                })
                 .unwrap();
             format!("{} ({})", record.reasoning, top.name)
         };
@@ -582,8 +590,10 @@ impl ExplainabilityEngine {
             agent_decisions.iter().map(|d| d.confidence).sum::<f64>() / total as f64;
 
         // Success rate from outcomes.
-        let with_outcome: Vec<&&DecisionRecord> =
-            agent_decisions.iter().filter(|d| d.outcome.is_some()).collect();
+        let with_outcome: Vec<&&DecisionRecord> = agent_decisions
+            .iter()
+            .filter(|d| d.outcome.is_some())
+            .collect();
         let success_rate = if with_outcome.is_empty() {
             0.0
         } else {
@@ -818,7 +828,11 @@ mod tests {
         let expl = eng.explain_decision(&id).unwrap();
         assert_eq!(expl.factor_breakdown.len(), 2);
         // Total contributions should sum to ~100%.
-        let sum: f64 = expl.factor_breakdown.iter().map(|fc| fc.contribution_pct).sum();
+        let sum: f64 = expl
+            .factor_breakdown
+            .iter()
+            .map(|fc| fc.contribution_pct)
+            .sum();
         assert!((sum - 100.0).abs() < 0.1);
     }
 
@@ -1215,8 +1229,12 @@ mod tests {
             0.5,
             FactorType::ResourceAvailability,
         ));
-        r1.factors
-            .push(make_factor("mem", 0.3, 0.4, FactorType::ResourceAvailability));
+        r1.factors.push(make_factor(
+            "mem",
+            0.3,
+            0.4,
+            FactorType::ResourceAvailability,
+        ));
         let mut r2 = sample_record("a", "y", 0.6);
         r2.factors.push(make_factor(
             "cpu",
@@ -1261,7 +1279,12 @@ mod tests {
 
     #[test]
     fn build_tree_single_factor() {
-        let factors = vec![make_factor("cpu", 0.8, 0.9, FactorType::ResourceAvailability)];
+        let factors = vec![make_factor(
+            "cpu",
+            0.8,
+            0.9,
+            FactorType::ResourceAvailability,
+        )];
         let tree = build_tree(&factors, "scale-up");
         assert!(tree.condition.contains("cpu"));
         assert!(tree.true_branch.is_some());
@@ -1310,7 +1333,12 @@ mod tests {
 
     #[test]
     fn render_tree_with_branches() {
-        let factors = vec![make_factor("cpu", 0.8, 0.9, FactorType::ResourceAvailability)];
+        let factors = vec![make_factor(
+            "cpu",
+            0.8,
+            0.9,
+            FactorType::ResourceAvailability,
+        )];
         let tree = build_tree(&factors, "scale");
         let rendered = render_tree(&tree);
         assert!(rendered.contains("cpu"));
@@ -1359,8 +1387,7 @@ mod tests {
         let mut eng = engine();
         let rec = sample_record("a", "x", 0.5);
         let id = eng.record_decision(rec).unwrap();
-        eng.audit_trail_mut()
-            .link_audit_event(&id, "evt-100");
+        eng.audit_trail_mut().link_audit_event(&id, "evt-100");
         let events = eng.audit_trail().trail_for_decision(&id);
         assert_eq!(events, vec!["evt-100".to_string()]);
     }
@@ -1416,10 +1443,16 @@ mod tests {
 
     #[test]
     fn factor_type_display() {
-        assert_eq!(FactorType::ResourceAvailability.to_string(), "ResourceAvailability");
+        assert_eq!(
+            FactorType::ResourceAvailability.to_string(),
+            "ResourceAvailability"
+        );
         assert_eq!(FactorType::SecurityPolicy.to_string(), "SecurityPolicy");
         assert_eq!(FactorType::UserPreference.to_string(), "UserPreference");
-        assert_eq!(FactorType::HistoricalSuccess.to_string(), "HistoricalSuccess");
+        assert_eq!(
+            FactorType::HistoricalSuccess.to_string(),
+            "HistoricalSuccess"
+        );
         assert_eq!(FactorType::Priority.to_string(), "Priority");
         assert_eq!(FactorType::Deadline.to_string(), "Deadline");
         assert_eq!(FactorType::CostEfficiency.to_string(), "CostEfficiency");

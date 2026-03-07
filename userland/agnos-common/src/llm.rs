@@ -418,7 +418,9 @@ mod tests {
         };
         assert_eq!(model.capabilities.len(), 3);
         assert!(model.capabilities.contains(&ModelCapability::Vision));
-        assert!(model.capabilities.contains(&ModelCapability::FunctionCalling));
+        assert!(model
+            .capabilities
+            .contains(&ModelCapability::FunctionCalling));
         assert!(model.loaded);
     }
 
@@ -435,8 +437,13 @@ mod tests {
         };
         let json = serde_json::to_string(&model).unwrap();
         let deserialized: ModelInfo = serde_json::from_str(&json).unwrap();
-        assert_eq!(deserialized.provider, Provider::Custom("my-provider".to_string()));
-        assert!(deserialized.capabilities.contains(&ModelCapability::Embeddings));
+        assert_eq!(
+            deserialized.provider,
+            Provider::Custom("my-provider".to_string())
+        );
+        assert!(deserialized
+            .capabilities
+            .contains(&ModelCapability::Embeddings));
     }
 
     #[test]

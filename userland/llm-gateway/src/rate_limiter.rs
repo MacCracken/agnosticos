@@ -63,10 +63,18 @@ impl std::fmt::Display for RateLimitReason {
                 write!(f, "token limit exceeded: {}/{} tokens/hour", used, limit)
             }
             Self::RequestsPerMinuteExceeded { count, limit } => {
-                write!(f, "request limit exceeded: {}/{} requests/minute", count, limit)
+                write!(
+                    f,
+                    "request limit exceeded: {}/{} requests/minute",
+                    count, limit
+                )
             }
             Self::ConcurrentRequestsExceeded { active, limit } => {
-                write!(f, "concurrent limit exceeded: {}/{} active requests", active, limit)
+                write!(
+                    f,
+                    "concurrent limit exceeded: {}/{} active requests",
+                    active, limit
+                )
             }
         }
     }
@@ -148,7 +156,8 @@ impl AgentRateLimiter {
         if limit.max_requests_per_minute > 0 {
             if let Some(timestamps) = windows.get(&agent_id) {
                 let one_minute_ago = Instant::now() - std::time::Duration::from_secs(60);
-                let recent_count = timestamps.iter().filter(|t| **t > one_minute_ago).count() as u32;
+                let recent_count =
+                    timestamps.iter().filter(|t| **t > one_minute_ago).count() as u32;
                 if recent_count >= limit.max_requests_per_minute {
                     warn!(
                         agent_id = ?agent_id,
@@ -221,7 +230,8 @@ impl AgentRateLimiter {
             let windows = self.request_windows.read().await;
             if let Some(timestamps) = windows.get(&agent_id) {
                 let one_minute_ago = Instant::now() - std::time::Duration::from_secs(60);
-                let recent_count = timestamps.iter().filter(|t| **t > one_minute_ago).count() as u32;
+                let recent_count =
+                    timestamps.iter().filter(|t| **t > one_minute_ago).count() as u32;
                 if recent_count >= limit.max_requests_per_minute {
                     return Err(RateLimitReason::RequestsPerMinuteExceeded {
                         count: recent_count,
@@ -507,7 +517,10 @@ impl GatewayMetrics {
 
     /// Reset all collected metrics.
     pub fn reset(&self) {
-        self.models.lock().unwrap_or_else(|e| e.into_inner()).clear();
+        self.models
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
         self.rate_limits
             .lock()
             .expect("metrics lock poisoned")
@@ -622,7 +635,10 @@ mod tests {
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            RateLimitReason::ConcurrentRequestsExceeded { active: 2, limit: 2 }
+            RateLimitReason::ConcurrentRequestsExceeded {
+                active: 2,
+                limit: 2
+            }
         ));
 
         // After one finishes, should be allowed again
@@ -682,7 +698,10 @@ mod tests {
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            RateLimitReason::TokensPerHourExceeded { used: 100, limit: 100 }
+            RateLimitReason::TokensPerHourExceeded {
+                used: 100,
+                limit: 100
+            }
         ));
     }
 

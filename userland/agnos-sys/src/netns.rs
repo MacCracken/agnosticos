@@ -49,13 +49,19 @@ impl NetNamespaceConfig {
     /// Validate the configuration.
     pub fn validate(&self) -> Result<()> {
         if self.name.is_empty() {
-            return Err(SysError::InvalidArgument("Namespace name cannot be empty".into()));
+            return Err(SysError::InvalidArgument(
+                "Namespace name cannot be empty".into(),
+            ));
         }
         if self.name.len() > 64 {
-            return Err(SysError::InvalidArgument("Namespace name too long (max 64)".into()));
+            return Err(SysError::InvalidArgument(
+                "Namespace name too long (max 64)".into(),
+            ));
         }
         if self.agent_ip.is_empty() || self.host_ip.is_empty() {
-            return Err(SysError::InvalidArgument("IP addresses cannot be empty".into()));
+            return Err(SysError::InvalidArgument(
+                "IP addresses cannot be empty".into(),
+            ));
         }
         if self.prefix_len == 0 || self.prefix_len > 32 {
             return Err(SysError::InvalidArgument(format!(
@@ -67,9 +73,9 @@ impl NetNamespaceConfig {
         self.agent_ip.parse::<std::net::Ipv4Addr>().map_err(|_| {
             SysError::InvalidArgument(format!("Invalid agent IP: {}", self.agent_ip))
         })?;
-        self.host_ip.parse::<std::net::Ipv4Addr>().map_err(|_| {
-            SysError::InvalidArgument(format!("Invalid host IP: {}", self.host_ip))
-        })?;
+        self.host_ip
+            .parse::<std::net::Ipv4Addr>()
+            .map_err(|_| SysError::InvalidArgument(format!("Invalid host IP: {}", self.host_ip)))?;
         Ok(())
     }
 }
@@ -226,7 +232,14 @@ pub fn create_agent_netns(config: &NetNamespaceConfig) -> Result<NetNamespaceHan
 
         // 2. Create veth pair
         if let Err(e) = run_ip_cmd(&[
-            "link", "add", &veth_host, "type", "veth", "peer", "name", &veth_agent,
+            "link",
+            "add",
+            &veth_host,
+            "type",
+            "veth",
+            "peer",
+            "name",
+            &veth_agent,
         ]) {
             // Cleanup namespace on failure
             let _ = run_ip_cmd(&["netns", "delete", &ns_name]);
@@ -248,10 +261,9 @@ pub fn create_agent_netns(config: &NetNamespaceConfig) -> Result<NetNamespaceHan
             let _ = cleanup_netns(&ns_name, &veth_host);
             return Err(e);
         }
-        if let Err(e) = run_ip_netns_cmd(
-            &ns_name,
-            &["addr", "add", &agent_cidr, "dev", &veth_agent],
-        ) {
+        if let Err(e) =
+            run_ip_netns_cmd(&ns_name, &["addr", "add", &agent_cidr, "dev", &veth_agent])
+        {
             let _ = cleanup_netns(&ns_name, &veth_host);
             return Err(e);
         }
@@ -273,9 +285,14 @@ pub fn create_agent_netns(config: &NetNamespaceConfig) -> Result<NetNamespaceHan
             let _ = run_cmd(
                 "iptables",
                 &[
-                    "-t", "nat", "-A", "POSTROUTING",
-                    "-s", &format!("{}/{}", config.agent_ip, config.prefix_len),
-                    "-j", "MASQUERADE",
+                    "-t",
+                    "nat",
+                    "-A",
+                    "POSTROUTING",
+                    "-s",
+                    &format!("{}/{}", config.agent_ip, config.prefix_len),
+                    "-j",
+                    "MASQUERADE",
                 ],
             );
         }
@@ -498,15 +515,16 @@ fn format_nft_rule(rule: &FirewallRule) -> String {
     if !rule.remote_addr.is_empty() {
         let addr = &rule.remote_addr;
         // Reject shell metacharacters
-        const SHELL_METACHAR: &[char] = &[';', '|', '&', '`', '$', '(', ')', '{', '}', '<', '>', '\n', '\r', '\\', '"', '\''];
+        const SHELL_METACHAR: &[char] = &[
+            ';', '|', '&', '`', '$', '(', ')', '{', '}', '<', '>', '\n', '\r', '\\', '"', '\'',
+        ];
         if addr.chars().any(|c| SHELL_METACHAR.contains(&c)) {
             // Skip this rule — contains dangerous characters
             return String::new();
         }
         // Validate as IP address or CIDR (addr/prefix)
         let valid = if let Some((ip_part, prefix_part)) = addr.split_once('/') {
-            ip_part.parse::<std::net::IpAddr>().is_ok()
-                && prefix_part.parse::<u8>().is_ok()
+            ip_part.parse::<std::net::IpAddr>().is_ok() && prefix_part.parse::<u8>().is_ok()
         } else {
             addr.parse::<std::net::IpAddr>().is_ok()
         };
@@ -963,7 +981,11 @@ mod tests {
 
     #[test]
     fn test_firewall_action_serde_roundtrip() {
-        for a in &[FirewallAction::Accept, FirewallAction::Drop, FirewallAction::Reject] {
+        for a in &[
+            FirewallAction::Accept,
+            FirewallAction::Drop,
+            FirewallAction::Reject,
+        ] {
             let json = serde_json::to_string(a).unwrap();
             let back: FirewallAction = serde_json::from_str(&json).unwrap();
             assert_eq!(*a, back);

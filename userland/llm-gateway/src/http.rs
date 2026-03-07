@@ -16,7 +16,7 @@ use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::limit::RequestBodyLimitLayer;
 use tracing::{error, info};
 
-use crate::{LlmGateway, GatewayConfig};
+use crate::{GatewayConfig, LlmGateway};
 
 const HTTP_PORT: u16 = 8088;
 
@@ -26,14 +26,14 @@ struct AppState {
     api_key: Option<String>,
 }
 
-pub async fn start_http_server(gateway: Arc<LlmGateway>, _config: GatewayConfig) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn start_http_server(
+    gateway: Arc<LlmGateway>,
+    _config: GatewayConfig,
+) -> Result<(), Box<dyn std::error::Error>> {
     let api_key = std::env::var("AGNOS_GATEWAY_API_KEY").ok();
-    
-    let state = AppState {
-        gateway,
-        api_key,
-    };
-    
+
+    let state = AppState { gateway, api_key };
+
     let cors = CorsLayer::new()
         .allow_origin(AllowOrigin::predicate(|origin, _| {
             if let Ok(o) = origin.to_str() {
@@ -50,7 +50,7 @@ pub async fn start_http_server(gateway: Arc<LlmGateway>, _config: GatewayConfig)
         }))
         .allow_methods(tower_http::cors::Any)
         .allow_headers(tower_http::cors::Any);
-    
+
     // 1 MB request body limit to prevent DoS via oversized payloads
     let body_limit = RequestBodyLimitLayer::new(1024 * 1024);
 
@@ -62,15 +62,15 @@ pub async fn start_http_server(gateway: Arc<LlmGateway>, _config: GatewayConfig)
         .layer(body_limit)
         .layer(cors)
         .with_state(state);
-    
+
     let bind_addr = std::env::var("AGNOS_GATEWAY_BIND").unwrap_or_else(|_| "127.0.0.1".to_string());
     let addr = format!("{}:{}", bind_addr, HTTP_PORT);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
-    
+
     info!("LLM Gateway HTTP server listening on http://{}", addr);
-    
+
     axum::serve(listener, app).await?;
-    
+
     Ok(())
 }
 
@@ -219,13 +219,16 @@ async fn chat_completions(
                     return (
                         StatusCode::UNAUTHORIZED,
                         resp_headers,
-                        Json(serde_json::to_value(ErrorResponse {
-                            error: ErrorDetail {
-                                message: "Invalid API key".to_string(),
-                                r#type: "invalid_request_error".to_string(),
-                                code: Some("invalid_api_key".to_string()),
-                            },
-                        }).unwrap()),
+                        Json(
+                            serde_json::to_value(ErrorResponse {
+                                error: ErrorDetail {
+                                    message: "Invalid API key".to_string(),
+                                    r#type: "invalid_request_error".to_string(),
+                                    code: Some("invalid_api_key".to_string()),
+                                },
+                            })
+                            .unwrap(),
+                        ),
                     );
                 }
             }
@@ -235,13 +238,16 @@ async fn chat_completions(
                 return (
                     StatusCode::UNAUTHORIZED,
                     resp_headers,
-                    Json(serde_json::to_value(ErrorResponse {
-                        error: ErrorDetail {
-                            message: "Missing authorization header".to_string(),
-                            r#type: "invalid_request_error".to_string(),
-                            code: Some("missing_authorization".to_string()),
-                        },
-                    }).unwrap()),
+                    Json(
+                        serde_json::to_value(ErrorResponse {
+                            error: ErrorDetail {
+                                message: "Missing authorization header".to_string(),
+                                r#type: "invalid_request_error".to_string(),
+                                code: Some("missing_authorization".to_string()),
+                            },
+                        })
+                        .unwrap(),
+                    ),
                 );
             }
         }
@@ -323,28 +329,30 @@ async fn chat_completions(
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 resp_headers,
-                Json(serde_json::to_value(ErrorResponse {
-                    error: ErrorDetail {
-                        message: "Inference request failed. Check server logs for details.".to_string(),
-                        r#type: "internal_error".to_string(),
-                        code: None,
-                    },
-                }).unwrap()),
+                Json(
+                    serde_json::to_value(ErrorResponse {
+                        error: ErrorDetail {
+                            message: "Inference request failed. Check server logs for details."
+                                .to_string(),
+                            r#type: "internal_error".to_string(),
+                            code: None,
+                        },
+                    })
+                    .unwrap(),
+                ),
             )
         }
     }
 }
 
-async fn list_models(
-    State(state): State<AppState>,
-) -> Json<ModelsResponse> {
+async fn list_models(State(state): State<AppState>) -> Json<ModelsResponse> {
     let models = state.gateway.list_models().await;
-    
+
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_secs();
-    
+
     let model_list = models
         .into_iter()
         .map(|m| Model {
@@ -354,16 +362,14 @@ async fn list_models(
             owned_by: "agnos".to_string(),
         })
         .collect();
-    
+
     Json(ModelsResponse {
         object: "list".to_string(),
         data: model_list,
     })
 }
 
-async fn health(
-    State(state): State<AppState>,
-) -> Json<HealthResponse> {
+async fn health(State(state): State<AppState>) -> Json<HealthResponse> {
     let providers = state.gateway.list_providers().await;
 
     Json(HealthResponse {
@@ -406,9 +412,7 @@ struct ProviderMetrics {
     consecutive_failures: u32,
 }
 
-async fn metrics(
-    State(state): State<AppState>,
-) -> Json<MetricsResponse> {
+async fn metrics(State(state): State<AppState>) -> Json<MetricsResponse> {
     let cache_stats = state.gateway.cache_stats().await;
     let acct_stats = state.gateway.accounting_stats().await;
     let provider_list = state.gateway.list_providers().await;
@@ -460,7 +464,7 @@ async fn metrics(
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_chat_completion_request_parsing() {
         let json = r#"{
@@ -471,13 +475,13 @@ mod tests {
             "temperature": 0.7,
             "max_tokens": 100
         }"#;
-        
+
         let req: ChatCompletionRequest = serde_json::from_str(json).unwrap();
         assert_eq!(req.model, "llama2");
         assert_eq!(req.messages.len(), 1);
         assert_eq!(req.temperature, Some(0.7));
     }
-    
+
     #[test]
     fn test_chat_completion_response_serialization() {
         let resp = ChatCompletionResponse {
@@ -500,7 +504,7 @@ mod tests {
             },
             personality_id: None,
         };
-        
+
         let json = serde_json::to_string(&resp).unwrap();
         assert!(json.contains("test-id"));
         assert!(json.contains("llama2"));
@@ -548,7 +552,7 @@ mod tests {
                 },
             ],
         };
-        
+
         let json = serde_json::to_string(&resp).unwrap();
         assert!(json.contains("llama2"));
         assert!(json.contains("codellama"));
@@ -569,7 +573,7 @@ mod tests {
                 },
             ],
         };
-        
+
         let json = serde_json::to_string(&health).unwrap();
         assert!(json.contains("healthy"));
         assert!(json.contains("ollama"));
@@ -584,7 +588,7 @@ mod tests {
                 code: Some("400".to_string()),
             },
         };
-        
+
         let json = serde_json::to_string(&error).unwrap();
         assert!(json.contains("Invalid request"));
         assert!(json.contains("invalid_request_error"));
@@ -598,7 +602,7 @@ mod tests {
                 {"role": "user", "content": "Hello"}
             ]
         }"#;
-        
+
         let req: ChatCompletionRequest = serde_json::from_str(json).unwrap();
         assert_eq!(req.model, "llama2");
         assert_eq!(req.temperature, None);
@@ -619,7 +623,7 @@ mod tests {
             "top_p": 0.95,
             "stream": true
         }"#;
-        
+
         let req: ChatCompletionRequest = serde_json::from_str(json).unwrap();
         assert_eq!(req.model, "llama2");
         assert_eq!(req.messages.len(), 2);
@@ -742,16 +746,14 @@ mod tests {
             object: "chat.completion".to_string(),
             created: 1700000000,
             model: "llama2-7b".to_string(),
-            choices: vec![
-                Choice {
-                    index: 0,
-                    message: ChatMessage {
-                        role: "assistant".to_string(),
-                        content: "First response".to_string(),
-                    },
-                    finish_reason: "stop".to_string(),
+            choices: vec![Choice {
+                index: 0,
+                message: ChatMessage {
+                    role: "assistant".to_string(),
+                    content: "First response".to_string(),
                 },
-            ],
+                finish_reason: "stop".to_string(),
+            }],
             usage: Usage {
                 prompt_tokens: 25,
                 completion_tokens: 10,
@@ -781,10 +783,28 @@ mod tests {
             created: 0,
             model: "m".to_string(),
             choices: vec![
-                Choice { index: 0, message: ChatMessage { role: "assistant".to_string(), content: "A".to_string() }, finish_reason: "stop".to_string() },
-                Choice { index: 1, message: ChatMessage { role: "assistant".to_string(), content: "B".to_string() }, finish_reason: "length".to_string() },
+                Choice {
+                    index: 0,
+                    message: ChatMessage {
+                        role: "assistant".to_string(),
+                        content: "A".to_string(),
+                    },
+                    finish_reason: "stop".to_string(),
+                },
+                Choice {
+                    index: 1,
+                    message: ChatMessage {
+                        role: "assistant".to_string(),
+                        content: "B".to_string(),
+                    },
+                    finish_reason: "length".to_string(),
+                },
             ],
-            usage: Usage { prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 },
+            usage: Usage {
+                prompt_tokens: 1,
+                completion_tokens: 2,
+                total_tokens: 3,
+            },
             personality_id: None,
         };
         let json_val: serde_json::Value = serde_json::to_value(&resp).unwrap();
@@ -823,8 +843,14 @@ mod tests {
         let health = HealthResponse {
             status: "degraded".to_string(),
             providers: vec![
-                ProviderStatus { name: "ollama".to_string(), available: false },
-                ProviderStatus { name: "llama.cpp".to_string(), available: false },
+                ProviderStatus {
+                    name: "ollama".to_string(),
+                    available: false,
+                },
+                ProviderStatus {
+                    name: "llama.cpp".to_string(),
+                    available: false,
+                },
             ],
         };
         let json_val: serde_json::Value = serde_json::to_value(&health).unwrap();
@@ -912,7 +938,10 @@ mod tests {
     fn test_choice_serialization() {
         let choice = Choice {
             index: 42,
-            message: ChatMessage { role: "assistant".to_string(), content: "done".to_string() },
+            message: ChatMessage {
+                role: "assistant".to_string(),
+                content: "done".to_string(),
+            },
             finish_reason: "content_filter".to_string(),
         };
         let json_val: serde_json::Value = serde_json::to_value(&choice).unwrap();
@@ -922,9 +951,12 @@ mod tests {
 
     #[test]
     fn test_app_state_clone() {
-        let gateway = Arc::new(tokio::runtime::Runtime::new().unwrap().block_on(
-            crate::LlmGateway::new(crate::GatewayConfig::default())
-        ).unwrap());
+        let gateway = Arc::new(
+            tokio::runtime::Runtime::new()
+                .unwrap()
+                .block_on(crate::LlmGateway::new(crate::GatewayConfig::default()))
+                .unwrap(),
+        );
         let state = AppState {
             gateway,
             api_key: Some("test-key-123".to_string()),
@@ -935,9 +967,12 @@ mod tests {
 
     #[test]
     fn test_app_state_no_api_key() {
-        let gateway = Arc::new(tokio::runtime::Runtime::new().unwrap().block_on(
-            crate::LlmGateway::new(crate::GatewayConfig::default())
-        ).unwrap());
+        let gateway = Arc::new(
+            tokio::runtime::Runtime::new()
+                .unwrap()
+                .block_on(crate::LlmGateway::new(crate::GatewayConfig::default()))
+                .unwrap(),
+        );
         let state = AppState {
             gateway,
             api_key: None,
@@ -1012,7 +1047,9 @@ mod tests {
     use tower::ServiceExt; // for oneshot
 
     async fn test_app_no_auth() -> Router {
-        let gateway = crate::LlmGateway::new(crate::GatewayConfig::default()).await.unwrap();
+        let gateway = crate::LlmGateway::new(crate::GatewayConfig::default())
+            .await
+            .unwrap();
         let state = AppState {
             gateway: Arc::new(gateway),
             api_key: None,
@@ -1025,7 +1062,9 @@ mod tests {
     }
 
     async fn test_app_with_auth(key: &str) -> Router {
-        let gateway = crate::LlmGateway::new(crate::GatewayConfig::default()).await.unwrap();
+        let gateway = crate::LlmGateway::new(crate::GatewayConfig::default())
+            .await
+            .unwrap();
         let state = AppState {
             gateway: Arc::new(gateway),
             api_key: Some(key.to_string()),
@@ -1047,7 +1086,9 @@ mod tests {
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["status"], "healthy");
         assert!(json["providers"].is_array());
@@ -1063,7 +1104,9 @@ mod tests {
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["object"], "list");
         assert!(json["data"].is_array());
@@ -1086,7 +1129,9 @@ mod tests {
         // No providers loaded, inference should fail with 500
         assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
 
-        let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert!(json["error"]["message"].is_string());
         assert_eq!(json["error"]["type"], "internal_error");
@@ -1144,9 +1189,14 @@ mod tests {
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 
-        let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        assert!(json["error"]["message"].as_str().unwrap().contains("Missing"));
+        assert!(json["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("Missing"));
         assert_eq!(json["error"]["code"], "missing_authorization");
     }
 
@@ -1167,9 +1217,14 @@ mod tests {
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 
-        let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        assert!(json["error"]["message"].as_str().unwrap().contains("Invalid"));
+        assert!(json["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("Invalid"));
         assert_eq!(json["error"]["code"], "invalid_api_key");
     }
 
@@ -1372,8 +1427,16 @@ mod tests {
     #[tokio::test]
     async fn test_chat_completions_prompt_built_from_messages() {
         // Verify the prompt building logic: "role: content\nrole: content"
-        let messages = [ChatMessage { role: "system".to_string(), content: "Be helpful".to_string() },
-            ChatMessage { role: "user".to_string(), content: "Hello".to_string() }];
+        let messages = [
+            ChatMessage {
+                role: "system".to_string(),
+                content: "Be helpful".to_string(),
+            },
+            ChatMessage {
+                role: "user".to_string(),
+                content: "Hello".to_string(),
+            },
+        ];
         let prompt: String = messages
             .iter()
             .map(|m| format!("{}: {}", m.role, m.content))
@@ -1384,7 +1447,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_chat_completions_single_message_prompt() {
-        let messages = [ChatMessage { role: "user".to_string(), content: "Test".to_string() }];
+        let messages = [ChatMessage {
+            role: "user".to_string(),
+            content: "Test".to_string(),
+        }];
         let prompt: String = messages
             .iter()
             .map(|m| format!("{}: {}", m.role, m.content))
@@ -1412,7 +1478,9 @@ mod tests {
             .body(Body::empty())
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
-        let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         // Verify providers is always an array with expected structure
         let providers = json["providers"].as_array().unwrap();
@@ -1430,7 +1498,9 @@ mod tests {
             .body(Body::empty())
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
-        let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["object"], "list");
         // data should be an array (possibly empty)
@@ -1528,7 +1598,9 @@ mod tests {
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
 
-        let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         // Error response should have error.message, error.type, error.code
         assert!(json["error"]["message"].is_string());
@@ -1603,7 +1675,11 @@ mod tests {
             created: 0,
             model: "m".to_string(),
             choices: vec![],
-            usage: Usage { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+            usage: Usage {
+                prompt_tokens: 0,
+                completion_tokens: 0,
+                total_tokens: 0,
+            },
             personality_id: None,
         };
         let dbg = format!("{:?}", resp);
@@ -1614,7 +1690,10 @@ mod tests {
     fn test_choice_debug() {
         let choice = Choice {
             index: 0,
-            message: ChatMessage { role: "a".to_string(), content: "b".to_string() },
+            message: ChatMessage {
+                role: "a".to_string(),
+                content: "b".to_string(),
+            },
             finish_reason: "stop".to_string(),
         };
         let dbg = format!("{:?}", choice);
@@ -1722,7 +1801,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_metrics_endpoint_returns_200() {
-        let gateway = crate::LlmGateway::new(crate::GatewayConfig::default()).await.unwrap();
+        let gateway = crate::LlmGateway::new(crate::GatewayConfig::default())
+            .await
+            .unwrap();
         let state = AppState {
             gateway: Arc::new(gateway),
             api_key: None,
@@ -1738,7 +1819,9 @@ mod tests {
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert!(json["cache"].is_object());
         assert!(json["accounting"].is_object());
@@ -1898,7 +1981,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_metrics_endpoint_structure_with_providers() {
-        let gateway = crate::LlmGateway::new(crate::GatewayConfig::default()).await.unwrap();
+        let gateway = crate::LlmGateway::new(crate::GatewayConfig::default())
+            .await
+            .unwrap();
         let state = AppState {
             gateway: Arc::new(gateway),
             api_key: None,
@@ -1912,7 +1997,9 @@ mod tests {
             .body(Body::empty())
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
-        let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), 1024 * 1024)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
         // Providers should be an array (possibly with Ollama, llama.cpp, OpenAI)
@@ -1975,7 +2062,11 @@ mod tests {
             created: 0,
             model: "m".to_string(),
             choices: vec![],
-            usage: Usage { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+            usage: Usage {
+                prompt_tokens: 0,
+                completion_tokens: 0,
+                total_tokens: 0,
+            },
             personality_id: Some("persona-sales-bot".to_string()),
         };
         let json_val: serde_json::Value = serde_json::to_value(&resp).unwrap();
@@ -1990,7 +2081,11 @@ mod tests {
             created: 0,
             model: "m".to_string(),
             choices: vec![],
-            usage: Usage { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+            usage: Usage {
+                prompt_tokens: 0,
+                completion_tokens: 0,
+                total_tokens: 0,
+            },
             personality_id: None,
         };
         let json_val: serde_json::Value = serde_json::to_value(&resp).unwrap();
@@ -2017,7 +2112,11 @@ mod tests {
         assert!(request_id.is_some(), "x-request-id header must be present");
         let id_str = request_id.unwrap().to_str().unwrap();
         // Should be a valid UUID
-        assert!(uuid::Uuid::parse_str(id_str).is_ok(), "x-request-id should be a UUID, got: {}", id_str);
+        assert!(
+            uuid::Uuid::parse_str(id_str).is_ok(),
+            "x-request-id should be a UUID, got: {}",
+            id_str
+        );
     }
 
     #[tokio::test]
@@ -2075,7 +2174,10 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
         // Even auth errors should include x-request-id for tracing
         let request_id = resp.headers().get("x-request-id");
-        assert!(request_id.is_some(), "x-request-id must be present on auth errors");
+        assert!(
+            request_id.is_some(),
+            "x-request-id must be present on auth errors"
+        );
         let id_str = request_id.unwrap().to_str().unwrap();
         assert!(uuid::Uuid::parse_str(id_str).is_ok());
     }
@@ -2120,7 +2222,12 @@ mod tests {
         let resp = app.oneshot(req).await.unwrap();
         // Should parse all headers and fields without error (inference fails, but parsing works)
         assert!(resp.headers().get("x-request-id").is_some());
-        let request_id = resp.headers().get("x-request-id").unwrap().to_str().unwrap();
+        let request_id = resp
+            .headers()
+            .get("x-request-id")
+            .unwrap()
+            .to_str()
+            .unwrap();
         assert!(uuid::Uuid::parse_str(request_id).is_ok());
     }
 }

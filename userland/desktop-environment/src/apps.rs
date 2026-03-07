@@ -89,7 +89,9 @@ impl TerminalApp {
             .stderr(std::process::Stdio::piped())
             .output()
             .await
-            .map_err(|e| AppError::WindowError(format!("Failed to execute '{}': {}", command, e)))?;
+            .map_err(|e| {
+                AppError::WindowError(format!("Failed to execute '{}': {}", command, e))
+            })?;
 
         if output.status.success() {
             let stdout = String::from_utf8_lossy(&output.stdout).to_string();
@@ -196,7 +198,8 @@ impl AgentManagerApp {
                     };
 
                     // Only add if not already tracked locally
-                    let already_tracked = self.running_agents.iter().any(|a| a.name == agent_id_str);
+                    let already_tracked =
+                        self.running_agents.iter().any(|a| a.name == agent_id_str);
                     if !already_tracked {
                         discovered.push(AgentInfo {
                             id: Uuid::new_v4(),
@@ -382,10 +385,7 @@ impl AuditViewerApp {
                 timestamp,
                 event_type,
                 description,
-                source: parsed["source"]
-                    .as_str()
-                    .unwrap_or("unknown")
-                    .to_string(),
+                source: parsed["source"].as_str().unwrap_or("unknown").to_string(),
             });
         }
 
@@ -468,10 +468,8 @@ impl ModelManagerApp {
                                 let id = m["id"].as_str()?.to_string();
                                 let name = m["id"].as_str()?.to_string();
                                 let size = m["size"].as_u64().unwrap_or(0);
-                                let provider = m["owned_by"]
-                                    .as_str()
-                                    .unwrap_or("unknown")
-                                    .to_string();
+                                let provider =
+                                    m["owned_by"].as_str().unwrap_or("unknown").to_string();
                                 Some(ModelInfo {
                                     id,
                                     name,
@@ -494,7 +492,10 @@ impl ModelManagerApp {
                 }
             }
             Ok(resp) => {
-                debug!("LLM Gateway returned {}, using cached model list", resp.status());
+                debug!(
+                    "LLM Gateway returned {}, using cached model list",
+                    resp.status()
+                );
             }
             Err(e) => {
                 debug!("LLM Gateway unreachable ({}), using cached model list", e);
@@ -569,9 +570,9 @@ impl ModelManagerApp {
                 .ok()
                 .and_then(|r| r.json::<serde_json::Value>().ok())
                 .and_then(|body| {
-                    body["data"].as_array().map(|arr| {
-                        arr.iter().any(|m| m["id"].as_str() == Some(&model_id))
-                    })
+                    body["data"]
+                        .as_array()
+                        .map(|arr| arr.iter().any(|m| m["id"].as_str() == Some(&model_id)))
                 })
                 .unwrap_or(false);
 
@@ -1030,7 +1031,9 @@ mod tests {
     #[tokio::test]
     async fn test_terminal_execute_multiword_command() {
         let terminal = TerminalApp::new();
-        let result = terminal.execute_command("echo hello world".to_string()).await;
+        let result = terminal
+            .execute_command("echo hello world".to_string())
+            .await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap().trim(), "hello world");
     }
@@ -1071,7 +1074,12 @@ mod tests {
     #[test]
     fn test_agent_manager_start_and_list() {
         let mut am = AgentManagerApp::new();
-        let _id = am.start_agent("agent-a".to_string(), vec!["read".to_string(), "write".to_string()]).unwrap();
+        let _id = am
+            .start_agent(
+                "agent-a".to_string(),
+                vec!["read".to_string(), "write".to_string()],
+            )
+            .unwrap();
         assert_eq!(am.running_agents.len(), 1);
         assert_eq!(am.running_agents[0].capabilities.len(), 2);
         let agents = am.list_agents();
@@ -1327,7 +1335,9 @@ mod tests {
                 assert!(msg.contains("failed"), "Expected 'failed' in: {}", msg);
                 // stderr content should be included in the error message
                 assert!(
-                    msg.contains("No such file") || msg.contains("cannot access") || !msg.is_empty(),
+                    msg.contains("No such file")
+                        || msg.contains("cannot access")
+                        || !msg.is_empty(),
                     "stderr should be included in error"
                 );
             }
@@ -1370,8 +1380,14 @@ mod tests {
     #[test]
     fn test_agent_manager_agent_info_fields() {
         let mut am = AgentManagerApp::new();
-        let caps = vec!["read".to_string(), "write".to_string(), "execute".to_string()];
-        let id = am.start_agent("my-agent".to_string(), caps.clone()).unwrap();
+        let caps = vec![
+            "read".to_string(),
+            "write".to_string(),
+            "execute".to_string(),
+        ];
+        let id = am
+            .start_agent("my-agent".to_string(), caps.clone())
+            .unwrap();
         let agent = am.running_agents.iter().find(|a| a.id == id).unwrap();
         assert_eq!(agent.name, "my-agent");
         assert_eq!(agent.status, "Starting");
@@ -1689,7 +1705,8 @@ mod tests {
         let mut apps = DesktopApplications::new();
         {
             let am = apps.get_agent_manager();
-            am.start_agent("via-desktop".to_string(), vec!["net".to_string()]).unwrap();
+            am.start_agent("via-desktop".to_string(), vec!["net".to_string()])
+                .unwrap();
         }
         // Agent should persist in the desktop apps state
         let am = apps.get_agent_manager();
@@ -2310,7 +2327,9 @@ mod tests {
     fn test_agent_manager_start_with_many_capabilities() {
         let mut am = AgentManagerApp::new();
         let caps: Vec<String> = (0..100).map(|i| format!("cap-{}", i)).collect();
-        let id = am.start_agent("many-caps".to_string(), caps.clone()).unwrap();
+        let id = am
+            .start_agent("many-caps".to_string(), caps.clone())
+            .unwrap();
         let agent = am.running_agents.iter().find(|a| a.id == id).unwrap();
         assert_eq!(agent.capabilities.len(), 100);
     }

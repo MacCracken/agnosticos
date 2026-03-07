@@ -13,7 +13,10 @@ pub trait LlmProvider: Send + Sync {
     async fn infer(&self, request: &InferenceRequest) -> anyhow::Result<InferenceResponse>;
 
     /// Stream inference results
-    async fn infer_stream(&self, request: InferenceRequest) -> anyhow::Result<mpsc::Receiver<anyhow::Result<String>>>;
+    async fn infer_stream(
+        &self,
+        request: InferenceRequest,
+    ) -> anyhow::Result<mpsc::Receiver<anyhow::Result<String>>>;
 
     /// Load a model
     async fn load_model(&self, model_id: &str) -> anyhow::Result<agnos_common::ModelInfo>;
@@ -61,7 +64,8 @@ impl OllamaProvider {
 #[async_trait]
 impl LlmProvider for OllamaProvider {
     async fn infer(&self, request: &InferenceRequest) -> anyhow::Result<InferenceResponse> {
-        let response = self.client
+        let response = self
+            .client
             .post(format!("{}/api/generate", self.base_url))
             .json(&serde_json::json!({
                 "model": request.model,
@@ -80,19 +84,37 @@ impl LlmProvider for OllamaProvider {
 
         Ok(InferenceResponse {
             text: result["response"].as_str().unwrap_or("").to_string(),
-            tokens_generated: result["eval_count"].as_u64().unwrap_or(0).min(u32::MAX as u64) as u32,
+            tokens_generated: result["eval_count"]
+                .as_u64()
+                .unwrap_or(0)
+                .min(u32::MAX as u64) as u32,
             finish_reason: agnos_common::FinishReason::Stop,
             model: request.model.clone(),
             usage: agnos_common::TokenUsage {
-                prompt_tokens: result["prompt_eval_count"].as_u64().unwrap_or(0).min(u32::MAX as u64) as u32,
-                completion_tokens: result["eval_count"].as_u64().unwrap_or(0).min(u32::MAX as u64) as u32,
-                total_tokens: result["eval_count"].as_u64().unwrap_or(0).min(u32::MAX as u64) as u32
-                    + result["prompt_eval_count"].as_u64().unwrap_or(0).min(u32::MAX as u64) as u32,
+                prompt_tokens: result["prompt_eval_count"]
+                    .as_u64()
+                    .unwrap_or(0)
+                    .min(u32::MAX as u64) as u32,
+                completion_tokens: result["eval_count"]
+                    .as_u64()
+                    .unwrap_or(0)
+                    .min(u32::MAX as u64) as u32,
+                total_tokens: result["eval_count"]
+                    .as_u64()
+                    .unwrap_or(0)
+                    .min(u32::MAX as u64) as u32
+                    + result["prompt_eval_count"]
+                        .as_u64()
+                        .unwrap_or(0)
+                        .min(u32::MAX as u64) as u32,
             },
         })
     }
 
-    async fn infer_stream(&self, request: InferenceRequest) -> anyhow::Result<mpsc::Receiver<anyhow::Result<String>>> {
+    async fn infer_stream(
+        &self,
+        request: InferenceRequest,
+    ) -> anyhow::Result<mpsc::Receiver<anyhow::Result<String>>> {
         let (tx, rx) = mpsc::channel(100);
         let url = format!("{}/api/generate", self.base_url);
         let client = self.client.clone();
@@ -115,7 +137,10 @@ impl LlmProvider for OllamaProvider {
 
             let resp = match resp {
                 Ok(r) => r,
-                Err(e) => { let _ = tx.send(Err(e.into())).await; return; }
+                Err(e) => {
+                    let _ = tx.send(Err(e.into())).await;
+                    return;
+                }
             };
 
             let mut stream = resp.bytes_stream();
@@ -129,17 +154,27 @@ impl LlmProvider for OllamaProvider {
                         while let Some(pos) = buffer.find('\n') {
                             let line = buffer[..pos].to_string();
                             buffer = buffer.split_off(pos + 1);
-                            if line.trim().is_empty() { continue; }
+                            if line.trim().is_empty() {
+                                continue;
+                            }
                             if let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) {
                                 if let Some(text) = json["response"].as_str() {
                                     if !text.is_empty()
-                                        && tx.send(Ok(text.to_string())).await.is_err() { return; }
+                                        && tx.send(Ok(text.to_string())).await.is_err()
+                                    {
+                                        return;
+                                    }
                                 }
-                                if json["done"].as_bool() == Some(true) { return; }
+                                if json["done"].as_bool() == Some(true) {
+                                    return;
+                                }
                             }
                         }
                     }
-                    Err(e) => { let _ = tx.send(Err(e.into())).await; return; }
+                    Err(e) => {
+                        let _ = tx.send(Err(e.into())).await;
+                        return;
+                    }
                 }
             }
         });
@@ -148,7 +183,8 @@ impl LlmProvider for OllamaProvider {
     }
 
     async fn load_model(&self, model_id: &str) -> anyhow::Result<agnos_common::ModelInfo> {
-        let _ = self.client
+        let _ = self
+            .client
             .post(format!("{}/api/pull", self.base_url))
             .json(&serde_json::json!({ "name": model_id }))
             .send()
@@ -170,7 +206,8 @@ impl LlmProvider for OllamaProvider {
     }
 
     async fn list_models(&self) -> anyhow::Result<Vec<agnos_common::ModelInfo>> {
-        let response = self.client
+        let response = self
+            .client
             .get(format!("{}/api/tags", self.base_url))
             .send()
             .await?;
@@ -222,7 +259,8 @@ impl LlamaCppProvider {
 #[async_trait]
 impl LlmProvider for LlamaCppProvider {
     async fn infer(&self, request: &InferenceRequest) -> anyhow::Result<InferenceResponse> {
-        let response = self.client
+        let response = self
+            .client
             .post(format!("{}/completion", self.base_url))
             .json(&serde_json::json!({
                 "prompt": request.prompt,
@@ -237,19 +275,37 @@ impl LlmProvider for LlamaCppProvider {
 
         Ok(InferenceResponse {
             text: result["content"].as_str().unwrap_or("").to_string(),
-            tokens_generated: result["tokens_predicted"].as_u64().unwrap_or(0).min(u32::MAX as u64) as u32,
+            tokens_generated: result["tokens_predicted"]
+                .as_u64()
+                .unwrap_or(0)
+                .min(u32::MAX as u64) as u32,
             finish_reason: agnos_common::FinishReason::Stop,
             model: request.model.clone(),
             usage: agnos_common::TokenUsage {
-                prompt_tokens: result["tokens_evaluated"].as_u64().unwrap_or(0).min(u32::MAX as u64) as u32,
-                completion_tokens: result["tokens_predicted"].as_u64().unwrap_or(0).min(u32::MAX as u64) as u32,
-                total_tokens: result["tokens_evaluated"].as_u64().unwrap_or(0).min(u32::MAX as u64) as u32
-                    + result["tokens_predicted"].as_u64().unwrap_or(0).min(u32::MAX as u64) as u32,
+                prompt_tokens: result["tokens_evaluated"]
+                    .as_u64()
+                    .unwrap_or(0)
+                    .min(u32::MAX as u64) as u32,
+                completion_tokens: result["tokens_predicted"]
+                    .as_u64()
+                    .unwrap_or(0)
+                    .min(u32::MAX as u64) as u32,
+                total_tokens: result["tokens_evaluated"]
+                    .as_u64()
+                    .unwrap_or(0)
+                    .min(u32::MAX as u64) as u32
+                    + result["tokens_predicted"]
+                        .as_u64()
+                        .unwrap_or(0)
+                        .min(u32::MAX as u64) as u32,
             },
         })
     }
 
-    async fn infer_stream(&self, request: InferenceRequest) -> anyhow::Result<mpsc::Receiver<anyhow::Result<String>>> {
+    async fn infer_stream(
+        &self,
+        request: InferenceRequest,
+    ) -> anyhow::Result<mpsc::Receiver<anyhow::Result<String>>> {
         let (tx, rx) = mpsc::channel(100);
         let url = format!("{}/completion", self.base_url);
         let client = self.client.clone();
@@ -269,7 +325,10 @@ impl LlmProvider for LlamaCppProvider {
 
             let resp = match resp {
                 Ok(r) => r,
-                Err(e) => { let _ = tx.send(Err(e.into())).await; return; }
+                Err(e) => {
+                    let _ = tx.send(Err(e.into())).await;
+                    return;
+                }
             };
 
             let mut stream = resp.bytes_stream();
@@ -285,19 +344,31 @@ impl LlmProvider for LlamaCppProvider {
                             buffer = buffer.split_off(pos + 2);
                             for line in event.lines() {
                                 if let Some(data) = line.strip_prefix("data: ") {
-                                    if data.trim() == "[DONE]" { return; }
-                                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(data) {
+                                    if data.trim() == "[DONE]" {
+                                        return;
+                                    }
+                                    if let Ok(json) =
+                                        serde_json::from_str::<serde_json::Value>(data)
+                                    {
                                         if let Some(text) = json["content"].as_str() {
                                             if !text.is_empty()
-                                                && tx.send(Ok(text.to_string())).await.is_err() { return; }
+                                                && tx.send(Ok(text.to_string())).await.is_err()
+                                            {
+                                                return;
+                                            }
                                         }
-                                        if json["stop"].as_bool() == Some(true) { return; }
+                                        if json["stop"].as_bool() == Some(true) {
+                                            return;
+                                        }
                                     }
                                 }
                             }
                         }
                     }
-                    Err(e) => { let _ = tx.send(Err(e.into())).await; return; }
+                    Err(e) => {
+                        let _ = tx.send(Err(e.into())).await;
+                        return;
+                    }
                 }
             }
         });
@@ -328,7 +399,7 @@ struct RedactedKey(String);
 impl std::fmt::Debug for RedactedKey {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.0.len() > 8 {
-            write!(f, "{}...{}", &self.0[..4], &self.0[self.0.len()-4..])
+            write!(f, "{}...{}", &self.0[..4], &self.0[self.0.len() - 4..])
         } else {
             write!(f, "[REDACTED]")
         }
@@ -358,7 +429,8 @@ impl OpenAiProvider {
 #[async_trait]
 impl LlmProvider for OpenAiProvider {
     async fn infer(&self, request: &InferenceRequest) -> anyhow::Result<InferenceResponse> {
-        let response = self.client
+        let response = self
+            .client
             .post(format!("{}/chat/completions", self.base_url))
             .bearer_auth(&self.api_key.0)
             .json(&serde_json::json!({
@@ -383,7 +455,10 @@ impl LlmProvider for OpenAiProvider {
         let choice = result["choices"]
             .get(0)
             .ok_or_else(|| anyhow::anyhow!("OpenAI response missing choices array"))?;
-        let message_text = choice["message"]["content"].as_str().unwrap_or("").to_string();
+        let message_text = choice["message"]["content"]
+            .as_str()
+            .unwrap_or("")
+            .to_string();
         let finish = match choice["finish_reason"].as_str() {
             Some("length") => agnos_common::FinishReason::Length,
             _ => agnos_common::FinishReason::Stop,
@@ -392,18 +467,36 @@ impl LlmProvider for OpenAiProvider {
 
         Ok(InferenceResponse {
             text: message_text,
-            tokens_generated: usage["completion_tokens"].as_u64().unwrap_or(0).min(u32::MAX as u64) as u32,
+            tokens_generated: usage["completion_tokens"]
+                .as_u64()
+                .unwrap_or(0)
+                .min(u32::MAX as u64) as u32,
             finish_reason: finish,
-            model: result["model"].as_str().unwrap_or(&request.model).to_string(),
+            model: result["model"]
+                .as_str()
+                .unwrap_or(&request.model)
+                .to_string(),
             usage: agnos_common::TokenUsage {
-                prompt_tokens: usage["prompt_tokens"].as_u64().unwrap_or(0).min(u32::MAX as u64) as u32,
-                completion_tokens: usage["completion_tokens"].as_u64().unwrap_or(0).min(u32::MAX as u64) as u32,
-                total_tokens: usage["total_tokens"].as_u64().unwrap_or(0).min(u32::MAX as u64) as u32,
+                prompt_tokens: usage["prompt_tokens"]
+                    .as_u64()
+                    .unwrap_or(0)
+                    .min(u32::MAX as u64) as u32,
+                completion_tokens: usage["completion_tokens"]
+                    .as_u64()
+                    .unwrap_or(0)
+                    .min(u32::MAX as u64) as u32,
+                total_tokens: usage["total_tokens"]
+                    .as_u64()
+                    .unwrap_or(0)
+                    .min(u32::MAX as u64) as u32,
             },
         })
     }
 
-    async fn infer_stream(&self, request: InferenceRequest) -> anyhow::Result<mpsc::Receiver<anyhow::Result<String>>> {
+    async fn infer_stream(
+        &self,
+        request: InferenceRequest,
+    ) -> anyhow::Result<mpsc::Receiver<anyhow::Result<String>>> {
         let (tx, rx) = mpsc::channel(100);
         let url = format!("{}/chat/completions", self.base_url);
         let api_key = self.api_key.0.clone();
@@ -425,7 +518,10 @@ impl LlmProvider for OpenAiProvider {
 
             let resp = match resp {
                 Ok(r) => r,
-                Err(e) => { let _ = tx.send(Err(e.into())).await; return; }
+                Err(e) => {
+                    let _ = tx.send(Err(e.into())).await;
+                    return;
+                }
             };
 
             let mut stream = resp.bytes_stream();
@@ -440,18 +536,30 @@ impl LlmProvider for OpenAiProvider {
                             buffer = buffer.split_off(pos + 2);
                             for line in event.lines() {
                                 if let Some(data) = line.strip_prefix("data: ") {
-                                    if data.trim() == "[DONE]" { return; }
-                                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(data) {
-                                        if let Some(text) = json["choices"][0]["delta"]["content"].as_str() {
+                                    if data.trim() == "[DONE]" {
+                                        return;
+                                    }
+                                    if let Ok(json) =
+                                        serde_json::from_str::<serde_json::Value>(data)
+                                    {
+                                        if let Some(text) =
+                                            json["choices"][0]["delta"]["content"].as_str()
+                                        {
                                             if !text.is_empty()
-                                                && tx.send(Ok(text.to_string())).await.is_err() { return; }
+                                                && tx.send(Ok(text.to_string())).await.is_err()
+                                            {
+                                                return;
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
                     }
-                    Err(e) => { let _ = tx.send(Err(e.into())).await; return; }
+                    Err(e) => {
+                        let _ = tx.send(Err(e.into())).await;
+                        return;
+                    }
                 }
             }
         });
@@ -469,7 +577,8 @@ impl LlmProvider for OpenAiProvider {
     }
 
     async fn list_models(&self) -> anyhow::Result<Vec<agnos_common::ModelInfo>> {
-        let response = self.client
+        let response = self
+            .client
             .get(format!("{}/models", self.base_url))
             .bearer_auth(&self.api_key.0)
             .send()
@@ -529,7 +638,8 @@ impl AnthropicProvider {
 #[async_trait]
 impl LlmProvider for AnthropicProvider {
     async fn infer(&self, request: &InferenceRequest) -> anyhow::Result<InferenceResponse> {
-        let response = self.client
+        let response = self
+            .client
             .post(format!("{}/messages", self.base_url))
             .header("x-api-key", &self.api_key.0)
             .header("anthropic-version", "2023-06-01")
@@ -563,14 +673,23 @@ impl LlmProvider for AnthropicProvider {
             _ => agnos_common::FinishReason::Stop,
         };
 
-        let input_tokens = result["usage"]["input_tokens"].as_u64().unwrap_or(0).min(u32::MAX as u64) as u32;
-        let output_tokens = result["usage"]["output_tokens"].as_u64().unwrap_or(0).min(u32::MAX as u64) as u32;
+        let input_tokens = result["usage"]["input_tokens"]
+            .as_u64()
+            .unwrap_or(0)
+            .min(u32::MAX as u64) as u32;
+        let output_tokens = result["usage"]["output_tokens"]
+            .as_u64()
+            .unwrap_or(0)
+            .min(u32::MAX as u64) as u32;
 
         Ok(InferenceResponse {
             text,
             tokens_generated: output_tokens,
             finish_reason: finish,
-            model: result["model"].as_str().unwrap_or(&request.model).to_string(),
+            model: result["model"]
+                .as_str()
+                .unwrap_or(&request.model)
+                .to_string(),
             usage: agnos_common::TokenUsage {
                 prompt_tokens: input_tokens,
                 completion_tokens: output_tokens,
@@ -579,7 +698,10 @@ impl LlmProvider for AnthropicProvider {
         })
     }
 
-    async fn infer_stream(&self, request: InferenceRequest) -> anyhow::Result<mpsc::Receiver<anyhow::Result<String>>> {
+    async fn infer_stream(
+        &self,
+        request: InferenceRequest,
+    ) -> anyhow::Result<mpsc::Receiver<anyhow::Result<String>>> {
         let (tx, rx) = mpsc::channel(100);
         let url = format!("{}/messages", self.base_url);
         let api_key = self.api_key.0.clone();
@@ -603,7 +725,10 @@ impl LlmProvider for AnthropicProvider {
 
             let resp = match resp {
                 Ok(r) => r,
-                Err(e) => { let _ = tx.send(Err(e.into())).await; return; }
+                Err(e) => {
+                    let _ = tx.send(Err(e.into())).await;
+                    return;
+                }
             };
 
             let mut stream = resp.bytes_stream();
@@ -629,15 +754,23 @@ impl LlmProvider for AnthropicProvider {
                                     if json["type"].as_str() == Some("content_block_delta") {
                                         if let Some(text) = json["delta"]["text"].as_str() {
                                             if !text.is_empty()
-                                                && tx.send(Ok(text.to_string())).await.is_err() { return; }
+                                                && tx.send(Ok(text.to_string())).await.is_err()
+                                            {
+                                                return;
+                                            }
                                         }
                                     }
-                                    if json["type"].as_str() == Some("message_stop") { return; }
+                                    if json["type"].as_str() == Some("message_stop") {
+                                        return;
+                                    }
                                 }
                             }
                         }
                     }
-                    Err(e) => { let _ = tx.send(Err(e.into())).await; return; }
+                    Err(e) => {
+                        let _ = tx.send(Err(e.into())).await;
+                        return;
+                    }
                 }
             }
         });
@@ -819,9 +952,7 @@ impl LlmProvider for GoogleProvider {
                             let event = buffer[..pos].to_string();
                             buffer = buffer.split_off(pos + 2);
                             if let Some(data) = event.strip_prefix("data: ") {
-                                if let Ok(json) =
-                                    serde_json::from_str::<serde_json::Value>(data)
-                                {
+                                if let Ok(json) = serde_json::from_str::<serde_json::Value>(data) {
                                     if let Some(text) = json["candidates"]
                                         .as_array()
                                         .and_then(|arr| arr.first())
@@ -830,9 +961,10 @@ impl LlmProvider for GoogleProvider {
                                         .and_then(|p| p["text"].as_str())
                                     {
                                         if !text.is_empty()
-                                            && tx.send(Ok(text.to_string())).await.is_err() {
-                                                return;
-                                            }
+                                            && tx.send(Ok(text.to_string())).await.is_err()
+                                        {
+                                            return;
+                                        }
                                     }
                                 }
                             }
@@ -994,12 +1126,19 @@ mod tests {
     #[test]
     fn test_provider_type_ne_exhaustive() {
         let variants = [
-            ProviderType::Ollama, ProviderType::LlamaCpp,
-            ProviderType::OpenAi, ProviderType::Anthropic, ProviderType::Google,
+            ProviderType::Ollama,
+            ProviderType::LlamaCpp,
+            ProviderType::OpenAi,
+            ProviderType::Anthropic,
+            ProviderType::Google,
         ];
         for (i, a) in variants.iter().enumerate() {
             for (j, b) in variants.iter().enumerate() {
-                if i == j { assert_eq!(a, b); } else { assert_ne!(a, b); }
+                if i == j {
+                    assert_eq!(a, b);
+                } else {
+                    assert_ne!(a, b);
+                }
             }
         }
     }
@@ -1042,7 +1181,9 @@ mod tests {
     async fn test_llama_cpp_load_model_error_message() {
         let provider = LlamaCppProvider::new().await.unwrap();
         let err = provider.load_model("anything").await.unwrap_err();
-        assert!(err.to_string().contains("llama.cpp requires model at startup"));
+        assert!(err
+            .to_string()
+            .contains("llama.cpp requires model at startup"));
     }
 
     #[tokio::test]
@@ -1089,7 +1230,10 @@ mod tests {
     #[tokio::test]
     async fn test_ollama_infer_error_is_descriptive() {
         let provider = OllamaProvider::new().await.unwrap();
-        let err = provider.infer(&InferenceRequest::default()).await.unwrap_err();
+        let err = provider
+            .infer(&InferenceRequest::default())
+            .await
+            .unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("error") || msg.contains("connect") || msg.contains("Connection"));
     }
@@ -1112,7 +1256,10 @@ mod tests {
     #[tokio::test]
     async fn test_llama_cpp_infer_error_is_descriptive() {
         let provider = LlamaCppProvider::new().await.unwrap();
-        let err = provider.infer(&InferenceRequest::default()).await.unwrap_err();
+        let err = provider
+            .infer(&InferenceRequest::default())
+            .await
+            .unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("error") || msg.contains("connect") || msg.contains("Connection"));
     }
@@ -1160,7 +1307,12 @@ mod tests {
     async fn test_provider_trait_arc_llama_cpp() {
         use std::sync::Arc;
         let provider: Arc<dyn LlmProvider> = Arc::new(LlamaCppProvider::new().await.unwrap());
-        assert!(provider.load_model("m").await.unwrap_err().to_string().contains("startup"));
+        assert!(provider
+            .load_model("m")
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("startup"));
     }
 
     // --- OpenAI provider tests ---
@@ -1178,7 +1330,8 @@ mod tests {
         let provider = OpenAiProvider::new(
             "sk-test".to_string(),
             Some("http://localhost:4000".to_string()),
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(provider.base_url, "http://localhost:4000");
     }
 
@@ -1197,9 +1350,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_openai_as_dyn_trait() {
-        let provider: Box<dyn LlmProvider> = Box::new(
-            OpenAiProvider::new("sk-test".to_string(), None).unwrap()
-        );
+        let provider: Box<dyn LlmProvider> =
+            Box::new(OpenAiProvider::new("sk-test".to_string(), None).unwrap());
         assert!(provider.unload_model("x").await.is_ok());
     }
 
@@ -1239,7 +1391,8 @@ mod tests {
         let provider = AnthropicProvider::new(
             "ant-key".to_string(),
             Some("http://localhost:5000".to_string()),
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(provider.base_url, "http://localhost:5000");
     }
 
@@ -1266,9 +1419,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_anthropic_as_dyn_trait() {
-        let provider: Box<dyn LlmProvider> = Box::new(
-            AnthropicProvider::new("ant-key".to_string(), None).unwrap()
-        );
+        let provider: Box<dyn LlmProvider> =
+            Box::new(AnthropicProvider::new("ant-key".to_string(), None).unwrap());
         assert!(provider.unload_model("x").await.is_ok());
     }
 
@@ -1343,7 +1495,9 @@ mod tests {
             assert_eq!(model.max_tokens, 8192);
             assert!(model.loaded);
             assert_eq!(model.size_bytes, 0);
-            assert!(model.capabilities.contains(&agnos_common::ModelCapability::TextGeneration));
+            assert!(model
+                .capabilities
+                .contains(&agnos_common::ModelCapability::TextGeneration));
         }
     }
 
@@ -1365,7 +1519,8 @@ mod tests {
         let provider = OpenAiProvider::new(
             "sk-fake".to_string(),
             Some("http://127.0.0.1:19999".to_string()),
-        ).unwrap();
+        )
+        .unwrap();
         let request = InferenceRequest {
             model: "gpt-4".to_string(),
             prompt: "Hello".to_string(),
@@ -1384,7 +1539,8 @@ mod tests {
         let provider = OpenAiProvider::new(
             "sk-fake".to_string(),
             Some("http://127.0.0.1:19999".to_string()),
-        ).unwrap();
+        )
+        .unwrap();
         assert!(provider.list_models().await.is_err());
     }
 
@@ -1393,7 +1549,8 @@ mod tests {
         let provider = AnthropicProvider::new(
             "ant-fake".to_string(),
             Some("http://127.0.0.1:19999".to_string()),
-        ).unwrap();
+        )
+        .unwrap();
         let request = InferenceRequest {
             model: "claude-3-opus".to_string(),
             prompt: "Hello".to_string(),
@@ -1493,7 +1650,8 @@ mod tests {
             OpenAiProvider::new(
                 "sk-fake".to_string(),
                 Some("http://127.0.0.1:19999".to_string()),
-            ).unwrap()
+            )
+            .unwrap(),
         );
         // list_models requires HTTP — will fail without server
         assert!(provider.list_models().await.is_err());
@@ -1502,9 +1660,8 @@ mod tests {
     #[tokio::test]
     async fn test_anthropic_arc_provider_list_models_ok() {
         use std::sync::Arc;
-        let provider: Arc<dyn LlmProvider> = Arc::new(
-            AnthropicProvider::new("ant-key".to_string(), None).unwrap()
-        );
+        let provider: Arc<dyn LlmProvider> =
+            Arc::new(AnthropicProvider::new("ant-key".to_string(), None).unwrap());
         // Anthropic list_models returns hardcoded models — always succeeds
         let models = provider.list_models().await.unwrap();
         assert_eq!(models.len(), 2);
@@ -1519,8 +1676,12 @@ mod tests {
         let provider = OpenAiProvider::new(
             "sk-fake".to_string(),
             Some("http://127.0.0.1:19999".to_string()),
-        ).unwrap();
-        let mut rx = provider.infer_stream(InferenceRequest::default()).await.unwrap();
+        )
+        .unwrap();
+        let mut rx = provider
+            .infer_stream(InferenceRequest::default())
+            .await
+            .unwrap();
         // The spawned task should send an error through the channel
         let result = rx.recv().await;
         assert!(result.is_some());
@@ -1532,8 +1693,12 @@ mod tests {
         let provider = AnthropicProvider::new(
             "ant-fake".to_string(),
             Some("http://127.0.0.1:19999".to_string()),
-        ).unwrap();
-        let mut rx = provider.infer_stream(InferenceRequest::default()).await.unwrap();
+        )
+        .unwrap();
+        let mut rx = provider
+            .infer_stream(InferenceRequest::default())
+            .await
+            .unwrap();
         let result = rx.recv().await;
         assert!(result.is_some());
         assert!(result.unwrap().is_err());
@@ -1554,11 +1719,13 @@ mod tests {
 
     #[test]
     fn test_provider_type_in_vec() {
-        let types = [ProviderType::Ollama,
+        let types = [
+            ProviderType::Ollama,
             ProviderType::LlamaCpp,
             ProviderType::OpenAi,
             ProviderType::Anthropic,
-            ProviderType::Google];
+            ProviderType::Google,
+        ];
         assert_eq!(types.len(), 5);
         assert!(types.contains(&ProviderType::Google));
     }
@@ -1708,7 +1875,10 @@ mod tests {
         let err = provider.list_models().await.unwrap_err();
         let msg = err.to_string().to_lowercase();
         assert!(
-            msg.contains("error") || msg.contains("connect") || msg.contains("refused") || msg.contains("connection"),
+            msg.contains("error")
+                || msg.contains("connect")
+                || msg.contains("refused")
+                || msg.contains("connection"),
             "Expected connection-related error, got: {}",
             msg
         );
@@ -1717,7 +1887,10 @@ mod tests {
     #[tokio::test]
     async fn test_llama_cpp_infer_error_is_connection_related() {
         let provider = LlamaCppProvider::new().await.unwrap();
-        let err = provider.infer(&InferenceRequest::default()).await.unwrap_err();
+        let err = provider
+            .infer(&InferenceRequest::default())
+            .await
+            .unwrap_err();
         let msg = err.to_string().to_lowercase();
         assert!(
             msg.contains("error") || msg.contains("connect") || msg.contains("refused"),
@@ -1735,8 +1908,12 @@ mod tests {
         let provider = GoogleProvider::new(
             "goog-fake".to_string(),
             Some("http://127.0.0.1:19999".to_string()),
-        ).unwrap();
-        let err = provider.infer(&InferenceRequest::default()).await.unwrap_err();
+        )
+        .unwrap();
+        let err = provider
+            .infer(&InferenceRequest::default())
+            .await
+            .unwrap_err();
         let msg = err.to_string().to_lowercase();
         assert!(
             msg.contains("error") || msg.contains("connect") || msg.contains("refused"),
@@ -1750,7 +1927,8 @@ mod tests {
         let provider = GoogleProvider::new(
             "goog-fake".to_string(),
             Some("http://127.0.0.1:19999".to_string()),
-        ).unwrap();
+        )
+        .unwrap();
         let err = provider.list_models().await.unwrap_err();
         let msg = err.to_string().to_lowercase();
         assert!(
@@ -1808,8 +1986,12 @@ mod tests {
         let provider = AnthropicProvider::new(
             "ant-fake".to_string(),
             Some("http://127.0.0.1:19999".to_string()),
-        ).unwrap();
-        let mut rx = provider.infer_stream(InferenceRequest::default()).await.unwrap();
+        )
+        .unwrap();
+        let mut rx = provider
+            .infer_stream(InferenceRequest::default())
+            .await
+            .unwrap();
         let msg = rx.recv().await.unwrap();
         let err = msg.unwrap_err();
         let err_str = err.to_string().to_lowercase();
@@ -1829,7 +2011,8 @@ mod tests {
         let provider = OpenAiProvider::new(
             "sk-fake".to_string(),
             Some("http://127.0.0.1:19999".to_string()),
-        ).unwrap();
+        )
+        .unwrap();
         let err = provider.list_models().await.unwrap_err();
         let msg = err.to_string().to_lowercase();
         assert!(
@@ -1846,7 +2029,10 @@ mod tests {
     #[tokio::test]
     async fn test_ollama_infer_stream_channel_sends_error() {
         let provider = OllamaProvider::new().await.unwrap();
-        let mut rx = provider.infer_stream(InferenceRequest::default()).await.unwrap();
+        let mut rx = provider
+            .infer_stream(InferenceRequest::default())
+            .await
+            .unwrap();
         let result = rx.recv().await;
         assert!(result.is_some());
         assert!(result.unwrap().is_err());
@@ -1855,7 +2041,10 @@ mod tests {
     #[tokio::test]
     async fn test_llama_cpp_infer_stream_channel_sends_error() {
         let provider = LlamaCppProvider::new().await.unwrap();
-        let mut rx = provider.infer_stream(InferenceRequest::default()).await.unwrap();
+        let mut rx = provider
+            .infer_stream(InferenceRequest::default())
+            .await
+            .unwrap();
         let result = rx.recv().await;
         assert!(result.is_some());
         assert!(result.unwrap().is_err());
@@ -1870,8 +2059,12 @@ mod tests {
         let provider = GoogleProvider::new(
             "goog-fake".to_string(),
             Some("http://127.0.0.1:19999".to_string()),
-        ).unwrap();
-        let mut rx = provider.infer_stream(InferenceRequest::default()).await.unwrap();
+        )
+        .unwrap();
+        let mut rx = provider
+            .infer_stream(InferenceRequest::default())
+            .await
+            .unwrap();
         let msg = rx.recv().await.unwrap();
         let err = msg.unwrap_err();
         let err_str = err.to_string().to_lowercase();
@@ -1921,7 +2114,8 @@ mod tests {
         let provider = OpenAiProvider::new(
             "sk-key".to_string(),
             Some("http://localhost:4000/".to_string()),
-        ).unwrap();
+        )
+        .unwrap();
         // Should store exactly as given
         assert_eq!(provider.base_url, "http://localhost:4000/");
     }
@@ -1931,7 +2125,8 @@ mod tests {
         let provider = AnthropicProvider::new(
             "ant-key".to_string(),
             Some("http://localhost:5000/".to_string()),
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(provider.base_url, "http://localhost:5000/");
     }
 
@@ -1940,7 +2135,8 @@ mod tests {
         let provider = GoogleProvider::new(
             "goog-key".to_string(),
             Some("http://localhost:6000/".to_string()),
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(provider.base_url, "http://localhost:6000/");
     }
 
@@ -1987,7 +2183,8 @@ mod tests {
         let provider = OpenAiProvider::new(
             "sk-fake".to_string(),
             Some("http://127.0.0.1:19999".to_string()),
-        ).unwrap();
+        )
+        .unwrap();
         let request = InferenceRequest {
             prompt: "".to_string(),
             model: "gpt-4".to_string(),
@@ -2006,7 +2203,8 @@ mod tests {
         let provider = AnthropicProvider::new(
             "ant-fake".to_string(),
             Some("http://127.0.0.1:19999".to_string()),
-        ).unwrap();
+        )
+        .unwrap();
         let request = InferenceRequest {
             prompt: "".to_string(),
             model: "claude-3-haiku".to_string(),
@@ -2024,7 +2222,8 @@ mod tests {
         let provider = GoogleProvider::new(
             "goog-fake".to_string(),
             Some("http://127.0.0.1:19999".to_string()),
-        ).unwrap();
+        )
+        .unwrap();
         let request = InferenceRequest {
             prompt: "".to_string(),
             model: "gemini-pro".to_string(),
@@ -2042,7 +2241,10 @@ mod tests {
         let provider = AnthropicProvider::new("ant-key".to_string(), None).unwrap();
         let models = provider.list_models().await.unwrap();
         for model in &models {
-            assert_eq!(model.max_tokens, 8192, "All Anthropic models should have max_tokens=8192");
+            assert_eq!(
+                model.max_tokens, 8192,
+                "All Anthropic models should have max_tokens=8192"
+            );
         }
     }
 
@@ -2051,7 +2253,10 @@ mod tests {
         let provider = AnthropicProvider::new("ant-key".to_string(), None).unwrap();
         let models = provider.list_models().await.unwrap();
         for model in &models {
-            assert_eq!(model.size_bytes, 0, "Cloud models should report 0 size_bytes");
+            assert_eq!(
+                model.size_bytes, 0,
+                "Cloud models should report 0 size_bytes"
+            );
         }
     }
 
@@ -2059,9 +2264,7 @@ mod tests {
     async fn test_concurrent_provider_creation() {
         let mut handles = vec![];
         for _ in 0..10 {
-            handles.push(tokio::spawn(async {
-                OllamaProvider::new().await.is_ok()
-            }));
+            handles.push(tokio::spawn(async { OllamaProvider::new().await.is_ok() }));
         }
         for handle in handles {
             let result = handle.await.unwrap();
@@ -2075,9 +2278,7 @@ mod tests {
         let mut handles = vec![];
         for _ in 0..10 {
             let p = provider.clone();
-            handles.push(tokio::spawn(async move {
-                p.list_models().await.unwrap()
-            }));
+            handles.push(tokio::spawn(async move { p.list_models().await.unwrap() }));
         }
         for handle in handles {
             let models = handle.await.unwrap();
@@ -2106,8 +2307,12 @@ mod tests {
         let provider = OpenAiProvider::new(
             "sk-fake".to_string(),
             Some("http://127.0.0.1:19999".to_string()),
-        ).unwrap();
-        let mut rx = provider.infer_stream(InferenceRequest::default()).await.unwrap();
+        )
+        .unwrap();
+        let mut rx = provider
+            .infer_stream(InferenceRequest::default())
+            .await
+            .unwrap();
         // First message should be error
         let first = rx.recv().await;
         assert!(first.is_some());
@@ -2122,8 +2327,12 @@ mod tests {
         let provider = AnthropicProvider::new(
             "ant-fake".to_string(),
             Some("http://127.0.0.1:19999".to_string()),
-        ).unwrap();
-        let mut rx = provider.infer_stream(InferenceRequest::default()).await.unwrap();
+        )
+        .unwrap();
+        let mut rx = provider
+            .infer_stream(InferenceRequest::default())
+            .await
+            .unwrap();
         let first = rx.recv().await;
         assert!(first.is_some());
         assert!(first.unwrap().is_err());
@@ -2136,8 +2345,12 @@ mod tests {
         let provider = GoogleProvider::new(
             "goog-fake".to_string(),
             Some("http://127.0.0.1:19999".to_string()),
-        ).unwrap();
-        let mut rx = provider.infer_stream(InferenceRequest::default()).await.unwrap();
+        )
+        .unwrap();
+        let mut rx = provider
+            .infer_stream(InferenceRequest::default())
+            .await
+            .unwrap();
         let first = rx.recv().await;
         assert!(first.is_some());
         assert!(first.unwrap().is_err());

@@ -18,15 +18,18 @@ mod security_tests;
 pub use agent::{AgentEvent, AgentInfo, AgentStats, StopReason};
 pub use error::{AgnosError, Result};
 pub use llm::*;
-pub use security::{Capability, SecurityContext, SecurityPolicy, PolicyEffect};
-pub use telemetry::{TelemetryConfig, TelemetryCollector, CrashReport, EventType, TraceContext, SpanCollector, Span, SpanStatus, TraceId, SpanId};
+pub use security::{Capability, PolicyEffect, SecurityContext, SecurityPolicy};
+pub use telemetry::{
+    CrashReport, EventType, Span, SpanCollector, SpanId, SpanStatus, TelemetryCollector,
+    TelemetryConfig, TraceContext, TraceId,
+};
 pub use types::*;
 
 // Re-export commonly used crates
 pub use serde_json;
 
-use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 /// Unique identifier for an agent
@@ -233,15 +236,13 @@ impl Default for AgentConfig {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum AgentType {
     System,
     #[default]
     User,
     Service,
 }
-
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Permission {
@@ -409,17 +410,13 @@ pub enum ManifestNetworkScope {
     /// Localhost only (e.g., LLM Gateway on :8088).
     LocalhostOnly,
     /// Restricted to specific hosts/ports.
-    Restricted {
-        hosts: Vec<String>,
-        ports: Vec<u16>,
-    },
+    Restricted { hosts: Vec<String>, ports: Vec<u16> },
     /// Full network access (requires explicit user approval).
     Full,
 }
 
 /// Per-agent rate limit configuration for LLM Gateway.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AgentRateLimit {
     /// Maximum tokens per hour (0 = unlimited).
     #[serde(default)]
@@ -431,7 +428,6 @@ pub struct AgentRateLimit {
     #[serde(default)]
     pub max_concurrent_requests: u32,
 }
-
 
 /// Agent status
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -859,7 +855,11 @@ mod tests {
             agent_type: AgentType::System,
             resource_limits: ResourceLimits::default(),
             sandbox: SandboxConfig::default(),
-            permissions: vec![Permission::FileRead, Permission::FileWrite, Permission::ProcessSpawn],
+            permissions: vec![
+                Permission::FileRead,
+                Permission::FileWrite,
+                Permission::ProcessSpawn,
+            ],
             metadata: serde_json::json!({"key": "value", "count": 42}),
         };
         let json = serde_json::to_string(&config).unwrap();
@@ -971,7 +971,10 @@ mod tests {
     #[test]
     fn test_agent_manifest_permission_rationale() {
         let mut rationale = HashMap::new();
-        rationale.insert("FileRead".to_string(), "Needs to read config files".to_string());
+        rationale.insert(
+            "FileRead".to_string(),
+            "Needs to read config files".to_string(),
+        );
 
         let m = AgentManifest {
             name: "reader".into(),

@@ -169,10 +169,7 @@ pub fn parse_proc_mounts(content: &str) -> Vec<FuseMount> {
             if !fstype.starts_with("fuse") {
                 return None;
             }
-            let options: Vec<String> = parts[3]
-                .split(',')
-                .map(|s| s.to_string())
-                .collect();
+            let options: Vec<String> = parts[3].split(',').map(|s| s.to_string()).collect();
             Some(FuseMount {
                 source: parts[0].to_string(),
                 mountpoint: PathBuf::from(parts[1]),
@@ -280,9 +277,8 @@ pub fn is_fuse_available() -> bool {
 pub fn list_fuse_mounts() -> Result<Vec<FuseMount>> {
     #[cfg(target_os = "linux")]
     {
-        let content = std::fs::read_to_string("/proc/mounts").map_err(|e| {
-            SysError::Unknown(format!("Failed to read /proc/mounts: {}", e))
-        })?;
+        let content = std::fs::read_to_string("/proc/mounts")
+            .map_err(|e| SysError::Unknown(format!("Failed to read /proc/mounts: {}", e)))?;
         Ok(parse_proc_mounts(&content))
     }
 
@@ -341,9 +337,9 @@ pub fn mount_fuse(config: &AgentFuseConfig) -> Result<FuseMount> {
             }
         }
 
-        let output = cmd.output().map_err(|e| {
-            SysError::Unknown(format!("Failed to run {}: {}", binary, e))
-        })?;
+        let output = cmd
+            .output()
+            .map_err(|e| SysError::Unknown(format!("Failed to run {}: {}", binary, e)))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -413,9 +409,7 @@ pub fn unmount_fuse(mountpoint: &Path) -> Result<()> {
         let output = std::process::Command::new("umount")
             .arg(&mp)
             .output()
-            .map_err(|e| {
-                SysError::Unknown(format!("Failed to run umount: {}", e))
-            })?;
+            .map_err(|e| SysError::Unknown(format!("Failed to run umount: {}", e)))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -426,7 +420,10 @@ pub fn unmount_fuse(mountpoint: &Path) -> Result<()> {
             )));
         }
 
-        tracing::info!("Unmounted FUSE filesystem at {} (via umount)", mountpoint.display());
+        tracing::info!(
+            "Unmounted FUSE filesystem at {} (via umount)",
+            mountpoint.display()
+        );
         Ok(())
     }
 
@@ -441,9 +438,8 @@ pub fn unmount_fuse(mountpoint: &Path) -> Result<()> {
 pub fn get_fuse_status(mountpoint: &Path) -> Result<FuseStatus> {
     #[cfg(target_os = "linux")]
     {
-        let content = std::fs::read_to_string("/proc/mounts").map_err(|e| {
-            SysError::Unknown(format!("Failed to read /proc/mounts: {}", e))
-        })?;
+        let content = std::fs::read_to_string("/proc/mounts")
+            .map_err(|e| SysError::Unknown(format!("Failed to read /proc/mounts: {}", e)))?;
         let mounts = parse_proc_mounts(&content);
 
         let canonical = mountpoint
@@ -531,9 +527,7 @@ pub fn setup_agent_overlay(
         let output = std::process::Command::new("fuse-overlayfs")
             .args(["-o", &opts, &mount_str])
             .output()
-            .map_err(|e| {
-                SysError::Unknown(format!("Failed to run fuse-overlayfs: {}", e))
-            })?;
+            .map_err(|e| SysError::Unknown(format!("Failed to run fuse-overlayfs: {}", e)))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -579,9 +573,8 @@ pub fn cleanup_agent_mounts(agent_id: &str) -> Result<()> {
         }
 
         let prefix = format!("/run/agnos/agents/{}/", agent_id);
-        let content = std::fs::read_to_string("/proc/mounts").map_err(|e| {
-            SysError::Unknown(format!("Failed to read /proc/mounts: {}", e))
-        })?;
+        let content = std::fs::read_to_string("/proc/mounts")
+            .map_err(|e| SysError::Unknown(format!("Failed to read /proc/mounts: {}", e)))?;
         let mounts = parse_proc_mounts(&content);
 
         let mut errors: Vec<String> = Vec::new();
@@ -692,8 +685,7 @@ sshfs#host /mnt/r fuse.sshfs rw 0 0";
 
     #[test]
     fn test_parse_proc_mounts_options_split() {
-        let content =
-            "src /mnt fuse.test rw,nosuid,nodev,allow_other,max_read=131072 0 0";
+        let content = "src /mnt fuse.test rw,nosuid,nodev,allow_other,max_read=131072 0 0";
         let mounts = parse_proc_mounts(content);
         assert_eq!(mounts.len(), 1);
         assert_eq!(mounts[0].options.len(), 5);
@@ -778,8 +770,7 @@ sshfs#host /mnt/r fuse.sshfs rw 0 0";
     #[test]
     fn test_validate_mountpoint_nonexistent() {
         let err =
-            validate_mountpoint(Path::new("/tmp/agnos_fuse_test_nonexistent_12345"))
-                .unwrap_err();
+            validate_mountpoint(Path::new("/tmp/agnos_fuse_test_nonexistent_12345")).unwrap_err();
         assert!(err.to_string().contains("does not exist"));
     }
 
@@ -830,7 +821,10 @@ sshfs#host /mnt/r fuse.sshfs rw 0 0";
     fn test_fuse_filesystem_fstype_str() {
         assert_eq!(FuseFilesystem::Sshfs.fstype_str(), "fuse.sshfs");
         assert_eq!(FuseFilesystem::S3fs.fstype_str(), "fuse.s3fs");
-        assert_eq!(FuseFilesystem::OverlayFs.fstype_str(), "fuse.fuse-overlayfs");
+        assert_eq!(
+            FuseFilesystem::OverlayFs.fstype_str(),
+            "fuse.fuse-overlayfs"
+        );
         assert_eq!(
             FuseFilesystem::Custom("myfs".to_string()).fstype_str(),
             "fuse.myfs"

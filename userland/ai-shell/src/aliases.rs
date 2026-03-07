@@ -200,6 +200,9 @@ mod tests {
     fn test_expand_with_multiple_args() {
         let mut mgr = AliasManager::new();
         mgr.set("g".to_string(), "git".to_string());
-        assert_eq!(mgr.expand("g commit -m 'hello world'"), "git commit -m 'hello world'");
+        assert_eq!(
+            mgr.expand("g commit -m 'hello world'"),
+            "git commit -m 'hello world'"
+        );
     }
 }

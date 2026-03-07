@@ -40,7 +40,7 @@ pub struct ShellConfig {
 impl Default for ShellConfig {
     fn default() -> Self {
         let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/tmp"));
-        
+
         Self {
             default_mode: Mode::AiAssisted,
             history_file: home.join(".agnsh_history"),
@@ -72,7 +72,7 @@ impl ShellConfig {
             Ok(config)
         }
     }
-    
+
     /// Save config to file
     pub async fn save(&self, path: &PathBuf) -> Result<()> {
         let content = toml::to_string_pretty(self)?;
@@ -109,7 +109,10 @@ mod tests {
     #[test]
     fn test_default_config_paths() {
         let config = ShellConfig::default();
-        assert!(config.history_file.to_string_lossy().contains(".agnsh_history"));
+        assert!(config
+            .history_file
+            .to_string_lossy()
+            .contains(".agnsh_history"));
         assert!(config.audit_log.to_string_lossy().contains(".agnsh_audit"));
     }
 
@@ -157,22 +160,22 @@ mod tests {
     async fn test_config_save_and_load() {
         let temp_dir = std::env::temp_dir();
         let config_path = temp_dir.join("agnos_test_config.toml");
-        
+
         let config = ShellConfig {
             ai_enabled: false,
             approval_timeout: 120,
             theme: "light".to_string(),
             ..Default::default()
         };
-        
+
         config.save(&config_path).await.unwrap();
         assert!(config_path.exists());
-        
+
         let loaded = ShellConfig::from_file(config_path.clone()).await.unwrap();
         assert!(!loaded.ai_enabled);
         assert_eq!(loaded.approval_timeout, 120);
         assert_eq!(loaded.theme, "light");
-        
+
         let _ = std::fs::remove_file(&config_path);
     }
 
@@ -200,7 +203,10 @@ mod tests {
         };
         let toml_str = toml::to_string_pretty(&config).unwrap();
         let parsed: ShellConfig = toml::from_str(&toml_str).unwrap();
-        assert_eq!(parsed.llm_endpoint, Some("http://localhost:11434".to_string()));
+        assert_eq!(
+            parsed.llm_endpoint,
+            Some("http://localhost:11434".to_string())
+        );
         assert_eq!(parsed.theme, "monokai");
         assert_eq!(parsed.history_size, config.history_size);
         assert_eq!(parsed.ai_enabled, config.ai_enabled);

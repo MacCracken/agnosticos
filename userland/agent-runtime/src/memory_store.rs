@@ -203,12 +203,7 @@ impl AgentMemoryStore {
         let mut count = 0u64;
         let mut entries = tokio::fs::read_dir(&dir).await?;
         while let Some(entry) = entries.next_entry().await? {
-            if entry
-                .path()
-                .extension()
-                .and_then(|e| e.to_str())
-                == Some("json")
-            {
+            if entry.path().extension().and_then(|e| e.to_str()) == Some("json") {
                 tokio::fs::remove_file(entry.path()).await?;
                 count += 1;
             }
@@ -574,10 +569,7 @@ mod tests {
     fn test_default_construction() {
         let store = AgentMemoryStore::default();
         // Default should use the standard system path
-        assert_eq!(
-            store.base_dir,
-            PathBuf::from("/var/lib/agnos/agent-memory")
-        );
+        assert_eq!(store.base_dir, PathBuf::from("/var/lib/agnos/agent-memory"));
     }
 
     #[tokio::test]

@@ -267,7 +267,11 @@ mod tests {
         ];
         for err in &variants {
             let display = err.to_string();
-            assert!(!display.is_empty(), "Display should not be empty for {:?}", err);
+            assert!(
+                !display.is_empty(),
+                "Display should not be empty for {:?}",
+                err
+            );
         }
     }
 

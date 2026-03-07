@@ -116,12 +116,7 @@ impl KnowledgeBase {
     }
 
     /// Recursively walk a directory, indexing text files.
-    fn walk_dir(
-        &mut self,
-        dir: &Path,
-        source: &KnowledgeSource,
-        count: &mut usize,
-    ) -> Result<()> {
+    fn walk_dir(&mut self, dir: &Path, source: &KnowledgeSource, count: &mut usize) -> Result<()> {
         let read_dir = std::fs::read_dir(dir)
             .with_context(|| format!("failed to read directory: {}", dir.display()))?;
 
@@ -204,10 +199,7 @@ impl KnowledgeBase {
             return Vec::new();
         }
 
-        let query_words: Vec<String> = query
-            .split_whitespace()
-            .map(|w| w.to_lowercase())
-            .collect();
+        let query_words: Vec<String> = query.split_whitespace().map(|w| w.to_lowercase()).collect();
 
         if query_words.is_empty() {
             return Vec::new();
@@ -249,11 +241,7 @@ impl KnowledgeBase {
     }
 
     /// Return entries matching a specific source type, up to `limit`.
-    pub fn search_by_source(
-        &self,
-        source: &KnowledgeSource,
-        limit: usize,
-    ) -> Vec<KnowledgeEntry> {
+    pub fn search_by_source(&self, source: &KnowledgeSource, limit: usize) -> Vec<KnowledgeEntry> {
         self.entries
             .iter()
             .filter(|e| &e.source == source)
@@ -342,7 +330,11 @@ mod tests {
     fn test_index_text() {
         let mut kb = KnowledgeBase::new();
         let id = kb
-            .index_text("hello world", KnowledgeSource::ManPage, Path::new("/tmp/test"))
+            .index_text(
+                "hello world",
+                KnowledgeSource::ManPage,
+                Path::new("/tmp/test"),
+            )
             .unwrap();
         assert_eq!(kb.len(), 1);
         let entry = &kb.entries[0];
@@ -356,10 +348,18 @@ mod tests {
     #[test]
     fn test_search_basic() {
         let mut kb = KnowledgeBase::new();
-        kb.index_text("rust programming language", KnowledgeSource::ManPage, Path::new("/a"))
-            .unwrap();
-        kb.index_text("python scripting", KnowledgeSource::ManPage, Path::new("/b"))
-            .unwrap();
+        kb.index_text(
+            "rust programming language",
+            KnowledgeSource::ManPage,
+            Path::new("/a"),
+        )
+        .unwrap();
+        kb.index_text(
+            "python scripting",
+            KnowledgeSource::ManPage,
+            Path::new("/b"),
+        )
+        .unwrap();
 
         let results = kb.search("rust", 10);
         assert_eq!(results.len(), 1);
@@ -534,7 +534,10 @@ mod tests {
     #[test]
     fn test_index_directory_not_a_dir() {
         let mut kb = KnowledgeBase::new();
-        let res = kb.index_directory(Path::new("/tmp/nonexistent_agnos_test"), KnowledgeSource::ManPage);
+        let res = kb.index_directory(
+            Path::new("/tmp/nonexistent_agnos_test"),
+            KnowledgeSource::ManPage,
+        );
         assert!(res.is_err());
     }
 

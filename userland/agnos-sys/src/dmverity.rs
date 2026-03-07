@@ -65,12 +65,20 @@ impl VerityConfig {
     /// Validate the configuration.
     pub fn validate(&self) -> Result<()> {
         if self.name.is_empty() {
-            return Err(SysError::InvalidArgument("Verity name cannot be empty".into()));
+            return Err(SysError::InvalidArgument(
+                "Verity name cannot be empty".into(),
+            ));
         }
         if self.name.len() > 128 {
-            return Err(SysError::InvalidArgument("Verity name too long (max 128)".into()));
+            return Err(SysError::InvalidArgument(
+                "Verity name too long (max 128)".into(),
+            ));
         }
-        if !self.name.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+        if !self
+            .name
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+        {
             return Err(SysError::InvalidArgument(format!(
                 "Verity name contains invalid characters: {}",
                 self.name
@@ -114,7 +122,9 @@ pub struct VerityStatus {
 /// Validate that a root hash is well-formed hex of the correct length.
 pub fn validate_root_hash(hash: &str, algorithm: VerityHashAlgorithm) -> Result<()> {
     if hash.is_empty() {
-        return Err(SysError::InvalidArgument("Root hash cannot be empty".into()));
+        return Err(SysError::InvalidArgument(
+            "Root hash cannot be empty".into(),
+        ));
     }
 
     let expected_len = algorithm.hash_hex_len();
@@ -188,7 +198,9 @@ pub fn verity_format(
             .find(|line| line.starts_with("Root hash:"))
             .and_then(|line| line.strip_prefix("Root hash:"))
             .map(|h| h.trim().to_string())
-            .ok_or_else(|| SysError::Unknown("Could not parse root hash from veritysetup output".into()))?;
+            .ok_or_else(|| {
+                SysError::Unknown("Could not parse root hash from veritysetup output".into())
+            })?;
 
         tracing::info!(
             "Formatted dm-verity: data={}, hash={}, algo={}, root_hash={}",
@@ -255,7 +267,9 @@ pub fn verity_close(name: &str) -> Result<()> {
     #[cfg(target_os = "linux")]
     {
         if name.is_empty() {
-            return Err(SysError::InvalidArgument("Verity name cannot be empty".into()));
+            return Err(SysError::InvalidArgument(
+                "Verity name cannot be empty".into(),
+            ));
         }
 
         run_veritysetup_checked(&["close", name])?;
@@ -275,7 +289,9 @@ pub fn verity_status(name: &str) -> Result<VerityStatus> {
     #[cfg(target_os = "linux")]
     {
         if name.is_empty() {
-            return Err(SysError::InvalidArgument("Verity name cannot be empty".into()));
+            return Err(SysError::InvalidArgument(
+                "Verity name cannot be empty".into(),
+            ));
         }
 
         let output = run_veritysetup(&["status", name]);
@@ -321,11 +337,7 @@ pub fn verity_status(name: &str) -> Result<VerityStatus> {
 /// Verify a dm-verity volume without activating it.
 ///
 /// Returns `true` if the data matches the hash tree and root hash.
-pub fn verity_verify(
-    data_device: &Path,
-    hash_device: &Path,
-    root_hash: &str,
-) -> Result<bool> {
+pub fn verity_verify(data_device: &Path, hash_device: &Path, root_hash: &str) -> Result<bool> {
     #[cfg(target_os = "linux")]
     {
         if !data_device.exists() {
@@ -350,11 +362,17 @@ pub fn verity_verify(
 
         match result {
             Ok(_) => {
-                tracing::info!("dm-verity verification PASSED for {}", data_device.display());
+                tracing::info!(
+                    "dm-verity verification PASSED for {}",
+                    data_device.display()
+                );
                 Ok(true)
             }
             Err(_) => {
-                tracing::warn!("dm-verity verification FAILED for {}", data_device.display());
+                tracing::warn!(
+                    "dm-verity verification FAILED for {}",
+                    data_device.display()
+                );
                 Ok(false)
             }
         }
@@ -785,7 +803,11 @@ mod tests {
                 root_hash: "a".repeat(64),
                 salt: None,
             };
-            assert!(config.validate().is_ok(), "Block size {} should be valid", size);
+            assert!(
+                config.validate().is_ok(),
+                "Block size {} should be valid",
+                size
+            );
         }
     }
 

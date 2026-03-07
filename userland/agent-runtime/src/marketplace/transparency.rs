@@ -236,30 +236,54 @@ mod tests {
     #[test]
     fn test_append_chain() {
         let mut log = TransparencyLog::new();
-        log.append("a/b".into(), "1.0.0".into(), "k1".into(), "h1".into(), "s1".into());
-        log.append("a/b".into(), "1.1.0".into(), "k1".into(), "h2".into(), "s2".into());
-        log.append("c/d".into(), "0.1.0".into(), "k2".into(), "h3".into(), "s3".into());
+        log.append(
+            "a/b".into(),
+            "1.0.0".into(),
+            "k1".into(),
+            "h1".into(),
+            "s1".into(),
+        );
+        log.append(
+            "a/b".into(),
+            "1.1.0".into(),
+            "k1".into(),
+            "h2".into(),
+            "s2".into(),
+        );
+        log.append(
+            "c/d".into(),
+            "0.1.0".into(),
+            "k2".into(),
+            "h3".into(),
+            "s3".into(),
+        );
 
         assert_eq!(log.len(), 3);
         assert!(log.verify_chain().is_ok());
 
         // Second entry links to first
-        assert_eq!(
-            log.entries[1].previous_hash,
-            log.entries[0].entry_hash
-        );
+        assert_eq!(log.entries[1].previous_hash, log.entries[0].entry_hash);
         // Third links to second
-        assert_eq!(
-            log.entries[2].previous_hash,
-            log.entries[1].entry_hash
-        );
+        assert_eq!(log.entries[2].previous_hash, log.entries[1].entry_hash);
     }
 
     #[test]
     fn test_verify_chain_tampered_hash() {
         let mut log = TransparencyLog::new();
-        log.append("a/b".into(), "1.0.0".into(), "k1".into(), "h1".into(), "s1".into());
-        log.append("a/b".into(), "1.1.0".into(), "k1".into(), "h2".into(), "s2".into());
+        log.append(
+            "a/b".into(),
+            "1.0.0".into(),
+            "k1".into(),
+            "h1".into(),
+            "s1".into(),
+        );
+        log.append(
+            "a/b".into(),
+            "1.1.0".into(),
+            "k1".into(),
+            "h2".into(),
+            "s2".into(),
+        );
 
         // Tamper with first entry's hash
         log.entries[0].entry_hash = "tampered".to_string();
@@ -269,8 +293,20 @@ mod tests {
     #[test]
     fn test_verify_chain_broken_link() {
         let mut log = TransparencyLog::new();
-        log.append("a/b".into(), "1.0.0".into(), "k1".into(), "h1".into(), "s1".into());
-        log.append("a/b".into(), "1.1.0".into(), "k1".into(), "h2".into(), "s2".into());
+        log.append(
+            "a/b".into(),
+            "1.0.0".into(),
+            "k1".into(),
+            "h1".into(),
+            "s1".into(),
+        );
+        log.append(
+            "a/b".into(),
+            "1.1.0".into(),
+            "k1".into(),
+            "h2".into(),
+            "s2".into(),
+        );
 
         // Break chain link (keep self-hash valid but wrong previous)
         log.entries[1].previous_hash = "wrong".to_string();
@@ -281,7 +317,13 @@ mod tests {
     #[test]
     fn test_verify_chain_wrong_sequence() {
         let mut log = TransparencyLog::new();
-        log.append("a/b".into(), "1.0.0".into(), "k1".into(), "h1".into(), "s1".into());
+        log.append(
+            "a/b".into(),
+            "1.0.0".into(),
+            "k1".into(),
+            "h1".into(),
+            "s1".into(),
+        );
 
         log.entries[0].sequence = 5;
         // Self-hash will be invalid
@@ -291,8 +333,20 @@ mod tests {
     #[test]
     fn test_find_entry() {
         let mut log = TransparencyLog::new();
-        log.append("a/b".into(), "1.0.0".into(), "k1".into(), "h1".into(), "s1".into());
-        log.append("c/d".into(), "2.0.0".into(), "k2".into(), "h2".into(), "s2".into());
+        log.append(
+            "a/b".into(),
+            "1.0.0".into(),
+            "k1".into(),
+            "h1".into(),
+            "s1".into(),
+        );
+        log.append(
+            "c/d".into(),
+            "2.0.0".into(),
+            "k2".into(),
+            "h2".into(),
+            "s2".into(),
+        );
 
         assert!(log.find("a/b", "1.0.0").is_some());
         assert!(log.find("c/d", "2.0.0").is_some());
@@ -303,9 +357,27 @@ mod tests {
     #[test]
     fn test_entries_for_package() {
         let mut log = TransparencyLog::new();
-        log.append("a/b".into(), "1.0.0".into(), "k1".into(), "h1".into(), "s1".into());
-        log.append("a/b".into(), "1.1.0".into(), "k1".into(), "h2".into(), "s2".into());
-        log.append("c/d".into(), "0.1.0".into(), "k2".into(), "h3".into(), "s3".into());
+        log.append(
+            "a/b".into(),
+            "1.0.0".into(),
+            "k1".into(),
+            "h1".into(),
+            "s1".into(),
+        );
+        log.append(
+            "a/b".into(),
+            "1.1.0".into(),
+            "k1".into(),
+            "h2".into(),
+            "s2".into(),
+        );
+        log.append(
+            "c/d".into(),
+            "0.1.0".into(),
+            "k2".into(),
+            "h3".into(),
+            "s3".into(),
+        );
 
         assert_eq!(log.entries_for_package("a/b").len(), 2);
         assert_eq!(log.entries_for_package("c/d").len(), 1);
@@ -317,25 +389,55 @@ mod tests {
         let mut log = TransparencyLog::new();
         assert!(log.latest().is_none());
 
-        log.append("a/b".into(), "1.0.0".into(), "k1".into(), "h1".into(), "s1".into());
+        log.append(
+            "a/b".into(),
+            "1.0.0".into(),
+            "k1".into(),
+            "h1".into(),
+            "s1".into(),
+        );
         assert_eq!(log.latest().unwrap().version, "1.0.0");
 
-        log.append("a/b".into(), "2.0.0".into(), "k1".into(), "h2".into(), "s2".into());
+        log.append(
+            "a/b".into(),
+            "2.0.0".into(),
+            "k1".into(),
+            "h2".into(),
+            "s2".into(),
+        );
         assert_eq!(log.latest().unwrap().version, "2.0.0");
     }
 
     #[test]
     fn test_entry_verify_self() {
         let mut log = TransparencyLog::new();
-        log.append("a/b".into(), "1.0.0".into(), "k1".into(), "h1".into(), "s1".into());
+        log.append(
+            "a/b".into(),
+            "1.0.0".into(),
+            "k1".into(),
+            "h1".into(),
+            "s1".into(),
+        );
         assert!(log.entries[0].verify_self());
     }
 
     #[test]
     fn test_json_roundtrip() {
         let mut log = TransparencyLog::new();
-        log.append("a/b".into(), "1.0.0".into(), "k1".into(), "h1".into(), "s1".into());
-        log.append("c/d".into(), "2.0.0".into(), "k2".into(), "h2".into(), "s2".into());
+        log.append(
+            "a/b".into(),
+            "1.0.0".into(),
+            "k1".into(),
+            "h1".into(),
+            "s1".into(),
+        );
+        log.append(
+            "c/d".into(),
+            "2.0.0".into(),
+            "k2".into(),
+            "h2".into(),
+            "s2".into(),
+        );
 
         let json = log.to_json().unwrap();
         let recovered = TransparencyLog::from_json(&json).unwrap();
@@ -346,7 +448,13 @@ mod tests {
     #[test]
     fn test_json_import_tampered() {
         let mut log = TransparencyLog::new();
-        log.append("a/b".into(), "1.0.0".into(), "k1".into(), "h1".into(), "s1".into());
+        log.append(
+            "a/b".into(),
+            "1.0.0".into(),
+            "k1".into(),
+            "h1".into(),
+            "s1".into(),
+        );
 
         let mut json = log.to_json().unwrap();
         // Tamper with content
@@ -362,7 +470,13 @@ mod tests {
     #[test]
     fn test_entry_hash_deterministic() {
         let mut log = TransparencyLog::new();
-        log.append("a/b".into(), "1.0.0".into(), "k1".into(), "h1".into(), "s1".into());
+        log.append(
+            "a/b".into(),
+            "1.0.0".into(),
+            "k1".into(),
+            "h1".into(),
+            "s1".into(),
+        );
         let hash1 = log.entries[0].compute_hash();
         let hash2 = log.entries[0].compute_hash();
         assert_eq!(hash1, hash2);
@@ -371,7 +485,13 @@ mod tests {
     #[test]
     fn test_first_entry_empty_previous() {
         let mut log = TransparencyLog::new();
-        log.append("a/b".into(), "1.0.0".into(), "k1".into(), "h1".into(), "s1".into());
+        log.append(
+            "a/b".into(),
+            "1.0.0".into(),
+            "k1".into(),
+            "h1".into(),
+            "s1".into(),
+        );
         assert!(log.entries[0].previous_hash.is_empty());
 
         // Verify passes with empty previous_hash for first entry

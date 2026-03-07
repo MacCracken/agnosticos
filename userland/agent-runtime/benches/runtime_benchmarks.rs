@@ -63,7 +63,8 @@ fn bench_knowledge_search(c: &mut Criterion) {
             "Configuration file {} defines parameters for the {} subsystem. Key settings include \
              timeout values, buffer sizes, and retry policies for handling distributed agent \
              communication.",
-            i, subsystems[i % 5]
+            i,
+            subsystems[i % 5]
         );
         let _ = kb.index_text(
             &content,

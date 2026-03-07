@@ -17,8 +17,8 @@ pub mod security;
 pub mod session;
 pub mod ui;
 
-pub use interpreter::{Interpreter, Intent, ListOptions, Translation};
 pub use config::ShellConfig;
+pub use interpreter::{Intent, Interpreter, ListOptions, Translation};
 pub use mode::Mode;
 pub use security::SecurityContext;
 pub use session::Session;

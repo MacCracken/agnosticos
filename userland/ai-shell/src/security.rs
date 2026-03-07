@@ -4,7 +4,7 @@
 //! require human approval through secure privilege escalation.
 
 use anyhow::{anyhow, Result};
-use nix::unistd::{getuid, getgid, geteuid};
+use nix::unistd::{geteuid, getgid, getuid};
 use std::process::Command;
 use tracing::{info, warn};
 
@@ -25,14 +25,14 @@ impl SecurityContext {
         let gid = getgid().as_raw() as u32;
         let euid = geteuid().as_raw() as u32;
         let is_root = uid == 0;
-        
+
         let username = Self::get_username(uid)?;
         let sudo_available = Self::check_sudo_available();
-        
+
         if is_root {
             warn!("Shell running as root - AI features disabled for safety");
         }
-        
+
         Ok(Self {
             _uid: uid,
             _gid: gid,
@@ -43,18 +43,18 @@ impl SecurityContext {
             sudo_available,
         })
     }
-    
+
     /// Get current username
     fn get_username(uid: u32) -> Result<String> {
         // Try to get username from environment
         if let Ok(user) = std::env::var("USER") {
             return Ok(user);
         }
-        
+
         // Fallback to uid
         Ok(format!("uid_{}", uid))
     }
-    
+
     /// Check if sudo is available
     fn check_sudo_available() -> bool {
         Command::new("which")
@@ -63,64 +63,67 @@ impl SecurityContext {
             .map(|output| output.status.success())
             .unwrap_or(false)
     }
-    
+
     /// Check if running as root
     pub fn is_root(&self) -> bool {
         self.is_root
     }
-    
+
     /// Check if in restricted mode
     pub fn is_restricted(&self) -> bool {
         self.restricted
     }
-    
+
     /// Get username
     pub fn username(&self) -> &str {
         &self.username
     }
-    
+
     /// Check if can escalate privileges
     pub fn can_escalate(&self) -> bool {
         !self.restricted && self.sudo_available && !self.is_root
     }
-    
+
     /// Execute command with privilege escalation
     /// This ALWAYS requires human approval
-    pub async fn execute_with_privileges(&self, command: &[String]) -> Result<std::process::Output> {
+    pub async fn execute_with_privileges(
+        &self,
+        command: &[String],
+    ) -> Result<std::process::Output> {
         if self.restricted {
             return Err(anyhow!("Cannot escalate privileges in restricted mode"));
         }
-        
+
         if !self.sudo_available {
             return Err(anyhow!("sudo not available for privilege escalation"));
         }
-        
+
         // Build sudo command
         let mut cmd = Command::new("sudo");
-        cmd.arg("-n");  // Non-interactive (will fail if password needed)
+        cmd.arg("-n"); // Non-interactive (will fail if password needed)
         cmd.args(command);
-        
+
         info!("Executing with elevated privileges: {:?}", command);
-        
+
         let output = cmd.output()?;
-        
+
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(anyhow!("Privileged command failed: {}", stderr));
         }
-        
+
         Ok(output)
     }
-    
+
     /// Execute command without privileges
     pub fn execute_normal(&self, command: &[String]) -> Result<std::process::Output> {
         if command.is_empty() {
             return Err(anyhow!("Empty command"));
         }
-        
+
         let mut cmd = Command::new(&command[0]);
         cmd.args(&command[1..]);
-        
+
         let output = cmd.output()?;
         Ok(output)
     }
@@ -146,13 +149,12 @@ pub enum PermissionLevel {
 impl PermissionLevel {
     /// Check if this level requires human approval
     pub fn requires_approval(&self) -> bool {
-        matches!(self, 
-            PermissionLevel::SystemWrite | 
-            PermissionLevel::Admin | 
-            PermissionLevel::Blocked
+        matches!(
+            self,
+            PermissionLevel::SystemWrite | PermissionLevel::Admin | PermissionLevel::Blocked
         )
     }
-    
+
     /// Check if AI is allowed to execute this
     pub fn ai_allowed(&self) -> bool {
         !matches!(self, PermissionLevel::Blocked)
@@ -162,13 +164,12 @@ impl PermissionLevel {
 /// Analyze command for required permission level
 pub fn analyze_command_permission(command: &str, args: &[String]) -> PermissionLevel {
     let cmd = command.to_lowercase();
-    
+
     // Blocked commands (never allowed for AI)
     let blocked = [
-        "rm", "dd", "mkfs", "fdisk", "parted", "dd",
-        "chmod", "chown", "chgrp",
+        "rm", "dd", "mkfs", "fdisk", "parted", "dd", "chmod", "chown", "chgrp",
     ];
-    
+
     if blocked.contains(&cmd.as_str()) {
         // But allow safe variations
         if cmd == "rm" && !args.iter().any(|a| a.starts_with('-')) {
@@ -178,82 +179,94 @@ pub fn analyze_command_permission(command: &str, args: &[String]) -> PermissionL
         }
         return PermissionLevel::Blocked;
     }
-    
+
     // Admin commands
     let admin = [
-        "apt", "yum", "dnf", "pacman", "systemctl", "service",
-        "useradd", "userdel", "usermod", "groupadd",
-        "mount", "umount", "modprobe", "insmod", "rmmod",
+        "apt",
+        "yum",
+        "dnf",
+        "pacman",
+        "systemctl",
+        "service",
+        "useradd",
+        "userdel",
+        "usermod",
+        "groupadd",
+        "mount",
+        "umount",
+        "modprobe",
+        "insmod",
+        "rmmod",
     ];
-    
+
     if admin.contains(&cmd.as_str()) {
         return PermissionLevel::Admin;
     }
-    
+
     // System write commands
     let system_write = [
-        "cp", "mv", "ln", "touch", "mkdir", "rmdir",
-        "tee", "sed", "awk",
+        "cp", "mv", "ln", "touch", "mkdir", "rmdir", "tee", "sed", "awk",
     ];
-    
+
     if system_write.contains(&cmd.as_str()) {
         // Check if targeting system directories
         if args.iter().any(|a| {
             // Normalize path to prevent traversal attacks (e.g., /usr/../etc/passwd)
             let normalized = if a.starts_with('/') {
                 // Attempt to canonicalize; fall back to cleaning the path manually
-                std::path::Path::new(a)
-                    .canonicalize()
-                    .unwrap_or_else(|_| {
-                        // Manual normalization for paths that don't exist yet
-                        let mut components = Vec::new();
-                        for component in std::path::Path::new(a).components() {
-                            match component {
-                                std::path::Component::ParentDir => { components.pop(); }
-                                std::path::Component::CurDir => {}
-                                other => components.push(other),
+                std::path::Path::new(a).canonicalize().unwrap_or_else(|_| {
+                    // Manual normalization for paths that don't exist yet
+                    let mut components = Vec::new();
+                    for component in std::path::Path::new(a).components() {
+                        match component {
+                            std::path::Component::ParentDir => {
+                                components.pop();
                             }
+                            std::path::Component::CurDir => {}
+                            other => components.push(other),
                         }
-                        components.iter().collect()
-                    })
+                    }
+                    components.iter().collect()
+                })
             } else {
                 std::path::PathBuf::from(a)
             };
             let path_str = normalized.to_string_lossy();
-            path_str.starts_with("/etc/") || path_str == "/etc"
-                || path_str.starts_with("/usr/") || path_str == "/usr"
-                || path_str.starts_with("/bin/") || path_str == "/bin"
-                || path_str.starts_with("/sbin/") || path_str == "/sbin"
+            path_str.starts_with("/etc/")
+                || path_str == "/etc"
+                || path_str.starts_with("/usr/")
+                || path_str == "/usr"
+                || path_str.starts_with("/bin/")
+                || path_str == "/bin"
+                || path_str.starts_with("/sbin/")
+                || path_str == "/sbin"
                 || path_str.starts_with("/lib")
         }) {
             return PermissionLevel::SystemWrite;
         }
         return PermissionLevel::UserWrite;
     }
-    
+
     // Read-only commands
     let read_only = [
-        "ls", "cat", "head", "tail", "less", "more",
-        "grep", "find", "ps", "top", "htop",
-        "df", "du", "free", "uptime", "uname",
-        "ifconfig", "ip", "netstat", "ss",
-        "pwd", "echo", "date", "whoami", "id",
+        "ls", "cat", "head", "tail", "less", "more", "grep", "find", "ps", "top", "htop", "df",
+        "du", "free", "uptime", "uname", "ifconfig", "ip", "netstat", "ss", "pwd", "echo", "date",
+        "whoami", "id",
     ];
-    
+
     if read_only.contains(&cmd.as_str()) {
         return PermissionLevel::ReadOnly;
     }
-    
+
     // Safe commands (builtin or non-destructive)
     let safe = [
-        "cd", "pwd", "echo", "clear", "exit", "history",
-        "help", "agnsh",
+        "cd", "pwd", "echo", "clear", "exit", "history", "help", "agnsh",
     ];
-    
+
     if safe.contains(&cmd.as_str()) {
         return PermissionLevel::Safe;
     }
-    
+
     // Default to requiring approval for unknown commands
     PermissionLevel::UserWrite
 }
@@ -307,17 +320,38 @@ mod tests {
     #[test]
     fn test_analyze_command_safe() {
         assert_eq!(analyze_command_permission("cd", &[]), PermissionLevel::Safe);
-        assert_eq!(analyze_command_permission("clear", &[]), PermissionLevel::Safe);
-        assert_eq!(analyze_command_permission("exit", &[]), PermissionLevel::Safe);
-        assert_eq!(analyze_command_permission("history", &[]), PermissionLevel::Safe);
-        assert_eq!(analyze_command_permission("help", &[]), PermissionLevel::Safe);
+        assert_eq!(
+            analyze_command_permission("clear", &[]),
+            PermissionLevel::Safe
+        );
+        assert_eq!(
+            analyze_command_permission("exit", &[]),
+            PermissionLevel::Safe
+        );
+        assert_eq!(
+            analyze_command_permission("history", &[]),
+            PermissionLevel::Safe
+        );
+        assert_eq!(
+            analyze_command_permission("help", &[]),
+            PermissionLevel::Safe
+        );
     }
 
     #[test]
     fn test_analyze_command_user_write() {
-        assert_eq!(analyze_command_permission("mkdir", &["/tmp/test".to_string()]), PermissionLevel::UserWrite);
-        assert_eq!(analyze_command_permission("cp", &["a".to_string(), "b".to_string()]), PermissionLevel::UserWrite);
-        assert_eq!(analyze_command_permission("mv", &["a".to_string(), "b".to_string()]), PermissionLevel::UserWrite);
+        assert_eq!(
+            analyze_command_permission("mkdir", &["/tmp/test".to_string()]),
+            PermissionLevel::UserWrite
+        );
+        assert_eq!(
+            analyze_command_permission("cp", &["a".to_string(), "b".to_string()]),
+            PermissionLevel::UserWrite
+        );
+        assert_eq!(
+            analyze_command_permission("mv", &["a".to_string(), "b".to_string()]),
+            PermissionLevel::UserWrite
+        );
     }
 
     #[test]
@@ -334,28 +368,55 @@ mod tests {
 
     #[test]
     fn test_analyze_command_admin() {
-        assert_eq!(analyze_command_permission("apt", &["install".to_string()]), PermissionLevel::Admin);
-        assert_eq!(analyze_command_permission("systemctl", &["start".to_string()]), PermissionLevel::Admin);
-        assert_eq!(analyze_command_permission("mount", &["/dev/sda1".to_string()]), PermissionLevel::Admin);
+        assert_eq!(
+            analyze_command_permission("apt", &["install".to_string()]),
+            PermissionLevel::Admin
+        );
+        assert_eq!(
+            analyze_command_permission("systemctl", &["start".to_string()]),
+            PermissionLevel::Admin
+        );
+        assert_eq!(
+            analyze_command_permission("mount", &["/dev/sda1".to_string()]),
+            PermissionLevel::Admin
+        );
     }
 
     #[test]
     fn test_analyze_command_blocked() {
-        assert_eq!(analyze_command_permission("chmod", &[]), PermissionLevel::Blocked);
-        assert_eq!(analyze_command_permission("chown", &[]), PermissionLevel::Blocked);
-        assert_eq!(analyze_command_permission("fdisk", &[]), PermissionLevel::Blocked);
-        assert_eq!(analyze_command_permission("mkfs", &[]), PermissionLevel::Blocked);
+        assert_eq!(
+            analyze_command_permission("chmod", &[]),
+            PermissionLevel::Blocked
+        );
+        assert_eq!(
+            analyze_command_permission("chown", &[]),
+            PermissionLevel::Blocked
+        );
+        assert_eq!(
+            analyze_command_permission("fdisk", &[]),
+            PermissionLevel::Blocked
+        );
+        assert_eq!(
+            analyze_command_permission("mkfs", &[]),
+            PermissionLevel::Blocked
+        );
     }
 
     #[test]
     fn test_analyze_command_rm_without_args() {
         // rm always requires approval, even without flags
-        assert_eq!(analyze_command_permission("rm", &["file.txt".to_string()]), PermissionLevel::Admin);
+        assert_eq!(
+            analyze_command_permission("rm", &["file.txt".to_string()]),
+            PermissionLevel::Admin
+        );
     }
 
     #[test]
     fn test_analyze_command_unknown() {
-        assert_eq!(analyze_command_permission("unknowncmd", &[]), PermissionLevel::UserWrite);
+        assert_eq!(
+            analyze_command_permission("unknowncmd", &[]),
+            PermissionLevel::UserWrite
+        );
     }
 
     #[test]
@@ -370,7 +431,7 @@ mod tests {
     fn test_security_context_is_restricted() {
         let ctx = SecurityContext::new(true).unwrap();
         assert!(ctx.is_restricted());
-        
+
         let _ctx_normal = SecurityContext::new(false).unwrap();
         // Note: This might be true if running as root
     }
@@ -412,25 +473,55 @@ mod tests {
 
     #[test]
     fn test_analyze_command_read_only() {
-        assert_eq!(analyze_command_permission("ls", &["-la".to_string()]), PermissionLevel::ReadOnly);
-        assert_eq!(analyze_command_permission("cat", &["file.txt".to_string()]), PermissionLevel::ReadOnly);
-        assert_eq!(analyze_command_permission("ps", &[]), PermissionLevel::ReadOnly);
-        assert_eq!(analyze_command_permission("df", &["-h".to_string()]), PermissionLevel::ReadOnly);
-        assert_eq!(analyze_command_permission("whoami", &[]), PermissionLevel::ReadOnly);
-        assert_eq!(analyze_command_permission("id", &[]), PermissionLevel::ReadOnly);
-        assert_eq!(analyze_command_permission("uname", &["-a".to_string()]), PermissionLevel::ReadOnly);
+        assert_eq!(
+            analyze_command_permission("ls", &["-la".to_string()]),
+            PermissionLevel::ReadOnly
+        );
+        assert_eq!(
+            analyze_command_permission("cat", &["file.txt".to_string()]),
+            PermissionLevel::ReadOnly
+        );
+        assert_eq!(
+            analyze_command_permission("ps", &[]),
+            PermissionLevel::ReadOnly
+        );
+        assert_eq!(
+            analyze_command_permission("df", &["-h".to_string()]),
+            PermissionLevel::ReadOnly
+        );
+        assert_eq!(
+            analyze_command_permission("whoami", &[]),
+            PermissionLevel::ReadOnly
+        );
+        assert_eq!(
+            analyze_command_permission("id", &[]),
+            PermissionLevel::ReadOnly
+        );
+        assert_eq!(
+            analyze_command_permission("uname", &["-a".to_string()]),
+            PermissionLevel::ReadOnly
+        );
     }
 
     #[test]
     fn test_analyze_command_rm_with_flags() {
         // rm with flags should be blocked
-        assert_eq!(analyze_command_permission("rm", &["-rf".to_string(), "/tmp".to_string()]), PermissionLevel::Blocked);
-        assert_eq!(analyze_command_permission("rm", &["-r".to_string(), "dir".to_string()]), PermissionLevel::Blocked);
+        assert_eq!(
+            analyze_command_permission("rm", &["-rf".to_string(), "/tmp".to_string()]),
+            PermissionLevel::Blocked
+        );
+        assert_eq!(
+            analyze_command_permission("rm", &["-r".to_string(), "dir".to_string()]),
+            PermissionLevel::Blocked
+        );
     }
 
     #[test]
     fn test_analyze_command_case_insensitive() {
-        assert_eq!(analyze_command_permission("LS", &[]), PermissionLevel::ReadOnly);
+        assert_eq!(
+            analyze_command_permission("LS", &[]),
+            PermissionLevel::ReadOnly
+        );
         assert_eq!(analyze_command_permission("CD", &[]), PermissionLevel::Safe);
     }
 
@@ -438,7 +529,10 @@ mod tests {
     fn test_analyze_command_path_traversal_detection() {
         // Path traversal attempt should still detect system paths
         assert_eq!(
-            analyze_command_permission("cp", &["file".to_string(), "/usr/../etc/passwd".to_string()]),
+            analyze_command_permission(
+                "cp",
+                &["file".to_string(), "/usr/../etc/passwd".to_string()]
+            ),
             PermissionLevel::SystemWrite
         );
     }
@@ -478,33 +572,78 @@ mod tests {
 
     #[test]
     fn test_analyze_command_dd_blocked() {
-        assert_eq!(analyze_command_permission("dd", &[]), PermissionLevel::Blocked);
+        assert_eq!(
+            analyze_command_permission("dd", &[]),
+            PermissionLevel::Blocked
+        );
     }
 
     #[test]
     fn test_analyze_command_more_admin() {
-        assert_eq!(analyze_command_permission("yum", &[]), PermissionLevel::Admin);
-        assert_eq!(analyze_command_permission("dnf", &[]), PermissionLevel::Admin);
-        assert_eq!(analyze_command_permission("pacman", &[]), PermissionLevel::Admin);
-        assert_eq!(analyze_command_permission("useradd", &[]), PermissionLevel::Admin);
-        assert_eq!(analyze_command_permission("modprobe", &[]), PermissionLevel::Admin);
+        assert_eq!(
+            analyze_command_permission("yum", &[]),
+            PermissionLevel::Admin
+        );
+        assert_eq!(
+            analyze_command_permission("dnf", &[]),
+            PermissionLevel::Admin
+        );
+        assert_eq!(
+            analyze_command_permission("pacman", &[]),
+            PermissionLevel::Admin
+        );
+        assert_eq!(
+            analyze_command_permission("useradd", &[]),
+            PermissionLevel::Admin
+        );
+        assert_eq!(
+            analyze_command_permission("modprobe", &[]),
+            PermissionLevel::Admin
+        );
     }
 
     #[test]
     fn test_analyze_command_more_read_only() {
-        assert_eq!(analyze_command_permission("head", &["-10".to_string()]), PermissionLevel::ReadOnly);
-        assert_eq!(analyze_command_permission("tail", &["-f".to_string()]), PermissionLevel::ReadOnly);
-        assert_eq!(analyze_command_permission("grep", &["pattern".to_string()]), PermissionLevel::ReadOnly);
-        assert_eq!(analyze_command_permission("find", &["/tmp".to_string()]), PermissionLevel::ReadOnly);
-        assert_eq!(analyze_command_permission("free", &[]), PermissionLevel::ReadOnly);
-        assert_eq!(analyze_command_permission("uptime", &[]), PermissionLevel::ReadOnly);
+        assert_eq!(
+            analyze_command_permission("head", &["-10".to_string()]),
+            PermissionLevel::ReadOnly
+        );
+        assert_eq!(
+            analyze_command_permission("tail", &["-f".to_string()]),
+            PermissionLevel::ReadOnly
+        );
+        assert_eq!(
+            analyze_command_permission("grep", &["pattern".to_string()]),
+            PermissionLevel::ReadOnly
+        );
+        assert_eq!(
+            analyze_command_permission("find", &["/tmp".to_string()]),
+            PermissionLevel::ReadOnly
+        );
+        assert_eq!(
+            analyze_command_permission("free", &[]),
+            PermissionLevel::ReadOnly
+        );
+        assert_eq!(
+            analyze_command_permission("uptime", &[]),
+            PermissionLevel::ReadOnly
+        );
     }
 
     #[test]
     fn test_analyze_command_system_write_sed_awk() {
-        assert_eq!(analyze_command_permission("sed", &["s/a/b/".to_string()]), PermissionLevel::UserWrite);
-        assert_eq!(analyze_command_permission("awk", &["{}".to_string()]), PermissionLevel::UserWrite);
-        assert_eq!(analyze_command_permission("tee", &["file".to_string()]), PermissionLevel::UserWrite);
+        assert_eq!(
+            analyze_command_permission("sed", &["s/a/b/".to_string()]),
+            PermissionLevel::UserWrite
+        );
+        assert_eq!(
+            analyze_command_permission("awk", &["{}".to_string()]),
+            PermissionLevel::UserWrite
+        );
+        assert_eq!(
+            analyze_command_permission("tee", &["file".to_string()]),
+            PermissionLevel::UserWrite
+        );
     }
 
     #[test]
@@ -531,7 +670,10 @@ mod tests {
 
     #[test]
     fn test_analyze_command_chgrp_blocked() {
-        assert_eq!(analyze_command_permission("chgrp", &[]), PermissionLevel::Blocked);
+        assert_eq!(
+            analyze_command_permission("chgrp", &[]),
+            PermissionLevel::Blocked
+        );
     }
 
     #[test]
@@ -560,82 +702,139 @@ mod tests {
 
     #[test]
     fn test_analyze_command_service_admin() {
-        assert_eq!(analyze_command_permission("service", &["start".to_string()]), PermissionLevel::Admin);
+        assert_eq!(
+            analyze_command_permission("service", &["start".to_string()]),
+            PermissionLevel::Admin
+        );
     }
 
     #[test]
     fn test_analyze_command_userdel_admin() {
-        assert_eq!(analyze_command_permission("userdel", &[]), PermissionLevel::Admin);
+        assert_eq!(
+            analyze_command_permission("userdel", &[]),
+            PermissionLevel::Admin
+        );
     }
 
     #[test]
     fn test_analyze_command_usermod_admin() {
-        assert_eq!(analyze_command_permission("usermod", &[]), PermissionLevel::Admin);
+        assert_eq!(
+            analyze_command_permission("usermod", &[]),
+            PermissionLevel::Admin
+        );
     }
 
     #[test]
     fn test_analyze_command_groupadd_admin() {
-        assert_eq!(analyze_command_permission("groupadd", &[]), PermissionLevel::Admin);
+        assert_eq!(
+            analyze_command_permission("groupadd", &[]),
+            PermissionLevel::Admin
+        );
     }
 
     #[test]
     fn test_analyze_command_umount_admin() {
-        assert_eq!(analyze_command_permission("umount", &[]), PermissionLevel::Admin);
+        assert_eq!(
+            analyze_command_permission("umount", &[]),
+            PermissionLevel::Admin
+        );
     }
 
     #[test]
     fn test_analyze_command_insmod_admin() {
-        assert_eq!(analyze_command_permission("insmod", &[]), PermissionLevel::Admin);
+        assert_eq!(
+            analyze_command_permission("insmod", &[]),
+            PermissionLevel::Admin
+        );
     }
 
     #[test]
     fn test_analyze_command_rmmod_admin() {
-        assert_eq!(analyze_command_permission("rmmod", &[]), PermissionLevel::Admin);
+        assert_eq!(
+            analyze_command_permission("rmmod", &[]),
+            PermissionLevel::Admin
+        );
     }
 
     #[test]
     fn test_analyze_command_more_read_only_network() {
-        assert_eq!(analyze_command_permission("ifconfig", &[]), PermissionLevel::ReadOnly);
-        assert_eq!(analyze_command_permission("ip", &[]), PermissionLevel::ReadOnly);
-        assert_eq!(analyze_command_permission("netstat", &[]), PermissionLevel::ReadOnly);
-        assert_eq!(analyze_command_permission("ss", &[]), PermissionLevel::ReadOnly);
+        assert_eq!(
+            analyze_command_permission("ifconfig", &[]),
+            PermissionLevel::ReadOnly
+        );
+        assert_eq!(
+            analyze_command_permission("ip", &[]),
+            PermissionLevel::ReadOnly
+        );
+        assert_eq!(
+            analyze_command_permission("netstat", &[]),
+            PermissionLevel::ReadOnly
+        );
+        assert_eq!(
+            analyze_command_permission("ss", &[]),
+            PermissionLevel::ReadOnly
+        );
     }
 
     #[test]
     fn test_analyze_command_echo_read_only_precedence() {
         // "echo" appears in both read_only and safe lists, but read_only is checked first
-        assert_eq!(analyze_command_permission("echo", &["hello".to_string()]), PermissionLevel::ReadOnly);
+        assert_eq!(
+            analyze_command_permission("echo", &["hello".to_string()]),
+            PermissionLevel::ReadOnly
+        );
     }
 
     #[test]
     fn test_analyze_command_agnsh_safe() {
-        assert_eq!(analyze_command_permission("agnsh", &[]), PermissionLevel::Safe);
+        assert_eq!(
+            analyze_command_permission("agnsh", &[]),
+            PermissionLevel::Safe
+        );
     }
 
     #[test]
     fn test_analyze_command_less_read_only() {
-        assert_eq!(analyze_command_permission("less", &["file".to_string()]), PermissionLevel::ReadOnly);
+        assert_eq!(
+            analyze_command_permission("less", &["file".to_string()]),
+            PermissionLevel::ReadOnly
+        );
     }
 
     #[test]
     fn test_analyze_command_more_read_only_cmd() {
-        assert_eq!(analyze_command_permission("more", &["file".to_string()]), PermissionLevel::ReadOnly);
+        assert_eq!(
+            analyze_command_permission("more", &["file".to_string()]),
+            PermissionLevel::ReadOnly
+        );
     }
 
     #[test]
     fn test_analyze_command_top_htop_read_only() {
-        assert_eq!(analyze_command_permission("top", &[]), PermissionLevel::ReadOnly);
-        assert_eq!(analyze_command_permission("htop", &[]), PermissionLevel::ReadOnly);
+        assert_eq!(
+            analyze_command_permission("top", &[]),
+            PermissionLevel::ReadOnly
+        );
+        assert_eq!(
+            analyze_command_permission("htop", &[]),
+            PermissionLevel::ReadOnly
+        );
     }
 
     #[test]
     fn test_analyze_command_date_read_only() {
-        assert_eq!(analyze_command_permission("date", &[]), PermissionLevel::ReadOnly);
+        assert_eq!(
+            analyze_command_permission("date", &[]),
+            PermissionLevel::ReadOnly
+        );
     }
 
     #[test]
     fn test_analyze_command_du_read_only() {
-        assert_eq!(analyze_command_permission("du", &["-sh".to_string()]), PermissionLevel::ReadOnly);
+        assert_eq!(
+            analyze_command_permission("du", &["-sh".to_string()]),
+            PermissionLevel::ReadOnly
+        );
     }
 
     #[test]
@@ -732,7 +931,14 @@ mod tests {
     #[test]
     fn test_analyze_command_sed_etc_system_write() {
         assert_eq!(
-            analyze_command_permission("sed", &["-i".to_string(), "s/a/b/".to_string(), "/etc/hosts".to_string()]),
+            analyze_command_permission(
+                "sed",
+                &[
+                    "-i".to_string(),
+                    "s/a/b/".to_string(),
+                    "/etc/hosts".to_string()
+                ]
+            ),
             PermissionLevel::SystemWrite
         );
     }
@@ -749,7 +955,10 @@ mod tests {
     fn test_analyze_command_ln_user_write() {
         // ln with no system paths → UserWrite
         assert_eq!(
-            analyze_command_permission("ln", &["-s".to_string(), "target".to_string(), "link".to_string()]),
+            analyze_command_permission(
+                "ln",
+                &["-s".to_string(), "target".to_string(), "link".to_string()]
+            ),
             PermissionLevel::UserWrite
         );
     }
@@ -764,12 +973,18 @@ mod tests {
 
     #[test]
     fn test_analyze_command_mkfs_blocked() {
-        assert_eq!(analyze_command_permission("mkfs", &["/dev/sda1".to_string()]), PermissionLevel::Blocked);
+        assert_eq!(
+            analyze_command_permission("mkfs", &["/dev/sda1".to_string()]),
+            PermissionLevel::Blocked
+        );
     }
 
     #[test]
     fn test_analyze_command_parted_blocked() {
-        assert_eq!(analyze_command_permission("parted", &[]), PermissionLevel::Blocked);
+        assert_eq!(
+            analyze_command_permission("parted", &[]),
+            PermissionLevel::Blocked
+        );
     }
 
     #[test]
@@ -784,9 +999,11 @@ mod tests {
         ];
         for (level, expected) in cases {
             assert_eq!(
-                level.requires_approval(), expected,
+                level.requires_approval(),
+                expected,
                 "{:?} requires_approval() should be {}",
-                level, expected
+                level,
+                expected
             );
         }
     }
@@ -803,9 +1020,11 @@ mod tests {
         ];
         for (level, expected) in cases {
             assert_eq!(
-                level.ai_allowed(), expected,
+                level.ai_allowed(),
+                expected,
                 "{:?} ai_allowed() should be {}",
-                level, expected
+                level,
+                expected
             );
         }
     }
@@ -814,7 +1033,10 @@ mod tests {
     fn test_analyze_command_path_traversal_etc_via_usr() {
         // /usr/../etc/passwd should normalize to /etc/passwd
         assert_eq!(
-            analyze_command_permission("mv", &["file".to_string(), "/usr/../etc/passwd".to_string()]),
+            analyze_command_permission(
+                "mv",
+                &["file".to_string(), "/usr/../etc/passwd".to_string()]
+            ),
             PermissionLevel::SystemWrite
         );
     }
@@ -869,11 +1091,14 @@ mod tests {
     fn test_analyze_command_multiple_system_paths() {
         // Multiple args, one of which is a system path
         assert_eq!(
-            analyze_command_permission("cp", &[
-                "localfile".to_string(),
-                "anotherlocal".to_string(),
-                "/bin/target".to_string(),
-            ]),
+            analyze_command_permission(
+                "cp",
+                &[
+                    "localfile".to_string(),
+                    "anotherlocal".to_string(),
+                    "/bin/target".to_string(),
+                ]
+            ),
             PermissionLevel::SystemWrite
         );
     }

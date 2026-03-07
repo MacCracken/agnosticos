@@ -391,11 +391,7 @@ impl SystemPackageDb {
                     .split(',')
                     .map(|d| {
                         // Strip version constraints: "foo (>= 1.0)" -> "foo"
-                        d.trim()
-                            .split_whitespace()
-                            .next()
-                            .unwrap_or("")
-                            .to_string()
+                        d.trim().split_whitespace().next().unwrap_or("").to_string()
                     })
                     .filter(|d| !d.is_empty())
                     .collect();
@@ -847,14 +843,8 @@ mod tests {
 
     #[test]
     fn test_detect_source_unknown() {
-        assert_eq!(
-            NousResolver::detect_source("nginx"),
-            PackageSource::Unknown
-        );
-        assert_eq!(
-            NousResolver::detect_source("curl"),
-            PackageSource::Unknown
-        );
+        assert_eq!(NousResolver::detect_source("nginx"), PackageSource::Unknown);
+        assert_eq!(NousResolver::detect_source("curl"), PackageSource::Unknown);
     }
 
     // -----------------------------------------------------------------------
@@ -1175,7 +1165,9 @@ mod tests {
 
     #[test]
     fn test_system_package_db_empty_when_unavailable() {
-        let db = SystemPackageDb { apt_available: false };
+        let db = SystemPackageDb {
+            apt_available: false,
+        };
         assert!(!db.is_available());
         assert!(db.search("anything").unwrap().is_empty());
         assert!(!db.is_installed("anything").unwrap());

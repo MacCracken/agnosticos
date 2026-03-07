@@ -74,7 +74,10 @@ impl ModalityProfile {
             ]),
             supported_formats: HashMap::from([
                 (Modality::Text, vec!["text/plain".into()]),
-                (Modality::Vision, vec!["image/png".into(), "image/jpeg".into(), "image/webp".into()]),
+                (
+                    Modality::Vision,
+                    vec!["image/png".into(), "image/jpeg".into(), "image/webp".into()],
+                ),
             ]),
             model: None,
         }
@@ -84,12 +87,18 @@ impl ModalityProfile {
         Self {
             agent_id,
             input_modalities: vec![
-                Modality::Text, Modality::Vision, Modality::Audio,
-                Modality::ToolUse, Modality::StructuredData, Modality::Code,
+                Modality::Text,
+                Modality::Vision,
+                Modality::Audio,
+                Modality::ToolUse,
+                Modality::StructuredData,
+                Modality::Code,
             ],
             output_modalities: vec![
-                Modality::Text, Modality::ToolUse,
-                Modality::StructuredData, Modality::Code,
+                Modality::Text,
+                Modality::ToolUse,
+                Modality::StructuredData,
+                Modality::Code,
             ],
             max_input_sizes: HashMap::from([
                 (Modality::Text, 256 * 1024),
@@ -100,10 +109,26 @@ impl ModalityProfile {
             ]),
             supported_formats: HashMap::from([
                 (Modality::Text, vec!["text/plain".into()]),
-                (Modality::Vision, vec!["image/png".into(), "image/jpeg".into(), "image/webp".into()]),
-                (Modality::Audio, vec!["audio/wav".into(), "audio/mp3".into(), "audio/ogg".into()]),
-                (Modality::StructuredData, vec!["application/json".into(), "text/csv".into()]),
-                (Modality::Code, vec!["text/x-rust".into(), "text/x-python".into(), "text/javascript".into()]),
+                (
+                    Modality::Vision,
+                    vec!["image/png".into(), "image/jpeg".into(), "image/webp".into()],
+                ),
+                (
+                    Modality::Audio,
+                    vec!["audio/wav".into(), "audio/mp3".into(), "audio/ogg".into()],
+                ),
+                (
+                    Modality::StructuredData,
+                    vec!["application/json".into(), "text/csv".into()],
+                ),
+                (
+                    Modality::Code,
+                    vec![
+                        "text/x-rust".into(),
+                        "text/x-python".into(),
+                        "text/javascript".into(),
+                    ],
+                ),
             ]),
             model: None,
         }
@@ -378,10 +403,37 @@ mod tests {
 
     #[test]
     fn test_content_block_modality() {
-        assert_eq!(ContentBlock::Text { text: "hi".into() }.modality(), Modality::Text);
-        assert_eq!(ContentBlock::Image { data: vec![], mime_type: "image/png".into(), width: None, height: None }.modality(), Modality::Vision);
-        assert_eq!(ContentBlock::Audio { data: vec![], mime_type: "audio/wav".into(), duration_ms: None }.modality(), Modality::Audio);
-        assert_eq!(ContentBlock::Code { language: "rust".into(), source: "fn main(){}".into() }.modality(), Modality::Code);
+        assert_eq!(
+            ContentBlock::Text { text: "hi".into() }.modality(),
+            Modality::Text
+        );
+        assert_eq!(
+            ContentBlock::Image {
+                data: vec![],
+                mime_type: "image/png".into(),
+                width: None,
+                height: None
+            }
+            .modality(),
+            Modality::Vision
+        );
+        assert_eq!(
+            ContentBlock::Audio {
+                data: vec![],
+                mime_type: "audio/wav".into(),
+                duration_ms: None
+            }
+            .modality(),
+            Modality::Audio
+        );
+        assert_eq!(
+            ContentBlock::Code {
+                language: "rust".into(),
+                source: "fn main(){}".into()
+            }
+            .modality(),
+            Modality::Code
+        );
     }
 
     #[test]
@@ -389,8 +441,15 @@ mod tests {
         let msg = MultiModalMessage {
             role: MessageRole::User,
             content: vec![
-                ContentBlock::Text { text: "Describe this image".into() },
-                ContentBlock::Image { data: vec![0; 100], mime_type: "image/png".into(), width: Some(100), height: Some(100) },
+                ContentBlock::Text {
+                    text: "Describe this image".into(),
+                },
+                ContentBlock::Image {
+                    data: vec![0; 100],
+                    mime_type: "image/png".into(),
+                    width: Some(100),
+                    height: Some(100),
+                },
             ],
             agent_id: None,
         };
@@ -408,7 +467,12 @@ mod tests {
 
         let vision_msg = MultiModalMessage {
             role: MessageRole::User,
-            content: vec![ContentBlock::Image { data: vec![], mime_type: "image/png".into(), width: None, height: None }],
+            content: vec![ContentBlock::Image {
+                data: vec![],
+                mime_type: "image/png".into(),
+                width: None,
+                height: None,
+            }],
             agent_id: None,
         };
         assert!(vision_msg.validate_for(&profile).is_err());
@@ -453,8 +517,15 @@ mod tests {
         let msg = MultiModalMessage {
             role: MessageRole::User,
             content: vec![
-                ContentBlock::Text { text: "What's in this?".into() },
-                ContentBlock::Image { data: vec![], mime_type: "image/png".into(), width: None, height: None },
+                ContentBlock::Text {
+                    text: "What's in this?".into(),
+                },
+                ContentBlock::Image {
+                    data: vec![],
+                    mime_type: "image/png".into(),
+                    width: None,
+                    height: None,
+                },
             ],
             agent_id: None,
         };
@@ -494,8 +565,15 @@ mod tests {
         let msg = MultiModalMessage {
             role: MessageRole::User,
             content: vec![
-                ContentBlock::Text { text: "hello".into() }, // 5 bytes
-                ContentBlock::Image { data: vec![0; 1000], mime_type: "image/png".into(), width: None, height: None },
+                ContentBlock::Text {
+                    text: "hello".into(),
+                }, // 5 bytes
+                ContentBlock::Image {
+                    data: vec![0; 1000],
+                    mime_type: "image/png".into(),
+                    width: None,
+                    height: None,
+                },
             ],
             agent_id: None,
         };

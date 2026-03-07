@@ -125,8 +125,11 @@ impl ResponseCache {
     pub async fn stats(&self) -> CacheStats {
         let cache = self.cache.read().await;
         let total = cache.len();
-        let expired = cache.values().filter(|e| e.expires_at <= Instant::now()).count();
-        
+        let expired = cache
+            .values()
+            .filter(|e| e.expires_at <= Instant::now())
+            .count();
+
         CacheStats {
             total_entries: total,
             expired_entries: expired,
@@ -158,7 +161,7 @@ mod tests {
     #[tokio::test]
     async fn test_cache_set_and_get() {
         let cache = ResponseCache::new(Duration::from_secs(60));
-        
+
         let request = InferenceRequest {
             prompt: "Hello".to_string(),
             model: "test".to_string(),
@@ -168,7 +171,7 @@ mod tests {
             presence_penalty: 0.0,
             frequency_penalty: 0.0,
         };
-        
+
         let response = InferenceResponse {
             text: "Hi there!".to_string(),
             tokens_generated: 5,
@@ -180,9 +183,9 @@ mod tests {
                 total_tokens: 7,
             },
         };
-        
+
         cache.set(&request, response.clone()).await;
-        
+
         let cached = cache.get(&request).await;
         assert!(cached.is_some());
     }
@@ -190,7 +193,7 @@ mod tests {
     #[tokio::test]
     async fn test_cache_miss() {
         let cache = ResponseCache::new(Duration::from_secs(60));
-        
+
         let request = InferenceRequest {
             prompt: "Different prompt".to_string(),
             model: "test".to_string(),
@@ -200,7 +203,7 @@ mod tests {
             presence_penalty: 0.0,
             frequency_penalty: 0.0,
         };
-        
+
         let cached = cache.get(&request).await;
         assert!(cached.is_none());
     }
@@ -208,7 +211,7 @@ mod tests {
     #[tokio::test]
     async fn test_cache_clear() {
         let cache = ResponseCache::new(Duration::from_secs(60));
-        
+
         let request = InferenceRequest::default();
         let response = InferenceResponse {
             text: "Test".to_string(),
@@ -217,10 +220,10 @@ mod tests {
             model: "test".to_string(),
             usage: TokenUsage::default(),
         };
-        
+
         cache.set(&request, response).await;
         cache.clear().await;
-        
+
         let stats = cache.stats().await;
         assert_eq!(stats.total_entries, 0);
     }
@@ -277,7 +280,11 @@ mod tests {
 
         // After cleanup, most expired entries should be removed
         let stats = cache.stats().await;
-        assert!(stats.total_entries < 1001, "expected cleanup to remove entries, got {}", stats.total_entries);
+        assert!(
+            stats.total_entries < 1001,
+            "expected cleanup to remove entries, got {}",
+            stats.total_entries
+        );
     }
 
     #[tokio::test]
@@ -346,7 +353,10 @@ mod tests {
         };
         let key_a = ResponseCache::make_key(&req_a);
         let key_b = ResponseCache::make_key(&req_b);
-        assert_ne!(key_a, key_b, "Different prompts should produce different keys");
+        assert_ne!(
+            key_a, key_b,
+            "Different prompts should produce different keys"
+        );
     }
 
     #[tokio::test]
@@ -413,25 +423,41 @@ mod tests {
             usage: TokenUsage::default(),
         };
 
-        cache.set(&InferenceRequest {
-            prompt: "a".to_string(),
-            model: "m".to_string(),
-            ..InferenceRequest::default()
-        }, response.clone()).await;
+        cache
+            .set(
+                &InferenceRequest {
+                    prompt: "a".to_string(),
+                    model: "m".to_string(),
+                    ..InferenceRequest::default()
+                },
+                response.clone(),
+            )
+            .await;
 
         tokio::time::sleep(Duration::from_millis(5)).await;
 
         // Now insert a fresh entry
-        cache.set(&InferenceRequest {
-            prompt: "b".to_string(),
-            model: "m".to_string(),
-            ..InferenceRequest::default()
-        }, response).await;
+        cache
+            .set(
+                &InferenceRequest {
+                    prompt: "b".to_string(),
+                    model: "m".to_string(),
+                    ..InferenceRequest::default()
+                },
+                response,
+            )
+            .await;
 
         let stats = cache.stats().await;
         assert_eq!(stats.total_entries, 2);
-        assert!(stats.expired_entries >= 1, "At least one entry should be expired");
-        assert!(stats.active_entries >= 1, "At least one entry should be active");
+        assert!(
+            stats.expired_entries >= 1,
+            "At least one entry should be expired"
+        );
+        assert!(
+            stats.active_entries >= 1,
+            "At least one entry should be active"
+        );
     }
 
     #[tokio::test]
@@ -469,7 +495,10 @@ mod tests {
         let cached = cache.get(&request).await.unwrap();
         assert_eq!(cached.text, "second", "Later set should overwrite earlier");
         let stats = cache.stats().await;
-        assert_eq!(stats.total_entries, 1, "Overwrite should not duplicate entries");
+        assert_eq!(
+            stats.total_entries, 1,
+            "Overwrite should not duplicate entries"
+        );
     }
 
     #[tokio::test]
@@ -499,9 +528,7 @@ mod tests {
         for _ in 0..10 {
             let c = cache.clone();
             let r = request.clone();
-            handles.push(tokio::spawn(async move {
-                c.get(&r).await
-            }));
+            handles.push(tokio::spawn(async move { c.get(&r).await }));
         }
 
         for handle in handles {
@@ -562,7 +589,11 @@ mod tests {
         assert!(cached.is_some());
         // Key should still be fixed-length hash
         let key = ResponseCache::make_key(&request);
-        assert_eq!(key.len(), 16, "Key should be 16 hex chars regardless of prompt size");
+        assert_eq!(
+            key.len(),
+            16,
+            "Key should be 16 hex chars regardless of prompt size"
+        );
     }
 
     #[tokio::test]
@@ -724,9 +755,7 @@ mod tests {
         for _ in 0..5 {
             let c = cache.clone();
             let r = request.clone();
-            handles.push(tokio::spawn(async move {
-                c.get(&r).await
-            }));
+            handles.push(tokio::spawn(async move { c.get(&r).await }));
         }
         // Concurrent writers
         for i in 0..5 {
@@ -768,11 +797,16 @@ mod tests {
             usage: TokenUsage::default(),
         };
         for i in 0..5 {
-            cache.set(&InferenceRequest {
-                prompt: format!("e-{}", i),
-                model: "m".to_string(),
-                ..InferenceRequest::default()
-            }, response.clone()).await;
+            cache
+                .set(
+                    &InferenceRequest {
+                        prompt: format!("e-{}", i),
+                        model: "m".to_string(),
+                        ..InferenceRequest::default()
+                    },
+                    response.clone(),
+                )
+                .await;
         }
         tokio::time::sleep(Duration::from_millis(5)).await;
         let stats = cache.stats().await;
@@ -785,17 +819,22 @@ mod tests {
     async fn test_cache_clear_then_stats() {
         let cache = ResponseCache::new(Duration::from_secs(60));
         for i in 0..10 {
-            cache.set(&InferenceRequest {
-                prompt: format!("p-{}", i),
-                model: "m".to_string(),
-                ..InferenceRequest::default()
-            }, InferenceResponse {
-                text: "x".to_string(),
-                tokens_generated: 1,
-                finish_reason: FinishReason::Stop,
-                model: "m".to_string(),
-                usage: TokenUsage::default(),
-            }).await;
+            cache
+                .set(
+                    &InferenceRequest {
+                        prompt: format!("p-{}", i),
+                        model: "m".to_string(),
+                        ..InferenceRequest::default()
+                    },
+                    InferenceResponse {
+                        text: "x".to_string(),
+                        tokens_generated: 1,
+                        finish_reason: FinishReason::Stop,
+                        model: "m".to_string(),
+                        usage: TokenUsage::default(),
+                    },
+                )
+                .await;
         }
         assert_eq!(cache.stats().await.total_entries, 10);
         cache.clear().await;
@@ -807,17 +846,22 @@ mod tests {
         let cache = ResponseCache::new(Duration::from_secs(60));
         for cycle in 0..3 {
             for i in 0..5 {
-                cache.set(&InferenceRequest {
-                    prompt: format!("c{}-p{}", cycle, i),
-                    model: "m".to_string(),
-                    ..InferenceRequest::default()
-                }, InferenceResponse {
-                    text: "x".to_string(),
-                    tokens_generated: 1,
-                    finish_reason: FinishReason::Stop,
-                    model: "m".to_string(),
-                    usage: TokenUsage::default(),
-                }).await;
+                cache
+                    .set(
+                        &InferenceRequest {
+                            prompt: format!("c{}-p{}", cycle, i),
+                            model: "m".to_string(),
+                            ..InferenceRequest::default()
+                        },
+                        InferenceResponse {
+                            text: "x".to_string(),
+                            tokens_generated: 1,
+                            finish_reason: FinishReason::Stop,
+                            model: "m".to_string(),
+                            usage: TokenUsage::default(),
+                        },
+                    )
+                    .await;
             }
             assert_eq!(cache.stats().await.total_entries, 5 * (cycle + 1));
             if cycle < 2 {
@@ -857,7 +901,11 @@ mod tests {
     fn test_cache_key_hex_format() {
         let req = InferenceRequest::default();
         let key = ResponseCache::make_key(&req);
-        assert!(key.chars().all(|c| c.is_ascii_hexdigit()), "Key should be hex: {}", key);
+        assert!(
+            key.chars().all(|c| c.is_ascii_hexdigit()),
+            "Key should be hex: {}",
+            key
+        );
     }
 
     #[tokio::test]

@@ -13,36 +13,36 @@ use tracing::{error, info};
 use agnos_common::{AgentConfig, AgentId};
 
 mod agent;
+pub mod capability;
+pub mod file_watcher;
 pub mod http_api;
+pub mod integrity;
 pub mod ipc;
+pub mod knowledge_base;
+pub mod learning;
 pub mod lifecycle;
+pub mod marketplace;
+pub mod mcp_server;
+pub mod memory_store;
+pub mod mtls;
+pub mod multimodal;
+pub mod network_tools;
 pub mod orchestrator;
 pub mod package_manager;
 pub mod pubsub;
+pub mod rag;
 pub mod registry;
 pub mod resource;
+pub mod resource_forecast;
 pub mod rollback;
 pub mod sandbox;
 pub mod seccomp_profiles;
 pub mod service_manager;
 pub mod supervisor;
-pub mod wasm_runtime;
-pub mod mcp_server;
-pub mod network_tools;
-pub mod tool_analysis;
 pub mod swarm;
-pub mod learning;
-pub mod memory_store;
-pub mod multimodal;
+pub mod tool_analysis;
 pub mod vector_store;
-pub mod rag;
-pub mod knowledge_base;
-pub mod file_watcher;
-pub mod capability;
-pub mod resource_forecast;
-pub mod mtls;
-pub mod integrity;
-pub mod marketplace;
+pub mod wasm_runtime;
 
 use crate::agent::Agent;
 use crate::orchestrator::Orchestrator;
@@ -224,7 +224,11 @@ async fn run_daemon(cli: Cli) -> Result<()> {
     let services_dir = cli.config_dir.join("services");
     let service_manager = Arc::new(ServiceManager::new(&services_dir));
     let loaded = service_manager.load_definitions().await?;
-    info!("Loaded {} service definitions from {}", loaded, services_dir.display());
+    info!(
+        "Loaded {} service definitions from {}",
+        loaded,
+        services_dir.display()
+    );
 
     // Boot all enabled services in dependency order
     if let Err(e) = service_manager.boot().await {
@@ -317,25 +321,29 @@ async fn handle_service_command(action: ServiceCommands, config_dir: &Path) -> R
             mgr.restart_service(&name).await?;
             println!("Service '{}' restarted.", name);
         }
-        ServiceCommands::Status { name } => {
-            match mgr.get_status(&name).await {
-                Some(status) => {
-                    println!("Service: {}", status.name);
-                    println!("  State:       {}", status.state);
-                    println!("  PID:         {}", status.pid.map_or("-".to_string(), |p| p.to_string()));
-                    println!("  Uptime:      {}", status.uptime_display());
-                    println!("  Restarts:    {}", status.restart_count);
-                    println!("  Enabled:     {}", status.enabled);
-                    println!("  Exit Code:   {}", status.exit_code.map_or("-".to_string(), |c| c.to_string()));
-                    if !status.description.is_empty() {
-                        println!("  Description: {}", status.description);
-                    }
-                }
-                None => {
-                    anyhow::bail!("Unknown service: {}", name);
+        ServiceCommands::Status { name } => match mgr.get_status(&name).await {
+            Some(status) => {
+                println!("Service: {}", status.name);
+                println!("  State:       {}", status.state);
+                println!(
+                    "  PID:         {}",
+                    status.pid.map_or("-".to_string(), |p| p.to_string())
+                );
+                println!("  Uptime:      {}", status.uptime_display());
+                println!("  Restarts:    {}", status.restart_count);
+                println!("  Enabled:     {}", status.enabled);
+                println!(
+                    "  Exit Code:   {}",
+                    status.exit_code.map_or("-".to_string(), |c| c.to_string())
+                );
+                if !status.description.is_empty() {
+                    println!("  Description: {}", status.description);
                 }
             }
-        }
+            None => {
+                anyhow::bail!("Unknown service: {}", name);
+            }
+        },
         ServiceCommands::Enable { name } => {
             mgr.enable_service(&name).await?;
             println!("Service '{}' enabled.", name);
@@ -369,7 +377,10 @@ async fn handle_package_command(action: PackageCommands, data_dir: &Path) -> Res
             // Install
             let result = mgr.install(&source)?;
             if let Some(ref prev) = result.upgraded_from {
-                println!("Upgraded '{}' from v{} to v{}", result.name, prev, result.version);
+                println!(
+                    "Upgraded '{}' from v{} to v{}",
+                    result.name, prev, result.version
+                );
             } else {
                 println!("Installed '{}' v{}", result.name, result.version);
             }
@@ -377,7 +388,10 @@ async fn handle_package_command(action: PackageCommands, data_dir: &Path) -> Res
         }
         PackageCommands::Uninstall { name } => {
             let result = mgr.uninstall(&name)?;
-            println!("Uninstalled '{}' v{} ({} files removed)", result.name, result.version, result.files_removed);
+            println!(
+                "Uninstalled '{}' v{} ({} files removed)",
+                result.name, result.version, result.files_removed
+            );
         }
         PackageCommands::List => {
             let packages = mgr.list_installed();
@@ -385,7 +399,10 @@ async fn handle_package_command(action: PackageCommands, data_dir: &Path) -> Res
                 println!("No packages installed.");
                 return Ok(());
             }
-            println!("{:<25} {:<12} {:<20} DESCRIPTION", "NAME", "VERSION", "AUTHOR");
+            println!(
+                "{:<25} {:<12} {:<20} DESCRIPTION",
+                "NAME", "VERSION", "AUTHOR"
+            );
             println!("{}", "-".repeat(80));
             for pkg in &packages {
                 println!(
@@ -398,28 +415,29 @@ async fn handle_package_command(action: PackageCommands, data_dir: &Path) -> Res
             }
             println!("\nTotal: {} package(s)", packages.len());
         }
-        PackageCommands::Info { name } => {
-            match mgr.get_info(&name) {
-                Some(info) => {
-                    println!("Package: {}", info.manifest.name);
-                    println!("  Version:     {}", info.manifest.version);
-                    println!("  Author:      {}", info.manifest.author);
-                    println!("  Description: {}", info.manifest.description);
-                    println!("  Installed:   {}", info.installed_at.format("%Y-%m-%d %H:%M:%S UTC"));
-                    println!("  Location:    {}", info.install_dir.display());
-                    println!("  Binary:      {}", info.binary_path.display());
-                    println!("  Hash:        {}", info.binary_hash);
-                    if !info.manifest.requested_permissions.is_empty() {
-                        println!("  Permissions: {:?}", info.manifest.requested_permissions);
-                    }
-                    println!("  Network:     {:?}", info.manifest.network_scope);
-                    println!("  Auto-update: {}", info.auto_update);
+        PackageCommands::Info { name } => match mgr.get_info(&name) {
+            Some(info) => {
+                println!("Package: {}", info.manifest.name);
+                println!("  Version:     {}", info.manifest.version);
+                println!("  Author:      {}", info.manifest.author);
+                println!("  Description: {}", info.manifest.description);
+                println!(
+                    "  Installed:   {}",
+                    info.installed_at.format("%Y-%m-%d %H:%M:%S UTC")
+                );
+                println!("  Location:    {}", info.install_dir.display());
+                println!("  Binary:      {}", info.binary_path.display());
+                println!("  Hash:        {}", info.binary_hash);
+                if !info.manifest.requested_permissions.is_empty() {
+                    println!("  Permissions: {:?}", info.manifest.requested_permissions);
                 }
-                None => {
-                    anyhow::bail!("Package '{}' is not installed", name);
-                }
+                println!("  Network:     {:?}", info.manifest.network_scope);
+                println!("  Auto-update: {}", info.auto_update);
             }
-        }
+            None => {
+                anyhow::bail!("Package '{}' is not installed", name);
+            }
+        },
         PackageCommands::Search { query } => {
             let results = mgr.search(&query);
             if results.is_empty() {
@@ -430,19 +448,23 @@ async fn handle_package_command(action: PackageCommands, data_dir: &Path) -> Res
                 println!("{} v{} — {}", pkg.name, pkg.version, pkg.description);
             }
         }
-        PackageCommands::Verify { name } => {
-            match mgr.verify(&name) {
-                Ok(true) => println!("Package '{}' integrity OK.", name),
-                Ok(false) => println!("Package '{}' integrity FAILED — binary may have been modified.", name),
-                Err(e) => anyhow::bail!("{}", e),
-            }
-        }
+        PackageCommands::Verify { name } => match mgr.verify(&name) {
+            Ok(true) => println!("Package '{}' integrity OK.", name),
+            Ok(false) => println!(
+                "Package '{}' integrity FAILED — binary may have been modified.",
+                name
+            ),
+            Err(e) => anyhow::bail!("{}", e),
+        },
         PackageCommands::Validate { source } => {
             let package = mgr.validate_package(&source)?;
             println!("Package valid:");
             println!("  Name:    {}", package.manifest.name);
             println!("  Version: {}", package.manifest.version);
-            println!("  Binary:  {} bytes (hash: {})", package.binary_size, package.binary_hash);
+            println!(
+                "  Binary:  {} bytes (hash: {})",
+                package.binary_size, package.binary_hash
+            );
             println!("{}", crate::package_manager::consent_prompt(&package));
         }
     }
@@ -463,10 +485,13 @@ async fn start_agent(config_path: PathBuf) -> Result<()> {
         .await
         .with_context(|| format!("Failed to read config file: {}", config_path.display()))?;
 
-    let config: AgentConfig = serde_json::from_str(&config_str)
-        .with_context(|| "Failed to parse agent configuration")?;
+    let config: AgentConfig =
+        serde_json::from_str(&config_str).with_context(|| "Failed to parse agent configuration")?;
 
-    info!("Starting agent: {} (type: {:?})", config.name, config.agent_type);
+    info!(
+        "Starting agent: {} (type: {:?})",
+        config.name, config.agent_type
+    );
 
     // Create a temporary registry for the single-shot command
     let registry = Arc::new(AgentRegistry::new());
@@ -477,13 +502,17 @@ async fn start_agent(config_path: PathBuf) -> Result<()> {
 
     println!("Agent started: {} (id: {})", handle.name, handle.id);
     println!("  Status: {:?}", handle.status);
-    println!("  PID: {}", handle.pid.map_or("N/A".to_string(), |p| p.to_string()));
+    println!(
+        "  PID: {}",
+        handle.pid.map_or("N/A".to_string(), |p| p.to_string())
+    );
 
     Ok(())
 }
 
 async fn stop_agent(agent_id: String) -> Result<()> {
-    let uuid: uuid::Uuid = agent_id.parse()
+    let uuid: uuid::Uuid = agent_id
+        .parse()
         .with_context(|| format!("Invalid agent ID (expected UUID): {}", agent_id))?;
     let id = AgentId(uuid);
 
@@ -519,7 +548,8 @@ async fn list_agents() -> Result<()> {
             while let Ok(Some(entry)) = entries.next_entry().await {
                 let path = entry.path();
                 if path.extension().is_some_and(|e| e == "sock") {
-                    let name = path.file_stem()
+                    let name = path
+                        .file_stem()
                         .map(|s| s.to_string_lossy().to_string())
                         .unwrap_or_default();
                     println!("{:<40} {:<10} {}", name, "-", path.display());
@@ -540,7 +570,8 @@ async fn list_agents() -> Result<()> {
 }
 
 async fn get_status(agent_id: String) -> Result<()> {
-    let uuid: uuid::Uuid = agent_id.parse()
+    let uuid: uuid::Uuid = agent_id
+        .parse()
         .with_context(|| format!("Invalid agent ID (expected UUID): {}", agent_id))?;
     let id = AgentId(uuid);
 
@@ -548,14 +579,20 @@ async fn get_status(agent_id: String) -> Result<()> {
     let socket_exists = std::path::Path::new(&socket_path).exists();
 
     println!("Agent: {}", id);
-    println!("  Socket: {} ({})", socket_path, if socket_exists { "exists" } else { "not found" });
+    println!(
+        "  Socket: {} ({})",
+        socket_path,
+        if socket_exists { "exists" } else { "not found" }
+    );
 
     if socket_exists {
         // Try to connect to verify it's responsive
         match tokio::time::timeout(
             std::time::Duration::from_secs(5),
             tokio::net::UnixStream::connect(&socket_path),
-        ).await {
+        )
+        .await
+        {
             Ok(Ok(_)) => println!("  Status: Running (socket responsive)"),
             Ok(Err(e)) => println!("  Status: Unresponsive ({})", e),
             Err(_) => println!("  Status: Unresponsive (connection timed out)"),
@@ -571,13 +608,14 @@ async fn get_status(agent_id: String) -> Result<()> {
 }
 
 async fn send_message(target: String, message: String) -> Result<()> {
-    let uuid: uuid::Uuid = target.parse()
+    let uuid: uuid::Uuid = target
+        .parse()
         .with_context(|| format!("Invalid agent ID (expected UUID): {}", target))?;
     let id = AgentId(uuid);
 
     // Validate the message is valid JSON
-    let _payload: serde_json::Value = serde_json::from_str(&message)
-        .with_context(|| "Message must be valid JSON")?;
+    let _payload: serde_json::Value =
+        serde_json::from_str(&message).with_context(|| "Message must be valid JSON")?;
 
     let socket_path = format!("/run/agnos/agents/{}.sock", id);
 

@@ -171,28 +171,16 @@ impl MigrationState {
                 )
             }
             MigrationState::Checkpointing => {
-                matches!(
-                    to,
-                    MigrationState::Transferring | MigrationState::Failed(_)
-                )
+                matches!(to, MigrationState::Transferring | MigrationState::Failed(_))
             }
             MigrationState::Transferring => {
-                matches!(
-                    to,
-                    MigrationState::Restoring | MigrationState::Failed(_)
-                )
+                matches!(to, MigrationState::Restoring | MigrationState::Failed(_))
             }
             MigrationState::Restoring => {
-                matches!(
-                    to,
-                    MigrationState::Verifying | MigrationState::Failed(_)
-                )
+                matches!(to, MigrationState::Verifying | MigrationState::Failed(_))
             }
             MigrationState::Verifying => {
-                matches!(
-                    to,
-                    MigrationState::Complete | MigrationState::Failed(_)
-                )
+                matches!(to, MigrationState::Complete | MigrationState::Failed(_))
             }
             MigrationState::Complete => false,
             MigrationState::Failed(_) => {
@@ -319,10 +307,7 @@ impl MigrationManager {
 
         // Rough size estimate: serialise to JSON and measure bytes.
         let size_estimate = {
-            let mem_size: u64 = memory
-                .values()
-                .map(|v| v.to_string().len() as u64)
-                .sum();
+            let mem_size: u64 = memory.values().map(|v| v.to_string().len() as u64).sum();
             let ipc_size: u64 = ipc_queue.iter().map(|m| m.payload.len() as u64).sum();
             let sandbox_size = sandbox_config.to_string().len() as u64;
             mem_size + ipc_size + sandbox_size
@@ -385,11 +370,7 @@ impl MigrationManager {
     }
 
     /// Estimate transfer time for a checkpoint at the given bandwidth.
-    pub fn estimate_transfer_time(
-        &self,
-        checkpoint: &Checkpoint,
-        bandwidth_mbps: f64,
-    ) -> Duration {
+    pub fn estimate_transfer_time(&self, checkpoint: &Checkpoint, bandwidth_mbps: f64) -> Duration {
         if bandwidth_mbps <= 0.0 {
             return Duration::from_secs(u64::MAX);
         }
@@ -500,16 +481,15 @@ impl MigrationTracker {
         };
 
         info!(migration_id = %migration_id, "migration started");
-        self.records.write().await.insert(migration_id.clone(), record);
+        self.records
+            .write()
+            .await
+            .insert(migration_id.clone(), record);
         Ok(migration_id)
     }
 
     /// Advance a migration to a new state, enforcing valid transitions.
-    pub async fn advance_state(
-        &self,
-        migration_id: &str,
-        new_state: MigrationState,
-    ) -> Result<()> {
+    pub async fn advance_state(&self, migration_id: &str, new_state: MigrationState) -> Result<()> {
         let mut records = self.records.write().await;
         let record = records
             .get_mut(migration_id)
@@ -762,7 +742,10 @@ mod tests {
         let compressed = mgr.compress_checkpoint(cp).unwrap();
         let result = mgr.compress_checkpoint(compressed);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("already compressed"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("already compressed"));
     }
 
     #[test]
@@ -811,7 +794,7 @@ mod tests {
         let mgr = make_manager();
         let mut cp = populated_checkpoint(&mgr);
         cp.total_size_bytes = 125_000; // 125 KB
-        // At 1 Mbps = 125,000 B/s → should be ~1 second.
+                                       // At 1 Mbps = 125,000 B/s → should be ~1 second.
         let dur = mgr.estimate_transfer_time(&cp, 1.0);
         assert!(dur.as_millis() >= 900 && dur.as_millis() <= 1100);
     }
@@ -1040,7 +1023,10 @@ mod tests {
             .advance_state(&id, MigrationState::Transferring)
             .await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("invalid transition"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("invalid transition"));
     }
 
     #[tokio::test]
@@ -1060,13 +1046,11 @@ mod tests {
 
         // Start two migrations.
         let cp1 = populated_checkpoint(&mgr);
-        let plan1 =
-            mgr.create_plan(cp1.agent_id, &cp1, "node-beta".into(), MigrationType::Warm);
+        let plan1 = mgr.create_plan(cp1.agent_id, &cp1, "node-beta".into(), MigrationType::Warm);
         let id1 = tracker.start_migration(plan1).await.unwrap();
 
         let cp2 = populated_checkpoint(&mgr);
-        let plan2 =
-            mgr.create_plan(cp2.agent_id, &cp2, "node-gamma".into(), MigrationType::Cold);
+        let plan2 = mgr.create_plan(cp2.agent_id, &cp2, "node-gamma".into(), MigrationType::Cold);
         let _id2 = tracker.start_migration(plan2).await.unwrap();
 
         // Complete the first one.
@@ -1118,8 +1102,7 @@ mod tests {
                 serde_json::json!({}),
             )
             .unwrap();
-        let plan_a =
-            mgr.create_plan(agent_a, &cp_a, "node-beta".into(), MigrationType::Warm);
+        let plan_a = mgr.create_plan(agent_a, &cp_a, "node-beta".into(), MigrationType::Warm);
         tracker.start_migration(plan_a).await.unwrap();
 
         let cp_b = mgr
@@ -1131,8 +1114,7 @@ mod tests {
                 serde_json::json!({}),
             )
             .unwrap();
-        let plan_b =
-            mgr.create_plan(agent_b, &cp_b, "node-beta".into(), MigrationType::Cold);
+        let plan_b = mgr.create_plan(agent_b, &cp_b, "node-beta".into(), MigrationType::Cold);
         tracker.start_migration(plan_b).await.unwrap();
 
         let history_a = tracker.migration_history(agent_a).await;

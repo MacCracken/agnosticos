@@ -191,11 +191,7 @@ impl RagPipeline {
 
     /// Ingest a text document: chunk it, embed each chunk, and insert into
     /// the index. Returns the ids of the inserted entries.
-    pub fn ingest_text(
-        &mut self,
-        text: &str,
-        metadata: serde_json::Value,
-    ) -> Result<Vec<Uuid>> {
+    pub fn ingest_text(&mut self, text: &str, metadata: serde_json::Value) -> Result<Vec<Uuid>> {
         let chunks = chunk_text(text, self.config.chunk_size, self.config.overlap);
         if chunks.is_empty() {
             return Ok(Vec::new());
@@ -244,14 +240,15 @@ impl RagPipeline {
                 content: chunk.clone(),
                 created_at: Utc::now(),
             };
-            let id = self
-                .index
-                .insert(entry)
-                .context("failed to insert chunk")?;
+            let id = self.index.insert(entry).context("failed to insert chunk")?;
             ids.push(id);
         }
 
-        debug!(chunks = ids.len(), vocab_size = vocab.len(), "rag: ingested text");
+        debug!(
+            chunks = ids.len(),
+            vocab_size = vocab.len(),
+            "rag: ingested text"
+        );
         Ok(ids)
     }
 
@@ -402,7 +399,10 @@ mod tests {
         let mut pipeline = RagPipeline::new(config);
 
         let ids = pipeline
-            .ingest_text("The cat sat on the mat. The dog played in the yard.", json!({"doc": 1}))
+            .ingest_text(
+                "The cat sat on the mat. The dog played in the yard.",
+                json!({"doc": 1}),
+            )
             .unwrap();
         assert!(!ids.is_empty());
 
@@ -451,8 +451,12 @@ mod tests {
         };
         let mut pipeline = RagPipeline::new(config);
 
-        pipeline.ingest_text("rust programming language", json!({"batch": 1})).unwrap();
-        pipeline.ingest_text("python scripting language", json!({"batch": 2})).unwrap();
+        pipeline
+            .ingest_text("rust programming language", json!({"batch": 1}))
+            .unwrap();
+        pipeline
+            .ingest_text("python scripting language", json!({"batch": 2}))
+            .unwrap();
 
         let ctx = pipeline.query_text("rust");
         assert!(!ctx.chunks.is_empty());

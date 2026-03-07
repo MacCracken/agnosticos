@@ -17,8 +17,7 @@ use std::path::{Path, PathBuf};
 // Base64 encoder (minimal, standard alphabet with padding)
 // ---------------------------------------------------------------------------
 
-const BASE64_CHARS: &[u8; 64] =
-    b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+const BASE64_CHARS: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 fn base64_encode(data: &[u8]) -> String {
     let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
@@ -180,13 +179,19 @@ pub fn verify_pin(host: &str, actual_spki_pin: &str, pin_set: &CertPinSet) -> Ce
     let entry = pin_set.pins.iter().find(|p| p.host == host);
     let entry = match entry {
         Some(e) => e,
-        None => return CertPinResult::NoPinConfigured { host: host.to_string() },
+        None => {
+            return CertPinResult::NoPinConfigured {
+                host: host.to_string(),
+            }
+        }
     };
 
     // Check expiry
     if let Some(expires) = entry.expires {
         if Utc::now() > expires {
-            return CertPinResult::Expired { host: host.to_string() };
+            return CertPinResult::Expired {
+                host: host.to_string(),
+            };
         }
     }
 
@@ -212,20 +217,26 @@ pub fn verify_pin(host: &str, actual_spki_pin: &str, pin_set: &CertPinSet) -> Ce
 /// Load a `CertPinSet` from a JSON file.
 pub fn load_pin_set(path: &Path) -> Result<CertPinSet> {
     let data = std::fs::read_to_string(path).map_err(|e| {
-        SysError::Unknown(format!("Failed to read pin set file {}: {}", path.display(), e))
+        SysError::Unknown(format!(
+            "Failed to read pin set file {}: {}",
+            path.display(),
+            e
+        ))
     })?;
-    serde_json::from_str(&data).map_err(|e| {
-        SysError::InvalidArgument(format!("Invalid pin set JSON: {}", e))
-    })
+    serde_json::from_str(&data)
+        .map_err(|e| SysError::InvalidArgument(format!("Invalid pin set JSON: {}", e)))
 }
 
 /// Save a `CertPinSet` to a JSON file.
 pub fn save_pin_set(pin_set: &CertPinSet, path: &Path) -> Result<()> {
-    let data = serde_json::to_string_pretty(pin_set).map_err(|e| {
-        SysError::Unknown(format!("Failed to serialize pin set: {}", e))
-    })?;
+    let data = serde_json::to_string_pretty(pin_set)
+        .map_err(|e| SysError::Unknown(format!("Failed to serialize pin set: {}", e)))?;
     std::fs::write(path, data).map_err(|e| {
-        SysError::Unknown(format!("Failed to write pin set to {}: {}", path.display(), e))
+        SysError::Unknown(format!(
+            "Failed to write pin set to {}: {}",
+            path.display(),
+            e
+        ))
     })
 }
 
@@ -238,7 +249,9 @@ pub fn fetch_server_cert(host: &str, port: u16) -> Result<CertInfo> {
         return Err(SysError::InvalidArgument("host cannot be empty".into()));
     }
     if host.contains('/') || host.contains(' ') {
-        return Err(SysError::InvalidArgument("host contains invalid characters".into()));
+        return Err(SysError::InvalidArgument(
+            "host contains invalid characters".into(),
+        ));
     }
 
     let connect_str = format!("{}:{}", host, port);
@@ -264,7 +277,16 @@ pub fn fetch_server_cert(host: &str, port: u16) -> Result<CertInfo> {
 
     // Parse certificate details with openssl x509 (pipe PEM via stdin)
     let mut x509_child = std::process::Command::new("openssl")
-        .args(["x509", "-noout", "-subject", "-issuer", "-serial", "-dates", "-fingerprint", "-sha256"])
+        .args([
+            "x509",
+            "-noout",
+            "-subject",
+            "-issuer",
+            "-serial",
+            "-dates",
+            "-fingerprint",
+            "-sha256",
+        ])
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null())
@@ -322,7 +344,7 @@ pub fn fetch_server_cert(host: &str, port: u16) -> Result<CertInfo> {
         .map_err(|e| SysError::Unknown(format!("Failed to get DER key: {}", e)))?;
 
     // Compute SHA-256 of the DER-encoded SPKI directly in Rust
-    use sha2::{Sha256, Digest};
+    use sha2::{Digest, Sha256};
     let spki_hash = Sha256::digest(&der_output.stdout);
     let _spki_hex = hex::encode(&spki_hash);
 
@@ -423,9 +445,8 @@ pub fn validate_pin_format(pin: &str) -> Result<()> {
     }
 
     // base64 of 32 bytes = 44 chars (with padding)
-    let decoded = base64_decode(pin).map_err(|e| {
-        SysError::InvalidArgument(format!("Pin is not valid base64: {}", e))
-    })?;
+    let decoded = base64_decode(pin)
+        .map_err(|e| SysError::InvalidArgument(format!("Pin is not valid base64: {}", e)))?;
 
     if decoded.len() != 32 {
         return Err(SysError::InvalidArgument(format!(
@@ -479,33 +500,21 @@ pub fn default_agnos_pins() -> CertPinSet {
         pins: vec![
             PinnedCert {
                 host: "api.openai.com".to_string(),
-                pin_sha256: vec![
-                    "YZPgTZ+woNCCCIW3LH2CxQeLzB/1m42QcCTBSdgayjs=".to_string(),
-                ],
+                pin_sha256: vec!["YZPgTZ+woNCCCIW3LH2CxQeLzB/1m42QcCTBSdgayjs=".to_string()],
                 expires: None,
-                backup_pins: vec![
-                    "Vjs8r4z+80wjNcr1YKepWQboSIRi63WsWXhIMN+eWys=".to_string(),
-                ],
+                backup_pins: vec!["Vjs8r4z+80wjNcr1YKepWQboSIRi63WsWXhIMN+eWys=".to_string()],
             },
             PinnedCert {
                 host: "api.anthropic.com".to_string(),
-                pin_sha256: vec![
-                    "jQJTbIh0grw0/1TkHSumWb+Fs0Ggogr621gT3PvPKG0=".to_string(),
-                ],
+                pin_sha256: vec!["jQJTbIh0grw0/1TkHSumWb+Fs0Ggogr621gT3PvPKG0=".to_string()],
                 expires: None,
-                backup_pins: vec![
-                    "C5+lpZ7tcVwmwQIMcRtPbsQtWLABXhQzejna0wHFr8M=".to_string(),
-                ],
+                backup_pins: vec!["C5+lpZ7tcVwmwQIMcRtPbsQtWLABXhQzejna0wHFr8M=".to_string()],
             },
             PinnedCert {
                 host: "generativelanguage.googleapis.com".to_string(),
-                pin_sha256: vec![
-                    "hxqRlPTu1bMS/0DITB1SSu0vd4u/8l8TPoA4DLBldGc=".to_string(),
-                ],
+                pin_sha256: vec!["hxqRlPTu1bMS/0DITB1SSu0vd4u/8l8TPoA4DLBldGc=".to_string()],
                 expires: None,
-                backup_pins: vec![
-                    "Vjs8r4z+80wjNcr1YKepWQboSIRi63WsWXhIMN+eWys=".to_string(),
-                ],
+                backup_pins: vec!["Vjs8r4z+80wjNcr1YKepWQboSIRi63WsWXhIMN+eWys=".to_string()],
             },
         ],
         enforce: false, // report-only — see docstring above
@@ -555,7 +564,10 @@ fn read_asn1_tl(data: &[u8]) -> std::result::Result<(u8, usize, usize), String> 
     } else {
         let num_bytes = first_len & 0x7F;
         if num_bytes == 0 || num_bytes > 4 {
-            return Err(format!("Unsupported ASN.1 length encoding: {} bytes", num_bytes));
+            return Err(format!(
+                "Unsupported ASN.1 length encoding: {} bytes",
+                num_bytes
+            ));
         }
         if data.len() < 2 + num_bytes {
             return Err("ASN.1 data too short for multi-byte length".into());
@@ -595,14 +607,18 @@ fn extract_spki_from_der(der: &[u8]) -> Result<Vec<u8>> {
     // Outer SEQUENCE (Certificate)
     let (tag, hdr, _len) = read_asn1_tl(der).map_err(map_err)?;
     if tag != 0x30 {
-        return Err(SysError::InvalidArgument("Expected SEQUENCE for Certificate".into()));
+        return Err(SysError::InvalidArgument(
+            "Expected SEQUENCE for Certificate".into(),
+        ));
     }
     let tbs_start = hdr;
 
     // TBSCertificate SEQUENCE
     let (tag, hdr2, tbs_len) = read_asn1_tl(&der[tbs_start..]).map_err(map_err)?;
     if tag != 0x30 {
-        return Err(SysError::InvalidArgument("Expected SEQUENCE for TBSCertificate".into()));
+        return Err(SysError::InvalidArgument(
+            "Expected SEQUENCE for TBSCertificate".into(),
+        ));
     }
 
     let mut pos = tbs_start + hdr2;
@@ -743,14 +759,22 @@ jBmk0VlYRfk=
     #[test]
     fn test_verify_pin_match_primary() {
         let pin_set = make_pin_set();
-        let result = verify_pin("api.openai.com", "abc123def456abc123def456abc123de", &pin_set);
+        let result = verify_pin(
+            "api.openai.com",
+            "abc123def456abc123def456abc123de",
+            &pin_set,
+        );
         assert_eq!(result, CertPinResult::Valid);
     }
 
     #[test]
     fn test_verify_pin_match_backup() {
         let pin_set = make_pin_set();
-        let result = verify_pin("api.openai.com", "backup_pin_value_32bytes_base64x", &pin_set);
+        let result = verify_pin(
+            "api.openai.com",
+            "backup_pin_value_32bytes_base64x",
+            &pin_set,
+        );
         assert_eq!(result, CertPinResult::Valid);
     }
 
@@ -759,7 +783,11 @@ jBmk0VlYRfk=
         let pin_set = make_pin_set();
         let result = verify_pin("api.openai.com", "wrong_pin", &pin_set);
         match result {
-            CertPinResult::PinMismatch { host, actual, expected } => {
+            CertPinResult::PinMismatch {
+                host,
+                actual,
+                expected,
+            } => {
                 assert_eq!(host, "api.openai.com");
                 assert_eq!(actual, "wrong_pin");
                 assert_eq!(expected.len(), 2); // primary + backup
@@ -827,7 +855,12 @@ jBmk0VlYRfk=
         assert!(pin.is_ok(), "compute_spki_pin failed: {:?}", pin.err());
         let pin = pin.unwrap();
         // Should be base64 of a SHA-256 hash (44 chars with padding)
-        assert_eq!(pin.len(), 44, "SPKI pin should be 44 base64 chars, got {}", pin.len());
+        assert_eq!(
+            pin.len(),
+            44,
+            "SPKI pin should be 44 base64 chars, got {}",
+            pin.len()
+        );
     }
 
     #[test]
@@ -1167,8 +1200,14 @@ sha256 Fingerprint=AA:BB:CC:DD";
             created_at: Utc::now(),
             version: 1,
         };
-        assert_eq!(verify_pin("multi.example.com", "pin_two", &pin_set), CertPinResult::Valid);
-        assert_eq!(verify_pin("multi.example.com", "pin_three", &pin_set), CertPinResult::Valid);
+        assert_eq!(
+            verify_pin("multi.example.com", "pin_two", &pin_set),
+            CertPinResult::Valid
+        );
+        assert_eq!(
+            verify_pin("multi.example.com", "pin_three", &pin_set),
+            CertPinResult::Valid
+        );
         assert!(matches!(
             verify_pin("multi.example.com", "pin_four", &pin_set),
             CertPinResult::PinMismatch { .. }

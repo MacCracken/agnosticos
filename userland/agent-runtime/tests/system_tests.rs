@@ -13,12 +13,12 @@ use serde_json::Value;
 use tower::ServiceExt;
 use uuid::Uuid;
 
-use agnos_common::AgentId;
-use agent_runtime::http_api::{ApiState, build_router};
+use agent_runtime::http_api::{build_router, ApiState};
 use agent_runtime::orchestrator::{
     Orchestrator, Task, TaskPriority, TaskRequirements, TaskResult, TaskStatus,
 };
 use agent_runtime::registry::AgentRegistry;
+use agnos_common::AgentId;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -51,11 +51,7 @@ async fn register_agent(app: &Router, name: &str) -> (StatusCode, Value) {
     (status, json)
 }
 
-async fn heartbeat(
-    app: &Router,
-    agent_id: &str,
-    payload: Value,
-) -> (StatusCode, Value) {
+async fn heartbeat(app: &Router, agent_id: &str, payload: Value) -> (StatusCode, Value) {
     let req = Request::builder()
         .method("POST")
         .uri(format!("/v1/agents/{}/heartbeat", agent_id))
@@ -217,7 +213,12 @@ async fn test_multi_agent_registration() {
 
     for i in 0..10 {
         let (status, _) = register_agent(&app, &format!("agent-{}", i)).await;
-        assert_eq!(status, StatusCode::CREATED, "agent-{} registration failed", i);
+        assert_eq!(
+            status,
+            StatusCode::CREATED,
+            "agent-{} registration failed",
+            i
+        );
     }
 
     // Verify list returns all 10
@@ -282,7 +283,10 @@ async fn test_duplicate_agent_rejection() {
     // Same name again
     let (status, body) = register_agent(&app, "unique-name").await;
     assert_eq!(status, StatusCode::CONFLICT);
-    assert!(body["error"].as_str().unwrap().contains("already registered"));
+    assert!(body["error"]
+        .as_str()
+        .unwrap()
+        .contains("already registered"));
 }
 
 // ---------------------------------------------------------------------------
@@ -342,7 +346,10 @@ async fn test_concurrent_agent_registrations() {
             success_count += 1;
         }
     }
-    assert_eq!(success_count, 50, "All 50 concurrent registrations should succeed");
+    assert_eq!(
+        success_count, 50,
+        "All 50 concurrent registrations should succeed"
+    );
 
     let (_, list) = list_agents(&app).await;
     assert_eq!(list["total"], 50);
@@ -359,9 +366,7 @@ async fn test_health_endpoint_under_load() {
     let mut handles = Vec::new();
     for _ in 0..100 {
         let app_clone = app.clone();
-        handles.push(tokio::spawn(async move {
-            get_health(&app_clone).await
-        }));
+        handles.push(tokio::spawn(async move { get_health(&app_clone).await }));
     }
 
     for handle in handles {
@@ -543,7 +548,11 @@ async fn test_metrics_after_operations() {
 
     // Average CPU should be (20 + 40 + 60) / 3 = 40.0
     let avg_cpu = metrics["avg_cpu_percent"].as_f64().unwrap();
-    assert!((avg_cpu - 40.0).abs() < 0.01, "avg CPU should be ~40.0, got {}", avg_cpu);
+    assert!(
+        (avg_cpu - 40.0).abs() < 0.01,
+        "avg CPU should be ~40.0, got {}",
+        avg_cpu
+    );
 
     // Total memory should be 256 + 512 + 768 = 1536
     assert_eq!(metrics["total_memory_mb"], 1536);

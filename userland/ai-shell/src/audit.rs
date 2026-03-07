@@ -26,22 +26,22 @@ impl AuditLogger {
     pub fn new(file: PathBuf) -> Self {
         Self { file }
     }
-    
+
     /// Log an action
     pub async fn log(&self, entry: AuditEntry) -> Result<()> {
         let line = serde_json::to_string(&entry)?;
-        
+
         use tokio::io::AsyncWriteExt;
         let mut file = tokio::fs::OpenOptions::new()
             .create(true)
             .append(true)
             .open(&self.file)
             .await?;
-        
+
         file.write_all(line.as_bytes()).await?;
         file.write_all(b"\n").await?;
         file.flush().await?;
-        
+
         Ok(())
     }
 }
@@ -197,7 +197,7 @@ mod tests {
             true,
             "success",
         );
-        
+
         assert_eq!(entry.user, "testuser");
         assert_eq!(entry.mode, "AiAssisted");
         assert_eq!(entry.input, "ls -la");
@@ -211,7 +211,7 @@ mod tests {
     fn test_audit_entry_serialization() {
         let entry = create_entry("user", "mode", "input", "action", false, "denied");
         let json = serde_json::to_string(&entry).unwrap();
-        
+
         assert!(json.contains("user"));
         assert!(json.contains("mode"));
         assert!(json.contains("input"));
@@ -231,7 +231,7 @@ mod tests {
             "approved": true,
             "result": "success"
         }"#;
-        
+
         let entry: AuditEntry = serde_json::from_str(json).unwrap();
         assert_eq!(entry.user, "testuser");
         assert_eq!(entry.mode, "Human");
@@ -349,8 +349,14 @@ mod tests {
         let _ = std::fs::remove_file(&path);
 
         let logger = AuditLogger::new(path.clone());
-        logger.log(create_entry("alice", "m", "cmd1", "exec", true, "ok")).await.unwrap();
-        logger.log(create_entry("bob", "m", "cmd2", "exec", true, "ok")).await.unwrap();
+        logger
+            .log(create_entry("alice", "m", "cmd1", "exec", true, "ok"))
+            .await
+            .unwrap();
+        logger
+            .log(create_entry("bob", "m", "cmd2", "exec", true, "ok"))
+            .await
+            .unwrap();
 
         let viewer = AuditViewer::new(path.clone());
         let filter = AuditFilter {
@@ -372,8 +378,14 @@ mod tests {
         let _ = std::fs::remove_file(&path);
 
         let logger = AuditLogger::new(path.clone());
-        logger.log(create_entry("u", "m", "cmd", "execute", true, "ok")).await.unwrap();
-        logger.log(create_entry("u", "m", "cmd", "delete", false, "denied")).await.unwrap();
+        logger
+            .log(create_entry("u", "m", "cmd", "execute", true, "ok"))
+            .await
+            .unwrap();
+        logger
+            .log(create_entry("u", "m", "cmd", "delete", false, "denied"))
+            .await
+            .unwrap();
 
         let viewer = AuditViewer::new(path.clone());
         let filter = AuditFilter {
@@ -395,9 +407,18 @@ mod tests {
         let _ = std::fs::remove_file(&path);
 
         let logger = AuditLogger::new(path.clone());
-        logger.log(create_entry("u", "m", "cmd1", "a", true, "ok")).await.unwrap();
-        logger.log(create_entry("u", "m", "cmd2", "a", false, "denied")).await.unwrap();
-        logger.log(create_entry("u", "m", "cmd3", "a", true, "ok")).await.unwrap();
+        logger
+            .log(create_entry("u", "m", "cmd1", "a", true, "ok"))
+            .await
+            .unwrap();
+        logger
+            .log(create_entry("u", "m", "cmd2", "a", false, "denied"))
+            .await
+            .unwrap();
+        logger
+            .log(create_entry("u", "m", "cmd3", "a", true, "ok"))
+            .await
+            .unwrap();
 
         let viewer = AuditViewer::new(path.clone());
         let filter = AuditFilter {
@@ -421,7 +442,14 @@ mod tests {
         let logger = AuditLogger::new(path.clone());
         for i in 0..5 {
             logger
-                .log(create_entry(&format!("u{}", i), "m", "cmd", "a", true, "ok"))
+                .log(create_entry(
+                    &format!("u{}", i),
+                    "m",
+                    "cmd",
+                    "a",
+                    true,
+                    "ok",
+                ))
                 .await
                 .unwrap();
         }

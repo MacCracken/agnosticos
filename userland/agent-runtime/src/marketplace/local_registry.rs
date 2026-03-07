@@ -13,8 +13,8 @@ use serde::{Deserialize, Serialize};
 // sha2 used transitively via trust::hash_data
 use tracing::{debug, info, warn};
 
-use super::trust::{self, PublisherKeyring};
 use super::transparency::TransparencyLog;
+use super::trust::{self, PublisherKeyring};
 use super::MarketplaceManifest;
 
 // ---------------------------------------------------------------------------
@@ -133,10 +133,13 @@ impl LocalRegistry {
         let content = std::fs::read_to_string(&index_path)
             .with_context(|| format!("Failed to read index at {}", index_path.display()))?;
 
-        self.index = serde_json::from_str(&content)
-            .with_context(|| "Failed to parse marketplace index")?;
+        self.index =
+            serde_json::from_str(&content).with_context(|| "Failed to parse marketplace index")?;
 
-        debug!("Loaded {} marketplace packages from index", self.index.len());
+        debug!(
+            "Loaded {} marketplace packages from index",
+            self.index.len()
+        );
         Ok(())
     }
 
@@ -289,7 +292,10 @@ impl LocalRegistry {
             .filter(|p| {
                 p.name().to_lowercase().contains(&q)
                     || p.manifest.agent.description.to_lowercase().contains(&q)
-                    || p.manifest.tags.iter().any(|t| t.to_lowercase().contains(&q))
+                    || p.manifest
+                        .tags
+                        .iter()
+                        .any(|t| t.to_lowercase().contains(&q))
             })
             .collect()
     }
@@ -333,7 +339,10 @@ fn extract_manifest_from_tarball(data: &[u8]) -> Result<MarketplaceManifest> {
     let decoder = flate2::read::GzDecoder::new(data);
     let mut archive = tar::Archive::new(decoder);
 
-    for entry in archive.entries().context("Failed to read tarball entries")? {
+    for entry in archive
+        .entries()
+        .context("Failed to read tarball entries")?
+    {
         let mut entry = entry.context("Failed to read tarball entry")?;
         let path = entry
             .path()
@@ -351,9 +360,7 @@ fn extract_manifest_from_tarball(data: &[u8]) -> Result<MarketplaceManifest> {
         }
     }
 
-    Err(anyhow::anyhow!(
-        "Package does not contain a manifest.json"
-    ))
+    Err(anyhow::anyhow!("Package does not contain a manifest.json"))
 }
 
 /// Extract a gzipped tarball to a directory. Returns total extracted size.
@@ -362,7 +369,10 @@ fn extract_tarball(data: &[u8], dest: &Path) -> Result<u64> {
     let mut archive = tar::Archive::new(decoder);
     let mut total_size = 0u64;
 
-    for entry in archive.entries().context("Failed to read tarball entries")? {
+    for entry in archive
+        .entries()
+        .context("Failed to read tarball entries")?
+    {
         let mut entry = entry.context("Failed to read tarball entry")?;
         let path = entry
             .path()
@@ -370,8 +380,14 @@ fn extract_tarball(data: &[u8], dest: &Path) -> Result<u64> {
             .to_path_buf();
 
         // Security: prevent path traversal
-        if path.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
-            warn!("Skipping tarball entry with path traversal: {}", path.display());
+        if path
+            .components()
+            .any(|c| matches!(c, std::path::Component::ParentDir))
+        {
+            warn!(
+                "Skipping tarball entry with path traversal: {}",
+                path.display()
+            );
             continue;
         }
 
@@ -382,7 +398,11 @@ fn extract_tarball(data: &[u8], dest: &Path) -> Result<u64> {
 
         total_size += entry.size();
         entry.unpack(&dest_path).with_context(|| {
-            format!("Failed to extract {} to {}", path.display(), dest_path.display())
+            format!(
+                "Failed to extract {} to {}",
+                path.display(),
+                dest_path.display()
+            )
         })?;
     }
 

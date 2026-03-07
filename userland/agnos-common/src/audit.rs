@@ -385,7 +385,11 @@ mod tests {
 
     #[test]
     fn test_audit_result_all_variants() {
-        let results = [AuditResult::Success, AuditResult::Failure, AuditResult::Denied];
+        let results = [
+            AuditResult::Success,
+            AuditResult::Failure,
+            AuditResult::Denied,
+        ];
         for (i, a) in results.iter().enumerate() {
             for (j, b) in results.iter().enumerate() {
                 if i == j {
@@ -582,7 +586,11 @@ mod tests {
 
     #[test]
     fn test_audit_result_serialization_roundtrip() {
-        let results = [AuditResult::Success, AuditResult::Failure, AuditResult::Denied];
+        let results = [
+            AuditResult::Success,
+            AuditResult::Failure,
+            AuditResult::Denied,
+        ];
         for r in &results {
             let json = serde_json::to_string(r).unwrap();
             let deserialized: AuditResult = serde_json::from_str(&json).unwrap();
@@ -859,7 +867,10 @@ mod tests {
 
         // Should have rotated files
         let rotated_1 = dir.path().join("audit.log.1");
-        assert!(rotated_1.exists(), "audit.log.1 should exist after rotation");
+        assert!(
+            rotated_1.exists(),
+            "audit.log.1 should exist after rotation"
+        );
     }
 
     #[test]
@@ -882,7 +893,10 @@ mod tests {
 
         // Should NOT have more than max_files rotated copies
         let too_many = dir.path().join("audit.log.3");
-        assert!(!too_many.exists(), "audit.log.3 should not exist with max_files=2");
+        assert!(
+            !too_many.exists(),
+            "audit.log.3 should not exist with max_files=2"
+        );
     }
 
     // --- AuditChain and create_audit_entry tests ---
@@ -994,7 +1008,10 @@ mod tests {
             details: serde_json::json!({"source": "splunk"}),
         };
         chain.append(event);
-        assert_eq!(chain.entries()[0].event.event_type, AuditEventType::ExternalAudit);
+        assert_eq!(
+            chain.entries()[0].event.event_type,
+            AuditEventType::ExternalAudit
+        );
         assert!(chain.verify().is_ok());
     }
 

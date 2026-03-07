@@ -242,7 +242,11 @@ mod tests {
     #[test]
     fn test_security_mode_variants() {
         // Serialization roundtrip for each variant
-        for mode in [SecurityMode::Relaxed, SecurityMode::Standard, SecurityMode::Strict] {
+        for mode in [
+            SecurityMode::Relaxed,
+            SecurityMode::Standard,
+            SecurityMode::Strict,
+        ] {
             let json = serde_json::to_string(&mode).unwrap();
             let deser: SecurityMode = serde_json::from_str(&json).unwrap();
             assert_eq!(deser, mode);
@@ -254,7 +258,11 @@ mod tests {
 
     #[test]
     fn test_audit_verbosity_variants() {
-        for v in [AuditVerbosity::Minimal, AuditVerbosity::Standard, AuditVerbosity::Verbose] {
+        for v in [
+            AuditVerbosity::Minimal,
+            AuditVerbosity::Standard,
+            AuditVerbosity::Verbose,
+        ] {
             let json = serde_json::to_string(&v).unwrap();
             let deser: AuditVerbosity = serde_json::from_str(&json).unwrap();
             assert_eq!(deser, v);

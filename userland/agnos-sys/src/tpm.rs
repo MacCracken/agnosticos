@@ -160,8 +160,7 @@ impl TpmDevice {
 pub fn tpm_available() -> bool {
     #[cfg(target_os = "linux")]
     {
-        Path::new(TpmDevice::DEFAULT_DEVICE).exists()
-            || Path::new("/dev/tpm0").exists()
+        Path::new(TpmDevice::DEFAULT_DEVICE).exists() || Path::new("/dev/tpm0").exists()
     }
 
     #[cfg(not(target_os = "linux"))]
@@ -282,17 +281,11 @@ pub fn extend_pcr(bank: TpmPcrBank, index: u32, hash: &str) -> Result<()> {
 /// Seal data to specific PCR state.
 ///
 /// Returns a `SealedSecret` handle that can be used with `unseal_secret`.
-pub fn seal_secret(
-    policy: &TpmPcrPolicy,
-    data: &[u8],
-    output_dir: &Path,
-) -> Result<SealedSecret> {
+pub fn seal_secret(policy: &TpmPcrPolicy, data: &[u8], output_dir: &Path) -> Result<SealedSecret> {
     #[cfg(target_os = "linux")]
     {
         if data.is_empty() {
-            return Err(SysError::InvalidArgument(
-                "Cannot seal empty data".into(),
-            ));
+            return Err(SysError::InvalidArgument("Cannot seal empty data".into()));
         }
         if data.len() > 2048 {
             return Err(SysError::InvalidArgument(
@@ -311,9 +304,8 @@ pub fn seal_secret(
         let pub_file = output_dir.join("sealed.pub");
         let priv_file = output_dir.join("sealed.priv");
 
-        std::fs::write(&data_file, data).map_err(|e| {
-            SysError::Unknown(format!("Failed to write seal input: {}", e))
-        })?;
+        std::fs::write(&data_file, data)
+            .map_err(|e| SysError::Unknown(format!("Failed to write seal input: {}", e)))?;
 
         let pcr_sel = policy.pcr_selection();
 
@@ -321,11 +313,16 @@ pub fn seal_secret(
         run_tpm2_tool_checked(
             "tpm2_create",
             &[
-                "-C", "owner",
-                "-i", &data_file.to_string_lossy(),
-                "-u", &pub_file.to_string_lossy(),
-                "-r", &priv_file.to_string_lossy(),
-                "-L", &pcr_sel,
+                "-C",
+                "owner",
+                "-i",
+                &data_file.to_string_lossy(),
+                "-u",
+                &pub_file.to_string_lossy(),
+                "-r",
+                &priv_file.to_string_lossy(),
+                "-L",
+                &pcr_sel,
             ],
         )?;
 
@@ -333,10 +330,14 @@ pub fn seal_secret(
         run_tpm2_tool_checked(
             "tpm2_load",
             &[
-                "-C", "owner",
-                "-u", &pub_file.to_string_lossy(),
-                "-r", &priv_file.to_string_lossy(),
-                "-c", &ctx_file.to_string_lossy(),
+                "-C",
+                "owner",
+                "-u",
+                &pub_file.to_string_lossy(),
+                "-r",
+                &priv_file.to_string_lossy(),
+                "-c",
+                &ctx_file.to_string_lossy(),
             ],
         )?;
 
@@ -373,8 +374,10 @@ pub fn unseal_secret(sealed: &SealedSecret) -> Result<Vec<u8>> {
         let output = run_tpm2_tool(
             "tpm2_unseal",
             &[
-                "-c", &sealed.context_path.to_string_lossy(),
-                "-p", &format!("pcr:{}", pcr_sel),
+                "-c",
+                &sealed.context_path.to_string_lossy(),
+                "-p",
+                &format!("pcr:{}", pcr_sel),
             ],
         )?;
 
@@ -403,10 +406,7 @@ pub fn get_random_bytes(count: usize) -> Result<Vec<u8>> {
             ));
         }
 
-        let output = run_tpm2_tool(
-            "tpm2_getrandom",
-            &["--hex", &count.to_string()],
-        )?;
+        let output = run_tpm2_tool("tpm2_getrandom", &["--hex", &count.to_string()])?;
 
         let hex_str = output.trim();
         hex::decode(hex_str).map_err(|e| {
@@ -639,8 +639,7 @@ mod tests {
     0 : 0xA1B2C3D4E5F60000000000000000000000000000000000000000000000000000
     7 : 0x0000000000000000000000000000000000000000000000000000000000000000
 "#;
-        let values =
-            parse_pcr_read_output(output, TpmPcrBank::Sha256, &[0, 7]).unwrap();
+        let values = parse_pcr_read_output(output, TpmPcrBank::Sha256, &[0, 7]).unwrap();
         assert_eq!(values.len(), 2);
         assert_eq!(values[0].index, 0);
         assert!(values[0].value.starts_with("a1b2c3d4"));
@@ -650,8 +649,7 @@ mod tests {
     #[test]
     fn test_parse_pcr_read_output_missing_index() {
         let output = "  sha256:\n    0 : 0xABCD\n";
-        let values =
-            parse_pcr_read_output(output, TpmPcrBank::Sha256, &[0, 5]).unwrap();
+        let values = parse_pcr_read_output(output, TpmPcrBank::Sha256, &[0, 5]).unwrap();
         assert_eq!(values.len(), 2);
         // Index 5 not found → gets zero-filled default
         assert_eq!(values[1].value.len(), TpmPcrBank::Sha256.hash_hex_len());
@@ -660,8 +658,7 @@ mod tests {
 
     #[test]
     fn test_parse_pcr_read_output_empty() {
-        let values =
-            parse_pcr_read_output("", TpmPcrBank::Sha1, &[0]).unwrap();
+        let values = parse_pcr_read_output("", TpmPcrBank::Sha1, &[0]).unwrap();
         assert_eq!(values.len(), 1);
         assert_eq!(values[0].value.len(), TpmPcrBank::Sha1.hash_hex_len());
     }

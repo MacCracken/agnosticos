@@ -124,7 +124,7 @@ impl TelemetryCollector {
             events_sent: 0,
             events_dropped: 0,
         };
-        
+
         let instance_id: Arc<str> = config.instance_id.as_str().into();
         Self {
             config,
@@ -134,18 +134,24 @@ impl TelemetryCollector {
             crash_reports: Arc::new(RwLock::new(VecDeque::new())),
         }
     }
-    
+
     /// Check if telemetry is enabled
     pub fn is_enabled(&self) -> bool {
         self.config.enabled
     }
-    
+
     /// Record a telemetry event
-    pub async fn record_event(&self, category: &str, name: &str, value: f64, event_type: EventType) {
+    pub async fn record_event(
+        &self,
+        category: &str,
+        name: &str,
+        value: f64,
+        event_type: EventType,
+    ) {
         if !self.config.enabled || !self.config.metrics_enabled {
             return;
         }
-        
+
         // Sampling
         if self.config.sampling_rate < 1.0 {
             let random_val = rand::random::<f32>();
@@ -153,7 +159,7 @@ impl TelemetryCollector {
                 return;
             }
         }
-        
+
         let event = TelemetryEvent {
             timestamp: chrono::Utc::now(),
             instance_id: (*self.instance_id).to_string(),
@@ -163,7 +169,7 @@ impl TelemetryCollector {
             value,
             metadata: HashMap::new(),
         };
-        
+
         let mut events = self.events.write().await;
         events.push_back(event);
 
@@ -172,28 +178,31 @@ impl TelemetryCollector {
             events.pop_front();
         }
     }
-    
+
     /// Record a counter event
     pub async fn record_counter(&self, category: &str, name: &str, value: f64) {
-        self.record_event(category, name, value, EventType::Counter).await;
+        self.record_event(category, name, value, EventType::Counter)
+            .await;
     }
-    
+
     /// Record a gauge event
     pub async fn record_gauge(&self, category: &str, name: &str, value: f64) {
-        self.record_event(category, name, value, EventType::Gauge).await;
+        self.record_event(category, name, value, EventType::Gauge)
+            .await;
     }
-    
+
     /// Record a timing event
     pub async fn record_timing(&self, category: &str, name: &str, milliseconds: f64) {
-        self.record_event(category, name, milliseconds, EventType::Timing).await;
+        self.record_event(category, name, milliseconds, EventType::Timing)
+            .await;
     }
-    
+
     /// Submit a crash report
     pub async fn submit_crash(&self, component: &str, error: &str, stack_trace: Option<&str>) {
         if !self.config.enabled || !self.config.crash_reporting {
             return;
         }
-        
+
         let system_info = SystemInfo {
             os_type: std::env::consts::OS.to_string(),
             os_version: Self::read_os_version(),
@@ -202,7 +211,7 @@ impl TelemetryCollector {
             memory_mb: Self::read_memory_mb(),
             kernel_version: Self::read_kernel_version(),
         };
-        
+
         let report = CrashReport {
             timestamp: chrono::Utc::now(),
             instance_id: self.config.instance_id.clone(),
@@ -212,7 +221,7 @@ impl TelemetryCollector {
             stack_trace: stack_trace.map(|s| s.to_string()),
             system_info,
         };
-        
+
         let mut reports = self.crash_reports.write().await;
         reports.push_back(report);
 
@@ -221,23 +230,23 @@ impl TelemetryCollector {
             reports.pop_front();
         }
     }
-    
+
     /// Flush collected telemetry to endpoint
     pub async fn flush(&self) -> Result<(), TelemetryError> {
         if !self.config.enabled {
             return Ok(());
         }
-        
+
         // Drain all queued events
         let events_to_send: Vec<_> = {
             let mut events = self.events.write().await;
             events.drain(..).collect()
         };
-        
+
         if events_to_send.is_empty() {
             return Ok(());
         }
-        
+
         // Send to endpoint (shared client avoids per-flush connection overhead)
         static TELEMETRY_CLIENT: once_cell::sync::Lazy<reqwest::Client> =
             once_cell::sync::Lazy::new(|| {
@@ -267,15 +276,16 @@ impl TelemetryCollector {
                     session.events_sent += events_to_send.len() as u64;
                     Ok(())
                 } else {
-                    Err(TelemetryError::EndpointError(
-                        format!("HTTP {}", response.status())
-                    ))
+                    Err(TelemetryError::EndpointError(format!(
+                        "HTTP {}",
+                        response.status()
+                    )))
                 }
             }
             Err(e) => Err(TelemetryError::NetworkError(e.to_string())),
         }
     }
-    
+
     /// Get current session statistics
     pub async fn get_stats(&self) -> TelemetrySession {
         self.session.read().await.clone()
@@ -286,9 +296,14 @@ impl TelemetryCollector {
         std::fs::read_to_string("/etc/os-release")
             .ok()
             .and_then(|content| {
-                content.lines()
+                content
+                    .lines()
                     .find(|l| l.starts_with("PRETTY_NAME="))
-                    .map(|l| l.trim_start_matches("PRETTY_NAME=").trim_matches('"').to_string())
+                    .map(|l| {
+                        l.trim_start_matches("PRETTY_NAME=")
+                            .trim_matches('"')
+                            .to_string()
+                    })
             })
             .unwrap_or_else(|| std::env::consts::OS.to_string())
     }
@@ -298,10 +313,12 @@ impl TelemetryCollector {
         std::fs::read_to_string("/proc/meminfo")
             .ok()
             .and_then(|content| {
-                content.lines()
+                content
+                    .lines()
                     .find(|l| l.starts_with("MemTotal:"))
                     .and_then(|l| {
-                        l.split_whitespace().nth(1)
+                        l.split_whitespace()
+                            .nth(1)
                             .and_then(|kb| kb.parse::<u64>().ok())
                             .map(|kb| kb / 1024) // Convert kB to MB
                     })
@@ -326,16 +343,17 @@ impl TelemetryCollector {
 pub enum TelemetryError {
     #[error("Network error: {0}")]
     NetworkError(String),
-    
+
     #[error("Endpoint error: {0}")]
     EndpointError(String),
-    
+
     #[error("Serialization error: {0}")]
     Serialization(String),
 }
 
 /// Global telemetry instance (optional)
-static GLOBAL_TELEMETRY: once_cell::sync::OnceCell<TelemetryCollector> = once_cell::sync::OnceCell::new();
+static GLOBAL_TELEMETRY: once_cell::sync::OnceCell<TelemetryCollector> =
+    once_cell::sync::OnceCell::new();
 
 /// Initialize global telemetry
 pub fn init_telemetry(config: TelemetryConfig) {
@@ -374,7 +392,7 @@ macro_rules! telemetry_timing {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_telemetry_config_default() {
         let config = TelemetryConfig::default();
@@ -384,7 +402,7 @@ mod tests {
         assert!(!config.instance_id.is_empty());
         assert_eq!(config.sampling_rate, 1.0);
     }
-    
+
     #[test]
     fn test_telemetry_config_custom() {
         let config = TelemetryConfig {
@@ -396,13 +414,13 @@ mod tests {
             sampling_rate: 0.5,
             flush_interval_secs: 60,
         };
-        
+
         assert!(config.enabled);
         assert!(config.crash_reporting);
         assert!(config.metrics_enabled);
         assert_eq!(config.instance_id, "test-id");
     }
-    
+
     #[test]
     fn test_system_info_creation() {
         let info = SystemInfo {
@@ -413,12 +431,12 @@ mod tests {
             memory_mb: 16384,
             kernel_version: "6.1.0-agnos".to_string(),
         };
-        
+
         assert_eq!(info.os_type, "linux");
         assert_eq!(info.cpu_count, 8);
         assert_eq!(info.memory_mb, 16384);
     }
-    
+
     #[test]
     fn test_event_type_variants() {
         assert!(matches!(EventType::Counter, EventType::Counter));
@@ -426,18 +444,18 @@ mod tests {
         assert!(matches!(EventType::Histogram, EventType::Histogram));
         assert!(matches!(EventType::Timing, EventType::Timing));
     }
-    
+
     #[tokio::test]
     async fn test_telemetry_collector_disabled() {
         let config = TelemetryConfig::default();
         let collector = TelemetryCollector::new(config);
-        
+
         assert!(!collector.is_enabled());
-        
+
         // Should not panic when recording events while disabled
         collector.record_counter("test", "counter", 1.0).await;
     }
-    
+
     #[tokio::test]
     async fn test_telemetry_collector_enabled() {
         let config = TelemetryConfig {
@@ -446,24 +464,26 @@ mod tests {
             ..Default::default()
         };
         let collector = TelemetryCollector::new(config);
-        
+
         assert!(collector.is_enabled());
-        
+
         // Record some events
         collector.record_counter("test", "event1", 1.0).await;
         collector.record_gauge("test", "event2", 42.0).await;
         collector.record_timing("test", "event3", 100.0).await;
     }
-    
+
     #[tokio::test]
     async fn test_crash_reporting_disabled() {
         let config = TelemetryConfig::default();
         let collector = TelemetryCollector::new(config);
-        
+
         // Should not panic when crash reporting is disabled
-        collector.submit_crash("test-component", "test error", None).await;
+        collector
+            .submit_crash("test-component", "test error", None)
+            .await;
     }
-    
+
     #[tokio::test]
     async fn test_telemetry_stats() {
         let config = TelemetryConfig {
@@ -472,25 +492,25 @@ mod tests {
             ..Default::default()
         };
         let collector = TelemetryCollector::new(config);
-        
+
         let stats = collector.get_stats().await;
         assert!(!stats.instance_id.is_empty());
         assert_eq!(stats.events_sent, 0);
     }
-    
+
     #[test]
     fn test_generate_instance_id() {
         let id1 = generate_instance_id();
         let id2 = generate_instance_id();
-        
+
         // IDs should be unique
         assert_ne!(id1, id2);
-        
+
         // Should be valid UUID format
         assert_eq!(id1.len(), 36);
         assert!(id1.contains('-'));
     }
-    
+
     #[test]
     fn test_telemetry_session_serialization() {
         let session = TelemetrySession {
@@ -532,7 +552,9 @@ mod tests {
         };
         let collector = TelemetryCollector::new(config);
         // Recording should silently skip when disabled
-        collector.record_event("cat", "name", 1.0, EventType::Counter).await;
+        collector
+            .record_event("cat", "name", 1.0, EventType::Counter)
+            .await;
         let events = collector.events.read().await;
         assert!(events.is_empty());
     }
@@ -545,7 +567,9 @@ mod tests {
             ..Default::default()
         };
         let collector = TelemetryCollector::new(config);
-        collector.record_event("cat", "name", 1.0, EventType::Counter).await;
+        collector
+            .record_event("cat", "name", 1.0, EventType::Counter)
+            .await;
         let events = collector.events.read().await;
         assert!(events.is_empty());
     }
@@ -559,7 +583,9 @@ mod tests {
             ..Default::default()
         };
         let collector = TelemetryCollector::new(config);
-        collector.record_event("perf", "latency", 42.5, EventType::Gauge).await;
+        collector
+            .record_event("perf", "latency", 42.5, EventType::Gauge)
+            .await;
 
         let events = collector.events.read().await;
         assert_eq!(events.len(), 1);
@@ -648,7 +674,9 @@ mod tests {
             ..Default::default()
         };
         let collector = TelemetryCollector::new(config);
-        collector.submit_crash("comp", "error msg", Some("trace")).await;
+        collector
+            .submit_crash("comp", "error msg", Some("trace"))
+            .await;
         let reports = collector.crash_reports.read().await;
         assert!(reports.is_empty());
     }
@@ -675,7 +703,9 @@ mod tests {
             ..Default::default()
         };
         let collector = TelemetryCollector::new(config);
-        collector.submit_crash("agent-runtime", "panic at the disco", Some("line 42")).await;
+        collector
+            .submit_crash("agent-runtime", "panic at the disco", Some("line 42"))
+            .await;
 
         let reports = collector.crash_reports.read().await;
         assert_eq!(reports.len(), 1);
@@ -694,7 +724,9 @@ mod tests {
             ..Default::default()
         };
         let collector = TelemetryCollector::new(config);
-        collector.submit_crash("llm-gateway", "connection lost", None).await;
+        collector
+            .submit_crash("llm-gateway", "connection lost", None)
+            .await;
 
         let reports = collector.crash_reports.read().await;
         assert_eq!(reports.len(), 1);
@@ -712,7 +744,9 @@ mod tests {
 
         // Submit more than MAX_CRASH_REPORTS (10)
         for i in 0..15 {
-            collector.submit_crash("comp", &format!("error {}", i), None).await;
+            collector
+                .submit_crash("comp", &format!("error {}", i), None)
+                .await;
         }
 
         let reports = collector.crash_reports.read().await;
@@ -886,7 +920,9 @@ mod tests {
         collector.record_counter("a", "c1", 1.0).await;
         collector.record_gauge("a", "g1", 2.0).await;
         collector.record_timing("a", "t1", 3.0).await;
-        collector.record_event("a", "h1", 4.0, EventType::Histogram).await;
+        collector
+            .record_event("a", "h1", 4.0, EventType::Histogram)
+            .await;
 
         let events = collector.events.read().await;
         assert_eq!(events.len(), 4);
@@ -957,7 +993,12 @@ mod tests {
 
     #[test]
     fn test_event_type_serialization_roundtrip() {
-        let types = [EventType::Counter, EventType::Gauge, EventType::Histogram, EventType::Timing];
+        let types = [
+            EventType::Counter,
+            EventType::Gauge,
+            EventType::Histogram,
+            EventType::Timing,
+        ];
         for et in &types {
             let json = serde_json::to_string(et).unwrap();
             let deserialized: EventType = serde_json::from_str(&json).unwrap();
@@ -1129,7 +1170,8 @@ mod tests {
 
     #[test]
     fn test_telemetry_error_variants_are_error_trait() {
-        let err: Box<dyn std::error::Error> = Box::new(TelemetryError::NetworkError("test".to_string()));
+        let err: Box<dyn std::error::Error> =
+            Box::new(TelemetryError::NetworkError("test".to_string()));
         assert!(err.to_string().contains("test"));
     }
 
@@ -1181,8 +1223,11 @@ mod tests {
         {
             assert_ne!(version, "unknown");
             // Kernel version usually starts with a digit
-            assert!(version.chars().next().unwrap().is_ascii_digit(),
-                "Kernel version should start with digit: {}", version);
+            assert!(
+                version.chars().next().unwrap().is_ascii_digit(),
+                "Kernel version should start with digit: {}",
+                version
+            );
         }
         let _ = version;
     }
@@ -1556,7 +1601,10 @@ mod tracing_tests {
         };
         let headers = ctx.inject_headers();
         let tp = headers.get("traceparent").unwrap();
-        assert_eq!(tp, "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01");
+        assert_eq!(
+            tp,
+            "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01"
+        );
         assert!(!headers.contains_key("tracestate"));
     }
 
@@ -1688,8 +1736,10 @@ mod tracing_tests {
     fn test_span_attributes() {
         let ctx = TraceContext::new_root("svc");
         let mut span = ctx.child_span("op", "svc");
-        span.attributes.insert("http.method".to_string(), "GET".to_string());
-        span.attributes.insert("http.url".to_string(), "/api/v1".to_string());
+        span.attributes
+            .insert("http.method".to_string(), "GET".to_string());
+        span.attributes
+            .insert("http.url".to_string(), "/api/v1".to_string());
         assert_eq!(span.attributes.len(), 2);
         assert_eq!(span.attributes["http.method"], "GET");
     }

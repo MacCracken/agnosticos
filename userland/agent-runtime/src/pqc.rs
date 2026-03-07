@@ -397,12 +397,14 @@ pub fn encapsulate(recipient: &HybridKemKeypair) -> Result<HybridEncapsulation> 
         sha256_concat(&[&ephemeral_secret, b"x25519-eph-pub"])[..32].to_vec();
     // Derive classical shared secret from the ephemeral public (ciphertext) and
     // recipient's public key so that decapsulate can reconstruct the same value.
-    let classical_ss =
-        sha256_concat(&[&classical_ciphertext, &recipient.classical_public, b"x25519-ss"]);
+    let classical_ss = sha256_concat(&[
+        &classical_ciphertext,
+        &recipient.classical_public,
+        b"x25519-ss",
+    ]);
 
     // Post-quantum: ML-KEM encapsulate.
-    let (pqc_ciphertext, pqc_ss) =
-        sim_kem_encapsulate(recipient.algorithm, &recipient.pqc_public);
+    let (pqc_ciphertext, pqc_ss) = sim_kem_encapsulate(recipient.algorithm, &recipient.pqc_public);
 
     // Combine: HKDF-like — SHA-256(classical_ss || pqc_ss).
     let combined = sha256_concat(&[&classical_ss, &pqc_ss]);
@@ -478,7 +480,10 @@ impl fmt::Debug for HybridSigningKeypair {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("HybridSigningKeypair")
             .field("algorithm", &self.algorithm)
-            .field("classical_verifying_key_len", &self.classical_verifying_key.len())
+            .field(
+                "classical_verifying_key_len",
+                &self.classical_verifying_key.len(),
+            )
             .field("pqc_public_len", &self.pqc_public.len())
             .field("created_at", &self.created_at)
             .finish()
@@ -533,10 +538,7 @@ pub fn generate_signing_keypair(algorithm: PqcAlgorithm) -> Result<HybridSigning
 /// Sign a message with a hybrid signing keypair.
 ///
 /// Both Ed25519 and ML-DSA signatures are produced over the same message.
-pub fn hybrid_sign(
-    keypair: &HybridSigningKeypair,
-    message: &[u8],
-) -> Result<HybridSignature> {
+pub fn hybrid_sign(keypair: &HybridSigningKeypair, message: &[u8]) -> Result<HybridSignature> {
     debug!("Hybrid signing with {}", keypair.algorithm);
 
     // Classical: Ed25519 sign.
@@ -607,7 +609,10 @@ pub fn hybrid_verify(
         warn!("Hybrid verification failed: Ed25519 signature invalid");
     }
     if !pqc_valid {
-        warn!("Hybrid verification failed: {} signature invalid", signature.algorithm);
+        warn!(
+            "Hybrid verification failed: {} signature invalid",
+            signature.algorithm
+        );
     }
 
     Ok(classical_valid && pqc_valid)
@@ -656,7 +661,11 @@ impl PqcKeyStore {
     }
 
     /// Add a KEM keypair. Returns an error if the key_id already exists.
-    pub fn add_kem_keypair(&mut self, key_id: impl Into<String>, keypair: HybridKemKeypair) -> Result<()> {
+    pub fn add_kem_keypair(
+        &mut self,
+        key_id: impl Into<String>,
+        keypair: HybridKemKeypair,
+    ) -> Result<()> {
         let key_id = key_id.into();
         if self.kem_keys.contains_key(&key_id) || self.signing_keys.contains_key(&key_id) {
             bail!("Key ID '{}' already exists in the store", key_id);
@@ -741,19 +750,29 @@ impl PqcKeyStore {
     pub fn save(&self, path: &Path) -> Result<()> {
         let json = serde_json::to_string_pretty(self)
             .map_err(|e| anyhow::anyhow!("Failed to serialize key store: {}", e))?;
-        std::fs::write(path, json)
-            .map_err(|e| anyhow::anyhow!("Failed to write key store to {}: {}", path.display(), e))?;
-        info!("Key store saved to {} ({} keys)", path.display(), self.len());
+        std::fs::write(path, json).map_err(|e| {
+            anyhow::anyhow!("Failed to write key store to {}: {}", path.display(), e)
+        })?;
+        info!(
+            "Key store saved to {} ({} keys)",
+            path.display(),
+            self.len()
+        );
         Ok(())
     }
 
     /// Load a key store from a JSON file.
     pub fn load(path: &Path) -> Result<Self> {
-        let json = std::fs::read_to_string(path)
-            .map_err(|e| anyhow::anyhow!("Failed to read key store from {}: {}", path.display(), e))?;
+        let json = std::fs::read_to_string(path).map_err(|e| {
+            anyhow::anyhow!("Failed to read key store from {}: {}", path.display(), e)
+        })?;
         let store: Self = serde_json::from_str(&json)
             .map_err(|e| anyhow::anyhow!("Failed to deserialize key store: {}", e))?;
-        info!("Key store loaded from {} ({} keys)", path.display(), store.len());
+        info!(
+            "Key store loaded from {} ({} keys)",
+            path.display(),
+            store.len()
+        );
         Ok(store)
     }
 }

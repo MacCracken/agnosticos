@@ -45,8 +45,7 @@ impl KeyVersion {
 
     /// Decode the public key from hex.
     pub fn verifying_key(&self) -> Result<VerifyingKey> {
-        let bytes = hex::decode(&self.public_key_hex)
-            .context("Invalid hex in public key")?;
+        let bytes = hex::decode(&self.public_key_hex).context("Invalid hex in public key")?;
         let key_bytes: [u8; 32] = bytes
             .try_into()
             .map_err(|_| anyhow::anyhow!("Public key must be 32 bytes"))?;
@@ -81,30 +80,29 @@ impl PublisherKeyring {
             return Ok(0);
         }
 
-        let entries = std::fs::read_dir(&self.keys_dir)
-            .with_context(|| format!("Failed to read keys directory: {}", self.keys_dir.display()))?;
+        let entries = std::fs::read_dir(&self.keys_dir).with_context(|| {
+            format!("Failed to read keys directory: {}", self.keys_dir.display())
+        })?;
 
         for entry in entries {
             let entry = entry?;
             let path = entry.path();
             if path.extension().and_then(|e| e.to_str()) == Some("json") {
                 match std::fs::read_to_string(&path) {
-                    Ok(content) => {
-                        match serde_json::from_str::<Vec<KeyVersion>>(&content) {
-                            Ok(versions) => {
-                                for kv in &versions {
-                                    self.keys
-                                        .entry(kv.key_id.clone())
-                                        .or_default()
-                                        .push(kv.clone());
-                                    count += 1;
-                                }
-                            }
-                            Err(e) => {
-                                tracing::warn!("Skipping malformed key file {}: {}", path.display(), e);
+                    Ok(content) => match serde_json::from_str::<Vec<KeyVersion>>(&content) {
+                        Ok(versions) => {
+                            for kv in &versions {
+                                self.keys
+                                    .entry(kv.key_id.clone())
+                                    .or_default()
+                                    .push(kv.clone());
+                                count += 1;
                             }
                         }
-                    }
+                        Err(e) => {
+                            tracing::warn!("Skipping malformed key file {}: {}", path.display(), e);
+                        }
+                    },
                     Err(e) => {
                         tracing::warn!("Failed to read key file {}: {}", path.display(), e);
                     }
@@ -123,10 +121,7 @@ impl PublisherKeyring {
     /// Look up the current valid key for a given key_id.
     pub fn get_current_key(&self, key_id: &str) -> Option<&KeyVersion> {
         let now = Utc::now();
-        self.keys
-            .get(key_id)?
-            .iter()
-            .find(|k| k.is_valid_at(now))
+        self.keys.get(key_id)?.iter().find(|k| k.is_valid_at(now))
     }
 
     /// Get all key versions for a key_id (including expired).
@@ -165,7 +160,11 @@ pub fn sign_data(data: &[u8], signing_key: &SigningKey) -> Vec<u8> {
 }
 
 /// Verify a signature against data and a verifying key.
-pub fn verify_signature(data: &[u8], signature_bytes: &[u8], verifying_key: &VerifyingKey) -> Result<()> {
+pub fn verify_signature(
+    data: &[u8],
+    signature_bytes: &[u8],
+    verifying_key: &VerifyingKey,
+) -> Result<()> {
     let sig_bytes: [u8; 64] = signature_bytes
         .try_into()
         .map_err(|_| anyhow::anyhow!("Signature must be 64 bytes"))?;

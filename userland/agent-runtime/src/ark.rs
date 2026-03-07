@@ -17,8 +17,8 @@ use serde::{Deserialize, Serialize};
 use tracing::{debug, info, warn};
 
 use crate::nous::{
-    AvailableUpdate, InstalledPackage, NousResolver, PackageSource, ResolvedPackage,
-    ResolutionStrategy,
+    AvailableUpdate, InstalledPackage, NousResolver, PackageSource, ResolutionStrategy,
+    ResolvedPackage,
 };
 
 // ---------------------------------------------------------------------------
@@ -256,9 +256,8 @@ pub const ARK_VERSION: &str = "0.1.0";
 impl ArkPackageManager {
     /// Create a new package manager with the given configuration.
     pub fn new(config: ArkConfig) -> Result<Self> {
-        let resolver =
-            NousResolver::new(&config.marketplace_dir, &config.cache_dir)
-                .with_strategy(config.default_strategy.clone());
+        let resolver = NousResolver::new(&config.marketplace_dir, &config.cache_dir)
+            .with_strategy(config.default_strategy.clone());
         Ok(Self { config, resolver })
     }
 
@@ -563,9 +562,9 @@ impl ArkPackageManager {
             .push(ArkOutputLine::Header("Update check".to_string()));
 
         if updates.is_empty() {
-            output
-                .lines
-                .push(ArkOutputLine::Success("All packages up to date".to_string()));
+            output.lines.push(ArkOutputLine::Success(
+                "All packages up to date".to_string(),
+            ));
         } else {
             for update in &updates {
                 output.lines.push(ArkOutputLine::Package {
@@ -597,10 +596,7 @@ impl ArkPackageManager {
         let updates = self.resolver.check_updates()?;
 
         let filtered: Vec<&AvailableUpdate> = if let Some(names) = packages {
-            updates
-                .iter()
-                .filter(|u| names.contains(&u.name))
-                .collect()
+            updates.iter().filter(|u| names.contains(&u.name)).collect()
         } else {
             updates.iter().collect()
         };
@@ -637,10 +633,7 @@ impl ArkPackageManager {
 
         Ok(ArkResult {
             success: true,
-            message: format!(
-                "Upgrade plan: {} package(s) to upgrade",
-                filtered.len()
-            ),
+            message: format!("Upgrade plan: {} package(s) to upgrade", filtered.len()),
             packages_affected: affected,
             source: PackageSource::Unknown,
         })
@@ -804,14 +797,12 @@ impl ArkPackageManager {
                             plan.requires_root = true;
                         }
                         PackageSource::Marketplace => {
-                            plan.steps.push(InstallStep::MarketplaceRemove {
-                                package: pkg.name,
-                            });
+                            plan.steps
+                                .push(InstallStep::MarketplaceRemove { package: pkg.name });
                         }
                         PackageSource::FlutterApp => {
-                            plan.steps.push(InstallStep::FlutterRemove {
-                                package: pkg.name,
-                            });
+                            plan.steps
+                                .push(InstallStep::FlutterRemove { package: pkg.name });
                         }
                         PackageSource::Unknown => {
                             bail!("Cannot determine source for package: {}", pkg_name);
@@ -1035,7 +1026,10 @@ fn parse_source_arg(s: &str) -> Result<PackageSource> {
         "system" | "apt" => Ok(PackageSource::System),
         "marketplace" | "market" => Ok(PackageSource::Marketplace),
         "flutter" | "flutter-app" | "flutterapp" => Ok(PackageSource::FlutterApp),
-        _ => bail!("Unknown package source: '{}'. Use: system, marketplace, flutter", s),
+        _ => bail!(
+            "Unknown package source: '{}'. Use: system, marketplace, flutter",
+            s
+        ),
     }
 }
 
