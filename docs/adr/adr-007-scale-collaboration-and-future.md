@@ -1,4 +1,4 @@
-# ADR-107: Scale, Collaboration, and Future
+# ADR-007: Scale, Collaboration, and Future
 
 **Status:** Accepted
 **Date:** 2026-03-07

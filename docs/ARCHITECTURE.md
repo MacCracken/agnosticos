@@ -119,7 +119,7 @@ The intelligence layer behind ark. Given a package name, nous determines which s
 
 ### aegis — System Security Daemon
 
-*Status: Implemented (`agent-runtime/aegis.rs`, 40 tests) — [ADR-103](adr/adr-103-security-and-trust.md)*
+*Status: Implemented (`agent-runtime/aegis.rs`, 40 tests) — [ADR-003](adr/adr-003-security-and-trust.md)*
 
 The unified security and threat protection layer. Coordinates threat detection, quarantine, and scanning across all subsystems.
 
@@ -145,7 +145,7 @@ The unified security and threat protection layer. Coordinates threat detection, 
 
 ### sigil — Trust System
 
-*Status: Implemented (`agent-runtime/sigil.rs`, 35 tests) — [ADR-103](adr/adr-103-security-and-trust.md)*
+*Status: Implemented (`agent-runtime/sigil.rs`, 35 tests) — [ADR-003](adr/adr-003-security-and-trust.md)*
 
 The system-wide trust and verification framework. Every binary, package, config, and update is verified through sigil.
 
@@ -167,7 +167,7 @@ The system-wide trust and verification framework. Every binary, package, config,
 
 ### takumi — Package Build System
 
-*Status: Implemented (`agent-runtime/takumi.rs`, 43 tests) — [ADR-104](adr/adr-104-distribution-build-and-installation.md)*
+*Status: Implemented (`agent-runtime/takumi.rs`, 43 tests) — [ADR-004](adr/adr-004-distribution-build-and-installation.md)*
 
 The master craftsman that compiles packages from source into `.ark` binary packages. (Japanese: takumi = master craftsman)
 
@@ -205,7 +205,7 @@ hardening = ["pie", "relro", "fortify"]
 
 ### argonaut — Init System
 
-*Status: Implemented (`agent-runtime/argonaut.rs`, 46 tests) — [ADR-104](adr/adr-104-distribution-build-and-installation.md)*
+*Status: Implemented (`agent-runtime/argonaut.rs`, 46 tests) — [ADR-004](adr/adr-004-distribution-build-and-installation.md)*
 
 A single Rust binary that replaces systemd/sysvinit. No shell scripts in the boot path.
 
@@ -220,7 +220,7 @@ A single Rust binary that replaces systemd/sysvinit. No shell scripts in the boo
 
 ### agnova — OS Installer
 
-*Status: Implemented (`agent-runtime/agnova.rs`, 41 tests) — [ADR-104](adr/adr-104-distribution-build-and-installation.md)*
+*Status: Implemented (`agent-runtime/agnova.rs`, 41 tests) — [ADR-004](adr/adr-004-distribution-build-and-installation.md)*
 
 The AGNOS installer. Takes a blank disk and produces a running system.
 
@@ -474,7 +474,7 @@ User: "ark install nginx"
 
 **Alpha (current):** Debian Bookworm slim — pragmatic choice for shipping fast with ML ecosystem compatibility.
 
-**Post-alpha (ADR-104):** LFS-native distribution. ~50 packages built from source via `takumi` recipes, `.ark` binary packages, `ark` as sole package manager. No Debian dependency. AI infrastructure (CUDA, PyTorch, ONNX) shipped as `.ark` packages out of the box.
+**Post-alpha (ADR-004):** LFS-native distribution. ~50 packages built from source via `takumi` recipes, `.ark` binary packages, `ark` as sole package manager. No Debian dependency. AI infrastructure (CUDA, PyTorch, ONNX) shipped as `.ark` packages out of the box.
 
 The architecture is distro-agnostic by design — all AGNOS-specific code uses standard Linux syscalls with no Debian-specific dependencies. The transition from Debian to LFS-native changes only the packaging layer, not the Rust userland.
 

@@ -1,4 +1,4 @@
-# ADR-102: Agent Runtime and Lifecycle
+# ADR-002: Agent Runtime and Lifecycle
 
 **Status:** Accepted
 **Date:** 2026-03-07

@@ -1,4 +1,4 @@
-# ADR-106: Observability and Operations
+# ADR-006: Observability and Operations
 
 **Status:** Accepted
 **Date:** 2026-03-07

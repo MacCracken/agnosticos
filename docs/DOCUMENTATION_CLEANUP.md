@@ -39,13 +39,13 @@ agnos/
 │   │
 │   ├── adr/                       # Architecture Decision Records
 │   │   ├── README.md              # ADR index
-│   │   ├── adr-101-foundation-and-architecture.md
-│   │   ├── adr-102-agent-runtime-and-lifecycle.md
-│   │   ├── adr-103-security-and-trust.md
-│   │   ├── adr-104-distribution-build-and-installation.md
-│   │   ├── adr-105-desktop-environment.md
-│   │   ├── adr-106-observability-and-operations.md
-│   │   └── adr-107-scale-collaboration-and-future.md
+│   │   ├── adr-001-foundation-and-architecture.md
+│   │   ├── adr-002-agent-runtime-and-lifecycle.md
+│   │   ├── adr-003-security-and-trust.md
+│   │   ├── adr-004-distribution-build-and-installation.md
+│   │   ├── adr-005-desktop-environment.md
+│   │   ├── adr-006-observability-and-operations.md
+│   │   └── adr-007-scale-collaboration-and-future.md
 │   │
 │   ├── api/                       # API documentation
 │   │   └── README.md              # API reference

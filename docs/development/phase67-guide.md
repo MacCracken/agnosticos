@@ -1,6 +1,6 @@
 # Phase 6.7: Alpha Polish — Developer Guide
 
-> **Status**: Complete | **ADR**: [ADR-102](../adr/adr-102-agent-runtime-and-lifecycle.md)
+> **Status**: Complete | **ADR**: [ADR-002](../adr/adr-002-agent-runtime-and-lifecycle.md)
 
 This guide documents the 14 features added in Phase 6.7 and how to use them.
 

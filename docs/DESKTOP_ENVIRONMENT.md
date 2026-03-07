@@ -79,7 +79,7 @@ The accessibility module (`accessibility.rs`) provides AT-SPI2 bridge foundation
 
 ## Plugin Host
 
-The plugin host (`plugin_host.rs`, per ADR-105) manages third-party desktop plugins as crash-isolated processes communicating over Unix domain sockets.
+The plugin host (`plugin_host.rs`, per ADR-005) manages third-party desktop plugins as crash-isolated processes communicating over Unix domain sockets.
 
 **Plugin types (`PluginType`):**
 

@@ -585,11 +585,14 @@ pub fn verify_update(config: &UpdateConfig, manifest: &UpdateManifest) -> Result
     let expected = &manifest.files[0].sha256;
     let size = manifest.files[0].size_bytes;
 
+    // Read the written data using 4M blocks for performance, limiting to
+    // the exact byte count via `count` and `iflag=count_bytes`.
     let output = std::process::Command::new("dd")
         .args([
             &format!("if={}", target_dev.display()),
-            &"bs=1".to_string(),
+            "bs=4M",
             &format!("count={size}"),
+            "iflag=count_bytes",
         ])
         .output()
         .map_err(|e| SysError::Unknown(format!("dd read failed: {e}")))?;
@@ -599,7 +602,13 @@ pub fn verify_update(config: &UpdateConfig, manifest: &UpdateManifest) -> Result
     }
 
     let mut hasher = Sha256::new();
-    hasher.update(&output.stdout);
+    // Only hash the exact number of bytes requested (dd may read a full block).
+    let data = if (output.stdout.len() as u64) > size {
+        &output.stdout[..size as usize]
+    } else {
+        &output.stdout
+    };
+    hasher.update(data);
     let actual = hex::encode(hasher.finalize());
 
     Ok(actual == *expected)
@@ -612,26 +621,25 @@ pub fn verify_update(_config: &UpdateConfig, _manifest: &UpdateManifest) -> Resu
 
 /// Mark a slot as active for the next boot.
 ///
-/// Uses `bootctl` if available, otherwise writes to the state file.
+/// Writes the slot marker file for argonaut to read at next boot.
+/// Falls back to direct EFI variable if `efibootmgr` is available.
 #[cfg(target_os = "linux")]
 pub fn switch_active_slot(config: &UpdateConfig, slot: UpdateSlot) -> Result<()> {
-    // Try bootctl first (systemd-boot).
-    let bootctl = std::process::Command::new("bootctl")
+    // Write slot marker for argonaut init system.
+    let marker = PathBuf::from("/var/lib/agnos/next-slot");
+    if let Some(parent) = marker.parent() {
+        std::fs::create_dir_all(parent).ok();
+    }
+    std::fs::write(&marker, slot.partition_suffix())
+        .map_err(|e| SysError::Unknown(format!("Failed to write slot marker: {e}")))?;
+
+    // If efibootmgr is available, also set the EFI boot entry.
+    let _ = std::process::Command::new("efibootmgr")
         .args([
-            "set-default",
-            &format!("agnos-{}.conf", slot.partition_suffix()),
+            "--bootnext",
+            &format!("AGNOS-{}", slot.partition_suffix().to_uppercase()),
         ])
         .status();
-
-    match bootctl {
-        Ok(s) if s.success() => {}
-        _ => {
-            // Fallback: write slot marker file.
-            let marker = PathBuf::from("/var/lib/agnos/next-slot");
-            std::fs::write(&marker, slot.partition_suffix())
-                .map_err(|e| SysError::Unknown(format!("Failed to write slot marker: {e}")))?;
-        }
-    }
 
     // Update persistent state.
     let mut state = get_update_state(config).unwrap_or(UpdateState {
@@ -665,18 +673,14 @@ pub fn rollback(config: &UpdateConfig) -> Result<()> {
     }
     let previous = state.current_slot.other();
 
-    // Stop services before switching.
-    if let Err(e) = std::process::Command::new("systemctl")
-        .args(["stop", "agnos-agent-runtime"])
-        .status()
-    {
-        tracing::warn!("Failed to stop agnos-agent-runtime before rollback: {}", e);
-    }
-    if let Err(e) = std::process::Command::new("systemctl")
-        .args(["stop", "agnos-llm-gateway"])
-        .status()
-    {
-        tracing::warn!("Failed to stop agnos-llm-gateway before rollback: {}", e);
+    // Stop services before switching (argonaut service management).
+    for service in &["daimon", "hoosh"] {
+        if let Err(e) = std::process::Command::new("argonaut")
+            .args(["stop", service])
+            .status()
+        {
+            tracing::warn!("Failed to stop {} before rollback: {}", service, e);
+        }
     }
 
     switch_active_slot(config, previous)?;

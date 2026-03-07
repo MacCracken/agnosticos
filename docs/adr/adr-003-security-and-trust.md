@@ -1,4 +1,4 @@
-# ADR-103: Security and Trust
+# ADR-003: Security and Trust
 
 **Status:** Accepted
 **Date:** 2026-03-07

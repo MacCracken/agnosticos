@@ -1,4 +1,4 @@
-# ADR-104: Distribution, Build, and Installation
+# ADR-004: Distribution, Build, and Installation
 
 **Status:** Accepted
 **Date:** 2026-03-07

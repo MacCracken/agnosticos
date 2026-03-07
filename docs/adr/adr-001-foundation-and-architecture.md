@@ -1,4 +1,4 @@
-# ADR-101: Foundation and Architecture
+# ADR-001: Foundation and Architecture
 
 **Status:** Accepted
 **Date:** 2026-03-07

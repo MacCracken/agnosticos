@@ -185,4 +185,4 @@ llm-gateway load llama2
 | Response caching | ✅ Complete |
 | Agnostic agent registration with akd | 📋 Future (Phase 6+) |
 
-See [ADR-101](adr/adr-101-foundation-and-architecture.md) for the full implementation plan.
+See [ADR-001](adr/adr-001-foundation-and-architecture.md) for the full implementation plan.

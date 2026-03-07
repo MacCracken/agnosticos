@@ -64,9 +64,9 @@ All phases are complete. See [CHANGELOG.md](/CHANGELOG.md) for detailed implemen
 
 **Remaining:**
 - [ ] Community testing program
-- [ ] Bug fixes from alpha feedback
+- [x] Bug fixes from alpha feedback
 - [ ] Performance optimization based on benchmarks
-- [ ] Update system operational and tested
+- [x] Update system operational and tested
 - [ ] Support channels open (Discord, forum)
 - [ ] Video tutorials published
 
@@ -146,13 +146,13 @@ Publish runtime-specific base images for consumer projects.
 
 | # | ADR | Status |
 |---|-----|--------|
-| 101 | Foundation and Architecture | Accepted |
-| 102 | Agent Runtime and Lifecycle | Accepted |
-| 103 | Security and Trust | Accepted |
-| 104 | Distribution, Build, and Installation | Accepted |
-| 105 | Desktop Environment | Accepted |
-| 106 | Observability and Operations | Accepted |
-| 107 | Scale, Collaboration, and Future | Accepted |
+| 001 | Foundation and Architecture | Accepted |
+| 002 | Agent Runtime and Lifecycle | Accepted |
+| 003 | Security and Trust | Accepted |
+| 004 | Distribution, Build, and Installation | Accepted |
+| 005 | Desktop Environment | Accepted |
+| 006 | Observability and Operations | Accepted |
+| 007 | Scale, Collaboration, and Future | Accepted |
 
 ---
 

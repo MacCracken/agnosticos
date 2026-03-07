@@ -186,7 +186,7 @@ All inter-service communication uses mutual TLS (`agent_runtime::mtls`):
 - Certificate rotation with zero-downtime rollover
 - CORS restricted to localhost; Bearer token auth for API endpoints
 
-### 10. Zero-Trust Architecture (ADR-103)
+### 10. Zero-Trust Architecture (ADR-003)
 
 AGNOS follows zero-trust principles:
 

@@ -1499,6 +1499,162 @@ async fn ark_status_handler() -> impl IntoResponse {
 }
 
 // ---------------------------------------------------------------------------
+// System update endpoints
+// ---------------------------------------------------------------------------
+
+/// GET /v1/system/update/status — current update state
+async fn system_update_status_handler() -> impl IntoResponse {
+    let config = agnos_sys::update::UpdateConfig::default();
+    match agnos_sys::update::get_update_state(&config) {
+        Ok(state) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "current_slot": format!("{}", state.current_slot),
+                "current_version": state.current_version,
+                "pending_update": state.pending_update,
+                "last_update": state.last_update,
+                "rollback_available": state.rollback_available,
+                "boot_count_since_update": state.boot_count_since_update,
+            })),
+        ),
+        Err(_) => {
+            // No state file yet — return defaults
+            let version = env!("CARGO_PKG_VERSION");
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "current_slot": "A",
+                    "current_version": version,
+                    "pending_update": null,
+                    "last_update": null,
+                    "rollback_available": false,
+                    "boot_count_since_update": 0,
+                })),
+            )
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct SystemUpdateCheckRequest {
+    /// Override the update URL (optional).
+    update_url: Option<String>,
+}
+
+/// POST /v1/system/update/check — check for available updates
+async fn system_update_check_handler(
+    Json(req): Json<SystemUpdateCheckRequest>,
+) -> impl IntoResponse {
+    let mut config = agnos_sys::update::UpdateConfig::default();
+    if let Some(url) = req.update_url {
+        config.update_url = url;
+    }
+    let current_version = env!("CARGO_PKG_VERSION");
+
+    match agnos_sys::update::check_for_update(&config, current_version) {
+        Ok(Some(manifest)) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "update_available": true,
+                "version": manifest.version,
+                "channel": format!("{}", manifest.channel),
+                "release_date": manifest.release_date,
+                "changelog": manifest.changelog,
+                "files": manifest.files.len(),
+            })),
+        ),
+        Ok(None) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "update_available": false,
+                "current_version": current_version,
+            })),
+        ),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({
+                "error": format!("{e}"),
+            })),
+        ),
+    }
+}
+
+/// POST /v1/system/update/apply — apply an update from a manifest
+async fn system_update_apply_handler(
+    Json(manifest_json): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let manifest_str = manifest_json.to_string();
+    let manifest = match agnos_sys::update::parse_update_manifest(&manifest_str) {
+        Ok(m) => m,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": format!("Invalid manifest: {e}")})),
+            )
+        }
+    };
+
+    if let Err(e) = agnos_sys::update::verify_manifest(&manifest) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": format!("Manifest verification failed: {e}")})),
+        );
+    }
+
+    let config = agnos_sys::update::UpdateConfig::default();
+    match agnos_sys::update::apply_update(&config, &manifest) {
+        Ok(()) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "status": "applied",
+                "version": manifest.version,
+                "message": "Update applied. Reboot to activate.",
+            })),
+        ),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": format!("Apply failed: {e}")})),
+        ),
+    }
+}
+
+/// POST /v1/system/update/rollback — rollback to previous slot
+async fn system_update_rollback_handler() -> impl IntoResponse {
+    let config = agnos_sys::update::UpdateConfig::default();
+    match agnos_sys::update::rollback(&config) {
+        Ok(()) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "status": "rolled_back",
+                "message": "Rolled back to previous slot. Reboot to activate.",
+            })),
+        ),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": format!("Rollback failed: {e}")})),
+        ),
+    }
+}
+
+/// POST /v1/system/update/confirm — mark current boot as successful
+async fn system_update_confirm_handler() -> impl IntoResponse {
+    let config = agnos_sys::update::UpdateConfig::default();
+    match agnos_sys::update::mark_boot_successful(&config) {
+        Ok(()) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "status": "confirmed",
+                "message": "Current boot marked as successful.",
+            })),
+        ),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": format!("Confirm failed: {e}")})),
+        ),
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Router & server
 // ---------------------------------------------------------------------------
 
@@ -1576,6 +1732,12 @@ pub fn build_router(state: ApiState) -> Router {
         .route("/v1/ark/update", post(ark_update_handler))
         .route("/v1/ark/upgrade", post(ark_upgrade_handler))
         .route("/v1/ark/status", get(ark_status_handler))
+        // System update routes
+        .route("/v1/system/update/status", get(system_update_status_handler))
+        .route("/v1/system/update/check", post(system_update_check_handler))
+        .route("/v1/system/update/apply", post(system_update_apply_handler))
+        .route("/v1/system/update/rollback", post(system_update_rollback_handler))
+        .route("/v1/system/update/confirm", post(system_update_confirm_handler))
         // Marketplace routes
         .route(
             "/v1/marketplace/installed",
@@ -4577,5 +4739,90 @@ mod tests {
         let req: ArkRemoveRequest = serde_json::from_str(json).unwrap();
         assert_eq!(req.packages, vec!["nginx"]);
         assert!(!req.purge);
+    }
+
+    // -- System update API tests --
+
+    #[tokio::test]
+    async fn test_system_update_status() {
+        let app = test_app();
+        let req = Request::builder()
+            .method("GET")
+            .uri("/v1/system/update/status")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(json.get("current_slot").is_some());
+        assert!(json.get("current_version").is_some());
+        assert!(json.get("rollback_available").is_some());
+    }
+
+    #[tokio::test]
+    async fn test_system_update_check() {
+        let app = test_app();
+        let body = serde_json::json!({});
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/system/update/check")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        // Will return 500 since no update server is running, or OK with no update
+        // Either is acceptable in test — we just verify the endpoint exists and responds
+        assert!(
+            resp.status() == StatusCode::OK
+                || resp.status() == StatusCode::INTERNAL_SERVER_ERROR
+        );
+    }
+
+    #[tokio::test]
+    async fn test_system_update_rollback_no_state() {
+        let app = test_app();
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/system/update/rollback")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        // No state file exists, so rollback should fail gracefully
+        assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(json.get("error").is_some());
+    }
+
+    #[tokio::test]
+    async fn test_system_update_confirm_no_state() {
+        let app = test_app();
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/system/update/confirm")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        // No state file, so confirm should fail gracefully
+        assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[tokio::test]
+    async fn test_system_update_apply_invalid_manifest() {
+        let app = test_app();
+        let body = serde_json::json!({"invalid": true});
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/system/update/apply")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     }
 }

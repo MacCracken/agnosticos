@@ -1,4 +1,4 @@
-# ADR-105: Desktop Environment
+# ADR-005: Desktop Environment
 
 **Status:** Accepted
 **Date:** 2026-03-07
