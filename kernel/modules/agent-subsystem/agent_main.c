@@ -71,8 +71,7 @@ SYSCALL_DEFINE2(agnos_agent_create,
     
     id = next_agent_id++;
     uuid_gen(&agent->agent_id);
-    strncpy(agent->agent_name, kconfig.name, sizeof(agent->agent_name) - 1);
-    agent->agent_name[sizeof(agent->agent_name) - 1] = '\0';
+    strscpy(agent->agent_name, kconfig.name, sizeof(agent->agent_name));
     agent->capabilities = kconfig.capabilities;
     agent->limits = kconfig.limits;
     agent->task = current;

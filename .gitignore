@@ -118,6 +118,8 @@ htmlcov/
 .pytest_cache/
 .tox/
 .nox/
+tarpaulin-report.html
+cobertura.xml
 
 # Package management
 node_modules/
