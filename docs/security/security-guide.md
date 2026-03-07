@@ -1,5 +1,7 @@
 # Security Guide
 
+**Last Updated**: 2026-03-07
+
 AGNOS is designed with security as a foundational principle. This guide documents the security architecture, threat model, and best practices.
 
 ## Security Architecture
@@ -69,7 +71,9 @@ Agents run in isolated environments:
 - **Cgroups**: Resource limits
 
 ```rust
-use agnos::security::{Sandbox, FilesystemRule, Access};
+use agent_runtime::sandbox::{Sandbox, FilesystemRule, Access};
+use agnos_sys::landlock;
+use agnos_sys::seccomp;
 
 let sandbox = Sandbox::new();
 sandbox.apply_landlock(&[
@@ -145,6 +149,52 @@ security.emergency_kill_switch();
 // All permissions revoked
 // System locked down
 ```
+
+### 6. Aegis Security Daemon
+
+Aegis (`agent_runtime::aegis`) is the centralized security policy daemon that enforces system-wide security rules. It provides:
+
+- Real-time agent behavior monitoring and anomaly detection
+- Automated sandbox enforcement and threat response
+- Security policy distribution across the system
+- Coordination with kernel security modules (Landlock, seccomp, IMA)
+
+### 7. Sigil Trust System
+
+Sigil (`agent_runtime::sigil`) provides cryptographic trust verification:
+
+- Package and agent signature verification (Ed25519 + ML-DSA hybrid)
+- Trust chain management for `.ark` and `.agnos-agent` packages
+- TPM-backed hardware attestation for system integrity
+- Transparency log integration for auditable trust decisions
+
+### 8. Post-Quantum Cryptography
+
+AGNOS implements hybrid post-quantum cryptographic schemes:
+
+- **Key exchange**: ML-KEM (Kyber) + X25519 hybrid for forward secrecy
+- **Digital signatures**: ML-DSA (Dilithium) + Ed25519 hybrid
+- **Hash-based signatures**: SPHINCS+ for long-lived signing keys
+- **Crypto-agility**: Algorithm-agnostic APIs in `agnos_common::secrets` allow seamless migration
+
+### 9. Mutual TLS (mTLS)
+
+All inter-service communication uses mutual TLS (`agent_runtime::mtls`):
+
+- Certificate pinning via `agnos_sys::certpin` (SPKI SHA-256 hashes)
+- Per-agent client certificates issued by the local CA
+- Certificate rotation with zero-downtime rollover
+- CORS restricted to localhost; Bearer token auth for API endpoints
+
+### 10. Zero-Trust Architecture (ADR-103)
+
+AGNOS follows zero-trust principles:
+
+- **Never trust, always verify**: Every agent request is authenticated and authorized
+- **Least privilege**: Capabilities granted per-agent, per-resource
+- **Micro-segmentation**: Network namespaces isolate agent traffic
+- **Continuous verification**: Aegis monitors agent behavior throughout lifecycle
+- **Assume breach**: Cryptographic audit chain ensures forensic capability
 
 ## Security Best Practices
 

@@ -1,179 +1,433 @@
-# Phase 3: Agent Runtime Implementation
+# Daimon: AGNOS Agent Runtime
+
+> **Named subsystem:** daimon (Greek: guiding spirit/daemon)
+> **Port:** 8090
+> **Crate:** `agent-runtime`
+> **Last Updated:** 2026-03-07
+> **Version:** 2026.3.7
 
 ## Overview
 
-Phase 3 implements the **Agent Runtime** - a multi-agent orchestration system for AGNOS. This provides the foundation for running, managing, and coordinating AI agents within the operating system.
+Daimon is the multi-agent orchestration runtime at the heart of AGNOS. It manages the full lifecycle of AI agents — registration, scheduling, sandboxing, inter-process communication, and health monitoring — while also hosting an extensive set of subsystems for package management, security, marketplace, AI safety, cloud deployment, and more.
 
-## Components Implemented
+All agents communicate over Unix domain sockets at `/run/agnos/agents/{agent_id}.sock`. External consumers (AGNOSTIC, SecureYeoman, Photis Nadi) interact via the REST API on port 8090 or through the MCP tool interface.
 
-### 1. Agent Kernel Module (`kernel/modules/agent-subsystem/`)
-
-Provides low-level kernel support for agent process management:
-
-- **Process Type**: Specialized agent processes with unique attributes
-- **Syscalls**: 
-  - `agnos_agent_create` - Create a new agent process
-  - `agnos_agent_terminate` - Terminate an agent
-  - Resource quota enforcement
-  - Capability restrictions
-- **IPC Mechanisms**: Foundation for agent-to-agent and agent-to-kernel communication
-- **Resource Scheduler**: GPU allocation, memory limits, CPU prioritization
-
-**Files:**
-- `agent_main.c` - Core kernel module with agent process management
-- `Kbuild` - Build configuration
-
-### 2. Agent Runtime Daemon (`userland/agent-runtime/`)
-
-The main daemon (`agent-runtime`/`akd`) that manages agent lifecycle:
-
-#### Modules:
-
-**`agent.rs`** - Agent representation and lifecycle
-- Agent creation and configuration
-- Start/stop/pause/resume operations
-- Resource limit enforcement (memory, CPU time)
-- Process management with signal handling
-
-**`registry.rs`** - Agent registry
-- Central registry for all agents
-- Lookup by ID, name, or capability
-- Agent discovery and capability advertisement
-- Status tracking
-
-**`orchestrator.rs`** - Multi-agent orchestration
-- Task distribution and workload balancing
-- Priority-based task queues (Critical, High, Normal, Low, Background)
-- Auto-assignment of tasks to agents
-- Message bus for inter-agent communication
-- Task dependency resolution
-
-**`supervisor.rs`** - Health monitoring
-- Health check loop with configurable intervals
-- Resource limit enforcement
-- Automatic failure detection and recovery
-- Graceful shutdown coordination
-
-**`ipc.rs`** - Inter-process communication
-- Unix domain sockets for agent communication
-- Message routing and pub/sub system
-- Global message bus
-
-**`sandbox.rs`** - Security isolation
-- Landlock filesystem restrictions (when available)
-- seccomp-bpf filter support
-- Network namespace isolation
-- Configurable access levels (None, Localhost, Restricted, Full)
-
-**`resource.rs`** - Resource management
-- GPU detection and allocation (NVIDIA via nvidia-smi)
-- CPU core allocation
-- Memory reservation and tracking
-- Multi-GPU support
-
-### 3. LLM Gateway Service (`userland/llm-gateway/`)
-
-Extended LLM gateway with agent support:
-
-#### Modules:
-
-**`main.rs`** - Gateway service
-- Unified interface for local and cloud LLMs
-- Model loading/unloading
-- Inference with streaming support
-- Token accounting per agent
-- Shared model sessions for multi-agent access
-
-**`providers.rs`** - LLM provider implementations
-- Ollama provider (local models)
-- llama.cpp provider
-- Extensible for OpenAI, Anthropic, Google
-
-**`cache.rs`** - Response caching
-- LRU cache with TTL
-- Cache statistics
-- Configurable cache policies
-
-**`accounting.rs`** - Token accounting
-- Per-agent token usage tracking
-- Total usage aggregation
-- Usage statistics and reporting
-
-### 4. Agent SDK (`userland/agnos-sys/src/agent.rs`)
-
-Rust SDK for building AGNOS agents:
-
-- **`Agent` trait**: Interface all agents must implement
-  - `init()` - Initialize the agent
-  - `run()` - Main agent loop
-  - `handle_message()` - Process incoming messages
-  - `shutdown()` - Cleanup before exit
-
-- **`AgentContext`**: Runtime context for agents
-  - Agent ID and configuration
-  - Message sending capabilities
-  - Status management
-
-- **`AgentRuntime`**: Executes agent implementations
-- **Helper functions**: LLM inference, audit logging, resource checking
-- **`agent_main!` macro**: Simplified entry point for agents
-
-### 5. Example Agent (`userland/examples/file-manager-agent.rs`)
-
-Reference implementation demonstrating:
-- Agent trait implementation
-- Message handling
-- File operations within sandbox constraints
-- Proper lifecycle management
-
-## Architecture
+## Core Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    Agent Runtime Daemon                      │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐  │
-│  │   Registry   │  │ Orchestrator │  │   Supervisor     │  │
-│  │  (Discovery) │  │ (Scheduling) │  │ (Health Monitor) │  │
-│  └──────────────┘  └──────────────┘  └──────────────────┘  │
-│           │                │                  │             │
-│  ┌────────▼────────┐  ┌─────▼──────┐  ┌───────▼────────┐   │
-│  │   Agent Pool    │  │  Task      │  │  Health Checks │   │
-│  │                 │  │  Queues    │  │                │   │
-│  └─────────────────┘  └────────────┘  └────────────────┘   │
-│                                                             │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │         IPC Layer (Unix Sockets / Message Bus)        │  │
-│  └──────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
-                            │
-        ┌───────────────────┼───────────────────┐
-        ▼                   ▼                   ▼
-┌──────────────┐   ┌──────────────┐   ┌──────────────┐
-│   Agent 1    │   │   Agent 2    │   │   Agent N    │
-│ (File Mgr)   │   │ (Code Asst)  │   │ (Monitor)    │
-└──────────────┘   └──────────────┘   └──────────────┘
-        │                   │                   │
-        └───────────────────┼───────────────────┘
-                            ▼
-              ┌─────────────────────────┐
-              │     LLM Gateway         │
-              │  (Model Sharing,        │
-              │   Token Accounting)     │
-              └─────────────────────────┘
-                            │
-                    ┌───────┴───────┐
-                    ▼               ▼
-              ┌──────────┐   ┌──────────┐
-              │  Local   │   │  Cloud   │
-              │  Models  │   │   APIs   │
-              └──────────┘   └──────────┘
++---------------------------------------------------------------------+
+|                         Daimon (port 8090)                          |
+|  +------------+  +-------------+  +------------+  +--------------+  |
+|  |  Registry  |  | Orchestrator|  | Supervisor |  |  Scheduler   |  |
+|  | (discovery)|  | (task dist) |  | (health)   |  | (placement)  |  |
+|  +------------+  +-------------+  +------------+  +--------------+  |
+|                                                                     |
+|  +--------------------+  +--------------+  +---------------------+  |
+|  | Sandbox (v1 + v2)  |  |   Seccomp    |  |  Capability System  |  |
+|  | Landlock, MAC, net |  |   Profiles   |  |  per-agent grants   |  |
+|  +--------------------+  +--------------+  +---------------------+  |
+|                                                                     |
+|  +--------------------------------------------------------------+  |
+|  |     IPC Layer (Unix Sockets / PubSub / RPC / Message Bus)     |  |
+|  +--------------------------------------------------------------+  |
++---------------------------------------------------------------------+
+         |               |               |              |
+    +--------+     +--------+     +--------+     +--------+
+    | Agent1 |     | Agent2 |     | Agent3 |     | AgentN |
+    +--------+     +--------+     +--------+     +--------+
 ```
+
+### Core Modules
+
+| Module | Purpose |
+|---|---|
+| `orchestrator.rs` | Task distribution, priority queues, workload balancing, dependency resolution |
+| `supervisor.rs` | Health check loop, failure detection, automatic recovery, graceful shutdown |
+| `registry.rs` | Agent lookup by ID/name/capability, status tracking, discovery |
+| `ipc.rs` | Unix domain sockets, RPC registry/router, message routing, pub/sub |
+| `sandbox.rs` | Landlock, seccomp-bpf, network namespaces, configurable access levels |
+| `sandbox_v2.rs` | Next-gen sandbox with enhanced isolation (77 tests) |
+| `seccomp_profiles.rs` | Basic filter (20 syscalls) or custom per-agent BPF programs |
+| `capability.rs` | Fine-grained permission grants, delegation, revocation |
+| `resource.rs` | GPU detection/allocation (NVIDIA), CPU cores, memory reservation |
+| `resource_forecast.rs` | Predictive resource allocation |
+| `lifecycle.rs` | Agent state machine management |
+| `service_manager.rs` | Systemd-style service orchestration |
+| `mtls.rs` | Mutual TLS for agent-to-agent communication |
+| `integrity.rs` | Runtime integrity verification |
+
+## Agent Lifecycle
+
+```
+register --> start --> running --> stop --> deregistered
+                         |
+                         +--> paused --> running
+                         |
+                         +--> failed --> restart (supervisor)
+```
+
+1. **Register** -- Agent calls `POST /v1/agents/register` with name, capabilities, resource needs, metadata. Receives a UUID.
+2. **Start** -- Runtime applies sandbox, allocates resources, launches the agent process.
+3. **Running** -- Agent sends periodic heartbeats (`POST /v1/agents/:id/heartbeat`). Supervisor monitors health.
+4. **Stop** -- Graceful shutdown via signal or `DELETE /v1/agents/:id`. Resources freed, socket removed.
+
+## Sandbox Model
+
+Sandbox layers are applied in strict order:
+
+| Order | Layer | Purpose |
+|---|---|---|
+| 1 | Encrypted storage | LUKS-backed agent data directories |
+| 2 | MAC | Mandatory Access Control policies |
+| 3 | Landlock | Filesystem path restrictions |
+| 4 | seccomp | Syscall allowlist/BPF filtering |
+| 5 | Network | Namespace isolation (None/Localhost/Restricted/Full) |
+| 6 | Audit | All actions logged to cryptographic hash chain |
+
+## HTTP API (Port 8090)
+
+All endpoints are prefixed with `/v1`. Bearer token authentication and localhost-only CORS.
+
+### Agents
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/agents/register` | Register a new agent |
+| GET | `/agents` | List all registered agents |
+| GET | `/agents/:id` | Get agent details |
+| DELETE | `/agents/:id` | Deregister an agent |
+| POST | `/agents/:id/heartbeat` | Send heartbeat with status/metrics |
+
+### Health and Metrics
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/health` | Runtime health check |
+| GET | `/metrics` | JSON metrics |
+| GET | `/metrics/prometheus` | Prometheus-format metrics |
+
+### Agent Memory
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/agents/:id/memory` | List all memory keys |
+| GET | `/agents/:id/memory/:key` | Get value by key |
+| PUT | `/agents/:id/memory/:key` | Set value by key |
+| DELETE | `/agents/:id/memory/:key` | Delete key |
+
+### RAG Pipeline
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/rag/ingest` | Ingest documents into vector store |
+| POST | `/rag/query` | Semantic query over ingested docs |
+| GET | `/rag/stats` | Pipeline statistics |
+
+### Knowledge Base
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/knowledge/search` | Search indexed knowledge |
+| GET | `/knowledge/stats` | Index statistics |
+| POST | `/knowledge/index` | Index new knowledge sources |
+
+### Agent-to-Agent RPC
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/rpc/methods` | List all registered RPC methods |
+| GET | `/rpc/methods/:agent_id` | List methods for a specific agent |
+| POST | `/rpc/register` | Register an RPC method |
+| POST | `/rpc/call` | Call a remote method |
+
+### Anomaly Detection
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/anomaly/sample` | Submit a behavior sample |
+| GET | `/anomaly/alerts` | List all active anomaly alerts |
+| GET | `/anomaly/baseline/:agent_id` | Get behavioral baseline for an agent |
+| DELETE | `/anomaly/alerts/:agent_id` | Clear alerts for an agent |
+
+### Distributed Traces
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/traces` | Submit trace data |
+| GET | `/traces` | List traces |
+| GET | `/traces/spans` | List spans |
+
+### Ark Package Management
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/ark/install` | Install a package |
+| POST | `/ark/remove` | Remove a package |
+| GET | `/ark/search` | Search packages |
+| GET | `/ark/info/:package` | Get package info |
+| POST | `/ark/update` | Update package index |
+| POST | `/ark/upgrade` | Upgrade installed packages |
+| GET | `/ark/status` | Package manager status |
+
+### Marketplace (Mela)
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/marketplace/installed` | List installed marketplace packages |
+| GET | `/marketplace/search` | Search marketplace catalog |
+| POST | `/marketplace/install` | Install from marketplace |
+| GET | `/marketplace/:name` | Get package details |
+| DELETE | `/marketplace/:name` | Uninstall package |
+
+### Sandbox Profiles
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/sandbox/profiles` | Translate a sandbox profile |
+| GET | `/sandbox/profiles/default` | Get default sandbox profile |
+| POST | `/sandbox/profiles/validate` | Validate a sandbox profile |
+
+### Webhooks
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/webhooks` | Register a webhook |
+| GET | `/webhooks` | List webhooks |
+| DELETE | `/webhooks/:id` | Delete a webhook |
+
+### Audit
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/audit/forward` | Forward an audit event |
+| GET | `/audit` | List audit events |
+| GET | `/audit/chain` | Get audit hash chain |
+| GET | `/audit/chain/verify` | Verify chain integrity |
+
+### MCP (Model Context Protocol)
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/mcp/tools` | List available MCP tools |
+| POST | `/mcp/tools/call` | Execute an MCP tool call |
+
+## MCP Server (16 Tools)
+
+Daimon exposes its capabilities via the Model Context Protocol for integration with external AI services.
+
+**AGNOS tools (10):**
+
+| Tool | Description |
+|---|---|
+| `agnos_health` | Check runtime health |
+| `agnos_list_agents` | List all registered agents |
+| `agnos_get_agent` | Get agent details by ID |
+| `agnos_register_agent` | Register a new agent |
+| `agnos_deregister_agent` | Remove an agent |
+| `agnos_heartbeat` | Send agent heartbeat |
+| `agnos_get_metrics` | Get runtime metrics |
+| `agnos_forward_audit` | Forward audit event |
+| `agnos_memory_get` | Get agent memory value |
+| `agnos_memory_set` | Set agent memory value |
+
+**Photis Nadi bridge tools (6):**
+
+| Tool | Description |
+|---|---|
+| `photis_list_tasks` | List tasks with filters |
+| `photis_create_task` | Create a new task |
+| `photis_update_task` | Update an existing task |
+| `photis_get_rituals` | Get daily rituals/habits |
+| `photis_analytics` | Get productivity analytics |
+| `photis_sync` | Trigger Supabase sync |
+
+## Major Subsystems
+
+### Marketplace / Mela (Sanskrit: festive gathering)
+
+Agent and application marketplace with trust verification, transparency scoring, local registry, remote client, Flutter `.agpkg` support, and sandbox profiles for marketplace packages.
+
+- **Modules:** `marketplace/` (trust, transparency, local_registry, remote_client, flutter_agpkg, sandbox_profiles, ratings)
+- **Package format:** `.agnos-agent` for marketplace distribution
+- **Dependencies:** `ed25519-dalek`, `flate2`, `tar`, `rand`
+
+### Sigil (Latin: seal) -- Trust Verification
+
+Cryptographic trust chain for agent packages. Signature verification, trust scoring, certificate pinning. (35 tests)
+
+### Aegis (Greek: shield) -- Security Daemon
+
+Real-time security monitoring: threat detection, quarantine, vulnerability scanning, security event correlation. (40 tests)
+
+### Takumi (Japanese: master craftsman) -- Build System
+
+Build system for `.ark` packages from source recipes. Handles dependencies, compilation, packaging. (43 tests)
+
+### Argonaut (Greek: heroes of the Argo) -- Init System
+
+System initialization: boot stages, service dependency ordering, health checks, ready checks, restart policies. (46 tests)
+
+### Agnova (agnos + Latin nova) -- Installer
+
+OS installer: disk layout, partitioning, bootloader config, package selection, network config, security setup. (41 tests)
+
+### Ark + Nous -- Package Management
+
+- **Ark:** Unified package manager CLI and API. Handles `.ark` signed tarballs with metadata. Install, remove, search, update, upgrade.
+- **Nous:** Package resolver daemon. Dependency resolution, version constraints, conflict detection.
+
+### Federation (55 tests)
+
+Multi-node agent federation. Cluster management, node scoring, scheduling strategies across federated AGNOS nodes.
+
+### Migration (54 tests)
+
+Live agent migration between nodes with state transfer and rollback support.
+
+### Scheduler (47 tests)
+
+Advanced scheduling with placement constraints, affinity rules, and resource-aware bin packing.
+
+### Post-Quantum Cryptography / PQC (68 tests)
+
+Post-quantum cryptographic primitives for future-proof agent authentication and signing.
+
+### Explainability (59 tests)
+
+Decision explanation engine: records agent decisions with factors, alternatives, confidence labels, and full audit trails.
+
+### Safety (77 tests)
+
+AI safety subsystem: guardrails, content filtering, action validation, safety policy enforcement.
+
+### Fine-Tuning / Finetune (73 tests)
+
+On-device model fine-tuning pipeline: dataset management, LoRA/QLoRA methods, VRAM estimation, model registry, job tracking.
+
+### Formal Verification (76 tests)
+
+Runtime invariant monitoring, state machine property checking, verification reports.
+
+### Sandbox V2 (77 tests)
+
+Next-generation sandbox with enhanced isolation, tighter seccomp policies, and per-workload profiles.
+
+### RL Optimizer (68 tests)
+
+Reinforcement-learning-based optimizer for agent scheduling and resource allocation decisions.
+
+### Cloud (82 tests)
+
+Cloud deployment manager: multi-region support, billing tracking, sync engine, workspace management.
+
+### Collaboration (87 tests)
+
+Human-AI collaboration: session management, handoff protocols, trust calibration, shared task ownership, feedback collection.
+
+### WASM Runtime
+
+WebAssembly sandbox for running untrusted agent plugins in a memory-safe isolated environment.
+
+### Network Tools (32 tools, 7 wrappers)
+
+Kali-style networking toolkit. Every tool is agent-wrapped with audit logging, approval gates, and risk classification.
+
+**32 tools:** PortScan, PingSweep, DnsLookup, TraceRoute, BandwidthTest, PacketCapture, HttpClient, NetcatConnect, ServiceScan, WebScan, DirBust, MassScan, ArpScan, NetworkDiag, DataRelay, DeepInspect, NetworkGrep, SocketStats, DnsEnum, DirFuzz, VulnScanner, BandwidthMonitor, PassiveFingerprint, NetDiscover, TermShark, BetterCap, DnsX, Fierce, WebAppFuzz, SqlMap, AircrackNg, Kismet
+
+**7 typed wrappers:** PortScanner, DnsInvestigator, NetworkProber, VulnAssessor, TrafficAnalyzer, WebFuzzer, SocketInspector
+
+Risk levels (Low/Medium/High/Critical) determine whether explicit user approval is required before execution.
+
+### Swarm Intelligence
+
+Swarm coordination protocols for multi-agent collaborative problem solving.
+
+### Learning and Anomaly Detection
+
+Behavioral learning per agent. Anomaly detector builds baselines and raises alerts on deviation.
+
+### Multimodal
+
+Vision, audio, and multi-modal input processing for agents.
+
+### RAG Pipeline, Vector Store, Knowledge Base, Memory Store
+
+Full retrieval-augmented generation stack:
+- **RAG:** Document ingestion, chunking, embedding, semantic retrieval
+- **Vector store:** In-process vector similarity search
+- **Knowledge base:** Indexed knowledge sources with search
+- **Memory store:** Per-agent key-value persistent memory
+
+### PubSub and Rollback
+
+- **PubSub:** Topic-based message broadcasting between agents
+- **Rollback:** State rollback for failed agent operations
+
+## Module Index
+
+All 50 modules declared in `lib.rs`:
+
+| Module | Module | Module |
+|---|---|---|
+| aegis | agent | agnova |
+| argonaut | ark | capability |
+| cloud | collaboration | explainability |
+| federation | file_watcher | finetune |
+| formal_verify | http_api | integrity |
+| ipc | knowledge_base | learning |
+| lifecycle | marketplace | mcp_server |
+| memory_store | migration | mtls |
+| multimodal | network_tools | nous |
+| orchestrator | package_manager | pqc |
+| pubsub | rag | registry |
+| resource | resource_forecast | rl_optimizer |
+| rollback | safety | sandbox |
+| sandbox_v2 | scheduler | seccomp_profiles |
+| service_manager | sigil | supervisor |
+| swarm | takumi | tool_analysis |
+| vector_store | wasm_runtime | |
+
+## Testing
+
+- **Lib tests:** 2603 passed, 0 failed
+- **Coverage:** ~82% (tarpaulin)
+- **Compiler warnings:** 0
+
+Selected subsystem test counts:
+
+| Subsystem | Tests |
+|---|---|
+| Collaboration | 87 |
+| Cloud | 82 |
+| Safety | 77 |
+| Sandbox V2 | 77 |
+| Formal Verify | 76 |
+| Finetune | 73 |
+| PQC | 68 |
+| RL Optimizer | 68 |
+| Explainability | 59 |
+| Federation | 55 |
+| Migration | 54 |
+| Scheduler | 47 |
+| Argonaut | 46 |
+| Takumi | 43 |
+| Agnova | 41 |
+| Aegis | 40 |
+| Sigil | 35 |
+
+## Performance
+
+Criterion benchmark suite in `benches/`. Measures:
+
+- Agent registration and deregistration throughput
+- Task scheduling latency
+- IPC message round-trip time
+- Sandbox apply overhead
+- Memory store read/write operations
 
 ## Configuration
 
-### Agent Runtime Service
-
-Systemd service file: `config/systemd/system/agent-runtime.service`
+### Systemd Service
 
 ```ini
 [Service]
@@ -185,13 +439,11 @@ MemoryMax=512M
 CPUQuota=50%
 ```
 
-### Agent Configuration
-
-Agents are configured via YAML/JSON:
+### Agent Configuration (JSON)
 
 ```json
 {
-  "name": "file-manager",
+  "name": "example-agent",
   "agent_type": "Service",
   "resource_limits": {
     "max_memory": 1073741824,
@@ -210,162 +462,29 @@ Agents are configured via YAML/JSON:
 }
 ```
 
-## Usage
+## Security
 
-### Starting the Agent Runtime
+- **Auth:** Bearer token on all endpoints
+- **CORS:** Localhost-only
+- **Audit:** Cryptographic hash chain at `/var/log/agnos/audit.log`
+- **Temp files:** UUID-based under `/run/agnos/`
+- **Network validation:** nftables IP/CIDR validation
+- **Cert pinning:** Rust SHA-256 SPKI pinning (stdin pipe, no shell injection)
+- **Sensitive ops:** Require explicit user approval
 
-```bash
-# Start the daemon
-agent-runtime daemon
+## Consumer Integration
 
-# Or via systemd
-systemctl start agent-runtime
-```
+| Project | Integration |
+|---|---|
+| AGNOSTIC | REST API on port 8090, agent registration, CrewAI QA workflows |
+| SecureYeoman | AGNOS as base Docker image, agent-runtime for orchestration |
+| Photis Nadi | MCP bridge (6 tools), marketplace `.agpkg` packages, Flutter desktop |
 
-### Managing Agents
+## Related Subsystems
 
-```bash
-# Start a new agent
-agent-runtime start --config /etc/agnos/agents/file-manager.json
-
-# Stop an agent
-agent-runtime stop <agent-id>
-
-# List all agents
-agent-runtime list
-
-# Get agent status
-agent-runtime status <agent-id>
-
-# Send message to agent
-agent-runtime send <agent-id> '{"action": "list_files"}'
-```
-
-### LLM Gateway
-
-```bash
-# Start the gateway
-llm-gateway daemon
-
-# Load a model
-llm-gateway load llama2:7b
-
-# Run inference
-llm-gateway infer --model llama2:7b --prompt "Hello, world!"
-
-# Show token usage
-llm-gateway stats
-```
-
-## Security Features
-
-1. **Sandboxing**
-   - Landlock filesystem restrictions
-   - seccomp-bpf syscall filtering
-   - Network namespace isolation
-   - Resource limits enforcement
-
-2. **Capability System**
-   - Fine-grained permissions
-   - Capability delegation
-   - Revocation support
-
-3. **Audit Trail**
-   - All agent actions logged
-   - Resource usage tracking
-   - Token accounting
-
-## Performance Targets
-
-Per TODO.md Phase 3 KPIs:
-
-| Metric | Target | Status |
-|--------|--------|--------|
-| Agent spawn time | <500ms | 🔄 In Progress |
-| Task distribution latency | <100ms | 🔄 In Progress |
-| Multi-agent throughput | 100+ agents | 🔄 In Progress |
-| LLM inference latency | Provider dependent | 🔄 In Progress |
-
-## Future Enhancements
-
-1. **Advanced Orchestration**
-   - Consensus mechanisms for distributed agents
-   - Conflict resolution strategies
-   - Dynamic load balancing
-
-2. **Security**
-   - Code signing for agents
-   - Runtime verification
-   - Supply chain validation
-
-3. **Performance**
-   - Hardware-accelerated inference (NPU/GPU)
-   - Distributed agent computing
-   - Swarm intelligence protocols
-
-## Integration with Other Phases
-
-- **Phase 2 (AI Shell)**: Agents can be invoked from the shell
-- **Phase 4 (Desktop)**: Agent status visible in GUI
-- **Phase 5 (Production)**: Security audits and hardening
-
-## Files Modified/Created
-
-### Kernel Module
-- `kernel/modules/agent-subsystem/agent_main.c`
-- `kernel/modules/agent-subsystem/Kbuild`
-
-### Userland
-- `userland/agent-runtime/src/main.rs` (complete rewrite)
-- `userland/agent-runtime/src/agent.rs` (new)
-- `userland/agent-runtime/src/registry.rs` (new)
-- `userland/agent-runtime/src/orchestrator.rs` (new)
-- `userland/agent-runtime/src/supervisor.rs` (new)
-- `userland/agent-runtime/src/ipc.rs` (new)
-- `userland/agent-runtime/src/sandbox.rs` (new)
-- `userland/agent-runtime/src/resource.rs` (new)
-- `userland/agent-runtime/Cargo.toml` (updated)
-
-- `userland/llm-gateway/src/main.rs` (complete rewrite)
-- `userland/llm-gateway/src/providers.rs` (new)
-- `userland/llm-gateway/src/cache.rs` (new)
-- `userland/llm-gateway/src/accounting.rs` (new)
-- `userland/llm-gateway/Cargo.toml` (updated)
-
-- `userland/agnos-sys/src/agent.rs` (new)
-- `userland/agnos-sys/src/lib.rs` (updated)
-- `userland/agnos-sys/Cargo.toml` (updated)
-
-- `userland/agnos-common/src/lib.rs` (updated exports)
-
-- `userland/Cargo.toml` (updated dependencies)
-- `userland/examples/file-manager-agent.rs` (new)
-
-## Testing
-
-Run the following to verify the implementation:
-
-```bash
-# Build all components
-make build-userland
-
-# Run unit tests
-cargo test --package agent_runtime
-cargo test --package llm_gateway
-cargo test --package agnos-sys
-
-# Check formatting and linting
-make format-check
-make lint
-```
-
-## References
-
-- TODO.md Phase 3 specifications
-- AGNOS Architecture Document
-- Agent SDK Documentation (to be written)
-
----
-
-**Status**: Core implementation complete 🎉
-**Next Steps**: Testing, refinement, and integration with Phase 4 (Desktop)
+- **Hoosh** (LLM Gateway, port 8088) -- inference backend for agents
+- **Agnoshi** (AI Shell) -- NL shell invoking agents
+- **Aethersafha** (Desktop) -- agent status in compositor UI
+- **Shakti** (agnos-sudo) -- privilege escalation for agent ops
+- **Agnosys** (agnos-sys) -- kernel interface, Landlock/seccomp bindings
+- **Agnostik** (agnos-common) -- shared types, error handling, telemetry

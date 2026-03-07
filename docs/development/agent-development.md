@@ -1,5 +1,7 @@
 # Agent Development Guide
 
+> **Last Updated**: 2026-03-07
+
 This guide walks you through creating custom agents for AGNOS.
 
 ## Table of Contents
@@ -430,6 +432,57 @@ Key features:
 - Permission checking
 - Audit logging
 - Error handling
+
+---
+
+## Marketplace Packaging
+
+Agents can be distributed via the mela marketplace in `.agnos-agent` format (signed tarball + metadata).
+
+### Package Structure
+
+```
+my-agent.agnos-agent
+├── manifest.toml        # Name, version, permissions, sandbox profile
+├── binary               # Compiled agent binary
+├── sandbox.json         # Landlock + seccomp rules
+└── signature.ed25519    # Ed25519 signature (verified by sigil)
+```
+
+### Installing via ark
+
+```bash
+# Install from marketplace
+ark install publisher/my-agent
+
+# Install from local file
+ark install ./my-agent.agnos-agent
+
+# List installed agents
+ark list --agents
+```
+
+## MCP Tools
+
+The agent runtime exposes 16 MCP (Model Context Protocol) tools that agents can invoke for system interaction. These are accessible via the `/v1/mcp/tools` API endpoint.
+
+Key MCP tool categories:
+- **File operations** — read, write, list files within sandbox
+- **Agent management** — spawn, stop, query other agents
+- **System info** — hardware, resource usage, health
+- **Knowledge** — RAG query, knowledge search, indexing
+
+## Import Paths
+
+When importing AGNOS crates in your agent code, use the actual crate names:
+
+```rust
+use agent_runtime::prelude::*;   // Agent runtime types
+use agnos_common::*;              // Shared types, errors, audit
+use agnos_sys::*;                 // Kernel interface bindings
+```
+
+**Note:** In `Cargo.toml`, crate names use hyphens (`agent-runtime`, `agnos-common`, `agnos-sys`) but in Rust `use` statements they use underscores.
 
 ---
 

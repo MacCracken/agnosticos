@@ -1,5 +1,7 @@
 # Running Agnostic on AGNOS OS
 
+> **Last Updated**: 2026-03-07
+
 This guide explains how to run the [Agnostic QA platform](https://github.com/MacCracken/agnostic) on AGNOS OS so that Agnostic's six AI agents use the AGNOS LLM Gateway for inference, gaining OS-level token accounting, caching, rate limiting, and the unified security audit trail.
 
 ---
@@ -177,8 +179,10 @@ llm-gateway load llama2
 | Feature | Status |
 |---------|--------|
 | `agnos_gateway` provider in Agnostic config | ✅ Complete |
-| AGNOS Gateway OpenAI-compatible HTTP server | 🔄 In progress (see ADR-007) |
-| Token accounting per `X-Agent-Id` | 🔄 Pending HTTP server |
+| AGNOS Gateway OpenAI-compatible HTTP server | ✅ Operational (port 8088) |
+| Token accounting per `X-Agent-Id` | ✅ Complete |
+| Per-agent rate limiting | ✅ Complete |
+| Response caching | ✅ Complete |
 | Agnostic agent registration with akd | 📋 Future (Phase 6+) |
 
-See [ADR-007](adr/adr-007-agnostic-integration.md) for the full implementation plan.
+See [ADR-101](adr/adr-101-foundation-and-architecture.md) for the full implementation plan.

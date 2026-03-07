@@ -1,7 +1,9 @@
+> **Archival Document** — This cleanup was performed on 2026-02-12. Since then the project has grown significantly: 35 ADRs (not 6), 35+ documentation files across development guides, security testing, benchmarks, and integration docs. The file counts and structure below reflect the state at the time of cleanup and are no longer current.
+
 # Documentation Cleanup Summary
 
-**Date**: 2026-02-12  
-**Status**: ✅ Cleaned and Organized
+**Date**: 2026-02-12
+**Status**: ✅ Cleaned and Organized (historical snapshot)
 
 ## Changes Made
 
@@ -37,12 +39,13 @@ agnos/
 │   │
 │   ├── adr/                       # Architecture Decision Records
 │   │   ├── README.md              # ADR index
-│   │   ├── adr-001-rust-language.md
-│   │   ├── adr-002-wayland.md
-│   │   ├── adr-003-agent-orchestration.md
-│   │   ├── adr-004-llm-gateway.md
-│   │   ├── adr-005-security-model.md
-│   │   └── adr-006-testing-cicd.md
+│   │   ├── adr-101-foundation-and-architecture.md
+│   │   ├── adr-102-agent-runtime-and-lifecycle.md
+│   │   ├── adr-103-security-and-trust.md
+│   │   ├── adr-104-distribution-build-and-installation.md
+│   │   ├── adr-105-desktop-environment.md
+│   │   ├── adr-106-observability-and-operations.md
+│   │   └── adr-107-scale-collaboration-and-future.md
 │   │
 │   ├── api/                       # API documentation
 │   │   └── README.md              # API reference

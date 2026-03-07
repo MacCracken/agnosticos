@@ -1,18 +1,27 @@
 # AGNOS Penetration Testing Framework
 
+**Last Updated**: 2026-03-07
+
 This document outlines the penetration testing methodology and procedures for AGNOS security audits.
 
 ## Scope
 
 ### In Scope
-- Agent Runtime Daemon (akd)
-- LLM Gateway Service
-- AI Shell (agnsh)
-- Desktop Environment
+- **Daimon** — Agent Runtime Daemon (port 8090)
+- **Hoosh** — LLM Gateway Service (port 8088)
+- **Agnoshi** — AI Shell (`agnsh`)
+- **Aethersafha** — Desktop Environment (Wayland compositor)
+- **Aegis** — Security Daemon
+- **Sigil** — Trust Verification System
+- **Mela** — Agent/App Marketplace
+- **MCP Server** — Model Context Protocol endpoints
+- **Ark/Nous** — Package management and resolution
 - Kernel Modules (agnos-security, agent-subsystem, llm)
-- Inter-process Communication
-- Authentication & Authorization
-- Sandbox Mechanisms
+- Inter-process Communication (Unix domain sockets at `/run/agnos/agents/`)
+- Authentication & Authorization (Bearer tokens, mTLS)
+- Sandbox Mechanisms (Landlock, seccomp-bpf, namespaces)
+- Multi-node Federation (if enabled)
+- Post-Quantum Cryptographic primitives
 
 ### Out of Scope
 - Physical security
@@ -71,6 +80,31 @@ testssl target
 - [ ] Window management attacks
 - [ ] AI feature abuse
 - [ ] Permission escalation
+
+#### Marketplace (Mela)
+- [ ] Malicious package upload
+- [ ] Package signature bypass (sigil verification)
+- [ ] Supply chain attacks via dependency confusion
+- [ ] Sandbox escape from marketplace agents
+- [ ] Trust chain manipulation
+
+#### MCP Server
+- [ ] Unauthorized tool invocation
+- [ ] Input injection via MCP tool parameters
+- [ ] MCP session hijacking
+- [ ] Tool capability escalation
+
+#### Federation
+- [ ] Cross-node authentication bypass
+- [ ] Federation message tampering
+- [ ] Node impersonation
+- [ ] Distributed DoS via federation
+
+#### Post-Quantum Cryptography
+- [ ] Hybrid handshake downgrade attacks
+- [ ] PQC key exchange manipulation
+- [ ] Signature algorithm confusion
+- [ ] Side-channel attacks on PQC primitives
 
 #### Kernel Modules
 - [ ] Privilege escalation via kernel modules
@@ -160,7 +194,29 @@ cat /proc/self/status | grep Seccomp
 | LLM-02 | Model extraction | Medium | |
 | LLM-03 | Cache poisoning | Medium | |
 
-### Desktop
+### Marketplace (Mela)
+| ID | Description | Severity | Status |
+|----|-------------|----------|--------|
+| MELA-01 | Package signature bypass | Critical | |
+| MELA-02 | Malicious agent installation | High | |
+| MELA-03 | Supply chain dependency confusion | High | |
+| MELA-04 | Sandbox escape from marketplace agent | Critical | |
+
+### MCP Server
+| ID | Description | Severity | Status |
+|----|-------------|----------|--------|
+| MCP-01 | Unauthorized tool invocation | High | |
+| MCP-02 | Input injection via tool params | High | |
+| MCP-03 | Session hijacking | Medium | |
+
+### Federation
+| ID | Description | Severity | Status |
+|----|-------------|----------|--------|
+| FED-01 | Cross-node auth bypass | Critical | |
+| FED-02 | Node impersonation | High | |
+| FED-03 | Federation message tampering | High | |
+
+### Desktop (Aethersafha)
 | ID | Description | Severity | Status |
 |----|-------------|----------|--------|
 | DESK-01 | Wayland compositor exploit | High | |

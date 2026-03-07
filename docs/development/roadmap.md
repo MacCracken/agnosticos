@@ -146,41 +146,13 @@ Publish runtime-specific base images for consumer projects.
 
 | # | ADR | Status |
 |---|-----|--------|
-| 1 | Rust as Primary Implementation Language | Accepted |
-| 2 | Wayland for Desktop Environment | Accepted |
-| 3 | Multi-Agent Orchestration Architecture | Accepted |
-| 4 | LLM Gateway Service Design | Accepted |
-| 5 | Security Model and Human Override | Accepted |
-| 6 | Testing Strategy and CI/CD | Accepted |
-| 7 | OpenAI-compatible HTTP API for LLM Gateway | Accepted |
-| 8 | Phase 6.7 Alpha Polish | Accepted |
-| 9 | RAG & Embedded Knowledge Pipeline | Accepted |
-| 10 | Advanced Agent Capabilities & Lifecycle | Accepted |
-| 11 | Observability Stack | Accepted |
-| 12 | Desktop Accessibility & Interaction Foundations | Accepted |
-| 13 | Zero-Trust Security Hardening | Accepted |
-| 14 | Cross-Project Integration Architecture | Accepted |
-| 15 | Agent Marketplace Architecture | Accepted |
-| 16 | Multi-Node Agent Federation | Accepted |
-| 17 | Desktop Plugin Architecture | Accepted |
-| 18 | LFS-Native Distribution | Accepted |
-| 19 | Sigil — System-Wide Trust Verification | Accepted |
-| 20 | Aegis — System Security Daemon | Accepted |
-| 21 | Takumi — Package Build System | Accepted |
-| 22 | Argonaut — Custom Init System | Accepted |
-| 23 | Agnova — OS Installer | Accepted |
-| 24 | Agent Ratings & Reviews | Accepted |
-| 25 | Agent Migration & Checkpointing | Accepted |
-| 26 | Distributed Task Scheduling | Accepted |
-| 27 | Post-Quantum Cryptography | Accepted |
-| 28 | Agent Explainability Framework | Accepted |
-| 29 | AI Safety Mechanisms | Accepted |
-| 30 | Fine-Tuning Pipeline | Accepted |
-| 31 | Formal Verification Framework | Accepted |
-| 32 | Novel Sandboxing Architectures | Accepted |
-| 33 | Reinforcement Learning Optimization | Accepted |
-| 34 | Cloud Services | Accepted |
-| 35 | Human-AI Collaboration Research | Accepted |
+| 101 | Foundation and Architecture | Accepted |
+| 102 | Agent Runtime and Lifecycle | Accepted |
+| 103 | Security and Trust | Accepted |
+| 104 | Distribution, Build, and Installation | Accepted |
+| 105 | Desktop Environment | Accepted |
+| 106 | Observability and Operations | Accepted |
+| 107 | Scale, Collaboration, and Future | Accepted |
 
 ---
 

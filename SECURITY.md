@@ -125,6 +125,8 @@ Scope: Kernel modules, agent runtime, sandbox implementation, cryptographic syst
 │  │  │  Capability Management    │  │   │
 │  │  │  Namespace Isolation      │  │   │
 │  │  │  Audit Event Capture      │  │   │
+│  │  │  Aegis Security Daemon    │  │   │
+│  │  │  Sigil Trust Verification │  │   │
 │  │  └───────────────────────────┘  │   │
 │  └─────────────────────────────────┘   │
 │                   │                     │
@@ -185,6 +187,23 @@ Integrity Verification
 }
 ```
 
+### Aegis Security Daemon
+
+Aegis is the centralized security policy daemon that enforces system-wide security rules, monitors agent behavior in real time, and coordinates with the kernel security modules. It manages sandbox lifecycle, threat detection, and automated incident response.
+
+### Sigil Trust System
+
+Sigil provides cryptographic trust verification for agents, packages, and system components. It manages signing keys, verifies package signatures (`.ark` and `.agnos-agent`), enforces trust chains, and integrates with TPM for hardware-backed attestation.
+
+### Post-Quantum Cryptography
+
+AGNOS includes post-quantum cryptographic primitives alongside classical algorithms to provide hybrid security against future quantum computing threats. Key areas include:
+
+- **Key exchange**: Hybrid ML-KEM (Kyber) + X25519
+- **Signatures**: Hybrid ML-DSA (Dilithium) + Ed25519
+- **Hash-based signatures**: SPHINCS+ for long-lived keys
+- **Migration path**: Crypto-agile APIs allow algorithm swaps without breaking changes
+
 ## Security Hardening Guide
 
 ### System Installation
@@ -232,20 +251,27 @@ Integrity Verification
 
 ### Network Security
 
-Default firewall rules:
+Default firewall rules (AGNOS uses nftables):
 
 ```bash
-# Deny all incoming
-iptables -P INPUT DROP
+#!/usr/sbin/nft -f
+table inet filter {
+    chain input {
+        type filter hook input priority 0; policy drop;
 
-# Allow established connections
-iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+        # Allow established connections
+        ct state established,related accept
 
-# Allow loopback
-iptables -A INPUT -i lo -j ACCEPT
+        # Allow loopback
+        iif lo accept
 
-# Allow specific ports for agents
-iptables -A INPUT -p tcp --dport 8080 -m owner --uid-owner agent-runtime -j ACCEPT
+        # Allow specific ports for daimon (agent-runtime)
+        tcp dport 8090 meta skuid "agent-runtime" accept
+
+        # Allow specific ports for hoosh (LLM gateway)
+        tcp dport 8088 meta skuid "llm-gateway" accept
+    }
+}
 ```
 
 ## Security Checklist
@@ -366,7 +392,7 @@ agnos-security alert --severity critical
 
 | Standard | Status | Notes |
 |----------|--------|-------|
-| CIS Benchmarks | 🔄 In Progress | Target Level 2 |
+| CIS Benchmarks | ~85% compliant | Target Level 2 |
 | NIST 800-53 | 📋 Planned | Moderate impact |
 | Common Criteria | 📋 Planned | Target EAL4+ |
 | FIPS 140-2 | 📋 Planned | Cryptographic modules |
@@ -381,11 +407,11 @@ Planned security certifications:
 
 ## Security Resources
 
-- [Security Documentation](docs/security/)
-- [Threat Model](docs/security/threat-model.md)
-- [Audit Log Format](docs/security/audit-format.md)
-- [Incident Response Playbook](docs/security/incident-response.md)
-- [Hardening Guide](docs/security/hardening-guide.md)
+- [Security Guide](docs/security/security-guide.md)
+- [Penetration Testing](docs/security/penetration-testing.md)
+- [Security Checklist](docs/security/security-checklist.md)
+- [Vulnerability Management](docs/security/vulnerability-management.md)
+- [CIS Benchmarks](docs/security/cis-benchmarks.md)
 
 ## Contact
 
@@ -402,6 +428,6 @@ We thank the security researchers who have responsibly disclosed vulnerabilities
 
 ---
 
-**Last Updated**: 2026-02-11  
-**Version**: 1.0  
-**Next Review**: 2026-05-11
+**Last Updated**: 2026-03-07
+**Version**: 2026.3.7
+**Next Review**: 2026-06-07

@@ -56,7 +56,7 @@ This guide covers common issues you may encounter when using AGNOS and how to re
 **Solutions:**
 - Select previous kernel from GRUB menu
 - Boot into recovery mode
-- Roll back packages: `agpkg -R downgrade <package>`
+- Roll back packages: `ark downgrade <package>`
 
 ---
 
@@ -130,10 +130,10 @@ systemctl restart akd
 
 ### No Models Available
 
-**Symptoms:** "No" error
+**Symptoms:** "No models loaded" error
 
 **Solutions:**
- models loaded```bash
+```bash
 # List available models
 llm-gateway-cli list
 
@@ -275,6 +275,7 @@ akd-cli set-limits --cpu=50%
 - Disable unnecessary services: `systemctl list-unit-files | grep enabled`
 - Check fsck on boot: `systemd-analyze critical-chain`
 - Review startup services: `systemd-analyze blame`
+- **Note:** AGNOS uses the argonaut init system by default. If booting with argonaut, use `argonaut status` and `argonaut list` instead of systemd commands. Argonaut targets <3 second boot from kernel handoff to agent-runtime ready.
 
 ---
 

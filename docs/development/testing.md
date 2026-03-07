@@ -1,6 +1,16 @@
 # Testing Guide
 
+> **Last Updated**: 2026-03-07
+
 AGNOS uses a multi-layer testing strategy to ensure security, reliability, and performance.
+
+## Current Test Status
+
+- **Total tests**: 9,072+ across all crates
+- **Coverage**: ~82% (cargo-tarpaulin)
+- **Compiler warnings**: 0
+- **Benchmark suites**: 3 Criterion suites (agent-runtime, llm-gateway, desktop-environment)
+- **Known flaky**: `cd` tests in ai-shell (process cwd race)
 
 ## Test Categories
 

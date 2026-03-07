@@ -1,5 +1,7 @@
 # Security Testing Checklist
 
+**Last Updated**: 2026-03-07
+
 ## Pre-Engagement
 - [ ] Scope defined and documented
 - [ ] Rules of engagement agreed
@@ -155,6 +157,48 @@
 - [ ] Executive summary provided
 - [ ] Retest scheduled (if needed)
 
+## Aegis Security Daemon
+- [ ] Aegis daemon running and enforcing policies
+- [ ] Real-time agent behavior monitoring active
+- [ ] Automated threat response configured
+- [ ] Security policy distribution verified
+- [ ] Aegis ↔ kernel module coordination tested
+
+## Sigil Trust System
+- [ ] Package signature verification operational
+- [ ] Trust chain integrity validated
+- [ ] TPM-backed attestation functional
+- [ ] Key rotation procedures tested
+- [ ] Transparency log entries verified
+
+## Marketplace (Mela) Security
+- [ ] Package signature verification enforced on install
+- [ ] Sandbox profiles applied to marketplace agents
+- [ ] Supply chain dependency validation active
+- [ ] Malicious package detection tested
+- [ ] Package removal/quarantine procedures verified
+
+## Post-Quantum Cryptography
+- [ ] Hybrid ML-KEM + X25519 key exchange verified
+- [ ] Hybrid ML-DSA + Ed25519 signatures verified
+- [ ] PQC algorithm negotiation tested
+- [ ] Downgrade attack prevention verified
+- [ ] Crypto-agile API migration path tested
+
+## MCP Server Security
+- [ ] MCP tool invocation authorization enforced
+- [ ] MCP input validation and sanitization tested
+- [ ] MCP session management secure
+- [ ] MCP tool capability boundaries verified
+- [ ] MCP rate limiting configured
+
+## Federation Security
+- [ ] Cross-node authentication verified
+- [ ] Federation message integrity (mTLS) tested
+- [ ] Node identity verification operational
+- [ ] Federation traffic encryption enforced
+- [ ] Distributed denial-of-service mitigations tested
+
 ## Vulnerability Severity Criteria
 
 ### Critical (CVSS 9.0-10.0)
@@ -167,12 +211,12 @@
 - Sensitive data access
 - Service disruption
 
-### Medium (CVSS 4.0-6.9
+### Medium (CVSS 4.0-6.9)
 - Limited privilege escalation
 - Limited data access
 - Temporary service impact
 
-### Low (CVSS 0.1-3.9
+### Low (CVSS 0.1-3.9)
 - Information disclosure
 - Minor configuration issue
 - Minimal impact

@@ -1,5 +1,7 @@
 # Security Testing Guide
 
+> **Last Updated**: 2026-03-07
+
 This document covers AGNOS security testing methodologies including fuzzing, penetration testing, and vulnerability assessment.
 
 ## Fuzzing Infrastructure
@@ -131,6 +133,36 @@ cargo umatrix
 - [ ] Race conditions
 - [ ] Information disclosure
 - [ ] Denial of service
+
+## Subsystem Security Test Coverage
+
+### aegis (Security Daemon) — 40 tests
+
+The aegis subsystem (`agent-runtime/aegis.rs`) has comprehensive test coverage for:
+- Threat level classification and auto-response policies
+- Security event pipeline (10 event types: IntegrityViolation, SandboxEscape, AnomalousBehavior, etc.)
+- Auto-quarantine of Critical/High threat agents
+- On-install and on-execute scanning
+- Quarantine management (quarantine, release, auto-release timeout)
+- Event filtering by agent, threat level, and resolution status
+
+### sigil (Trust System) — 35 tests
+
+The sigil subsystem (`agent-runtime/sigil.rs`) covers:
+- Trust level hierarchy (SystemCore > Verified > Community > Unverified > Revoked)
+- Trust policy enforcement (Strict, Permissive, AuditOnly)
+- Ed25519 artifact signing and verification
+- Revocation list management (by key_id or content_hash)
+- Boot chain verification
+- Trust store caching by content hash
+
+### Post-Quantum Cryptography (PQC)
+
+PQC readiness is tracked as a future milestone. Current signing uses Ed25519 via `ed25519-dalek`. The sigil trust system is designed to be algorithm-agnostic so PQC signature schemes can be swapped in without architectural changes.
+
+### Formal Verification
+
+Security-critical invariants (sandbox apply order, audit chain integrity, trust level transitions) are verified through property-based tests and exhaustive state-machine tests in the aegis and sigil test suites. Full formal verification (e.g., via Kani or Prusti) is planned for post-alpha.
 
 ## Reporting Security Issues
 

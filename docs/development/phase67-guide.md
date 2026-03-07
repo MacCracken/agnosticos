@@ -1,6 +1,6 @@
 # Phase 6.7: Alpha Polish — Developer Guide
 
-> **Status**: In Progress | **ADR**: [ADR-008](../adr/adr-008-phase67-alpha-polish.md)
+> **Status**: Complete | **ADR**: [ADR-102](../adr/adr-102-agent-runtime-and-lifecycle.md)
 
 This guide documents the 14 features added in Phase 6.7 and how to use them.
 
@@ -259,7 +259,7 @@ println!("{}", capture.format_display(50));
 {
   "status": "ok",
   "service": "agnos-agent-runtime",
-  "version": "0.1.0",
+  "version": "2026.3.7",
   "agents_registered": 5,
   "uptime_seconds": 3600,
   "components": {
@@ -362,4 +362,4 @@ cargo test -p agnos-common -- environment_profile
 
 ---
 
-*Last Updated: 2026-03-06*
+*Last Updated: 2026-03-07*

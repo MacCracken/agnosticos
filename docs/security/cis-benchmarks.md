@@ -1,5 +1,7 @@
 # CIS Benchmarks Compliance
 
+**Last Updated**: 2026-03-07
+
 This document maps CIS Linux Benchmark 3.0.0 controls to AGNOS kernel configuration and system settings.
 
 ## Control Mapping
@@ -230,4 +232,4 @@ Some CIS controls are not applicable to AGNOS:
 
 - CIS Linux Benchmark 3.0.0
 - CIS Security Technical Implementation Guide (STIG)
-- AGNOS Security Model (docs/security/security-model.md)
+- [AGNOS Security Guide](security-guide.md)

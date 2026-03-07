@@ -9,66 +9,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added — Phase 7: Ecosystem — Federation & Scale (199 tests)
 
-#### Phase 7A — Agent Ratings & Reviews (43 tests) — [ADR-024](docs/adr/adr-024-agent-ratings-reviews.md)
+#### Phase 7A — Agent Ratings & Reviews (43 tests) — [ADR-102](docs/adr/adr-102-agent-runtime-and-lifecycle.md)
 - **marketplace/ratings.rs** — Rating/review system: 1-5 star ratings, text reviews (max 2000 chars), RatingStore with per-agent deduplication, RatingStats with score distribution, RatingFilter (min_score, package, agent, date range), top_rated with min_ratings threshold, JSON persistence
 
-#### Phase 7B — Multi-Node Federation (55 tests) — [ADR-016](docs/adr/adr-016-multi-node-federation.md)
+#### Phase 7B — Multi-Node Federation (55 tests) — [ADR-107](docs/adr/adr-107-scale-collaboration-and-future.md)
 - **agent-runtime/federation.rs** — Federation cluster: FederationNode with role/status/capabilities, simplified Raft coordinator election (term numbers, vote counting, split-brain prevention), node health tracking (online→suspect→dead), NodeScorer with weighted criteria (resource 40%, locality 30%, load 20%, affinity 10%), AgentPlacement, TOML config parsing, 3 scheduling strategies (Balanced/Packed/Spread)
 
-#### Phase 7C — Agent Migration & Checkpointing (54 tests) — [ADR-025](docs/adr/adr-025-agent-migration-checkpointing.md)
+#### Phase 7C — Agent Migration & Checkpointing (54 tests) — [ADR-102](docs/adr/adr-102-agent-runtime-and-lifecycle.md)
 - **agent-runtime/migration.rs** — Checkpoint/restore: Checkpoint with memory snapshot, vector indices, IPC queue, sandbox config; 3 migration types (Warm <500ms, Cold <5s, Live); 8-state migration state machine with validated transitions; MigrationTracker for lifecycle management and history; compression (~60% size reduction); checkpoint validation
 
-#### Phase 7D — Distributed Task Scheduling (47 tests) — [ADR-026](docs/adr/adr-026-distributed-task-scheduling.md)
+#### Phase 7D — Distributed Task Scheduling (47 tests) — [ADR-102](docs/adr/adr-102-agent-runtime-and-lifecycle.md)
 - **agent-runtime/scheduler.rs** — Task scheduler: priority-based scheduling (Normal/High/Critical/Emergency), resource-aware node placement, preemption logic, NodeCapacity tracking with utilization, CronScheduler for recurring tasks, task status state machine, SchedulerStats
 
 ### Added — Phase 9: Cloud Services & Human-AI Collaboration (169 tests)
 
-#### Phase 9A — Cloud Services (82 tests) — [ADR-034](docs/adr/adr-034-cloud-services.md)
+#### Phase 9A — Cloud Services (82 tests) — [ADR-107](docs/adr/adr-107-scale-collaboration-and-future.md)
 - **agent-runtime/cloud.rs** — Optional cloud connectivity: CloudConnection with config validation and health checks, CloudDeploymentManager with 4 resource tiers (Free/Standard/Performance/Custom) and cost tracking, SyncEngine with SHA-256 checksummed items and conflict resolution (LocalWins/RemoteWins/Manual/Merge), WorkspaceManager with role-based access (Owner/Admin/Editor/Viewer), BillingTracker with per-workspace/agent usage attribution
 
-#### Phase 9B — Human-AI Collaboration Research (87 tests) — [ADR-035](docs/adr/adr-035-human-ai-collaboration.md)
+#### Phase 9B — Human-AI Collaboration Research (87 tests) — [ADR-107](docs/adr/adr-107-scale-collaboration-and-future.md)
 - **agent-runtime/collaboration.rs** — Collaboration framework: 5 CollaborationModes (FullAutonomy/Supervised/Paired/HumanLed/TeachingMode), SharedTask with ownership and status state machine, HandoffManager for human↔agent task transfers, TrustCalibrator with EMA-based metrics and calibration error tracking, CognitiveLoadManager (overload detection, break suggestions, adaptive batch sizing), FeedbackCollector (5 types with rating validation and application tracking), CollaborationAnalyzer with session analytics and mode effectiveness
 
 ### Added — Phase 8K-8M: Research — Verification, Sandboxing & RL (221 tests)
 
-#### Phase 8K — Formal Verification Framework (76 tests) — [ADR-031](docs/adr/adr-031-formal-verification.md)
+#### Phase 8K — Formal Verification Framework (76 tests) — [ADR-103](docs/adr/adr-103-security-and-trust.md)
 - **agent-runtime/formal_verify.rs** — Property-based verification: 6 property types (Invariant/Precondition/Postcondition/Safety/Liveness/Refinement), PropertyChecker with invariant testing and counterexample detection, state machine verification (reachability, deadlock, determinism, unreachable states via BFS), trace refinement checking, InvariantMonitor for runtime verification, 15 built-in AGNOS security properties, VerificationReport with per-component coverage
 
-#### Phase 8L — Novel Sandboxing Architectures (77 tests) — [ADR-032](docs/adr/adr-032-novel-sandboxing.md)
+#### Phase 8L — Novel Sandboxing Architectures (77 tests) — [ADR-103](docs/adr/adr-103-security-and-trust.md)
 - **agent-runtime/sandbox_v2.rs** — Next-gen sandboxing: object-capability tokens (10 capability types, delegation chains, time-bounded, revocable), information flow control (5 security labels, no-downward-flow enforcement, data lineage tracking), TimeBoundedSandbox (wall-clock/CPU/operation budgets), PolicyLearner (derive sandbox profiles from observed behavior, tightening suggestions), ComposableSandbox (layered rules, most-restrictive-wins, merge), SandboxMetrics with security scoring
 
-#### Phase 8M — Reinforcement Learning Optimization (68 tests) — [ADR-033](docs/adr/adr-033-reinforcement-learning.md)
+#### Phase 8M — Reinforcement Learning Optimization (68 tests) — [ADR-102](docs/adr/adr-102-agent-runtime-and-lifecycle.md)
 - **agent-runtime/rl_optimizer.rs** — RL framework: State with feature vectors and Euclidean distance, Experience replay buffer (circular, prioritized sampling), QTable with Bellman updates, EpsilonGreedy exploration (decaying ε with floor), PolicyGradient (softmax + REINFORCE), RlOptimizer orchestrating train/select/episode lifecycle, RewardShaper with weighted components, OptimizerStats
 
 ### Added — Phase 8H-8J: Research — AI Explainability, Safety & Fine-Tuning (209 tests)
 
-#### Phase 8H — Agent Explainability Framework (59 tests) — [ADR-028](docs/adr/adr-028-agent-explainability.md)
+#### Phase 8H — Agent Explainability Framework (59 tests) — [ADR-102](docs/adr/adr-102-agent-runtime-and-lifecycle.md)
 - **agent-runtime/explainability.rs** — Decision transparency: DecisionRecord with factors/alternatives/outcomes, ExplainabilityEngine with human-readable explanations (factor breakdown, confidence labels, review recommendations), DecisionFilter and AgentDecisionStats, DecisionTree builder with text rendering, AuditTrail linking decisions to audit events
 
-#### Phase 8I — AI Safety Mechanisms (77 tests) — [ADR-029](docs/adr/adr-029-ai-safety-mechanisms.md)
+#### Phase 8I — AI Safety Mechanisms (77 tests) — [ADR-103](docs/adr/adr-103-security-and-trust.md)
 - **agent-runtime/safety.rs** — Safety enforcement: 8 rule types (ResourceLimit, ForbiddenAction, RequireApproval, RateLimit, ContentFilter, ScopeRestriction, EscalationRequired, OutputValidation), SafetyEngine with policy CRUD and action/output checking, PromptInjectionDetector (6 pattern categories), SafetyCircuitBreaker (Closed/Open/HalfOpen), default_policies() with sensible defaults, per-agent safety scoring
 
-#### Phase 8J — Fine-Tuning Pipeline (73 tests) — [ADR-030](docs/adr/adr-030-fine-tuning-pipeline.md)
+#### Phase 8J — Fine-Tuning Pipeline (73 tests) — [ADR-102](docs/adr/adr-102-agent-runtime-and-lifecycle.md)
 - **agent-runtime/finetune.rs** — Model adaptation: TrainingDataset with quality-scored examples from 4 sources, FineTuneConfig with 4 methods (Full/LoRA/QLoRA/Prefix), FineTuneJob with validated state machine, JobProgress with percentage/ETA, FineTunePipeline for full lifecycle orchestration, ModelRegistry with best_model_for_agent selection, VRAM estimation per method
 
-### Added — Phase 8G: Post-Quantum Cryptography (68 tests) — [ADR-027](docs/adr/adr-027-post-quantum-cryptography.md)
+### Added — Phase 8G: Post-Quantum Cryptography (68 tests) — [ADR-103](docs/adr/adr-103-security-and-trust.md)
 - **agent-runtime/pqc.rs** — Hybrid classical+PQC cryptography: ML-KEM-768/1024 (FIPS 203) key encapsulation + ML-DSA-44/65/87 (FIPS 204) digital signatures, hybrid KEM (X25519+ML-KEM with SHA-256 secret combination), hybrid signatures (Ed25519+ML-DSA with AND verification), PqcKeyStore with CRUD and JSON persistence, PqcConfig with 3 migration modes (Disabled/Hybrid/PqcOnly), PqcMigrationStatus tracking. Simulated PQC ops isolated in 6 swap-ready functions.
 
 ### Added — Phase 8B-8F: AGNOS Distribution Subsystems (205 tests)
 
-#### Phase 8B — Sigil: System-Wide Trust Verification (35 tests) — [ADR-019](docs/adr/adr-019-sigil-trust-system.md)
+#### Phase 8B — Sigil: System-Wide Trust Verification (35 tests) — [ADR-103](docs/adr/adr-103-security-and-trust.md)
 - **agent-runtime/sigil.rs** — Unified trust module: TrustLevel hierarchy (SystemCore/Verified/Community/Unverified/Revoked), TrustPolicy with enforcement modes (Strict/Permissive/AuditOnly), SigilVerifier for artifact/agent/package/boot-chain verification, Ed25519 signing, RevocationList (revoke by key_id or content_hash), TrustStore cache
 
-#### Phase 8C — Takumi: Package Build System (43 tests) — [ADR-021](docs/adr/adr-021-takumi-build-system.md)
+#### Phase 8C — Takumi: Package Build System (43 tests) — [ADR-104](docs/adr/adr-104-distribution-build-and-installation.md)
 - **agent-runtime/takumi.rs** — TOML recipe build system: BuildRecipe parser, .ark package format (ArkManifest, ArkFileEntry, ArkPackage), security hardening flags (PIE/RELRO/Fortify/StackProtector/Bindnow), CFLAGS/LDFLAGS generation, build dependency topological sort with cycle detection, recursive file list with SHA-256 hashing, build pipeline stages
 
-#### Phase 8D — Argonaut: Init System (46 tests) — [ADR-022](docs/adr/adr-022-argonaut-init-system.md)
+#### Phase 8D — Argonaut: Init System (46 tests) — [ADR-104](docs/adr/adr-104-distribution-build-and-installation.md)
 - **agent-runtime/argonaut.rs** — Custom init system: 3 boot modes (Server/Desktop/Minimal), 9-stage boot sequence, service dependency resolution, service state machine, health checks (HTTP/TCP/Command/ProcessAlive), ready checks, restart policies (Always/OnFailure/Never), shutdown ordering, boot duration tracking
 
-#### Phase 8E — Agnova: OS Installer (41 tests) — [ADR-023](docs/adr/adr-023-agnova-installer.md)
+#### Phase 8E — Agnova: OS Installer (41 tests) — [ADR-104](docs/adr/adr-104-distribution-build-and-installation.md)
 - **agent-runtime/agnova.rs** — OS installer: 4 install modes, GPT disk partitioning with LUKS2 encryption, bootloader config (systemd-boot/GRUB2), network/user/security configuration, package selection per mode, 14-phase install pipeline, config validation, fstab/hostname/machine-id generation, kernel cmdline construction
 
-#### Phase 8F — Aegis: Security Daemon (40 tests) — [ADR-020](docs/adr/adr-020-aegis-security-daemon.md)
+#### Phase 8F — Aegis: Security Daemon (40 tests) — [ADR-103](docs/adr/adr-103-security-and-trust.md)
 - **agent-runtime/aegis.rs** — Unified security daemon: 5 threat levels with auto-response, 10 security event types, quarantine system (Suspend/Terminate/Isolate/RateLimit), agent/package scanning, auto-quarantine on Critical/High threats, auto-release timeouts, event filtering and resolution tracking
 
 ### Fixed — Code Audit: All 13 New Modules
@@ -188,7 +188,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated AGNOSTIC roadmap (`/home/macro/Repos/agnostic/docs/development/roadmap.md`) with matching Phase 3 (deep integration, 7 items) and Phase 4 (Docker migration, 3 items) sections
 - Both roadmaps now reference shared items with aligned priorities and component mappings
 
-### Added — Phase 6.7: Alpha Polish (14 Items) — [ADR-008](docs/adr/adr-008-phase67-alpha-polish.md)
+### Added — Phase 6.7: Alpha Polish (14 Items) — [ADR-102](docs/adr/adr-102-agent-runtime-and-lifecycle.md)
 
 #### AI Shell & User Interaction
 - **ai-shell/completion.rs** — Tab-completion engine: BTreeSet-based prefix matching for built-in commands, intent keywords, all 34 network tools, dynamic agent/service names; context-aware completions after `start`/`stop`/`agent`/`mode` (16 tests)
@@ -885,7 +885,7 @@ Comprehensive security, performance, and correctness audit across all 6 crates. 
 - **IPC routing by agent name** (`agent-runtime/src/ipc.rs`): `MessageBus` now routes messages to agents by registered name
 
 ### Documentation
-- **Architecture Decision Records**: ADR-007 documenting OpenAI-compatible HTTP API for LLM Gateway
+- **Architecture Decision Records**: ADR-101 documenting OpenAI-compatible HTTP API for LLM Gateway
 - **Integration Guide**: `docs/AGNOSTIC_INTEGRATION.md` for Agnostic platform integration
 - **Development Roadmap**: Moved and reorganized `TODO.md` → `docs/development/roadmap.md` with priority-based structure (P0/P1/P2/P3)
 - **README Updates**: Updated all references to point to new roadmap location, added package security section

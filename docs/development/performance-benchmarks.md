@@ -1,5 +1,7 @@
 # Performance Benchmarks
 
+> **Last Updated**: 2026-03-07
+
 ## Overview
 
 AGNOS includes a benchmark suite built on [Criterion.rs](https://github.com/bheisler/criterion.rs) (v0.5) to measure and track performance across four core userland packages. Benchmarks live in `benches/` directories alongside their crates and are compiled as separate binaries (`harness = false`).
@@ -169,6 +171,23 @@ The following system-level benchmarks are planned for the llm-gateway package:
 - **Provider selection** -- health-aware fallback with `ProviderHealth` retry logic
 - **Inference pipeline** -- end-to-end: request parse, cache check, provider call, response format
 - **Cache cleanup** -- eviction performance under memory pressure
+
+### desktop-environment (micro-benchmarks)
+
+File: `userland/desktop-environment/benches/` (Criterion suite)
+
+The desktop-environment benchmark suite covers compositor and rendering performance:
+
+| Benchmark | What it measures |
+|---|---|
+| `frame_render_empty` | Baseline frame render with no surfaces |
+| `frame_render_surfaces` | Frame render with N active surfaces |
+| `surface_commit` | Wayland surface commit processing |
+| `damage_tracking` | Damage region calculation and merge |
+| `accessibility_tree_build` | AccessibilityTree construction from surface tree |
+| `theme_bridge_convert` | AGNOS theme to Flutter ThemeData conversion |
+| `plugin_host_dispatch` | Plugin event dispatch latency |
+| `high_contrast_render` | High-contrast mode rendering overhead |
 
 ### ai-shell (planned)
 

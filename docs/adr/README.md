@@ -1,72 +1,23 @@
-# Architecture Decision Record (ADR) Template
+# Architecture Decision Records
 
-## ADR-XXX: [Short Title]
+## ADR Format
 
-**Status:** [Proposed | Accepted | Deprecated | Superseded by ADR-XXX]
+Each ADR follows this structure:
 
-**Date:** YYYY-MM-DD
-
-**Authors:** [Name, Name]
-
-### Context
-
-What is the issue that we're seeing that is motivating this decision or change?
-
-### Decision
-
-What is the change that we're proposing or have agreed to implement?
-
-### Consequences
-
-What becomes easier or more difficult to do because of this change?
-
-### Alternatives Considered
-
-What other options were considered and why were they rejected?
-
-### References
-
-- Links to related issues, PRs, documentation
-
----
+- **Status** — Accepted, Proposed, Deprecated, or Superseded
+- **Date** — When the decision was made
+- **Context** — What problem we're solving
+- **Decisions** — What we chose and why
+- **Consequences** — Trade-offs (positive and negative)
 
 ## ADR Index
 
-| ADR # | Title | Status | Date |
-|-------|-------|--------|------|
-| 001 | Rust as Primary Implementation Language | Accepted | 2026-02-01 |
-| 002 | Wayland for Desktop Environment | Accepted | 2026-02-05 |
-| 003 | Multi-Agent Orchestration Architecture | Accepted | 2026-02-08 |
-| 004 | LLM Gateway Service Design | Accepted | 2026-02-10 |
-| 005 | Security Model and Human Override | Accepted | 2026-02-11 |
-| 006 | Testing Strategy and CI/CD | Proposed | 2026-02-12 |
-| 007 | Agnostic QA Platform Integration | Proposed | 2026-02-22 |
-| 008 | Phase 6.7 Alpha Polish — Core Experience Gaps | Accepted | 2026-03-06 |
-| 009 | RAG & Embedded Knowledge Pipeline | Accepted | 2026-03-06 |
-| 010 | Advanced Agent Capabilities & Lifecycle | Accepted | 2026-03-06 |
-| 011 | Observability Stack | Accepted | 2026-03-06 |
-| 012 | Desktop Accessibility & Interaction Foundations | Accepted | 2026-03-06 |
-| 013 | Zero-Trust Security Hardening | Accepted | 2026-03-06 |
-| 014 | Cross-Project Integration Architecture | Accepted | 2026-03-06 |
-| 015 | Agent Marketplace Architecture | Proposed | 2026-03-06 |
-| 016 | Multi-Node Agent Federation | Accepted | 2026-03-06 |
-| 017 | Desktop Plugin Architecture | Proposed | 2026-03-06 |
-| 018 | LFS-Native Distribution (Dropping Debian) | Accepted | 2026-03-07 |
-| 019 | Sigil — System-Wide Trust Verification | Accepted | 2026-03-07 |
-| 020 | Aegis — System Security Daemon | Accepted | 2026-03-07 |
-| 021 | Takumi — Package Build System | Accepted | 2026-03-07 |
-| 022 | Argonaut — Custom Init System | Accepted | 2026-03-07 |
-| 023 | Agnova — OS Installer | Accepted | 2026-03-07 |
-| 024 | Agent Ratings & Reviews | Accepted | 2026-03-07 |
-| 025 | Agent Migration & Checkpointing | Accepted | 2026-03-07 |
-| 026 | Distributed Task Scheduling | Accepted | 2026-03-07 |
-| 027 | Post-Quantum Cryptography | Accepted | 2026-03-07 |
-| 028 | Agent Explainability Framework | Accepted | 2026-03-07 |
-| 029 | AI Safety Mechanisms | Accepted | 2026-03-07 |
-| 030 | Fine-Tuning Pipeline | Accepted | 2026-03-07 |
-| 031 | Formal Verification Framework | Accepted | 2026-03-07 |
-| 032 | Novel Sandboxing Architectures | Accepted | 2026-03-07 |
-| 033 | Reinforcement Learning Optimization | Accepted | 2026-03-07 |
-| 034 | Cloud Services | Accepted | 2026-03-07 |
-| 035 | Human-AI Collaboration Research | Accepted | 2026-03-07 |
-
+| ADR | Title | Scope |
+|-----|-------|-------|
+| [101](adr-101-foundation-and-architecture.md) | Foundation and Architecture | Language (Rust), agent orchestration (daimon), LLM gateway (hoosh), cross-project integration, named subsystems |
+| [102](adr-102-agent-runtime-and-lifecycle.md) | Agent Runtime and Lifecycle | Agent lifecycle, RAG pipeline, IPC, marketplace (mela), explainability, safety, fine-tuning, RL, federation, migration, scheduling |
+| [103](adr-103-security-and-trust.md) | Security and Trust | Permission model, sandbox stack, sigil trust, aegis daemon, zero-trust hardening, post-quantum crypto, formal verification, novel sandboxing |
+| [104](adr-104-distribution-build-and-installation.md) | Distribution, Build, and Installation | LFS-native distro, .ark package format, takumi build system, base system packages, argonaut init, agnova installer |
+| [105](adr-105-desktop-environment.md) | Desktop Environment | Wayland compositor (aethersafha), accessibility, plugins, agent window ownership, clipboard, gestures |
+| [106](adr-106-observability-and-operations.md) | Observability and Operations | OpenTelemetry, distributed tracing, Prometheus metrics, resource forecasting, audit chain, CI/CD |
+| [107](adr-107-scale-collaboration-and-future.md) | Scale, Collaboration, and Future | Multi-node federation, cloud services, human-AI collaboration modes, research directions |
