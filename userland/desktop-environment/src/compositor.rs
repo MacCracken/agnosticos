@@ -2182,8 +2182,7 @@ mod tests {
 use std::path::PathBuf;
 
 /// Content stored on the clipboard.
-#[derive(Debug, Clone)]
-#[derive(Default)]
+#[derive(Debug, Clone, Default)]
 pub enum ClipboardContent {
     Text(String),
     Html(String),
@@ -2196,7 +2195,6 @@ pub enum ClipboardContent {
     #[default]
     Empty,
 }
-
 
 /// A single clipboard history entry.
 #[derive(Debug, Clone)]

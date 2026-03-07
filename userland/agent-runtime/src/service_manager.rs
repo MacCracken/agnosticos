@@ -1042,15 +1042,13 @@ pub struct CronSchedule {
     day_of_week: CronField,
 }
 
-#[derive(Debug, Clone)]
-#[derive(Default)]
+#[derive(Debug, Clone, Default)]
 enum CronField {
     #[default]
     Any,
     Exact(u32),
     Step(u32),
 }
-
 
 impl CronField {
     fn matches(&self, value: u32) -> bool {

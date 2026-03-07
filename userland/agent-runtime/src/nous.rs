@@ -62,8 +62,7 @@ pub struct ResolvedPackage {
 }
 
 /// Resolution strategy — how nous decides where to look.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum ResolutionStrategy {
     /// Check marketplace first, then system (default).
     #[default]
@@ -75,7 +74,6 @@ pub enum ResolutionStrategy {
     /// Check all sources, return all matches.
     SearchAll,
 }
-
 
 /// A unified search result across all sources.
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -195,13 +195,22 @@ pub fn verify_pin(host: &str, actual_spki_pin: &str, pin_set: &CertPinSet) -> Ce
         }
     }
 
-    // Check primary pins
-    if entry.pin_sha256.iter().any(|p| p == actual_spki_pin) {
+    // Check primary and backup pins using constant-time comparison
+    // to prevent timing side-channel attacks on pin values
+    let ct_eq = |a: &str, b: &str| -> bool {
+        a.len() == b.len()
+            && a.as_bytes()
+                .iter()
+                .zip(b.as_bytes().iter())
+                .fold(0u8, |acc, (x, y)| acc | (x ^ y))
+                == 0
+    };
+
+    if entry.pin_sha256.iter().any(|p| ct_eq(p, actual_spki_pin)) {
         return CertPinResult::Valid;
     }
 
-    // Check backup pins
-    if entry.backup_pins.iter().any(|p| p == actual_spki_pin) {
+    if entry.backup_pins.iter().any(|p| ct_eq(p, actual_spki_pin)) {
         return CertPinResult::Valid;
     }
 

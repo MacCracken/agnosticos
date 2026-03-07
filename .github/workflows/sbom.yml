@@ -2,10 +2,7 @@ name: SBOM Generation
 
 on:
   push:
-    branches: [ main ]
     tags: [ 'v*' ]
-  pull_request:
-    branches: [ main ]
   schedule:
     # Generate SBOM weekly
     - cron: '0 0 * * 0'
@@ -17,80 +14,59 @@ env:
 jobs:
   generate-sbom:
     runs-on: ubuntu-latest
-    
+
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Setup Rust toolchain
       uses: dtolnay/rust-toolchain@stable
-    
+
     - name: Install SBOM tools
-      run: |
-        cargo install cargo-bom cargo-license
-        pip install cyclonedx-bom
-    
-    - name: Generate SBOM
+      run: cargo install cargo-cyclonedx cargo-license --locked
+
+    - name: Generate SBOM (CycloneDX)
       run: |
         cd userland
-        # Generate Cargo.lock if it doesn't exist
-        cargo generate-lockfile 2>/dev/null || true
-        
-        # Run SBOM generator
-        cd ..
-        ./scripts/generate-sbom.sh generate || true
-    
+        cargo cyclonedx --format json --output-cdx || true
+        cargo cyclonedx --format xml --output-cdx || true
+        mkdir -p ../sbom
+        cp -f *.cdx.json ../sbom/ 2>/dev/null || true
+        cp -f *.cdx.xml ../sbom/ 2>/dev/null || true
+
+    - name: Generate license summary
+      run: |
+        cd userland
+        cargo license --json > ../sbom/license-summary.json 2>/dev/null || true
+        cargo license > ../sbom/license-summary.txt 2>/dev/null || true
+
     - name: Upload SBOM artifacts
       uses: actions/upload-artifact@v4
       if: always()
       with:
         name: sbom-files
-        path: |
-          sbom/*.json
-          sbom/*.txt
+        path: sbom/
         if-no-files-found: warn
-    
+
     - name: Upload SBOM to release
       if: startsWith(github.ref, 'refs/tags/')
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
         files: |
           sbom/*.json
+          sbom/*.xml
           sbom/*.txt
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    
+
+  dependency-review:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+    - uses: actions/checkout@v4
+
     - name: Dependency Review
-      uses: actions/dependency-review-action@v3
-      if: github.event_name == 'pull_request'
+      uses: actions/dependency-review-action@v4
       with:
         fail-on-severity: high
         comment-summary-in-pr: true
-
-  dependency-track:
-    runs-on: ubuntu-latest
-    needs: generate-sbom
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.generate-sbom.result == 'success'
-    
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Download SBOM
-      uses: actions/download-artifact@v4
-      with:
-        name: sbom-files
-        path: sbom
-    
-    - name: Upload to Dependency-Track
-      if: env.DEPENDENCY_TRACK_API_KEY != ''
-      run: |
-        if [ -f "sbom/agnos-$(grep '^version' userland/Cargo.toml | head -1 | sed 's/.*= *"\(.*\)".*/\1/')-bom.json" ]; then
-          curl -X POST \
-            -H 'Content-Type: multipart/form-data' \
-            -H "X-Api-Key: ${{ secrets.DEPENDENCY_TRACK_API_KEY }}" \
-            -F 'projectName=AGNOS' \
-            -F 'projectVersion=${{ github.ref_name }}' \
-            -F 'autoCreate=true' \
-            -F 'bom=@sbom/agnos-$(grep "^version" userland/Cargo.toml | head -1 | sed "s/.*= *\"\\(.*\\)\".*/\\1/")-bom.json' \
-            https://dependency-track.example.com/api/v1/bom || true
-        fi
-      continue-on-error: true

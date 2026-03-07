@@ -1116,12 +1116,11 @@ pub fn validate_args(tool: NetworkTool, args: &[String], allow_dangerous: bool) 
             }
         }
         NetworkTool::BetterCap => {
-            if !allow_dangerous
-                && joined.contains("--caplet") {
-                    return Err(anyhow!(
+            if !allow_dangerous && joined.contains("--caplet") {
+                return Err(anyhow!(
                         "Dangerous bettercap argument '--caplet' requires explicit approval (arbitrary script execution)"
                     ));
-                }
+            }
         }
         _ => {}
     }

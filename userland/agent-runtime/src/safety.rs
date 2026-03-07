@@ -611,15 +611,18 @@ pub struct InjectionResult {
 /// NOTE: Current detection patterns are baseline substring heuristics intended as a
 /// first layer of defense. Production deployments should supplement these with
 /// ML-based detection (e.g., classifier trained on prompt injection datasets).
+/// A named pattern matcher: label + detection function.
+type PatternMatcher = (String, Box<dyn Fn(&str) -> bool + Send + Sync>);
+
 pub struct PromptInjectionDetector {
     /// Pattern label + substring/heuristic pairs.
-    patterns: Vec<(String, Box<dyn Fn(&str) -> bool + Send + Sync>)>,
+    patterns: Vec<PatternMatcher>,
 }
 
 impl PromptInjectionDetector {
     /// Build a detector with the default set of heuristics.
     pub fn new() -> Self {
-        let patterns: Vec<(String, Box<dyn Fn(&str) -> bool + Send + Sync>)> = vec![
+        let patterns: Vec<PatternMatcher> = vec![
             (
                 "ignore_previous_instructions".into(),
                 Box::new(|s: &str| {

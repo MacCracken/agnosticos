@@ -213,7 +213,16 @@ async fn chat_completions(
             Some(auth) => {
                 let auth_str = auth.to_str().unwrap_or("");
                 let token = auth_str.strip_prefix("Bearer ").unwrap_or("");
-                if token.is_empty() || token != api_key {
+                // Constant-time comparison to prevent timing side-channel attacks
+                let token_match = !token.is_empty()
+                    && token.len() == api_key.len()
+                    && token
+                        .as_bytes()
+                        .iter()
+                        .zip(api_key.as_bytes().iter())
+                        .fold(0u8, |acc, (a, b)| acc | (a ^ b))
+                        == 0;
+                if !token_match {
                     let mut resp_headers = HeaderMap::new();
                     resp_headers.insert("x-request-id", request_id.parse().unwrap());
                     return (

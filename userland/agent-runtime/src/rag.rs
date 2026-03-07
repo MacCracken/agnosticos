@@ -178,6 +178,8 @@ pub fn chunk_text(text: &str, chunk_size: usize, overlap: usize) -> Vec<String> 
 pub struct RagPipeline {
     pub index: VectorIndex,
     pub config: RagConfig,
+    /// Cached vocabulary to avoid full rebuild on every ingest.
+    vocab_cache: BTreeMap<String, ()>,
 }
 
 impl RagPipeline {
@@ -186,6 +188,7 @@ impl RagPipeline {
         Self {
             index: VectorIndex::new(),
             config,
+            vocab_cache: BTreeMap::new(),
         }
     }
 
@@ -197,28 +200,24 @@ impl RagPipeline {
             return Ok(Vec::new());
         }
 
-        // Build vocabulary from existing index + new chunks.
-        let mut vocab_set: BTreeMap<String, ()> = BTreeMap::new();
-        for entry in self.index.entries() {
-            for w in tokenize(&entry.content) {
-                vocab_set.entry(w).or_default();
-            }
-        }
+        // Incrementally expand vocabulary with new chunk tokens (avoids full rebuild).
+        let old_vocab_size = self.vocab_cache.len();
         for c in &chunks {
             for w in tokenize(c) {
-                vocab_set.entry(w).or_default();
+                self.vocab_cache.entry(w).or_default();
             }
         }
-        let vocab: Vec<String> = vocab_set.into_keys().collect();
+        let vocab: Vec<String> = self.vocab_cache.keys().cloned().collect();
 
         // Re-embed existing entries with the expanded vocabulary if the
         // dimension changed. For simplicity in this placeholder implementation,
         // we rebuild the index when the vocabulary grows.
-        let old_entries: Vec<VectorEntry> = self.index.entries().cloned().collect();
-        let old_dim = self.index.dimension();
         let new_dim = vocab.len();
+        let vocab_grew = old_vocab_size > 0 && new_dim != old_vocab_size;
 
-        if old_dim.is_some() && old_dim != Some(new_dim) {
+        if vocab_grew {
+            // Vocabulary grew — re-embed existing entries with expanded dimensions.
+            let old_entries: Vec<VectorEntry> = self.index.entries().cloned().collect();
             // Rebuild index with new dimension.
             let mut new_index = VectorIndex::new();
             for mut e in old_entries {

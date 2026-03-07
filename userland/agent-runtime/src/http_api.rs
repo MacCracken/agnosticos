@@ -4,7 +4,7 @@
 //! consumers (AGNOSTIC, SecureYeoman) to register agents, send heartbeats,
 //! and query agent status.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -243,10 +243,10 @@ pub struct ApiState {
     agents: Arc<RwLock<HashMap<Uuid, RegisteredAgentEntry>>>,
     started_at: DateTime<Utc>,
     pub webhooks: Arc<RwLock<Vec<WebhookRegistration>>>,
-    pub audit_buffer: Arc<RwLock<Vec<AuditEvent>>>,
+    pub audit_buffer: Arc<RwLock<VecDeque<AuditEvent>>>,
     pub audit_chain: Arc<RwLock<AuditChain>>,
     pub memory_store: ApiMemoryStore,
-    pub traces: Arc<RwLock<Vec<serde_json::Value>>>,
+    pub traces: Arc<RwLock<VecDeque<serde_json::Value>>>,
     pub rag_pipeline: Arc<RwLock<RagPipeline>>,
     pub knowledge_base: Arc<RwLock<KnowledgeBase>>,
     /// Distributed tracing span collector (OpenTelemetry-like).
@@ -292,10 +292,10 @@ impl ApiState {
             agents: Arc::new(RwLock::new(HashMap::new())),
             started_at: Utc::now(),
             webhooks: Arc::new(RwLock::new(Vec::new())),
-            audit_buffer: Arc::new(RwLock::new(Vec::new())),
+            audit_buffer: Arc::new(RwLock::new(VecDeque::new())),
             audit_chain: Arc::new(RwLock::new(AuditChain::new())),
             memory_store: ApiMemoryStore::new(),
-            traces: Arc::new(RwLock::new(Vec::new())),
+            traces: Arc::new(RwLock::new(VecDeque::new())),
             rag_pipeline: Arc::new(RwLock::new(RagPipeline::new(RagConfig::default()))),
             knowledge_base: Arc::new(RwLock::new(KnowledgeBase::new())),
             span_collector: Arc::new(SpanCollector::new()),
@@ -316,10 +316,10 @@ impl ApiState {
             agents: Arc::new(RwLock::new(HashMap::new())),
             started_at: Utc::now(),
             webhooks: Arc::new(RwLock::new(Vec::new())),
-            audit_buffer: Arc::new(RwLock::new(Vec::new())),
+            audit_buffer: Arc::new(RwLock::new(VecDeque::new())),
             audit_chain: Arc::new(RwLock::new(AuditChain::new())),
             memory_store: ApiMemoryStore::new(),
-            traces: Arc::new(RwLock::new(Vec::new())),
+            traces: Arc::new(RwLock::new(VecDeque::new())),
             rag_pipeline: Arc::new(RwLock::new(RagPipeline::new(RagConfig::default()))),
             knowledge_base: Arc::new(RwLock::new(KnowledgeBase::new())),
             span_collector: Arc::new(SpanCollector::new()),
@@ -748,7 +748,16 @@ async fn auth_middleware(
     match auth_header {
         Some(value) if value.starts_with("Bearer ") => {
             let token = &value[7..];
-            if token == api_key.as_str() {
+            // Constant-time comparison to prevent timing side-channel attacks
+            let token_bytes = token.as_bytes();
+            let key_bytes = api_key.as_bytes();
+            let matches = token_bytes.len() == key_bytes.len()
+                && token_bytes
+                    .iter()
+                    .zip(key_bytes.iter())
+                    .fold(0u8, |acc, (a, b)| acc | (a ^ b))
+                    == 0;
+            if matches {
                 next.run(req).await
             } else {
                 (
@@ -943,7 +952,7 @@ async fn anomaly_submit_handler(
         let mut audit = state.audit_buffer.write().await;
         for alert in &alerts {
             if audit.len() < MAX_AUDIT_BUFFER {
-                audit.push(AuditEvent {
+                audit.push_back(AuditEvent {
                     timestamp: chrono::Utc::now().to_rfc3339(),
                     action: format!("anomaly_detected:{}", alert.metric),
                     agent: Some(req.agent_id.clone()),
@@ -1170,8 +1179,36 @@ async fn knowledge_index_handler(
         Some(other) => KnowledgeSource::Custom(other.to_string()),
         None => KnowledgeSource::ConfigFile,
     };
+    // Validate and canonicalize the path to prevent traversal attacks
+    let index_path = std::path::Path::new(&req.path);
+    let canonical = match index_path.canonicalize() {
+        Ok(p) => p,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": format!("Invalid path: {}", e)})),
+            )
+                .into_response();
+        }
+    };
+    // Restrict indexing to safe directories
+    let allowed_prefixes = ["/var/agnos/", "/usr/share/agnos/", "/etc/agnos/"];
+    if !allowed_prefixes
+        .iter()
+        .any(|prefix| canonical.starts_with(prefix))
+    {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({
+                "error": "Path not in allowed indexing roots",
+                "allowed": allowed_prefixes,
+            })),
+        )
+            .into_response();
+    }
+
     let mut kb = state.knowledge_base.write().await;
-    match kb.index_directory(std::path::Path::new(&req.path), source) {
+    match kb.index_directory(&canonical, source) {
         Ok(count) => (
             StatusCode::OK,
             Json(serde_json::json!({
@@ -1733,11 +1770,20 @@ pub fn build_router(state: ApiState) -> Router {
         .route("/v1/ark/upgrade", post(ark_upgrade_handler))
         .route("/v1/ark/status", get(ark_status_handler))
         // System update routes
-        .route("/v1/system/update/status", get(system_update_status_handler))
+        .route(
+            "/v1/system/update/status",
+            get(system_update_status_handler),
+        )
         .route("/v1/system/update/check", post(system_update_check_handler))
         .route("/v1/system/update/apply", post(system_update_apply_handler))
-        .route("/v1/system/update/rollback", post(system_update_rollback_handler))
-        .route("/v1/system/update/confirm", post(system_update_confirm_handler))
+        .route(
+            "/v1/system/update/rollback",
+            post(system_update_rollback_handler),
+        )
+        .route(
+            "/v1/system/update/confirm",
+            post(system_update_confirm_handler),
+        )
         // Marketplace routes
         .route(
             "/v1/marketplace/installed",
@@ -1754,6 +1800,7 @@ pub fn build_router(state: ApiState) -> Router {
             state.clone(),
             auth_middleware,
         ))
+        .layer(axum::extract::DefaultBodyLimit::max(10 * 1024 * 1024)) // 10 MB
         .with_state(state)
 }
 
@@ -1995,9 +2042,9 @@ async fn forward_audit_handler(
         chain.append(chain_event);
 
         if buffer.len() >= MAX_AUDIT_BUFFER {
-            buffer.remove(0);
+            buffer.pop_front();
         }
-        buffer.push(event);
+        buffer.push_back(event);
     }
 
     (
@@ -2204,9 +2251,9 @@ async fn submit_trace_handler(
 
     let mut traces = state.traces.write().await;
     if traces.len() >= MAX_TRACES {
-        traces.remove(0);
+        traces.pop_front();
     }
-    traces.push(trace_value);
+    traces.push_back(trace_value);
 
     (
         StatusCode::CREATED,
@@ -4776,8 +4823,7 @@ mod tests {
         // Will return 500 since no update server is running, or OK with no update
         // Either is acceptable in test — we just verify the endpoint exists and responds
         assert!(
-            resp.status() == StatusCode::OK
-                || resp.status() == StatusCode::INTERNAL_SERVER_ERROR
+            resp.status() == StatusCode::OK || resp.status() == StatusCode::INTERNAL_SERVER_ERROR
         );
     }
 

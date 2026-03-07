@@ -126,8 +126,7 @@ impl FederationNode {
 // ---------------------------------------------------------------------------
 
 /// Strategy for placing agents across the cluster.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 pub enum SchedulingStrategy {
     /// Spread load evenly across nodes.
     #[default]
@@ -137,7 +136,6 @@ pub enum SchedulingStrategy {
     /// Spread agents to maximize isolation.
     Spread,
 }
-
 
 impl fmt::Display for SchedulingStrategy {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

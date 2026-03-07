@@ -581,9 +581,9 @@ async fn handle_forward_audit(state: &ApiState, args: &serde_json::Value) -> Mcp
 
     let mut buffer = state.audit_buffer.write().await;
     if buffer.len() >= crate::http_api::MAX_AUDIT_BUFFER {
-        buffer.remove(0);
+        buffer.pop_front();
     }
-    buffer.push(event);
+    buffer.push_back(event);
 
     success_result(serde_json::json!({
         "status": "accepted",

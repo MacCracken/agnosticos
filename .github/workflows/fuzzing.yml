@@ -15,20 +15,21 @@ jobs:
   fuzz:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         target: [fuzz_agent_parse, fuzz_interpreter, fuzz_command_split, fuzz_llm_inference]
-    
+
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Setup Rust toolchain (nightly)
       uses: dtolnay/rust-toolchain@nightly
-    
+
     - name: Install cargo-fuzz
-      run: cargo install cargo-fuzz
-    
+      run: cargo install cargo-fuzz --locked
+
     - name: Cache fuzzing corpus
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: |
           userland/fuzz/corpus/
@@ -36,82 +37,32 @@ jobs:
         key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
         restore-keys: |
           fuzz-corpus-${{ matrix.target }}-
-    
+
     - name: Run fuzzer (30 minutes)
       run: |
-        cd userland/fuzz
+        cd userland
         timeout 1800 cargo fuzz run ${{ matrix.target }} -- -max_total_time=1800 || true
       continue-on-error: true
-    
+
     - name: Check for crashes
       run: |
-        cd userland/fuzz
-        if [ -d "fuzz/artifacts/${{ matrix.target }}" ] && [ "$(ls -A fuzz/artifacts/${{ matrix.target }} 2>/dev/null)" ]; then
-          echo "Found crashes in ${{ matrix.target }}:"
-          ls -la fuzz/artifacts/${{ matrix.target }}/
+        ARTIFACT_DIR="userland/fuzz/artifacts/${{ matrix.target }}"
+        if [ -d "$ARTIFACT_DIR" ] && [ "$(ls -A "$ARTIFACT_DIR" 2>/dev/null)" ]; then
+          echo "::error::Found crashes in ${{ matrix.target }}:"
+          ls -la "$ARTIFACT_DIR/"
           exit 1
         fi
-    
+
     - name: Upload crash artifacts
       uses: actions/upload-artifact@v4
       if: failure()
       with:
         name: fuzz-crash-${{ matrix.target }}
-        path: userland/fuzz/fuzz/artifacts/${{ matrix.target }}/
-    
-    - name: Upload corpus
-      uses: actions/upload-artifact@v4
-      with:
-        name: fuzz-corpus-${{ matrix.target }}
-        path: userland/fuzz/fuzz/corpus/${{ matrix.target }}/
+        path: userland/fuzz/artifacts/${{ matrix.target }}/
 
-  security-critical-fuzz:
-    runs-on: ubuntu-latest
-    needs: fuzz
-    
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Setup Rust toolchain (nightly)
-      uses: dtolnay/rust-toolchain@nightly
-    
-    - name: Install cargo-fuzz
-      run: cargo install cargo-fuzz
-    
-    - name: Create security-critical fuzz targets
-      run: |
-        cd userland/fuzz
-        # Create fuzz target for syscall interface
-        cat > fuzz_syscall.rs << 'EOF'
-        #![no_main]
-        use libfuzzer_sys::fuzz_target;
-        use agnos_sys::syscall::invoke_syscall;
-        
-        fuzz_target!(|data: &[u8]| {
-            if data.len() >= 8 {
-                let syscall_num = u64::from_le_bytes([data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7]]);
-                let args: Vec<u64> = data[8..].chunks_exact(8)
-                    .map(|chunk| u64::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3], chunk[4], chunk[5], chunk[6], chunk[7]]))
-                    .collect();
-                // Attempt syscall (should be caught by sandbox if invalid)
-                let _ = invoke_syscall(syscall_num, &args);
-            }
-        });
-        EOF
-        
-        # Add to Cargo.toml
-        printf '\n[[bin]]\nname = "fuzz_syscall"\npath = "fuzz_syscall.rs"\n' >> Cargo.toml
-    
-    - name: Run extended fuzzing (1 hour)
-      run: |
-        cd userland/fuzz
-        timeout 3600 cargo fuzz run fuzz_syscall -- -max_total_time=3600 || true
-      continue-on-error: true
-    
-    - name: Upload security fuzz results
+    - name: Upload corpus
       uses: actions/upload-artifact@v4
       if: always()
       with:
-        name: security-fuzz-results
-        path: userland/fuzz/fuzz/artifacts/
-
+        name: fuzz-corpus-${{ matrix.target }}
+        path: userland/fuzz/corpus/${{ matrix.target }}/

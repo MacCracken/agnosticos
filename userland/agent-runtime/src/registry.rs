@@ -90,10 +90,16 @@ impl AgentRegistry {
         if let Some((_, agent)) = self.agents.remove(&id) {
             self.by_name.remove(&agent.handle.name);
 
-            // Remove from capability indices
+            // Remove from capability indices and clean up empty entries
             for cap in &agent.capabilities {
-                if let Some(mut agents) = self.by_capability.get_mut(cap) {
+                let should_remove = if let Some(mut agents) = self.by_capability.get_mut(cap) {
                     agents.retain(|&agent_id| agent_id != id);
+                    agents.is_empty()
+                } else {
+                    false
+                };
+                if should_remove {
+                    self.by_capability.remove(cap);
                 }
             }
 

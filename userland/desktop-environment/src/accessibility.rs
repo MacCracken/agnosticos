@@ -42,8 +42,7 @@ pub enum AccessibilityRole {
 }
 
 /// Dynamic state of an accessible node.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AccessibilityState {
     pub focused: bool,
     pub selected: bool,
@@ -54,7 +53,6 @@ pub struct AccessibilityState {
     pub value: Option<String>,
     pub description: String,
 }
-
 
 // ============================================================================
 // Actions

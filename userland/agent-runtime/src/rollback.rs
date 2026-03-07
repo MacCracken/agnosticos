@@ -221,11 +221,10 @@ impl RollbackManager {
         let working_dir = snapshot.working_dir.clone();
         if tokio::fs::try_exists(&working_dir).await.unwrap_or(false) {
             let wd = working_dir.clone();
-            let current_files = tokio::task::spawn_blocking(move || {
-                Self::list_files_relative(&wd, &wd)
-            })
-            .await
-            .context("list_files_relative task panicked")??;
+            let current_files =
+                tokio::task::spawn_blocking(move || Self::list_files_relative(&wd, &wd))
+                    .await
+                    .context("list_files_relative task panicked")??;
 
             for rel_path in current_files {
                 if !snapshot_files.contains_key(rel_path.as_path()) {

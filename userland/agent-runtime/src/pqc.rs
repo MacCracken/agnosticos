@@ -782,8 +782,7 @@ impl PqcKeyStore {
 // ===========================================================================
 
 /// Operating mode for PQC.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum PqcMode {
     /// Classical cryptography only — no PQC operations.
     Disabled,
@@ -793,7 +792,6 @@ pub enum PqcMode {
     /// PQC only — classical algorithms disabled (future, post-transition).
     PqcOnly,
 }
-
 
 impl fmt::Display for PqcMode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

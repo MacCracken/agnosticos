@@ -138,7 +138,12 @@ pub fn create_audit_entry(event: AuditEvent, previous_hash: &str) -> AuditEntry 
 pub struct AuditChain {
     entries: Vec<AuditEntry>,
     next_sequence: u64,
+    /// Maximum in-memory entries before oldest are pruned. 0 = unlimited.
+    max_entries: usize,
 }
+
+/// Default maximum in-memory audit entries (50,000).
+const DEFAULT_MAX_CHAIN_ENTRIES: usize = 50_000;
 
 impl AuditChain {
     /// Create an empty audit chain.
@@ -146,6 +151,7 @@ impl AuditChain {
         Self {
             entries: Vec::new(),
             next_sequence: 0,
+            max_entries: DEFAULT_MAX_CHAIN_ENTRIES,
         }
     }
 
@@ -153,6 +159,7 @@ impl AuditChain {
     ///
     /// The event's `sequence` field is overwritten with the chain's internal
     /// auto-incrementing counter to guarantee monotonicity.
+    /// When the chain exceeds `max_entries`, the oldest entries are pruned.
     pub fn append(&mut self, mut event: AuditEvent) -> &AuditEntry {
         event.sequence = self.next_sequence;
         let prev_hash = self
@@ -163,6 +170,13 @@ impl AuditChain {
         let entry = create_audit_entry(event, prev_hash);
         self.entries.push(entry);
         self.next_sequence += 1;
+
+        // Prune oldest entries if over capacity
+        if self.max_entries > 0 && self.entries.len() > self.max_entries {
+            let excess = self.entries.len() - self.max_entries;
+            self.entries.drain(..excess);
+        }
+
         self.entries.last().unwrap()
     }
 

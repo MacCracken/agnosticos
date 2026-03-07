@@ -265,52 +265,43 @@ impl DependencyGraph {
             ));
         }
 
-        let mut in_degree: HashMap<&str, usize> = HashMap::new();
-        for node in self.nodes.values() {
-            in_degree.entry(&node.name).or_insert(0);
-            for dep in &node.dependencies {
-                if self.nodes.contains_key(dep.as_str()) {
-                    *in_degree.entry(dep.as_str()).or_insert(0) += 0;
-                    // The node depends on dep, so node's dependency doesn't increase dep's in-degree.
-                    // dep is a prerequisite of node, so node's in-degree increases.
-                }
-            }
-        }
-        // Recount properly: for each edge (node -> dep), increase node's in-degree
-        // Actually: if A depends on B, B must come first. So edge is B -> A in topo order.
-        // In-degree of A increases for each dependency.
+        // Build in-degree map and reverse dependency map (dep → dependents) for O(n+e) sort.
+        // If A depends on B, B must come first. In-degree of A increases per dependency.
         let mut in_deg: HashMap<&str, usize> = HashMap::new();
+        let mut reverse_deps: HashMap<&str, Vec<&str>> = HashMap::new();
         for node in self.nodes.values() {
             in_deg.entry(&node.name).or_insert(0);
             for dep in &node.dependencies {
                 if self.nodes.contains_key(dep.as_str()) {
                     in_deg.entry(dep.as_str()).or_insert(0);
                     *in_deg.entry(&node.name).or_insert(0) += 1;
+                    reverse_deps
+                        .entry(dep.as_str())
+                        .or_default()
+                        .push(&node.name);
                 }
             }
         }
 
-        let mut queue: std::collections::VecDeque<&str> = in_deg
+        let mut queue_sorted: Vec<&str> = in_deg
             .iter()
             .filter(|(_, &deg)| deg == 0)
             .map(|(&name, _)| name)
             .collect();
-        // Sort for deterministic output
-        let mut queue_sorted: Vec<&str> = queue.drain(..).collect();
         queue_sorted.sort();
         let mut queue: std::collections::VecDeque<&str> = queue_sorted.into_iter().collect();
 
-        let mut order = Vec::new();
+        let mut order = Vec::with_capacity(self.nodes.len());
 
         while let Some(name) = queue.pop_front() {
             order.push(name.to_string());
-            // Find nodes that depend on `name` (name is a dependency of those nodes)
-            for node in self.nodes.values() {
-                if node.dependencies.iter().any(|d| d == name) {
-                    if let Some(deg) = in_deg.get_mut(node.name.as_str()) {
+            // O(1) lookup of dependents instead of O(n) scan
+            if let Some(dependents) = reverse_deps.get(name) {
+                for &dependent in dependents {
+                    if let Some(deg) = in_deg.get_mut(dependent) {
                         *deg -= 1;
                         if *deg == 0 {
-                            queue.push_back(&node.name);
+                            queue.push_back(dependent);
                         }
                     }
                 }

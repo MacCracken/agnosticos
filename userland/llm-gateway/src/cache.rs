@@ -97,7 +97,10 @@ impl ResponseCache {
         // If still over capacity, batch-evict least-recently-accessed entries
         if cache.len() > self.max_capacity {
             let excess = cache.len() - self.max_capacity;
-            let mut entries: Vec<_> = cache.iter().map(|(k, e)| (k.clone(), e.last_accessed)).collect();
+            let mut entries: Vec<_> = cache
+                .iter()
+                .map(|(k, e)| (k.clone(), e.last_accessed))
+                .collect();
             entries.sort_unstable_by_key(|(_, t)| *t);
             for (k, _) in entries.into_iter().take(excess) {
                 cache.remove(&k);

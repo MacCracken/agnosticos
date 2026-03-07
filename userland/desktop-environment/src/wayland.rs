@@ -906,8 +906,7 @@ pub struct TextInputState {
     pub preedit: Option<PreeditState>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ContentType {
     #[default]
     Normal,
@@ -918,7 +917,6 @@ pub enum ContentType {
     Url,
     Terminal,
 }
-
 
 #[derive(Debug, Clone)]
 pub struct PreeditState {
@@ -971,14 +969,12 @@ impl Default for TextInputState {
 }
 
 /// Decoration mode negotiation (xdg_decoration_unstable_v1).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum DecorationMode {
     ClientSide,
     #[default]
     ServerSide,
 }
-
 
 #[derive(Debug, Clone)]
 pub struct DecorationState {
@@ -2957,8 +2953,9 @@ mod tests {
 use uuid::Uuid;
 
 /// Edge anchor for popup positioning.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-#[derive(Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, Default,
+)]
 pub enum Edge {
     #[default]
     None,
@@ -2967,7 +2964,6 @@ pub enum Edge {
     Left,
     Right,
 }
-
 
 /// Bitflags-style constraint adjustment for popup repositioning.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
