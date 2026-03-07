@@ -24,7 +24,9 @@ pub use types::*;
 
 // Re-export handler-specific public types that were public in the original module
 pub use handlers::anomaly::BehaviorSampleRequest;
-pub use handlers::audit::{AuditChainQueryParams, AuditEvent, AuditForwardRequest, AuditQueryParams};
+pub use handlers::audit::{
+    AuditChainQueryParams, AuditEvent, AuditForwardRequest, AuditQueryParams,
+};
 pub use handlers::marketplace::{MarketplaceInstallRequest, MarketplaceSearchQuery};
 pub use handlers::memory::MemorySetRequest;
 pub use handlers::rpc::{RpcCallRequest, RpcRegisterRequest};

@@ -42,8 +42,7 @@ pub(crate) fn translate_knowledge(intent: &Intent) -> Result<Translation> {
             ],
             description: format!("RAG query: {}", query),
             permission: PermissionLevel::Safe,
-            explanation: "Retrieves context-augmented results from the RAG pipeline"
-                .to_string(),
+            explanation: "Retrieves context-augmented results from the RAG pipeline".to_string(),
         }),
 
         _ => unreachable!("translate_knowledge called with non-knowledge intent"),

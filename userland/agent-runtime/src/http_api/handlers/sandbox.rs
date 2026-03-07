@@ -453,7 +453,9 @@ pub async fn default_sandbox_profile_handler() -> impl IntoResponse {
 }
 
 /// POST /v1/sandbox/profiles/validate — validate a SandboxConfig for issues.
-pub async fn validate_sandbox_profile_handler(Json(config): Json<SandboxConfig>) -> impl IntoResponse {
+pub async fn validate_sandbox_profile_handler(
+    Json(config): Json<SandboxConfig>,
+) -> impl IntoResponse {
     let mut errors = Vec::new();
     let mut warnings = Vec::new();
 

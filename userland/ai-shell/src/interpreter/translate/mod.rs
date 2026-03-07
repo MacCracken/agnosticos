@@ -40,9 +40,9 @@ impl Interpreter {
             Intent::NetworkScan { .. } => network::translate_network(intent),
 
             // AGNOS agent/audit/service
-            Intent::AuditView { .. }
-            | Intent::AgentInfo { .. }
-            | Intent::ServiceControl { .. } => agnos::translate_agnos(intent),
+            Intent::AuditView { .. } | Intent::AgentInfo { .. } | Intent::ServiceControl { .. } => {
+                agnos::translate_agnos(intent)
+            }
 
             // System: journal, device, mount, boot, update
             Intent::JournalView { .. }
@@ -52,8 +52,9 @@ impl Interpreter {
             | Intent::SystemUpdate { .. } => system::translate_system(intent),
 
             // Knowledge / RAG
-            Intent::KnowledgeSearch { .. }
-            | Intent::RagQuery { .. } => knowledge::translate_knowledge(intent),
+            Intent::KnowledgeSearch { .. } | Intent::RagQuery { .. } => {
+                knowledge::translate_knowledge(intent)
+            }
 
             // Package management
             Intent::InstallPackage { .. }
@@ -80,8 +81,7 @@ impl Interpreter {
             | Intent::ProductivityStats { .. } => photis::translate_photis(intent),
 
             // Shell / pipeline
-            Intent::ShellCommand { .. }
-            | Intent::Pipeline { .. } => misc::translate_misc(intent),
+            Intent::ShellCommand { .. } | Intent::Pipeline { .. } => misc::translate_misc(intent),
 
             // Error cases
             Intent::Ambiguous { alternatives } => Err(anyhow!(

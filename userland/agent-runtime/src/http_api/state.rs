@@ -5,10 +5,7 @@ use chrono::{DateTime, Utc};
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use agnos_common::{
-    audit::AuditChain,
-    telemetry::SpanCollector,
-};
+use agnos_common::{audit::AuditChain, telemetry::SpanCollector};
 
 use crate::ipc::RpcRegistry;
 use crate::knowledge_base::KnowledgeBase;

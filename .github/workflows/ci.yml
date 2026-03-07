@@ -3,8 +3,10 @@ name: CI
 on:
   push:
     branches: [ main, develop ]
+    tags: [ 'v*' ]
   pull_request:
     branches: [ main, develop ]
+  workflow_call:
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -69,6 +71,7 @@ jobs:
   # Code quality
   quality:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
     - uses: actions/checkout@v4
@@ -89,6 +92,7 @@ jobs:
   # Security scanning
   security:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       actions: read
       contents: read
@@ -164,6 +168,7 @@ jobs:
   # Testing
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
     - uses: actions/checkout@v4
@@ -200,6 +205,7 @@ jobs:
   # Benchmarks (record only, does not block merges)
   benchmarks:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     if: github.event_name == 'push'
 
     steps:
@@ -249,6 +255,7 @@ jobs:
   # Container build
   container:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     if: github.event_name == 'push'
 
     steps:

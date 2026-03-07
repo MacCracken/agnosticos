@@ -43,8 +43,7 @@ pub(crate) fn translate_photis(intent: &Intent) -> Result<Translation> {
             if let Some(p) = priority {
                 args_json.insert("priority".to_string(), serde_json::Value::String(p.clone()));
             }
-            let body =
-                serde_json::json!({"name": "photis_create_task", "arguments": args_json});
+            let body = serde_json::json!({"name": "photis_create_task", "arguments": args_json});
             Ok(Translation {
                 command: "curl".to_string(),
                 args: vec![
@@ -72,8 +71,7 @@ pub(crate) fn translate_photis(intent: &Intent) -> Result<Translation> {
             if let Some(s) = status {
                 args_json.insert("status".to_string(), serde_json::Value::String(s.clone()));
             }
-            let body =
-                serde_json::json!({"name": "photis_update_task", "arguments": args_json});
+            let body = serde_json::json!({"name": "photis_update_task", "arguments": args_json});
             Ok(Translation {
                 command: "curl".to_string(),
                 args: vec![
@@ -97,8 +95,7 @@ pub(crate) fn translate_photis(intent: &Intent) -> Result<Translation> {
             if let Some(d) = date {
                 args_json.insert("date".to_string(), serde_json::Value::String(d.clone()));
             }
-            let body =
-                serde_json::json!({"name": "photis_get_rituals", "arguments": args_json});
+            let body = serde_json::json!({"name": "photis_get_rituals", "arguments": args_json});
             Ok(Translation {
                 command: "curl".to_string(),
                 args: vec![

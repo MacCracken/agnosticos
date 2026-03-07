@@ -9,13 +9,13 @@ mod tests {
     use tower::ServiceExt;
     use uuid::Uuid;
 
+    use crate::http_api::build_router;
     use crate::http_api::handlers::agents::gather_system_health;
     use crate::http_api::handlers::audit::AuditEvent;
     use crate::http_api::handlers::traces::TraceStep;
     use crate::http_api::handlers::webhooks::WebhookRegistration;
     use crate::http_api::state::ApiState;
     use crate::http_api::types::*;
-    use crate::http_api::build_router;
 
     fn test_state() -> ApiState {
         ApiState::new()

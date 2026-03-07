@@ -3,8 +3,8 @@
 //! Translates natural language requests into shell commands
 //! with safety checks and human oversight.
 
-pub mod intent;
 mod explain;
+pub mod intent;
 mod parse;
 pub(crate) mod patterns;
 mod translate;

@@ -57,8 +57,7 @@ pub(crate) fn translate_package(intent: &Intent) -> Result<Translation> {
                 ],
                 description: format!("Remove packages via ark: {}", packages.join(", ")),
                 permission: PermissionLevel::SystemWrite,
-                explanation: "Removes packages using the AGNOS unified package manager"
-                    .to_string(),
+                explanation: "Removes packages using the AGNOS unified package manager".to_string(),
             })
         }
 
