@@ -2,7 +2,7 @@
 # Top-level build orchestration
 
 # Configuration
-VERSION := $(shell cat VERSION 2>/dev/null || echo '2026.3.5')
+VERSION := $(shell cat VERSION 2>/dev/null || echo '2026.3.6')
 KERNEL_VERSION := 6.6.0
 ARCH := $(shell uname -m)
 BUILD_DIR := build

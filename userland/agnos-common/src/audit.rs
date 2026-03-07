@@ -2,6 +2,7 @@
 
 use crate::{AgentId, UserId};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 /// Audit event
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -29,6 +30,7 @@ pub enum AuditEventType {
     ConfigChange,
     SecurityEvent,
     SystemEvent,
+    ExternalAudit,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -104,6 +106,97 @@ impl std::fmt::Display for AuditChainError {
 }
 
 impl std::error::Error for AuditChainError {}
+
+/// Create an [`AuditEntry`] from an event and the previous entry's hash.
+///
+/// Computes a SHA-256 hash over `sequence || timestamp || action || resource || previous_hash`
+/// and returns an `AuditEntry` linked into the chain. The `signature` field is set to
+/// `"unsigned"` (real cryptographic signing is out of scope).
+pub fn create_audit_entry(event: AuditEvent, previous_hash: &str) -> AuditEntry {
+    let mut hasher = Sha256::new();
+    hasher.update(event.sequence.to_le_bytes());
+    hasher.update(event.timestamp.to_rfc3339().as_bytes());
+    hasher.update(event.action.as_bytes());
+    hasher.update(event.resource.as_bytes());
+    hasher.update(previous_hash.as_bytes());
+    let hash_bytes = hasher.finalize();
+    let entry_hash = format!("{:x}", hash_bytes);
+
+    AuditEntry {
+        event,
+        previous_hash: previous_hash.to_string(),
+        entry_hash,
+        signature: "unsigned".to_string(),
+    }
+}
+
+/// In-memory audit chain with cryptographic hash linking.
+///
+/// Each appended event is assigned an auto-incrementing sequence number and
+/// hash-chained to the previous entry via [`create_audit_entry`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuditChain {
+    entries: Vec<AuditEntry>,
+    next_sequence: u64,
+}
+
+impl AuditChain {
+    /// Create an empty audit chain.
+    pub fn new() -> Self {
+        Self {
+            entries: Vec::new(),
+            next_sequence: 0,
+        }
+    }
+
+    /// Append an event to the chain, returning a reference to the new entry.
+    ///
+    /// The event's `sequence` field is overwritten with the chain's internal
+    /// auto-incrementing counter to guarantee monotonicity.
+    pub fn append(&mut self, mut event: AuditEvent) -> &AuditEntry {
+        event.sequence = self.next_sequence;
+        let prev_hash = self
+            .entries
+            .last()
+            .map(|e| e.entry_hash.as_str())
+            .unwrap_or("genesis");
+        let entry = create_audit_entry(event, prev_hash);
+        self.entries.push(entry);
+        self.next_sequence += 1;
+        self.entries.last().unwrap()
+    }
+
+    /// Number of entries in the chain.
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    /// Returns `true` if the chain contains no entries.
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    /// Verify the full chain integrity.
+    pub fn verify(&self) -> std::result::Result<(), AuditChainError> {
+        verify_chain(&self.entries)
+    }
+
+    /// Return a slice over all entries.
+    pub fn entries(&self) -> &[AuditEntry] {
+        &self.entries
+    }
+
+    /// Return the hash of the last entry, or `None` if the chain is empty.
+    pub fn last_hash(&self) -> Option<&str> {
+        self.entries.last().map(|e| e.entry_hash.as_str())
+    }
+}
+
+impl Default for AuditChain {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl Default for AuditConfig {
     fn default() -> Self {
@@ -276,8 +369,9 @@ mod tests {
             AuditEventType::ConfigChange,
             AuditEventType::SecurityEvent,
             AuditEventType::SystemEvent,
+            AuditEventType::ExternalAudit,
         ];
-        // Ensure all 10 variants are distinct
+        // Ensure all 11 variants are distinct
         for (i, a) in types.iter().enumerate() {
             for (j, b) in types.iter().enumerate() {
                 if i == j {
@@ -477,6 +571,7 @@ mod tests {
             AuditEventType::ConfigChange,
             AuditEventType::SecurityEvent,
             AuditEventType::SystemEvent,
+            AuditEventType::ExternalAudit,
         ];
         for et in &types {
             let json = serde_json::to_string(et).unwrap();
@@ -788,6 +883,139 @@ mod tests {
         // Should NOT have more than max_files rotated copies
         let too_many = dir.path().join("audit.log.3");
         assert!(!too_many.exists(), "audit.log.3 should not exist with max_files=2");
+    }
+
+    // --- AuditChain and create_audit_entry tests ---
+
+    #[test]
+    fn test_create_audit_entry_computes_valid_hash() {
+        let event = make_event(0);
+        let entry = create_audit_entry(event, "genesis");
+        assert_eq!(entry.previous_hash, "genesis");
+        assert_eq!(entry.signature, "unsigned");
+        // SHA-256 hex is 64 chars
+        assert_eq!(entry.entry_hash.len(), 64);
+        // Hash should be deterministic
+        let event2 = AuditEvent {
+            sequence: 0,
+            timestamp: entry.event.timestamp,
+            event_type: AuditEventType::SystemEvent,
+            agent_id: None,
+            user_id: entry.event.user_id,
+            action: "test".to_string(),
+            resource: "system".to_string(),
+            result: AuditResult::Success,
+            details: serde_json::json!(null),
+        };
+        let entry2 = create_audit_entry(event2, "genesis");
+        assert_eq!(entry.entry_hash, entry2.entry_hash);
+    }
+
+    #[test]
+    fn test_create_audit_entry_different_previous_hash_changes_output() {
+        let event1 = make_event(0);
+        let ts = event1.timestamp;
+        let uid = event1.user_id;
+        let entry1 = create_audit_entry(event1, "aaa");
+        let event2 = AuditEvent {
+            sequence: 0,
+            timestamp: ts,
+            event_type: AuditEventType::SystemEvent,
+            agent_id: None,
+            user_id: uid,
+            action: "test".to_string(),
+            resource: "system".to_string(),
+            result: AuditResult::Success,
+            details: serde_json::json!(null),
+        };
+        let entry2 = create_audit_entry(event2, "bbb");
+        assert_ne!(entry1.entry_hash, entry2.entry_hash);
+    }
+
+    #[test]
+    fn test_audit_chain_append_increments_sequence() {
+        let mut chain = AuditChain::new();
+        assert_eq!(chain.len(), 0);
+        assert!(chain.is_empty());
+
+        chain.append(make_event(999)); // sequence should be overridden to 0
+        assert_eq!(chain.len(), 1);
+        assert_eq!(chain.entries()[0].event.sequence, 0);
+
+        chain.append(make_event(999));
+        assert_eq!(chain.len(), 2);
+        assert_eq!(chain.entries()[1].event.sequence, 1);
+    }
+
+    #[test]
+    fn test_audit_chain_verify_valid() {
+        let mut chain = AuditChain::new();
+        for _ in 0..5 {
+            chain.append(make_event(0));
+        }
+        assert!(chain.verify().is_ok());
+    }
+
+    #[test]
+    fn test_audit_chain_verify_tampered() {
+        let mut chain = AuditChain::new();
+        for _ in 0..5 {
+            chain.append(make_event(0));
+        }
+        // Tamper with entry 2's previous_hash
+        chain.entries[2].previous_hash = "tampered".to_string();
+        let err = chain.verify().unwrap_err();
+        assert_eq!(err.position, 2);
+    }
+
+    #[test]
+    fn test_audit_chain_last_hash() {
+        let mut chain = AuditChain::new();
+        assert!(chain.last_hash().is_none());
+        chain.append(make_event(0));
+        let h = chain.last_hash().unwrap().to_string();
+        assert_eq!(h.len(), 64);
+        chain.append(make_event(0));
+        assert_ne!(chain.last_hash().unwrap(), h);
+    }
+
+    #[test]
+    fn test_audit_chain_with_external_audit_events() {
+        let mut chain = AuditChain::new();
+        let event = AuditEvent {
+            sequence: 0,
+            timestamp: chrono::Utc::now(),
+            event_type: AuditEventType::ExternalAudit,
+            agent_id: None,
+            user_id: UserId::new(),
+            action: "external.ingest".to_string(),
+            resource: "siem-feed".to_string(),
+            result: AuditResult::Success,
+            details: serde_json::json!({"source": "splunk"}),
+        };
+        chain.append(event);
+        assert_eq!(chain.entries()[0].event.event_type, AuditEventType::ExternalAudit);
+        assert!(chain.verify().is_ok());
+    }
+
+    #[test]
+    fn test_audit_chain_default() {
+        let chain = AuditChain::default();
+        assert!(chain.is_empty());
+        assert_eq!(chain.len(), 0);
+    }
+
+    #[test]
+    fn test_audit_chain_entries_hash_linked() {
+        let mut chain = AuditChain::new();
+        chain.append(make_event(0));
+        chain.append(make_event(0));
+        chain.append(make_event(0));
+        // Each entry's previous_hash must match the prior entry's entry_hash
+        let entries = chain.entries();
+        assert_eq!(entries[0].previous_hash, "genesis");
+        assert_eq!(entries[1].previous_hash, entries[0].entry_hash);
+        assert_eq!(entries[2].previous_hash, entries[1].entry_hash);
     }
 
     #[test]

@@ -536,8 +536,12 @@ fn authenticate_user(username: &str) -> Result<bool> {
         match result {
             Ok(mut child) => {
                 if let Some(ref mut stdin_pipe) = child.stdin {
-                    let _ = stdin_pipe.write_all(password.as_bytes());
-                    let _ = stdin_pipe.write_all(b"\n");
+                    if let Err(e) = stdin_pipe
+                        .write_all(password.as_bytes())
+                        .and_then(|_| stdin_pipe.write_all(b"\n"))
+                    {
+                        eprintln!("Warning: failed to write credentials to su: {}", e);
+                    }
                 }
                 match child.wait() {
                     Ok(status) if status.success() => return Ok(true),

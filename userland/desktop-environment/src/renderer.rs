@@ -230,10 +230,13 @@ impl Framebuffer {
         // SAFETY: Pixel is u32 (4 bytes, no padding). Vec<u32> is a contiguous
         // array, so reinterpreting as &[u8] of len * 4 bytes is valid.
         // The resulting slice borrows self, preventing drop or reallocation.
+        // The checked_mul guards against theoretical overflow on 32-bit platforms.
+        let byte_len = self.pixels.len().checked_mul(4)
+            .expect("framebuffer byte length overflow");
         unsafe {
             std::slice::from_raw_parts(
                 self.pixels.as_ptr() as *const u8,
-                self.pixels.len() * 4,
+                byte_len,
             )
         }
     }

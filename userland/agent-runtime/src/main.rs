@@ -27,6 +27,7 @@ pub mod seccomp_profiles;
 pub mod service_manager;
 pub mod supervisor;
 pub mod wasm_runtime;
+pub mod mcp_server;
 
 use crate::agent::Agent;
 use crate::orchestrator::Orchestrator;

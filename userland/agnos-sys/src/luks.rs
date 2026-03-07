@@ -8,6 +8,7 @@
 use crate::error::{Result, SysError};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+use zeroize::Zeroize;
 
 /// Configuration for a LUKS encrypted volume.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -272,12 +273,7 @@ impl LuksKey {
 
 impl Drop for LuksKey {
     fn drop(&mut self) {
-        // Zero out key material before deallocation
-        for byte in &mut self.data {
-            unsafe {
-                std::ptr::write_volatile(byte, 0);
-            }
-        }
+        self.data.zeroize();
     }
 }
 

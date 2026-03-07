@@ -32,6 +32,7 @@ futures = { workspace = true }
 axum = { workspace = true }
 tower = { workspace = true }
 tower-http = { workspace = true }
+url = "2"
 
 [lib]
 name = "llm_gateway"

@@ -4,6 +4,7 @@
 //! with safety checks and human oversight.
 
 use anyhow::{anyhow, Result};
+use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::HashMap;
 
@@ -153,185 +154,52 @@ pub struct Translation {
     pub explanation: String,
 }
 
+/// Compiled regex patterns, shared across all Interpreter instances.
+static PATTERNS: Lazy<HashMap<String, Regex>> = Lazy::new(|| {
+    let mut p = HashMap::new();
+    let mut r = |name: &str, pat: &str| {
+        p.insert(name.to_string(), Regex::new(pat).unwrap());
+    };
+    r("list", r"(?i)^(show|list|display|what|see)?\s*(me\s+)?(all\s+)?(files|directories|dirs|folders|contents?)?\s*(in\s+)?(.+)?$");
+    r("show_file", r"(?i)^(show|display|view|read|cat|open|print)\s+(me\s+)?(the\s+)?(content|file|contents)?\s*(of\s+)?(.+)$");
+    r("find", r"(?i)^(find|locate|search\s+for|look\s+for)\s+(files?\s+(named|called)?\s+)?(.+)(\s+in\s+(.+))?$");
+    r("grep", r"(?i)^(search|grep|find)\s+(for\s+)?(.+?)\s+(in|within|inside)\s+(.+)$");
+    r("cd", r"(?i)^(go\s+to|change\s+(to\s+)?|cd\s+(to\s+)?|switch\s+to)\s*(directory\s+)?(.+)$");
+    r("mkdir", r"(?i)^(create|make|new)\s+(a\s+)?(new\s+)?(directory|folder)\s+(named|called)?\s*(.+)$");
+    r("copy", r"(?i)^(copy|duplicate)\s+(.+?)\s+(to|into)\s+(.+)$");
+    r("move", r"(?i)^(move|rename)\s+(.+?)\s+(to|into|as)\s+(.+)$");
+    r("remove", r"(?i)^(remove|delete|rm)\s+(the\s+)?(file|directory|folder)?\s*(.+)$");
+    r("ps", r"(?i)^(show|list|display|what|view)\s+(me\s+)?(all\s+)?(running\s+)?(processes|tasks|programs|apps)$");
+    r("sysinfo", r"(?i)^(show|display|what|get|view)\s+(me\s+)?(system|computer|machine)\s*(info|information|status|stats)?$");
+    r("du", r"(?i)^(how\s+much\s+)?(disk\s+)?(space|usage|size)\s+(is\s+)?(used\s+)?(by\s+)?(in\s+)?(.+)?$");
+    r("install", r"(?i)^(install|add|get)\s+(package|program|software|app)?\s*(.+)$");
+    r("audit", r"(?i)^(show|view|display|check)\s+(the\s+)?(audit|security)\s*(log|trail|history|entries)?(\s+for\s+(agent\s+)?(.+?))?(\s+(in|from)\s+(the\s+)?(last\s+)?(.+))?$");
+    r("agent_info", r"(?i)^(show|list|view|display|what)\s+(me\s+)?(all\s+)?(running\s+)?(agents?|ai\s+agents?)\s*(status|info)?(\s+(.+))?$");
+    r("service", r"(?i)^(list|show|start|stop|restart|status)\s+(the\s+)?(services?|daemons?)\s*(.+)?$");
+    r("network_scan", r"(?i)^(scan\s+ports?\s+(?:on|for)\s+(.+)|ping\s+sweep\s+(.+)|lookup\s+dns\s+(?:for\s+)?(.+)|trace\s+route\s+to\s+(.+)|capture\s+packets?\s+(?:on|from)\s+(.+)|scan\s+web\s+servers?\s+(.+))$");
+    r("network_extended", r"(?i)^(mass\s+scan\s+(.+)|arp\s+scan\s*(.+)?|network\s+diag(?:nostics?)?\s+(?:for\s+)?(.+)|detect\s+services?\s+(?:on\s+)?(.+)|fuzz\s+dir(?:ectories|s)?\s+(?:on\s+)?(.+)|vuln(?:erability)?\s+scan\s+(.+)|show\s+(?:open\s+)?sockets?|list\s+(?:network\s+)?connections?|enumerate\s+dns\s+(?:for\s+)?(.+)|deep\s+inspect\s+(?:traffic\s+)?(?:on\s+)?(.+)|monitor\s+bandwidth)$");
+    r("journal", r"(?i)^(show|view|display|check)\s+(the\s+)?(journal|journald?|systemd)\s*(logs?|entries|messages)?(\s+for\s+(.+?))?(\s+since\s+(.+))?$");
+    r("journal_alt", r"(?i)^(show|view|display)\s+(the\s+)?(last\s+(\d+)\s+)?(error|warning|critical|info|debug|notice|alert|emerg)?\s*(logs?|log\s+entries)(\s+for\s+(.+?))?(\s+since\s+(.+))?$");
+    r("device_info", r"(?i)^(list|show|view|display)\s+(the\s+)?(all\s+)?(usb|block|net|pci|input|scsi)?\s*(devices?|hardware)(\s+(info|information|details))?(\s+for\s+(.+))?$");
+    r("device_path", r"(?i)^(device|udev)\s+(info|information|details)\s+(for|on|about)\s+(.+)$");
+    r("mount", r"(?i)^(list|show|display)\s+(the\s+)?(all\s+)?(fuse\s+)?(mounts?|mounted\s+filesystems?|filesystems?)$");
+    r("unmount", r"(?i)^(unmount|umount|eject|fusermount\s+-u)\s+(.+)$");
+    r("mount_action", r"(?i)^mount\s+(.+?)\s+(on|at|to)\s+(.+)$");
+    r("boot", r"(?i)^(list|show|view|display)\s+(the\s+)?(boot\s+(entries|config|configuration|menu)|bootloader)$");
+    r("boot_set", r"(?i)^set\s+(default\s+)?boot\s+(entry|default|timeout)\s+(to\s+)?(.+)$");
+    r("update", r"(?i)^(check\s+for\s+updates?|apply\s+(system\s+)?updates?|rollback\s+(system\s+)?updates?|update\s+status|show\s+(current\s+)?version|system\s+update\s+(check|apply|rollback|status))$");
+    r("question", r"(?i)^(what|who|when|where|why|how|is|are|can|do|does)\s+.+\??$");
+    p
+});
+
 /// Natural language interpreter
 pub struct Interpreter {
-    patterns: HashMap<String, Regex>,
+    patterns: &'static HashMap<String, Regex>,
 }
 
 impl Interpreter {
     pub fn new() -> Self {
-        let mut patterns = HashMap::new();
-
-        // List files patterns
-        patterns.insert("list".to_string(), Regex::new(
-            r"(?i)^(show|list|display|what|see)?\s*(me\s+)?(all\s+)?(files|directories|dirs|folders|contents?)?\s*(in\s+)?(.+)?$"
-        ).unwrap());
-
-        // Show file patterns
-        patterns.insert("show_file".to_string(), Regex::new(
-            r"(?i)^(show|display|view|read|cat|open|print)\s+(me\s+)?(the\s+)?(content|file|contents)?\s*(of\s+)?(.+)$"
-        ).unwrap());
-
-        // Find files patterns
-        patterns.insert("find".to_string(), Regex::new(
-            r"(?i)^(find|locate|search\s+for|look\s+for)\s+(files?\s+(named|called)?\s+)?(.+)(\s+in\s+(.+))?$"
-        ).unwrap());
-
-        // Search content patterns
-        patterns.insert(
-            "grep".to_string(),
-            Regex::new(r"(?i)^(search|grep|find)\s+(for\s+)?(.+?)\s+(in|within|inside)\s+(.+)$")
-                .unwrap(),
-        );
-
-        // Change directory patterns
-        patterns.insert("cd".to_string(), Regex::new(
-            r"(?i)^(go\s+to|change\s+(to\s+)?|cd\s+(to\s+)?|switch\s+to)\s*(directory\s+)?(.+)$"
-        ).unwrap());
-
-        // Create directory patterns
-        patterns.insert("mkdir".to_string(), Regex::new(
-            r"(?i)^(create|make|new)\s+(a\s+)?(new\s+)?(directory|folder)\s+(named|called)?\s*(.+)$"
-        ).unwrap());
-
-        // Copy patterns
-        patterns.insert(
-            "copy".to_string(),
-            Regex::new(r"(?i)^(copy|duplicate)\s+(.+?)\s+(to|into)\s+(.+)$").unwrap(),
-        );
-
-        // Move patterns
-        patterns.insert(
-            "move".to_string(),
-            Regex::new(r"(?i)^(move|rename)\s+(.+?)\s+(to|into|as)\s+(.+)$").unwrap(),
-        );
-
-        // Remove patterns
-        patterns.insert(
-            "remove".to_string(),
-            Regex::new(r"(?i)^(remove|delete|rm)\s+(the\s+)?(file|directory|folder)?\s*(.+)$")
-                .unwrap(),
-        );
-
-        // Process patterns
-        patterns.insert("ps".to_string(), Regex::new(
-            r"(?i)^(show|list|display|what|view)\s+(me\s+)?(all\s+)?(running\s+)?(processes|tasks|programs|apps)$"
-        ).unwrap());
-
-        // System info patterns
-        patterns.insert("sysinfo".to_string(), Regex::new(
-            r"(?i)^(show|display|what|get|view)\s+(me\s+)?(system|computer|machine)\s*(info|information|status|stats)?$"
-        ).unwrap());
-
-        // Disk usage patterns
-        patterns.insert("du".to_string(), Regex::new(
-            r"(?i)^(how\s+much\s+)?(disk\s+)?(space|usage|size)\s+(is\s+)?(used\s+)?(by\s+)?(in\s+)?(.+)?$"
-        ).unwrap());
-
-        // Install package patterns
-        patterns.insert(
-            "install".to_string(),
-            Regex::new(r"(?i)^(install|add|get)\s+(package|program|software|app)?\s*(.+)$")
-                .unwrap(),
-        );
-
-        // Audit patterns
-        patterns.insert(
-            "audit".to_string(),
-            Regex::new(r"(?i)^(show|view|display|check)\s+(the\s+)?(audit|security)\s*(log|trail|history|entries)?(\s+for\s+(agent\s+)?(.+?))?(\s+(in|from)\s+(the\s+)?(last\s+)?(.+))?$").unwrap(),
-        );
-
-        // Agent info patterns
-        patterns.insert(
-            "agent_info".to_string(),
-            Regex::new(r"(?i)^(show|list|view|display|what)\s+(me\s+)?(all\s+)?(running\s+)?(agents?|ai\s+agents?)\s*(status|info)?(\s+(.+))?$").unwrap(),
-        );
-
-        // Service control patterns
-        patterns.insert(
-            "service".to_string(),
-            Regex::new(r"(?i)^(list|show|start|stop|restart|status)\s+(the\s+)?(services?|daemons?)\s*(.+)?$").unwrap(),
-        );
-
-        // Network scan patterns
-        patterns.insert(
-            "network_scan".to_string(),
-            Regex::new(r"(?i)^(scan\s+ports?\s+(?:on|for)\s+(.+)|ping\s+sweep\s+(.+)|lookup\s+dns\s+(?:for\s+)?(.+)|trace\s+route\s+to\s+(.+)|capture\s+packets?\s+(?:on|from)\s+(.+)|scan\s+web\s+servers?\s+(.+))$").unwrap(),
-        );
-
-        // Extended network tool patterns
-        patterns.insert(
-            "network_extended".to_string(),
-            Regex::new(r"(?i)^(mass\s+scan\s+(.+)|arp\s+scan\s*(.+)?|network\s+diag(?:nostics?)?\s+(?:for\s+)?(.+)|detect\s+services?\s+(?:on\s+)?(.+)|fuzz\s+dir(?:ectories|s)?\s+(?:on\s+)?(.+)|vuln(?:erability)?\s+scan\s+(.+)|show\s+(?:open\s+)?sockets?|list\s+(?:network\s+)?connections?|enumerate\s+dns\s+(?:for\s+)?(.+)|deep\s+inspect\s+(?:traffic\s+)?(?:on\s+)?(.+)|monitor\s+bandwidth)$").unwrap(),
-        );
-
-        // Journal view patterns
-        patterns.insert(
-            "journal".to_string(),
-            Regex::new(r"(?i)^(show|view|display|check)\s+(the\s+)?(journal|journald?|systemd)\s*(logs?|entries|messages)?(\s+for\s+(.+?))?(\s+since\s+(.+))?$").unwrap(),
-        );
-
-        // Journal view — "show logs for <unit>" / "show error logs" / "show last N log entries"
-        patterns.insert(
-            "journal_alt".to_string(),
-            Regex::new(r"(?i)^(show|view|display)\s+(the\s+)?(last\s+(\d+)\s+)?(error|warning|critical|info|debug|notice|alert|emerg)?\s*(logs?|log\s+entries)(\s+for\s+(.+?))?(\s+since\s+(.+))?$").unwrap(),
-        );
-
-        // Device info patterns
-        patterns.insert(
-            "device_info".to_string(),
-            Regex::new(r"(?i)^(list|show|view|display)\s+(the\s+)?(all\s+)?(usb|block|net|pci|input|scsi)?\s*(devices?|hardware)(\s+(info|information|details))?(\s+for\s+(.+))?$").unwrap(),
-        );
-
-        // Device info — specific device path
-        patterns.insert(
-            "device_path".to_string(),
-            Regex::new(r"(?i)^(device|udev)\s+(info|information|details)\s+(for|on|about)\s+(.+)$").unwrap(),
-        );
-
-        // Mount control patterns
-        patterns.insert(
-            "mount".to_string(),
-            Regex::new(r"(?i)^(list|show|display)\s+(the\s+)?(all\s+)?(fuse\s+)?(mounts?|mounted\s+filesystems?|filesystems?)$").unwrap(),
-        );
-
-        // Mount control — unmount
-        patterns.insert(
-            "unmount".to_string(),
-            Regex::new(r"(?i)^(unmount|umount|eject|fusermount\s+-u)\s+(.+)$").unwrap(),
-        );
-
-        // Mount control — mount
-        patterns.insert(
-            "mount_action".to_string(),
-            Regex::new(r"(?i)^mount\s+(.+?)\s+(on|at|to)\s+(.+)$").unwrap(),
-        );
-
-        // Boot config patterns
-        patterns.insert(
-            "boot".to_string(),
-            Regex::new(r"(?i)^(list|show|view|display)\s+(the\s+)?(boot\s+(entries|config|configuration|menu)|bootloader)$").unwrap(),
-        );
-
-        // Boot config — set default/timeout
-        patterns.insert(
-            "boot_set".to_string(),
-            Regex::new(r"(?i)^set\s+(default\s+)?boot\s+(entry|default|timeout)\s+(to\s+)?(.+)$").unwrap(),
-        );
-
-        // System update patterns
-        patterns.insert(
-            "update".to_string(),
-            Regex::new(r"(?i)^(check\s+for\s+updates?|apply\s+(system\s+)?updates?|rollback\s+(system\s+)?updates?|update\s+status|show\s+(current\s+)?version|system\s+update\s+(check|apply|rollback|status))$").unwrap(),
-        );
-
-        // Question patterns
-        patterns.insert(
-            "question".to_string(),
-            Regex::new(r"(?i)^(what|who|when|where|why|how|is|are|can|do|does)\s+.+\??$").unwrap(),
-        );
-
-        Self { patterns }
+        Self { patterns: &PATTERNS }
     }
 
     /// Try to capture against a named pattern. Returns None if the pattern

@@ -5,7 +5,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VERSION="$(cat "${SCRIPT_DIR}/../../VERSION" 2>/dev/null || echo '2026.3.5')"
+VERSION="$(cat "${SCRIPT_DIR}/../../VERSION" 2>/dev/null || echo '2026.3.6')"
 AGNOS_ROOT="/var/lib/agnos"
 PKG_ROOT="$AGNOS_ROOT/packages"
 CACHE_DIR="$AGNOS_ROOT/cache"

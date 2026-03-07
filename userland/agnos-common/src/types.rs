@@ -31,7 +31,7 @@ impl Default for Version {
         Self {
             major: 2026,
             minor: 3,
-            patch: 5,
+            patch: 6,
             prerelease: None,
             build: None,
         }
@@ -115,7 +115,7 @@ mod tests {
         let version = Version::default();
         assert_eq!(version.major, 2026);
         assert_eq!(version.minor, 3);
-        assert_eq!(version.patch, 5);
+        assert_eq!(version.patch, 6);
         assert!(version.prerelease.is_none());
         assert!(version.build.is_none());
     }

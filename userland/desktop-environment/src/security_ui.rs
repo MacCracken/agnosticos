@@ -455,7 +455,13 @@ impl SecurityUI {
         if let Some(pid) = pid {
             #[cfg(unix)]
             {
-                let result = unsafe { libc::kill(pid as i32, libc::SIGKILL) };
+                let Some(safe_pid) = i32::try_from(pid).ok().filter(|&p| p > 0) else {
+                    warn!("Invalid PID {} for agent {}, skipping SIGKILL", pid, agent_id);
+                    return Err(SecurityUIError::ActionBlocked(
+                        format!("Invalid PID: {}", pid),
+                    ));
+                };
+                let result = unsafe { libc::kill(safe_pid, libc::SIGKILL) };
                 if result == 0 {
                     info!("SIGKILL sent to PID {} (agent {})", pid, agent_id);
                 } else {
@@ -570,9 +576,11 @@ impl SecurityUI {
             if let Some(pid) = pid {
                 #[cfg(unix)]
                 {
-                    let result = unsafe { libc::kill(pid as i32, libc::SIGHUP) };
-                    if result == 0 {
-                        debug!("SIGHUP sent to PID {} to reload config", pid);
+                    if let Ok(safe_pid) = i32::try_from(pid) {
+                        let result = unsafe { libc::kill(safe_pid, libc::SIGHUP) };
+                        if result == 0 {
+                            debug!("SIGHUP sent to PID {} to reload config", pid);
+                        }
                     }
                 }
             }

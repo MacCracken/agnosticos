@@ -48,4 +48,7 @@ What other options were considered and why were they rejected?
 | 012 | Desktop Accessibility & Interaction Foundations | Accepted | 2026-03-06 |
 | 013 | Zero-Trust Security Hardening | Accepted | 2026-03-06 |
 | 014 | Cross-Project Integration Architecture | Accepted | 2026-03-06 |
+| 015 | Agent Marketplace Architecture | Proposed | 2026-03-06 |
+| 016 | Multi-Node Agent Federation | Proposed | 2026-03-06 |
+| 017 | Desktop Plugin Architecture | Proposed | 2026-03-06 |
 

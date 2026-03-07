@@ -172,7 +172,9 @@ pub fn analyze_command_permission(command: &str, args: &[String]) -> PermissionL
     if blocked.contains(&cmd.as_str()) {
         // But allow safe variations
         if cmd == "rm" && !args.iter().any(|a| a.starts_with('-')) {
-            return PermissionLevel::UserWrite;
+            // Even single-file rm requires approval — AI shell should not
+            // silently delete files without user consent.
+            return PermissionLevel::Admin;
         }
         return PermissionLevel::Blocked;
     }
@@ -347,7 +349,8 @@ mod tests {
 
     #[test]
     fn test_analyze_command_rm_without_args() {
-        assert_eq!(analyze_command_permission("rm", &["file.txt".to_string()]), PermissionLevel::UserWrite);
+        // rm always requires approval, even without flags
+        assert_eq!(analyze_command_permission("rm", &["file.txt".to_string()]), PermissionLevel::Admin);
     }
 
     #[test]
@@ -685,10 +688,10 @@ mod tests {
 
     #[test]
     fn test_analyze_command_rm_single_file_no_dash() {
-        // rm without dash args is UserWrite (safe variation)
+        // rm always requires approval — AI should not silently delete files
         assert_eq!(
             analyze_command_permission("rm", &["myfile.txt".to_string()]),
-            PermissionLevel::UserWrite
+            PermissionLevel::Admin
         );
     }
 
@@ -711,10 +714,10 @@ mod tests {
 
     #[test]
     fn test_analyze_command_rm_no_args() {
-        // rm with no args at all — no args start with dash, so UserWrite
+        // rm with no args — still requires approval
         assert_eq!(
             analyze_command_permission("rm", &[]),
-            PermissionLevel::UserWrite
+            PermissionLevel::Admin
         );
     }
 

@@ -399,7 +399,7 @@ impl AcceleratorRegistry {
     /// Returns the highest-capability available device.
     ///
     /// Priority: CUDA GPU > ROCm GPU > Metal GPU > Apple NPU > Intel NPU > CPU.
-    pub fn best_available(&self) -> &AcceleratorProfile {
+    pub fn best_available(&self) -> Option<&AcceleratorProfile> {
         self.profiles
             .iter()
             .filter(|p| p.available)
@@ -416,8 +416,6 @@ impl AcceleratorRegistry {
                 };
                 rank(a).cmp(&rank(b))
             })
-            // Safe: we always have at least a CPU profile.
-            .expect("registry must contain at least one profile")
     }
 
     /// Total memory across all **available** devices.
@@ -454,7 +452,17 @@ impl AcceleratorRegistry {
         quant: &QuantizationLevel,
     ) -> ShardingPlan {
         let needed = Self::estimate_memory(model_params, quant);
-        let best = self.best_available();
+        let best = match self.best_available() {
+            Some(b) => b,
+            None => {
+                return ShardingPlan {
+                    shards: vec![],
+                    strategy: ShardingStrategy::DataParallel { num_replicas: 0 },
+                    total_memory_bytes: 0,
+                    estimated_tokens_per_sec: None,
+                };
+            }
+        };
 
         // Case 1: fits on a single best device.
         if needed <= best.memory_bytes {
@@ -484,7 +492,9 @@ impl AcceleratorRegistry {
         if !gpu_devices.is_empty() && gpu_memory >= needed {
             let num_stages = gpu_devices.len() as u32;
             let per_shard = needed / num_stages as u64;
-            let layers_per_shard = 1; // placeholder layer granularity
+            // Estimate layers from model params (rough: 1 layer per ~250M params)
+            let estimated_layers = (model_params / 250_000_000).max(1) as u32;
+            let layers_per_shard = (estimated_layers / num_stages).max(1);
             let shards: Vec<ModelShard> = gpu_devices
                 .iter()
                 .enumerate()
@@ -516,12 +526,12 @@ impl AcceleratorRegistry {
         }
 
         // Case 3: fall back to CPU.
-        let cpu = self
+        let tps = self
             .profiles
             .iter()
             .find(|p| matches!(p.accelerator, AcceleratorType::Cpu))
-            .expect("registry must contain CPU");
-        let tps = estimate_tokens_per_sec(&cpu.accelerator, model_params, quant);
+            .map(|cpu| estimate_tokens_per_sec(&cpu.accelerator, model_params, quant))
+            .unwrap_or(0.0);
 
         ShardingPlan {
             shards: vec![ModelShard {
@@ -794,7 +804,7 @@ mod tests {
     #[test]
     fn test_registry_best_available_cpu_only() {
         let reg = AcceleratorRegistry::new();
-        let best = reg.best_available();
+        let best = reg.best_available().unwrap();
         assert_eq!(best.accelerator, AcceleratorType::Cpu);
     }
 
@@ -808,7 +818,7 @@ mod tests {
             compute_capability: Some("8.6".into()),
             driver_version: None,
         });
-        let best = reg.best_available();
+        let best = reg.best_available().unwrap();
         assert!(matches!(best.accelerator, AcceleratorType::CudaGpu { .. }));
     }
 
@@ -822,7 +832,7 @@ mod tests {
             compute_capability: None,
             driver_version: None,
         });
-        let best = reg.best_available();
+        let best = reg.best_available().unwrap();
         assert_eq!(best.accelerator, AcceleratorType::Cpu);
     }
 

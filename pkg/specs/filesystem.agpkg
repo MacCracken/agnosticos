@@ -1,7 +1,7 @@
 {
   "format_version": "1.0.0",
   "name": "filesystem",
-  "version": "2026.3.5",
+  "version": "2026.3.6",
   "release": "1",
   "description": "AGNOS filesystem hierarchy and base directories",
   "architecture": "any",

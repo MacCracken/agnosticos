@@ -80,14 +80,14 @@ impl LlmProvider for OllamaProvider {
 
         Ok(InferenceResponse {
             text: result["response"].as_str().unwrap_or("").to_string(),
-            tokens_generated: result["eval_count"].as_u64().unwrap_or(0) as u32,
+            tokens_generated: result["eval_count"].as_u64().unwrap_or(0).min(u32::MAX as u64) as u32,
             finish_reason: agnos_common::FinishReason::Stop,
             model: request.model.clone(),
             usage: agnos_common::TokenUsage {
-                prompt_tokens: result["prompt_eval_count"].as_u64().unwrap_or(0) as u32,
-                completion_tokens: result["eval_count"].as_u64().unwrap_or(0) as u32,
-                total_tokens: result["eval_count"].as_u64().unwrap_or(0) as u32
-                    + result["prompt_eval_count"].as_u64().unwrap_or(0) as u32,
+                prompt_tokens: result["prompt_eval_count"].as_u64().unwrap_or(0).min(u32::MAX as u64) as u32,
+                completion_tokens: result["eval_count"].as_u64().unwrap_or(0).min(u32::MAX as u64) as u32,
+                total_tokens: result["eval_count"].as_u64().unwrap_or(0).min(u32::MAX as u64) as u32
+                    + result["prompt_eval_count"].as_u64().unwrap_or(0).min(u32::MAX as u64) as u32,
             },
         })
     }
@@ -237,14 +237,14 @@ impl LlmProvider for LlamaCppProvider {
 
         Ok(InferenceResponse {
             text: result["content"].as_str().unwrap_or("").to_string(),
-            tokens_generated: result["tokens_predicted"].as_u64().unwrap_or(0) as u32,
+            tokens_generated: result["tokens_predicted"].as_u64().unwrap_or(0).min(u32::MAX as u64) as u32,
             finish_reason: agnos_common::FinishReason::Stop,
             model: request.model.clone(),
             usage: agnos_common::TokenUsage {
-                prompt_tokens: result["tokens_evaluated"].as_u64().unwrap_or(0) as u32,
-                completion_tokens: result["tokens_predicted"].as_u64().unwrap_or(0) as u32,
-                total_tokens: result["tokens_evaluated"].as_u64().unwrap_or(0) as u32
-                    + result["tokens_predicted"].as_u64().unwrap_or(0) as u32,
+                prompt_tokens: result["tokens_evaluated"].as_u64().unwrap_or(0).min(u32::MAX as u64) as u32,
+                completion_tokens: result["tokens_predicted"].as_u64().unwrap_or(0).min(u32::MAX as u64) as u32,
+                total_tokens: result["tokens_evaluated"].as_u64().unwrap_or(0).min(u32::MAX as u64) as u32
+                    + result["tokens_predicted"].as_u64().unwrap_or(0).min(u32::MAX as u64) as u32,
             },
         })
     }
@@ -392,13 +392,13 @@ impl LlmProvider for OpenAiProvider {
 
         Ok(InferenceResponse {
             text: message_text,
-            tokens_generated: usage["completion_tokens"].as_u64().unwrap_or(0) as u32,
+            tokens_generated: usage["completion_tokens"].as_u64().unwrap_or(0).min(u32::MAX as u64) as u32,
             finish_reason: finish,
             model: result["model"].as_str().unwrap_or(&request.model).to_string(),
             usage: agnos_common::TokenUsage {
-                prompt_tokens: usage["prompt_tokens"].as_u64().unwrap_or(0) as u32,
-                completion_tokens: usage["completion_tokens"].as_u64().unwrap_or(0) as u32,
-                total_tokens: usage["total_tokens"].as_u64().unwrap_or(0) as u32,
+                prompt_tokens: usage["prompt_tokens"].as_u64().unwrap_or(0).min(u32::MAX as u64) as u32,
+                completion_tokens: usage["completion_tokens"].as_u64().unwrap_or(0).min(u32::MAX as u64) as u32,
+                total_tokens: usage["total_tokens"].as_u64().unwrap_or(0).min(u32::MAX as u64) as u32,
             },
         })
     }
@@ -563,8 +563,8 @@ impl LlmProvider for AnthropicProvider {
             _ => agnos_common::FinishReason::Stop,
         };
 
-        let input_tokens = result["usage"]["input_tokens"].as_u64().unwrap_or(0) as u32;
-        let output_tokens = result["usage"]["output_tokens"].as_u64().unwrap_or(0) as u32;
+        let input_tokens = result["usage"]["input_tokens"].as_u64().unwrap_or(0).min(u32::MAX as u64) as u32;
+        let output_tokens = result["usage"]["output_tokens"].as_u64().unwrap_or(0).min(u32::MAX as u64) as u32;
 
         Ok(InferenceResponse {
             text,

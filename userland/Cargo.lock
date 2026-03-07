@@ -48,7 +48,7 @@ dependencies = [
 
 [[package]]
 name = "agent_runtime"
-version = "2026.3.5"
+version = "2026.3.6"
 dependencies = [
  "agnos-common",
  "agnos-sys",
@@ -82,7 +82,7 @@ dependencies = [
 
 [[package]]
 name = "agnos-common"
-version = "2026.3.5"
+version = "2026.3.6"
 dependencies = [
  "aes-gcm",
  "async-trait",
@@ -95,6 +95,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "sha2",
  "subtle",
  "tempfile",
  "thiserror 1.0.69",
@@ -102,11 +103,12 @@ dependencies = [
  "tokio-test",
  "tracing",
  "uuid",
+ "zeroize",
 ]
 
 [[package]]
 name = "agnos-examples"
-version = "2026.3.5"
+version = "2026.3.6"
 dependencies = [
  "agnos-common",
  "agnos-sys",
@@ -120,7 +122,7 @@ dependencies = [
 
 [[package]]
 name = "agnos-sudo"
-version = "2026.3.5"
+version = "2026.3.6"
 dependencies = [
  "agnos-common",
  "agnos-sys",
@@ -134,7 +136,7 @@ dependencies = [
 
 [[package]]
 name = "agnos-sys"
-version = "2026.3.5"
+version = "2026.3.6"
 dependencies = [
  "agnos-common",
  "anyhow",
@@ -154,6 +156,7 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
+ "zeroize",
 ]
 
 [[package]]
@@ -179,7 +182,7 @@ dependencies = [
 
 [[package]]
 name = "ai_shell"
-version = "2026.3.5"
+version = "2026.3.6"
 dependencies = [
  "agnos-common",
  "agnos-sys",
@@ -196,6 +199,7 @@ dependencies = [
  "hostname",
  "indicatif",
  "nix 0.31.2",
+ "once_cell",
  "ratatui",
  "regex",
  "reqwest",
@@ -1014,7 +1018,7 @@ dependencies = [
 
 [[package]]
 name = "desktop_environment"
-version = "2026.3.5"
+version = "2026.3.6"
 dependencies = [
  "agnos-common",
  "agnos-sys",
@@ -2081,7 +2085,7 @@ checksum = "6373607a59f0be73a39b6fe456b8192fcc3585f602af20751600e974dd455e77"
 
 [[package]]
 name = "llm_gateway"
-version = "2026.3.5"
+version = "2026.3.6"
 dependencies = [
  "agnos-common",
  "agnos-sys",
@@ -2102,6 +2106,7 @@ dependencies = [
  "tower-http",
  "tracing",
  "tracing-subscriber",
+ "url",
  "uuid",
 ]
 
@@ -4919,6 +4924,20 @@ name = "zeroize"
 version = "1.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b97154e67e32c85465826e8bcc1c59429aaaf107c1e4a9e53c8d8ccd5eff88d0"
+dependencies = [
+ "zeroize_derive",
+]
+
+[[package]]
+name = "zeroize_derive"
+version = "1.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "85a5b4158499876c763cb03bc4e49185d3cccbabb15b33c627f7884f43db852e"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
 
 [[package]]
 name = "zerotrie"

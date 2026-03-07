@@ -1689,7 +1689,8 @@ impl VulnAssessor {
         args
     }
 
-    /// Run vulnerability scan and return raw summary (structured parsing TODO).
+    /// Run vulnerability scan and return raw output summary.
+    /// Structured parsing of nuclei/nikto results is deferred to beta.
     pub async fn scan(&self, target: &str) -> Result<ToolOutput> {
         let tool = if self.use_nikto {
             NetworkTool::WebScan

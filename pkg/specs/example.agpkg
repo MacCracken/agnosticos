@@ -1,7 +1,7 @@
 {
   "format_version": "1.0.0",
   "name": "agnos-base",
-  "version": "2026.3.5",
+  "version": "2026.3.6",
   "release": "1",
   "epoch": "0",
   "description": "AGNOS base system files and configuration",
@@ -37,7 +37,7 @@
   "source": {
     "type": "git",
     "url": "https://github.com/agnos/base.git",
-    "tag": "v2026.3.5",
+    "tag": "v2026.3.6",
     "commit": "abc123def456",
     "dir": "base"
   },
@@ -118,8 +118,8 @@
       "spdxVersion": "SPDX-2.3",
       "dataLicense": "CC0-1.0",
       "SPDXID": "SPDXRef-DOCUMENT",
-      "name": "agnos-base-2026.3.5",
-      "documentNamespace": "https://agnos.org/sbom/agnos-base-2026.3.5",
+      "name": "agnos-base-2026.3.6",
+      "documentNamespace": "https://agnos.org/sbom/agnos-base-2026.3.6",
       "packages": []
     }
   }

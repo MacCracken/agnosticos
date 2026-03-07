@@ -1548,7 +1548,10 @@ mod wayland_live {
         ) {
             match request {
                 xdg_wm_base::Request::GetXdgSurface { id, surface } => {
-                    let sdata: &SurfaceData = surface.data().expect("surface missing data");
+                    let Some(sdata): Option<&SurfaceData> = surface.data() else {
+                        tracing::error!("GetXdgSurface: surface missing data, rejecting");
+                        return;
+                    };
                     data_init.init(
                         id,
                         XdgSurfaceData {

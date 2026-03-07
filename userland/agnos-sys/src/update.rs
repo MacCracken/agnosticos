@@ -473,7 +473,7 @@ pub fn check_for_update(
     } else {
         let url = format!("{}/versions.json", config.update_url);
         let output = std::process::Command::new("curl")
-            .args(["-fsSL", &url])
+            .args(["-fsSL", "--proto", "=https", "--max-redirs", "3", &url])
             .output()
             .map_err(|e| SysError::Unknown(format!("curl failed: {e}")))?;
         if !output.status.success() {
@@ -523,6 +523,18 @@ pub fn apply_update(config: &UpdateConfig, manifest: &UpdateManifest) -> Result<
     }
 
     let image_path = &manifest.files[0].path;
+
+    // Validate image path: must be absolute, within the staging dir, and contain no traversal
+    let staging_dir = "/var/lib/agnos/updates";
+    let canonical = std::path::Path::new(image_path);
+    if !canonical.is_absolute()
+        || image_path.contains("..")
+        || !image_path.starts_with(staging_dir)
+    {
+        return Err(SysError::InvalidArgument(format!(
+            "Update image path must be absolute within {staging_dir}, got: {image_path}"
+        )));
+    }
 
     let status = std::process::Command::new("dd")
         .args([
@@ -663,12 +675,18 @@ pub fn rollback(config: &UpdateConfig) -> Result<()> {
     let previous = state.current_slot.other();
 
     // Stop services before switching.
-    let _ = std::process::Command::new("systemctl")
+    if let Err(e) = std::process::Command::new("systemctl")
         .args(["stop", "agnos-agent-runtime"])
-        .status();
-    let _ = std::process::Command::new("systemctl")
+        .status()
+    {
+        tracing::warn!("Failed to stop agnos-agent-runtime before rollback: {}", e);
+    }
+    if let Err(e) = std::process::Command::new("systemctl")
         .args(["stop", "agnos-llm-gateway"])
-        .status();
+        .status()
+    {
+        tracing::warn!("Failed to stop agnos-llm-gateway before rollback: {}", e);
+    }
 
     switch_active_slot(config, previous)?;
 

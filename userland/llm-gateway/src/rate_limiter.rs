@@ -394,7 +394,7 @@ impl GatewayMetrics {
         latency_ms: u64,
         success: bool,
     ) {
-        let mut models = self.models.lock().expect("metrics lock poisoned");
+        let mut models = self.models.lock().unwrap_or_else(|e| e.into_inner());
         let m = models.entry(model.to_string()).or_default();
         if success {
             m.success_count += 1;
@@ -409,26 +409,26 @@ impl GatewayMetrics {
 
     /// Record a cache hit for a model.
     pub fn record_cache_hit(&self, model: &str) {
-        let mut models = self.models.lock().expect("metrics lock poisoned");
+        let mut models = self.models.lock().unwrap_or_else(|e| e.into_inner());
         models.entry(model.to_string()).or_default().cache_hits += 1;
     }
 
     /// Record a cache miss for a model.
     pub fn record_cache_miss(&self, model: &str) {
-        let mut models = self.models.lock().expect("metrics lock poisoned");
+        let mut models = self.models.lock().unwrap_or_else(|e| e.into_inner());
         models.entry(model.to_string()).or_default().cache_misses += 1;
     }
 
     /// Record a rate-limit event for an agent.
     pub fn record_rate_limit(&self, agent_id: &str) {
-        let mut rl = self.rate_limits.lock().expect("metrics lock poisoned");
+        let mut rl = self.rate_limits.lock().unwrap_or_else(|e| e.into_inner());
         *rl.entry(agent_id.to_string()).or_insert(0) += 1;
     }
 
     /// Export all metrics in Prometheus exposition format.
     pub fn export_prometheus(&self) -> String {
-        let models = self.models.lock().expect("metrics lock poisoned");
-        let rate_limits = self.rate_limits.lock().expect("metrics lock poisoned");
+        let models = self.models.lock().unwrap_or_else(|e| e.into_inner());
+        let rate_limits = self.rate_limits.lock().unwrap_or_else(|e| e.into_inner());
 
         let mut out = String::new();
 
@@ -507,7 +507,7 @@ impl GatewayMetrics {
 
     /// Reset all collected metrics.
     pub fn reset(&self) {
-        self.models.lock().expect("metrics lock poisoned").clear();
+        self.models.lock().unwrap_or_else(|e| e.into_inner()).clear();
         self.rate_limits
             .lock()
             .expect("metrics lock poisoned")
@@ -516,7 +516,7 @@ impl GatewayMetrics {
 
     /// Total request count for a model (success + error).
     pub fn request_count(&self, model: &str) -> u64 {
-        let models = self.models.lock().expect("metrics lock poisoned");
+        let models = self.models.lock().unwrap_or_else(|e| e.into_inner());
         models
             .get(model)
             .map(|m| m.success_count + m.error_count)
@@ -525,7 +525,7 @@ impl GatewayMetrics {
 
     /// Total tokens (prompt, completion) for a model.
     pub fn total_tokens(&self, model: &str) -> (u64, u64) {
-        let models = self.models.lock().expect("metrics lock poisoned");
+        let models = self.models.lock().unwrap_or_else(|e| e.into_inner());
         models
             .get(model)
             .map(|m| (m.tokens_prompt, m.tokens_completion))
@@ -534,7 +534,7 @@ impl GatewayMetrics {
 
     /// Cache hit rate for a model (0.0–1.0). Returns 0.0 if no cache events recorded.
     pub fn cache_hit_rate(&self, model: &str) -> f64 {
-        let models = self.models.lock().expect("metrics lock poisoned");
+        let models = self.models.lock().unwrap_or_else(|e| e.into_inner());
         match models.get(model) {
             Some(m) => {
                 let total = m.cache_hits + m.cache_misses;

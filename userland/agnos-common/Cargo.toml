@@ -24,6 +24,8 @@ getrandom = "0.2"
 async-trait = { workspace = true }
 num_cpus = "1.16"
 subtle = "2.5"
+sha2 = "0.10"
+zeroize = { version = "1.7", features = ["derive"] }
 
 [dev-dependencies]
 tokio-test = "0.4"

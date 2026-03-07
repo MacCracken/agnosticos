@@ -13,6 +13,8 @@ use sha2::{Digest, Sha256};
 /// Status of a single integrity measurement.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum MeasurementStatus {
+    /// Not yet verified — awaiting first measurement pass.
+    Pending,
     /// Hash matches the expected value.
     Verified,
     /// Hash does not match the expected value.
@@ -26,6 +28,7 @@ pub enum MeasurementStatus {
 impl PartialEq for MeasurementStatus {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
+            (Self::Pending, Self::Pending) => true,
             (Self::Verified, Self::Verified) => true,
             (Self::Mismatch, Self::Mismatch) => true,
             (Self::FileNotFound, Self::FileNotFound) => true,
@@ -63,7 +66,7 @@ impl IntegrityPolicy {
             expected_hash,
             actual_hash: None,
             measured_at: Utc::now(),
-            status: MeasurementStatus::Verified, // initial placeholder
+            status: MeasurementStatus::Pending,
         });
     }
 
@@ -189,6 +192,7 @@ impl IntegrityVerifier {
             match &result.status {
                 MeasurementStatus::Verified => verified_count += 1,
                 MeasurementStatus::Mismatch => mismatches.push(result.clone()),
+                MeasurementStatus::Pending => { /* not yet measured, skip */ }
                 MeasurementStatus::FileNotFound | MeasurementStatus::Error(_) => {
                     errors.push(result.clone());
                 }

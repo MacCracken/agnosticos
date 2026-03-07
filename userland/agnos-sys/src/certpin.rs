@@ -273,7 +273,9 @@ pub fn fetch_server_cert(host: &str, port: u16) -> Result<CertInfo> {
 
     if let Some(mut stdin) = x509_child.stdin.take() {
         use std::io::Write;
-        let _ = stdin.write_all(pem_cert.as_bytes());
+        if let Err(e) = stdin.write_all(pem_cert.as_bytes()) {
+            tracing::warn!("Failed to write PEM to openssl x509 stdin: {}", e);
+        }
     }
     let x509_output = x509_child
         .wait_with_output()
@@ -293,7 +295,9 @@ pub fn fetch_server_cert(host: &str, port: u16) -> Result<CertInfo> {
 
     if let Some(mut stdin) = pubkey_child.stdin.take() {
         use std::io::Write;
-        let _ = stdin.write_all(pem_cert.as_bytes());
+        if let Err(e) = stdin.write_all(pem_cert.as_bytes()) {
+            tracing::warn!("Failed to write PEM to openssl pubkey stdin: {}", e);
+        }
     }
     let pubkey_output = pubkey_child
         .wait_with_output()
@@ -309,7 +313,9 @@ pub fn fetch_server_cert(host: &str, port: u16) -> Result<CertInfo> {
 
     if let Some(mut stdin) = pkey_child.stdin.take() {
         use std::io::Write;
-        let _ = stdin.write_all(&pubkey_output.stdout);
+        if let Err(e) = stdin.write_all(&pubkey_output.stdout) {
+            tracing::warn!("Failed to write pubkey to openssl pkey stdin: {}", e);
+        }
     }
     let der_output = pkey_child
         .wait_with_output()

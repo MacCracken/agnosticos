@@ -141,7 +141,7 @@ Comprehensive audit across all 6 crates. 80+ findings identified; all Critical a
 
 #### Remaining (Lower Priority, Not Blocking Alpha)
 - ~~Sandbox partial application rollback~~ — Done: `apply()` now calls `teardown()` on failure
-- Secret zeroing optimization (needs `zeroize` crate)
+- ~~Secret zeroing optimization~~ — Done: `zeroize` crate integrated, `SecretValue::drop` uses volatile zeroing
 - ~~Thread-unsafe env var manipulation in secrets.rs~~ — Done: Mutex guard + safety docs
 - ~~Various `let _ =` swallowed errors in IPC/service manager~~ — Done: logged in ipc.rs, service_manager.rs, supervisor.rs
 - ~~Desktop environment blanket `#![allow(dead_code)]`~~ — Done: narrowed to lib.rs only, main.rs improved docs
@@ -331,39 +331,14 @@ All OS-level modules implemented March 6 with full test coverage.
 | Docker image | Dockerfile + docker/entrypoint.sh | Done |
 | gVisor config | docker/gvisor-config.toml | Done |
 
-#### Docker Base Image for Sibling Projects
+#### Docker Base Images (Post-Alpha)
 
-| Project | Current Base | Migration Readiness | Notes |
-|---------|-------------|-------------------|-------|
-| SecureYeoman | `node:20-slim` | Medium | Node.js runtime needed |
-| Agnostic | Per-agent Dockerfiles | High | Python/CrewAI agents map to agent-runtime |
-| BullShift | `rust:1.77` → `debian:bookworm-slim` | High | Already Rust |
+Publish runtime-specific base images for consumer projects (SecureYeoman, AGNOSTIC, BullShift).
 
 Blockers before migration:
 - [ ] **Alpha release** — third-party security audit must complete
 - [ ] **Node.js runtime layer** — publish `agnos:node20` variant
 - [ ] **Python runtime layer** — publish `agnos:python3.12` variant
-
-#### LLM Gateway as Shared Provider
-
-| Project | Current LLM Path | Gateway Benefit |
-|---------|------------------|-----------------|
-| SecureYeoman | Direct provider calls | Centralized rate limiting, audit logging, model routing |
-| Agnostic | `universal_llm_adapter.py` | Deduplicate adapter logic; route through gateway |
-| BullShift | AI Bridge backends | Single endpoint replaces per-provider config |
-
-#### Current Integration Status (AGNOSTIC ↔ AGNOS)
-
-| Phase | Feature | AGNOSTIC | AGNOS | Status |
-|-------|---------|----------|-------|--------|
-| 1 | LLM Gateway routing | `universal_llm_adapter.py` → port 8088 | `llm-gateway/` | Done |
-| 2 | Agent HUD registration | `agnos_agent_registration.py` → port 8090 | `agent-runtime/http_api.rs` | Done |
-| 2 | Heartbeat lifecycle | `AgentRegistryClient.send_heartbeat()` | `heartbeat_handler()` | Done |
-| 3 | Audit log forwarding | `shared/audit.py` (22 actions) | `agent-runtime/http_api.rs` | Planned (6.8) |
-| 3 | Persistent memory bridge | Agent-local state | `agent-runtime/memory_store.rs` REST | Planned (6.8) |
-| 3 | Shared OpenTelemetry | `opentelemetry-sdk` (Python) | `agnos-common/telemetry.rs` | Planned (6.8) |
-| 3 | Reasoning traces | CrewAI decision chains | `agent-runtime/tool_analysis.rs` REST | Planned (6.8) |
-| 4 | Docker base images | 6 Dockerfiles → `agnos:python3.12` | `docker/` publish | Planned (post-Alpha) |
 
 ### Phase 6.7: Alpha Polish — Core Experience Gaps (Complete) — [ADR-008](../adr/adr-008-phase67-alpha-polish.md)
 
@@ -464,19 +439,39 @@ All 34 items implemented. Features that make AGNOS meaningfully better than runn
 | gRPC API (alongside REST) | agent-runtime + llm-gateway | 1 week | P3 | Protocol Buffers + gRPC for high-performance agent communication. Streaming, bidirectional, typed contracts |
 | Service mesh readiness (sidecar pattern) | agent-runtime | 3 days | P3 | Envoy/Linkerd sidecar injection for agents. Enables traffic shaping, retries, observability at network layer |
 
-#### Cross-Project Integration (AGNOSTIC + SecureYeoman)
+#### Cross-Project Integration
+
+AGNOS-side infrastructure that consumer projects (AGNOSTIC, SecureYeoman) connect to.
 
 | Item | Component | Effort | Priority | Description |
 |------|-----------|--------|----------|-------------|
-| Unified audit log forwarding | agent-runtime/http_api.rs | 2 days | P1 | Accept structured audit events from external agents (AGNOSTIC's 22-action audit log, YEOMAN events) and append to AGNOS cryptographic audit chain. Shared correlation IDs across projects |
-| External agent memory bridge | agent-runtime/memory_store.rs | 2 days | P1 | REST API for AgentMemoryStore — external agents (Python/TypeScript) can persist/retrieve KV state through AGNOS rather than managing their own storage. Enables AGNOSTIC QA agents to store learned test patterns across sessions |
-| Shared observability pipeline | agnos-common/telemetry.rs + agent-runtime | 2 days | P1 | OpenTelemetry collector accepts traces from AGNOSTIC (Python opentelemetry-sdk) and SecureYeoman (Node.js @opentelemetry/sdk-trace-node). Unified distributed traces across Rust/Python/TypeScript services |
-| Python runtime base image | docker/ | 3 days | P2 | Publish `agnos:python3.12` Docker image with agent-runtime sidecar, Landlock+seccomp sandbox, audit chain integration. Replaces AGNOSTIC's 6 per-agent Dockerfiles |
-| Node.js runtime base image | docker/ | 2 days | P2 | Publish `agnos:node20` Docker image for SecureYeoman. Same sandbox/audit benefits as Python variant |
-| Fleet config for external agents | agent-runtime/service_manager.rs | 1 day | P2 | Extend FleetConfig to manage external (containerized) agent services. `fleet.toml` can declare AGNOSTIC agents alongside native AGNOS agents, with reconciliation handling Docker lifecycle |
-| Cross-project reasoning traces | agent-runtime/tool_analysis.rs | 1 day | P2 | Accept ReasoningTrace submissions via REST API from external agents. AGNOSTIC's QA decision chains (test plan → execution → analysis) visible in AGNOS dashboard |
-| LLM Gateway token budget sharing | llm-gateway | 2 days | P2 | Shared token budget pools across projects. AGNOSTIC and SecureYeoman draw from allocated quotas with automatic rebalancing. Prevents one project from exhausting shared LLM capacity |
-| Agent capability federation | agent-runtime/registry.rs | 2 days | P3 | AGNOSTIC's 6 QA agents advertise capabilities (security_audit, load_testing, etc.) through AGNOS capability negotiation. Native AGNOS agents can request QA services without knowing about AGNOSTIC directly |
+| Unified audit log forwarding | agent-runtime/http_api.rs | 2 days | P1 | Accept structured audit events from external agents and append to cryptographic audit chain. Shared correlation IDs |
+| External agent memory bridge | agent-runtime/memory_store.rs | 2 days | P1 | REST API for AgentMemoryStore — external agents persist/retrieve KV state through AGNOS |
+| Shared observability pipeline | agnos-common/telemetry.rs + agent-runtime | 2 days | P1 | OpenTelemetry collector accepts traces from external services. Unified distributed traces |
+| Python runtime base image | docker/ | 3 days | P2 | Publish `agnos:python3.12` Docker image with agent-runtime sidecar and sandbox |
+| Node.js runtime base image | docker/ | 2 days | P2 | Publish `agnos:node20` Docker image with same sandbox/audit benefits |
+| Fleet config for external agents | agent-runtime/service_manager.rs | 1 day | P2 | Extend FleetConfig for containerized external agents in `fleet.toml` |
+| Cross-project reasoning traces | agent-runtime/tool_analysis.rs | 1 day | P2 | Accept ReasoningTrace submissions via REST API from external agents |
+| LLM Gateway token budget sharing | llm-gateway | 2 days | P2 | Shared token budget pools with automatic rebalancing across consumers |
+| Agent capability federation | agent-runtime/registry.rs | 2 days | P3 | External agents advertise capabilities through AGNOS capability negotiation |
+
+#### SecureYeoman-Specific Integration ✅ ALL COMPLETE
+
+| Item | Component | Effort | Priority | Status |
+|------|-----------|--------|----------|--------|
+| MCP server wrapper for agent runtime | agent-runtime/mcp_server.rs | 2 days | P1 | Done (20 tests) — 10 tools via `/v1/mcp/tools` and `/v1/mcp/tools/call` |
+| Sandbox profile mapping API | agent-runtime/http_api.rs | 2 days | P2 | Done (12 tests) — `/v1/sandbox/profiles`, `/v1/sandbox/profiles/default`, `/v1/sandbox/profiles/validate` |
+| LLM routing adapter | llm-gateway/http.rs | 1 day | P2 | Done (10 tests) — `X-Personality-Id`, `X-Source-Service`, `X-Request-Id`, `X-Token-Usage` headers; tools/tool_choice/response_format fields |
+| Cryptographic audit chain bridge | agnos-common/audit.rs + http_api.rs | 2 days | P2 | Done (13 tests) — `ExternalAudit` event type, `AuditChain` struct, `/v1/audit/chain` and `/v1/audit/chain/verify` endpoints |
+
+#### Future: Full Convergence
+
+*Demand-gated — after Alpha release and integration phases stable.*
+
+- [ ] **Unified SSO/OIDC provider** — AGNOS as OIDC-aware service. Single identity across consumer projects.
+- [ ] **Cross-project agent delegation** — External orchestrator → A2A → AGNOS sandbox. Full chain with process isolation, resource quotas, and audit.
+- [ ] **Shared vector store federation** — AGNOS embedded vector store queryable via REST from external services.
+- [ ] **Unified agent marketplace backend** — AGNOS registry as single source of truth for agent capabilities.
 
 ---
 
@@ -517,7 +512,7 @@ All 34 items implemented. Features that make AGNOS meaningfully better than runn
 
 ### Alpha Release - Q2 2026
 
-**Current version**: `2026.3.5` (CalVer: `YYYY.D.M`, patches as `-#N`)
+**Current version**: `2026.3.6` (CalVer: `YYYY.D.M`, patches as `-#N`)
 
 **Remaining criteria:**
 - [ ] Third-party security audit complete
@@ -609,6 +604,9 @@ All 34 items implemented. Features that make AGNOS meaningfully better than runn
 12. ADR-012: Desktop Accessibility & Interaction Foundations
 13. ADR-013: Zero-Trust Security Hardening
 14. ADR-014: Cross-Project Integration Architecture
+15. ADR-015: Agent Marketplace Architecture (Proposed — Phase 7)
+16. ADR-016: Multi-Node Agent Federation (Proposed — Phase 7)
+17. ADR-017: Desktop Plugin Architecture (Proposed — Phase 7)
 
 ---
 

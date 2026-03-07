@@ -9,18 +9,33 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use axum::extract::{Path, Query, State};
-use axum::http::StatusCode;
+use axum::http::{header, StatusCode};
+use axum::middleware::{self, Next};
 use axum::response::IntoResponse;
 use axum::routing::{delete, get, post, put};
 use axum::{Json, Router};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
-use tracing::{debug, info};
+use std::path::PathBuf;
+use tracing::{debug, info, warn};
 use uuid::Uuid;
+
+use agnos_common::{
+    FsAccess, FilesystemRule, NetworkAccess, NetworkPolicy, SandboxConfig, SeccompAction,
+    SeccompRule,
+    audit::AuditChain,
+};
 
 /// Default listen port for the agent registration API.
 pub const DEFAULT_PORT: u16 = 8090;
+
+/// Maximum number of trace entries kept in memory.
+pub const MAX_TRACES: usize = 10_000;
+/// Maximum number of audit events kept in memory.
+pub const MAX_AUDIT_BUFFER: usize = 100_000;
+/// Maximum number of webhook registrations allowed.
+pub const MAX_WEBHOOKS: usize = 1_000;
 
 // ---------------------------------------------------------------------------
 // Request / Response types
@@ -182,8 +197,12 @@ pub struct ApiState {
     started_at: DateTime<Utc>,
     pub webhooks: Arc<RwLock<Vec<WebhookRegistration>>>,
     pub audit_buffer: Arc<RwLock<Vec<AuditEvent>>>,
+    pub audit_chain: Arc<RwLock<AuditChain>>,
     pub memory_store: ApiMemoryStore,
     pub traces: Arc<RwLock<Vec<serde_json::Value>>>,
+    /// Optional Bearer token for API authentication.
+    /// When `Some`, all endpoints except `GET /v1/health` require it.
+    pub api_key: Option<String>,
 }
 
 impl std::fmt::Debug for ApiState {
@@ -196,14 +215,50 @@ impl std::fmt::Debug for ApiState {
 
 impl ApiState {
     pub fn new() -> Self {
+        let api_key = std::env::var("AGNOS_RUNTIME_API_KEY").ok().filter(|k| !k.is_empty());
         Self {
             agents: Arc::new(RwLock::new(HashMap::new())),
             started_at: Utc::now(),
             webhooks: Arc::new(RwLock::new(Vec::new())),
             audit_buffer: Arc::new(RwLock::new(Vec::new())),
+            audit_chain: Arc::new(RwLock::new(AuditChain::new())),
             memory_store: ApiMemoryStore::new(),
             traces: Arc::new(RwLock::new(Vec::new())),
+            api_key,
         }
+    }
+
+    /// Create a new `ApiState` with an explicit API key (useful for testing).
+    pub fn with_api_key(api_key: Option<String>) -> Self {
+        Self {
+            agents: Arc::new(RwLock::new(HashMap::new())),
+            started_at: Utc::now(),
+            webhooks: Arc::new(RwLock::new(Vec::new())),
+            audit_buffer: Arc::new(RwLock::new(Vec::new())),
+            audit_chain: Arc::new(RwLock::new(AuditChain::new())),
+            memory_store: ApiMemoryStore::new(),
+            traces: Arc::new(RwLock::new(Vec::new())),
+            api_key,
+        }
+    }
+
+    /// Acquire a read lock on the agents map.
+    pub async fn agents_read(
+        &self,
+    ) -> tokio::sync::RwLockReadGuard<'_, HashMap<Uuid, RegisteredAgentEntry>> {
+        self.agents.read().await
+    }
+
+    /// Acquire a write lock on the agents map.
+    pub async fn agents_write(
+        &self,
+    ) -> tokio::sync::RwLockWriteGuard<'_, HashMap<Uuid, RegisteredAgentEntry>> {
+        self.agents.write().await
+    }
+
+    /// Return the instant the API state was created.
+    pub fn started_at(&self) -> DateTime<Utc> {
+        self.started_at
     }
 }
 
@@ -562,6 +617,56 @@ async fn metrics_handler(State(state): State<ApiState>) -> impl IntoResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Authentication middleware
+// ---------------------------------------------------------------------------
+
+/// Bearer token authentication middleware.
+///
+/// If the `ApiState` has an `api_key` set, all requests (except `GET /v1/health`)
+/// must include `Authorization: Bearer <token>`. When no key is configured the
+/// middleware is a pass-through (dev mode).
+async fn auth_middleware(
+    State(state): State<ApiState>,
+    req: axum::extract::Request,
+    next: Next,
+) -> axum::response::Response {
+    let api_key = match &state.api_key {
+        Some(key) => key,
+        None => return next.run(req).await, // dev mode — no auth
+    };
+
+    // Allow health endpoint without auth
+    if req.uri().path() == "/v1/health" && req.method() == axum::http::Method::GET {
+        return next.run(req).await;
+    }
+
+    let auth_header = req
+        .headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok());
+
+    match auth_header {
+        Some(value) if value.starts_with("Bearer ") => {
+            let token = &value[7..];
+            if token == api_key.as_str() {
+                next.run(req).await
+            } else {
+                (
+                    StatusCode::UNAUTHORIZED,
+                    Json(serde_json::json!({"error": "Invalid bearer token", "code": 401})),
+                )
+                    .into_response()
+            }
+        }
+        _ => (
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({"error": "Missing or malformed Authorization header", "code": 401})),
+        )
+            .into_response(),
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Router & server
 // ---------------------------------------------------------------------------
 
@@ -581,18 +686,32 @@ pub fn build_router(state: ApiState) -> Router {
         .route("/v1/webhooks/:id", delete(delete_webhook_handler))
         .route("/v1/audit/forward", post(forward_audit_handler))
         .route("/v1/audit", get(list_audit_handler))
+        .route("/v1/audit/chain", get(audit_chain_handler))
+        .route("/v1/audit/chain/verify", get(audit_chain_verify_handler))
         .route("/v1/agents/:id/memory", get(memory_list_handler))
         .route("/v1/agents/:id/memory/:key", get(memory_get_handler))
         .route("/v1/agents/:id/memory/:key", put(memory_set_handler))
         .route("/v1/agents/:id/memory/:key", delete(memory_delete_handler))
         .route("/v1/traces", post(submit_trace_handler))
         .route("/v1/traces", get(list_traces_handler))
+        .route("/v1/mcp/tools", get(crate::mcp_server::mcp_tools_handler))
+        .route("/v1/mcp/tools/call", post(crate::mcp_server::mcp_tool_call_handler))
+        .route("/v1/sandbox/profiles", post(translate_sandbox_profile_handler))
+        .route("/v1/sandbox/profiles/default", get(default_sandbox_profile_handler))
+        .route("/v1/sandbox/profiles/validate", post(validate_sandbox_profile_handler))
+        .layer(middleware::from_fn_with_state(state.clone(), auth_middleware))
         .with_state(state)
 }
 
 /// Start the HTTP API server on the given port.
 pub async fn start_server(port: u16) -> anyhow::Result<()> {
     let state = ApiState::new();
+    if state.api_key.is_none() {
+        warn!(
+            "AGNOS_RUNTIME_API_KEY is not set — Agent Runtime API (port {}) is running WITHOUT authentication (dev mode)",
+            port
+        );
+    }
     let app = build_router(state);
 
     let bind_addr: std::net::IpAddr = std::env::var("AGNOS_RUNTIME_BIND")
@@ -678,6 +797,19 @@ async fn register_webhook_handler(
             .into_response();
     }
 
+    let mut webhooks = state.webhooks.write().await;
+
+    if webhooks.len() >= MAX_WEBHOOKS {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({
+                "error": format!("Maximum webhook limit reached ({})", MAX_WEBHOOKS),
+                "code": 503
+            })),
+        )
+            .into_response();
+    }
+
     let wh = WebhookRegistration {
         id: Uuid::new_v4(),
         url: req.url,
@@ -687,7 +819,7 @@ async fn register_webhook_handler(
     };
 
     let id = wh.id;
-    state.webhooks.write().await.push(wh);
+    webhooks.push(wh);
     info!("Webhook registered: {}", id);
 
     (
@@ -775,11 +907,36 @@ async fn forward_audit_handler(
     );
 
     let mut buffer = state.audit_buffer.write().await;
+    let mut chain = state.audit_chain.write().await;
     for event in req.events {
         info!(
             "Audit: action={} agent={:?} outcome={}",
             event.action, event.agent, event.outcome
         );
+
+        // Also append to the cryptographic audit chain
+        let chain_event = agnos_common::audit::AuditEvent {
+            sequence: 0, // overwritten by AuditChain::append
+            timestamp: chrono::DateTime::parse_from_rfc3339(&event.timestamp)
+                .map(|dt| dt.with_timezone(&chrono::Utc))
+                .unwrap_or_else(|_| chrono::Utc::now()),
+            event_type: agnos_common::audit::AuditEventType::ExternalAudit,
+            agent_id: None,
+            user_id: agnos_common::UserId::new(),
+            action: event.action.clone(),
+            resource: event.agent.clone().unwrap_or_default(),
+            result: if event.outcome == "success" {
+                agnos_common::audit::AuditResult::Success
+            } else {
+                agnos_common::audit::AuditResult::Failure
+            },
+            details: event.details.clone(),
+        };
+        chain.append(chain_event);
+
+        if buffer.len() >= MAX_AUDIT_BUFFER {
+            buffer.remove(0);
+        }
         buffer.push(event);
     }
 
@@ -818,6 +975,56 @@ async fn list_audit_handler(
 
     let result: Vec<&AuditEvent> = events;
     Json(serde_json::json!({"events": result, "total": result.len()}))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AuditChainQueryParams {
+    #[serde(default = "default_chain_limit")]
+    pub limit: usize,
+    #[serde(default)]
+    pub offset: usize,
+}
+
+fn default_chain_limit() -> usize {
+    100
+}
+
+async fn audit_chain_handler(
+    State(state): State<ApiState>,
+    Query(params): Query<AuditChainQueryParams>,
+) -> impl IntoResponse {
+    let chain = state.audit_chain.read().await;
+    let entries = chain.entries();
+    let total = entries.len();
+    let start = params.offset.min(total);
+    let end = (start + params.limit).min(total);
+    let page = &entries[start..end];
+    Json(serde_json::json!({
+        "entries": page,
+        "total": total,
+        "offset": start,
+        "limit": params.limit,
+    }))
+}
+
+async fn audit_chain_verify_handler(
+    State(state): State<ApiState>,
+) -> impl IntoResponse {
+    let chain = state.audit_chain.read().await;
+    match chain.verify() {
+        Ok(()) => (
+            StatusCode::OK,
+            Json(serde_json::json!({"valid": true, "entries": chain.len()})),
+        ),
+        Err(e) => (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({
+                "valid": false,
+                "error": e.to_string(),
+                "position": e.position,
+            })),
+        ),
+    }
 }
 
 // ===========================================================================
@@ -938,6 +1145,9 @@ async fn submit_trace_handler(
     };
 
     let mut traces = state.traces.write().await;
+    if traces.len() >= MAX_TRACES {
+        traces.remove(0);
+    }
     traces.push(trace_value);
 
     (
@@ -965,6 +1175,291 @@ async fn list_traces_handler(
     }
 
     Json(serde_json::json!({"traces": result, "total": result.len()}))
+}
+
+// ===========================================================================
+// 5. Sandbox Profile Mapping API
+// ===========================================================================
+
+/// Well-known x86_64 syscall names used for validation.
+const KNOWN_SYSCALLS: &[&str] = &[
+    "read", "write", "open", "close", "stat", "fstat", "lstat", "poll", "lseek",
+    "mmap", "mprotect", "munmap", "brk", "ioctl", "access", "pipe", "select",
+    "sched_yield", "mremap", "msync", "mincore", "madvise", "shmget", "shmat",
+    "shmctl", "dup", "dup2", "pause", "nanosleep", "getitimer", "alarm",
+    "setitimer", "getpid", "sendfile", "socket", "connect", "accept", "sendto",
+    "recvfrom", "sendmsg", "recvmsg", "shutdown", "bind", "listen",
+    "getsockname", "getpeername", "socketpair", "setsockopt", "getsockopt",
+    "clone", "fork", "vfork", "execve", "exit", "wait4", "kill", "uname",
+    "fcntl", "flock", "fsync", "fdatasync", "truncate", "ftruncate",
+    "getdents", "getcwd", "chdir", "fchdir", "rename", "mkdir", "rmdir",
+    "creat", "link", "unlink", "symlink", "readlink", "chmod", "fchmod",
+    "chown", "fchown", "lchown", "umask", "gettimeofday", "getrlimit",
+    "getrusage", "sysinfo", "times", "ptrace", "getuid", "syslog", "getgid",
+    "setuid", "setgid", "geteuid", "getegid", "setpgid", "getppid",
+    "getpgrp", "setsid", "setreuid", "setregid", "getgroups", "setgroups",
+    "setresuid", "getresuid", "setresgid", "getresgid", "getpgid", "setfsuid",
+    "setfsgid", "getsid", "capget", "capset", "rt_sigpending",
+    "rt_sigtimedwait", "rt_sigqueueinfo", "rt_sigsuspend", "sigaltstack",
+    "utime", "mknod", "personality", "statfs", "fstatfs", "sysfs",
+    "getpriority", "setpriority", "sched_setparam", "sched_getparam",
+    "sched_setscheduler", "sched_getscheduler", "sched_get_priority_max",
+    "sched_get_priority_min", "sched_rr_get_interval", "mlock", "munlock",
+    "mlockall", "munlockall", "vhangup", "pivot_root", "prctl",
+    "arch_prctl", "adjtimex", "setrlimit", "chroot", "sync", "acct",
+    "settimeofday", "mount", "umount2", "swapon", "swapoff", "reboot",
+    "sethostname", "setdomainname", "ioperm", "iopl", "create_module",
+    "init_module", "delete_module", "clock_gettime", "clock_settime",
+    "clock_getres", "clock_nanosleep", "exit_group", "epoll_wait",
+    "epoll_ctl", "tgkill", "utimes", "openat", "mkdirat", "fchownat",
+    "unlinkat", "renameat", "linkat", "symlinkat", "readlinkat", "fchmodat",
+    "faccessat", "pselect6", "ppoll", "set_robust_list", "get_robust_list",
+    "splice", "tee", "sync_file_range", "vmsplice", "move_pages",
+    "epoll_pwait", "signalfd", "timerfd_create", "eventfd", "fallocate",
+    "timerfd_settime", "timerfd_gettime", "accept4", "signalfd4", "eventfd2",
+    "epoll_create1", "dup3", "pipe2", "inotify_init1", "preadv", "pwritev",
+    "rt_tgsigqueueinfo", "perf_event_open", "recvmmsg", "fanotify_init",
+    "fanotify_mark", "prlimit64", "name_to_handle_at", "open_by_handle_at",
+    "syncfs", "sendmmsg", "setns", "getcpu", "process_vm_readv",
+    "process_vm_writev", "kcmp", "finit_module", "sched_setattr",
+    "sched_getattr", "renameat2", "seccomp", "getrandom", "memfd_create",
+    "bpf", "execveat", "membarrier", "mlock2", "copy_file_range",
+    "preadv2", "pwritev2", "statx", "io_uring_setup", "io_uring_enter",
+    "io_uring_register", "pidfd_open", "clone3", "close_range",
+    "openat2", "pidfd_getfd", "faccessat2", "epoll_pwait2",
+];
+
+fn is_known_syscall(name: &str) -> bool {
+    KNOWN_SYSCALLS.contains(&name)
+}
+
+fn default_network_mode() -> String {
+    "none".to_string()
+}
+
+#[derive(Debug, Deserialize)]
+struct ExternalSandboxProfile {
+    /// Human-readable name
+    name: String,
+    /// Filesystem paths and their access levels
+    #[serde(default)]
+    filesystem: Vec<ExternalFsRule>,
+    /// Network mode: "none", "localhost", "restricted", "full"
+    #[serde(default = "default_network_mode")]
+    network_mode: String,
+    /// Allowed outbound hosts (for restricted mode)
+    #[serde(default)]
+    allowed_hosts: Vec<String>,
+    /// Allowed outbound ports (for restricted mode)
+    #[serde(default)]
+    allowed_ports: Vec<u16>,
+    /// Blocked syscalls
+    #[serde(default)]
+    blocked_syscalls: Vec<String>,
+    /// Whether to isolate in network namespace
+    #[serde(default)]
+    isolate_network: Option<bool>,
+    /// MAC profile name (optional)
+    #[serde(default)]
+    mac_profile: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ExternalFsRule {
+    path: String,
+    /// "none", "read", "readonly", "readwrite", "rw"
+    access: String,
+}
+
+#[derive(Debug, Serialize)]
+struct ValidationResponse {
+    valid: bool,
+    warnings: Vec<String>,
+    errors: Vec<String>,
+}
+
+fn map_fs_access(s: &str) -> Option<FsAccess> {
+    match s.to_lowercase().as_str() {
+        "none" => Some(FsAccess::NoAccess),
+        "read" | "readonly" => Some(FsAccess::ReadOnly),
+        "readwrite" | "rw" => Some(FsAccess::ReadWrite),
+        _ => None,
+    }
+}
+
+fn map_network_access(s: &str) -> Option<NetworkAccess> {
+    match s.to_lowercase().as_str() {
+        "none" => Some(NetworkAccess::None),
+        "localhost" => Some(NetworkAccess::LocalhostOnly),
+        "restricted" => Some(NetworkAccess::Restricted),
+        "full" => Some(NetworkAccess::Full),
+        _ => None,
+    }
+}
+
+fn path_has_traversal(p: &str) -> bool {
+    let path = std::path::Path::new(p);
+    path.components().any(|c| matches!(c, std::path::Component::ParentDir))
+}
+
+/// POST /v1/sandbox/profiles — translate an external sandbox profile to AGNOS SandboxConfig.
+async fn translate_sandbox_profile_handler(
+    Json(req): Json<ExternalSandboxProfile>,
+) -> impl IntoResponse {
+    // Validate name
+    if req.name.trim().is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "Profile name is required", "code": 400})),
+        )
+            .into_response();
+    }
+
+    // Map filesystem rules
+    let mut filesystem_rules = Vec::new();
+    for fs in &req.filesystem {
+        if path_has_traversal(&fs.path) {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "error": format!("Path traversal not allowed: {}", fs.path),
+                    "code": 400
+                })),
+            )
+                .into_response();
+        }
+        let access = match map_fs_access(&fs.access) {
+            Some(a) => a,
+            None => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({
+                        "error": format!("Invalid filesystem access '{}'; expected none, read, readonly, readwrite, or rw", fs.access),
+                        "code": 400
+                    })),
+                )
+                    .into_response();
+            }
+        };
+        filesystem_rules.push(FilesystemRule {
+            path: PathBuf::from(&fs.path),
+            access,
+        });
+    }
+
+    // Map network access
+    let network_access = match map_network_access(&req.network_mode) {
+        Some(na) => na,
+        None => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "error": format!("Invalid network_mode '{}'; expected none, localhost, restricted, or full", req.network_mode),
+                    "code": 400
+                })),
+            )
+                .into_response();
+        }
+    };
+
+    // Map blocked syscalls to Deny rules
+    let mut seccomp_rules = Vec::new();
+    for sc in &req.blocked_syscalls {
+        if !is_known_syscall(sc) {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "error": format!("Unknown syscall '{}' in blocked_syscalls", sc),
+                    "code": 400
+                })),
+            )
+                .into_response();
+        }
+        seccomp_rules.push(SeccompRule {
+            syscall: sc.clone(),
+            action: SeccompAction::Deny,
+        });
+    }
+
+    // Build network policy for restricted mode
+    let network_policy = if network_access == NetworkAccess::Restricted {
+        Some(NetworkPolicy {
+            allowed_outbound_ports: req.allowed_ports.clone(),
+            allowed_outbound_hosts: req.allowed_hosts.clone(),
+            allowed_inbound_ports: Vec::new(),
+            enable_nat: true,
+        })
+    } else {
+        None
+    };
+
+    let isolate_network = req.isolate_network.unwrap_or(network_access != NetworkAccess::Full);
+
+    let config = SandboxConfig {
+        filesystem_rules,
+        network_access,
+        seccomp_rules,
+        isolate_network,
+        network_policy,
+        mac_profile: req.mac_profile.clone(),
+        encrypted_storage: None,
+    };
+
+    (StatusCode::OK, Json(serde_json::json!(config))).into_response()
+}
+
+/// GET /v1/sandbox/profiles/default — return the default SandboxConfig.
+async fn default_sandbox_profile_handler() -> impl IntoResponse {
+    let config = SandboxConfig::default();
+    Json(serde_json::json!(config))
+}
+
+/// POST /v1/sandbox/profiles/validate — validate a SandboxConfig for issues.
+async fn validate_sandbox_profile_handler(
+    Json(config): Json<SandboxConfig>,
+) -> impl IntoResponse {
+    let mut errors = Vec::new();
+    let mut warnings = Vec::new();
+
+    // Check filesystem rules for path traversal
+    for rule in &config.filesystem_rules {
+        let p = rule.path.to_string_lossy();
+        if path_has_traversal(&p) {
+            errors.push(format!("Path traversal detected in filesystem rule: {}", p));
+        }
+        if !rule.path.is_absolute() {
+            warnings.push(format!("Relative path in filesystem rule: {} — should be absolute", p));
+        }
+    }
+
+    // Validate syscall names
+    for rule in &config.seccomp_rules {
+        if !is_known_syscall(&rule.syscall) {
+            errors.push(format!("Unknown syscall: {}", rule.syscall));
+        }
+    }
+
+    // Check network config consistency
+    if config.network_access == NetworkAccess::Restricted && config.network_policy.is_none() {
+        warnings.push("network_access is Restricted but no network_policy is provided".to_string());
+    }
+    if config.network_access != NetworkAccess::Restricted && config.network_policy.is_some() {
+        warnings.push("network_policy is set but network_access is not Restricted — policy will be ignored".to_string());
+    }
+    if config.network_access == NetworkAccess::Full && config.isolate_network {
+        warnings.push("isolate_network is true with Full network access — this may cause unexpected behavior".to_string());
+    }
+    if config.network_access == NetworkAccess::None && !config.isolate_network {
+        warnings.push("network_access is None but isolate_network is false — consider enabling isolation".to_string());
+    }
+
+    let valid = errors.is_empty();
+
+    Json(ValidationResponse {
+        valid,
+        warnings,
+        errors,
+    })
 }
 
 // ===========================================================================
@@ -2294,5 +2789,412 @@ mod tests {
         let json = serde_json::to_string(&wh).unwrap();
         let deser: WebhookRegistration = serde_json::from_str(&json).unwrap();
         assert_eq!(deser.url, "https://example.com/hook");
+    }
+
+    // --- Audit chain HTTP endpoint tests ---
+
+    #[tokio::test]
+    async fn test_audit_chain_empty() {
+        let app = test_app();
+        let req = Request::builder()
+            .uri("/v1/audit/chain")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["total"], 0);
+        assert_eq!(json["entries"].as_array().unwrap().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_audit_chain_verify_empty() {
+        let app = test_app();
+        let req = Request::builder()
+            .uri("/v1/audit/chain/verify")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["valid"], true);
+    }
+
+    #[tokio::test]
+    async fn test_audit_chain_populated_via_forward() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        // Forward two events
+        let req_body = serde_json::json!({
+            "source": "test",
+            "events": [
+                {"timestamp": "2026-03-06T12:00:00Z", "action": "read", "agent": "a1", "details": {}, "outcome": "success"},
+                {"timestamp": "2026-03-06T12:01:00Z", "action": "write", "details": {}, "outcome": "success"}
+            ]
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/audit/forward")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        app.clone().oneshot(req).await.unwrap();
+
+        // Check chain has 2 entries
+        let req = Request::builder()
+            .uri("/v1/audit/chain")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["total"], 2);
+        let entries = json["entries"].as_array().unwrap();
+        assert_eq!(entries.len(), 2);
+        // Second entry's previous_hash should match first entry's entry_hash
+        assert_eq!(entries[1]["previous_hash"], entries[0]["entry_hash"]);
+
+        // Verify chain
+        let req = Request::builder()
+            .uri("/v1/audit/chain/verify")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["valid"], true);
+        assert_eq!(json["entries"], 2);
+    }
+
+    #[tokio::test]
+    async fn test_audit_chain_pagination() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        // Forward 5 events
+        let events: Vec<serde_json::Value> = (0..5).map(|i| {
+            serde_json::json!({
+                "timestamp": format!("2026-03-06T12:0{}:00Z", i),
+                "action": format!("action_{}", i),
+                "details": {},
+                "outcome": "success"
+            })
+        }).collect();
+        let req_body = serde_json::json!({"source": "test", "events": events});
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/audit/forward")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        app.clone().oneshot(req).await.unwrap();
+
+        // Page: offset=1, limit=2
+        let req = Request::builder()
+            .uri("/v1/audit/chain?offset=1&limit=2")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["total"], 5);
+        assert_eq!(json["offset"], 1);
+        assert_eq!(json["limit"], 2);
+        assert_eq!(json["entries"].as_array().unwrap().len(), 2);
+    }
+
+    // -----------------------------------------------------------------------
+    // Sandbox Profile Mapping Tests
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_sandbox_translate_basic() {
+        let app = test_app();
+        let body = serde_json::json!({
+            "name": "test-profile",
+            "filesystem": [
+                {"path": "/tmp", "access": "readwrite"},
+                {"path": "/etc", "access": "read"}
+            ],
+            "network_mode": "localhost",
+            "blocked_syscalls": ["ptrace", "mount"]
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/sandbox/profiles")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["network_access"], "LocalhostOnly");
+        assert_eq!(json["isolate_network"], true);
+        let fs_rules = json["filesystem_rules"].as_array().unwrap();
+        assert_eq!(fs_rules.len(), 2);
+        assert_eq!(fs_rules[0]["access"], "ReadWrite");
+        assert_eq!(fs_rules[1]["access"], "ReadOnly");
+        let seccomp = json["seccomp_rules"].as_array().unwrap();
+        assert_eq!(seccomp.len(), 2);
+        assert_eq!(seccomp[0]["syscall"], "ptrace");
+        assert_eq!(seccomp[0]["action"], "Deny");
+    }
+
+    #[tokio::test]
+    async fn test_sandbox_translate_empty_name() {
+        let app = test_app();
+        let body = serde_json::json!({
+            "name": "",
+            "network_mode": "none"
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/sandbox/profiles")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_sandbox_translate_path_traversal() {
+        let app = test_app();
+        let body = serde_json::json!({
+            "name": "evil",
+            "filesystem": [{"path": "/tmp/../etc/shadow", "access": "read"}]
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/sandbox/profiles")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(json["error"].as_str().unwrap().contains("traversal"));
+    }
+
+    #[tokio::test]
+    async fn test_sandbox_translate_invalid_access() {
+        let app = test_app();
+        let body = serde_json::json!({
+            "name": "bad-access",
+            "filesystem": [{"path": "/tmp", "access": "execute"}]
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/sandbox/profiles")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_sandbox_translate_invalid_network_mode() {
+        let app = test_app();
+        let body = serde_json::json!({
+            "name": "bad-net",
+            "network_mode": "bridged"
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/sandbox/profiles")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_sandbox_translate_unknown_syscall() {
+        let app = test_app();
+        let body = serde_json::json!({
+            "name": "bad-syscall",
+            "blocked_syscalls": ["read", "totally_fake_syscall"]
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/sandbox/profiles")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(json["error"].as_str().unwrap().contains("totally_fake_syscall"));
+    }
+
+    #[tokio::test]
+    async fn test_sandbox_translate_restricted_with_policy() {
+        let app = test_app();
+        let body = serde_json::json!({
+            "name": "restricted-profile",
+            "network_mode": "restricted",
+            "allowed_hosts": ["api.example.com"],
+            "allowed_ports": [443, 8080]
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/sandbox/profiles")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["network_access"], "Restricted");
+        let policy = &json["network_policy"];
+        assert!(policy.is_object());
+        assert_eq!(policy["allowed_outbound_hosts"][0], "api.example.com");
+        assert_eq!(policy["allowed_outbound_ports"][0], 443);
+        assert_eq!(policy["allowed_outbound_ports"][1], 8080);
+    }
+
+    #[tokio::test]
+    async fn test_sandbox_default_profile() {
+        let app = test_app();
+        let req = Request::builder()
+            .uri("/v1/sandbox/profiles/default")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["network_access"], "LocalhostOnly");
+        assert_eq!(json["isolate_network"], true);
+        let fs = json["filesystem_rules"].as_array().unwrap();
+        assert_eq!(fs.len(), 1);
+        assert_eq!(fs[0]["path"], "/tmp");
+        assert_eq!(fs[0]["access"], "ReadWrite");
+    }
+
+    #[tokio::test]
+    async fn test_sandbox_validate_valid_config() {
+        let app = test_app();
+        let config = serde_json::json!({
+            "filesystem_rules": [{"path": "/tmp", "access": "ReadWrite"}],
+            "network_access": "LocalhostOnly",
+            "seccomp_rules": [{"syscall": "ptrace", "action": "Deny"}],
+            "isolate_network": true,
+            "network_policy": null,
+            "mac_profile": null,
+            "encrypted_storage": null
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/sandbox/profiles/validate")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&config).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["valid"], true);
+        assert!(json["errors"].as_array().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_sandbox_validate_path_traversal_and_unknown_syscall() {
+        let app = test_app();
+        let config = serde_json::json!({
+            "filesystem_rules": [
+                {"path": "/tmp/../etc/shadow", "access": "ReadOnly"},
+                {"path": "relative/path", "access": "ReadWrite"}
+            ],
+            "network_access": "Restricted",
+            "seccomp_rules": [{"syscall": "bogus_call", "action": "Deny"}],
+            "isolate_network": true,
+            "network_policy": null,
+            "mac_profile": null,
+            "encrypted_storage": null
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/sandbox/profiles/validate")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&config).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["valid"], false);
+        let errors = json["errors"].as_array().unwrap();
+        assert!(errors.iter().any(|e| e.as_str().unwrap().contains("traversal")));
+        assert!(errors.iter().any(|e| e.as_str().unwrap().contains("bogus_call")));
+        let warnings = json["warnings"].as_array().unwrap();
+        assert!(warnings.iter().any(|e| e.as_str().unwrap().contains("Relative path")));
+        assert!(warnings.iter().any(|e| e.as_str().unwrap().contains("no network_policy")));
+    }
+
+    #[tokio::test]
+    async fn test_sandbox_validate_inconsistent_network() {
+        let app = test_app();
+        let config = serde_json::json!({
+            "filesystem_rules": [],
+            "network_access": "Full",
+            "seccomp_rules": [],
+            "isolate_network": true,
+            "network_policy": {
+                "allowed_outbound_ports": [80],
+                "allowed_outbound_hosts": [],
+                "allowed_inbound_ports": [],
+                "enable_nat": true
+            },
+            "mac_profile": null,
+            "encrypted_storage": null
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/sandbox/profiles/validate")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&config).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["valid"], true);
+        let warnings = json["warnings"].as_array().unwrap();
+        assert!(warnings.iter().any(|w| w.as_str().unwrap().contains("not Restricted")));
+        assert!(warnings.iter().any(|w| w.as_str().unwrap().contains("Full network access")));
+    }
+
+    #[tokio::test]
+    async fn test_sandbox_translate_full_network_no_isolation() {
+        let app = test_app();
+        let body = serde_json::json!({
+            "name": "full-net",
+            "network_mode": "full",
+            "isolate_network": false
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/sandbox/profiles")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["network_access"], "Full");
+        assert_eq!(json["isolate_network"], false);
+        assert!(json["network_policy"].is_null());
     }
 }

@@ -10,7 +10,7 @@ CONFIG_DIR="$SCRIPT_DIR/../config"
 
 # Defaults
 ISO_NAME="agnos"
-ISO_VERSION="$(cat "${SCRIPT_DIR}/../VERSION" 2>/dev/null || echo '2026.3.5')"
+ISO_VERSION="$(cat "${SCRIPT_DIR}/../VERSION" 2>/dev/null || echo '2026.3.6')"
 KERNEL_VERSION="6.6-lts"
 ARCH="x86_64"
 

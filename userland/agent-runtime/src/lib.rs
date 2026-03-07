@@ -27,6 +27,7 @@ pub mod capability;
 pub mod resource_forecast;
 pub mod mtls;
 pub mod integrity;
+pub mod mcp_server;
 
 pub use agent::{Agent, AgentHandle};
 pub use lifecycle::LifecycleManager;

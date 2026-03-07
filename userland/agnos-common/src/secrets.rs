@@ -10,13 +10,18 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info, warn};
 
+use zeroize::Zeroize;
+
 use crate::error::{AgnosError, Result};
 
-/// A secret value with best-effort zeroing on drop.
+/// A secret value with guaranteed zeroing on drop.
 ///
 /// `Clone` is deliberately not derived — secrets should be passed by reference
 /// to avoid uncontrolled copies in memory. Use `SecretValue::duplicate()` if
 /// an explicit copy is genuinely needed (e.g. injecting into a child process).
+///
+/// The `data` field is zeroed via the `zeroize` crate on drop, which uses a
+/// volatile write to prevent the compiler from optimizing away the zeroing.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SecretValue {
     /// The raw secret bytes, base64-encoded for serialisation safety.
@@ -40,14 +45,7 @@ impl SecretValue {
 
 impl Drop for SecretValue {
     fn drop(&mut self) {
-        // Best-effort zeroing of secret data.
-        // SAFETY: We overwrite the String's bytes in place before it is freed.
-        // The compiler may optimise this away; for production use, integrate
-        // the `zeroize` crate.
-        unsafe {
-            let bytes = self.data.as_bytes_mut();
-            std::ptr::write_bytes(bytes.as_mut_ptr(), 0, bytes.len());
-        }
+        self.data.zeroize();
     }
 }
 

@@ -6,8 +6,8 @@ use std::sync::Arc;
 
 use axum::{
     extract::State,
-    http::StatusCode,
-    response::Json,
+    http::{HeaderMap, StatusCode},
+    response::{IntoResponse, Json},
     routing::{get, post},
     Router,
 };
@@ -37,7 +37,13 @@ pub async fn start_http_server(gateway: Arc<LlmGateway>, _config: GatewayConfig)
     let cors = CorsLayer::new()
         .allow_origin(AllowOrigin::predicate(|origin, _| {
             if let Ok(o) = origin.to_str() {
-                o.starts_with("http://localhost") || o.starts_with("http://127.0.0.1")
+                // Parse as URL to check hostname exactly, preventing bypasses
+                // like "http://localhostevil.com"
+                if let Ok(url) = url::Url::parse(o) {
+                    matches!(url.host_str(), Some("localhost") | Some("127.0.0.1"))
+                } else {
+                    false
+                }
             } else {
                 false
             }
@@ -85,6 +91,18 @@ struct ChatCompletionRequest {
     #[serde(default)]
     #[allow(dead_code)]
     stream: Option<bool>,
+    /// OpenAI tool definitions for function calling
+    #[serde(default)]
+    #[allow(dead_code)]
+    tools: Option<Vec<serde_json::Value>>,
+    /// OpenAI tool_choice parameter (e.g. "auto", "none", or specific tool)
+    #[serde(default)]
+    #[allow(dead_code)]
+    tool_choice: Option<serde_json::Value>,
+    /// OpenAI response_format parameter (e.g. {"type": "json_object"})
+    #[serde(default)]
+    #[allow(dead_code)]
+    response_format: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -101,6 +119,9 @@ struct ChatCompletionResponse {
     model: String,
     choices: Vec<Choice>,
     usage: Usage,
+    /// Per-personality accounting ID, echoed from X-Personality-Id request header
+    #[serde(skip_serializing_if = "Option::is_none")]
+    personality_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -163,7 +184,29 @@ async fn chat_completions(
     State(state): State<AppState>,
     headers: axum::http::HeaderMap,
     Json(payload): Json<ChatCompletionRequest>,
-) -> Result<Json<ChatCompletionResponse>, (StatusCode, Json<ErrorResponse>)> {
+) -> impl IntoResponse {
+    // Generate request ID for tracing
+    let request_id = uuid::Uuid::new_v4().to_string();
+
+    // Extract optional consumer-integration headers
+    let personality_id = headers
+        .get("x-personality-id")
+        .and_then(|h| h.to_str().ok())
+        .map(|s| s.to_string());
+
+    let source_service = headers
+        .get("x-source-service")
+        .and_then(|h| h.to_str().ok())
+        .map(|s| s.to_string());
+
+    info!(
+        request_id = %request_id,
+        personality_id = personality_id.as_deref().unwrap_or("-"),
+        source_service = source_service.as_deref().unwrap_or("-"),
+        model = %payload.model,
+        "chat_completions request"
+    );
+
     // Check authentication
     if let Some(ref api_key) = state.api_key {
         match headers.get("authorization") {
@@ -171,40 +214,46 @@ async fn chat_completions(
                 let auth_str = auth.to_str().unwrap_or("");
                 let token = auth_str.strip_prefix("Bearer ").unwrap_or("");
                 if token.is_empty() || token != api_key {
-                    return Err((
+                    let mut resp_headers = HeaderMap::new();
+                    resp_headers.insert("x-request-id", request_id.parse().unwrap());
+                    return (
                         StatusCode::UNAUTHORIZED,
-                        Json(ErrorResponse {
+                        resp_headers,
+                        Json(serde_json::to_value(ErrorResponse {
                             error: ErrorDetail {
                                 message: "Invalid API key".to_string(),
                                 r#type: "invalid_request_error".to_string(),
                                 code: Some("invalid_api_key".to_string()),
                             },
-                        }),
-                    ));
+                        }).unwrap()),
+                    );
                 }
             }
             None => {
-                return Err((
+                let mut resp_headers = HeaderMap::new();
+                resp_headers.insert("x-request-id", request_id.parse().unwrap());
+                return (
                     StatusCode::UNAUTHORIZED,
-                    Json(ErrorResponse {
+                    resp_headers,
+                    Json(serde_json::to_value(ErrorResponse {
                         error: ErrorDetail {
                             message: "Missing authorization header".to_string(),
                             r#type: "invalid_request_error".to_string(),
                             code: Some("missing_authorization".to_string()),
                         },
-                    }),
-                ));
+                    }).unwrap()),
+                );
             }
         }
     }
-    
+
     // Get agent ID from header for accounting
     let agent_id = headers
         .get("x-agent-id")
         .and_then(|h| h.to_str().ok())
         .and_then(|s| s.parse::<uuid::Uuid>().ok())
         .map(agnos_common::AgentId);
-    
+
     // Build prompt from messages
     let prompt = payload
         .messages
@@ -212,7 +261,7 @@ async fn chat_completions(
         .map(|m| format!("{}: {}", m.role, m.content))
         .collect::<Vec<_>>()
         .join("\n");
-    
+
     // Create inference request with validated parameters
     let mut request = agnos_common::InferenceRequest {
         model: payload.model.clone(),
@@ -224,7 +273,7 @@ async fn chat_completions(
         frequency_penalty: 0.0,
     };
     request.validate();
-    
+
     // Run inference
     match state.gateway.infer(request, agent_id).await {
         Ok(response) => {
@@ -232,8 +281,10 @@ async fn chat_completions(
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_secs();
-            
-            Ok(Json(ChatCompletionResponse {
+
+            let total_tokens = response.usage.total_tokens;
+
+            let completion = ChatCompletionResponse {
                 id: format!("chatcmpl-{}", uuid::Uuid::new_v4()),
                 object: "chat.completion".to_string(),
                 created: now,
@@ -249,23 +300,37 @@ async fn chat_completions(
                 usage: Usage {
                     prompt_tokens: response.usage.prompt_tokens,
                     completion_tokens: response.usage.completion_tokens,
-                    total_tokens: response.usage.total_tokens,
+                    total_tokens,
                 },
-            }))
+                personality_id,
+            };
+
+            let mut resp_headers = HeaderMap::new();
+            resp_headers.insert("x-request-id", request_id.parse().unwrap());
+            resp_headers.insert("x-token-usage", total_tokens.to_string().parse().unwrap());
+
+            (
+                StatusCode::OK,
+                resp_headers,
+                Json(serde_json::to_value(completion).unwrap()),
+            )
         }
         Err(e) => {
             // Log full error internally but return sanitized message to client
             error!(model = %payload.model, error = %e, "Inference failed");
-            Err((
+            let mut resp_headers = HeaderMap::new();
+            resp_headers.insert("x-request-id", request_id.parse().unwrap());
+            (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
+                resp_headers,
+                Json(serde_json::to_value(ErrorResponse {
                     error: ErrorDetail {
                         message: "Inference request failed. Check server logs for details.".to_string(),
                         r#type: "internal_error".to_string(),
                         code: None,
                     },
-                }),
-            ))
+                }).unwrap()),
+            )
         }
     }
 }
@@ -433,6 +498,7 @@ mod tests {
                 completion_tokens: 5,
                 total_tokens: 15,
             },
+            personality_id: None,
         };
         
         let json = serde_json::to_string(&resp).unwrap();
@@ -691,6 +757,7 @@ mod tests {
                 completion_tokens: 10,
                 total_tokens: 35,
             },
+            personality_id: None,
         };
 
         let json_val: serde_json::Value = serde_json::to_value(&resp).unwrap();
@@ -718,6 +785,7 @@ mod tests {
                 Choice { index: 1, message: ChatMessage { role: "assistant".to_string(), content: "B".to_string() }, finish_reason: "length".to_string() },
             ],
             usage: Usage { prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 },
+            personality_id: None,
         };
         let json_val: serde_json::Value = serde_json::to_value(&resp).unwrap();
         assert_eq!(json_val["choices"].as_array().unwrap().len(), 2);
@@ -1536,6 +1604,7 @@ mod tests {
             model: "m".to_string(),
             choices: vec![],
             usage: Usage { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+            personality_id: None,
         };
         let dbg = format!("{:?}", resp);
         assert!(dbg.contains("id"));
@@ -1854,5 +1923,204 @@ mod tests {
             assert!(p["healthy"].is_boolean());
             assert!(p["consecutive_failures"].is_number());
         }
+    }
+
+    // ==================================================================
+    // Consumer integration header tests (personality, source, request-id)
+    // ==================================================================
+
+    #[test]
+    fn test_chat_completion_request_with_tools_field() {
+        let json = r#"{
+            "model": "gpt-4",
+            "messages": [{"role": "user", "content": "Hi"}],
+            "tools": [{"type": "function", "function": {"name": "get_weather"}}],
+            "tool_choice": "auto"
+        }"#;
+        let req: ChatCompletionRequest = serde_json::from_str(json).unwrap();
+        assert!(req.tools.is_some());
+        assert_eq!(req.tools.as_ref().unwrap().len(), 1);
+        assert_eq!(req.tool_choice, Some(serde_json::json!("auto")));
+    }
+
+    #[test]
+    fn test_chat_completion_request_with_response_format() {
+        let json = r#"{
+            "model": "gpt-4",
+            "messages": [{"role": "user", "content": "Hi"}],
+            "response_format": {"type": "json_object"}
+        }"#;
+        let req: ChatCompletionRequest = serde_json::from_str(json).unwrap();
+        assert!(req.response_format.is_some());
+        assert_eq!(req.response_format.unwrap()["type"], "json_object");
+    }
+
+    #[test]
+    fn test_chat_completion_request_tools_default_none() {
+        let json = r#"{
+            "model": "llama2",
+            "messages": [{"role": "user", "content": "Hi"}]
+        }"#;
+        let req: ChatCompletionRequest = serde_json::from_str(json).unwrap();
+        assert!(req.tools.is_none());
+        assert!(req.tool_choice.is_none());
+        assert!(req.response_format.is_none());
+    }
+
+    #[test]
+    fn test_chat_completion_response_personality_id_present() {
+        let resp = ChatCompletionResponse {
+            id: "test".to_string(),
+            object: "chat.completion".to_string(),
+            created: 0,
+            model: "m".to_string(),
+            choices: vec![],
+            usage: Usage { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+            personality_id: Some("persona-sales-bot".to_string()),
+        };
+        let json_val: serde_json::Value = serde_json::to_value(&resp).unwrap();
+        assert_eq!(json_val["personality_id"], "persona-sales-bot");
+    }
+
+    #[test]
+    fn test_chat_completion_response_personality_id_absent() {
+        let resp = ChatCompletionResponse {
+            id: "test".to_string(),
+            object: "chat.completion".to_string(),
+            created: 0,
+            model: "m".to_string(),
+            choices: vec![],
+            usage: Usage { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+            personality_id: None,
+        };
+        let json_val: serde_json::Value = serde_json::to_value(&resp).unwrap();
+        // When None, personality_id should be omitted entirely (skip_serializing_if)
+        assert!(json_val.get("personality_id").is_none());
+    }
+
+    #[tokio::test]
+    async fn test_chat_completions_returns_x_request_id_header() {
+        let app = test_app_no_auth().await;
+        let body = serde_json::json!({
+            "model": "llama2",
+            "messages": [{"role": "user", "content": "Hi"}]
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/chat/completions")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        // Even on error responses, x-request-id should be present
+        let request_id = resp.headers().get("x-request-id");
+        assert!(request_id.is_some(), "x-request-id header must be present");
+        let id_str = request_id.unwrap().to_str().unwrap();
+        // Should be a valid UUID
+        assert!(uuid::Uuid::parse_str(id_str).is_ok(), "x-request-id should be a UUID, got: {}", id_str);
+    }
+
+    #[tokio::test]
+    async fn test_chat_completions_with_personality_id_header() {
+        let app = test_app_no_auth().await;
+        let body = serde_json::json!({
+            "model": "llama2",
+            "messages": [{"role": "user", "content": "Hi"}]
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/chat/completions")
+            .header("content-type", "application/json")
+            .header("x-personality-id", "persona-advisor")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        // Request ID should still be present even on inference failure
+        assert!(resp.headers().get("x-request-id").is_some());
+    }
+
+    #[tokio::test]
+    async fn test_chat_completions_with_source_service_header() {
+        let app = test_app_no_auth().await;
+        let body = serde_json::json!({
+            "model": "llama2",
+            "messages": [{"role": "user", "content": "Hi"}]
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/chat/completions")
+            .header("content-type", "application/json")
+            .header("x-source-service", "secureyeoman")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert!(resp.headers().get("x-request-id").is_some());
+    }
+
+    #[tokio::test]
+    async fn test_chat_completions_auth_error_returns_x_request_id() {
+        let app = test_app_with_auth("secret").await;
+        let body = serde_json::json!({
+            "model": "llama2",
+            "messages": [{"role": "user", "content": "Hi"}]
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/chat/completions")
+            .header("content-type", "application/json")
+            .header("authorization", "Bearer wrong")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+        // Even auth errors should include x-request-id for tracing
+        let request_id = resp.headers().get("x-request-id");
+        assert!(request_id.is_some(), "x-request-id must be present on auth errors");
+        let id_str = request_id.unwrap().to_str().unwrap();
+        assert!(uuid::Uuid::parse_str(id_str).is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_chat_completions_missing_auth_returns_x_request_id() {
+        let app = test_app_with_auth("secret").await;
+        let body = serde_json::json!({
+            "model": "llama2",
+            "messages": [{"role": "user", "content": "Hi"}]
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/chat/completions")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+        assert!(resp.headers().get("x-request-id").is_some());
+    }
+
+    #[tokio::test]
+    async fn test_chat_completions_all_consumer_headers_combined() {
+        let app = test_app_no_auth().await;
+        let body = serde_json::json!({
+            "model": "llama2",
+            "messages": [{"role": "user", "content": "Hi"}],
+            "tools": [{"type": "function", "function": {"name": "search"}}],
+            "tool_choice": "auto",
+            "response_format": {"type": "json_object"}
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/chat/completions")
+            .header("content-type", "application/json")
+            .header("x-personality-id", "persona-qa-tester")
+            .header("x-source-service", "agnostic")
+            .header("x-agent-id", uuid::Uuid::new_v4().to_string())
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        // Should parse all headers and fields without error (inference fails, but parsing works)
+        assert!(resp.headers().get("x-request-id").is_some());
+        let request_id = resp.headers().get("x-request-id").unwrap().to_str().unwrap();
+        assert!(uuid::Uuid::parse_str(request_id).is_ok());
     }
 }

@@ -12,7 +12,7 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 # Configuration
 UPDATE_DIR="${AGNOS_UPDATE_DIR:-/var/lib/agnos/updates}"
 BACKUP_DIR="${AGNOS_BACKUP_DIR:-/var/lib/agnos/backups}"
-CURRENT_VERSION="${AGNOS_VERSION:-$(cat ${PROJECT_ROOT}/VERSION 2>/dev/null || echo '2026.3.5')}"
+CURRENT_VERSION="${AGNOS_VERSION:-$(cat ${PROJECT_ROOT}/VERSION 2>/dev/null || echo '2026.3.6')}"
 
 # Colors
 RED='\033[0;31m'

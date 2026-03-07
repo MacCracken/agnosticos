@@ -49,7 +49,7 @@ LABEL org.opencontainers.image.title="AGNOS"
 LABEL org.opencontainers.image.description="AI-Native General Operating System"
 LABEL org.opencontainers.image.source="https://github.com/agnos/agnos"
 LABEL org.opencontainers.image.licenses="GPL-3.0"
-LABEL org.opencontainers.image.version="2026.3.5"
+LABEL org.opencontainers.image.version="2026.3.6"
 
 # Install minimal runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
