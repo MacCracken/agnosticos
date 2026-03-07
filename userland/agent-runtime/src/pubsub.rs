@@ -4,7 +4,8 @@
 //! Agents subscribe to named topics and publish typed messages.
 //! Supports request/reply via correlation IDs.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, RwLock};
@@ -92,8 +93,8 @@ pub struct TopicBroker {
     channels: RwLock<HashMap<AgentId, mpsc::Sender<TopicMessage>>>,
     /// Wildcard subscriptions (e.g., "file.*" subscribes to all file.* topics).
     wildcard_subs: RwLock<HashMap<String, HashSet<AgentId>>>,
-    /// Message log for debugging (last N messages).
-    message_log: RwLock<Vec<TopicMessage>>,
+    /// Message log for debugging (last N messages). VecDeque for O(1) eviction.
+    message_log: RwLock<VecDeque<TopicMessage>>,
     max_log_size: usize,
 }
 
@@ -103,7 +104,7 @@ impl TopicBroker {
             subscriptions: RwLock::new(HashMap::new()),
             channels: RwLock::new(HashMap::new()),
             wildcard_subs: RwLock::new(HashMap::new()),
-            message_log: RwLock::new(Vec::new()),
+            message_log: RwLock::new(VecDeque::new()),
             max_log_size: 500,
         }
     }
@@ -193,18 +194,22 @@ impl TopicBroker {
         // Don't send to the sender
         targets.remove(&sender);
 
+        // Wrap in Arc to avoid cloning the full message per subscriber
+        let shared_msg = Arc::new(message);
+
         // Deliver
         let channels = self.channels.read().await;
         let mut delivered = 0;
 
         for &agent_id in &targets {
             if let Some(tx) = channels.get(&agent_id) {
-                match tx.try_send(message.clone()) {
+                // Clone from Arc (cheap pointer copy + one deep clone for the channel)
+                match tx.try_send((*shared_msg).clone()) {
                     Ok(()) => delivered += 1,
                     Err(mpsc::error::TrySendError::Full(_)) => {
                         warn!(
                             "Agent {} topic queue full, dropping message on '{}'",
-                            agent_id, topic
+                            agent_id, shared_msg.topic
                         );
                     }
                     Err(mpsc::error::TrySendError::Closed(_)) => {
@@ -214,13 +219,13 @@ impl TopicBroker {
             }
         }
 
-        // Log
+        // Log — O(1) eviction with VecDeque::pop_front()
         {
             let mut log = self.message_log.write().await;
             if log.len() >= self.max_log_size {
-                log.remove(0);
+                log.pop_front();
             }
-            log.push(message);
+            log.push_back(Arc::try_unwrap(shared_msg).unwrap_or_else(|arc| (*arc).clone()));
         }
 
         delivered
@@ -259,7 +264,7 @@ impl TopicBroker {
     pub async fn recent_messages(&self, count: usize) -> Vec<TopicMessage> {
         let log = self.message_log.read().await;
         let start = log.len().saturating_sub(count);
-        log[start..].to_vec()
+        log.iter().skip(start).cloned().collect()
     }
 }
 

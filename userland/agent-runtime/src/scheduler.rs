@@ -416,7 +416,7 @@ impl TaskScheduler {
 
             // Try preferred node first, then best-fit
             let chosen = if let Some(ref pref_id) = pref {
-                if self.nodes.get(pref_id).map_or(false, |n| n.can_fit(&req)) {
+                if self.nodes.get(pref_id).is_some_and(|n| n.can_fit(&req)) {
                     Some(pref_id.clone())
                 } else {
                     self.best_fit_node(&req)
@@ -432,10 +432,14 @@ impl TaskScheduler {
                 };
 
                 // Reserve resources
-                self.nodes.get_mut(&node_id).unwrap().reserve(&req);
+                if let Some(node) = self.nodes.get_mut(&node_id) {
+                    node.reserve(&req);
+                }
 
                 // Update task
-                let task = self.tasks.get_mut(&task_id).unwrap();
+                let Some(task) = self.tasks.get_mut(&task_id) else {
+                    continue;
+                };
                 let _ = task.transition(TaskStatus::Scheduled);
                 task.scheduled_at = Some(Utc::now());
                 task.node_preference = Some(node_id.clone());

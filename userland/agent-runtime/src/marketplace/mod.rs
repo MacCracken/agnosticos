@@ -307,10 +307,11 @@ impl DependencyGraph {
             // Find nodes that depend on `name` (name is a dependency of those nodes)
             for node in self.nodes.values() {
                 if node.dependencies.iter().any(|d| d == name) {
-                    let deg = in_deg.get_mut(node.name.as_str()).unwrap();
-                    *deg -= 1;
-                    if *deg == 0 {
-                        queue.push_back(&node.name);
+                    if let Some(deg) = in_deg.get_mut(node.name.as_str()) {
+                        *deg -= 1;
+                        if *deg == 0 {
+                            queue.push_back(&node.name);
+                        }
                     }
                 }
             }

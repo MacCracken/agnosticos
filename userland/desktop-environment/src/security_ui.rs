@@ -1543,9 +1543,9 @@ pub enum TrustLevel {
 /// Sandbox enforcement status for a window's owning agent.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum SandboxStatus {
-    FullSandbox,
-    PartialSandbox,
-    NoSandbox,
+    Full,
+    Partial,
+    None,
 }
 
 /// Visual icon type shown on the window badge.
@@ -1644,7 +1644,7 @@ mod badge_tests {
             agent_id: Some("agent-001".to_string()),
             agent_name: name.to_string(),
             trust_level: trust,
-            sandbox_status: SandboxStatus::FullSandbox,
+            sandbox_status: SandboxStatus::Full,
             badge_color: WindowBadgeManager::badge_color_for_trust(&trust),
             icon: BadgeIcon::Agent,
         }
@@ -1759,9 +1759,9 @@ mod badge_tests {
     #[test]
     fn test_sandbox_status_variants() {
         let statuses = vec![
-            SandboxStatus::FullSandbox,
-            SandboxStatus::PartialSandbox,
-            SandboxStatus::NoSandbox,
+            SandboxStatus::Full,
+            SandboxStatus::Partial,
+            SandboxStatus::None,
         ];
         assert_eq!(statuses.len(), 3);
     }

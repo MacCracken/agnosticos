@@ -623,11 +623,10 @@ pub fn parse_scan_output(stdout: &str, tool: NetworkTool) -> ParsedOutput {
         let line = line.trim();
 
         // nmap: "Nmap scan report for <host> (<ip>)" or "Nmap scan report for <ip>"
-        if line.starts_with("Nmap scan report for ") {
+        if let Some(rest) = line.strip_prefix("Nmap scan report for ") {
             if let Some(host) = current_host.take() {
                 hosts.push(host);
             }
-            let rest = &line["Nmap scan report for ".len()..];
             let (hostname, address) = if let Some(paren_start) = rest.find('(') {
                 let name = rest[..paren_start].trim().to_string();
                 let ip = rest[paren_start + 1..].trim_end_matches(')').to_string();
@@ -646,9 +645,8 @@ pub fn parse_scan_output(stdout: &str, tool: NetworkTool) -> ParsedOutput {
         }
 
         // nmap: "MAC Address: AA:BB:CC:DD:EE:FF (Vendor)"
-        if line.starts_with("MAC Address: ") {
+        if let Some(rest) = line.strip_prefix("MAC Address: ") {
             if let Some(ref mut host) = current_host {
-                let rest = &line["MAC Address: ".len()..];
                 let parts: Vec<&str> = rest.splitn(2, ' ').collect();
                 host.mac_address = Some(parts[0].to_string());
                 if parts.len() > 1 {
@@ -665,8 +663,7 @@ pub fn parse_scan_output(stdout: &str, tool: NetworkTool) -> ParsedOutput {
         }
 
         // masscan: "Discovered open port 80/tcp on 192.168.1.1"
-        if line.starts_with("Discovered open port ") {
-            let rest = &line["Discovered open port ".len()..];
+        if let Some(rest) = line.strip_prefix("Discovered open port ") {
             if let Some((port_proto, addr)) = rest.split_once(" on ") {
                 if let Some((port_str, proto)) = port_proto.split_once('/') {
                     if let Ok(port) = port_str.parse::<u16>() {
@@ -1084,7 +1081,7 @@ pub fn validate_args(tool: NetworkTool, args: &[String], allow_dangerous: bool) 
                     if let Some(rate_val) = joined
                         .split("--rate")
                         .nth(1)
-                        .and_then(|s| s.trim().split_whitespace().next())
+                        .and_then(|s| s.split_whitespace().next())
                         .and_then(|s| s.trim_start_matches('=').parse::<u64>().ok())
                     {
                         if rate_val > 10000 {
@@ -1119,13 +1116,12 @@ pub fn validate_args(tool: NetworkTool, args: &[String], allow_dangerous: bool) 
             }
         }
         NetworkTool::BetterCap => {
-            if !allow_dangerous {
-                if joined.contains("--caplet") {
+            if !allow_dangerous
+                && joined.contains("--caplet") {
                     return Err(anyhow!(
                         "Dangerous bettercap argument '--caplet' requires explicit approval (arbitrary script execution)"
                     ));
                 }
-            }
         }
         _ => {}
     }

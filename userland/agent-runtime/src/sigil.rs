@@ -839,8 +839,10 @@ impl SigilVerifier {
             });
         }
 
-        let mut policy = IntegrityPolicy::default();
-        policy.enforce = true;
+        let mut policy = IntegrityPolicy {
+            enforce: true,
+            ..IntegrityPolicy::default()
+        };
 
         // Build a path-based index into the trust store so we can look up
         // the expected baseline hash even when the file has been tampered.

@@ -127,8 +127,10 @@ impl FederationNode {
 
 /// Strategy for placing agents across the cluster.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum SchedulingStrategy {
     /// Spread load evenly across nodes.
+    #[default]
     Balanced,
     /// Pack agents onto fewest nodes (save power).
     Packed,
@@ -136,11 +138,6 @@ pub enum SchedulingStrategy {
     Spread,
 }
 
-impl Default for SchedulingStrategy {
-    fn default() -> Self {
-        Self::Balanced
-    }
-}
 
 impl fmt::Display for SchedulingStrategy {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -572,7 +569,7 @@ impl FederationCluster {
         let voters = self
             .votes_received
             .entry(candidate_id.to_string())
-            .or_insert_with(Vec::new);
+            .or_default();
 
         if !voters.contains(&vote.voter_id) {
             voters.push(vote.voter_id);
@@ -754,6 +751,12 @@ pub struct NodeScorer {
     node_loads: HashMap<String, u32>,
 }
 
+impl Default for NodeScorer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl NodeScorer {
     pub fn new() -> Self {
         Self {
@@ -803,7 +806,7 @@ impl NodeScorer {
         requirements: &AgentRequirements,
     ) -> f64 {
         let caps = &node.capabilities;
-        let current_load = self.get_load(&node.node_id) as u32;
+        let current_load = self.get_load(&node.node_id);
 
         // Estimate resources already consumed by existing agents.
         // Each running agent is assumed to use 1 CPU core and 512 MB memory

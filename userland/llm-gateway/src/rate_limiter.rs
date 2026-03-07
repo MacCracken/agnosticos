@@ -241,18 +241,22 @@ impl AgentRateLimiter {
             }
         }
 
-        // Check tokens per hour
+        // Check tokens per hour (read-only check; reset happens on record_request_end)
         if limit.max_tokens_per_hour > 0 {
-            let mut buckets = self.hourly_tokens.write().await;
-            let bucket = buckets
-                .entry(agent_id)
-                .or_insert_with(HourlyTokenBucket::new);
-            bucket.maybe_reset();
-            if bucket.tokens_used >= limit.max_tokens_per_hour {
-                return Err(RateLimitReason::TokensPerHourExceeded {
-                    used: bucket.tokens_used,
-                    limit: limit.max_tokens_per_hour,
-                });
+            let buckets = self.hourly_tokens.read().await;
+            if let Some(bucket) = buckets.get(&agent_id) {
+                // Check without resetting — avoids write lock for read-only path
+                let tokens = if bucket.window_start.elapsed().as_secs() >= 3600 {
+                    0 // Window expired, effectively reset
+                } else {
+                    bucket.tokens_used
+                };
+                if tokens >= limit.max_tokens_per_hour {
+                    return Err(RateLimitReason::TokensPerHourExceeded {
+                        used: tokens,
+                        limit: limit.max_tokens_per_hour,
+                    });
+                }
             }
         }
 

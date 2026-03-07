@@ -242,13 +242,17 @@ pub fn validate_version(version: &str) -> Result<()> {
             ))
         })?;
     }
-    let year: u32 = parts[0].parse().unwrap();
+    let year: u32 = parts[0].parse().map_err(|_| {
+        SysError::InvalidArgument(format!("Version year is not a number: '{}'", parts[0]))
+    })?;
     if !(2024..=2100).contains(&year) {
         return Err(SysError::InvalidArgument(format!(
             "Version year out of range (2024-2100): {year}"
         )));
     }
-    let month: u32 = parts[2].parse().unwrap();
+    let month: u32 = parts[2].parse().map_err(|_| {
+        SysError::InvalidArgument(format!("Version month is not a number: '{}'", parts[2]))
+    })?;
     if !(1..=12).contains(&month) {
         return Err(SysError::InvalidArgument(format!(
             "Version month out of range (1-12): {month}"
@@ -518,13 +522,30 @@ pub fn apply_update(config: &UpdateConfig, manifest: &UpdateManifest) -> Result<
 
     let image_path = &manifest.files[0].path;
 
-    // Validate image path: must be absolute, within the staging dir, and contain no traversal
-    let staging_dir = "/var/lib/agnos/updates";
-    let canonical = std::path::Path::new(image_path);
-    if !canonical.is_absolute() || image_path.contains("..") || !image_path.starts_with(staging_dir)
-    {
+    // Validate image path: must be absolute, within the staging dir, and contain no traversal.
+    // Use canonical path comparison to prevent prefix tricks (e.g. /var/lib/agnos/updates-evil/).
+    let staging_dir = Path::new("/var/lib/agnos/updates");
+    let image = Path::new(image_path);
+    if !image.is_absolute() || image_path.contains("..") {
         return Err(SysError::InvalidArgument(format!(
-            "Update image path must be absolute within {staging_dir}, got: {image_path}"
+            "Update image path must be absolute without traversal, got: {image_path}"
+        )));
+    }
+    // Canonicalize both paths to resolve symlinks and verify containment.
+    // If staging dir doesn't exist yet, fall back to string prefix check with trailing slash.
+    let in_staging = if let (Ok(canon_staging), Ok(canon_image)) =
+        (staging_dir.canonicalize(), image.canonicalize())
+    {
+        canon_image.starts_with(&canon_staging)
+    } else {
+        // Fallback: ensure the staging dir prefix includes a path separator
+        let prefix = format!("{}/", staging_dir.display());
+        image_path.starts_with(&prefix)
+    };
+    if !in_staging {
+        return Err(SysError::InvalidArgument(format!(
+            "Update image path must be within {}, got: {image_path}",
+            staging_dir.display()
         )));
     }
 

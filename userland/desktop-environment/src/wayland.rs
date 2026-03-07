@@ -907,7 +907,9 @@ pub struct TextInputState {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub enum ContentType {
+    #[default]
     Normal,
     Password,
     Email,
@@ -917,11 +919,6 @@ pub enum ContentType {
     Terminal,
 }
 
-impl Default for ContentType {
-    fn default() -> Self {
-        Self::Normal
-    }
-}
 
 #[derive(Debug, Clone)]
 pub struct PreeditState {
@@ -975,16 +972,13 @@ impl Default for TextInputState {
 
 /// Decoration mode negotiation (xdg_decoration_unstable_v1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub enum DecorationMode {
     ClientSide,
+    #[default]
     ServerSide,
 }
 
-impl Default for DecorationMode {
-    fn default() -> Self {
-        Self::ServerSide
-    }
-}
 
 #[derive(Debug, Clone)]
 pub struct DecorationState {
@@ -1188,7 +1182,8 @@ impl ProtocolBridge {
             app_id: String::new(),
         });
 
-        let tracker = self.toplevels.get_mut(&surface_id).unwrap();
+        // Safe: we just inserted the tracker above
+        let tracker = self.toplevels.get_mut(&surface_id).expect("just inserted");
         tracker.send_configure(configure)
     }
 
@@ -2963,7 +2958,9 @@ use uuid::Uuid;
 
 /// Edge anchor for popup positioning.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Default)]
 pub enum Edge {
+    #[default]
     None,
     Top,
     Bottom,
@@ -2971,11 +2968,6 @@ pub enum Edge {
     Right,
 }
 
-impl Default for Edge {
-    fn default() -> Self {
-        Edge::None
-    }
-}
 
 /// Bitflags-style constraint adjustment for popup repositioning.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

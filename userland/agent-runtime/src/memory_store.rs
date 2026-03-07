@@ -85,16 +85,13 @@ impl AgentMemoryStore {
         let now = chrono::Utc::now().to_rfc3339();
         let path = self.key_path(agent_id, key);
 
-        // Check if entry exists for created_at
-        let created_at = if path.exists() {
-            match tokio::fs::read_to_string(&path).await {
-                Ok(content) => serde_json::from_str::<MemoryEntry>(&content)
-                    .map(|e| e.created_at)
-                    .unwrap_or_else(|_| now.clone()),
-                Err(_) => now.clone(),
-            }
-        } else {
-            now.clone()
+        // Preserve created_at from existing entry if present (avoids TOCTOU by
+        // attempting the read directly and falling back on any error).
+        let created_at = match tokio::fs::read_to_string(&path).await {
+            Ok(content) => serde_json::from_str::<MemoryEntry>(&content)
+                .map(|e| e.created_at)
+                .unwrap_or_else(|_| now.clone()),
+            Err(_) => now.clone(),
         };
 
         let entry = MemoryEntry {
@@ -123,39 +120,40 @@ impl AgentMemoryStore {
     /// Get a value for an agent
     pub async fn get(&self, agent_id: AgentId, key: &str) -> Result<Option<MemoryEntry>> {
         let path = self.key_path(agent_id, key);
-        if !path.exists() {
-            return Ok(None);
+        match tokio::fs::read_to_string(&path).await {
+            Ok(content) => {
+                let entry: MemoryEntry =
+                    serde_json::from_str(&content).context("Failed to parse memory entry")?;
+                Ok(Some(entry))
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(anyhow::anyhow!("Failed to read memory entry: {e}")),
         }
-
-        let content = tokio::fs::read_to_string(&path)
-            .await
-            .context("Failed to read memory entry")?;
-        let entry: MemoryEntry =
-            serde_json::from_str(&content).context("Failed to parse memory entry")?;
-        Ok(Some(entry))
     }
 
     /// Delete a key for an agent
     pub async fn delete(&self, agent_id: AgentId, key: &str) -> Result<bool> {
         let path = self.key_path(agent_id, key);
-        if path.exists() {
-            tokio::fs::remove_file(&path).await?;
-            debug!("Agent {} deleted key '{}'", agent_id, key);
-            Ok(true)
-        } else {
-            Ok(false)
+        match tokio::fs::remove_file(&path).await {
+            Ok(()) => {
+                debug!("Agent {} deleted key '{}'", agent_id, key);
+                Ok(true)
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(e) => Err(e.into()),
         }
     }
 
     /// List all keys for an agent
     pub async fn list_keys(&self, agent_id: AgentId) -> Result<Vec<String>> {
         let dir = self.agent_dir(agent_id);
-        if !dir.exists() {
-            return Ok(Vec::new());
-        }
+        let mut entries = match tokio::fs::read_dir(&dir).await {
+            Ok(entries) => entries,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(e) => return Err(e.into()),
+        };
 
         let mut keys = Vec::new();
-        let mut entries = tokio::fs::read_dir(&dir).await?;
         while let Some(entry) = entries.next_entry().await? {
             let path = entry.path();
             if path.extension().and_then(|e| e.to_str()) == Some("json") {

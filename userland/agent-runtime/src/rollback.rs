@@ -186,7 +186,7 @@ impl RollbackManager {
                 Some(content) => {
                     // Ensure parent directory exists
                     if let Some(parent) = full_path.parent() {
-                        if let Err(e) = std::fs::create_dir_all(parent) {
+                        if let Err(e) = tokio::fs::create_dir_all(parent).await {
                             result.errors.push((
                                 file_snap.relative_path.clone(),
                                 format!("Failed to create parent dir: {}", e),
@@ -195,7 +195,7 @@ impl RollbackManager {
                         }
                     }
 
-                    match std::fs::write(&full_path, content) {
+                    match tokio::fs::write(&full_path, content).await {
                         Ok(()) => {
                             result.restored.push(file_snap.relative_path.clone());
                         }
@@ -218,14 +218,19 @@ impl RollbackManager {
         }
 
         // 2. Remove files that were created after the snapshot
-        if snapshot.working_dir.exists() {
-            let current_files =
-                Self::list_files_relative(&snapshot.working_dir, &snapshot.working_dir)?;
+        let working_dir = snapshot.working_dir.clone();
+        if tokio::fs::try_exists(&working_dir).await.unwrap_or(false) {
+            let wd = working_dir.clone();
+            let current_files = tokio::task::spawn_blocking(move || {
+                Self::list_files_relative(&wd, &wd)
+            })
+            .await
+            .context("list_files_relative task panicked")??;
 
             for rel_path in current_files {
                 if !snapshot_files.contains_key(rel_path.as_path()) {
                     let full_path = snapshot.working_dir.join(&rel_path);
-                    match std::fs::remove_file(&full_path) {
+                    match tokio::fs::remove_file(&full_path).await {
                         Ok(()) => {
                             result.removed.push(rel_path);
                         }

@@ -63,8 +63,10 @@ pub struct ResolvedPackage {
 
 /// Resolution strategy — how nous decides where to look.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum ResolutionStrategy {
     /// Check marketplace first, then system (default).
+    #[default]
     MarketplaceFirst,
     /// Check system first, then marketplace.
     SystemFirst,
@@ -74,11 +76,6 @@ pub enum ResolutionStrategy {
     SearchAll,
 }
 
-impl Default for ResolutionStrategy {
-    fn default() -> Self {
-        Self::MarketplaceFirst
-    }
-}
 
 /// A unified search result across all sources.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -391,7 +388,7 @@ impl SystemPackageDb {
                     .split(',')
                     .map(|d| {
                         // Strip version constraints: "foo (>= 1.0)" -> "foo"
-                        d.trim().split_whitespace().next().unwrap_or("").to_string()
+                        d.split_whitespace().next().unwrap_or("").to_string()
                     })
                     .filter(|d| !d.is_empty())
                     .collect();

@@ -346,7 +346,7 @@ pub fn fetch_server_cert(host: &str, port: u16) -> Result<CertInfo> {
     // Compute SHA-256 of the DER-encoded SPKI directly in Rust
     use sha2::{Digest, Sha256};
     let spki_hash = Sha256::digest(&der_output.stdout);
-    let _spki_hex = hex::encode(&spki_hash);
+    let _spki_hex = hex::encode(spki_hash);
 
     let spki_bytes = spki_hash.to_vec();
     let spki_b64 = base64_encode(&spki_bytes);

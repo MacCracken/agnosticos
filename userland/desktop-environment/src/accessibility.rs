@@ -43,6 +43,7 @@ pub enum AccessibilityRole {
 
 /// Dynamic state of an accessible node.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct AccessibilityState {
     pub focused: bool,
     pub selected: bool,
@@ -54,20 +55,6 @@ pub struct AccessibilityState {
     pub description: String,
 }
 
-impl Default for AccessibilityState {
-    fn default() -> Self {
-        Self {
-            focused: false,
-            selected: false,
-            expanded: false,
-            checked: None,
-            disabled: false,
-            hidden: false,
-            value: None,
-            description: String::new(),
-        }
-    }
-}
 
 // ============================================================================
 // Actions

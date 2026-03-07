@@ -422,6 +422,7 @@ impl ArgonautInit {
     }
 
     /// Build the ordered boot sequence for a given mode.
+    #[allow(clippy::vec_init_then_push)]
     pub fn build_boot_sequence(mode: BootMode) -> Vec<BootStep> {
         let mut steps = Vec::new();
 
@@ -774,9 +775,10 @@ impl ArgonautInit {
         };
 
         if validation {
-            let svc = self.services.get_mut(name).unwrap();
-            debug!(service = %name, from = %svc.state, to = %state, "state transition");
-            svc.state = state;
+            if let Some(svc) = self.services.get_mut(name) {
+                debug!(service = %name, from = %svc.state, to = %state, "state transition");
+                svc.state = state;
+            }
         }
         validation
     }

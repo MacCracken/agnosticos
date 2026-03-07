@@ -94,16 +94,13 @@ impl ResponseCache {
         if cache.len() > self.max_capacity {
             Self::cleanup_expired(&mut cache);
         }
-        // If still over capacity, evict least-recently-accessed entries
-        while cache.len() > self.max_capacity {
-            if let Some(lru_key) = cache
-                .iter()
-                .min_by_key(|(_, e)| e.last_accessed)
-                .map(|(k, _)| k.clone())
-            {
-                cache.remove(&lru_key);
-            } else {
-                break;
+        // If still over capacity, batch-evict least-recently-accessed entries
+        if cache.len() > self.max_capacity {
+            let excess = cache.len() - self.max_capacity;
+            let mut entries: Vec<_> = cache.iter().map(|(k, e)| (k.clone(), e.last_accessed)).collect();
+            entries.sort_unstable_by_key(|(_, t)| *t);
+            for (k, _) in entries.into_iter().take(excess) {
+                cache.remove(&k);
             }
         }
     }

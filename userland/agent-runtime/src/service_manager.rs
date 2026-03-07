@@ -1043,17 +1043,14 @@ pub struct CronSchedule {
 }
 
 #[derive(Debug, Clone)]
+#[derive(Default)]
 enum CronField {
+    #[default]
     Any,
     Exact(u32),
     Step(u32),
 }
 
-impl Default for CronField {
-    fn default() -> Self {
-        CronField::Any
-    }
-}
 
 impl CronField {
     fn matches(&self, value: u32) -> bool {
@@ -1150,7 +1147,7 @@ impl CronSchedule {
             if self.matches(&candidate) {
                 return Some(candidate);
             }
-            candidate = candidate + CDuration::minutes(1);
+            candidate += CDuration::minutes(1);
         }
 
         None
@@ -1226,7 +1223,7 @@ impl TaskScheduler {
     pub fn due_tasks(&self, now: &DateTime<Utc>) -> Vec<&ScheduledTask> {
         self.tasks
             .values()
-            .filter(|t| t.enabled && t.next_run.map_or(false, |nr| nr <= *now))
+            .filter(|t| t.enabled && t.next_run.is_some_and(|nr| nr <= *now))
             .collect()
     }
 

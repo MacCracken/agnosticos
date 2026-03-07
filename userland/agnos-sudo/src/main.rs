@@ -335,6 +335,7 @@ fn command_matches(command: &str, pattern: &str) -> bool {
 // ---------------------------------------------------------------------------
 
 /// Build a sanitized environment for the target command.
+#[allow(clippy::vec_init_then_push)]
 pub fn sanitize_environment(
     policy: &SudoPolicy,
     caller_user: &str,
@@ -796,7 +797,7 @@ fn list_permissions(policy: &SudoPolicy, username: &str, groups: &[String]) {
         let run_as = &rule.run_as;
 
         if rule.commands.is_empty() {
-            println!("    ({}) {}{}", run_as, auth_tag, "ALL");
+            println!("    ({}) {}ALL", run_as, auth_tag);
         } else {
             for cmd in &rule.commands {
                 println!("    ({}) {}{}", run_as, auth_tag, cmd);

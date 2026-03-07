@@ -157,7 +157,7 @@ impl RatingStore {
         if package_name.is_empty() {
             bail!("package_name must not be empty");
         }
-        if score < MIN_SCORE || score > MAX_SCORE {
+        if !(MIN_SCORE..=MAX_SCORE).contains(&score) {
             bail!(
                 "score must be between {} and {}, got {}",
                 MIN_SCORE,

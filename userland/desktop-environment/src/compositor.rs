@@ -181,7 +181,7 @@ impl Compositor {
         // Calculate placement: cascade from top-left
         let window_count = self.windows.read().unwrap().len();
         let cascade_offset = (window_count as i32 * 30) % 300;
-        let output = self.current_output.read().unwrap().clone();
+        let output = *self.current_output.read().unwrap();
         let default_width = (output.width / 2).max(400);
         let default_height = (output.height / 2).max(300);
 
@@ -199,7 +199,7 @@ impl Compositor {
             title: title.clone(),
             app_id,
             state: WindowState::Normal,
-            geometry: geometry.clone(),
+            geometry,
             is_agent_window: is_agent,
             created_at: chrono::Utc::now(),
         };
@@ -315,10 +315,10 @@ impl Compositor {
             return Err(CompositorError::WindowNotFound(id));
         }
 
-        let output = self.current_output.read().unwrap().clone();
+        let output = *self.current_output.read().unwrap();
 
         if let Some(w) = windows.get_mut(&id) {
-            w.state = state.clone();
+            w.state = state;
 
             // Sync geometry for maximize/fullscreen
             match &state {
@@ -344,11 +344,11 @@ impl Compositor {
             // Update scene graph
             let mut scene = self.scene.write().unwrap();
             if let Some(surface) = scene.get_surface_mut(id) {
-                surface.window_state = state.clone();
+                surface.window_state = state;
                 surface.visible = state != WindowState::Minimized;
                 match &state {
                     WindowState::Maximized | WindowState::Fullscreen => {
-                        surface.geometry = w.geometry.clone();
+                        surface.geometry = w.geometry;
                     }
                     _ => {}
                 }
@@ -542,7 +542,7 @@ impl Compositor {
             DecorationHit::MaximizeButton => InputAction::ToggleMaximize(surface_id),
             DecorationHit::Border(edge) => {
                 *self.resize_state.write().unwrap() =
-                    Some((surface_id, edge.clone(), surface.geometry.clone()));
+                    Some((surface_id, edge.clone(), surface.geometry));
                 InputAction::BeginResize(surface_id, edge)
             }
             DecorationHit::ClientArea => {
@@ -794,7 +794,7 @@ impl Compositor {
         };
         drop(workspaces);
 
-        let output = self.current_output.read().unwrap().clone();
+        let output = *self.current_output.read().unwrap();
         let count = ws_windows.len();
         if count == 0 {
             return;
@@ -816,7 +816,7 @@ impl Compositor {
             };
 
             if let Some(w) = self.windows.write().unwrap().get_mut(win_id) {
-                w.geometry = geom.clone();
+                w.geometry = geom;
                 w.state = WindowState::Normal;
             }
             if let Some(s) = self.scene.write().unwrap().get_surface_mut(*win_id) {
@@ -2183,6 +2183,7 @@ use std::path::PathBuf;
 
 /// Content stored on the clipboard.
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub enum ClipboardContent {
     Text(String),
     Html(String),
@@ -2192,14 +2193,10 @@ pub enum ClipboardContent {
         data: Vec<u8>,
     },
     Files(Vec<PathBuf>),
+    #[default]
     Empty,
 }
 
-impl Default for ClipboardContent {
-    fn default() -> Self {
-        ClipboardContent::Empty
-    }
-}
 
 /// A single clipboard history entry.
 #[derive(Debug, Clone)]

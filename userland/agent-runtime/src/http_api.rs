@@ -1771,7 +1771,7 @@ pub async fn start_server(port: u16) -> anyhow::Result<()> {
     let bind_addr: std::net::IpAddr = std::env::var("AGNOS_RUNTIME_BIND")
         .ok()
         .and_then(|s| s.parse().ok())
-        .unwrap_or_else(|| std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST));
+        .unwrap_or(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST));
     let addr = SocketAddr::new(bind_addr, port);
     info!("Agent Registration API listening on {}", addr);
 

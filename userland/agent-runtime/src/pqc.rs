@@ -783,20 +783,17 @@ impl PqcKeyStore {
 
 /// Operating mode for PQC.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum PqcMode {
     /// Classical cryptography only — no PQC operations.
     Disabled,
     /// Hybrid mode: both classical and PQC (default, recommended for transition).
+    #[default]
     Hybrid,
     /// PQC only — classical algorithms disabled (future, post-transition).
     PqcOnly,
 }
 
-impl Default for PqcMode {
-    fn default() -> Self {
-        Self::Hybrid
-    }
-}
 
 impl fmt::Display for PqcMode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

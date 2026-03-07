@@ -502,8 +502,6 @@ pub fn generate_fstab(partitions: &[PartitionSpec], encrypt: bool) -> String {
     for part in partitions {
         let device = if encrypt && part.mount_point == "/" {
             "/dev/mapper/agnos-root".to_string()
-        } else if part.filesystem == Filesystem::Vfat {
-            format!("LABEL={}", part.label)
         } else {
             format!("LABEL={}", part.label)
         };

@@ -358,7 +358,7 @@ impl ConversationContext {
 
     /// Add a message to an agent's context window
     pub fn push(&mut self, agent_id: AgentId, entry: ContextEntry) {
-        let window = self.contexts.entry(agent_id).or_insert_with(VecDeque::new);
+        let window = self.contexts.entry(agent_id).or_default();
         window.push_back(entry);
         while window.len() > self.max_entries {
             window.pop_front();
