@@ -7,6 +7,9 @@ pub mod trust;
 pub mod transparency;
 pub mod local_registry;
 pub mod remote_client;
+pub mod flutter_packaging;
+pub mod flutter_agpkg;
+pub mod sandbox_profiles;
 
 use std::collections::HashMap;
 

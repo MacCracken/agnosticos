@@ -786,6 +786,313 @@ pub enum ProtocolAction {
     ClientDisconnected {
         client_id: u32,
     },
+    /// Set clipboard selection for a surface.
+    SetSelection {
+        surface_id: SurfaceId,
+        mime_types: Vec<String>,
+    },
+    /// Start a drag-and-drop operation.
+    StartDrag {
+        source: SurfaceId,
+        icon: Option<SurfaceId>,
+        mime_types: Vec<String>,
+    },
+    /// Enable text input on a surface.
+    TextInputEnable {
+        surface_id: SurfaceId,
+    },
+    /// Disable text input on a surface.
+    TextInputDisable {
+        surface_id: SurfaceId,
+    },
+    /// Commit text input.
+    TextInputCommit {
+        surface_id: SurfaceId,
+        text: String,
+    },
+    /// Set decoration mode for a surface.
+    SetDecorationMode {
+        surface_id: SurfaceId,
+        mode: DecorationMode,
+    },
+    /// Set viewport for a surface.
+    SetViewport {
+        surface_id: SurfaceId,
+        source: Option<ViewportSource>,
+        destination: Option<(u32, u32)>,
+    },
+    /// Set fractional scale for a surface.
+    SetFractionalScale {
+        surface_id: SurfaceId,
+        scale_120: u32,
+    },
+}
+
+// ============================================================================
+// Protocol extension types (data device, text input, decorations, viewporter,
+// fractional scale)
+// ============================================================================
+
+/// Data device manager — manages clipboard and drag-and-drop.
+#[derive(Debug, Clone)]
+pub struct DataDeviceManager {
+    pub selections: HashMap<SurfaceId, DataOffer>,
+    pub drag_source: Option<DragState>,
+}
+
+#[derive(Debug, Clone)]
+pub struct DataOffer {
+    pub mime_types: Vec<String>,
+    pub source_surface: SurfaceId,
+    pub serial: u32,
+}
+
+#[derive(Debug, Clone)]
+pub struct DragState {
+    pub source_surface: SurfaceId,
+    pub icon_surface: Option<SurfaceId>,
+    pub mime_types: Vec<String>,
+    pub position: (f64, f64),
+    pub active: bool,
+}
+
+impl DataDeviceManager {
+    pub fn new() -> Self {
+        Self {
+            selections: HashMap::new(),
+            drag_source: None,
+        }
+    }
+
+    pub fn set_selection(&mut self, surface_id: SurfaceId, mime_types: Vec<String>, serial: u32) {
+        self.selections.insert(
+            surface_id,
+            DataOffer {
+                mime_types,
+                source_surface: surface_id,
+                serial,
+            },
+        );
+    }
+
+    pub fn clear_selection(&mut self, surface_id: &SurfaceId) {
+        self.selections.remove(surface_id);
+    }
+
+    pub fn start_drag(
+        &mut self,
+        source_surface: SurfaceId,
+        icon_surface: Option<SurfaceId>,
+        mime_types: Vec<String>,
+    ) {
+        self.drag_source = Some(DragState {
+            source_surface,
+            icon_surface,
+            mime_types,
+            position: (0.0, 0.0),
+            active: true,
+        });
+    }
+
+    pub fn end_drag(&mut self) {
+        self.drag_source = None;
+    }
+
+    pub fn get_selection(&self, surface_id: &SurfaceId) -> Option<&DataOffer> {
+        self.selections.get(surface_id)
+    }
+}
+
+impl Default for DataDeviceManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Text input state for IME integration (zwp_text_input_v3).
+#[derive(Debug, Clone)]
+pub struct TextInputState {
+    pub surface_id: Option<SurfaceId>,
+    pub enabled: bool,
+    pub content_type: ContentType,
+    pub surrounding_text: String,
+    pub cursor_position: u32,
+    pub preedit: Option<PreeditState>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ContentType {
+    Normal,
+    Password,
+    Email,
+    Number,
+    Phone,
+    Url,
+    Terminal,
+}
+
+impl Default for ContentType {
+    fn default() -> Self {
+        Self::Normal
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct PreeditState {
+    pub text: String,
+    pub cursor_begin: i32,
+    pub cursor_end: i32,
+}
+
+impl TextInputState {
+    pub fn new() -> Self {
+        Self {
+            surface_id: None,
+            enabled: false,
+            content_type: ContentType::default(),
+            surrounding_text: String::new(),
+            cursor_position: 0,
+            preedit: None,
+        }
+    }
+
+    pub fn enable(&mut self, surface_id: SurfaceId) {
+        self.surface_id = Some(surface_id);
+        self.enabled = true;
+    }
+
+    pub fn disable(&mut self) {
+        self.enabled = false;
+        self.surface_id = None;
+        self.preedit = None;
+    }
+
+    pub fn set_surrounding_text(&mut self, text: String, cursor_position: u32) {
+        self.surrounding_text = text;
+        self.cursor_position = cursor_position;
+    }
+
+    pub fn commit_preedit(&mut self) -> Option<String> {
+        self.preedit.take().map(|p| p.text)
+    }
+
+    pub fn clear_preedit(&mut self) {
+        self.preedit = None;
+    }
+}
+
+impl Default for TextInputState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Decoration mode negotiation (xdg_decoration_unstable_v1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DecorationMode {
+    ClientSide,
+    ServerSide,
+}
+
+impl Default for DecorationMode {
+    fn default() -> Self {
+        Self::ServerSide
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct DecorationState {
+    pub surface_id: SurfaceId,
+    pub preferred: DecorationMode,
+    pub current: DecorationMode,
+}
+
+impl DecorationState {
+    pub fn new(surface_id: SurfaceId) -> Self {
+        Self {
+            surface_id,
+            preferred: DecorationMode::ServerSide,
+            current: DecorationMode::ServerSide,
+        }
+    }
+
+    /// Negotiate decoration mode. Returns the mode that will be used.
+    /// The compositor prefers server-side decorations; the client's preference
+    /// is honoured only when it also requests server-side, otherwise the
+    /// compositor falls back to client-side if the client insists.
+    pub fn negotiate(&mut self) -> DecorationMode {
+        self.current = self.preferred;
+        self.current
+    }
+}
+
+/// Viewport state for surface scaling (wp_viewporter).
+#[derive(Debug, Clone)]
+pub struct ViewportState {
+    pub surface_id: SurfaceId,
+    pub source: Option<ViewportSource>,
+    pub destination: Option<(u32, u32)>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ViewportSource {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+impl ViewportState {
+    pub fn new(surface_id: SurfaceId) -> Self {
+        Self {
+            surface_id,
+            source: None,
+            destination: None,
+        }
+    }
+
+    pub fn set_source(&mut self, x: f64, y: f64, width: f64, height: f64) {
+        self.source = Some(ViewportSource { x, y, width, height });
+    }
+
+    pub fn set_destination(&mut self, width: u32, height: u32) {
+        self.destination = Some((width, height));
+    }
+
+    /// Returns the effective size: destination if set, otherwise source dimensions
+    /// (truncated to u32), otherwise None.
+    pub fn effective_size(&self) -> Option<(u32, u32)> {
+        if let Some(dest) = self.destination {
+            Some(dest)
+        } else {
+            self.source.map(|s| (s.width as u32, s.height as u32))
+        }
+    }
+}
+
+/// Fractional scale factor (wp_fractional_scale_v1).
+#[derive(Debug, Clone)]
+pub struct FractionalScale {
+    pub surface_id: SurfaceId,
+    /// Scale factor in 1/120ths (e.g., 120 = 1x, 150 = 1.25x, 240 = 2x).
+    pub scale_120: u32,
+}
+
+impl FractionalScale {
+    pub fn new(surface_id: SurfaceId, scale_120: u32) -> Self {
+        Self { surface_id, scale_120 }
+    }
+
+    pub fn scale_factor(&self) -> f64 {
+        self.scale_120 as f64 / 120.0
+    }
+
+    pub fn from_scale(surface_id: SurfaceId, scale: f64) -> Self {
+        Self {
+            surface_id,
+            scale_120: (scale * 120.0).round() as u32,
+        }
+    }
 }
 
 /// Protocol bridge between Wayland protocol events and the AGNOS compositor.
@@ -2866,5 +3173,515 @@ mod popup_tests {
         assert_eq!(pos.gravity, Edge::None);
         assert_eq!(pos.offset_x, 0);
         assert_eq!(pos.offset_y, 0);
+    }
+}
+
+#[cfg(test)]
+mod protocol_extension_tests {
+    use super::*;
+
+    fn test_surface_id() -> SurfaceId {
+        uuid::Uuid::new_v4()
+    }
+
+    // ── DataDeviceManager ──────────────────────────────────────────
+
+    #[test]
+    fn test_data_device_manager_new() {
+        let mgr = DataDeviceManager::new();
+        assert!(mgr.selections.is_empty());
+        assert!(mgr.drag_source.is_none());
+    }
+
+    #[test]
+    fn test_data_device_manager_default() {
+        let mgr = DataDeviceManager::default();
+        assert!(mgr.selections.is_empty());
+        assert!(mgr.drag_source.is_none());
+    }
+
+    #[test]
+    fn test_set_selection() {
+        let mut mgr = DataDeviceManager::new();
+        let sid = test_surface_id();
+        mgr.set_selection(sid, vec!["text/plain".into()], 1);
+        let offer = mgr.get_selection(&sid).unwrap();
+        assert_eq!(offer.mime_types, vec!["text/plain"]);
+        assert_eq!(offer.source_surface, sid);
+        assert_eq!(offer.serial, 1);
+    }
+
+    #[test]
+    fn test_set_selection_overwrite() {
+        let mut mgr = DataDeviceManager::new();
+        let sid = test_surface_id();
+        mgr.set_selection(sid, vec!["text/plain".into()], 1);
+        mgr.set_selection(sid, vec!["text/html".into()], 2);
+        let offer = mgr.get_selection(&sid).unwrap();
+        assert_eq!(offer.mime_types, vec!["text/html"]);
+        assert_eq!(offer.serial, 2);
+    }
+
+    #[test]
+    fn test_clear_selection() {
+        let mut mgr = DataDeviceManager::new();
+        let sid = test_surface_id();
+        mgr.set_selection(sid, vec!["text/plain".into()], 1);
+        mgr.clear_selection(&sid);
+        assert!(mgr.get_selection(&sid).is_none());
+    }
+
+    #[test]
+    fn test_clear_selection_nonexistent() {
+        let mut mgr = DataDeviceManager::new();
+        let sid = test_surface_id();
+        mgr.clear_selection(&sid); // should not panic
+        assert!(mgr.get_selection(&sid).is_none());
+    }
+
+    #[test]
+    fn test_start_and_end_drag() {
+        let mut mgr = DataDeviceManager::new();
+        let src = test_surface_id();
+        let icon = test_surface_id();
+        mgr.start_drag(src, Some(icon), vec!["text/uri-list".into()]);
+        let drag = mgr.drag_source.as_ref().unwrap();
+        assert_eq!(drag.source_surface, src);
+        assert_eq!(drag.icon_surface, Some(icon));
+        assert!(drag.active);
+        assert_eq!(drag.position, (0.0, 0.0));
+        assert_eq!(drag.mime_types, vec!["text/uri-list"]);
+
+        mgr.end_drag();
+        assert!(mgr.drag_source.is_none());
+    }
+
+    #[test]
+    fn test_start_drag_no_icon() {
+        let mut mgr = DataDeviceManager::new();
+        let src = test_surface_id();
+        mgr.start_drag(src, None, vec![]);
+        let drag = mgr.drag_source.as_ref().unwrap();
+        assert!(drag.icon_surface.is_none());
+        assert!(drag.mime_types.is_empty());
+    }
+
+    #[test]
+    fn test_end_drag_when_none() {
+        let mut mgr = DataDeviceManager::new();
+        mgr.end_drag(); // should not panic
+        assert!(mgr.drag_source.is_none());
+    }
+
+    #[test]
+    fn test_multiple_surfaces_selection() {
+        let mut mgr = DataDeviceManager::new();
+        let s1 = test_surface_id();
+        let s2 = test_surface_id();
+        mgr.set_selection(s1, vec!["a".into()], 1);
+        mgr.set_selection(s2, vec!["b".into()], 2);
+        assert_eq!(mgr.selections.len(), 2);
+        assert_eq!(mgr.get_selection(&s1).unwrap().mime_types, vec!["a"]);
+        assert_eq!(mgr.get_selection(&s2).unwrap().mime_types, vec!["b"]);
+    }
+
+    // ── TextInputState ─────────────────────────────────────────────
+
+    #[test]
+    fn test_text_input_new() {
+        let ti = TextInputState::new();
+        assert!(ti.surface_id.is_none());
+        assert!(!ti.enabled);
+        assert_eq!(ti.content_type, ContentType::Normal);
+        assert!(ti.surrounding_text.is_empty());
+        assert_eq!(ti.cursor_position, 0);
+        assert!(ti.preedit.is_none());
+    }
+
+    #[test]
+    fn test_text_input_default() {
+        let ti = TextInputState::default();
+        assert!(!ti.enabled);
+        assert_eq!(ti.content_type, ContentType::Normal);
+    }
+
+    #[test]
+    fn test_content_type_default() {
+        assert_eq!(ContentType::default(), ContentType::Normal);
+    }
+
+    #[test]
+    fn test_text_input_enable_disable() {
+        let mut ti = TextInputState::new();
+        let sid = test_surface_id();
+        ti.enable(sid);
+        assert!(ti.enabled);
+        assert_eq!(ti.surface_id, Some(sid));
+
+        ti.disable();
+        assert!(!ti.enabled);
+        assert!(ti.surface_id.is_none());
+        assert!(ti.preedit.is_none());
+    }
+
+    #[test]
+    fn test_text_input_disable_clears_preedit() {
+        let mut ti = TextInputState::new();
+        let sid = test_surface_id();
+        ti.enable(sid);
+        ti.preedit = Some(PreeditState {
+            text: "pre".into(),
+            cursor_begin: 0,
+            cursor_end: 3,
+        });
+        ti.disable();
+        assert!(ti.preedit.is_none());
+    }
+
+    #[test]
+    fn test_set_surrounding_text() {
+        let mut ti = TextInputState::new();
+        ti.set_surrounding_text("hello world".into(), 5);
+        assert_eq!(ti.surrounding_text, "hello world");
+        assert_eq!(ti.cursor_position, 5);
+    }
+
+    #[test]
+    fn test_commit_preedit() {
+        let mut ti = TextInputState::new();
+        ti.preedit = Some(PreeditState {
+            text: "composing".into(),
+            cursor_begin: 0,
+            cursor_end: 9,
+        });
+        let text = ti.commit_preedit();
+        assert_eq!(text, Some("composing".to_string()));
+        assert!(ti.preedit.is_none());
+    }
+
+    #[test]
+    fn test_commit_preedit_none() {
+        let mut ti = TextInputState::new();
+        assert_eq!(ti.commit_preedit(), None);
+    }
+
+    #[test]
+    fn test_clear_preedit() {
+        let mut ti = TextInputState::new();
+        ti.preedit = Some(PreeditState {
+            text: "x".into(),
+            cursor_begin: 0,
+            cursor_end: 1,
+        });
+        ti.clear_preedit();
+        assert!(ti.preedit.is_none());
+    }
+
+    #[test]
+    fn test_clear_preedit_when_none() {
+        let mut ti = TextInputState::new();
+        ti.clear_preedit(); // should not panic
+        assert!(ti.preedit.is_none());
+    }
+
+    #[test]
+    fn test_content_type_variants() {
+        let variants = [
+            ContentType::Normal,
+            ContentType::Password,
+            ContentType::Email,
+            ContentType::Number,
+            ContentType::Phone,
+            ContentType::Url,
+            ContentType::Terminal,
+        ];
+        assert_eq!(variants.len(), 7);
+        // All are distinct
+        for (i, a) in variants.iter().enumerate() {
+            for (j, b) in variants.iter().enumerate() {
+                if i != j {
+                    assert_ne!(a, b);
+                }
+            }
+        }
+    }
+
+    // ── DecorationMode / DecorationState ───────────────────────────
+
+    #[test]
+    fn test_decoration_mode_default() {
+        assert_eq!(DecorationMode::default(), DecorationMode::ServerSide);
+    }
+
+    #[test]
+    fn test_decoration_state_new() {
+        let sid = test_surface_id();
+        let ds = DecorationState::new(sid);
+        assert_eq!(ds.surface_id, sid);
+        assert_eq!(ds.preferred, DecorationMode::ServerSide);
+        assert_eq!(ds.current, DecorationMode::ServerSide);
+    }
+
+    #[test]
+    fn test_decoration_negotiate_server_side() {
+        let sid = test_surface_id();
+        let mut ds = DecorationState::new(sid);
+        ds.preferred = DecorationMode::ServerSide;
+        let mode = ds.negotiate();
+        assert_eq!(mode, DecorationMode::ServerSide);
+        assert_eq!(ds.current, DecorationMode::ServerSide);
+    }
+
+    #[test]
+    fn test_decoration_negotiate_client_side() {
+        let sid = test_surface_id();
+        let mut ds = DecorationState::new(sid);
+        ds.preferred = DecorationMode::ClientSide;
+        let mode = ds.negotiate();
+        assert_eq!(mode, DecorationMode::ClientSide);
+        assert_eq!(ds.current, DecorationMode::ClientSide);
+    }
+
+    #[test]
+    fn test_decoration_mode_equality() {
+        assert_eq!(DecorationMode::ClientSide, DecorationMode::ClientSide);
+        assert_eq!(DecorationMode::ServerSide, DecorationMode::ServerSide);
+        assert_ne!(DecorationMode::ClientSide, DecorationMode::ServerSide);
+    }
+
+    // ── ViewportState ──────────────────────────────────────────────
+
+    #[test]
+    fn test_viewport_state_new() {
+        let sid = test_surface_id();
+        let vs = ViewportState::new(sid);
+        assert_eq!(vs.surface_id, sid);
+        assert!(vs.source.is_none());
+        assert!(vs.destination.is_none());
+    }
+
+    #[test]
+    fn test_viewport_set_source() {
+        let sid = test_surface_id();
+        let mut vs = ViewportState::new(sid);
+        vs.set_source(10.0, 20.0, 100.0, 200.0);
+        let src = vs.source.unwrap();
+        assert_eq!(src.x, 10.0);
+        assert_eq!(src.y, 20.0);
+        assert_eq!(src.width, 100.0);
+        assert_eq!(src.height, 200.0);
+    }
+
+    #[test]
+    fn test_viewport_set_destination() {
+        let sid = test_surface_id();
+        let mut vs = ViewportState::new(sid);
+        vs.set_destination(800, 600);
+        assert_eq!(vs.destination, Some((800, 600)));
+    }
+
+    #[test]
+    fn test_viewport_effective_size_destination() {
+        let sid = test_surface_id();
+        let mut vs = ViewportState::new(sid);
+        vs.set_source(0.0, 0.0, 1920.0, 1080.0);
+        vs.set_destination(960, 540);
+        assert_eq!(vs.effective_size(), Some((960, 540)));
+    }
+
+    #[test]
+    fn test_viewport_effective_size_source_only() {
+        let sid = test_surface_id();
+        let mut vs = ViewportState::new(sid);
+        vs.set_source(0.0, 0.0, 1920.0, 1080.0);
+        assert_eq!(vs.effective_size(), Some((1920, 1080)));
+    }
+
+    #[test]
+    fn test_viewport_effective_size_none() {
+        let sid = test_surface_id();
+        let vs = ViewportState::new(sid);
+        assert_eq!(vs.effective_size(), None);
+    }
+
+    #[test]
+    fn test_viewport_source_fractional() {
+        let sid = test_surface_id();
+        let mut vs = ViewportState::new(sid);
+        vs.set_source(0.5, 0.5, 99.5, 49.5);
+        // effective_size truncates to u32
+        assert_eq!(vs.effective_size(), Some((99, 49)));
+    }
+
+    // ── FractionalScale ────────────────────────────────────────────
+
+    #[test]
+    fn test_fractional_scale_new() {
+        let sid = test_surface_id();
+        let fs = FractionalScale::new(sid, 120);
+        assert_eq!(fs.surface_id, sid);
+        assert_eq!(fs.scale_120, 120);
+    }
+
+    #[test]
+    fn test_fractional_scale_factor_1x() {
+        let sid = test_surface_id();
+        let fs = FractionalScale::new(sid, 120);
+        assert!((fs.scale_factor() - 1.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_fractional_scale_factor_125() {
+        let sid = test_surface_id();
+        let fs = FractionalScale::new(sid, 150);
+        assert!((fs.scale_factor() - 1.25).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_fractional_scale_factor_2x() {
+        let sid = test_surface_id();
+        let fs = FractionalScale::new(sid, 240);
+        assert!((fs.scale_factor() - 2.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_fractional_scale_from_scale() {
+        let sid = test_surface_id();
+        let fs = FractionalScale::from_scale(sid, 1.5);
+        assert_eq!(fs.scale_120, 180);
+        assert!((fs.scale_factor() - 1.5).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_fractional_scale_from_scale_1x() {
+        let sid = test_surface_id();
+        let fs = FractionalScale::from_scale(sid, 1.0);
+        assert_eq!(fs.scale_120, 120);
+    }
+
+    #[test]
+    fn test_fractional_scale_from_scale_rounding() {
+        let sid = test_surface_id();
+        // 1.33333... * 120 = 160.0 (rounds to 160)
+        let fs = FractionalScale::from_scale(sid, 1.3333333333);
+        assert_eq!(fs.scale_120, 160);
+    }
+
+    #[test]
+    fn test_fractional_scale_zero() {
+        let sid = test_surface_id();
+        let fs = FractionalScale::new(sid, 0);
+        assert!((fs.scale_factor()).abs() < f64::EPSILON);
+    }
+
+    // ── ProtocolAction variants ────────────────────────────────────
+
+    #[test]
+    fn test_protocol_action_set_selection() {
+        let sid = test_surface_id();
+        let action = ProtocolAction::SetSelection {
+            surface_id: sid,
+            mime_types: vec!["text/plain".into()],
+        };
+        match action {
+            ProtocolAction::SetSelection { surface_id, mime_types } => {
+                assert_eq!(surface_id, sid);
+                assert_eq!(mime_types, vec!["text/plain"]);
+            }
+            _ => panic!("wrong variant"),
+        }
+    }
+
+    #[test]
+    fn test_protocol_action_start_drag() {
+        let src = test_surface_id();
+        let icon = test_surface_id();
+        let action = ProtocolAction::StartDrag {
+            source: src,
+            icon: Some(icon),
+            mime_types: vec![],
+        };
+        match action {
+            ProtocolAction::StartDrag { source, icon: i, mime_types } => {
+                assert_eq!(source, src);
+                assert_eq!(i, Some(icon));
+                assert!(mime_types.is_empty());
+            }
+            _ => panic!("wrong variant"),
+        }
+    }
+
+    #[test]
+    fn test_protocol_action_text_input_enable() {
+        let sid = test_surface_id();
+        let action = ProtocolAction::TextInputEnable { surface_id: sid };
+        matches!(action, ProtocolAction::TextInputEnable { .. });
+    }
+
+    #[test]
+    fn test_protocol_action_text_input_disable() {
+        let sid = test_surface_id();
+        let action = ProtocolAction::TextInputDisable { surface_id: sid };
+        matches!(action, ProtocolAction::TextInputDisable { .. });
+    }
+
+    #[test]
+    fn test_protocol_action_text_input_commit() {
+        let sid = test_surface_id();
+        let action = ProtocolAction::TextInputCommit {
+            surface_id: sid,
+            text: "hello".into(),
+        };
+        match action {
+            ProtocolAction::TextInputCommit { text, .. } => assert_eq!(text, "hello"),
+            _ => panic!("wrong variant"),
+        }
+    }
+
+    #[test]
+    fn test_protocol_action_set_decoration_mode() {
+        let sid = test_surface_id();
+        let action = ProtocolAction::SetDecorationMode {
+            surface_id: sid,
+            mode: DecorationMode::ClientSide,
+        };
+        match action {
+            ProtocolAction::SetDecorationMode { mode, .. } => {
+                assert_eq!(mode, DecorationMode::ClientSide);
+            }
+            _ => panic!("wrong variant"),
+        }
+    }
+
+    #[test]
+    fn test_protocol_action_set_viewport() {
+        let sid = test_surface_id();
+        let action = ProtocolAction::SetViewport {
+            surface_id: sid,
+            source: Some(ViewportSource { x: 0.0, y: 0.0, width: 100.0, height: 100.0 }),
+            destination: Some((50, 50)),
+        };
+        match action {
+            ProtocolAction::SetViewport { source, destination, .. } => {
+                assert!(source.is_some());
+                assert_eq!(destination, Some((50, 50)));
+            }
+            _ => panic!("wrong variant"),
+        }
+    }
+
+    #[test]
+    fn test_protocol_action_set_fractional_scale() {
+        let sid = test_surface_id();
+        let action = ProtocolAction::SetFractionalScale {
+            surface_id: sid,
+            scale_120: 180,
+        };
+        match action {
+            ProtocolAction::SetFractionalScale { scale_120, .. } => {
+                assert_eq!(scale_120, 180);
+            }
+            _ => panic!("wrong variant"),
+        }
     }
 }

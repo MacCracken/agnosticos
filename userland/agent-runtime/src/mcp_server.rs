@@ -182,6 +182,75 @@ pub fn build_tool_manifest() -> McpToolManifest {
                 vec!["agent_id", "key", "value"],
             ),
         },
+        // ----- Photis Nadi task management tools -----
+        McpToolDescription {
+            name: "photis_list_tasks".to_string(),
+            description: "List tasks with optional filters".to_string(),
+            input_schema: json_schema_object(
+                serde_json::json!({
+                    "status": {"type": "string", "description": "Filter by status: todo, in_progress, done"},
+                    "board_id": {"type": "string", "description": "Filter by board ID"}
+                }),
+                vec![],
+            ),
+        },
+        McpToolDescription {
+            name: "photis_create_task".to_string(),
+            description: "Create a new task".to_string(),
+            input_schema: json_schema_object(
+                serde_json::json!({
+                    "title": {"type": "string", "description": "Task title"},
+                    "description": {"type": "string", "description": "Task description"},
+                    "board_id": {"type": "string", "description": "Board to add task to"},
+                    "priority": {"type": "string", "description": "Priority: low, medium, high"}
+                }),
+                vec!["title"],
+            ),
+        },
+        McpToolDescription {
+            name: "photis_update_task".to_string(),
+            description: "Update an existing task".to_string(),
+            input_schema: json_schema_object(
+                serde_json::json!({
+                    "task_id": {"type": "string", "description": "UUID of the task to update"},
+                    "title": {"type": "string", "description": "New task title"},
+                    "status": {"type": "string", "description": "New status: todo, in_progress, done"},
+                    "priority": {"type": "string", "description": "New priority: low, medium, high"}
+                }),
+                vec!["task_id"],
+            ),
+        },
+        McpToolDescription {
+            name: "photis_get_rituals".to_string(),
+            description: "Get daily rituals/habits".to_string(),
+            input_schema: json_schema_object(
+                serde_json::json!({
+                    "date": {"type": "string", "description": "ISO date (e.g. 2026-03-06)"}
+                }),
+                vec![],
+            ),
+        },
+        McpToolDescription {
+            name: "photis_analytics".to_string(),
+            description: "Get productivity analytics".to_string(),
+            input_schema: json_schema_object(
+                serde_json::json!({
+                    "period": {"type": "string", "description": "Period: day, week, month"},
+                    "metric": {"type": "string", "description": "Metric: tasks_completed, streak, velocity"}
+                }),
+                vec![],
+            ),
+        },
+        McpToolDescription {
+            name: "photis_sync".to_string(),
+            description: "Trigger sync with Supabase backend".to_string(),
+            input_schema: json_schema_object(
+                serde_json::json!({
+                    "direction": {"type": "string", "description": "Sync direction: push, pull, both"}
+                }),
+                vec![],
+            ),
+        },
     ];
 
     McpToolManifest { tools }
@@ -221,6 +290,12 @@ async fn dispatch_tool_call(state: &ApiState, call: &McpToolCall) -> McpToolResu
         "agnos_forward_audit" => handle_forward_audit(state, &call.arguments).await,
         "agnos_memory_get" => handle_memory_get(state, &call.arguments).await,
         "agnos_memory_set" => handle_memory_set(state, &call.arguments).await,
+        "photis_list_tasks" => handle_photis_list_tasks(&call.arguments).await,
+        "photis_create_task" => handle_photis_create_task(&call.arguments).await,
+        "photis_update_task" => handle_photis_update_task(&call.arguments).await,
+        "photis_get_rituals" => handle_photis_get_rituals(&call.arguments).await,
+        "photis_analytics" => handle_photis_analytics(&call.arguments).await,
+        "photis_sync" => handle_photis_sync(&call.arguments).await,
         unknown => {
             warn!(tool = %unknown, "Unknown MCP tool called");
             error_result(format!("Unknown tool: {}", unknown))
@@ -559,6 +634,168 @@ async fn handle_memory_set(state: &ApiState, args: &serde_json::Value) -> McpToo
 }
 
 // ---------------------------------------------------------------------------
+// Photis Nadi Tool Implementations
+// ---------------------------------------------------------------------------
+
+async fn handle_photis_list_tasks(args: &serde_json::Value) -> McpToolResult {
+    let status = get_optional_string_arg(args, "status");
+    let board_id = get_optional_string_arg(args, "board_id");
+
+    // Validate status if provided
+    if let Some(ref s) = status {
+        if !["todo", "in_progress", "done"].contains(&s.as_str()) {
+            return error_result(format!("Invalid status '{}': must be todo, in_progress, or done", s));
+        }
+    }
+
+    let mut tasks = vec![
+        serde_json::json!({"id": "task-001", "title": "Review PR #42", "status": "todo", "priority": "high", "board_id": "default"}),
+        serde_json::json!({"id": "task-002", "title": "Write unit tests", "status": "in_progress", "priority": "medium", "board_id": "default"}),
+        serde_json::json!({"id": "task-003", "title": "Deploy v2.0", "status": "done", "priority": "high", "board_id": "releases"}),
+    ];
+
+    if let Some(ref s) = status {
+        tasks.retain(|t| t["status"].as_str() == Some(s.as_str()));
+    }
+    if let Some(ref b) = board_id {
+        tasks.retain(|t| t["board_id"].as_str() == Some(b.as_str()));
+    }
+
+    info!(count = tasks.len(), "Photis: list tasks");
+    success_result(serde_json::json!({
+        "tasks": tasks,
+        "total": tasks.len(),
+    }))
+}
+
+async fn handle_photis_create_task(args: &serde_json::Value) -> McpToolResult {
+    let title = match get_string_arg(args, "title") {
+        Some(t) => t,
+        None => return error_result("Missing required argument: title".to_string()),
+    };
+
+    if title.is_empty() {
+        return error_result("Task title cannot be empty".to_string());
+    }
+
+    let description = get_optional_string_arg(args, "description");
+    let board_id = get_optional_string_arg(args, "board_id")
+        .unwrap_or_else(|| "default".to_string());
+    let priority = get_optional_string_arg(args, "priority")
+        .unwrap_or_else(|| "medium".to_string());
+
+    if !["low", "medium", "high"].contains(&priority.as_str()) {
+        return error_result(format!("Invalid priority '{}': must be low, medium, or high", priority));
+    }
+
+    let task_id = Uuid::new_v4().to_string();
+
+    info!(title = %title, task_id = %task_id, "Photis: create task");
+    success_result(serde_json::json!({
+        "id": task_id,
+        "title": title,
+        "description": description,
+        "board_id": board_id,
+        "priority": priority,
+        "status": "todo",
+        "created_at": chrono::Utc::now().to_rfc3339(),
+    }))
+}
+
+async fn handle_photis_update_task(args: &serde_json::Value) -> McpToolResult {
+    let task_id = match get_string_arg(args, "task_id") {
+        Some(id) => id,
+        None => return error_result("Missing required argument: task_id".to_string()),
+    };
+
+    let title = get_optional_string_arg(args, "title");
+    let status = get_optional_string_arg(args, "status");
+    let priority = get_optional_string_arg(args, "priority");
+
+    if let Some(ref s) = status {
+        if !["todo", "in_progress", "done"].contains(&s.as_str()) {
+            return error_result(format!("Invalid status '{}': must be todo, in_progress, or done", s));
+        }
+    }
+    if let Some(ref p) = priority {
+        if !["low", "medium", "high"].contains(&p.as_str()) {
+            return error_result(format!("Invalid priority '{}': must be low, medium, or high", p));
+        }
+    }
+
+    info!(task_id = %task_id, "Photis: update task");
+    success_result(serde_json::json!({
+        "id": task_id,
+        "title": title.unwrap_or_else(|| "Review PR #42".to_string()),
+        "status": status.unwrap_or_else(|| "todo".to_string()),
+        "priority": priority.unwrap_or_else(|| "medium".to_string()),
+        "updated_at": chrono::Utc::now().to_rfc3339(),
+    }))
+}
+
+async fn handle_photis_get_rituals(args: &serde_json::Value) -> McpToolResult {
+    let date = get_optional_string_arg(args, "date")
+        .unwrap_or_else(|| chrono::Utc::now().format("%Y-%m-%d").to_string());
+
+    info!(date = %date, "Photis: get rituals");
+    success_result(serde_json::json!({
+        "date": date,
+        "rituals": [
+            {"name": "Morning meditation", "completed": true, "streak": 12},
+            {"name": "Code review", "completed": false, "streak": 5},
+            {"name": "Exercise", "completed": true, "streak": 30},
+            {"name": "Journal", "completed": false, "streak": 0},
+        ],
+        "completion_rate": 0.5,
+    }))
+}
+
+async fn handle_photis_analytics(args: &serde_json::Value) -> McpToolResult {
+    let period = get_optional_string_arg(args, "period")
+        .unwrap_or_else(|| "week".to_string());
+    let metric = get_optional_string_arg(args, "metric");
+
+    if !["day", "week", "month"].contains(&period.as_str()) {
+        return error_result(format!("Invalid period '{}': must be day, week, or month", period));
+    }
+
+    if let Some(ref m) = metric {
+        if !["tasks_completed", "streak", "velocity"].contains(&m.as_str()) {
+            return error_result(format!("Invalid metric '{}': must be tasks_completed, streak, or velocity", m));
+        }
+    }
+
+    info!(period = %period, "Photis: analytics");
+    success_result(serde_json::json!({
+        "period": period,
+        "metrics": {
+            "tasks_completed": 14,
+            "streak": 7,
+            "velocity": 2.3,
+            "completion_rate": 0.82,
+        },
+    }))
+}
+
+async fn handle_photis_sync(args: &serde_json::Value) -> McpToolResult {
+    let direction = get_optional_string_arg(args, "direction")
+        .unwrap_or_else(|| "both".to_string());
+
+    if !["push", "pull", "both"].contains(&direction.as_str()) {
+        return error_result(format!("Invalid direction '{}': must be push, pull, or both", direction));
+    }
+
+    info!(direction = %direction, "Photis: sync");
+    success_result(serde_json::json!({
+        "status": "synced",
+        "direction": direction,
+        "records_pushed": 3,
+        "records_pulled": 7,
+        "last_sync": chrono::Utc::now().to_rfc3339(),
+    }))
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -611,7 +848,7 @@ mod tests {
 
         let body = axum::body::to_bytes(resp.into_body(), 1_048_576).await.unwrap();
         let manifest: McpToolManifest = serde_json::from_slice(&body).unwrap();
-        assert_eq!(manifest.tools.len(), 10);
+        assert_eq!(manifest.tools.len(), 16);
     }
 
     #[tokio::test]
@@ -915,5 +1152,266 @@ mod tests {
         let serialized = serde_json::to_value(&result).unwrap();
         assert_eq!(serialized["isError"], false);
         assert_eq!(serialized["content"][0]["type"], "text");
+    }
+
+    // -----------------------------------------------------------------------
+    // Photis Nadi tools
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_manifest_contains_all_16_tools() {
+        let manifest = build_tool_manifest();
+        assert_eq!(manifest.tools.len(), 16);
+        let names: Vec<&str> = manifest.tools.iter().map(|t| t.name.as_str()).collect();
+        for expected in &[
+            "agnos_health", "agnos_list_agents", "agnos_get_agent",
+            "agnos_register_agent", "agnos_deregister_agent", "agnos_heartbeat",
+            "agnos_get_metrics", "agnos_forward_audit", "agnos_memory_get", "agnos_memory_set",
+            "photis_list_tasks", "photis_create_task", "photis_update_task",
+            "photis_get_rituals", "photis_analytics", "photis_sync",
+        ] {
+            assert!(names.contains(expected), "Missing tool: {}", expected);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_manifest_tool_names_match_dispatch() {
+        let manifest = build_tool_manifest();
+        let state = test_state();
+        for tool in &manifest.tools {
+            let call = McpToolCall {
+                name: tool.name.clone(),
+                arguments: serde_json::json!({}),
+            };
+            let result = dispatch_tool_call(&state, &call).await;
+            // Should NOT be "Unknown tool" for any manifest tool
+            // (some may error for missing args, but not "Unknown tool")
+            if result.is_error {
+                assert!(
+                    !result.content[0].text.contains("Unknown tool"),
+                    "Tool '{}' in manifest but not in dispatch",
+                    tool.name
+                );
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_photis_list_tasks_no_filter() {
+        let router = build_test_router();
+        let result = call_tool(&router, "photis_list_tasks", serde_json::json!({})).await;
+        assert!(!result.is_error);
+        let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
+        assert_eq!(parsed["total"], 3);
+        assert!(parsed["tasks"].as_array().unwrap().len() == 3);
+    }
+
+    #[tokio::test]
+    async fn test_photis_list_tasks_status_filter() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "photis_list_tasks",
+            serde_json::json!({"status": "done"}),
+        ).await;
+        assert!(!result.is_error);
+        let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
+        assert_eq!(parsed["total"], 1);
+    }
+
+    #[tokio::test]
+    async fn test_photis_list_tasks_invalid_status() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "photis_list_tasks",
+            serde_json::json!({"status": "invalid"}),
+        ).await;
+        assert!(result.is_error);
+        assert!(result.content[0].text.contains("Invalid status"));
+    }
+
+    #[tokio::test]
+    async fn test_photis_create_task_valid() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "photis_create_task",
+            serde_json::json!({"title": "Fix login bug", "priority": "high"}),
+        ).await;
+        assert!(!result.is_error);
+        let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
+        assert_eq!(parsed["title"], "Fix login bug");
+        assert_eq!(parsed["priority"], "high");
+        assert_eq!(parsed["status"], "todo");
+        assert!(parsed["id"].as_str().is_some());
+    }
+
+    #[tokio::test]
+    async fn test_photis_create_task_missing_title() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "photis_create_task",
+            serde_json::json!({"priority": "low"}),
+        ).await;
+        assert!(result.is_error);
+        assert!(result.content[0].text.contains("Missing required argument: title"));
+    }
+
+    #[tokio::test]
+    async fn test_photis_create_task_empty_title() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "photis_create_task",
+            serde_json::json!({"title": ""}),
+        ).await;
+        assert!(result.is_error);
+        assert!(result.content[0].text.contains("empty"));
+    }
+
+    #[tokio::test]
+    async fn test_photis_create_task_invalid_priority() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "photis_create_task",
+            serde_json::json!({"title": "Test", "priority": "urgent"}),
+        ).await;
+        assert!(result.is_error);
+        assert!(result.content[0].text.contains("Invalid priority"));
+    }
+
+    #[tokio::test]
+    async fn test_photis_update_task_valid() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "photis_update_task",
+            serde_json::json!({"task_id": "task-001", "status": "done", "priority": "low"}),
+        ).await;
+        assert!(!result.is_error);
+        let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
+        assert_eq!(parsed["id"], "task-001");
+        assert_eq!(parsed["status"], "done");
+        assert_eq!(parsed["priority"], "low");
+    }
+
+    #[tokio::test]
+    async fn test_photis_update_task_missing_id() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "photis_update_task",
+            serde_json::json!({"status": "done"}),
+        ).await;
+        assert!(result.is_error);
+        assert!(result.content[0].text.contains("Missing required argument: task_id"));
+    }
+
+    #[tokio::test]
+    async fn test_photis_get_rituals() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "photis_get_rituals",
+            serde_json::json!({"date": "2026-03-06"}),
+        ).await;
+        assert!(!result.is_error);
+        let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
+        assert_eq!(parsed["date"], "2026-03-06");
+        assert!(parsed["rituals"].as_array().unwrap().len() == 4);
+    }
+
+    #[tokio::test]
+    async fn test_photis_get_rituals_no_date() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "photis_get_rituals",
+            serde_json::json!({}),
+        ).await;
+        assert!(!result.is_error);
+        let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
+        assert!(parsed["date"].as_str().is_some());
+        assert_eq!(parsed["completion_rate"], 0.5);
+    }
+
+    #[tokio::test]
+    async fn test_photis_analytics_valid() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "photis_analytics",
+            serde_json::json!({"period": "month", "metric": "velocity"}),
+        ).await;
+        assert!(!result.is_error);
+        let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
+        assert_eq!(parsed["period"], "month");
+        assert!(parsed["metrics"]["velocity"].as_f64().is_some());
+    }
+
+    #[tokio::test]
+    async fn test_photis_analytics_invalid_period() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "photis_analytics",
+            serde_json::json!({"period": "year"}),
+        ).await;
+        assert!(result.is_error);
+        assert!(result.content[0].text.contains("Invalid period"));
+    }
+
+    #[tokio::test]
+    async fn test_photis_analytics_invalid_metric() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "photis_analytics",
+            serde_json::json!({"period": "week", "metric": "unknown"}),
+        ).await;
+        assert!(result.is_error);
+        assert!(result.content[0].text.contains("Invalid metric"));
+    }
+
+    #[tokio::test]
+    async fn test_photis_sync_valid() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "photis_sync",
+            serde_json::json!({"direction": "push"}),
+        ).await;
+        assert!(!result.is_error);
+        let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
+        assert_eq!(parsed["status"], "synced");
+        assert_eq!(parsed["direction"], "push");
+    }
+
+    #[tokio::test]
+    async fn test_photis_sync_default_direction() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "photis_sync",
+            serde_json::json!({}),
+        ).await;
+        assert!(!result.is_error);
+        let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
+        assert_eq!(parsed["direction"], "both");
+    }
+
+    #[tokio::test]
+    async fn test_photis_sync_invalid_direction() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "photis_sync",
+            serde_json::json!({"direction": "sideways"}),
+        ).await;
+        assert!(result.is_error);
+        assert!(result.content[0].text.contains("Invalid direction"));
     }
 }

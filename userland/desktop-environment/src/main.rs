@@ -18,6 +18,8 @@ mod apps;
 mod security_ui;
 mod wayland;
 mod accessibility;
+mod plugin_host;
+mod xwayland;
 
 use compositor::{Compositor, WindowState, ContextType};
 use shell::{DesktopShell, Notification, NotificationPriority};

@@ -5,6 +5,35 @@ All notable changes to AGNOS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2026.3.7] - 2026-03-07
+
+### Added — Phase 8B-8F: AGNOS Distribution Subsystems (205 tests)
+
+#### Phase 8B — Sigil: System-Wide Trust Verification (35 tests) — [ADR-019](docs/adr/adr-019-sigil-trust-system.md)
+- **agent-runtime/sigil.rs** — Unified trust module: TrustLevel hierarchy (SystemCore/Verified/Community/Unverified/Revoked), TrustPolicy with enforcement modes (Strict/Permissive/AuditOnly), SigilVerifier for artifact/agent/package/boot-chain verification, Ed25519 signing, RevocationList (revoke by key_id or content_hash), TrustStore cache
+
+#### Phase 8C — Takumi: Package Build System (43 tests) — [ADR-021](docs/adr/adr-021-takumi-build-system.md)
+- **agent-runtime/takumi.rs** — TOML recipe build system: BuildRecipe parser, .ark package format (ArkManifest, ArkFileEntry, ArkPackage), security hardening flags (PIE/RELRO/Fortify/StackProtector/Bindnow), CFLAGS/LDFLAGS generation, build dependency topological sort with cycle detection, recursive file list with SHA-256 hashing, build pipeline stages
+
+#### Phase 8D — Argonaut: Init System (46 tests) — [ADR-022](docs/adr/adr-022-argonaut-init-system.md)
+- **agent-runtime/argonaut.rs** — Custom init system: 3 boot modes (Server/Desktop/Minimal), 9-stage boot sequence, service dependency resolution, service state machine, health checks (HTTP/TCP/Command/ProcessAlive), ready checks, restart policies (Always/OnFailure/Never), shutdown ordering, boot duration tracking
+
+#### Phase 8E — Agnova: OS Installer (41 tests) — [ADR-023](docs/adr/adr-023-agnova-installer.md)
+- **agent-runtime/agnova.rs** — OS installer: 4 install modes, GPT disk partitioning with LUKS2 encryption, bootloader config (systemd-boot/GRUB2), network/user/security configuration, package selection per mode, 14-phase install pipeline, config validation, fstab/hostname/machine-id generation, kernel cmdline construction
+
+#### Phase 8F — Aegis: Security Daemon (40 tests) — [ADR-020](docs/adr/adr-020-aegis-security-daemon.md)
+- **agent-runtime/aegis.rs** — Unified security daemon: 5 threat levels with auto-response, 10 security event types, quarantine system (Suspend/Terminate/Isolate/RateLimit), agent/package scanning, auto-quarantine on Critical/High threats, auto-release timeouts, event filtering and resolution tracking
+
+### Status Update
+| Metric | Value |
+|--------|-------|
+| Total Tests | 8098+ (0 failures) |
+| Compiler Warnings | 0 |
+| New ADRs | 019-023 |
+| New modules | sigil, aegis, takumi, argonaut, agnova |
+
+---
+
 ## [2026.3.6] - 2026-03-06
 
 ### Current Status

@@ -13,6 +13,10 @@ mod system_tests;
 pub mod wayland;
 pub mod accessibility;
 pub mod gestures;
+pub mod plugin_host;
+pub mod shell_integration;
+pub mod theme_bridge;
+pub mod xwayland;
 
 pub use compositor::{
     Compositor, CompositorBackend, CompositorError, ContextType, InputAction, InputEvent,
@@ -46,7 +50,23 @@ pub use security_ui::{
     SecurityAlert, SecurityDashboard, SecurityLevel, SecurityUI, SecurityUIError, ThreatLevel,
 };
 
+pub use plugin_host::{
+    PluginType, PluginState, PluginCapability, PluginInfo, PluginMessage,
+    PluginSandboxProfile, PluginHost, PluginHostError,
+};
+
 pub use accessibility::{
     AccessibilityTree, AccessibleNode, AccessibilityRole, AccessibilityState,
     HighContrastTheme, KeyboardNavConfig, AccessibleAction,
+};
+
+pub use shell_integration::{
+    ExternalNotification, NotificationBridge, ShellIntegrationError, ShellIntegrationManager,
+    SystemTrayItem, TrayAction, TrayMenuItem, Urgency, WindowManagementRequest,
+    WindowManagementResult,
+};
+
+pub use theme_bridge::{
+    FlutterThemeData, PlatformChannelMessage, ThemeBridge, ThemeOverrides,
+    color_hex_to_u32, color_u32_to_hex,
 };

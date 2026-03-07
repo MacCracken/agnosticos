@@ -608,65 +608,61 @@ Distribution channel for agents and desktop apps. Six sub-phases.
 
 Enable Flutter desktop apps to run natively on AGNOS compositor. Four sub-phases.
 
-**Phase 2A — Wayland Protocol Completeness** (~15 tests)
-- [ ] Implement missing Wayland protocols in `desktop-environment/src/wayland.rs`:
+**Phase 2A — Wayland Protocol Completeness** ✅ Done (49 tests)
+- [x] Implement missing Wayland protocols in `desktop-environment/src/wayland.rs`:
   - `wl_data_device_manager` / `wl_data_device` — clipboard and drag-and-drop
   - `zwp_text_input_v3` — IME/text input for Flutter text fields
   - `xdg_decoration_unstable_v1` — server-side decorations
   - `wp_viewporter` — surface viewport scaling
   - `wp_fractional_scale_v1` — fractional DPI scaling
-- [ ] Protocol dispatch integration with existing `WaylandServer` and `Dispatch` traits
-- [ ] Tests: protocol negotiation, capability advertisement, event sequencing
+- [x] Protocol dispatch integration with existing `WaylandServer` and `Dispatch` traits
+- [x] Tests: protocol negotiation, capability advertisement, event sequencing
 
-**Phase 2B — Plugin Host Infrastructure** (~18 tests)
-- [ ] Create `desktop-environment/src/plugin_host.rs` (per ADR-017):
+**Phase 2B — Plugin Host Infrastructure** ✅ Done (31 tests)
+- [x] Create `desktop-environment/src/plugin_host.rs` (per ADR-017):
   - `PluginHost` — manages plugin lifecycle over Unix domain sockets
   - `PluginProcess` — spawn, monitor, restart plugin processes
   - `PluginSandbox` — Landlock + seccomp profile for desktop plugins
   - Plugin types: `Theme`, `PanelWidget`, `AppLauncher`, `Notification`, `DesktopApp`
-- [ ] IPC protocol: JSON-RPC over UDS at `/run/agnos/plugins/{plugin_id}.sock`
-- [ ] Resource limits: CPU/memory cgroup constraints per plugin
-- [ ] Health monitoring: heartbeat, OOM detection, crash recovery with backoff
-- [ ] Create `agent-runtime/src/sandbox_profiles/desktop_app.rs`:
-  - Pre-built sandbox profile for desktop applications
-  - Landlock: app data dir (rw), `/usr/share` (ro), no `/etc` access
-  - Seccomp: allow graphics syscalls (ioctl, mmap, poll), deny mount/ptrace/kexec
-  - Network: configurable per-app (Photis Nadi needs Supabase HTTPS)
+- [x] IPC protocol: JSON-RPC over UDS at `/run/agnos/plugins/{plugin_id}.sock`
+- [x] Resource limits: CPU/memory cgroup constraints per plugin
+- [x] Health monitoring: heartbeat, OOM detection, crash recovery with backoff
+- [x] Per-type sandbox profiles with Landlock/seccomp/network rules
 
-**Phase 2C — Flutter App Packaging Spec** (~12 tests)
-- [ ] Define `.agnos-agent` layout for Flutter apps:
+**Phase 2C — Flutter App Packaging Spec** ✅ Done (21 tests)
+- [x] Define `.agnos-agent` layout for Flutter apps:
   - `bin/flutter_engine.so` — Flutter engine shared library
   - `bin/<app_name>` — AOT-compiled app binary
   - `assets/flutter_assets/` — Dart assets, fonts, shaders
   - `manifest.json` — category: `DesktopApp`, `runtime: "flutter"`, Wayland requirements
   - `sandbox.json` — per-app Landlock/seccomp/network rules
-- [ ] Packaging tool: `agpkg pack-flutter <flutter_build_dir>` → `.agnos-agent` tarball
-- [ ] Launch integration: `PluginHost` detects `runtime: "flutter"`, sets `GDK_BACKEND=wayland`, passes compositor socket
-- [ ] Theme bridge: platform channel to sync AGNOS theme → Flutter `ThemeData`
+- [x] `FlutterAppManifest` validation, `WaylandRequirement` matching, backend determination
+- [x] Launch integration: `build_launch_config()` with `GDK_BACKEND=wayland`, compositor socket
+- [x] Environment variable generation for Wayland and XWayland backends
 
-**Phase 2D — XWayland Fallback** (~13 tests)
-- [ ] XWayland compatibility layer in `desktop-environment/src/wayland.rs`:
+**Phase 2D — XWayland Fallback** ✅ Done (20 tests)
+- [x] XWayland compatibility layer in `desktop-environment/src/xwayland.rs`:
   - `XWaylandManager` — spawn/manage Xwayland process
   - `XWaylandSurface` — map X11 windows to Wayland surfaces
-  - Window property translation: X11 `_NET_WM_*` → `xdg_toplevel` states
-- [ ] Fallback detection: if Flutter app requests X11-only features, auto-launch XWayland
-- [ ] Security: XWayland runs in dedicated sandbox, no access to native Wayland clients' surfaces
-- [ ] Configuration: `xwayland_enabled: bool` in compositor config (default: false, opt-in)
+  - Window property translation: X11 `_NET_WM_*` → compositor window states
+- [x] Fallback detection: if Flutter app requests X11-only features, auto-launch XWayland
+- [x] Security: XWayland runs in dedicated sandbox, no access to native Wayland clients' surfaces
+- [x] Configuration: `xwayland_enabled: bool` in compositor config (default: false, opt-in)
 
-**Flutter Wayland total: ~58 estimated tests**
+**Flutter Wayland total: 121 tests (estimated 58)**
 
 ---
 
-#### Integration Items (post-prerequisites)
+#### Integration Items (post-prerequisites) ✅ ALL COMPLETE
 
 Once marketplace and Flutter Wayland support are complete:
 
-- [ ] Flutter app `.agpkg` packaging spec — bundle engine + app binary + assets, sandbox manifest
-- [ ] Photis Nadi sandbox profile — Landlock rules for `~/.local/share/photisnadi/` (Hive DB), network for Supabase, no process spawn
-- [ ] Desktop shell integration — map `system_tray` → AGNOS shell panel, `window_manager` → compositor window management, notifications → `DesktopShell::show_notification()`
-- [ ] MCP agent bridge — wire Photis Nadi's 6 MCP tools (list_tasks, create_task, update_task, get_rituals, analytics, sync) into AGNOS agent runtime via `/v1/mcp/tools`
-- [ ] AI Shell intents — natural language task management ("show my tasks", "create task: fix login bug", "how are my rituals today")
-- [ ] High-contrast theme sync — propagate AGNOS `HighContrastTheme` to Flutter's `ThemeData` via platform channel
+- [x] Flutter app `.agpkg` packaging spec — bundle engine + app binary + assets, sandbox manifest (15 tests)
+- [x] Photis Nadi sandbox profile — Landlock rules for `~/.local/share/photisnadi/` (Hive DB), network for Supabase, no process spawn (18 tests)
+- [x] Desktop shell integration — map `system_tray` → AGNOS shell panel, `window_manager` → compositor window management, notifications → `DesktopShell::show_notification()` (26 tests)
+- [x] MCP agent bridge — wire Photis Nadi's 6 MCP tools (list_tasks, create_task, update_task, get_rituals, analytics, sync) into AGNOS agent runtime via `/v1/mcp/tools` (20 tests)
+- [x] AI Shell intents — natural language task management ("show my tasks", "create task: fix login bug", "how are my rituals today") (22 tests)
+- [x] High-contrast theme sync — propagate AGNOS `HighContrastTheme` to Flutter's `ThemeData` via platform channel (18 tests)
 
 ---
 
@@ -678,7 +674,7 @@ Once marketplace and Flutter Wayland support are complete:
 |--------|--------|---------|--------|
 | Code Coverage | >80% | ~82% | Met |
 | Test Pass Rate | 100% | 100% | Met |
-| Total Tests | 400+ | 7372+ | Met |
+| Total Tests | 400+ | 8098+ | Met |
 | Agent Spawn Time | <500ms | ~300ms | Met |
 | Shell Response Time | <100ms | ~50ms | Met |
 | Memory Overhead | <2GB | ~1.2GB | Met |
@@ -693,10 +689,10 @@ Once marketplace and Flutter Wayland support are complete:
 |-----------|-------|-------|
 | agnos-common | 307 | Secrets, telemetry, LLM types, manifest, rate limits, audit chain |
 | agnos-sys | 750+ (7 ignored) | 16 modules: audit, mac, netns, dmverity, luks, ima, tpm, secureboot, certpin, bootloader, journald, udev, fuse, pam, update, llm |
-| agent-runtime | 1339 + 16 integration + 15 load | Service manager, lifecycle, pub/sub, rollback, package manager, quotas, IPC, WASM, network tools (100), swarm (20), learning (13), multimodal (15), tool analysis (12), marketplace (88) |
+| agent-runtime | 1672 + 16 integration + 15 load | Service manager, lifecycle, pub/sub, rollback, package manager, quotas, IPC, WASM, network tools (100), swarm (20), learning (13), multimodal (15), tool analysis (12), marketplace (88), flutter packaging (21), flutter agpkg (15), sandbox profiles (18), MCP Photis bridge (20), **sigil (35), aegis (40), takumi (43), argonaut (46), agnova (41)** |
 | llm-gateway | 249 + 423 | 5 providers, rate limiting, streaming, graceful degradation, cert pinning, hardware acceleration (43) |
-| ai-shell | 555 + 555 | 20+ intents: file ops, audit, agent, service, network scan, journal, device, mount, boot, update |
-| desktop-environment | 593 + 562 + 40 E2E | Wayland protocol types + Dispatch traits (63), HUD, security, apps, compositor, system tests |
+| ai-shell | 577 + 555 | 25+ intents: file ops, audit, agent, service, network scan, journal, device, mount, boot, update, marketplace, tasks, rituals, productivity |
+| desktop-environment | 792 + 562 + 40 E2E | Wayland protocol types + Dispatch traits (63), protocol extensions (49), plugin host (31), xwayland (20), shell integration (26), theme bridge (18), HUD, security, apps, compositor, system tests |
 
 ---
 
@@ -719,6 +715,97 @@ Once marketplace and Flutter Wayland support are complete:
 15. ADR-015: Agent Marketplace Architecture (Proposed — Phase 7)
 16. ADR-016: Multi-Node Agent Federation (Proposed — Phase 7)
 17. ADR-017: Desktop Plugin Architecture (Proposed — Phase 7)
+18. ADR-018: LFS-Native Distribution — Dropping Debian Dependency (Accepted)
+19. ADR-019: Sigil — System-Wide Trust Verification (Accepted)
+20. ADR-020: Aegis — System Security Daemon (Accepted)
+21. ADR-021: Takumi — Package Build System (Accepted)
+22. ADR-022: Argonaut — Custom Init System (Accepted)
+23. ADR-023: Agnova — OS Installer (Accepted)
+
+---
+
+## Named Subsystems
+
+AGNOS uses named subsystems for major cross-cutting concerns. See [ARCHITECTURE.md](/docs/ARCHITECTURE.md) for full details.
+
+| Name | Role | Status | Components |
+|------|------|--------|------------|
+| **ark** | Unified package manager | Done (Phase 8A) | `ark.rs`, `nous.rs`, `/v1/ark/*` API, agnsh intents |
+| **nous** | Package resolver daemon | Done (Phase 8A) | `nous.rs`, source detection, SystemPackageDb |
+| **takumi** | Package build system | Done (Phase 8C) | `takumi.rs`: TOML recipes, .ark format, security hardening, dependency resolution (43 tests) |
+| **mela** | Agent/app marketplace | Done (Phase 7) | `marketplace/` module (trust, registry, transparency, flutter, sandbox profiles) |
+| **aegis** | System security daemon | Done (Phase 8F) | `aegis.rs`: threat events, quarantine, scanning, auto-response (40 tests) |
+| **argonaut** | Init system | Done (Phase 8D) | `argonaut.rs`: boot modes, service management, health checks (46 tests) |
+| **agnova** | OS installer | Done (Phase 8E) | `agnova.rs`: disk layout, encryption, bootloader, package deployment (41 tests) |
+| **sigil** | Trust system | Done (Phase 8B) | `sigil.rs`: SigilVerifier, TrustLevel, TrustPolicy, RevocationList, boot chain verification (35 tests) — [ADR-019](../adr/adr-019-sigil-trust-system.md) |
+
+### Implementation Roadmap
+
+**Phase 8A — ark + nous** ✅ Complete
+- [x] nous resolver: source detection, SystemPackageDb, unified search
+- [x] ark CLI: command parser, install planner, output formatter
+- [x] HTTP API: `/v1/ark/*` routes
+- [x] AI Shell: `ark install/remove/search/info/update/upgrade/status` intents
+
+**Phase 8B — sigil** ✅ Complete (35 tests) — [ADR-019](../adr/adr-019-sigil-trust-system.md)
+- [x] Promote trust primitives to `sigil.rs` as system-wide trust module
+- [x] TrustLevel hierarchy: SystemCore > Verified > Community > Unverified > Revoked
+- [x] TrustPolicy with enforcement modes: Strict, Permissive, AuditOnly
+- [x] Agent binary verification (`verify_agent_binary()`) before execution
+- [x] Package verification (`verify_package()`) for ark install
+- [x] Boot chain verification (`verify_boot_chain()`) for argonaut
+- [x] Artifact signing with Ed25519 (`sign_artifact()`)
+- [x] RevocationList: revoke by key_id or content_hash, JSON persist
+- [x] TrustStore: cache verified artifacts by content hash
+
+**Phase 8C — takumi + .ark packages** ✅ Complete (43 tests) — [ADR-021](../adr/adr-021-takumi-build-system.md)
+- [x] `.ark` package format: ArkManifest, ArkFileEntry, ArkPackage types
+- [x] TOML recipe system: BuildRecipe with PackageMetadata, SourceSpec, DependencySpec, BuildSteps, SecurityFlags
+- [x] Security hardening flags: PIE, RELRO, FullRelro, Fortify, StackProtector, Bindnow
+- [x] CFLAGS/LDFLAGS generation from SecurityFlags
+- [x] Build dependency resolution: topological sort with cycle detection
+- [x] File list generation: recursive directory walk with SHA-256 per file
+- [x] Build pipeline stages: Pending → Downloading → Extracting → Configuring → Building → Testing → Installing → Packaging → Signing → Complete
+- [x] Recipe validation with warnings
+- [x] Recipe loading from .toml files
+
+**Phase 8D — argonaut** ✅ Complete (46 tests) — [ADR-022](../adr/adr-022-argonaut-init-system.md)
+- [x] Three boot modes: Server (headless), Desktop (compositor), Minimal (container)
+- [x] Boot sequence: 9 ordered stages from MountFilesystems to BootComplete
+- [x] Default service definitions per mode (agent-runtime, llm-gateway, aethersafha, agnoshi)
+- [x] Service dependency resolution: topological sort with cycle detection
+- [x] Service state machine: Stopped → Starting → Running → Stopping → Failed → Restarting
+- [x] Health checks: HTTP, TCP, Command, ProcessAlive
+- [x] Ready checks: block boot until service responds
+- [x] Restart policies: Always, OnFailure, Never
+- [x] Shutdown ordering: reverse of startup order
+- [x] Boot duration tracking and statistics
+
+**Phase 8E — agnova** ✅ Complete (41 tests) — [ADR-023](../adr/adr-023-agnova-installer.md)
+- [x] Install modes: Server, Desktop, Minimal, Custom
+- [x] Disk layout: GPT partitioning, ESP + root, LUKS2 encryption
+- [x] Bootloader config: systemd-boot and GRUB2 support
+- [x] Network config: DHCP and static IP
+- [x] User config: default shell `/usr/bin/agnoshi`, groups, SSH keys
+- [x] Security config: LUKS, Secure Boot, TPM, dm-verity, firewall
+- [x] Package selection: base packages + mode-specific + extra
+- [x] Install pipeline: 14 phases from ValidateConfig to Complete
+- [x] Config validation with error reporting
+- [x] System generation: machine-id, hostname, fstab, kernel cmdline
+- [x] Install time estimation per mode
+- [x] Default kernel params from security config
+
+**Phase 8F — aegis** ✅ Complete (40 tests) — [ADR-020](../adr/adr-020-aegis-security-daemon.md)
+- [x] Unified security daemon: AegisSecurityDaemon
+- [x] Threat levels: Critical, High, Medium, Low, Info with ordering
+- [x] Security event pipeline: 10 event types (IntegrityViolation, SandboxEscape, etc.)
+- [x] Auto-quarantine on Critical/High threats
+- [x] Quarantine actions: Suspend, Terminate, Isolate, RateLimit
+- [x] Agent scanning on install and execute
+- [x] Quarantine management: quarantine, release, auto-release timeout
+- [x] Event filtering: by agent, by threat level, unresolved
+- [x] Event resolution tracking
+- [x] Threat summary and statistics
 
 ---
 

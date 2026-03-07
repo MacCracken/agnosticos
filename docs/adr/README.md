@@ -51,4 +51,10 @@ What other options were considered and why were they rejected?
 | 015 | Agent Marketplace Architecture | Proposed | 2026-03-06 |
 | 016 | Multi-Node Agent Federation | Proposed | 2026-03-06 |
 | 017 | Desktop Plugin Architecture | Proposed | 2026-03-06 |
+| 018 | LFS-Native Distribution (Dropping Debian) | Accepted | 2026-03-07 |
+| 019 | Sigil — System-Wide Trust Verification | Accepted | 2026-03-07 |
+| 020 | Aegis — System Security Daemon | Accepted | 2026-03-07 |
+| 021 | Takumi — Package Build System | Accepted | 2026-03-07 |
+| 022 | Argonaut — Custom Init System | Accepted | 2026-03-07 |
+| 023 | Agnova — OS Installer | Accepted | 2026-03-07 |
 

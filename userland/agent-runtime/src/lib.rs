@@ -27,8 +27,15 @@ pub mod capability;
 pub mod resource_forecast;
 pub mod mtls;
 pub mod integrity;
+pub mod aegis;
+pub mod agnova;
+pub mod ark;
 pub mod marketplace;
 pub mod mcp_server;
+pub mod nous;
+pub mod sigil;
+pub mod takumi;
+pub mod argonaut;
 
 pub use agent::{Agent, AgentHandle};
 pub use lifecycle::LifecycleManager;
@@ -56,4 +63,37 @@ pub use marketplace::{
     transparency::TransparencyLog,
     local_registry::LocalRegistry,
     remote_client::RegistryClient,
+    flutter_agpkg::{FlutterBuildDir, PackFlutterConfig, SandboxProfile, LandlockRule, NetworkRule},
+    sandbox_profiles::{SandboxPreset, PredefinedProfile},
+};
+pub use nous::{
+    NousResolver, PackageSource, ResolvedPackage, InstalledPackage,
+    AvailableUpdate, UnifiedSearchResult, SystemPackageDb,
+};
+pub use ark::{ArkPackageManager, ArkCommand, ArkConfig, ArkResult, ArkOutput, InstallPlan, InstallStep};
+pub use aegis::{
+    AegisSecurityDaemon, AegisConfig, AegisStats,
+    ThreatLevel, SecurityEvent, SecurityEventType,
+    QuarantineEntry, QuarantineAction,
+    SecurityScanResult, ScanType, SecurityFinding,
+};
+pub use sigil::{
+    SigilVerifier, TrustLevel, TrustPolicy, TrustEnforcement, ArtifactType,
+    TrustedArtifact, VerificationResult, TrustCheck, RevocationEntry, RevocationList, SigilStats,
+};
+pub use takumi::{
+    TakumiBuildSystem, BuildRecipe, PackageMetadata, SourceSpec, DependencySpec,
+    BuildSteps, SecurityFlags, HardeningFlag, ArkPackage, ArkManifest, ArkFileEntry,
+    ArkFileType, BuildContext, BuildStatus, BuildLogEntry,
+};
+pub use agnova::{
+    AgnovaInstaller, InstallConfig, InstallMode, InstallPhase, InstallProgress,
+    InstallResult, InstallError, DiskLayout, PartitionSpec, Filesystem, PartitionFlag,
+    BootloaderConfig, BootloaderType, NetworkConfig, UserConfig, SecurityConfig,
+    PackageSelection,
+};
+pub use argonaut::{
+    ArgonautInit, ArgonautConfig, ArgonautStats, BootMode, BootStage, BootStep,
+    BootStepStatus, ServiceDefinition, ServiceState, ManagedService, RestartPolicy,
+    HealthCheck, HealthCheckType, ReadyCheck,
 };

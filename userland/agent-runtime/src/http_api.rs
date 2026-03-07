@@ -1289,6 +1289,161 @@ async fn marketplace_info_handler(
 }
 
 // ---------------------------------------------------------------------------
+// Ark unified package manager handlers
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ArkInstallRequest {
+    packages: Vec<String>,
+    #[serde(default)]
+    force: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ArkRemoveRequest {
+    packages: Vec<String>,
+    #[serde(default)]
+    purge: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ArkUpgradeRequest {
+    packages: Option<Vec<String>>,
+}
+
+async fn ark_install_handler(
+    State(_state): State<ApiState>,
+    Json(req): Json<ArkInstallRequest>,
+) -> impl IntoResponse {
+    if req.packages.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "No packages specified"})),
+        ).into_response();
+    }
+    let steps: Vec<serde_json::Value> = req.packages.iter().map(|p| {
+        serde_json::json!({"action": "install", "package": p, "source": "auto"})
+    }).collect();
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "status": "planned",
+            "steps": steps,
+            "message": format!("Planned installation of {} package(s)", req.packages.len()),
+            "force": req.force,
+        })),
+    ).into_response()
+}
+
+async fn ark_remove_handler(
+    State(_state): State<ApiState>,
+    Json(req): Json<ArkRemoveRequest>,
+) -> impl IntoResponse {
+    if req.packages.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "No packages specified"})),
+        ).into_response();
+    }
+    let steps: Vec<serde_json::Value> = req.packages.iter().map(|p| {
+        serde_json::json!({"action": "remove", "package": p, "purge": req.purge})
+    }).collect();
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "status": "planned",
+            "steps": steps,
+            "message": format!("Planned removal of {} package(s)", req.packages.len()),
+        })),
+    ).into_response()
+}
+
+async fn ark_search_handler(
+    State(_state): State<ApiState>,
+    Query(params): Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let query = params.get("q").cloned().unwrap_or_default();
+    if query.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "Missing query parameter 'q'"})),
+        ).into_response();
+    }
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "query": query,
+            "results": [],
+            "sources_searched": ["marketplace", "system"],
+            "total": 0,
+        })),
+    ).into_response()
+}
+
+async fn ark_info_handler(
+    State(_state): State<ApiState>,
+    Path(package): Path<String>,
+) -> impl IntoResponse {
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "name": package,
+            "status": "not_installed",
+            "available_sources": ["system", "marketplace"],
+            "versions": {},
+        })),
+    )
+}
+
+async fn ark_update_handler(
+    State(_state): State<ApiState>,
+) -> impl IntoResponse {
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "status": "planned",
+            "steps": [{"action": "refresh_index", "sources": ["system", "marketplace", "flutter"]}],
+            "message": "Planned index refresh across all sources",
+        })),
+    )
+}
+
+async fn ark_upgrade_handler(
+    State(_state): State<ApiState>,
+    Json(req): Json<ArkUpgradeRequest>,
+) -> impl IntoResponse {
+    let msg = match &req.packages {
+        Some(pkgs) => format!("Planned upgrade of {} specific package(s)", pkgs.len()),
+        None => "Planned upgrade of all outdated packages".to_string(),
+    };
+    let steps: Vec<serde_json::Value> = match &req.packages {
+        Some(pkgs) => pkgs.iter().map(|p| {
+            serde_json::json!({"action": "upgrade", "package": p})
+        }).collect(),
+        None => vec![serde_json::json!({"action": "upgrade_all"})],
+    };
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "status": "planned",
+            "steps": steps,
+            "message": msg,
+        })),
+    )
+}
+
+async fn ark_status_handler() -> impl IntoResponse {
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "version": env!("CARGO_PKG_VERSION"),
+            "sources": ["system", "marketplace", "flutter"],
+            "resolver": "nous",
+        })),
+    )
+}
+
+// ---------------------------------------------------------------------------
 // Router & server
 // ---------------------------------------------------------------------------
 
@@ -1340,6 +1495,14 @@ pub fn build_router(state: ApiState) -> Router {
         .route("/v1/knowledge/search", post(knowledge_search_handler))
         .route("/v1/knowledge/stats", get(knowledge_stats_handler))
         .route("/v1/knowledge/index", post(knowledge_index_handler))
+        // Ark unified package manager routes
+        .route("/v1/ark/install", post(ark_install_handler))
+        .route("/v1/ark/remove", post(ark_remove_handler))
+        .route("/v1/ark/search", get(ark_search_handler))
+        .route("/v1/ark/info/:package", get(ark_info_handler))
+        .route("/v1/ark/update", post(ark_update_handler))
+        .route("/v1/ark/upgrade", post(ark_upgrade_handler))
+        .route("/v1/ark/status", get(ark_status_handler))
         // Marketplace routes
         .route("/v1/marketplace/installed", get(marketplace_installed_handler))
         .route("/v1/marketplace/search", get(marketplace_search_handler))
@@ -3853,5 +4016,131 @@ mod tests {
         assert_eq!(json["network_access"], "Full");
         assert_eq!(json["isolate_network"], false);
         assert!(json["network_policy"].is_null());
+    }
+
+    // ===== Ark unified package manager tests =====
+
+    #[tokio::test]
+    async fn test_ark_status_handler() {
+        let app = test_app();
+        let req = Request::builder()
+            .uri("/v1/ark/status")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(json["version"].as_str().is_some());
+        assert_eq!(json["resolver"], "nous");
+        let sources = json["sources"].as_array().unwrap();
+        assert!(sources.len() >= 2);
+    }
+
+    #[tokio::test]
+    async fn test_ark_install_request() {
+        let app = test_app();
+        let body = serde_json::json!({"packages": ["nginx", "curl"]});
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/ark/install")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["status"], "planned");
+        let steps = json["steps"].as_array().unwrap();
+        assert_eq!(steps.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_ark_remove_request() {
+        let app = test_app();
+        let body = serde_json::json!({"packages": ["nginx"], "purge": true});
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/ark/remove")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["status"], "planned");
+        let steps = json["steps"].as_array().unwrap();
+        assert_eq!(steps[0]["purge"], true);
+    }
+
+    #[tokio::test]
+    async fn test_ark_search_query() {
+        let app = test_app();
+        let req = Request::builder()
+            .uri("/v1/ark/search?q=nginx")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["query"], "nginx");
+        assert_eq!(json["total"], 0);
+        assert!(json["sources_searched"].as_array().is_some());
+    }
+
+    #[tokio::test]
+    async fn test_ark_upgrade_no_packages() {
+        let app = test_app();
+        let body = serde_json::json!({"packages": null});
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/ark/upgrade")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["status"], "planned");
+        assert!(json["message"].as_str().unwrap().contains("all"));
+    }
+
+    #[tokio::test]
+    async fn test_ark_upgrade_specific_packages() {
+        let app = test_app();
+        let body = serde_json::json!({"packages": ["nginx"]});
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/ark/upgrade")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["status"], "planned");
+        let steps = json["steps"].as_array().unwrap();
+        assert_eq!(steps[0]["package"], "nginx");
+    }
+
+    #[test]
+    fn test_ark_install_request_deserialize() {
+        let json = r#"{"packages": ["nginx", "curl"], "force": true}"#;
+        let req: ArkInstallRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.packages, vec!["nginx", "curl"]);
+        assert!(req.force);
+    }
+
+    #[test]
+    fn test_ark_remove_request_deserialize() {
+        let json = r#"{"packages": ["nginx"], "purge": false}"#;
+        let req: ArkRemoveRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.packages, vec!["nginx"]);
+        assert!(!req.purge);
     }
 }

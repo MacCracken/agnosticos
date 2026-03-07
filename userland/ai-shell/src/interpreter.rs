@@ -134,6 +134,20 @@ pub enum Intent {
     RagQuery {
         query: String,
     },
+    /// Unified package install via ark
+    ArkInstall { packages: Vec<String>, source: Option<String> },
+    /// Unified package remove via ark
+    ArkRemove { packages: Vec<String> },
+    /// Unified package search via ark
+    ArkSearch { query: String },
+    /// Show ark package info
+    ArkInfo { package: String },
+    /// Check for updates via ark
+    ArkUpdate,
+    /// Upgrade packages via ark
+    ArkUpgrade { packages: Option<Vec<String>> },
+    /// Show ark status
+    ArkStatus,
     /// Install a marketplace package
     MarketplaceInstall { package: String },
     /// Uninstall a marketplace package
@@ -144,6 +158,16 @@ pub enum Intent {
     MarketplaceList,
     /// Update marketplace packages
     MarketplaceUpdate,
+    /// List tasks from Photis Nadi
+    TaskList { status: Option<String> },
+    /// Create a task in Photis Nadi
+    TaskCreate { title: String, priority: Option<String> },
+    /// Update a task in Photis Nadi
+    TaskUpdate { task_id: String, status: Option<String> },
+    /// Check daily rituals/habits
+    RitualCheck { date: Option<String> },
+    /// Show productivity statistics
+    ProductivityStats { period: Option<String> },
     /// Piped command chain (cmd1 | cmd2)
     Pipeline { commands: Vec<String> },
     /// Question/Information request
@@ -210,11 +234,23 @@ static PATTERNS: Lazy<HashMap<String, Regex>> = Lazy::new(|| {
     r("question", r"(?i)^(what|who|when|where|why|how|is|are|can|do|does)\s+.+\??$");
     r("knowledge", r"(?i)^(search|find|look\s+up)\s+(in\s+)?(knowledge|kb|docs|documentation)\s+(for\s+)?(.+)$");
     r("rag_query", r"(?i)^(rag|retrieve|context)\s+(query|search|find|for)\s+(.+)$");
+    r("ark_install", r"(?i)^ark\s+install\s+(.+)$");
+    r("ark_remove", r"(?i)^ark\s+(remove|uninstall)\s+(.+)$");
+    r("ark_search", r"(?i)^ark\s+search\s+(.+)$");
+    r("ark_info", r"(?i)^ark\s+(info|show)\s+(.+)$");
+    r("ark_update", r"(?i)^ark\s+update$");
+    r("ark_upgrade", r"(?i)^ark\s+upgrade(\s+(.+))?$");
+    r("ark_status", r"(?i)^ark\s+status$");
     r("marketplace_install", r"(?i)^(install|add)\s+(package|agent|app)\s+(.+)$");
     r("marketplace_uninstall", r"(?i)^(uninstall|remove)\s+(package|agent|app)\s+(.+)$");
     r("marketplace_search", r"(?i)^(search|find|browse)\s+(marketplace|market|store|packages|agents)\s+(for\s+)?(.+)$");
     r("marketplace_list", r"(?i)^(list|show)\s+(installed\s+)?(packages|marketplace|agents|apps)$");
     r("marketplace_update", r"(?i)^(update|upgrade)\s+(packages|agents|all)$");
+    r("task_list", r"(?i)^(show|list|view)\s+(my\s+)?tasks(\s+(?:that are\s+|in\s+|with status\s+)(\w+))?$");
+    r("task_create", r"(?i)^(create|add|new)\s+task[:\s]+(.+?)(\s+priority\s+(low|medium|high))?$");
+    r("task_update", r"(?i)^(mark|update|set)\s+task\s+(\S+)\s+(?:as\s+|status\s+(?:to\s+)?)(\w+)$");
+    r("ritual_check", r"(?i)^(?:show|check|how are)\s+(?:my\s+)?(?:rituals|habits)(\s+today|\s+(\d{4}-\d{2}-\d{2}))?$");
+    r("productivity_stats", r"(?i)^(?:show\s+)?(?:my\s+)?(?:productivity|stats|statistics|analytics)(\s+(daily|weekly|monthly|this week|this month))?$");
     p
 });
 
@@ -275,6 +311,45 @@ impl Interpreter {
             let agent_id = caps.get(8).map(|m| m.as_str().trim().to_string())
                 .filter(|s| !s.is_empty());
             return Intent::AgentInfo { agent_id };
+        }
+
+        // --- Photis Nadi task management intents (before greedy list/show) ---
+        if let Some(caps) = self.try_captures("task_list", &input_lower) {
+            let status = caps.get(4).map(|m| m.as_str().trim().to_string());
+            return Intent::TaskList { status };
+        }
+
+        if let Some(caps) = self.try_captures("task_create", input) {
+            let title = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();
+            if !title.is_empty() {
+                let priority = caps.get(4).map(|m| m.as_str().trim().to_string());
+                return Intent::TaskCreate { title, priority };
+            }
+        }
+
+        if let Some(caps) = self.try_captures("task_update", &input_lower) {
+            let task_id = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();
+            let status = caps.get(3).map(|m| m.as_str().trim().to_string());
+            if !task_id.is_empty() {
+                return Intent::TaskUpdate { task_id, status };
+            }
+        }
+
+        if let Some(caps) = self.try_captures("ritual_check", &input_lower) {
+            let date = caps.get(2).map(|m| m.as_str().trim().to_string());
+            return Intent::RitualCheck { date };
+        }
+
+        if let Some(caps) = self.try_captures("productivity_stats", &input_lower) {
+            let period = caps.get(2).map(|m| {
+                match m.as_str().trim() {
+                    "daily" => "day".to_string(),
+                    "weekly" | "this week" => "week".to_string(),
+                    "monthly" | "this month" => "month".to_string(),
+                    other => other.to_string(),
+                }
+            });
+            return Intent::ProductivityStats { period };
         }
 
         if let Some(caps) = self.try_captures("service", &input_lower) {
@@ -522,6 +597,53 @@ impl Interpreter {
             return Intent::SystemUpdate {
                 action: action.to_string(),
             };
+        }
+
+        // --- Ark unified package manager intents (before greedy list/show) ---
+        if let Some(caps) = self.try_captures("ark_install", &input_lower) {
+            let packages_str = caps.get(1).map_or("", |m| m.as_str()).trim();
+            if !packages_str.is_empty() {
+                let packages: Vec<String> = packages_str.split_whitespace().map(|s| s.to_string()).collect();
+                return Intent::ArkInstall { packages, source: None };
+            }
+        }
+
+        if let Some(caps) = self.try_captures("ark_remove", &input_lower) {
+            let packages_str = caps.get(2).map_or("", |m| m.as_str()).trim();
+            if !packages_str.is_empty() {
+                let packages: Vec<String> = packages_str.split_whitespace().map(|s| s.to_string()).collect();
+                return Intent::ArkRemove { packages };
+            }
+        }
+
+        if let Some(caps) = self.try_captures("ark_search", &input_lower) {
+            let query = caps.get(1).map_or("", |m| m.as_str()).trim().to_string();
+            if !query.is_empty() {
+                return Intent::ArkSearch { query };
+            }
+        }
+
+        if let Some(caps) = self.try_captures("ark_info", &input_lower) {
+            let package = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();
+            if !package.is_empty() {
+                return Intent::ArkInfo { package };
+            }
+        }
+
+        if self.try_captures("ark_update", &input_lower).is_some() {
+            return Intent::ArkUpdate;
+        }
+
+        if let Some(caps) = self.try_captures("ark_upgrade", &input_lower) {
+            let packages = caps.get(2)
+                .map(|m| m.as_str().trim())
+                .filter(|s| !s.is_empty())
+                .map(|s| s.split_whitespace().map(|p| p.to_string()).collect::<Vec<String>>());
+            return Intent::ArkUpgrade { packages };
+        }
+
+        if self.try_captures("ark_status", &input_lower).is_some() {
+            return Intent::ArkStatus;
         }
 
         if let Some(caps) = self.try_captures("list", &input_lower) {
@@ -1332,6 +1454,107 @@ impl Interpreter {
                 })
             }
 
+            Intent::ArkInstall { packages, source: _ } => {
+                let body = serde_json::json!({"packages": packages});
+                Ok(Translation {
+                    command: "curl".to_string(),
+                    args: vec![
+                        "-s".to_string(), "-X".to_string(), "POST".to_string(),
+                        "http://127.0.0.1:8090/v1/ark/install".to_string(),
+                        "-H".to_string(), "Content-Type: application/json".to_string(),
+                        "-d".to_string(), serde_json::to_string(&body).unwrap(),
+                    ],
+                    description: format!("Install packages via ark: {}", packages.join(", ")),
+                    permission: PermissionLevel::SystemWrite,
+                    explanation: "Installs packages using the AGNOS unified package manager".to_string(),
+                })
+            }
+
+            Intent::ArkRemove { packages } => {
+                let body = serde_json::json!({"packages": packages});
+                Ok(Translation {
+                    command: "curl".to_string(),
+                    args: vec![
+                        "-s".to_string(), "-X".to_string(), "POST".to_string(),
+                        "http://127.0.0.1:8090/v1/ark/remove".to_string(),
+                        "-H".to_string(), "Content-Type: application/json".to_string(),
+                        "-d".to_string(), serde_json::to_string(&body).unwrap(),
+                    ],
+                    description: format!("Remove packages via ark: {}", packages.join(", ")),
+                    permission: PermissionLevel::SystemWrite,
+                    explanation: "Removes packages using the AGNOS unified package manager".to_string(),
+                })
+            }
+
+            Intent::ArkSearch { query } => {
+                Ok(Translation {
+                    command: "curl".to_string(),
+                    args: vec![
+                        "-s".to_string(),
+                        format!("http://127.0.0.1:8090/v1/ark/search?q={}", query),
+                    ],
+                    description: format!("Search packages via ark: {}", query),
+                    permission: PermissionLevel::Safe,
+                    explanation: "Searches for packages across all configured sources".to_string(),
+                })
+            }
+
+            Intent::ArkInfo { package } => {
+                Ok(Translation {
+                    command: "curl".to_string(),
+                    args: vec![
+                        "-s".to_string(),
+                        format!("http://127.0.0.1:8090/v1/ark/info/{}", package),
+                    ],
+                    description: format!("Show ark package info: {}", package),
+                    permission: PermissionLevel::Safe,
+                    explanation: "Retrieves detailed information about a package".to_string(),
+                })
+            }
+
+            Intent::ArkUpdate => {
+                Ok(Translation {
+                    command: "curl".to_string(),
+                    args: vec![
+                        "-s".to_string(), "-X".to_string(), "POST".to_string(),
+                        "http://127.0.0.1:8090/v1/ark/update".to_string(),
+                    ],
+                    description: "Check for package updates via ark".to_string(),
+                    permission: PermissionLevel::Safe,
+                    explanation: "Refreshes package index from all configured sources".to_string(),
+                })
+            }
+
+            Intent::ArkUpgrade { packages } => {
+                let body = serde_json::json!({"packages": packages});
+                Ok(Translation {
+                    command: "curl".to_string(),
+                    args: vec![
+                        "-s".to_string(), "-X".to_string(), "POST".to_string(),
+                        "http://127.0.0.1:8090/v1/ark/upgrade".to_string(),
+                        "-H".to_string(), "Content-Type: application/json".to_string(),
+                        "-d".to_string(), serde_json::to_string(&body).unwrap(),
+                    ],
+                    description: format!("Upgrade packages via ark{}",
+                        packages.as_ref().map_or(String::new(), |p| format!(": {}", p.join(", ")))),
+                    permission: PermissionLevel::SystemWrite,
+                    explanation: "Upgrades packages to latest versions".to_string(),
+                })
+            }
+
+            Intent::ArkStatus => {
+                Ok(Translation {
+                    command: "curl".to_string(),
+                    args: vec![
+                        "-s".to_string(),
+                        "http://127.0.0.1:8090/v1/ark/status".to_string(),
+                    ],
+                    description: "Show ark package manager status".to_string(),
+                    permission: PermissionLevel::Safe,
+                    explanation: "Displays the status of the AGNOS unified package manager".to_string(),
+                })
+            }
+
             Intent::MarketplaceInstall { package } => {
                 Ok(Translation {
                     command: "curl".to_string(),
@@ -1396,6 +1619,108 @@ impl Interpreter {
                     description: "Check for marketplace package updates".to_string(),
                     permission: PermissionLevel::Safe,
                     explanation: "Checks for available updates to installed packages".to_string(),
+                })
+            }
+
+            Intent::TaskList { status } => {
+                let mut args_json = serde_json::Map::new();
+                if let Some(s) = status {
+                    args_json.insert("status".to_string(), serde_json::Value::String(s.clone()));
+                }
+                let body = serde_json::json!({"name": "photis_list_tasks", "arguments": args_json});
+                Ok(Translation {
+                    command: "curl".to_string(),
+                    args: vec![
+                        "-s".to_string(), "-X".to_string(), "POST".to_string(),
+                        "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
+                        "-H".to_string(), "Content-Type: application/json".to_string(),
+                        "-d".to_string(), serde_json::to_string(&body).unwrap(),
+                    ],
+                    description: format!("List tasks{}", status.as_ref().map_or(String::new(), |s| format!(" with status {}", s))),
+                    permission: PermissionLevel::Safe,
+                    explanation: "Lists tasks from Photis Nadi via MCP bridge".to_string(),
+                })
+            }
+
+            Intent::TaskCreate { title, priority } => {
+                let mut args_json = serde_json::Map::new();
+                args_json.insert("title".to_string(), serde_json::Value::String(title.clone()));
+                if let Some(p) = priority {
+                    args_json.insert("priority".to_string(), serde_json::Value::String(p.clone()));
+                }
+                let body = serde_json::json!({"name": "photis_create_task", "arguments": args_json});
+                Ok(Translation {
+                    command: "curl".to_string(),
+                    args: vec![
+                        "-s".to_string(), "-X".to_string(), "POST".to_string(),
+                        "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
+                        "-H".to_string(), "Content-Type: application/json".to_string(),
+                        "-d".to_string(), serde_json::to_string(&body).unwrap(),
+                    ],
+                    description: format!("Create task: {}", title),
+                    permission: PermissionLevel::Safe,
+                    explanation: "Creates a new task in Photis Nadi via MCP bridge".to_string(),
+                })
+            }
+
+            Intent::TaskUpdate { task_id, status } => {
+                let mut args_json = serde_json::Map::new();
+                args_json.insert("task_id".to_string(), serde_json::Value::String(task_id.clone()));
+                if let Some(s) = status {
+                    args_json.insert("status".to_string(), serde_json::Value::String(s.clone()));
+                }
+                let body = serde_json::json!({"name": "photis_update_task", "arguments": args_json});
+                Ok(Translation {
+                    command: "curl".to_string(),
+                    args: vec![
+                        "-s".to_string(), "-X".to_string(), "POST".to_string(),
+                        "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
+                        "-H".to_string(), "Content-Type: application/json".to_string(),
+                        "-d".to_string(), serde_json::to_string(&body).unwrap(),
+                    ],
+                    description: format!("Update task {}", task_id),
+                    permission: PermissionLevel::Safe,
+                    explanation: "Updates a task in Photis Nadi via MCP bridge".to_string(),
+                })
+            }
+
+            Intent::RitualCheck { date } => {
+                let mut args_json = serde_json::Map::new();
+                if let Some(d) = date {
+                    args_json.insert("date".to_string(), serde_json::Value::String(d.clone()));
+                }
+                let body = serde_json::json!({"name": "photis_get_rituals", "arguments": args_json});
+                Ok(Translation {
+                    command: "curl".to_string(),
+                    args: vec![
+                        "-s".to_string(), "-X".to_string(), "POST".to_string(),
+                        "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
+                        "-H".to_string(), "Content-Type: application/json".to_string(),
+                        "-d".to_string(), serde_json::to_string(&body).unwrap(),
+                    ],
+                    description: "Check daily rituals".to_string(),
+                    permission: PermissionLevel::Safe,
+                    explanation: "Retrieves ritual/habit status from Photis Nadi via MCP bridge".to_string(),
+                })
+            }
+
+            Intent::ProductivityStats { period } => {
+                let mut args_json = serde_json::Map::new();
+                if let Some(p) = period {
+                    args_json.insert("period".to_string(), serde_json::Value::String(p.clone()));
+                }
+                let body = serde_json::json!({"name": "photis_analytics", "arguments": args_json});
+                Ok(Translation {
+                    command: "curl".to_string(),
+                    args: vec![
+                        "-s".to_string(), "-X".to_string(), "POST".to_string(),
+                        "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
+                        "-H".to_string(), "Content-Type: application/json".to_string(),
+                        "-d".to_string(), serde_json::to_string(&body).unwrap(),
+                    ],
+                    description: format!("Productivity analytics{}", period.as_ref().map_or(String::new(), |p| format!(" for {}", p))),
+                    permission: PermissionLevel::Safe,
+                    explanation: "Retrieves productivity analytics from Photis Nadi via MCP bridge".to_string(),
                 })
             }
 
@@ -3309,5 +3634,386 @@ mod tests {
         } else {
             panic!("Expected Pipeline, got {:?}", intent);
         }
+    }
+
+    // --- Photis Nadi task management intent tests ---
+
+    #[test]
+    fn test_parse_task_list_no_filter() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("show my tasks");
+        if let Intent::TaskList { status } = intent {
+            assert!(status.is_none());
+        } else {
+            panic!("Expected TaskList, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_parse_task_list_with_status() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("list tasks that are done");
+        if let Intent::TaskList { status } = intent {
+            assert_eq!(status.as_deref(), Some("done"));
+        } else {
+            panic!("Expected TaskList, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_parse_task_list_view_variant() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("view my tasks in todo");
+        if let Intent::TaskList { status } = intent {
+            assert_eq!(status.as_deref(), Some("todo"));
+        } else {
+            panic!("Expected TaskList, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_parse_task_create_basic() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("create task: fix login bug");
+        if let Intent::TaskCreate { title, priority } = intent {
+            assert_eq!(title, "fix login bug");
+            assert!(priority.is_none());
+        } else {
+            panic!("Expected TaskCreate, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_parse_task_create_with_priority() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("add task fix the navbar priority high");
+        if let Intent::TaskCreate { title, priority } = intent {
+            assert_eq!(title, "fix the navbar");
+            assert_eq!(priority.as_deref(), Some("high"));
+        } else {
+            panic!("Expected TaskCreate, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_parse_task_create_new_variant() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("new task deploy v3 priority low");
+        if let Intent::TaskCreate { title, priority } = intent {
+            assert_eq!(title, "deploy v3");
+            assert_eq!(priority.as_deref(), Some("low"));
+        } else {
+            panic!("Expected TaskCreate, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_parse_task_update_mark_done() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("mark task abc123 as done");
+        if let Intent::TaskUpdate { task_id, status } = intent {
+            assert_eq!(task_id, "abc123");
+            assert_eq!(status.as_deref(), Some("done"));
+        } else {
+            panic!("Expected TaskUpdate, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_parse_task_update_set_status() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("update task xyz status to in_progress");
+        if let Intent::TaskUpdate { task_id, status } = intent {
+            assert_eq!(task_id, "xyz");
+            assert_eq!(status.as_deref(), Some("in_progress"));
+        } else {
+            panic!("Expected TaskUpdate, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_parse_ritual_check_basic() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("show my rituals");
+        if let Intent::RitualCheck { date } = intent {
+            assert!(date.is_none());
+        } else {
+            panic!("Expected RitualCheck, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_parse_ritual_check_with_date() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("check habits 2026-03-06");
+        if let Intent::RitualCheck { date } = intent {
+            assert_eq!(date.as_deref(), Some("2026-03-06"));
+        } else {
+            panic!("Expected RitualCheck, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_parse_ritual_check_today() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("how are my rituals today");
+        assert!(matches!(intent, Intent::RitualCheck { .. }));
+    }
+
+    #[test]
+    fn test_parse_productivity_stats_basic() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("show my productivity");
+        if let Intent::ProductivityStats { period } = intent {
+            assert!(period.is_none());
+        } else {
+            panic!("Expected ProductivityStats, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_parse_productivity_stats_weekly() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("stats weekly");
+        if let Intent::ProductivityStats { period } = intent {
+            assert_eq!(period.as_deref(), Some("week"));
+        } else {
+            panic!("Expected ProductivityStats, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_parse_productivity_stats_this_month() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("analytics this month");
+        if let Intent::ProductivityStats { period } = intent {
+            assert_eq!(period.as_deref(), Some("month"));
+        } else {
+            panic!("Expected ProductivityStats, got {:?}", intent);
+        }
+    }
+
+    // --- Photis Nadi translation tests ---
+
+    #[test]
+    fn test_translate_task_list() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::TaskList { status: Some("in_progress".to_string()) };
+        let t = interpreter.translate(&intent).unwrap();
+        assert_eq!(t.command, "curl");
+        let body = t.args.last().unwrap();
+        assert!(body.contains("photis_list_tasks"));
+        assert!(body.contains("in_progress"));
+    }
+
+    #[test]
+    fn test_translate_task_create() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::TaskCreate { title: "fix bug".to_string(), priority: Some("high".to_string()) };
+        let t = interpreter.translate(&intent).unwrap();
+        assert_eq!(t.command, "curl");
+        let body = t.args.last().unwrap();
+        assert!(body.contains("photis_create_task"));
+        assert!(body.contains("fix bug"));
+        assert!(body.contains("high"));
+    }
+
+    #[test]
+    fn test_translate_task_update() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::TaskUpdate { task_id: "abc".to_string(), status: Some("done".to_string()) };
+        let t = interpreter.translate(&intent).unwrap();
+        assert_eq!(t.command, "curl");
+        let body = t.args.last().unwrap();
+        assert!(body.contains("photis_update_task"));
+        assert!(body.contains("abc"));
+        assert!(body.contains("done"));
+    }
+
+    #[test]
+    fn test_translate_ritual_check() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::RitualCheck { date: None };
+        let t = interpreter.translate(&intent).unwrap();
+        assert_eq!(t.command, "curl");
+        let body = t.args.last().unwrap();
+        assert!(body.contains("photis_get_rituals"));
+    }
+
+    #[test]
+    fn test_translate_productivity_stats() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::ProductivityStats { period: Some("week".to_string()) };
+        let t = interpreter.translate(&intent).unwrap();
+        assert_eq!(t.command, "curl");
+        let body = t.args.last().unwrap();
+        assert!(body.contains("photis_analytics"));
+        assert!(body.contains("week"));
+    }
+
+    #[test]
+    fn test_translate_task_list_no_status() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::TaskList { status: None };
+        let t = interpreter.translate(&intent).unwrap();
+        assert_eq!(t.command, "curl");
+        assert!(t.args.contains(&"http://127.0.0.1:8090/v1/mcp/tools/call".to_string()));
+    }
+
+    // Negative tests - ensure non-matching inputs don't produce task intents
+    #[test]
+    fn test_task_list_negative() {
+        let interpreter = Interpreter::new();
+        // "tasks" not preceded by show/list/view
+        let intent = interpreter.parse("tasks are boring");
+        assert!(!matches!(intent, Intent::TaskList { .. }));
+    }
+
+    #[test]
+    fn test_task_create_negative() {
+        let interpreter = Interpreter::new();
+        // missing task keyword
+        let intent = interpreter.parse("create something else");
+        assert!(!matches!(intent, Intent::TaskCreate { .. }));
+    }
+
+    // ===== Ark package manager tests =====
+
+    #[test]
+    fn test_parse_ark_install_single() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("ark install nginx");
+        match intent {
+            Intent::ArkInstall { packages, source } => {
+                assert_eq!(packages, vec!["nginx"]);
+                assert!(source.is_none());
+            }
+            other => panic!("Expected ArkInstall, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_ark_install_multiple() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("ark install nginx curl wget");
+        match intent {
+            Intent::ArkInstall { packages, source } => {
+                assert_eq!(packages, vec!["nginx", "curl", "wget"]);
+                assert!(source.is_none());
+            }
+            other => panic!("Expected ArkInstall, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_ark_remove() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("ark remove nginx");
+        match intent {
+            Intent::ArkRemove { packages } => {
+                assert_eq!(packages, vec!["nginx"]);
+            }
+            other => panic!("Expected ArkRemove, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_ark_uninstall() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("ark uninstall nginx");
+        match intent {
+            Intent::ArkRemove { packages } => {
+                assert_eq!(packages, vec!["nginx"]);
+            }
+            other => panic!("Expected ArkRemove, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_ark_search() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("ark search web server");
+        match intent {
+            Intent::ArkSearch { query } => {
+                assert_eq!(query, "web server");
+            }
+            other => panic!("Expected ArkSearch, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_ark_info() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("ark info nginx");
+        match intent {
+            Intent::ArkInfo { package } => {
+                assert_eq!(package, "nginx");
+            }
+            other => panic!("Expected ArkInfo, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_ark_show() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("ark show nginx");
+        match intent {
+            Intent::ArkInfo { package } => {
+                assert_eq!(package, "nginx");
+            }
+            other => panic!("Expected ArkInfo, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_ark_update() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("ark update");
+        assert!(matches!(intent, Intent::ArkUpdate));
+    }
+
+    #[test]
+    fn test_parse_ark_upgrade_all() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("ark upgrade");
+        match intent {
+            Intent::ArkUpgrade { packages } => {
+                assert!(packages.is_none());
+            }
+            other => panic!("Expected ArkUpgrade, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_ark_upgrade_specific() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("ark upgrade nginx");
+        match intent {
+            Intent::ArkUpgrade { packages } => {
+                assert_eq!(packages, Some(vec!["nginx".to_string()]));
+            }
+            other => panic!("Expected ArkUpgrade, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_ark_status() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("ark status");
+        assert!(matches!(intent, Intent::ArkStatus));
+    }
+
+    #[test]
+    fn test_translate_ark_install_url() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::ArkInstall {
+            packages: vec!["nginx".to_string()],
+            source: None,
+        };
+        let t = interpreter.translate(&intent).unwrap();
+        assert_eq!(t.command, "curl");
+        assert!(t.args.contains(&"http://127.0.0.1:8090/v1/ark/install".to_string()));
+        let body = t.args.last().unwrap();
+        assert!(body.contains("nginx"));
     }
 }
