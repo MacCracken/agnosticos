@@ -207,48 +207,47 @@ Linux 6.6 LTS (Hardened)
 ### User Space
 
 ```
-AGNOS Userland
-├── init system (systemd + AGNOS extensions)
-├── Agent Runtime Environment
-│   ├── Agent Kernel Daemon
-│   ├── LLM Gateway Service
-│   ├── Message Bus (D-Bus + custom)
-│   └── Resource Scheduler
-├── AI Shell (agnsh)
-│   ├── Natural language parser
-│   ├── Intent classifier
-│   └── Command translator
-├── Desktop Environment (Phase 2)
-│   └── Wayland compositor + AI layer
-└── Package Manager (agpkg)
-    └── AGNOS-specific packages
+AGNOS Userland (17 named subsystems)
+├── argonaut — init system (boot sequencing, service management)
+├── daimon — agent orchestrator (port 8090)
+│   ├── Multi-agent IPC, sandbox, registry
+│   ├── Federation, migration, scheduling
+│   ├── mela — agent marketplace
+│   ├── sigil — trust verification
+│   └── aegis — security daemon
+├── hoosh — LLM gateway (port 8088, OpenAI-compatible)
+├── agnoshi (agnsh) — AI shell
+│   ├── Natural language parser + intent classifier
+│   └── Approval workflow, aliases, dashboard
+├── aethersafha — Wayland compositor + AI features
+│   └── Plugin host, XWayland, accessibility
+├── ark + nous — package management
+├── takumi — package build system (.ark format)
+├── agnova — OS installer (4 install modes)
+├── agnosys — kernel interface (Landlock, seccomp, LUKS, TPM)
+├── agnostik — shared types library
+└── shakti — privilege escalation
 ```
 
 ## Development Status
 
 AGNOS is currently in **pre-alpha** development. See [docs/development/roadmap.md](docs/development/roadmap.md) for the full roadmap and detailed phase breakdown.
 
-### Current Phase: Production Hardening (Phase 5 — 85% Complete)
+### Current Status: All Development Phases Complete — Alpha Targeting Q2 2026
 
-The core system is implemented. We are now focused on testing, security audits, and release preparation for the **Alpha release targeting Q2 2026**.
+All 9 development phases are complete (9072+ tests, ~82% coverage, 0 warnings). The sole remaining blocker for alpha is a third-party security audit.
 
-- [x] Project scaffolding, architecture, and full documentation
-- [x] Build system, toolchain, and CI/CD pipeline
-- [x] Agent Runtime — multi-agent orchestration with IPC and sandboxing
-- [x] AI Shell (`agnsh`) — natural language command interface
-- [x] LLM Gateway — OpenAI-compatible HTTP API (port 8088)
-- [x] Desktop Environment — Wayland compositor + AI features
-- [x] Security & Compliance — Landlock, seccomp, CIS benchmarks, SBOM
-- [x] Release infrastructure — package signing, delta updates, telemetry
-- [ ] Test coverage: 60% → 80% (P0 blocker)
-- [ ] Integration tests: agent-orchestrator scenarios
-- [ ] Third-party security audit
-- [ ] Performance benchmarks established
-
-### Planned Phases
-- **Phase 6**: Advanced AI — NPU/GPU acceleration, swarm intelligence, networking toolkit
-- **Phase 7**: Ecosystem — Agent marketplace, cloud services
-- **Phase 8**: Research — Formal verification, novel sandboxing, AI safety
+- [x] **Phase 1-4**: Architecture, build system, CI/CD pipeline
+- [x] **Phase 5**: Agent Runtime (daimon), AI Shell (agnoshi), LLM Gateway (hoosh), Desktop (aethersafha)
+- [x] **Phase 6**: Advanced AI — NPU/GPU acceleration, swarm intelligence, networking toolkit, RAG pipeline, observability, anomaly detection
+- [x] **Phase 7**: Ecosystem — Federation (55 tests), distributed scheduling (47 tests), agent migration (54 tests), ratings/reviews (43 tests)
+- [x] **Phase 8A-8F**: Distribution — Sigil trust (35 tests), Takumi build (43 tests), Argonaut init (46 tests), Agnova installer (41 tests), Aegis security daemon (40 tests)
+- [x] **Phase 8G-8M**: Research — Post-quantum crypto (68 tests), explainability (59 tests), AI safety (77 tests), fine-tuning (73 tests), formal verification (76 tests), novel sandboxing (77 tests), RL optimization (68 tests)
+- [x] **Phase 9**: Cloud services (82 tests), human-AI collaboration (87 tests)
+- [x] Test coverage: ~82% (9072+ tests, 0 failures)
+- [x] Performance benchmarks — criterion suites for all major components
+- [x] Security — 5 CVEs fixed, all CI/CD workflows operational
+- [ ] **Third-party security audit** (sole alpha blocker — vendor selection in progress)
 
 ## Documentation
 

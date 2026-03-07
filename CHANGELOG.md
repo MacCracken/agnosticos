@@ -71,20 +71,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Phase 8F — Aegis: Security Daemon (40 tests) — [ADR-020](docs/adr/adr-020-aegis-security-daemon.md)
 - **agent-runtime/aegis.rs** — Unified security daemon: 5 threat levels with auto-response, 10 security event types, quarantine system (Suspend/Terminate/Isolate/RateLimit), agent/package scanning, auto-quarantine on Critical/High threats, auto-release timeouts, event filtering and resolution tracking
 
-### Fixed — Code Audit: All 5 New Modules (54 additional tests)
+### Fixed — Code Audit: All 13 New Modules
+- **federation.rs** — `.unwrap()` → safe match with rejection vote; NodeScorer uses actual load
+- **scheduler.rs** — Added `total_disk_mb`/`available_disk_mb` fields, fixed `can_fit()` disk check
+- **cloud.rs** — Tracked latency field, `#[serde(skip_serializing)]` on api_key, `mark_synced()`/`mark_pulled()`, Manual conflict now errors, workspace_stats trimmed
+- **collaboration.rs** — Added `tasks_completed` and `mode` to SessionAnalytics, fixed `most_effective_mode`, clamped trust metrics to 0.0..=1.0
+- **pqc.rs** — Fixed KEM encap/decap shared secret derivation, `#[serde(skip_serializing)]` on 4 secret key fields, added roundtrip tests
+- **sandbox_v2.rs** — `SandboxCapability::matches()` with glob/subset matching, path traversal validation, cascade revocation, negative CPU clamping, taint propagation
+- **rl_optimizer.rs** — Key-aligned state distance, epsilon_greedy parameter validation, episode_complete only increments for known episodes
+- **safety.rs** — `s.chars().count()` for byte-vs-char ratio
+- **explainability.rs** — NaN confidence rejection
+- **finetune.rs** — `output_model_path` field, duplicate model_id check, batch_size/max_sequence_length validation
 - **aegis.rs** — Quarantine escalation (no overwrite), scan config flags respected, metadata error reporting, empty agent_id warning
 - **argonaut.rs** — State machine transition validation, dependency-state checks before Starting, register preserves runtime state, boot timestamps, missing deps error, shutdown_order returns Result
 - **sigil.rs** — AuditOnly mode blocks revoked artifacts, policy flags enforced, sign_artifact trust level checks, RevocationEntry validation
 - **takumi.rs** — Package name path traversal prevention, URL scheme validation, SHA-256 format validation, duplicate recipe warning, flag deduplication
 - **agnova.rs** — Kernel param injection validation, device path validation, hostname/username validation, non-recoverable phase blocking, DHCP/static IP validation
 
+### Fixed — Wayland Compositor
+- **wayland.rs** — Restructured `WaylandState` into `WaylandState` + `WaylandInner` to fix `Display::dispatch_clients` borrow conflict; added 5 `GlobalDispatch` impls (WlCompositor, WlShm, WlSeat, WlOutput, XdgWmBase); moved `bind` from `Dispatch` to `GlobalDispatch`; replaced non-existent `ClientId::protocol_id()` with counter-based client ID tracking
+
+### Fixed — CI/CD Workflows
+- **ci.yml** — Added `working-directory: userland` to all cargo steps (test, security, benchmarks, quality); fixed cache paths (`target/` → `userland/target/`); fixed benchmark/coverage artifact paths; removed non-existent `TODO.md` from docs check; switched container job from broken `Dockerfile.dev` to production `Dockerfile`; added OpenSSL cross-compile env vars for aarch64 builds
+- **fuzzing.yml** — Replaced YAML-breaking heredoc with `printf` one-liner; replaced deprecated `actions-rs/toolchain@v1` with `dtolnay/rust-toolchain@nightly`
+- **sbom.yml** — Fixed `PROJECT_ROOT` path; replaced deprecated `actions-rs/toolchain@v1`; added `if-no-files-found: warn`; added result condition to dependency-track job
+- **release-automation.yml** — Replaced deprecated `actions-rs/toolchain@v1` with `dtolnay/rust-toolchain@stable`
+- **cis-validate.yml** — Fixed report path to absolute `$GITHUB_WORKSPACE/cis-report.json`; replaced `bc` with bash integer arithmetic
+
+### Fixed — Docker
+- **Dockerfile** — Bumped Rust 1.77 → 1.85 (edition2024 support); fixed binary name `ai_shell` → `agnsh`; added `curl` for healthcheck
+- **Dockerfile.dev** — Replaced heredoc (Docker classic parser incompatible) with `printf` one-liner
+- **docker/entrypoint.sh** — Added JSON logging default; fixed `llm_gateway` → `llm_gateway daemon`; added `0.0.0.0` bind defaults for container port forwarding
+- **.dockerignore** — Created to exclude `target/`, `.git/`, `docs/` from build context
+
+### Fixed — Scripts
+- **scripts/cis-validate.sh** — Fixed `((PASS++))` killing script under `set -e`; replaced `bc` score calculation with pure bash; fixed integer comparison in `print_summary`
+- **scripts/generate-sbom.sh** — Fixed `PROJECT_ROOT` (`../../` → `..`)
+
+### Security
+- **wasmtime** 27 → 36 — Fixes CVE-2026-27572, CVE-2026-27204 (MEDIUM), CVE-2025-53901, CVE-2025-64345 (LOW)
+- **ratatui** — Removed unused dependency, eliminating vulnerable transitive dep `lru 0.12.5` (GHSA-rhfx-m35p-ff5j)
+
+### Changed
+- **Benchmarks** — Removed unused `AgentRegistry` import from agent-runtime bench; added missing `aliases` field to ai-shell bench `ShellConfig`
+
 ### Status Update
 | Metric | Value |
 |--------|-------|
-| Total Tests | 9061+ (0 failures) |
+| Total Tests | 9072+ (0 failures) |
 | Compiler Warnings | 0 |
-| New ADRs | 019-023 |
-| New modules | sigil, aegis, takumi, argonaut, agnova |
+| CVEs Fixed | 5 |
+| CI Workflows Fixed | 5 |
 
 ---
 
