@@ -54,7 +54,7 @@ dependencies = [
 
 [[package]]
 name = "agent_runtime"
-version = "2026.3.6"
+version = "2026.3.7"
 dependencies = [
  "agnos-common",
  "agnos-sys",
@@ -92,7 +92,7 @@ dependencies = [
 
 [[package]]
 name = "agnos-common"
-version = "2026.3.6"
+version = "2026.3.7"
 dependencies = [
  "aes-gcm",
  "async-trait",
@@ -118,7 +118,7 @@ dependencies = [
 
 [[package]]
 name = "agnos-examples"
-version = "2026.3.6"
+version = "2026.3.7"
 dependencies = [
  "agnos-common",
  "agnos-sys",
@@ -132,7 +132,7 @@ dependencies = [
 
 [[package]]
 name = "agnos-sudo"
-version = "2026.3.6"
+version = "2026.3.7"
 dependencies = [
  "agnos-common",
  "agnos-sys",
@@ -146,7 +146,7 @@ dependencies = [
 
 [[package]]
 name = "agnos-sys"
-version = "2026.3.6"
+version = "2026.3.7"
 dependencies = [
  "agnos-common",
  "anyhow",
@@ -180,7 +180,7 @@ dependencies = [
 
 [[package]]
 name = "ai_shell"
-version = "2026.3.6"
+version = "2026.3.7"
 dependencies = [
  "agnos-common",
  "agnos-sys",
@@ -1089,7 +1089,7 @@ dependencies = [
 
 [[package]]
 name = "desktop_environment"
-version = "2026.3.6"
+version = "2026.3.7"
 dependencies = [
  "agnos-common",
  "agnos-sys",
@@ -2172,7 +2172,7 @@ checksum = "6373607a59f0be73a39b6fe456b8192fcc3585f602af20751600e974dd455e77"
 
 [[package]]
 name = "llm_gateway"
-version = "2026.3.6"
+version = "2026.3.7"
 dependencies = [
  "agnos-common",
  "agnos-sys",

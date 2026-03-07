@@ -1,6 +1,6 @@
 # AGNOS System Architecture
 
-> **Last Updated**: 2026-03-07 | **Version**: 2026.3.6
+> **Last Updated**: 2026-03-07 | **Version**: 2026.3.7
 
 This document provides the technical architecture of AGNOS (AI-Native General Operating System).
 

@@ -518,7 +518,7 @@ AGNOS-side infrastructure that consumer projects (AGNOSTIC, SecureYeoman, BullSh
 
 ### Alpha Release - Q2 2026
 
-**Current version**: `2026.3.6` (CalVer: `YYYY.D.M`, patches as `-#N`)
+**Current version**: `2026.3.7` (CalVer: `YYYY.D.M`, patches as `-#N`)
 
 **Remaining criteria:**
 - [ ] Third-party security audit complete

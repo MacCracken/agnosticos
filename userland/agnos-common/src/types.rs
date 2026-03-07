@@ -31,7 +31,7 @@ impl Default for Version {
         Self {
             major: 2026,
             minor: 3,
-            patch: 6,
+            patch: 7,
             prerelease: None,
             build: None,
         }
