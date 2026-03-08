@@ -2,7 +2,7 @@ name: SBOM Generation
 
 on:
   push:
-    tags: [ 'v*' ]
+    tags: [ '[0-9]*' ]
   schedule:
     # Generate SBOM weekly
     - cron: '0 0 * * 0'
