@@ -190,7 +190,10 @@ impl DesktopShell {
     }
 
     fn initialize_quick_settings(&self) {
-        let mut settings = self.quick_settings.write().unwrap();
+        let mut settings = self
+            .quick_settings
+            .write()
+            .unwrap_or_else(|e| e.into_inner());
 
         settings.push(QuickSetting {
             id: "wifi".to_string(),
@@ -246,7 +249,7 @@ impl DesktopShell {
     }
 
     fn initialize_app_registry(&self) {
-        let mut registry = self.app_registry.write().unwrap();
+        let mut registry = self.app_registry.write().unwrap_or_else(|e| e.into_inner());
 
         let system_apps = [
             ("terminal", "Terminal", "terminal", true),
@@ -274,8 +277,11 @@ impl DesktopShell {
     }
 
     fn populate_launcher_items(&self) {
-        let registry = self.app_registry.read().unwrap();
-        let mut items = self.launcher_items.write().unwrap();
+        let registry = self.app_registry.read().unwrap_or_else(|e| e.into_inner());
+        let mut items = self
+            .launcher_items
+            .write()
+            .unwrap_or_else(|e| e.into_inner());
 
         for app in registry.values() {
             items.push(LauncherItem {
@@ -306,7 +312,10 @@ impl DesktopShell {
 
     pub fn show_notification(&self, notification: Notification) {
         let title = notification.title.clone();
-        let mut notifications = self.notifications.write().unwrap();
+        let mut notifications = self
+            .notifications
+            .write()
+            .unwrap_or_else(|e| e.into_inner());
 
         // Evict oldest non-action notifications when at capacity
         if notifications.len() >= MAX_NOTIFICATIONS {
@@ -325,7 +334,10 @@ impl DesktopShell {
     }
 
     pub fn dismiss_notification(&self, id: NotificationId) -> Result<(), ShellError> {
-        let mut notifications = self.notifications.write().unwrap();
+        let mut notifications = self
+            .notifications
+            .write()
+            .unwrap_or_else(|e| e.into_inner());
         if !notifications.contains_key(&id) {
             return Err(ShellError::NotificationNotFound(id));
         }
@@ -372,7 +384,10 @@ impl DesktopShell {
     }
 
     pub fn toggle_quick_setting(&self, setting_id: &str) -> Result<(), ShellError> {
-        let mut settings = self.quick_settings.write().unwrap();
+        let mut settings = self
+            .quick_settings
+            .write()
+            .unwrap_or_else(|e| e.into_inner());
         let setting = settings
             .iter_mut()
             .find(|s| s.id == setting_id)
@@ -389,7 +404,10 @@ impl DesktopShell {
     }
 
     pub fn search_launcher(&self, query: &str) -> Vec<LauncherItem> {
-        let items = self.launcher_items.read().unwrap();
+        let items = self
+            .launcher_items
+            .read()
+            .unwrap_or_else(|e| e.into_inner());
         let query = query.to_lowercase();
 
         let mut results: Vec<_> = items
@@ -419,7 +437,7 @@ impl DesktopShell {
     }
 
     pub fn launch_app(&self, app_id: &str) -> Result<(), ShellError> {
-        let registry = self.app_registry.read().unwrap();
+        let registry = self.app_registry.read().unwrap_or_else(|e| e.into_inner());
         if !registry.contains_key(app_id) {
             return Err(ShellError::AppNotFound(app_id.to_string()));
         }
@@ -429,21 +447,24 @@ impl DesktopShell {
     }
 
     pub fn lock_screen(&self) {
-        *self.is_locked.write().unwrap() = true;
+        *self.is_locked.write().unwrap_or_else(|e| e.into_inner()) = true;
         info!("Screen locked");
     }
 
     pub fn unlock_screen(&self) {
-        *self.is_locked.write().unwrap() = false;
+        *self.is_locked.write().unwrap_or_else(|e| e.into_inner()) = false;
         info!("Screen unlocked");
     }
 
     pub fn is_locked(&self) -> bool {
-        *self.is_locked.read().unwrap()
+        *self.is_locked.read().unwrap_or_else(|e| e.into_inner())
     }
 
     pub fn toggle_panel(&self) {
-        let mut visible = self.panel_visible.write().unwrap();
+        let mut visible = self
+            .panel_visible
+            .write()
+            .unwrap_or_else(|e| e.into_inner());
         *visible = !*visible;
         info!("Panel visibility: {}", *visible);
     }
@@ -451,26 +472,38 @@ impl DesktopShell {
     pub fn get_notifications(&self) -> Vec<Notification> {
         self.notifications
             .read()
-            .unwrap()
+            .unwrap_or_else(|e| e.into_inner())
             .values()
             .cloned()
             .collect()
     }
 
     pub fn get_quick_settings(&self) -> Vec<QuickSetting> {
-        self.quick_settings.read().unwrap().clone()
+        self.quick_settings
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     pub fn get_system_status(&self) -> SystemStatus {
-        self.system_status.read().unwrap().clone()
+        self.system_status
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     pub fn update_system_status(&self, status: SystemStatus) {
-        *self.system_status.write().unwrap() = status;
+        *self
+            .system_status
+            .write()
+            .unwrap_or_else(|e| e.into_inner()) = status;
     }
 
     pub fn set_agent_count(&self, count: usize) {
-        let mut status = self.system_status.write().unwrap();
+        let mut status = self
+            .system_status
+            .write()
+            .unwrap_or_else(|e| e.into_inner());
         status.agent_count = count;
     }
 }

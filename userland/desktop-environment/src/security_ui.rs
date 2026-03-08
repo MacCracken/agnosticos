@@ -160,7 +160,10 @@ impl SecurityUI {
     }
 
     fn initialize_permission_definitions(&self) {
-        let mut defs = self.permission_definitions.write().unwrap();
+        let mut defs = self
+            .permission_definitions
+            .write()
+            .unwrap_or_else(|e| e.into_inner());
 
         defs.push(PermissionDefinition {
             name: "file:read".to_string(),
@@ -208,7 +211,7 @@ impl SecurityUI {
     }
 
     pub fn show_security_alert(&self, alert: SecurityAlert) {
-        let mut alerts = self.alerts.write().unwrap();
+        let mut alerts = self.alerts.write().unwrap_or_else(|e| e.into_inner());
 
         // Evict oldest resolved alerts when at capacity
         if alerts.len() >= MAX_ALERTS {
@@ -228,7 +231,7 @@ impl SecurityUI {
     }
 
     pub fn dismiss_alert(&self, alert_id: Uuid) -> Result<(), SecurityUIError> {
-        let mut alerts = self.alerts.write().unwrap();
+        let mut alerts = self.alerts.write().unwrap_or_else(|e| e.into_inner());
         if let Some(alert) = alerts.iter_mut().find(|a| a.id == alert_id) {
             alert.is_resolved = true;
         }
@@ -237,7 +240,10 @@ impl SecurityUI {
 
     pub fn request_permission(&self, request: PermissionRequest) {
         let permission = request.permission.clone();
-        let mut requests = self.permission_requests.write().unwrap();
+        let mut requests = self
+            .permission_requests
+            .write()
+            .unwrap_or_else(|e| e.into_inner());
 
         // Evict oldest granted requests when at capacity
         if requests.len() >= MAX_PERMISSION_REQUESTS {
@@ -252,7 +258,10 @@ impl SecurityUI {
     }
 
     pub fn grant_permission(&self, request_id: Uuid) -> Result<(), SecurityUIError> {
-        let mut requests = self.permission_requests.write().unwrap();
+        let mut requests = self
+            .permission_requests
+            .write()
+            .unwrap_or_else(|e| e.into_inner());
         if let Some(req) = requests.iter_mut().find(|r| r.id == request_id) {
             req.is_granted = true;
             info!("Permission granted: {}", req.permission);
@@ -261,7 +270,10 @@ impl SecurityUI {
     }
 
     pub fn deny_permission(&self, request_id: Uuid) -> Result<(), SecurityUIError> {
-        let mut requests = self.permission_requests.write().unwrap();
+        let mut requests = self
+            .permission_requests
+            .write()
+            .unwrap_or_else(|e| e.into_inner());
         requests.retain(|r| r.id != request_id);
         info!("Permission denied: {}", request_id);
         Ok(())
@@ -273,7 +285,10 @@ impl SecurityUI {
         agent_name: String,
         permissions: Vec<String>,
     ) {
-        let mut perms = self.agent_permissions.write().unwrap();
+        let mut perms = self
+            .agent_permissions
+            .write()
+            .unwrap_or_else(|e| e.into_inner());
         perms.insert(
             agent_id,
             AgentPermission {
@@ -288,7 +303,10 @@ impl SecurityUI {
     }
 
     pub fn revoke_agent_permissions(&self, agent_id: Uuid) -> Result<(), SecurityUIError> {
-        let mut perms = self.agent_permissions.write().unwrap();
+        let mut perms = self
+            .agent_permissions
+            .write()
+            .unwrap_or_else(|e| e.into_inner());
         if perms.remove(&agent_id).is_some() {
             info!("Permissions revoked for {:?}", agent_id);
             Ok(())
@@ -318,7 +336,10 @@ impl SecurityUI {
             approved_by: None,
         };
 
-        let mut requests = self.override_requests.write().unwrap();
+        let mut requests = self
+            .override_requests
+            .write()
+            .unwrap_or_else(|e| e.into_inner());
 
         // Evict oldest approved overrides when at capacity
         if requests.len() >= MAX_OVERRIDE_REQUESTS {
@@ -340,7 +361,10 @@ impl SecurityUI {
         approver: String,
     ) -> Result<(), SecurityUIError> {
         let approver_clone = approver.clone();
-        let mut requests = self.override_requests.write().unwrap();
+        let mut requests = self
+            .override_requests
+            .write()
+            .unwrap_or_else(|e| e.into_inner());
         if let Some(req) = requests.iter_mut().find(|r| r.id == request_id) {
             req.is_approved = true;
             req.approved_by = Some(approver);
@@ -352,10 +376,19 @@ impl SecurityUI {
     }
 
     pub fn emergency_kill_switch(&self) {
-        *self.emergency_mode.write().unwrap() = true;
-        *self.human_override_enabled.write().unwrap() = false;
+        *self
+            .emergency_mode
+            .write()
+            .unwrap_or_else(|e| e.into_inner()) = true;
+        *self
+            .human_override_enabled
+            .write()
+            .unwrap_or_else(|e| e.into_inner()) = false;
 
-        let mut requests = self.override_requests.write().unwrap();
+        let mut requests = self
+            .override_requests
+            .write()
+            .unwrap_or_else(|e| e.into_inner());
         for req in requests.iter_mut() {
             req.is_approved = false;
         }
@@ -364,13 +397,19 @@ impl SecurityUI {
     }
 
     pub fn deactivate_emergency(&self) {
-        *self.emergency_mode.write().unwrap() = false;
+        *self
+            .emergency_mode
+            .write()
+            .unwrap_or_else(|e| e.into_inner()) = false;
         info!("Emergency mode deactivated");
     }
 
     pub fn set_security_level(&self, level: SecurityLevel) {
         let level_clone = level.clone();
-        *self.security_level.write().unwrap() = level;
+        *self
+            .security_level
+            .write()
+            .unwrap_or_else(|e| e.into_inner()) = level;
         match level_clone {
             SecurityLevel::Standard => info!("Security level: Standard"),
             SecurityLevel::Elevated => warn!("Security level: Elevated"),
@@ -381,9 +420,15 @@ impl SecurityUI {
     }
 
     pub fn get_security_dashboard(&self) -> SecurityDashboard {
-        let alerts = self.alerts.read().unwrap();
-        let requests = self.permission_requests.read().unwrap();
-        let agent_perms = self.agent_permissions.read().unwrap();
+        let alerts = self.alerts.read().unwrap_or_else(|e| e.into_inner());
+        let requests = self
+            .permission_requests
+            .read()
+            .unwrap_or_else(|e| e.into_inner());
+        let agent_perms = self
+            .agent_permissions
+            .read()
+            .unwrap_or_else(|e| e.into_inner());
 
         let active_alerts = alerts.iter().filter(|a| !a.is_resolved).count();
         let pending = requests.iter().filter(|r| !r.is_granted).count();
@@ -407,7 +452,7 @@ impl SecurityUI {
     pub fn get_active_alerts(&self) -> Vec<SecurityAlert> {
         self.alerts
             .read()
-            .unwrap()
+            .unwrap_or_else(|e| e.into_inner())
             .iter()
             .filter(|a| !a.is_resolved)
             .cloned()
@@ -417,7 +462,7 @@ impl SecurityUI {
     pub fn get_pending_permissions(&self) -> Vec<PermissionRequest> {
         self.permission_requests
             .read()
-            .unwrap()
+            .unwrap_or_else(|e| e.into_inner())
             .iter()
             .filter(|r| !r.is_granted)
             .cloned()
@@ -427,7 +472,7 @@ impl SecurityUI {
     pub fn get_override_requests(&self) -> Vec<OverrideRequest> {
         self.override_requests
             .read()
-            .unwrap()
+            .unwrap_or_else(|e| e.into_inner())
             .iter()
             .filter(|r| !r.is_approved)
             .cloned()
@@ -435,11 +480,17 @@ impl SecurityUI {
     }
 
     pub fn is_emergency_mode(&self) -> bool {
-        *self.emergency_mode.read().unwrap()
+        *self
+            .emergency_mode
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
     }
 
     pub fn get_security_level(&self) -> SecurityLevel {
-        self.security_level.read().unwrap().clone()
+        self.security_level
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     /// Enforce an emergency kill on a specific agent process.
@@ -527,7 +578,10 @@ impl SecurityUI {
         permission: &str,
     ) -> Result<(), SecurityUIError> {
         // Validate permission exists in definitions
-        let defs = self.permission_definitions.read().unwrap();
+        let defs = self
+            .permission_definitions
+            .read()
+            .unwrap_or_else(|e| e.into_inner());
         let perm_def = defs.iter().find(|d| d.name == permission);
 
         if perm_def.is_none() {
@@ -538,7 +592,11 @@ impl SecurityUI {
 
         if requires_confirmation {
             // Check security level — in Lockdown, no permissions can be granted
-            let level = self.security_level.read().unwrap().clone();
+            let level = self
+                .security_level
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone();
             if level == SecurityLevel::Lockdown {
                 return Err(SecurityUIError::ActionBlocked(
                     "Cannot grant permissions in Lockdown mode".to_string(),
@@ -547,7 +605,10 @@ impl SecurityUI {
         }
 
         // Update agent permissions
-        let mut perms = self.agent_permissions.write().unwrap();
+        let mut perms = self
+            .agent_permissions
+            .write()
+            .unwrap_or_else(|e| e.into_inner());
         let entry = perms.entry(agent_id).or_insert_with(|| AgentPermission {
             agent_id,
             agent_name: agent_name.to_string(),
@@ -580,7 +641,10 @@ impl SecurityUI {
         permission: &str,
         pid: Option<u32>,
     ) -> Result<(), SecurityUIError> {
-        let mut perms = self.agent_permissions.write().unwrap();
+        let mut perms = self
+            .agent_permissions
+            .write()
+            .unwrap_or_else(|e| e.into_inner());
 
         if let Some(entry) = perms.get_mut(&agent_id) {
             entry.permissions.retain(|p| p != permission);

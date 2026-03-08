@@ -586,14 +586,17 @@ fn audit_log(action: &str, caller: &str, target: &str, command: &str, success: b
             target,
             command,
         );
-        let _ = std::fs::OpenOptions::new()
+        if let Err(e) = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
             .open("/var/log/agnos/sudo.log")
             .and_then(|mut f| {
                 use std::io::Write;
                 f.write_all(log_line.as_bytes())
-            });
+            })
+        {
+            eprintln!("WARNING: Failed to write sudo audit log: {}", e);
+        }
     }
 }
 

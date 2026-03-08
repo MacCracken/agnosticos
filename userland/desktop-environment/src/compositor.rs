@@ -179,9 +179,12 @@ impl Compositor {
     ) -> Result<SurfaceId, CompositorError> {
         let id = Uuid::new_v4();
         // Calculate placement: cascade from top-left
-        let window_count = self.windows.read().unwrap().len();
+        let window_count = self.windows.read().unwrap_or_else(|e| e.into_inner()).len();
         let cascade_offset = (window_count as i32 * 30) % 300;
-        let output = *self.current_output.read().unwrap();
+        let output = *self
+            .current_output
+            .read()
+            .unwrap_or_else(|e| e.into_inner());
         let default_width = (output.width / 2).max(400);
         let default_height = (output.height / 2).max(300);
 
@@ -204,7 +207,10 @@ impl Compositor {
             created_at: chrono::Utc::now(),
         };
 
-        self.windows.write().unwrap().insert(id, window);
+        self.windows
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(id, window);
         self.add_window_to_workspace(id);
 
         // Add to scene graph
@@ -213,23 +219,32 @@ impl Compositor {
         } else {
             Layer::Normal
         };
-        self.scene.write().unwrap().add_surface(SceneSurface {
-            id,
-            layer,
-            geometry,
-            visible: true,
-            opacity: 1.0,
-            title: title.clone(),
-            is_active: true,
-            window_state: WindowState::Normal,
-        });
+        self.scene
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .add_surface(SceneSurface {
+                id,
+                layer,
+                geometry,
+                visible: true,
+                opacity: 1.0,
+                title: title.clone(),
+                is_active: true,
+                window_state: WindowState::Normal,
+            });
 
         // Focus the new window
-        *self.focused_window.write().unwrap() = Some(id);
+        *self
+            .focused_window
+            .write()
+            .unwrap_or_else(|e| e.into_inner()) = Some(id);
 
         // Create accessibility node for the new window
         {
-            let mut tree = self.accessibility_tree.write().unwrap();
+            let mut tree = self
+                .accessibility_tree
+                .write()
+                .unwrap_or_else(|e| e.into_inner());
             let node = AccessibleNode {
                 id,
                 role: AccessibilityRole::Window,
@@ -252,8 +267,11 @@ impl Compositor {
     }
 
     fn add_window_to_workspace(&self, window_id: SurfaceId) {
-        let active_ws = *self.active_workspace.read().unwrap();
-        let mut workspaces = self.workspaces.write().unwrap();
+        let active_ws = *self
+            .active_workspace
+            .read()
+            .unwrap_or_else(|e| e.into_inner());
+        let mut workspaces = self.workspaces.write().unwrap_or_else(|e| e.into_inner());
         if let Some(ws) = workspaces.get_mut(active_ws) {
             ws.windows.push(window_id);
             ws.active_window = Some(window_id);
@@ -261,7 +279,7 @@ impl Compositor {
     }
 
     pub fn close_window(&self, id: SurfaceId) -> Result<(), CompositorError> {
-        let mut windows = self.windows.write().unwrap();
+        let mut windows = self.windows.write().unwrap_or_else(|e| e.into_inner());
         if !windows.contains_key(&id) {
             return Err(CompositorError::WindowNotFound(id));
         }
@@ -272,8 +290,11 @@ impl Compositor {
             .unwrap_or_default();
         windows.remove(&id);
 
-        let active_ws = *self.active_workspace.read().unwrap();
-        let mut workspaces = self.workspaces.write().unwrap();
+        let active_ws = *self
+            .active_workspace
+            .read()
+            .unwrap_or_else(|e| e.into_inner());
+        let mut workspaces = self.workspaces.write().unwrap_or_else(|e| e.into_inner());
         if let Some(ws) = workspaces.get_mut(active_ws) {
             ws.windows.retain(|&w| w != id);
             if ws.active_window == Some(id) {
@@ -282,11 +303,20 @@ impl Compositor {
         }
 
         // Remove from scene graph and renderer
-        self.scene.write().unwrap().remove_surface(id);
-        self.renderer.write().unwrap().remove_buffer(id);
+        self.scene
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove_surface(id);
+        self.renderer
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove_buffer(id);
 
         // Update focus
-        let mut focused = self.focused_window.write().unwrap();
+        let mut focused = self
+            .focused_window
+            .write()
+            .unwrap_or_else(|e| e.into_inner());
         if *focused == Some(id) {
             // Focus the next window in the workspace
             let ws_windows = workspaces.get(active_ws).map(|ws| ws.windows.clone());
@@ -297,7 +327,10 @@ impl Compositor {
 
         // Remove accessibility node
         {
-            let mut tree = self.accessibility_tree.write().unwrap();
+            let mut tree = self
+                .accessibility_tree
+                .write()
+                .unwrap_or_else(|e| e.into_inner());
             tree.remove_node(&id);
             tree.announce(&format!("Window closed: {}", window_title));
         }
@@ -310,12 +343,15 @@ impl Compositor {
         id: SurfaceId,
         state: WindowState,
     ) -> Result<(), CompositorError> {
-        let mut windows = self.windows.write().unwrap();
+        let mut windows = self.windows.write().unwrap_or_else(|e| e.into_inner());
         if !windows.contains_key(&id) {
             return Err(CompositorError::WindowNotFound(id));
         }
 
-        let output = *self.current_output.read().unwrap();
+        let output = *self
+            .current_output
+            .read()
+            .unwrap_or_else(|e| e.into_inner());
 
         if let Some(w) = windows.get_mut(&id) {
             w.state = state;
@@ -342,7 +378,7 @@ impl Compositor {
             }
 
             // Update scene graph
-            let mut scene = self.scene.write().unwrap();
+            let mut scene = self.scene.write().unwrap_or_else(|e| e.into_inner());
             if let Some(surface) = scene.get_surface_mut(id) {
                 surface.window_state = state;
                 surface.visible = state != WindowState::Minimized;
@@ -365,12 +401,15 @@ impl Compositor {
         window_id: SurfaceId,
         workspace_id: usize,
     ) -> Result<(), CompositorError> {
-        let windows = self.windows.write().unwrap();
+        let windows = self.windows.write().unwrap_or_else(|e| e.into_inner());
         if !windows.contains_key(&window_id) {
             return Err(CompositorError::WindowNotFound(window_id));
         }
-        let old_ws = *self.active_workspace.read().unwrap();
-        let mut workspaces = self.workspaces.write().unwrap();
+        let old_ws = *self
+            .active_workspace
+            .read()
+            .unwrap_or_else(|e| e.into_inner());
+        let mut workspaces = self.workspaces.write().unwrap_or_else(|e| e.into_inner());
 
         if let Some(ws) = workspaces.get_mut(old_ws) {
             ws.windows.retain(|&w| w != window_id);
@@ -389,7 +428,7 @@ impl Compositor {
     }
 
     pub fn switch_workspace(&self, workspace_id: usize) -> Result<(), CompositorError> {
-        let workspaces = self.workspaces.read().unwrap();
+        let workspaces = self.workspaces.read().unwrap_or_else(|e| e.into_inner());
         if workspace_id >= workspaces.len() {
             return Err(CompositorError::DisplayServerError(format!(
                 "Invalid workspace: {}",
@@ -399,13 +438,19 @@ impl Compositor {
 
         drop(workspaces);
 
-        *self.active_workspace.write().unwrap() = workspace_id;
+        *self
+            .active_workspace
+            .write()
+            .unwrap_or_else(|e| e.into_inner()) = workspace_id;
         info!("Switched to workspace {}", workspace_id);
         Ok(())
     }
 
     pub fn set_agent_aware_mode(&self, enabled: bool) {
-        *self.agent_aware_mode.write().unwrap() = enabled;
+        *self
+            .agent_aware_mode
+            .write()
+            .unwrap_or_else(|e| e.into_inner()) = enabled;
         if enabled {
             info!("Agent-aware window management enabled");
         } else {
@@ -414,7 +459,7 @@ impl Compositor {
     }
 
     pub fn set_secure_mode(&self, enabled: bool) {
-        *self.secure_mode.write().unwrap() = enabled;
+        *self.secure_mode.write().unwrap_or_else(|e| e.into_inner()) = enabled;
         if enabled {
             info!("Secure mode enabled - screenshot/access controls active");
         } else {
@@ -423,12 +468,20 @@ impl Compositor {
     }
 
     pub fn get_windows(&self) -> Vec<Window> {
-        self.windows.read().unwrap().values().cloned().collect()
+        self.windows
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .values()
+            .cloned()
+            .collect()
     }
 
     pub fn get_active_windows(&self) -> Vec<Window> {
-        let active_ws = *self.active_workspace.read().unwrap();
-        let workspaces = self.workspaces.read().unwrap();
+        let active_ws = *self
+            .active_workspace
+            .read()
+            .unwrap_or_else(|e| e.into_inner());
+        let workspaces = self.workspaces.read().unwrap_or_else(|e| e.into_inner());
         let window_ids = if let Some(ws) = workspaces.get(active_ws) {
             ws.windows.clone()
         } else {
@@ -437,7 +490,7 @@ impl Compositor {
 
         self.windows
             .read()
-            .unwrap()
+            .unwrap_or_else(|e| e.into_inner())
             .iter()
             .filter(|(id, _)| window_ids.contains(id))
             .map(|(_, w)| w.clone())
@@ -490,7 +543,7 @@ impl Compositor {
             InputEvent::MouseClick { button: 1, x, y } => self.handle_left_click(*x, *y),
             InputEvent::MouseClick { button: 3, x, y } => {
                 // Right-click → just forward to client
-                let mut scene = self.scene.write().unwrap();
+                let mut scene = self.scene.write().unwrap_or_else(|e| e.into_inner());
                 if let Some(id) = scene.surface_at(*x, *y) {
                     InputAction::ClientClick(id, *x, *y)
                 } else {
@@ -499,7 +552,10 @@ impl Compositor {
             }
             InputEvent::MouseMove { x, y } => self.handle_mouse_move(*x, *y),
             InputEvent::KeyPress { keycode, modifiers } => {
-                let focused = self.focused_window.read().unwrap();
+                let focused = self
+                    .focused_window
+                    .read()
+                    .unwrap_or_else(|e| e.into_inner());
                 if focused.is_some() {
                     InputAction::KeyToFocused(*keycode, *modifiers)
                 } else {
@@ -511,7 +567,7 @@ impl Compositor {
     }
 
     fn handle_left_click(&self, x: i32, y: i32) -> InputAction {
-        let mut scene = self.scene.write().unwrap();
+        let mut scene = self.scene.write().unwrap_or_else(|e| e.into_inner());
         let surface_id = match scene.surface_at(x, y) {
             Some(id) => id,
             None => return InputAction::None,
@@ -534,14 +590,15 @@ impl Compositor {
                 // Start drag — store offset from window origin
                 let offset_x = x - surface.geometry.x;
                 let offset_y = y - surface.geometry.y;
-                *self.drag_state.write().unwrap() = Some((surface_id, offset_x, offset_y));
+                *self.drag_state.write().unwrap_or_else(|e| e.into_inner()) =
+                    Some((surface_id, offset_x, offset_y));
                 InputAction::BeginDrag(surface_id)
             }
             DecorationHit::CloseButton => InputAction::Close(surface_id),
             DecorationHit::MinimizeButton => InputAction::Minimize(surface_id),
             DecorationHit::MaximizeButton => InputAction::ToggleMaximize(surface_id),
             DecorationHit::Border(edge) => {
-                *self.resize_state.write().unwrap() =
+                *self.resize_state.write().unwrap_or_else(|e| e.into_inner()) =
                     Some((surface_id, edge.clone(), surface.geometry));
                 InputAction::BeginResize(surface_id, edge)
             }
@@ -556,7 +613,7 @@ impl Compositor {
 
     fn handle_mouse_move(&self, x: i32, y: i32) -> InputAction {
         // Handle active drag
-        let drag = *self.drag_state.read().unwrap();
+        let drag = *self.drag_state.read().unwrap_or_else(|e| e.into_inner());
         if let Some((id, offset_x, offset_y)) = drag {
             let new_x = x - offset_x;
             let new_y = y - offset_y;
@@ -565,7 +622,11 @@ impl Compositor {
         }
 
         // Handle active resize
-        let resize = self.resize_state.read().unwrap().clone();
+        let resize = self
+            .resize_state
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
         if let Some((id, ref edge, ref original)) = resize {
             self.apply_resize(id, edge, original, x, y);
             return InputAction::PointerMove(x, y);
@@ -576,17 +637,27 @@ impl Compositor {
 
     /// End any active drag or resize operation (call on mouse button release).
     pub fn end_interactive(&self) {
-        *self.drag_state.write().unwrap() = None;
-        *self.resize_state.write().unwrap() = None;
+        *self.drag_state.write().unwrap_or_else(|e| e.into_inner()) = None;
+        *self.resize_state.write().unwrap_or_else(|e| e.into_inner()) = None;
     }
 
     /// Move a window to a new position.
     pub fn move_window(&self, id: SurfaceId, x: i32, y: i32) {
-        if let Some(w) = self.windows.write().unwrap().get_mut(&id) {
+        if let Some(w) = self
+            .windows
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .get_mut(&id)
+        {
             w.geometry.x = x;
             w.geometry.y = y;
         }
-        if let Some(s) = self.scene.write().unwrap().get_surface_mut(id) {
+        if let Some(s) = self
+            .scene
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .get_surface_mut(id)
+        {
             s.geometry.x = x;
             s.geometry.y = y;
         }
@@ -600,11 +671,21 @@ impl Compositor {
         let w = width.max(min_w);
         let h = height.max(min_h);
 
-        if let Some(win) = self.windows.write().unwrap().get_mut(&id) {
+        if let Some(win) = self
+            .windows
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .get_mut(&id)
+        {
             win.geometry.width = w;
             win.geometry.height = h;
         }
-        if let Some(s) = self.scene.write().unwrap().get_surface_mut(id) {
+        if let Some(s) = self
+            .scene
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .get_surface_mut(id)
+        {
             s.geometry.width = w;
             s.geometry.height = h;
         }
@@ -670,13 +751,23 @@ impl Compositor {
         let w = w.max(200) as u32;
         let h = h.max(100) as u32;
 
-        if let Some(win) = self.windows.write().unwrap().get_mut(&id) {
+        if let Some(win) = self
+            .windows
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .get_mut(&id)
+        {
             win.geometry.x = x;
             win.geometry.y = y;
             win.geometry.width = w;
             win.geometry.height = h;
         }
-        if let Some(s) = self.scene.write().unwrap().get_surface_mut(id) {
+        if let Some(s) = self
+            .scene
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .get_surface_mut(id)
+        {
             s.geometry.x = x;
             s.geometry.y = y;
             s.geometry.width = w;
@@ -687,8 +778,11 @@ impl Compositor {
     /// Focus a window and raise it.
     pub fn focus_window(&self, id: SurfaceId) {
         // Unfocus previous
-        let prev = *self.focused_window.read().unwrap();
-        let mut scene = self.scene.write().unwrap();
+        let prev = *self
+            .focused_window
+            .read()
+            .unwrap_or_else(|e| e.into_inner());
+        let mut scene = self.scene.write().unwrap_or_else(|e| e.into_inner());
         if let Some(prev_id) = prev {
             if let Some(s) = scene.get_surface_mut(prev_id) {
                 s.is_active = false;
@@ -701,23 +795,35 @@ impl Compositor {
         scene.raise_surface(id);
         drop(scene);
 
-        *self.focused_window.write().unwrap() = Some(id);
+        *self
+            .focused_window
+            .write()
+            .unwrap_or_else(|e| e.into_inner()) = Some(id);
 
         // Sync accessibility focus
         {
-            let mut tree = self.accessibility_tree.write().unwrap();
+            let mut tree = self
+                .accessibility_tree
+                .write()
+                .unwrap_or_else(|e| e.into_inner());
             let _ = tree.set_focus(&id);
         }
     }
 
     /// Get the currently focused window.
     pub fn focused_window(&self) -> Option<SurfaceId> {
-        *self.focused_window.read().unwrap()
+        *self
+            .focused_window
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
     }
 
     /// Navigate accessibility tree forward or backward and focus the corresponding window.
     pub fn navigate_accessibility(&self, forward: bool) -> Option<SurfaceId> {
-        let mut tree = self.accessibility_tree.write().unwrap();
+        let mut tree = self
+            .accessibility_tree
+            .write()
+            .unwrap_or_else(|e| e.into_inner());
         let node_id = if forward {
             tree.navigate_next().map(|n| n.id)
         } else {
@@ -726,10 +832,16 @@ impl Compositor {
 
         if let Some(nid) = node_id {
             // Focus the window corresponding to this node
-            *self.focused_window.write().unwrap() = Some(nid);
+            *self
+                .focused_window
+                .write()
+                .unwrap_or_else(|e| e.into_inner()) = Some(nid);
             // Update workspace active window
-            let ws_idx = *self.active_workspace.read().unwrap();
-            let mut workspaces = self.workspaces.write().unwrap();
+            let ws_idx = *self
+                .active_workspace
+                .read()
+                .unwrap_or_else(|e| e.into_inner());
+            let mut workspaces = self.workspaces.write().unwrap_or_else(|e| e.into_inner());
             if let Some(ws) = workspaces.get_mut(ws_idx) {
                 ws.active_window = Some(nid);
             }
@@ -746,20 +858,23 @@ impl Compositor {
 
     /// Queue a screen-reader announcement.
     pub fn announce(&self, message: &str) {
-        let mut tree = self.accessibility_tree.write().unwrap();
+        let mut tree = self
+            .accessibility_tree
+            .write()
+            .unwrap_or_else(|e| e.into_inner());
         tree.announce(message);
     }
 
     /// Set or clear the high-contrast theme on the renderer.
     pub fn set_high_contrast_theme(&self, theme: Option<HighContrastTheme>) {
-        let mut renderer = self.renderer.write().unwrap();
+        let mut renderer = self.renderer.write().unwrap_or_else(|e| e.into_inner());
         renderer.high_contrast = theme;
     }
 
     /// Render a frame. Access the result via `with_front_buffer()` to avoid copying.
     pub fn render(&self) {
-        let mut renderer = self.renderer.write().unwrap();
-        let mut scene = self.scene.write().unwrap();
+        let mut renderer = self.renderer.write().unwrap_or_else(|e| e.into_inner());
+        let mut scene = self.scene.write().unwrap_or_else(|e| e.into_inner());
         renderer.render_frame(&mut scene);
     }
 
@@ -769,7 +884,7 @@ impl Compositor {
     where
         F: FnOnce(&[u8]) -> R,
     {
-        let renderer = self.renderer.read().unwrap();
+        let renderer = self.renderer.read().unwrap_or_else(|e| e.into_inner());
         f(renderer.front_buffer().as_bytes())
     }
 
@@ -781,20 +896,29 @@ impl Compositor {
 
     /// Submit a window content buffer for rendering.
     pub fn submit_window_buffer(&self, id: SurfaceId, buffer: renderer::Framebuffer) {
-        self.renderer.write().unwrap().submit_buffer(id, buffer);
+        self.renderer
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .submit_buffer(id, buffer);
     }
 
     /// Tile all visible windows in the active workspace in a grid layout.
     pub fn tile_windows(&self) {
-        let active_ws = *self.active_workspace.read().unwrap();
-        let workspaces = self.workspaces.read().unwrap();
+        let active_ws = *self
+            .active_workspace
+            .read()
+            .unwrap_or_else(|e| e.into_inner());
+        let workspaces = self.workspaces.read().unwrap_or_else(|e| e.into_inner());
         let ws_windows = match workspaces.get(active_ws) {
             Some(ws) => ws.windows.clone(),
             None => return,
         };
         drop(workspaces);
 
-        let output = *self.current_output.read().unwrap();
+        let output = *self
+            .current_output
+            .read()
+            .unwrap_or_else(|e| e.into_inner());
         let count = ws_windows.len();
         if count == 0 {
             return;
@@ -815,11 +939,21 @@ impl Compositor {
                 height: tile_h,
             };
 
-            if let Some(w) = self.windows.write().unwrap().get_mut(win_id) {
+            if let Some(w) = self
+                .windows
+                .write()
+                .unwrap_or_else(|e| e.into_inner())
+                .get_mut(win_id)
+            {
                 w.geometry = geom;
                 w.state = WindowState::Normal;
             }
-            if let Some(s) = self.scene.write().unwrap().get_surface_mut(*win_id) {
+            if let Some(s) = self
+                .scene
+                .write()
+                .unwrap_or_else(|e| e.into_inner())
+                .get_surface_mut(*win_id)
+            {
                 s.geometry = geom;
                 s.window_state = WindowState::Normal;
             }
@@ -830,7 +964,7 @@ impl Compositor {
     pub fn get_agent_windows(&self) -> Vec<Window> {
         self.windows
             .read()
-            .unwrap()
+            .unwrap_or_else(|e| e.into_inner())
             .values()
             .filter(|w| w.is_agent_window)
             .cloned()
@@ -841,7 +975,7 @@ impl Compositor {
         &self,
         workspace_id: usize,
     ) -> Result<ContextType, CompositorError> {
-        let workspaces = self.workspaces.read().unwrap();
+        let workspaces = self.workspaces.read().unwrap_or_else(|e| e.into_inner());
         let ws = workspaces
             .get(workspace_id)
             .ok_or(CompositorError::DisplayServerError(format!(
@@ -856,7 +990,7 @@ impl Compositor {
         workspace_id: usize,
         context: ContextType,
     ) -> Result<(), CompositorError> {
-        let mut workspaces = self.workspaces.write().unwrap();
+        let mut workspaces = self.workspaces.write().unwrap_or_else(|e| e.into_inner());
         if let Some(ws) = workspaces.get_mut(workspace_id) {
             ws.context_type = context.clone();
             info!("Workspace {} context set to {:?}", workspace_id, context);

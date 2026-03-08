@@ -527,7 +527,7 @@ impl GatewayMetrics {
             .clear();
         self.rate_limits
             .lock()
-            .expect("metrics lock poisoned")
+            .unwrap_or_else(|e| e.into_inner())
             .clear();
     }
 

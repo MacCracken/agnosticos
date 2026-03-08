@@ -622,7 +622,7 @@ impl DesktopApplications {
         let window = AppWindow::new(AppType::Terminal, self.terminal.name.clone());
         self.open_windows
             .write()
-            .unwrap()
+            .unwrap_or_else(|e| e.into_inner())
             .insert(window.id, window.clone());
         info!("Opened terminal");
         Ok(window)
@@ -638,7 +638,7 @@ impl DesktopApplications {
         window.is_ai_enabled = self.file_manager.agent_assistance;
         self.open_windows
             .write()
-            .unwrap()
+            .unwrap_or_else(|e| e.into_inner())
             .insert(window.id, window.clone());
         info!("Opened file manager");
         Ok(window)
@@ -649,7 +649,7 @@ impl DesktopApplications {
         window.is_ai_enabled = true;
         self.open_windows
             .write()
-            .unwrap()
+            .unwrap_or_else(|e| e.into_inner())
             .insert(window.id, window.clone());
         info!("Opened agent manager");
         Ok(window)
@@ -660,7 +660,7 @@ impl DesktopApplications {
         window.is_ai_enabled = true;
         self.open_windows
             .write()
-            .unwrap()
+            .unwrap_or_else(|e| e.into_inner())
             .insert(window.id, window.clone());
         info!("Opened audit viewer");
         Ok(window)
@@ -671,14 +671,17 @@ impl DesktopApplications {
         window.is_ai_enabled = true;
         self.open_windows
             .write()
-            .unwrap()
+            .unwrap_or_else(|e| e.into_inner())
             .insert(window.id, window.clone());
         info!("Opened model manager");
         Ok(window)
     }
 
     pub fn close_window(&self, window_id: Uuid) -> Result<(), AppError> {
-        self.open_windows.write().unwrap().remove(&window_id);
+        self.open_windows
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(&window_id);
         info!("Closed window: {}", window_id);
         Ok(())
     }
@@ -686,7 +689,7 @@ impl DesktopApplications {
     pub fn get_open_windows(&self) -> Vec<AppWindow> {
         self.open_windows
             .read()
-            .unwrap()
+            .unwrap_or_else(|e| e.into_inner())
             .values()
             .cloned()
             .collect()

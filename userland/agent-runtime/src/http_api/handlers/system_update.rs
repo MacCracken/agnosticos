@@ -56,6 +56,20 @@ pub async fn system_update_check_handler(
 ) -> impl IntoResponse {
     let mut config = agnos_sys::update::UpdateConfig::default();
     if let Some(url) = req.update_url {
+        // Prevent SSRF: only allow HTTPS URLs to known update server domains
+        let allowed_hosts = ["updates.agnos.org", "releases.agnos.org"];
+        let is_allowed = url.starts_with("https://")
+            && allowed_hosts.iter().any(|host| {
+                url.starts_with(&format!("https://{}/", host)) || url == format!("https://{}", host)
+            });
+        if !is_allowed {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(
+                    serde_json::json!({"error": "Invalid or disallowed update URL. Only HTTPS URLs to official update servers are permitted."}),
+                ),
+            );
+        }
         config.update_url = url;
     }
     let current_version = env!("CARGO_PKG_VERSION");

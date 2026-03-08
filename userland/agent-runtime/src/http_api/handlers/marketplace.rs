@@ -76,24 +76,61 @@ pub async fn marketplace_install_handler(
     State(state): State<ApiState>,
     Json(req): Json<MarketplaceInstallRequest>,
 ) -> impl IntoResponse {
-    let mut registry = state.marketplace_registry.write().await;
-    let path = std::path::Path::new(&req.path);
-
-    match registry.install_package(path) {
-        Ok(result) => (
-            StatusCode::OK,
+    // Path traversal protection: canonicalize and restrict to allowed directories
+    let raw_path = std::path::Path::new(&req.path);
+    let canonical = match raw_path.canonicalize() {
+        Ok(p) => p,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": format!("Invalid path: {}", e)})),
+            )
+                .into_response();
+        }
+    };
+    let allowed_prefixes = ["/var/agnos/", "/tmp/agnos/"];
+    if !allowed_prefixes
+        .iter()
+        .any(|prefix| canonical.starts_with(prefix))
+    {
+        return (
+            StatusCode::FORBIDDEN,
             Json(serde_json::json!({
-                "status": "installed",
-                "name": result.name,
-                "version": result.version,
-                "install_dir": result.install_dir.to_string_lossy(),
-                "upgraded_from": result.upgraded_from,
+                "error": "Path not in allowed install directories",
+                "allowed": allowed_prefixes,
             })),
+        )
+            .into_response();
+    }
+
+    // Run the blocking install_package off the async thread
+    let registry = state.marketplace_registry.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let mut reg = registry.blocking_write();
+        reg.install_package(&canonical)
+            .map(|r| {
+                serde_json::json!({
+                    "status": "installed",
+                    "name": r.name,
+                    "version": r.version,
+                    "install_dir": r.install_dir.to_string_lossy(),
+                    "upgraded_from": r.upgraded_from,
+                })
+            })
+            .map_err(|e| e.to_string())
+    })
+    .await;
+
+    match result {
+        Ok(Ok(json)) => (StatusCode::OK, Json(json)).into_response(),
+        Ok(Err(e)) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": e})),
         )
             .into_response(),
         Err(e) => (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": e.to_string()})),
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": format!("Install task failed: {}", e)})),
         )
             .into_response(),
     }

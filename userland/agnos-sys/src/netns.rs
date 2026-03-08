@@ -269,20 +269,30 @@ pub fn create_agent_netns(config: &NetNamespaceConfig) -> Result<NetNamespaceHan
         }
 
         // 5. Bring interfaces up
-        let _ = run_ip_cmd(&["link", "set", &veth_host, "up"]);
-        let _ = run_ip_netns_cmd(&ns_name, &["link", "set", &veth_agent, "up"]);
-        let _ = run_ip_netns_cmd(&ns_name, &["link", "set", "lo", "up"]);
+        if let Err(e) = run_ip_cmd(&["link", "set", &veth_host, "up"]) {
+            tracing::warn!("Failed to bring up host veth {}: {}", veth_host, e);
+        }
+        if let Err(e) = run_ip_netns_cmd(&ns_name, &["link", "set", &veth_agent, "up"]) {
+            tracing::warn!("Failed to bring up agent veth {}: {}", veth_agent, e);
+        }
+        if let Err(e) = run_ip_netns_cmd(&ns_name, &["link", "set", "lo", "up"]) {
+            tracing::warn!("Failed to bring up loopback in {}: {}", ns_name, e);
+        }
 
         // Set default route inside namespace
-        let _ = run_ip_netns_cmd(
+        if let Err(e) = run_ip_netns_cmd(
             &ns_name,
             &["route", "add", "default", "via", &config.host_ip],
-        );
+        ) {
+            tracing::warn!("Failed to set default route in {}: {}", ns_name, e);
+        }
 
         // Enable NAT on host side if requested
         if config.enable_nat {
-            let _ = run_cmd("sysctl", &["-w", "net.ipv4.ip_forward=1"]);
-            let _ = run_cmd(
+            if let Err(e) = run_cmd("sysctl", &["-w", "net.ipv4.ip_forward=1"]) {
+                tracing::warn!("Failed to enable IP forwarding: {}", e);
+            }
+            if let Err(e) = run_cmd(
                 "iptables",
                 &[
                     "-t",
@@ -294,7 +304,9 @@ pub fn create_agent_netns(config: &NetNamespaceConfig) -> Result<NetNamespaceHan
                     "-j",
                     "MASQUERADE",
                 ],
-            );
+            ) {
+                tracing::warn!("Failed to set up NAT masquerade: {}", e);
+            }
         }
 
         let handle = NetNamespaceHandle {

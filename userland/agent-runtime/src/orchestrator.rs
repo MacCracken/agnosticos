@@ -458,17 +458,19 @@ impl Orchestrator {
             ];
 
             for priority in &priorities {
+                // Read dependency results before acquiring the queue lock
+                let completed_ids: std::collections::HashSet<_> =
+                    orchestrator.results.read().await.keys().cloned().collect();
+
                 let mut queues = orchestrator.task_queues.write().await;
                 if let Some(queue) = queues.get_mut(priority) {
                     if let Some(task) = queue.pop_front() {
-                        // Check if all dependencies are satisfied (present in results)
+                        // Check if all dependencies are satisfied
                         if !task.dependencies.is_empty() {
-                            let results = orchestrator.results.read().await;
                             let deps_satisfied = task
                                 .dependencies
                                 .iter()
-                                .all(|dep_id| results.contains_key(dep_id));
-                            drop(results);
+                                .all(|dep_id| completed_ids.contains(dep_id));
 
                             if !deps_satisfied {
                                 // Dependencies not yet met — push task back and skip

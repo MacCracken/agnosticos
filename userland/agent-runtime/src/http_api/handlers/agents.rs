@@ -36,8 +36,16 @@ pub async fn health_handler(State(state): State<ApiState>) -> impl IntoResponse 
         },
     );
 
-    // System health
-    let system = gather_system_health();
+    // System health (blocking I/O — run off the async thread)
+    let system = tokio::task::spawn_blocking(gather_system_health)
+        .await
+        .unwrap_or_else(|_| SystemHealth {
+            hostname: "unknown".to_string(),
+            load_average: [0.0, 0.0, 0.0],
+            memory_total_mb: 0,
+            memory_available_mb: 0,
+            disk_free_mb: 0,
+        });
 
     let overall_status = if components.values().all(|c| c.status == "ok") {
         "ok"
@@ -385,9 +393,15 @@ pub async fn prometheus_metrics_handler(State(state): State<ApiState>) -> impl I
     lines.push("# HELP agnos_agent_status Agent status breakdown".to_string());
     lines.push("# TYPE agnos_agent_status gauge".to_string());
     for (status, count) in &by_status {
+        // Sanitize status to prevent Prometheus label injection
+        let safe_status: String = status
+            .chars()
+            .filter(|c| c.is_alphanumeric() || *c == '_' || *c == '-')
+            .take(64)
+            .collect();
         lines.push(format!(
             "agnos_agent_status{{status=\"{}\"}} {}",
-            status, count
+            safe_status, count
         ));
     }
 

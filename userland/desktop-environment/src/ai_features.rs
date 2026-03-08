@@ -181,7 +181,10 @@ impl AIDesktopFeatures {
     }
 
     pub fn analyze_context(&self) -> DesktopContext {
-        let mut context = self.current_context.write().unwrap();
+        let mut context = self
+            .current_context
+            .write()
+            .unwrap_or_else(|e| e.into_inner());
 
         let hour = chrono::Utc::now().hour();
         context.time_of_day = match hour {
@@ -200,7 +203,10 @@ impl AIDesktopFeatures {
 
     pub fn update_context(&self, event: ContextEvent) {
         {
-            let mut history = self.context_history.write().unwrap();
+            let mut history = self
+                .context_history
+                .write()
+                .unwrap_or_else(|e| e.into_inner());
             history.push(event.clone());
 
             let len = history.len();
@@ -210,7 +216,10 @@ impl AIDesktopFeatures {
         }
 
         {
-            let mut context = self.current_context.write().unwrap();
+            let mut context = self
+                .current_context
+                .write()
+                .unwrap_or_else(|e| e.into_inner());
             match event.event_type {
                 ContextEventType::WindowOpened => {
                     if let Some(app) = event.metadata.get("app") {
@@ -233,12 +242,18 @@ impl AIDesktopFeatures {
         }
 
         self.detect_context_type();
-        let context = self.current_context.read().unwrap();
+        let context = self
+            .current_context
+            .read()
+            .unwrap_or_else(|e| e.into_inner());
         debug!("Context updated: {:?}", context.context_type);
     }
 
     fn detect_context_type(&self) {
-        let mut context = self.current_context.write().unwrap();
+        let mut context = self
+            .current_context
+            .write()
+            .unwrap_or_else(|e| e.into_inner());
 
         let has_dev_tools = context
             .active_apps
@@ -287,7 +302,7 @@ impl AIDesktopFeatures {
 
     pub fn add_suggestion(&self, suggestion: AISuggestion) {
         let title = suggestion.title.clone();
-        let mut suggestions = self.suggestions.write().unwrap();
+        let mut suggestions = self.suggestions.write().unwrap_or_else(|e| e.into_inner());
 
         suggestions.retain(|s| {
             s.suggestion_type != suggestion.suggestion_type || s.title != suggestion.title
@@ -305,7 +320,7 @@ impl AIDesktopFeatures {
 
     pub fn proactive_suggestions(&self) -> Vec<AISuggestion> {
         let _context = self.analyze_context();
-        let suggestions = self.suggestions.write().unwrap();
+        let suggestions = self.suggestions.write().unwrap_or_else(|e| e.into_inner());
 
         let relevant: Vec<_> = suggestions
             .iter()
@@ -317,7 +332,10 @@ impl AIDesktopFeatures {
     }
 
     pub fn smart_window_placement(&self, _app_id: &str) -> (i32, i32, u32, u32) {
-        let context = self.current_context.read().unwrap();
+        let context = self
+            .current_context
+            .read()
+            .unwrap_or_else(|e| e.into_inner());
         match context.context_type {
             ContextType::Development => (100, 100, 1400, 900),
             ContextType::Design => (50, 50, 1820, 1000),
@@ -328,7 +346,7 @@ impl AIDesktopFeatures {
 
     pub fn register_agent_hud(&self, agent_id: Uuid, name: String) {
         let name_clone = name.clone();
-        let mut hud = self.agent_hud.write().unwrap();
+        let mut hud = self.agent_hud.write().unwrap_or_else(|e| e.into_inner());
         hud.insert(
             agent_id,
             AgentHUDState {
@@ -355,7 +373,7 @@ impl AIDesktopFeatures {
         task: String,
         progress: f32,
     ) {
-        let mut hud = self.agent_hud.write().unwrap();
+        let mut hud = self.agent_hud.write().unwrap_or_else(|e| e.into_inner());
         if let Some(state) = hud.get_mut(&agent_id) {
             state.status = status;
             state.current_task = task;
@@ -365,27 +383,38 @@ impl AIDesktopFeatures {
     }
 
     pub fn unregister_agent_hud(&self, agent_id: Uuid) {
-        let mut hud = self.agent_hud.write().unwrap();
+        let mut hud = self.agent_hud.write().unwrap_or_else(|e| e.into_inner());
         hud.remove(&agent_id);
         debug!("Agent HUD unregistered: {}", agent_id);
     }
 
     pub fn get_agent_hud_states(&self) -> Vec<AgentHUDState> {
-        self.agent_hud.read().unwrap().values().cloned().collect()
+        self.agent_hud
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .values()
+            .cloned()
+            .collect()
     }
 
     pub fn set_proactive_mode(&self, enabled: bool) {
-        *self.proactive_mode.write().unwrap() = enabled;
+        *self
+            .proactive_mode
+            .write()
+            .unwrap_or_else(|e| e.into_inner()) = enabled;
         info!("Proactive mode: {}", enabled);
     }
 
     pub fn set_ambient_enabled(&self, enabled: bool) {
-        *self.ambient_enabled.write().unwrap() = enabled;
+        *self
+            .ambient_enabled
+            .write()
+            .unwrap_or_else(|e| e.into_inner()) = enabled;
         info!("Ambient intelligence: {}", enabled);
     }
 
     pub fn dismiss_suggestion(&self, suggestion_id: Uuid) {
-        let mut suggestions = self.suggestions.write().unwrap();
+        let mut suggestions = self.suggestions.write().unwrap_or_else(|e| e.into_inner());
         if let Some(s) = suggestions.iter_mut().find(|s| s.id == suggestion_id) {
             s.is_dismissed = true;
             debug!("Suggestion dismissed: {}", suggestion_id);
@@ -393,7 +422,10 @@ impl AIDesktopFeatures {
     }
 
     pub fn get_context(&self) -> DesktopContext {
-        self.current_context.read().unwrap().clone()
+        self.current_context
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     pub fn suggest_workspace_switch(
@@ -437,7 +469,7 @@ impl AIDesktopFeatures {
 
                 match Self::poll_agents(&client).await {
                     Ok(agents) => {
-                        let mut hud = agent_hud.write().unwrap();
+                        let mut hud = agent_hud.write().unwrap_or_else(|e| e.into_inner());
                         // Clear stale entries and replace with fresh data
                         hud.clear();
                         for agent in agents {

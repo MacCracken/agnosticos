@@ -286,9 +286,8 @@ impl ServiceManager {
             .await
             .with_context(|| format!("Failed to read {}", dir.display()))?;
 
-        let mut defs = self.definitions.write().await;
-        let mut svcs = self.services.write().await;
-
+        // Load all definitions first without holding locks
+        let mut loaded = Vec::new();
         while let Some(entry) = entries.next_entry().await? {
             let path = entry.path();
             if path.extension().map_or(true, |e| e != "toml") {
@@ -298,23 +297,31 @@ impl ServiceManager {
             match load_service_file(&path).await {
                 Ok(def) => {
                     info!("Loaded service definition: {}", def.name);
-                    let name = def.name.clone();
-                    svcs.entry(name.clone()).or_insert_with(|| ServiceRuntime {
-                        definition: def.clone(),
-                        state: ServiceState::Stopped,
-                        child: None,
-                        pid: None,
-                        restart_count: 0,
-                        started_at: None,
-                        exit_code: None,
-                    });
-                    defs.insert(name, def);
-                    count += 1;
+                    loaded.push(def);
                 }
                 Err(e) => {
                     warn!("Failed to load {}: {}", path.display(), e);
                 }
             }
+        }
+
+        // Now acquire locks briefly to insert
+        let mut defs = self.definitions.write().await;
+        let mut svcs = self.services.write().await;
+
+        for def in loaded {
+            let name = def.name.clone();
+            svcs.entry(name.clone()).or_insert_with(|| ServiceRuntime {
+                definition: def.clone(),
+                state: ServiceState::Stopped,
+                child: None,
+                pid: None,
+                restart_count: 0,
+                started_at: None,
+                exit_code: None,
+            });
+            defs.insert(name, def);
+            count += 1;
         }
 
         Ok(count)

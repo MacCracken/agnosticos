@@ -112,11 +112,11 @@ impl ResourceManager {
     pub async fn release_gpu(&self, agent_id: AgentId) -> Result<()> {
         debug!("Releasing GPU allocation for agent {}", agent_id);
 
+        // Acquire locks in same order as allocate_gpu: gpus first, then allocations
+        let mut gpus = self.gpus.write().await;
         let mut allocations = self.gpu_allocations.write().await;
 
         if let Some(gpu_ids) = allocations.remove(&agent_id) {
-            let mut gpus = self.gpus.write().await;
-
             for gpu_id in gpu_ids {
                 if let Some(gpu) = gpus.iter_mut().find(|g| g.id == gpu_id) {
                     // Restore full GPU memory (simplified)

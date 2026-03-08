@@ -95,7 +95,11 @@ pub async fn knowledge_search_handler(
             "source": format!("{:?}", r.entry.source),
             "path": r.entry.path,
             "relevance": r.relevance_score,
-            "content_preview": &r.entry.content[..r.entry.content.len().min(200)],
+            "content_preview": r.entry.content.char_indices()
+                .take_while(|&(i, _)| i < 200)
+                .last()
+                .map(|(i, c)| &r.entry.content[..i + c.len_utf8()])
+                .unwrap_or(&r.entry.content),
         })).collect::<Vec<_>>(),
         "total": results.len(),
     }))
@@ -151,20 +155,35 @@ pub async fn knowledge_index_handler(
             .into_response();
     }
 
-    let mut kb = state.knowledge_base.write().await;
-    match kb.index_directory(&canonical, source) {
-        Ok(count) => (
+    // index_directory does blocking recursive I/O — run off the async thread
+    let kb = state.knowledge_base.clone();
+    let req_path = req.path.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let mut kb = kb.blocking_write();
+        kb.index_directory(&canonical, source)
+            .map(|count| (req_path, count))
+            .map_err(|e| e.to_string())
+    })
+    .await;
+
+    match result {
+        Ok(Ok((path, count))) => (
             StatusCode::OK,
             Json(serde_json::json!({
                 "status": "indexed",
-                "path": req.path,
+                "path": path,
                 "entries_added": count,
             })),
         )
             .into_response(),
+        Ok(Err(e)) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": e})),
+        )
+            .into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({"error": e.to_string()})),
+            Json(serde_json::json!({"error": format!("Index task failed: {}", e)})),
         )
             .into_response(),
     }

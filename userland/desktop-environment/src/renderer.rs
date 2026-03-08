@@ -515,7 +515,8 @@ pub fn render_decorations(
     let display_title = if text_width(title) > max_title_width {
         let max_chars = (max_title_width / 6) as usize;
         if max_chars > 2 {
-            format!("{}…", &title[..max_chars - 1])
+            let truncated: String = title.chars().take(max_chars - 1).collect();
+            format!("{}…", truncated)
         } else {
             title.to_string()
         }
@@ -525,10 +526,15 @@ pub fn render_decorations(
     draw_text(fb, &display_title, rect.x as u32 + 8, text_y, COLOR_TEXT);
 
     // Window control buttons (right-aligned)
+    // Guard against underflow on very narrow windows
+    let min_button_width = BUTTON_SIZE * 3 + 18; // 3 buttons + padding
+    if rect.width < min_button_width {
+        return;
+    }
     let btn_y = rect.y as u32 + (TITLEBAR_HEIGHT - BUTTON_SIZE) / 2;
     let close_x = rect.x as u32 + rect.width - BUTTON_SIZE - 6;
-    let max_x = close_x - BUTTON_SIZE - 4;
-    let min_x = max_x - BUTTON_SIZE - 4;
+    let max_x = close_x.saturating_sub(BUTTON_SIZE + 4);
+    let min_x = max_x.saturating_sub(BUTTON_SIZE + 4);
 
     // Close button (red circle area)
     let close_rect = Rectangle {
