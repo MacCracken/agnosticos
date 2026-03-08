@@ -154,6 +154,27 @@ AGNOS exposes two HTTP/JSON services for interacting with the system. Both bind 
 
 hoosh provides an OpenAI-compatible HTTP API so any client library or tool that speaks the OpenAI protocol works out of the box.
 
+### Supported Providers (14)
+
+| Provider | Type | Default Base URL | API Key Env Var |
+|----------|------|------------------|-----------------|
+| Ollama | Local | `http://localhost:11434` | — (auto-detected) |
+| llama.cpp | Local | `http://localhost:8080` | — (auto-detected) |
+| OpenAI | Cloud | `https://api.openai.com/v1` | `OPENAI_API_KEY` |
+| Anthropic | Cloud | `https://api.anthropic.com/v1` | `ANTHROPIC_API_KEY` |
+| Google (Gemini) | Cloud | `https://generativelanguage.googleapis.com/v1beta` | `GOOGLE_API_KEY` |
+| DeepSeek | Cloud | `https://api.deepseek.com/v1` | `DEEPSEEK_API_KEY` |
+| Mistral AI | Cloud | `https://api.mistral.ai/v1` | `MISTRAL_API_KEY` |
+| Grok (x.ai) | Cloud | `https://api.x.ai/v1` | `XAI_API_KEY` |
+| Groq | Cloud | `https://api.groq.com/openai/v1` | `GROQ_API_KEY` |
+| OpenRouter | Cloud | `https://openrouter.ai/api/v1` | `OPENROUTER_API_KEY` |
+| LM Studio | Local | `http://localhost:1234/v1` | — |
+| LocalAI | Local | `http://localhost:8080/v1` | — |
+| OpenCode | Cloud | `https://api.open-code.dev/v1` | `OPENCODE_API_KEY` |
+| Letta | Cloud/Local | `https://app.letta.com/v1` | `LETTA_API_KEY` |
+
+All cloud providers support optional `*_BASE_URL` environment variable overrides. Local providers (LM Studio, LocalAI) are initialized when their `*_BASE_URL` env var is set. Letta supports `LETTA_LOCAL=true` for self-hosted mode at `localhost:8283`.
+
 ### Endpoints
 
 | Method | Path | Description |

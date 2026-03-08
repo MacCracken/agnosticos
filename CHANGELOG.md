@@ -69,6 +69,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **2 new tests** covering endpoint response and type serialization
 - Documented full OTLP configuration guide in `docs/AGNOSTIC_INTEGRATION.md` for Agnostic's `shared/telemetry.py`
 
+### Added — LLM Gateway Provider Expansion (hoosh)
+
+#### 9 New Providers (5 → 14 total)
+- **DeepSeek** — cloud inference via `api.deepseek.com/v1` (deepseek-chat, deepseek-coder, deepseek-reasoner)
+- **Mistral AI** — cloud inference via `api.mistral.ai/v1` (mistral-large, mistral-medium, mistral-small, nemo, codestral)
+- **Grok (x.ai)** — cloud inference via `api.x.ai/v1` (grok-3, grok-3-mini, grok-2, grok-2-vision)
+- **Groq** — hosted inference via `api.groq.com/openai/v1` (llama-3.3-70b, llama-3.1-8b, mixtral-8x7b, gemma2-9b)
+- **OpenRouter** — multi-provider router via `openrouter.ai/api/v1` (dynamic model list)
+- **LM Studio** — local OpenAI-compatible server at `localhost:1234/v1` (no API key required)
+- **LocalAI** — local OpenAI-compatible server at `localhost:8080/v1` (no API key required)
+- **OpenCode** — cloud inference via `api.open-code.dev/v1` (gpt-5.2, claude-sonnet-4-5, gemini-3-flash, qwen3-coder)
+- **Letta** — stateful agent platform at `app.letta.com/v1` or local at `localhost:8283/v1` (supports `LETTA_LOCAL=true`)
+
+#### Architecture
+- **`OpenAiCompatibleProvider`** — generic reusable provider for any OpenAI-compatible API, configured via `OpenAiCompatibleConfig` (provider name, default URL, known models, key requirements)
+- **Factory functions**: `new_deepseek_provider()`, `new_mistral_provider()`, `new_grok_provider()`, `new_groq_provider()`, `new_openrouter_provider()`, `new_lmstudio_provider()`, `new_localai_provider()`, `new_opencode_provider()`, `new_letta_provider()`
+- Smart model listing: tries `/models` endpoint first, falls back to hardcoded known models
+- Google provider now auto-initialized from `GOOGLE_API_KEY` or `GOOGLE_GENERATIVE_AI_API_KEY` env vars
+
+#### Environment Variables
+| Variable | Provider |
+|----------|----------|
+| `DEEPSEEK_API_KEY`, `DEEPSEEK_BASE_URL` | DeepSeek |
+| `MISTRAL_API_KEY`, `MISTRAL_BASE_URL` | Mistral |
+| `XAI_API_KEY`, `XAI_BASE_URL` | Grok |
+| `GROQ_API_KEY`, `GROQ_BASE_URL` | Groq |
+| `OPENROUTER_API_KEY`, `OPENROUTER_BASE_URL` | OpenRouter |
+| `LMSTUDIO_BASE_URL` | LM Studio |
+| `LOCALAI_BASE_URL` | LocalAI |
+| `OPENCODE_API_KEY`, `OPENCODE_BASE_URL` | OpenCode |
+| `LETTA_API_KEY`, `LETTA_BASE_URL`, `LETTA_LOCAL` | Letta |
+| `GOOGLE_API_KEY` / `GOOGLE_GENERATIVE_AI_API_KEY` | Google (new) |
+
+#### Provider enum updates
+- `ProviderType` in `llm-gateway`: 5 → 14 variants
+- `Provider` in `agnos-common`: added `DeepSeek`, `Mistral`, `Grok`, `Groq`, `OpenRouter`, `LmStudio`, `LocalAi`, `OpenCode`, `Letta`
+
+#### Tests
+- **35 new tests** covering all 9 new providers: construction, custom URLs, known model fallback, API key requirements, load/unload behavior, stream receivers
+- Total llm-gateway lib tests: 320 (was 285)
+
 ## [2026.3.7-#4] - 2026-03-07
 
 ### Added — Web Browser Support

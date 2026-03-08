@@ -109,6 +109,15 @@ pub enum Provider {
     OpenAi,
     Anthropic,
     Google,
+    DeepSeek,
+    Mistral,
+    Grok,
+    Groq,
+    OpenRouter,
+    LmStudio,
+    LocalAi,
+    OpenCode,
+    Letta,
     Custom(String),
 }
 

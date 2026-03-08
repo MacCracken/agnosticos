@@ -251,6 +251,133 @@ impl LlmGateway {
             }
         }
 
+        // Initialize Google from environment
+        if let Ok(api_key) = std::env::var("GOOGLE_API_KEY")
+            .or_else(|_| std::env::var("GOOGLE_GENERATIVE_AI_API_KEY"))
+        {
+            match providers::GoogleProvider::new(api_key, std::env::var("GOOGLE_BASE_URL").ok()) {
+                Ok(provider) => {
+                    providers.insert(ProviderType::Google, Arc::new(provider));
+                    health.insert(ProviderType::Google, ProviderHealth::new());
+                    info!("Google (Gemini) provider initialized");
+                }
+                Err(e) => {
+                    warn!("Failed to initialize Google provider: {}", e);
+                }
+            }
+        }
+
+        // Initialize OpenAI-compatible cloud providers from environment
+        if let Ok(api_key) = std::env::var("DEEPSEEK_API_KEY") {
+            match providers::new_deepseek_provider(api_key, std::env::var("DEEPSEEK_BASE_URL").ok()) {
+                Ok(provider) => {
+                    providers.insert(ProviderType::DeepSeek, Arc::new(provider));
+                    health.insert(ProviderType::DeepSeek, ProviderHealth::new());
+                    info!("DeepSeek provider initialized");
+                }
+                Err(e) => warn!("Failed to initialize DeepSeek provider: {}", e),
+            }
+        }
+
+        if let Ok(api_key) = std::env::var("MISTRAL_API_KEY") {
+            match providers::new_mistral_provider(api_key, std::env::var("MISTRAL_BASE_URL").ok()) {
+                Ok(provider) => {
+                    providers.insert(ProviderType::Mistral, Arc::new(provider));
+                    health.insert(ProviderType::Mistral, ProviderHealth::new());
+                    info!("Mistral provider initialized");
+                }
+                Err(e) => warn!("Failed to initialize Mistral provider: {}", e),
+            }
+        }
+
+        if let Ok(api_key) = std::env::var("XAI_API_KEY") {
+            match providers::new_grok_provider(api_key, std::env::var("XAI_BASE_URL").ok()) {
+                Ok(provider) => {
+                    providers.insert(ProviderType::Grok, Arc::new(provider));
+                    health.insert(ProviderType::Grok, ProviderHealth::new());
+                    info!("Grok (x.ai) provider initialized");
+                }
+                Err(e) => warn!("Failed to initialize Grok provider: {}", e),
+            }
+        }
+
+        if let Ok(api_key) = std::env::var("GROQ_API_KEY") {
+            match providers::new_groq_provider(api_key, std::env::var("GROQ_BASE_URL").ok()) {
+                Ok(provider) => {
+                    providers.insert(ProviderType::Groq, Arc::new(provider));
+                    health.insert(ProviderType::Groq, ProviderHealth::new());
+                    info!("Groq provider initialized");
+                }
+                Err(e) => warn!("Failed to initialize Groq provider: {}", e),
+            }
+        }
+
+        if let Ok(api_key) = std::env::var("OPENROUTER_API_KEY") {
+            match providers::new_openrouter_provider(api_key, std::env::var("OPENROUTER_BASE_URL").ok()) {
+                Ok(provider) => {
+                    providers.insert(ProviderType::OpenRouter, Arc::new(provider));
+                    health.insert(ProviderType::OpenRouter, ProviderHealth::new());
+                    info!("OpenRouter provider initialized");
+                }
+                Err(e) => warn!("Failed to initialize OpenRouter provider: {}", e),
+            }
+        }
+
+        if let Ok(api_key) = std::env::var("OPENCODE_API_KEY") {
+            match providers::new_opencode_provider(api_key, std::env::var("OPENCODE_BASE_URL").ok()) {
+                Ok(provider) => {
+                    providers.insert(ProviderType::OpenCode, Arc::new(provider));
+                    health.insert(ProviderType::OpenCode, ProviderHealth::new());
+                    info!("OpenCode provider initialized");
+                }
+                Err(e) => warn!("Failed to initialize OpenCode provider: {}", e),
+            }
+        }
+
+        if let Ok(api_key) = std::env::var("LETTA_API_KEY") {
+            match providers::new_letta_provider(Some(api_key), std::env::var("LETTA_BASE_URL").ok()) {
+                Ok(provider) => {
+                    providers.insert(ProviderType::Letta, Arc::new(provider));
+                    health.insert(ProviderType::Letta, ProviderHealth::new());
+                    info!("Letta provider initialized");
+                }
+                Err(e) => warn!("Failed to initialize Letta provider: {}", e),
+            }
+        } else if std::env::var("LETTA_LOCAL").unwrap_or_default() == "true" {
+            // Letta local mode — no API key required
+            match providers::new_letta_provider(None, std::env::var("LETTA_BASE_URL").ok()) {
+                Ok(provider) => {
+                    providers.insert(ProviderType::Letta, Arc::new(provider));
+                    health.insert(ProviderType::Letta, ProviderHealth::new());
+                    info!("Letta provider initialized (local mode)");
+                }
+                Err(e) => warn!("Failed to initialize Letta local provider: {}", e),
+            }
+        }
+
+        // Initialize local OpenAI-compatible providers
+        if std::env::var("LMSTUDIO_BASE_URL").is_ok() || cfg!(debug_assertions) {
+            match providers::new_lmstudio_provider(std::env::var("LMSTUDIO_BASE_URL").ok()) {
+                Ok(provider) => {
+                    providers.insert(ProviderType::LmStudio, Arc::new(provider));
+                    health.insert(ProviderType::LmStudio, ProviderHealth::new());
+                    info!("LM Studio provider initialized");
+                }
+                Err(e) => warn!("Failed to initialize LM Studio provider: {}", e),
+            }
+        }
+
+        if std::env::var("LOCALAI_BASE_URL").is_ok() {
+            match providers::new_localai_provider(std::env::var("LOCALAI_BASE_URL").ok()) {
+                Ok(provider) => {
+                    providers.insert(ProviderType::LocalAi, Arc::new(provider));
+                    health.insert(ProviderType::LocalAi, ProviderHealth::new());
+                    info!("LocalAI provider initialized");
+                }
+                Err(e) => warn!("Failed to initialize LocalAI provider: {}", e),
+            }
+        }
+
         info!(count = providers.len(), "Providers initialized");
         Ok(())
     }
@@ -480,8 +607,15 @@ impl LlmGateway {
             ProviderType::OpenAi => Some("api.openai.com"),
             ProviderType::Anthropic => Some("api.anthropic.com"),
             ProviderType::Google => Some("generativelanguage.googleapis.com"),
+            ProviderType::DeepSeek => Some("api.deepseek.com"),
+            ProviderType::Mistral => Some("api.mistral.ai"),
+            ProviderType::Grok => Some("api.x.ai"),
+            ProviderType::Groq => Some("api.groq.com"),
+            ProviderType::OpenRouter => Some("openrouter.ai"),
+            ProviderType::OpenCode => Some("api.open-code.dev"),
+            ProviderType::Letta => Some("app.letta.com"),
             // Local providers use HTTP, no TLS pinning
-            ProviderType::Ollama | ProviderType::LlamaCpp => None,
+            ProviderType::Ollama | ProviderType::LlamaCpp | ProviderType::LmStudio | ProviderType::LocalAi => None,
         }
     }
 

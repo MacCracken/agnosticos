@@ -1,7 +1,7 @@
 # AGNOS Development Roadmap
 
 > **Status**: Pre-Alpha | **Last Updated**: 2026-03-08
-> **All development phases complete** — 9139+ tests, ~82% coverage, 0 warnings
+> **All development phases complete** — 9174+ tests, ~82% coverage, 0 warnings
 > **Next Milestone**: Alpha Release (Target: Q2 2026)
 
 ---
@@ -214,7 +214,7 @@ Agnostic already has client modules for hoosh (LLM Gateway) and daimon (Agent Ru
 | agnos-common | 307 | Secrets, telemetry, LLM types, manifest, rate limits, audit chain |
 | agnos-sys | 750+ | 16 modules: audit, mac, netns, dmverity, luks, ima, tpm, secureboot, certpin, bootloader, journald, udev, fuse, pam, update, llm |
 | agent-runtime | 2552+ | Orchestrator, IPC, sandbox, registry, marketplace (88+43), federation (55), migration (54), scheduler (47), PQC (68), explainability (59), safety (77), finetune (73), formal_verify (76), sandbox_v2 (77), rl_optimizer (68), cloud (82), collaboration (87), sigil (35), aegis (40), takumi (57), argonaut (46), agnova (41) |
-| llm-gateway | 672 | Providers, rate limiting, streaming, cert pinning, hardware acceleration |
+| llm-gateway | 707 | 14 providers (5 native + 9 OpenAI-compatible), rate limiting, streaming, cert pinning, hardware acceleration, token budgets |
 | ai-shell | 1132 | 25+ intents, approval workflow, dashboard, aliases, completion |
 | desktop-environment | 1394 | Wayland protocol (63+49), plugin host (31), xwayland (20), shell integration (26), theme bridge (18), compositor, renderer |
 
@@ -238,7 +238,7 @@ Agnostic already has client modules for hoosh (LLM Gateway) and daimon (Agent Ru
 
 | Name | Role | Component |
 |------|------|-----------|
-| **hoosh** | LLM inference gateway (port 8088) | `llm-gateway/` |
+| **hoosh** | LLM inference gateway (port 8088, 14 providers) | `llm-gateway/` |
 | **daimon** | Agent orchestrator (port 8090) | `agent-runtime/` |
 | **agnosys** | Kernel interface | `agnos-sys/` |
 | **agnostik** | Shared types library | `agnos-common/` |

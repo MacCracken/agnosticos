@@ -30,8 +30,13 @@ This guide explains how to run the [Agnostic QA platform](https://github.com/Mac
 │  │  └──────┬──────┴──────────────────────┘ │                        │
 │  │         │                               │                        │
 │  │  ┌──────┴────────────────────────────┐  │                        │
-│  │  │ Ollama (:11434) │ llama.cpp (:8080)│  │                        │
-│  │  │ OpenAI          │ Anthropic        │  │                        │
+│  │  │ Local: Ollama, llama.cpp,       │  │                        │
+│  │  │        LM Studio, LocalAI       │  │                        │
+│  │  │ Cloud: OpenAI, Anthropic,       │  │                        │
+│  │  │        Google, DeepSeek,        │  │                        │
+│  │  │        Mistral, Grok, Groq,     │  │                        │
+│  │  │        OpenRouter, OpenCode,    │  │                        │
+│  │  │        Letta                    │  │                        │
 │  │  └───────────────────────────────────┘  │                        │
 │  └─────────────────────────────────────────┘                        │
 │                                                                      │

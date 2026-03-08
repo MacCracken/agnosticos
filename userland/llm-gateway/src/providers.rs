@@ -37,6 +37,15 @@ pub enum ProviderType {
     OpenAi,
     Anthropic,
     Google,
+    DeepSeek,
+    Mistral,
+    Grok,
+    Groq,
+    OpenRouter,
+    LmStudio,
+    LocalAi,
+    OpenCode,
+    Letta,
 }
 
 // ---------------------------------------------------------------------------
@@ -394,7 +403,7 @@ impl LlmProvider for LlamaCppProvider {
 // ---------------------------------------------------------------------------
 
 /// Wrapper to redact API key from Debug output
-struct RedactedKey(String);
+pub(crate) struct RedactedKey(String);
 
 impl std::fmt::Debug for RedactedKey {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -1021,6 +1030,465 @@ impl LlmProvider for GoogleProvider {
 
         Ok(models)
     }
+}
+
+// ---------------------------------------------------------------------------
+// OpenAI-Compatible Provider (generic)
+// ---------------------------------------------------------------------------
+// Covers: DeepSeek, Mistral, Grok (x.ai), Groq, OpenRouter, LM Studio,
+//         LocalAI, OpenCode, Letta — all expose an OpenAI-compatible API.
+
+/// Configuration for an OpenAI-compatible provider.
+#[derive(Debug, Clone)]
+pub struct OpenAiCompatibleConfig {
+    pub provider_name: &'static str,
+    #[allow(dead_code)]
+    pub provider_type: ProviderType,
+    pub common_provider: agnos_common::Provider,
+    pub default_base_url: &'static str,
+    pub default_max_tokens: u32,
+    /// Known model IDs returned when the `/models` endpoint is unavailable.
+    pub known_models: &'static [(&'static str, &'static str)], // (id, display_name)
+    /// Whether this provider requires an API key (false for local providers).
+    pub requires_api_key: bool,
+}
+
+pub struct OpenAiCompatibleProvider {
+    pub(crate) config: OpenAiCompatibleConfig,
+    pub(crate) base_url: String,
+    pub(crate) api_key: Option<RedactedKey>,
+    client: reqwest::Client,
+}
+
+impl std::fmt::Debug for OpenAiCompatibleProvider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OpenAiCompatibleProvider")
+            .field("provider", &self.config.provider_name)
+            .field("base_url", &self.base_url)
+            .finish()
+    }
+}
+
+impl OpenAiCompatibleProvider {
+    pub fn new(
+        config: OpenAiCompatibleConfig,
+        api_key: Option<String>,
+        base_url: Option<String>,
+    ) -> anyhow::Result<Self> {
+        if config.requires_api_key && api_key.is_none() {
+            anyhow::bail!("{} requires an API key", config.provider_name);
+        }
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(120))
+            .pool_max_idle_per_host(4)
+            .build()?;
+        Ok(Self {
+            base_url: base_url.unwrap_or_else(|| config.default_base_url.to_string()),
+            api_key: api_key.map(RedactedKey),
+            client,
+            config,
+        })
+    }
+}
+
+#[async_trait]
+impl LlmProvider for OpenAiCompatibleProvider {
+    async fn infer(&self, request: &InferenceRequest) -> anyhow::Result<InferenceResponse> {
+        let mut req = self
+            .client
+            .post(format!("{}/chat/completions", self.base_url))
+            .json(&serde_json::json!({
+                "model": request.model,
+                "messages": [{"role": "user", "content": request.prompt}],
+                "max_tokens": request.max_tokens,
+                "temperature": request.temperature,
+                "top_p": request.top_p,
+                "presence_penalty": request.presence_penalty,
+                "frequency_penalty": request.frequency_penalty,
+            }));
+
+        if let Some(ref key) = self.api_key {
+            req = req.bearer_auth(&key.0);
+        }
+
+        let response = req.send().await?;
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            anyhow::bail!("{} API error ({}): {}", self.config.provider_name, status, body);
+        }
+
+        let result: serde_json::Value = response.json().await?;
+        let choice = result["choices"]
+            .get(0)
+            .ok_or_else(|| anyhow::anyhow!("{} response missing choices", self.config.provider_name))?;
+        let message_text = choice["message"]["content"]
+            .as_str()
+            .unwrap_or("")
+            .to_string();
+        let finish = match choice["finish_reason"].as_str() {
+            Some("length") => agnos_common::FinishReason::Length,
+            _ => agnos_common::FinishReason::Stop,
+        };
+        let usage = &result["usage"];
+
+        Ok(InferenceResponse {
+            text: message_text,
+            tokens_generated: usage["completion_tokens"]
+                .as_u64()
+                .unwrap_or(0)
+                .min(u32::MAX as u64) as u32,
+            finish_reason: finish,
+            model: result["model"]
+                .as_str()
+                .unwrap_or(&request.model)
+                .to_string(),
+            usage: agnos_common::TokenUsage {
+                prompt_tokens: usage["prompt_tokens"]
+                    .as_u64()
+                    .unwrap_or(0)
+                    .min(u32::MAX as u64) as u32,
+                completion_tokens: usage["completion_tokens"]
+                    .as_u64()
+                    .unwrap_or(0)
+                    .min(u32::MAX as u64) as u32,
+                total_tokens: usage["total_tokens"]
+                    .as_u64()
+                    .unwrap_or(0)
+                    .min(u32::MAX as u64) as u32,
+            },
+        })
+    }
+
+    async fn infer_stream(
+        &self,
+        request: InferenceRequest,
+    ) -> anyhow::Result<mpsc::Receiver<anyhow::Result<String>>> {
+        let (tx, rx) = mpsc::channel(100);
+        let url = format!("{}/chat/completions", self.base_url);
+        let api_key = self.api_key.as_ref().map(|k| k.0.clone());
+        let client = self.client.clone();
+
+        tokio::spawn(async move {
+            let mut req = client
+                .post(&url)
+                .json(&serde_json::json!({
+                    "model": request.model,
+                    "messages": [{"role": "user", "content": request.prompt}],
+                    "max_tokens": request.max_tokens,
+                    "temperature": request.temperature,
+                    "stream": true,
+                }));
+
+            if let Some(ref key) = api_key {
+                req = req.bearer_auth(key);
+            }
+
+            let resp = match req.send().await {
+                Ok(r) => r,
+                Err(e) => {
+                    let _ = tx.send(Err(e.into())).await;
+                    return;
+                }
+            };
+
+            let mut stream = resp.bytes_stream();
+            let mut buffer = String::new();
+
+            while let Some(chunk) = stream.next().await {
+                match chunk {
+                    Ok(bytes) => {
+                        buffer.push_str(&String::from_utf8_lossy(&bytes));
+                        while let Some(pos) = buffer.find("\n\n") {
+                            let event = buffer[..pos].to_string();
+                            buffer = buffer.split_off(pos + 2);
+                            for line in event.lines() {
+                                if let Some(data) = line.strip_prefix("data: ") {
+                                    if data.trim() == "[DONE]" {
+                                        return;
+                                    }
+                                    if let Ok(json) =
+                                        serde_json::from_str::<serde_json::Value>(data)
+                                    {
+                                        if let Some(text) =
+                                            json["choices"][0]["delta"]["content"].as_str()
+                                        {
+                                            if !text.is_empty()
+                                                && tx.send(Ok(text.to_string())).await.is_err()
+                                            {
+                                                return;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        let _ = tx.send(Err(e.into())).await;
+                        return;
+                    }
+                }
+            }
+        });
+
+        Ok(rx)
+    }
+
+    async fn load_model(&self, _model_id: &str) -> anyhow::Result<agnos_common::ModelInfo> {
+        anyhow::bail!(
+            "{} models cannot be loaded via this interface",
+            self.config.provider_name
+        )
+    }
+
+    async fn unload_model(&self, _model_id: &str) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn list_models(&self) -> anyhow::Result<Vec<agnos_common::ModelInfo>> {
+        // Try the standard /models endpoint first
+        let mut req = self.client.get(format!("{}/models", self.base_url));
+        if let Some(ref key) = self.api_key {
+            req = req.bearer_auth(&key.0);
+        }
+
+        if let Ok(response) = req.send().await {
+            if response.status().is_success() {
+                if let Ok(result) = response.json::<serde_json::Value>().await {
+                    let models: Vec<agnos_common::ModelInfo> = result["data"]
+                        .as_array()
+                        .unwrap_or(&vec![])
+                        .iter()
+                        .filter_map(|m| {
+                            Some(agnos_common::ModelInfo {
+                                id: m["id"].as_str()?.to_string(),
+                                name: m["id"].as_str()?.to_string(),
+                                provider: self.config.common_provider.clone(),
+                                capabilities: vec![agnos_common::ModelCapability::TextGeneration],
+                                max_tokens: self.config.default_max_tokens,
+                                size_bytes: 0,
+                                loaded: true,
+                            })
+                        })
+                        .collect();
+
+                    if !models.is_empty() {
+                        return Ok(models);
+                    }
+                }
+            }
+        }
+
+        // Fall back to known models
+        Ok(self
+            .config
+            .known_models
+            .iter()
+            .map(|(id, name)| agnos_common::ModelInfo {
+                id: id.to_string(),
+                name: name.to_string(),
+                provider: self.config.common_provider.clone(),
+                capabilities: vec![agnos_common::ModelCapability::TextGeneration],
+                max_tokens: self.config.default_max_tokens,
+                size_bytes: 0,
+                loaded: true,
+            })
+            .collect())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Provider factory functions
+// ---------------------------------------------------------------------------
+
+/// DeepSeek — OpenAI-compatible API at api.deepseek.com
+pub fn new_deepseek_provider(api_key: String, base_url: Option<String>) -> anyhow::Result<OpenAiCompatibleProvider> {
+    OpenAiCompatibleProvider::new(
+        OpenAiCompatibleConfig {
+            provider_name: "DeepSeek",
+            provider_type: ProviderType::DeepSeek,
+            common_provider: agnos_common::Provider::DeepSeek,
+            default_base_url: "https://api.deepseek.com/v1",
+            default_max_tokens: 8192,
+            known_models: &[
+                ("deepseek-chat", "DeepSeek Chat"),
+                ("deepseek-coder", "DeepSeek Coder"),
+                ("deepseek-reasoner", "DeepSeek Reasoner"),
+            ],
+            requires_api_key: true,
+        },
+        Some(api_key),
+        base_url,
+    )
+}
+
+/// Mistral AI — OpenAI-compatible API at api.mistral.ai
+pub fn new_mistral_provider(api_key: String, base_url: Option<String>) -> anyhow::Result<OpenAiCompatibleProvider> {
+    OpenAiCompatibleProvider::new(
+        OpenAiCompatibleConfig {
+            provider_name: "Mistral",
+            provider_type: ProviderType::Mistral,
+            common_provider: agnos_common::Provider::Mistral,
+            default_base_url: "https://api.mistral.ai/v1",
+            default_max_tokens: 8192,
+            known_models: &[
+                ("mistral-large-latest", "Mistral Large"),
+                ("mistral-medium-latest", "Mistral Medium"),
+                ("mistral-small-latest", "Mistral Small"),
+                ("open-mistral-nemo", "Mistral Nemo"),
+                ("codestral-latest", "Codestral"),
+            ],
+            requires_api_key: true,
+        },
+        Some(api_key),
+        base_url,
+    )
+}
+
+/// Grok (x.ai) — OpenAI-compatible API at api.x.ai
+pub fn new_grok_provider(api_key: String, base_url: Option<String>) -> anyhow::Result<OpenAiCompatibleProvider> {
+    OpenAiCompatibleProvider::new(
+        OpenAiCompatibleConfig {
+            provider_name: "Grok",
+            provider_type: ProviderType::Grok,
+            common_provider: agnos_common::Provider::Grok,
+            default_base_url: "https://api.x.ai/v1",
+            default_max_tokens: 8192,
+            known_models: &[
+                ("grok-3", "Grok 3"),
+                ("grok-3-mini", "Grok 3 Mini"),
+                ("grok-2-1212", "Grok 2"),
+                ("grok-2-vision-1212", "Grok 2 Vision"),
+            ],
+            requires_api_key: true,
+        },
+        Some(api_key),
+        base_url,
+    )
+}
+
+/// Groq — OpenAI-compatible hosted inference at api.groq.com
+pub fn new_groq_provider(api_key: String, base_url: Option<String>) -> anyhow::Result<OpenAiCompatibleProvider> {
+    OpenAiCompatibleProvider::new(
+        OpenAiCompatibleConfig {
+            provider_name: "Groq",
+            provider_type: ProviderType::Groq,
+            common_provider: agnos_common::Provider::Groq,
+            default_base_url: "https://api.groq.com/openai/v1",
+            default_max_tokens: 8192,
+            known_models: &[
+                ("llama-3.3-70b-versatile", "Llama 3.3 70B"),
+                ("llama-3.1-8b-instant", "Llama 3.1 8B Instant"),
+                ("mixtral-8x7b-32768", "Mixtral 8x7B"),
+                ("gemma2-9b-it", "Gemma 2 9B"),
+            ],
+            requires_api_key: true,
+        },
+        Some(api_key),
+        base_url,
+    )
+}
+
+/// OpenRouter — multi-provider router at openrouter.ai
+pub fn new_openrouter_provider(api_key: String, base_url: Option<String>) -> anyhow::Result<OpenAiCompatibleProvider> {
+    OpenAiCompatibleProvider::new(
+        OpenAiCompatibleConfig {
+            provider_name: "OpenRouter",
+            provider_type: ProviderType::OpenRouter,
+            common_provider: agnos_common::Provider::OpenRouter,
+            default_base_url: "https://openrouter.ai/api/v1",
+            default_max_tokens: 4096,
+            known_models: &[], // Dynamic — uses /models endpoint
+            requires_api_key: true,
+        },
+        Some(api_key),
+        base_url,
+    )
+}
+
+/// LM Studio — local OpenAI-compatible server (no API key required)
+pub fn new_lmstudio_provider(base_url: Option<String>) -> anyhow::Result<OpenAiCompatibleProvider> {
+    OpenAiCompatibleProvider::new(
+        OpenAiCompatibleConfig {
+            provider_name: "LM Studio",
+            provider_type: ProviderType::LmStudio,
+            common_provider: agnos_common::Provider::LmStudio,
+            default_base_url: "http://localhost:1234/v1",
+            default_max_tokens: 4096,
+            known_models: &[], // Dynamic — uses /models endpoint
+            requires_api_key: false,
+        },
+        None,
+        base_url,
+    )
+}
+
+/// LocalAI — local OpenAI-compatible server (no API key required)
+pub fn new_localai_provider(base_url: Option<String>) -> anyhow::Result<OpenAiCompatibleProvider> {
+    OpenAiCompatibleProvider::new(
+        OpenAiCompatibleConfig {
+            provider_name: "LocalAI",
+            provider_type: ProviderType::LocalAi,
+            common_provider: agnos_common::Provider::LocalAi,
+            default_base_url: "http://localhost:8080/v1",
+            default_max_tokens: 4096,
+            known_models: &[], // Dynamic — uses /models endpoint
+            requires_api_key: false,
+        },
+        None,
+        base_url,
+    )
+}
+
+/// OpenCode Zen — cloud inference at api.open-code.dev
+pub fn new_opencode_provider(api_key: String, base_url: Option<String>) -> anyhow::Result<OpenAiCompatibleProvider> {
+    OpenAiCompatibleProvider::new(
+        OpenAiCompatibleConfig {
+            provider_name: "OpenCode",
+            provider_type: ProviderType::OpenCode,
+            common_provider: agnos_common::Provider::OpenCode,
+            default_base_url: "https://api.open-code.dev/v1",
+            default_max_tokens: 8192,
+            known_models: &[
+                ("gpt-5.2", "GPT 5.2"),
+                ("claude-sonnet-4-5", "Claude Sonnet 4.5"),
+                ("claude-haiku-4-5", "Claude Haiku 4.5"),
+                ("gemini-3-flash", "Gemini 3 Flash"),
+                ("qwen3-coder", "Qwen 3 Coder"),
+            ],
+            requires_api_key: true,
+        },
+        Some(api_key),
+        base_url,
+    )
+}
+
+/// Letta — stateful agent platform with OpenAI-compatible inference
+pub fn new_letta_provider(api_key: Option<String>, base_url: Option<String>) -> anyhow::Result<OpenAiCompatibleProvider> {
+    let is_local = std::env::var("LETTA_LOCAL").unwrap_or_default() == "true";
+    let default_url = if is_local {
+        "http://localhost:8283/v1"
+    } else {
+        "https://app.letta.com/v1"
+    };
+    OpenAiCompatibleProvider::new(
+        OpenAiCompatibleConfig {
+            provider_name: "Letta",
+            provider_type: ProviderType::Letta,
+            common_provider: agnos_common::Provider::Letta,
+            default_base_url: default_url,
+            default_max_tokens: 4096,
+            known_models: &[
+                ("openai/gpt-4o", "GPT-4o (via Letta)"),
+                ("openai/gpt-4o-mini", "GPT-4o Mini (via Letta)"),
+                ("anthropic/claude-sonnet-4-20250514", "Claude Sonnet 4 (via Letta)"),
+            ],
+            requires_api_key: !is_local,
+        },
+        api_key,
+        base_url,
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -2406,5 +2874,326 @@ mod tests {
     async fn test_google_unload_empty_model_id() {
         let provider = GoogleProvider::new("goog-key".to_string(), None).unwrap();
         assert!(provider.unload_model("").await.is_ok());
+    }
+
+    // -----------------------------------------------------------------------
+    // OpenAI-compatible provider tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_provider_type_all_14_variants_distinct() {
+        use std::collections::HashSet;
+        let mut set = HashSet::new();
+        set.insert(ProviderType::Ollama);
+        set.insert(ProviderType::LlamaCpp);
+        set.insert(ProviderType::OpenAi);
+        set.insert(ProviderType::Anthropic);
+        set.insert(ProviderType::Google);
+        set.insert(ProviderType::DeepSeek);
+        set.insert(ProviderType::Mistral);
+        set.insert(ProviderType::Grok);
+        set.insert(ProviderType::Groq);
+        set.insert(ProviderType::OpenRouter);
+        set.insert(ProviderType::LmStudio);
+        set.insert(ProviderType::LocalAi);
+        set.insert(ProviderType::OpenCode);
+        set.insert(ProviderType::Letta);
+        assert_eq!(set.len(), 14);
+    }
+
+    #[test]
+    fn test_provider_type_new_variants_debug() {
+        assert_eq!(format!("{:?}", ProviderType::DeepSeek), "DeepSeek");
+        assert_eq!(format!("{:?}", ProviderType::Mistral), "Mistral");
+        assert_eq!(format!("{:?}", ProviderType::Grok), "Grok");
+        assert_eq!(format!("{:?}", ProviderType::Groq), "Groq");
+        assert_eq!(format!("{:?}", ProviderType::OpenRouter), "OpenRouter");
+        assert_eq!(format!("{:?}", ProviderType::LmStudio), "LmStudio");
+        assert_eq!(format!("{:?}", ProviderType::LocalAi), "LocalAi");
+        assert_eq!(format!("{:?}", ProviderType::OpenCode), "OpenCode");
+        assert_eq!(format!("{:?}", ProviderType::Letta), "Letta");
+    }
+
+    #[test]
+    fn test_deepseek_provider_new() {
+        let provider = new_deepseek_provider("ds-key-123".to_string(), None);
+        assert!(provider.is_ok());
+        let p = provider.unwrap();
+        assert_eq!(p.base_url, "https://api.deepseek.com/v1");
+        assert_eq!(p.config.provider_name, "DeepSeek");
+    }
+
+    #[test]
+    fn test_deepseek_provider_custom_url() {
+        let provider = new_deepseek_provider(
+            "ds-key".to_string(),
+            Some("http://custom:9000/v1".to_string()),
+        );
+        assert!(provider.is_ok());
+        assert_eq!(provider.unwrap().base_url, "http://custom:9000/v1");
+    }
+
+    #[test]
+    fn test_mistral_provider_new() {
+        let provider = new_mistral_provider("mist-key".to_string(), None);
+        assert!(provider.is_ok());
+        let p = provider.unwrap();
+        assert_eq!(p.base_url, "https://api.mistral.ai/v1");
+        assert_eq!(p.config.provider_name, "Mistral");
+    }
+
+    #[test]
+    fn test_grok_provider_new() {
+        let provider = new_grok_provider("xai-key".to_string(), None);
+        assert!(provider.is_ok());
+        let p = provider.unwrap();
+        assert_eq!(p.base_url, "https://api.x.ai/v1");
+        assert_eq!(p.config.provider_name, "Grok");
+    }
+
+    #[test]
+    fn test_groq_provider_new() {
+        let provider = new_groq_provider("groq-key".to_string(), None);
+        assert!(provider.is_ok());
+        let p = provider.unwrap();
+        assert_eq!(p.base_url, "https://api.groq.com/openai/v1");
+        assert_eq!(p.config.provider_name, "Groq");
+    }
+
+    #[test]
+    fn test_openrouter_provider_new() {
+        let provider = new_openrouter_provider("or-key".to_string(), None);
+        assert!(provider.is_ok());
+        let p = provider.unwrap();
+        assert_eq!(p.base_url, "https://openrouter.ai/api/v1");
+    }
+
+    #[test]
+    fn test_lmstudio_provider_new() {
+        let provider = new_lmstudio_provider(None);
+        assert!(provider.is_ok());
+        let p = provider.unwrap();
+        assert_eq!(p.base_url, "http://localhost:1234/v1");
+        assert!(p.api_key.is_none());
+    }
+
+    #[test]
+    fn test_lmstudio_provider_custom_url() {
+        let provider = new_lmstudio_provider(Some("http://192.168.1.5:1234/v1".to_string()));
+        assert!(provider.is_ok());
+        assert_eq!(
+            provider.unwrap().base_url,
+            "http://192.168.1.5:1234/v1"
+        );
+    }
+
+    #[test]
+    fn test_localai_provider_new() {
+        let provider = new_localai_provider(None);
+        assert!(provider.is_ok());
+        let p = provider.unwrap();
+        assert_eq!(p.base_url, "http://localhost:8080/v1");
+        assert!(p.api_key.is_none());
+    }
+
+    #[test]
+    fn test_opencode_provider_new() {
+        let provider = new_opencode_provider("oc-key".to_string(), None);
+        assert!(provider.is_ok());
+        let p = provider.unwrap();
+        assert_eq!(p.base_url, "https://api.open-code.dev/v1");
+    }
+
+    #[test]
+    fn test_letta_provider_with_api_key() {
+        let provider = new_letta_provider(Some("letta-key".to_string()), None);
+        assert!(provider.is_ok());
+        let p = provider.unwrap();
+        assert!(p.api_key.is_some());
+    }
+
+    #[test]
+    fn test_openai_compatible_requires_api_key_rejects_none() {
+        let config = OpenAiCompatibleConfig {
+            provider_name: "TestProvider",
+            provider_type: ProviderType::DeepSeek,
+            common_provider: agnos_common::Provider::DeepSeek,
+            default_base_url: "http://localhost:9999",
+            default_max_tokens: 4096,
+            known_models: &[],
+            requires_api_key: true,
+        };
+        let result = OpenAiCompatibleProvider::new(config, None, None);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("requires an API key"));
+    }
+
+    #[test]
+    fn test_openai_compatible_no_key_required_accepts_none() {
+        let config = OpenAiCompatibleConfig {
+            provider_name: "LocalTest",
+            provider_type: ProviderType::LmStudio,
+            common_provider: agnos_common::Provider::LmStudio,
+            default_base_url: "http://localhost:1234/v1",
+            default_max_tokens: 4096,
+            known_models: &[],
+            requires_api_key: false,
+        };
+        let result = OpenAiCompatibleProvider::new(config, None, None);
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_deepseek_known_models() {
+        let provider = new_deepseek_provider("ds-key-123456789".to_string(), None).unwrap();
+        // list_models will fail to reach the API but should fall back to known models
+        let models = provider.list_models().await.unwrap();
+        assert_eq!(models.len(), 3);
+        assert_eq!(models[0].id, "deepseek-chat");
+        assert_eq!(models[0].provider, agnos_common::Provider::DeepSeek);
+    }
+
+    #[tokio::test]
+    async fn test_mistral_known_models() {
+        let provider = new_mistral_provider("mist-key-123456789".to_string(), None).unwrap();
+        let models = provider.list_models().await.unwrap();
+        assert_eq!(models.len(), 5);
+        assert_eq!(models[0].id, "mistral-large-latest");
+    }
+
+    #[tokio::test]
+    async fn test_grok_known_models() {
+        let provider = new_grok_provider("xai-key-123456789".to_string(), None).unwrap();
+        let models = provider.list_models().await.unwrap();
+        assert_eq!(models.len(), 4);
+        assert_eq!(models[0].id, "grok-3");
+    }
+
+    #[tokio::test]
+    async fn test_groq_known_models() {
+        let provider = new_groq_provider("groq-key-123456789".to_string(), None).unwrap();
+        let models = provider.list_models().await.unwrap();
+        assert_eq!(models.len(), 4);
+        assert_eq!(models[0].id, "llama-3.3-70b-versatile");
+    }
+
+    #[tokio::test]
+    async fn test_opencode_known_models() {
+        let provider = new_opencode_provider("oc-key-123456789".to_string(), None).unwrap();
+        let models = provider.list_models().await.unwrap();
+        assert_eq!(models.len(), 5);
+    }
+
+    #[tokio::test]
+    async fn test_openrouter_known_models_fallback() {
+        // OpenRouter has no hardcoded known models; falls back to /models endpoint or empty
+        let provider = new_openrouter_provider("or-key-123456789".to_string(), None).unwrap();
+        let models = provider.list_models().await.unwrap();
+        // May be empty (no known models fallback) or populated (API responded)
+        // Just verify it doesn't error — result depends on network availability
+        let _ = models.len();
+    }
+
+    #[tokio::test]
+    async fn test_lmstudio_load_model_error() {
+        let provider = new_lmstudio_provider(None).unwrap();
+        let err = provider.load_model("test").await.unwrap_err();
+        assert!(err.to_string().contains("LM Studio"));
+    }
+
+    #[tokio::test]
+    async fn test_localai_unload_is_ok() {
+        let provider = new_localai_provider(None).unwrap();
+        assert!(provider.unload_model("any").await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_openai_compatible_infer_stream_returns_receiver() {
+        let provider = new_lmstudio_provider(None).unwrap();
+        let request = InferenceRequest::default();
+        let rx = provider.infer_stream(request).await;
+        assert!(rx.is_ok());
+    }
+
+    #[test]
+    fn test_provider_type_new_ne_old() {
+        assert_ne!(ProviderType::DeepSeek, ProviderType::OpenAi);
+        assert_ne!(ProviderType::Mistral, ProviderType::Anthropic);
+        assert_ne!(ProviderType::Grok, ProviderType::Google);
+        assert_ne!(ProviderType::Groq, ProviderType::Grok);
+        assert_ne!(ProviderType::LmStudio, ProviderType::LlamaCpp);
+        assert_ne!(ProviderType::LocalAi, ProviderType::Ollama);
+    }
+
+    #[test]
+    fn test_all_provider_types_as_hashmap_keys() {
+        use std::collections::HashMap;
+        let mut map: HashMap<ProviderType, &str> = HashMap::new();
+        map.insert(ProviderType::Ollama, "ollama");
+        map.insert(ProviderType::LlamaCpp, "llamacpp");
+        map.insert(ProviderType::OpenAi, "openai");
+        map.insert(ProviderType::Anthropic, "anthropic");
+        map.insert(ProviderType::Google, "google");
+        map.insert(ProviderType::DeepSeek, "deepseek");
+        map.insert(ProviderType::Mistral, "mistral");
+        map.insert(ProviderType::Grok, "grok");
+        map.insert(ProviderType::Groq, "groq");
+        map.insert(ProviderType::OpenRouter, "openrouter");
+        map.insert(ProviderType::LmStudio, "lmstudio");
+        map.insert(ProviderType::LocalAi, "localai");
+        map.insert(ProviderType::OpenCode, "opencode");
+        map.insert(ProviderType::Letta, "letta");
+        assert_eq!(map.len(), 14);
+    }
+
+    #[tokio::test]
+    async fn test_mistral_custom_url() {
+        let provider = new_mistral_provider(
+            "mist-key".to_string(),
+            Some("http://custom:5000".to_string()),
+        )
+        .unwrap();
+        assert_eq!(provider.base_url, "http://custom:5000");
+    }
+
+    #[tokio::test]
+    async fn test_groq_custom_url() {
+        let provider =
+            new_groq_provider("groq-key".to_string(), Some("http://custom:6000".to_string()))
+                .unwrap();
+        assert_eq!(provider.base_url, "http://custom:6000");
+    }
+
+    #[tokio::test]
+    async fn test_grok_custom_url() {
+        let provider =
+            new_grok_provider("xai-key".to_string(), Some("http://custom:7000".to_string()))
+                .unwrap();
+        assert_eq!(provider.base_url, "http://custom:7000");
+    }
+
+    #[tokio::test]
+    async fn test_letta_known_models() {
+        let provider = new_letta_provider(Some("letta-key-123456789".to_string()), None).unwrap();
+        let models = provider.list_models().await.unwrap();
+        assert_eq!(models.len(), 3);
+        assert_eq!(models[0].id, "openai/gpt-4o");
+        assert_eq!(models[0].provider, agnos_common::Provider::Letta);
+    }
+
+    #[test]
+    fn test_openai_compatible_config_clone() {
+        let config = OpenAiCompatibleConfig {
+            provider_name: "Test",
+            provider_type: ProviderType::DeepSeek,
+            common_provider: agnos_common::Provider::DeepSeek,
+            default_base_url: "http://test",
+            default_max_tokens: 4096,
+            known_models: &[("m1", "Model 1")],
+            requires_api_key: true,
+        };
+        let cloned = config.clone();
+        assert_eq!(cloned.provider_name, "Test");
+        assert_eq!(cloned.known_models.len(), 1);
     }
 }
