@@ -46,7 +46,7 @@ FROM debian:bookworm-slim AS runtime
 # OCI annotations
 LABEL org.opencontainers.image.title="AGNOS"
 LABEL org.opencontainers.image.description="AI-Native General Operating System"
-LABEL org.opencontainers.image.source="https://github.com/agnos/agnos"
+LABEL org.opencontainers.image.source="https://github.com/maccracken/agnosticos"
 LABEL org.opencontainers.image.licenses="GPL-3.0"
 ARG AGNOS_VERSION=dev
 LABEL org.opencontainers.image.version="${AGNOS_VERSION}"
