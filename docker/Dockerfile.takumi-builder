@@ -1,0 +1,58 @@
+# AGNOS Takumi Builder — Container for building .ark packages from source
+# This provides a reproducible build environment matching the AGNOS target system.
+#
+# Usage:
+#   docker build -f docker/Dockerfile.takumi-builder -t agnos:takumi-builder .
+#   docker run --rm -v ./recipes:/recipes:ro -v ./dist/ark:/output \
+#       agnos:takumi-builder /recipes/python/cpython-3.12.toml
+
+FROM debian:bookworm AS builder
+
+LABEL org.opencontainers.image.title="AGNOS Takumi Builder"
+LABEL org.opencontainers.image.description="Reproducible build environment for .ark packages"
+
+# Build essentials — covers most C/C++ source builds
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    pkg-config \
+    autoconf \
+    automake \
+    libtool \
+    cmake \
+    ninja-build \
+    curl \
+    wget \
+    ca-certificates \
+    xz-utils \
+    file \
+    patch \
+    # Python build deps
+    zlib1g-dev \
+    libffi-dev \
+    libssl-dev \
+    libbz2-dev \
+    liblzma-dev \
+    libreadline-dev \
+    libncurses5-dev \
+    libsqlite3-dev \
+    libgdbm-dev \
+    libexpat1-dev \
+    libmpdec-dev \
+    uuid-dev \
+    # Needed for PGO builds
+    llvm \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create build user (non-root builds)
+RUN useradd --system --create-home --shell /bin/bash takumi \
+    && mkdir -p /build /output /cache \
+    && chown -R takumi:takumi /build /output /cache
+
+# Copy the build script
+COPY scripts/ark-build.sh /usr/local/bin/ark-build
+RUN chmod +x /usr/local/bin/ark-build
+
+WORKDIR /build
+USER takumi
+
+ENTRYPOINT ["/usr/local/bin/ark-build"]

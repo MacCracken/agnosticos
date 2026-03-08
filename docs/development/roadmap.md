@@ -1,7 +1,7 @@
 # AGNOS Development Roadmap
 
 > **Status**: Pre-Alpha | **Last Updated**: 2026-03-07
-> **All development phases complete** — 9082+ tests, ~82% coverage, 0 warnings
+> **All development phases complete** — 9096+ tests, ~82% coverage, 0 warnings
 > **Next Milestone**: Alpha Release (Target: Q2 2026)
 
 ---
@@ -112,12 +112,18 @@ All phases are complete. See [CHANGELOG.md](/CHANGELOG.md) for detailed implemen
 Native Python support via ark/takumi/nous — no external version manager dependency.
 Borrows conventions from pyenv (`.python-version` files) and mise (hook-env pattern).
 
-**Phase 1 — CPython as ark packages**
-- [ ] Takumi recipe for CPython 3.12 (build from source or fetch python-build-standalone)
-- [ ] Takumi recipe for CPython 3.13
-- [ ] Takumi recipe for CPython 3.14
-- [ ] `.ark` packaging with proper shared lib handling (`libpython3.x.so`)
-- [ ] Multiple versions coexist under `/usr/lib/agnos/python/`
+**Phase 1 — CPython as ark packages** `recipes/python/`
+- [x] Takumi recipe for CPython 3.12 (`cpython-3.12.toml` — PGO+LTO, shared lib, hardened)
+- [x] Takumi recipe for CPython 3.13 (`cpython-3.13.toml`)
+- [x] Takumi recipe for CPython 3.13 free-threaded (`cpython-3.13-freethreaded.toml` — `--disable-gil`, mimalloc)
+- [x] Takumi recipe for CPython 3.14 (`cpython-3.14.toml` — pre-release, JIT experimental)
+- [x] Versioned install paths (`/usr/lib/agnos/python/3.XX/`) with per-version `ld.so.conf.d`
+- [x] Recursive recipe loading in takumi (subdirectory support, 57 tests)
+- [ ] Build CPython `.ark` packages on native target (bare-metal / VM install)
+- [ ] Build CPython `.ark` packages in container (takumi builder container)
+- [ ] Verify shared lib coexistence with multiple installed versions on both targets
+- [ ] Update `docker/Dockerfile.python` to use ark-built CPython instead of upstream `python:3.12-slim-bookworm`
+- [ ] Add `docker/Dockerfile.python3.13` and `docker/Dockerfile.python3.14` base images
 
 **Phase 2 — Version switching**
 - [ ] Rust shim binary (`/usr/bin/python` → resolves version via hook-env)
@@ -138,14 +144,20 @@ Borrows conventions from pyenv (`.python-version` files) and mise (hook-env patt
 ### Docker Base Images
 
 Publish runtime-specific base images for consumer projects.
+Existing images (`Dockerfile.python`, `Dockerfile.node`) use upstream Debian packages —
+these should transition to ark-built runtimes once Phase 1 packages are proven.
+
+**Delivery**: Each runtime ships as both an installable `.ark` package (native OS) and a Docker base image (containerized workloads).
 
 - [ ] Alpha release (prerequisite)
+- [ ] `agnos:python3.12` — Python runtime layer (ark-built CPython, replaces current `Dockerfile.python`)
+- [ ] `agnos:python3.13` — Python 3.13 runtime layer
+- [ ] `agnos:python3.13t` — Free-threaded Python 3.13 (GIL-disabled, for parallel agent workloads)
+- [ ] `agnos:python3.14` — Python 3.14 runtime layer
 - [ ] `agnos:node20` — Node.js 20 runtime layer
 - [ ] `agnos:node22` — Node.js 22 runtime layer
-- [ ] `agnos:python3.12` — Python runtime layer (backed by ark python packages)
-- [ ] `agnos:python3.13` — Python 3.13 runtime layer
-- [ ] `agnos:python3.14` — Python 3.14 runtime layer
 - [ ] `agnos:rust` — Rust runtime layer
+- [ ] Takumi builder container — container for building `.ark` packages without native target
 
 ### Federation Enhancements
 
@@ -173,7 +185,7 @@ Publish runtime-specific base images for consumer projects.
 |--------|--------|---------|--------|
 | Code Coverage | >80% | ~82% | Met |
 | Test Pass Rate | 100% | 100% | Met |
-| Total Tests | 400+ | 9072+ | Met |
+| Total Tests | 400+ | 9096+ | Met |
 | Agent Spawn Time | <500ms | ~300ms | Met |
 | Shell Response Time | <100ms | ~50ms | Met |
 | Memory Overhead | <2GB | ~1.2GB | Met |
@@ -188,7 +200,7 @@ Publish runtime-specific base images for consumer projects.
 |-----------|-------|-------|
 | agnos-common | 307 | Secrets, telemetry, LLM types, manifest, rate limits, audit chain |
 | agnos-sys | 750+ | 16 modules: audit, mac, netns, dmverity, luks, ima, tpm, secureboot, certpin, bootloader, journald, udev, fuse, pam, update, llm |
-| agent-runtime | 2538+ | Orchestrator, IPC, sandbox, registry, marketplace (88+43), federation (55), migration (54), scheduler (47), PQC (68), explainability (59), safety (77), finetune (73), formal_verify (76), sandbox_v2 (77), rl_optimizer (68), cloud (82), collaboration (87), sigil (35), aegis (40), takumi (43), argonaut (46), agnova (41) |
+| agent-runtime | 2552+ | Orchestrator, IPC, sandbox, registry, marketplace (88+43), federation (55), migration (54), scheduler (47), PQC (68), explainability (59), safety (77), finetune (73), formal_verify (76), sandbox_v2 (77), rl_optimizer (68), cloud (82), collaboration (87), sigil (35), aegis (40), takumi (57), argonaut (46), agnova (41) |
 | llm-gateway | 672 | Providers, rate limiting, streaming, cert pinning, hardware acceleration |
 | ai-shell | 1132 | 25+ intents, approval workflow, dashboard, aliases, completion |
 | desktop-environment | 1394 | Wayland protocol (63+49), plugin host (31), xwayland (20), shell integration (26), theme bridge (18), compositor, renderer |

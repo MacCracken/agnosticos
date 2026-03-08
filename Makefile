@@ -24,7 +24,7 @@ YELLOW := \033[33m
 RED := \033[31m
 NC := \033[0m # No Color
 
-.PHONY: all help deps build build-kernel build-userland build-initramfs iso install clean test test-unit test-integration test-security test-coverage lint format check docker-dev release
+.PHONY: all help deps build build-kernel build-userland build-initramfs iso install clean test test-unit test-integration test-security test-coverage lint format check docker-dev release ark-build ark-build-all ark-build-python docker-ark-build docker-ark-build-python
 
 # Default target
 all: help
@@ -58,6 +58,13 @@ help:
 	@echo "  $(YELLOW)lint$(NC)          - Run linters"
 	@echo "  $(YELLOW)format$(NC)        - Format code"
 	@echo "  $(YELLOW)security-scan$(NC) - Run security scanners"
+	@echo ""
+	@echo "$(GREEN)Package targets:$(NC)"
+	@echo "  $(YELLOW)ark-build$(NC)     - Build single .ark package (RECIPE=path/to/recipe.toml)"
+	@echo "  $(YELLOW)ark-build-all$(NC) - Build all .ark packages from recipes/"
+	@echo "  $(YELLOW)ark-build-python$(NC) - Build all Python .ark packages"
+	@echo "  $(YELLOW)docker-ark-build$(NC) - Build .ark package in container (RECIPE=...)"
+	@echo "  $(YELLOW)docker-ark-build-python$(NC) - Build all Python .ark packages in container"
 	@echo ""
 	@echo "$(GREEN)Development targets:$(NC)"
 	@echo "  $(YELLOW)docker-dev$(NC)    - Build and run development container"
@@ -192,6 +199,59 @@ clean:
 	rm -rf $(DIST_DIR)/*
 	$(MAKE) -C kernel clean || true
 	@echo "$(GREEN)Clean complete$(NC)"
+
+# Ark package build targets
+ark-build:
+	@if [ -z "$(RECIPE)" ]; then \
+		echo "$(RED)Error: RECIPE not specified$(NC)"; \
+		echo "Usage: make ark-build RECIPE=recipes/python/cpython-3.12.toml"; \
+		exit 1; \
+	fi
+	@echo "$(BLUE)Building ark package from $(RECIPE)...$(NC)"
+	./scripts/ark-build.sh $(RECIPE)
+	@echo "$(GREEN)Ark package built$(NC)"
+
+ark-build-all:
+	@echo "$(BLUE)Building all ark packages...$(NC)"
+	@for recipe in $$(find recipes -name '*.toml' -type f); do \
+		echo "$(YELLOW)Building $$recipe...$(NC)"; \
+		./scripts/ark-build.sh $$recipe || exit 1; \
+	done
+	@echo "$(GREEN)All ark packages built$(NC)"
+
+ark-build-python:
+	@echo "$(BLUE)Building Python ark packages...$(NC)"
+	@for recipe in $$(find recipes/python -name '*.toml' -type f); do \
+		echo "$(YELLOW)Building $$recipe...$(NC)"; \
+		./scripts/ark-build.sh $$recipe || exit 1; \
+	done
+	@echo "$(GREEN)Python ark packages built$(NC)"
+
+docker-ark-build:
+	@if [ -z "$(RECIPE)" ]; then \
+		echo "$(RED)Error: RECIPE not specified$(NC)"; \
+		echo "Usage: make docker-ark-build RECIPE=recipes/python/cpython-3.12.toml"; \
+		exit 1; \
+	fi
+	@echo "$(BLUE)Building ark package in container from $(RECIPE)...$(NC)"
+	$(DOCKER) build -f docker/Dockerfile.takumi-builder -t agnos:takumi-builder .
+	$(DOCKER) run --rm \
+		-v $(PWD)/recipes:/recipes:ro \
+		-v $(PWD)/$(DIST_DIR)/ark:/output \
+		agnos:takumi-builder /recipes/$(notdir $(RECIPE))
+	@echo "$(GREEN)Ark package built in container$(NC)"
+
+docker-ark-build-python:
+	@echo "$(BLUE)Building all Python ark packages in container...$(NC)"
+	$(DOCKER) build -f docker/Dockerfile.takumi-builder -t agnos:takumi-builder .
+	@for recipe in $$(find recipes/python -name '*.toml' -type f); do \
+		echo "$(YELLOW)Building $$recipe in container...$(NC)"; \
+		$(DOCKER) run --rm \
+			-v $(PWD)/recipes:/recipes:ro \
+			-v $(PWD)/$(DIST_DIR)/ark:/output \
+			agnos:takumi-builder /recipes/python/$$(basename $$recipe) || exit 1; \
+	done
+	@echo "$(GREEN)Python ark packages built in container$(NC)"
 
 # Release targets
 release: clean
