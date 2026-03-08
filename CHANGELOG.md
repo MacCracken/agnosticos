@@ -69,6 +69,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **2 new tests** covering endpoint response and type serialization
 - Documented full OTLP configuration guide in `docs/AGNOSTIC_INTEGRATION.md` for Agnostic's `shared/telemetry.py`
 
+## [2026.3.8-1] - 2026-03-08
+
 ### Added — LLM Gateway Provider Expansion (hoosh)
 
 #### 9 New Providers (5 → 14 total)
@@ -110,7 +112,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **35 new tests** covering all 9 new providers: construction, custom URLs, known model fallback, API key requirements, load/unload behavior, stream receivers
 - Total llm-gateway lib tests: 320 (was 285)
 
-## [2026.3.7-#4] - 2026-03-07
+## [2026.3.7] - 2026-03-07
 
 ### Added — Web Browser Support
 
@@ -135,8 +137,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Phase 1 (Alpha): Firefox ESR + Chromium as `.ark` packages
 - Phase 2 (Post-Beta): AI-Integrated WebView via `wry`/`tauri` with local LLM features
 - Phase 3 (Post-v1.0): Custom browser shell (Servo/CEF) with per-tab agent sandboxing
-
-## [2026.3.7-#3] - 2026-03-07
 
 ### Changed — CI/CD Workflow Audit & Container Publishing
 
@@ -165,8 +165,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Release title now includes `(Alpha)` suffix
 - Release body includes alpha disclaimer banner
 - Pre-release badge retained for alpha builds
-
-## [2026.3.7-#2] - 2026-03-07
 
 ### Changed — Code Audit, Refactoring & CI Hardening
 
@@ -203,8 +201,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **sbom.yml** — Replaced unmaintained `cargo-bom` with `cargo-cyclonedx`, removed Python `cyclonedx-bom`, `softprops/action-gh-release@v1` → `v2`, `dependency-review-action@v3` → `v4`, removed placeholder Dependency-Track job
 - **release.yml** — Replaced deprecated `actions/create-release@v1` with `softprops/action-gh-release@v2`, fixed binary packaging
 - **Clippy** — 0 warnings (added `PatternMatcher` type alias in safety.rs)
-
-## [2026.3.7] - 2026-03-07
 
 ### Added — Phase 7: Ecosystem — Federation & Scale (199 tests)
 
@@ -582,7 +578,7 @@ Comprehensive security, performance, and correctness audit across all 6 crates. 
 | Alpha Blocker | Third-party security audit (vendor selection) |
 
 ### Changed (Versioning)
-- Adopted Calendar Versioning (CalVer) scheme: `YYYY.D.M` format, patches as `-#N`
+- Adopted Calendar Versioning (CalVer) scheme: `YYYY.D.M` format, patches as `-N`
 - Created `VERSION` file at repository root as single source of truth
 - Shell scripts (`build-iso.sh`, `agnos-update.sh`, `agpkg`, `entrypoint.sh`) now read from `VERSION` file
 - Makefile reads version from `VERSION` file
@@ -1122,7 +1118,7 @@ Comprehensive security, performance, and correctness audit across all 6 crates. 
 
 ## Release Planning
 
-Versioning follows CalVer: `YYYY.D.M` (e.g., `2026.3.5`). Patch releases use `-#N` suffix.
+Versioning follows CalVer: `YYYY.D.M` (e.g., `2026.3.5`). Patch releases use `-N` suffix.
 
 ### Alpha - Target Q2 2026
 - Phase 5 production hardening complete
