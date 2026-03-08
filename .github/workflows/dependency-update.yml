@@ -1,0 +1,94 @@
+name: Dependency Update Check
+
+on:
+  schedule:
+    - cron: '0 2 * * 1'  # Every Monday at 2 AM UTC
+  workflow_dispatch:
+
+concurrency:
+  group: dependency-update
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check-updates:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust environment
+        uses: ./.github/actions/setup-rust-env
+        with:
+          cache-prefix: dep-update
+
+      - name: Check for outdated dependencies
+        id: outdated
+        run: |
+          cd userland
+          cargo install cargo-outdated --locked
+          echo "## Outdated Dependencies" > /tmp/outdated-report.md
+          echo '```' >> /tmp/outdated-report.md
+          cargo outdated --root-deps-only 2>/dev/null | tee -a /tmp/outdated-report.md || true
+          echo '```' >> /tmp/outdated-report.md
+
+      - name: Update dependencies
+        id: update
+        run: |
+          cd userland
+          cargo update 2>&1 | tee /tmp/cargo-update-output.txt
+
+          # Check if Cargo.lock changed
+          if git diff --quiet Cargo.lock; then
+            echo "No dependency updates found"
+            echo "has_updates=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Dependency updates available"
+            echo "has_updates=true" >> "$GITHUB_OUTPUT"
+
+            # Generate a summary of changes
+            echo "## Cargo.lock Changes" > /tmp/update-summary.md
+            echo '```' >> /tmp/update-summary.md
+            git diff --stat Cargo.lock >> /tmp/update-summary.md
+            echo '```' >> /tmp/update-summary.md
+          fi
+
+      - name: Run tests with updated dependencies
+        if: steps.update.outputs.has_updates == 'true'
+        run: |
+          cd userland
+          cargo test --workspace 2>&1 | tail -20
+        continue-on-error: true
+
+      - name: Create Pull Request for updates
+        if: steps.update.outputs.has_updates == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: 'chore: update Cargo dependencies'
+          title: 'chore: update Cargo dependencies'
+          body: |
+            ## Automated Dependency Update
+
+            This PR updates Cargo dependencies to their latest compatible versions via `cargo update`.
+
+            ### Outdated Report
+            ${{ steps.outdated.outputs.report || 'See CI logs for details.' }}
+
+            ### Checklist
+            - [ ] Review updated dependencies
+            - [ ] Verify CI passes (tests run automatically)
+            - [ ] Check for breaking changes in changelogs
+
+            ---
+
+            *This PR was created automatically by the Dependency Update workflow*
+          branch: dependency-updates
+          delete-branch: true
+          labels: dependencies

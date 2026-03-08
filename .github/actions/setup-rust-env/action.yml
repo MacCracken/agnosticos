@@ -1,0 +1,75 @@
+name: 'Setup Rust Environment'
+description: 'Set up Rust toolchain, caching, and optional extras (repo must already be checked out)'
+
+inputs:
+  toolchain:
+    description: 'Rust toolchain to use'
+    required: false
+    default: 'stable'
+  targets:
+    description: 'Comma-separated list of targets to install'
+    required: false
+    default: ''
+  components:
+    description: 'Comma-separated list of components to install (e.g. "rustfmt, clippy")'
+    required: false
+    default: ''
+  cache-prefix:
+    description: 'Cache key prefix (e.g. "test", "bench") to separate caches per job'
+    required: false
+    default: 'build'
+  install-cross:
+    description: 'Install the cross tool for cross-compilation'
+    required: false
+    default: 'false'
+  install-build-essential:
+    description: 'Install build-essential (for native compilation)'
+    required: false
+    default: 'false'
+
+outputs:
+  project-version:
+    description: 'Project version read from VERSION file'
+    value: ${{ steps.version.outputs.version }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Read project version
+      id: version
+      shell: bash
+      run: |
+        VERSION=$(tr -d '[:space:]' < VERSION)
+        echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+        echo "Project version: ${VERSION}"
+
+    - name: Install build-essential
+      if: inputs.install-build-essential == 'true'
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential
+
+    - name: Setup Rust toolchain
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: ${{ inputs.toolchain }}
+        targets: ${{ inputs.targets }}
+        components: ${{ inputs.components }}
+
+    - name: Install cross
+      if: inputs.install-cross == 'true'
+      uses: taiki-e/install-action@v2
+      with:
+        tool: cross
+
+    - name: Cache Cargo artifacts
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          userland/target/
+        key: ${{ runner.os }}-cargo-${{ inputs.cache-prefix }}-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-${{ inputs.cache-prefix }}-

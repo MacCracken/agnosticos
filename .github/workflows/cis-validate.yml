@@ -23,21 +23,25 @@ on:
           - authentication
           - system
 
+concurrency:
+  group: cis-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
   cis-validate:
     runs-on: ubuntu-latest
-    
+
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Install dependencies
       run: |
         sudo apt-get update
         sudo apt-get install -y bc jq
-    
+
     - name: Run CIS Validation
       run: |
         sudo ./scripts/cis-validate.sh --category ${{ github.event.inputs.category || 'all' }} --report "$GITHUB_WORKSPACE/cis-report.json"
@@ -50,7 +54,7 @@ jobs:
         name: cis-validation-report
         path: cis-report.json
         if-no-files-found: warn
-    
+
     - name: Check Compliance
       run: |
         if [ -f cis-report.json ]; then
@@ -63,7 +67,7 @@ jobs:
         else
           echo "::warning::CIS report not found"
         fi
-    
+
     - name: Comment PR
       if: github.event_name == 'pull_request'
       uses: actions/github-script@v7
@@ -76,23 +80,23 @@ jobs:
           } catch (e) {
             console.log('Could not read report');
           }
-          
+
           const score = report.compliance.score || 0;
           const status = report.compliance.status;
           const { passed, failed, total } = report.results;
-          
+
           const color = score >= 80 ? '🟢' : score >= 60 ? '🟡' : '🔴';
           const body = `## CIS Benchmark Validation ${color}
-          
+
           - **Score**: ${score}%
           - **Status**: ${status}
           - **Passed**: ${passed}/${total}
           - **Failed**: ${failed}
-          
+
           ${score < 70 ? '⚠️ Score is below 70% threshold' : '✅ Score meets compliance threshold'}
-          
+
           See the artifacts for the full report.`;
-          
+
           github.rest.issues.createComment({
             issue_number: context.issue.number,
             owner: context.repo.owner,

@@ -36,31 +36,13 @@ jobs:
       with:
         fetch-depth: 0
 
-    - name: Install dependencies
-      if: ${{ !matrix.cross }}
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y build-essential
-
-    - name: Install cross (aarch64)
-      if: matrix.cross
-      uses: taiki-e/install-action@v2
-      with:
-        tool: cross
-
-    - name: Cache build artifacts
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-          userland/target/
-        key: ${{ runner.os }}-cargo-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
-
-    - name: Setup Rust toolchain
-      uses: dtolnay/rust-toolchain@stable
+    - name: Setup Rust environment
+      uses: ./.github/actions/setup-rust-env
       with:
         targets: ${{ matrix.target }}
+        cache-prefix: build-${{ matrix.target }}
+        install-cross: ${{ matrix.cross }}
+        install-build-essential: ${{ !matrix.cross }}
 
     - name: Build userland (native)
       if: ${{ !matrix.cross }}
@@ -80,10 +62,11 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Setup Rust toolchain
-      uses: dtolnay/rust-toolchain@stable
+    - name: Setup Rust environment
+      uses: ./.github/actions/setup-rust-env
       with:
         components: rustfmt, clippy
+        cache-prefix: quality
 
     - name: Check formatting
       run: cargo fmt --all -- --check
@@ -105,8 +88,10 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Setup Rust toolchain
-      uses: dtolnay/rust-toolchain@stable
+    - name: Setup Rust environment
+      uses: ./.github/actions/setup-rust-env
+      with:
+        cache-prefix: security
 
     - name: Run Trivy vulnerability scanner
       uses: aquasecurity/trivy-action@master
@@ -177,17 +162,10 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Setup Rust toolchain
-      uses: dtolnay/rust-toolchain@stable
-
-    - name: Cache build artifacts
-      uses: actions/cache@v4
+    - name: Setup Rust environment
+      uses: ./.github/actions/setup-rust-env
       with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-          userland/target/
-        key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}
+        cache-prefix: test
 
     - name: Run tests
       run: cargo test --workspace
@@ -215,17 +193,10 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Setup Rust toolchain
-      uses: dtolnay/rust-toolchain@stable
-
-    - name: Cache build artifacts
-      uses: actions/cache@v4
+    - name: Setup Rust environment
+      uses: ./.github/actions/setup-rust-env
       with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-          userland/target/
-        key: ${{ runner.os }}-bench-${{ hashFiles('**/Cargo.lock') }}
+        cache-prefix: bench
 
     - name: Run benchmarks
       run: cargo bench -- --noplot 2>&1 | tee benchmark-output.txt
@@ -267,6 +238,14 @@ jobs:
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
+
+    - name: Cache Docker layers
+      uses: actions/cache@v4
+      with:
+        path: /tmp/.buildx-cache
+        key: ${{ runner.os }}-docker-${{ hashFiles('Dockerfile', 'userland/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-docker-
 
     - name: Build container image
       run: docker build -t agnos:latest .
