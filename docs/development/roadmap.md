@@ -163,6 +163,19 @@ these should transition to ark-built runtimes once Phase 1 packages are proven.
 
 - [ ] Shared vector store across federated nodes
 
+### Agnostic QA Integration (P2 — needed for Agnostic deep integration)
+
+Agnostic already has client modules for hoosh (LLM Gateway) and daimon (Agent Runtime). These items fill gaps that Agnostic expects but AGNOS doesn't yet expose.
+
+| Item | Component | Effort | Status | Description |
+|------|-----------|--------|--------|-------------|
+| Reasoning trace ingest endpoint | daimon | 2 days | Not started | `POST /v1/agents/{id}/reasoning` — accept `ReasoningTrace` payloads from `shared/agnos_reasoning.py` |
+| Token budget endpoints | hoosh | 2 days | Not started | `POST /v1/tokens/check`, `/v1/tokens/reserve`, `/v1/tokens/report`, `/v1/tokens/release` — Agnostic's `config/agnos_token_budget.py` calls these |
+| Dashboard sync endpoint | daimon | 1 day | Not started | `POST /v1/dashboard/sync` — accept agent status/session/metrics snapshots from `shared/agnos_dashboard_bridge.py` |
+| Environment profiles endpoint | daimon | 1 day | Not started | `GET /v1/profiles/{name}` — return env var overrides for `dev`/`staging`/`prod` (Agnostic's `config/agnos_environment.py` currently uses local defaults) |
+| Vector search REST API | new service | 3 days | Not started | `POST /v1/vectors/search`, `/v1/vectors/collections` — Agnostic's `shared/agnos_vector_client.py` expects these |
+| OTLP collector configuration | infrastructure | 1 day | Not started | Document/configure OTLP endpoint for Agnostic's OpenTelemetry traces (`shared/telemetry.py` exports to `OTEL_EXPORTER_OTLP_ENDPOINT`) |
+
 ### Full Convergence (Demand-Gated)
 
 - [ ] **Unified SSO/OIDC provider** — AGNOS as OIDC-aware service
