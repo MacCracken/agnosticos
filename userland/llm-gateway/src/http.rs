@@ -754,6 +754,7 @@ async fn tokens_release(
 }
 
 /// Extract and validate Bearer token, returning an error response if auth fails.
+#[allow(clippy::result_large_err)]
 fn check_auth(
     state: &AppState,
     headers: &HeaderMap,
