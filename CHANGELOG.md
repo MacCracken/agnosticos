@@ -5,6 +5,36 @@ All notable changes to AGNOS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2026.3.7-#3] - 2026-03-07
+
+### Changed — CI/CD Workflow Audit & Container Publishing
+
+#### CI/CD Fixes
+- **Tag pattern fix** — All workflows (`ci.yml`, `release.yml`, `sbom.yml`) changed from `v*` to `[0-9]*` tag pattern to match CalVer format (`2026.3.7`, no `v` prefix)
+- **Removed duplicate CI trigger on tags** — Tags now only trigger `release.yml`, which calls `ci.yml` via `workflow_call`; eliminates concurrency group conflict that caused startup failures
+- **Release permission fix** — Added `security-events: write` and `packages: write` to `release.yml` top-level permissions; passed required permissions to `ci-gate` `workflow_call` so Trivy SARIF upload works
+- **SBOM permission fix** — Added `permissions: contents: write` to `generate-sbom` job (was causing 403 on release attachment)
+- **SBOM cleanup** — Removed `sbom/*.xml` from release upload (CycloneDX JSON only)
+- **release-automation.yml** — Removed dead `update-changelog` job (condition referenced `refs/tags/v` which never matched); added explicit `tag_name` for `workflow_dispatch`; fixed `github.ref_name` fallback (empty on `workflow_dispatch`)
+- **YAML indentation fix** — Fixed `with:` block indentation under `taiki-e/install-action@v2` in all 3 release/CI workflows
+- **Removed `libssl-dev`** — No longer needed in CI or Docker builds (rustls-tls)
+
+#### Container Publishing (GHCR)
+- **Multi-arch container image** — New `container` job in `release.yml` builds and pushes `linux/amd64` + `linux/arm64` images to `ghcr.io`
+- **Tags**: `ghcr.io/maccracken/agnosticos:<version>`, `:latest`, `:alpha`
+- **QEMU + Buildx** for arm64 cross-build, GHA layer caching for fast rebuilds
+- **Runs in parallel** with binary release build (both gate on `ci-gate`)
+
+#### Dockerfile Cleanup
+- Removed `libssl-dev` from builder stage (rustls-tls, no OpenSSL)
+- Removed `libssl3` from runtime stage
+- Dynamic version label via `ARG AGNOS_VERSION` (was hardcoded `2026.3.6`)
+
+#### Release UX
+- Release title now includes `(Alpha)` suffix
+- Release body includes alpha disclaimer banner
+- Pre-release badge retained for alpha builds
+
 ## [2026.3.7-#2] - 2026-03-07
 
 ### Changed — Code Audit, Refactoring & CI Hardening
