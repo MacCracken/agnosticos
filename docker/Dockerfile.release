@@ -4,7 +4,7 @@
 #
 # Expects binaries at: ./binaries/agent_runtime, ./binaries/llm_gateway, ./binaries/agnsh
 
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 
 # OCI annotations
 LABEL org.opencontainers.image.title="AGNOS"
