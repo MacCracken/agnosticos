@@ -326,10 +326,14 @@ jobs:
         name: fuzz-corpus-${{ matrix.target }}
         path: userland/fuzz/corpus/${{ matrix.target }}/
 
-  # CIS Benchmark Validation (push only, does not block merges)
+  # CIS Benchmark Validation (informational, push to main only)
+  # NOTE: CI runners are generic Ubuntu — scores will be low. This tracks
+  # regressions in the validation script itself, not actual AGNOS compliance.
+  # Real CIS scores come from testing on a configured AGNOS image.
   cis-validate:
     runs-on: ubuntu-latest
     if: github.event_name == 'push'
+    continue-on-error: true
 
     steps:
     - uses: actions/checkout@v4
@@ -352,15 +356,11 @@ jobs:
         path: cis-report.json
         if-no-files-found: warn
 
-    - name: Check Compliance
+    - name: Report Score
       run: |
         if [ -f cis-report.json ]; then
           SCORE=$(jq -r '.compliance.score' cis-report.json)
-          if [ "$SCORE" -lt 70 ] 2>/dev/null; then
-            echo "::warning::CIS compliance score is ${SCORE}%, below 70% threshold"
-          else
-            echo "::notice::CIS compliance score: ${SCORE}%"
-          fi
+          echo "::notice::CIS compliance score: ${SCORE}% (informational — CI runner, not AGNOS image)"
         else
-          echo "::warning::CIS report not found"
+          echo "::notice::CIS report not generated (expected on generic runners)"
         fi
