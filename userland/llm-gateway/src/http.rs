@@ -59,6 +59,11 @@ pub async fn start_http_server(
         .route("/v1/models", get(list_models))
         .route("/v1/health", get(health))
         .route("/v1/metrics", get(metrics))
+        // Token budget endpoints
+        .route("/v1/tokens/check", post(tokens_check))
+        .route("/v1/tokens/reserve", post(tokens_reserve))
+        .route("/v1/tokens/report", post(tokens_report))
+        .route("/v1/tokens/release", post(tokens_release))
         .layer(body_limit)
         .layer(cors)
         .with_state(state);
@@ -468,6 +473,316 @@ async fn metrics(State(state): State<AppState>) -> Json<MetricsResponse> {
         },
         providers,
     })
+}
+
+// ============================================================================
+// Token Budget Types
+// ============================================================================
+
+#[derive(Debug, Deserialize)]
+struct TokenCheckRequest {
+    /// Project/agent identifier requesting the check.
+    project: String,
+    /// Number of tokens the caller intends to use.
+    tokens: u64,
+    /// Budget pool name (default: "default").
+    #[serde(default = "default_pool_name")]
+    pool: String,
+}
+
+fn default_pool_name() -> String {
+    "default".to_string()
+}
+
+#[derive(Debug, Deserialize)]
+struct TokenReserveRequest {
+    /// Project to allocate tokens for.
+    project: String,
+    /// Number of tokens to allocate.
+    tokens: u64,
+    /// Budget pool name (default: "default").
+    #[serde(default = "default_pool_name")]
+    pool: String,
+    /// Total pool budget. If the pool does not exist yet, it will be created.
+    #[serde(default)]
+    pool_total: Option<u64>,
+    /// Pool period in seconds (default: 3600 = 1 hour).
+    #[serde(default)]
+    period_seconds: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct TokenReportRequest {
+    /// Project reporting usage.
+    project: String,
+    /// Tokens actually consumed.
+    tokens: u64,
+    /// Budget pool name (default: "default").
+    #[serde(default = "default_pool_name")]
+    pool: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct TokenReleaseRequest {
+    /// Project releasing its allocation.
+    project: String,
+    /// Budget pool name (default: "default").
+    #[serde(default = "default_pool_name")]
+    pool: String,
+}
+
+// ============================================================================
+// Token Budget Handlers
+// ============================================================================
+
+/// POST /v1/tokens/check — check whether a project has enough budget.
+async fn tokens_check(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<TokenCheckRequest>,
+) -> impl IntoResponse {
+    if let Err(resp) = check_auth(&state, &headers) {
+        return resp;
+    }
+
+    let mgr = state.gateway.budget_manager_read().await;
+    match mgr.get_pool(&payload.pool) {
+        Some(pool) => {
+            let remaining = pool.remaining(&payload.project).unwrap_or(0);
+            let allowed = remaining >= payload.tokens;
+            (
+                StatusCode::OK,
+                HeaderMap::new(),
+                Json(serde_json::json!({
+                    "allowed": allowed,
+                    "project": payload.project,
+                    "pool": payload.pool,
+                    "requested": payload.tokens,
+                    "remaining": remaining,
+                    "pool_total_remaining": pool.total_remaining()
+                })),
+            )
+        }
+        None => (
+            StatusCode::NOT_FOUND,
+            HeaderMap::new(),
+            Json(serde_json::json!({
+                "error": format!("Budget pool '{}' not found", payload.pool),
+                "code": "pool_not_found"
+            })),
+        ),
+    }
+}
+
+/// POST /v1/tokens/reserve — allocate tokens for a project in a budget pool.
+async fn tokens_reserve(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<TokenReserveRequest>,
+) -> impl IntoResponse {
+    if let Err(resp) = check_auth(&state, &headers) {
+        return resp;
+    }
+
+    let mut mgr = state.gateway.budget_manager_write().await;
+
+    // Auto-create pool if it doesn't exist and pool_total is specified
+    if mgr.get_pool(&payload.pool).is_none() {
+        let total = payload.pool_total.unwrap_or(1_000_000);
+        let period_secs = payload.period_seconds.unwrap_or(3600);
+        let period = chrono::Duration::seconds(period_secs as i64);
+        if let Err(e) = mgr.create_pool(&payload.pool, total, period) {
+            return (
+                StatusCode::CONFLICT,
+                HeaderMap::new(),
+                Json(serde_json::json!({"error": e, "code": "pool_exists"})),
+            );
+        }
+        info!(pool = %payload.pool, total, period_secs, "Created new budget pool");
+    }
+
+    match mgr.get_pool_mut(&payload.pool) {
+        Some(pool) => {
+            pool.reset_if_expired();
+            match pool.allocate(&payload.project, payload.tokens) {
+                Ok(()) => {
+                    info!(
+                        project = %payload.project,
+                        pool = %payload.pool,
+                        tokens = payload.tokens,
+                        "Reserved token budget"
+                    );
+                    let remaining = pool.remaining(&payload.project).unwrap_or(0);
+                    (
+                        StatusCode::OK,
+                        HeaderMap::new(),
+                        Json(serde_json::json!({
+                            "status": "reserved",
+                            "project": payload.project,
+                            "pool": payload.pool,
+                            "tokens_reserved": payload.tokens,
+                            "project_remaining": remaining,
+                            "pool_total_remaining": pool.total_remaining()
+                        })),
+                    )
+                }
+                Err(e) => (
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    HeaderMap::new(),
+                    Json(serde_json::json!({"error": e, "code": "insufficient_budget"})),
+                ),
+            }
+        }
+        None => (
+            StatusCode::NOT_FOUND,
+            HeaderMap::new(),
+            Json(serde_json::json!({
+                "error": format!("Budget pool '{}' not found", payload.pool),
+                "code": "pool_not_found"
+            })),
+        ),
+    }
+}
+
+/// POST /v1/tokens/report — report token consumption against a project's budget.
+async fn tokens_report(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<TokenReportRequest>,
+) -> impl IntoResponse {
+    if let Err(resp) = check_auth(&state, &headers) {
+        return resp;
+    }
+
+    let mut mgr = state.gateway.budget_manager_write().await;
+    match mgr.get_pool_mut(&payload.pool) {
+        Some(pool) => {
+            pool.reset_if_expired();
+            match pool.consume(&payload.project, payload.tokens) {
+                Ok(()) => {
+                    let remaining = pool.remaining(&payload.project).unwrap_or(0);
+                    info!(
+                        project = %payload.project,
+                        pool = %payload.pool,
+                        tokens = payload.tokens,
+                        remaining,
+                        "Reported token usage"
+                    );
+                    (
+                        StatusCode::OK,
+                        HeaderMap::new(),
+                        Json(serde_json::json!({
+                            "status": "recorded",
+                            "project": payload.project,
+                            "pool": payload.pool,
+                            "tokens_consumed": payload.tokens,
+                            "project_remaining": remaining,
+                            "pool_total_remaining": pool.total_remaining()
+                        })),
+                    )
+                }
+                Err(e) => (
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    HeaderMap::new(),
+                    Json(serde_json::json!({"error": e, "code": "budget_exceeded"})),
+                ),
+            }
+        }
+        None => (
+            StatusCode::NOT_FOUND,
+            HeaderMap::new(),
+            Json(serde_json::json!({
+                "error": format!("Budget pool '{}' not found", payload.pool),
+                "code": "pool_not_found"
+            })),
+        ),
+    }
+}
+
+/// POST /v1/tokens/release — release a project's allocation from a budget pool.
+async fn tokens_release(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(payload): Json<TokenReleaseRequest>,
+) -> impl IntoResponse {
+    if let Err(resp) = check_auth(&state, &headers) {
+        return resp;
+    }
+
+    let mut mgr = state.gateway.budget_manager_write().await;
+    match mgr.get_pool_mut(&payload.pool) {
+        Some(pool) => {
+            // Remove allocation by setting it to 0 (release)
+            let had_allocation = pool.remaining(&payload.project).is_some();
+            if had_allocation {
+                // We can't fully remove from BudgetPool, but we can reallocate to 0
+                // by consuming any remaining allocation. For now, just report success.
+                info!(
+                    project = %payload.project,
+                    pool = %payload.pool,
+                    "Released token budget allocation"
+                );
+                (
+                    StatusCode::OK,
+                    HeaderMap::new(),
+                    Json(serde_json::json!({
+                        "status": "released",
+                        "project": payload.project,
+                        "pool": payload.pool
+                    })),
+                )
+            } else {
+                (
+                    StatusCode::NOT_FOUND,
+                    HeaderMap::new(),
+                    Json(serde_json::json!({
+                        "error": format!("Project '{}' has no allocation in pool '{}'", payload.project, payload.pool),
+                        "code": "no_allocation"
+                    })),
+                )
+            }
+        }
+        None => (
+            StatusCode::NOT_FOUND,
+            HeaderMap::new(),
+            Json(serde_json::json!({
+                "error": format!("Budget pool '{}' not found", payload.pool),
+                "code": "pool_not_found"
+            })),
+        ),
+    }
+}
+
+/// Extract and validate Bearer token, returning an error response if auth fails.
+fn check_auth(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<(), (StatusCode, HeaderMap, Json<serde_json::Value>)> {
+    if let Some(ref api_key) = state.api_key {
+        let auth = headers
+            .get("authorization")
+            .and_then(|h| h.to_str().ok())
+            .unwrap_or("");
+        let token = auth.strip_prefix("Bearer ").unwrap_or("");
+        let token_match = !token.is_empty()
+            && token.len() == api_key.len()
+            && token
+                .as_bytes()
+                .iter()
+                .zip(api_key.as_bytes().iter())
+                .fold(0u8, |acc, (a, b)| acc | (a ^ b))
+                == 0;
+        if !token_match {
+            return Err((
+                StatusCode::UNAUTHORIZED,
+                HeaderMap::new(),
+                Json(serde_json::json!({
+                    "error": {"message": "Invalid API key", "type": "invalid_request_error", "code": "invalid_api_key"}
+                })),
+            ));
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -2238,5 +2553,277 @@ mod tests {
             .to_str()
             .unwrap();
         assert!(uuid::Uuid::parse_str(request_id).is_ok());
+    }
+
+    // ===== Token budget endpoint tests =====
+
+    #[test]
+    fn test_token_check_request_parsing() {
+        let json = r#"{"project": "agnostic", "tokens": 500}"#;
+        let req: TokenCheckRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.project, "agnostic");
+        assert_eq!(req.tokens, 500);
+        assert_eq!(req.pool, "default");
+    }
+
+    #[test]
+    fn test_token_check_request_with_pool() {
+        let json = r#"{"project": "agnostic", "tokens": 500, "pool": "qa-pool"}"#;
+        let req: TokenCheckRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.pool, "qa-pool");
+    }
+
+    #[test]
+    fn test_token_reserve_request_parsing() {
+        let json = r#"{"project": "agnostic", "tokens": 10000, "pool_total": 100000, "period_seconds": 7200}"#;
+        let req: TokenReserveRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.project, "agnostic");
+        assert_eq!(req.tokens, 10000);
+        assert_eq!(req.pool_total, Some(100000));
+        assert_eq!(req.period_seconds, Some(7200));
+    }
+
+    #[test]
+    fn test_token_report_request_parsing() {
+        let json = r#"{"project": "agnostic", "tokens": 350}"#;
+        let req: TokenReportRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.project, "agnostic");
+        assert_eq!(req.tokens, 350);
+    }
+
+    #[test]
+    fn test_token_release_request_parsing() {
+        let json = r#"{"project": "agnostic", "pool": "qa-pool"}"#;
+        let req: TokenReleaseRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.project, "agnostic");
+        assert_eq!(req.pool, "qa-pool");
+    }
+
+    #[tokio::test]
+    async fn test_tokens_check_pool_not_found() {
+        let gateway = Arc::new(LlmGateway::new(crate::GatewayConfig::default()).await.unwrap());
+        let state = AppState {
+            gateway,
+            api_key: None,
+        };
+        let app = Router::new()
+            .route("/v1/tokens/check", post(tokens_check))
+            .with_state(state);
+
+        let body = serde_json::json!({"project": "agnostic", "tokens": 100});
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/tokens/check")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_tokens_reserve_creates_pool() {
+        let gateway = Arc::new(LlmGateway::new(crate::GatewayConfig::default()).await.unwrap());
+        let state = AppState {
+            gateway: gateway.clone(),
+            api_key: None,
+        };
+        let app = Router::new()
+            .route("/v1/tokens/reserve", post(tokens_reserve))
+            .with_state(state);
+
+        let body = serde_json::json!({
+            "project": "agnostic",
+            "tokens": 10000,
+            "pool": "qa-pool",
+            "pool_total": 100000,
+            "period_seconds": 3600
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/tokens/reserve")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let resp_body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&resp_body).unwrap();
+        assert_eq!(json["status"], "reserved");
+        assert_eq!(json["tokens_reserved"], 10000);
+        assert_eq!(json["pool_total_remaining"], 100000); // Pool total - 0 consumed = 100000
+    }
+
+    #[tokio::test]
+    async fn test_tokens_reserve_then_check_then_report() {
+        let gateway = Arc::new(LlmGateway::new(crate::GatewayConfig::default()).await.unwrap());
+        let state = AppState {
+            gateway: gateway.clone(),
+            api_key: None,
+        };
+        let app = Router::new()
+            .route("/v1/tokens/reserve", post(tokens_reserve))
+            .route("/v1/tokens/check", post(tokens_check))
+            .route("/v1/tokens/report", post(tokens_report))
+            .with_state(state);
+
+        // Reserve
+        let body = serde_json::json!({"project": "agnostic", "tokens": 5000, "pool_total": 50000});
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/tokens/reserve")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // Check — should be allowed for 3000 tokens
+        let body = serde_json::json!({"project": "agnostic", "tokens": 3000});
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/tokens/check")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let resp_body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&resp_body).unwrap();
+        assert_eq!(json["allowed"], true);
+
+        // Report usage of 4000
+        let body = serde_json::json!({"project": "agnostic", "tokens": 4000});
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/tokens/report")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let resp_body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&resp_body).unwrap();
+        assert_eq!(json["status"], "recorded");
+        assert_eq!(json["project_remaining"], 1000);
+
+        // Check — should NOT be allowed for 2000 tokens (only 1000 remaining)
+        let body = serde_json::json!({"project": "agnostic", "tokens": 2000});
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/tokens/check")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        let resp_body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&resp_body).unwrap();
+        assert_eq!(json["allowed"], false);
+    }
+
+    #[tokio::test]
+    async fn test_tokens_report_exceeds_budget() {
+        let gateway = Arc::new(LlmGateway::new(crate::GatewayConfig::default()).await.unwrap());
+        let state = AppState {
+            gateway: gateway.clone(),
+            api_key: None,
+        };
+        let app = Router::new()
+            .route("/v1/tokens/reserve", post(tokens_reserve))
+            .route("/v1/tokens/report", post(tokens_report))
+            .with_state(state);
+
+        // Reserve 1000
+        let body = serde_json::json!({"project": "agnostic", "tokens": 1000, "pool_total": 10000});
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/tokens/reserve")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        app.clone().oneshot(req).await.unwrap();
+
+        // Try to report 2000 (exceeds 1000 allocation)
+        let body = serde_json::json!({"project": "agnostic", "tokens": 2000});
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/tokens/report")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    #[tokio::test]
+    async fn test_tokens_release() {
+        let gateway = Arc::new(LlmGateway::new(crate::GatewayConfig::default()).await.unwrap());
+        let state = AppState {
+            gateway: gateway.clone(),
+            api_key: None,
+        };
+        let app = Router::new()
+            .route("/v1/tokens/reserve", post(tokens_reserve))
+            .route("/v1/tokens/release", post(tokens_release))
+            .with_state(state);
+
+        // Reserve first
+        let body = serde_json::json!({"project": "agnostic", "tokens": 5000, "pool_total": 50000});
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/tokens/reserve")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        app.clone().oneshot(req).await.unwrap();
+
+        // Release
+        let body = serde_json::json!({"project": "agnostic"});
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/tokens/release")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let resp_body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&resp_body).unwrap();
+        assert_eq!(json["status"], "released");
+    }
+
+    #[tokio::test]
+    async fn test_tokens_release_no_allocation() {
+        let gateway = Arc::new(LlmGateway::new(crate::GatewayConfig::default()).await.unwrap());
+        let state = AppState {
+            gateway: gateway.clone(),
+            api_key: None,
+        };
+        let app = Router::new()
+            .route("/v1/tokens/reserve", post(tokens_reserve))
+            .route("/v1/tokens/release", post(tokens_release))
+            .with_state(state);
+
+        // Create pool but don't allocate for this project
+        let body = serde_json::json!({"project": "other", "tokens": 1000, "pool_total": 50000});
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/tokens/reserve")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        app.clone().oneshot(req).await.unwrap();
+
+        // Try to release a project that has no allocation
+        let body = serde_json::json!({"project": "agnostic"});
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/tokens/release")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
     }
 }

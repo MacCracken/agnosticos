@@ -157,6 +157,44 @@ All endpoints are prefixed with `/v1`. Bearer token authentication and localhost
 | GET | `/traces` | List traces |
 | GET | `/traces/spans` | List spans |
 
+### Environment Profiles
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/profiles` | List all environment profiles |
+| GET | `/profiles/:name` | Get env var overrides for a named profile (dev, staging, prod, custom) |
+| PUT | `/profiles/:name` | Create or update a named environment profile |
+
+Default profiles (dev, staging, prod) ship with sensible defaults for log levels, sandbox mode, cache TTL, rate limiting, and audit levels.
+
+### Dashboard Sync
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/dashboard/sync` | Submit agent status, session info, and metrics from external consumers |
+| GET | `/dashboard/latest` | Get the most recent dashboard snapshot |
+
+### Reasoning Traces
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/agents/:id/reasoning` | Submit a reasoning trace for an agent |
+| GET | `/agents/:id/reasoning` | List reasoning traces for an agent |
+
+Reasoning traces capture the step-by-step thought process of AI agents (observations, thoughts, actions, reflections). Used by AGNOSTIC's `shared/agnos_reasoning.py` to submit `ReasoningTrace` payloads for observability and debugging.
+
+Query parameters for GET: `min_confidence` (filter by minimum confidence score), `limit` (max results, default 100).
+
+### Vector Search
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/vectors/search` | Search vectors by embedding similarity (cosine, supports `min_score` and `top_k`) |
+| POST | `/vectors/insert` | Insert vectors into a collection (auto-creates if needed) |
+| GET | `/vectors/collections` | List all vector collections with counts and dimensions |
+| POST | `/vectors/collections` | Create a new named vector collection |
+| DELETE | `/vectors/collections/:name` | Delete a vector collection |
+
 ### Ark Package Management
 
 | Method | Endpoint | Description |

@@ -58,6 +58,15 @@ A trust-enforced distribution system for third-party agents:
 - **Migration** — warm/cold/live agent checkpointing (memory store, vector indices, IPC queues, sandbox config), <500ms target for warm migration
 - **Scheduling** — resource-aware placement across nodes (CPU/memory/GPU headroom), locality preferences, preemption with priority queues
 
+### Reasoning Trace Ingestion
+
+Agents can submit structured reasoning traces for observability:
+
+- **Ingest** — `POST /v1/agents/:id/reasoning` accepts `ReasoningTrace` payloads with ordered steps (observation, thought, action, reflection), confidence scores, tool usage, and metadata
+- **Query** — `GET /v1/agents/:id/reasoning` lists stored traces with optional confidence filtering
+- **Storage** — Per-agent circular buffer (1,000 traces max per agent)
+- **Integration** — Designed for AGNOSTIC's `shared/agnos_reasoning.py` module
+
 ### Alpha Polish Features
 
 - Persistent agent memory (KV store at `/var/lib/agnos/agent-memory/`)

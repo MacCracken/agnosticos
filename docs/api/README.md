@@ -1,7 +1,7 @@
 # AGNOS API Reference
 
-> **Last Updated:** 2026-03-07
-> **Version:** 2026.3.7
+> **Last Updated:** 2026-03-08
+> **Version:** 2026.3.8
 
 AGNOS exposes two HTTP/JSON services for interacting with the system. Both bind to `127.0.0.1` by default.
 
@@ -90,6 +90,29 @@ AGNOS exposes two HTTP/JSON services for interacting with the system. Both bind 
 |--------|------|-------------|
 | GET | `/v1/traces` | Query distributed traces |
 | POST | `/v1/traces/spans` | Submit trace spans |
+| GET | `/v1/traces/otlp-config` | Get OTLP collector configuration for external consumers |
+
+### Environment Profiles
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/v1/profiles` | List all environment profiles |
+| GET | `/v1/profiles/:name` | Get a specific environment profile by name (dev, staging, prod, or custom) |
+| PUT | `/v1/profiles/:name` | Create or update a named environment profile |
+
+### Dashboard Sync
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/v1/dashboard/sync` | Submit a dashboard sync snapshot (agent status, session, metrics) |
+| GET | `/v1/dashboard/latest` | Get the most recent dashboard snapshot |
+
+### Reasoning Traces
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/v1/agents/:id/reasoning` | Submit a reasoning trace for an agent |
+| GET | `/v1/agents/:id/reasoning` | List reasoning traces for an agent (supports `?min_confidence=` and `?limit=`) |
 
 ### Marketplace (mela)
 
@@ -105,6 +128,16 @@ AGNOS exposes two HTTP/JSON services for interacting with the system. Both bind 
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/v1/ark/*` | Ark package management endpoints (install, remove, query, update) |
+
+### Vector Search
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/v1/vectors/search` | Search vectors by embedding similarity (cosine) |
+| POST | `/v1/vectors/insert` | Insert vectors into a collection (auto-creates if needed) |
+| GET | `/v1/vectors/collections` | List all vector collections |
+| POST | `/v1/vectors/collections` | Create a new vector collection |
+| DELETE | `/v1/vectors/collections/:name` | Delete a vector collection |
 
 ### Additional Endpoints
 
@@ -129,6 +162,15 @@ hoosh provides an OpenAI-compatible HTTP API so any client library or tool that 
 | POST | `/v1/completions` | Single-turn text completion |
 | GET | `/v1/models` | List available models across all configured providers |
 | GET | `/v1/health` | Gateway health check |
+
+### Token Budget Management
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/v1/tokens/check` | Check whether a project has enough token budget remaining |
+| POST | `/v1/tokens/reserve` | Allocate tokens for a project in a budget pool (auto-creates pool if needed) |
+| POST | `/v1/tokens/report` | Report actual token consumption against a project's budget |
+| POST | `/v1/tokens/release` | Release a project's allocation from a budget pool |
 
 ### Custom Headers
 

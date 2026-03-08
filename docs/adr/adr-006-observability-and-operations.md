@@ -61,6 +61,17 @@ All agent actions recorded in an append-only log at `/var/log/agnos/audit.log`:
 - External agents can submit events via `POST /v1/audit/events` (rate-limited per source)
 - Events correlated with traces via `correlation_id`
 
+### Token Budget Management
+
+Cross-project token budgets for LLM inference:
+
+- **Budget pools** — named pools with total token allocation and configurable reset period
+- **Per-project allocation** — projects reserve a portion of the pool's budget
+- **Consumption tracking** — usage reported against allocation, rejects requests that exceed budget
+- **API** — `POST /v1/tokens/check`, `/v1/tokens/reserve`, `/v1/tokens/report`, `/v1/tokens/release` on hoosh (port 8088)
+- **Auto-rebalance** — unused tokens from under-utilizing projects redistributed proportionally
+- **Integration** — AGNOSTIC's `config/agnos_token_budget.py` calls these endpoints
+
 ### Testing Strategy and CI/CD
 
 Multi-layer testing:

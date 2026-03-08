@@ -1,7 +1,7 @@
 # AGNOS Development Roadmap
 
-> **Status**: Pre-Alpha | **Last Updated**: 2026-03-07
-> **All development phases complete** — 9096+ tests, ~82% coverage, 0 warnings
+> **Status**: Pre-Alpha | **Last Updated**: 2026-03-08
+> **All development phases complete** — 9139+ tests, ~82% coverage, 0 warnings
 > **Next Milestone**: Alpha Release (Target: Q2 2026)
 
 ---
@@ -169,12 +169,12 @@ Agnostic already has client modules for hoosh (LLM Gateway) and daimon (Agent Ru
 
 | Item | Component | Effort | Status | Description |
 |------|-----------|--------|--------|-------------|
-| Reasoning trace ingest endpoint | daimon | 2 days | Not started | `POST /v1/agents/{id}/reasoning` — accept `ReasoningTrace` payloads from `shared/agnos_reasoning.py` |
-| Token budget endpoints | hoosh | 2 days | Not started | `POST /v1/tokens/check`, `/v1/tokens/reserve`, `/v1/tokens/report`, `/v1/tokens/release` — Agnostic's `config/agnos_token_budget.py` calls these |
-| Dashboard sync endpoint | daimon | 1 day | Not started | `POST /v1/dashboard/sync` — accept agent status/session/metrics snapshots from `shared/agnos_dashboard_bridge.py` |
-| Environment profiles endpoint | daimon | 1 day | Not started | `GET /v1/profiles/{name}` — return env var overrides for `dev`/`staging`/`prod` (Agnostic's `config/agnos_environment.py` currently uses local defaults) |
-| Vector search REST API | new service | 3 days | Not started | `POST /v1/vectors/search`, `/v1/vectors/collections` — Agnostic's `shared/agnos_vector_client.py` expects these |
-| OTLP collector configuration | infrastructure | 1 day | Not started | Document/configure OTLP endpoint for Agnostic's OpenTelemetry traces (`shared/telemetry.py` exports to `OTEL_EXPORTER_OTLP_ENDPOINT`) |
+| Reasoning trace ingest endpoint | daimon | 2 days | ✅ Done | `POST /v1/agents/{id}/reasoning` — accept `ReasoningTrace` payloads from `shared/agnos_reasoning.py` |
+| Token budget endpoints | hoosh | 2 days | ✅ Done | `POST /v1/tokens/check`, `/v1/tokens/reserve`, `/v1/tokens/report`, `/v1/tokens/release` — Agnostic's `config/agnos_token_budget.py` calls these |
+| Dashboard sync endpoint | daimon | 1 day | ✅ Done | `POST /v1/dashboard/sync` — accept agent status/session/metrics snapshots from `shared/agnos_dashboard_bridge.py` |
+| Environment profiles endpoint | daimon | 1 day | ✅ Done | `GET /v1/profiles/{name}` — return env var overrides for `dev`/`staging`/`prod` (Agnostic's `config/agnos_environment.py` currently uses local defaults) |
+| Vector search REST API | daimon | 3 days | ✅ Done | `POST /v1/vectors/search`, `/v1/vectors/collections` — Agnostic's `shared/agnos_vector_client.py` expects these |
+| OTLP collector configuration | daimon | 1 day | ✅ Done | `GET /v1/traces/otlp-config` + documented env vars for Agnostic's OpenTelemetry traces (`shared/telemetry.py` exports to `OTEL_EXPORTER_OTLP_ENDPOINT`) |
 
 ### Full Convergence (Demand-Gated)
 
@@ -285,4 +285,4 @@ See [CONTRIBUTING.md](/CONTRIBUTING.md) for:
 
 ---
 
-*Last Updated: 2026-03-07 | Next Review: 2026-03-14*
+*Last Updated: 2026-03-08 | Next Review: 2026-03-15*

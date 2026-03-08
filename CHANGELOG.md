@@ -5,6 +5,70 @@ All notable changes to AGNOS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2026.3.8] - 2026-03-08
+
+### Added — Agnostic QA Integration: Reasoning Trace Ingest
+
+#### Reasoning Trace Endpoint (daimon)
+- **`POST /v1/agents/:id/reasoning`** — ingest structured reasoning traces from AI agents
+  - Accepts `ReasoningTrace` payloads with ordered steps (observation, thought, action, reflection)
+  - Per-step confidence scores, tool usage tracking, and duration metrics
+  - Model and token usage metadata for cost attribution
+  - Arbitrary metadata map (session ID, crew name, etc.)
+  - Per-agent circular buffer storage (1,000 traces max per agent)
+  - Validation: non-empty task, at least one step, confidence in [0.0, 1.0]
+- **`GET /v1/agents/:id/reasoning`** — list reasoning traces for an agent
+  - Optional `min_confidence` query parameter for filtering
+  - Optional `limit` query parameter (default 100, max 1,000)
+- **New handler module**: `http_api/handlers/reasoning.rs` with types `ReasoningStep`, `ReasoningTrace`, `StoredReasoningTrace`
+- **13 new tests** covering submission, validation (empty steps, empty task, invalid confidence), listing, confidence filtering, serialization roundtrips
+- Designed for integration with AGNOSTIC's `shared/agnos_reasoning.py`
+
+#### Token Budget Endpoints (hoosh)
+- **`POST /v1/tokens/check`** — check whether a project has enough budget remaining in a pool
+- **`POST /v1/tokens/reserve`** — allocate tokens for a project in a named budget pool (auto-creates pool if needed with configurable total and period)
+- **`POST /v1/tokens/report`** — report actual token consumption against a project's allocation; rejects if budget exceeded
+- **`POST /v1/tokens/release`** — release a project's allocation from a budget pool
+- Wired existing `BudgetPool`/`BudgetManager` infrastructure from `accounting.rs` to HTTP API
+- Added `budget_manager` (RwLock<BudgetManager>) to `LlmGateway` struct
+- Extracted `check_auth()` helper for DRY auth validation across handlers
+- **11 new tests** covering request parsing, pool creation, reserve→check→report flow, budget exceeded, release, and no-allocation errors
+- Designed for integration with AGNOSTIC's `config/agnos_token_budget.py`
+
+#### Dashboard Sync Endpoint (daimon)
+- **`POST /v1/dashboard/sync`** — accept dashboard sync snapshots from external consumers (agent statuses, session info, aggregate metrics, metadata)
+- **`GET /v1/dashboard/latest`** — retrieve the most recent dashboard snapshot
+- **New handler module**: `http_api/handlers/dashboard.rs` with types `AgentStatus`, `SessionInfo`, `DashboardMetrics`, `DashboardSyncRequest`, `StoredDashboardSnapshot`
+- Circular buffer storage (500 snapshots max)
+- **6 new tests** covering sync submission, validation, empty state, sync-then-latest flow, serialization
+- Designed for integration with AGNOSTIC's `shared/agnos_dashboard_bridge.py`
+
+#### Environment Profiles Endpoint (daimon)
+- **`GET /v1/profiles`** — list all environment profiles
+- **`GET /v1/profiles/:name`** — get env var overrides for a named profile
+- **`PUT /v1/profiles/:name`** — create or update a custom environment profile
+- Default profiles shipped: `dev` (permissive, debug logging), `staging` (standard security), `prod` (strict, full audit)
+- **New handler module**: `http_api/handlers/profiles.rs` with types `EnvironmentProfile`, `UpsertProfileRequest`
+- **9 new tests** covering get dev/staging/prod, not found, list, upsert create/update, serialization
+- Designed for integration with AGNOSTIC's `config/agnos_environment.py`
+
+#### Vector Search REST API (daimon)
+- **`POST /v1/vectors/search`** — search vectors by embedding similarity (cosine), supports `min_score` threshold and `top_k` parameters
+- **`POST /v1/vectors/insert`** — insert vectors into a named collection (auto-creates collection if it doesn't exist)
+- **`GET /v1/vectors/collections`** — list all vector collections with vector counts and dimensions
+- **`POST /v1/vectors/collections`** — create a new named vector collection with optional pre-set dimensionality
+- **`DELETE /v1/vectors/collections/:name`** — delete a vector collection
+- **New handler module**: `http_api/handlers/vectors.rs` — wraps existing `vector_store::VectorIndex` with REST API
+- Per-collection named vector stores in `ApiState` (auto-created on insert, explicit creation/deletion)
+- **12 new tests** covering collections CRUD, insert/search flow, empty embedding, min_score filtering, duplicate/not-found errors
+- Designed for integration with AGNOSTIC's `shared/agnos_vector_client.py`
+
+#### OTLP Collector Configuration (daimon)
+- **`GET /v1/traces/otlp-config`** — returns OTLP collector configuration (endpoint, protocol, sampling rate, resource attributes, enabled flag)
+- Reads from standard OpenTelemetry environment variables (`OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_PROTOCOL`, `OTEL_BSP_SCHEDULE_DELAY`, `OTEL_TRACES_SAMPLER_ARG`) and AGNOS-specific `AGNOS_OTLP_ENABLED`
+- **2 new tests** covering endpoint response and type serialization
+- Documented full OTLP configuration guide in `docs/AGNOSTIC_INTEGRATION.md` for Agnostic's `shared/telemetry.py`
+
 ## [2026.3.7-#4] - 2026-03-07
 
 ### Added — Web Browser Support

@@ -9,6 +9,27 @@ use crate::http_api::state::ApiState;
 use crate::http_api::MAX_TRACES;
 
 // ---------------------------------------------------------------------------
+// OTLP configuration types
+// ---------------------------------------------------------------------------
+
+/// OTLP collector configuration returned to external consumers.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OtlpConfig {
+    /// The OTLP endpoint URL for trace export.
+    pub endpoint: String,
+    /// Protocol to use ("grpc" or "http/protobuf").
+    pub protocol: String,
+    /// Export interval in seconds.
+    pub export_interval_seconds: u64,
+    /// Sampling rate (0.0 to 1.0).
+    pub sampling_rate: f64,
+    /// Resource attributes to include in exported spans.
+    pub resource_attributes: std::collections::HashMap<String, String>,
+    /// Whether the OTLP collector is enabled.
+    pub enabled: bool,
+}
+
+// ---------------------------------------------------------------------------
 // Trace types
 // ---------------------------------------------------------------------------
 
@@ -91,6 +112,45 @@ pub async fn list_traces_handler(
     }
 
     Json(serde_json::json!({"traces": result, "total": result.len()}))
+}
+
+/// GET /v1/traces/otlp-config — return OTLP collector configuration for external consumers.
+pub async fn otlp_config_handler() -> impl IntoResponse {
+    let endpoint = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT")
+        .unwrap_or_else(|_| "http://127.0.0.1:4317".to_string());
+    let protocol = std::env::var("OTEL_EXPORTER_OTLP_PROTOCOL")
+        .unwrap_or_else(|_| "grpc".to_string());
+    let export_interval: u64 = std::env::var("OTEL_BSP_SCHEDULE_DELAY")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(5000)
+        / 1000;
+    let sampling_rate: f64 = std::env::var("OTEL_TRACES_SAMPLER_ARG")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(1.0);
+    let enabled = std::env::var("AGNOS_OTLP_ENABLED")
+        .map(|v| v == "true" || v == "1")
+        .unwrap_or(true);
+
+    let mut resource_attributes = std::collections::HashMap::new();
+    resource_attributes.insert("service.name".to_string(), "agnos-agent-runtime".to_string());
+    resource_attributes.insert("service.version".to_string(), env!("CARGO_PKG_VERSION").to_string());
+
+    if let Ok(hostname) = std::env::var("HOSTNAME") {
+        resource_attributes.insert("host.name".to_string(), hostname);
+    }
+
+    let config = OtlpConfig {
+        endpoint,
+        protocol,
+        export_interval_seconds: export_interval,
+        sampling_rate,
+        resource_attributes,
+        enabled,
+    };
+
+    Json(serde_json::to_value(config).unwrap())
 }
 
 pub async fn list_spans_handler(State(state): State<ApiState>) -> impl IntoResponse {

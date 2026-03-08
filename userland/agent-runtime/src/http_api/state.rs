@@ -13,6 +13,9 @@ use crate::learning::AnomalyDetector;
 use crate::rag::{RagConfig, RagPipeline};
 
 use super::handlers::audit::AuditEvent;
+use super::handlers::dashboard::StoredDashboardSnapshot;
+use super::handlers::profiles::EnvironmentProfile;
+use super::handlers::reasoning::StoredReasoningTrace;
 use super::handlers::webhooks::WebhookRegistration;
 use super::types::AgentDetail;
 
@@ -87,6 +90,14 @@ pub struct ApiState {
     pub anomaly_detector: Arc<RwLock<AnomalyDetector>>,
     /// Marketplace local registry for package management.
     pub marketplace_registry: Arc<RwLock<crate::marketplace::local_registry::LocalRegistry>>,
+    /// Per-agent reasoning trace store (agent_id -> traces).
+    pub reasoning_traces: Arc<RwLock<HashMap<String, VecDeque<StoredReasoningTrace>>>>,
+    /// Dashboard sync snapshots from external consumers.
+    pub dashboard_snapshots: Arc<RwLock<VecDeque<StoredDashboardSnapshot>>>,
+    /// Named environment profiles (dev/staging/prod).
+    pub environment_profiles: Arc<RwLock<HashMap<String, EnvironmentProfile>>>,
+    /// Named vector collections for semantic search.
+    pub vector_collections: Arc<RwLock<HashMap<String, crate::vector_store::VectorIndex>>>,
     /// Optional Bearer token for API authentication.
     /// When `Some`, all endpoints except `GET /v1/health` require it.
     pub api_key: Option<String>,
@@ -132,6 +143,12 @@ impl ApiState {
             rpc_registry: Arc::new(RwLock::new(RpcRegistry::new())),
             anomaly_detector: Arc::new(RwLock::new(AnomalyDetector::new(100, 2.0))),
             marketplace_registry: Arc::new(RwLock::new(marketplace_registry)),
+            reasoning_traces: Arc::new(RwLock::new(HashMap::new())),
+            dashboard_snapshots: Arc::new(RwLock::new(VecDeque::new())),
+            environment_profiles: Arc::new(RwLock::new(
+                super::handlers::profiles::default_profiles(),
+            )),
+            vector_collections: Arc::new(RwLock::new(HashMap::new())),
             api_key,
         }
     }
@@ -156,6 +173,12 @@ impl ApiState {
             rpc_registry: Arc::new(RwLock::new(RpcRegistry::new())),
             anomaly_detector: Arc::new(RwLock::new(AnomalyDetector::new(100, 2.0))),
             marketplace_registry: Arc::new(RwLock::new(tmp_marketplace)),
+            reasoning_traces: Arc::new(RwLock::new(HashMap::new())),
+            dashboard_snapshots: Arc::new(RwLock::new(VecDeque::new())),
+            environment_profiles: Arc::new(RwLock::new(
+                super::handlers::profiles::default_profiles(),
+            )),
+            vector_collections: Arc::new(RwLock::new(HashMap::new())),
             api_key,
         }
     }

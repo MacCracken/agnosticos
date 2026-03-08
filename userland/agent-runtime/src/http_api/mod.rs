@@ -30,6 +30,9 @@ pub use handlers::audit::{
 pub use handlers::marketplace::{MarketplaceInstallRequest, MarketplaceSearchQuery};
 pub use handlers::memory::MemorySetRequest;
 pub use handlers::rpc::{RpcCallRequest, RpcRegisterRequest};
+pub use handlers::dashboard::{DashboardSyncRequest, StoredDashboardSnapshot};
+pub use handlers::profiles::EnvironmentProfile;
+pub use handlers::reasoning::{ReasoningQueryParams, ReasoningStep, ReasoningTrace, StoredReasoningTrace};
 pub use handlers::traces::{TraceQueryParams, TraceStep, TraceSubmitRequest};
 pub use handlers::webhooks::{RegisterWebhookRequest, WebhookRegistration};
 
@@ -53,13 +56,17 @@ pub fn build_router(state: ApiState) -> Router {
     use handlers::anomaly::*;
     use handlers::ark::*;
     use handlers::audit::*;
+    use handlers::dashboard::*;
     use handlers::marketplace::*;
+    use handlers::profiles::*;
     use handlers::memory::*;
     use handlers::rag::*;
+    use handlers::reasoning::*;
     use handlers::rpc::*;
     use handlers::sandbox::*;
     use handlers::system_update::*;
     use handlers::traces::*;
+    use handlers::vectors::*;
     use handlers::webhooks::*;
 
     Router::new()
@@ -78,6 +85,25 @@ pub fn build_router(state: ApiState) -> Router {
         .route("/v1/audit", get(list_audit_handler))
         .route("/v1/audit/chain", get(audit_chain_handler))
         .route("/v1/audit/chain/verify", get(audit_chain_verify_handler))
+        // Reasoning trace routes
+        .route("/v1/agents/:id/reasoning", post(submit_reasoning_handler))
+        .route("/v1/agents/:id/reasoning", get(list_reasoning_handler))
+        // Dashboard sync routes
+        .route("/v1/dashboard/sync", post(dashboard_sync_handler))
+        .route("/v1/dashboard/latest", get(dashboard_latest_handler))
+        // Environment profile routes
+        .route("/v1/profiles", get(list_profiles_handler))
+        .route("/v1/profiles/:name", get(get_profile_handler))
+        .route("/v1/profiles/:name", put(upsert_profile_handler))
+        // Vector search routes
+        .route("/v1/vectors/search", post(vector_search_handler))
+        .route("/v1/vectors/insert", post(vector_insert_handler))
+        .route("/v1/vectors/collections", get(vector_collections_handler))
+        .route("/v1/vectors/collections", post(create_collection_handler))
+        .route(
+            "/v1/vectors/collections/:name",
+            delete(delete_collection_handler),
+        )
         .route("/v1/agents/:id/memory", get(memory_list_handler))
         .route("/v1/agents/:id/memory/:key", get(memory_get_handler))
         .route("/v1/agents/:id/memory/:key", put(memory_set_handler))
@@ -85,6 +111,7 @@ pub fn build_router(state: ApiState) -> Router {
         .route("/v1/traces", post(submit_trace_handler))
         .route("/v1/traces", get(list_traces_handler))
         .route("/v1/traces/spans", get(list_spans_handler))
+        .route("/v1/traces/otlp-config", get(otlp_config_handler))
         .route("/v1/mcp/tools", get(crate::mcp_server::mcp_tools_handler))
         .route(
             "/v1/mcp/tools/call",

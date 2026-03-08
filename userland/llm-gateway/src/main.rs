@@ -22,7 +22,7 @@ mod http;
 mod providers;
 pub mod rate_limiter;
 
-use crate::accounting::TokenAccounting;
+use crate::accounting::{BudgetManager, TokenAccounting};
 use crate::cache::ResponseCache;
 use crate::http::start_http_server;
 use crate::providers::{LlmProvider, ProviderType};
@@ -113,6 +113,8 @@ pub struct LlmGateway {
     cache: ResponseCache,
     /// Token accounting for agents
     accounting: TokenAccounting,
+    /// Token budget manager for cross-project budget pools
+    budget_manager: RwLock<BudgetManager>,
     /// Configuration
     config: GatewayConfig,
     /// TLS certificate pin set for cloud provider verification
@@ -183,6 +185,7 @@ impl LlmGateway {
             agent_rate_limiter: AgentRateLimiter::new(),
             cache,
             accounting,
+            budget_manager: RwLock::new(BudgetManager::new()),
             config,
             cert_pins,
         })
@@ -654,6 +657,20 @@ impl LlmGateway {
     /// Get a reference to the per-agent rate limiter.
     pub fn rate_limits(&self) -> &AgentRateLimiter {
         &self.agent_rate_limiter
+    }
+
+    /// Get a read lock on the budget manager.
+    pub async fn budget_manager_read(
+        &self,
+    ) -> tokio::sync::RwLockReadGuard<'_, BudgetManager> {
+        self.budget_manager.read().await
+    }
+
+    /// Get a write lock on the budget manager.
+    pub async fn budget_manager_write(
+        &self,
+    ) -> tokio::sync::RwLockWriteGuard<'_, BudgetManager> {
+        self.budget_manager.write().await
     }
 
     /// Spawn a background task that pings each provider every 30 seconds via `list_models()`

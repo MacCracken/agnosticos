@@ -2093,4 +2093,939 @@ mod tests {
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     }
+
+    // ===== Reasoning trace tests =====
+
+    #[tokio::test]
+    async fn test_submit_reasoning_trace() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        let req_body = serde_json::json!({
+            "task": "Analyze code quality of authentication module",
+            "steps": [
+                {
+                    "step": 1,
+                    "kind": "observation",
+                    "content": "Reading auth module source code",
+                    "confidence": 0.9,
+                    "duration_ms": 200,
+                    "tool": "file_read",
+                    "tool_output": "Found 3 files"
+                },
+                {
+                    "step": 2,
+                    "kind": "thought",
+                    "content": "The module uses constant-time comparison, which is good",
+                    "confidence": 0.95,
+                    "duration_ms": 150
+                },
+                {
+                    "step": 3,
+                    "kind": "action",
+                    "content": "Running static analysis",
+                    "duration_ms": 500,
+                    "tool": "clippy"
+                }
+            ],
+            "conclusion": "Auth module is well-structured with no critical issues",
+            "confidence": 0.92,
+            "duration_ms": 850,
+            "model": "llama2",
+            "tokens_used": 1500,
+            "metadata": {
+                "session_id": "sess-123",
+                "crew": "qa-crew"
+            }
+        });
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/agents/qa-agent/reasoning")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["status"], "accepted");
+        assert_eq!(json["agent_id"], "qa-agent");
+        assert_eq!(json["steps_recorded"], 3);
+        assert_eq!(json["total_traces"], 1);
+        assert!(json["trace_id"].as_str().is_some());
+    }
+
+    #[tokio::test]
+    async fn test_submit_reasoning_empty_steps() {
+        let app = test_app();
+        let req_body = serde_json::json!({
+            "task": "Some task",
+            "steps": [],
+            "duration_ms": 0
+        });
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/agents/test-agent/reasoning")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_submit_reasoning_empty_task() {
+        let app = test_app();
+        let req_body = serde_json::json!({
+            "task": "",
+            "steps": [{"step": 1, "kind": "thought", "content": "test", "duration_ms": 10, "success": true}],
+            "duration_ms": 10
+        });
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/agents/test-agent/reasoning")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_submit_reasoning_invalid_confidence() {
+        let app = test_app();
+        let req_body = serde_json::json!({
+            "task": "Test task",
+            "steps": [{"step": 1, "kind": "thought", "content": "test", "duration_ms": 10}],
+            "confidence": 1.5,
+            "duration_ms": 10
+        });
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/agents/test-agent/reasoning")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_submit_reasoning_invalid_step_confidence() {
+        let app = test_app();
+        let req_body = serde_json::json!({
+            "task": "Test task",
+            "steps": [{"step": 1, "kind": "thought", "content": "test", "confidence": -0.1, "duration_ms": 10}],
+            "duration_ms": 10
+        });
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/agents/test-agent/reasoning")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_list_reasoning_traces() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        // Submit two reasoning traces for the same agent
+        for task in ["task-1", "task-2"] {
+            let req_body = serde_json::json!({
+                "task": task,
+                "steps": [{"step": 1, "kind": "thought", "content": "thinking", "duration_ms": 10}],
+                "confidence": 0.8,
+                "duration_ms": 100
+            });
+            let req = Request::builder()
+                .method("POST")
+                .uri("/v1/agents/qa-agent/reasoning")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+                .unwrap();
+            app.clone().oneshot(req).await.unwrap();
+        }
+
+        // List all traces for agent
+        let req = Request::builder()
+            .uri("/v1/agents/qa-agent/reasoning")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["agent_id"], "qa-agent");
+        assert_eq!(json["total"], 2);
+        let traces = json["traces"].as_array().unwrap();
+        assert_eq!(traces.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_list_reasoning_traces_empty() {
+        let app = test_app();
+        let req = Request::builder()
+            .uri("/v1/agents/nonexistent/reasoning")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["total"], 0);
+    }
+
+    #[tokio::test]
+    async fn test_list_reasoning_traces_with_confidence_filter() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        // Submit traces with different confidences
+        for (task, conf) in [("low", 0.3), ("high", 0.9)] {
+            let req_body = serde_json::json!({
+                "task": task,
+                "steps": [{"step": 1, "kind": "thought", "content": "test", "duration_ms": 10}],
+                "confidence": conf,
+                "duration_ms": 100
+            });
+            let req = Request::builder()
+                .method("POST")
+                .uri("/v1/agents/qa-agent/reasoning")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+                .unwrap();
+            app.clone().oneshot(req).await.unwrap();
+        }
+
+        // Filter by min_confidence=0.5
+        let req = Request::builder()
+            .uri("/v1/agents/qa-agent/reasoning?min_confidence=0.5")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["total"], 1);
+        let traces = json["traces"].as_array().unwrap();
+        assert_eq!(traces[0]["task"], "high");
+    }
+
+    #[test]
+    fn test_reasoning_step_serialization() {
+        use crate::http_api::handlers::reasoning::ReasoningStep;
+        let step = ReasoningStep {
+            step: 1,
+            kind: "observation".to_string(),
+            content: "Reading source code".to_string(),
+            confidence: Some(0.9),
+            duration_ms: Some(200),
+            tool: Some("file_read".to_string()),
+            tool_output: Some("3 files found".to_string()),
+        };
+        let json = serde_json::to_string(&step).unwrap();
+        let deser: ReasoningStep = serde_json::from_str(&json).unwrap();
+        assert_eq!(deser.step, 1);
+        assert_eq!(deser.kind, "observation");
+        assert_eq!(deser.confidence, Some(0.9));
+    }
+
+    #[test]
+    fn test_reasoning_trace_serialization() {
+        use crate::http_api::handlers::reasoning::{ReasoningStep, ReasoningTrace};
+        let trace = ReasoningTrace {
+            task: "Analyze code".to_string(),
+            steps: vec![ReasoningStep {
+                step: 1,
+                kind: "thought".to_string(),
+                content: "Initial analysis".to_string(),
+                confidence: None,
+                duration_ms: Some(100),
+                tool: None,
+                tool_output: None,
+            }],
+            conclusion: Some("Code looks good".to_string()),
+            confidence: Some(0.85),
+            duration_ms: 100,
+            model: Some("llama2".to_string()),
+            tokens_used: Some(500),
+            metadata: HashMap::new(),
+        };
+        let json = serde_json::to_string(&trace).unwrap();
+        let deser: ReasoningTrace = serde_json::from_str(&json).unwrap();
+        assert_eq!(deser.task, "Analyze code");
+        assert_eq!(deser.steps.len(), 1);
+        assert_eq!(deser.confidence, Some(0.85));
+    }
+
+    // ===== Dashboard sync tests =====
+
+    #[tokio::test]
+    async fn test_dashboard_sync() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        let req_body = serde_json::json!({
+            "source": "agnostic",
+            "agents": [
+                {
+                    "name": "qa-manager",
+                    "status": "active",
+                    "current_task": "Analyzing auth module",
+                    "cpu_percent": 45.2,
+                    "memory_mb": 256,
+                    "tasks_completed": 12,
+                    "error_count": 0
+                },
+                {
+                    "name": "senior-qa",
+                    "status": "idle",
+                    "tasks_completed": 8,
+                    "error_count": 1
+                }
+            ],
+            "session": {
+                "session_id": "sess-abc",
+                "duration_seconds": 3600,
+                "description": "QA run for sprint 42"
+            },
+            "metrics": {
+                "total_tokens": 15000,
+                "tasks_completed": 20,
+                "tasks_failed": 1,
+                "avg_response_ms": 250.5
+            },
+            "metadata": {
+                "crew": "qa-crew",
+                "run_id": "run-123"
+            }
+        });
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/dashboard/sync")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["status"], "accepted");
+        assert_eq!(json["agents_synced"], 2);
+        assert!(json["snapshot_id"].as_str().is_some());
+    }
+
+    #[tokio::test]
+    async fn test_dashboard_sync_empty_source() {
+        let app = test_app();
+        let req_body = serde_json::json!({
+            "source": "",
+            "agents": [{"name": "test", "status": "active"}]
+        });
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/dashboard/sync")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_dashboard_sync_empty_agents() {
+        let app = test_app();
+        let req_body = serde_json::json!({
+            "source": "agnostic",
+            "agents": []
+        });
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/dashboard/sync")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_dashboard_latest_empty() {
+        let app = test_app();
+        let req = Request::builder()
+            .uri("/v1/dashboard/latest")
+            .body(Body::empty())
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_dashboard_sync_then_latest() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        // Sync
+        let req_body = serde_json::json!({
+            "source": "agnostic",
+            "agents": [{"name": "qa-agent", "status": "active"}]
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/dashboard/sync")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        app.clone().oneshot(req).await.unwrap();
+
+        // Latest
+        let req = Request::builder()
+            .uri("/v1/dashboard/latest")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["source"], "agnostic");
+        assert!(json["snapshot_id"].as_str().is_some());
+        assert!(json["received_at"].as_str().is_some());
+    }
+
+    // ===== Environment profiles tests =====
+
+    #[tokio::test]
+    async fn test_get_profile_dev() {
+        let app = test_app();
+        let req = Request::builder()
+            .uri("/v1/profiles/dev")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["name"], "dev");
+        assert!(json["env_vars"]["AGNOS_LOG_LEVEL"].as_str().is_some());
+    }
+
+    #[tokio::test]
+    async fn test_get_profile_prod() {
+        let app = test_app();
+        let req = Request::builder()
+            .uri("/v1/profiles/prod")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["name"], "prod");
+        assert_eq!(json["env_vars"]["AGNOS_SANDBOX_MODE"], "strict");
+    }
+
+    #[tokio::test]
+    async fn test_get_profile_staging() {
+        let app = test_app();
+        let req = Request::builder()
+            .uri("/v1/profiles/staging")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_get_profile_not_found() {
+        let app = test_app();
+        let req = Request::builder()
+            .uri("/v1/profiles/nonexistent")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(json["available_profiles"].as_array().is_some());
+    }
+
+    #[tokio::test]
+    async fn test_list_profiles() {
+        let app = test_app();
+        let req = Request::builder()
+            .uri("/v1/profiles")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(json["total"].as_u64().unwrap() >= 3);
+        let profiles = json["profiles"].as_array().unwrap();
+        let names: Vec<&str> = profiles
+            .iter()
+            .map(|p| p["name"].as_str().unwrap())
+            .collect();
+        assert!(names.contains(&"dev"));
+        assert!(names.contains(&"staging"));
+        assert!(names.contains(&"prod"));
+    }
+
+    #[tokio::test]
+    async fn test_upsert_profile_create() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        let body = serde_json::json!({
+            "env_vars": {"CUSTOM_VAR": "value1", "ANOTHER": "value2"},
+            "description": "Custom test profile"
+        });
+        let req = Request::builder()
+            .method("PUT")
+            .uri("/v1/profiles/custom")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        // Verify it can be retrieved
+        let req = Request::builder()
+            .uri("/v1/profiles/custom")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["env_vars"]["CUSTOM_VAR"], "value1");
+    }
+
+    #[tokio::test]
+    async fn test_upsert_profile_update() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        // Update the existing dev profile
+        let body = serde_json::json!({
+            "env_vars": {"AGNOS_LOG_LEVEL": "trace"},
+            "description": "Overridden dev profile"
+        });
+        let req = Request::builder()
+            .method("PUT")
+            .uri("/v1/profiles/dev")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    // ===== OTLP configuration tests =====
+
+    #[tokio::test]
+    async fn test_otlp_config() {
+        let app = test_app();
+        let req = Request::builder()
+            .uri("/v1/traces/otlp-config")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(json["endpoint"].as_str().is_some());
+        assert!(json["protocol"].as_str().is_some());
+        assert!(json["sampling_rate"].as_f64().is_some());
+        assert!(json["resource_attributes"]["service.name"].as_str().is_some());
+        assert_eq!(json["resource_attributes"]["service.name"], "agnos-agent-runtime");
+    }
+
+    #[test]
+    fn test_otlp_config_serialization() {
+        use crate::http_api::handlers::traces::OtlpConfig;
+        let config = OtlpConfig {
+            endpoint: "http://localhost:4317".to_string(),
+            protocol: "grpc".to_string(),
+            export_interval_seconds: 5,
+            sampling_rate: 1.0,
+            resource_attributes: std::collections::HashMap::from([
+                ("service.name".to_string(), "test".to_string()),
+            ]),
+            enabled: true,
+        };
+        let json = serde_json::to_string(&config).unwrap();
+        let deser: OtlpConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(deser.endpoint, "http://localhost:4317");
+        assert!(deser.enabled);
+    }
+
+    // ===== Vector search tests =====
+
+    #[tokio::test]
+    async fn test_vector_collections_empty() {
+        let app = test_app();
+        let req = Request::builder()
+            .uri("/v1/vectors/collections")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["total"], 0);
+    }
+
+    #[tokio::test]
+    async fn test_create_collection() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        let body = serde_json::json!({"name": "test-collection", "dimension": 128});
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/vectors/collections")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["status"], "created");
+        assert_eq!(json["collection"], "test-collection");
+    }
+
+    #[tokio::test]
+    async fn test_create_collection_duplicate() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        let body = serde_json::json!({"name": "dup-collection"});
+        for _ in 0..2 {
+            let req = Request::builder()
+                .method("POST")
+                .uri("/v1/vectors/collections")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                .unwrap();
+            let resp = app.clone().oneshot(req).await.unwrap();
+            // First should be CREATED, second CONFLICT
+            if resp.status() == StatusCode::CONFLICT {
+                return; // Expected
+            }
+        }
+        panic!("Expected CONFLICT on duplicate collection creation");
+    }
+
+    #[tokio::test]
+    async fn test_create_collection_empty_name() {
+        let app = test_app();
+        let body = serde_json::json!({"name": ""});
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/vectors/collections")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_vector_insert_and_search() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        // Insert vectors
+        let body = serde_json::json!({
+            "collection": "test-col",
+            "vectors": [
+                {"embedding": [1.0, 0.0, 0.0], "content": "first document", "metadata": {"tag": "a"}},
+                {"embedding": [0.0, 1.0, 0.0], "content": "second document", "metadata": {"tag": "b"}},
+                {"embedding": [0.0, 0.0, 1.0], "content": "third document", "metadata": {"tag": "c"}}
+            ]
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/vectors/insert")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["count"], 3);
+
+        // Search — query closest to first document
+        let body = serde_json::json!({
+            "embedding": [0.9, 0.1, 0.0],
+            "top_k": 2,
+            "collection": "test-col"
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/vectors/search")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let results = json["results"].as_array().unwrap();
+        assert_eq!(results.len(), 2);
+        // First result should be the most similar
+        assert_eq!(results[0]["content"], "first document");
+        assert!(results[0]["score"].as_f64().unwrap() > 0.9);
+    }
+
+    #[tokio::test]
+    async fn test_vector_search_collection_not_found() {
+        let app = test_app();
+        let body = serde_json::json!({"embedding": [1.0, 0.0], "collection": "nonexistent"});
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/vectors/search")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_vector_search_empty_embedding() {
+        let app = test_app();
+        let body = serde_json::json!({"embedding": [], "collection": "test"});
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/vectors/search")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_vector_insert_empty_vectors() {
+        let app = test_app();
+        let body = serde_json::json!({"collection": "test", "vectors": []});
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/vectors/insert")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_delete_collection() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        // Create collection
+        let body = serde_json::json!({"name": "to-delete"});
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/vectors/collections")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        app.clone().oneshot(req).await.unwrap();
+
+        // Delete it
+        let req = Request::builder()
+            .method("DELETE")
+            .uri("/v1/vectors/collections/to-delete")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // Verify it's gone
+        let req = Request::builder()
+            .uri("/v1/vectors/collections")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["total"], 0);
+    }
+
+    #[tokio::test]
+    async fn test_delete_collection_not_found() {
+        let app = test_app();
+        let req = Request::builder()
+            .method("DELETE")
+            .uri("/v1/vectors/collections/nonexistent")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_vector_search_with_min_score() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        // Insert diverse vectors
+        let body = serde_json::json!({
+            "collection": "score-test",
+            "vectors": [
+                {"embedding": [1.0, 0.0, 0.0], "content": "close", "metadata": {}},
+                {"embedding": [0.0, 1.0, 0.0], "content": "far", "metadata": {}}
+            ]
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/vectors/insert")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        app.clone().oneshot(req).await.unwrap();
+
+        // Search with high min_score
+        let body = serde_json::json!({
+            "embedding": [1.0, 0.0, 0.0],
+            "top_k": 10,
+            "collection": "score-test",
+            "min_score": 0.9
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/vectors/search")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        // Only the close vector should pass the threshold
+        assert_eq!(json["total"], 1);
+        assert_eq!(json["results"][0]["content"], "close");
+    }
+
+    #[test]
+    fn test_environment_profile_serialization() {
+        use crate::http_api::handlers::profiles::EnvironmentProfile;
+        let profile = EnvironmentProfile {
+            name: "dev".to_string(),
+            env_vars: HashMap::from([("KEY".to_string(), "VAL".to_string())]),
+            description: Some("test".to_string()),
+            active: false,
+        };
+        let json = serde_json::to_string(&profile).unwrap();
+        let deser: EnvironmentProfile = serde_json::from_str(&json).unwrap();
+        assert_eq!(deser.name, "dev");
+        assert_eq!(deser.env_vars["KEY"], "VAL");
+    }
+
+    #[test]
+    fn test_dashboard_sync_request_serialization() {
+        use crate::http_api::handlers::dashboard::{AgentStatus, DashboardSyncRequest};
+        let req = DashboardSyncRequest {
+            source: "agnostic".to_string(),
+            agents: vec![AgentStatus {
+                name: "qa-manager".to_string(),
+                status: "active".to_string(),
+                current_task: Some("testing".to_string()),
+                cpu_percent: Some(25.0),
+                memory_mb: Some(128),
+                tasks_completed: Some(5),
+                error_count: None,
+            }],
+            session: None,
+            metrics: None,
+            metadata: HashMap::new(),
+        };
+        let json = serde_json::to_string(&req).unwrap();
+        let deser: DashboardSyncRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(deser.source, "agnostic");
+        assert_eq!(deser.agents.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_submit_reasoning_minimal() {
+        let app = test_app();
+        let req_body = serde_json::json!({
+            "task": "Quick check",
+            "steps": [{"step": 1, "kind": "thought", "content": "ok", "duration_ms": 5}],
+            "duration_ms": 5
+        });
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/agents/minimal-agent/reasoning")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+    }
 }
