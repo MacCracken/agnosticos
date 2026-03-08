@@ -1651,11 +1651,7 @@ make = "make"
         // Subdirectory with recipe (like recipes/python/)
         let sub = dir.join("python");
         fs::create_dir(&sub).unwrap();
-        fs::write(
-            sub.join("cpython.toml"),
-            FULL_RECIPE,
-        )
-        .unwrap();
+        fs::write(sub.join("cpython.toml"), FULL_RECIPE).unwrap();
 
         // Nested non-toml file should be ignored
         fs::write(sub.join("README.md"), "# Python recipes").unwrap();
