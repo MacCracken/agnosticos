@@ -36,6 +36,10 @@ pub use handlers::reasoning::{
 };
 pub use handlers::rpc::{RpcCallRequest, RpcRegisterRequest};
 pub use handlers::traces::{TraceQueryParams, TraceStep, TraceSubmitRequest};
+pub use handlers::screen_capture::{
+    FramesQuery, GrantPermissionRequest, ScreenCaptureRequest, ScreenCaptureResponse,
+    StartRecordingRequest,
+};
 pub use handlers::webhooks::{RegisterWebhookRequest, WebhookRegistration};
 
 /// Default listen port for the agent registration API.
@@ -66,6 +70,7 @@ pub fn build_router(state: ApiState) -> Router {
     use handlers::reasoning::*;
     use handlers::rpc::*;
     use handlers::sandbox::*;
+    use handlers::screen_capture::*;
     use handlers::system_update::*;
     use handlers::traces::*;
     use handlers::vectors::*;
@@ -190,6 +195,55 @@ pub fn build_router(state: ApiState) -> Router {
             "/v1/marketplace/:name",
             delete(marketplace_uninstall_handler),
         )
+        // Screen capture routes
+        .route("/v1/screen/capture", post(screen_capture_handler))
+        .route(
+            "/v1/screen/permissions",
+            post(screen_grant_permission_handler),
+        )
+        .route(
+            "/v1/screen/permissions",
+            get(screen_list_permissions_handler),
+        )
+        .route(
+            "/v1/screen/permissions/:agent_id",
+            delete(screen_revoke_permission_handler),
+        )
+        .route("/v1/screen/history", get(screen_history_handler))
+        // Screen recording routes
+        .route(
+            "/v1/screen/recording/start",
+            post(recording_start_handler),
+        )
+        .route(
+            "/v1/screen/recording/:id/frame",
+            post(recording_frame_handler),
+        )
+        .route(
+            "/v1/screen/recording/:id/pause",
+            post(recording_pause_handler),
+        )
+        .route(
+            "/v1/screen/recording/:id/resume",
+            post(recording_resume_handler),
+        )
+        .route(
+            "/v1/screen/recording/:id/stop",
+            post(recording_stop_handler),
+        )
+        .route(
+            "/v1/screen/recording/:id",
+            get(recording_get_handler),
+        )
+        .route(
+            "/v1/screen/recording/:id/frames",
+            get(recording_frames_handler),
+        )
+        .route(
+            "/v1/screen/recording/:id/latest",
+            get(recording_latest_handler),
+        )
+        .route("/v1/screen/recordings", get(recording_list_handler))
         .layer(axum_mw::from_fn_with_state(
             state.clone(),
             middleware::auth_middleware,

@@ -63,6 +63,28 @@ Compositor-drawn visual indicators (cannot be faked by agents):
 - Restricted-sandbox agents get distinct border color
 - Toast notification when an agent opens a new window
 
+### Screen Capture and Recording
+
+Built-in compositor feature (not a plugin) providing screenshot and recording capabilities:
+
+- **Capture targets**: Full screen, per-window (by surface ID), arbitrary region
+- **Formats**: PNG (self-contained encoder), BMP, raw ARGB8888 — no external image crate dependency
+- **Security controls**:
+  - Secure mode (`set_secure_mode(true)`) blocks all captures globally
+  - Per-agent permission grants with allowed target kinds (full_screen, window, region)
+  - Time-based permission expiry
+  - Per-agent rate limiting (configurable captures/minute)
+  - All captures audit-logged
+- **Recording**: Frame-by-frame with poll-based streaming (agents fetch frames via sequence numbers)
+  - Configurable frame interval, max frames, max duration
+  - One active recording per agent enforced
+  - Ring buffer retains last 100 frames to bound memory
+- **REST API**: Exposed through daimon (port 8090) at `/v1/screen/*`
+
+**Alternative rejected:** Wayland `wlr-screencopy-unstable-v1` protocol (insufficient security controls — any Wayland client could request captures without compositor-enforced per-agent permissions).
+
+**Alternative rejected:** Plugin-based capture (plugin cannot access compositor internals needed for efficient framebuffer reads).
+
 ### Clipboard, Popups, and Gestures
 
 - **Clipboard** — `wl_data_device` protocol with lazy transfer, primary selection, audit logging across trust boundaries

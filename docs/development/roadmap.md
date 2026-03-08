@@ -216,7 +216,7 @@ Agnostic already has client modules for hoosh (LLM Gateway) and daimon (Agent Ru
 | agent-runtime | 2552+ | Orchestrator, IPC, sandbox, registry, marketplace (88+43), federation (55), migration (54), scheduler (47), PQC (68), explainability (59), safety (77), finetune (73), formal_verify (76), sandbox_v2 (77), rl_optimizer (68), cloud (82), collaboration (87), sigil (35), aegis (40), takumi (57), argonaut (46), agnova (41) |
 | llm-gateway | 707 | 14 providers (5 native + 9 OpenAI-compatible), rate limiting, streaming, cert pinning, hardware acceleration, token budgets |
 | ai-shell | 1132 | 25+ intents, approval workflow, dashboard, aliases, completion |
-| desktop-environment | 1394 | Wayland protocol (63+49), plugin host (31), xwayland (20), shell integration (26), theme bridge (18), compositor, renderer |
+| desktop-environment | 1447+ | Wayland protocol (63+49), screen capture (31), screen recording (22+), plugin host (31), xwayland (20), shell integration (26), theme bridge (18), compositor, renderer |
 
 ---
 

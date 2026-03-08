@@ -5,6 +5,52 @@ All notable changes to AGNOS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2026.3.8-2] - 2026-03-08
+
+### Added — Screen Capture and Recording
+
+#### Screen Capture (aethersafha)
+- **New module**: `screen_capture.rs` — screenshot subsystem with security-first design
+  - **Targets**: Full screen, per-window (by surface ID), arbitrary region (x, y, width, height)
+  - **Formats**: PNG (self-contained encoder, no external crate), BMP (32-bit BGRA), raw ARGB8888
+  - **Security**: Secure-mode global blocking, per-agent permission grants with target kind restrictions, time-based expiry, per-agent rate limiting (configurable captures/minute)
+  - **History**: Ring buffer of last 100 capture metadata entries
+  - **31 tests** covering capture targets, formats, encoding, secure mode, permissions, rate limits, history
+- **New module**: `screen_recording.rs` — frame-by-frame recording with poll-based streaming
+  - **Session lifecycle**: Idle → Recording → Paused → Stopped
+  - **Streaming**: Agents poll frames via sequence numbers (`get_frames(since_sequence)`) or live view (`get_latest_frame()`)
+  - **Limits**: Configurable `max_frames` (default 600), `max_duration_secs` (default 60s)
+  - **Ring buffer**: Last 100 frames retained per session to bound memory
+  - **Concurrency**: One active recording per agent enforced
+  - **22+ tests** covering sessions, frame capture, streaming, pause/resume, limits, ring buffer
+
+#### Screen Capture REST API (daimon)
+- **`POST /v1/screen/capture`** — take a screenshot (returns base64-encoded image)
+- **`POST /v1/screen/permissions`** — grant capture permission to an agent
+- **`GET /v1/screen/permissions`** — list all capture permissions
+- **`DELETE /v1/screen/permissions/:agent_id`** — revoke capture permission
+- **`GET /v1/screen/history`** — recent capture history
+- **`POST /v1/screen/recording/start`** — start a recording session
+- **`POST /v1/screen/recording/:id/frame`** — capture next frame
+- **`POST /v1/screen/recording/:id/pause`** — pause recording
+- **`POST /v1/screen/recording/:id/resume`** — resume recording
+- **`POST /v1/screen/recording/:id/stop`** — stop recording
+- **`GET /v1/screen/recording/:id`** — get session metadata
+- **`GET /v1/screen/recording/:id/frames`** — poll frames (streaming, `?since=N`)
+- **`GET /v1/screen/recording/:id/latest`** — get most recent frame
+- **`GET /v1/screen/recordings`** — list all recording sessions
+- **New handler module**: `http_api/handlers/screen_capture.rs`
+- **15 HTTP integration tests** covering all capture/permission/history endpoints
+- **New dependencies**: `desktop_environment` (compositor access), `base64` (image encoding in API responses)
+
+#### Documentation
+- Updated ADR-005 (Desktop Environment) with screen capture architecture decision
+- Updated ADR-003 (Security and Trust) with `screen:capture` permission category
+- Updated API reference (`docs/api/README.md`) with all screen capture/recording endpoints
+- Updated agent runtime docs (`docs/AGENT_RUNTIME.md`) with endpoint tables
+- Updated desktop environment docs (`docs/DESKTOP_ENVIRONMENT.md`) with module descriptions and test counts
+- Updated development roadmap with new test counts
+
 ## [2026.3.8] - 2026-03-08
 
 ### Added — Agnostic QA Integration: Reasoning Trace Ingest

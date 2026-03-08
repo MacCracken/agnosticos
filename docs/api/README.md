@@ -139,6 +139,31 @@ AGNOS exposes two HTTP/JSON services for interacting with the system. Both bind 
 | POST | `/v1/vectors/collections` | Create a new vector collection |
 | DELETE | `/v1/vectors/collections/:name` | Delete a vector collection |
 
+### Screen Capture and Recording
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/v1/screen/capture` | Take a screenshot (full screen, window, or region). Returns base64-encoded image. |
+| POST | `/v1/screen/permissions` | Grant capture permission to an agent (target kinds, expiry, rate limit) |
+| GET | `/v1/screen/permissions` | List all capture permissions |
+| DELETE | `/v1/screen/permissions/:agent_id` | Revoke an agent's capture permission |
+| GET | `/v1/screen/history` | List recent capture history (last 100 entries, metadata only) |
+| POST | `/v1/screen/recording/start` | Start a recording session (returns session ID) |
+| POST | `/v1/screen/recording/:id/frame` | Capture the next frame in a recording |
+| POST | `/v1/screen/recording/:id/pause` | Pause a recording session |
+| POST | `/v1/screen/recording/:id/resume` | Resume a paused recording |
+| POST | `/v1/screen/recording/:id/stop` | Stop and finalize a recording |
+| GET | `/v1/screen/recording/:id` | Get recording session metadata |
+| GET | `/v1/screen/recording/:id/frames` | Poll frames since a sequence number (`?since=N`) for streaming |
+| GET | `/v1/screen/recording/:id/latest` | Get the most recent frame (live view) |
+| GET | `/v1/screen/recordings` | List all recording sessions |
+
+**Capture formats:** `png` (default), `bmp`, `raw_argb`
+
+**Security:** Captures are blocked when secure mode is active. Agent captures require explicit permission grants via `/v1/screen/permissions`. Permissions support time-based expiry and rate limiting.
+
+**Streaming pattern:** Agents poll `/v1/screen/recording/:id/frames?since=N` where `N` is the last sequence number received. Each frame includes a monotonically increasing `sequence` field. For live view, use `/v1/screen/recording/:id/latest`.
+
 ### Additional Endpoints
 
 | Method | Path | Description |

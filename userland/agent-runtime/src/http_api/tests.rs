@@ -3034,4 +3034,367 @@ mod tests {
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::CREATED);
     }
+
+    // -----------------------------------------------------------------------
+    // Screen capture API tests
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_screen_capture_full_screen() {
+        let app = test_app();
+        let req_body = serde_json::json!({
+            "target": {"type": "full_screen"},
+            "format": "png"
+        });
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/screen/capture")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(json["id"].as_str().is_some());
+        assert!(json["width"].as_u64().is_some());
+        assert!(json["height"].as_u64().is_some());
+        assert_eq!(json["format"], "png");
+        assert!(json["data_base64"].as_str().is_some());
+    }
+
+    #[tokio::test]
+    async fn test_screen_capture_bmp_format() {
+        let app = test_app();
+        let req_body = serde_json::json!({
+            "target": {"type": "full_screen"},
+            "format": "bmp"
+        });
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/screen/capture")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["format"], "bmp");
+    }
+
+    #[tokio::test]
+    async fn test_screen_capture_raw_format() {
+        let app = test_app();
+        let req_body = serde_json::json!({
+            "target": {"type": "full_screen"},
+            "format": "raw_argb"
+        });
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/screen/capture")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_screen_capture_region() {
+        let app = test_app();
+        let req_body = serde_json::json!({
+            "target": {"type": "region", "x": 0, "y": 0, "width": 100, "height": 100},
+            "format": "png"
+        });
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/screen/capture")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_screen_capture_invalid_format() {
+        let app = test_app();
+        let req_body = serde_json::json!({
+            "target": {"type": "full_screen"},
+            "format": "jpg"
+        });
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/screen/capture")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(json["error"].as_str().unwrap().to_lowercase().contains("format"));
+    }
+
+    #[tokio::test]
+    async fn test_screen_capture_invalid_surface_id() {
+        let app = test_app();
+        let req_body = serde_json::json!({
+            "target": {"type": "window", "surface_id": "not-a-uuid"},
+            "format": "png"
+        });
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/screen/capture")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_screen_capture_window_not_found() {
+        let app = test_app();
+        let fake_uuid = Uuid::new_v4().to_string();
+        let req_body = serde_json::json!({
+            "target": {"type": "window", "surface_id": fake_uuid},
+            "format": "png"
+        });
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/screen/capture")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_screen_capture_agent_permission_denied() {
+        let app = test_app();
+        let req_body = serde_json::json!({
+            "target": {"type": "full_screen"},
+            "format": "png",
+            "agent_id": "rogue-agent"
+        });
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/screen/capture")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn test_screen_grant_permission() {
+        let app = test_app();
+        let req_body = serde_json::json!({
+            "agent_id": "agent-1",
+            "allowed_targets": ["full_screen", "window", "region"],
+            "expires_in_secs": 3600,
+            "max_captures_per_minute": 30
+        });
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/screen/permissions")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["status"], "granted");
+        assert_eq!(json["agent_id"], "agent-1");
+    }
+
+    #[tokio::test]
+    async fn test_screen_grant_permission_empty_agent() {
+        let app = test_app();
+        let req_body = serde_json::json!({
+            "agent_id": "",
+            "allowed_targets": ["full_screen"]
+        });
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/screen/permissions")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_screen_grant_permission_invalid_target() {
+        let app = test_app();
+        let req_body = serde_json::json!({
+            "agent_id": "agent-1",
+            "allowed_targets": ["screenshot"]
+        });
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/screen/permissions")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(json["error"].as_str().unwrap().contains("screenshot"));
+    }
+
+    #[tokio::test]
+    async fn test_screen_list_permissions_empty() {
+        let app = test_app();
+        let req = Request::builder()
+            .uri("/v1/screen/permissions")
+            .body(Body::empty())
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(json["permissions"].as_array().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_screen_revoke_permission_not_found() {
+        let app = test_app();
+        let req = Request::builder()
+            .method("DELETE")
+            .uri("/v1/screen/permissions/nonexistent-agent")
+            .body(Body::empty())
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_screen_history_empty() {
+        let app = test_app();
+        let req = Request::builder()
+            .uri("/v1/screen/history")
+            .body(Body::empty())
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["count"], 0);
+    }
+
+    #[tokio::test]
+    async fn test_screen_permission_workflow() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        // Step 1: Grant permission to "workflow-agent"
+        let grant_body = serde_json::json!({
+            "agent_id": "workflow-agent",
+            "allowed_targets": ["full_screen"],
+            "expires_in_secs": 3600,
+            "max_captures_per_minute": 10
+        });
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/screen/permissions")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&grant_body).unwrap()))
+            .unwrap();
+
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        // Step 2: Capture with that agent_id should succeed
+        let capture_body = serde_json::json!({
+            "target": {"type": "full_screen"},
+            "format": "png",
+            "agent_id": "workflow-agent"
+        });
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/screen/capture")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&capture_body).unwrap()))
+            .unwrap();
+
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // Step 3: Revoke permission
+        let req = Request::builder()
+            .method("DELETE")
+            .uri("/v1/screen/permissions/workflow-agent")
+            .body(Body::empty())
+            .unwrap();
+
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // Step 4: Capture should now fail with 403
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/screen/capture")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&capture_body).unwrap()))
+            .unwrap();
+
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
 }

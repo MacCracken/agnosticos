@@ -10,6 +10,8 @@ mod compositor;
 pub mod gestures;
 pub mod plugin_host;
 pub mod renderer;
+pub mod screen_capture;
+pub mod screen_recording;
 mod security_ui;
 mod shell;
 pub mod shell_integration;
@@ -69,4 +71,14 @@ pub use shell_integration::{
 pub use theme_bridge::{
     color_hex_to_u32, color_u32_to_hex, FlutterThemeData, PlatformChannelMessage, ThemeBridge,
     ThemeOverrides,
+};
+
+pub use screen_capture::{
+    CaptureError, CaptureFormat, CaptureHistoryEntry, CaptureId, CapturePermission, CaptureResult,
+    CaptureTarget, CaptureTargetKind, ScreenCaptureManager,
+};
+
+pub use screen_recording::{
+    RecordedFrame, RecordingConfig, RecordingError, RecordingId, RecordingSession, RecordingState,
+    ScreenRecordingManager,
 };

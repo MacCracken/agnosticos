@@ -9,8 +9,10 @@
 ```
 userland/desktop-environment/
   src/
-    compositor.rs      Wayland compositor core, Dispatch traits, workspaces
-    renderer.rs        Software framebuffer renderer, scene graph, damage tracking
+    compositor.rs        Wayland compositor core, Dispatch traits, workspaces
+    renderer.rs          Software framebuffer renderer, scene graph, damage tracking
+    screen_capture.rs    Screenshots: per-agent permissions, rate limiting, PNG/BMP/raw encoding
+    screen_recording.rs  Frame-by-frame recording with poll-based streaming for agents
     wayland.rs         Wayland protocol bridge (feature-gated)
     accessibility.rs   AccessibilityTree, AT-SPI2 bridge, high-contrast themes
     plugin_host.rs     Plugin lifecycle, IPC, sandboxing
@@ -134,6 +136,55 @@ The security UI (`security_ui.rs`) provides real-time security management.
 - **Human override**: `OverrideRequest` workflow (request -> notify -> approve/deny)
 - **Emergency kill switch**: Immediately terminates all agent activity
 
+## Screen Capture and Recording
+
+The screen capture subsystem (`screen_capture.rs`, `screen_recording.rs`) provides screenshot and screen recording capabilities with security-first design.
+
+### Screenshots (`screen_capture.rs`)
+
+`ScreenCaptureManager` handles one-shot screen captures:
+
+- **Targets**: `FullScreen`, `Window { surface_id }`, `Region { x, y, width, height }`
+- **Formats**: PNG (self-contained encoder, no external crate), BMP (32-bit BGRA), raw ARGB8888
+- **Security**: Secure-mode blocking, per-agent permission grants, time-based expiry, rate limiting
+- **History**: Ring buffer of last 100 capture metadata entries (no pixel data retained)
+
+**Permission model**:
+- System captures (no `agent_id`) require only that secure mode is off
+- Agent captures require an explicit `CapturePermission` grant specifying allowed target kinds
+- Permissions support time-based expiry and configurable per-agent rate limits (captures/minute)
+- Secure mode blocks all captures (system and agent) — compositor `set_secure_mode(true)`
+
+### Screen Recording (`screen_recording.rs`)
+
+`ScreenRecordingManager` provides frame-by-frame recording with poll-based streaming:
+
+- **Session lifecycle**: `Idle → Recording → Paused → Recording → Stopped`
+- **Frame capture**: Synchronous, agent-driven — agents call `capture_frame()` in a loop
+- **Streaming**: Agents poll via `get_frames(since_sequence)` or `get_latest_frame()` for live view
+- **Limits**: Configurable `max_frames` (default 600) and `max_duration_secs` (default 60s)
+- **Ring buffer**: Last 100 frames retained per session to bound memory usage
+- **Concurrency**: One active recording per agent enforced
+
+### REST API (via daimon, port 8090)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/v1/screen/capture` | Take a screenshot |
+| POST | `/v1/screen/permissions` | Grant capture permission to an agent |
+| GET | `/v1/screen/permissions` | List all capture permissions |
+| DELETE | `/v1/screen/permissions/:agent_id` | Revoke an agent's permission |
+| GET | `/v1/screen/history` | Recent capture history |
+| POST | `/v1/screen/recording/start` | Start a recording session |
+| POST | `/v1/screen/recording/:id/frame` | Capture next frame |
+| POST | `/v1/screen/recording/:id/pause` | Pause recording |
+| POST | `/v1/screen/recording/:id/resume` | Resume recording |
+| POST | `/v1/screen/recording/:id/stop` | Stop recording |
+| GET | `/v1/screen/recording/:id` | Get session metadata |
+| GET | `/v1/screen/recording/:id/frames` | Poll frames (streaming, `?since=N`) |
+| GET | `/v1/screen/recording/:id/latest` | Get most recent frame |
+| GET | `/v1/screen/recordings` | List all recording sessions |
+
 ## Gestures
 
 Multi-touch gesture recognition (`gestures.rs`) for touchscreen and trackpad input.
@@ -142,11 +193,13 @@ Multi-touch gesture recognition (`gestures.rs`) for touchscreen and trackpad inp
 
 ## Tests
 
-**Total: 1394 tests**
+**Total: 1447+ tests**
 
 | Area | Count |
 |---|---|
 | Wayland protocol | 63 + 49 (stub + feature-gated) |
+| Screen capture | 31 |
+| Screen recording | 22+ |
 | Plugin host | 31 |
 | XWayland | 20 |
 | Shell integration | 26 |

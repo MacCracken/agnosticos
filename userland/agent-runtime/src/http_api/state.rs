@@ -6,6 +6,7 @@ use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use agnos_common::{audit::AuditChain, telemetry::SpanCollector};
+use desktop_environment::{Compositor, ScreenCaptureManager, ScreenRecordingManager};
 
 use crate::ipc::RpcRegistry;
 use crate::knowledge_base::KnowledgeBase;
@@ -101,6 +102,12 @@ pub struct ApiState {
     /// Optional Bearer token for API authentication.
     /// When `Some`, all endpoints except `GET /v1/health` require it.
     pub api_key: Option<String>,
+    /// Desktop compositor for screen capture operations.
+    pub compositor: Arc<RwLock<Compositor>>,
+    /// Screen capture manager (permissions, rate limits, history).
+    pub screen_capture_manager: Arc<RwLock<ScreenCaptureManager>>,
+    /// Screen recording manager (sessions, frame buffers, streaming).
+    pub screen_recording_manager: Arc<RwLock<ScreenRecordingManager>>,
 }
 
 impl std::fmt::Debug for ApiState {
@@ -150,6 +157,9 @@ impl ApiState {
             )),
             vector_collections: Arc::new(RwLock::new(HashMap::new())),
             api_key,
+            compositor: Arc::new(RwLock::new(Compositor::new())),
+            screen_capture_manager: Arc::new(RwLock::new(ScreenCaptureManager::new())),
+            screen_recording_manager: Arc::new(RwLock::new(ScreenRecordingManager::new())),
         }
     }
 
@@ -180,6 +190,9 @@ impl ApiState {
             )),
             vector_collections: Arc::new(RwLock::new(HashMap::new())),
             api_key,
+            compositor: Arc::new(RwLock::new(Compositor::new())),
+            screen_capture_manager: Arc::new(RwLock::new(ScreenCaptureManager::new())),
+            screen_recording_manager: Arc::new(RwLock::new(ScreenRecordingManager::new())),
         }
     }
 

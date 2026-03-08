@@ -20,7 +20,9 @@ Four permission levels control agent actions:
 | **Confirmation** | Medium | Blocks until human approves |
 | **Override** | High | Requires explicit human approval |
 
-Permission categories: `file:read`, `file:write`, `file:delete`, `network:outbound`, `process:spawn`, `agent:delegate`. An emergency kill switch provides immediate all-agent shutdown.
+Permission categories: `file:read`, `file:write`, `file:delete`, `network:outbound`, `process:spawn`, `agent:delegate`, `screen:capture`. An emergency kill switch provides immediate all-agent shutdown.
+
+The `screen:capture` permission is granted per-agent with configurable target kinds (full_screen, window, region), time-based expiry, and rate limits. The compositor's secure mode overrides all grants and blocks all screen access.
 
 ### Sandbox Stack
 

@@ -233,6 +233,27 @@ Query parameters for GET: `min_confidence` (filter by minimum confidence score),
 | GET | `/webhooks` | List webhooks |
 | DELETE | `/webhooks/:id` | Delete a webhook |
 
+### Screen Capture and Recording
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/screen/capture` | Take a screenshot (full screen, window, or region) |
+| POST | `/screen/permissions` | Grant capture permission to an agent |
+| GET | `/screen/permissions` | List all capture permissions |
+| DELETE | `/screen/permissions/:agent_id` | Revoke capture permission |
+| GET | `/screen/history` | Recent capture history |
+| POST | `/screen/recording/start` | Start a recording session |
+| POST | `/screen/recording/:id/frame` | Capture next frame in a recording |
+| POST | `/screen/recording/:id/pause` | Pause recording |
+| POST | `/screen/recording/:id/resume` | Resume recording |
+| POST | `/screen/recording/:id/stop` | Stop recording |
+| GET | `/screen/recording/:id` | Get session metadata |
+| GET | `/screen/recording/:id/frames` | Poll frames for streaming (`?since=N`) |
+| GET | `/screen/recording/:id/latest` | Get most recent frame |
+| GET | `/screen/recordings` | List all recording sessions |
+
+Screen capture and recording is driven by the desktop environment's `ScreenCaptureManager` and `ScreenRecordingManager`. Supports PNG, BMP, and raw ARGB8888 formats. Secure mode blocks all captures. Agent captures require explicit permission grants with configurable rate limits and expiry. Recording uses a poll-based streaming model where agents fetch new frames via sequence numbers.
+
 ### Audit
 
 | Method | Endpoint | Description |
