@@ -17,6 +17,7 @@ env:
 jobs:
   # Build verification
   build:
+    name: Build ${{ matrix.name }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
@@ -24,8 +25,10 @@ jobs:
       matrix:
         include:
           - target: x86_64-unknown-linux-gnu
+            name: linux-amd64
             cross: false
           - target: aarch64-unknown-linux-gnu
+            name: linux-arm64
             cross: true
 
     steps:
@@ -256,7 +259,7 @@ jobs:
   # Container build
   container:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 45
     if: github.event_name == 'push'
 
     steps:

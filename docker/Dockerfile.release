@@ -1,0 +1,63 @@
+# AGNOS — Release container (runtime-only, no Rust compilation)
+# Used by CI/CD to package pre-built binaries into multi-arch images.
+# The main Dockerfile is for local development builds.
+#
+# Expects binaries at: ./binaries/agent_runtime, ./binaries/llm_gateway, ./binaries/agnsh
+
+FROM debian:bookworm-slim
+
+# OCI annotations
+LABEL org.opencontainers.image.title="AGNOS"
+LABEL org.opencontainers.image.description="AI-Native General Operating System"
+LABEL org.opencontainers.image.source="https://github.com/agnos/agnos"
+LABEL org.opencontainers.image.licenses="GPL-3.0"
+ARG AGNOS_VERSION=dev
+LABEL org.opencontainers.image.version="${AGNOS_VERSION}"
+
+# Install minimal runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    tini \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN groupadd -g 1000 agnos && \
+    useradd -u 1000 -g agnos -m -s /bin/sh agnos
+
+# Create required directories
+RUN mkdir -p \
+    /run/agnos/agents \
+    /var/lib/agnos/secrets \
+    /var/lib/agnos/agents \
+    /var/log/agnos \
+    /etc/agnos \
+    && chown -R agnos:agnos /run/agnos /var/lib/agnos /var/log/agnos /etc/agnos
+
+# Copy pre-built binaries
+COPY binaries/agent_runtime /usr/local/bin/
+COPY binaries/llm_gateway   /usr/local/bin/
+COPY binaries/agnsh          /usr/local/bin/
+
+# Copy VERSION file and entrypoint
+COPY VERSION /etc/agnos/VERSION
+COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh \
+    /usr/local/bin/agent_runtime \
+    /usr/local/bin/llm_gateway \
+    /usr/local/bin/agnsh
+
+# Health check via LLM gateway
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+    CMD curl -sf http://localhost:8088/v1/health || exit 1
+
+# Expose ports
+EXPOSE 8088 8090
+
+# Use tini as PID 1
+ENTRYPOINT ["tini", "--", "/usr/local/bin/entrypoint.sh"]
+
+# Switch to non-root user
+USER agnos
+
+CMD ["daemon"]

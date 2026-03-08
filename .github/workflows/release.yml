@@ -30,7 +30,7 @@ jobs:
       security-events: write
 
   build-release:
-    name: Build Release Binaries
+    name: Build ${{ matrix.name }}
     needs: ci-gate
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -78,7 +78,7 @@ jobs:
     - name: Package
       run: |
         mkdir -p agnos-${{ matrix.name }}
-        for bin in agent_runtime llm_gateway desktop_environment ai_shell agnos_sudo; do
+        for bin in agent_runtime llm_gateway desktop_environment ai_shell agnos_sudo agnsh; do
           cp "userland/target/${{ matrix.target }}/release/${bin}" "agnos-${{ matrix.name }}/" 2>/dev/null || true
         done
         cp -r docs agnos-${{ matrix.name }}/
@@ -144,16 +144,17 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # Multi-arch container image → ghcr.io
+  # Uses pre-built binaries from build-release (no Rust compilation in Docker)
   container:
     name: Publish Container Image
-    needs: ci-gate
+    needs: build-release
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 15
 
     steps:
     - uses: actions/checkout@v4
 
-    - name: Set up QEMU (for arm64 emulation)
+    - name: Set up QEMU
       uses: docker/setup-qemu-action@v3
 
     - name: Set up Docker Buildx
@@ -166,6 +167,37 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
+    - name: Download amd64 artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: agnos-linux-amd64
+        path: artifacts/amd64
+
+    - name: Download arm64 artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: agnos-linux-arm64
+        path: artifacts/arm64
+
+    - name: Extract binaries
+      run: |
+        for arch in amd64 arm64; do
+          mkdir -p build/${arch}/binaries build/${arch}/tmp
+          tar xzf artifacts/${arch}/*.tar.gz -C build/${arch}/tmp
+          for bin in agent_runtime llm_gateway agnsh; do
+            find build/${arch}/tmp -name "$bin" -type f -exec cp {} build/${arch}/binaries/ \;
+          done
+          echo "=== ${arch} binaries ==="
+          ls -la build/${arch}/binaries/
+        done
+
+    - name: Prepare build contexts
+      run: |
+        for arch in amd64 arm64; do
+          cp VERSION build/${arch}/
+          cp -r docker build/${arch}/
+        done
+
     - name: Extract metadata
       id: meta
       uses: docker/metadata-action@v5
@@ -176,15 +208,36 @@ jobs:
           type=raw,value=latest
           type=raw,value=alpha
 
-    - name: Build and push multi-arch image
+    - name: Build and push amd64
       uses: docker/build-push-action@v6
       with:
-        context: .
-        platforms: linux/amd64,linux/arm64
+        context: build/amd64
+        file: docker/Dockerfile.release
+        platforms: linux/amd64
         push: true
-        tags: ${{ steps.meta.outputs.tags }}
-        labels: ${{ steps.meta.outputs.labels }}
+        tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}-amd64
         build-args: |
           AGNOS_VERSION=${{ github.ref_name }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
+
+    - name: Build and push arm64
+      uses: docker/build-push-action@v6
+      with:
+        context: build/arm64
+        file: docker/Dockerfile.release
+        platforms: linux/arm64
+        push: true
+        tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}-arm64
+        build-args: |
+          AGNOS_VERSION=${{ github.ref_name }}
+
+    - name: Create and push multi-arch manifest
+      run: |
+        IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
+        VERSION="${{ github.ref_name }}"
+
+        for TAG in "${VERSION}" "latest" "alpha"; do
+          docker buildx imagetools create \
+            --tag "${IMAGE}:${TAG}" \
+            "${IMAGE}:${VERSION}-amd64" \
+            "${IMAGE}:${VERSION}-arm64"
+        done
