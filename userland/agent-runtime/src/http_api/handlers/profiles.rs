@@ -56,7 +56,9 @@ pub fn default_profiles() -> HashMap<String, EnvironmentProfile> {
                 ("AGNOS_CACHE_TTL".to_string(), "60".to_string()),
                 ("AGNOS_RATE_LIMIT_ENABLED".to_string(), "false".to_string()),
             ]),
-            description: Some("Development environment with permissive security and verbose logging".to_string()),
+            description: Some(
+                "Development environment with permissive security and verbose logging".to_string(),
+            ),
             active: false,
         },
     );
@@ -72,7 +74,9 @@ pub fn default_profiles() -> HashMap<String, EnvironmentProfile> {
                 ("AGNOS_CACHE_TTL".to_string(), "300".to_string()),
                 ("AGNOS_RATE_LIMIT_ENABLED".to_string(), "true".to_string()),
             ]),
-            description: Some("Staging environment with standard security and moderate logging".to_string()),
+            description: Some(
+                "Staging environment with standard security and moderate logging".to_string(),
+            ),
             active: false,
         },
     );
@@ -108,7 +112,9 @@ pub async fn get_profile_handler(
 ) -> impl IntoResponse {
     let profiles = state.environment_profiles.read().await;
     match profiles.get(&name) {
-        Some(profile) => (StatusCode::OK, Json(serde_json::to_value(profile).unwrap())).into_response(),
+        Some(profile) => {
+            (StatusCode::OK, Json(serde_json::to_value(profile).unwrap())).into_response()
+        }
         None => (
             StatusCode::NOT_FOUND,
             Json(serde_json::json!({
@@ -122,9 +128,7 @@ pub async fn get_profile_handler(
 }
 
 /// GET /v1/profiles — list all environment profiles.
-pub async fn list_profiles_handler(
-    State(state): State<ApiState>,
-) -> impl IntoResponse {
+pub async fn list_profiles_handler(State(state): State<ApiState>) -> impl IntoResponse {
     let profiles = state.environment_profiles.read().await;
     let mut list: Vec<&EnvironmentProfile> = profiles.values().collect();
     list.sort_by_key(|p| &p.name);

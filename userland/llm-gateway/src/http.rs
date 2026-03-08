@@ -2601,7 +2601,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_tokens_check_pool_not_found() {
-        let gateway = Arc::new(LlmGateway::new(crate::GatewayConfig::default()).await.unwrap());
+        let gateway = Arc::new(
+            LlmGateway::new(crate::GatewayConfig::default())
+                .await
+                .unwrap(),
+        );
         let state = AppState {
             gateway,
             api_key: None,
@@ -2623,7 +2627,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_tokens_reserve_creates_pool() {
-        let gateway = Arc::new(LlmGateway::new(crate::GatewayConfig::default()).await.unwrap());
+        let gateway = Arc::new(
+            LlmGateway::new(crate::GatewayConfig::default())
+                .await
+                .unwrap(),
+        );
         let state = AppState {
             gateway: gateway.clone(),
             api_key: None,
@@ -2648,7 +2656,9 @@ mod tests {
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
 
-        let resp_body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let resp_body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&resp_body).unwrap();
         assert_eq!(json["status"], "reserved");
         assert_eq!(json["tokens_reserved"], 10000);
@@ -2657,7 +2667,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_tokens_reserve_then_check_then_report() {
-        let gateway = Arc::new(LlmGateway::new(crate::GatewayConfig::default()).await.unwrap());
+        let gateway = Arc::new(
+            LlmGateway::new(crate::GatewayConfig::default())
+                .await
+                .unwrap(),
+        );
         let state = AppState {
             gateway: gateway.clone(),
             api_key: None,
@@ -2689,7 +2703,9 @@ mod tests {
             .unwrap();
         let resp = app.clone().oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-        let resp_body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let resp_body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&resp_body).unwrap();
         assert_eq!(json["allowed"], true);
 
@@ -2703,7 +2719,9 @@ mod tests {
             .unwrap();
         let resp = app.clone().oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-        let resp_body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let resp_body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&resp_body).unwrap();
         assert_eq!(json["status"], "recorded");
         assert_eq!(json["project_remaining"], 1000);
@@ -2717,14 +2735,20 @@ mod tests {
             .body(Body::from(serde_json::to_vec(&body).unwrap()))
             .unwrap();
         let resp = app.clone().oneshot(req).await.unwrap();
-        let resp_body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let resp_body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&resp_body).unwrap();
         assert_eq!(json["allowed"], false);
     }
 
     #[tokio::test]
     async fn test_tokens_report_exceeds_budget() {
-        let gateway = Arc::new(LlmGateway::new(crate::GatewayConfig::default()).await.unwrap());
+        let gateway = Arc::new(
+            LlmGateway::new(crate::GatewayConfig::default())
+                .await
+                .unwrap(),
+        );
         let state = AppState {
             gateway: gateway.clone(),
             api_key: None,
@@ -2758,7 +2782,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_tokens_release() {
-        let gateway = Arc::new(LlmGateway::new(crate::GatewayConfig::default()).await.unwrap());
+        let gateway = Arc::new(
+            LlmGateway::new(crate::GatewayConfig::default())
+                .await
+                .unwrap(),
+        );
         let state = AppState {
             gateway: gateway.clone(),
             api_key: None,
@@ -2788,14 +2816,20 @@ mod tests {
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-        let resp_body = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let resp_body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&resp_body).unwrap();
         assert_eq!(json["status"], "released");
     }
 
     #[tokio::test]
     async fn test_tokens_release_no_allocation() {
-        let gateway = Arc::new(LlmGateway::new(crate::GatewayConfig::default()).await.unwrap());
+        let gateway = Arc::new(
+            LlmGateway::new(crate::GatewayConfig::default())
+                .await
+                .unwrap(),
+        );
         let state = AppState {
             gateway: gateway.clone(),
             api_key: None,

@@ -269,7 +269,8 @@ impl LlmGateway {
 
         // Initialize OpenAI-compatible cloud providers from environment
         if let Ok(api_key) = std::env::var("DEEPSEEK_API_KEY") {
-            match providers::new_deepseek_provider(api_key, std::env::var("DEEPSEEK_BASE_URL").ok()) {
+            match providers::new_deepseek_provider(api_key, std::env::var("DEEPSEEK_BASE_URL").ok())
+            {
                 Ok(provider) => {
                     providers.insert(ProviderType::DeepSeek, Arc::new(provider));
                     health.insert(ProviderType::DeepSeek, ProviderHealth::new());
@@ -313,7 +314,10 @@ impl LlmGateway {
         }
 
         if let Ok(api_key) = std::env::var("OPENROUTER_API_KEY") {
-            match providers::new_openrouter_provider(api_key, std::env::var("OPENROUTER_BASE_URL").ok()) {
+            match providers::new_openrouter_provider(
+                api_key,
+                std::env::var("OPENROUTER_BASE_URL").ok(),
+            ) {
                 Ok(provider) => {
                     providers.insert(ProviderType::OpenRouter, Arc::new(provider));
                     health.insert(ProviderType::OpenRouter, ProviderHealth::new());
@@ -324,7 +328,8 @@ impl LlmGateway {
         }
 
         if let Ok(api_key) = std::env::var("OPENCODE_API_KEY") {
-            match providers::new_opencode_provider(api_key, std::env::var("OPENCODE_BASE_URL").ok()) {
+            match providers::new_opencode_provider(api_key, std::env::var("OPENCODE_BASE_URL").ok())
+            {
                 Ok(provider) => {
                     providers.insert(ProviderType::OpenCode, Arc::new(provider));
                     health.insert(ProviderType::OpenCode, ProviderHealth::new());
@@ -335,7 +340,8 @@ impl LlmGateway {
         }
 
         if let Ok(api_key) = std::env::var("LETTA_API_KEY") {
-            match providers::new_letta_provider(Some(api_key), std::env::var("LETTA_BASE_URL").ok()) {
+            match providers::new_letta_provider(Some(api_key), std::env::var("LETTA_BASE_URL").ok())
+            {
                 Ok(provider) => {
                     providers.insert(ProviderType::Letta, Arc::new(provider));
                     health.insert(ProviderType::Letta, ProviderHealth::new());
@@ -615,7 +621,10 @@ impl LlmGateway {
             ProviderType::OpenCode => Some("api.open-code.dev"),
             ProviderType::Letta => Some("app.letta.com"),
             // Local providers use HTTP, no TLS pinning
-            ProviderType::Ollama | ProviderType::LlamaCpp | ProviderType::LmStudio | ProviderType::LocalAi => None,
+            ProviderType::Ollama
+            | ProviderType::LlamaCpp
+            | ProviderType::LmStudio
+            | ProviderType::LocalAi => None,
         }
     }
 
@@ -794,16 +803,12 @@ impl LlmGateway {
     }
 
     /// Get a read lock on the budget manager.
-    pub async fn budget_manager_read(
-        &self,
-    ) -> tokio::sync::RwLockReadGuard<'_, BudgetManager> {
+    pub async fn budget_manager_read(&self) -> tokio::sync::RwLockReadGuard<'_, BudgetManager> {
         self.budget_manager.read().await
     }
 
     /// Get a write lock on the budget manager.
-    pub async fn budget_manager_write(
-        &self,
-    ) -> tokio::sync::RwLockWriteGuard<'_, BudgetManager> {
+    pub async fn budget_manager_write(&self) -> tokio::sync::RwLockWriteGuard<'_, BudgetManager> {
         self.budget_manager.write().await
     }
 

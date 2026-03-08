@@ -167,12 +167,12 @@ pub async fn dashboard_sync_handler(
 }
 
 /// GET /v1/dashboard/latest — get the most recent dashboard snapshot.
-pub async fn dashboard_latest_handler(
-    State(state): State<ApiState>,
-) -> impl IntoResponse {
+pub async fn dashboard_latest_handler(State(state): State<ApiState>) -> impl IntoResponse {
     let snapshots = state.dashboard_snapshots.read().await;
     match snapshots.back() {
-        Some(latest) => (StatusCode::OK, Json(serde_json::to_value(latest).unwrap())).into_response(),
+        Some(latest) => {
+            (StatusCode::OK, Json(serde_json::to_value(latest).unwrap())).into_response()
+        }
         None => (
             StatusCode::NOT_FOUND,
             Json(serde_json::json!({"error": "No dashboard snapshots available", "code": 404})),

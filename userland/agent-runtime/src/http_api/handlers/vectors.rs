@@ -206,9 +206,7 @@ pub async fn vector_insert_handler(
 }
 
 /// GET /v1/vectors/collections — list all vector collections.
-pub async fn vector_collections_handler(
-    State(state): State<ApiState>,
-) -> impl IntoResponse {
+pub async fn vector_collections_handler(State(state): State<ApiState>) -> impl IntoResponse {
     let collections = state.vector_collections.read().await;
     let mut infos: Vec<CollectionInfo> = collections
         .iter()

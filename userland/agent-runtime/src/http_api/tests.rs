@@ -2683,8 +2683,13 @@ mod tests {
         assert!(json["endpoint"].as_str().is_some());
         assert!(json["protocol"].as_str().is_some());
         assert!(json["sampling_rate"].as_f64().is_some());
-        assert!(json["resource_attributes"]["service.name"].as_str().is_some());
-        assert_eq!(json["resource_attributes"]["service.name"], "agnos-agent-runtime");
+        assert!(json["resource_attributes"]["service.name"]
+            .as_str()
+            .is_some());
+        assert_eq!(
+            json["resource_attributes"]["service.name"],
+            "agnos-agent-runtime"
+        );
     }
 
     #[test]
@@ -2695,9 +2700,10 @@ mod tests {
             protocol: "grpc".to_string(),
             export_interval_seconds: 5,
             sampling_rate: 1.0,
-            resource_attributes: std::collections::HashMap::from([
-                ("service.name".to_string(), "test".to_string()),
-            ]),
+            resource_attributes: std::collections::HashMap::from([(
+                "service.name".to_string(),
+                "test".to_string(),
+            )]),
             enabled: true,
         };
         let json = serde_json::to_string(&config).unwrap();

@@ -27,12 +27,14 @@ pub use handlers::anomaly::BehaviorSampleRequest;
 pub use handlers::audit::{
     AuditChainQueryParams, AuditEvent, AuditForwardRequest, AuditQueryParams,
 };
+pub use handlers::dashboard::{DashboardSyncRequest, StoredDashboardSnapshot};
 pub use handlers::marketplace::{MarketplaceInstallRequest, MarketplaceSearchQuery};
 pub use handlers::memory::MemorySetRequest;
-pub use handlers::rpc::{RpcCallRequest, RpcRegisterRequest};
-pub use handlers::dashboard::{DashboardSyncRequest, StoredDashboardSnapshot};
 pub use handlers::profiles::EnvironmentProfile;
-pub use handlers::reasoning::{ReasoningQueryParams, ReasoningStep, ReasoningTrace, StoredReasoningTrace};
+pub use handlers::reasoning::{
+    ReasoningQueryParams, ReasoningStep, ReasoningTrace, StoredReasoningTrace,
+};
+pub use handlers::rpc::{RpcCallRequest, RpcRegisterRequest};
 pub use handlers::traces::{TraceQueryParams, TraceStep, TraceSubmitRequest};
 pub use handlers::webhooks::{RegisterWebhookRequest, WebhookRegistration};
 
@@ -58,8 +60,8 @@ pub fn build_router(state: ApiState) -> Router {
     use handlers::audit::*;
     use handlers::dashboard::*;
     use handlers::marketplace::*;
-    use handlers::profiles::*;
     use handlers::memory::*;
+    use handlers::profiles::*;
     use handlers::rag::*;
     use handlers::reasoning::*;
     use handlers::rpc::*;

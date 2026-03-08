@@ -118,8 +118,8 @@ pub async fn list_traces_handler(
 pub async fn otlp_config_handler() -> impl IntoResponse {
     let endpoint = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT")
         .unwrap_or_else(|_| "http://127.0.0.1:4317".to_string());
-    let protocol = std::env::var("OTEL_EXPORTER_OTLP_PROTOCOL")
-        .unwrap_or_else(|_| "grpc".to_string());
+    let protocol =
+        std::env::var("OTEL_EXPORTER_OTLP_PROTOCOL").unwrap_or_else(|_| "grpc".to_string());
     let export_interval: u64 = std::env::var("OTEL_BSP_SCHEDULE_DELAY")
         .ok()
         .and_then(|v| v.parse().ok())
@@ -134,8 +134,14 @@ pub async fn otlp_config_handler() -> impl IntoResponse {
         .unwrap_or(true);
 
     let mut resource_attributes = std::collections::HashMap::new();
-    resource_attributes.insert("service.name".to_string(), "agnos-agent-runtime".to_string());
-    resource_attributes.insert("service.version".to_string(), env!("CARGO_PKG_VERSION").to_string());
+    resource_attributes.insert(
+        "service.name".to_string(),
+        "agnos-agent-runtime".to_string(),
+    );
+    resource_attributes.insert(
+        "service.version".to_string(),
+        env!("CARGO_PKG_VERSION").to_string(),
+    );
 
     if let Ok(hostname) = std::env::var("HOSTNAME") {
         resource_attributes.insert("host.name".to_string(), hostname);
