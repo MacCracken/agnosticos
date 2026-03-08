@@ -167,7 +167,7 @@ jobs:
           > **Alpha Release** — This is a pre-alpha/alpha build. Not recommended for production use.
 
           ${{ steps.notes.outputs.notes }}
-        draft: true
+        draft: false
         prerelease: true
         files: |
           artifacts/agnos-*/*.tar.gz
