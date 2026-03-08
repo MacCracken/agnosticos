@@ -1,0 +1,152 @@
+# Brave Browser — Chromium-based browser with built-in ad blocking and privacy
+# Built from source with Wayland-native support and AGNOS hardened defaults.
+
+[package]
+name = "brave"
+version = "1.76.80"
+description = "Brave Browser — Privacy-first Chromium-based browser"
+license = "MPL-2.0"
+groups = ["desktop", "browser", "internet"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/nicothegamer/nicothegamer.github.io/archive/refs/tags/v1.76.80.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = ["agnos-defaults.patch", "wayland-ozone.patch"]
+
+[depends]
+runtime = [
+    "glibc",
+    "gtk3",
+    "nss",
+    "nspr",
+    "alsa-lib",
+    "pulseaudio",
+    "mesa",
+    "libdrm",
+    "wayland",
+    "wayland-protocols",
+    "libpipewire",
+    "dbus",
+    "at-spi2-core",
+    "fontconfig",
+    "freetype2",
+    "harfbuzz",
+    "libxkbcommon",
+    "libva",
+    "pango",
+    "cairo",
+    "zlib",
+    "icu",
+    "libffi",
+    "ffmpeg",
+    "curl",
+]
+build = [
+    "python3",
+    "nodejs",
+    "gn",
+    "ninja",
+    "clang",
+    "llvm",
+    "lld",
+    "pkg-config",
+    "gperf",
+    "perl",
+]
+
+[build]
+pre_build = """
+# Brave uses its own build scripts on top of Chromium
+npm install
+npm run init
+
+cat > args.gn << 'GNEOF'
+# AGNOS Brave build configuration
+is_official_build = true
+is_debug = false
+symbol_level = 0
+
+# Wayland-native
+ozone_platform_wayland = true
+ozone_platform_x11 = false
+ozone_auto_platforms = false
+use_ozone = true
+
+# System libraries
+use_system_freetype = true
+use_system_harfbuzz = true
+use_system_zlib = true
+
+# Security
+use_sysroot = false
+treat_warnings_as_errors = false
+
+# Brave-specific
+brave_rewards_enabled = false
+brave_ads_enabled = false
+
+# Build with system clang
+is_clang = true
+clang_use_chrome_plugins = false
+
+# Hardware acceleration
+use_vaapi = true
+enable_vulkan = true
+GNEOF
+
+mkdir -p out/Release
+cp args.gn out/Release/
+npm run build -- Release
+"""
+configure = ""
+make = ""
+check = ""
+install = """
+mkdir -p $PKG/usr/lib/brave
+mkdir -p $PKG/usr/bin
+
+cp out/Release/brave $PKG/usr/lib/brave/brave
+cp out/Release/*.pak $PKG/usr/lib/brave/
+cp out/Release/*.bin $PKG/usr/lib/brave/ 2>/dev/null || true
+cp -r out/Release/locales $PKG/usr/lib/brave/
+cp out/Release/icudtl.dat $PKG/usr/lib/brave/ 2>/dev/null || true
+
+# Desktop entry for aethersafha
+mkdir -p $PKG/usr/share/applications
+cat > $PKG/usr/share/applications/brave.desktop << 'EOF'
+[Desktop Entry]
+Name=Brave
+Comment=Browse the Web Privately
+GenericName=Web Browser
+Exec=brave %U
+Icon=brave
+Terminal=false
+Type=Application
+MimeType=text/html;text/xml;application/xhtml+xml;x-scheme-handler/http;x-scheme-handler/https;
+Categories=Network;WebBrowser;
+StartupNotify=true
+StartupWMClass=brave
+EOF
+
+# Launcher script
+cat > $PKG/usr/bin/brave << 'LAUNCHER'
+#!/bin/sh
+# AGNOS Brave launcher — Wayland-native with hardened flags
+exec /usr/lib/brave/brave \
+    --ozone-platform=wayland \
+    --enable-features=VaapiVideoDecodeLinuxGL,WaylandWindowDecorations \
+    --enable-gpu-rasterization \
+    --enable-zero-copy \
+    --no-default-browser-check \
+    --no-first-run \
+    "$@"
+LAUNCHER
+chmod +x $PKG/usr/bin/brave
+"""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

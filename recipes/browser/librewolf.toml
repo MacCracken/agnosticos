@@ -1,0 +1,152 @@
+# LibreWolf — Firefox fork focused on privacy, security, and freedom
+# No telemetry, no data collection, enhanced privacy out of the box.
+
+[package]
+name = "librewolf"
+version = "128.9.0-1"
+description = "LibreWolf — Privacy-hardened Firefox fork"
+license = "MPL-2.0"
+groups = ["desktop", "browser", "internet"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://codeberg.org/nicothegamer/nicothegamer.github.io/archive/128.9.0-1.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = ["agnos-defaults.patch", "wayland-primary.patch"]
+
+[depends]
+runtime = [
+    "glibc",
+    "gtk3",
+    "dbus",
+    "dbus-glib",
+    "alsa-lib",
+    "pulseaudio",
+    "nss",
+    "nspr",
+    "icu",
+    "zlib",
+    "libffi",
+    "fontconfig",
+    "freetype2",
+    "harfbuzz",
+    "pixman",
+    "cairo",
+    "pango",
+    "gdk-pixbuf",
+    "mesa",
+    "libdrm",
+    "wayland",
+    "wayland-protocols",
+    "libpipewire",
+]
+build = [
+    "rust",
+    "cbindgen",
+    "nodejs",
+    "nasm",
+    "python3",
+    "clang",
+    "llvm",
+    "autoconf2.13",
+    "pkg-config",
+    "m4",
+    "perl",
+    "yasm",
+    "zip",
+    "unzip",
+]
+
+[build]
+pre_build = """
+cat > mozconfig << 'MOZEOF'
+# AGNOS LibreWolf build configuration
+ac_add_options --enable-application=browser
+ac_add_options --prefix=/usr
+ac_add_options --enable-release
+ac_add_options --enable-optimize="-O2"
+ac_add_options --enable-rust-simd
+ac_add_options --with-app-name=librewolf
+ac_add_options --with-branding=browser/branding/librewolf
+
+# Wayland-native
+ac_add_options --enable-default-toolkit=cairo-gtk3-wayland
+
+# Security hardening (LibreWolf defaults + AGNOS)
+ac_add_options --enable-hardening
+ac_add_options --enable-sandbox
+ac_add_options --disable-crashreporter
+ac_add_options --disable-updater
+ac_add_options --disable-tests
+ac_add_options --disable-debug
+
+# Disable telemetry at build level
+ac_add_options --disable-default-browser-agent
+ac_add_options --disable-normandy
+
+# System libraries
+ac_add_options --with-system-zlib
+ac_add_options --with-system-ffi
+ac_add_options --with-system-icu
+ac_add_options --with-system-nss
+ac_add_options --with-system-nspr
+ac_add_options --with-system-jpeg
+ac_add_options --with-system-png
+ac_add_options --with-system-webp
+
+ac_add_options --disable-necko-wifi
+ac_add_options --enable-alsa
+MOZEOF
+"""
+configure = ""
+make = "./mach build"
+check = ""
+install = """
+DESTDIR=$PKG ./mach install
+
+# Desktop entry for aethersafha
+mkdir -p $PKG/usr/share/applications
+cat > $PKG/usr/share/applications/librewolf.desktop << 'EOF'
+[Desktop Entry]
+Name=LibreWolf
+Comment=Browse the Web — Privacy Hardened
+GenericName=Web Browser
+Exec=librewolf %u
+Icon=librewolf
+Terminal=false
+Type=Application
+MimeType=text/html;text/xml;application/xhtml+xml;x-scheme-handler/http;x-scheme-handler/https;
+Categories=Network;WebBrowser;
+StartupNotify=true
+StartupWMClass=librewolf
+EOF
+
+# LibreWolf default preferences (privacy-maximized)
+mkdir -p $PKG/usr/lib/librewolf/defaults/pref
+cat > $PKG/usr/lib/librewolf/defaults/pref/agnos.js << 'EOF'
+// AGNOS + LibreWolf default preferences
+pref("browser.shell.checkDefaultBrowser", false);
+pref("browser.startup.homepage", "about:blank");
+pref("widget.use-xdg-desktop-portal.file-picker", 1);
+pref("widget.use-xdg-desktop-portal.mime-handler", 1);
+pref("gfx.webrender.all", true);
+pref("privacy.resistFingerprinting", true);
+pref("privacy.trackingprotection.enabled", true);
+pref("dom.security.https_only_mode", true);
+pref("browser.contentblocking.category", "strict");
+pref("network.cookie.cookieBehavior", 5);
+pref("privacy.clearOnShutdown.history", true);
+pref("privacy.clearOnShutdown.cookies", true);
+pref("privacy.clearOnShutdown.cache", true);
+EOF
+
+# Symlink for PATH
+mkdir -p $PKG/usr/bin
+ln -sf /usr/lib/librewolf/librewolf $PKG/usr/bin/librewolf
+"""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

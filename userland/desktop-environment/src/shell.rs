@@ -302,6 +302,37 @@ impl DesktopShell {
                 AppCategory::Internet,
                 false,
             ),
+            (
+                "chromium",
+                "Chromium",
+                "chromium",
+                AppCategory::Internet,
+                false,
+            ),
+            (
+                "zen-browser",
+                "Zen Browser",
+                "zen-browser",
+                AppCategory::Internet,
+                false,
+            ),
+            ("brave", "Brave", "brave", AppCategory::Internet, false),
+            (
+                "librewolf",
+                "LibreWolf",
+                "librewolf",
+                AppCategory::Internet,
+                false,
+            ),
+            (
+                "vivaldi",
+                "Vivaldi",
+                "vivaldi",
+                AppCategory::Internet,
+                false,
+            ),
+            ("falkon", "Falkon", "falkon", AppCategory::Internet, false),
+            ("midori", "Midori", "midori", AppCategory::Internet, false),
         ];
 
         for (id, name, icon, category, is_ai) in system_apps {
@@ -885,6 +916,13 @@ mod tests {
             "audit-viewer",
             "model-manager",
             "firefox",
+            "chromium",
+            "zen-browser",
+            "brave",
+            "librewolf",
+            "vivaldi",
+            "falkon",
+            "midori",
         ] {
             assert!(
                 shell.launch_app(app_id).is_ok(),
@@ -1129,6 +1167,13 @@ mod tests {
             "audit-viewer",
             "model-manager",
             "firefox",
+            "chromium",
+            "zen-browser",
+            "brave",
+            "librewolf",
+            "vivaldi",
+            "falkon",
+            "midori",
         ];
         for id in app_ids {
             assert!(shell.launch_app(id).is_ok(), "Failed to launch {}", id);
@@ -1306,10 +1351,10 @@ mod tests {
     }
 
     #[test]
-    fn test_desktop_shell_app_registry_has_seven_apps() {
+    fn test_desktop_shell_app_registry_count() {
         let shell = DesktopShell::new();
         let registry = shell.app_registry.read().unwrap();
-        assert_eq!(registry.len(), 7);
+        assert_eq!(registry.len(), 14);
     }
 
     #[test]

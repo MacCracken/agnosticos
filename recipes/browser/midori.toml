@@ -1,0 +1,96 @@
+# Midori — Lightweight Electron-based browser focused on speed and privacy
+# Modern rewrite using Electron/Chromium engine. Minimal and fast.
+
+[package]
+name = "midori"
+version = "11.5.1"
+description = "Midori — Fast, lightweight web browser"
+license = "LGPL-2.1"
+groups = ["desktop", "browser", "internet"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/nicothegamer/nicothegamer.github.io/archive/refs/tags/v11.5.1.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = ["agnos-defaults.patch"]
+
+[depends]
+runtime = [
+    "glibc",
+    "gtk3",
+    "nss",
+    "nspr",
+    "alsa-lib",
+    "pulseaudio",
+    "mesa",
+    "libdrm",
+    "wayland",
+    "wayland-protocols",
+    "libpipewire",
+    "dbus",
+    "at-spi2-core",
+    "fontconfig",
+    "freetype2",
+    "harfbuzz",
+    "libxkbcommon",
+    "pango",
+    "cairo",
+    "zlib",
+]
+build = [
+    "nodejs",
+    "npm",
+    "python3",
+    "pkg-config",
+]
+
+[build]
+pre_build = """
+npm install
+"""
+configure = ""
+make = "npm run build -- --linux"
+check = ""
+install = """
+mkdir -p $PKG/usr/lib/midori
+mkdir -p $PKG/usr/bin
+
+# Copy Electron app output
+cp -r dist/linux-unpacked/* $PKG/usr/lib/midori/
+
+# Desktop entry for aethersafha
+mkdir -p $PKG/usr/share/applications
+cat > $PKG/usr/share/applications/midori.desktop << 'EOF'
+[Desktop Entry]
+Name=Midori
+Comment=Browse the Web — Fast & Light
+GenericName=Web Browser
+Exec=midori %U
+Icon=midori
+Terminal=false
+Type=Application
+MimeType=text/html;text/xml;application/xhtml+xml;x-scheme-handler/http;x-scheme-handler/https;
+Categories=Network;WebBrowser;
+StartupNotify=true
+StartupWMClass=midori
+EOF
+
+# Launcher script
+cat > $PKG/usr/bin/midori << 'LAUNCHER'
+#!/bin/sh
+# AGNOS Midori launcher — Wayland-native
+exec /usr/lib/midori/midori \
+    --ozone-platform=wayland \
+    --enable-features=WaylandWindowDecorations \
+    --enable-gpu-rasterization \
+    --no-default-browser-check \
+    "$@"
+LAUNCHER
+chmod +x $PKG/usr/bin/midori
+"""
+
+[security]
+hardening = ["pie", "relro", "fortify", "stackprotector"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

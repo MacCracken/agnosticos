@@ -1,0 +1,100 @@
+# Vivaldi — Feature-rich Chromium-based browser with extensive customization
+# Proprietary UI on open-source Chromium engine. Wayland-native for AGNOS.
+
+[package]
+name = "vivaldi"
+version = "7.2.3614.47"
+description = "Vivaldi — Highly customizable Chromium-based browser"
+license = "Vivaldi-EULA"
+groups = ["desktop", "browser", "internet"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://downloads.vivaldi.com/stable/vivaldi-stable_7.2.3614.47-1_amd64.deb"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = [
+    "glibc",
+    "gtk3",
+    "nss",
+    "nspr",
+    "alsa-lib",
+    "pulseaudio",
+    "mesa",
+    "libdrm",
+    "wayland",
+    "wayland-protocols",
+    "libpipewire",
+    "dbus",
+    "at-spi2-core",
+    "fontconfig",
+    "freetype2",
+    "harfbuzz",
+    "libxkbcommon",
+    "libva",
+    "pango",
+    "cairo",
+    "zlib",
+    "icu",
+    "libffi",
+    "ffmpeg",
+    "curl",
+]
+build = []
+
+[build]
+pre_build = """
+# Vivaldi distributes pre-built binaries — extract from .deb
+ar x vivaldi-stable_*.deb
+tar xf data.tar.xz
+"""
+configure = ""
+make = ""
+check = ""
+install = """
+mkdir -p $PKG/usr/lib/vivaldi
+mkdir -p $PKG/usr/bin
+
+# Copy extracted Vivaldi files
+cp -r opt/vivaldi/* $PKG/usr/lib/vivaldi/
+
+# Desktop entry for aethersafha
+mkdir -p $PKG/usr/share/applications
+cat > $PKG/usr/share/applications/vivaldi.desktop << 'EOF'
+[Desktop Entry]
+Name=Vivaldi
+Comment=Browse the Web Your Way
+GenericName=Web Browser
+Exec=vivaldi %U
+Icon=vivaldi
+Terminal=false
+Type=Application
+MimeType=text/html;text/xml;application/xhtml+xml;x-scheme-handler/http;x-scheme-handler/https;
+Categories=Network;WebBrowser;
+StartupNotify=true
+StartupWMClass=vivaldi
+EOF
+
+# Launcher script
+cat > $PKG/usr/bin/vivaldi << 'LAUNCHER'
+#!/bin/sh
+# AGNOS Vivaldi launcher — Wayland-native
+exec /usr/lib/vivaldi/vivaldi \
+    --ozone-platform=wayland \
+    --enable-features=VaapiVideoDecodeLinuxGL,WaylandWindowDecorations \
+    --enable-gpu-rasterization \
+    --enable-zero-copy \
+    --no-default-browser-check \
+    --no-first-run \
+    "$@"
+LAUNCHER
+chmod +x $PKG/usr/bin/vivaldi
+"""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

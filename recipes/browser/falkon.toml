@@ -1,0 +1,83 @@
+# Falkon — Lightweight Qt/WebEngine browser (KDE project)
+# Minimal resource usage, QtWebEngine (Chromium-based), native Wayland via Qt.
+
+[package]
+name = "falkon"
+version = "24.12.3"
+description = "Falkon — Lightweight Qt-based web browser"
+license = "GPL-3.0"
+groups = ["desktop", "browser", "internet"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://download.kde.org/stable/release-service/24.12.3/src/falkon-24.12.3.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = ["agnos-defaults.patch"]
+
+[depends]
+runtime = [
+    "glibc",
+    "qt6-base",
+    "qt6-webengine",
+    "qt6-declarative",
+    "qt6-wayland",
+    "openssl",
+    "icu",
+    "zlib",
+    "libxkbcommon",
+    "wayland",
+    "wayland-protocols",
+    "mesa",
+    "libdrm",
+    "fontconfig",
+    "freetype2",
+    "harfbuzz",
+    "dbus",
+    "libpipewire",
+]
+build = [
+    "cmake",
+    "extra-cmake-modules",
+    "qt6-tools",
+    "ninja",
+    "pkg-config",
+    "python3",
+]
+
+[build]
+pre_build = ""
+configure = """
+cmake -B build -G Ninja \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DBUILD_TESTING=OFF \
+    -DQT_MAJOR_VERSION=6
+"""
+make = "ninja -C build"
+check = ""
+install = """
+DESTDIR=$PKG ninja -C build install
+
+# Desktop entry for aethersafha
+mkdir -p $PKG/usr/share/applications
+cat > $PKG/usr/share/applications/falkon.desktop << 'EOF'
+[Desktop Entry]
+Name=Falkon
+Comment=Browse the Web — Lightweight
+GenericName=Web Browser
+Exec=falkon %u
+Icon=falkon
+Terminal=false
+Type=Application
+MimeType=text/html;text/xml;application/xhtml+xml;x-scheme-handler/http;x-scheme-handler/https;
+Categories=Network;WebBrowser;
+StartupNotify=true
+StartupWMClass=falkon
+EOF
+"""
+
+[security]
+hardening = ["pie", "relro", "fortify", "stackprotector"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

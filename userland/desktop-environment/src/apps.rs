@@ -590,52 +590,135 @@ impl ModelManagerApp {
     }
 }
 
-/// Default binary path for Firefox (installed via ark package)
-const FIREFOX_BIN: &str = "/usr/bin/firefox";
-
-/// Firefox web browser application
-#[derive(Debug)]
+/// Web browser application (supports Firefox, Chromium, or any browser)
+#[derive(Debug, Clone)]
 pub struct WebBrowserApp {
     pub id: String,
     pub name: String,
     pub binary: String,
+    /// Environment variables to set when launching (e.g. MOZ_ENABLE_WAYLAND=1)
+    pub env_vars: Vec<(String, String)>,
     pub default_url: Option<String>,
 }
 
 impl Default for WebBrowserApp {
     fn default() -> Self {
-        Self::new()
+        Self::firefox()
     }
 }
 
 impl WebBrowserApp {
-    pub fn new() -> Self {
+    /// Create a Firefox browser instance.
+    pub fn firefox() -> Self {
         Self {
             id: "firefox".to_string(),
             name: "Firefox".to_string(),
-            binary: FIREFOX_BIN.to_string(),
+            binary: "/usr/bin/firefox".to_string(),
+            env_vars: vec![("MOZ_ENABLE_WAYLAND".to_string(), "1".to_string())],
             default_url: None,
         }
     }
 
-    /// Check if Firefox is installed on the system.
+    /// Create a Chromium browser instance.
+    pub fn chromium() -> Self {
+        Self {
+            id: "chromium".to_string(),
+            name: "Chromium".to_string(),
+            binary: "/usr/bin/chromium".to_string(),
+            // Chromium launcher script handles Wayland flags
+            env_vars: vec![],
+            default_url: None,
+        }
+    }
+
+    /// Create a Zen Browser instance (Firefox-based, minimalist).
+    pub fn zen() -> Self {
+        Self {
+            id: "zen-browser".to_string(),
+            name: "Zen Browser".to_string(),
+            binary: "/usr/bin/zen-browser".to_string(),
+            env_vars: vec![("MOZ_ENABLE_WAYLAND".to_string(), "1".to_string())],
+            default_url: None,
+        }
+    }
+
+    /// Create a Brave browser instance (Chromium-based, privacy-first).
+    pub fn brave() -> Self {
+        Self {
+            id: "brave".to_string(),
+            name: "Brave".to_string(),
+            binary: "/usr/bin/brave".to_string(),
+            // Brave launcher script handles Wayland flags
+            env_vars: vec![],
+            default_url: None,
+        }
+    }
+
+    /// Create a LibreWolf browser instance (Firefox fork, privacy-hardened).
+    pub fn librewolf() -> Self {
+        Self {
+            id: "librewolf".to_string(),
+            name: "LibreWolf".to_string(),
+            binary: "/usr/bin/librewolf".to_string(),
+            env_vars: vec![("MOZ_ENABLE_WAYLAND".to_string(), "1".to_string())],
+            default_url: None,
+        }
+    }
+
+    /// Create a Vivaldi browser instance (Chromium-based, highly customizable).
+    pub fn vivaldi() -> Self {
+        Self {
+            id: "vivaldi".to_string(),
+            name: "Vivaldi".to_string(),
+            binary: "/usr/bin/vivaldi".to_string(),
+            // Vivaldi launcher script handles Wayland flags
+            env_vars: vec![],
+            default_url: None,
+        }
+    }
+
+    /// Create a Falkon browser instance (Qt/WebEngine, lightweight).
+    pub fn falkon() -> Self {
+        Self {
+            id: "falkon".to_string(),
+            name: "Falkon".to_string(),
+            binary: "/usr/bin/falkon".to_string(),
+            env_vars: vec![("QT_QPA_PLATFORM".to_string(), "wayland".to_string())],
+            default_url: None,
+        }
+    }
+
+    /// Create a Midori browser instance (Electron-based, fast & light).
+    pub fn midori() -> Self {
+        Self {
+            id: "midori".to_string(),
+            name: "Midori".to_string(),
+            binary: "/usr/bin/midori".to_string(),
+            // Midori launcher script handles Wayland flags
+            env_vars: vec![],
+            default_url: None,
+        }
+    }
+
+    /// Check if the browser is installed on the system.
     pub fn is_installed(&self) -> bool {
         std::path::Path::new(&self.binary).exists()
     }
 
-    /// Launch Firefox, optionally opening a URL.
+    /// Launch the browser, optionally opening a URL.
     pub async fn launch(&self, url: Option<&str>) -> Result<(), AppError> {
         if !self.is_installed() {
             return Err(AppError::AppNotFound(format!(
-                "Firefox not found at {}. Install with: ark install firefox",
-                self.binary
+                "{} not found at {}. Install with: ark install {}",
+                self.name, self.binary, self.id
             )));
         }
 
         let mut cmd = tokio::process::Command::new(&self.binary);
 
-        // Force Wayland-native mode
-        cmd.env("MOZ_ENABLE_WAYLAND", "1");
+        for (key, val) in &self.env_vars {
+            cmd.env(key, val);
+        }
 
         if let Some(url) = url {
             cmd.arg(url);
@@ -648,9 +731,9 @@ impl WebBrowserApp {
             .stderr(std::process::Stdio::null());
 
         cmd.spawn()
-            .map_err(|e| AppError::WindowError(format!("Failed to launch Firefox: {}", e)))?;
+            .map_err(|e| AppError::WindowError(format!("Failed to launch {}: {}", self.name, e)))?;
 
-        info!("Launched Firefox");
+        info!("Launched {}", self.name);
         Ok(())
     }
 }
@@ -659,7 +742,7 @@ impl WebBrowserApp {
 pub struct DesktopApplications {
     terminal: TerminalApp,
     file_manager: FileManagerApp,
-    web_browser: WebBrowserApp,
+    browsers: Vec<WebBrowserApp>,
     agent_manager: AgentManagerApp,
     audit_viewer: AuditViewerApp,
     model_manager: ModelManagerApp,
@@ -677,7 +760,16 @@ impl DesktopApplications {
         Self {
             terminal: TerminalApp::new(),
             file_manager: FileManagerApp::new(),
-            web_browser: WebBrowserApp::new(),
+            browsers: vec![
+                WebBrowserApp::firefox(),
+                WebBrowserApp::chromium(),
+                WebBrowserApp::zen(),
+                WebBrowserApp::brave(),
+                WebBrowserApp::librewolf(),
+                WebBrowserApp::vivaldi(),
+                WebBrowserApp::falkon(),
+                WebBrowserApp::midori(),
+            ],
             agent_manager: AgentManagerApp::new(),
             audit_viewer: AuditViewerApp::new(),
             model_manager: ModelManagerApp::new(),
@@ -711,10 +803,26 @@ impl DesktopApplications {
         Ok(window)
     }
 
-    pub fn open_web_browser(&self, url: Option<String>) -> Result<AppWindow, AppError> {
+    /// Open a browser window. Uses the specified browser ID, or the first available browser.
+    pub fn open_web_browser(
+        &self,
+        browser_id: Option<&str>,
+        url: Option<String>,
+    ) -> Result<AppWindow, AppError> {
+        let browser =
+            match browser_id {
+                Some(id) => self.browsers.iter().find(|b| b.id == id).ok_or_else(|| {
+                    AppError::AppNotFound(format!("Browser '{}' not registered", id))
+                })?,
+                None => self
+                    .browsers
+                    .first()
+                    .ok_or_else(|| AppError::AppNotFound("No browsers registered".to_string()))?,
+            };
+
         let title = match &url {
-            Some(u) => format!("Firefox — {}", u),
-            None => self.web_browser.name.clone(),
+            Some(u) => format!("{} — {}", browser.name, u),
+            None => browser.name.clone(),
         };
         let mut window = AppWindow::new(AppType::WebBrowser, title);
         window.width = 1280;
@@ -723,12 +831,21 @@ impl DesktopApplications {
             .write()
             .unwrap_or_else(|e| e.into_inner())
             .insert(window.id, window.clone());
-        info!("Opened web browser");
+        info!("Opened {}", browser.name);
         Ok(window)
     }
 
-    pub fn get_web_browser(&self) -> &WebBrowserApp {
-        &self.web_browser
+    /// Get a browser by ID, or the default (first registered) browser.
+    pub fn get_browser(&self, id: Option<&str>) -> Option<&WebBrowserApp> {
+        match id {
+            Some(id) => self.browsers.iter().find(|b| b.id == id),
+            None => self.browsers.first(),
+        }
+    }
+
+    /// List all registered browsers.
+    pub fn list_browsers(&self) -> &[WebBrowserApp] {
+        &self.browsers
     }
 
     pub fn open_agent_manager(&self) -> Result<AppWindow, AppError> {
@@ -1338,11 +1455,12 @@ mod tests {
         let apps = DesktopApplications::new();
         apps.open_terminal().unwrap();
         apps.open_file_manager(None).unwrap();
-        apps.open_web_browser(None).unwrap();
+        apps.open_web_browser(None, None).unwrap();
+        apps.open_web_browser(Some("chromium"), None).unwrap();
         apps.open_agent_manager().unwrap();
         apps.open_audit_viewer().unwrap();
         apps.open_model_manager().unwrap();
-        assert_eq!(apps.get_open_windows().len(), 6);
+        assert_eq!(apps.get_open_windows().len(), 7);
     }
 
     #[test]
@@ -2431,35 +2549,108 @@ mod tests {
 
     // --- WebBrowserApp tests ---
 
+    // --- WebBrowserApp tests ---
+
     #[test]
-    fn test_web_browser_app_new() {
-        let browser = WebBrowserApp::new();
+    fn test_web_browser_firefox() {
+        let browser = WebBrowserApp::firefox();
         assert_eq!(browser.id, "firefox");
         assert_eq!(browser.name, "Firefox");
-        assert_eq!(browser.binary, FIREFOX_BIN);
+        assert_eq!(browser.binary, "/usr/bin/firefox");
+        assert!(!browser.env_vars.is_empty());
         assert!(browser.default_url.is_none());
     }
 
     #[test]
-    fn test_web_browser_app_default() {
+    fn test_web_browser_chromium() {
+        let browser = WebBrowserApp::chromium();
+        assert_eq!(browser.id, "chromium");
+        assert_eq!(browser.name, "Chromium");
+        assert_eq!(browser.binary, "/usr/bin/chromium");
+        assert!(browser.env_vars.is_empty());
+    }
+
+    #[test]
+    fn test_web_browser_default_is_firefox() {
         let browser = WebBrowserApp::default();
         assert_eq!(browser.id, "firefox");
     }
 
     #[test]
+    fn test_web_browser_zen() {
+        let browser = WebBrowserApp::zen();
+        assert_eq!(browser.id, "zen-browser");
+        assert_eq!(browser.name, "Zen Browser");
+        assert_eq!(browser.binary, "/usr/bin/zen-browser");
+        assert!(!browser.env_vars.is_empty()); // MOZ_ENABLE_WAYLAND
+    }
+
+    #[test]
+    fn test_web_browser_brave() {
+        let browser = WebBrowserApp::brave();
+        assert_eq!(browser.id, "brave");
+        assert_eq!(browser.name, "Brave");
+        assert_eq!(browser.binary, "/usr/bin/brave");
+    }
+
+    #[test]
+    fn test_web_browser_librewolf() {
+        let browser = WebBrowserApp::librewolf();
+        assert_eq!(browser.id, "librewolf");
+        assert_eq!(browser.name, "LibreWolf");
+        assert_eq!(browser.binary, "/usr/bin/librewolf");
+        assert!(!browser.env_vars.is_empty()); // MOZ_ENABLE_WAYLAND
+    }
+
+    #[test]
+    fn test_web_browser_vivaldi() {
+        let browser = WebBrowserApp::vivaldi();
+        assert_eq!(browser.id, "vivaldi");
+        assert_eq!(browser.name, "Vivaldi");
+        assert_eq!(browser.binary, "/usr/bin/vivaldi");
+    }
+
+    #[test]
+    fn test_web_browser_falkon() {
+        let browser = WebBrowserApp::falkon();
+        assert_eq!(browser.id, "falkon");
+        assert_eq!(browser.name, "Falkon");
+        assert_eq!(browser.binary, "/usr/bin/falkon");
+        assert!(!browser.env_vars.is_empty()); // QT_QPA_PLATFORM
+    }
+
+    #[test]
+    fn test_web_browser_midori() {
+        let browser = WebBrowserApp::midori();
+        assert_eq!(browser.id, "midori");
+        assert_eq!(browser.name, "Midori");
+        assert_eq!(browser.binary, "/usr/bin/midori");
+    }
+
+    #[test]
     fn test_web_browser_is_installed() {
-        let browser = WebBrowserApp::new();
-        // In test env, Firefox likely isn't at /usr/bin/firefox
-        // Just verify the method doesn't panic
-        let _ = browser.is_installed();
+        let firefox = WebBrowserApp::firefox();
+        let chromium = WebBrowserApp::chromium();
+        // In test env, browsers likely aren't installed — just verify no panic
+        let _ = firefox.is_installed();
+        let _ = chromium.is_installed();
+    }
+
+    #[test]
+    fn test_web_browser_clone() {
+        let browser = WebBrowserApp::firefox();
+        let cloned = browser.clone();
+        assert_eq!(cloned.id, browser.id);
+        assert_eq!(cloned.binary, browser.binary);
     }
 
     #[tokio::test]
-    async fn test_web_browser_launch_not_installed() {
+    async fn test_web_browser_launch_firefox_not_installed() {
         let browser = WebBrowserApp {
             id: "firefox".to_string(),
             name: "Firefox".to_string(),
             binary: "/nonexistent/firefox".to_string(),
+            env_vars: vec![],
             default_url: None,
         };
         let result = browser.launch(None).await;
@@ -2473,10 +2664,30 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn test_web_browser_launch_chromium_not_installed() {
+        let browser = WebBrowserApp {
+            id: "chromium".to_string(),
+            name: "Chromium".to_string(),
+            binary: "/nonexistent/chromium".to_string(),
+            env_vars: vec![],
+            default_url: None,
+        };
+        let result = browser.launch(None).await;
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            AppError::AppNotFound(msg) => {
+                assert!(msg.contains("Chromium not found"));
+                assert!(msg.contains("ark install chromium"));
+            }
+            other => panic!("Expected AppNotFound, got {:?}", other),
+        }
+    }
+
     #[test]
-    fn test_desktop_applications_open_web_browser() {
+    fn test_desktop_applications_open_firefox() {
         let apps = DesktopApplications::new();
-        let result = apps.open_web_browser(None);
+        let result = apps.open_web_browser(Some("firefox"), None);
         assert!(result.is_ok());
         let window = result.unwrap();
         assert_eq!(window.app_type, AppType::WebBrowser);
@@ -2486,19 +2697,71 @@ mod tests {
     }
 
     #[test]
-    fn test_desktop_applications_open_web_browser_with_url() {
+    fn test_desktop_applications_open_chromium() {
         let apps = DesktopApplications::new();
-        let result = apps.open_web_browser(Some("https://agnos.org".to_string()));
+        let result = apps.open_web_browser(Some("chromium"), None);
         assert!(result.is_ok());
         let window = result.unwrap();
         assert_eq!(window.app_type, AppType::WebBrowser);
+        assert_eq!(window.title, "Chromium");
+    }
+
+    #[test]
+    fn test_desktop_applications_open_default_browser() {
+        let apps = DesktopApplications::new();
+        let result = apps.open_web_browser(None, None);
+        assert!(result.is_ok());
+        let window = result.unwrap();
+        // Default is Firefox (first in list)
+        assert_eq!(window.title, "Firefox");
+    }
+
+    #[test]
+    fn test_desktop_applications_open_browser_with_url() {
+        let apps = DesktopApplications::new();
+        let result = apps.open_web_browser(None, Some("https://agnos.org".to_string()));
+        assert!(result.is_ok());
+        let window = result.unwrap();
         assert!(window.title.contains("https://agnos.org"));
     }
 
     #[test]
-    fn test_desktop_applications_get_web_browser() {
+    fn test_desktop_applications_open_unknown_browser() {
         let apps = DesktopApplications::new();
-        let browser = apps.get_web_browser();
-        assert_eq!(browser.id, "firefox");
+        let result = apps.open_web_browser(Some("netscape"), None);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_desktop_applications_get_browser() {
+        let apps = DesktopApplications::new();
+        assert_eq!(apps.get_browser(None).unwrap().id, "firefox");
+        assert_eq!(apps.get_browser(Some("firefox")).unwrap().id, "firefox");
+        assert_eq!(apps.get_browser(Some("chromium")).unwrap().id, "chromium");
+        assert_eq!(
+            apps.get_browser(Some("zen-browser")).unwrap().id,
+            "zen-browser"
+        );
+        assert_eq!(apps.get_browser(Some("brave")).unwrap().id, "brave");
+        assert_eq!(apps.get_browser(Some("librewolf")).unwrap().id, "librewolf");
+        assert_eq!(apps.get_browser(Some("vivaldi")).unwrap().id, "vivaldi");
+        assert_eq!(apps.get_browser(Some("falkon")).unwrap().id, "falkon");
+        assert_eq!(apps.get_browser(Some("midori")).unwrap().id, "midori");
+        assert!(apps.get_browser(Some("opera")).is_none());
+    }
+
+    #[test]
+    fn test_desktop_applications_list_browsers() {
+        let apps = DesktopApplications::new();
+        let browsers = apps.list_browsers();
+        assert_eq!(browsers.len(), 8);
+        assert_eq!(browsers[0].id, "firefox");
+        assert_eq!(browsers[1].id, "chromium");
+        assert_eq!(browsers[2].id, "zen-browser");
+        assert_eq!(browsers[3].id, "brave");
+        assert_eq!(browsers[4].id, "librewolf");
+        assert_eq!(browsers[5].id, "vivaldi");
+        assert_eq!(browsers[6].id, "falkon");
+        assert_eq!(browsers[7].id, "midori");
     }
 }

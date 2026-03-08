@@ -5,6 +5,32 @@ All notable changes to AGNOS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2026.3.7-#4] - 2026-03-07
+
+### Added — Web Browser Support
+
+#### Browser Recipes (takumi) — 8 browsers
+- **Firefox ESR 128.9.0** — `recipes/browser/firefox.toml`: Wayland-native build, system libraries, AGNOS hardened defaults (HTTPS-only, strict tracking protection, fingerprint resistance)
+- **Chromium 134.0.6998.88** — `recipes/browser/chromium.toml`: Ozone/Wayland-native, no Google proprietary components, VaaPI hardware acceleration
+- **Zen Browser 1.9.2** — `recipes/browser/zen.toml`: Firefox-based, minimalist, privacy-focused
+- **Brave 1.76.80** — `recipes/browser/brave.toml`: Chromium-based, built-in ad blocking, privacy-first
+- **LibreWolf 128.9.0-1** — `recipes/browser/librewolf.toml`: Firefox fork, no telemetry, privacy-hardened (clears cookies/cache on shutdown)
+- **Vivaldi 7.2.3614.47** — `recipes/browser/vivaldi.toml`: Chromium-based, highly customizable, pre-built binary repackaging
+- **Falkon 24.12.3** — `recipes/browser/falkon.toml`: Qt6/WebEngine, lightweight, CMake/Ninja build
+- **Midori 11.5.1** — `recipes/browser/midori.toml`: Electron-based, fast & lightweight
+
+#### Desktop Integration (aethersafha)
+- **Generic `WebBrowserApp` struct** in `apps.rs` — 8 browser constructors (`firefox()`, `chromium()`, `zen()`, `brave()`, `librewolf()`, `vivaldi()`, `falkon()`, `midori()`)
+- **`DesktopApplications`** manages `browsers: Vec<WebBrowserApp>` with `open_web_browser()`, `get_browser()`, `list_browsers()`
+- **`AppCategory::Internet`** variant added to shell app registry
+- **All 8 browsers registered** in `initialize_app_registry()` (14 total apps)
+- 20+ new tests covering all browser constructors, launch, URL opening, error handling, list/get
+
+#### Roadmap
+- Phase 1 (Alpha): Firefox ESR + Chromium as `.ark` packages
+- Phase 2 (Post-Beta): AI-Integrated WebView via `wry`/`tauri` with local LLM features
+- Phase 3 (Post-v1.0): Custom browser shell (Servo/CEF) with per-tab agent sandboxing
+
 ## [2026.3.7-#3] - 2026-03-07
 
 ### Changed — CI/CD Workflow Audit & Container Publishing

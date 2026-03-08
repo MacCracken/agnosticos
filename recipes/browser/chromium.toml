@@ -1,0 +1,166 @@
+# Chromium — Open-source web browser for AGNOS
+# Built from source with Wayland-native support and hardened security flags.
+# Chromium (not Chrome) — no proprietary Google components.
+
+[package]
+name = "chromium"
+version = "134.0.6998.88"
+description = "Chromium — Open-source web browser"
+license = "BSD-3-Clause"
+groups = ["desktop", "browser", "internet"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://commondatastorage.googleapis.com/chromium-browser-official/chromium-134.0.6998.88.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = ["agnos-defaults.patch", "wayland-ozone.patch"]
+
+[depends]
+runtime = [
+    "glibc",
+    "gtk3",
+    "nss",
+    "nspr",
+    "alsa-lib",
+    "pulseaudio",
+    "mesa",
+    "libdrm",
+    "wayland",
+    "wayland-protocols",
+    "libpipewire",
+    "dbus",
+    "at-spi2-core",
+    "fontconfig",
+    "freetype2",
+    "harfbuzz",
+    "libxkbcommon",
+    "libva",
+    "pango",
+    "cairo",
+    "zlib",
+    "icu",
+    "libffi",
+    "minizip",
+    "libevent",
+    "libwebp",
+    "opus",
+    "flac",
+    "libvpx",
+    "ffmpeg",
+    "curl",
+]
+build = [
+    "python3",
+    "nodejs",
+    "gn",
+    "ninja",
+    "clang",
+    "llvm",
+    "lld",
+    "pkg-config",
+    "gperf",
+    "perl",
+]
+
+[build]
+pre_build = """
+# Generate build config with GN
+cat > args.gn << 'GNEOF'
+# AGNOS Chromium build configuration
+is_official_build = true
+is_debug = false
+symbol_level = 0
+
+# Wayland-native (primary display server for AGNOS)
+ozone_platform_wayland = true
+ozone_platform_x11 = false
+ozone_auto_platforms = false
+use_ozone = true
+
+# Use system libraries where possible
+use_system_freetype = true
+use_system_harfbuzz = true
+use_system_libffi = true
+use_system_zlib = true
+
+# Security
+use_sysroot = false
+treat_warnings_as_errors = false
+
+# Disable Google-specific features
+is_component_build = false
+enable_nacl = false
+enable_widevine = false
+use_unofficial_version_number = false
+safe_browsing_mode = 0
+
+# Build with system clang
+is_clang = true
+clang_use_chrome_plugins = false
+
+# Hardware acceleration
+use_vaapi = true
+enable_vulkan = true
+
+# Codecs
+ffmpeg_branding = "Chromium"
+proprietary_codecs = false
+GNEOF
+
+mkdir -p out/Release
+cp args.gn out/Release/
+gn gen out/Release
+"""
+configure = ""
+make = "ninja -C out/Release chrome"
+check = ""
+install = """
+mkdir -p $PKG/usr/lib/chromium
+mkdir -p $PKG/usr/bin
+
+# Main binary and resources
+cp out/Release/chrome $PKG/usr/lib/chromium/chromium
+cp out/Release/*.pak $PKG/usr/lib/chromium/
+cp out/Release/*.bin $PKG/usr/lib/chromium/ 2>/dev/null || true
+cp -r out/Release/locales $PKG/usr/lib/chromium/
+cp out/Release/icudtl.dat $PKG/usr/lib/chromium/ 2>/dev/null || true
+
+# Desktop entry for aethersafha
+mkdir -p $PKG/usr/share/applications
+cat > $PKG/usr/share/applications/chromium.desktop << 'EOF'
+[Desktop Entry]
+Name=Chromium
+Comment=Browse the Web
+GenericName=Web Browser
+Exec=chromium %U
+Icon=chromium
+Terminal=false
+Type=Application
+MimeType=text/html;text/xml;application/xhtml+xml;x-scheme-handler/http;x-scheme-handler/https;
+Categories=Network;WebBrowser;
+StartupNotify=true
+StartupWMClass=chromium
+EOF
+
+# Launcher script with AGNOS defaults
+cat > $PKG/usr/bin/chromium << 'LAUNCHER'
+#!/bin/sh
+# AGNOS Chromium launcher — Wayland-native with hardened flags
+exec /usr/lib/chromium/chromium \
+    --ozone-platform=wayland \
+    --enable-features=VaapiVideoDecodeLinuxGL,VaapiVideoEncoder,WaylandWindowDecorations \
+    --disable-features=UseChromeOSDirectVideoDecoder \
+    --enable-gpu-rasterization \
+    --enable-zero-copy \
+    --no-default-browser-check \
+    --no-first-run \
+    "$@"
+LAUNCHER
+chmod +x $PKG/usr/bin/chromium
+"""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

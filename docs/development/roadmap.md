@@ -86,12 +86,14 @@ All phases are complete. See [CHANGELOG.md](/CHANGELOG.md) for detailed implemen
 
 ### Web Browser
 
-**Phase 1 — Firefox ESR (Alpha)** `recipes/browser/firefox.toml`
-- [x] Takumi recipe for Firefox ESR 128 (Wayland-native, hardened defaults)
-- [ ] Build and package as `.ark`
-- [ ] Integrate with aethersafha app launcher (`AppType::WebBrowser`)
-- [ ] HTTPS-only mode, strict tracking protection, fingerprint resistance by default
-- [ ] Desktop entry + MIME type associations
+**Phase 1 — Browser Suite (Alpha)** `recipes/browser/`
+- [x] Takumi recipes for 8 browsers (all Wayland-native, hardened defaults)
+  - Firefox ESR 128.9.0, Chromium 134, Zen 1.9.2, Brave 1.76.80
+  - LibreWolf 128.9.0-1, Vivaldi 7.2, Falkon 24.12.3, Midori 11.5.1
+- [x] Integrate with aethersafha app launcher (`AppType::WebBrowser`, `AppCategory::Internet`)
+- [x] Generic `WebBrowserApp` with per-browser constructors, env vars, install detection
+- [ ] Build and package all as `.ark`
+- [ ] Desktop entry + MIME type associations per browser
 
 **Phase 2 — AI-Integrated WebView (Proposed, Post-Beta)**
 - [ ] Lightweight embedded browser using `wry`/`tauri` WebView

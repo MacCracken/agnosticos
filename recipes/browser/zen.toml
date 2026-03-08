@@ -1,0 +1,112 @@
+# Zen Browser — Firefox-based browser with focus on simplicity and privacy
+# Built on Firefox ESR engine with custom UI and enhanced privacy defaults.
+
+[package]
+name = "zen-browser"
+version = "1.9.2"
+description = "Zen Browser — Minimalist, privacy-focused web browser"
+license = "MPL-2.0"
+groups = ["desktop", "browser", "internet"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/nicothegamer/nicothegamer.github.io/archive/refs/tags/1.9.2.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = ["agnos-defaults.patch", "wayland-primary.patch"]
+
+[depends]
+runtime = [
+    "glibc",
+    "gtk3",
+    "dbus",
+    "alsa-lib",
+    "pulseaudio",
+    "nss",
+    "nspr",
+    "icu",
+    "zlib",
+    "libffi",
+    "fontconfig",
+    "freetype2",
+    "harfbuzz",
+    "cairo",
+    "pango",
+    "mesa",
+    "libdrm",
+    "wayland",
+    "wayland-protocols",
+    "libpipewire",
+]
+build = [
+    "rust",
+    "cbindgen",
+    "nodejs",
+    "nasm",
+    "python3",
+    "clang",
+    "llvm",
+    "pkg-config",
+]
+
+[build]
+pre_build = """
+cat > mozconfig << 'MOZEOF'
+# AGNOS Zen Browser build configuration (Firefox-based)
+ac_add_options --enable-application=browser
+ac_add_options --prefix=/usr
+ac_add_options --enable-release
+ac_add_options --enable-optimize="-O2"
+ac_add_options --enable-rust-simd
+
+# Wayland-native
+ac_add_options --enable-default-toolkit=cairo-gtk3-wayland
+
+# Security hardening
+ac_add_options --enable-hardening
+ac_add_options --enable-sandbox
+ac_add_options --disable-crashreporter
+ac_add_options --disable-updater
+ac_add_options --disable-tests
+ac_add_options --disable-debug
+
+# System libraries
+ac_add_options --with-system-zlib
+ac_add_options --with-system-ffi
+ac_add_options --with-system-icu
+ac_add_options --with-system-nss
+ac_add_options --with-system-nspr
+MOZEOF
+"""
+configure = ""
+make = "./mach build"
+check = ""
+install = """
+DESTDIR=$PKG ./mach install
+
+# Desktop entry for aethersafha
+mkdir -p $PKG/usr/share/applications
+cat > $PKG/usr/share/applications/zen-browser.desktop << 'EOF'
+[Desktop Entry]
+Name=Zen Browser
+Comment=Browse the Web — Minimalist & Private
+GenericName=Web Browser
+Exec=zen-browser %u
+Icon=zen-browser
+Terminal=false
+Type=Application
+MimeType=text/html;text/xml;application/xhtml+xml;x-scheme-handler/http;x-scheme-handler/https;
+Categories=Network;WebBrowser;
+StartupNotify=true
+StartupWMClass=zen-browser
+EOF
+
+# Symlink for PATH
+mkdir -p $PKG/usr/bin
+ln -sf /usr/lib/zen-browser/zen-browser $PKG/usr/bin/zen-browser
+"""
+
+[security]
+hardening = ["pie", "relro", "fortify", "stackprotector"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"
