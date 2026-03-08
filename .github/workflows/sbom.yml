@@ -1,73 +1,18 @@
-name: SBOM Generation
+name: Dependency Review
 
+# SBOM generation is handled by release.yml (tag-only).
+# This workflow only runs dependency review on PRs.
 on:
-  push:
-    tags: [ '[0-9]*' ]
-  schedule:
-    # Generate SBOM weekly
-    - cron: '0 0 * * 0'
-  workflow_dispatch:
+  pull_request:
+    branches: [ main, develop ]
 
 concurrency:
-  group: sbom-${{ github.ref }}
+  group: dep-review-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  CARGO_TERM_COLOR: always
-
 jobs:
-  generate-sbom:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Setup Rust environment
-      uses: ./.github/actions/setup-rust-env
-      with:
-        cache-prefix: sbom
-
-    - name: Install SBOM tools
-      run: cargo install cargo-cyclonedx cargo-license --locked
-
-    - name: Generate SBOM (CycloneDX)
-      run: |
-        cd userland
-        cargo cyclonedx --format json --output-cdx || true
-        cargo cyclonedx --format xml --output-cdx || true
-        mkdir -p ../sbom
-        cp -f *.cdx.json ../sbom/ 2>/dev/null || true
-        cp -f *.cdx.xml ../sbom/ 2>/dev/null || true
-
-    - name: Generate license summary
-      run: |
-        cd userland
-        cargo license --json > ../sbom/license-summary.json 2>/dev/null || true
-        cargo license > ../sbom/license-summary.txt 2>/dev/null || true
-
-    - name: Upload SBOM artifacts
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: sbom-files
-        path: sbom/
-        if-no-files-found: warn
-
-    - name: Upload SBOM to release
-      if: startsWith(github.ref, 'refs/tags/')
-      uses: softprops/action-gh-release@v2
-      with:
-        files: |
-          sbom/*.json
-          sbom/*.txt
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
   dependency-review:
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
 
     steps:
     - uses: actions/checkout@v4

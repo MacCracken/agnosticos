@@ -83,9 +83,48 @@ jobs:
         name: agnos-${{ matrix.name }}
         path: agnos-${{ matrix.name }}.tar.gz
 
+  # Generate SBOM alongside release artifacts
+  generate-sbom:
+    name: Generate SBOM
+    needs: ci-gate
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Rust environment
+      uses: ./.github/actions/setup-rust-env
+      with:
+        cache-prefix: sbom
+
+    - name: Install SBOM tools
+      run: cargo install cargo-cyclonedx cargo-license --locked
+
+    - name: Generate SBOM (CycloneDX)
+      run: |
+        cd userland
+        cargo cyclonedx --format json --output-cdx || true
+        cargo cyclonedx --format xml --output-cdx || true
+        mkdir -p ../sbom
+        cp -f *.cdx.json ../sbom/ 2>/dev/null || true
+        cp -f *.cdx.xml ../sbom/ 2>/dev/null || true
+
+    - name: Generate license summary
+      run: |
+        cd userland
+        cargo license --json > ../sbom/license-summary.json 2>/dev/null || true
+        cargo license > ../sbom/license-summary.txt 2>/dev/null || true
+
+    - name: Upload SBOM artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: sbom-files
+        path: sbom/
+        if-no-files-found: warn
+
   create-release:
     name: Create GitHub Release
-    needs: build-release
+    needs: [build-release, generate-sbom]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -130,7 +169,9 @@ jobs:
           ${{ steps.notes.outputs.notes }}
         draft: true
         prerelease: true
-        files: artifacts/**/*.tar.gz
+        files: |
+          artifacts/agnos-*/*.tar.gz
+          artifacts/sbom-files/*
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

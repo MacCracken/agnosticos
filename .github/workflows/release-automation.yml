@@ -1,5 +1,8 @@
 name: Release Automation
 
+# Convenience wrapper: creates and pushes a tag, which triggers release.yml.
+# This ensures only tagged commits get a GitHub Release.
+
 on:
   workflow_dispatch:
     inputs:
@@ -17,103 +20,59 @@ concurrency:
   group: release-automation-${{ github.event.inputs.version }}
   cancel-in-progress: false
 
-env:
-  CARGO_TERM_COLOR: always
-
 jobs:
-  build:
+  tag-and-release:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: x86_64-unknown-linux-gnu
-            cross: false
-          - target: aarch64-unknown-linux-gnu
-            cross: true
+    permissions:
+      contents: write
 
     steps:
     - uses: actions/checkout@v4
       with:
         fetch-depth: 0
 
-    - name: Setup Rust environment
-      uses: ./.github/actions/setup-rust-env
-      with:
-        targets: ${{ matrix.target }}
-        cache-prefix: release-auto-${{ matrix.target }}
-        install-cross: ${{ matrix.cross }}
-        install-build-essential: ${{ !matrix.cross }}
-
-    - name: Build (native)
-      if: ${{ !matrix.cross }}
-      run: cargo build --release --workspace --target ${{ matrix.target }}
-      working-directory: userland
-
-    - name: Build (cross)
-      if: matrix.cross
-      run: cross build --release --workspace --target ${{ matrix.target }}
-      working-directory: userland
-
-    - name: Package binaries
+    - name: Validate version format
       run: |
         VERSION="${{ github.event.inputs.version }}"
-        ARCH=$(echo ${{ matrix.target }} | cut -d- -f1)
-        mkdir -p dist/agnos-${VERSION}-${ARCH}
-        for bin in agent_runtime llm_gateway ai_shell agnos_sudo; do
-          cp "userland/target/${{ matrix.target }}/release/${bin}" "dist/agnos-${VERSION}-${ARCH}/" 2>/dev/null || true
-        done
-        cd dist
-        tar czf agnos-${VERSION}-${ARCH}.tar.gz agnos-${VERSION}-${ARCH}
+        if ! echo "$VERSION" | grep -qE '^[0-9]{4}\.[0-9]+\.[0-9]+(-#[0-9]+)?$'; then
+          echo "::error::Invalid version format '${VERSION}'. Expected CalVer: YYYY.D.M (e.g., 2026.3.7)"
+          exit 1
+        fi
 
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: agnos-${{ github.event.inputs.version }}-${{ matrix.target }}
-        path: dist/*.tar.gz
+    - name: Check tag does not already exist
+      run: |
+        VERSION="${{ github.event.inputs.version }}"
+        if git rev-parse "$VERSION" >/dev/null 2>&1; then
+          echo "::error::Tag '${VERSION}' already exists"
+          exit 1
+        fi
 
-  release:
-    runs-on: ubuntu-latest
-    needs: build
-    permissions:
-      contents: write
+    - name: Update VERSION file
+      run: |
+        echo "${{ github.event.inputs.version }}" > VERSION
 
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Download all artifacts
-      uses: actions/download-artifact@v4
-      with:
-        path: artifacts
-
-    - name: Sign packages
+    - name: Sign packages (if script exists)
       run: |
         if [ -f scripts/sign-packages.sh ]; then
           chmod +x scripts/sign-packages.sh
-          for artifact in artifacts/*/*.tar.gz; do
-            scripts/sign-packages.sh sign "$artifact" || true
-          done
+          scripts/sign-packages.sh sign || true
         fi
 
-    - name: Generate SBOM
+    - name: Create and push tag
       run: |
-        if [ -f scripts/generate-sbom.sh ]; then
-          chmod +x scripts/generate-sbom.sh
-          ./scripts/generate-sbom.sh generate || true
-        fi
-
-    - name: Create Release
-      uses: softprops/action-gh-release@v2
-      with:
-        tag_name: ${{ github.event.inputs.version }}
-        name: AGNOS ${{ github.event.inputs.version }}
-        body: See CHANGELOG.md for detailed changes.
-        prerelease: ${{ github.event.inputs.prerelease || true }}
-        files: |
-          artifacts/**/*.tar.gz
-          artifacts/**/*.asc
-          sbom/*.json
-          sbom/*.txt
+        VERSION="${{ github.event.inputs.version }}"
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git add VERSION
+        git commit -m "release: ${VERSION}" || true
+        git tag -a "$VERSION" -m "Release ${VERSION}"
+        git push origin HEAD "$VERSION"
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Summary
+      run: |
+        VERSION="${{ github.event.inputs.version }}"
+        echo "### Tag \`${VERSION}\` created and pushed" >> "$GITHUB_SUMMARY"
+        echo "" >> "$GITHUB_SUMMARY"
+        echo "The [Release workflow](../actions/workflows/release.yml) will now build and publish the release." >> "$GITHUB_SUMMARY"
