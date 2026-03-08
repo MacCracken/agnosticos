@@ -50,8 +50,8 @@ jobs:
     - name: Install cross (aarch64)
       if: matrix.cross
       uses: taiki-e/install-action@v2
-        with:
-          tool: cross
+      with:
+        tool: cross
 
     - name: Build (native)
       if: ${{ !matrix.cross }}
