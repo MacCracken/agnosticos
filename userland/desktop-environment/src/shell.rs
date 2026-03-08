@@ -117,6 +117,7 @@ pub struct AppEntry {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AppCategory {
     System,
+    Internet,
     Office,
     Development,
     Communication,
@@ -252,22 +253,65 @@ impl DesktopShell {
         let mut registry = self.app_registry.write().unwrap_or_else(|e| e.into_inner());
 
         let system_apps = [
-            ("terminal", "Terminal", "terminal", true),
-            ("filemanager", "File Manager", "folder", false),
-            ("settings", "Settings", "settings", false),
-            ("agent-manager", "Agent Manager", "bot", true),
-            ("audit-viewer", "Audit Viewer", "shield", true),
-            ("model-manager", "Model Manager", "cpu", true),
+            (
+                "terminal",
+                "Terminal",
+                "terminal",
+                AppCategory::System,
+                true,
+            ),
+            (
+                "filemanager",
+                "File Manager",
+                "folder",
+                AppCategory::System,
+                false,
+            ),
+            (
+                "settings",
+                "Settings",
+                "settings",
+                AppCategory::System,
+                false,
+            ),
+            (
+                "agent-manager",
+                "Agent Manager",
+                "bot",
+                AppCategory::AI,
+                true,
+            ),
+            (
+                "audit-viewer",
+                "Audit Viewer",
+                "shield",
+                AppCategory::System,
+                true,
+            ),
+            (
+                "model-manager",
+                "Model Manager",
+                "cpu",
+                AppCategory::AI,
+                true,
+            ),
+            (
+                "firefox",
+                "Firefox",
+                "firefox",
+                AppCategory::Internet,
+                false,
+            ),
         ];
 
-        for (id, name, icon, is_ai) in system_apps {
+        for (id, name, icon, category, is_ai) in system_apps {
             registry.insert(
                 id.to_string(),
                 AppEntry {
                     id: id.to_string(),
                     name: name.to_string(),
                     icon: icon.to_string(),
-                    category: AppCategory::System,
+                    category,
                     is_ai_app: is_ai,
                 },
             );
@@ -840,6 +884,7 @@ mod tests {
             "agent-manager",
             "audit-viewer",
             "model-manager",
+            "firefox",
         ] {
             assert!(
                 shell.launch_app(app_id).is_ok(),
@@ -1083,6 +1128,7 @@ mod tests {
             "agent-manager",
             "audit-viewer",
             "model-manager",
+            "firefox",
         ];
         for id in app_ids {
             assert!(shell.launch_app(id).is_ok(), "Failed to launch {}", id);
@@ -1260,10 +1306,10 @@ mod tests {
     }
 
     #[test]
-    fn test_desktop_shell_app_registry_has_six_apps() {
+    fn test_desktop_shell_app_registry_has_seven_apps() {
         let shell = DesktopShell::new();
         let registry = shell.app_registry.read().unwrap();
-        assert_eq!(registry.len(), 6);
+        assert_eq!(registry.len(), 7);
     }
 
     #[test]

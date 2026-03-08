@@ -84,6 +84,27 @@ All phases are complete. See [CHANGELOG.md](/CHANGELOG.md) for detailed implemen
 
 ## Future Work (Post-Alpha, Demand-Gated)
 
+### Web Browser
+
+**Phase 1 — Firefox ESR (Alpha)** `recipes/browser/firefox.toml`
+- [x] Takumi recipe for Firefox ESR 128 (Wayland-native, hardened defaults)
+- [ ] Build and package as `.ark`
+- [ ] Integrate with aethersafha app launcher (`AppType::WebBrowser`)
+- [ ] HTTPS-only mode, strict tracking protection, fingerprint resistance by default
+- [ ] Desktop entry + MIME type associations
+
+**Phase 2 — AI-Integrated WebView (Proposed, Post-Beta)**
+- [ ] Lightweight embedded browser using `wry`/`tauri` WebView
+- [ ] AI features: page summarization, agent-assisted form filling, smart bookmarks
+- [ ] Deep integration with hoosh (LLM gateway) for on-device inference
+- [ ] Privacy-first: all AI processing local, no cloud telemetry
+
+**Phase 3 — Custom Browser Shell (Proposed, Post-v1.0)**
+- [ ] Thin shell around Servo or Chromium Embedded Framework (CEF)
+- [ ] Native aethersafha compositor integration (no intermediate toolkit)
+- [ ] Agent-driven browsing: natural language navigation, automated workflows
+- [ ] Sandboxed per-tab via AGNOS agent runtime (each tab = sandboxed agent)
+
 ### Docker Base Images
 
 Publish runtime-specific base images for consumer projects.

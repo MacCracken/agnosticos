@@ -1,0 +1,155 @@
+# Firefox ESR — Default web browser for AGNOS
+# Built from source with Wayland-native support and hardened security flags.
+# ESR chosen for stability and long-term support alignment with AGNOS release cadence.
+
+[package]
+name = "firefox"
+version = "128.9.0"
+description = "Mozilla Firefox ESR — Privacy-focused web browser"
+license = "MPL-2.0"
+groups = ["desktop", "browser", "internet"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://archive.mozilla.org/pub/firefox/releases/128.9.0esr/source/firefox-128.9.0esr.source.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = ["agnos-defaults.patch", "wayland-primary.patch"]
+
+[depends]
+runtime = [
+    "glibc",
+    "gtk3",
+    "libx11",
+    "libxcomposite",
+    "libxdamage",
+    "libxext",
+    "libxfixes",
+    "libxrandr",
+    "libxrender",
+    "dbus",
+    "dbus-glib",
+    "alsa-lib",
+    "pulseaudio",
+    "nss",
+    "nspr",
+    "icu",
+    "zlib",
+    "libffi",
+    "fontconfig",
+    "freetype2",
+    "harfbuzz",
+    "pixman",
+    "cairo",
+    "pango",
+    "gdk-pixbuf",
+    "mesa",
+    "libdrm",
+    "wayland",
+    "wayland-protocols",
+    "libpipewire",
+]
+build = [
+    "rust",
+    "cbindgen",
+    "nodejs",
+    "nasm",
+    "python3",
+    "clang",
+    "llvm",
+    "autoconf2.13",
+    "pkg-config",
+    "m4",
+    "perl",
+    "yasm",
+    "zip",
+    "unzip",
+]
+
+[build]
+pre_build = """
+cat > mozconfig << 'MOZEOF'
+# AGNOS Firefox build configuration
+ac_add_options --enable-application=browser
+ac_add_options --prefix=/usr
+ac_add_options --enable-release
+ac_add_options --enable-optimize="-O2"
+ac_add_options --enable-rust-simd
+ac_add_options --enable-official-branding
+
+# Wayland-native (primary display server for AGNOS)
+ac_add_options --enable-default-toolkit=cairo-gtk3-wayland
+
+# Security hardening
+ac_add_options --enable-hardening
+ac_add_options --enable-sandbox
+ac_add_options --disable-crashreporter
+ac_add_options --disable-updater
+ac_add_options --disable-tests
+ac_add_options --disable-debug
+
+# System libraries (use AGNOS ark packages)
+ac_add_options --with-system-zlib
+ac_add_options --with-system-ffi
+ac_add_options --with-system-icu
+ac_add_options --with-system-nss
+ac_add_options --with-system-nspr
+ac_add_options --with-system-jpeg
+ac_add_options --with-system-png
+ac_add_options --with-system-webp
+
+# AGNOS-specific
+ac_add_options --disable-necko-wifi
+ac_add_options --enable-alsa
+MOZEOF
+"""
+configure = ""
+make = "./mach build"
+check = ""
+install = """
+DESTDIR=$PKG ./mach install
+
+# Desktop entry for aethersafha
+mkdir -p $PKG/usr/share/applications
+cat > $PKG/usr/share/applications/firefox.desktop << 'EOF'
+[Desktop Entry]
+Name=Firefox
+Comment=Browse the Web
+GenericName=Web Browser
+Exec=firefox %u
+Icon=firefox
+Terminal=false
+Type=Application
+MimeType=text/html;text/xml;application/xhtml+xml;x-scheme-handler/http;x-scheme-handler/https;
+Categories=Network;WebBrowser;
+StartupNotify=true
+StartupWMClass=firefox
+EOF
+
+# Default preferences for AGNOS
+mkdir -p $PKG/usr/lib/firefox/defaults/pref
+cat > $PKG/usr/lib/firefox/defaults/pref/agnos.js << 'EOF'
+// AGNOS default preferences
+pref("browser.shell.checkDefaultBrowser", false);
+pref("browser.startup.homepage", "about:blank");
+pref("widget.use-xdg-desktop-portal.file-picker", 1);
+pref("widget.use-xdg-desktop-portal.mime-handler", 1);
+pref("media.hardwaremediakeys.enabled", true);
+pref("gfx.webrender.all", true);
+pref("gfx.webrender.compositor.force-enabled", true);
+pref("privacy.resistFingerprinting", true);
+pref("privacy.trackingprotection.enabled", true);
+pref("dom.security.https_only_mode", true);
+pref("browser.contentblocking.category", "strict");
+EOF
+"""
+post_install = """
+# Symlink for PATH
+mkdir -p $PKG/usr/bin
+ln -sf /usr/lib/firefox/firefox $PKG/usr/bin/firefox
+"""
+
+[security]
+hardening = ["pie", "relro", "fortify", "stackprotector"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"
