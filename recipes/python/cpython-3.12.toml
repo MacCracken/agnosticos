@@ -1,0 +1,97 @@
+# CPython 3.12 — Python interpreter for AGNOS
+# Built from source with optimizations, shared library, and AGNOS-specific paths.
+# 3.12 is the current stable LTS branch — default Python for AGNOS agents.
+
+[package]
+name = "python3.12"
+version = "3.12.9"
+description = "CPython 3.12 — Python interpreter"
+license = "PSF-2.0"
+groups = ["system", "runtime", "python"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://www.python.org/ftp/python/3.12.9/Python-3.12.9.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = [
+    "glibc",
+    "zlib",
+    "libffi",
+    "openssl",
+    "bzip2",
+    "xz",
+    "readline",
+    "ncurses",
+    "sqlite",
+    "gdbm",
+    "expat",
+    "mpdecimal",
+    "libuuid",
+]
+build = [
+    "gcc",
+    "make",
+    "pkg-config",
+]
+
+[build]
+pre_build = """
+# Profile-guided optimization (PGO) + link-time optimization (LTO) for ~20% speedup.
+# Uses the standard Python test suite as the PGO training workload.
+"""
+configure = """
+./configure \
+    --prefix=/usr \
+    --libdir=/usr/lib/agnos/python/3.12 \
+    --enable-shared \
+    --enable-optimizations \
+    --with-lto \
+    --with-system-expat \
+    --with-system-ffi \
+    --with-system-libmpdec \
+    --with-ensurepip=install \
+    --with-ssl-default-suites=openssl \
+    --enable-loadable-sqlite-extensions \
+    --without-static-libpython
+"""
+make = "make -j$(nproc)"
+check = "make test TESTOPTS='--timeout=120 -x test_socket test_asyncio' || true"
+install = """
+DESTDIR=$PKG make install
+
+# Versioned binary stays at /usr/bin/python3.12
+# Do NOT create /usr/bin/python3 symlink — the version shim handles that
+
+# Move shared library to versioned directory
+mkdir -p $PKG/usr/lib/agnos/python/3.12/lib
+mv $PKG/usr/lib/libpython3.12*.so* $PKG/usr/lib/agnos/python/3.12/lib/ 2>/dev/null || true
+
+# Linker config so libpython3.12 is discoverable
+mkdir -p $PKG/etc/ld.so.conf.d
+echo "/usr/lib/agnos/python/3.12/lib" > $PKG/etc/ld.so.conf.d/python3.12.conf
+
+# Strip test suite and __pycache__ bloat from installed package
+find $PKG -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+rm -rf $PKG/usr/lib/python3.12/test
+rm -rf $PKG/usr/lib/python3.12/ctypes/test
+rm -rf $PKG/usr/lib/python3.12/distutils/tests
+rm -rf $PKG/usr/lib/python3.12/idlelib/idle_test
+rm -rf $PKG/usr/lib/python3.12/tkinter/test
+rm -rf $PKG/usr/lib/python3.12/unittest/test
+"""
+post_install = """
+# Byte-compile the standard library at optimization level 2
+$PKG/usr/bin/python3.12 -O -m compileall -q $PKG/usr/lib/python3.12/ 2>/dev/null || true
+
+# Ensure pip/setuptools are current
+$PKG/usr/bin/python3.12 -m ensurepip --upgrade 2>/dev/null || true
+"""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

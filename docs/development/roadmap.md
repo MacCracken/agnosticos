@@ -107,6 +107,34 @@ All phases are complete. See [CHANGELOG.md](/CHANGELOG.md) for detailed implemen
 - [ ] Agent-driven browsing: natural language navigation, automated workflows
 - [ ] Sandboxed per-tab via AGNOS agent runtime (each tab = sandboxed agent)
 
+### Python Runtime & Version Management
+
+Native Python support via ark/takumi/nous — no external version manager dependency.
+Borrows conventions from pyenv (`.python-version` files) and mise (hook-env pattern).
+
+**Phase 1 — CPython as ark packages**
+- [ ] Takumi recipe for CPython 3.12 (build from source or fetch python-build-standalone)
+- [ ] Takumi recipe for CPython 3.13
+- [ ] Takumi recipe for CPython 3.14
+- [ ] `.ark` packaging with proper shared lib handling (`libpython3.x.so`)
+- [ ] Multiple versions coexist under `/usr/lib/agnos/python/`
+
+**Phase 2 — Version switching**
+- [ ] Rust shim binary (`/usr/bin/python` → resolves version via hook-env)
+- [ ] `.python-version` file support (project-level, compatible with pyenv/mise/uv)
+- [ ] Agent runtime integration: auto-select Python version from agent metadata `"runtime": "python", "version": "3.12"`
+- [ ] `ark python list` / `ark python use 3.13` CLI commands
+
+**Phase 3 — Virtual environment integration**
+- [ ] `ark venv create` — thin wrapper around `python -m venv` with audit logging
+- [ ] Per-agent venv isolation (auto-created in agent sandbox)
+- [ ] Seccomp profile already exists (`SeccompProfile::Python`, ~45 syscalls)
+
+**Phase 4 — Package management hooks (post-v1.0)**
+- [ ] `ark pip install` — pip proxy with sigil signature verification for wheels
+- [ ] Curated `.ark` packages for common Python libs (numpy, requests, etc.)
+- [ ] Optional uv integration as accelerated resolver backend
+
 ### Docker Base Images
 
 Publish runtime-specific base images for consumer projects.
@@ -114,7 +142,9 @@ Publish runtime-specific base images for consumer projects.
 - [ ] Alpha release (prerequisite)
 - [ ] `agnos:node20` — Node.js 20 runtime layer
 - [ ] `agnos:node22` — Node.js 22 runtime layer
-- [ ] `agnos:python3.12` — Python runtime layer
+- [ ] `agnos:python3.12` — Python runtime layer (backed by ark python packages)
+- [ ] `agnos:python3.13` — Python 3.13 runtime layer
+- [ ] `agnos:python3.14` — Python 3.14 runtime layer
 - [ ] `agnos:rust` — Rust runtime layer
 
 ### Federation Enhancements

@@ -288,17 +288,27 @@ impl TakumiBuildSystem {
         Ok(recipe)
     }
 
-    /// Load all `.toml` recipe files from the recipes directory.
+    /// Load all `.toml` recipe files from the recipes directory, recursing
+    /// into subdirectories (e.g. `recipes/browser/`, `recipes/python/`).
     /// Returns the number of recipes loaded.
     pub fn load_all_recipes(&mut self) -> Result<usize> {
-        let entries = std::fs::read_dir(&self.recipes_dir)
-            .with_context(|| format!("cannot read recipes dir: {}", self.recipes_dir.display()))?;
-
         let mut count = 0;
+        self.load_recipes_from_dir(&self.recipes_dir.clone(), &mut count)?;
+        info!(count, "loaded recipes from directory");
+        Ok(count)
+    }
+
+    /// Recursively scan a directory for `.toml` recipe files.
+    fn load_recipes_from_dir(&mut self, dir: &Path, count: &mut usize) -> Result<()> {
+        let entries = std::fs::read_dir(dir)
+            .with_context(|| format!("cannot read recipes dir: {}", dir.display()))?;
+
         for entry in entries {
             let entry = entry?;
             let path = entry.path();
-            if path.extension().and_then(|e| e.to_str()) == Some("toml") {
+            if path.is_dir() {
+                self.load_recipes_from_dir(&path, count)?;
+            } else if path.extension().and_then(|e| e.to_str()) == Some("toml") {
                 match Self::load_recipe(&path) {
                     Ok(recipe) => {
                         debug!(name = %recipe.package.name, "loaded recipe from dir");
@@ -311,7 +321,7 @@ impl TakumiBuildSystem {
                         }
                         self.loaded_recipes
                             .insert(recipe.package.name.clone(), recipe);
-                        count += 1;
+                        *count += 1;
                     }
                     Err(e) => {
                         warn!(path = %path.display(), error = %e, "skipping invalid recipe");
@@ -320,8 +330,7 @@ impl TakumiBuildSystem {
             }
         }
 
-        info!(count, "loaded recipes from directory");
-        Ok(count)
+        Ok(())
     }
 
     /// Validate a recipe and return a list of warnings. Returns `Err` for
@@ -1629,5 +1638,36 @@ make = "make"
         // Only one entry remains in the map
         assert_eq!(sys.recipe_count(), 1);
         assert!(sys.get_recipe("hello").is_some());
+    }
+
+    #[test]
+    fn load_all_recipes_recurses_into_subdirectories() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path();
+
+        // Top-level recipe
+        fs::write(dir.join("hello.toml"), MINIMAL_RECIPE).unwrap();
+
+        // Subdirectory with recipe (like recipes/python/)
+        let sub = dir.join("python");
+        fs::create_dir(&sub).unwrap();
+        fs::write(
+            sub.join("cpython.toml"),
+            FULL_RECIPE,
+        )
+        .unwrap();
+
+        // Nested non-toml file should be ignored
+        fs::write(sub.join("README.md"), "# Python recipes").unwrap();
+
+        let mut sys = TakumiBuildSystem::new(
+            dir.to_path_buf(),
+            PathBuf::from("/tmp/build"),
+            PathBuf::from("/tmp/output"),
+        );
+        let count = sys.load_all_recipes().unwrap();
+        assert_eq!(count, 2);
+        assert!(sys.get_recipe("hello").is_some());
+        assert!(sys.get_recipe("openssl").is_some()); // FULL_RECIPE has name "openssl"
     }
 }
