@@ -1,0 +1,66 @@
+# pgvector — Vector similarity search for PostgreSQL
+# Open-source extension for exact and approximate nearest neighbor search.
+# Used by AGNOS agent runtime for RAG vector store and embedding search.
+
+[package]
+name = "pgvector"
+version = "0.8.0"
+description = "pgvector — Vector similarity search for PostgreSQL"
+license = "PostgreSQL"
+groups = ["system", "database", "extension"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/pgvector/pgvector/archive/refs/tags/v0.8.0.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = [
+    "postgresql17",
+    "glibc",
+]
+build = [
+    "gcc",
+    "make",
+    "postgresql17",
+]
+
+[build]
+pre_build = """
+# pgvector builds against pg_config from the installed PostgreSQL.
+# In the builder container, PostgreSQL is installed to /usr (normal).
+# For staged builds (from a .ark extraction), set PG_CONFIG env var.
+export PG_CONFIG="${PG_CONFIG:-/usr/bin/pg_config}"
+if ! command -v "$PG_CONFIG" >/dev/null 2>&1; then
+    echo "ERROR: pg_config not found. Install postgresql17 first or set PG_CONFIG." >&2
+    exit 1
+fi
+echo "Using pg_config: $PG_CONFIG"
+$PG_CONFIG --version
+"""
+configure = ""
+make = "make -j$(nproc) PG_CONFIG=${PG_CONFIG:-/usr/bin/pg_config}"
+check = "make installcheck PG_CONFIG=${PG_CONFIG:-/usr/bin/pg_config} || true"
+install = """
+# Install to DESTDIR, then relocate staged paths to /usr if needed
+make install DESTDIR=$PKG PG_CONFIG=${PG_CONFIG:-/usr/bin/pg_config}
+
+# If PG was staged (paths contain /tmp/), relocate to /usr
+if [ -d "$PKG/tmp" ]; then
+    echo "Relocating staged paths to /usr..."
+    STAGED_USR=$(find "$PKG/tmp" -type d -name usr | head -1)
+    if [ -n "$STAGED_USR" ]; then
+        mkdir -p "$PKG/usr"
+        cp -a "$STAGED_USR"/. "$PKG/usr"/
+        rm -rf "$PKG/tmp"
+    fi
+fi
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

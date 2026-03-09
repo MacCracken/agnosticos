@@ -90,7 +90,7 @@ All phases are complete. See [CHANGELOG.md](/CHANGELOG.md) for detailed implemen
 - [x] `ark-build.sh` — single recipe builder (security hardening flags, local source support, build logging, file manifests with SHA-256, timing)
 - [x] `ark-build-all.sh` — batch builder (auto-discovers recipes, skips local-source, dry-run mode, continue-on-error, summary report)
 - [x] `Dockerfile.takumi-builder` — reproducible build container (Python, PostgreSQL, Redis, browser deps, non-root builds, source cache volume)
-- [ ] First successful `.ark` build (any recipe) — proves end-to-end pipeline
+- [x] First successful `.ark` build — `redis7-7.4.2-x86_64.ark` (11MB, 45s)
 - [ ] CI integration: build `.ark` packages on push to main
 - [ ] Sigil signing of `.ark` packages post-build
 - [ ] Multi-arch support (arm64 cross-compilation)
@@ -161,15 +161,20 @@ Borrows conventions from pyenv (`.python-version` files) and mise (hook-env patt
 Data stores built from source with AGNOS-hardened defaults, systemd units, and argonaut integration.
 
 **PostgreSQL 17**
-- [x] Takumi recipe (`postgresql-17.toml` — LLVM JIT, TLS 1.3, scram-sha-256, systemd hardened unit)
-- [ ] Build `.ark` package on native target
+- [x] Takumi recipe (`postgresql-17.toml` — TLS 1.3, scram-sha-256, systemd hardened unit)
+- [x] Build `.ark` package on native target (`postgresql17-17.4-x86_64.ark`, 18MB, 1709 files)
 - [ ] Argonaut integration: `postgres` user/group creation, `initdb` first-boot hook
 - [ ] Aegis integration: kernel tuning, audit logging for DDL
 - [ ] Agent runtime integration: auto-provision per-agent databases
 
+**pgvector 0.8**
+- [x] Takumi recipe (`pgvector-0.8.toml` — builds against pg_config, staged path relocation)
+- [x] Build `.ark` package (`pgvector-0.8.0-x86_64.ark`, 100KB, depends on postgresql17)
+- [ ] Agent runtime integration: default vector extension for RAG/embedding search
+
 **Redis 7**
 - [x] Takumi recipe (`redis-7.toml` — TLS, AOF persistence, jemalloc, dangerous commands disabled)
-- [ ] Build `.ark` package on native target
+- [x] Build `.ark` package on native target (`redis7-7.4.2-x86_64.ark`, 11MB)
 - [ ] Argonaut integration: `redis` user/group creation, kernel tuning (overcommit, THP)
 - [ ] Agent runtime integration: shared session/cache store for agents
 
