@@ -180,6 +180,6 @@ post_install = """
 """
 
 [security]
-hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
-cflags = "-O2 -pipe"
+hardening = ["fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe -fPIC"
 ldflags = "-Wl,--as-needed"
