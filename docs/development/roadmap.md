@@ -83,6 +83,20 @@ All phases are complete. See [CHANGELOG.md](/CHANGELOG.md) for detailed implemen
 
 ---
 
+## Build Infrastructure
+
+### Takumi Build Pipeline `scripts/`
+
+- [x] `ark-build.sh` — single recipe builder (security hardening flags, local source support, build logging, file manifests with SHA-256, timing)
+- [x] `ark-build-all.sh` — batch builder (auto-discovers recipes, skips local-source, dry-run mode, continue-on-error, summary report)
+- [x] `Dockerfile.takumi-builder` — reproducible build container (Python, PostgreSQL, Redis, browser deps, non-root builds, source cache volume)
+- [ ] First successful `.ark` build (any recipe) — proves end-to-end pipeline
+- [ ] CI integration: build `.ark` packages on push to main
+- [ ] Sigil signing of `.ark` packages post-build
+- [ ] Multi-arch support (arm64 cross-compilation)
+
+---
+
 ## Future Work (Post-Alpha, Demand-Gated)
 
 ### Web Browser

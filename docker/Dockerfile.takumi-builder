@@ -3,15 +3,31 @@
 #
 # Usage:
 #   docker build -f docker/Dockerfile.takumi-builder -t agnos:takumi-builder .
+#
+# Build a single package:
 #   docker run --rm -v ./recipes:/recipes:ro -v ./dist/ark:/output \
 #       agnos:takumi-builder /recipes/python/cpython-3.12.toml
+#
+# Build all packages:
+#   docker run --rm -v ./recipes:/recipes:ro -v ./dist/ark:/output \
+#       --entrypoint /usr/local/bin/ark-build-all \
+#       agnos:takumi-builder /recipes/
+#
+# With source cache (persistent across builds):
+#   docker run --rm \
+#       -v ./recipes:/recipes:ro \
+#       -v ./dist/ark:/output \
+#       -v takumi-cache:/cache \
+#       agnos:takumi-builder /recipes/database/postgresql-17.toml
 
 FROM debian:bookworm AS builder
 
 LABEL org.opencontainers.image.title="AGNOS Takumi Builder"
 LABEL org.opencontainers.image.description="Reproducible build environment for .ark packages"
 
-# Build essentials — covers most C/C++ source builds
+# ---------------------------------------------------------------------------
+# Core build essentials
+# ---------------------------------------------------------------------------
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     pkg-config \
@@ -26,7 +42,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     xz-utils \
     file \
     patch \
-    # Python build deps
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# ---------------------------------------------------------------------------
+# Python build dependencies
+# ---------------------------------------------------------------------------
+RUN apt-get update && apt-get install -y --no-install-recommends \
     zlib1g-dev \
     libffi-dev \
     libssl-dev \
@@ -39,18 +61,99 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libexpat1-dev \
     libmpdec-dev \
     uuid-dev \
-    # Needed for PGO builds
+    # PGO/LTO builds
     llvm \
     && rm -rf /var/lib/apt/lists/*
 
+# ---------------------------------------------------------------------------
+# PostgreSQL build dependencies
+# ---------------------------------------------------------------------------
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    bison \
+    flex \
+    perl \
+    python3 \
+    libxml2-dev \
+    libxslt1-dev \
+    libicu-dev \
+    liblz4-dev \
+    libzstd-dev \
+    libpam0g-dev \
+    libsystemd-dev \
+    libuuid1 \
+    llvm-dev \
+    clang \
+    docbook-xsl \
+    libkrb5-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# ---------------------------------------------------------------------------
+# Redis build dependencies (minimal — uses bundled deps)
+# ---------------------------------------------------------------------------
+# openssl-dev already installed above; Redis only needs basic build tools
+# plus systemd for notify support
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    tcl \
+    && rm -rf /var/lib/apt/lists/*
+
+# ---------------------------------------------------------------------------
+# Browser build dependencies (Firefox, Chromium)
+# ---------------------------------------------------------------------------
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # Rust toolchain (for Firefox/Servo)
+    rustc \
+    cargo \
+    # Firefox build deps
+    nasm \
+    yasm \
+    nodejs \
+    npm \
+    zip \
+    unzip \
+    m4 \
+    # GTK/Wayland deps
+    libgtk-3-dev \
+    libx11-dev \
+    libxcomposite-dev \
+    libxdamage-dev \
+    libxext-dev \
+    libxfixes-dev \
+    libxrandr-dev \
+    libxrender-dev \
+    libdbus-1-dev \
+    libdbus-glib-1-dev \
+    libasound2-dev \
+    libpulse-dev \
+    libnss3-dev \
+    libnspr4-dev \
+    libfontconfig1-dev \
+    libfreetype-dev \
+    libharfbuzz-dev \
+    libpixman-1-dev \
+    libcairo2-dev \
+    libpango1.0-dev \
+    libgdk-pixbuf-2.0-dev \
+    libdrm-dev \
+    libwayland-dev \
+    wayland-protocols \
+    libpipewire-0.3-dev \
+    # Chromium deps
+    gperf \
+    libcups2-dev \
+    libkrb5-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# ---------------------------------------------------------------------------
 # Create build user (non-root builds)
+# ---------------------------------------------------------------------------
 RUN useradd --system --create-home --shell /bin/bash takumi \
     && mkdir -p /build /output /cache \
     && chown -R takumi:takumi /build /output /cache
 
-# Copy the build script
+# Copy the build scripts
 COPY scripts/ark-build.sh /usr/local/bin/ark-build
-RUN chmod +x /usr/local/bin/ark-build
+COPY scripts/ark-build-all.sh /usr/local/bin/ark-build-all
+RUN chmod +x /usr/local/bin/ark-build /usr/local/bin/ark-build-all
 
 WORKDIR /build
 USER takumi
