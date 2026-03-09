@@ -40,24 +40,27 @@ err()  { echo -e "${RED}[takumi]${NC} $*" >&2; }
 # -----------------------------------------------------------------------
 parse_field() {
     local file="$1" field="$2"
-    grep -m1 "^${field} " "$file" | sed 's/.*= *"\(.*\)"/\1/'
+    { grep -m1 "^${field} " "$file" 2>/dev/null || true; } | sed 's/.*= *"\(.*\)"/\1/'
 }
 
 parse_bool() {
     local file="$1" field="$2"
-    grep -m1 "^${field} " "$file" | sed 's/.*= *//' | tr -d ' '
+    { grep -m1 "^${field} " "$file" 2>/dev/null || true; } | sed 's/.*= *//' | tr -d ' '
 }
 
 parse_array() {
     local file="$1" field="$2"
     # Extract TOML array values between [ and ] for a field
-    sed -n "/^${field} = \[/,/\]/{s/.*\"\(.*\)\".*/\1/p}" "$file"
+    sed -n "/^${field} = \[/,/\]/{s/.*\"\(.*\)\".*/\1/p}" "$file" || true
 }
 
 if [ ! -f "$RECIPE" ]; then
     err "Recipe not found: $RECIPE"
     exit 1
 fi
+
+# Resolve to absolute path (survives cd into build directory)
+RECIPE="$(cd "$(dirname "$RECIPE")" && pwd)/$(basename "$RECIPE")"
 
 PKG_NAME=$(parse_field "$RECIPE" "name")
 PKG_VERSION=$(parse_field "$RECIPE" "version")

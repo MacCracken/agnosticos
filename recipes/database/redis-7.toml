@@ -43,7 +43,7 @@ make -j$(nproc) \
 """
 check = "make test || true"
 install = """
-DESTDIR=$PKG make install PREFIX=/usr
+make install PREFIX=$PKG/usr
 
 # Configuration directory
 mkdir -p $PKG/etc/redis
