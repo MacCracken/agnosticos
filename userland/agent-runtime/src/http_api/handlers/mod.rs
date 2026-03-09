@@ -3,6 +3,7 @@ pub mod anomaly;
 pub mod ark;
 pub mod audit;
 pub mod dashboard;
+pub mod database;
 pub mod marketplace;
 pub mod memory;
 pub mod profiles;

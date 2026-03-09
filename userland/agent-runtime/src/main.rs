@@ -14,6 +14,7 @@ use agnos_common::{AgentConfig, AgentId};
 
 mod agent;
 pub mod capability;
+pub mod database;
 pub mod file_watcher;
 pub mod http_api;
 pub mod integrity;

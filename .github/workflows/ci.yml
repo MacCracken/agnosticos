@@ -253,6 +253,65 @@ jobs:
     - name: Test container
       run: docker run --rm agnos:latest echo "Container build successful"
 
+  # Build .ark packages (push to main only, validates recipes end-to-end)
+  ark-build:
+    name: Build .ark packages
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    if: github.event_name == 'push'
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install build dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends \
+          build-essential pkg-config autoconf automake libtool \
+          zlib1g-dev libffi-dev libssl-dev libbz2-dev liblzma-dev \
+          libreadline-dev libncurses5-dev libsqlite3-dev libgdbm-dev \
+          libexpat1-dev libmpdec-dev uuid-dev llvm \
+          bison flex libxml2-dev libxslt1-dev libicu-dev \
+          liblz4-dev libzstd-dev libsystemd-dev
+
+    - name: Build Redis .ark
+      run: ARK_SKIP_CHECK=1 ./scripts/ark-build.sh recipes/database/redis-7.toml
+
+    - name: Build PostgreSQL .ark
+      run: ARK_SKIP_CHECK=1 ./scripts/ark-build.sh recipes/database/postgresql-17.toml
+
+    - name: Build pgvector .ark
+      run: |
+        # Stage PostgreSQL for pgvector build
+        mkdir -p /tmp/pg-stage
+        tar xzf dist/ark/postgresql17-*-*.ark -C /tmp/pg-stage
+        PG_CONFIG=/tmp/pg-stage/usr/bin/pg_config ARK_SKIP_CHECK=1 \
+          ./scripts/ark-build.sh recipes/database/pgvector-0.8.toml
+
+    - name: Build CPython 3.12 .ark
+      run: ARK_SKIP_CHECK=1 ./scripts/ark-build.sh recipes/python/cpython-3.12.toml
+
+    # NOTE: Browser .ark builds (Firefox, Chromium) are too large for standard
+    # GitHub Actions runners (6+ hours, 100+ GB disk). They are built via the
+    # takumi builder container on dedicated build infrastructure.
+
+    - name: Verify .ark packages
+      run: |
+        echo "Built packages:"
+        ls -lh dist/ark/
+        for ark in dist/ark/*.ark; do
+          echo "--- $(basename $ark) ---"
+          tar xzf "$ark" -O ./.ark-manifest.toml
+          echo ""
+        done
+
+    - name: Upload .ark artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ark-packages
+        path: dist/ark/*.ark
+        retention-days: 30
+
   # License check
   license:
     runs-on: ubuntu-latest

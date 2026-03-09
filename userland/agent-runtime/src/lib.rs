@@ -6,6 +6,7 @@ pub mod ark;
 pub mod capability;
 pub mod cloud;
 pub mod collaboration;
+pub mod database;
 pub mod explainability;
 pub mod federation;
 pub mod file_watcher;
@@ -66,6 +67,10 @@ pub use argonaut::{
 };
 pub use ark::{
     ArkCommand, ArkConfig, ArkOutput, ArkPackageManager, ArkResult, InstallPlan, InstallStep,
+};
+pub use database::{
+    AgentDatabaseRequirements, DatabaseConfig, DatabaseManager, DatabaseStats,
+    ProvisionedDatabase,
 };
 pub use cloud::{
     BillingTracker, CloudConfig, CloudConnection, CloudDeploymentManager, CloudRegion, SyncEngine,

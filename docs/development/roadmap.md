@@ -91,7 +91,7 @@ All phases are complete. See [CHANGELOG.md](/CHANGELOG.md) for detailed implemen
 - [x] `ark-build-all.sh` — batch builder (auto-discovers recipes, skips local-source, dry-run mode, continue-on-error, summary report)
 - [x] `Dockerfile.takumi-builder` — reproducible build container (Python, PostgreSQL, Redis, browser deps, non-root builds, source cache volume)
 - [x] First successful `.ark` build — `redis7-7.4.2-x86_64.ark` (11MB, 45s)
-- [ ] CI integration: build `.ark` packages on push to main
+- [x] CI integration: build `.ark` packages on push to main (Redis, PostgreSQL, pgvector, CPython 3.12)
 - [ ] Sigil signing of `.ark` packages post-build
 - [ ] Multi-arch support (arm64 cross-compilation)
 
@@ -165,7 +165,7 @@ Data stores built from source with AGNOS-hardened defaults, systemd units, and a
 - [x] Build `.ark` package on native target (`postgresql17-17.4-x86_64.ark`, 18MB, 1709 files)
 - [ ] Argonaut integration: `postgres` user/group creation, `initdb` first-boot hook
 - [ ] Aegis integration: kernel tuning, audit logging for DDL
-- [ ] Agent runtime integration: auto-provision per-agent databases
+- [x] Agent runtime integration: `database.rs` module + HTTP API (`/v1/agents/:id/database`, `/v1/database/stats`) — per-agent PostgreSQL databases and Redis key prefixes, 16 tests
 
 **pgvector 0.8**
 - [x] Takumi recipe (`pgvector-0.8.toml` — builds against pg_config, staged path relocation)

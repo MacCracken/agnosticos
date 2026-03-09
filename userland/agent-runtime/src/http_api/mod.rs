@@ -62,6 +62,7 @@ pub fn build_router(state: ApiState) -> Router {
     use handlers::anomaly::*;
     use handlers::ark::*;
     use handlers::audit::*;
+    use handlers::database::*;
     use handlers::dashboard::*;
     use handlers::marketplace::*;
     use handlers::memory::*;
@@ -244,6 +245,20 @@ pub fn build_router(state: ApiState) -> Router {
             get(recording_latest_handler),
         )
         .route("/v1/screen/recordings", get(recording_list_handler))
+        // Database provisioning routes
+        .route(
+            "/v1/agents/:id/database",
+            post(database_provision_handler),
+        )
+        .route(
+            "/v1/agents/:id/database",
+            delete(database_deprovision_handler),
+        )
+        .route(
+            "/v1/agents/:id/database",
+            get(database_get_handler),
+        )
+        .route("/v1/database/stats", get(database_stats_handler))
         .layer(axum_mw::from_fn_with_state(
             state.clone(),
             middleware::auth_middleware,

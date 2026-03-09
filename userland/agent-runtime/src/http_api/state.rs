@@ -8,6 +8,7 @@ use uuid::Uuid;
 use agnos_common::{audit::AuditChain, telemetry::SpanCollector};
 use desktop_environment::{Compositor, ScreenCaptureManager, ScreenRecordingManager};
 
+use crate::database::DatabaseManager;
 use crate::ipc::RpcRegistry;
 use crate::knowledge_base::KnowledgeBase;
 use crate::learning::AnomalyDetector;
@@ -108,6 +109,8 @@ pub struct ApiState {
     pub screen_capture_manager: Arc<RwLock<ScreenCaptureManager>>,
     /// Screen recording manager (sessions, frame buffers, streaming).
     pub screen_recording_manager: Arc<RwLock<ScreenRecordingManager>>,
+    /// Per-agent database provisioning manager.
+    pub database_manager: Arc<RwLock<DatabaseManager>>,
 }
 
 impl std::fmt::Debug for ApiState {
@@ -160,6 +163,7 @@ impl ApiState {
             compositor: Arc::new(RwLock::new(Compositor::new())),
             screen_capture_manager: Arc::new(RwLock::new(ScreenCaptureManager::new())),
             screen_recording_manager: Arc::new(RwLock::new(ScreenRecordingManager::new())),
+            database_manager: Arc::new(RwLock::new(DatabaseManager::new())),
         }
     }
 
@@ -193,6 +197,7 @@ impl ApiState {
             compositor: Arc::new(RwLock::new(Compositor::new())),
             screen_capture_manager: Arc::new(RwLock::new(ScreenCaptureManager::new())),
             screen_recording_manager: Arc::new(RwLock::new(ScreenRecordingManager::new())),
+            database_manager: Arc::new(RwLock::new(DatabaseManager::new())),
         }
     }
 

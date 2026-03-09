@@ -42,21 +42,16 @@ pub enum CaptureTarget {
 }
 
 /// Desired output format for the captured image.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CaptureFormat {
     /// Raw ARGB8888 pixel data.
     RawArgb,
     /// PNG (lossless, compressed).
+    #[default]
     Png,
     /// BMP (uncompressed, simple).
     Bmp,
-}
-
-impl Default for CaptureFormat {
-    fn default() -> Self {
-        Self::Png
-    }
 }
 
 /// A completed screen capture.
@@ -557,16 +552,16 @@ fn encode_pixels(
 fn encode_bmp(pixels: &[u32], width: u32, height: u32) -> Result<Vec<u8>, CaptureError> {
     let row_size = width * 4; // 32-bit pixels, already 4-byte aligned
     let pixel_data_size = row_size * height;
-    let file_size = 14 + 40 + pixel_data_size; // BMP header + DIB header + pixels
-    let offset = 14 + 40;
+    let file_size: u32 = 14 + 40 + pixel_data_size; // BMP header + DIB header + pixels
+    let offset: u32 = 14 + 40;
 
     let mut buf = Vec::with_capacity(file_size as usize);
 
     // --- BMP file header (14 bytes) ---
     buf.extend_from_slice(b"BM");
-    buf.extend_from_slice(&(file_size as u32).to_le_bytes());
+    buf.extend_from_slice(&file_size.to_le_bytes());
     buf.extend_from_slice(&[0u8; 4]); // reserved
-    buf.extend_from_slice(&(offset as u32).to_le_bytes());
+    buf.extend_from_slice(&offset.to_le_bytes());
 
     // --- BITMAPINFOHEADER (40 bytes) ---
     buf.extend_from_slice(&40u32.to_le_bytes()); // header size

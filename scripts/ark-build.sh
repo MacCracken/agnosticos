@@ -50,8 +50,22 @@ parse_bool() {
 
 parse_array() {
     local file="$1" field="$2"
-    # Extract TOML array values between [ and ] for a field
-    sed -n "/^${field} = \[/,/\]/{s/.*\"\(.*\)\".*/\1/p}" "$file" || true
+    # Extract TOML array values — handles both single-line and multi-line arrays.
+    local line
+    line=$(grep -m1 "^${field} = \[" "$file" 2>/dev/null) || true
+    if [ -z "$line" ]; then
+        return 0
+    fi
+    # Check if array closes on the same line (single-line array)
+    if echo "$line" | grep -q '\]'; then
+        echo "$line" | grep -oP '"[^"]*"' | tr -d '"'
+    else
+        # Multi-line: collect from field line through closing ]
+        sed -n "/^${field} = \[/,/^\]/p" "$file" 2>/dev/null \
+            | grep -oP '"[^"]*"' \
+            | tr -d '"' \
+            || true
+    fi
 }
 
 if [ ! -f "$RECIPE" ]; then
@@ -266,8 +280,9 @@ INSTALLED_SIZE=$(du -sb "$PKG_DIR" | cut -f1)
 # -----------------------------------------------------------------------
 # Parse runtime dependencies for manifest
 # -----------------------------------------------------------------------
-RUNTIME_DEPS=$(parse_array "$RECIPE" "runtime" | paste -sd, -)
-GROUPS=$(parse_array "$RECIPE" "groups" | paste -sd, -)
+# Format as TOML arrays: "a","b","c"
+RUNTIME_DEPS_TOML=$(parse_array "$RECIPE" "runtime" | sed 's/.*/"&"/' | paste -sd, -)
+GROUPS_TOML=$(parse_array "$RECIPE" "groups" | sed 's/.*/"&"/' | paste -sd, -)
 
 # -----------------------------------------------------------------------
 # Package as .ark (signed tarball + manifest)
@@ -292,10 +307,10 @@ installed_size = ${INSTALLED_SIZE}
 file_count = ${FILE_COUNT}
 
 [depends]
-runtime = [$(echo "$RUNTIME_DEPS" | sed 's/\([^,]*\)/"\1"/g')]
+runtime = [${RUNTIME_DEPS_TOML}]
 
 [meta]
-groups = [$(echo "$GROUPS" | sed 's/\([^,]*\)/"\1"/g')]
+groups = [${GROUPS_TOML}]
 recipe = "$(basename "$RECIPE")"
 MANIFEST
 
