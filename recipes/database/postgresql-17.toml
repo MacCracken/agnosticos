@@ -67,8 +67,7 @@ configure = """
     --with-systemd \
     --with-uuid=e2fs \
     --with-system-tzdata=/usr/share/zoneinfo \
-    --enable-nls \
-    --enable-thread-safety
+    --disable-nls
 """
 make = "make -j$(nproc) world-bin"
 check = "make check || true"
