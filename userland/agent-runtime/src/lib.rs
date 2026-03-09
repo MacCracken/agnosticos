@@ -68,10 +68,6 @@ pub use argonaut::{
 pub use ark::{
     ArkCommand, ArkConfig, ArkOutput, ArkPackageManager, ArkResult, InstallPlan, InstallStep,
 };
-pub use database::{
-    AgentDatabaseRequirements, DatabaseConfig, DatabaseManager, DatabaseStats,
-    ProvisionedDatabase,
-};
 pub use cloud::{
     BillingTracker, CloudConfig, CloudConnection, CloudDeploymentManager, CloudRegion, SyncEngine,
     SyncItem, Workspace, WorkspaceManager,
@@ -79,6 +75,9 @@ pub use cloud::{
 pub use collaboration::{
     CollaborationAnalyzer, CollaborationMode, CollaborationSession, FeedbackCollector,
     HandoffManager, SharedTask, TaskOwner, TrustCalibrator, TrustMetrics,
+};
+pub use database::{
+    AgentDatabaseRequirements, DatabaseConfig, DatabaseManager, DatabaseStats, ProvisionedDatabase,
 };
 pub use explainability::{
     AgentDecisionStats, Alternative, AuditTrail, ConfidenceLabel, DecisionExplanation,

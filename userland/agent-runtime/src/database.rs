@@ -186,10 +186,7 @@ impl DatabaseManager {
         requirements: &AgentDatabaseRequirements,
     ) -> Result<ProvisionedDatabase> {
         if self.provisioned.contains_key(&agent_id) {
-            bail!(
-                "Database already provisioned for agent {}",
-                agent_id
-            );
+            bail!("Database already provisioned for agent {}", agent_id);
         }
 
         if self.provisioned.len() >= self.config.max_databases {
@@ -209,10 +206,7 @@ impl DatabaseManager {
             .unwrap_or(self.config.default_storage_quota);
 
         let postgres_url = if requirements.postgres {
-            Some(format!(
-                "postgresql://{}@localhost/{}",
-                db_name, db_name
-            ))
+            Some(format!("postgresql://{}@localhost/{}", db_name, db_name))
         } else {
             None
         };
@@ -432,12 +426,10 @@ mod tests {
         mgr.provision(agent_id, &reqs).unwrap();
         let result = mgr.provision(agent_id, &reqs);
         assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("already provisioned")
-        );
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("already provisioned"));
     }
 
     #[test]

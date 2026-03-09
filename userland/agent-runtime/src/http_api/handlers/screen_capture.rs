@@ -36,8 +36,15 @@ fn default_format() -> String {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum CaptureTargetRequest {
     FullScreen,
-    Window { surface_id: String },
-    Region { x: i32, y: i32, width: u32, height: u32 },
+    Window {
+        surface_id: String,
+    },
+    Region {
+        x: i32,
+        y: i32,
+        width: u32,
+        height: u32,
+    },
 }
 
 /// Request body for granting capture permission.
@@ -139,8 +146,7 @@ pub async fn screen_capture_handler(
 
     match result {
         Ok(capture) => {
-            let data_b64 =
-                base64::engine::general_purpose::STANDARD.encode(&capture.data);
+            let data_b64 = base64::engine::general_purpose::STANDARD.encode(&capture.data);
             let resp = ScreenCaptureResponse {
                 id: capture.id.to_string(),
                 width: capture.width,
@@ -155,9 +161,7 @@ pub async fn screen_capture_handler(
         }
         Err(e) => {
             let (status, code) = match &e {
-                desktop_environment::CaptureError::SecureModeActive => {
-                    (StatusCode::FORBIDDEN, 403)
-                }
+                desktop_environment::CaptureError::SecureModeActive => (StatusCode::FORBIDDEN, 403),
                 desktop_environment::CaptureError::PermissionDenied(_)
                 | desktop_environment::CaptureError::TargetNotAllowed(_, _)
                 | desktop_environment::CaptureError::PermissionExpired(_) => {
@@ -271,18 +275,14 @@ pub async fn screen_revoke_permission_handler(
 }
 
 /// GET /v1/screen/permissions — list all capture permissions.
-pub async fn screen_list_permissions_handler(
-    State(state): State<ApiState>,
-) -> impl IntoResponse {
+pub async fn screen_list_permissions_handler(State(state): State<ApiState>) -> impl IntoResponse {
     let manager = state.screen_capture_manager.read().await;
     let perms = manager.list_permissions();
     Json(serde_json::json!({"permissions": perms}))
 }
 
 /// GET /v1/screen/history — list recent capture history.
-pub async fn screen_history_handler(
-    State(state): State<ApiState>,
-) -> impl IntoResponse {
+pub async fn screen_history_handler(State(state): State<ApiState>) -> impl IntoResponse {
     let manager = state.screen_capture_manager.read().await;
     let history = manager.capture_history();
     Json(serde_json::json!({"captures": history, "count": history.len()}))
@@ -319,27 +319,28 @@ fn parse_capture_target(
 ) -> Result<desktop_environment::CaptureTarget, (StatusCode, Json<serde_json::Value>)> {
     match target {
         CaptureTargetRequest::FullScreen => Ok(desktop_environment::CaptureTarget::FullScreen),
-        CaptureTargetRequest::Window { surface_id } => {
-            uuid::Uuid::parse_str(surface_id)
-                .map(|id| desktop_environment::CaptureTarget::Window { surface_id: id })
-                .map_err(|_| {
-                    (
-                        StatusCode::BAD_REQUEST,
-                        Json(serde_json::json!({
-                            "error": format!("Invalid surface_id '{}' — expected UUID", surface_id),
-                            "code": 400
-                        })),
-                    )
-                })
-        }
-        CaptureTargetRequest::Region { x, y, width, height } => {
-            Ok(desktop_environment::CaptureTarget::Region {
-                x: *x,
-                y: *y,
-                width: *width,
-                height: *height,
-            })
-        }
+        CaptureTargetRequest::Window { surface_id } => uuid::Uuid::parse_str(surface_id)
+            .map(|id| desktop_environment::CaptureTarget::Window { surface_id: id })
+            .map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({
+                        "error": format!("Invalid surface_id '{}' — expected UUID", surface_id),
+                        "code": 400
+                    })),
+                )
+            }),
+        CaptureTargetRequest::Region {
+            x,
+            y,
+            width,
+            height,
+        } => Ok(desktop_environment::CaptureTarget::Region {
+            x: *x,
+            y: *y,
+            width: *width,
+            height: *height,
+        }),
     }
 }
 
@@ -379,7 +380,10 @@ fn recording_error_response(
         }
         desktop_environment::RecordingError::NoFramesAvailable => (StatusCode::NOT_FOUND, 404),
     };
-    (status, Json(serde_json::json!({"error": e.to_string(), "code": code})))
+    (
+        status,
+        Json(serde_json::json!({"error": e.to_string(), "code": code})),
+    )
 }
 
 /// POST /v1/screen/recording/start — start a recording session.
@@ -446,8 +450,7 @@ pub async fn recording_frame_handler(
 
     match recording_mgr.capture_frame(&compositor, &capture_mgr, recording_id) {
         Ok(frame) => {
-            let data_b64 =
-                base64::engine::general_purpose::STANDARD.encode(&frame.data);
+            let data_b64 = base64::engine::general_purpose::STANDARD.encode(&frame.data);
             (
                 StatusCode::OK,
                 Json(serde_json::json!({
@@ -635,8 +638,7 @@ pub async fn recording_latest_handler(
     let recording_mgr = state.screen_recording_manager.read().await;
     match recording_mgr.get_latest_frame(recording_id) {
         Ok(frame) => {
-            let data_b64 =
-                base64::engine::general_purpose::STANDARD.encode(&frame.data);
+            let data_b64 = base64::engine::general_purpose::STANDARD.encode(&frame.data);
             (
                 StatusCode::OK,
                 Json(serde_json::json!({
@@ -655,9 +657,7 @@ pub async fn recording_latest_handler(
 }
 
 /// GET /v1/screen/recordings — list all recording sessions.
-pub async fn recording_list_handler(
-    State(state): State<ApiState>,
-) -> impl IntoResponse {
+pub async fn recording_list_handler(State(state): State<ApiState>) -> impl IntoResponse {
     let recording_mgr = state.screen_recording_manager.read().await;
     let sessions = recording_mgr.list_sessions();
     Json(serde_json::json!({"recordings": sessions, "count": sessions.len()}))

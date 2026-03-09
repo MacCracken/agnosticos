@@ -270,7 +270,7 @@ jobs:
           build-essential pkg-config autoconf automake libtool \
           zlib1g-dev libffi-dev libssl-dev libbz2-dev liblzma-dev \
           libreadline-dev libncurses5-dev libsqlite3-dev libgdbm-dev \
-          libexpat1-dev libmpdec-dev uuid-dev llvm \
+          libexpat1-dev libmpdecimal-dev uuid-dev llvm \
           bison flex libxml2-dev libxslt1-dev libicu-dev \
           liblz4-dev libzstd-dev libsystemd-dev
 

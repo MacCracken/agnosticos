@@ -141,9 +141,7 @@ pub async fn database_get_handler(
     let mgr: tokio::sync::RwLockReadGuard<'_, DatabaseManager> =
         state.database_manager.read().await;
     match mgr.get(&agent_id) {
-        Some(info) => {
-            (StatusCode::OK, Json(serde_json::json!({"database": info}))).into_response()
-        }
+        Some(info) => (StatusCode::OK, Json(serde_json::json!({"database": info}))).into_response(),
         None => (
             StatusCode::NOT_FOUND,
             Json(serde_json::json!({"error": "No database provisioned for agent", "code": 404})),

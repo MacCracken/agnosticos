@@ -35,11 +35,11 @@ pub use handlers::reasoning::{
     ReasoningQueryParams, ReasoningStep, ReasoningTrace, StoredReasoningTrace,
 };
 pub use handlers::rpc::{RpcCallRequest, RpcRegisterRequest};
-pub use handlers::traces::{TraceQueryParams, TraceStep, TraceSubmitRequest};
 pub use handlers::screen_capture::{
     FramesQuery, GrantPermissionRequest, ScreenCaptureRequest, ScreenCaptureResponse,
     StartRecordingRequest,
 };
+pub use handlers::traces::{TraceQueryParams, TraceStep, TraceSubmitRequest};
 pub use handlers::webhooks::{RegisterWebhookRequest, WebhookRegistration};
 
 /// Default listen port for the agent registration API.
@@ -62,8 +62,8 @@ pub fn build_router(state: ApiState) -> Router {
     use handlers::anomaly::*;
     use handlers::ark::*;
     use handlers::audit::*;
-    use handlers::database::*;
     use handlers::dashboard::*;
+    use handlers::database::*;
     use handlers::marketplace::*;
     use handlers::memory::*;
     use handlers::profiles::*;
@@ -212,10 +212,7 @@ pub fn build_router(state: ApiState) -> Router {
         )
         .route("/v1/screen/history", get(screen_history_handler))
         // Screen recording routes
-        .route(
-            "/v1/screen/recording/start",
-            post(recording_start_handler),
-        )
+        .route("/v1/screen/recording/start", post(recording_start_handler))
         .route(
             "/v1/screen/recording/:id/frame",
             post(recording_frame_handler),
@@ -232,10 +229,7 @@ pub fn build_router(state: ApiState) -> Router {
             "/v1/screen/recording/:id/stop",
             post(recording_stop_handler),
         )
-        .route(
-            "/v1/screen/recording/:id",
-            get(recording_get_handler),
-        )
+        .route("/v1/screen/recording/:id", get(recording_get_handler))
         .route(
             "/v1/screen/recording/:id/frames",
             get(recording_frames_handler),
@@ -246,18 +240,12 @@ pub fn build_router(state: ApiState) -> Router {
         )
         .route("/v1/screen/recordings", get(recording_list_handler))
         // Database provisioning routes
-        .route(
-            "/v1/agents/:id/database",
-            post(database_provision_handler),
-        )
+        .route("/v1/agents/:id/database", post(database_provision_handler))
         .route(
             "/v1/agents/:id/database",
             delete(database_deprovision_handler),
         )
-        .route(
-            "/v1/agents/:id/database",
-            get(database_get_handler),
-        )
+        .route("/v1/agents/:id/database", get(database_get_handler))
         .route("/v1/database/stats", get(database_stats_handler))
         .layer(axum_mw::from_fn_with_state(
             state.clone(),

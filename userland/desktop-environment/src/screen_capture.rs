@@ -293,10 +293,7 @@ impl ScreenCaptureManager {
         }
 
         // 2. Check permission exists
-        let permissions = self
-            .permissions
-            .read()
-            .unwrap_or_else(|e| e.into_inner());
+        let permissions = self.permissions.read().unwrap_or_else(|e| e.into_inner());
         let perm = permissions
             .get(agent_id)
             .ok_or_else(|| CaptureError::PermissionDenied(agent_id.to_string()))?;
@@ -311,10 +308,7 @@ impl ScreenCaptureManager {
         // 4. Check target kind is allowed
         let kind = target_kind(target);
         if !perm.allowed_targets.iter().any(|k| k.matches(target)) {
-            return Err(CaptureError::TargetNotAllowed(
-                agent_id.to_string(),
-                kind,
-            ));
+            return Err(CaptureError::TargetNotAllowed(agent_id.to_string(), kind));
         }
 
         // 5. Rate limit check
@@ -328,10 +322,7 @@ impl ScreenCaptureManager {
     fn check_rate_limit(&self, agent_id: &str, max_per_min: u32) -> Result<(), CaptureError> {
         let now = Utc::now();
         let cutoff = now - chrono::Duration::seconds(60);
-        let mut rates = self
-            .rate_limits
-            .write()
-            .unwrap_or_else(|e| e.into_inner());
+        let mut rates = self.rate_limits.write().unwrap_or_else(|e| e.into_inner());
         let entry = rates.entry(agent_id.to_string()).or_insert(RateEntry {
             timestamps: Vec::new(),
         });
@@ -381,9 +372,7 @@ impl ScreenCaptureManager {
         // Extract raw ARGB pixels for the requested target
         let (raw_pixels, width, height) = match &target {
             CaptureTarget::FullScreen => self.capture_full_screen(compositor)?,
-            CaptureTarget::Window { surface_id } => {
-                self.capture_window(compositor, *surface_id)?
-            }
+            CaptureTarget::Window { surface_id } => self.capture_window(compositor, *surface_id)?,
             CaptureTarget::Region {
                 x,
                 y,
@@ -445,10 +434,7 @@ impl ScreenCaptureManager {
         surface_id: SurfaceId,
     ) -> Result<(Vec<u32>, u32, u32), CaptureError> {
         // Look up window geometry from the scene graph
-        let scene = compositor
-            .scene
-            .read()
-            .unwrap_or_else(|e| e.into_inner());
+        let scene = compositor.scene.read().unwrap_or_else(|e| e.into_inner());
         let surface = scene
             .get_surface(surface_id)
             .ok_or(CaptureError::WindowNotFound(surface_id))?;
@@ -755,7 +741,12 @@ mod tests {
     fn test_full_screen_capture_raw() {
         let (compositor, manager) = setup();
         let result = manager
-            .capture(&compositor, CaptureTarget::FullScreen, CaptureFormat::RawArgb, None)
+            .capture(
+                &compositor,
+                CaptureTarget::FullScreen,
+                CaptureFormat::RawArgb,
+                None,
+            )
             .unwrap();
         assert_eq!(result.width, 800);
         assert_eq!(result.height, 600);
@@ -767,7 +758,12 @@ mod tests {
     fn test_full_screen_capture_bmp() {
         let (compositor, manager) = setup();
         let result = manager
-            .capture(&compositor, CaptureTarget::FullScreen, CaptureFormat::Bmp, None)
+            .capture(
+                &compositor,
+                CaptureTarget::FullScreen,
+                CaptureFormat::Bmp,
+                None,
+            )
             .unwrap();
         assert_eq!(result.width, 800);
         assert_eq!(result.height, 600);
@@ -780,7 +776,12 @@ mod tests {
     fn test_full_screen_capture_png() {
         let (compositor, manager) = setup();
         let result = manager
-            .capture(&compositor, CaptureTarget::FullScreen, CaptureFormat::Png, None)
+            .capture(
+                &compositor,
+                CaptureTarget::FullScreen,
+                CaptureFormat::Png,
+                None,
+            )
             .unwrap();
         assert_eq!(result.width, 800);
         assert_eq!(result.height, 600);
@@ -912,7 +913,12 @@ mod tests {
         let (compositor, manager) = setup();
         compositor.set_secure_mode(true);
         let err = manager
-            .capture(&compositor, CaptureTarget::FullScreen, CaptureFormat::Png, None)
+            .capture(
+                &compositor,
+                CaptureTarget::FullScreen,
+                CaptureFormat::Png,
+                None,
+            )
             .unwrap_err();
         assert!(matches!(err, CaptureError::SecureModeActive));
     }
@@ -1066,7 +1072,12 @@ mod tests {
         let (compositor, manager) = setup();
         assert!(manager.capture_history().is_empty());
         manager
-            .capture(&compositor, CaptureTarget::FullScreen, CaptureFormat::RawArgb, None)
+            .capture(
+                &compositor,
+                CaptureTarget::FullScreen,
+                CaptureFormat::RawArgb,
+                None,
+            )
             .unwrap();
         let history = manager.capture_history();
         assert_eq!(history.len(), 1);
@@ -1079,7 +1090,12 @@ mod tests {
         let (compositor, manager) = setup();
         for _ in 0..MAX_HISTORY + 10 {
             manager
-                .capture(&compositor, CaptureTarget::FullScreen, CaptureFormat::RawArgb, None)
+                .capture(
+                    &compositor,
+                    CaptureTarget::FullScreen,
+                    CaptureFormat::RawArgb,
+                    None,
+                )
                 .unwrap();
         }
         assert_eq!(manager.capture_history().len(), MAX_HISTORY);
@@ -1125,12 +1141,14 @@ mod tests {
             width: 10,
             height: 10,
         }));
-        assert!(!CaptureTargetKind::FullScreen.matches(&CaptureTarget::Region {
-            x: 0,
-            y: 0,
-            width: 10,
-            height: 10,
-        }));
+        assert!(
+            !CaptureTargetKind::FullScreen.matches(&CaptureTarget::Region {
+                x: 0,
+                y: 0,
+                width: 10,
+                height: 10,
+            })
+        );
     }
 
     // -- Adler-32 / CRC-32 sanity tests --

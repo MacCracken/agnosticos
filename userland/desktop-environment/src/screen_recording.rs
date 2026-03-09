@@ -269,10 +269,7 @@ impl ScreenRecordingManager {
     ) -> Result<RecordedFrame, RecordingError> {
         // 1. Validate session exists and is in Recording state
         let (target, format, agent_id) = {
-            let sessions = self
-                .sessions
-                .read()
-                .unwrap_or_else(|e| e.into_inner());
+            let sessions = self.sessions.read().unwrap_or_else(|e| e.into_inner());
             let inner = sessions
                 .get(&recording_id)
                 .ok_or(RecordingError::SessionNotFound(recording_id))?;
@@ -312,18 +309,10 @@ impl ScreenRecordingManager {
         };
 
         // 4. Use capture_manager to capture a frame
-        let result = capture_manager.capture(
-            compositor,
-            target,
-            format,
-            agent_id.as_deref(),
-        )?;
+        let result = capture_manager.capture(compositor, target, format, agent_id.as_deref())?;
 
         // 5. Build RecordedFrame and store it
-        let mut sessions = self
-            .sessions
-            .write()
-            .unwrap_or_else(|e| e.into_inner());
+        let mut sessions = self.sessions.write().unwrap_or_else(|e| e.into_inner());
         let inner = sessions
             .get_mut(&recording_id)
             .ok_or(RecordingError::SessionNotFound(recording_id))?;
@@ -361,14 +350,8 @@ impl ScreenRecordingManager {
     /// Pause an active recording session.
     ///
     /// Transitions Recording -> Paused. Frames cannot be captured while paused.
-    pub fn pause_recording(
-        &self,
-        recording_id: RecordingId,
-    ) -> Result<(), RecordingError> {
-        let mut sessions = self
-            .sessions
-            .write()
-            .unwrap_or_else(|e| e.into_inner());
+    pub fn pause_recording(&self, recording_id: RecordingId) -> Result<(), RecordingError> {
+        let mut sessions = self.sessions.write().unwrap_or_else(|e| e.into_inner());
         let inner = sessions
             .get_mut(&recording_id)
             .ok_or(RecordingError::SessionNotFound(recording_id))?;
@@ -385,14 +368,8 @@ impl ScreenRecordingManager {
     /// Resume a paused recording session.
     ///
     /// Transitions Paused -> Recording.
-    pub fn resume_recording(
-        &self,
-        recording_id: RecordingId,
-    ) -> Result<(), RecordingError> {
-        let mut sessions = self
-            .sessions
-            .write()
-            .unwrap_or_else(|e| e.into_inner());
+    pub fn resume_recording(&self, recording_id: RecordingId) -> Result<(), RecordingError> {
+        let mut sessions = self.sessions.write().unwrap_or_else(|e| e.into_inner());
         let inner = sessions
             .get_mut(&recording_id)
             .ok_or(RecordingError::SessionNotFound(recording_id))?;
@@ -415,10 +392,7 @@ impl ScreenRecordingManager {
         &self,
         recording_id: RecordingId,
     ) -> Result<RecordingSession, RecordingError> {
-        let mut sessions = self
-            .sessions
-            .write()
-            .unwrap_or_else(|e| e.into_inner());
+        let mut sessions = self.sessions.write().unwrap_or_else(|e| e.into_inner());
         let inner = sessions
             .get_mut(&recording_id)
             .ok_or(RecordingError::SessionNotFound(recording_id))?;
@@ -475,10 +449,7 @@ impl ScreenRecordingManager {
         recording_id: RecordingId,
         since_sequence: Option<u32>,
     ) -> Result<Vec<RecordedFrame>, RecordingError> {
-        let sessions = self
-            .sessions
-            .read()
-            .unwrap_or_else(|e| e.into_inner());
+        let sessions = self.sessions.read().unwrap_or_else(|e| e.into_inner());
         let inner = sessions
             .get(&recording_id)
             .ok_or(RecordingError::SessionNotFound(recording_id))?;
@@ -501,10 +472,7 @@ impl ScreenRecordingManager {
         &self,
         recording_id: RecordingId,
     ) -> Result<RecordedFrame, RecordingError> {
-        let sessions = self
-            .sessions
-            .read()
-            .unwrap_or_else(|e| e.into_inner());
+        let sessions = self.sessions.read().unwrap_or_else(|e| e.into_inner());
         let inner = sessions
             .get(&recording_id)
             .ok_or(RecordingError::SessionNotFound(recording_id))?;
@@ -530,9 +498,7 @@ impl Default for ScreenRecordingManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::screen_capture::{
-        CapturePermission, CaptureTargetKind, ScreenCaptureManager,
-    };
+    use crate::screen_capture::{CapturePermission, CaptureTargetKind, ScreenCaptureManager};
     use crate::Compositor;
 
     fn setup() -> (Compositor, ScreenCaptureManager, ScreenRecordingManager) {

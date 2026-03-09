@@ -3153,7 +3153,11 @@ mod tests {
             .await
             .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        assert!(json["error"].as_str().unwrap().to_lowercase().contains("format"));
+        assert!(json["error"]
+            .as_str()
+            .unwrap()
+            .to_lowercase()
+            .contains("format"));
     }
 
     #[tokio::test]
