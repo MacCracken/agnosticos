@@ -6,7 +6,7 @@
 //! Features:
 //! - A/B slot management for atomic, rollback-safe updates
 //! - SHA-256 verification of update manifests and written data
-//! - CalVer version comparison (YYYY.D.M format)
+//! - CalVer version comparison (YYYY.M.D format)
 //! - Delta update support (compressed patches from a prior version)
 //! - Persistent update state tracking
 //! - Boot-count based automatic rollback detection
@@ -96,7 +96,7 @@ pub struct UpdateFile {
 /// Manifest describing an available update.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateManifest {
-    /// Target version string (CalVer YYYY.D.M).
+    /// Target version string (CalVer YYYY.M.D).
     pub version: String,
     /// Release channel.
     pub channel: UpdateChannel,
@@ -226,12 +226,12 @@ impl UpdateConfig {
 // Version helpers
 // ---------------------------------------------------------------------------
 
-/// Validate that `version` conforms to CalVer `YYYY.D.M` (all numeric parts).
+/// Validate that `version` conforms to CalVer `YYYY.M.D` (all numeric parts).
 pub fn validate_version(version: &str) -> Result<()> {
     let parts: Vec<&str> = version.split('.').collect();
     if parts.len() != 3 {
         return Err(SysError::InvalidArgument(format!(
-            "Version must have exactly 3 parts (YYYY.D.M), got: {version}"
+            "Version must have exactly 3 parts (YYYY.M.D), got: {version}"
         )));
     }
     for (i, label) in [(0, "year"), (1, "day"), (2, "month")] {
@@ -261,7 +261,7 @@ pub fn validate_version(version: &str) -> Result<()> {
     Ok(())
 }
 
-/// Compare two CalVer version strings (`YYYY.D.M`).
+/// Compare two CalVer version strings (`YYYY.M.D`).
 ///
 /// Returns `Ordering::Less` when `a` is older than `b`.  If either string
 /// is malformed the comparison falls back to lexicographic ordering.

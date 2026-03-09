@@ -510,13 +510,13 @@ PATCH - Bug fixes (backwards compatible)
 
 ### Versioning Scheme
 
-AGNOS uses **Calendar Versioning (CalVer)** in `YYYY.D.M` format:
+AGNOS uses **Calendar Versioning (CalVer)** in `YYYY.M.D` format:
 
 - `YYYY` — release year
-- `D` — release day of the month
 - `M` — release month
+- `D` — release day of the month
 
-Patch releases append `-#N` (e.g., `2026.3.5-#1`, `2026.3.5-#2`).
+Patch releases append `-N` (e.g., `2026.3.5-1`, `2026.3.5-2`).
 
 The canonical version lives in the `VERSION` file at the repository root. Shell scripts, the Makefile, and the Docker entrypoint all read from this file. Cargo workspace version is set in `userland/Cargo.toml` under `[workspace.package]`.
 

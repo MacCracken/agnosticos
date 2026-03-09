@@ -624,7 +624,7 @@ Comprehensive security, performance, and correctness audit across all 6 crates. 
 | Alpha Blocker | Third-party security audit (vendor selection) |
 
 ### Changed (Versioning)
-- Adopted Calendar Versioning (CalVer) scheme: `YYYY.D.M` format, patches as `-N`
+- Adopted Calendar Versioning (CalVer) scheme: `YYYY.M.D` format, patches as `-N`
 - Created `VERSION` file at repository root as single source of truth
 - Shell scripts (`build-iso.sh`, `agnos-update.sh`, `agpkg`, `entrypoint.sh`) now read from `VERSION` file
 - Makefile reads version from `VERSION` file
@@ -1164,7 +1164,7 @@ Comprehensive security, performance, and correctness audit across all 6 crates. 
 
 ## Release Planning
 
-Versioning follows CalVer: `YYYY.D.M` (e.g., `2026.3.5`). Patch releases use `-N` suffix.
+Versioning follows CalVer: `YYYY.M.D` (e.g., `2026.3.5`). Patch releases use `-N` suffix.
 
 ### Alpha - Target Q2 2026
 - Phase 5 production hardening complete
