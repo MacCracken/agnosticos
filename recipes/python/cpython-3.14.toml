@@ -30,7 +30,6 @@ runtime = [
     "sqlite",
     "gdbm",
     "expat",
-    "mpdecimal",
     "libuuid",
     "mimalloc",
 ]
@@ -55,7 +54,6 @@ configure = """
     --with-lto \
     --with-system-expat \
     --with-system-ffi \
-    --with-system-libmpdec \
     --with-ensurepip=install \
     --with-ssl-default-suites=openssl \
     --enable-loadable-sqlite-extensions \
