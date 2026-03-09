@@ -1,0 +1,169 @@
+# Redis 7 — In-memory data store for AGNOS
+# Built from source with hardened defaults and AGNOS-specific paths.
+# Used for agent state caching, pub/sub, session store, and rate limiting.
+
+[package]
+name = "redis7"
+version = "7.4.2"
+description = "Redis 7 — In-memory data structure store"
+license = "RSALv2+SSPLv1"
+groups = ["system", "database", "server"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/redis/redis/archive/refs/tags/7.4.2.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = [
+    "glibc",
+    "openssl",
+    "systemd-libs",
+]
+build = [
+    "gcc",
+    "make",
+    "pkg-config",
+    "openssl-dev",
+]
+
+[build]
+pre_build = """
+# Redis builds from the top-level Makefile — no configure step.
+# Use jemalloc (bundled) for production memory allocator.
+"""
+configure = ""
+make = """
+make -j$(nproc) \
+    BUILD_TLS=yes \
+    USE_SYSTEMD=yes \
+    MALLOC=jemalloc
+"""
+check = "make test || true"
+install = """
+DESTDIR=$PKG make install PREFIX=/usr
+
+# Configuration directory
+mkdir -p $PKG/etc/redis
+
+# AGNOS-hardened redis.conf
+cat > $PKG/etc/redis/redis.conf << 'EOF'
+# AGNOS Redis defaults — security-first configuration
+
+# Network
+bind 127.0.0.1 -::1
+port 6379
+unixsocket /run/redis/redis.sock
+unixsocketperm 770
+protected-mode yes
+tcp-backlog 511
+timeout 300
+
+# TLS (enable for production)
+# tls-port 6380
+# tls-cert-file /etc/redis/tls/redis.crt
+# tls-key-file /etc/redis/tls/redis.key
+# tls-ca-cert-file /etc/redis/tls/ca.crt
+# tls-auth-clients optional
+
+# Security
+# requirepass <set-a-strong-password>
+rename-command FLUSHDB ""
+rename-command FLUSHALL ""
+rename-command DEBUG ""
+
+# Memory
+maxmemory 256mb
+maxmemory-policy allkeys-lru
+
+# Persistence — AOF preferred for durability
+appendonly yes
+appendfilename "appendonly.aof"
+appenddirname "appendonlydir"
+appendfsync everysec
+auto-aof-rewrite-percentage 100
+auto-aof-rewrite-min-size 64mb
+
+# RDB snapshots (secondary backup)
+save 900 1
+save 300 10
+save 60 10000
+dbfilename dump.rdb
+
+# Directories
+dir /var/lib/redis
+logfile /var/log/redis/redis.log
+pidfile /run/redis/redis.pid
+
+# Limits
+maxclients 10000
+
+# Slow log
+slowlog-log-slower-than 10000
+slowlog-max-len 128
+
+# Disable dangerous commands in production
+enable-debug-command no
+EOF
+
+# Data directory
+mkdir -p $PKG/var/lib/redis
+chmod 750 $PKG/var/lib/redis
+
+# Log directory
+mkdir -p $PKG/var/log/redis
+
+# Run directory for socket and pidfile
+mkdir -p $PKG/run/redis
+
+# Systemd service (for argonaut integration)
+mkdir -p $PKG/usr/lib/systemd/system
+cat > $PKG/usr/lib/systemd/system/redis.service << 'EOF'
+[Unit]
+Description=Redis data structure store
+Documentation=https://redis.io/documentation
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+User=redis
+Group=redis
+ExecStart=/usr/bin/redis-server /etc/redis/redis.conf --supervised systemd
+ExecStop=/usr/bin/redis-cli shutdown
+Restart=always
+RestartSec=3
+TimeoutStopSec=30
+LimitNOFILE=65535
+
+# Hardening
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/redis /var/log/redis /run/redis
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+MemoryDenyWriteExecute=true
+
+[Install]
+WantedBy=multi-user.target
+EOF
+"""
+post_install = """
+# Create redis user if it doesn't exist (argonaut handles this on real installs)
+# chown -R redis:redis /var/lib/redis /var/log/redis /run/redis
+
+# Kernel tuning recommendations (applied by aegis at boot)
+# vm.overcommit_memory = 1
+# net.core.somaxconn = 511
+# Disable THP: echo never > /sys/kernel/mm/transparent_hugepage/enabled
+"""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

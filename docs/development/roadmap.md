@@ -53,7 +53,7 @@ All phases are complete. See [CHANGELOG.md](/CHANGELOG.md) for detailed implemen
 
 ### Alpha Release — Q2 2026
 
-**Current version**: `2026.3.8-1` (CalVer: `YYYY.D.M`, patches as `-N`)
+**Current version**: `2026.3.8-2` (CalVer: `YYYY.D.M`, patches as `-N`)
 
 **Remaining criteria:**
 - [ ] Third-party security audit complete
@@ -79,6 +79,7 @@ All phases are complete. See [CHANGELOG.md](/CHANGELOG.md) for detailed implemen
 - Enterprise features complete (SSO, audit logging, mTLS)
 - Commercial support available
 - Migration guides published
+- Marketplace consumer apps packaged (Photis Nadi, BullShift — when upstream ready)
 
 ---
 
@@ -141,6 +142,23 @@ Borrows conventions from pyenv (`.python-version` files) and mise (hook-env patt
 - [ ] Curated `.ark` packages for common Python libs (numpy, requests, etc.)
 - [ ] Optional uv integration as accelerated resolver backend
 
+### Database Services `recipes/database/`
+
+Data stores built from source with AGNOS-hardened defaults, systemd units, and argonaut integration.
+
+**PostgreSQL 17**
+- [x] Takumi recipe (`postgresql-17.toml` — LLVM JIT, TLS 1.3, scram-sha-256, systemd hardened unit)
+- [ ] Build `.ark` package on native target
+- [ ] Argonaut integration: `postgres` user/group creation, `initdb` first-boot hook
+- [ ] Aegis integration: kernel tuning, audit logging for DDL
+- [ ] Agent runtime integration: auto-provision per-agent databases
+
+**Redis 7**
+- [x] Takumi recipe (`redis-7.toml` — TLS, AOF persistence, jemalloc, dangerous commands disabled)
+- [ ] Build `.ark` package on native target
+- [ ] Argonaut integration: `redis` user/group creation, kernel tuning (overcommit, THP)
+- [ ] Agent runtime integration: shared session/cache store for agents
+
 ### Docker Base Images
 
 Publish runtime-specific base images for consumer projects.
@@ -158,6 +176,23 @@ these should transition to ark-built runtimes once Phase 1 packages are proven.
 - [ ] `agnos:node22` — Node.js 22 runtime layer
 - [ ] `agnos:rust` — Rust runtime layer
 - [ ] Takumi builder container — container for building `.ark` packages without native target
+
+### Marketplace Consumer Apps `recipes/marketplace/`
+
+Third-party apps packaged as `.agnos-agent` bundles for the mela marketplace.
+Recipes are stubs — finalize packaging when each project reaches its own alpha.
+
+**Photis Nadi** — Kanban + daily rituals (Flutter)
+- [x] Takumi marketplace recipe (`photisnadi.toml` — sandbox profile, desktop entry, Wayland)
+- [ ] Build `.agnos-agent` bundle from Flutter linux release
+- [ ] MCP agent bridge integration (planned AGNOS desktop feature)
+- [ ] Publish to mela marketplace
+
+**BullShift** — Trading platform (Rust + Flutter)
+- [x] Takumi marketplace recipe (`bullshift.toml` — hybrid Rust/Flutter build, sandbox profile)
+- [ ] Build `.agnos-agent` bundle from Flutter linux release + Rust backend
+- [ ] Network sandbox policy: restrict to exchange APIs + market data feeds
+- [ ] Publish to mela marketplace
 
 ### Federation Enhancements
 
@@ -192,13 +227,13 @@ Agnostic already has client modules for hoosh (LLM Gateway) and daimon (Agent Ru
 
 ## Key Performance Indicators (KPIs)
 
-### Current Status (as of 2026-03-07)
+### Current Status (as of 2026-03-08)
 
 | Metric | Target | Current | Status |
 |--------|--------|---------|--------|
 | Code Coverage | >80% | ~82% | Met |
 | Test Pass Rate | 100% | 100% | Met |
-| Total Tests | 400+ | 9096+ | Met |
+| Total Tests | 400+ | 9174+ | Met |
 | Agent Spawn Time | <500ms | ~300ms | Met |
 | Shell Response Time | <100ms | ~50ms | Met |
 | Memory Overhead | <2GB | ~1.2GB | Met |

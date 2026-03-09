@@ -1,0 +1,116 @@
+# BullShift — Trading platform for AGNOS marketplace
+# High-performance cross-platform trading platform combining Rust backend
+# with Flutter frontend. Sub-100ms execution target.
+#
+# Status: STUB — complete when BullShift reaches alpha.
+
+[package]
+name = "bullshift"
+version = "2026.3.5"
+description = "BullShift — High-performance cross-platform trading platform"
+license = "MIT"
+groups = ["desktop", "finance", "flutter"]
+release = 1
+arch = "x86_64"
+
+[source]
+# Hybrid build: Rust backend + Flutter frontend.
+# Rust: cargo build --release (in rust/)
+# Flutter: flutter build linux --release (in flutter/)
+local = true
+build_dir = "flutter/build/linux/x64/release/bundle"
+
+[depends]
+runtime = [
+    "glibc",
+    "gtk3",
+    "mesa",
+    "libdrm",
+    "wayland",
+    "wayland-protocols",
+    "fontconfig",
+    "freetype2",
+    "harfbuzz",
+    "openssl",
+    "sqlite",
+]
+build = [
+    "flutter",
+    "rust",
+    "clang",
+    "cmake",
+    "ninja",
+    "pkg-config",
+    "openssl-dev",
+]
+
+[marketplace]
+category = "desktop-app"
+runtime = "flutter"
+publisher = "BullShift"
+tags = ["trading", "finance", "market-data", "flutter", "rust"]
+min_agnos_version = "2026.3.8"
+
+[marketplace.sandbox]
+seccomp_mode = "desktop"
+network_access = true
+allowed_hosts = ["*"]  # TODO: restrict to exchange APIs + market data feeds
+data_dir = "~/.local/share/bullshift/"
+
+[[marketplace.sandbox.landlock]]
+path = "~/.local/share/bullshift/"
+access = "rw"
+
+[[marketplace.sandbox.landlock]]
+path = "/tmp"
+access = "rw"
+
+[[marketplace.sandbox.landlock]]
+path = "/usr/share/fonts"
+access = "ro"
+
+[[marketplace.sandbox.landlock]]
+path = "/run/user/"
+access = "ro"
+
+[marketplace.wayland]
+requirements = ["core", "xdg-shell"]
+
+[build]
+pre_build = """
+# Build Rust backend first
+cd rust && cargo build --release
+"""
+configure = ""
+make = "cd flutter && flutter build linux --release"
+check = """
+cd rust && cargo test
+cd ../flutter && flutter test
+"""
+install = """
+# Install Rust backend binary
+mkdir -p $PKG/usr/lib/bullshift/bin
+cp rust/target/release/bullshift-server $PKG/usr/lib/bullshift/bin/ 2>/dev/null || true
+
+# Use agpkg pack-flutter to create .agnos-agent bundle
+# agpkg pack-flutter --build-dir flutter/build/linux/x64/release/bundle \\
+#   --name bullshift --version $VERSION --publisher "BullShift" \\
+#   --description "High-performance trading platform" \\
+#   --category desktop-app --network --output $PKG/
+
+# Desktop entry for aethersafha
+mkdir -p $PKG/usr/share/applications
+cat > $PKG/usr/share/applications/bullshift.desktop << 'EOF'
+[Desktop Entry]
+Name=BullShift
+Comment=High-performance trading platform
+GenericName=Trading Platform
+Exec=bullshift
+Icon=bullshift
+Terminal=false
+Type=Application
+Categories=Office;Finance;
+StartupNotify=true
+StartupWMClass=bullshift
+EOF
+"""

@@ -1,0 +1,102 @@
+# Photis Nadi — Productivity app for AGNOS marketplace
+# Cross-platform Kanban task management + daily rituals app.
+# Built with Flutter; packaged as .agnos-agent via agpkg pack-flutter.
+#
+# Status: STUB — complete when Photis Nadi reaches alpha.
+
+[package]
+name = "photisnadi"
+version = "2026.2.16"
+description = "Photis Nadi — Kanban task management with daily rituals"
+license = "Proprietary"
+groups = ["desktop", "productivity", "flutter"]
+release = 1
+arch = "x86_64"
+
+[source]
+# Built from local Flutter project; no upstream tarball.
+# Build with: flutter build linux --release
+local = true
+build_dir = "build/linux/x64/release/bundle"
+
+[depends]
+runtime = [
+    "glibc",
+    "gtk3",
+    "mesa",
+    "libdrm",
+    "wayland",
+    "wayland-protocols",
+    "fontconfig",
+    "freetype2",
+    "harfbuzz",
+    "sqlite",
+]
+build = [
+    "flutter",
+    "clang",
+    "cmake",
+    "ninja",
+    "pkg-config",
+]
+
+[marketplace]
+category = "productivity"
+runtime = "flutter"
+publisher = "Photis Nadi"
+tags = ["kanban", "productivity", "rituals", "task-management", "flutter"]
+min_agnos_version = "2026.3.8"
+
+[marketplace.sandbox]
+seccomp_mode = "desktop"
+network_access = true
+allowed_hosts = ["*"]  # TODO: restrict to specific sync backends
+data_dir = "~/.local/share/photisnadi/"
+
+[[marketplace.sandbox.landlock]]
+path = "~/.local/share/photisnadi/"
+access = "rw"
+
+[[marketplace.sandbox.landlock]]
+path = "/tmp"
+access = "rw"
+
+[[marketplace.sandbox.landlock]]
+path = "/usr/share/fonts"
+access = "ro"
+
+[[marketplace.sandbox.landlock]]
+path = "/run/user/"
+access = "ro"
+
+[marketplace.wayland]
+requirements = ["core", "xdg-shell"]
+
+[build]
+pre_build = ""
+configure = ""
+make = "flutter build linux --release"
+check = "flutter test"
+install = """
+# Use agpkg pack-flutter to create .agnos-agent bundle
+# agpkg pack-flutter --build-dir build/linux/x64/release/bundle \\
+#   --name photisnadi --version $VERSION --publisher "Photis Nadi" \\
+#   --description "Kanban task management with daily rituals" \\
+#   --category productivity --network --output $PKG/
+
+# Desktop entry for aethersafha
+mkdir -p $PKG/usr/share/applications
+cat > $PKG/usr/share/applications/photisnadi.desktop << 'EOF'
+[Desktop Entry]
+Name=Photis Nadi
+Comment=Kanban task management with daily rituals
+GenericName=Productivity
+Exec=photisnadi
+Icon=photisnadi
+Terminal=false
+Type=Application
+Categories=Office;ProjectManagement;
+StartupNotify=true
+StartupWMClass=photisnadi
+EOF
+"""
