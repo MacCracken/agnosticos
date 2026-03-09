@@ -98,7 +98,7 @@ apply_hardening() {
 
     for flag in $HARDENING_FLAGS; do
         case "$flag" in
-            pie)             cflags="$cflags -fPIE"; ldflags="$ldflags -pie" ;;
+            pie)             cflags="$cflags -fPIC"; ldflags="$ldflags -Wl,-z,now" ;;
             relro)           ldflags="$ldflags -Wl,-z,relro" ;;
             fullrelro)       ldflags="$ldflags -Wl,-z,relro,-z,now" ;;
             fortify)         cflags="$cflags -D_FORTIFY_SOURCE=2" ;;
