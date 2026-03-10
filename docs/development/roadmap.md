@@ -1,161 +1,394 @@
 # AGNOS Development Roadmap
 
-> **Status**: Pre-Alpha | **Last Updated**: 2026-03-10
-> **All development phases complete** — 9400+ tests, ~82% coverage, 0 warnings
-> **Next Milestone**: Alpha Release (Target: Q2 2026)
+> **Status**: Pre-Beta | **Last Updated**: 2026-03-10
+> **Userland complete** — 9400+ tests, ~82% coverage, 0 warnings
+> **Next Milestone**: Beta Release (Target: Q4 2026)
 
 ---
 
-## Remaining Work for Alpha
+## Beta Goal
 
-### P1 - Alpha Blocker
-| Item | Component | Effort | Owner | Status |
-|------|-----------|--------|-------|--------|
-| Third-party security audit | Security | 2 weeks | External | Vendor selection in progress |
+AGNOS boots as an **independent Linux distribution** — no Debian, no Ubuntu, no
+host distro. A self-hosting LFS-style base system built entirely from source via
+takumi recipes, with ark as the sole package manager. The userland (daimon,
+hoosh, agnoshi, aethersafha, etc.) runs on top of a base system we control from
+toolchain to init.
 
-### P2 - Alpha Polish
-| Item | Component | Effort | Owner | Status |
-|------|-----------|--------|-------|--------|
-| Video tutorials | Documentation | 3 days | TBD | Not started |
+Reference: [Linux From Scratch 12.4](https://www.linuxfromscratch.org/lfs/view/stable/)
+(77 packages) + [Beyond LFS](https://www.linuxfromscratch.org/blfs/view/stable/)
+for desktop/networking/GPU stack.
 
-### P3 - Beta/Post-Alpha
-| Item | Component | Effort | Owner | Status |
-|------|-----------|--------|-------|--------|
-| Kernel Development Guide | Documentation | 3 days | TBD | Not started |
-| Support portal | Infrastructure | 2 weeks | TBD | Not started |
+---
+
+## Phase 10 — LFS Base System
+
+Everything in this phase produces takumi recipes under `recipes/base/`.
+Build order follows LFS chapter structure. All packages get security
+hardening flags (PIE, full RELRO, FORTIFY_SOURCE=2, stack protector, BINDNOW).
+
+### 10A — Cross-Toolchain (LFS Ch. 5–6)
+
+Bootstrap a cross-compiler that doesn't depend on the host.
+
+| # | Package | Version | Recipe | Notes |
+|---|---------|---------|--------|-------|
+| 1 | linux-api-headers | 6.6.x | `linux-api-headers.toml` | Kernel headers only (no build) |
+| 2 | glibc | 2.42 | `glibc.toml` | C library — Pass 1 cross, Pass 2 final |
+| 3 | binutils | 2.45 | `binutils.toml` | Linker/assembler — Pass 1 + Pass 2 |
+| 4 | gcc | 15.2.0 | `gcc.toml` | Compiler — Pass 1 (cross) + Pass 2 (native) |
+| 5 | gmp | 6.3.0 | `gmp.toml` | GCC dependency |
+| 6 | mpfr | 4.2.2 | `mpfr.toml` | GCC dependency |
+| 7 | mpc | 1.3.1 | `mpc.toml` | GCC dependency |
+| 8 | libstdc++ | (GCC) | — | Built as part of GCC |
+
+**Deliverable**: Self-hosting toolchain that can compile everything else.
+
+### 10B — Core Utilities (LFS Ch. 6–8)
+
+Temporary tools first, then final system versions.
+
+| # | Package | Version | Group | Notes |
+|---|---------|---------|-------|-------|
+| 1 | coreutils | 9.7 | core | ls, cp, mv, cat, chmod, etc. |
+| 2 | bash | 5.3 | core | Default shell |
+| 3 | findutils | 4.10.0 | core | find, xargs |
+| 4 | grep | 3.12 | core | Pattern matching |
+| 5 | sed | 4.9 | core | Stream editor |
+| 6 | gawk | 5.3.2 | core | Text processing |
+| 7 | tar | 1.35 | core | Archive tool |
+| 8 | gzip | 1.14 | core | Compression |
+| 9 | xz | 5.8.1 | core | LZMA compression |
+| 10 | bzip2 | 1.0.8 | core | Compression |
+| 11 | zstd | 1.5.7 | core | Fast compression |
+| 12 | lz4 | 1.10.0 | core | Fastest compression |
+| 13 | diffutils | 3.12 | core | diff, cmp |
+| 14 | patch | 2.8 | core | Apply diffs |
+| 15 | make | 4.4.1 | core | Build tool |
+| 16 | file | 5.46 | core | File type detection |
+| 17 | m4 | 1.4.20 | core | Macro processor |
+| 18 | bc | 7.0.3 | core | Calculator |
+| 19 | less | 679 | core | Pager |
+| 20 | which | 2.21 | core | Command lookup |
+
+**Deliverable**: 20 recipes, basic userland functional.
+
+### 10C — System Libraries (LFS Ch. 8)
+
+| # | Package | Version | Notes |
+|---|---------|---------|-------|
+| 1 | zlib | 1.3.1 | Universal compression lib |
+| 2 | readline | 8.3 | Line editing |
+| 3 | ncurses | 6.5 | Terminal UI |
+| 4 | libffi | 3.5.2 | Foreign function interface |
+| 5 | expat | 2.7.1 | XML parser |
+| 6 | gdbm | 1.26 | Database library |
+| 7 | attr | 2.5.2 | Extended attributes |
+| 8 | acl | 2.3.2 | Access control lists |
+| 9 | libcap | 2.76 | POSIX capabilities |
+| 10 | libxcrypt | 4.4.38 | Password hashing |
+| 11 | libtool | 2.5.4 | Shared library support |
+| 12 | gperf | 3.3 | Perfect hash generator |
+| 13 | libpipeline | 1.5.8 | Pipeline manipulation |
+| 14 | libelf (elfutils) | 0.193 | ELF handling |
+
+**Deliverable**: 14 recipes, all shared libraries AGNOS needs.
+
+### 10D — Security & Crypto
+
+| # | Package | Version | Notes |
+|---|---------|---------|-------|
+| 1 | openssl | 3.5.2 | TLS/crypto (already dep in recipes) |
+| 2 | shadow | 4.18.0 | User/group management, passwd, login |
+| 3 | linux-pam | 1.7.1 | Pluggable auth (integrates with `pam.rs`) |
+| 4 | sudo | 1.9.17p2 | Privilege escalation (complements shakti) |
+| 5 | gnupg | 2.4.8 | Package signing verification |
+| 6 | gnutls | 3.8.10 | TLS (alternative to OpenSSL for some deps) |
+| 7 | p11-kit | 0.25.5 | PKCS#11 module management |
+| 8 | openssh | 10.0p1 | Remote access |
+| 9 | cryptsetup | 2.8.1 | LUKS encryption (integrates with `luks.rs`) |
+| 10 | nftables | 1.1.1 | Firewall (replaces iptables) |
+| 11 | libseccomp | 2.5.5 | Seccomp helper (used by sandbox) |
+| 12 | audit | 4.0.2 | Linux audit framework |
+
+**Deliverable**: 12 recipes, full security stack standalone.
+
+### 10E — System Services & Init
+
+| # | Package | Version | Notes |
+|---|---------|---------|-------|
+| 1 | util-linux | 2.41.1 | mount, fdisk, lsblk, etc. (~50 tools) |
+| 2 | procps-ng | 4.0.5 | ps, top, free, etc. |
+| 3 | psmisc | 23.7 | killall, fuser, pstree |
+| 4 | iproute2 | 6.16.0 | ip, ss, tc (networking) |
+| 5 | kbd | 2.8.0 | Keyboard tools |
+| 6 | kmod | 34.2 | Module loading (modprobe, lsmod) |
+| 7 | eudev | 3.2.14 | Device manager (replaces systemd-udevd) |
+| 8 | dbus | 1.16.2 | Message bus (required by desktop) |
+| 9 | e2fsprogs | 1.47.3 | ext4 filesystem tools |
+| 10 | dosfstools | 4.2 | FAT/EFI filesystem tools |
+| 11 | inetutils | 2.6 | hostname, ping, telnet, etc. |
+| 12 | sysklogd | 2.7.2 | System logging |
+| 13 | sysvinit | 3.14 | Init (placeholder — argonaut replaces) |
+| 14 | iana-etc | 20250807 | /etc/services, /etc/protocols |
+
+**Deliverable**: 14 recipes, system can boot and manage hardware.
+
+### 10F — Build Tools & Languages
+
+| # | Package | Version | Notes |
+|---|---------|---------|-------|
+| 1 | autoconf | 2.72 | Build system |
+| 2 | automake | 1.18.1 | Build system |
+| 3 | pkgconf | 2.5.1 | Package config |
+| 4 | cmake | 4.1.0 | Build system (BLFS dep) |
+| 5 | ninja | 1.13.1 | Fast build system |
+| 6 | meson | 1.8.3 | Build system (Wayland/Mesa need it) |
+| 7 | perl | 5.42.0 | Required by autotools, kernel build |
+| 8 | python | 3.13.7 | Already have recipe, promote to base |
+| 9 | rust | 1.89.0 | Needed to compile AGNOS userland |
+| 10 | flex | 2.6.4 | Lexer generator |
+| 11 | bison | 3.8.2 | Parser generator |
+| 12 | gettext | 0.26 | i18n |
+| 13 | texinfo | 7.2 | Documentation |
+| 14 | groff | 1.23.0 | Man page formatting |
+| 15 | man-db | 2.13.1 | Man page viewer |
+| 16 | man-pages | 6.15 | Linux man pages |
+
+**Deliverable**: 16 recipes, system is self-hosting (can rebuild itself).
+
+### 10G — Kernel & Bootloader
+
+| # | Item | Notes |
+|---|------|-------|
+| 1 | Linux kernel 6.6 LTS | Config exists (`agnos_defconfig`), needs recipe + CI |
+| 2 | AGNOS kernel modules | 4 C modules (agent-subsystem, security, audit, llm) |
+| 3 | GRUB 2.12 | Bootloader recipe + EFI support |
+| 4 | dracut or mkinitcpio | Initramfs generator |
+| 5 | firmware blobs | linux-firmware package for WiFi/GPU |
+| 6 | Kernel signing | Secure Boot with AGNOS signing key |
+
+**Deliverable**: Bootable system from bare metal.
+
+**Phase 10 Total: ~88 base system recipes**
+
+---
+
+## Phase 11 — Desktop & Networking Stack (BLFS)
+
+Packages needed to run aethersafha (Wayland compositor) and connect to
+the network. Recipes go in `recipes/desktop/` and `recipes/network/`.
+
+### 11A — Graphics Stack
+
+| # | Package | Version | Notes |
+|---|---------|---------|-------|
+| 1 | wayland | 1.24.0 | Core Wayland protocol |
+| 2 | wayland-protocols | 1.45 | Extended protocols (xdg-shell, etc.) |
+| 3 | mesa | 25.1.x | OpenGL/Vulkan/EGL (GPU drivers) |
+| 4 | libdrm | 2.4.125 | Direct rendering manager |
+| 5 | libinput | 1.27.x | Input device handling |
+| 6 | libxkbcommon | 1.11.0 | Keyboard handling |
+| 7 | vulkan-headers | 1.4.x | Vulkan API headers |
+| 8 | vulkan-loader | 1.4.x | Vulkan ICD loader |
+| 9 | libepoxy | 1.5.10 | GL dispatch library |
+| 10 | pixman | 0.44.x | Pixel manipulation |
+| 11 | cairo | 1.18.x | 2D graphics |
+| 12 | pango | 1.56.x | Text rendering |
+| 13 | harfbuzz | 10.x | Text shaping |
+| 14 | freetype | 2.13.x | Font rendering |
+| 15 | fontconfig | 2.16.x | Font configuration |
+| 16 | xwayland | 24.1.x | X11 compatibility |
+| 17 | wlroots | 0.18.x | Compositor library (if aethersafha uses it) |
+
+### 11B — Audio Stack
+
+| # | Package | Version | Notes |
+|---|---------|---------|-------|
+| 1 | alsa-lib | 1.2.14 | ALSA userspace |
+| 2 | alsa-utils | 1.2.14 | amixer, aplay, etc. |
+| 3 | pipewire | 1.4.x | Audio/video routing (modern replacement for PulseAudio) |
+| 4 | wireplumber | 0.5.x | PipeWire session manager |
+| 5 | libsndfile | 1.2.x | Audio file I/O |
+
+### 11C — Networking
+
+| # | Package | Version | Notes |
+|---|---------|---------|-------|
+| 1 | curl | 8.15.x | HTTP client |
+| 2 | wget | 1.25.x | Download tool |
+| 3 | openssh | 10.0p1 | (also in 10D, shared) |
+| 4 | dhcpcd | 10.2.x | DHCP client |
+| 5 | wpa_supplicant | 2.11 | WiFi auth |
+| 6 | iw | 6.9 | WiFi config |
+| 7 | networkmanager | 1.54.x | Network management daemon |
+| 8 | rsync | 3.4.x | File sync |
+| 9 | ca-certificates | 2025.x | TLS root CAs |
+| 10 | dns-utils (bind-utils) | 9.20.x | dig, nslookup |
+
+### 11D — Desktop Support Libraries
+
+| # | Package | Version | Notes |
+|---|---------|---------|-------|
+| 1 | glib | 2.84.x | GObject, GIO, etc. |
+| 2 | gobject-introspection | 1.84.x | Language bindings |
+| 3 | gtk4 | 4.18.x | GTK toolkit (for Flutter Linux host) |
+| 4 | libnotify | 0.8.x | Desktop notifications |
+| 5 | json-glib | 1.10.x | JSON for GLib |
+| 6 | polkit | 125 | Authorization framework |
+| 7 | elogind | 255.x | Session management (no systemd) |
+| 8 | udisks | 2.10.x | Disk management |
+| 9 | upower | 1.90.x | Power management |
+| 10 | gstreamer | 1.26.x | Multimedia framework |
+
+**Phase 11 Total: ~42 desktop/networking recipes**
+
+---
+
+## Phase 12 — System Integration
+
+Wire the LFS base system into AGNOS's own tooling.
+
+### 12A — Argonaut as Real Init
+
+| # | Item | Notes |
+|---|------|-------|
+| 1 | Replace sysvinit with argonaut | Boot stages → real service management |
+| 2 | Service dependency graph | PostgreSQL before daimon, dbus before aethersafha |
+| 3 | Runlevel equivalents | Console, Server, Desktop boot modes |
+| 4 | Shutdown/reboot orchestration | Signal agents, flush state, unmount |
+| 5 | Emergency/rescue shell | Drop to agnoshi on boot failure |
+
+### 12B — Ark as Sole Package Manager
+
+| # | Item | Notes |
+|---|------|-------|
+| 1 | Dependency resolution via nous | resolve install order from recipe `[depends]` |
+| 2 | `ark install <package>` from registry | Download .ark, verify sigil signature, install |
+| 3 | `ark remove <package>` | Track installed files, clean removal |
+| 4 | `ark upgrade` | Check registry for newer versions, upgrade in-place |
+| 5 | `ark search` | Query local and remote package index |
+| 6 | Transaction log | Atomic installs, rollback on failure |
+| 7 | `/var/lib/ark/installed.db` | Package database (installed files, versions, checksums) |
+
+### 12C — Agnova Installer (Real)
+
+| # | Item | Notes |
+|---|------|-------|
+| 1 | Disk partitioning (GPT + EFI) | Use `fdisk`/`parted` from util-linux |
+| 2 | Filesystem creation (ext4, btrfs) | mkfs from e2fsprogs |
+| 3 | Base system extraction | Unpack base .ark packages to target |
+| 4 | GRUB installation | EFI + BIOS boot |
+| 5 | User creation | First-boot user setup via shadow |
+| 6 | Network configuration | dhcpcd/NetworkManager setup |
+| 7 | Locale/timezone setup | From base system |
+| 8 | ISO generation | Bootable install media with agnova TUI |
+
+### 12D — Build Reproducibility & CI
+
+| # | Item | Notes |
+|---|------|-------|
+| 1 | Takumi builder container | Build all ~130 recipes in Docker |
+| 2 | Deterministic builds | SOURCE_DATE_EPOCH, stripped paths |
+| 3 | Package registry | Host .ark files (S3/GHCR/self-hosted) |
+| 4 | CI pipeline | Build base system nightly, test boot in QEMU |
+| 5 | SBOM generation | Per-package SBOM, aggregate system SBOM |
+| 6 | QEMU boot test | CI job that boots the ISO, runs health checks |
+
+---
+
+## Phase 13 — Beta Polish
+
+### 13A — Self-Hosting Validation
+
+| # | Item | Notes |
+|---|------|-------|
+| 1 | Build AGNOS on AGNOS | Full bootstrap: compile GCC, Rust, kernel on the built system |
+| 2 | Kernel module build on target | Compile AGNOS kernel modules without host |
+| 3 | Userland rebuild on target | `cargo build` of agent-runtime, llm-gateway, etc. |
+| 4 | Package rebuild on target | `ark-build.sh` works inside AGNOS |
+
+### 13B — Hardware Support
+
+| # | Item | Notes |
+|---|------|-------|
+| 1 | NVIDIA GPU (proprietary driver) | .ark recipe for nvidia-driver |
+| 2 | NVIDIA GPU (nouveau/open) | Mesa nouveau driver |
+| 3 | AMD GPU (amdgpu) | Mesa radeonsi driver |
+| 4 | Intel GPU (i915) | Mesa iris driver |
+| 5 | WiFi firmware | linux-firmware .ark package |
+| 6 | Bluetooth | bluez .ark recipe |
+| 7 | USB/Thunderbolt | bolt daemon |
+| 8 | Printer support | CUPS (optional) |
+
+### 13C — Community & Documentation
+
+| # | Item | Notes |
+|---|------|-------|
+| 1 | Installation guide | Step-by-step for bare metal + VM |
+| 2 | Video tutorials | Installation, usage, agent creation |
+| 3 | Kernel development guide | Contributing to AGNOS kernel modules |
+| 4 | Support portal | Discord + forum |
+| 5 | Community testing program | Beta tester enrollment |
+| 6 | Third-party security audit | External vendor (previously P1 alpha blocker) |
+| 7 | Bug tracker triage | Public issue templates |
+
+### 13D — Previous Alpha Items (Moved)
+
+| # | Item | Status | Notes |
+|---|------|--------|-------|
+| 1 | Run browser-ark CI | Ready | `.github/workflows/browser-ark.yml` exists |
+| 2 | Run marketplace-publish CI | Ready | `.github/workflows/marketplace-publish.yml` exists |
+| 3 | Python runtime management (4 phases) | Not started | Shim, .python-version, venv, pip proxy |
+| 4 | AI-integrated WebView | Not started | wry/tauri, hoosh integration |
+| 5 | Docker base images on AGNOS base | Not started | Replace Debian base with AGNOS .ark base |
+
+---
+
+## Release Roadmap (Revised)
+
+### Beta Release — Q4 2026
+
+**Criteria:**
+- [ ] Phase 10 complete — ~88 base system recipes, self-hosting toolchain
+- [ ] Phase 11 complete — Desktop + networking stack (~42 recipes)
+- [ ] Phase 12 complete — Argonaut init, ark package manager, agnova installer
+- [ ] AGNOS boots from ISO on bare metal (UEFI) and QEMU
+- [ ] Self-hosting: can rebuild itself from source
+- [ ] Third-party security audit complete
+- [ ] Community testing program active
+
+### v1.0 Release — Q2 2027
+
+**Criteria:**
+- [ ] Phase 13 complete — Hardware support, documentation, community
+- [ ] All consumer apps published to mela
+- [ ] Python runtime management
+- [ ] Enterprise features: SSO (done), audit logging (done), mTLS (done)
+- [ ] 6 months of beta testing with no critical bugs
+- [ ] Commercial support available
 
 ---
 
 ## Phase Summary
 
-All phases are complete. See [CHANGELOG.md](/CHANGELOG.md) for detailed implementation notes per version.
-
 | Phase | Status | Tests | Key Deliverables |
 |-------|--------|-------|------------------|
 | 0-4 | Complete | — | Foundation through Desktop |
-| 5 | Complete | — | Production hardening, code audits, CI/CD, module refactoring (http_api → 18 files, interpreter → 17 files) |
-| 5.6 | Complete | — | All P0-P2 stubs eliminated |
-| 6 | Complete | 200+ | Hardware acceleration, swarm intelligence, 32 networking tools, 7 agent wrappers |
-| 6.5 | Complete | 550+ | 16 OS-level modules (FUSE, udev, PAM, bootloader, journald, IMA, TPM, etc.) |
-| 6.6 | Complete | — | Consumer integration (Docker, WASM, security UI) |
-| 6.7 | Complete | 100+ | Alpha polish (14 items: tab-completion, pipelines, aliases, KV store, dashboard, etc.) |
-| 6.8 | Complete | 600+ | Beta features (34 items: RAG, RPC, OpenTelemetry, accessibility, anomaly detection, mTLS, etc.) |
-| 7 | Complete | 199 | Federation (55), migration (54), scheduling (47), ratings (43) |
-| 8A-8F | Complete | 205 | Distribution: sigil (35), takumi (43), argonaut (46), agnova (41), aegis (40) |
-| 8G | Complete | 68 | Post-quantum cryptography |
-| 8H-8J | Complete | 209 | Explainability (59), AI safety (77), fine-tuning (73) |
-| 8K-8M | Complete | 221 | Formal verification (76), novel sandboxing (77), RL optimization (68) |
-| 9 | Complete | 169 | Cloud services (82), human-AI collaboration (87) |
-
----
-
-## Release Roadmap
-
-### Alpha Release — Q2 2026
-
-**Current version**: `2026.3.10` (CalVer: `YYYY.M.D`, patches as `-N`)
-
-**Remaining criteria:**
-- [ ] Third-party security audit complete
-
-**Target Date**: End of Q2 2026
-
-### Beta Release — Q3 2026
-
-**Remaining:**
-- [ ] Community testing program
-- [ ] Support channels open (Discord, forum)
-- [ ] Video tutorials published
-
-**Target Date**: Mid-Q3 2026
-
-### v1.0 Release — Q4 2026
-
-**Criteria:**
-- Production ready (all critical bugs resolved)
-- Enterprise features complete (SSO, audit logging, mTLS)
-- Commercial support available
-- Migration guides published
-- Marketplace consumer apps published to mela
-
----
-
-## Future Work (Post-Alpha, Demand-Gated)
-
-### Web Browser
-
-**Phase 1 — Browser Suite (Alpha)** `recipes/browser/`
-- [ ] Run browser-ark CI workflow to build and package all 8 browsers
-
-**Phase 2 — AI-Integrated WebView (Proposed, Post-Beta)**
-- [ ] Lightweight embedded browser using `wry`/`tauri` WebView
-- [ ] AI features: page summarization, agent-assisted form filling, smart bookmarks
-- [ ] Deep integration with hoosh (LLM gateway) for on-device inference
-- [ ] Privacy-first: all AI processing local, no cloud telemetry
-
-**Phase 3 — Custom Browser Shell (Proposed, Post-v1.0)**
-- [ ] Thin shell around Servo or Chromium Embedded Framework (CEF)
-- [ ] Native aethersafha compositor integration (no intermediate toolkit)
-- [ ] Agent-driven browsing: natural language navigation, automated workflows
-- [ ] Sandboxed per-tab via AGNOS agent runtime (each tab = sandboxed agent)
-
-### Python Runtime & Version Management
-
-Native Python support via ark/takumi/nous — no external version manager dependency.
-Borrows conventions from pyenv (`.python-version` files) and mise (hook-env pattern).
-
-**Phase 1 — CPython as ark packages** `recipes/python/`
-- [ ] Build CPython `.ark` packages on native target (bare-metal / VM install)
-- [ ] Build CPython `.ark` packages in container (takumi builder container)
-- [ ] Verify shared lib coexistence with multiple installed versions on both targets
-- [ ] Update `docker/Dockerfile.python` to use ark-built CPython instead of upstream `python:3.12-slim-bookworm`
-
-**Phase 2 — Version switching**
-- [ ] Rust shim binary (`/usr/bin/python` → resolves version via hook-env)
-- [ ] `.python-version` file support (project-level, compatible with pyenv/mise/uv)
-- [ ] Agent runtime integration: auto-select Python version from agent metadata `"runtime": "python", "version": "3.12"`
-- [ ] `ark python list` / `ark python use 3.13` CLI commands
-
-**Phase 3 — Virtual environment integration**
-- [ ] `ark venv create` — thin wrapper around `python -m venv` with audit logging
-- [ ] Per-agent venv isolation (auto-created in agent sandbox)
-- [ ] Seccomp profile already exists (`SeccompProfile::Python`, ~45 syscalls)
-
-**Phase 4 — Package management hooks (post-v1.0)**
-- [ ] `ark pip install` — pip proxy with sigil signature verification for wheels
-- [ ] Curated `.ark` packages for common Python libs (numpy, requests, etc.)
-- [ ] Optional uv integration as accelerated resolver backend
-
-### Docker Base Images
-
-Runtime-specific base images for consumer projects. Published to `ghcr.io/maccracken/agnosticos:<tag>` on each release.
-
-| Image | Dockerfile | Status |
-|-------|-----------|--------|
-| `agnosticos:node22` | `Dockerfile.node` (Node.js 22 + Bun) | CI ready |
-| `agnosticos:python3.13` | `Dockerfile.python3.13` | CI ready |
-| `agnosticos:python3.14` | `Dockerfile.python3.14` (RC) | CI ready |
-| `agnosticos:rust` | `Dockerfile.rust` | CI ready |
-| `agnosticos:python3.13t` | `Dockerfile.python3.13t` (GIL-disabled) | CI ready |
-
-### Marketplace Consumer Apps `recipes/marketplace/`
-
-Bundles are built automatically from GitHub releases via `ark-bundle.sh` — no local repos needed.
-
-All 5 consumer apps have marketplace recipes + GitHub release bundling via `ark-bundle.sh`.
-
-**SecureYeoman** (Bun, ~42MB) | **BullShift** (Rust, ~2.8MB) | **Photis Nadi** (Flutter, ~20MB) | **Agnostic** (Python, ~472KB) | **Synapse** (Rust, pending first release)
-
-- [ ] Run marketplace-publish CI workflow to publish all to mela
-
-### Full Convergence (Complete)
-
-- [x] **Unified SSO/OIDC provider** — `oidc.rs` (22 tests): JWT claims, token issuance/validation/revocation, OIDC discovery, client credentials, scopes
-- [x] **Cross-project agent delegation** — `delegation.rs` (28 tests): A2A protocol, delegation policies, capability routing, sandbox enforcement, audit trail
-- [x] **Shared vector store REST API** — `vector_rest.rs` (24 tests): Collection CRUD, federated insert/search, dimension validation, 8 REST endpoints
-- [x] **Unified marketplace backend** — `marketplace_backend.rs` (28 tests): Publisher management, package lifecycle, ratings, search, featured packages
-
-### Additional Post-v1.0
+| 5 | Complete | — | Production hardening, module refactoring |
+| 5.6 | Complete | — | All stubs eliminated |
+| 6 | Complete | 200+ | Hardware acceleration, swarm, networking tools |
+| 6.5 | Complete | 550+ | 16 OS-level modules |
+| 6.6 | Complete | — | Consumer integration |
+| 6.7 | Complete | 100+ | Alpha polish |
+| 6.8 | Complete | 600+ | Beta features (RAG, RPC, OpenTelemetry, etc.) |
+| 7 | Complete | 199 | Federation, migration, scheduling, ratings |
+| 8A-8M | Complete | 703 | Distribution, PQC, AI safety, formal verification, RL |
+| 9 | Complete | 169 | Cloud services, human-AI collaboration |
+| 9.5 | Complete | 102 | Full convergence (OIDC, delegation, vector REST, marketplace) |
+| **10** | **Not started** | — | **LFS base system (~88 recipes)** |
+| **11** | **Not started** | — | **Desktop & networking stack (~42 recipes)** |
+| **12** | **Not started** | — | **System integration (argonaut, ark, agnova, CI)** |
+| **13** | **Not started** | — | **Beta polish, hardware, community** |
 
 ---
 
@@ -171,10 +404,13 @@ All 5 consumer apps have marketplace recipes + GitHub release bundling via `ark-
 | Agent Spawn Time | <500ms | ~300ms | Met |
 | Shell Response Time | <100ms | ~50ms | Met |
 | Memory Overhead | <2GB | ~1.2GB | Met |
-| Boot Time | <10s | N/A | Pending |
+| Boot Time | <10s | N/A | Pending (Phase 12) |
 | CIS Compliance | >80% | ~85% | Met |
 | Stub Implementations | 0 | 0 | Met |
 | Compiler Warnings | 0 | 0 | Met |
+| Base System Recipes | ~88 | 0 | Phase 10 |
+| Desktop Stack Recipes | ~42 | 0 | Phase 11 |
+| Self-Hosting | Yes | No | Phase 13 |
 
 ### By Component
 
@@ -182,7 +418,7 @@ All 5 consumer apps have marketplace recipes + GitHub release bundling via `ark-
 |-----------|-------|-------|
 | agnos-common | 307 | Secrets, telemetry, LLM types, manifest, rate limits, audit chain |
 | agnos-sys | 750+ | 16 modules: audit, mac, netns, dmverity, luks, ima, tpm, secureboot, certpin, bootloader, journald, udev, fuse, pam, update, llm |
-| agent-runtime | 2821+ | Orchestrator, IPC, sandbox, registry, marketplace (88+43), federation (73), migration (54), scheduler (51), PQC (68), explainability (59), safety (77), finetune (73), formal_verify (76), sandbox_v2 (79), rl_optimizer (68), cloud (82), collaboration (87), sigil (46), aegis (55), takumi (57), argonaut (78), agnova (55), database (42), grpc (14), service_mesh (20) |
+| agent-runtime | 2923+ | Orchestrator, IPC, sandbox, registry, marketplace (88+43), federation (73), migration (54), scheduler (51), PQC (68), explainability (59), safety (77), finetune (73), formal_verify (76), sandbox_v2 (79), rl_optimizer (68), cloud (82), collaboration (87), sigil (46), aegis (55), takumi (57), argonaut (78), agnova (55), database (42), grpc (14), service_mesh (20), oidc (22), delegation (28), vector_rest (24), marketplace_backend (28) |
 | llm-gateway | 710 | 15 providers (5 native + 10 OpenAI-compatible), rate limiting, streaming, cert pinning, hardware acceleration, token budgets |
 | ai-shell | 1132 | 25+ intents, approval workflow, dashboard, aliases, completion |
 | desktop-environment | 1447+ | Wayland protocol (63+49), screen capture (31), screen recording (22+), plugin host (31), xwayland (20), shell integration (26), theme bridge (18), compositor, renderer |
@@ -230,10 +466,11 @@ All 5 consumer apps have marketplace recipes + GitHub release bundling via `ark-
 
 ### Priority Contribution Areas
 
-1. **Third-party security audit (P1)** — External vendor engagement
-2. **Video tutorials (P2)** — Installation, usage, agent creation, security overview
-3. **Kernel Development Guide (P3)** — For kernel hackers contributing to AGNOS kernel modules
-4. **Support portal (P3)** — Community support channels
+1. **Base system recipes (Phase 10)** — Port LFS packages to takumi `.toml` format
+2. **Desktop stack recipes (Phase 11)** — Wayland, Mesa, PipeWire, etc.
+3. **QEMU boot testing** — CI pipeline for automated boot validation
+4. **Hardware testing** — GPU drivers, WiFi, Bluetooth on real hardware
+5. **Documentation** — Installation guide, kernel dev guide
 
 ### Getting Started
 
@@ -251,6 +488,8 @@ See [CONTRIBUTING.md](/CONTRIBUTING.md) for:
 - **Documentation**: https://docs.agnos.org (planned)
 - **Issue Tracker**: https://github.com/agnostos/agnos/issues
 - **Changelog**: [CHANGELOG.md](/CHANGELOG.md)
+- **LFS Reference**: https://www.linuxfromscratch.org/lfs/view/stable/
+- **BLFS Reference**: https://www.linuxfromscratch.org/blfs/view/stable/
 
 ---
 
