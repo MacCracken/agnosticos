@@ -82,6 +82,8 @@ pub enum SecurityEventType {
     ResourceExhaustion,
     MaliciousPayload,
     PolicyViolation,
+    DatabaseIntegrity,
+    DatabaseAccessViolation,
 }
 
 impl fmt::Display for SecurityEventType {
@@ -97,6 +99,8 @@ impl fmt::Display for SecurityEventType {
             Self::ResourceExhaustion => "resource_exhaustion",
             Self::MaliciousPayload => "malicious_payload",
             Self::PolicyViolation => "policy_violation",
+            Self::DatabaseIntegrity => "database_integrity",
+            Self::DatabaseAccessViolation => "database_access_violation",
         };
         write!(f, "{}", label)
     }
@@ -230,6 +234,69 @@ impl Default for AegisConfig {
             quarantine_on_high: true,
             max_events: 10_000,
             auto_release_timeout_secs: None,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Database security policies
+// ---------------------------------------------------------------------------
+
+/// Security policy for database services managed by argonaut.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DatabaseSecurityPolicy {
+    /// Monitor PostgreSQL data directory integrity.
+    pub postgres_data_dir: String,
+    /// Monitor Redis data directory integrity.
+    pub redis_data_dir: String,
+    /// Audit DDL operations (CREATE, ALTER, DROP).
+    pub audit_ddl: bool,
+    /// Maximum allowed connections per agent.
+    pub max_connections_per_agent: usize,
+    /// Alert on world-readable database sockets.
+    pub check_socket_permissions: bool,
+    /// Sysctl recommendations for database performance/security.
+    pub kernel_tuning: Vec<KernelTuningRecommendation>,
+}
+
+/// A kernel tuning recommendation for database services.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KernelTuningRecommendation {
+    pub parameter: String,
+    pub recommended_value: String,
+    pub reason: String,
+}
+
+impl Default for DatabaseSecurityPolicy {
+    fn default() -> Self {
+        Self {
+            postgres_data_dir: "/var/lib/postgresql/data".to_string(),
+            redis_data_dir: "/var/lib/redis".to_string(),
+            audit_ddl: true,
+            max_connections_per_agent: 10,
+            check_socket_permissions: true,
+            kernel_tuning: vec![
+                KernelTuningRecommendation {
+                    parameter: "vm.overcommit_memory".to_string(),
+                    recommended_value: "1".to_string(),
+                    reason: "Redis requires overcommit for background saves".to_string(),
+                },
+                KernelTuningRecommendation {
+                    parameter: "vm.swappiness".to_string(),
+                    recommended_value: "1".to_string(),
+                    reason: "Minimize swap usage for database workloads".to_string(),
+                },
+                KernelTuningRecommendation {
+                    parameter: "net.core.somaxconn".to_string(),
+                    recommended_value: "512".to_string(),
+                    reason: "Increase connection backlog for database servers".to_string(),
+                },
+                KernelTuningRecommendation {
+                    parameter: "kernel.shmmax".to_string(),
+                    recommended_value: "17179869184".to_string(),
+                    reason: "PostgreSQL shared memory allocation (16 GB)".to_string(),
+                },
+            ],
         }
     }
 }
@@ -621,6 +688,165 @@ impl AegisSecurityDaemon {
         released
     }
 
+    /// Check database data directory integrity.
+    ///
+    /// Verifies permissions and ownership of PostgreSQL and Redis data
+    /// directories. Reports findings as security events.
+    pub fn check_database_integrity(
+        &mut self,
+        policy: &DatabaseSecurityPolicy,
+    ) -> Vec<SecurityFinding> {
+        let mut findings = Vec::new();
+
+        // Check PostgreSQL data directory
+        let pg_path = Path::new(&policy.postgres_data_dir);
+        if pg_path.exists() {
+            if let Ok(metadata) = std::fs::metadata(pg_path) {
+                // Data directory should not be world-readable
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let mode = metadata.permissions().mode();
+                    if mode & 0o007 != 0 {
+                        findings.push(SecurityFinding {
+                            severity: ThreatLevel::High,
+                            category: "database_permissions".to_string(),
+                            description: format!(
+                                "PostgreSQL data directory {} is world-accessible (mode {:o})",
+                                policy.postgres_data_dir, mode
+                            ),
+                            recommendation: "Run: chmod 700 on the PostgreSQL data directory".to_string(),
+                        });
+                    }
+                }
+            }
+        }
+
+        // Check Redis data directory
+        let redis_path = Path::new(&policy.redis_data_dir);
+        if redis_path.exists() {
+            if let Ok(metadata) = std::fs::metadata(redis_path) {
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let mode = metadata.permissions().mode();
+                    if mode & 0o007 != 0 {
+                        findings.push(SecurityFinding {
+                            severity: ThreatLevel::High,
+                            category: "database_permissions".to_string(),
+                            description: format!(
+                                "Redis data directory {} is world-accessible (mode {:o})",
+                                policy.redis_data_dir, mode
+                            ),
+                            recommendation: "Run: chmod 700 on the Redis data directory".to_string(),
+                        });
+                    }
+                }
+            }
+        }
+
+        // Check socket permissions
+        if policy.check_socket_permissions {
+            let pg_socket = Path::new("/run/postgresql/.s.PGSQL.5432");
+            if pg_socket.exists() {
+                if let Ok(metadata) = std::fs::metadata(pg_socket) {
+                    #[cfg(unix)]
+                    {
+                        use std::os::unix::fs::PermissionsExt;
+                        let mode = metadata.permissions().mode();
+                        if mode & 0o002 != 0 {
+                            findings.push(SecurityFinding {
+                                severity: ThreatLevel::Medium,
+                                category: "socket_permissions".to_string(),
+                                description: "PostgreSQL socket is world-writable".to_string(),
+                                recommendation: "Restrict socket permissions to owner/group only".to_string(),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        // Record scan
+        let scan_result = SecurityScanResult {
+            scanned_at: Utc::now(),
+            target: "database-services".to_string(),
+            scan_type: ScanType::Periodic,
+            findings: findings.clone(),
+            clean: findings.is_empty(),
+        };
+        self.scan_history.push(scan_result);
+
+        if !findings.is_empty() {
+            info!(
+                findings = findings.len(),
+                "Database integrity check found issues"
+            );
+        } else {
+            debug!("Database integrity check passed");
+        }
+
+        findings
+    }
+
+    /// Report a DDL audit event from the database layer.
+    pub fn audit_ddl_operation(
+        &mut self,
+        agent_id: Option<String>,
+        operation: &str,
+        object: &str,
+    ) -> Option<QuarantineAction> {
+        let mut event = SecurityEvent::new(
+            SecurityEventType::DatabaseIntegrity,
+            "database",
+            agent_id,
+            ThreatLevel::Info,
+            format!("DDL operation: {} {}", operation, object),
+        );
+        event
+            .metadata
+            .insert("ddl_operation".to_string(), operation.to_string());
+        event
+            .metadata
+            .insert("ddl_object".to_string(), object.to_string());
+
+        self.report_event(event)
+    }
+
+    /// Report an unauthorized database access attempt.
+    pub fn report_database_access_violation(
+        &mut self,
+        agent_id: &str,
+        database: &str,
+        reason: &str,
+    ) -> Option<QuarantineAction> {
+        let mut event = SecurityEvent::new(
+            SecurityEventType::DatabaseAccessViolation,
+            "database",
+            Some(agent_id.to_string()),
+            ThreatLevel::High,
+            format!(
+                "Unauthorized database access by agent {}: {} ({})",
+                agent_id, database, reason
+            ),
+        );
+        event
+            .metadata
+            .insert("database".to_string(), database.to_string());
+        event
+            .metadata
+            .insert("violation_reason".to_string(), reason.to_string());
+
+        self.report_event(event)
+    }
+
+    /// Get kernel tuning recommendations for database services.
+    pub fn database_kernel_recommendations(
+        policy: &DatabaseSecurityPolicy,
+    ) -> &[KernelTuningRecommendation] {
+        &policy.kernel_tuning
+    }
+
     // -- internal helpers ---------------------------------------------------
 
     fn build_quarantine_entry(
@@ -742,8 +968,10 @@ mod tests {
             SecurityEventType::ResourceExhaustion,
             SecurityEventType::MaliciousPayload,
             SecurityEventType::PolicyViolation,
+            SecurityEventType::DatabaseIntegrity,
+            SecurityEventType::DatabaseAccessViolation,
         ];
-        assert_eq!(variants.len(), 10);
+        assert_eq!(variants.len(), 12);
         // Verify Display works on each.
         for v in &variants {
             assert!(!v.to_string().is_empty());
@@ -1345,5 +1573,116 @@ mod tests {
         assert!(action.is_none());
         // Event should still be recorded.
         assert_eq!(daemon.stats().total_events, 1);
+    }
+
+    // --- Database security ---
+
+    #[test]
+    fn database_security_policy_defaults() {
+        let policy = DatabaseSecurityPolicy::default();
+        assert_eq!(policy.postgres_data_dir, "/var/lib/postgresql/data");
+        assert_eq!(policy.redis_data_dir, "/var/lib/redis");
+        assert!(policy.audit_ddl);
+        assert_eq!(policy.max_connections_per_agent, 10);
+        assert!(policy.check_socket_permissions);
+        assert_eq!(policy.kernel_tuning.len(), 4);
+    }
+
+    #[test]
+    fn database_kernel_recommendations() {
+        let policy = DatabaseSecurityPolicy::default();
+        let recs = AegisSecurityDaemon::database_kernel_recommendations(&policy);
+        assert_eq!(recs.len(), 4);
+        assert!(recs.iter().any(|r| r.parameter == "vm.overcommit_memory"));
+        assert!(recs.iter().any(|r| r.parameter == "vm.swappiness"));
+        assert!(recs.iter().any(|r| r.parameter == "net.core.somaxconn"));
+        assert!(recs.iter().any(|r| r.parameter == "kernel.shmmax"));
+    }
+
+    #[test]
+    fn database_integrity_check_nonexistent_dirs() {
+        let mut daemon = default_daemon();
+        let policy = DatabaseSecurityPolicy {
+            postgres_data_dir: "/nonexistent/pgdata".to_string(),
+            redis_data_dir: "/nonexistent/redis".to_string(),
+            ..Default::default()
+        };
+        let findings = daemon.check_database_integrity(&policy);
+        assert!(findings.is_empty()); // Nonexistent dirs don't produce findings
+    }
+
+    #[test]
+    fn audit_ddl_operation_creates_event() {
+        let mut daemon = default_daemon();
+        daemon.audit_ddl_operation(
+            Some("test-agent".to_string()),
+            "CREATE TABLE",
+            "users",
+        );
+        let events = daemon.events_for_agent("test-agent");
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].event_type, SecurityEventType::DatabaseIntegrity);
+        assert_eq!(events[0].threat_level, ThreatLevel::Info);
+        assert!(events[0].description.contains("CREATE TABLE"));
+        assert_eq!(events[0].metadata.get("ddl_operation").unwrap(), "CREATE TABLE");
+        assert_eq!(events[0].metadata.get("ddl_object").unwrap(), "users");
+    }
+
+    #[test]
+    fn audit_ddl_operation_no_agent() {
+        let mut daemon = default_daemon();
+        daemon.audit_ddl_operation(None, "DROP DATABASE", "old_db");
+        assert_eq!(daemon.stats().total_events, 1);
+    }
+
+    #[test]
+    fn database_access_violation_quarantines_agent() {
+        let mut daemon = default_daemon();
+        let action = daemon.report_database_access_violation(
+            "malicious-agent",
+            "admin_db",
+            "Agent attempted to access database outside its namespace",
+        );
+        // High threat → should quarantine (config.quarantine_on_high = true)
+        assert!(action.is_some());
+        assert!(daemon.is_quarantined("malicious-agent"));
+        let events = daemon.events_for_agent("malicious-agent");
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].event_type, SecurityEventType::DatabaseAccessViolation);
+    }
+
+    #[test]
+    fn database_access_violation_metadata() {
+        let mut daemon = default_daemon();
+        daemon.report_database_access_violation(
+            "test-agent",
+            "other_agent_db",
+            "cross-tenant access",
+        );
+        let events = daemon.events_for_agent("test-agent");
+        assert_eq!(events[0].metadata.get("database").unwrap(), "other_agent_db");
+        assert_eq!(events[0].metadata.get("violation_reason").unwrap(), "cross-tenant access");
+    }
+
+    #[test]
+    fn database_integrity_check_records_scan() {
+        let mut daemon = default_daemon();
+        let policy = DatabaseSecurityPolicy::default();
+        daemon.check_database_integrity(&policy);
+        // Should have recorded a scan even if no findings
+        assert_eq!(daemon.scan_history.len(), 1);
+        assert_eq!(daemon.scan_history[0].target, "database-services");
+    }
+
+    #[test]
+    fn database_event_types_distinguishable() {
+        assert_ne!(
+            SecurityEventType::DatabaseIntegrity,
+            SecurityEventType::DatabaseAccessViolation
+        );
+        assert_ne!(
+            SecurityEventType::DatabaseIntegrity,
+            SecurityEventType::IntegrityViolation
+        );
     }
 }

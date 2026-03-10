@@ -1,0 +1,54 @@
+[Unit]
+Description=Synapse LLM Management and Training Service
+Documentation=https://github.com/MacCracken/synapse
+After=network.target agnos-agent-runtime.service agnos-llm-gateway.service
+Wants=agnos-agent-runtime.service agnos-llm-gateway.service
+ConditionPathExists=/usr/lib/synapse/bin/synapse
+
+[Service]
+Type=notify
+ExecStart=/usr/lib/synapse/bin/synapse serve --config /etc/synapse/synapse.toml
+ExecReload=/bin/kill -HUP $MAINPID
+
+# Environment
+Environment=SYNAPSE_DATA_DIR=/var/lib/synapse
+Environment=SYNAPSE_MODEL_DIR=/var/lib/synapse/models
+Environment=SYNAPSE_LOG_DIR=/var/log/synapse
+Environment=AGNOS_RUNTIME_URL=http://127.0.0.1:8090
+Environment=AGNOS_GATEWAY_URL=http://127.0.0.1:8088
+Environment=RUST_LOG=synapse=info
+
+# Resource limits
+LimitNOFILE=65535
+LimitMEMLOCK=infinity
+
+# Restart policy
+Restart=on-failure
+RestartSec=5
+StartLimitBurst=3
+StartLimitIntervalSec=60
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/synapse /var/log/synapse /run/agnos
+ReadOnlyPaths=/etc/synapse
+
+# GPU access (CUDA/ROCm)
+DeviceAllow=/dev/dri rw
+DeviceAllow=/dev/nvidia* rw
+DeviceAllow=/dev/kfd rw
+
+# User/Group
+User=synapse
+Group=synapse
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=synapse
+
+[Install]
+WantedBy=multi-user.target

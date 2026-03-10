@@ -24,7 +24,7 @@ YELLOW := \033[33m
 RED := \033[31m
 NC := \033[0m # No Color
 
-.PHONY: all help deps build build-kernel build-userland build-initramfs iso install clean test test-unit test-integration test-security test-coverage lint format check docker-dev release ark-build ark-build-all ark-build-python docker-ark-build docker-ark-build-python
+.PHONY: all help deps build build-kernel build-userland build-initramfs iso install clean test test-unit test-integration test-security test-coverage lint format check docker-dev release ark-build ark-build-all ark-build-python docker-ark-build docker-ark-build-python ark-sign ark-sign-all ark-verify ark-keygen ark-bundle ark-bundle-all
 
 # Default target
 all: help
@@ -65,6 +65,17 @@ help:
 	@echo "  $(YELLOW)ark-build-python$(NC) - Build all Python .ark packages"
 	@echo "  $(YELLOW)docker-ark-build$(NC) - Build .ark package in container (RECIPE=...)"
 	@echo "  $(YELLOW)docker-ark-build-python$(NC) - Build all Python .ark packages in container"
+	@echo ""
+	@echo ""
+	@echo "$(GREEN)Marketplace targets:$(NC)"
+	@echo "  $(YELLOW)ark-bundle$(NC)    - Bundle single .agnos-agent package (RECIPE=recipes/marketplace/foo.toml)"
+	@echo "  $(YELLOW)ark-bundle-all$(NC)- Bundle all marketplace recipes"
+	@echo ""
+	@echo "$(GREEN)Signing targets:$(NC)"
+	@echo "  $(YELLOW)ark-keygen$(NC)    - Generate Ed25519 signing keypair"
+	@echo "  $(YELLOW)ark-sign$(NC)      - Sign a single .ark package (PKG=path/to/file.ark)"
+	@echo "  $(YELLOW)ark-sign-all$(NC)  - Sign all .ark packages in dist/ark/"
+	@echo "  $(YELLOW)ark-verify$(NC)    - Verify .ark package signature (PKG=path/to/file.ark)"
 	@echo ""
 	@echo "$(GREEN)Development targets:$(NC)"
 	@echo "  $(YELLOW)docker-dev$(NC)    - Build and run development container"
@@ -204,11 +215,11 @@ clean:
 ark-build:
 	@if [ -z "$(RECIPE)" ]; then \
 		echo "$(RED)Error: RECIPE not specified$(NC)"; \
-		echo "Usage: make ark-build RECIPE=recipes/python/cpython-3.12.toml"; \
+		echo "Usage: make ark-build RECIPE=recipes/python/cpython-3.12.toml [SIGN=1] [TARGET=aarch64]"; \
 		exit 1; \
 	fi
 	@echo "$(BLUE)Building ark package from $(RECIPE)...$(NC)"
-	./scripts/ark-build.sh $(RECIPE)
+	./scripts/ark-build.sh $(if $(SIGN),--sign) $(if $(TARGET),--target $(TARGET)) $(RECIPE)
 	@echo "$(GREEN)Ark package built$(NC)"
 
 ark-build-all:
@@ -252,6 +263,50 @@ docker-ark-build-python:
 			agnos:takumi-builder /recipes/python/$$(basename $$recipe) || exit 1; \
 	done
 	@echo "$(GREEN)Python ark packages built in container$(NC)"
+
+# Marketplace bundle targets
+ark-bundle:
+	@if [ -z "$(RECIPE)" ]; then \
+		echo "$(RED)Error: RECIPE not specified$(NC)"; \
+		echo "Usage: make ark-bundle RECIPE=recipes/marketplace/secureyeoman.toml"; \
+		exit 1; \
+	fi
+	@echo "$(BLUE)Bundling marketplace package from $(RECIPE)...$(NC)"
+	./scripts/ark-bundle.sh $(if $(SIGN),--sign) $(RECIPE)
+
+ark-bundle-all:
+	@echo "$(BLUE)Bundling all marketplace packages...$(NC)"
+	./scripts/ark-bundle.sh $(if $(SIGN),--sign) recipes/marketplace/
+	@echo "$(GREEN)All marketplace packages bundled$(NC)"
+
+# Signing targets
+ark-keygen:
+	@echo "$(BLUE)Generating Ed25519 signing keypair...$(NC)"
+	./scripts/ark-sign.sh --generate-key
+	@echo "$(GREEN)Keypair generated$(NC)"
+
+ark-sign:
+	@if [ -z "$(PKG)" ]; then \
+		echo "$(RED)Error: PKG not specified$(NC)"; \
+		echo "Usage: make ark-sign PKG=dist/ark/redis7-7.4.2-x86_64.ark"; \
+		exit 1; \
+	fi
+	@echo "$(BLUE)Signing package $(PKG)...$(NC)"
+	./scripts/ark-sign.sh $(PKG)
+
+ark-sign-all:
+	@echo "$(BLUE)Signing all .ark packages in dist/ark/...$(NC)"
+	./scripts/ark-sign.sh $(DIST_DIR)/ark/
+	@echo "$(GREEN)All packages signed$(NC)"
+
+ark-verify:
+	@if [ -z "$(PKG)" ]; then \
+		echo "$(RED)Error: PKG not specified$(NC)"; \
+		echo "Usage: make ark-verify PKG=dist/ark/redis7-7.4.2-x86_64.ark"; \
+		exit 1; \
+	fi
+	@echo "$(BLUE)Verifying package $(PKG)...$(NC)"
+	./scripts/ark-sign.sh --verify $(PKG)
 
 # Release targets
 release: clean

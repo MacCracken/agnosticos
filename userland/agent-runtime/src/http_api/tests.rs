@@ -3559,6 +3559,21 @@ mod tests {
         assert!(json["endpoints"]["agents_register_batch"].is_string());
         assert!(json["endpoints"]["events_subscribe"].is_string());
         assert!(json["companion_services"]["llm_gateway"]["codename"] == "hoosh");
+        assert!(json["companion_services"]["llm_gateway"]["status"] == "core");
+        assert!(json["companion_services"]["agent_runtime"]["status"] == "core");
+        assert!(json["companion_services"]["synapse"]["name"] == "synapse");
+        assert!(json["companion_services"]["synapse"]["default_url"] == "http://127.0.0.1:8080");
+        assert!(json["companion_services"]["synapse"]["status"] == "optional");
+
+        let caps: Vec<String> = json["capabilities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap().to_string())
+            .collect();
+        assert!(caps.contains(&"model-management".to_string()));
+        assert!(caps.contains(&"inference-backend".to_string()));
+        assert!(caps.contains(&"training".to_string()));
     }
 
     // -----------------------------------------------------------------------

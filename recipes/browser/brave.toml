@@ -118,16 +118,16 @@ mkdir -p $PKG/usr/share/applications
 cat > $PKG/usr/share/applications/brave.desktop << 'EOF'
 [Desktop Entry]
 Name=Brave
-Comment=Browse the Web Privately
-GenericName=Web Browser
-Exec=brave %U
-Icon=brave
+Comment=Privacy-first browser with built-in ad blocker
+GenericName=Brave Browser
+Exec=brave %u
+Icon=brave-browser
 Terminal=false
 Type=Application
-MimeType=text/html;text/xml;application/xhtml+xml;x-scheme-handler/http;x-scheme-handler/https;
+MimeType=text/html;text/xml;application/xhtml+xml;application/xml;application/vnd.mozilla.xul+xml;x-scheme-handler/http;x-scheme-handler/https;
 Categories=Network;WebBrowser;
 StartupNotify=true
-StartupWMClass=brave
+StartupWMClass=brave-browser
 EOF
 
 # Launcher script

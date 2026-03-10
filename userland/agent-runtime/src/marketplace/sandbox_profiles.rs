@@ -25,6 +25,8 @@ pub enum SandboxPreset {
     GameApp,
     /// Command-line tools and utilities.
     CliTool,
+    /// GPU compute workloads (ML/inference/training).
+    GpuCompute,
     /// Custom profile (no preset rules applied).
     Custom,
 }
@@ -37,6 +39,7 @@ impl std::fmt::Display for SandboxPreset {
             Self::Browser => write!(f, "browser"),
             Self::GameApp => write!(f, "game-app"),
             Self::CliTool => write!(f, "cli-tool"),
+            Self::GpuCompute => write!(f, "gpu-compute"),
             Self::Custom => write!(f, "custom"),
         }
     }
@@ -113,6 +116,7 @@ pub fn build_profile_for_preset(
         SandboxPreset::Browser => build_browser_profile(app_name, data_dir),
         SandboxPreset::GameApp => build_game_profile(app_name, data_dir),
         SandboxPreset::CliTool => build_cli_tool_profile(app_name, data_dir),
+        SandboxPreset::GpuCompute => build_gpu_compute_profile(app_name, data_dir),
         SandboxPreset::Custom => PredefinedProfile {
             preset: SandboxPreset::Custom,
             landlock_rules: vec![LandlockRule {
@@ -266,6 +270,42 @@ fn build_cli_tool_profile(_app_name: &str, data_dir: &str) -> PredefinedProfile 
         },
         max_memory_mb: 256,
         allow_process_spawn: true,
+    }
+}
+
+fn build_gpu_compute_profile(_app_name: &str, data_dir: &str) -> PredefinedProfile {
+    // GPU compute sandbox — for ML/inference/training workloads (Synapse, etc.)
+    PredefinedProfile {
+        preset: SandboxPreset::GpuCompute,
+        landlock_rules: vec![
+            LandlockRule { path: data_dir.to_string(), access: "rw".into() },
+            LandlockRule { path: "/tmp".into(), access: "rw".into() },
+            // GPU device access
+            LandlockRule { path: "/dev/dri".into(), access: "rw".into() },
+            LandlockRule { path: "/dev/nvidia0".into(), access: "rw".into() },
+            LandlockRule { path: "/dev/nvidia1".into(), access: "rw".into() },
+            LandlockRule { path: "/dev/nvidiactl".into(), access: "rw".into() },
+            LandlockRule { path: "/dev/nvidia-uvm".into(), access: "rw".into() },
+            LandlockRule { path: "/dev/nvidia-uvm-tools".into(), access: "rw".into() },
+            LandlockRule { path: "/dev/kfd".into(), access: "rw".into() },  // AMD ROCm
+            // GPU libraries (read-only)
+            LandlockRule { path: "/usr/lib/cuda".into(), access: "ro".into() },
+            LandlockRule { path: "/usr/local/cuda".into(), access: "ro".into() },
+            LandlockRule { path: "/opt/rocm".into(), access: "ro".into() },
+            LandlockRule { path: "/usr/lib/x86_64-linux-gnu".into(), access: "ro".into() },
+        ],
+        seccomp_mode: "desktop".into(),  // Needs broader syscall set for GPU ioctls
+        network: NetworkRule {
+            enabled: true,
+            allowed_hosts: vec![
+                "localhost".into(),
+                "127.0.0.1".into(),
+                "huggingface.co".into(), "*.huggingface.co".into(),
+                "hf.co".into(), "*.hf.co".into(),
+            ],
+        },
+        max_memory_mb: 4096,  // GPU workloads need more memory
+        allow_process_spawn: true,  // May spawn GPU helper processes
     }
 }
 
@@ -449,6 +489,25 @@ mod tests {
         assert_eq!(profile.preset, SandboxPreset::Custom);
         assert_eq!(profile.landlock_rules.len(), 1);
         assert!(validate_profile(&profile).is_ok());
+    }
+
+    // --- GPU compute profile ---
+
+    #[test]
+    fn gpu_compute_profile_has_device_access() {
+        let profile = build_profile_for_preset(SandboxPreset::GpuCompute, "synapse", "/var/lib/synapse");
+        assert!(profile.landlock_rules.iter().any(|r| r.path.contains("/dev/dri")));
+        assert!(profile.landlock_rules.iter().any(|r| r.path.contains("nvidia")));
+        assert!(profile.landlock_rules.iter().any(|r| r.path.contains("rocm")));
+        assert!(profile.allow_process_spawn);
+        assert_eq!(profile.max_memory_mb, 4096);
+    }
+
+    #[test]
+    fn gpu_compute_profile_allows_huggingface() {
+        let profile = build_profile_for_preset(SandboxPreset::GpuCompute, "synapse", "/var/lib/synapse");
+        assert!(profile.network.enabled);
+        assert!(profile.network.allowed_hosts.iter().any(|h| h.contains("huggingface")));
     }
 
     // --- Validation ---

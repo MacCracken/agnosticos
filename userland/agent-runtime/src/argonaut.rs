@@ -56,8 +56,10 @@ pub enum BootStage {
     StartDeviceManager,
     VerifyRootfs,
     StartSecurity,
+    StartDatabaseServices,
     StartAgentRuntime,
     StartLlmGateway,
+    StartModelServices,
     StartCompositor,
     StartShell,
     BootComplete,
@@ -71,11 +73,13 @@ impl BootStage {
             Self::StartDeviceManager => 1,
             Self::VerifyRootfs => 2,
             Self::StartSecurity => 3,
-            Self::StartAgentRuntime => 4,
-            Self::StartLlmGateway => 5,
-            Self::StartCompositor => 6,
-            Self::StartShell => 7,
-            Self::BootComplete => 8,
+            Self::StartDatabaseServices => 4,
+            Self::StartAgentRuntime => 5,
+            Self::StartLlmGateway => 6,
+            Self::StartModelServices => 7,
+            Self::StartCompositor => 8,
+            Self::StartShell => 9,
+            Self::BootComplete => 10,
         }
     }
 }
@@ -87,8 +91,10 @@ impl fmt::Display for BootStage {
             Self::StartDeviceManager => write!(f, "start-device-manager"),
             Self::VerifyRootfs => write!(f, "verify-rootfs"),
             Self::StartSecurity => write!(f, "start-security"),
+            Self::StartDatabaseServices => write!(f, "start-database-services"),
             Self::StartAgentRuntime => write!(f, "start-agent-runtime"),
             Self::StartLlmGateway => write!(f, "start-llm-gateway"),
+            Self::StartModelServices => write!(f, "start-model-services"),
             Self::StartCompositor => write!(f, "start-compositor"),
             Self::StartShell => write!(f, "start-shell"),
             Self::BootComplete => write!(f, "boot-complete"),
@@ -467,6 +473,20 @@ impl ArgonautInit {
             completed_at: None,
             error: None,
         });
+        // Server and Desktop get database services.
+        if mode == BootMode::Server || mode == BootMode::Desktop {
+            steps.push(BootStep {
+                stage: BootStage::StartDatabaseServices,
+                description: "Start PostgreSQL and Redis database services".into(),
+                required: true,
+                timeout_ms: 15_000,
+                status: BootStepStatus::Pending,
+                started_at: None,
+                completed_at: None,
+                error: None,
+            });
+        }
+
         steps.push(BootStep {
             stage: BootStage::StartAgentRuntime,
             description: "Start daimon (agent-runtime) on port 8090".into(),
@@ -485,6 +505,16 @@ impl ArgonautInit {
                 description: "Start hoosh (llm-gateway) on port 8088".into(),
                 required: false,
                 timeout_ms: 5000,
+                status: BootStepStatus::Pending,
+                started_at: None,
+                completed_at: None,
+                error: None,
+            });
+            steps.push(BootStep {
+                stage: BootStage::StartModelServices,
+                description: "Start Synapse LLM model manager".into(),
+                required: false,
+                timeout_ms: 15_000,
                 status: BootStepStatus::Pending,
                 started_at: None,
                 completed_at: None,
@@ -531,18 +561,119 @@ impl ArgonautInit {
         steps
     }
 
+    /// Return the PostgreSQL and Redis database service definitions.
+    pub fn database_services() -> Vec<ServiceDefinition> {
+        vec![
+            ServiceDefinition {
+                name: "postgres".into(),
+                description: "PostgreSQL 17 database server".into(),
+                binary_path: PathBuf::from("/usr/lib/postgresql/17/bin/postgres"),
+                args: vec![
+                    "-D".into(),
+                    "/var/lib/postgresql/data".into(),
+                    "-c".into(),
+                    "config_file=/etc/postgresql/postgresql.conf.agnos".into(),
+                ],
+                environment: {
+                    let mut env = HashMap::new();
+                    env.insert("PGDATA".into(), "/var/lib/postgresql/data".into());
+                    env
+                },
+                depends_on: vec![],
+                required_for_modes: vec![BootMode::Server, BootMode::Desktop],
+                restart_policy: RestartPolicy::OnFailure,
+                health_check: Some(HealthCheck {
+                    check_type: HealthCheckType::TcpConnect("127.0.0.1".into(), 5432),
+                    interval_ms: 15_000,
+                    timeout_ms: 2000,
+                    retries: 3,
+                }),
+                ready_check: Some(ReadyCheck {
+                    check_type: HealthCheckType::TcpConnect("127.0.0.1".into(), 5432),
+                    timeout_ms: 10_000,
+                    retries: 15,
+                    retry_delay_ms: 500,
+                }),
+            },
+            ServiceDefinition {
+                name: "redis".into(),
+                description: "Redis 7 in-memory cache".into(),
+                binary_path: PathBuf::from("/usr/bin/redis-server"),
+                args: vec!["/etc/redis/redis.conf".into()],
+                environment: HashMap::new(),
+                depends_on: vec![],
+                required_for_modes: vec![BootMode::Server, BootMode::Desktop],
+                restart_policy: RestartPolicy::Always,
+                health_check: Some(HealthCheck {
+                    check_type: HealthCheckType::TcpConnect("127.0.0.1".into(), 6379),
+                    interval_ms: 10_000,
+                    timeout_ms: 1000,
+                    retries: 3,
+                }),
+                ready_check: Some(ReadyCheck {
+                    check_type: HealthCheckType::TcpConnect("127.0.0.1".into(), 6379),
+                    timeout_ms: 5000,
+                    retries: 10,
+                    retry_delay_ms: 200,
+                }),
+            },
+        ]
+    }
+
+    /// Return the Synapse LLM management and training service definition.
+    pub fn synapse_service() -> ServiceDefinition {
+        ServiceDefinition {
+            name: "synapse".into(),
+            description: "Synapse LLM management and training service".into(),
+            binary_path: PathBuf::from("/usr/lib/synapse/bin/synapse"),
+            args: vec!["serve".into(), "--config".into(), "/etc/synapse/synapse.toml".into()],
+            environment: {
+                let mut env = HashMap::new();
+                env.insert("SYNAPSE_DATA_DIR".into(), "/var/lib/synapse".into());
+                env.insert("SYNAPSE_MODEL_DIR".into(), "/var/lib/synapse/models".into());
+                env
+            },
+            depends_on: vec!["agent-runtime".into(), "llm-gateway".into()],
+            required_for_modes: vec![BootMode::Server, BootMode::Desktop],
+            restart_policy: RestartPolicy::OnFailure,
+            health_check: Some(HealthCheck {
+                check_type: HealthCheckType::HttpGet("http://127.0.0.1:8080/health".into()),
+                interval_ms: 15_000,
+                timeout_ms: 3000,
+                retries: 3,
+            }),
+            ready_check: Some(ReadyCheck {
+                check_type: HealthCheckType::TcpConnect("127.0.0.1".into(), 8080),
+                timeout_ms: 10_000,
+                retries: 15,
+                retry_delay_ms: 500,
+            }),
+        }
+    }
+
     /// Return the default AGNOS services for a boot mode.
     pub fn default_services(mode: BootMode) -> Vec<ServiceDefinition> {
         let mut services = Vec::new();
 
+        // Database services for Server and Desktop modes.
+        if mode == BootMode::Server || mode == BootMode::Desktop {
+            services.extend(Self::database_services());
+        }
+
         // agent-runtime is always present.
+        // In Server/Desktop modes it depends on database services.
+        let db_deps = if mode == BootMode::Server || mode == BootMode::Desktop {
+            vec!["postgres".into(), "redis".into()]
+        } else {
+            vec![]
+        };
         services.push(ServiceDefinition {
             name: "agent-runtime".into(),
             description: "Daimon agent orchestrator".into(),
             binary_path: PathBuf::from("/usr/lib/agnos/agent_runtime"),
             args: vec!["--port".into(), "8090".into()],
             environment: HashMap::new(),
-            depends_on: vec![],
+            depends_on: db_deps,
             required_for_modes: vec![BootMode::Minimal, BootMode::Server, BootMode::Desktop],
             restart_policy: RestartPolicy::Always,
             health_check: Some(HealthCheck {
@@ -582,6 +713,7 @@ impl ArgonautInit {
                     retry_delay_ms: 200,
                 }),
             });
+            services.push(Self::synapse_service());
         }
 
         if mode == BootMode::Desktop {
@@ -987,9 +1119,11 @@ mod tests {
         assert!(BootStage::MountFilesystems < BootStage::StartDeviceManager);
         assert!(BootStage::StartDeviceManager < BootStage::VerifyRootfs);
         assert!(BootStage::VerifyRootfs < BootStage::StartSecurity);
-        assert!(BootStage::StartSecurity < BootStage::StartAgentRuntime);
+        assert!(BootStage::StartSecurity < BootStage::StartDatabaseServices);
+        assert!(BootStage::StartDatabaseServices < BootStage::StartAgentRuntime);
         assert!(BootStage::StartAgentRuntime < BootStage::StartLlmGateway);
-        assert!(BootStage::StartLlmGateway < BootStage::StartCompositor);
+        assert!(BootStage::StartLlmGateway < BootStage::StartModelServices);
+        assert!(BootStage::StartModelServices < BootStage::StartCompositor);
         assert!(BootStage::StartCompositor < BootStage::StartShell);
         assert!(BootStage::StartShell < BootStage::BootComplete);
     }
@@ -1078,16 +1212,16 @@ mod tests {
 
     #[test]
     fn boot_sequence_step_count_server() {
-        // 6 (minimal) + LlmGateway = 7
+        // 6 (minimal) + DatabaseServices + LlmGateway + ModelServices = 9
         let steps = ArgonautInit::build_boot_sequence(BootMode::Server);
-        assert_eq!(steps.len(), 7);
+        assert_eq!(steps.len(), 9);
     }
 
     #[test]
     fn boot_sequence_step_count_desktop() {
-        // 7 (server) + Compositor + Shell = 9
+        // 9 (server) + Compositor + Shell = 11
         let steps = ArgonautInit::build_boot_sequence(BootMode::Desktop);
-        assert_eq!(steps.len(), 9);
+        assert_eq!(steps.len(), 11);
     }
 
     // --- Default services ---
@@ -1102,7 +1236,7 @@ mod tests {
     #[test]
     fn default_services_server() {
         let svcs = ArgonautInit::default_services(BootMode::Server);
-        assert_eq!(svcs.len(), 2);
+        assert_eq!(svcs.len(), 5);
         let names: Vec<&str> = svcs.iter().map(|s| s.name.as_str()).collect();
         assert!(names.contains(&"agent-runtime"));
         assert!(names.contains(&"llm-gateway"));
@@ -1111,10 +1245,11 @@ mod tests {
     #[test]
     fn default_services_desktop() {
         let svcs = ArgonautInit::default_services(BootMode::Desktop);
-        assert_eq!(svcs.len(), 4);
+        assert_eq!(svcs.len(), 7);
         let names: Vec<&str> = svcs.iter().map(|s| s.name.as_str()).collect();
         assert!(names.contains(&"agent-runtime"));
         assert!(names.contains(&"llm-gateway"));
+        assert!(names.contains(&"synapse"));
         assert!(names.contains(&"aethersafha"));
         assert!(names.contains(&"agnoshi"));
     }
@@ -1404,7 +1539,7 @@ mod tests {
     fn services_for_mode_desktop() {
         let init = ArgonautInit::new(desktop_config());
         let desktop_svcs = init.services_for_mode(&BootMode::Desktop);
-        assert_eq!(desktop_svcs.len(), 4);
+        assert_eq!(desktop_svcs.len(), 7);
     }
 
     // --- Stats ---
@@ -1412,6 +1547,11 @@ mod tests {
     #[test]
     fn stats_accuracy() {
         let mut init = ArgonautInit::new(server_config());
+        // Start database services first (agent-runtime depends on them in server mode)
+        assert!(init.set_service_state("postgres", ServiceState::Starting));
+        assert!(init.set_service_state("postgres", ServiceState::Running));
+        assert!(init.set_service_state("redis", ServiceState::Starting));
+        assert!(init.set_service_state("redis", ServiceState::Running));
         // Valid transition path: Stopped → Starting → Running
         assert!(init.set_service_state("agent-runtime", ServiceState::Starting));
         assert!(init.set_service_state("agent-runtime", ServiceState::Running));
@@ -1423,7 +1563,7 @@ mod tests {
         }
         let s = init.stats();
         assert_eq!(s.boot_mode, BootMode::Server);
-        assert_eq!(s.services_running, 1);
+        assert_eq!(s.services_running, 3);
         assert_eq!(s.services_failed, 1);
         assert_eq!(s.total_restarts, 3);
         assert!(!s.boot_complete);
@@ -1516,6 +1656,11 @@ mod tests {
         let mut init = ArgonautInit::new(server_config());
         // llm-gateway depends on agent-runtime. agent-runtime is Stopped.
         assert!(!init.set_service_state("llm-gateway", ServiceState::Starting));
+        // Start database services first (agent-runtime depends on them in server mode)
+        assert!(init.set_service_state("postgres", ServiceState::Starting));
+        assert!(init.set_service_state("postgres", ServiceState::Running));
+        assert!(init.set_service_state("redis", ServiceState::Starting));
+        assert!(init.set_service_state("redis", ServiceState::Running));
         // Start agent-runtime but leave it in Starting (not Running).
         assert!(init.set_service_state("agent-runtime", ServiceState::Starting));
         assert!(!init.set_service_state("llm-gateway", ServiceState::Starting));
@@ -1634,5 +1779,171 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(err.contains("cycle detected"));
+    }
+
+    // --- Database services ---
+
+    #[test]
+    fn database_services_returns_postgres_and_redis() {
+        let svcs = ArgonautInit::database_services();
+        assert_eq!(svcs.len(), 2);
+        let names: Vec<&str> = svcs.iter().map(|s| s.name.as_str()).collect();
+        assert!(names.contains(&"postgres"));
+        assert!(names.contains(&"redis"));
+    }
+
+    #[test]
+    fn database_services_health_checks() {
+        let svcs = ArgonautInit::database_services();
+        for svc in &svcs {
+            assert!(svc.health_check.is_some());
+            assert!(svc.ready_check.is_some());
+        }
+    }
+
+    #[test]
+    fn database_services_restart_policies() {
+        let svcs = ArgonautInit::database_services();
+        let pg = svcs.iter().find(|s| s.name == "postgres").unwrap();
+        let redis = svcs.iter().find(|s| s.name == "redis").unwrap();
+        assert_eq!(pg.restart_policy, RestartPolicy::OnFailure);
+        assert_eq!(redis.restart_policy, RestartPolicy::Always);
+    }
+
+    #[test]
+    fn database_services_modes() {
+        let svcs = ArgonautInit::database_services();
+        for svc in &svcs {
+            assert!(svc.required_for_modes.contains(&BootMode::Server));
+            assert!(svc.required_for_modes.contains(&BootMode::Desktop));
+            assert!(!svc.required_for_modes.contains(&BootMode::Minimal));
+        }
+    }
+
+    #[test]
+    fn default_services_server_includes_databases() {
+        let svcs = ArgonautInit::default_services(BootMode::Server);
+        let names: Vec<&str> = svcs.iter().map(|s| s.name.as_str()).collect();
+        assert!(names.contains(&"postgres"));
+        assert!(names.contains(&"redis"));
+    }
+
+    #[test]
+    fn default_services_minimal_excludes_databases() {
+        let svcs = ArgonautInit::default_services(BootMode::Minimal);
+        let names: Vec<&str> = svcs.iter().map(|s| s.name.as_str()).collect();
+        assert!(!names.contains(&"postgres"));
+        assert!(!names.contains(&"redis"));
+    }
+
+    #[test]
+    fn agent_runtime_depends_on_databases_in_server_mode() {
+        let svcs = ArgonautInit::default_services(BootMode::Server);
+        let rt = svcs.iter().find(|s| s.name == "agent-runtime").unwrap();
+        assert!(rt.depends_on.contains(&"postgres".to_string()));
+        assert!(rt.depends_on.contains(&"redis".to_string()));
+    }
+
+    #[test]
+    fn agent_runtime_no_db_deps_in_minimal_mode() {
+        let svcs = ArgonautInit::default_services(BootMode::Minimal);
+        let rt = svcs.iter().find(|s| s.name == "agent-runtime").unwrap();
+        assert!(rt.depends_on.is_empty());
+    }
+
+    #[test]
+    fn boot_stage_database_ordering() {
+        assert!(BootStage::StartSecurity < BootStage::StartDatabaseServices);
+        assert!(BootStage::StartDatabaseServices < BootStage::StartAgentRuntime);
+    }
+
+    #[test]
+    fn boot_stage_database_display() {
+        assert_eq!(BootStage::StartDatabaseServices.to_string(), "start-database-services");
+    }
+
+    #[test]
+    fn boot_sequence_server_includes_database_stage() {
+        let steps = ArgonautInit::build_boot_sequence(BootMode::Server);
+        let stages: Vec<BootStage> = steps.iter().map(|s| s.stage).collect();
+        assert!(stages.contains(&BootStage::StartDatabaseServices));
+    }
+
+    #[test]
+    fn boot_sequence_minimal_excludes_database_stage() {
+        let steps = ArgonautInit::build_boot_sequence(BootMode::Minimal);
+        let stages: Vec<BootStage> = steps.iter().map(|s| s.stage).collect();
+        assert!(!stages.contains(&BootStage::StartDatabaseServices));
+    }
+
+    // --- Synapse service ---
+
+    #[test]
+    fn synapse_service_definition() {
+        let svc = ArgonautInit::synapse_service();
+        assert_eq!(svc.name, "synapse");
+        assert!(svc.depends_on.contains(&"agent-runtime".to_string()));
+        assert!(svc.depends_on.contains(&"llm-gateway".to_string()));
+        assert!(svc.health_check.is_some());
+        assert!(svc.ready_check.is_some());
+    }
+
+    #[test]
+    fn server_mode_includes_synapse() {
+        let services = ArgonautInit::default_services(BootMode::Server);
+        assert!(services.iter().any(|s| s.name == "synapse"));
+    }
+
+    #[test]
+    fn desktop_mode_includes_synapse() {
+        let services = ArgonautInit::default_services(BootMode::Desktop);
+        assert!(services.iter().any(|s| s.name == "synapse"));
+    }
+
+    #[test]
+    fn minimal_mode_excludes_synapse() {
+        let services = ArgonautInit::default_services(BootMode::Minimal);
+        assert!(!services.iter().any(|s| s.name == "synapse"));
+    }
+
+    #[test]
+    fn synapse_starts_after_llm_gateway() {
+        let services = ArgonautInit::default_services(BootMode::Server);
+        let order = ArgonautInit::resolve_service_order(&services).unwrap();
+        let gw_pos = order.iter().position(|s| s == "llm-gateway").unwrap();
+        let syn_pos = order.iter().position(|s| s == "synapse").unwrap();
+        assert!(syn_pos > gw_pos);
+    }
+
+    #[test]
+    fn boot_sequence_includes_model_services_for_server() {
+        let steps = ArgonautInit::build_boot_sequence(BootMode::Server);
+        assert!(steps.iter().any(|s| s.stage == BootStage::StartModelServices));
+    }
+
+    #[test]
+    fn boot_sequence_excludes_model_services_for_minimal() {
+        let steps = ArgonautInit::build_boot_sequence(BootMode::Minimal);
+        assert!(!steps.iter().any(|s| s.stage == BootStage::StartModelServices));
+    }
+
+    #[test]
+    fn model_services_stage_after_llm_gateway() {
+        assert!(BootStage::StartModelServices > BootStage::StartLlmGateway);
+        assert!(BootStage::StartModelServices < BootStage::StartCompositor);
+    }
+
+    #[test]
+    fn server_service_count_with_synapse() {
+        let services = ArgonautInit::default_services(BootMode::Server);
+        // postgres, redis, agent-runtime, llm-gateway, synapse = 5
+        assert_eq!(services.len(), 5);
+    }
+
+    #[test]
+    fn desktop_service_count_with_synapse() {
+        let services = ArgonautInit::default_services(BootMode::Desktop);
+        // postgres, redis, agent-runtime, llm-gateway, synapse, aethersafha, agnoshi = 7
+        assert_eq!(services.len(), 7);
     }
 }

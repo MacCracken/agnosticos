@@ -7,7 +7,7 @@
 
 [package]
 name = "agnostic"
-version = "2026.3.9"
+version = "2026.3.10"
 description = "Agnostic — AI-driven multi-agent QA platform"
 license = "MIT"
 groups = ["server", "qa", "python"]
@@ -15,10 +15,13 @@ release = 1
 arch = "x86_64"
 
 [source]
-# Containerized Python application; no upstream tarball.
-# Build with: docker build -t agnostic .
+# Python application, built by GitHub Actions CI.
+# Release: https://github.com/MacCracken/agnostic/releases
+# Asset: agnostic-*-py3-none-any.whl (~487 KB)
 local = true
 build_dir = "."
+github_release = "MacCracken/agnostic"
+release_asset = "agnostic-*-py3-none-any.whl"
 
 [depends]
 runtime = [
@@ -42,7 +45,7 @@ category = "developer-tools"
 runtime = "python-container"
 publisher = "Agnostic"
 tags = ["qa", "testing", "ai-agents", "crewai", "security-compliance", "performance", "self-healing"]
-min_agnos_version = "2026.3.8"
+min_agnos_version = "2026.3.10"
 
 [marketplace.sandbox]
 seccomp_mode = "basic"

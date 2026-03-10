@@ -384,6 +384,21 @@ impl LlmGateway {
             }
         }
 
+        // Synapse (local LLM management service — managed by argonaut)
+        {
+            let synapse_url = std::env::var("SYNAPSE_BASE_URL").ok();
+            match providers::new_synapse_provider(synapse_url) {
+                Ok(provider) => {
+                    info!("Synapse provider initialized (local)");
+                    providers.insert(ProviderType::Synapse, Arc::new(provider));
+                    health.insert(ProviderType::Synapse, ProviderHealth::new());
+                }
+                Err(e) => {
+                    debug!("Synapse provider not available: {}", e);
+                }
+            }
+        }
+
         info!(count = providers.len(), "Providers initialized");
         Ok(())
     }
@@ -624,7 +639,8 @@ impl LlmGateway {
             ProviderType::Ollama
             | ProviderType::LlamaCpp
             | ProviderType::LmStudio
-            | ProviderType::LocalAi => None,
+            | ProviderType::LocalAi
+            | ProviderType::Synapse => None,
         }
     }
 

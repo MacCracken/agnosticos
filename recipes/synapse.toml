@@ -1,0 +1,74 @@
+# Synapse — LLM management and training tool
+# System package recipe for building from source via takumi.
+# For marketplace .agnos-agent bundles, see recipes/marketplace/synapse.toml
+
+name = "synapse"
+version = "2026.3.10"
+description = "Synapse — LLM management and training tool"
+license = "MIT"
+groups = ["server", "ai", "llm"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/MacCracken/synapse/archive/refs/tags/${version}.tar.gz"
+sha256 = ""
+
+[depends]
+runtime = [
+    "glibc",
+    "openssl",
+    "sqlite",
+    "zlib",
+]
+build = [
+    "rust",
+    "openssl-dev",
+    "zlib-dev",
+    "protobuf",
+    "pkg-config",
+]
+
+[build]
+pre_build = ""
+configure = ""
+make = "cargo build --release"
+check = "cargo test"
+install = """
+# Install binary
+mkdir -p $PKG/usr/lib/synapse/bin
+cp target/release/synapse $PKG/usr/lib/synapse/bin/synapse
+chmod +x $PKG/usr/lib/synapse/bin/synapse
+
+# Symlink into PATH
+mkdir -p $PKG/usr/bin
+ln -sf /usr/lib/synapse/bin/synapse $PKG/usr/bin/synapse
+
+# System configuration
+mkdir -p $PKG/etc/synapse
+cp config/synapse/synapse.toml $PKG/etc/synapse/synapse.toml
+
+# Systemd service
+mkdir -p $PKG/usr/lib/systemd/system
+cp config/synapse/synapse.service $PKG/usr/lib/systemd/system/synapse.service
+
+# Data directories
+mkdir -p $PKG/var/lib/synapse/models
+mkdir -p $PKG/var/lib/synapse/checkpoints
+mkdir -p $PKG/var/log/synapse
+
+# Create synapse user/group (post-install)
+mkdir -p $PKG/usr/lib/sysusers.d
+cat > $PKG/usr/lib/sysusers.d/synapse.conf << 'EOF'
+u synapse - "Synapse LLM Service" /var/lib/synapse /usr/sbin/nologin
+EOF
+
+# tmpfiles.d for runtime directories
+mkdir -p $PKG/usr/lib/tmpfiles.d
+cat > $PKG/usr/lib/tmpfiles.d/synapse.conf << 'EOF'
+d /var/lib/synapse 0750 synapse synapse -
+d /var/lib/synapse/models 0750 synapse synapse -
+d /var/lib/synapse/checkpoints 0750 synapse synapse -
+d /var/log/synapse 0750 synapse synapse -
+EOF
+"""

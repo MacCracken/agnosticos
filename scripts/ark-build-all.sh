@@ -10,6 +10,10 @@
 #   Same as ark-build.sh, plus:
 #   ARK_CONTINUE_ON_ERROR — set to 1 to continue after failures (default: 0)
 #   ARK_DRY_RUN           — set to 1 to list recipes without building
+#
+# Flags (passed through to ark-build.sh):
+#   --sign                — sign packages after build
+#   --target ARCH         — cross-compile for target architecture
 
 set -euo pipefail
 
@@ -18,6 +22,21 @@ ARK_BUILD="${SCRIPT_DIR}/ark-build.sh"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 CONTINUE="${ARK_CONTINUE_ON_ERROR:-0}"
 DRY_RUN="${ARK_DRY_RUN:-0}"
+
+# Parse flags that pass through to ark-build.sh
+BUILD_FLAGS=()
+RECIPE_DIRS_RAW=()
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --sign)        BUILD_FLAGS+=("--sign"); shift ;;
+        --target)      BUILD_FLAGS+=("--target" "$2"); shift 2 ;;
+        --target=*)    BUILD_FLAGS+=("--target" "${1#--target=}"); shift ;;
+        *)             RECIPE_DIRS_RAW+=("$1"); shift ;;
+    esac
+done
+
+set -- "${RECIPE_DIRS_RAW[@]+"${RECIPE_DIRS_RAW[@]}"}"
 
 # Colors
 if [ -t 1 ]; then
@@ -80,7 +99,7 @@ done
 # Display plan
 # -----------------------------------------------------------------------
 echo ""
-log "${BOLD}Build plan: ${#BUILDABLE[@]} recipes${NC}"
+log "${BOLD}Build plan: ${#BUILDABLE[@]} recipes${NC}${BUILD_FLAGS[*]:+ (flags: ${BUILD_FLAGS[*]})}"
 echo ""
 for i in "${!BUILDABLE[@]}"; do
     name=$(grep -m1 '^name ' "${BUILDABLE[$i]}" | sed 's/.*= *"\(.*\)"/\1/')
@@ -123,7 +142,7 @@ for i in "${!BUILDABLE[@]}"; do
     log "[$(( i + 1 ))/${#BUILDABLE[@]}] Building ${name} ${ver}"
     log "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-    if "$ARK_BUILD" "$recipe"; then
+    if "$ARK_BUILD" "${BUILD_FLAGS[@]+"${BUILD_FLAGS[@]}"}" "$recipe"; then
         PASSED=$((PASSED + 1))
         ok "[$(( i + 1 ))/${#BUILDABLE[@]}] ${name} ${ver} — SUCCESS"
     else

@@ -46,6 +46,29 @@ pub enum ProviderType {
     LocalAi,
     OpenCode,
     Letta,
+    Synapse,
+}
+
+impl std::fmt::Display for ProviderType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ProviderType::Ollama => write!(f, "ollama"),
+            ProviderType::LlamaCpp => write!(f, "llamacpp"),
+            ProviderType::OpenAi => write!(f, "openai"),
+            ProviderType::Anthropic => write!(f, "anthropic"),
+            ProviderType::Google => write!(f, "google"),
+            ProviderType::DeepSeek => write!(f, "deepseek"),
+            ProviderType::Mistral => write!(f, "mistral"),
+            ProviderType::Grok => write!(f, "grok"),
+            ProviderType::Groq => write!(f, "groq"),
+            ProviderType::OpenRouter => write!(f, "openrouter"),
+            ProviderType::LmStudio => write!(f, "lmstudio"),
+            ProviderType::LocalAi => write!(f, "localai"),
+            ProviderType::OpenCode => write!(f, "opencode"),
+            ProviderType::Letta => write!(f, "letta"),
+            ProviderType::Synapse => write!(f, "synapse"),
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1518,6 +1541,27 @@ pub fn new_letta_provider(
     )
 }
 
+/// Create a Synapse provider (local LLM management service).
+/// Synapse runs locally on the AGNOS machine, providing an OpenAI-compatible API.
+/// Default URL: http://127.0.0.1:8080/v1
+pub fn new_synapse_provider(
+    base_url: Option<String>,
+) -> anyhow::Result<OpenAiCompatibleProvider> {
+    OpenAiCompatibleProvider::new(
+        OpenAiCompatibleConfig {
+            provider_name: "Synapse",
+            provider_type: ProviderType::Synapse,
+            common_provider: agnos_common::Provider::Custom("Synapse".to_string()),
+            default_base_url: "http://127.0.0.1:8080/v1",
+            default_max_tokens: 8192,
+            known_models: &[],  // Dynamic — Synapse manages its own model registry
+            requires_api_key: false,  // Local service, no API key needed
+        },
+        None,  // No API key for local service
+        base_url,
+    )
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -2925,7 +2969,8 @@ mod tests {
         set.insert(ProviderType::LocalAi);
         set.insert(ProviderType::OpenCode);
         set.insert(ProviderType::Letta);
-        assert_eq!(set.len(), 14);
+        set.insert(ProviderType::Synapse);
+        assert_eq!(set.len(), 15);
     }
 
     #[test]
@@ -2939,6 +2984,7 @@ mod tests {
         assert_eq!(format!("{:?}", ProviderType::LocalAi), "LocalAi");
         assert_eq!(format!("{:?}", ProviderType::OpenCode), "OpenCode");
         assert_eq!(format!("{:?}", ProviderType::Letta), "Letta");
+        assert_eq!(format!("{:?}", ProviderType::Synapse), "Synapse");
     }
 
     #[test]
@@ -3170,7 +3216,8 @@ mod tests {
         map.insert(ProviderType::LocalAi, "localai");
         map.insert(ProviderType::OpenCode, "opencode");
         map.insert(ProviderType::Letta, "letta");
-        assert_eq!(map.len(), 14);
+        map.insert(ProviderType::Synapse, "synapse");
+        assert_eq!(map.len(), 15);
     }
 
     #[tokio::test]
@@ -3210,6 +3257,23 @@ mod tests {
         assert_eq!(models.len(), 3);
         assert_eq!(models[0].id, "openai/gpt-4o");
         assert_eq!(models[0].provider, agnos_common::Provider::Letta);
+    }
+
+    #[test]
+    fn synapse_provider_type_display() {
+        assert_eq!(ProviderType::Synapse.to_string(), "synapse");
+    }
+
+    #[test]
+    fn synapse_provider_creation() {
+        let provider = new_synapse_provider(None);
+        assert!(provider.is_ok());
+    }
+
+    #[test]
+    fn synapse_provider_custom_url() {
+        let provider = new_synapse_provider(Some("http://192.168.1.100:8080/v1".to_string()));
+        assert!(provider.is_ok());
     }
 
     #[test]

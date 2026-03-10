@@ -6,6 +6,7 @@
 //! scheduling, and cron-like recurring task triggers.
 
 use std::collections::HashMap;
+use std::fmt;
 
 use anyhow::{bail, Result};
 use chrono::{DateTime, Utc};
@@ -693,8 +694,143 @@ impl Default for CronScheduler {
 }
 
 // ---------------------------------------------------------------------------
+// Training job scheduling (Synapse integration)
+// ---------------------------------------------------------------------------
+
+/// Template for creating training job tasks that integrate with Synapse.
+/// Training jobs are scheduled as high-priority tasks with GPU requirements.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrainingJobTemplate {
+    /// Model repository ID (e.g., "meta-llama/Llama-2-7b")
+    pub model_id: String,
+    /// Training method
+    pub method: TrainingMethod,
+    /// Dataset path or identifier
+    pub dataset: String,
+    /// Target node (prefer GPU-equipped nodes)
+    pub target_node: Option<String>,
+    /// Maximum training duration in seconds (0 = no limit)
+    pub max_duration_secs: u64,
+    /// Checkpoint interval in seconds
+    pub checkpoint_interval_secs: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TrainingMethod {
+    LoRA,
+    QLoRA,
+    FullFineTune,
+    DPO,
+    RLHF,
+    Distillation,
+}
+
+impl fmt::Display for TrainingMethod {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::LoRA => write!(f, "lora"),
+            Self::QLoRA => write!(f, "qlora"),
+            Self::FullFineTune => write!(f, "full"),
+            Self::DPO => write!(f, "dpo"),
+            Self::RLHF => write!(f, "rlhf"),
+            Self::Distillation => write!(f, "distillation"),
+        }
+    }
+}
+
+impl TrainingJobTemplate {
+    /// Create a scheduled task from this training job template.
+    /// Training jobs get High priority and require GPU resources.
+    pub fn to_scheduled_task(&self, agent_id: &str) -> ScheduledTask {
+        let mut task = ScheduledTask::new(
+            format!("train-{}-{}", self.method, self.model_id),
+            format!("Training job: {} on {}", self.method, self.model_id),
+            agent_id,
+            6, // High priority
+            ResourceReq {
+                cpu_cores: 2.0,
+                memory_mb: 4096,
+                disk_mb: 10_000,
+                gpu: true,
+                network: false,
+            },
+        );
+        task.deadline = if self.max_duration_secs > 0 {
+            Some(chrono::Utc::now() + chrono::Duration::seconds(self.max_duration_secs as i64))
+        } else {
+            None
+        };
+        task.node_preference = self.target_node.clone();
+        task
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod training_tests {
+    use super::*;
+
+    #[test]
+    fn training_method_display() {
+        assert_eq!(TrainingMethod::LoRA.to_string(), "lora");
+        assert_eq!(TrainingMethod::QLoRA.to_string(), "qlora");
+        assert_eq!(TrainingMethod::FullFineTune.to_string(), "full");
+        assert_eq!(TrainingMethod::DPO.to_string(), "dpo");
+        assert_eq!(TrainingMethod::RLHF.to_string(), "rlhf");
+        assert_eq!(TrainingMethod::Distillation.to_string(), "distillation");
+    }
+
+    #[test]
+    fn training_job_creates_high_priority_task() {
+        let job = TrainingJobTemplate {
+            model_id: "meta-llama/Llama-2-7b".into(),
+            method: TrainingMethod::LoRA,
+            dataset: "/data/training.jsonl".into(),
+            target_node: None,
+            max_duration_secs: 3600,
+            checkpoint_interval_secs: 300,
+        };
+        let task = job.to_scheduled_task("agent-123");
+        assert!(task.name.contains("lora"));
+        assert!(task.name.contains("meta-llama/Llama-2-7b"));
+        assert_eq!(task.priority, 6);
+        assert!(task.resource_requirements.gpu);
+        assert!(task.deadline.is_some());
+    }
+
+    #[test]
+    fn training_job_no_deadline_when_zero() {
+        let job = TrainingJobTemplate {
+            model_id: "model".into(),
+            method: TrainingMethod::QLoRA,
+            dataset: "data".into(),
+            target_node: Some("gpu-node-1".into()),
+            max_duration_secs: 0,
+            checkpoint_interval_secs: 600,
+        };
+        let task = job.to_scheduled_task("agent-456");
+        assert!(task.deadline.is_none());
+        assert_eq!(task.node_preference.unwrap(), "gpu-node-1");
+    }
+
+    #[test]
+    fn training_job_requires_gpu() {
+        let job = TrainingJobTemplate {
+            model_id: "m".into(),
+            method: TrainingMethod::FullFineTune,
+            dataset: "d".into(),
+            target_node: None,
+            max_duration_secs: 0,
+            checkpoint_interval_secs: 0,
+        };
+        let task = job.to_scheduled_task("a");
+        assert!(task.resource_requirements.gpu);
+        assert!(task.resource_requirements.memory_mb >= 4096);
+    }
+}
 
 #[cfg(test)]
 mod tests {

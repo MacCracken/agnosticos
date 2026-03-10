@@ -1,0 +1,78 @@
+# Synapse — System-level configuration for AGNOS
+# Installed to /etc/synapse/synapse.toml by takumi
+#
+# This configures Synapse when running as an AGNOS system service.
+# User-level overrides can be placed at ~/.config/synapse/synapse.toml
+
+[server]
+# REST API bind address
+host = "127.0.0.1"
+port = 8080
+# gRPC bind address (when enabled)
+grpc_host = "127.0.0.1"
+grpc_port = 50051
+
+[storage]
+# Model storage directory (managed by argonaut)
+model_dir = "/var/lib/synapse/models"
+# Database (SQLite for metadata)
+database_path = "/var/lib/synapse/synapse.db"
+# Checkpoint storage for training jobs
+checkpoint_dir = "/var/lib/synapse/checkpoints"
+# Maximum total model storage (bytes, 0 = unlimited)
+max_storage_bytes = 0
+
+[backends]
+# Default inference backend
+default = "llama-cpp"
+# Available backends (enable/disable)
+llama_cpp = true
+candle = true
+ollama = false
+vllm = false
+onnx = false
+tensorrt = false
+
+[backends.llama_cpp]
+# Number of GPU layers to offload (-1 = all)
+n_gpu_layers = -1
+# Context window size
+context_size = 4096
+
+[agnos]
+# AGNOS integration settings
+# daimon (agent-runtime) URL for capability registration
+runtime_url = "http://127.0.0.1:8090"
+# hoosh (llm-gateway) URL for inference routing
+gateway_url = "http://127.0.0.1:8088"
+# Register as capability provider on startup
+register_capabilities = true
+# Capabilities to register with daimon
+capabilities = [
+    "model-management",
+    "inference",
+    "training",
+    "fine-tuning",
+    "model-download",
+]
+
+[logging]
+# Log level: trace, debug, info, warn, error
+level = "info"
+# Log format: json, pretty
+format = "json"
+# Log file (empty = stderr only)
+file = "/var/log/synapse/synapse.log"
+
+[security]
+# API authentication (empty = no auth, relies on AGNOS network sandbox)
+api_key = ""
+# Allowed origins for CORS
+allowed_origins = ["http://127.0.0.1:*", "http://localhost:*"]
+
+[huggingface]
+# HuggingFace Hub token (for gated models)
+# Set via HUGGINGFACE_TOKEN env var or here
+token = ""
+# Default cache directory
+cache_dir = "/var/lib/synapse/models/huggingface"

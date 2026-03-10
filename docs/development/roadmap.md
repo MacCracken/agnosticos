@@ -1,7 +1,7 @@
 # AGNOS Development Roadmap
 
-> **Status**: Pre-Alpha | **Last Updated**: 2026-03-08
-> **All development phases complete** — 9174+ tests, ~82% coverage, 0 warnings
+> **Status**: Pre-Alpha | **Last Updated**: 2026-03-10
+> **All development phases complete** — 9240+ tests, ~82% coverage, 0 warnings
 > **Next Milestone**: Alpha Release (Target: Q2 2026)
 
 ---
@@ -53,7 +53,7 @@ All phases are complete. See [CHANGELOG.md](/CHANGELOG.md) for detailed implemen
 
 ### Alpha Release — Q2 2026
 
-**Current version**: `2026.3.8-2` (CalVer: `YYYY.M.D`, patches as `-N`)
+**Current version**: `2026.3.10` (CalVer: `YYYY.M.D`, patches as `-N`)
 
 **Remaining criteria:**
 - [ ] Third-party security audit complete
@@ -64,9 +64,6 @@ All phases are complete. See [CHANGELOG.md](/CHANGELOG.md) for detailed implemen
 
 **Remaining:**
 - [ ] Community testing program
-- [x] Bug fixes from alpha feedback
-- [x] Performance optimization based on benchmarks
-- [x] Update system operational and tested
 - [ ] Support channels open (Discord, forum)
 - [ ] Video tutorials published
 
@@ -79,21 +76,7 @@ All phases are complete. See [CHANGELOG.md](/CHANGELOG.md) for detailed implemen
 - Enterprise features complete (SSO, audit logging, mTLS)
 - Commercial support available
 - Migration guides published
-- Marketplace consumer apps packaged (Photis Nadi, BullShift — when upstream ready)
-
----
-
-## Build Infrastructure
-
-### Takumi Build Pipeline `scripts/`
-
-- [x] `ark-build.sh` — single recipe builder (security hardening flags, local source support, build logging, file manifests with SHA-256, timing)
-- [x] `ark-build-all.sh` — batch builder (auto-discovers recipes, skips local-source, dry-run mode, continue-on-error, summary report)
-- [x] `Dockerfile.takumi-builder` — reproducible build container (Python, PostgreSQL, Redis, browser deps, non-root builds, source cache volume)
-- [x] First successful `.ark` build — `redis7-7.4.2-x86_64.ark` (11MB, 45s)
-- [x] CI integration: build `.ark` packages on push to main (Redis, PostgreSQL, pgvector, CPython 3.12)
-- [ ] Sigil signing of `.ark` packages post-build
-- [ ] Multi-arch support (arm64 cross-compilation)
+- Marketplace consumer apps published to mela
 
 ---
 
@@ -102,13 +85,7 @@ All phases are complete. See [CHANGELOG.md](/CHANGELOG.md) for detailed implemen
 ### Web Browser
 
 **Phase 1 — Browser Suite (Alpha)** `recipes/browser/`
-- [x] Takumi recipes for 8 browsers (all Wayland-native, hardened defaults)
-  - Firefox ESR 128.9.0, Chromium 134, Zen 1.9.2, Brave 1.76.80
-  - LibreWolf 128.9.0-1, Vivaldi 7.2, Falkon 24.12.3, Midori 11.5.1
-- [x] Integrate with aethersafha app launcher (`AppType::WebBrowser`, `AppCategory::Internet`)
-- [x] Generic `WebBrowserApp` with per-browser constructors, env vars, install detection
-- [ ] Build and package all as `.ark`
-- [ ] Desktop entry + MIME type associations per browser
+- [ ] Build and package all 8 browsers as `.ark`
 
 **Phase 2 — AI-Integrated WebView (Proposed, Post-Beta)**
 - [ ] Lightweight embedded browser using `wry`/`tauri` WebView
@@ -128,17 +105,10 @@ Native Python support via ark/takumi/nous — no external version manager depend
 Borrows conventions from pyenv (`.python-version` files) and mise (hook-env pattern).
 
 **Phase 1 — CPython as ark packages** `recipes/python/`
-- [x] Takumi recipe for CPython 3.12 (`cpython-3.12.toml` — PGO+LTO, shared lib, hardened)
-- [x] Takumi recipe for CPython 3.13 (`cpython-3.13.toml`)
-- [x] Takumi recipe for CPython 3.13 free-threaded (`cpython-3.13-freethreaded.toml` — `--disable-gil`, mimalloc)
-- [x] Takumi recipe for CPython 3.14 (`cpython-3.14.toml` — pre-release, JIT experimental)
-- [x] Versioned install paths (`/usr/lib/agnos/python/3.XX/`) with per-version `ld.so.conf.d`
-- [x] Recursive recipe loading in takumi (subdirectory support, 57 tests)
 - [ ] Build CPython `.ark` packages on native target (bare-metal / VM install)
 - [ ] Build CPython `.ark` packages in container (takumi builder container)
 - [ ] Verify shared lib coexistence with multiple installed versions on both targets
 - [ ] Update `docker/Dockerfile.python` to use ark-built CPython instead of upstream `python:3.12-slim-bookworm`
-- [ ] Add `docker/Dockerfile.python3.13` and `docker/Dockerfile.python3.14` base images
 
 **Phase 2 — Version switching**
 - [ ] Rust shim binary (`/usr/bin/python` → resolves version via hook-env)
@@ -156,79 +126,33 @@ Borrows conventions from pyenv (`.python-version` files) and mise (hook-env patt
 - [ ] Curated `.ark` packages for common Python libs (numpy, requests, etc.)
 - [ ] Optional uv integration as accelerated resolver backend
 
-### Database Services `recipes/database/`
-
-Data stores built from source with AGNOS-hardened defaults, systemd units, and argonaut integration.
-
-**PostgreSQL 17**
-- [x] Takumi recipe (`postgresql-17.toml` — TLS 1.3, scram-sha-256, systemd hardened unit)
-- [x] Build `.ark` package on native target (`postgresql17-17.4-x86_64.ark`, 18MB, 1709 files)
-- [ ] Argonaut integration: `postgres` user/group creation, `initdb` first-boot hook
-- [ ] Aegis integration: kernel tuning, audit logging for DDL
-- [x] Agent runtime integration: `database.rs` module + HTTP API (`/v1/agents/:id/database`, `/v1/database/stats`) — per-agent PostgreSQL databases and Redis key prefixes, 16 tests
-
-**pgvector 0.8**
-- [x] Takumi recipe (`pgvector-0.8.toml` — builds against pg_config, staged path relocation)
-- [x] Build `.ark` package (`pgvector-0.8.0-x86_64.ark`, 100KB, depends on postgresql17)
-- [ ] Agent runtime integration: default vector extension for RAG/embedding search
-
-**Redis 7**
-- [x] Takumi recipe (`redis-7.toml` — TLS, AOF persistence, jemalloc, dangerous commands disabled)
-- [x] Build `.ark` package on native target (`redis7-7.4.2-x86_64.ark`, 11MB)
-- [ ] Argonaut integration: `redis` user/group creation, kernel tuning (overcommit, THP)
-- [ ] Agent runtime integration: shared session/cache store for agents
-
 ### Docker Base Images
 
-Publish runtime-specific base images for consumer projects.
-Existing images (`Dockerfile.python`, `Dockerfile.node`) use upstream Debian packages —
-these should transition to ark-built runtimes once Phase 1 packages are proven.
+Runtime-specific base images for consumer projects. Published to `ghcr.io/maccracken/agnosticos:<tag>` on each release.
 
-**Delivery**: Each runtime ships as both an installable `.ark` package (native OS) and a Docker base image (containerized workloads).
+| Image | Dockerfile | Status |
+|-------|-----------|--------|
+| `agnosticos:node22` | `Dockerfile.node` (Node.js 22 + Bun) | CI ready |
+| `agnosticos:python3.13` | `Dockerfile.python3.13` | CI ready |
+| `agnosticos:python3.14` | `Dockerfile.python3.14` (RC) | CI ready |
+| `agnosticos:rust` | `Dockerfile.rust` | CI ready |
 
-- [ ] Alpha release (prerequisite)
-- [ ] `agnos:python3.12` — Python runtime layer (ark-built CPython, replaces current `Dockerfile.python`)
-- [ ] `agnos:python3.13` — Python 3.13 runtime layer
-- [ ] `agnos:python3.13t` — Free-threaded Python 3.13 (GIL-disabled, for parallel agent workloads)
-- [ ] `agnos:python3.14` — Python 3.14 runtime layer
-- [ ] `agnos:node20` — Node.js 20 runtime layer
-- [ ] `agnos:node22` — Node.js 22 runtime layer
-- [ ] `agnos:rust` — Rust runtime layer
-- [ ] Takumi builder container — container for building `.ark` packages without native target
+- [ ] `agnosticos:python3.13t` — Free-threaded Python 3.13 (GIL-disabled, needs separate Dockerfile)
 
 ### Marketplace Consumer Apps `recipes/marketplace/`
 
-Third-party apps packaged as `.agnos-agent` bundles for the mela marketplace.
-Recipes are stubs — finalize packaging when each project reaches its own alpha.
+Bundles are built automatically from GitHub releases via `ark-bundle.sh` — no local repos needed.
 
-**Photis Nadi** — Kanban + daily rituals (Flutter)
-- [x] Takumi marketplace recipe (`photisnadi.toml` — sandbox profile, desktop entry, Wayland)
-- [ ] Build `.agnos-agent` bundle from Flutter linux release
-- [ ] MCP agent bridge integration (planned AGNOS desktop feature)
-- [ ] Publish to mela marketplace
+All 5 consumer apps have marketplace recipes + GitHub release bundling via `ark-bundle.sh`.
 
-**BullShift** — Trading platform (Rust + Flutter)
-- [x] Takumi marketplace recipe (`bullshift.toml` — hybrid Rust/Flutter build, sandbox profile)
-- [ ] Build `.agnos-agent` bundle from Flutter linux release + Rust backend
-- [ ] Network sandbox policy: restrict to exchange APIs + market data feeds
-- [ ] Publish to mela marketplace
+**SecureYeoman** (Bun, ~42MB) | **BullShift** (Rust, ~2.8MB) | **Photis Nadi** (Flutter, ~20MB) | **Agnostic** (Python, ~472KB) | **Synapse** (Rust, pending first release)
+
+- [ ] Publish all to mela marketplace
+- [ ] Photis Nadi: MCP agent bridge integration (planned AGNOS desktop feature)
 
 ### Federation Enhancements
 
 - [ ] Shared vector store across federated nodes
-
-### Agnostic QA Integration (P2 — needed for Agnostic deep integration)
-
-Agnostic already has client modules for hoosh (LLM Gateway) and daimon (Agent Runtime). These items fill gaps that Agnostic expects but AGNOS doesn't yet expose.
-
-| Item | Component | Effort | Status | Description |
-|------|-----------|--------|--------|-------------|
-| Reasoning trace ingest endpoint | daimon | 2 days | ✅ Done | `POST /v1/agents/{id}/reasoning` — accept `ReasoningTrace` payloads from `shared/agnos_reasoning.py` |
-| Token budget endpoints | hoosh | 2 days | ✅ Done | `POST /v1/tokens/check`, `/v1/tokens/reserve`, `/v1/tokens/report`, `/v1/tokens/release` — Agnostic's `config/agnos_token_budget.py` calls these |
-| Dashboard sync endpoint | daimon | 1 day | ✅ Done | `POST /v1/dashboard/sync` — accept agent status/session/metrics snapshots from `shared/agnos_dashboard_bridge.py` |
-| Environment profiles endpoint | daimon | 1 day | ✅ Done | `GET /v1/profiles/{name}` — return env var overrides for `dev`/`staging`/`prod` (Agnostic's `config/agnos_environment.py` currently uses local defaults) |
-| Vector search REST API | daimon | 3 days | ✅ Done | `POST /v1/vectors/search`, `/v1/vectors/collections` — Agnostic's `shared/agnos_vector_client.py` expects these |
-| OTLP collector configuration | daimon | 1 day | ✅ Done | `GET /v1/traces/otlp-config` + documented env vars for Agnostic's OpenTelemetry traces (`shared/telemetry.py` exports to `OTEL_EXPORTER_OTLP_ENDPOINT`) |
 
 ### Full Convergence (Demand-Gated)
 
@@ -246,13 +170,13 @@ Agnostic already has client modules for hoosh (LLM Gateway) and daimon (Agent Ru
 
 ## Key Performance Indicators (KPIs)
 
-### Current Status (as of 2026-03-08)
+### Current Status (as of 2026-03-10)
 
 | Metric | Target | Current | Status |
 |--------|--------|---------|--------|
 | Code Coverage | >80% | ~82% | Met |
 | Test Pass Rate | 100% | 100% | Met |
-| Total Tests | 400+ | 9174+ | Met |
+| Total Tests | 400+ | 9240+ | Met |
 | Agent Spawn Time | <500ms | ~300ms | Met |
 | Shell Response Time | <100ms | ~50ms | Met |
 | Memory Overhead | <2GB | ~1.2GB | Met |
@@ -267,8 +191,8 @@ Agnostic already has client modules for hoosh (LLM Gateway) and daimon (Agent Ru
 |-----------|-------|-------|
 | agnos-common | 307 | Secrets, telemetry, LLM types, manifest, rate limits, audit chain |
 | agnos-sys | 750+ | 16 modules: audit, mac, netns, dmverity, luks, ima, tpm, secureboot, certpin, bootloader, journald, udev, fuse, pam, update, llm |
-| agent-runtime | 2552+ | Orchestrator, IPC, sandbox, registry, marketplace (88+43), federation (55), migration (54), scheduler (47), PQC (68), explainability (59), safety (77), finetune (73), formal_verify (76), sandbox_v2 (77), rl_optimizer (68), cloud (82), collaboration (87), sigil (35), aegis (40), takumi (57), argonaut (46), agnova (41) |
-| llm-gateway | 707 | 14 providers (5 native + 9 OpenAI-compatible), rate limiting, streaming, cert pinning, hardware acceleration, token budgets |
+| agent-runtime | 2763+ | Orchestrator, IPC, sandbox, registry, marketplace (88+43), federation (55), migration (54), scheduler (51), PQC (68), explainability (59), safety (77), finetune (73), formal_verify (76), sandbox_v2 (79), rl_optimizer (68), cloud (82), collaboration (87), sigil (46), aegis (55), takumi (57), argonaut (78), agnova (55), database (42) |
+| llm-gateway | 710 | 15 providers (5 native + 10 OpenAI-compatible), rate limiting, streaming, cert pinning, hardware acceleration, token budgets |
 | ai-shell | 1132 | 25+ intents, approval workflow, dashboard, aliases, completion |
 | desktop-environment | 1447+ | Wayland protocol (63+49), screen capture (31), screen recording (22+), plugin host (31), xwayland (20), shell integration (26), theme bridge (18), compositor, renderer |
 
@@ -292,7 +216,7 @@ Agnostic already has client modules for hoosh (LLM Gateway) and daimon (Agent Ru
 
 | Name | Role | Component |
 |------|------|-----------|
-| **hoosh** | LLM inference gateway (port 8088, 14 providers) | `llm-gateway/` |
+| **hoosh** | LLM inference gateway (port 8088, 15 providers) | `llm-gateway/` |
 | **daimon** | Agent orchestrator (port 8090) | `agent-runtime/` |
 | **agnosys** | Kernel interface | `agnos-sys/` |
 | **agnostik** | Shared types library | `agnos-common/` |
@@ -339,4 +263,4 @@ See [CONTRIBUTING.md](/CONTRIBUTING.md) for:
 
 ---
 
-*Last Updated: 2026-03-08 | Next Review: 2026-03-15*
+*Last Updated: 2026-03-10 | Next Review: 2026-03-17*

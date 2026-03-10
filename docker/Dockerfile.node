@@ -1,12 +1,19 @@
-# AGNOS Node.js 20 Base Image
-# For running Node.js-based agents (SecureYeoman, etc.) with AGNOS sandbox
-FROM node:20-slim AS base
+# AGNOS Node.js 22 Base Image
+# For running Node.js/Bun-based agents (SecureYeoman, etc.) with AGNOS sandbox
+FROM node:22-slim AS base
 
-# System dependencies
+# System dependencies for agent-runtime sidecar
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     libseccomp2 \
+    curl \
+    tini \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Bun runtime (used by SecureYeoman and other TypeScript agents)
+RUN curl -fsSL https://bun.sh/install | bash \
+    && ln -s /root/.bun/bin/bun /usr/local/bin/bun \
+    && ln -s /root/.bun/bin/bunx /usr/local/bin/bunx
 
 # Create agnos user and directories
 RUN useradd --system --create-home --shell /bin/bash agnos \
@@ -16,11 +23,12 @@ RUN useradd --system --create-home --shell /bin/bash agnos \
     && chown -R agnos:agnos /var/lib/agnos /var/log/agnos /run/agnos
 
 # Labels
-LABEL org.opencontainers.image.title="AGNOS Node.js 20 Base"
-LABEL org.opencontainers.image.description="Node.js 20 base image with AGNOS agent runtime support"
+LABEL org.opencontainers.image.title="AGNOS Node.js 22 Base"
+LABEL org.opencontainers.image.description="Node.js 22 + Bun base image with AGNOS agent runtime support"
 LABEL org.opencontainers.image.vendor="AGNOS"
 
 USER agnos
 WORKDIR /home/agnos
 
-ENTRYPOINT ["node"]
+ENTRYPOINT ["tini", "--"]
+CMD ["node"]

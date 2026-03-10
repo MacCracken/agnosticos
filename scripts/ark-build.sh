@@ -12,10 +12,29 @@
 #   ARK_SKIP_CHECK  — set to 1 to skip the check/test step
 #   ARK_JOBS        — parallel make jobs (default: nproc)
 #   ARK_LOCAL_SRC   — path to local source tree (for local=true recipes)
+#   ARK_SIGN        — set to 1 to sign packages after build (requires ark-sign.sh keypair)
+#   ARK_TARGET      — target architecture for cross-compilation (e.g. aarch64, x86_64)
 
 set -euo pipefail
 
-RECIPE="${1:?Usage: ark-build.sh <recipe.toml>}"
+# -----------------------------------------------------------------------
+# Parse flags
+# -----------------------------------------------------------------------
+SIGN_AFTER_BUILD="${ARK_SIGN:-0}"
+TARGET_ARCH="${ARK_TARGET:-}"
+POSITIONAL=()
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --sign)        SIGN_AFTER_BUILD=1; shift ;;
+        --target)      TARGET_ARCH="$2"; shift 2 ;;
+        --target=*)    TARGET_ARCH="${1#--target=}"; shift ;;
+        -*)            echo "Unknown flag: $1" >&2; exit 1 ;;
+        *)             POSITIONAL+=("$1"); shift ;;
+    esac
+done
+
+RECIPE="${POSITIONAL[0]:?Usage: ark-build.sh [--sign] [--target ARCH] <recipe.toml>}"
 OUTPUT_DIR="${ARK_OUTPUT_DIR:-${PWD}/dist/ark}"
 BUILD_DIR="${ARK_BUILD_DIR:-/tmp/takumi-build}"
 CACHE_DIR="${ARK_CACHE_DIR:-${CACHE:-/tmp/takumi-cache}}"
@@ -118,6 +137,71 @@ apply_hardening() {
 apply_hardening
 
 # -----------------------------------------------------------------------
+# Cross-compilation setup
+# -----------------------------------------------------------------------
+NATIVE_ARCH="$(uname -m)"
+BUILD_ARCH="${TARGET_ARCH:-${NATIVE_ARCH}}"
+CROSS_COMPILE=""
+
+# Normalize architecture names
+case "$BUILD_ARCH" in
+    aarch64|arm64)  BUILD_ARCH="aarch64" ;;
+    x86_64|amd64)   BUILD_ARCH="x86_64" ;;
+    armv7l|armhf)   BUILD_ARCH="armv7l" ;;
+    riscv64)        BUILD_ARCH="riscv64" ;;
+esac
+
+# Set cross-compilation toolchain if not building for native arch
+if [ "$BUILD_ARCH" != "$NATIVE_ARCH" ]; then
+    case "$BUILD_ARCH" in
+        aarch64)
+            CROSS_COMPILE="aarch64-linux-gnu-"
+            export CC="${CROSS_COMPILE}gcc"
+            export CXX="${CROSS_COMPILE}g++"
+            export AR="${CROSS_COMPILE}ar"
+            export STRIP="${CROSS_COMPILE}strip"
+            export HOST_TRIPLE="aarch64-linux-gnu"
+            export CARGO_TARGET="aarch64-unknown-linux-gnu"
+            export PKG_CONFIG_PATH="/usr/lib/aarch64-linux-gnu/pkgconfig"
+            export PKG_CONFIG_SYSROOT_DIR="/"
+            ;;
+        armv7l)
+            CROSS_COMPILE="arm-linux-gnueabihf-"
+            export CC="${CROSS_COMPILE}gcc"
+            export CXX="${CROSS_COMPILE}g++"
+            export AR="${CROSS_COMPILE}ar"
+            export STRIP="${CROSS_COMPILE}strip"
+            export HOST_TRIPLE="arm-linux-gnueabihf"
+            export CARGO_TARGET="armv7-unknown-linux-gnueabihf"
+            export PKG_CONFIG_PATH="/usr/lib/arm-linux-gnueabihf/pkgconfig"
+            export PKG_CONFIG_SYSROOT_DIR="/"
+            ;;
+        riscv64)
+            CROSS_COMPILE="riscv64-linux-gnu-"
+            export CC="${CROSS_COMPILE}gcc"
+            export CXX="${CROSS_COMPILE}g++"
+            export AR="${CROSS_COMPILE}ar"
+            export STRIP="${CROSS_COMPILE}strip"
+            export HOST_TRIPLE="riscv64-linux-gnu"
+            export CARGO_TARGET="riscv64gc-unknown-linux-gnu"
+            export PKG_CONFIG_PATH="/usr/lib/riscv64-linux-gnu/pkgconfig"
+            export PKG_CONFIG_SYSROOT_DIR="/"
+            ;;
+        *)
+            if [ "$BUILD_ARCH" != "$NATIVE_ARCH" ]; then
+                err "Unsupported cross-compilation target: ${BUILD_ARCH}"
+                exit 1
+            fi
+            ;;
+    esac
+    log "Cross-compiling: ${NATIVE_ARCH} → ${BUILD_ARCH} (toolchain: ${CROSS_COMPILE}gcc)"
+fi
+
+# Export arch for recipe build steps
+export BUILD_ARCH
+export CROSS_COMPILE
+
+# -----------------------------------------------------------------------
 # Display build info
 # -----------------------------------------------------------------------
 log "Package:  ${PKG_NAME} ${PKG_VERSION}"
@@ -126,10 +210,12 @@ if [ "$SOURCE_LOCAL" = "true" ]; then
 else
     log "Source:   ${SOURCE_URL}"
 fi
+log "Arch:     ${BUILD_ARCH}${CROSS_COMPILE:+ (cross: ${CROSS_COMPILE}gcc)}"
 log "Output:   ${OUTPUT_DIR}"
 log "CFLAGS:   ${CFLAGS:-<none>}"
 log "LDFLAGS:  ${LDFLAGS:-<none>}"
 log "Jobs:     ${JOBS}"
+[ "$SIGN_AFTER_BUILD" = "1" ] && log "Signing:  enabled"
 
 # -----------------------------------------------------------------------
 # Setup directories
@@ -289,7 +375,7 @@ GROUPS_TOML=$(parse_array "$RECIPE" "groups" | sed 's/.*/"&"/' | paste -sd, -)
 # -----------------------------------------------------------------------
 log "Creating .ark package..."
 
-ARK_FILE="${OUTPUT_DIR}/${PKG_NAME}-${PKG_VERSION}-$(uname -m).ark"
+ARK_FILE="${OUTPUT_DIR}/${PKG_NAME}-${PKG_VERSION}-${BUILD_ARCH}.ark"
 
 # Generate manifest
 cat > "${PKG_DIR}/.ark-manifest.toml" << MANIFEST
@@ -298,7 +384,7 @@ name = "${PKG_NAME}"
 version = "${PKG_VERSION}"
 description = "${PKG_DESC}"
 license = "${PKG_LICENSE}"
-arch = "$(uname -m)"
+arch = "${BUILD_ARCH}"
 build_date = "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 builder = "takumi/ark-build.sh"
 source_url = "${SOURCE_URL:-local}"
@@ -323,6 +409,20 @@ TOTAL_ELAPSED=$((TOTAL_END - TOTAL_START))
 # Report
 ARK_SIZE=$(du -sh "$ARK_FILE" | cut -f1)
 ok "Built: ${ARK_FILE} (${ARK_SIZE}, ${FILE_COUNT} files, ${TOTAL_ELAPSED}s)"
+
+# -----------------------------------------------------------------------
+# Sign package (if --sign or ARK_SIGN=1)
+# -----------------------------------------------------------------------
+if [ "$SIGN_AFTER_BUILD" = "1" ]; then
+    ARK_SIGN_SCRIPT="${SCRIPT_DIR:-$(dirname "$0")}/ark-sign.sh"
+    if [ -x "$ARK_SIGN_SCRIPT" ]; then
+        log "Signing package..."
+        "$ARK_SIGN_SCRIPT" "$ARK_FILE"
+    else
+        warn "Signing requested but ark-sign.sh not found at ${ARK_SIGN_SCRIPT}"
+        warn "Run: scripts/ark-sign.sh --generate-key  (first-time setup)"
+    fi
+fi
 
 # -----------------------------------------------------------------------
 # Cleanup

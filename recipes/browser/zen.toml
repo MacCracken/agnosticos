@@ -86,24 +86,24 @@ DESTDIR=$PKG ./mach install
 
 # Desktop entry for aethersafha
 mkdir -p $PKG/usr/share/applications
-cat > $PKG/usr/share/applications/zen-browser.desktop << 'EOF'
+cat > $PKG/usr/share/applications/zen.desktop << 'EOF'
 [Desktop Entry]
 Name=Zen Browser
-Comment=Browse the Web — Minimalist & Private
-GenericName=Web Browser
-Exec=zen-browser %u
+Comment=Privacy-focused browser built on Firefox
+GenericName=Zen Browser
+Exec=zen %u
 Icon=zen-browser
 Terminal=false
 Type=Application
-MimeType=text/html;text/xml;application/xhtml+xml;x-scheme-handler/http;x-scheme-handler/https;
+MimeType=text/html;text/xml;application/xhtml+xml;application/xml;application/vnd.mozilla.xul+xml;x-scheme-handler/http;x-scheme-handler/https;
 Categories=Network;WebBrowser;
 StartupNotify=true
-StartupWMClass=zen-browser
+StartupWMClass=zen
 EOF
 
 # Symlink for PATH
 mkdir -p $PKG/usr/bin
-ln -sf /usr/lib/zen-browser/zen-browser $PKG/usr/bin/zen-browser
+ln -sf /usr/lib/zen-browser/zen-browser $PKG/usr/bin/zen
 """
 
 [security]

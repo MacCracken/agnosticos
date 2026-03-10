@@ -5,6 +5,99 @@ All notable changes to AGNOS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2026.3.10] - 2026-03-10
+
+### Added — Build Infrastructure & Database Integration
+
+#### Sigil Package Signing
+- **New script**: `scripts/ark-sign.sh` — Ed25519 package signing tool (sigil-compatible)
+  - **Commands**: generate keypair, sign single file or directory, verify signatures, export keyring JSON
+  - **Format**: `.ark.sig` sidecar files with signature, key ID, content hash, public key, timestamp
+  - **Compatible with**: `sigil.rs` trust store, `marketplace/trust.rs` PublisherKeyring, `local_registry.rs` verification
+- **`ark-build.sh`**: `--sign` flag and `ARK_SIGN=1` env var for automatic post-build signing
+- **`ark-build-all.sh`**: `--sign` pass-through for batch signing
+- **Makefile targets**: `ark-keygen`, `ark-sign`, `ark-sign-all`, `ark-verify`
+
+#### Multi-Architecture Cross-Compilation
+- **`ark-build.sh`**: `--target` flag for cross-compilation (aarch64, armv7l, riscv64)
+  - Auto-configures `CC`, `CXX`, `AR`, `STRIP`, `HOST_TRIPLE`, `CARGO_TARGET`, `PKG_CONFIG_PATH`
+  - `BUILD_ARCH` exported for recipe build steps
+- **`ark-build-all.sh`**: `--target` pass-through for batch cross-builds
+- **`Dockerfile.takumi-builder`**: Cross-compilation toolchains (aarch64, armhf, riscv64), qemu-user-static, Rust cross targets, signing support
+- **Makefile**: `make ark-build RECIPE=... TARGET=aarch64 SIGN=1`
+
+#### Database Services — Argonaut Integration (68 tests, +12)
+- **New boot stage**: `BootStage::StartDatabaseServices` between `StartSecurity` and `StartAgentRuntime`
+- **PostgreSQL 17 ServiceDefinition**: binary at `/usr/lib/postgresql/17/bin/postgres`, `PGDATA` env, TCP health check on port 5432, ready check with 15 retries
+- **Redis 7 ServiceDefinition**: binary at `/usr/bin/redis-server`, TCP health check on port 6379, `RestartPolicy::Always`
+- **Dependency ordering**: `agent-runtime` depends on `postgres` and `redis` in Server/Desktop modes
+- **`database_services()` static method**: Returns PostgreSQL + Redis definitions
+- **12 new tests**: service definitions, health checks, restart policies, mode filtering, dependency chains, boot stage ordering
+
+#### Database Security — Aegis Integration (55 tests, +9)
+- **New event types**: `SecurityEventType::DatabaseIntegrity`, `SecurityEventType::DatabaseAccessViolation`
+- **`DatabaseSecurityPolicy`**: Configurable security policy for database services
+  - Data directory integrity monitoring (PostgreSQL + Redis)
+  - DDL audit logging, connection limits per agent, socket permission checks
+- **`KernelTuningRecommendation`**: 4 default sysctl recommendations (`vm.overcommit_memory`, `vm.swappiness`, `net.core.somaxconn`, `kernel.shmmax`)
+- **`check_database_integrity()`**: Scans data directories and sockets for unsafe permissions
+- **`audit_ddl_operation()`**: Records DDL events with operation/object metadata
+- **`report_database_access_violation()`**: Reports unauthorized cross-tenant database access (triggers High-threat quarantine)
+- **9 new tests**: policy defaults, kernel recommendations, integrity checks, DDL audit, access violations, quarantine behavior
+
+#### Marketplace Bundling (`ark-bundle.sh`)
+- **New script**: `scripts/ark-bundle.sh` — builds `.agnos-agent` marketplace bundles from GitHub releases
+  - **Always fetches latest release** from GitHub API (curl only, no `gh` CLI) — version comes from release tag, not recipe
+  - **Runtime support**: `native-binary` (SecureYeoman/Bun, BullShift/Rust), `flutter` (Photis Nadi), `python-container` (Agnostic)
+  - **Auto-generates**: `manifest.json` (agent metadata, publisher, source URL) and `sandbox.json` (Landlock, seccomp, network rules)
+  - **Signing**: `--sign` flag for Ed25519 signing via `ark-sign.sh`
+  - **Batch mode**: `ark-bundle.sh recipes/marketplace/` bundles all recipes
+- **5 marketplace recipes**: SecureYeoman, BullShift, Photis Nadi, Agnostic, Synapse (pending first release)
+- **BullShift recipe**: corrected from `flutter` to `native-binary` runtime (it's a Rust binary)
+- **All recipes** have `github_release` and `release_asset` in `[source]` for GitHub release downloads
+- **Successful bundles**: SecureYeoman (42MB), BullShift (2.8MB), Photis Nadi (20MB), Agnostic (472KB)
+
+#### Database Integration — pgvector & Redis (36 tests, +20)
+- **`PostgresVectorBackend`**: SQL generation for pgvector tables with ivfflat indexing
+  - `create_table_sql()`: CREATE EXTENSION vector, CREATE TABLE with vector column, CREATE INDEX with vector_cosine_ops
+  - `insert_sql()`, `search_sql()` (cosine similarity via `<=>` operator), `delete_sql()`, `drop_table_sql()`
+  - `format_vector()`: converts `&[f64]` to pgvector string literal `[1.0,2.0,3.0]`
+  - **8 new tests**
+- **`RedisSessionStore`**: per-agent namespaced Redis command generation
+  - SET/GET/DEL with TTL, HSET/HGET/HGETALL for hash maps
+  - EXPIRE, PUBLISH for pub/sub, SCAN-based cleanup
+  - `from_agent_id()` factory with 1-hour default TTL
+  - **12 new tests**
+
+#### Docker Base Images
+- **`Dockerfile.node`**: rewritten — Node.js 22 + Bun runtime with tini, libseccomp2
+- **`Dockerfile.python3.13`**: new Python 3.13 base image
+- **`Dockerfile.python3.14`**: new Python 3.14 RC base image
+- **`Dockerfile.rust`**: new Rust base image with libssl-dev, pkg-config
+- **CI publishing**: All 4 runtime images built and pushed to `ghcr.io/maccracken/agnosticos:<tag>` on each release (multi-arch: amd64 + arm64)
+
+#### Synapse AGNOS Integration (argonaut 78 tests, +10)
+- **New boot stage**: `BootStage::StartModelServices` between `StartLlmGateway` and `StartCompositor`
+- **Synapse ServiceDefinition**: binary at `/usr/lib/synapse/bin/synapse`, depends on agent-runtime + llm-gateway, HTTP health check on port 8080, Server/Desktop modes
+- **Service discovery**: Synapse advertised as optional companion in `GET /v1/discover`
+- **New capabilities**: `model-management`, `inference-backend`, `training` registered in daimon
+- **System config**: `config/synapse/synapse.toml` (server, storage, backends, AGNOS integration)
+- **Systemd unit**: `config/synapse/synapse.service` (hardened, GPU device access, proper ordering)
+- **takumi recipe**: `recipes/synapse.toml` (build from source with sysusers.d + tmpfiles.d)
+- **Marketplace recipe**: `recipes/marketplace/synapse.toml` (pending first GitHub release)
+
+#### Synapse Deep Integration — hoosh, GPU, HuggingFace, Training (15 new tests)
+- **hoosh routing**: `ProviderType::Synapse` — 15th provider via `new_synapse_provider()` factory, local service at `http://127.0.0.1:8080/v1`, configurable via `SYNAPSE_BASE_URL` env var (3 tests)
+- **GPU sandbox profile**: `SandboxPreset::GpuCompute` — Landlock rules for NVIDIA devices (nvidia0/1/ctl/uvm), AMD ROCm (/dev/kfd), DRI, CUDA/ROCm libraries (read-only), 4096 MB memory, HuggingFace network access (2 tests)
+- **HuggingFace model registry**: `ModelRegistry` — URL/path generation for model downloads (`hf_download_url`, `hf_api_url`, `local_model_path`, `local_repo_dir`, `model_manifest_entry`), default storage at `/var/lib/synapse/models/` (6 tests)
+- **Training job scheduling**: `TrainingMethod` enum (LoRA, QLoRA, FullFineTune, DPO, RLHF, Distillation) + `TrainingJobTemplate` — creates priority-6 GPU-requiring `ScheduledTask` entries for daimon scheduler (4 tests)
+
+#### Browser Desktop Entries & MIME Types (all 8 recipes)
+- **Full MIME type associations** on all 8 browser recipes: `text/html`, `text/xml`, `application/xhtml+xml`, `application/xml`, `application/vnd.mozilla.xul+xml`, `x-scheme-handler/http`, `x-scheme-handler/https`
+- **Desktop entries**: Proper `WMClass`, `GenericName`, `Icon`, `Categories` for Zen, Brave, LibreWolf, Vivaldi, Falkon, Midori
+- **Wayland launcher scripts**: Qt (`QT_QPA_PLATFORM=wayland`) for Falkon, Chromium flags for Brave/Vivaldi
+- Firefox and Chromium desktop entries updated with complete MIME types
+
 ## [2026.3.8-2] - 2026-03-08
 
 ### Added — Screen Capture and Recording

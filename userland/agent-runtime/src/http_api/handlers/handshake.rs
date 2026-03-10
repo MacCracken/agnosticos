@@ -50,6 +50,9 @@ pub async fn service_discovery_handler(State(state): State<ApiState>) -> impl In
         "pubsub-events",
         "batch-registration",
         "database-provisioning",
+        "model-management",
+        "inference-backend",
+        "training",
     ];
 
     let endpoints = serde_json::json!({
@@ -109,11 +112,19 @@ pub async fn service_discovery_handler(State(state): State<ApiState>) -> impl In
                 "codename": "hoosh",
                 "default_url": "http://127.0.0.1:8088",
                 "env_var": "AGNOS_GATEWAY_URL",
+                "status": "core",
             },
             "agent_runtime": {
                 "codename": "daimon",
                 "default_url": "http://127.0.0.1:8090",
                 "env_var": "AGNOS_RUNTIME_URL",
+                "status": "core",
+            },
+            "synapse": {
+                "name": "synapse",
+                "description": "LLM management and training service",
+                "default_url": "http://127.0.0.1:8080",
+                "status": "optional",
             },
         },
     }))

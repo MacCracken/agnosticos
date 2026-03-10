@@ -64,17 +64,27 @@ mkdir -p $PKG/usr/share/applications
 cat > $PKG/usr/share/applications/falkon.desktop << 'EOF'
 [Desktop Entry]
 Name=Falkon
-Comment=Browse the Web — Lightweight
-GenericName=Web Browser
+Comment=Lightweight Qt-based web browser
+GenericName=Falkon
 Exec=falkon %u
 Icon=falkon
 Terminal=false
 Type=Application
-MimeType=text/html;text/xml;application/xhtml+xml;x-scheme-handler/http;x-scheme-handler/https;
-Categories=Network;WebBrowser;
+MimeType=text/html;text/xml;application/xhtml+xml;application/xml;application/vnd.mozilla.xul+xml;x-scheme-handler/http;x-scheme-handler/https;
+Categories=Network;WebBrowser;Qt;KDE;
 StartupNotify=true
 StartupWMClass=falkon
 EOF
+
+# Launcher script with Wayland via Qt platform
+mkdir -p $PKG/usr/bin
+cat > $PKG/usr/bin/falkon << 'LAUNCHER'
+#!/bin/sh
+# AGNOS Falkon launcher — Wayland-native via Qt
+export QT_QPA_PLATFORM=wayland
+exec /usr/lib/falkon/falkon "$@"
+LAUNCHER
+chmod +x $PKG/usr/bin/falkon
 """
 
 [security]

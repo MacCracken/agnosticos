@@ -144,6 +144,47 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # ---------------------------------------------------------------------------
+# Cross-compilation toolchains (arm64, armhf, riscv64)
+# ---------------------------------------------------------------------------
+RUN dpkg --add-architecture arm64 && \
+    dpkg --add-architecture armhf && \
+    apt-get update && apt-get install -y --no-install-recommends \
+    # ARM64 (aarch64) cross toolchain
+    gcc-aarch64-linux-gnu \
+    g++-aarch64-linux-gnu \
+    binutils-aarch64-linux-gnu \
+    # ARMv7 (armhf) cross toolchain
+    gcc-arm-linux-gnueabihf \
+    g++-arm-linux-gnueabihf \
+    binutils-arm-linux-gnueabihf \
+    # RISC-V 64 cross toolchain (if available)
+    gcc-riscv64-linux-gnu \
+    g++-riscv64-linux-gnu \
+    binutils-riscv64-linux-gnu \
+    # QEMU user-mode emulation (for running cross-built test binaries)
+    qemu-user-static \
+    binfmt-support \
+    # Cross-arch pkg-config support
+    crossbuild-essential-arm64 \
+    crossbuild-essential-armhf \
+    && rm -rf /var/lib/apt/lists/*
+
+# ---------------------------------------------------------------------------
+# Rust cross-compilation targets
+# ---------------------------------------------------------------------------
+RUN rustup target add aarch64-unknown-linux-gnu \
+                      armv7-unknown-linux-gnueabihf \
+                      riscv64gc-unknown-linux-gnu \
+    2>/dev/null || true
+
+# ---------------------------------------------------------------------------
+# Ed25519 signing support (for ark-sign.sh)
+# ---------------------------------------------------------------------------
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    xxd \
+    && rm -rf /var/lib/apt/lists/*
+
+# ---------------------------------------------------------------------------
 # Create build user (non-root builds)
 # ---------------------------------------------------------------------------
 RUN useradd --system --create-home --shell /bin/bash takumi \
@@ -153,7 +194,8 @@ RUN useradd --system --create-home --shell /bin/bash takumi \
 # Copy the build scripts
 COPY scripts/ark-build.sh /usr/local/bin/ark-build
 COPY scripts/ark-build-all.sh /usr/local/bin/ark-build-all
-RUN chmod +x /usr/local/bin/ark-build /usr/local/bin/ark-build-all
+COPY scripts/ark-sign.sh /usr/local/bin/ark-sign
+RUN chmod +x /usr/local/bin/ark-build /usr/local/bin/ark-build-all /usr/local/bin/ark-sign
 
 WORKDIR /build
 USER takumi

@@ -1,0 +1,154 @@
+# Synapse — LLM management and training tool for AGNOS marketplace
+# Download, run, and fine-tune language models via CLI, REST/gRPC API,
+# or desktop app. Supports llama.cpp, Candle, Ollama, vLLM, ONNX,
+# TensorRT backends. LoRA/QLoRA/full fine-tuning, DPO, RLHF, distillation.
+# Built in Rust; OpenAI-compatible API for drop-in replacement.
+#
+# Status: STUB — no GitHub releases yet. Recipe ready for when CI ships binaries.
+
+[package]
+name = "synapse"
+version = "2026.3.10"
+description = "Synapse — LLM management and training tool"
+license = "MIT"
+groups = ["server", "ai", "llm", "rust"]
+release = 1
+arch = "x86_64"
+
+[source]
+# Rust binary built by GitHub Actions CI (when releases are available).
+# Release: https://github.com/MacCracken/synapse/releases
+# Expected asset: synapse-linux-amd64.tar.gz or synapse-linux-x64
+local = true
+build_dir = "target/release"
+github_release = "MacCracken/synapse"
+release_asset = "synapse-linux-*"
+
+[depends]
+runtime = [
+    "glibc",
+    "openssl",
+    "sqlite",
+    "zlib",
+]
+build = [
+    "rust",
+    "openssl-dev",
+    "zlib-dev",
+    "protobuf",
+]
+
+[marketplace]
+category = "ai-platform"
+runtime = "native-binary"
+publisher = "Synapse"
+tags = ["llm", "ai", "training", "fine-tuning", "inference", "model-management", "rust", "openai-compatible"]
+min_agnos_version = "2026.3.10"
+
+[marketplace.sandbox]
+seccomp_mode = "desktop"
+network_access = true
+allowed_hosts = [
+    "localhost",
+    "127.0.0.1",
+    # HuggingFace model hub
+    "huggingface.co", "*.huggingface.co",
+    "hf.co", "*.hf.co",
+    # OCI registries
+    "ghcr.io",
+    "registry.ollama.ai",
+    # AI providers (OpenAI-compatible proxy mode)
+    "api.anthropic.com",
+    "api.openai.com",
+    "api.groq.com",
+    "api.deepseek.com",
+    "api.mistral.ai",
+    "openrouter.ai",
+]
+data_dir = "~/.synapse/"
+
+[[marketplace.sandbox.landlock]]
+path = "~/.synapse/"
+access = "rw"
+
+[[marketplace.sandbox.landlock]]
+path = "/tmp"
+access = "rw"
+
+# GPU device access for inference/training
+[[marketplace.sandbox.landlock]]
+path = "/dev/dri"
+access = "rw"
+
+# CUDA/ROCm libraries
+[[marketplace.sandbox.landlock]]
+path = "/usr/lib/cuda"
+access = "ro"
+
+[[marketplace.sandbox.landlock]]
+path = "/opt/rocm"
+access = "ro"
+
+# IPC with AGNOS agent runtime (daimon) and LLM gateway (hoosh)
+[[marketplace.sandbox.landlock]]
+path = "/run/agnos/"
+access = "rw"
+
+[marketplace.services]
+# Synapse REST API + gRPC
+ports = [8080]
+depends_on = ["llm-gateway"]
+
+[build]
+pre_build = ""
+configure = ""
+make = "cargo build --release"
+check = "cargo test"
+install = """
+# Install the single binary
+mkdir -p $PKG/usr/lib/synapse/bin
+cp target/release/synapse $PKG/usr/lib/synapse/bin/synapse
+chmod +x $PKG/usr/lib/synapse/bin/synapse
+
+# Symlink into PATH
+mkdir -p $PKG/usr/bin
+ln -sf /usr/lib/synapse/bin/synapse $PKG/usr/bin/synapse
+
+# Default config directory
+mkdir -p $PKG/etc/synapse
+
+# Desktop entry for aethersafha
+mkdir -p $PKG/usr/share/applications
+cat > $PKG/usr/share/applications/synapse.desktop << 'EOF'
+[Desktop Entry]
+Name=Synapse
+Comment=LLM management and training tool
+GenericName=LLM Manager
+Exec=synapse serve
+Icon=synapse
+Terminal=false
+Type=Application
+Categories=Development;ArtificialIntelligence;
+StartupNotify=true
+StartupWMClass=synapse
+EOF
+
+# Systemd service unit
+mkdir -p $PKG/usr/lib/systemd/user
+cat > $PKG/usr/lib/systemd/user/synapse.service << 'EOF'
+[Unit]
+Description=Synapse LLM Management Service
+After=network.target agnos-llm-gateway.service
+Wants=agnos-llm-gateway.service
+
+[Service]
+Type=simple
+ExecStart=/usr/lib/synapse/bin/synapse serve
+Environment=SYNAPSE_DATA_DIR=%h/.synapse
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+EOF
+"""

@@ -1,12 +1,13 @@
 # Photis Nadi — Productivity app for AGNOS marketplace
 # Cross-platform Kanban task management + daily rituals app.
-# Built with Flutter; packaged as .agnos-agent via agpkg pack-flutter.
+# Built with Flutter; CI releases on GitHub.
 #
-# Status: Ready for packaging — Photis Nadi 2026.3.9-1 is feature-complete.
+# Status: Ready for packaging — Photis Nadi 2026.3.10 is feature-complete.
+# Release asset: photisnadi-20260310-linux-x64.tar.gz (~20 MB)
 
 [package]
 name = "photisnadi"
-version = "2026.3.9"
+version = "2026.3.10"
 description = "Photis Nadi — Kanban task management with daily rituals"
 license = "MIT"
 groups = ["desktop", "productivity", "flutter"]
@@ -14,10 +15,13 @@ release = 1
 arch = "x86_64"
 
 [source]
-# Built from local Flutter project; no upstream tarball.
-# Build with: flutter build linux --release
+# Flutter app built by GitHub Actions CI.
+# Release: https://github.com/MacCracken/PhotisNadi/releases
+# Asset: photisnadi-YYYYMMDD-linux-x64.tar.gz
 local = true
 build_dir = "build/linux/x64/release/bundle"
+github_release = "MacCracken/PhotisNadi"
+release_asset = "photisnadi-*-linux-x64.tar.gz"
 
 [depends]
 runtime = [
@@ -45,7 +49,7 @@ category = "productivity"
 runtime = "flutter"
 publisher = "Photis Nadi"
 tags = ["kanban", "productivity", "rituals", "task-management", "flutter"]
-min_agnos_version = "2026.3.8"
+min_agnos_version = "2026.3.10"
 
 [marketplace.sandbox]
 seccomp_mode = "desktop"
