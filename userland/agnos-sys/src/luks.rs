@@ -213,10 +213,20 @@ impl LuksKey {
     }
 
     /// Create a key from a passphrase string.
+    ///
+    /// **Note**: This converts the passphrase directly to bytes for passing to
+    /// `cryptsetup` via stdin. `cryptsetup` performs its own PBKDF2/Argon2
+    /// key derivation internally — do NOT use this as a standalone key
+    /// derivation function.
     pub fn from_passphrase(passphrase: &str) -> Result<Self> {
         if passphrase.is_empty() {
             return Err(SysError::InvalidArgument(
                 "Passphrase cannot be empty".into(),
+            ));
+        }
+        if passphrase.len() < 8 {
+            return Err(SysError::InvalidArgument(
+                "Passphrase too short (minimum 8 characters)".into(),
             ));
         }
         Ok(Self {
@@ -676,10 +686,11 @@ fn run_cmd_with_output(cmd: &str, args: &[&str]) -> Result<String> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
+        // Don't log args — they may contain key file paths or sensitive data
         return Err(SysError::Unknown(format!(
-            "{} {} failed: {}",
+            "{} failed (exit {}): {}",
             cmd,
-            args.join(" "),
+            output.status.code().unwrap_or(-1),
             stderr.trim()
         )));
     }
@@ -697,10 +708,11 @@ fn run_cmd_checked(cmd: &str, args: &[&str]) -> Result<()> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
+        // Don't log args — they may contain key file paths or sensitive data
         return Err(SysError::Unknown(format!(
-            "{} {} failed: {}",
+            "{} failed (exit {}): {}",
             cmd,
-            args.join(" "),
+            output.status.code().unwrap_or(-1),
             stderr.trim()
         )));
     }
@@ -734,10 +746,11 @@ fn run_cmd_stdin(cmd: &str, args: &[&str], stdin_data: &[u8]) -> Result<()> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
+        // Don't log args — they may contain key file paths or sensitive data
         return Err(SysError::Unknown(format!(
-            "{} {} failed: {}",
+            "{} failed (exit {}): {}",
             cmd,
-            args.join(" "),
+            output.status.code().unwrap_or(-1),
             stderr.trim()
         )));
     }
@@ -1609,5 +1622,22 @@ mod tests {
     #[test]
     fn test_dmcrypt_supported_does_not_panic() {
         let _ = dmcrypt_supported();
+    }
+
+    #[test]
+    fn test_luks_key_from_passphrase_rejects_short() {
+        assert!(LuksKey::from_passphrase("short").is_err());
+        assert!(LuksKey::from_passphrase("1234567").is_err());
+    }
+
+    #[test]
+    fn test_luks_key_from_passphrase_accepts_valid() {
+        assert!(LuksKey::from_passphrase("validpass").is_ok());
+        assert!(LuksKey::from_passphrase("a-longer-passphrase-here").is_ok());
+    }
+
+    #[test]
+    fn test_luks_key_from_passphrase_rejects_empty() {
+        assert!(LuksKey::from_passphrase("").is_err());
     }
 }

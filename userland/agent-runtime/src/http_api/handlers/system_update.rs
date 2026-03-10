@@ -56,12 +56,14 @@ pub async fn system_update_check_handler(
 ) -> impl IntoResponse {
     let mut config = agnos_sys::update::UpdateConfig::default();
     if let Some(url) = req.update_url {
-        // Prevent SSRF: only allow HTTPS URLs to known update server domains
-        let allowed_hosts = ["updates.agnos.org", "releases.agnos.org"];
-        let is_allowed = url.starts_with("https://")
-            && allowed_hosts.iter().any(|host| {
-                url.starts_with(&format!("https://{}/", host)) || url == format!("https://{}", host)
-            });
+        // Prevent SSRF: only allow HTTPS URLs to known update server domains.
+        // Extract host by stripping "https://" prefix and taking up to next '/' or end.
+        let allowed_hosts: &[&str] = &["updates.agnos.org", "releases.agnos.org"];
+        let is_allowed = url.strip_prefix("https://").is_some_and(|rest| {
+            let host = rest.split('/').next().unwrap_or("");
+            // Reject URLs with userinfo (user:pass@host), port, or empty host
+            !host.contains('@') && !host.contains(':') && allowed_hosts.contains(&host)
+        });
         if !is_allowed {
             return (
                 StatusCode::BAD_REQUEST,

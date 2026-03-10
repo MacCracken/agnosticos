@@ -81,6 +81,10 @@ pre_build = ""
 configure = ""
 make = "flutter build linux --release"
 check = "flutter test"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
 install = """
 # Pack Flutter frontend as .agnos-agent bundle
 agpkg pack-flutter --build-dir build/linux/x64/release/bundle \

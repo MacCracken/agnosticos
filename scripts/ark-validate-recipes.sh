@@ -78,12 +78,16 @@ for recipe in "$RECIPE_DIR"/*.toml; do
         fi
     done
 
-    # Required [source] fields
-    if ! grep -q '^url = ' "$recipe"; then
-        err "$basename: missing [source].url"
-    fi
-    if ! grep -q '^sha256 = ' "$recipe"; then
-        err "$basename: missing [source].sha256"
+    # Required [source] fields (skip url/sha256 for local builds)
+    if grep -q '^local = true' "$recipe"; then
+        : # Local builds don't need url/sha256
+    else
+        if ! grep -q '^url = ' "$recipe"; then
+            err "$basename: missing [source].url"
+        fi
+        if ! grep -q '^sha256 = ' "$recipe"; then
+            err "$basename: missing [source].sha256"
+        fi
     fi
 
     # Required [depends] fields

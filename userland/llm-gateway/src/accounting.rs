@@ -32,16 +32,20 @@ impl TokenAccounting {
         let entry = agent_usage
             .entry(agent_id)
             .or_insert_with(TokenUsage::default);
-        entry.prompt_tokens += usage.prompt_tokens;
-        entry.completion_tokens += usage.completion_tokens;
-        entry.total_tokens += usage.total_tokens;
+        entry.prompt_tokens = entry.prompt_tokens.saturating_add(usage.prompt_tokens);
+        entry.completion_tokens = entry
+            .completion_tokens
+            .saturating_add(usage.completion_tokens);
+        entry.total_tokens = entry.total_tokens.saturating_add(usage.total_tokens);
         drop(agent_usage);
 
         // Update total usage
         let mut total = self.total_usage.write().await;
-        total.prompt_tokens += usage.prompt_tokens;
-        total.completion_tokens += usage.completion_tokens;
-        total.total_tokens += usage.total_tokens;
+        total.prompt_tokens = total.prompt_tokens.saturating_add(usage.prompt_tokens);
+        total.completion_tokens = total
+            .completion_tokens
+            .saturating_add(usage.completion_tokens);
+        total.total_tokens = total.total_tokens.saturating_add(usage.total_tokens);
 
         debug!(
             "Recorded usage for agent {}: {} tokens (total: {})",
@@ -1564,5 +1568,32 @@ mod tests {
         };
         let json = serde_json::to_string(&summary).unwrap();
         assert!(json.contains("\"pool_name\":\"pool\""));
+    }
+
+    #[tokio::test]
+    async fn test_record_usage_saturates_instead_of_overflow() {
+        let accounting = TokenAccounting::new();
+        let agent_id = AgentId::new();
+
+        // Record usage near u32::MAX
+        let usage = TokenUsage {
+            prompt_tokens: u32::MAX - 10,
+            completion_tokens: u32::MAX - 10,
+            total_tokens: u32::MAX - 10,
+        };
+        accounting.record_usage(agent_id.clone(), usage).await;
+
+        // Record more — should saturate at u32::MAX, not wrap to 0
+        let usage2 = TokenUsage {
+            prompt_tokens: 100,
+            completion_tokens: 100,
+            total_tokens: 100,
+        };
+        accounting.record_usage(agent_id.clone(), usage2).await;
+
+        let result = accounting.get_usage(agent_id).await.unwrap();
+        assert_eq!(result.prompt_tokens, u32::MAX);
+        assert_eq!(result.completion_tokens, u32::MAX);
+        assert_eq!(result.total_tokens, u32::MAX);
     }
 }

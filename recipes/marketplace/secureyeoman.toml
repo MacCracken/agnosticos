@@ -132,6 +132,10 @@ npm run build:binary
 check = """
 npm run test
 """
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
 install = """
 # Install the single binary
 mkdir -p $PKG/usr/lib/secureyeoman/bin

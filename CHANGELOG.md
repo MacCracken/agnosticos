@@ -24,6 +24,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Leaf dependencies** (17 recipes): libevdev, mtdev, flac, libogg, libvorbis, yajl, go, conmon, cni-plugins, slirp4netns, llvm + others
 - **`scripts/ark-validate-recipes.sh`**: Fixed to resolve dependencies across all recipe directories (not just the one being validated)
 
+### Security — Audit Rounds 11-15 (Critical/High Focus)
+
+#### Round 11: HTTP API Hardening
+- **audit.rs**: Added pagination (offset/limit) with `AUDIT_LIST_MAX_LIMIT=1000` — prevents DoS via unbounded list requests
+- **marketplace.rs**: Capped search results to 100 (`MARKETPLACE_SEARCH_MAX_RESULTS`) — prevents memory exhaustion
+- **marketplace.rs** + **rag.rs**: Redacted filesystem error details in path validation — prevents information disclosure
+- **dashboard.rs**: Added bounds on agents list (max 500) and metadata entries (max 50) — prevents memory exhaustion
+- **system_update.rs**: Strengthened URL validation — proper host extraction rejects userinfo (`@`), ports, and subdomain tricks
+
+#### Round 12: Crypto & Credential Security
+- **accounting.rs**: Changed `+=` to `saturating_add()` for token counters — prevents u32 overflow that could reset rate-limiting
+- **providers.rs**: Moved Google API key from URL query parameter to `x-goog-api-key` header (3 endpoints) — prevents credential leakage in logs/caches
+- **luks.rs**: Removed args from error messages (3 functions) — prevents key material leakage in error logs
+- **cache.rs**: Upgraded cache key from 64-bit to 128-bit (dual SipHash) — makes birthday collision attacks infeasible
+
+#### Round 13: Injection Prevention
+- **misc.rs**: Added shell metacharacter validation for pipeline stages — blocks command injection via `;`, `&`, `` ` ``, `$()`, etc.
+- **remote_client.rs**: Added `validate_path_segment()` for package names/versions — blocks SSRF via path traversal (`../`, `\`, null bytes)
+- **network.rs**: Added `validate_target()` for network tool targets — blocks shell injection via semicolons, pipes, backticks in scan targets
+
+#### Round 14: Auth & Validation
+- **federation.rs**: Added node_id format validation (alphanumeric + hyphens/underscores only) and name length validation — prevents malicious node registration
+- **luks.rs**: Added minimum passphrase length (8 chars) — prevents weak passphrases
+
+#### Round 15: Test Coverage for Security Fixes
+- Added 28 new tests across 7 files covering all security fixes above:
+  - Pipeline injection (4 tests), network target validation (11 tests)
+  - Path traversal validation (1 test), token overflow saturation (1 test)
+  - Audit pagination (1 test), dashboard bounds (1 test), SSRF URL rejection (1 test)
+  - Federation node validation (3 tests), LUKS passphrase length (3 tests)
+
 ### Fixed — Docker Base Images
 
 - **`Dockerfile.node`**: Added `unzip` to apt-get install — required by Bun installer script

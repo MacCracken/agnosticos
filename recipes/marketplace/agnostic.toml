@@ -99,6 +99,10 @@ pip install --no-cache-dir -r requirements.txt
 configure = ""
 make = "docker build -t agnostic ."
 check = "python run_tests.py --unit"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
 install = """
 # Agnostic runs as a container managed by daimon.
 # Install the container image and systemd-style service unit.

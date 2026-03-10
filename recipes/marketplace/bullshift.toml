@@ -82,6 +82,10 @@ pre_build = ""
 configure = ""
 make = "cargo build --release"
 check = "cargo test"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
 install = """
 # Install the single binary
 mkdir -p $PKG/usr/lib/bullshift/bin

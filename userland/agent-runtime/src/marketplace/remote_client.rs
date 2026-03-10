@@ -200,8 +200,24 @@ impl RegistryClient {
         Ok(results)
     }
 
+    /// Validate that a package name or version does not contain path traversal characters.
+    fn validate_path_segment(value: &str, label: &str) -> Result<()> {
+        if value.is_empty()
+            || value.contains('/')
+            || value.contains('\\')
+            || value.contains("..")
+            || value.contains('\0')
+        {
+            anyhow::bail!("Invalid {}: contains disallowed characters", label);
+        }
+        Ok(())
+    }
+
     /// Fetch manifest for a specific package version.
     pub async fn fetch_manifest(&self, name: &str, version: &str) -> Result<MarketplaceManifest> {
+        Self::validate_path_segment(name, "package name")?;
+        Self::validate_path_segment(version, "version")?;
+
         if self.offline {
             return self.cached_manifest(name, version);
         }
@@ -237,6 +253,9 @@ impl RegistryClient {
 
     /// Download a package tarball.
     pub async fn download_package(&self, name: &str, version: &str) -> Result<PathBuf> {
+        Self::validate_path_segment(name, "package name")?;
+        Self::validate_path_segment(version, "version")?;
+
         if self.offline {
             anyhow::bail!("Cannot download in offline mode");
         }
@@ -699,6 +718,20 @@ mod tests {
         // "é" is U+00E9, encoded as two UTF-8 bytes: 0xC3, 0xA9
         let encoded = url_encode("café");
         assert_eq!(encoded, "caf%C3%A9");
+    }
+
+    #[test]
+    fn test_validate_path_segment_rejects_traversal() {
+        use super::*;
+        // Path traversal
+        assert!(RegistryClient::validate_path_segment("../etc/passwd", "name").is_err());
+        assert!(RegistryClient::validate_path_segment("foo/bar", "name").is_err());
+        assert!(RegistryClient::validate_path_segment("foo\\bar", "name").is_err());
+        assert!(RegistryClient::validate_path_segment("", "name").is_err());
+        assert!(RegistryClient::validate_path_segment("foo\0bar", "name").is_err());
+        // Valid names
+        assert!(RegistryClient::validate_path_segment("my-app", "name").is_ok());
+        assert!(RegistryClient::validate_path_segment("1.0.0", "version").is_ok());
     }
 
     #[test]

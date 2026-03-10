@@ -872,15 +872,13 @@ impl GoogleProvider {
 #[async_trait]
 impl LlmProvider for GoogleProvider {
     async fn infer(&self, request: &InferenceRequest) -> anyhow::Result<InferenceResponse> {
-        let url = format!(
-            "{}/models/{}:generateContent?key={}",
-            self.base_url, request.model, self.api_key.0
-        );
+        let url = format!("{}/models/{}:generateContent", self.base_url, request.model);
 
         let response = self
             .client
             .post(&url)
             .header("content-type", "application/json")
+            .header("x-goog-api-key", &self.api_key.0)
             .json(&serde_json::json!({
                 "contents": [{"parts": [{"text": request.prompt}]}],
                 "generationConfig": {
@@ -944,15 +942,17 @@ impl LlmProvider for GoogleProvider {
     ) -> anyhow::Result<mpsc::Receiver<anyhow::Result<String>>> {
         let (tx, rx) = mpsc::channel(100);
         let url = format!(
-            "{}/models/{}:streamGenerateContent?key={}&alt=sse",
-            self.base_url, request.model, self.api_key.0
+            "{}/models/{}:streamGenerateContent?alt=sse",
+            self.base_url, request.model
         );
         let client = self.client.clone();
+        let api_key = self.api_key.0.clone();
 
         tokio::spawn(async move {
             let resp = client
                 .post(&url)
                 .header("content-type", "application/json")
+                .header("x-goog-api-key", &api_key)
                 .json(&serde_json::json!({
                     "contents": [{"parts": [{"text": request.prompt}]}],
                     "generationConfig": {
@@ -1022,8 +1022,13 @@ impl LlmProvider for GoogleProvider {
     }
 
     async fn list_models(&self) -> anyhow::Result<Vec<agnos_common::ModelInfo>> {
-        let url = format!("{}/models?key={}", self.base_url, self.api_key.0);
-        let response = self.client.get(&url).send().await?;
+        let url = format!("{}/models", self.base_url);
+        let response = self
+            .client
+            .get(&url)
+            .header("x-goog-api-key", &self.api_key.0)
+            .send()
+            .await?;
 
         let status = response.status();
         if !status.is_success() {

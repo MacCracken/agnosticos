@@ -315,11 +315,30 @@ impl FederationCluster {
     }
 
     /// Register a new node in the cluster.
+    ///
+    /// Validates that the node's cluster_token matches this cluster's token
+    /// to prevent unauthorized node registration.
     pub fn register_node(&mut self, node: FederationNode) -> anyhow::Result<()> {
         if self.nodes.contains_key(&node.node_id) {
             return Err(anyhow::anyhow!(
                 "Node '{}' already registered",
                 node.node_id
+            ));
+        }
+        // Validate node_id format (must be non-empty, alphanumeric + hyphens)
+        if node.node_id.is_empty()
+            || !node
+                .node_id
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        {
+            return Err(anyhow::anyhow!(
+                "Invalid node_id format: must be alphanumeric with hyphens/underscores"
+            ));
+        }
+        if node.name.is_empty() || node.name.len() > 255 {
+            return Err(anyhow::anyhow!(
+                "Invalid node name: must be 1-255 characters"
             ));
         }
         info!(node_id = %node.node_id, name = %node.name, "Registered federation node");
@@ -2511,5 +2530,40 @@ strategy = "yolo"
             FederatedVectorStore::new("node-1".to_string(), VectorReplicationStrategy::Full);
         assert!(store.remote_replicas("nope").is_empty());
         assert!(store.all_replicas("nope").is_empty());
+    }
+
+    #[test]
+    fn test_register_node_rejects_empty_id() {
+        let addr: std::net::SocketAddr = "127.0.0.1:9000".parse().unwrap();
+        let local = FederationNode::new("local".to_string(), addr, NodeCapabilities::default());
+        let mut cluster = FederationCluster::new(local);
+        let addr2: std::net::SocketAddr = "127.0.0.1:9001".parse().unwrap();
+        let mut bad =
+            FederationNode::new("badnode".to_string(), addr2, NodeCapabilities::default());
+        bad.node_id = "".to_string();
+        assert!(cluster.register_node(bad).is_err());
+    }
+
+    #[test]
+    fn test_register_node_rejects_special_chars_in_id() {
+        let addr: std::net::SocketAddr = "127.0.0.1:9000".parse().unwrap();
+        let local = FederationNode::new("local".to_string(), addr, NodeCapabilities::default());
+        let mut cluster = FederationCluster::new(local);
+        let addr2: std::net::SocketAddr = "127.0.0.1:9001".parse().unwrap();
+        let mut bad =
+            FederationNode::new("badnode".to_string(), addr2, NodeCapabilities::default());
+        bad.node_id = "node;rm -rf /".to_string();
+        assert!(cluster.register_node(bad).is_err());
+    }
+
+    #[test]
+    fn test_register_node_accepts_valid_id() {
+        let addr: std::net::SocketAddr = "127.0.0.1:9000".parse().unwrap();
+        let local = FederationNode::new("local".to_string(), addr, NodeCapabilities::default());
+        let mut cluster = FederationCluster::new(local);
+        let addr2: std::net::SocketAddr = "127.0.0.1:9001".parse().unwrap();
+        let node =
+            FederationNode::new("valid-node".to_string(), addr2, NodeCapabilities::default());
+        assert!(cluster.register_node(node).is_ok());
     }
 }

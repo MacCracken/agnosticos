@@ -67,14 +67,19 @@ pub async fn marketplace_installed_handler(State(state): State<ApiState>) -> imp
     }))
 }
 
+/// Maximum search results returned per query.
+const MARKETPLACE_SEARCH_MAX_RESULTS: usize = 100;
+
 pub async fn marketplace_search_handler(
     State(state): State<ApiState>,
     Query(params): Query<MarketplaceSearchQuery>,
 ) -> impl IntoResponse {
     let registry = state.marketplace_registry.read().await;
-    let results: Vec<serde_json::Value> = registry
-        .search(&params.q)
+    let all_results = registry.search(&params.q);
+    let total = all_results.len();
+    let results: Vec<serde_json::Value> = all_results
         .iter()
+        .take(MARKETPLACE_SEARCH_MAX_RESULTS)
         .map(|p| {
             serde_json::json!({
                 "name": p.name(),
@@ -87,7 +92,8 @@ pub async fn marketplace_search_handler(
         .collect();
     Json(serde_json::json!({
         "results": results,
-        "total": results.len(),
+        "total": total,
+        "returned": results.len(),
         "query": params.q,
     }))
 }
@@ -100,10 +106,10 @@ pub async fn marketplace_install_handler(
     let raw_path = std::path::Path::new(&req.path);
     let canonical = match raw_path.canonicalize() {
         Ok(p) => p,
-        Err(e) => {
+        Err(_) => {
             return (
                 StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({"error": format!("Invalid path: {}", e)})),
+                Json(serde_json::json!({"error": "Invalid or inaccessible path"})),
             )
                 .into_response();
         }

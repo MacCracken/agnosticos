@@ -1026,7 +1026,7 @@ mod tests {
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["total"], 1);
 
-        // Limit
+        // Limit — total reflects all matching events, returned page is bounded
         let req = Request::builder()
             .uri("/v1/audit?limit=1")
             .body(Body::empty())
@@ -1036,7 +1036,106 @@ mod tests {
             .await
             .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        assert_eq!(json["total"], 1);
+        assert_eq!(json["total"], 3); // total is unfiltered count
+        assert_eq!(json["events"].as_array().unwrap().len(), 1); // only 1 returned
+        assert_eq!(json["limit"], 1);
+    }
+
+    #[tokio::test]
+    async fn test_list_audit_pagination() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        // Submit 5 events
+        let req_body = serde_json::json!({
+            "source": "test",
+            "events": [
+                {"timestamp": "t1", "action": "read", "agent": "a1", "details": {}, "outcome": "ok"},
+                {"timestamp": "t2", "action": "read", "agent": "a2", "details": {}, "outcome": "ok"},
+                {"timestamp": "t3", "action": "read", "agent": "a3", "details": {}, "outcome": "ok"},
+                {"timestamp": "t4", "action": "read", "agent": "a4", "details": {}, "outcome": "ok"},
+                {"timestamp": "t5", "action": "read", "agent": "a5", "details": {}, "outcome": "ok"}
+            ]
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/audit/forward")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        app.clone().oneshot(req).await.unwrap();
+
+        // Page: offset=2, limit=2 — should return events 3 and 4
+        let req = Request::builder()
+            .uri("/v1/audit?offset=2&limit=2")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["total"], 5);
+        assert_eq!(json["events"].as_array().unwrap().len(), 2);
+        assert_eq!(json["offset"], 2);
+        assert_eq!(json["limit"], 2);
+    }
+
+    #[tokio::test]
+    async fn test_dashboard_sync_rejects_too_many_metadata() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        // Build a payload with 51 metadata entries
+        let mut metadata = serde_json::Map::new();
+        for i in 0..51 {
+            metadata.insert(format!("key{}", i), serde_json::json!(format!("val{}", i)));
+        }
+        let req_body = serde_json::json!({
+            "source": "test",
+            "agents": [{"name": "a1", "status": "running"}],
+            "metadata": metadata
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/dashboard/sync")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_system_update_rejects_ssrf_url() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        // Try SSRF via subdomain trick: updates.agnos.org.evil.com
+        let req_body = serde_json::json!({
+            "update_url": "https://updates.agnos.org.evil.com/payload"
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/system/update/check")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+        // Try SSRF via userinfo: user@evil.com
+        let req_body = serde_json::json!({
+            "update_url": "https://attacker@updates.agnos.org/"
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/system/update/check")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     }
 
     #[tokio::test]

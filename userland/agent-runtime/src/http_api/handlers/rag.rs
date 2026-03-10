@@ -167,10 +167,10 @@ pub async fn knowledge_index_handler(
     let index_path = std::path::Path::new(&req.path);
     let canonical = match index_path.canonicalize() {
         Ok(p) => p,
-        Err(e) => {
+        Err(_) => {
             return (
                 StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({"error": format!("Invalid path: {}", e)})),
+                Json(serde_json::json!({"error": "Invalid or inaccessible path"})),
             )
                 .into_response();
         }

@@ -47,16 +47,28 @@ impl ResponseCache {
 
     /// Generate a cache key from a request by hashing its contents.
     ///
-    /// Uses `DefaultHasher` to produce a fixed-size key regardless of prompt length,
-    /// keeping HashMap operations O(1) even for large prompts.
+    /// Uses two independent SipHash passes to produce 128-bit keys,
+    /// making birthday collisions infeasible for cache poisoning.
     fn make_key(request: &InferenceRequest) -> String {
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        request.model.hash(&mut hasher);
-        request.prompt.hash(&mut hasher);
-        request.temperature.to_bits().hash(&mut hasher);
-        request.top_p.to_bits().hash(&mut hasher);
-        request.max_tokens.hash(&mut hasher);
-        format!("{:016x}", hasher.finish())
+        let hash1 = {
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            request.model.hash(&mut h);
+            request.prompt.hash(&mut h);
+            request.temperature.to_bits().hash(&mut h);
+            request.top_p.to_bits().hash(&mut h);
+            request.max_tokens.hash(&mut h);
+            h.finish()
+        };
+        let hash2 = {
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            request.max_tokens.hash(&mut h);
+            request.top_p.to_bits().hash(&mut h);
+            request.temperature.to_bits().hash(&mut h);
+            request.prompt.hash(&mut h);
+            request.model.hash(&mut h);
+            h.finish()
+        };
+        format!("{:016x}{:016x}", hash1, hash2)
     }
 
     /// Get a cached response if available and not expired.
@@ -591,8 +603,8 @@ mod tests {
         let key = ResponseCache::make_key(&request);
         assert_eq!(
             key.len(),
-            16,
-            "Key should be 16 hex chars regardless of prompt size"
+            32,
+            "Key should be 32 hex chars regardless of prompt size"
         );
     }
 
@@ -893,7 +905,7 @@ mod tests {
         ];
         for req in &cases {
             let key = ResponseCache::make_key(req);
-            assert_eq!(key.len(), 16, "Key length should always be 16 hex chars");
+            assert_eq!(key.len(), 32, "Key length should always be 32 hex chars");
         }
     }
 

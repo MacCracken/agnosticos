@@ -36,6 +36,9 @@ pub struct AuditForwardRequest {
     pub correlation_id: Option<String>,
 }
 
+/// Maximum number of audit events returned in a single list request.
+const AUDIT_LIST_MAX_LIMIT: usize = 1000;
+
 #[derive(Debug, Deserialize)]
 pub struct AuditQueryParams {
     #[serde(default)]
@@ -44,6 +47,8 @@ pub struct AuditQueryParams {
     pub action: Option<String>,
     #[serde(default)]
     pub limit: Option<usize>,
+    #[serde(default)]
+    pub offset: Option<usize>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -125,12 +130,15 @@ pub async fn list_audit_handler(
     if let Some(ref action) = params.action {
         events.retain(|e| e.action == *action);
     }
-    if let Some(limit) = params.limit {
-        events.truncate(limit);
-    }
 
-    let result: Vec<&AuditEvent> = events;
-    Json(serde_json::json!({"events": result, "total": result.len()}))
+    let total = events.len();
+    let offset = params.offset.unwrap_or(0).min(total);
+    let limit = params
+        .limit
+        .unwrap_or(AUDIT_LIST_MAX_LIMIT)
+        .min(AUDIT_LIST_MAX_LIMIT);
+    let page: Vec<&AuditEvent> = events.into_iter().skip(offset).take(limit).collect();
+    Json(serde_json::json!({"events": page, "total": total, "offset": offset, "limit": limit}))
 }
 
 pub async fn audit_chain_handler(

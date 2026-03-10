@@ -125,11 +125,27 @@ pub async fn dashboard_sync_handler(
             .into_response();
     }
 
-    // Validate agents list is not empty
+    // Validate agents list is not empty and bounded
     if req.agents.is_empty() {
         return (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": "Agents list must not be empty", "code": 400})),
+        )
+            .into_response();
+    }
+    if req.agents.len() > 500 {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "Too many agents (max 500)", "code": 400})),
+        )
+            .into_response();
+    }
+
+    // Bound metadata size to prevent memory exhaustion
+    if req.metadata.len() > 50 {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "Too many metadata entries (max 50)", "code": 400})),
         )
             .into_response();
     }
