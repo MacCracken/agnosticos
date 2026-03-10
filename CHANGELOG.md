@@ -74,7 +74,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`Dockerfile.python3.13`**: new Python 3.13 base image
 - **`Dockerfile.python3.14`**: new Python 3.14 RC base image
 - **`Dockerfile.rust`**: new Rust base image with libssl-dev, pkg-config
-- **CI publishing**: All 4 runtime images built and pushed to `ghcr.io/maccracken/agnosticos:<tag>` on each release (multi-arch: amd64 + arm64)
+- **`Dockerfile.python3.13t`**: new Python 3.13 free-threaded (GIL-disabled) base image with `PYTHON_GIL=0`
+- **CI publishing**: All 5 runtime images built and pushed to `ghcr.io/maccracken/agnosticos:<tag>` on each release (multi-arch: amd64 + arm64)
 
 #### Synapse AGNOS Integration (argonaut 78 tests, +10)
 - **New boot stage**: `BootStage::StartModelServices` between `StartLlmGateway` and `StartCompositor`
@@ -91,6 +92,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **GPU sandbox profile**: `SandboxPreset::GpuCompute` — Landlock rules for NVIDIA devices (nvidia0/1/ctl/uvm), AMD ROCm (/dev/kfd), DRI, CUDA/ROCm libraries (read-only), 4096 MB memory, HuggingFace network access (2 tests)
 - **HuggingFace model registry**: `ModelRegistry` — URL/path generation for model downloads (`hf_download_url`, `hf_api_url`, `local_model_path`, `local_repo_dir`, `model_manifest_entry`), default storage at `/var/lib/synapse/models/` (6 tests)
 - **Training job scheduling**: `TrainingMethod` enum (LoRA, QLoRA, FullFineTune, DPO, RLHF, Distillation) + `TrainingJobTemplate` — creates priority-6 GPU-requiring `ScheduledTask` entries for daimon scheduler (4 tests)
+
+#### Photis Nadi MCP Agent Bridge (mcp_server +6 tests)
+- **`PhotisBridge`**: HTTP proxy that forwards MCP tool calls to the real Photis Nadi API at `localhost:8081`
+  - Configurable via `PHOTISNADI_URL` and `PHOTISNADI_API_KEY` env vars
+  - `get()`, `post()`, `patch()` methods with Bearer auth and 10s timeout
+  - `health_check()` with 2s timeout for connectivity testing
+  - Graceful fallback to mock data when Photis Nadi is offline (marked with `_source: "mock"`)
+- **All 6 Photis tools bridged**: `photis_list_tasks` → `GET /api/v1/tasks`, `photis_create_task` → `POST /api/v1/tasks`, `photis_update_task` → `PATCH /api/v1/tasks/:id`, `photis_get_rituals` → `GET /api/v1/rituals`, `photis_analytics` → `GET /api/v1/analytics`, `photis_sync` → health check + status report
+
+#### gRPC API (14 tests)
+- **`grpc.rs`**: Proto-compatible Rust types and service definitions for gRPC alongside REST
+  - 5 gRPC services: `AgentService` (5 RPCs), `HealthService` (2), `VectorService` (3), `EventService` (2), `McpService` (2) — 14 total RPCs
+  - Package: `agnos.runtime.v1`, default port 8091
+  - Streaming support: `Watch` (health), `StreamSearch` (vectors), `Subscribe` (events) use `ServerStreaming`
+  - `GrpcConfig` with TOML parsing, TLS, reflection, max message size
+  - All message types JSON-serializable for REST↔gRPC compatibility
+
+#### Service Mesh Readiness (20 tests)
+- **`service_mesh.rs`**: Envoy/Linkerd/Istio sidecar injection support
+  - `MeshProvider` enum: `Envoy`, `Linkerd`, `None`
+  - `MeshConfig`: provider, mTLS, sidecar injection, service ports, health probes
+  - `sidecar_annotations()`: generates Istio/Linkerd-specific pod annotations
+  - `HealthProbe`: liveness (10s interval), readiness (5s), startup (2s, 15 retries)
+  - `MeshServiceDescriptor`: name, namespace, ports, labels, probes — for mesh registration
+  - `all_service_descriptors()`: daimon (8090), hoosh (8088), synapse (8080)
+  - Factory methods: `MeshConfig::for_envoy()`, `MeshConfig::for_linkerd()`
+
+#### Federated Vector Store (federation 73 tests, +18)
+- **`FederatedVectorStore`**: Shared vector store across federated nodes
+  - Collection replica tracking: which nodes host which collections, vector counts, sync timestamps
+  - Three replication strategies: `Full` (all nodes), `Partial` (configurable factor), `Sharded` (coordinator-assigned)
+  - Insert/search sync message generation for inter-node communication
+  - Collection announcements for peer discovery
+  - Result merging: cross-node search results deduplicated by vector ID, re-ranked by cosine score
+  - Replica node selection based on strategy and cluster health
+  - Stats: collection count, replica count, vectors across replicas, active nodes
+- **Wire protocol types**: `VectorSyncMessage` (Insert/Search/Delete/SyncManifest/AnnounceCollection), `VectorSyncEntry`, `RemoteSearchResult`, `CollectionReplica`
+- **18 new tests**: replica registration, deduplication, remote filtering, node removal, sync messages, result merging, replication strategies, serialization
 
 #### Browser Desktop Entries & MIME Types (all 8 recipes)
 - **Full MIME type associations** on all 8 browser recipes: `text/html`, `text/xml`, `application/xhtml+xml`, `application/xml`, `application/vnd.mozilla.xul+xml`, `x-scheme-handler/http`, `x-scheme-handler/https`

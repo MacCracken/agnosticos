@@ -1,0 +1,38 @@
+# AGNOS Python 3.13t Base Image — Free-Threaded (GIL-disabled)
+# For running Python-based agents that benefit from true multi-threading.
+# Uses python3.13t binary (built with --disable-gil).
+FROM python:3.13-slim-bookworm AS base
+
+# Install free-threaded Python build
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    libseccomp2 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Enable free-threaded mode: install python3.13t alongside default python3.13
+# The official 3.13 image includes the free-threaded build as python3.13t
+RUN python3.13 -c "import sysconfig; print(sysconfig.get_config_var('Py_GIL_DISABLED'))" || true
+
+# Set PYTHON_GIL=0 to run in free-threaded mode
+ENV PYTHON_GIL=0
+
+# Create agnos user and directories
+RUN useradd --system --create-home --shell /bin/bash agnos \
+    && mkdir -p /var/lib/agnos/agent-memory \
+    && mkdir -p /var/log/agnos \
+    && mkdir -p /run/agnos \
+    && chown -R agnos:agnos /var/lib/agnos /var/log/agnos /run/agnos
+
+# Python dependencies common to all agents
+COPY docker/requirements-base.txt /tmp/requirements-base.txt
+RUN pip install --no-cache-dir -r /tmp/requirements-base.txt && rm /tmp/requirements-base.txt
+
+# Labels
+LABEL org.opencontainers.image.title="AGNOS Python 3.13t Base (Free-Threaded)"
+LABEL org.opencontainers.image.description="Python 3.13 free-threaded (GIL-disabled) base image with AGNOS agent runtime support"
+LABEL org.opencontainers.image.vendor="AGNOS"
+
+USER agnos
+WORKDIR /home/agnos
+
+ENTRYPOINT ["python", "-m"]

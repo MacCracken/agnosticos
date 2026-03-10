@@ -10,6 +10,7 @@ pub mod database;
 pub mod explainability;
 pub mod federation;
 pub mod file_watcher;
+pub mod grpc;
 pub mod finetune;
 pub mod formal_verify;
 pub mod http_api;
@@ -42,6 +43,7 @@ pub mod sandbox_v2;
 pub mod scheduler;
 pub mod seccomp_profiles;
 pub mod service_manager;
+pub mod service_mesh;
 pub mod sigil;
 pub mod supervisor;
 pub mod swarm;
@@ -85,9 +87,11 @@ pub use explainability::{
     FactorType,
 };
 pub use federation::{
-    FederationCluster, FederationConfig, FederationNode, FederationStats, NodeRole, NodeScore,
-    NodeScorer, NodeStatus, SchedulingStrategy,
+    FederatedVectorStats, FederatedVectorStore, FederationCluster, FederationConfig,
+    FederationNode, FederationStats, NodeRole, NodeScore, NodeScorer, NodeStatus,
+    SchedulingStrategy, VectorReplicationStrategy,
 };
+pub use grpc::{GrpcConfig, GrpcServiceDefinition, StreamingMode};
 pub use file_watcher::FileWatcher;
 pub use finetune::{
     DatasetStats, ExampleSource, FineTuneConfig, FineTuneJob, FineTuneMethod, FineTunePipeline,
@@ -115,6 +119,7 @@ pub use marketplace::{
     trust::{KeyVersion, PublisherKeyring},
     DepNode, DependencyGraph, MarketplaceCategory, MarketplaceManifest, PublisherInfo,
 };
+pub use mcp_server::PhotisBridge;
 pub use memory_store::AgentMemoryStore;
 pub use migration::{
     Checkpoint, CheckpointType, MigrationManager, MigrationPlan, MigrationRecord, MigrationState,
@@ -153,6 +158,7 @@ pub use scheduler::{
     SchedulerStats, SchedulingDecision, TaskPriority, TaskScheduler, TaskStatus,
 };
 pub use service_manager::ServiceManager;
+pub use service_mesh::{MeshConfig, MeshProvider, MeshServiceDescriptor};
 pub use sigil::{
     ArtifactType, RevocationEntry, RevocationList, SigilStats, SigilVerifier, TrustCheck,
     TrustEnforcement, TrustLevel, TrustPolicy, TrustedArtifact, VerificationResult,

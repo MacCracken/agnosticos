@@ -941,6 +941,347 @@ impl AgentPlacement {
 // Tests
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Federated Vector Store
+// ---------------------------------------------------------------------------
+
+/// Replication strategy for vector data across federated nodes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum VectorReplicationStrategy {
+    /// Every node holds a full copy of every collection.
+    Full,
+    /// Each collection lives on N nodes (configurable replication factor).
+    Partial { replication_factor: u32 },
+    /// Collections are sharded — each node holds a subset of vectors.
+    Sharded,
+}
+
+impl Default for VectorReplicationStrategy {
+    fn default() -> Self {
+        Self::Full
+    }
+}
+
+/// Tracks which collections are hosted on which nodes.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CollectionReplica {
+    /// Node hosting this replica.
+    pub node_id: String,
+    /// Address for reaching the node's vector API.
+    pub address: SocketAddr,
+    /// Number of vectors the node reports for this collection.
+    pub vector_count: usize,
+    /// Last sync timestamp.
+    pub last_synced: DateTime<Utc>,
+}
+
+/// A request message sent to peer nodes for vector operations.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum VectorSyncMessage {
+    /// Insert vectors into a collection on the remote node.
+    Insert {
+        collection: String,
+        entries: Vec<VectorSyncEntry>,
+    },
+    /// Search a collection on the remote node.
+    Search {
+        collection: String,
+        query: Vec<f64>,
+        top_k: usize,
+    },
+    /// Delete a vector from a collection.
+    Delete {
+        collection: String,
+        vector_id: String,
+    },
+    /// Request the full collection manifest (for initial sync).
+    SyncManifest {
+        collection: String,
+    },
+    /// Announce that a collection exists on this node.
+    AnnounceCollection {
+        collection: String,
+        dimension: Option<usize>,
+        vector_count: usize,
+    },
+}
+
+/// A vector entry in wire format (for sync between nodes).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VectorSyncEntry {
+    pub id: String,
+    pub embedding: Vec<f64>,
+    pub content: String,
+    pub metadata: serde_json::Value,
+    pub created_at: DateTime<Utc>,
+}
+
+/// A search result from a remote node (wire format).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RemoteSearchResult {
+    pub id: String,
+    pub score: f64,
+    pub content: String,
+    pub metadata: serde_json::Value,
+    pub source_node: String,
+}
+
+/// Manages vector store federation across cluster nodes.
+///
+/// Tracks collection placement, generates sync messages, and merges
+/// search results from multiple nodes.
+#[derive(Debug, Clone)]
+pub struct FederatedVectorStore {
+    /// Local node ID.
+    local_node_id: String,
+    /// Collection name → list of replicas (nodes hosting the collection).
+    collection_map: HashMap<String, Vec<CollectionReplica>>,
+    /// Replication strategy.
+    replication_strategy: VectorReplicationStrategy,
+    /// Maximum results to merge from remote searches.
+    max_remote_results: usize,
+}
+
+impl FederatedVectorStore {
+    /// Create a new federated vector store for a local node.
+    pub fn new(local_node_id: String, strategy: VectorReplicationStrategy) -> Self {
+        info!(
+            node = %local_node_id,
+            strategy = ?strategy,
+            "Federated vector store initialised"
+        );
+        Self {
+            local_node_id,
+            collection_map: HashMap::new(),
+            replication_strategy: strategy,
+            max_remote_results: 100,
+        }
+    }
+
+    /// Register a collection as existing on a given node.
+    pub fn register_replica(
+        &mut self,
+        collection: &str,
+        node_id: &str,
+        address: SocketAddr,
+        vector_count: usize,
+    ) {
+        let replicas = self
+            .collection_map
+            .entry(collection.to_string())
+            .or_default();
+
+        // Update existing or add new.
+        if let Some(existing) = replicas.iter_mut().find(|r| r.node_id == node_id) {
+            existing.vector_count = vector_count;
+            existing.last_synced = Utc::now();
+            debug!(collection, node_id, vector_count, "Updated collection replica");
+        } else {
+            replicas.push(CollectionReplica {
+                node_id: node_id.to_string(),
+                address,
+                vector_count,
+                last_synced: Utc::now(),
+            });
+            debug!(collection, node_id, vector_count, "Registered new collection replica");
+        }
+    }
+
+    /// Remove a node from all collection replicas (e.g., when node goes dead).
+    pub fn remove_node(&mut self, node_id: &str) {
+        for replicas in self.collection_map.values_mut() {
+            replicas.retain(|r| r.node_id != node_id);
+        }
+        info!(node_id, "Removed node from all collection replicas");
+    }
+
+    /// Get nodes that hold a given collection (excluding local node).
+    pub fn remote_replicas(&self, collection: &str) -> Vec<&CollectionReplica> {
+        self.collection_map
+            .get(collection)
+            .map(|replicas| {
+                replicas
+                    .iter()
+                    .filter(|r| r.node_id != self.local_node_id)
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Get all replicas (including local) for a collection.
+    pub fn all_replicas(&self, collection: &str) -> Vec<&CollectionReplica> {
+        self.collection_map
+            .get(collection)
+            .map(|r| r.iter().collect())
+            .unwrap_or_default()
+    }
+
+    /// List all known collections across the federation.
+    pub fn collections(&self) -> Vec<String> {
+        let mut names: Vec<_> = self.collection_map.keys().cloned().collect();
+        names.sort();
+        names
+    }
+
+    /// Total number of collections tracked.
+    pub fn collection_count(&self) -> usize {
+        self.collection_map.len()
+    }
+
+    /// Generate insert sync messages for all remote replicas of a collection.
+    pub fn insert_sync_messages(
+        &self,
+        collection: &str,
+        entries: Vec<VectorSyncEntry>,
+    ) -> Vec<(SocketAddr, VectorSyncMessage)> {
+        self.remote_replicas(collection)
+            .iter()
+            .map(|replica| {
+                (
+                    replica.address,
+                    VectorSyncMessage::Insert {
+                        collection: collection.to_string(),
+                        entries: entries.clone(),
+                    },
+                )
+            })
+            .collect()
+    }
+
+    /// Generate search messages for all remote replicas of a collection.
+    pub fn search_sync_messages(
+        &self,
+        collection: &str,
+        query: &[f64],
+        top_k: usize,
+    ) -> Vec<(SocketAddr, VectorSyncMessage)> {
+        self.remote_replicas(collection)
+            .iter()
+            .map(|replica| {
+                (
+                    replica.address,
+                    VectorSyncMessage::Search {
+                        collection: collection.to_string(),
+                        query: query.to_vec(),
+                        top_k,
+                    },
+                )
+            })
+            .collect()
+    }
+
+    /// Generate a collection announcement message for broadcasting to peers.
+    pub fn announce_message(
+        &self,
+        collection: &str,
+        dimension: Option<usize>,
+        vector_count: usize,
+    ) -> VectorSyncMessage {
+        VectorSyncMessage::AnnounceCollection {
+            collection: collection.to_string(),
+            dimension,
+            vector_count,
+        }
+    }
+
+    /// Merge local results with results from remote nodes, re-ranking by score.
+    ///
+    /// Returns the top `top_k` results across all sources, sorted by descending score.
+    pub fn merge_results(
+        &self,
+        local_results: Vec<RemoteSearchResult>,
+        remote_results: Vec<Vec<RemoteSearchResult>>,
+        top_k: usize,
+    ) -> Vec<RemoteSearchResult> {
+        let mut all: Vec<RemoteSearchResult> = local_results;
+        for batch in remote_results {
+            all.extend(batch.into_iter().take(self.max_remote_results));
+        }
+
+        // Sort by score descending.
+        all.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+
+        // Deduplicate by vector ID (keep highest score).
+        let mut seen = std::collections::HashSet::new();
+        all.retain(|r| seen.insert(r.id.clone()));
+
+        all.truncate(top_k);
+        all
+    }
+
+    /// Determine which nodes should host a new collection based on the replication strategy.
+    pub fn select_replica_nodes<'a>(
+        &self,
+        cluster: &'a FederationCluster,
+    ) -> Vec<&'a FederationNode> {
+        let live_nodes = cluster.get_live_nodes();
+
+        match self.replication_strategy {
+            VectorReplicationStrategy::Full => live_nodes,
+            VectorReplicationStrategy::Partial { replication_factor } => {
+                live_nodes.into_iter().take(replication_factor as usize).collect()
+            }
+            VectorReplicationStrategy::Sharded => {
+                // For sharding, only the coordinator assigns shards.
+                // Return just the local node — the coordinator will assign others.
+                live_nodes
+                    .into_iter()
+                    .filter(|n| n.node_id == self.local_node_id)
+                    .collect()
+            }
+        }
+    }
+
+    /// Get federation stats for the vector store.
+    pub fn stats(&self) -> FederatedVectorStats {
+        let total_vectors: usize = self
+            .collection_map
+            .values()
+            .flat_map(|replicas| replicas.iter().map(|r| r.vector_count))
+            .sum();
+
+        let total_replicas: usize = self.collection_map.values().map(|r| r.len()).sum();
+
+        let unique_nodes: usize = {
+            let mut nodes = std::collections::HashSet::new();
+            for replicas in self.collection_map.values() {
+                for r in replicas {
+                    nodes.insert(r.node_id.clone());
+                }
+            }
+            nodes.len()
+        };
+
+        FederatedVectorStats {
+            collection_count: self.collection_map.len(),
+            total_replicas,
+            total_vectors_across_replicas: total_vectors,
+            nodes_with_vectors: unique_nodes,
+            replication_strategy: self.replication_strategy,
+        }
+    }
+
+    /// Get the replication strategy.
+    pub fn replication_strategy(&self) -> VectorReplicationStrategy {
+        self.replication_strategy
+    }
+
+    /// Get the local node ID.
+    pub fn local_node_id(&self) -> &str {
+        &self.local_node_id
+    }
+}
+
+/// Statistics for the federated vector store.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FederatedVectorStats {
+    pub collection_count: usize,
+    pub total_replicas: usize,
+    pub total_vectors_across_replicas: usize,
+    pub nodes_with_vectors: usize,
+    pub replication_strategy: VectorReplicationStrategy,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1836,5 +2177,353 @@ strategy = "yolo"
         assert_eq!(format!("{}", SchedulingStrategy::Balanced), "balanced");
         assert_eq!(format!("{}", SchedulingStrategy::Packed), "packed");
         assert_eq!(format!("{}", SchedulingStrategy::Spread), "spread");
+    }
+
+    // ===================================================================
+    // Federated Vector Store tests
+    // ===================================================================
+
+    #[test]
+    fn test_federated_store_new() {
+        let store = FederatedVectorStore::new(
+            "node-1".to_string(),
+            VectorReplicationStrategy::Full,
+        );
+        assert_eq!(store.local_node_id(), "node-1");
+        assert_eq!(store.collection_count(), 0);
+        assert!(store.collections().is_empty());
+        assert_eq!(store.replication_strategy(), VectorReplicationStrategy::Full);
+    }
+
+    #[test]
+    fn test_register_replica() {
+        let mut store = FederatedVectorStore::new(
+            "node-1".to_string(),
+            VectorReplicationStrategy::Full,
+        );
+        let addr: SocketAddr = "10.0.0.2:8090".parse().unwrap();
+
+        store.register_replica("embeddings", "node-2", addr, 100);
+        assert_eq!(store.collection_count(), 1);
+        assert_eq!(store.collections(), vec!["embeddings"]);
+
+        let replicas = store.all_replicas("embeddings");
+        assert_eq!(replicas.len(), 1);
+        assert_eq!(replicas[0].node_id, "node-2");
+        assert_eq!(replicas[0].vector_count, 100);
+    }
+
+    #[test]
+    fn test_register_replica_updates_existing() {
+        let mut store = FederatedVectorStore::new(
+            "node-1".to_string(),
+            VectorReplicationStrategy::Full,
+        );
+        let addr: SocketAddr = "10.0.0.2:8090".parse().unwrap();
+
+        store.register_replica("col", "node-2", addr, 50);
+        store.register_replica("col", "node-2", addr, 200);
+
+        let replicas = store.all_replicas("col");
+        assert_eq!(replicas.len(), 1);
+        assert_eq!(replicas[0].vector_count, 200);
+    }
+
+    #[test]
+    fn test_remote_replicas_excludes_local() {
+        let mut store = FederatedVectorStore::new(
+            "node-1".to_string(),
+            VectorReplicationStrategy::Full,
+        );
+        let addr1: SocketAddr = "10.0.0.1:8090".parse().unwrap();
+        let addr2: SocketAddr = "10.0.0.2:8090".parse().unwrap();
+
+        store.register_replica("col", "node-1", addr1, 50);
+        store.register_replica("col", "node-2", addr2, 50);
+
+        let remote = store.remote_replicas("col");
+        assert_eq!(remote.len(), 1);
+        assert_eq!(remote[0].node_id, "node-2");
+    }
+
+    #[test]
+    fn test_remove_node_from_replicas() {
+        let mut store = FederatedVectorStore::new(
+            "node-1".to_string(),
+            VectorReplicationStrategy::Full,
+        );
+        let addr2: SocketAddr = "10.0.0.2:8090".parse().unwrap();
+        let addr3: SocketAddr = "10.0.0.3:8090".parse().unwrap();
+
+        store.register_replica("col-a", "node-2", addr2, 50);
+        store.register_replica("col-a", "node-3", addr3, 30);
+        store.register_replica("col-b", "node-2", addr2, 10);
+
+        store.remove_node("node-2");
+
+        assert_eq!(store.all_replicas("col-a").len(), 1);
+        assert_eq!(store.all_replicas("col-a")[0].node_id, "node-3");
+        assert_eq!(store.all_replicas("col-b").len(), 0);
+    }
+
+    #[test]
+    fn test_insert_sync_messages() {
+        let mut store = FederatedVectorStore::new(
+            "node-1".to_string(),
+            VectorReplicationStrategy::Full,
+        );
+        let addr2: SocketAddr = "10.0.0.2:8090".parse().unwrap();
+        let addr3: SocketAddr = "10.0.0.3:8090".parse().unwrap();
+
+        store.register_replica("col", "node-2", addr2, 0);
+        store.register_replica("col", "node-3", addr3, 0);
+
+        let entry = VectorSyncEntry {
+            id: "vec-1".to_string(),
+            embedding: vec![1.0, 2.0, 3.0],
+            content: "hello".to_string(),
+            metadata: serde_json::json!({}),
+            created_at: Utc::now(),
+        };
+
+        let messages = store.insert_sync_messages("col", vec![entry]);
+        assert_eq!(messages.len(), 2);
+        assert!(messages.iter().any(|(addr, _)| *addr == addr2));
+        assert!(messages.iter().any(|(addr, _)| *addr == addr3));
+    }
+
+    #[test]
+    fn test_search_sync_messages() {
+        let mut store = FederatedVectorStore::new(
+            "node-1".to_string(),
+            VectorReplicationStrategy::Full,
+        );
+        let addr2: SocketAddr = "10.0.0.2:8090".parse().unwrap();
+        store.register_replica("col", "node-2", addr2, 100);
+
+        let messages = store.search_sync_messages("col", &[1.0, 0.0], 10);
+        assert_eq!(messages.len(), 1);
+
+        match &messages[0].1 {
+            VectorSyncMessage::Search { collection, query, top_k } => {
+                assert_eq!(collection, "col");
+                assert_eq!(query, &[1.0, 0.0]);
+                assert_eq!(*top_k, 10);
+            }
+            _ => panic!("Expected Search message"),
+        }
+    }
+
+    #[test]
+    fn test_search_sync_empty_for_unknown_collection() {
+        let store = FederatedVectorStore::new(
+            "node-1".to_string(),
+            VectorReplicationStrategy::Full,
+        );
+        let messages = store.search_sync_messages("nonexistent", &[1.0], 5);
+        assert!(messages.is_empty());
+    }
+
+    #[test]
+    fn test_merge_results_deduplicates_and_ranks() {
+        let store = FederatedVectorStore::new(
+            "node-1".to_string(),
+            VectorReplicationStrategy::Full,
+        );
+
+        let local = vec![
+            RemoteSearchResult {
+                id: "a".to_string(),
+                score: 0.9,
+                content: "doc a".to_string(),
+                metadata: serde_json::json!({}),
+                source_node: "node-1".to_string(),
+            },
+            RemoteSearchResult {
+                id: "b".to_string(),
+                score: 0.7,
+                content: "doc b".to_string(),
+                metadata: serde_json::json!({}),
+                source_node: "node-1".to_string(),
+            },
+        ];
+
+        let remote = vec![vec![
+            RemoteSearchResult {
+                id: "c".to_string(),
+                score: 0.95,
+                content: "doc c".to_string(),
+                metadata: serde_json::json!({}),
+                source_node: "node-2".to_string(),
+            },
+            // Duplicate of "a" with lower score — should be deduplicated.
+            RemoteSearchResult {
+                id: "a".to_string(),
+                score: 0.85,
+                content: "doc a".to_string(),
+                metadata: serde_json::json!({}),
+                source_node: "node-2".to_string(),
+            },
+        ]];
+
+        let merged = store.merge_results(local, remote, 3);
+        assert_eq!(merged.len(), 3);
+        // Sorted by score: c(0.95), a(0.9), b(0.7).
+        assert_eq!(merged[0].id, "c");
+        assert_eq!(merged[1].id, "a");
+        assert_eq!(merged[2].id, "b");
+        // "a" should come from node-1 (higher score kept).
+        assert_eq!(merged[1].source_node, "node-1");
+    }
+
+    #[test]
+    fn test_merge_results_truncates_to_top_k() {
+        let store = FederatedVectorStore::new(
+            "node-1".to_string(),
+            VectorReplicationStrategy::Full,
+        );
+
+        let local: Vec<RemoteSearchResult> = (0..10)
+            .map(|i| RemoteSearchResult {
+                id: format!("v{i}"),
+                score: 1.0 - (i as f64 * 0.1),
+                content: format!("doc {i}"),
+                metadata: serde_json::json!({}),
+                source_node: "node-1".to_string(),
+            })
+            .collect();
+
+        let merged = store.merge_results(local, vec![], 3);
+        assert_eq!(merged.len(), 3);
+        assert_eq!(merged[0].id, "v0");
+    }
+
+    #[test]
+    fn test_announce_message() {
+        let store = FederatedVectorStore::new(
+            "node-1".to_string(),
+            VectorReplicationStrategy::Full,
+        );
+
+        let msg = store.announce_message("embeddings", Some(768), 5000);
+        match msg {
+            VectorSyncMessage::AnnounceCollection {
+                collection,
+                dimension,
+                vector_count,
+            } => {
+                assert_eq!(collection, "embeddings");
+                assert_eq!(dimension, Some(768));
+                assert_eq!(vector_count, 5000);
+            }
+            _ => panic!("Expected AnnounceCollection"),
+        }
+    }
+
+    #[test]
+    fn test_select_replica_nodes_full() {
+        let local = make_node("node-1", "127.0.0.1:8092");
+        let mut cluster = FederationCluster::new(local);
+        let peer = make_node("node-2", "127.0.0.2:8092");
+        cluster.register_node(peer).unwrap();
+
+        let store = FederatedVectorStore::new(
+            "node-1".to_string(),
+            VectorReplicationStrategy::Full,
+        );
+        let nodes = store.select_replica_nodes(&cluster);
+        assert_eq!(nodes.len(), 2);
+    }
+
+    #[test]
+    fn test_select_replica_nodes_partial() {
+        let local = make_node("node-1", "127.0.0.1:8092");
+        let mut cluster = FederationCluster::new(local);
+        let peer2 = make_node("node-2", "127.0.0.2:8092");
+        let peer3 = make_node("node-3", "127.0.0.3:8092");
+        cluster.register_node(peer2).unwrap();
+        cluster.register_node(peer3).unwrap();
+
+        let store = FederatedVectorStore::new(
+            "node-1".to_string(),
+            VectorReplicationStrategy::Partial { replication_factor: 2 },
+        );
+        let nodes = store.select_replica_nodes(&cluster);
+        assert_eq!(nodes.len(), 2);
+    }
+
+    #[test]
+    fn test_select_replica_nodes_sharded() {
+        let local = make_node("node-1", "127.0.0.1:8092");
+        let local_id = local.node_id.clone();
+        let mut cluster = FederationCluster::new(local);
+        let peer = make_node("node-2", "127.0.0.2:8092");
+        cluster.register_node(peer).unwrap();
+
+        let store = FederatedVectorStore::new(
+            local_id.clone(),
+            VectorReplicationStrategy::Sharded,
+        );
+        let nodes = store.select_replica_nodes(&cluster);
+        assert_eq!(nodes.len(), 1);
+        assert_eq!(nodes[0].node_id, local_id);
+    }
+
+    #[test]
+    fn test_federated_stats() {
+        let mut store = FederatedVectorStore::new(
+            "node-1".to_string(),
+            VectorReplicationStrategy::Full,
+        );
+        let addr2: SocketAddr = "10.0.0.2:8090".parse().unwrap();
+        let addr3: SocketAddr = "10.0.0.3:8090".parse().unwrap();
+
+        store.register_replica("col-a", "node-2", addr2, 100);
+        store.register_replica("col-a", "node-3", addr3, 100);
+        store.register_replica("col-b", "node-2", addr2, 50);
+
+        let stats = store.stats();
+        assert_eq!(stats.collection_count, 2);
+        assert_eq!(stats.total_replicas, 3);
+        assert_eq!(stats.total_vectors_across_replicas, 250);
+        assert_eq!(stats.nodes_with_vectors, 2);
+        assert_eq!(stats.replication_strategy, VectorReplicationStrategy::Full);
+    }
+
+    #[test]
+    fn test_replication_strategy_default() {
+        assert_eq!(
+            VectorReplicationStrategy::default(),
+            VectorReplicationStrategy::Full,
+        );
+    }
+
+    #[test]
+    fn test_vector_sync_message_serialization() {
+        let msg = VectorSyncMessage::Search {
+            collection: "test".to_string(),
+            query: vec![1.0, 2.0],
+            top_k: 5,
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        let deserialized: VectorSyncMessage = serde_json::from_str(&json).unwrap();
+        match deserialized {
+            VectorSyncMessage::Search { collection, query, top_k } => {
+                assert_eq!(collection, "test");
+                assert_eq!(query, vec![1.0, 2.0]);
+                assert_eq!(top_k, 5);
+            }
+            _ => panic!("Wrong variant"),
+        }
+    }
+
+    #[test]
+    fn test_remote_replicas_empty_for_unknown() {
+        let store = FederatedVectorStore::new(
+            "node-1".to_string(),
+            VectorReplicationStrategy::Full,
+        );
+        assert!(store.remote_replicas("nope").is_empty());
+        assert!(store.all_replicas("nope").is_empty());
     }
 }

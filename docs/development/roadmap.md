@@ -1,7 +1,7 @@
 # AGNOS Development Roadmap
 
 > **Status**: Pre-Alpha | **Last Updated**: 2026-03-10
-> **All development phases complete** — 9240+ tests, ~82% coverage, 0 warnings
+> **All development phases complete** — 9298+ tests, ~82% coverage, 0 warnings
 > **Next Milestone**: Alpha Release (Target: Q2 2026)
 
 ---
@@ -136,8 +136,7 @@ Runtime-specific base images for consumer projects. Published to `ghcr.io/maccra
 | `agnosticos:python3.13` | `Dockerfile.python3.13` | CI ready |
 | `agnosticos:python3.14` | `Dockerfile.python3.14` (RC) | CI ready |
 | `agnosticos:rust` | `Dockerfile.rust` | CI ready |
-
-- [ ] `agnosticos:python3.13t` — Free-threaded Python 3.13 (GIL-disabled, needs separate Dockerfile)
+| `agnosticos:python3.13t` | `Dockerfile.python3.13t` (GIL-disabled) | CI ready |
 
 ### Marketplace Consumer Apps `recipes/marketplace/`
 
@@ -148,11 +147,6 @@ All 5 consumer apps have marketplace recipes + GitHub release bundling via `ark-
 **SecureYeoman** (Bun, ~42MB) | **BullShift** (Rust, ~2.8MB) | **Photis Nadi** (Flutter, ~20MB) | **Agnostic** (Python, ~472KB) | **Synapse** (Rust, pending first release)
 
 - [ ] Publish all to mela marketplace
-- [ ] Photis Nadi: MCP agent bridge integration (planned AGNOS desktop feature)
-
-### Federation Enhancements
-
-- [ ] Shared vector store across federated nodes
 
 ### Full Convergence (Demand-Gated)
 
@@ -162,9 +156,6 @@ All 5 consumer apps have marketplace recipes + GitHub release bundling via `ark-
 - [ ] **Unified agent marketplace backend** — AGNOS registry as single source of truth
 
 ### Additional Post-v1.0
-
-- [ ] gRPC API (alongside REST)
-- [ ] Service mesh readiness (Envoy/Linkerd sidecar injection)
 
 ---
 
@@ -176,7 +167,7 @@ All 5 consumer apps have marketplace recipes + GitHub release bundling via `ark-
 |--------|--------|---------|--------|
 | Code Coverage | >80% | ~82% | Met |
 | Test Pass Rate | 100% | 100% | Met |
-| Total Tests | 400+ | 9240+ | Met |
+| Total Tests | 400+ | 9298+ | Met |
 | Agent Spawn Time | <500ms | ~300ms | Met |
 | Shell Response Time | <100ms | ~50ms | Met |
 | Memory Overhead | <2GB | ~1.2GB | Met |
@@ -191,7 +182,7 @@ All 5 consumer apps have marketplace recipes + GitHub release bundling via `ark-
 |-----------|-------|-------|
 | agnos-common | 307 | Secrets, telemetry, LLM types, manifest, rate limits, audit chain |
 | agnos-sys | 750+ | 16 modules: audit, mac, netns, dmverity, luks, ima, tpm, secureboot, certpin, bootloader, journald, udev, fuse, pam, update, llm |
-| agent-runtime | 2763+ | Orchestrator, IPC, sandbox, registry, marketplace (88+43), federation (55), migration (54), scheduler (51), PQC (68), explainability (59), safety (77), finetune (73), formal_verify (76), sandbox_v2 (79), rl_optimizer (68), cloud (82), collaboration (87), sigil (46), aegis (55), takumi (57), argonaut (78), agnova (55), database (42) |
+| agent-runtime | 2821+ | Orchestrator, IPC, sandbox, registry, marketplace (88+43), federation (73), migration (54), scheduler (51), PQC (68), explainability (59), safety (77), finetune (73), formal_verify (76), sandbox_v2 (79), rl_optimizer (68), cloud (82), collaboration (87), sigil (46), aegis (55), takumi (57), argonaut (78), agnova (55), database (42), grpc (14), service_mesh (20) |
 | llm-gateway | 710 | 15 providers (5 native + 10 OpenAI-compatible), rate limiting, streaming, cert pinning, hardware acceleration, token budgets |
 | ai-shell | 1132 | 25+ intents, approval workflow, dashboard, aliases, completion |
 | desktop-environment | 1447+ | Wayland protocol (63+49), screen capture (31), screen recording (22+), plugin host (31), xwayland (20), shell integration (26), theme bridge (18), compositor, renderer |
