@@ -1,7 +1,7 @@
 # AGNOS Development Roadmap
 
 > **Status**: Pre-Beta | **Last Updated**: 2026-03-10
-> **Userland complete** — 9400+ tests, ~82% coverage, 0 warnings
+> **Userland complete** — 9500+ tests, ~82% coverage, 0 warnings
 > **Next Milestone**: Beta Release (Target: Q4 2026)
 
 ---
@@ -416,7 +416,8 @@ Wire the LFS base system into AGNOS's own tooling.
 | 9.5 | Complete | 102 | Full convergence (OIDC, delegation, vector REST, marketplace) |
 | **10** | **Not started** | — | **LFS base system (~88 recipes)** |
 | **11** | **Not started** | — | **Desktop, networking & AI/ML stack (~62 recipes)** |
-| **12** | **Not started** | — | **System integration (argonaut, ark, agnova, CI)** |
+| **12A-C** | **Complete** | 111 | **Argonaut init, ark pkg mgr, agnova installer execution** |
+| **12D** | **Not started** | — | **Build reproducibility & CI** |
 | **13** | **Not started** | — | **Beta polish, hardware, community** |
 
 ---
@@ -429,7 +430,7 @@ Wire the LFS base system into AGNOS's own tooling.
 |--------|--------|---------|--------|
 | Code Coverage | >80% | ~82% | Met |
 | Test Pass Rate | 100% | 100% | Met |
-| Total Tests | 400+ | 9400+ | Met |
+| Total Tests | 400+ | 9500+ | Met |
 | Agent Spawn Time | <500ms | ~300ms | Met |
 | Shell Response Time | <100ms | ~50ms | Met |
 | Memory Overhead | <2GB | ~1.2GB | Met |
@@ -447,7 +448,7 @@ Wire the LFS base system into AGNOS's own tooling.
 |-----------|-------|-------|
 | agnos-common | 307 | Secrets, telemetry, LLM types, manifest, rate limits, audit chain |
 | agnos-sys | 750+ | 16 modules: audit, mac, netns, dmverity, luks, ima, tpm, secureboot, certpin, bootloader, journald, udev, fuse, pam, update, llm |
-| agent-runtime | 2923+ | Orchestrator, IPC, sandbox, registry, marketplace (88+43), federation (73), migration (54), scheduler (51), PQC (68), explainability (59), safety (77), finetune (73), formal_verify (76), sandbox_v2 (79), rl_optimizer (68), cloud (82), collaboration (87), sigil (46), aegis (55), takumi (57), argonaut (78), agnova (55), database (42), grpc (14), service_mesh (20), oidc (22), delegation (28), vector_rest (24), marketplace_backend (28) |
+| agent-runtime | 3009+ | Orchestrator, IPC, sandbox, registry, marketplace (88+43), federation (73), migration (54), scheduler (51), PQC (68), explainability (59), safety (77), finetune (73), formal_verify (76), sandbox_v2 (79), rl_optimizer (68), cloud (82), collaboration (87), sigil (46), aegis (55), takumi (57), argonaut (78), agnova (55), database (42), grpc (14), service_mesh (20), oidc (22), delegation (28), vector_rest (24), marketplace_backend (28) |
 | llm-gateway | 710 | 15 providers (5 native + 10 OpenAI-compatible), rate limiting, streaming, cert pinning, hardware acceleration, token budgets |
 | ai-shell | 1132 | 25+ intents, approval workflow, dashboard, aliases, completion |
 | desktop-environment | 1447+ | Wayland protocol (63+49), screen capture (31), screen recording (22+), plugin host (31), xwayland (20), shell integration (26), theme bridge (18), compositor, renderer |

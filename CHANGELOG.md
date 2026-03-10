@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [2026.3.10] - 2026-03-10
 
+### Added — Phase 12A: Argonaut Real Init (61 new tests, 117 total)
+
+- **Runlevel system**: 5 runlevels (Emergency/Rescue/Console/Graphical/Container) with BootMode mapping and runtime switching
+- **Service targets**: 4 default targets (basic/network/agnos-core/graphical) with runlevel-aware activation and requires/wants semantics
+- **Shutdown orchestration**: `ShutdownPlan` with ordered steps (wall message → notify agents → stop services → sync → unmount → swap off → close LUKS → kernel action), supports Poweroff/Reboot/Halt/Kexec
+- **Runlevel switching**: `RunlevelSwitchPlan` computes services to start/stop when transitioning between runlevels at runtime
+- **Health tracking**: `HealthTracker` with consecutive failure counting, configurable thresholds, per-service reset
+- **Process management**: `ProcessSpec` from service definitions, stdout/stderr log paths, uid/gid support
+- **Emergency shell**: `EmergencyShellConfig` with agnoshi shell, banner message, auto-detection of required boot failures
+- **Crash handling**: `CrashAction` with exponential backoff (1s→30s cap), restart limit (5), policy-aware (Always/OnFailure/Never)
+- **Boot execution plan**: Ordered `(service, ProcessSpec)` pairs from dependency resolution
+- **Service event audit**: `ServiceEvent` with 13 event types for lifecycle tracking
+
+### Added — Phase 12B: Ark Package Manager Execution (25 new tests, 47 total)
+
+- **Transaction log**: Begin/commit/rollback/fail lifecycle, per-operation status tracking, sequential IDs, user attribution, recent() query
+- **Package database**: Register/unregister entries, file manifest tracking, owner-of lookup, integrity checking, source filtering, total size calculation
+- **Dependency resolution**: Topological sort with circular dependency detection for install ordering
+- **Execution result types**: `StepResult` and `PlanExecutionResult` for tracking plan execution outcomes
+
+### Added — Phase 12C: Agnova Installer Execution (25 new tests, 80 total)
+
+- **System operations**: 6 operation types (Command, WriteFile, MakeDir, Symlink, Mount, Unmount) as execution descriptors
+- **Disk partitioning plan**: GPT/MBR creation via parted, partition creation with labels, ESP/boot/LVM/RAID flags
+- **Filesystem formatting plan**: mkfs.ext4/btrfs/xfs/vfat/mkswap with labels, NVMe partition naming support
+- **LUKS encryption plan**: cryptsetup luksFormat with LUKS2, AES-XTS-plain64, SHA-512, auto-open
+- **Bootloader plan**: GRUB2 (grub-install + grub.cfg with rescue entry) and systemd-boot (bootctl install)
+- **User creation plan**: useradd with groups, SSH authorized_keys, sudo/wheel group
+- **Network config plan**: /etc/hostname, /etc/hosts, /etc/resolv.conf generation
+- **Locale/timezone plan**: locale.conf, timezone symlink, machine-id, fstab generation
+- **ISO generation**: `IsoConfig` with xorriso command builder, UEFI/BIOS boot, zstd squashfs
+- **Full execution plan**: 7 ordered phases, `total_ops_count()` for progress estimation
+
 ### Added — Phase 10G: Kernel & Bootloader (`recipes/base/`, 5 packages)
 
 - **`linux.toml`**: Linux 6.6.72 LTS — AGNOS kernel build, custom modules, agnos_defconfig

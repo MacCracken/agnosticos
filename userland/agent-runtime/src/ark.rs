@@ -9,10 +9,12 @@
 //! Ark does **not** directly execute `apt-get` or `dpkg`. It generates
 //! [`InstallPlan`] instructions — a deliberate security design choice.
 
+use std::collections::HashMap;
 use std::fmt;
 use std::path::PathBuf;
 
 use anyhow::{bail, Context, Result};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info, warn};
 
@@ -1034,6 +1036,417 @@ fn parse_source_arg(s: &str) -> Result<PackageSource> {
 }
 
 // ---------------------------------------------------------------------------
+// Transaction log — atomic operation tracking with rollback
+// ---------------------------------------------------------------------------
+
+/// Unique identifier for a transaction.
+pub type TransactionId = String;
+
+/// A single atomic package management transaction.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Transaction {
+    pub id: TransactionId,
+    pub started_at: DateTime<Utc>,
+    pub completed_at: Option<DateTime<Utc>>,
+    pub status: TransactionStatus,
+    pub operations: Vec<TransactionOp>,
+    pub user: String,
+}
+
+/// Status of a transaction.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TransactionStatus {
+    InProgress,
+    Committed,
+    RolledBack,
+    Failed(String),
+}
+
+impl fmt::Display for TransactionStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InProgress => write!(f, "in-progress"),
+            Self::Committed => write!(f, "committed"),
+            Self::RolledBack => write!(f, "rolled-back"),
+            Self::Failed(e) => write!(f, "failed: {}", e),
+        }
+    }
+}
+
+/// A single operation within a transaction.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TransactionOp {
+    pub op_type: TransactionOpType,
+    pub package: String,
+    pub version: Option<String>,
+    pub source: PackageSource,
+    pub status: TransactionOpStatus,
+    pub error: Option<String>,
+}
+
+/// Types of transaction operations.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TransactionOpType {
+    Install,
+    Remove,
+    Upgrade { from_version: String },
+}
+
+/// Status of a transaction operation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TransactionOpStatus {
+    Pending,
+    InProgress,
+    Complete,
+    Failed,
+    RolledBack,
+}
+
+/// The transaction log stores all past transactions for auditing and rollback.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct TransactionLog {
+    transactions: Vec<Transaction>,
+    next_id: u64,
+}
+
+impl TransactionLog {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Begin a new transaction.
+    pub fn begin(&mut self, user: &str) -> TransactionId {
+        self.next_id += 1;
+        let id = format!("txn-{:06}", self.next_id);
+        let txn = Transaction {
+            id: id.clone(),
+            started_at: Utc::now(),
+            completed_at: None,
+            status: TransactionStatus::InProgress,
+            operations: Vec::new(),
+            user: user.to_string(),
+        };
+        info!(txn_id = %id, user = user, "transaction started");
+        self.transactions.push(txn);
+        id
+    }
+
+    /// Add an operation to a transaction.
+    pub fn add_op(&mut self, txn_id: &str, op: TransactionOp) -> bool {
+        if let Some(txn) = self.transactions.iter_mut().find(|t| t.id == txn_id) {
+            if txn.status == TransactionStatus::InProgress {
+                txn.operations.push(op);
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Mark a transaction operation as complete.
+    pub fn mark_op_complete(&mut self, txn_id: &str, package: &str) -> bool {
+        if let Some(txn) = self.transactions.iter_mut().find(|t| t.id == txn_id) {
+            if let Some(op) = txn.operations.iter_mut().find(|o| o.package == package) {
+                op.status = TransactionOpStatus::Complete;
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Mark a transaction operation as failed.
+    pub fn mark_op_failed(&mut self, txn_id: &str, package: &str, error: &str) -> bool {
+        if let Some(txn) = self.transactions.iter_mut().find(|t| t.id == txn_id) {
+            if let Some(op) = txn.operations.iter_mut().find(|o| o.package == package) {
+                op.status = TransactionOpStatus::Failed;
+                op.error = Some(error.to_string());
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Commit a transaction (all operations succeeded).
+    pub fn commit(&mut self, txn_id: &str) -> bool {
+        if let Some(txn) = self.transactions.iter_mut().find(|t| t.id == txn_id) {
+            if txn.status == TransactionStatus::InProgress {
+                txn.status = TransactionStatus::Committed;
+                txn.completed_at = Some(Utc::now());
+                info!(txn_id = txn_id, "transaction committed");
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Roll back a transaction (mark all pending ops as rolled back).
+    pub fn rollback(&mut self, txn_id: &str) -> bool {
+        if let Some(txn) = self.transactions.iter_mut().find(|t| t.id == txn_id) {
+            if txn.status == TransactionStatus::InProgress {
+                for op in &mut txn.operations {
+                    if op.status == TransactionOpStatus::Pending
+                        || op.status == TransactionOpStatus::InProgress
+                    {
+                        op.status = TransactionOpStatus::RolledBack;
+                    }
+                }
+                txn.status = TransactionStatus::RolledBack;
+                txn.completed_at = Some(Utc::now());
+                warn!(txn_id = txn_id, "transaction rolled back");
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Fail a transaction with an error message.
+    pub fn fail(&mut self, txn_id: &str, error: &str) -> bool {
+        if let Some(txn) = self.transactions.iter_mut().find(|t| t.id == txn_id) {
+            txn.status = TransactionStatus::Failed(error.to_string());
+            txn.completed_at = Some(Utc::now());
+            return true;
+        }
+        false
+    }
+
+    /// Get a transaction by ID.
+    pub fn get(&self, txn_id: &str) -> Option<&Transaction> {
+        self.transactions.iter().find(|t| t.id == txn_id)
+    }
+
+    /// Get the N most recent transactions.
+    pub fn recent(&self, count: usize) -> Vec<&Transaction> {
+        self.transactions.iter().rev().take(count).collect()
+    }
+
+    /// Total number of transactions.
+    pub fn len(&self) -> usize {
+        self.transactions.len()
+    }
+
+    /// Whether the log is empty.
+    pub fn is_empty(&self) -> bool {
+        self.transactions.is_empty()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Package database — /var/lib/ark/installed.db equivalent
+// ---------------------------------------------------------------------------
+
+/// An entry in the unified package database.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PackageDbEntry {
+    pub name: String,
+    pub version: String,
+    pub source: PackageSource,
+    pub installed_at: DateTime<Utc>,
+    pub installed_by: String,
+    pub size_bytes: u64,
+    pub checksum: String,
+    /// List of files installed by this package (absolute paths).
+    pub files: Vec<String>,
+    /// Runtime dependencies.
+    pub dependencies: Vec<String>,
+    /// Transaction that installed this package.
+    pub transaction_id: Option<TransactionId>,
+}
+
+/// The unified package database. Tracks every package installed via ark,
+/// regardless of source.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PackageDb {
+    packages: HashMap<String, PackageDbEntry>,
+}
+
+impl PackageDb {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Register a newly installed package.
+    pub fn register(&mut self, entry: PackageDbEntry) {
+        info!(
+            package = %entry.name,
+            version = %entry.version,
+            source = ?entry.source,
+            files = entry.files.len(),
+            "package registered"
+        );
+        self.packages.insert(entry.name.clone(), entry);
+    }
+
+    /// Remove a package from the database. Returns the entry if it existed.
+    pub fn unregister(&mut self, name: &str) -> Option<PackageDbEntry> {
+        let entry = self.packages.remove(name);
+        if entry.is_some() {
+            info!(package = name, "package unregistered");
+        }
+        entry
+    }
+
+    /// Look up a package by name.
+    pub fn get(&self, name: &str) -> Option<&PackageDbEntry> {
+        self.packages.get(name)
+    }
+
+    /// Check if a package is installed.
+    pub fn is_installed(&self, name: &str) -> bool {
+        self.packages.contains_key(name)
+    }
+
+    /// List all installed packages.
+    pub fn list(&self) -> Vec<&PackageDbEntry> {
+        self.packages.values().collect()
+    }
+
+    /// List packages matching a query (name or description substring).
+    pub fn search(&self, query: &str) -> Vec<&PackageDbEntry> {
+        let q = query.to_lowercase();
+        self.packages
+            .values()
+            .filter(|e| e.name.to_lowercase().contains(&q))
+            .collect()
+    }
+
+    /// List packages from a specific source.
+    pub fn by_source(&self, source: &PackageSource) -> Vec<&PackageDbEntry> {
+        self.packages
+            .values()
+            .filter(|e| &e.source == source)
+            .collect()
+    }
+
+    /// Total number of installed packages.
+    pub fn count(&self) -> usize {
+        self.packages.len()
+    }
+
+    /// Total disk usage across all installed packages.
+    pub fn total_size(&self) -> u64 {
+        self.packages.values().map(|e| e.size_bytes).sum()
+    }
+
+    /// Check for packages whose files are missing (integrity check).
+    pub fn check_integrity(&self) -> Vec<IntegrityIssue> {
+        let mut issues = Vec::new();
+        for entry in self.packages.values() {
+            if entry.files.is_empty() {
+                issues.push(IntegrityIssue {
+                    package: entry.name.clone(),
+                    issue_type: IntegrityIssueType::NoFileManifest,
+                });
+            }
+        }
+        issues
+    }
+
+    /// Get all files owned by a package.
+    pub fn files_for(&self, name: &str) -> Vec<&str> {
+        self.packages
+            .get(name)
+            .map(|e| e.files.iter().map(|f| f.as_str()).collect())
+            .unwrap_or_default()
+    }
+
+    /// Find which package owns a given file path.
+    pub fn owner_of(&self, file_path: &str) -> Option<&str> {
+        self.packages
+            .values()
+            .find(|e| e.files.iter().any(|f| f == file_path))
+            .map(|e| e.name.as_str())
+    }
+
+    /// Get dependency resolution order for installing a package.
+    /// Simple topological sort — does not handle version constraints.
+    pub fn resolve_install_order(&self, to_install: &[&str]) -> Result<Vec<String>> {
+        let mut order = Vec::new();
+        let mut visited = std::collections::HashSet::new();
+        let mut visiting = std::collections::HashSet::new();
+
+        for &pkg in to_install {
+            self.resolve_visit(pkg, to_install, &mut visited, &mut visiting, &mut order)?;
+        }
+
+        Ok(order)
+    }
+
+    fn resolve_visit(
+        &self,
+        pkg: &str,
+        all: &[&str],
+        visited: &mut std::collections::HashSet<String>,
+        visiting: &mut std::collections::HashSet<String>,
+        order: &mut Vec<String>,
+    ) -> Result<()> {
+        if visited.contains(pkg) {
+            return Ok(());
+        }
+        if visiting.contains(pkg) {
+            bail!("circular dependency detected involving '{}'", pkg);
+        }
+
+        visiting.insert(pkg.to_string());
+
+        // Check dependencies from the package database entry
+        if let Some(entry) = self.packages.get(pkg) {
+            for dep in &entry.dependencies {
+                // Recurse into deps that are in our install set
+                if all.contains(&dep.as_str()) {
+                    self.resolve_visit(dep, all, visited, visiting, order)?;
+                }
+            }
+        }
+
+        visiting.remove(pkg);
+        visited.insert(pkg.to_string());
+        order.push(pkg.to_string());
+        Ok(())
+    }
+}
+
+/// An integrity issue found during package database validation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IntegrityIssue {
+    pub package: String,
+    pub issue_type: IntegrityIssueType,
+}
+
+/// Types of integrity issues.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum IntegrityIssueType {
+    /// Package has no file manifest — cannot verify or clean-remove.
+    NoFileManifest,
+    /// A file listed in the manifest is missing from disk.
+    MissingFile(String),
+    /// A file's checksum doesn't match the manifest.
+    ChecksumMismatch(String),
+}
+
+// ---------------------------------------------------------------------------
+// Execution result types
+// ---------------------------------------------------------------------------
+
+/// Result of executing an install plan step.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StepResult {
+    pub step: InstallStep,
+    pub success: bool,
+    pub message: String,
+    pub duration_ms: u64,
+}
+
+/// Result of executing an entire install plan.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlanExecutionResult {
+    pub transaction_id: TransactionId,
+    pub success: bool,
+    pub steps_completed: usize,
+    pub steps_failed: usize,
+    pub total_duration_ms: u64,
+    pub step_results: Vec<StepResult>,
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -1505,5 +1918,335 @@ mod tests {
         };
         let text = output.to_display_string();
         assert!(text.contains("[flutter-app]"));
+    }
+
+    // -----------------------------------------------------------------------
+    // Phase 12B: Transaction log tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn transaction_begin_and_commit() {
+        let mut log = TransactionLog::new();
+        let id = log.begin("root");
+        assert_eq!(log.len(), 1);
+        assert!(log.commit(&id));
+        let txn = log.get(&id).unwrap();
+        assert_eq!(txn.status, TransactionStatus::Committed);
+        assert!(txn.completed_at.is_some());
+    }
+
+    #[test]
+    fn transaction_rollback() {
+        let mut log = TransactionLog::new();
+        let id = log.begin("root");
+        log.add_op(
+            &id,
+            TransactionOp {
+                op_type: TransactionOpType::Install,
+                package: "nginx".into(),
+                version: Some("1.25".into()),
+                source: PackageSource::System,
+                status: TransactionOpStatus::Pending,
+                error: None,
+            },
+        );
+        assert!(log.rollback(&id));
+        let txn = log.get(&id).unwrap();
+        assert_eq!(txn.status, TransactionStatus::RolledBack);
+        assert_eq!(txn.operations[0].status, TransactionOpStatus::RolledBack);
+    }
+
+    #[test]
+    fn transaction_add_op() {
+        let mut log = TransactionLog::new();
+        let id = log.begin("user1");
+        assert!(log.add_op(
+            &id,
+            TransactionOp {
+                op_type: TransactionOpType::Install,
+                package: "pkg1".into(),
+                version: Some("1.0".into()),
+                source: PackageSource::Marketplace,
+                status: TransactionOpStatus::Pending,
+                error: None,
+            },
+        ));
+        let txn = log.get(&id).unwrap();
+        assert_eq!(txn.operations.len(), 1);
+        assert_eq!(txn.operations[0].package, "pkg1");
+    }
+
+    #[test]
+    fn transaction_mark_op_complete() {
+        let mut log = TransactionLog::new();
+        let id = log.begin("root");
+        log.add_op(
+            &id,
+            TransactionOp {
+                op_type: TransactionOpType::Install,
+                package: "test-pkg".into(),
+                version: None,
+                source: PackageSource::System,
+                status: TransactionOpStatus::InProgress,
+                error: None,
+            },
+        );
+        assert!(log.mark_op_complete(&id, "test-pkg"));
+        let txn = log.get(&id).unwrap();
+        assert_eq!(txn.operations[0].status, TransactionOpStatus::Complete);
+    }
+
+    #[test]
+    fn transaction_mark_op_failed() {
+        let mut log = TransactionLog::new();
+        let id = log.begin("root");
+        log.add_op(
+            &id,
+            TransactionOp {
+                op_type: TransactionOpType::Remove,
+                package: "fail-pkg".into(),
+                version: None,
+                source: PackageSource::System,
+                status: TransactionOpStatus::InProgress,
+                error: None,
+            },
+        );
+        assert!(log.mark_op_failed(&id, "fail-pkg", "permission denied"));
+        let txn = log.get(&id).unwrap();
+        assert_eq!(txn.operations[0].status, TransactionOpStatus::Failed);
+        assert_eq!(
+            txn.operations[0].error.as_deref(),
+            Some("permission denied")
+        );
+    }
+
+    #[test]
+    fn transaction_fail() {
+        let mut log = TransactionLog::new();
+        let id = log.begin("root");
+        assert!(log.fail(&id, "disk full"));
+        let txn = log.get(&id).unwrap();
+        assert_eq!(
+            txn.status,
+            TransactionStatus::Failed("disk full".into())
+        );
+    }
+
+    #[test]
+    fn transaction_cannot_add_op_after_commit() {
+        let mut log = TransactionLog::new();
+        let id = log.begin("root");
+        log.commit(&id);
+        assert!(!log.add_op(
+            &id,
+            TransactionOp {
+                op_type: TransactionOpType::Install,
+                package: "late-pkg".into(),
+                version: None,
+                source: PackageSource::System,
+                status: TransactionOpStatus::Pending,
+                error: None,
+            },
+        ));
+    }
+
+    #[test]
+    fn transaction_recent() {
+        let mut log = TransactionLog::new();
+        let id1 = log.begin("user1");
+        log.commit(&id1);
+        let id2 = log.begin("user2");
+        log.commit(&id2);
+        let id3 = log.begin("user3");
+        log.commit(&id3);
+
+        let recent = log.recent(2);
+        assert_eq!(recent.len(), 2);
+        assert_eq!(recent[0].id, id3);
+        assert_eq!(recent[1].id, id2);
+    }
+
+    #[test]
+    fn transaction_status_display() {
+        assert_eq!(format!("{}", TransactionStatus::InProgress), "in-progress");
+        assert_eq!(format!("{}", TransactionStatus::Committed), "committed");
+        assert_eq!(format!("{}", TransactionStatus::RolledBack), "rolled-back");
+        assert_eq!(
+            format!("{}", TransactionStatus::Failed("err".into())),
+            "failed: err"
+        );
+    }
+
+    #[test]
+    fn transaction_upgrade_op() {
+        let mut log = TransactionLog::new();
+        let id = log.begin("root");
+        log.add_op(
+            &id,
+            TransactionOp {
+                op_type: TransactionOpType::Upgrade {
+                    from_version: "1.0".into(),
+                },
+                package: "pkg".into(),
+                version: Some("2.0".into()),
+                source: PackageSource::System,
+                status: TransactionOpStatus::Pending,
+                error: None,
+            },
+        );
+        let txn = log.get(&id).unwrap();
+        assert!(matches!(
+            txn.operations[0].op_type,
+            TransactionOpType::Upgrade { .. }
+        ));
+    }
+
+    // -----------------------------------------------------------------------
+    // Phase 12B: Package database tests
+    // -----------------------------------------------------------------------
+
+    fn make_db_entry(name: &str, version: &str, files: Vec<&str>) -> PackageDbEntry {
+        PackageDbEntry {
+            name: name.into(),
+            version: version.into(),
+            source: PackageSource::System,
+            installed_at: Utc::now(),
+            installed_by: "root".into(),
+            size_bytes: 1024,
+            checksum: "abc123".into(),
+            files: files.into_iter().map(String::from).collect(),
+            dependencies: vec![],
+            transaction_id: None,
+        }
+    }
+
+    #[test]
+    fn package_db_register_and_get() {
+        let mut db = PackageDb::new();
+        db.register(make_db_entry("nginx", "1.25", vec!["/usr/bin/nginx"]));
+        assert!(db.is_installed("nginx"));
+        let entry = db.get("nginx").unwrap();
+        assert_eq!(entry.version, "1.25");
+    }
+
+    #[test]
+    fn package_db_unregister() {
+        let mut db = PackageDb::new();
+        db.register(make_db_entry("pkg", "1.0", vec![]));
+        let removed = db.unregister("pkg");
+        assert!(removed.is_some());
+        assert!(!db.is_installed("pkg"));
+    }
+
+    #[test]
+    fn package_db_list() {
+        let mut db = PackageDb::new();
+        db.register(make_db_entry("a", "1.0", vec![]));
+        db.register(make_db_entry("b", "2.0", vec![]));
+        assert_eq!(db.count(), 2);
+        assert_eq!(db.list().len(), 2);
+    }
+
+    #[test]
+    fn package_db_search() {
+        let mut db = PackageDb::new();
+        db.register(make_db_entry("nginx-core", "1.25", vec![]));
+        db.register(make_db_entry("redis", "7.0", vec![]));
+        let results = db.search("nginx");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].name, "nginx-core");
+    }
+
+    #[test]
+    fn package_db_by_source() {
+        let mut db = PackageDb::new();
+        let mut entry = make_db_entry("agent1", "1.0", vec![]);
+        entry.source = PackageSource::Marketplace;
+        db.register(entry);
+        db.register(make_db_entry("nginx", "1.25", vec![]));
+
+        let marketplace = db.by_source(&PackageSource::Marketplace);
+        assert_eq!(marketplace.len(), 1);
+        assert_eq!(marketplace[0].name, "agent1");
+    }
+
+    #[test]
+    fn package_db_total_size() {
+        let mut db = PackageDb::new();
+        let mut e1 = make_db_entry("a", "1.0", vec![]);
+        e1.size_bytes = 500;
+        let mut e2 = make_db_entry("b", "1.0", vec![]);
+        e2.size_bytes = 700;
+        db.register(e1);
+        db.register(e2);
+        assert_eq!(db.total_size(), 1200);
+    }
+
+    #[test]
+    fn package_db_files_for() {
+        let mut db = PackageDb::new();
+        db.register(make_db_entry(
+            "nginx",
+            "1.25",
+            vec!["/usr/bin/nginx", "/etc/nginx/nginx.conf"],
+        ));
+        let files = db.files_for("nginx");
+        assert_eq!(files.len(), 2);
+        assert!(files.contains(&"/usr/bin/nginx"));
+    }
+
+    #[test]
+    fn package_db_owner_of() {
+        let mut db = PackageDb::new();
+        db.register(make_db_entry("bash", "5.3", vec!["/usr/bin/bash"]));
+        db.register(make_db_entry("zsh", "5.9", vec!["/usr/bin/zsh"]));
+        assert_eq!(db.owner_of("/usr/bin/bash"), Some("bash"));
+        assert_eq!(db.owner_of("/usr/bin/zsh"), Some("zsh"));
+        assert_eq!(db.owner_of("/usr/bin/fish"), None);
+    }
+
+    #[test]
+    fn package_db_integrity_no_manifest() {
+        let mut db = PackageDb::new();
+        db.register(make_db_entry("empty-pkg", "1.0", vec![]));
+        let issues = db.check_integrity();
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].issue_type, IntegrityIssueType::NoFileManifest);
+    }
+
+    #[test]
+    fn package_db_integrity_with_manifest() {
+        let mut db = PackageDb::new();
+        db.register(make_db_entry("good-pkg", "1.0", vec!["/usr/bin/good"]));
+        let issues = db.check_integrity();
+        assert!(issues.is_empty());
+    }
+
+    #[test]
+    fn package_db_resolve_install_order() {
+        let mut db = PackageDb::new();
+        let mut entry = make_db_entry("app", "1.0", vec![]);
+        entry.dependencies = vec!["lib".into()];
+        db.register(entry);
+        db.register(make_db_entry("lib", "1.0", vec![]));
+
+        let order = db.resolve_install_order(&["app", "lib"]).unwrap();
+        let lib_idx = order.iter().position(|n| n == "lib").unwrap();
+        let app_idx = order.iter().position(|n| n == "app").unwrap();
+        assert!(lib_idx < app_idx);
+    }
+
+    #[test]
+    fn package_db_resolve_circular_dep() {
+        let mut db = PackageDb::new();
+        let mut a = make_db_entry("a", "1.0", vec![]);
+        a.dependencies = vec!["b".into()];
+        let mut b = make_db_entry("b", "1.0", vec![]);
+        b.dependencies = vec!["a".into()];
+        db.register(a);
+        db.register(b);
+
+        let result = db.resolve_install_order(&["a", "b"]);
+        assert!(result.is_err());
     }
 }

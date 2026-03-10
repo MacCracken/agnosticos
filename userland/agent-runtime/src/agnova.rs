@@ -975,6 +975,630 @@ impl AgnovaInstaller {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Phase execution — system operation descriptors
+// ---------------------------------------------------------------------------
+
+/// A concrete system operation to execute during installation.
+/// These are descriptors — the actual execution happens in the installer
+/// binary which calls out to system tools.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum SystemOp {
+    /// Run a shell command with the given args.
+    Command {
+        binary: String,
+        args: Vec<String>,
+        description: String,
+        /// If true, failure aborts the installation.
+        fatal: bool,
+    },
+    /// Write content to a file.
+    WriteFile {
+        path: String,
+        content: String,
+        mode: u32,
+        owner: Option<String>,
+    },
+    /// Create a directory.
+    MakeDir {
+        path: String,
+        mode: u32,
+        parents: bool,
+    },
+    /// Create a symlink.
+    Symlink {
+        target: String,
+        link: String,
+    },
+    /// Mount a filesystem.
+    Mount {
+        device: String,
+        mount_point: String,
+        fs_type: String,
+        options: Vec<String>,
+    },
+    /// Unmount a filesystem.
+    Unmount {
+        mount_point: String,
+    },
+}
+
+impl fmt::Display for SystemOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Command {
+                binary,
+                args,
+                description,
+                ..
+            } => write!(f, "{}: {} {}", description, binary, args.join(" ")),
+            Self::WriteFile { path, .. } => write!(f, "write {}", path),
+            Self::MakeDir { path, .. } => write!(f, "mkdir {}", path),
+            Self::Symlink { target, link } => write!(f, "symlink {} -> {}", link, target),
+            Self::Mount {
+                device,
+                mount_point,
+                ..
+            } => write!(f, "mount {} on {}", device, mount_point),
+            Self::Unmount { mount_point } => write!(f, "umount {}", mount_point),
+        }
+    }
+}
+
+/// A phase execution plan: ordered list of system operations for one phase.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PhaseOps {
+    pub phase: InstallPhase,
+    pub description: String,
+    pub operations: Vec<SystemOp>,
+}
+
+impl AgnovaInstaller {
+    /// Generate the operations needed for disk partitioning.
+    pub fn plan_partition_ops(&self) -> PhaseOps {
+        let disk = &self.config.disk;
+        let device = &disk.target_device;
+        let mut ops = Vec::new();
+
+        // Create GPT partition table
+        if disk.use_gpt {
+            ops.push(SystemOp::Command {
+                binary: "parted".into(),
+                args: vec![
+                    "-s".into(),
+                    device.clone(),
+                    "mklabel".into(),
+                    "gpt".into(),
+                ],
+                description: "Create GPT partition table".into(),
+                fatal: true,
+            });
+        } else {
+            ops.push(SystemOp::Command {
+                binary: "parted".into(),
+                args: vec![
+                    "-s".into(),
+                    device.clone(),
+                    "mklabel".into(),
+                    "msdos".into(),
+                ],
+                description: "Create MBR partition table".into(),
+                fatal: true,
+            });
+        }
+
+        // Create partitions
+        let mut start_mb: u64 = 1; // Start at 1 MiB (alignment)
+        for (i, part) in disk.partitions.iter().enumerate() {
+            let end = if let Some(size) = part.size_mb {
+                format!("{}MiB", start_mb + size)
+            } else {
+                "100%".into()
+            };
+            let fs_type = match part.filesystem {
+                Filesystem::Vfat => "fat32",
+                Filesystem::Swap => "linux-swap",
+                _ => "ext4",
+            };
+
+            ops.push(SystemOp::Command {
+                binary: "parted".into(),
+                args: vec![
+                    "-s".into(),
+                    device.clone(),
+                    "mkpart".into(),
+                    format!("\"{}\"", part.label),
+                    fs_type.into(),
+                    format!("{}MiB", start_mb),
+                    end.clone(),
+                ],
+                description: format!("Create partition {} ({})", i + 1, part.label),
+                fatal: true,
+            });
+
+            // Set flags
+            for flag in &part.flags {
+                let flag_name = match flag {
+                    PartitionFlag::Boot => "boot",
+                    PartitionFlag::Esp => "esp",
+                    PartitionFlag::Lvm => "lvm",
+                    PartitionFlag::Raid => "raid",
+                };
+                ops.push(SystemOp::Command {
+                    binary: "parted".into(),
+                    args: vec![
+                        "-s".into(),
+                        device.clone(),
+                        "set".into(),
+                        format!("{}", i + 1),
+                        flag_name.into(),
+                        "on".into(),
+                    ],
+                    description: format!("Set {} flag on partition {}", flag_name, i + 1),
+                    fatal: true,
+                });
+            }
+
+            if let Some(size) = part.size_mb {
+                start_mb += size;
+            }
+        }
+
+        PhaseOps {
+            phase: InstallPhase::PartitionDisk,
+            description: format!("Partition {}", device),
+            operations: ops,
+        }
+    }
+
+    /// Generate the operations needed for filesystem formatting.
+    pub fn plan_format_ops(&self) -> PhaseOps {
+        let disk = &self.config.disk;
+        let device = &disk.target_device;
+        let mut ops = Vec::new();
+
+        for (i, part) in disk.partitions.iter().enumerate() {
+            let part_dev = if device.contains("nvme") || device.contains("mmcblk") {
+                format!("{}p{}", device, i + 1)
+            } else {
+                format!("{}{}", device, i + 1)
+            };
+
+            let mkfs_cmd = match part.filesystem {
+                Filesystem::Ext4 => vec![
+                    "mkfs.ext4".into(),
+                    "-L".into(),
+                    part.label.clone(),
+                    part_dev.clone(),
+                ],
+                Filesystem::Btrfs => vec![
+                    "mkfs.btrfs".into(),
+                    "-L".into(),
+                    part.label.clone(),
+                    "-f".into(),
+                    part_dev.clone(),
+                ],
+                Filesystem::Xfs => vec![
+                    "mkfs.xfs".into(),
+                    "-L".into(),
+                    part.label.clone(),
+                    part_dev.clone(),
+                ],
+                Filesystem::Vfat => vec![
+                    "mkfs.vfat".into(),
+                    "-F".into(),
+                    "32".into(),
+                    "-n".into(),
+                    part.label.clone(),
+                    part_dev.clone(),
+                ],
+                Filesystem::Swap => vec!["mkswap".into(), "-L".into(), part.label.clone(), part_dev.clone()],
+            };
+
+            ops.push(SystemOp::Command {
+                binary: mkfs_cmd[0].clone(),
+                args: mkfs_cmd[1..].to_vec(),
+                description: format!(
+                    "Format {} as {} ({})",
+                    part_dev, part.filesystem, part.label
+                ),
+                fatal: true,
+            });
+        }
+
+        PhaseOps {
+            phase: InstallPhase::FormatFilesystems,
+            description: "Format filesystems".into(),
+            operations: ops,
+        }
+    }
+
+    /// Generate the operations needed for LUKS encryption setup.
+    pub fn plan_encryption_ops(&self) -> PhaseOps {
+        let disk = &self.config.disk;
+        let device = &disk.target_device;
+        let mut ops = Vec::new();
+
+        if disk.encrypt {
+            // Find the root partition (largest or no size_mb)
+            let root_idx = disk
+                .partitions
+                .iter()
+                .position(|p| p.mount_point == "/")
+                .unwrap_or(disk.partitions.len() - 1);
+
+            let part_dev = if device.contains("nvme") || device.contains("mmcblk") {
+                format!("{}p{}", device, root_idx + 1)
+            } else {
+                format!("{}{}", device, root_idx + 1)
+            };
+
+            ops.push(SystemOp::Command {
+                binary: "cryptsetup".into(),
+                args: vec![
+                    "luksFormat".into(),
+                    "--type".into(),
+                    "luks2".into(),
+                    "--cipher".into(),
+                    "aes-xts-plain64".into(),
+                    "--key-size".into(),
+                    "512".into(),
+                    "--hash".into(),
+                    "sha512".into(),
+                    "--iter-time".into(),
+                    "5000".into(),
+                    part_dev.clone(),
+                ],
+                description: "Format LUKS2 encrypted volume".into(),
+                fatal: true,
+            });
+
+            ops.push(SystemOp::Command {
+                binary: "cryptsetup".into(),
+                args: vec!["open".into(), part_dev, "agnos-root".into()],
+                description: "Open LUKS volume as agnos-root".into(),
+                fatal: true,
+            });
+        }
+
+        PhaseOps {
+            phase: InstallPhase::SetupEncryption,
+            description: "Setup disk encryption".into(),
+            operations: ops,
+        }
+    }
+
+    /// Generate the operations needed for bootloader installation.
+    pub fn plan_bootloader_ops(&self, target_root: &str) -> PhaseOps {
+        let boot = &self.config.bootloader;
+        let mut ops = Vec::new();
+
+        match boot.bootloader_type {
+            BootloaderType::Grub2 => {
+                ops.push(SystemOp::Command {
+                    binary: "grub-install".into(),
+                    args: vec![
+                        "--target=x86_64-efi".into(),
+                        format!("--efi-directory={}/boot/efi", target_root),
+                        format!("--boot-directory={}/boot", target_root),
+                        "--bootloader-id=AGNOS".into(),
+                    ],
+                    description: "Install GRUB EFI bootloader".into(),
+                    fatal: true,
+                });
+
+                // Generate grub.cfg
+                let kernel_cmdline = Self::kernel_cmdline(&self.config);
+                let grub_cfg = format!(
+                    concat!(
+                        "# AGNOS GRUB configuration\n",
+                        "set default={}\n",
+                        "set timeout={}\n",
+                        "\n",
+                        "menuentry \"AGNOS\" {{\n",
+                        "    linux /vmlinuz-6.6.72-agnos {}\n",
+                        "    initrd /initramfs-6.6.72-agnos.img\n",
+                        "}}\n",
+                        "\n",
+                        "menuentry \"AGNOS (rescue)\" {{\n",
+                        "    linux /vmlinuz-6.6.72-agnos {} single\n",
+                        "    initrd /initramfs-6.6.72-agnos.img\n",
+                        "}}\n",
+                    ),
+                    boot.default_entry,
+                    boot.timeout_secs,
+                    kernel_cmdline,
+                    kernel_cmdline,
+                );
+
+                ops.push(SystemOp::WriteFile {
+                    path: format!("{}/boot/grub/grub.cfg", target_root),
+                    content: grub_cfg,
+                    mode: 0o644,
+                    owner: Some("root:root".into()),
+                });
+            }
+            BootloaderType::SystemdBoot => {
+                ops.push(SystemOp::Command {
+                    binary: "bootctl".into(),
+                    args: vec![
+                        format!("--esp-path={}/boot/efi", target_root),
+                        "install".into(),
+                    ],
+                    description: "Install systemd-boot".into(),
+                    fatal: true,
+                });
+            }
+        }
+
+        PhaseOps {
+            phase: InstallPhase::InstallBootloader,
+            description: "Install bootloader".into(),
+            operations: ops,
+        }
+    }
+
+    /// Generate the operations needed for user creation.
+    pub fn plan_user_ops(&self, target_root: &str) -> PhaseOps {
+        let user = &self.config.user;
+        let mut ops = Vec::new();
+
+        // Create the user
+        let mut useradd_args = vec![
+            "--root".into(),
+            target_root.to_string(),
+            "-m".into(),
+            "-s".into(),
+            user.shell.clone(),
+        ];
+        if let Some(ref full_name) = user.full_name {
+            useradd_args.push("-c".into());
+            useradd_args.push(full_name.clone());
+        }
+        if !user.groups.is_empty() {
+            useradd_args.push("-G".into());
+            useradd_args.push(user.groups.join(","));
+        }
+        useradd_args.push(user.username.clone());
+
+        ops.push(SystemOp::Command {
+            binary: "useradd".into(),
+            args: useradd_args,
+            description: format!("Create user '{}'", user.username),
+            fatal: true,
+        });
+
+        // SSH keys
+        if !user.ssh_keys.is_empty() {
+            let ssh_dir = format!("{}/home/{}/.ssh", target_root, user.username);
+            ops.push(SystemOp::MakeDir {
+                path: ssh_dir.clone(),
+                mode: 0o700,
+                parents: true,
+            });
+
+            let auth_keys = user.ssh_keys.join("\n") + "\n";
+            ops.push(SystemOp::WriteFile {
+                path: format!("{}/authorized_keys", ssh_dir),
+                content: auth_keys,
+                mode: 0o600,
+                owner: Some(format!("{}:{}", user.username, user.username)),
+            });
+        }
+
+        // Sudo access
+        if user.enable_sudo {
+            ops.push(SystemOp::Command {
+                binary: "usermod".into(),
+                args: vec![
+                    "--root".into(),
+                    target_root.to_string(),
+                    "-aG".into(),
+                    "wheel".into(),
+                    user.username.clone(),
+                ],
+                description: format!("Add '{}' to wheel group", user.username),
+                fatal: false,
+            });
+        }
+
+        PhaseOps {
+            phase: InstallPhase::CreateUser,
+            description: format!("Create user {}", user.username),
+            operations: ops,
+        }
+    }
+
+    /// Generate the operations needed for network configuration.
+    pub fn plan_network_ops(&self, target_root: &str) -> PhaseOps {
+        let net = &self.config.network;
+        let mut ops = Vec::new();
+
+        // /etc/hostname
+        ops.push(SystemOp::WriteFile {
+            path: format!("{}/etc/hostname", target_root),
+            content: generate_hostname_config(&net.hostname),
+            mode: 0o644,
+            owner: None,
+        });
+
+        // /etc/hosts
+        let hosts = format!(
+            "127.0.0.1   localhost\n::1         localhost\n127.0.1.1   {}\n",
+            net.hostname
+        );
+        ops.push(SystemOp::WriteFile {
+            path: format!("{}/etc/hosts", target_root),
+            content: hosts,
+            mode: 0o644,
+            owner: None,
+        });
+
+        // DNS resolv.conf
+        if !net.dns.is_empty() {
+            let resolv = net
+                .dns
+                .iter()
+                .map(|d| format!("nameserver {}", d))
+                .collect::<Vec<_>>()
+                .join("\n")
+                + "\n";
+            ops.push(SystemOp::WriteFile {
+                path: format!("{}/etc/resolv.conf", target_root),
+                content: resolv,
+                mode: 0o644,
+                owner: None,
+            });
+        }
+
+        PhaseOps {
+            phase: InstallPhase::ConfigureSystem,
+            description: "Configure network".into(),
+            operations: ops,
+        }
+    }
+
+    /// Generate the operations for locale and timezone setup.
+    pub fn plan_locale_ops(&self, target_root: &str) -> PhaseOps {
+        let mut ops = Vec::new();
+
+        // /etc/locale.conf
+        ops.push(SystemOp::WriteFile {
+            path: format!("{}/etc/locale.conf", target_root),
+            content: format!("LANG={}\n", self.config.locale),
+            mode: 0o644,
+            owner: None,
+        });
+
+        // Timezone symlink
+        ops.push(SystemOp::Symlink {
+            target: format!("/usr/share/zoneinfo/{}", self.config.timezone),
+            link: format!("{}/etc/localtime", target_root),
+        });
+
+        // /etc/machine-id
+        ops.push(SystemOp::WriteFile {
+            path: format!("{}/etc/machine-id", target_root),
+            content: format!("{}\n", generate_machine_id()),
+            mode: 0o444,
+            owner: None,
+        });
+
+        // /etc/fstab
+        ops.push(SystemOp::WriteFile {
+            path: format!("{}/etc/fstab", target_root),
+            content: generate_fstab(&self.config.disk.partitions, self.config.disk.encrypt),
+            mode: 0o644,
+            owner: None,
+        });
+
+        PhaseOps {
+            phase: InstallPhase::ConfigureSystem,
+            description: "Configure locale and timezone".into(),
+            operations: ops,
+        }
+    }
+
+    /// Generate the complete ordered list of phase operations for the
+    /// entire installation. This is the full execution plan.
+    pub fn full_execution_plan(&self, target_root: &str) -> Vec<PhaseOps> {
+        vec![
+            self.plan_partition_ops(),
+            self.plan_encryption_ops(),
+            self.plan_format_ops(),
+            self.plan_bootloader_ops(target_root),
+            self.plan_user_ops(target_root),
+            self.plan_network_ops(target_root),
+            self.plan_locale_ops(target_root),
+        ]
+    }
+
+    /// Count total system operations across all phases.
+    pub fn total_ops_count(&self, target_root: &str) -> usize {
+        self.full_execution_plan(target_root)
+            .iter()
+            .map(|p| p.operations.len())
+            .sum()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ISO generation descriptor
+// ---------------------------------------------------------------------------
+
+/// Configuration for generating a bootable installation ISO.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IsoConfig {
+    pub output_path: String,
+    pub volume_label: String,
+    /// Path to the root filesystem tree to pack into the ISO.
+    pub root_tree: String,
+    /// Whether to include UEFI boot support.
+    pub uefi: bool,
+    /// Whether to include legacy BIOS boot support.
+    pub bios: bool,
+    /// Compression for the squashfs image.
+    pub compression: String,
+}
+
+impl Default for IsoConfig {
+    fn default() -> Self {
+        Self {
+            output_path: "agnos-install.iso".into(),
+            volume_label: "AGNOS".into(),
+            root_tree: "/tmp/agnos-iso-tree".into(),
+            uefi: true,
+            bios: false,
+            compression: "zstd".into(),
+        }
+    }
+}
+
+impl IsoConfig {
+    /// Generate the xorriso command to create the ISO.
+    pub fn build_command(&self) -> SystemOp {
+        let mut args = vec![
+            "-as".into(),
+            "mkisofs".into(),
+            "-o".into(),
+            self.output_path.clone(),
+            "-V".into(),
+            self.volume_label.clone(),
+            "-J".into(),
+            "-R".into(),
+        ];
+
+        if self.uefi {
+            args.extend_from_slice(&[
+                "-e".into(),
+                "boot/efi.img".into(),
+                "-no-emul-boot".into(),
+                "-isohybrid-gpt-basdat".into(),
+            ]);
+        }
+
+        if self.bios {
+            args.extend_from_slice(&[
+                "-b".into(),
+                "boot/grub/bios.img".into(),
+                "-no-emul-boot".into(),
+                "-boot-load-size".into(),
+                "4".into(),
+                "-boot-info-table".into(),
+            ]);
+        }
+
+        args.push(self.root_tree.clone());
+
+        SystemOp::Command {
+            binary: "xorriso".into(),
+            args,
+            description: format!("Generate ISO: {}", self.output_path),
+            fatal: true,
+        }
+    }
+}
+
 // ===========================================================================
 // Tests
 // ===========================================================================
@@ -1562,5 +2186,391 @@ mod tests {
     fn firewall_default_display() {
         assert_eq!(FirewallDefault::Deny.to_string(), "deny");
         assert_eq!(FirewallDefault::Allow.to_string(), "allow");
+    }
+
+    // -----------------------------------------------------------------------
+    // Phase 12C: Partition ops tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn partition_ops_creates_gpt() {
+        let config = test_config();
+        let installer = AgnovaInstaller::new(config);
+        let ops = installer.plan_partition_ops();
+        assert_eq!(ops.phase, InstallPhase::PartitionDisk);
+        // First op should create GPT
+        let first = &ops.operations[0];
+        if let SystemOp::Command { args, .. } = first {
+            assert!(args.contains(&"gpt".to_string()));
+        } else {
+            panic!("expected Command op");
+        }
+    }
+
+    #[test]
+    fn partition_ops_creates_partitions() {
+        let config = test_config();
+        let installer = AgnovaInstaller::new(config);
+        let ops = installer.plan_partition_ops();
+        // Should have: mklabel + 2 mkpart + flag ops
+        assert!(ops.operations.len() >= 3);
+    }
+
+    #[test]
+    fn partition_ops_sets_esp_flag() {
+        let config = test_config();
+        let installer = AgnovaInstaller::new(config);
+        let ops = installer.plan_partition_ops();
+        let has_esp = ops.operations.iter().any(|op| {
+            if let SystemOp::Command { args, .. } = op {
+                args.contains(&"esp".to_string())
+            } else {
+                false
+            }
+        });
+        assert!(has_esp);
+    }
+
+    // -----------------------------------------------------------------------
+    // Format ops tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn format_ops_creates_filesystems() {
+        let config = test_config();
+        let installer = AgnovaInstaller::new(config);
+        let ops = installer.plan_format_ops();
+        assert_eq!(ops.phase, InstallPhase::FormatFilesystems);
+        // Should have one mkfs per partition
+        assert_eq!(ops.operations.len(), 2);
+    }
+
+    #[test]
+    fn format_ops_uses_correct_mkfs() {
+        let config = test_config();
+        let installer = AgnovaInstaller::new(config);
+        let ops = installer.plan_format_ops();
+        // First partition is vfat (ESP)
+        if let SystemOp::Command { binary, .. } = &ops.operations[0] {
+            assert_eq!(binary, "mkfs.vfat");
+        }
+        // Second partition is ext4 (root)
+        if let SystemOp::Command { binary, .. } = &ops.operations[1] {
+            assert_eq!(binary, "mkfs.ext4");
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Encryption ops tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn encryption_ops_empty_when_disabled() {
+        let config = test_config();
+        let installer = AgnovaInstaller::new(config);
+        let ops = installer.plan_encryption_ops();
+        assert!(ops.operations.is_empty());
+    }
+
+    #[test]
+    fn encryption_ops_luks_when_enabled() {
+        let mut config = test_config();
+        config.disk.encrypt = true;
+        let installer = AgnovaInstaller::new(config);
+        let ops = installer.plan_encryption_ops();
+        assert_eq!(ops.operations.len(), 2);
+        // Should have luksFormat and open
+        if let SystemOp::Command { binary, args, .. } = &ops.operations[0] {
+            assert_eq!(binary, "cryptsetup");
+            assert!(args.contains(&"luksFormat".to_string()));
+        }
+        if let SystemOp::Command { binary, args, .. } = &ops.operations[1] {
+            assert_eq!(binary, "cryptsetup");
+            assert!(args.contains(&"open".to_string()));
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Bootloader ops tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn bootloader_ops_grub() {
+        let mut config = test_config();
+        config.bootloader.bootloader_type = BootloaderType::Grub2;
+        let installer = AgnovaInstaller::new(config);
+        let ops = installer.plan_bootloader_ops("/mnt");
+        assert_eq!(ops.phase, InstallPhase::InstallBootloader);
+        // grub-install + grub.cfg write
+        assert_eq!(ops.operations.len(), 2);
+        if let SystemOp::Command { binary, .. } = &ops.operations[0] {
+            assert_eq!(binary, "grub-install");
+        }
+        if let SystemOp::WriteFile { path, content, .. } = &ops.operations[1] {
+            assert!(path.contains("grub.cfg"));
+            assert!(content.contains("AGNOS"));
+            assert!(content.contains("rescue"));
+        }
+    }
+
+    #[test]
+    fn bootloader_ops_systemd_boot() {
+        let mut config = test_config();
+        config.bootloader.bootloader_type = BootloaderType::SystemdBoot;
+        let installer = AgnovaInstaller::new(config);
+        let ops = installer.plan_bootloader_ops("/mnt");
+        if let SystemOp::Command { binary, .. } = &ops.operations[0] {
+            assert_eq!(binary, "bootctl");
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // User creation ops tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn user_ops_creates_user() {
+        let config = test_config();
+        let installer = AgnovaInstaller::new(config);
+        let ops = installer.plan_user_ops("/mnt");
+        assert_eq!(ops.phase, InstallPhase::CreateUser);
+        if let SystemOp::Command { binary, args, .. } = &ops.operations[0] {
+            assert_eq!(binary, "useradd");
+            assert!(args.contains(&"testuser".to_string()));
+        }
+    }
+
+    #[test]
+    fn user_ops_installs_ssh_keys() {
+        let mut config = test_config();
+        config.user.ssh_keys = vec!["ssh-ed25519 AAAA... user@host".into()];
+        let installer = AgnovaInstaller::new(config);
+        let ops = installer.plan_user_ops("/mnt");
+        // Should have: useradd + mkdir .ssh + write authorized_keys
+        assert!(ops.operations.len() >= 3);
+        let has_auth_keys = ops.operations.iter().any(|op| {
+            if let SystemOp::WriteFile { path, .. } = op {
+                path.contains("authorized_keys")
+            } else {
+                false
+            }
+        });
+        assert!(has_auth_keys);
+    }
+
+    #[test]
+    fn user_ops_adds_sudo() {
+        let mut config = test_config();
+        config.user.enable_sudo = true;
+        let installer = AgnovaInstaller::new(config);
+        let ops = installer.plan_user_ops("/mnt");
+        let has_wheel = ops.operations.iter().any(|op| {
+            if let SystemOp::Command { args, .. } = op {
+                args.contains(&"wheel".to_string())
+            } else {
+                false
+            }
+        });
+        assert!(has_wheel);
+    }
+
+    // -----------------------------------------------------------------------
+    // Network ops tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn network_ops_creates_hostname() {
+        let config = test_config();
+        let installer = AgnovaInstaller::new(config);
+        let ops = installer.plan_network_ops("/mnt");
+        let has_hostname = ops.operations.iter().any(|op| {
+            if let SystemOp::WriteFile { path, content, .. } = op {
+                path.contains("hostname") && content.contains("agnos")
+            } else {
+                false
+            }
+        });
+        assert!(has_hostname);
+    }
+
+    #[test]
+    fn network_ops_creates_hosts() {
+        let config = test_config();
+        let installer = AgnovaInstaller::new(config);
+        let ops = installer.plan_network_ops("/mnt");
+        let has_hosts = ops.operations.iter().any(|op| {
+            if let SystemOp::WriteFile { path, content, .. } = op {
+                path.contains("/etc/hosts") && content.contains("localhost")
+            } else {
+                false
+            }
+        });
+        assert!(has_hosts);
+    }
+
+    #[test]
+    fn network_ops_creates_resolv_conf() {
+        let mut config = test_config();
+        config.network.dns = vec!["8.8.8.8".into(), "1.1.1.1".into()];
+        let installer = AgnovaInstaller::new(config);
+        let ops = installer.plan_network_ops("/mnt");
+        let has_resolv = ops.operations.iter().any(|op| {
+            if let SystemOp::WriteFile { path, content, .. } = op {
+                path.contains("resolv.conf") && content.contains("8.8.8.8")
+            } else {
+                false
+            }
+        });
+        assert!(has_resolv);
+    }
+
+    // -----------------------------------------------------------------------
+    // Locale ops tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn locale_ops_creates_locale_conf() {
+        let config = test_config();
+        let installer = AgnovaInstaller::new(config);
+        let ops = installer.plan_locale_ops("/mnt");
+        let has_locale = ops.operations.iter().any(|op| {
+            if let SystemOp::WriteFile { path, content, .. } = op {
+                path.contains("locale.conf") && content.contains("en_US.UTF-8")
+            } else {
+                false
+            }
+        });
+        assert!(has_locale);
+    }
+
+    #[test]
+    fn locale_ops_creates_timezone_symlink() {
+        let config = test_config();
+        let installer = AgnovaInstaller::new(config);
+        let ops = installer.plan_locale_ops("/mnt");
+        let has_tz = ops.operations.iter().any(|op| {
+            if let SystemOp::Symlink { target, link } = op {
+                target.contains("zoneinfo") && link.contains("localtime")
+            } else {
+                false
+            }
+        });
+        assert!(has_tz);
+    }
+
+    #[test]
+    fn locale_ops_creates_fstab() {
+        let config = test_config();
+        let installer = AgnovaInstaller::new(config);
+        let ops = installer.plan_locale_ops("/mnt");
+        let has_fstab = ops.operations.iter().any(|op| {
+            if let SystemOp::WriteFile { path, .. } = op {
+                path.contains("fstab")
+            } else {
+                false
+            }
+        });
+        assert!(has_fstab);
+    }
+
+    #[test]
+    fn locale_ops_creates_machine_id() {
+        let config = test_config();
+        let installer = AgnovaInstaller::new(config);
+        let ops = installer.plan_locale_ops("/mnt");
+        let has_machine_id = ops.operations.iter().any(|op| {
+            if let SystemOp::WriteFile { path, .. } = op {
+                path.contains("machine-id")
+            } else {
+                false
+            }
+        });
+        assert!(has_machine_id);
+    }
+
+    // -----------------------------------------------------------------------
+    // Full execution plan tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn full_execution_plan_has_all_phases() {
+        let config = test_config();
+        let installer = AgnovaInstaller::new(config);
+        let plan = installer.full_execution_plan("/mnt");
+        assert_eq!(plan.len(), 7);
+    }
+
+    #[test]
+    fn total_ops_count_nonzero() {
+        let config = test_config();
+        let installer = AgnovaInstaller::new(config);
+        let count = installer.total_ops_count("/mnt");
+        assert!(count > 10, "expected >10 ops, got {}", count);
+    }
+
+    // -----------------------------------------------------------------------
+    // ISO config tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn iso_config_defaults() {
+        let iso = IsoConfig::default();
+        assert!(iso.uefi);
+        assert!(!iso.bios);
+        assert_eq!(iso.compression, "zstd");
+        assert_eq!(iso.volume_label, "AGNOS");
+    }
+
+    #[test]
+    fn iso_build_command_uefi() {
+        let iso = IsoConfig::default();
+        let op = iso.build_command();
+        if let SystemOp::Command { binary, args, .. } = op {
+            assert_eq!(binary, "xorriso");
+            assert!(args.contains(&"-no-emul-boot".to_string()));
+            assert!(args.contains(&"efi.img".to_string()) || args.iter().any(|a| a.contains("efi")));
+        } else {
+            panic!("expected Command");
+        }
+    }
+
+    #[test]
+    fn iso_build_command_bios() {
+        let mut iso = IsoConfig::default();
+        iso.bios = true;
+        iso.uefi = false;
+        let op = iso.build_command();
+        if let SystemOp::Command { args, .. } = op {
+            assert!(args.iter().any(|a| a.contains("bios")));
+        } else {
+            panic!("expected Command");
+        }
+    }
+
+    #[test]
+    fn system_op_display() {
+        let op = SystemOp::Command {
+            binary: "parted".into(),
+            args: vec!["-s".into(), "/dev/sda".into()],
+            description: "partition disk".into(),
+            fatal: true,
+        };
+        let s = format!("{}", op);
+        assert!(s.contains("partition disk"));
+        assert!(s.contains("parted"));
+
+        let op = SystemOp::WriteFile {
+            path: "/etc/hostname".into(),
+            content: "agnos\n".into(),
+            mode: 0o644,
+            owner: None,
+        };
+        assert_eq!(format!("{}", op), "write /etc/hostname");
+
+        let op = SystemOp::Symlink {
+            target: "/usr/share/zoneinfo/UTC".into(),
+            link: "/etc/localtime".into(),
+        };
+        assert!(format!("{}", op).contains("symlink"));
     }
 }

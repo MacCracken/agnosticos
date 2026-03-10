@@ -1049,6 +1049,741 @@ impl ArgonautInit {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Runlevel — runtime boot mode switching
+// ---------------------------------------------------------------------------
+
+/// Runlevel represents a system operational state, analogous to SysV runlevels
+/// but mapped to AGNOS boot modes. Supports runtime switching.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum Runlevel {
+    /// Emergency: single-user, no services, drop to agnoshi shell.
+    Emergency,
+    /// Rescue: basic services only, network down, for recovery.
+    Rescue,
+    /// Console: multi-user text mode (equivalent to BootMode::Server).
+    Console,
+    /// Graphical: full desktop (equivalent to BootMode::Desktop).
+    Graphical,
+    /// Container: minimal services for container/embedded use.
+    Container,
+}
+
+impl Runlevel {
+    /// Map a runlevel to the services that should be running.
+    pub fn to_boot_mode(self) -> Option<BootMode> {
+        match self {
+            Self::Emergency | Self::Rescue => None,
+            Self::Console => Some(BootMode::Server),
+            Self::Graphical => Some(BootMode::Desktop),
+            Self::Container => Some(BootMode::Minimal),
+        }
+    }
+
+    /// Map a boot mode to the corresponding runlevel.
+    pub fn from_boot_mode(mode: BootMode) -> Self {
+        match mode {
+            BootMode::Server => Self::Console,
+            BootMode::Desktop => Self::Graphical,
+            BootMode::Minimal => Self::Container,
+        }
+    }
+
+    /// Numeric level for display (compatible with SysV conventions).
+    pub fn level(self) -> u8 {
+        match self {
+            Self::Emergency => 0,
+            Self::Rescue => 1,
+            Self::Console => 3,
+            Self::Graphical => 5,
+            Self::Container => 7,
+        }
+    }
+}
+
+impl fmt::Display for Runlevel {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Emergency => write!(f, "emergency"),
+            Self::Rescue => write!(f, "rescue"),
+            Self::Console => write!(f, "console"),
+            Self::Graphical => write!(f, "graphical"),
+            Self::Container => write!(f, "container"),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Service target — grouping services for coordinated lifecycle
+// ---------------------------------------------------------------------------
+
+/// A target groups related services that should start/stop together.
+/// Analogous to systemd targets.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ServiceTarget {
+    pub name: String,
+    pub description: String,
+    /// Services that MUST be running for this target to be met.
+    pub requires: Vec<String>,
+    /// Services that SHOULD be running but aren't fatal if missing.
+    pub wants: Vec<String>,
+    /// Runlevels where this target is active.
+    pub active_in: Vec<Runlevel>,
+}
+
+impl ServiceTarget {
+    /// Predefined targets for AGNOS.
+    pub fn defaults() -> Vec<Self> {
+        vec![
+            Self {
+                name: "basic".into(),
+                description: "Basic system services".into(),
+                requires: vec!["eudev".into(), "dbus".into(), "syslogd".into()],
+                wants: vec![],
+                active_in: vec![
+                    Runlevel::Rescue,
+                    Runlevel::Console,
+                    Runlevel::Graphical,
+                    Runlevel::Container,
+                ],
+            },
+            Self {
+                name: "network".into(),
+                description: "Network connectivity".into(),
+                requires: vec!["networkmanager".into()],
+                wants: vec!["nftables".into(), "openssh".into()],
+                active_in: vec![Runlevel::Console, Runlevel::Graphical],
+            },
+            Self {
+                name: "agnos-core".into(),
+                description: "AGNOS agent runtime and LLM gateway".into(),
+                requires: vec!["daimon".into()],
+                wants: vec!["hoosh".into(), "aegis".into()],
+                active_in: vec![
+                    Runlevel::Console,
+                    Runlevel::Graphical,
+                    Runlevel::Container,
+                ],
+            },
+            Self {
+                name: "graphical".into(),
+                description: "Desktop environment".into(),
+                requires: vec!["aethersafha".into()],
+                wants: vec!["pipewire".into(), "agnoshi".into()],
+                active_in: vec![Runlevel::Graphical],
+            },
+        ]
+    }
+
+    /// Check if this target is active in the given runlevel.
+    pub fn is_active_in(&self, runlevel: Runlevel) -> bool {
+        self.active_in.contains(&runlevel)
+    }
+
+    /// All services needed for this target (requires + wants).
+    pub fn all_services(&self) -> Vec<&str> {
+        self.requires
+            .iter()
+            .chain(self.wants.iter())
+            .map(|s| s.as_str())
+            .collect()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Process execution types
+// ---------------------------------------------------------------------------
+
+/// Describes how a service process exited.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum ExitStatus {
+    /// Exited normally with the given code (0 = success).
+    Code(i32),
+    /// Killed by a signal (e.g. SIGTERM=15, SIGKILL=9).
+    Signal(i32),
+    /// Process hasn't exited yet.
+    Running,
+    /// Never started.
+    NotStarted,
+}
+
+impl fmt::Display for ExitStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Code(c) => write!(f, "exit({})", c),
+            Self::Signal(s) => write!(f, "signal({})", s),
+            Self::Running => write!(f, "running"),
+            Self::NotStarted => write!(f, "not-started"),
+        }
+    }
+}
+
+/// A service lifecycle event recorded in the audit log.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ServiceEvent {
+    pub timestamp: DateTime<Utc>,
+    pub service: String,
+    pub event_type: ServiceEventType,
+    pub details: Option<String>,
+}
+
+/// Types of service lifecycle events.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum ServiceEventType {
+    Starting,
+    Started { pid: u32 },
+    HealthCheckPassed,
+    HealthCheckFailed { consecutive: u32 },
+    ReadyCheckPassed,
+    ReadyCheckFailed,
+    Stopping,
+    Stopped { exit_status: ExitStatus },
+    Restarting { restart_count: u32 },
+    DependencyWaiting { dependency: String },
+    DependencyMet { dependency: String },
+    TimeoutKilled,
+    CrashDetected { exit_status: ExitStatus },
+}
+
+impl fmt::Display for ServiceEventType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Starting => write!(f, "starting"),
+            Self::Started { pid } => write!(f, "started(pid={})", pid),
+            Self::HealthCheckPassed => write!(f, "health-ok"),
+            Self::HealthCheckFailed { consecutive } => {
+                write!(f, "health-fail({}x)", consecutive)
+            }
+            Self::ReadyCheckPassed => write!(f, "ready"),
+            Self::ReadyCheckFailed => write!(f, "not-ready"),
+            Self::Stopping => write!(f, "stopping"),
+            Self::Stopped { exit_status } => write!(f, "stopped({})", exit_status),
+            Self::Restarting { restart_count } => write!(f, "restarting(#{})", restart_count),
+            Self::DependencyWaiting { dependency } => write!(f, "waiting({})", dependency),
+            Self::DependencyMet { dependency } => write!(f, "dep-met({})", dependency),
+            Self::TimeoutKilled => write!(f, "timeout-killed"),
+            Self::CrashDetected { exit_status } => write!(f, "crash({})", exit_status),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Shutdown orchestration
+// ---------------------------------------------------------------------------
+
+/// Shutdown type selection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ShutdownType {
+    /// Clean shutdown and power off.
+    Poweroff,
+    /// Clean shutdown and reboot.
+    Reboot,
+    /// Halt the CPU without powering off.
+    Halt,
+    /// Kexec into a new kernel (fast reboot).
+    Kexec,
+}
+
+impl fmt::Display for ShutdownType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Poweroff => write!(f, "poweroff"),
+            Self::Reboot => write!(f, "reboot"),
+            Self::Halt => write!(f, "halt"),
+            Self::Kexec => write!(f, "kexec"),
+        }
+    }
+}
+
+/// A shutdown plan describing the ordered steps to cleanly shut down.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShutdownPlan {
+    pub shutdown_type: ShutdownType,
+    pub steps: Vec<ShutdownStep>,
+    pub timeout_ms: u64,
+    pub wall_message: Option<String>,
+}
+
+/// An individual shutdown step.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShutdownStep {
+    pub description: String,
+    pub action: ShutdownAction,
+    pub timeout_ms: u64,
+    pub status: ShutdownStepStatus,
+}
+
+/// Actions performed during shutdown.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum ShutdownAction {
+    /// Broadcast wall message to all terminals.
+    WallMessage(String),
+    /// Signal agents to save state and disconnect.
+    NotifyAgents,
+    /// Send SIGTERM to a service, wait for graceful exit.
+    StopService { name: String, signal: i32 },
+    /// Force kill a service that didn't stop gracefully.
+    ForceKillService { name: String },
+    /// Flush filesystem buffers.
+    SyncFilesystems,
+    /// Unmount all filesystems.
+    UnmountFilesystems,
+    /// Deactivate swap.
+    SwapOff,
+    /// Deactivate LUKS volumes.
+    CloseLuks,
+    /// Final kernel call (reboot/poweroff/halt).
+    KernelAction(ShutdownType),
+}
+
+/// Status of a shutdown step.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum ShutdownStepStatus {
+    Pending,
+    InProgress,
+    Complete,
+    Failed(String),
+    Skipped,
+}
+
+impl fmt::Display for ShutdownStepStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Pending => write!(f, "pending"),
+            Self::InProgress => write!(f, "in-progress"),
+            Self::Complete => write!(f, "complete"),
+            Self::Failed(e) => write!(f, "failed: {}", e),
+            Self::Skipped => write!(f, "skipped"),
+        }
+    }
+}
+
+impl ArgonautInit {
+    /// Build a shutdown plan for the given shutdown type.
+    /// Services are stopped in reverse dependency order.
+    pub fn plan_shutdown(&self, shutdown_type: ShutdownType) -> Result<ShutdownPlan> {
+        let service_order = self.shutdown_order()?;
+        let mut steps = Vec::new();
+
+        // Step 1: Wall message
+        let wall_msg = format!(
+            "AGNOS system {} in {} seconds",
+            shutdown_type, self.config.shutdown_timeout_ms / 1000
+        );
+        steps.push(ShutdownStep {
+            description: "Broadcast shutdown warning".into(),
+            action: ShutdownAction::WallMessage(wall_msg.clone()),
+            timeout_ms: 1000,
+            status: ShutdownStepStatus::Pending,
+        });
+
+        // Step 2: Notify agents to save state
+        steps.push(ShutdownStep {
+            description: "Notify agents to save state".into(),
+            action: ShutdownAction::NotifyAgents,
+            timeout_ms: 5000,
+            status: ShutdownStepStatus::Pending,
+        });
+
+        // Step 3: Stop services in reverse dependency order
+        for svc_name in &service_order {
+            if let Some(svc) = self.services.get(svc_name) {
+                if svc.state == ServiceState::Running || svc.state == ServiceState::Starting {
+                    steps.push(ShutdownStep {
+                        description: format!("Stop service: {}", svc_name),
+                        action: ShutdownAction::StopService {
+                            name: svc_name.clone(),
+                            signal: 15, // SIGTERM
+                        },
+                        timeout_ms: 5000,
+                        status: ShutdownStepStatus::Pending,
+                    });
+                }
+            }
+        }
+
+        // Step 4: Sync filesystems
+        steps.push(ShutdownStep {
+            description: "Sync filesystem buffers".into(),
+            action: ShutdownAction::SyncFilesystems,
+            timeout_ms: 3000,
+            status: ShutdownStepStatus::Pending,
+        });
+
+        // Step 5: Unmount
+        steps.push(ShutdownStep {
+            description: "Unmount filesystems".into(),
+            action: ShutdownAction::UnmountFilesystems,
+            timeout_ms: 5000,
+            status: ShutdownStepStatus::Pending,
+        });
+
+        // Step 6: Deactivate swap
+        steps.push(ShutdownStep {
+            description: "Deactivate swap".into(),
+            action: ShutdownAction::SwapOff,
+            timeout_ms: 2000,
+            status: ShutdownStepStatus::Pending,
+        });
+
+        // Step 7: Close LUKS volumes
+        steps.push(ShutdownStep {
+            description: "Close encrypted volumes".into(),
+            action: ShutdownAction::CloseLuks,
+            timeout_ms: 3000,
+            status: ShutdownStepStatus::Pending,
+        });
+
+        // Step 8: Final kernel action
+        steps.push(ShutdownStep {
+            description: format!("Execute {}", shutdown_type),
+            action: ShutdownAction::KernelAction(shutdown_type),
+            timeout_ms: 1000,
+            status: ShutdownStepStatus::Pending,
+        });
+
+        Ok(ShutdownPlan {
+            shutdown_type,
+            steps,
+            timeout_ms: self.config.shutdown_timeout_ms,
+            wall_message: Some(wall_msg),
+        })
+    }
+
+    /// Compute which services need to start/stop when switching runlevels.
+    pub fn plan_runlevel_switch(
+        &self,
+        target: Runlevel,
+        targets: &[ServiceTarget],
+    ) -> RunlevelSwitchPlan {
+        let mut services_to_start = Vec::new();
+        let mut services_to_stop = Vec::new();
+
+        // Determine which services should be running at the target runlevel
+        let mut desired: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for tgt in targets {
+            if tgt.is_active_in(target) {
+                for svc in &tgt.requires {
+                    desired.insert(svc.clone());
+                }
+                for svc in &tgt.wants {
+                    desired.insert(svc.clone());
+                }
+            }
+        }
+
+        // Services that need to start (desired but not running)
+        for svc_name in &desired {
+            if let Some(svc) = self.services.get(svc_name) {
+                if svc.state != ServiceState::Running && svc.state != ServiceState::Starting {
+                    services_to_start.push(svc_name.clone());
+                }
+            } else {
+                // Service not registered, still mark it as needed
+                services_to_start.push(svc_name.clone());
+            }
+        }
+
+        // Services that need to stop (running but not desired)
+        for (name, svc) in &self.services {
+            if (svc.state == ServiceState::Running || svc.state == ServiceState::Starting)
+                && !desired.contains(name)
+            {
+                services_to_stop.push(name.clone());
+            }
+        }
+
+        // Emergency/rescue: stop everything except basic shell
+        if target == Runlevel::Emergency {
+            services_to_stop.clear();
+            services_to_start.clear();
+            for (name, svc) in &self.services {
+                if svc.state == ServiceState::Running || svc.state == ServiceState::Starting {
+                    services_to_stop.push(name.clone());
+                }
+            }
+        }
+
+        RunlevelSwitchPlan {
+            from: Runlevel::from_boot_mode(self.config.boot_mode),
+            to: target,
+            services_to_start,
+            services_to_stop,
+            drop_to_shell: target == Runlevel::Emergency || target == Runlevel::Rescue,
+        }
+    }
+}
+
+/// Plan for switching between runlevels at runtime.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RunlevelSwitchPlan {
+    pub from: Runlevel,
+    pub to: Runlevel,
+    pub services_to_start: Vec<String>,
+    pub services_to_stop: Vec<String>,
+    pub drop_to_shell: bool,
+}
+
+// ---------------------------------------------------------------------------
+// Health check execution logic
+// ---------------------------------------------------------------------------
+
+/// Result of executing a single health check.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HealthCheckResult {
+    pub service: String,
+    pub check_type: String,
+    pub passed: bool,
+    pub latency_ms: u64,
+    pub message: Option<String>,
+    pub checked_at: DateTime<Utc>,
+}
+
+/// Tracks consecutive health check failures for a service.
+#[derive(Debug, Clone, Default)]
+pub struct HealthTracker {
+    /// Per-service consecutive failure count.
+    failures: HashMap<String, u32>,
+}
+
+impl HealthTracker {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Record a health check result. Returns true if the service should
+    /// be restarted (consecutive failures >= threshold).
+    pub fn record(&mut self, service: &str, passed: bool, threshold: u32) -> bool {
+        if passed {
+            self.failures.remove(service);
+            false
+        } else {
+            let count = self.failures.entry(service.to_string()).or_insert(0);
+            *count += 1;
+            *count >= threshold
+        }
+    }
+
+    /// Get current consecutive failure count for a service.
+    pub fn failure_count(&self, service: &str) -> u32 {
+        self.failures.get(service).copied().unwrap_or(0)
+    }
+
+    /// Reset tracking for a service (e.g. after restart).
+    pub fn reset(&mut self, service: &str) {
+        self.failures.remove(service);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Process spawn specification
+// ---------------------------------------------------------------------------
+
+/// Everything needed to spawn a service process.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProcessSpec {
+    pub binary: PathBuf,
+    pub args: Vec<String>,
+    pub environment: HashMap<String, String>,
+    pub working_dir: Option<PathBuf>,
+    pub stdout_log: Option<PathBuf>,
+    pub stderr_log: Option<PathBuf>,
+    pub uid: Option<u32>,
+    pub gid: Option<u32>,
+}
+
+impl ProcessSpec {
+    /// Build a ProcessSpec from a ServiceDefinition.
+    pub fn from_service(def: &ServiceDefinition) -> Self {
+        Self {
+            binary: def.binary_path.clone(),
+            args: def.args.clone(),
+            environment: def.environment.clone(),
+            working_dir: None,
+            stdout_log: Some(PathBuf::from(format!(
+                "/var/log/agnos/services/{}.log",
+                def.name
+            ))),
+            stderr_log: Some(PathBuf::from(format!(
+                "/var/log/agnos/services/{}.err",
+                def.name
+            ))),
+            uid: None,
+            gid: None,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Emergency shell
+// ---------------------------------------------------------------------------
+
+/// Configuration for the emergency recovery shell.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmergencyShellConfig {
+    /// Path to the shell binary.
+    pub shell_path: PathBuf,
+    /// Environment variables for the emergency shell.
+    pub environment: HashMap<String, String>,
+    /// Message displayed before dropping to the shell.
+    pub banner: String,
+    /// Whether to require root password before granting access.
+    pub require_auth: bool,
+}
+
+impl Default for EmergencyShellConfig {
+    fn default() -> Self {
+        let mut env = HashMap::new();
+        env.insert("HOME".into(), "/root".into());
+        env.insert("TERM".into(), "linux".into());
+        env.insert("PATH".into(), "/usr/sbin:/usr/bin:/sbin:/bin".into());
+        env.insert("SHELL".into(), "/usr/bin/agnoshi".into());
+
+        Self {
+            shell_path: PathBuf::from("/usr/bin/agnoshi"),
+            environment: env,
+            banner: concat!(
+                "\n",
+                "========================================\n",
+                "  AGNOS Emergency Shell\n",
+                "========================================\n",
+                "\n",
+                "The system has entered emergency mode.\n",
+                "Use 'argonaut status' to check service state.\n",
+                "Use 'argonaut start <service>' to start services.\n",
+                "Use 'exit' to continue boot or 'reboot' to restart.\n",
+                "\n",
+            )
+            .into(),
+            require_auth: false,
+        }
+    }
+}
+
+impl ArgonautInit {
+    /// Determine whether the system should drop to an emergency shell.
+    /// Called after a critical boot step failure.
+    pub fn should_drop_to_emergency(&self) -> bool {
+        self.failed_steps()
+            .iter()
+            .any(|step| step.required && step.status == BootStepStatus::Failed)
+    }
+
+    /// Get the emergency shell configuration.
+    pub fn emergency_shell_config(&self) -> EmergencyShellConfig {
+        EmergencyShellConfig::default()
+    }
+
+    /// Record a service event in the audit log.
+    pub fn record_event(&self, service: &str, event_type: ServiceEventType) -> ServiceEvent {
+        let event = ServiceEvent {
+            timestamp: Utc::now(),
+            service: service.to_string(),
+            event_type: event_type.clone(),
+            details: None,
+        };
+        info!(
+            service = service,
+            event = %event_type,
+            "service event"
+        );
+        event
+    }
+
+    /// Build a complete boot execution plan: resolve service order,
+    /// create ProcessSpecs, and return the ordered list.
+    pub fn boot_execution_plan(&self) -> Result<Vec<(String, ProcessSpec)>> {
+        let definitions: Vec<ServiceDefinition> = self
+            .services
+            .values()
+            .map(|s| s.definition.clone())
+            .collect();
+        let order = Self::resolve_service_order(&definitions)?;
+
+        let plan: Vec<(String, ProcessSpec)> = order
+            .into_iter()
+            .filter_map(|name| {
+                self.services.get(&name).map(|svc| {
+                    let spec = ProcessSpec::from_service(&svc.definition);
+                    (name, spec)
+                })
+            })
+            .collect();
+
+        Ok(plan)
+    }
+
+    /// Determine what action to take when a service crashes.
+    pub fn on_service_crash(
+        &self,
+        service_name: &str,
+        exit_status: &ExitStatus,
+    ) -> CrashAction {
+        let svc = match self.services.get(service_name) {
+            Some(s) => s,
+            None => return CrashAction::Ignore,
+        };
+
+        match svc.definition.restart_policy {
+            RestartPolicy::Always => {
+                if svc.restart_count >= 5 {
+                    warn!(
+                        service = service_name,
+                        restarts = svc.restart_count,
+                        "service exceeded restart limit"
+                    );
+                    CrashAction::GiveUp {
+                        reason: format!(
+                            "exceeded restart limit ({} restarts)",
+                            svc.restart_count
+                        ),
+                    }
+                } else {
+                    CrashAction::Restart {
+                        delay_ms: backoff_delay(svc.restart_count),
+                    }
+                }
+            }
+            RestartPolicy::OnFailure => {
+                if *exit_status == ExitStatus::Code(0) {
+                    CrashAction::Ignore
+                } else if svc.restart_count >= 5 {
+                    CrashAction::GiveUp {
+                        reason: format!(
+                            "exceeded restart limit after failures ({} restarts)",
+                            svc.restart_count
+                        ),
+                    }
+                } else {
+                    CrashAction::Restart {
+                        delay_ms: backoff_delay(svc.restart_count),
+                    }
+                }
+            }
+            RestartPolicy::Never => CrashAction::Ignore,
+        }
+    }
+}
+
+/// Action to take when a service crashes.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum CrashAction {
+    /// Restart the service after the given delay.
+    Restart { delay_ms: u64 },
+    /// Don't restart; service exited normally or policy is Never.
+    Ignore,
+    /// Stop trying to restart; too many failures.
+    GiveUp { reason: String },
+}
+
+/// Exponential backoff delay for service restarts.
+/// 1s, 2s, 4s, 8s, 16s (capped at 30s).
+fn backoff_delay(restart_count: u32) -> u64 {
+    let base: u64 = 1000;
+    let delay = base * 2u64.saturating_pow(restart_count);
+    delay.min(30_000)
+}
+
 // ===========================================================================
 // Tests
 // ===========================================================================
@@ -1945,5 +2680,524 @@ mod tests {
         let services = ArgonautInit::default_services(BootMode::Desktop);
         // postgres, redis, agent-runtime, llm-gateway, synapse, aethersafha, agnoshi = 7
         assert_eq!(services.len(), 7);
+    }
+
+    // -----------------------------------------------------------------------
+    // Phase 12A: Runlevel tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn runlevel_to_boot_mode() {
+        assert_eq!(Runlevel::Console.to_boot_mode(), Some(BootMode::Server));
+        assert_eq!(Runlevel::Graphical.to_boot_mode(), Some(BootMode::Desktop));
+        assert_eq!(Runlevel::Container.to_boot_mode(), Some(BootMode::Minimal));
+        assert_eq!(Runlevel::Emergency.to_boot_mode(), None);
+        assert_eq!(Runlevel::Rescue.to_boot_mode(), None);
+    }
+
+    #[test]
+    fn runlevel_from_boot_mode() {
+        assert_eq!(Runlevel::from_boot_mode(BootMode::Server), Runlevel::Console);
+        assert_eq!(
+            Runlevel::from_boot_mode(BootMode::Desktop),
+            Runlevel::Graphical
+        );
+        assert_eq!(
+            Runlevel::from_boot_mode(BootMode::Minimal),
+            Runlevel::Container
+        );
+    }
+
+    #[test]
+    fn runlevel_levels() {
+        assert_eq!(Runlevel::Emergency.level(), 0);
+        assert_eq!(Runlevel::Rescue.level(), 1);
+        assert_eq!(Runlevel::Console.level(), 3);
+        assert_eq!(Runlevel::Graphical.level(), 5);
+        assert_eq!(Runlevel::Container.level(), 7);
+    }
+
+    #[test]
+    fn runlevel_display() {
+        assert_eq!(format!("{}", Runlevel::Emergency), "emergency");
+        assert_eq!(format!("{}", Runlevel::Rescue), "rescue");
+        assert_eq!(format!("{}", Runlevel::Console), "console");
+        assert_eq!(format!("{}", Runlevel::Graphical), "graphical");
+        assert_eq!(format!("{}", Runlevel::Container), "container");
+    }
+
+    // -----------------------------------------------------------------------
+    // Service target tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn default_targets_exist() {
+        let targets = ServiceTarget::defaults();
+        assert_eq!(targets.len(), 4);
+        let names: Vec<&str> = targets.iter().map(|t| t.name.as_str()).collect();
+        assert!(names.contains(&"basic"));
+        assert!(names.contains(&"network"));
+        assert!(names.contains(&"agnos-core"));
+        assert!(names.contains(&"graphical"));
+    }
+
+    #[test]
+    fn target_active_in_runlevel() {
+        let targets = ServiceTarget::defaults();
+        let basic = targets.iter().find(|t| t.name == "basic").unwrap();
+        assert!(basic.is_active_in(Runlevel::Console));
+        assert!(basic.is_active_in(Runlevel::Graphical));
+        assert!(basic.is_active_in(Runlevel::Rescue));
+        assert!(!basic.is_active_in(Runlevel::Emergency));
+
+        let graphical = targets.iter().find(|t| t.name == "graphical").unwrap();
+        assert!(graphical.is_active_in(Runlevel::Graphical));
+        assert!(!graphical.is_active_in(Runlevel::Console));
+    }
+
+    #[test]
+    fn target_all_services() {
+        let targets = ServiceTarget::defaults();
+        let network = targets.iter().find(|t| t.name == "network").unwrap();
+        let svcs = network.all_services();
+        assert!(svcs.contains(&"networkmanager"));
+        assert!(svcs.contains(&"nftables"));
+        assert!(svcs.contains(&"openssh"));
+    }
+
+    // -----------------------------------------------------------------------
+    // Shutdown plan tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn shutdown_plan_poweroff() {
+        let config = ArgonautConfig::default();
+        let init = ArgonautInit::new(config);
+        let plan = init.plan_shutdown(ShutdownType::Poweroff).unwrap();
+        assert_eq!(plan.shutdown_type, ShutdownType::Poweroff);
+        assert!(!plan.steps.is_empty());
+        // Last step should be KernelAction
+        let last = plan.steps.last().unwrap();
+        assert_eq!(
+            last.action,
+            ShutdownAction::KernelAction(ShutdownType::Poweroff)
+        );
+    }
+
+    #[test]
+    fn shutdown_plan_reboot() {
+        let config = ArgonautConfig::default();
+        let init = ArgonautInit::new(config);
+        let plan = init.plan_shutdown(ShutdownType::Reboot).unwrap();
+        assert_eq!(plan.shutdown_type, ShutdownType::Reboot);
+        let last = plan.steps.last().unwrap();
+        assert_eq!(
+            last.action,
+            ShutdownAction::KernelAction(ShutdownType::Reboot)
+        );
+    }
+
+    #[test]
+    fn shutdown_plan_includes_sync() {
+        let config = ArgonautConfig::default();
+        let init = ArgonautInit::new(config);
+        let plan = init.plan_shutdown(ShutdownType::Poweroff).unwrap();
+        assert!(plan
+            .steps
+            .iter()
+            .any(|s| s.action == ShutdownAction::SyncFilesystems));
+    }
+
+    #[test]
+    fn shutdown_plan_includes_unmount() {
+        let config = ArgonautConfig::default();
+        let init = ArgonautInit::new(config);
+        let plan = init.plan_shutdown(ShutdownType::Halt).unwrap();
+        assert!(plan
+            .steps
+            .iter()
+            .any(|s| s.action == ShutdownAction::UnmountFilesystems));
+    }
+
+    #[test]
+    fn shutdown_plan_has_wall_message() {
+        let config = ArgonautConfig::default();
+        let init = ArgonautInit::new(config);
+        let plan = init.plan_shutdown(ShutdownType::Reboot).unwrap();
+        assert!(plan.wall_message.is_some());
+        assert!(plan.wall_message.unwrap().contains("reboot"));
+    }
+
+    #[test]
+    fn shutdown_plan_stops_running_services() {
+        let config = ArgonautConfig {
+            boot_mode: BootMode::Minimal,
+            ..ArgonautConfig::default()
+        };
+        let mut init = ArgonautInit::new(config);
+        // Minimal has only agent-runtime with no deps
+        init.set_service_state("agent-runtime", ServiceState::Starting);
+        init.set_service_state("agent-runtime", ServiceState::Running);
+
+        let plan = init.plan_shutdown(ShutdownType::Poweroff).unwrap();
+        let stop_steps: Vec<_> = plan
+            .steps
+            .iter()
+            .filter(|s| matches!(s.action, ShutdownAction::StopService { .. }))
+            .collect();
+        assert!(!stop_steps.is_empty());
+    }
+
+    #[test]
+    fn shutdown_plan_includes_luks_close() {
+        let config = ArgonautConfig::default();
+        let init = ArgonautInit::new(config);
+        let plan = init.plan_shutdown(ShutdownType::Poweroff).unwrap();
+        assert!(plan
+            .steps
+            .iter()
+            .any(|s| s.action == ShutdownAction::CloseLuks));
+    }
+
+    #[test]
+    fn shutdown_type_display() {
+        assert_eq!(format!("{}", ShutdownType::Poweroff), "poweroff");
+        assert_eq!(format!("{}", ShutdownType::Reboot), "reboot");
+        assert_eq!(format!("{}", ShutdownType::Halt), "halt");
+        assert_eq!(format!("{}", ShutdownType::Kexec), "kexec");
+    }
+
+    #[test]
+    fn shutdown_step_status_display() {
+        assert_eq!(format!("{}", ShutdownStepStatus::Pending), "pending");
+        assert_eq!(
+            format!("{}", ShutdownStepStatus::Failed("disk busy".into())),
+            "failed: disk busy"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Runlevel switch plan tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn runlevel_switch_console_to_graphical() {
+        let config = ArgonautConfig {
+            boot_mode: BootMode::Server,
+            ..ArgonautConfig::default()
+        };
+        let init = ArgonautInit::new(config);
+        let targets = ServiceTarget::defaults();
+        let plan = init.plan_runlevel_switch(Runlevel::Graphical, &targets);
+        assert_eq!(plan.from, Runlevel::Console);
+        assert_eq!(plan.to, Runlevel::Graphical);
+        // Should want to start graphical services
+        assert!(plan.services_to_start.contains(&"aethersafha".to_string()));
+        assert!(!plan.drop_to_shell);
+    }
+
+    #[test]
+    fn runlevel_switch_to_emergency_stops_all() {
+        let config = ArgonautConfig {
+            boot_mode: BootMode::Minimal,
+            ..ArgonautConfig::default()
+        };
+        let mut init = ArgonautInit::new(config);
+        // Minimal has agent-runtime with no deps, so state transition works
+        init.set_service_state("agent-runtime", ServiceState::Starting);
+        init.set_service_state("agent-runtime", ServiceState::Running);
+
+        let targets = ServiceTarget::defaults();
+        let plan = init.plan_runlevel_switch(Runlevel::Emergency, &targets);
+        assert!(plan.drop_to_shell);
+        assert!(plan.services_to_start.is_empty());
+        // Should stop running services
+        assert!(plan.services_to_stop.contains(&"agent-runtime".to_string()));
+    }
+
+    #[test]
+    fn runlevel_switch_rescue_drops_to_shell() {
+        let config = ArgonautConfig::default();
+        let init = ArgonautInit::new(config);
+        let targets = ServiceTarget::defaults();
+        let plan = init.plan_runlevel_switch(Runlevel::Rescue, &targets);
+        assert!(plan.drop_to_shell);
+    }
+
+    // -----------------------------------------------------------------------
+    // Health tracker tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn health_tracker_records_pass() {
+        let mut tracker = HealthTracker::new();
+        let should_restart = tracker.record("svc1", true, 3);
+        assert!(!should_restart);
+        assert_eq!(tracker.failure_count("svc1"), 0);
+    }
+
+    #[test]
+    fn health_tracker_records_failures() {
+        let mut tracker = HealthTracker::new();
+        assert!(!tracker.record("svc1", false, 3));
+        assert_eq!(tracker.failure_count("svc1"), 1);
+        assert!(!tracker.record("svc1", false, 3));
+        assert_eq!(tracker.failure_count("svc1"), 2);
+        // Third failure triggers restart
+        assert!(tracker.record("svc1", false, 3));
+        assert_eq!(tracker.failure_count("svc1"), 3);
+    }
+
+    #[test]
+    fn health_tracker_resets_on_pass() {
+        let mut tracker = HealthTracker::new();
+        tracker.record("svc1", false, 3);
+        tracker.record("svc1", false, 3);
+        // Pass resets counter
+        tracker.record("svc1", true, 3);
+        assert_eq!(tracker.failure_count("svc1"), 0);
+    }
+
+    #[test]
+    fn health_tracker_reset_manual() {
+        let mut tracker = HealthTracker::new();
+        tracker.record("svc1", false, 3);
+        tracker.record("svc1", false, 3);
+        tracker.reset("svc1");
+        assert_eq!(tracker.failure_count("svc1"), 0);
+    }
+
+    #[test]
+    fn health_tracker_independent_services() {
+        let mut tracker = HealthTracker::new();
+        tracker.record("svc1", false, 2);
+        tracker.record("svc2", false, 2);
+        assert_eq!(tracker.failure_count("svc1"), 1);
+        assert_eq!(tracker.failure_count("svc2"), 1);
+        // Only svc1 reaches threshold
+        assert!(tracker.record("svc1", false, 2));
+        assert!(!tracker.record("svc2", true, 2));
+    }
+
+    // -----------------------------------------------------------------------
+    // Exit status and event tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn exit_status_display() {
+        assert_eq!(format!("{}", ExitStatus::Code(0)), "exit(0)");
+        assert_eq!(format!("{}", ExitStatus::Code(1)), "exit(1)");
+        assert_eq!(format!("{}", ExitStatus::Signal(9)), "signal(9)");
+        assert_eq!(format!("{}", ExitStatus::Signal(15)), "signal(15)");
+        assert_eq!(format!("{}", ExitStatus::Running), "running");
+        assert_eq!(format!("{}", ExitStatus::NotStarted), "not-started");
+    }
+
+    #[test]
+    fn service_event_type_display() {
+        assert_eq!(format!("{}", ServiceEventType::Starting), "starting");
+        assert_eq!(
+            format!("{}", ServiceEventType::Started { pid: 42 }),
+            "started(pid=42)"
+        );
+        assert_eq!(
+            format!("{}", ServiceEventType::HealthCheckFailed { consecutive: 3 }),
+            "health-fail(3x)"
+        );
+        assert_eq!(format!("{}", ServiceEventType::TimeoutKilled), "timeout-killed");
+        assert_eq!(
+            format!(
+                "{}",
+                ServiceEventType::CrashDetected {
+                    exit_status: ExitStatus::Signal(11)
+                }
+            ),
+            "crash(signal(11))"
+        );
+    }
+
+    #[test]
+    fn record_event_creates_event() {
+        let config = ArgonautConfig::default();
+        let init = ArgonautInit::new(config);
+        let event = init.record_event("daimon", ServiceEventType::Starting);
+        assert_eq!(event.service, "daimon");
+        assert_eq!(event.event_type, ServiceEventType::Starting);
+    }
+
+    // -----------------------------------------------------------------------
+    // Process spec tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn process_spec_from_service() {
+        let def = ServiceDefinition {
+            name: "test-svc".into(),
+            description: "test".into(),
+            binary_path: PathBuf::from("/usr/bin/test"),
+            args: vec!["--flag".into()],
+            environment: HashMap::new(),
+            depends_on: vec![],
+            required_for_modes: vec![BootMode::Server],
+            restart_policy: RestartPolicy::Always,
+            health_check: None,
+            ready_check: None,
+        };
+        let spec = ProcessSpec::from_service(&def);
+        assert_eq!(spec.binary, PathBuf::from("/usr/bin/test"));
+        assert_eq!(spec.args, vec!["--flag"]);
+        assert!(spec
+            .stdout_log
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .contains("test-svc"));
+        assert!(spec
+            .stderr_log
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .contains("test-svc"));
+    }
+
+    // -----------------------------------------------------------------------
+    // Emergency shell tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn emergency_shell_default_config() {
+        let config = EmergencyShellConfig::default();
+        assert_eq!(config.shell_path, PathBuf::from("/usr/bin/agnoshi"));
+        assert!(!config.require_auth);
+        assert!(config.banner.contains("Emergency"));
+        assert_eq!(config.environment.get("SHELL").unwrap(), "/usr/bin/agnoshi");
+    }
+
+    #[test]
+    fn should_drop_to_emergency_on_required_failure() {
+        let config = ArgonautConfig {
+            boot_mode: BootMode::Server,
+            ..ArgonautConfig::default()
+        };
+        let mut init = ArgonautInit::new(config);
+        // MountFilesystems is required — fail it
+        init.mark_step_failed(BootStage::MountFilesystems, "disk error".into());
+        assert!(init.should_drop_to_emergency());
+    }
+
+    #[test]
+    fn no_emergency_without_required_failure() {
+        let config = ArgonautConfig::default();
+        let init = ArgonautInit::new(config);
+        assert!(!init.should_drop_to_emergency());
+    }
+
+    // -----------------------------------------------------------------------
+    // Boot execution plan tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn boot_execution_plan_ordered() {
+        let config = ArgonautConfig {
+            boot_mode: BootMode::Minimal,
+            ..ArgonautConfig::default()
+        };
+        let init = ArgonautInit::new(config);
+        let plan = init.boot_execution_plan().unwrap();
+        assert!(!plan.is_empty());
+        // First service should be agent-runtime (only service in minimal)
+        assert_eq!(plan[0].0, "agent-runtime");
+    }
+
+    #[test]
+    fn boot_execution_plan_server() {
+        let config = ArgonautConfig {
+            boot_mode: BootMode::Server,
+            ..ArgonautConfig::default()
+        };
+        let init = ArgonautInit::new(config);
+        let plan = init.boot_execution_plan().unwrap();
+        let names: Vec<&str> = plan.iter().map(|(n, _)| n.as_str()).collect();
+        assert!(names.contains(&"agent-runtime"));
+        assert!(names.contains(&"llm-gateway"));
+        // agent-runtime should come after postgres/redis (dependencies)
+        let pg_idx = names.iter().position(|n| *n == "postgres");
+        let ar_idx = names.iter().position(|n| *n == "agent-runtime");
+        if let (Some(pg), Some(ar)) = (pg_idx, ar_idx) {
+            assert!(pg < ar, "postgres should start before agent-runtime");
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Crash action tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn crash_action_always_restarts() {
+        let config = ArgonautConfig {
+            boot_mode: BootMode::Minimal,
+            ..ArgonautConfig::default()
+        };
+        let init = ArgonautInit::new(config);
+        let action = init.on_service_crash("agent-runtime", &ExitStatus::Code(1));
+        assert!(matches!(action, CrashAction::Restart { .. }));
+    }
+
+    #[test]
+    fn crash_action_on_failure_ignores_clean_exit() {
+        let config = ArgonautConfig {
+            boot_mode: BootMode::Server,
+            ..ArgonautConfig::default()
+        };
+        let init = ArgonautInit::new(config);
+        // postgres has OnFailure restart policy
+        let action = init.on_service_crash("postgres", &ExitStatus::Code(0));
+        assert_eq!(action, CrashAction::Ignore);
+    }
+
+    #[test]
+    fn crash_action_on_failure_restarts_on_error() {
+        let config = ArgonautConfig {
+            boot_mode: BootMode::Server,
+            ..ArgonautConfig::default()
+        };
+        let init = ArgonautInit::new(config);
+        let action = init.on_service_crash("postgres", &ExitStatus::Code(1));
+        assert!(matches!(action, CrashAction::Restart { .. }));
+    }
+
+    #[test]
+    fn crash_action_unknown_service() {
+        let config = ArgonautConfig::default();
+        let init = ArgonautInit::new(config);
+        let action = init.on_service_crash("nonexistent", &ExitStatus::Code(1));
+        assert_eq!(action, CrashAction::Ignore);
+    }
+
+    #[test]
+    fn crash_action_gives_up_after_limit() {
+        let config = ArgonautConfig {
+            boot_mode: BootMode::Minimal,
+            ..ArgonautConfig::default()
+        };
+        let mut init = ArgonautInit::new(config);
+        // Simulate 5 restarts
+        if let Some(svc) = init.services.get_mut("agent-runtime") {
+            svc.restart_count = 5;
+        }
+        let action = init.on_service_crash("agent-runtime", &ExitStatus::Signal(11));
+        assert!(matches!(action, CrashAction::GiveUp { .. }));
+    }
+
+    #[test]
+    fn backoff_delay_exponential() {
+        assert_eq!(backoff_delay(0), 1000);
+        assert_eq!(backoff_delay(1), 2000);
+        assert_eq!(backoff_delay(2), 4000);
+        assert_eq!(backoff_delay(3), 8000);
+        assert_eq!(backoff_delay(4), 16000);
+        // Capped at 30s
+        assert_eq!(backoff_delay(5), 30000);
+        assert_eq!(backoff_delay(10), 30000);
     }
 }
