@@ -7,6 +7,7 @@ pub mod capability;
 pub mod cloud;
 pub mod collaboration;
 pub mod database;
+pub mod delegation;
 pub mod explainability;
 pub mod federation;
 pub mod file_watcher;
@@ -20,6 +21,7 @@ pub mod knowledge_base;
 pub mod learning;
 pub mod lifecycle;
 pub mod marketplace;
+pub mod marketplace_backend;
 pub mod mcp_server;
 pub mod memory_store;
 pub mod migration;
@@ -27,6 +29,7 @@ pub mod mtls;
 pub mod multimodal;
 pub mod network_tools;
 pub mod nous;
+pub mod oidc;
 pub mod orchestrator;
 pub mod package_manager;
 pub mod pqc;
@@ -49,6 +52,7 @@ pub mod supervisor;
 pub mod swarm;
 pub mod takumi;
 pub mod tool_analysis;
+pub mod vector_rest;
 pub mod vector_store;
 pub mod wasm_runtime;
 
@@ -77,6 +81,11 @@ pub use cloud::{
 pub use collaboration::{
     CollaborationAnalyzer, CollaborationMode, CollaborationSession, FeedbackCollector,
     HandoffManager, SharedTask, TaskOwner, TrustCalibrator, TrustMetrics,
+};
+pub use delegation::{
+    A2AEnvelope, A2AMessageType, AgentRoute, DelegationManager, DelegationPolicy,
+    DelegationRecord, DelegationRequest, DelegationResponse, DelegationStats, DelegationStatus,
+    PolicyViolation, SandboxLevel,
 };
 pub use database::{
     AgentDatabaseRequirements, DatabaseConfig, DatabaseManager, DatabaseStats, ProvisionedDatabase,
@@ -119,6 +128,10 @@ pub use marketplace::{
     trust::{KeyVersion, PublisherKeyring},
     DepNode, DependencyGraph, MarketplaceCategory, MarketplaceManifest, PublisherInfo,
 };
+pub use marketplace_backend::{
+    BackendStats, MarketplaceBackend, MarketplaceError, PackageEntry, Publisher, PublisherStatus,
+    VersionEntry,
+};
 pub use mcp_server::PhotisBridge;
 pub use memory_store::AgentMemoryStore;
 pub use migration::{
@@ -129,6 +142,10 @@ pub use multimodal::ModalityRegistry;
 pub use nous::{
     AvailableUpdate, InstalledPackage, NousResolver, PackageSource, ResolvedPackage,
     SystemPackageDb, UnifiedSearchResult,
+};
+pub use oidc::{
+    AgnosClaims, ClientRegistration, OidcConfig, OidcDiscovery, OidcProvider, TokenError,
+    TokenGrant, TokenIntrospection, TokenResponse,
 };
 pub use orchestrator::Orchestrator;
 pub use package_manager::PackageManager;
@@ -169,5 +186,9 @@ pub use takumi::{
     ArkFileEntry, ArkFileType, ArkManifest, ArkPackage, BuildContext, BuildLogEntry, BuildRecipe,
     BuildStatus, BuildSteps, DependencySpec, HardeningFlag, PackageMetadata, SecurityFlags,
     SourceSpec, TakumiBuildSystem,
+};
+pub use vector_rest::{
+    CollectionInfo, CreateCollectionRequest, DistanceMetric, SearchVectorsRequest,
+    SearchVectorsResponse, VectorRestError, VectorRestService, VectorServiceStats,
 };
 pub use vector_store::VectorIndex;

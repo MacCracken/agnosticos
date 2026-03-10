@@ -1,7 +1,7 @@
 # AGNOS Development Roadmap
 
 > **Status**: Pre-Alpha | **Last Updated**: 2026-03-10
-> **All development phases complete** — 9300+ tests, ~82% coverage, 0 warnings
+> **All development phases complete** — 9400+ tests, ~82% coverage, 0 warnings
 > **Next Milestone**: Alpha Release (Target: Q2 2026)
 
 ---
@@ -148,12 +148,12 @@ All 5 consumer apps have marketplace recipes + GitHub release bundling via `ark-
 
 - [ ] Run marketplace-publish CI workflow to publish all to mela
 
-### Full Convergence (Demand-Gated)
+### Full Convergence (Complete)
 
-- [ ] **Unified SSO/OIDC provider** — AGNOS as OIDC-aware service
-- [ ] **Cross-project agent delegation** — External orchestrator → A2A → AGNOS sandbox
-- [ ] **Shared vector store federation** — AGNOS embedded vector store queryable via REST
-- [ ] **Unified agent marketplace backend** — AGNOS registry as single source of truth
+- [x] **Unified SSO/OIDC provider** — `oidc.rs` (22 tests): JWT claims, token issuance/validation/revocation, OIDC discovery, client credentials, scopes
+- [x] **Cross-project agent delegation** — `delegation.rs` (28 tests): A2A protocol, delegation policies, capability routing, sandbox enforcement, audit trail
+- [x] **Shared vector store REST API** — `vector_rest.rs` (24 tests): Collection CRUD, federated insert/search, dimension validation, 8 REST endpoints
+- [x] **Unified marketplace backend** — `marketplace_backend.rs` (28 tests): Publisher management, package lifecycle, ratings, search, featured packages
 
 ### Additional Post-v1.0
 
@@ -167,7 +167,7 @@ All 5 consumer apps have marketplace recipes + GitHub release bundling via `ark-
 |--------|--------|---------|--------|
 | Code Coverage | >80% | ~82% | Met |
 | Test Pass Rate | 100% | 100% | Met |
-| Total Tests | 400+ | 9298+ | Met |
+| Total Tests | 400+ | 9400+ | Met |
 | Agent Spawn Time | <500ms | ~300ms | Met |
 | Shell Response Time | <100ms | ~50ms | Met |
 | Memory Overhead | <2GB | ~1.2GB | Met |

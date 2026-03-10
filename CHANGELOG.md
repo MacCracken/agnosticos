@@ -131,6 +131,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Wire protocol types**: `VectorSyncMessage` (Insert/Search/Delete/SyncManifest/AnnounceCollection), `VectorSyncEntry`, `RemoteSearchResult`, `CollectionReplica`
 - **18 new tests**: replica registration, deduplication, remote filtering, node removal, sync messages, result merging, replication strategies, serialization
 
+#### Full Convergence — SSO/OIDC, Agent Delegation, Vector REST, Marketplace Backend (102 tests)
+
+**Unified SSO/OIDC Provider** (`oidc.rs`, 22 tests)
+- `OidcProvider`: Token issuance, validation, revocation, and introspection (RFC 7662)
+- `OidcConfig`: TOML-parseable, configurable issuer, scopes, token lifetimes, external IdP federation
+- `AgnosClaims`: Standard + AGNOS-specific JWT claims (sub_type, agent_id, publisher_key_id, operations)
+- `OidcDiscovery`: RFC 8414 discovery document generation (`.well-known/openid-configuration`)
+- Client credentials grant (service-to-service), agent token issuance, scope-based authorization
+- `ClientRegistration`: OAuth2 client management with scope restrictions
+- Token revocation by JTI, constant-time validation, temporal claim checks
+- 9 AGNOS scopes: openid, profile, email, agents:{read,write}, marketplace:{read,publish}, vectors:{read,write}
+- External identity provider support: OIDC, SAML, LDAP with claim mapping
+
+**Cross-Project Agent Delegation** (`delegation.rs`, 28 tests)
+- `DelegationManager`: Full lifecycle — submit, route, execute, complete, fail, cancel
+- `DelegationPolicy`: Orchestrator allowlisting, capability gating, sandbox enforcement, auth requirement, rate limits, payload size limits, concurrent task limits
+- `A2AEnvelope`: Agent-to-Agent protocol for inter-service delegation (version, message types, correlation IDs)
+- 4 sandbox levels: Minimal (Landlock), Standard (+seccomp), Strict (+network isolation), Maximum (+encrypted storage)
+- Capability-based agent routing with priority and load balancing
+- 7 delegation statuses: Accepted, Running, Completed, Failed, Rejected, TimedOut, Cancelled
+- Audit trail: ring buffer of completed delegations (1000 records)
+
+**Shared Vector Store REST API** (`vector_rest.rs`, 24 tests)
+- `VectorRestService`: Collection CRUD, dimension validation, insert/delete tracking, federation awareness
+- 8 REST endpoint definitions: collections (list/create/get/delete), vectors (insert/search/delete), stats
+- 3 distance metrics: Cosine, Euclidean, DotProduct
+- Federated search: `include_federated` flag, `source_node` in results, replica sync tracking
+- Collection limits: 100 collections max, 1M vectors per collection
+- Request types: `CreateCollectionRequest`, `InsertVectorsRequest`, `SearchVectorsRequest`, `DeleteVectorsRequest`
+- Response types with latency tracking, candidate counts, node counts
+
+**Unified Marketplace Backend** (`marketplace_backend.rs`, 28 tests)
+- `MarketplaceBackend`: Publisher management, package lifecycle, ratings, search, featured packages
+- Publisher workflow: register → verify → publish → suspend; status tracking (Active, Suspended, PendingVerification)
+- Package versioning: multi-version publish, duplicate detection, yank (soft-delete), owner enforcement
+- Search: text match (name, tags, description) + category filter, sorted by downloads
+- Ratings: running average, 0.0–5.0 range validation
+- Featured packages: curated list, ordered display
+- Stats: publishers, packages, versions, downloads, verified publishers
+- Per-publisher package limits (100 max)
+
 #### Marketplace Publishing Infrastructure
 - **New script**: `scripts/ark-publish.sh` — publishes `.agnos-agent` bundles to mela marketplace registry
   - Single bundle or directory batch mode, SHA-256 integrity verification
