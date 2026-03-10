@@ -1,0 +1,37 @@
+# graphene — Thin layer of graphic data types for canvas and 3D libraries
+#
+# BLFS
+
+[package]
+name = "graphene"
+version = "1.10.8"
+description = "graphene — Thin layer of graphic data types for GPU-accelerated rendering"
+license = "MIT"
+groups = ["desktop", "libs"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/ebassi/graphene/releases/download/1.10.8/graphene-1.10.8.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "glib"]
+build = ["gcc", "make", "pkgconf", "meson", "ninja"]
+
+[build]
+pre_build = ""
+configure = """
+mkdir -p build && cd build && \
+meson setup .. --prefix=/usr --buildtype=release
+"""
+make = "cd build && ninja -j$(nproc)"
+check = "cd build && meson test || true"
+install = "cd build && DESTDIR=$PKG ninja install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

@@ -1,0 +1,34 @@
+# python-pandas — Data manipulation and analysis library
+#
+# BLFS / AI Stack
+
+[package]
+name = "python-pandas"
+version = "2.2.3"
+description = "python-pandas — Data manipulation and analysis library for Python"
+license = "BSD-3-Clause"
+groups = ["ai", "ml", "python"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/pandas-dev/pandas/releases/download/v2.2.3/pandas-2.2.3.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["python3", "python-numpy"]
+build = ["python3", "pip", "cython"]
+
+[build]
+pre_build = ""
+configure = ""
+make = ""
+check = ""
+install = "pip install --prefix=/usr --root=$PKG --no-deps ."
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

@@ -1,0 +1,40 @@
+# go — Go programming language
+#
+# BLFS / AI Stack
+
+[package]
+name = "go"
+version = "1.24.1"
+description = "go — Go programming language compiler and tools"
+license = "BSD-3-Clause"
+groups = ["ai", "tools"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://go.dev/dl/go1.24.1.linux-amd64.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc"]
+build = []
+
+[build]
+pre_build = ""
+configure = ""
+make = ""
+check = ""
+install = """
+mkdir -p $PKG/usr/local
+cp -a . $PKG/usr/local/go
+mkdir -p $PKG/usr/bin
+ln -s /usr/local/go/bin/go $PKG/usr/bin/go
+ln -s /usr/local/go/bin/gofmt $PKG/usr/bin/gofmt
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

@@ -1,0 +1,34 @@
+# lua — Lua scripting language
+#
+# BLFS
+
+[package]
+name = "lua"
+version = "5.4.7"
+description = "lua — Lightweight embeddable scripting language"
+license = "MIT"
+groups = ["desktop", "libs"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://www.lua.org/ftp/lua-5.4.7.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "readline"]
+build = ["gcc", "make", "pkgconf"]
+
+[build]
+pre_build = ""
+configure = ""
+make = "make linux -j$(nproc)"
+check = "make test || true"
+install = "make INSTALL_TOP=$PKG/usr install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

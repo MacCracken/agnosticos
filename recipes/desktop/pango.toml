@@ -1,0 +1,39 @@
+# Pango — Text rendering and layout library
+# Internationalized text layout and rendering via HarfBuzz
+#
+# BLFS
+
+[package]
+name = "pango"
+version = "1.56.1"
+description = "Pango — Internationalized text rendering library"
+license = "LGPL-2.0"
+groups = ["desktop", "graphics"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://download.gnome.org/sources/pango/1.56/pango-1.56.1.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "glib", "harfbuzz", "cairo", "freetype", "fontconfig", "fribidi"]
+build = ["gcc", "make", "pkgconf", "meson", "ninja"]
+
+[build]
+pre_build = ""
+configure = """
+mkdir -p build && cd build && \
+meson setup .. --prefix=/usr --buildtype=release \
+  -Dintrospection=disabled
+"""
+make = "cd build && ninja -j$(nproc)"
+check = "cd build && meson test || true"
+install = "cd build && DESTDIR=$PKG ninja install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

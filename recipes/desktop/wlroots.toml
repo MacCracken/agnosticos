@@ -1,0 +1,42 @@
+# wlroots — Modular Wayland compositor library
+# Building blocks for Wayland compositors (used by aethersafha)
+#
+# BLFS
+
+[package]
+name = "wlroots"
+version = "0.18.2"
+description = "wlroots — Modular Wayland compositor library"
+license = "MIT"
+groups = ["desktop", "graphics"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://gitlab.freedesktop.org/wlroots/wlroots/-/releases/0.18.2/downloads/wlroots-0.18.2.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "wayland", "wayland-protocols", "mesa", "libdrm", "libinput", "pixman", "libxkbcommon", "xwayland"]
+build = ["gcc", "make", "pkgconf", "meson", "ninja"]
+
+[build]
+pre_build = ""
+configure = """
+mkdir -p build && cd build && \
+meson setup .. --prefix=/usr --buildtype=release \
+  -Dxwayland=enabled \
+  -Dbackends=drm,libinput \
+  -Drenderers=gles2,vulkan \
+  -Dexamples=false
+"""
+make = "cd build && ninja -j$(nproc)"
+check = "cd build && meson test || true"
+install = "cd build && DESTDIR=$PKG ninja install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

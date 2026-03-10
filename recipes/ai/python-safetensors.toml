@@ -1,0 +1,34 @@
+# python-safetensors — Safe and fast model serialization format
+#
+# BLFS / AI Stack
+
+[package]
+name = "python-safetensors"
+version = "0.5.3"
+description = "python-safetensors — Safe and fast model serialization format for ML"
+license = "Apache-2.0"
+groups = ["ai", "ml", "python"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/huggingface/safetensors/archive/refs/tags/v0.5.3.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["python3"]
+build = ["python3", "pip", "rust"]
+
+[build]
+pre_build = ""
+configure = ""
+make = ""
+check = ""
+install = "pip install --prefix=/usr --root=$PKG --no-deps ."
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

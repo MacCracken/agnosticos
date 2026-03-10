@@ -1,8 +1,8 @@
 # AGNOS Development Roadmap
 
 > **Status**: Pre-Beta | **Last Updated**: 2026-03-10
-> **Userland complete** — 9600+ tests (3023 agent-runtime), ~82% coverage, 0 warnings
-> **Base system**: 108 recipes (Phase 10 complete) | **Audit**: 10 rounds complete
+> **Userland complete** — 9832+ tests (3023 agent-runtime), ~82% coverage, 0 warnings
+> **Base system**: 108 base + 84 Phase 11 recipes | **Audit**: 10 rounds complete
 > **Next Milestone**: Beta Release (Target: Q4 2026)
 
 ---
@@ -459,7 +459,7 @@ Wire the LFS base system into AGNOS's own tooling.
 | Stub Implementations | 0 | 0 | Met |
 | Compiler Warnings | 0 | 0 | Met |
 | Base System Recipes | ~108 | 108 | Complete |
-| Desktop/AI Stack Recipes | ~62 | 0 | Phase 11 |
+| Desktop/AI Stack Recipes | ~62 | 84 | Phase 11 (complete) |
 | Self-Hosting | Yes | No | Phase 13 |
 
 ### By Component

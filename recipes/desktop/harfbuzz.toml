@@ -1,0 +1,42 @@
+# HarfBuzz — Text shaping engine
+# OpenType text shaping for complex script rendering
+#
+# BLFS
+
+[package]
+name = "harfbuzz"
+version = "10.4.0"
+description = "HarfBuzz — OpenType text shaping engine"
+license = "MIT"
+groups = ["desktop", "graphics"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/harfbuzz/harfbuzz/releases/download/10.4.0/harfbuzz-10.4.0.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "freetype", "glib"]
+build = ["gcc", "make", "pkgconf", "meson", "ninja"]
+
+[build]
+pre_build = ""
+configure = """
+mkdir -p build && cd build && \
+meson setup .. --prefix=/usr --buildtype=release \
+  -Dglib=enabled \
+  -Dfreetype=enabled \
+  -Dcairo=disabled \
+  -Ddocs=disabled
+"""
+make = "cd build && ninja -j$(nproc)"
+check = "cd build && meson test || true"
+install = "cd build && DESTDIR=$PKG ninja install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

@@ -1,0 +1,37 @@
+# cni-plugins — CNI network plugins for containers
+#
+# BLFS / Containers
+
+[package]
+name = "cni-plugins"
+version = "1.6.2"
+description = "cni-plugins — Container Network Interface plugins"
+license = "Apache-2.0"
+groups = ["containers"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/containernetworking/plugins/archive/refs/tags/v1.6.2.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc"]
+build = ["go"]
+
+[build]
+pre_build = ""
+configure = ""
+make = "./build_linux.sh"
+check = ""
+install = """
+mkdir -p $PKG/usr/lib/cni
+cp bin/* $PKG/usr/lib/cni/
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

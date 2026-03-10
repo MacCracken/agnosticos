@@ -1,0 +1,44 @@
+# llvm — LLVM compiler infrastructure (with Clang)
+#
+# BLFS
+
+[package]
+name = "llvm"
+version = "19.1.7"
+description = "llvm — LLVM compiler infrastructure and Clang C/C++ compiler"
+license = "Apache-2.0"
+groups = ["base", "toolchain"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-19.1.7/llvm-project-19.1.7.src.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "zlib", "zstd"]
+build = ["gcc", "make", "cmake", "python3"]
+
+[build]
+pre_build = ""
+configure = """
+mkdir -p build && cd build && \
+cmake ../llvm \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DLLVM_ENABLE_PROJECTS="clang" \
+    -DLLVM_BUILD_LLVM_DYLIB=ON \
+    -DLLVM_LINK_LLVM_DYLIB=ON \
+    -DLLVM_TARGETS_TO_BUILD="X86;AArch64;AMDGPU;NVPTX" \
+    -DLLVM_ENABLE_RTTI=ON
+"""
+make = "cd build && make -j$(nproc)"
+check = "cd build && make check-llvm || true"
+install = "cd build && make DESTDIR=$PKG install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

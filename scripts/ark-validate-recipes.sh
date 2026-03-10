@@ -16,6 +16,9 @@ RECIPE_DIR="${1:?Usage: ark-validate-recipes.sh <recipe-dir>}"
 ERRORS=0
 WARNINGS=0
 
+# Repo root (for cross-directory dependency resolution)
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
 # Colors
 if [ -t 1 ]; then
     RED='\033[31m'; GREEN='\033[32m'; YELLOW='\033[33m'; NC='\033[0m'
@@ -27,17 +30,34 @@ err()  { echo -e "${RED}ERROR${NC}: $*" >&2; ERRORS=$((ERRORS + 1)); }
 warn() { echo -e "${YELLOW}WARN${NC}: $*"; WARNINGS=$((WARNINGS + 1)); }
 ok()   { echo -e "${GREEN}OK${NC}: $*"; }
 
-# Collect all known package names
+# Collect all known package names across ALL recipe directories
 declare -A KNOWN_PKGS
-for f in "$RECIPE_DIR"/*.toml; do
+for dir in "$REPO_ROOT"/recipes/*/; do
+    [ -d "$dir" ] || continue
+    for f in "$dir"*.toml; do
+        [ -f "$f" ] || continue
+        name=$(grep -m1 '^name ' "$f" 2>/dev/null | sed 's/.*= *"\(.*\)"/\1/' || true)
+        if [ -n "$name" ]; then
+            KNOWN_PKGS["$name"]=1
+        fi
+    done
+done
+# Also check for top-level recipe files (e.g. recipes/synapse.toml)
+for f in "$REPO_ROOT"/recipes/*.toml; do
+    [ -f "$f" ] || continue
     name=$(grep -m1 '^name ' "$f" 2>/dev/null | sed 's/.*= *"\(.*\)"/\1/' || true)
     if [ -n "$name" ]; then
         KNOWN_PKGS["$name"]=1
     fi
 done
 
-# Virtual packages (provided by other packages or the host)
-VIRTUAL_PKGS="libstdc++ m4"
+# Virtual packages (provided by other packages, the host, or pending recipes)
+# libudev: provided by eudev/systemd. python3: provided by host or python recipe.
+# gfortran: provided by gcc. pip/cython: python tools. ninja: provided by meson/ninja recipe.
+# Virtual packages: provided by other packages or pending dedicated recipes
+# libudev: provided by eudev. python3: provided by host python recipe.
+# gfortran: provided by gcc. pip/cython: python tools. ninja: build tool.
+VIRTUAL_PKGS="libstdc++ m4 libudev python3 pip cython gfortran ninja libslirp"
 for v in $VIRTUAL_PKGS; do
     KNOWN_PKGS["$v"]=1
 done

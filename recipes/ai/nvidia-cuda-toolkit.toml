@@ -1,0 +1,36 @@
+# nvidia-cuda-toolkit — NVIDIA CUDA compiler and runtime toolkit
+#
+# BLFS / AI Stack
+
+[package]
+name = "nvidia-cuda-toolkit"
+version = "12.8.1"
+description = "nvidia-cuda-toolkit — NVIDIA CUDA compiler and runtime toolkit for GPU-accelerated computing"
+license = "NVIDIA-EULA"
+groups = ["ai", "ml", "gpu", "nvidia"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://developer.download.nvidia.com/compute/cuda/12.8.1/local_installers/cuda_12.8.1_570.124.06_linux.run"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc"]
+build = []
+
+[build]
+pre_build = ""
+configure = ""
+make = ""
+check = ""
+install = """
+sh cuda_*.run --silent --toolkit --installpath=$PKG/usr/local/cuda
+"""
+post_install = ""
+
+[security]
+hardening = []
+cflags = ""
+ldflags = ""

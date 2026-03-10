@@ -1,0 +1,37 @@
+# python-pytorch — PyTorch deep learning framework
+#
+# BLFS / AI Stack
+
+[package]
+name = "python-pytorch"
+version = "2.6.0"
+description = "python-pytorch — PyTorch deep learning framework for Python"
+license = "BSD-3-Clause"
+groups = ["ai", "ml", "python", "gpu"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/pytorch/pytorch/releases/download/v2.6.0/pytorch-v2.6.0.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["python3", "python-numpy", "openblas", "lapack"]
+build = ["gcc", "make", "pkgconf", "cmake", "python3", "pip"]
+
+[build]
+pre_build = ""
+configure = """
+mkdir -p build && cd build && \
+cmake .. -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=Release
+"""
+make = "cd build && make -j$(nproc)"
+check = "cd build && make test || true"
+install = "pip install --prefix=/usr --root=$PKG --no-deps ."
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

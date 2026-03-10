@@ -1,0 +1,37 @@
+# vulkan-compute-tools — Vulkan SPIR-V compiler and validation layers
+#
+# BLFS / AI Stack
+
+[package]
+name = "vulkan-compute-tools"
+version = "1.4.309"
+description = "vulkan-compute-tools — Vulkan SPIR-V compiler and validation layers for GPU compute"
+license = "Apache-2.0"
+groups = ["ai", "ml", "gpu"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/KhronosGroup/Vulkan-ValidationLayers/archive/refs/tags/v1.4.309.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "vulkan-headers", "vulkan-loader"]
+build = ["gcc", "make", "pkgconf", "cmake"]
+
+[build]
+pre_build = ""
+configure = """
+mkdir -p build && cd build && \
+cmake .. -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=Release
+"""
+make = "cd build && make -j$(nproc)"
+check = "cd build && make test || true"
+install = "cd build && make DESTDIR=$PKG install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

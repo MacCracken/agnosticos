@@ -1,0 +1,37 @@
+# flac — Free Lossless Audio Codec
+#
+# BLFS
+
+[package]
+name = "flac"
+version = "1.4.3"
+description = "flac — Free Lossless Audio Codec"
+license = "BSD-3-Clause"
+groups = ["desktop", "audio"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://ftp.osuosl.org/pub/xiph/releases/flac/flac-1.4.3.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "libogg"]
+build = ["gcc", "make", "pkgconf", "cmake"]
+
+[build]
+pre_build = ""
+configure = """
+mkdir -p build && cd build && \
+cmake .. -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=Release
+"""
+make = "cd build && make -j$(nproc)"
+check = "cd build && make test || true"
+install = "cd build && make DESTDIR=$PKG install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

@@ -1,0 +1,34 @@
+# jupyter-server — Jupyter notebook server backend
+#
+# BLFS / AI Stack
+
+[package]
+name = "jupyter-server"
+version = "2.15.0"
+description = "jupyter-server — Backend server for Jupyter web applications"
+license = "BSD-3-Clause"
+groups = ["ai", "ml", "python", "tools"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/jupyter-server/jupyter_server/archive/refs/tags/v2.15.0.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["python3"]
+build = ["python3", "pip"]
+
+[build]
+pre_build = ""
+configure = ""
+make = ""
+check = ""
+install = "pip install --prefix=/usr --root=$PKG --no-deps ."
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

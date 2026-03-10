@@ -14,6 +14,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI now validates recipes on every push, full LFS bootstrap is manual-trigger only (takes hours)
 - Fixed flaky `test_llama_cpp_infer_stream_channel_sends_error` — added timeout + graceful channel-closed handling
 
+### Added — Phase 11: Desktop, Networking & AI/ML Stack (84 recipes)
+
+- **11A — Graphics Stack** (17 recipes in `recipes/desktop/`): wayland, wayland-protocols, mesa, libdrm, libinput, libxkbcommon, vulkan-headers, vulkan-loader, libepoxy, pixman, cairo, pango, harfbuzz, fontconfig, xwayland, wlroots, fribidi
+- **11B — Audio Stack** (5 recipes in `recipes/desktop/`): alsa-lib, alsa-utils, pipewire, wireplumber, libsndfile
+- **11C — Networking** (9 recipes in `recipes/network/`): wget, openssh, dhcpcd, wpa-supplicant, iw, networkmanager, rsync, ca-certificates, libnl
+- **11D — Desktop Support Libs** (16 recipes in `recipes/desktop/`): glib, gobject-introspection, gtk4, libnotify, json-glib, polkit, elogind, udisks, upower, gstreamer, graphene, gdk-pixbuf, dbus + helpers (pcre2, linux-pam, libjpeg-turbo, libtiff, eudev, libatasmart, libblockdev, duktape, lua)
+- **11E — AI/ML Infrastructure** (20 recipes in `recipes/ai/`): nvidia-cuda-toolkit, rocm, openblas, lapack, llama-cpp, ollama, onnxruntime, vllm, python-numpy, python-scipy, python-pandas, python-pytorch, python-transformers, python-safetensors, nccl, podman, crun, jupyter-server, vulkan-compute-tools, huggingface-hub-cli
+- **Leaf dependencies** (17 recipes): libevdev, mtdev, flac, libogg, libvorbis, yajl, go, conmon, cni-plugins, slirp4netns, llvm + others
+- **`scripts/ark-validate-recipes.sh`**: Fixed to resolve dependencies across all recipe directories (not just the one being validated)
+
 ### Fixed — Docker Base Images
 
 - **`Dockerfile.node`**: Added `unzip` to apt-get install — required by Bun installer script

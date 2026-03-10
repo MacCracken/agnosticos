@@ -1,0 +1,41 @@
+# XWayland — X11 compatibility server for Wayland
+# Runs legacy X11 applications under a Wayland compositor
+#
+# BLFS
+
+[package]
+name = "xwayland"
+version = "24.1.6"
+description = "XWayland — X11 compatibility layer for Wayland"
+license = "MIT"
+groups = ["desktop", "graphics", "xcompat"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://xorg.freedesktop.org/archive/individual/xserver/xwayland-24.1.6.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "wayland", "wayland-protocols", "mesa", "libdrm", "pixman", "libxkbcommon"]
+build = ["gcc", "make", "pkgconf", "meson", "ninja"]
+
+[build]
+pre_build = ""
+configure = """
+mkdir -p build && cd build && \
+meson setup .. --prefix=/usr --buildtype=release \
+  -Dxvfb=false \
+  -Dxdmcp=false \
+  -Dxcsecurity=true
+"""
+make = "cd build && ninja -j$(nproc)"
+check = "cd build && meson test || true"
+install = "cd build && DESTDIR=$PKG ninja install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

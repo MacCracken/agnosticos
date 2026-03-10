@@ -1,0 +1,34 @@
+# python-transformers — HuggingFace Transformers library
+#
+# BLFS / AI Stack
+
+[package]
+name = "python-transformers"
+version = "4.50.3"
+description = "python-transformers — HuggingFace Transformers for state-of-the-art NLP and ML"
+license = "Apache-2.0"
+groups = ["ai", "ml", "python", "llm"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/huggingface/transformers/archive/refs/tags/v4.50.3.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["python3", "python-pytorch", "python-numpy"]
+build = ["python3", "pip"]
+
+[build]
+pre_build = ""
+configure = ""
+make = ""
+check = ""
+install = "pip install --prefix=/usr --root=$PKG --no-deps ."
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

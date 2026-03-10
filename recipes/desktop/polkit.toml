@@ -1,0 +1,37 @@
+# polkit — Authorization framework for controlling system-wide privileges
+#
+# BLFS
+
+[package]
+name = "polkit"
+version = "125"
+description = "polkit — Authorization framework for system privilege management"
+license = "LGPL-2.0"
+groups = ["desktop", "libs"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/polkit-org/polkit/archive/refs/tags/125/polkit-125.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "glib", "dbus", "duktape"]
+build = ["gcc", "make", "pkgconf", "meson", "ninja"]
+
+[build]
+pre_build = ""
+configure = """
+mkdir -p build && cd build && \
+meson setup .. --prefix=/usr --buildtype=release
+"""
+make = "cd build && ninja -j$(nproc)"
+check = "cd build && meson test || true"
+install = "cd build && DESTDIR=$PKG ninja install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

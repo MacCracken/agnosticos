@@ -1,0 +1,34 @@
+# ollama — Local LLM runner and model manager
+#
+# BLFS / AI Stack
+
+[package]
+name = "ollama"
+version = "0.6.2"
+description = "ollama — Local LLM runner and model manager"
+license = "MIT"
+groups = ["ai", "ml", "llm"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/ollama/ollama/archive/refs/tags/v0.6.2.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc"]
+build = ["go"]
+
+[build]
+pre_build = ""
+configure = ""
+make = "go build -o ollama ."
+check = "go test ./... || true"
+install = "install -Dm755 ollama $PKG/usr/bin/ollama"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

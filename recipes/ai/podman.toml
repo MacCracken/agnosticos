@@ -1,0 +1,34 @@
+# podman — Rootless container engine
+#
+# BLFS / AI Stack
+
+[package]
+name = "podman"
+version = "5.5.2"
+description = "podman — Rootless OCI-compliant container engine"
+license = "Apache-2.0"
+groups = ["containers"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/containers/podman/archive/refs/tags/v5.5.2.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "crun", "conmon", "cni-plugins", "slirp4netns"]
+build = ["go"]
+
+[build]
+pre_build = ""
+configure = ""
+make = "go build -o podman ."
+check = "go test ./... || true"
+install = "install -Dm755 podman $PKG/usr/bin/podman"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

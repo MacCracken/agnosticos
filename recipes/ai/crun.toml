@@ -1,0 +1,34 @@
+# crun — Fast and lightweight OCI container runtime
+#
+# BLFS / AI Stack
+
+[package]
+name = "crun"
+version = "1.20"
+description = "crun — Fast and lightweight OCI container runtime written in C"
+license = "GPL-2.0"
+groups = ["containers"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/containers/crun/releases/download/1.20/crun-1.20.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "libseccomp", "yajl"]
+build = ["gcc", "make", "pkgconf", "autoconf", "automake", "libtool"]
+
+[build]
+pre_build = ""
+configure = "./configure --prefix=/usr"
+make = "make -j$(nproc)"
+check = "make check || true"
+install = "make DESTDIR=$PKG install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

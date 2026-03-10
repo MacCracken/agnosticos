@@ -1,0 +1,34 @@
+# conmon — OCI container monitor
+#
+# BLFS / Containers
+
+[package]
+name = "conmon"
+version = "2.1.12"
+description = "conmon — OCI container runtime monitor"
+license = "Apache-2.0"
+groups = ["containers"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/containers/conmon/archive/refs/tags/v2.1.12.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "glib"]
+build = ["gcc", "make", "pkgconf"]
+
+[build]
+pre_build = ""
+configure = ""
+make = "make -j$(nproc) PREFIX=/usr"
+check = ""
+install = "make PREFIX=/usr DESTDIR=$PKG install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

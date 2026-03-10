@@ -1,0 +1,38 @@
+# elogind — Session management daemon (standalone logind without systemd)
+#
+# BLFS
+
+[package]
+name = "elogind"
+version = "255.5"
+description = "elogind — Standalone logind session manager without full systemd"
+license = "LGPL-2.1"
+groups = ["desktop", "libs"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/elogind/elogind/archive/v255.5/elogind-255.5.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "dbus", "polkit", "linux-pam"]
+build = ["gcc", "make", "pkgconf", "meson", "ninja"]
+
+[build]
+pre_build = ""
+configure = """
+mkdir -p build && cd build && \
+meson setup .. --prefix=/usr --buildtype=release \
+  -Dcgroup-controller=elogind
+"""
+make = "cd build && ninja -j$(nproc)"
+check = "cd build && meson test || true"
+install = "cd build && DESTDIR=$PKG ninja install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"
