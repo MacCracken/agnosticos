@@ -1,0 +1,37 @@
+# libsndfile — Audio file I/O library
+#
+# BLFS
+
+[package]
+name = "libsndfile"
+version = "1.2.2"
+description = "libsndfile — C library for reading and writing audio files"
+license = "LGPL-2.1"
+groups = ["desktop", "audio"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/libsndfile/libsndfile/releases/download/1.2.2/libsndfile-1.2.2.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "flac", "libogg", "libvorbis"]
+build = ["gcc", "make", "pkgconf"]
+
+[build]
+pre_build = ""
+configure = """
+mkdir -p build && cd build && \
+cmake .. -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=Release
+"""
+make = "cd build && make -j$(nproc)"
+check = "cd build && make test || true"
+install = "cd build && make DESTDIR=$PKG install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

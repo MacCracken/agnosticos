@@ -1,0 +1,34 @@
+# dhcpcd — DHCP client
+#
+# BLFS
+
+[package]
+name = "dhcpcd"
+version = "10.2.2"
+description = "dhcpcd — DHCP client daemon"
+license = "BSD-2-Clause"
+groups = ["network"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/NetworkConfiguration/dhcpcd/releases/download/v10.2.2/dhcpcd-10.2.2.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc"]
+build = ["gcc", "make", "pkgconf"]
+
+[build]
+pre_build = ""
+configure = "./configure --prefix=/usr --sysconfdir=/etc --runstatedir=/run"
+make = "make -j$(nproc)"
+check = "make check || true"
+install = "make DESTDIR=$PKG install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

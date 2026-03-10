@@ -1,0 +1,41 @@
+# libinput — Input device handling library
+# Handles mice, keyboards, touchpads, and other input devices
+#
+# BLFS
+
+[package]
+name = "libinput"
+version = "1.27.0"
+description = "libinput — Input device handling library"
+license = "MIT"
+groups = ["desktop", "graphics"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://gitlab.freedesktop.org/libinput/libinput/-/archive/1.27.0/libinput-1.27.0.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "libevdev", "mtdev", "libudev"]
+build = ["gcc", "make", "pkgconf", "meson", "ninja", "libevdev", "mtdev"]
+
+[build]
+pre_build = ""
+configure = """
+mkdir -p build && cd build && \
+meson setup .. --prefix=/usr --buildtype=release \
+  -Ddebug-gui=false \
+  -Dtests=false \
+  -Ddocumentation=false
+"""
+make = "cd build && ninja -j$(nproc)"
+check = "cd build && meson test || true"
+install = "cd build && DESTDIR=$PKG ninja install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

@@ -146,6 +146,14 @@ cp .env.example $PKG/etc/secureyeoman/env.defaults
 mkdir -p $PKG/usr/bin
 ln -sf /usr/lib/secureyeoman/bin/secureyeoman $PKG/usr/bin/secureyeoman
 
+# Install app icons (hicolor theme)
+for size in 64 128 256 512; do
+    mkdir -p $PKG/usr/share/icons/hicolor/${size}x${size}/apps
+    cp assets/secureyeoman-${size}.png $PKG/usr/share/icons/hicolor/${size}x${size}/apps/secureyeoman.png
+done
+mkdir -p $PKG/usr/share/icons/hicolor/scalable/apps
+cp assets/secureyeoman.svg $PKG/usr/share/icons/hicolor/scalable/apps/secureyeoman.svg
+
 # Desktop entry for aethersafha (opens dashboard)
 mkdir -p $PKG/usr/share/applications
 cat > $PKG/usr/share/applications/secureyeoman.desktop << 'EOF'

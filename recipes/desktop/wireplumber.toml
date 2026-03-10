@@ -1,0 +1,37 @@
+# wireplumber — PipeWire session manager
+#
+# BLFS
+
+[package]
+name = "wireplumber"
+version = "0.5.8"
+description = "wireplumber — Policy-driven session and policy manager for PipeWire"
+license = "MIT"
+groups = ["desktop", "audio"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://gitlab.freedesktop.org/pipewire/wireplumber/-/archive/0.5.8/wireplumber-0.5.8.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "pipewire", "glib", "lua"]
+build = ["gcc", "make", "pkgconf"]
+
+[build]
+pre_build = ""
+configure = """
+mkdir -p build && cd build && \
+meson setup .. --prefix=/usr --buildtype=release
+"""
+make = "cd build && ninja -j$(nproc)"
+check = "cd build && meson test || true"
+install = "cd build && DESTDIR=$PKG ninja install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

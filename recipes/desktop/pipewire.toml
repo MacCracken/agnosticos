@@ -1,0 +1,37 @@
+# pipewire — Audio/video routing server
+#
+# BLFS
+
+[package]
+name = "pipewire"
+version = "1.4.1"
+description = "pipewire — Low-latency audio and video routing server"
+license = "MIT"
+groups = ["desktop", "audio"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://gitlab.freedesktop.org/pipewire/pipewire/-/archive/1.4.1/pipewire-1.4.1.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "alsa-lib", "dbus", "glib"]
+build = ["gcc", "make", "pkgconf"]
+
+[build]
+pre_build = ""
+configure = """
+mkdir -p build && cd build && \
+meson setup .. --prefix=/usr --buildtype=release
+"""
+make = "cd build && ninja -j$(nproc)"
+check = "cd build && meson test || true"
+install = "cd build && DESTDIR=$PKG ninja install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

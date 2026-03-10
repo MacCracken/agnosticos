@@ -1,0 +1,39 @@
+# wpa-supplicant — WiFi authentication
+#
+# BLFS
+
+[package]
+name = "wpa-supplicant"
+version = "2.11"
+description = "wpa-supplicant — WiFi WPA/WPA2/WPA3 authentication client"
+license = "BSD-3-Clause"
+groups = ["network"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://w1.fi/releases/wpa_supplicant-2.11.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "openssl", "dbus"]
+build = ["gcc", "make", "pkgconf"]
+
+[build]
+pre_build = "cd wpa_supplicant && cp defconfig .config"
+configure = ""
+make = "cd wpa_supplicant && make -j$(nproc)"
+check = ""
+install = """
+cd wpa_supplicant
+install -Dm755 wpa_supplicant $PKG/usr/sbin/wpa_supplicant
+install -Dm755 wpa_cli $PKG/usr/sbin/wpa_cli
+install -Dm755 wpa_passphrase $PKG/usr/sbin/wpa_passphrase
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

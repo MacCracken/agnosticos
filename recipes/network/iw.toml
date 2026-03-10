@@ -1,0 +1,34 @@
+# iw — WiFi config tool
+#
+# BLFS
+
+[package]
+name = "iw"
+version = "6.9"
+description = "iw — WiFi configuration and monitoring tool"
+license = "ISC"
+groups = ["network"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://kernel.org/pub/software/network/iw/iw-6.9.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "libnl"]
+build = ["gcc", "make", "pkgconf"]
+
+[build]
+pre_build = ""
+configure = ""
+make = "make -j$(nproc) PREFIX=/usr"
+check = ""
+install = "make PREFIX=/usr DESTDIR=$PKG install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

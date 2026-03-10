@@ -1,0 +1,40 @@
+# Cairo — 2D graphics library
+# Vector-based rendering with multiple output backends
+#
+# BLFS
+
+[package]
+name = "cairo"
+version = "1.18.2"
+description = "Cairo — 2D vector graphics library"
+license = "LGPL-2.1"
+groups = ["desktop", "graphics"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://cairographics.org/releases/cairo-1.18.2.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "pixman", "freetype", "fontconfig", "libpng", "zlib"]
+build = ["gcc", "make", "pkgconf", "meson", "ninja"]
+
+[build]
+pre_build = ""
+configure = """
+mkdir -p build && cd build && \
+meson setup .. --prefix=/usr --buildtype=release \
+  -Dxlib=disabled \
+  -Dxcb=disabled
+"""
+make = "cd build && ninja -j$(nproc)"
+check = "cd build && meson test || true"
+install = "cd build && DESTDIR=$PKG ninja install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

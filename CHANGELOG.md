@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI now validates recipes on every push, full LFS bootstrap is manual-trigger only (takes hours)
 - Fixed flaky `test_llama_cpp_infer_stream_channel_sends_error` — added timeout + graceful channel-closed handling
 
+### Fixed — Docker Base Images
+
+- **`Dockerfile.node`**: Added `unzip` to apt-get install — required by Bun installer script
+- **`Dockerfile.python3.13t`**: Changed base image from `python:3.13-slim-bookworm` to `python:3.13t-slim-bookworm` — the standard 3.13 image doesn't support `PYTHON_GIL=0` (fatal error: "Disabling the GIL is not supported by this build"). Added build-time assertion to verify free-threaded support
+
 ### Added — Delta Consumer Integration
 
 - **`recipes/marketplace/delta.toml`**: Marketplace recipe for Delta code hosting platform (Rust binary, port 8070, systemd service)

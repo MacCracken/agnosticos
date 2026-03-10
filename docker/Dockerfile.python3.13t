@@ -1,19 +1,18 @@
 # AGNOS Python 3.13t Base Image — Free-Threaded (GIL-disabled)
 # For running Python-based agents that benefit from true multi-threading.
 # Uses python3.13t binary (built with --disable-gil).
-FROM python:3.13-slim-bookworm AS base
+FROM python:3.13t-slim-bookworm AS base
 
-# Install free-threaded Python build
+# System dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     libseccomp2 \
     && rm -rf /var/lib/apt/lists/*
 
-# Enable free-threaded mode: install python3.13t alongside default python3.13
-# The official 3.13 image includes the free-threaded build as python3.13t
-RUN python3.13 -c "import sysconfig; print(sysconfig.get_config_var('Py_GIL_DISABLED'))" || true
+# Verify free-threaded build (Py_GIL_DISABLED should be 1)
+RUN python3 -c "import sysconfig; assert sysconfig.get_config_var('Py_GIL_DISABLED') == 1, 'Not a free-threaded build'"
 
-# Set PYTHON_GIL=0 to run in free-threaded mode
+# Run in free-threaded mode
 ENV PYTHON_GIL=0
 
 # Create agnos user and directories

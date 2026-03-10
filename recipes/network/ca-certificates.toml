@@ -1,0 +1,37 @@
+# ca-certificates — TLS root CAs
+#
+# BLFS
+
+[package]
+name = "ca-certificates"
+version = "2025.01"
+description = "ca-certificates — TLS root certificate authority bundle"
+license = "MPL-2.0"
+groups = ["network"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://curl.se/ca/cacert-2025-01-19.pem"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "openssl"]
+build = ["gcc", "make", "pkgconf"]
+
+[build]
+pre_build = ""
+configure = ""
+make = ""
+check = ""
+install = """
+mkdir -p $PKG/etc/ssl/certs
+cp cacert-2025-01-19.pem $PKG/etc/ssl/certs/ca-certificates.crt
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"
