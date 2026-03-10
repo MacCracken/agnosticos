@@ -1,0 +1,39 @@
+# Libargon2 — Argon2 password hashing library
+# Memory-hard key derivation function. Used by cryptsetup for LUKS2.
+#
+# BLFS
+
+[package]
+name = "libargon2"
+version = "20190702"
+description = "Libargon2 — Argon2 password hashing"
+license = "Apache-2.0"
+groups = ["base", "security", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/P-H-C/phc-winner-argon2/archive/20190702/argon2-20190702.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc"]
+build = ["gcc", "make"]
+
+[build]
+pre_build = ""
+configure = ""
+make = "make -j$(nproc) OPTTARGET=none"
+check = "make test || true"
+install = """
+make PREFIX=/usr LIBRARY_REL=lib DESTDIR=$PKG install
+# Remove static library
+rm -f $PKG/usr/lib/libargon2.a
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

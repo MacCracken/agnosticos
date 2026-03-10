@@ -11,9 +11,9 @@ pub mod delegation;
 pub mod explainability;
 pub mod federation;
 pub mod file_watcher;
-pub mod grpc;
 pub mod finetune;
 pub mod formal_verify;
+pub mod grpc;
 pub mod http_api;
 pub mod integrity;
 pub mod ipc;
@@ -82,13 +82,13 @@ pub use collaboration::{
     CollaborationAnalyzer, CollaborationMode, CollaborationSession, FeedbackCollector,
     HandoffManager, SharedTask, TaskOwner, TrustCalibrator, TrustMetrics,
 };
-pub use delegation::{
-    A2AEnvelope, A2AMessageType, AgentRoute, DelegationManager, DelegationPolicy,
-    DelegationRecord, DelegationRequest, DelegationResponse, DelegationStats, DelegationStatus,
-    PolicyViolation, SandboxLevel,
-};
 pub use database::{
     AgentDatabaseRequirements, DatabaseConfig, DatabaseManager, DatabaseStats, ProvisionedDatabase,
+};
+pub use delegation::{
+    A2AEnvelope, A2AMessageType, AgentRoute, DelegationManager, DelegationPolicy, DelegationRecord,
+    DelegationRequest, DelegationResponse, DelegationStats, DelegationStatus, PolicyViolation,
+    SandboxLevel,
 };
 pub use explainability::{
     AgentDecisionStats, Alternative, AuditTrail, ConfidenceLabel, DecisionExplanation,
@@ -100,7 +100,6 @@ pub use federation::{
     FederationNode, FederationStats, NodeRole, NodeScore, NodeScorer, NodeStatus,
     SchedulingStrategy, VectorReplicationStrategy,
 };
-pub use grpc::{GrpcConfig, GrpcServiceDefinition, StreamingMode};
 pub use file_watcher::FileWatcher;
 pub use finetune::{
     DatasetStats, ExampleSource, FineTuneConfig, FineTuneJob, FineTuneMethod, FineTunePipeline,
@@ -111,6 +110,7 @@ pub use formal_verify::{
     ComponentId, InvariantMonitor, ProofMethod, Property, PropertyChecker, PropertyType,
     StateMachineProperty, VerificationReport, VerificationStatus,
 };
+pub use grpc::{GrpcConfig, GrpcServiceDefinition, StreamingMode};
 pub use ipc::{RpcRegistry, RpcRequest, RpcResponse, RpcRouter};
 pub use knowledge_base::KnowledgeBase;
 pub use learning::AgentLearner;

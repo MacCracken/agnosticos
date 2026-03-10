@@ -1,0 +1,40 @@
+# libnghttp2 — HTTP/2 C library
+# HTTP/2 protocol implementation. Used by curl.
+#
+# BLFS
+
+[package]
+name = "libnghttp2"
+version = "1.64.0"
+description = "libnghttp2 — HTTP/2 C library"
+license = "MIT"
+groups = ["base", "core", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/nghttp2/nghttp2/releases/download/v1.64.0/nghttp2-1.64.0.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc"]
+build = ["gcc", "make", "pkgconf"]
+
+[build]
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --disable-static \
+    --enable-lib-only
+"""
+make = "make -j$(nproc)"
+check = ""
+install = "make DESTDIR=$PKG install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

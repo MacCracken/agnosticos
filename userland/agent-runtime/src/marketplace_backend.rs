@@ -253,8 +253,10 @@ impl MarketplaceBackend {
             .unwrap_or_default()
             .as_secs();
 
-        let entry = self.packages.entry(name.to_string()).or_insert_with(|| {
-            PackageEntry {
+        let entry = self
+            .packages
+            .entry(name.to_string())
+            .or_insert_with(|| PackageEntry {
                 name: name.to_string(),
                 latest_version: String::new(),
                 versions: Vec::new(),
@@ -268,8 +270,7 @@ impl MarketplaceBackend {
                 featured: false,
                 created_at: now,
                 updated_at: now,
-            }
-        });
+            });
 
         entry.latest_version = version.version.clone();
         entry.updated_at = now;
@@ -289,11 +290,7 @@ impl MarketplaceBackend {
     }
 
     /// Yank a specific version (soft-delete, still resolvable but not recommended).
-    pub fn yank_version(
-        &mut self,
-        name: &str,
-        version: &str,
-    ) -> Result<(), MarketplaceError> {
+    pub fn yank_version(&mut self, name: &str, version: &str) -> Result<(), MarketplaceError> {
         let entry = self
             .packages
             .get_mut(name)
@@ -326,7 +323,10 @@ impl MarketplaceBackend {
             .values()
             .filter(|p| {
                 let name_match = p.name.to_lowercase().contains(&query_lower);
-                let tag_match = p.tags.iter().any(|t| t.to_lowercase().contains(&query_lower));
+                let tag_match = p
+                    .tags
+                    .iter()
+                    .any(|t| t.to_lowercase().contains(&query_lower));
                 let desc_match = p.description.to_lowercase().contains(&query_lower);
                 let text_match = name_match || tag_match || desc_match;
 
@@ -429,11 +429,7 @@ impl MarketplaceBackend {
             total_versions,
             total_downloads,
             featured: self.featured.len(),
-            verified_publishers: self
-                .publishers
-                .values()
-                .filter(|p| p.verified)
-                .count(),
+            verified_publishers: self.publishers.values().filter(|p| p.verified).count(),
         }
     }
 }
@@ -607,7 +603,9 @@ mod tests {
     #[test]
     fn test_publish_package() {
         let mut backend = test_backend();
-        backend.publish("pub-001", "my-agent", test_version()).unwrap();
+        backend
+            .publish("pub-001", "my-agent", test_version())
+            .unwrap();
         assert_eq!(backend.package_count(), 1);
         let pkg = backend.get_package("my-agent").unwrap();
         assert_eq!(pkg.latest_version, "1.0.0");
@@ -618,7 +616,9 @@ mod tests {
     #[test]
     fn test_publish_multiple_versions() {
         let mut backend = test_backend();
-        backend.publish("pub-001", "my-agent", test_version()).unwrap();
+        backend
+            .publish("pub-001", "my-agent", test_version())
+            .unwrap();
         let mut v2 = test_version();
         v2.version = "1.1.0".to_string();
         backend.publish("pub-001", "my-agent", v2).unwrap();
@@ -630,9 +630,13 @@ mod tests {
     #[test]
     fn test_publish_duplicate_version() {
         let mut backend = test_backend();
-        backend.publish("pub-001", "my-agent", test_version()).unwrap();
+        backend
+            .publish("pub-001", "my-agent", test_version())
+            .unwrap();
         assert!(matches!(
-            backend.publish("pub-001", "my-agent", test_version()).unwrap_err(),
+            backend
+                .publish("pub-001", "my-agent", test_version())
+                .unwrap_err(),
             MarketplaceError::VersionExists { .. }
         ));
     }
@@ -645,7 +649,9 @@ mod tests {
         pub2.display_name = "Other".to_string();
         backend.register_publisher(pub2).unwrap();
 
-        backend.publish("pub-001", "my-agent", test_version()).unwrap();
+        backend
+            .publish("pub-001", "my-agent", test_version())
+            .unwrap();
 
         let mut v2 = test_version();
         v2.version = "2.0.0".to_string();
@@ -660,7 +666,9 @@ mod tests {
         let mut backend = test_backend();
         backend.suspend_publisher("pub-001").unwrap();
         assert!(matches!(
-            backend.publish("pub-001", "my-agent", test_version()).unwrap_err(),
+            backend
+                .publish("pub-001", "my-agent", test_version())
+                .unwrap_err(),
             MarketplaceError::PublisherSuspended(_)
         ));
     }
@@ -668,7 +676,9 @@ mod tests {
     #[test]
     fn test_yank_version() {
         let mut backend = test_backend();
-        backend.publish("pub-001", "my-agent", test_version()).unwrap();
+        backend
+            .publish("pub-001", "my-agent", test_version())
+            .unwrap();
         backend.yank_version("my-agent", "1.0.0").unwrap();
         let pkg = backend.get_package("my-agent").unwrap();
         assert!(pkg.versions[0].yanked);
@@ -677,7 +687,9 @@ mod tests {
     #[test]
     fn test_yank_nonexistent_version() {
         let mut backend = test_backend();
-        backend.publish("pub-001", "my-agent", test_version()).unwrap();
+        backend
+            .publish("pub-001", "my-agent", test_version())
+            .unwrap();
         assert!(matches!(
             backend.yank_version("my-agent", "9.9.9").unwrap_err(),
             MarketplaceError::VersionNotFound { .. }
@@ -687,7 +699,9 @@ mod tests {
     #[test]
     fn test_search_by_name() {
         let mut backend = test_backend();
-        backend.publish("pub-001", "code-reviewer", test_version()).unwrap();
+        backend
+            .publish("pub-001", "code-reviewer", test_version())
+            .unwrap();
         backend
             .update_metadata("code-reviewer", Some("AI code review"), None, None)
             .unwrap();
@@ -700,7 +714,9 @@ mod tests {
     #[test]
     fn test_search_by_tag() {
         let mut backend = test_backend();
-        backend.publish("pub-001", "scanner", test_version()).unwrap();
+        backend
+            .publish("pub-001", "scanner", test_version())
+            .unwrap();
         backend
             .update_metadata("scanner", None, None, Some(vec!["security".to_string()]))
             .unwrap();
@@ -712,15 +728,19 @@ mod tests {
     #[test]
     fn test_search_with_category() {
         let mut backend = test_backend();
-        backend.publish("pub-001", "agent-a", test_version()).unwrap();
+        backend
+            .publish("pub-001", "agent-a", test_version())
+            .unwrap();
         backend
             .update_metadata("agent-a", Some("Agent A"), Some("utility"), None)
             .unwrap();
-        backend.publish("pub-001", "agent-b", {
-            let mut v = test_version();
-            v.version = "1.0.0".to_string();
-            v
-        }).unwrap();
+        backend
+            .publish("pub-001", "agent-b", {
+                let mut v = test_version();
+                v.version = "1.0.0".to_string();
+                v
+            })
+            .unwrap();
         backend
             .update_metadata("agent-b", Some("Agent B"), Some("security"), None)
             .unwrap();
@@ -733,7 +753,9 @@ mod tests {
     #[test]
     fn test_featured_packages() {
         let mut backend = test_backend();
-        backend.publish("pub-001", "featured-app", test_version()).unwrap();
+        backend
+            .publish("pub-001", "featured-app", test_version())
+            .unwrap();
         backend.set_featured(vec!["featured-app".to_string()]);
         let featured = backend.featured_packages();
         assert_eq!(featured.len(), 1);
@@ -743,7 +765,9 @@ mod tests {
     #[test]
     fn test_record_download() {
         let mut backend = test_backend();
-        backend.publish("pub-001", "popular", test_version()).unwrap();
+        backend
+            .publish("pub-001", "popular", test_version())
+            .unwrap();
         for _ in 0..5 {
             backend.record_download("popular");
         }

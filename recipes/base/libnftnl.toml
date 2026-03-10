@@ -1,0 +1,39 @@
+# Libnftnl — Netfilter nftables userspace library
+# Low-level API for nftables kernel interface. Required by nftables.
+#
+# BLFS
+
+[package]
+name = "libnftnl"
+version = "1.2.8"
+description = "Libnftnl — nftables netlink userspace library"
+license = "GPL-2.0"
+groups = ["base", "core", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://netfilter.org/projects/libnftnl/files/libnftnl-1.2.8.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "libmnl"]
+build = ["gcc", "make", "pkgconf"]
+
+[build]
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --disable-static
+"""
+make = "make -j$(nproc)"
+check = ""
+install = "make DESTDIR=$PKG install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

@@ -11,9 +11,7 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
 
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use tracing::info;
 
 // ---------------------------------------------------------------------------
 // gRPC Service Definitions
@@ -366,7 +364,10 @@ mod tests {
     fn test_grpc_config_default() {
         let config = GrpcConfig::default();
         assert!(!config.enabled);
-        assert_eq!(config.bind_addr, "0.0.0.0:8091".parse::<SocketAddr>().unwrap());
+        assert_eq!(
+            config.bind_addr,
+            "0.0.0.0:8091".parse::<SocketAddr>().unwrap()
+        );
         assert_eq!(config.max_message_size, 4 * 1024 * 1024);
         assert!(config.reflection);
         assert!(config.health_service);
@@ -385,7 +386,10 @@ tls = true
 "#;
         let config = GrpcConfig::from_toml(toml).unwrap();
         assert!(config.enabled);
-        assert_eq!(config.bind_addr, "0.0.0.0:9091".parse::<SocketAddr>().unwrap());
+        assert_eq!(
+            config.bind_addr,
+            "0.0.0.0:9091".parse::<SocketAddr>().unwrap()
+        );
         assert_eq!(config.max_message_size, 8_388_608);
         assert!(!config.reflection);
         assert!(config.tls);
@@ -399,7 +403,10 @@ enabled = true
 "#;
         let config = GrpcConfig::from_toml(toml).unwrap();
         assert!(config.enabled);
-        assert_eq!(config.bind_addr, "0.0.0.0:8091".parse::<SocketAddr>().unwrap());
+        assert_eq!(
+            config.bind_addr,
+            "0.0.0.0:8091".parse::<SocketAddr>().unwrap()
+        );
     }
 
     #[test]
@@ -473,8 +480,12 @@ bind_addr = "not-an-address"
         let manifest = build_service_manifest();
         for svc in &manifest {
             for method in &svc.methods {
-                assert!(!method.rest_equivalent.is_empty(),
-                    "Missing REST equivalent for {}.{}", svc.name, method.name);
+                assert!(
+                    !method.rest_equivalent.is_empty(),
+                    "Missing REST equivalent for {}.{}",
+                    svc.name,
+                    method.name
+                );
             }
         }
     }

@@ -2,6 +2,8 @@
 
 use anyhow::Result;
 use std::collections::VecDeque;
+use std::fs::Permissions;
+use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 
 pub struct CommandHistory {
@@ -63,10 +65,17 @@ impl CommandHistory {
             .join("\n");
 
         if let Some(parent) = self.file.parent() {
+            let parent_existed = parent.exists();
             tokio::fs::create_dir_all(parent).await?;
+            // Restrict newly-created parent directory to owner-only access (0700)
+            if !parent_existed {
+                tokio::fs::set_permissions(parent, Permissions::from_mode(0o700)).await?;
+            }
         }
 
         tokio::fs::write(&self.file, content).await?;
+        // Restrict history file to owner-only read/write (0600)
+        tokio::fs::set_permissions(&self.file, Permissions::from_mode(0o600)).await?;
         Ok(())
     }
 }
@@ -233,6 +242,43 @@ mod tests {
         assert_eq!(loaded.entries[1], "pwd");
 
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[tokio::test]
+    async fn test_history_save_permissions() {
+        let dir = std::env::temp_dir().join("agnos_history_perm_test");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        let path = dir.join("history.txt");
+
+        let mut history = CommandHistory {
+            entries: VecDeque::new(),
+            file: path.clone(),
+            max_size: 100,
+        };
+
+        history.add("secret-command").await.unwrap();
+        history.save().await.unwrap();
+
+        // Verify file permissions are 0600
+        let file_meta = std::fs::metadata(&path).unwrap();
+        let file_mode = file_meta.permissions().mode() & 0o777;
+        assert_eq!(
+            file_mode, 0o600,
+            "history file should have 0600 permissions, got {:o}",
+            file_mode
+        );
+
+        // Verify parent directory permissions are 0700
+        let dir_meta = std::fs::metadata(&dir).unwrap();
+        let dir_mode = dir_meta.permissions().mode() & 0o777;
+        assert_eq!(
+            dir_mode, 0o700,
+            "history directory should have 0700 permissions, got {:o}",
+            dir_mode
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[tokio::test]

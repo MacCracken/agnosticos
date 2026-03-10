@@ -26,6 +26,24 @@ POSITIONAL=()
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        --help|-h)
+            echo "ark-build — Build an .ark package from a takumi recipe"
+            echo ""
+            echo "Usage: ark-build [--sign] [--target ARCH] <recipe.toml>"
+            echo ""
+            echo "Options:"
+            echo "  --sign          Sign the package after build"
+            echo "  --target ARCH   Cross-compile for ARCH (e.g. aarch64)"
+            echo "  --help, -h      Show this help"
+            echo ""
+            echo "Environment:"
+            echo "  ARK_OUTPUT_DIR  Output directory (default: dist/ark)"
+            echo "  ARK_BUILD_DIR   Build scratch dir (default: /tmp/takumi-build)"
+            echo "  ARK_CACHE_DIR   Source cache dir (default: /cache)"
+            echo "  ARK_SKIP_CHECK  Set to 1 to skip tests"
+            echo "  ARK_JOBS        Parallel jobs (default: nproc)"
+            exit 0
+            ;;
         --sign)        SIGN_AFTER_BUILD=1; shift ;;
         --target)      TARGET_ARCH="$2"; shift 2 ;;
         --target=*)    TARGET_ARCH="${1#--target=}"; shift ;;
@@ -40,6 +58,24 @@ BUILD_DIR="${ARK_BUILD_DIR:-/tmp/takumi-build}"
 CACHE_DIR="${ARK_CACHE_DIR:-${CACHE:-/tmp/takumi-cache}}"
 SKIP_CHECK="${ARK_SKIP_CHECK:-0}"
 JOBS="${ARK_JOBS:-$(nproc 2>/dev/null || echo 4)}"
+
+# -----------------------------------------------------------------------
+# Deterministic build settings
+# -----------------------------------------------------------------------
+# SOURCE_DATE_EPOCH: Unix timestamp for reproducible builds.
+# All timestamps in the build output will use this value.
+# Set from git commit time if not already provided.
+if [ -z "${SOURCE_DATE_EPOCH:-}" ]; then
+    if command -v git >/dev/null 2>&1 && git rev-parse --git-dir >/dev/null 2>&1; then
+        SOURCE_DATE_EPOCH="$(git log -1 --format=%ct 2>/dev/null || date +%s)"
+    else
+        SOURCE_DATE_EPOCH="$(date +%s)"
+    fi
+fi
+export SOURCE_DATE_EPOCH
+
+# Strip build paths from debug info for reproducibility
+export CFLAGS_DETERMINISTIC="-fdebug-prefix-map=${BUILD_DIR}=. -ffile-prefix-map=${BUILD_DIR}=."
 
 # Colors (if terminal)
 if [ -t 1 ]; then

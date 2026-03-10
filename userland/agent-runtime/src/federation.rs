@@ -947,8 +947,10 @@ impl AgentPlacement {
 
 /// Replication strategy for vector data across federated nodes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum VectorReplicationStrategy {
     /// Every node holds a full copy of every collection.
+    #[default]
     Full,
     /// Each collection lives on N nodes (configurable replication factor).
     Partial { replication_factor: u32 },
@@ -956,11 +958,6 @@ pub enum VectorReplicationStrategy {
     Sharded,
 }
 
-impl Default for VectorReplicationStrategy {
-    fn default() -> Self {
-        Self::Full
-    }
-}
 
 /// Tracks which collections are hosted on which nodes.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -995,9 +992,7 @@ pub enum VectorSyncMessage {
         vector_id: String,
     },
     /// Request the full collection manifest (for initial sync).
-    SyncManifest {
-        collection: String,
-    },
+    SyncManifest { collection: String },
     /// Announce that a collection exists on this node.
     AnnounceCollection {
         collection: String,
@@ -1075,7 +1070,10 @@ impl FederatedVectorStore {
         if let Some(existing) = replicas.iter_mut().find(|r| r.node_id == node_id) {
             existing.vector_count = vector_count;
             existing.last_synced = Utc::now();
-            debug!(collection, node_id, vector_count, "Updated collection replica");
+            debug!(
+                collection,
+                node_id, vector_count, "Updated collection replica"
+            );
         } else {
             replicas.push(CollectionReplica {
                 node_id: node_id.to_string(),
@@ -1083,7 +1081,10 @@ impl FederatedVectorStore {
                 vector_count,
                 last_synced: Utc::now(),
             });
-            debug!(collection, node_id, vector_count, "Registered new collection replica");
+            debug!(
+                collection,
+                node_id, vector_count, "Registered new collection replica"
+            );
         }
     }
 
@@ -1199,7 +1200,11 @@ impl FederatedVectorStore {
         }
 
         // Sort by score descending.
-        all.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        all.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         // Deduplicate by vector ID (keep highest score).
         let mut seen = std::collections::HashSet::new();
@@ -1218,9 +1223,10 @@ impl FederatedVectorStore {
 
         match self.replication_strategy {
             VectorReplicationStrategy::Full => live_nodes,
-            VectorReplicationStrategy::Partial { replication_factor } => {
-                live_nodes.into_iter().take(replication_factor as usize).collect()
-            }
+            VectorReplicationStrategy::Partial { replication_factor } => live_nodes
+                .into_iter()
+                .take(replication_factor as usize)
+                .collect(),
             VectorReplicationStrategy::Sharded => {
                 // For sharding, only the coordinator assigns shards.
                 // Return just the local node — the coordinator will assign others.
@@ -2185,22 +2191,21 @@ strategy = "yolo"
 
     #[test]
     fn test_federated_store_new() {
-        let store = FederatedVectorStore::new(
-            "node-1".to_string(),
-            VectorReplicationStrategy::Full,
-        );
+        let store =
+            FederatedVectorStore::new("node-1".to_string(), VectorReplicationStrategy::Full);
         assert_eq!(store.local_node_id(), "node-1");
         assert_eq!(store.collection_count(), 0);
         assert!(store.collections().is_empty());
-        assert_eq!(store.replication_strategy(), VectorReplicationStrategy::Full);
+        assert_eq!(
+            store.replication_strategy(),
+            VectorReplicationStrategy::Full
+        );
     }
 
     #[test]
     fn test_register_replica() {
-        let mut store = FederatedVectorStore::new(
-            "node-1".to_string(),
-            VectorReplicationStrategy::Full,
-        );
+        let mut store =
+            FederatedVectorStore::new("node-1".to_string(), VectorReplicationStrategy::Full);
         let addr: SocketAddr = "10.0.0.2:8090".parse().unwrap();
 
         store.register_replica("embeddings", "node-2", addr, 100);
@@ -2215,10 +2220,8 @@ strategy = "yolo"
 
     #[test]
     fn test_register_replica_updates_existing() {
-        let mut store = FederatedVectorStore::new(
-            "node-1".to_string(),
-            VectorReplicationStrategy::Full,
-        );
+        let mut store =
+            FederatedVectorStore::new("node-1".to_string(), VectorReplicationStrategy::Full);
         let addr: SocketAddr = "10.0.0.2:8090".parse().unwrap();
 
         store.register_replica("col", "node-2", addr, 50);
@@ -2231,10 +2234,8 @@ strategy = "yolo"
 
     #[test]
     fn test_remote_replicas_excludes_local() {
-        let mut store = FederatedVectorStore::new(
-            "node-1".to_string(),
-            VectorReplicationStrategy::Full,
-        );
+        let mut store =
+            FederatedVectorStore::new("node-1".to_string(), VectorReplicationStrategy::Full);
         let addr1: SocketAddr = "10.0.0.1:8090".parse().unwrap();
         let addr2: SocketAddr = "10.0.0.2:8090".parse().unwrap();
 
@@ -2248,10 +2249,8 @@ strategy = "yolo"
 
     #[test]
     fn test_remove_node_from_replicas() {
-        let mut store = FederatedVectorStore::new(
-            "node-1".to_string(),
-            VectorReplicationStrategy::Full,
-        );
+        let mut store =
+            FederatedVectorStore::new("node-1".to_string(), VectorReplicationStrategy::Full);
         let addr2: SocketAddr = "10.0.0.2:8090".parse().unwrap();
         let addr3: SocketAddr = "10.0.0.3:8090".parse().unwrap();
 
@@ -2268,10 +2267,8 @@ strategy = "yolo"
 
     #[test]
     fn test_insert_sync_messages() {
-        let mut store = FederatedVectorStore::new(
-            "node-1".to_string(),
-            VectorReplicationStrategy::Full,
-        );
+        let mut store =
+            FederatedVectorStore::new("node-1".to_string(), VectorReplicationStrategy::Full);
         let addr2: SocketAddr = "10.0.0.2:8090".parse().unwrap();
         let addr3: SocketAddr = "10.0.0.3:8090".parse().unwrap();
 
@@ -2294,10 +2291,8 @@ strategy = "yolo"
 
     #[test]
     fn test_search_sync_messages() {
-        let mut store = FederatedVectorStore::new(
-            "node-1".to_string(),
-            VectorReplicationStrategy::Full,
-        );
+        let mut store =
+            FederatedVectorStore::new("node-1".to_string(), VectorReplicationStrategy::Full);
         let addr2: SocketAddr = "10.0.0.2:8090".parse().unwrap();
         store.register_replica("col", "node-2", addr2, 100);
 
@@ -2305,7 +2300,11 @@ strategy = "yolo"
         assert_eq!(messages.len(), 1);
 
         match &messages[0].1 {
-            VectorSyncMessage::Search { collection, query, top_k } => {
+            VectorSyncMessage::Search {
+                collection,
+                query,
+                top_k,
+            } => {
                 assert_eq!(collection, "col");
                 assert_eq!(query, &[1.0, 0.0]);
                 assert_eq!(*top_k, 10);
@@ -2316,20 +2315,16 @@ strategy = "yolo"
 
     #[test]
     fn test_search_sync_empty_for_unknown_collection() {
-        let store = FederatedVectorStore::new(
-            "node-1".to_string(),
-            VectorReplicationStrategy::Full,
-        );
+        let store =
+            FederatedVectorStore::new("node-1".to_string(), VectorReplicationStrategy::Full);
         let messages = store.search_sync_messages("nonexistent", &[1.0], 5);
         assert!(messages.is_empty());
     }
 
     #[test]
     fn test_merge_results_deduplicates_and_ranks() {
-        let store = FederatedVectorStore::new(
-            "node-1".to_string(),
-            VectorReplicationStrategy::Full,
-        );
+        let store =
+            FederatedVectorStore::new("node-1".to_string(), VectorReplicationStrategy::Full);
 
         let local = vec![
             RemoteSearchResult {
@@ -2378,10 +2373,8 @@ strategy = "yolo"
 
     #[test]
     fn test_merge_results_truncates_to_top_k() {
-        let store = FederatedVectorStore::new(
-            "node-1".to_string(),
-            VectorReplicationStrategy::Full,
-        );
+        let store =
+            FederatedVectorStore::new("node-1".to_string(), VectorReplicationStrategy::Full);
 
         let local: Vec<RemoteSearchResult> = (0..10)
             .map(|i| RemoteSearchResult {
@@ -2400,10 +2393,8 @@ strategy = "yolo"
 
     #[test]
     fn test_announce_message() {
-        let store = FederatedVectorStore::new(
-            "node-1".to_string(),
-            VectorReplicationStrategy::Full,
-        );
+        let store =
+            FederatedVectorStore::new("node-1".to_string(), VectorReplicationStrategy::Full);
 
         let msg = store.announce_message("embeddings", Some(768), 5000);
         match msg {
@@ -2427,10 +2418,8 @@ strategy = "yolo"
         let peer = make_node("node-2", "127.0.0.2:8092");
         cluster.register_node(peer).unwrap();
 
-        let store = FederatedVectorStore::new(
-            "node-1".to_string(),
-            VectorReplicationStrategy::Full,
-        );
+        let store =
+            FederatedVectorStore::new("node-1".to_string(), VectorReplicationStrategy::Full);
         let nodes = store.select_replica_nodes(&cluster);
         assert_eq!(nodes.len(), 2);
     }
@@ -2446,7 +2435,9 @@ strategy = "yolo"
 
         let store = FederatedVectorStore::new(
             "node-1".to_string(),
-            VectorReplicationStrategy::Partial { replication_factor: 2 },
+            VectorReplicationStrategy::Partial {
+                replication_factor: 2,
+            },
         );
         let nodes = store.select_replica_nodes(&cluster);
         assert_eq!(nodes.len(), 2);
@@ -2460,10 +2451,7 @@ strategy = "yolo"
         let peer = make_node("node-2", "127.0.0.2:8092");
         cluster.register_node(peer).unwrap();
 
-        let store = FederatedVectorStore::new(
-            local_id.clone(),
-            VectorReplicationStrategy::Sharded,
-        );
+        let store = FederatedVectorStore::new(local_id.clone(), VectorReplicationStrategy::Sharded);
         let nodes = store.select_replica_nodes(&cluster);
         assert_eq!(nodes.len(), 1);
         assert_eq!(nodes[0].node_id, local_id);
@@ -2471,10 +2459,8 @@ strategy = "yolo"
 
     #[test]
     fn test_federated_stats() {
-        let mut store = FederatedVectorStore::new(
-            "node-1".to_string(),
-            VectorReplicationStrategy::Full,
-        );
+        let mut store =
+            FederatedVectorStore::new("node-1".to_string(), VectorReplicationStrategy::Full);
         let addr2: SocketAddr = "10.0.0.2:8090".parse().unwrap();
         let addr3: SocketAddr = "10.0.0.3:8090".parse().unwrap();
 
@@ -2508,7 +2494,11 @@ strategy = "yolo"
         let json = serde_json::to_string(&msg).unwrap();
         let deserialized: VectorSyncMessage = serde_json::from_str(&json).unwrap();
         match deserialized {
-            VectorSyncMessage::Search { collection, query, top_k } => {
+            VectorSyncMessage::Search {
+                collection,
+                query,
+                top_k,
+            } => {
                 assert_eq!(collection, "test");
                 assert_eq!(query, vec![1.0, 2.0]);
                 assert_eq!(top_k, 5);
@@ -2519,10 +2509,8 @@ strategy = "yolo"
 
     #[test]
     fn test_remote_replicas_empty_for_unknown() {
-        let store = FederatedVectorStore::new(
-            "node-1".to_string(),
-            VectorReplicationStrategy::Full,
-        );
+        let store =
+            FederatedVectorStore::new("node-1".to_string(), VectorReplicationStrategy::Full);
         assert!(store.remote_replicas("nope").is_empty());
         assert!(store.all_replicas("nope").is_empty());
     }

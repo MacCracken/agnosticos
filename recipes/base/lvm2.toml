@@ -1,0 +1,43 @@
+# LVM2 — Logical Volume Manager
+# Device-mapper and LVM tools. Used by cryptsetup.
+#
+# BLFS
+
+[package]
+name = "lvm2"
+version = "2.03.28"
+description = "LVM2 — Logical Volume Manager"
+license = "GPL-2.0"
+groups = ["base", "core", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://sourceware.org/ftp/lvm2/LVM2.2.03.28.tgz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "libaio", "util-linux"]
+build = ["gcc", "make", "pkgconf"]
+
+[build]
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --enable-cmdlib \
+    --enable-pkgconfig \
+    --enable-udev_sync \
+    --with-thin=internal \
+    --with-cache=internal
+"""
+make = "make -j$(nproc)"
+check = ""
+install = "make DESTDIR=$PKG install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

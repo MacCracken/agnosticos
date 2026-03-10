@@ -118,6 +118,18 @@ impl LocalRegistry {
         Ok(registry)
     }
 
+    /// Create an in-memory registry (no persistence). Used as a last-resort
+    /// fallback when filesystem-backed registries cannot be created.
+    pub fn in_memory() -> Self {
+        Self {
+            root_dir: std::path::PathBuf::from("/dev/null"),
+            index: HashMap::new(),
+            keyring: PublisherKeyring::new(std::path::Path::new("/dev/null")),
+            transparency_log: TransparencyLog::new(),
+            storage_quota: 0,
+        }
+    }
+
     /// Set storage quota (bytes). 0 = unlimited.
     pub fn set_storage_quota(&mut self, quota: u64) {
         self.storage_quota = quota;

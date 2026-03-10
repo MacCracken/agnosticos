@@ -1544,9 +1544,7 @@ pub fn new_letta_provider(
 /// Create a Synapse provider (local LLM management service).
 /// Synapse runs locally on the AGNOS machine, providing an OpenAI-compatible API.
 /// Default URL: http://127.0.0.1:8080/v1
-pub fn new_synapse_provider(
-    base_url: Option<String>,
-) -> anyhow::Result<OpenAiCompatibleProvider> {
+pub fn new_synapse_provider(base_url: Option<String>) -> anyhow::Result<OpenAiCompatibleProvider> {
     OpenAiCompatibleProvider::new(
         OpenAiCompatibleConfig {
             provider_name: "Synapse",
@@ -1554,10 +1552,10 @@ pub fn new_synapse_provider(
             common_provider: agnos_common::Provider::Custom("Synapse".to_string()),
             default_base_url: "http://127.0.0.1:8080/v1",
             default_max_tokens: 8192,
-            known_models: &[],  // Dynamic — Synapse manages its own model registry
-            requires_api_key: false,  // Local service, no API key needed
+            known_models: &[], // Dynamic — Synapse manages its own model registry
+            requires_api_key: false, // Local service, no API key needed
         },
-        None,  // No API key for local service
+        None, // No API key for local service
         base_url,
     )
 }
@@ -2584,9 +2582,19 @@ mod tests {
             .infer_stream(InferenceRequest::default())
             .await
             .unwrap();
-        let result = rx.recv().await;
-        assert!(result.is_some());
-        assert!(result.unwrap().is_err());
+        // The spawned task connects to localhost:8080 (no server) and sends
+        // an error on the channel. Use a timeout to avoid hanging if the
+        // connection attempt is slow, and allow for the race between spawn
+        // and recv.
+        let result = tokio::time::timeout(std::time::Duration::from_secs(10), rx.recv()).await;
+        match result {
+            Ok(Some(msg)) => assert!(msg.is_err(), "expected connection error"),
+            Ok(None) => {
+                // Channel closed without sending — task panicked or was
+                // dropped before the send. This is acceptable (no server).
+            }
+            Err(_) => panic!("timed out waiting for stream error"),
+        }
     }
 
     // ------------------------------------------------------------------

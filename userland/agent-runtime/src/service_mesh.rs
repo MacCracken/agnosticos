@@ -7,7 +7,6 @@
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
-use tracing::info;
 
 // ---------------------------------------------------------------------------
 // Mesh Provider
@@ -15,20 +14,17 @@ use tracing::info;
 
 /// Supported service mesh implementations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum MeshProvider {
     /// Envoy-based (Istio, standalone Envoy).
     Envoy,
     /// Linkerd (Rust-based, lightweight).
     Linkerd,
     /// No mesh — direct networking.
+    #[default]
     None,
 }
 
-impl Default for MeshProvider {
-    fn default() -> Self {
-        Self::None
-    }
-}
 
 impl std::fmt::Display for MeshProvider {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -199,10 +195,8 @@ impl MeshConfig {
                     self.sidecar_injection.to_string(),
                 );
                 if self.mtls {
-                    annotations.insert(
-                        "security.istio.io/tlsMode".to_string(),
-                        "istio".to_string(),
-                    );
+                    annotations
+                        .insert("security.istio.io/tlsMode".to_string(), "istio".to_string());
                 }
                 // Skip outbound interception for AGNOS IPC sockets
                 annotations.insert(
@@ -218,7 +212,12 @@ impl MeshConfig {
             MeshProvider::Linkerd => {
                 annotations.insert(
                     "linkerd.io/inject".to_string(),
-                    if self.sidecar_injection { "enabled" } else { "disabled" }.to_string(),
+                    if self.sidecar_injection {
+                        "enabled"
+                    } else {
+                        "disabled"
+                    }
+                    .to_string(),
                 );
                 if self.mtls {
                     annotations.insert(
@@ -329,22 +328,29 @@ pub fn all_service_descriptors(config: &MeshConfig) -> Vec<MeshServiceDescriptor
                 labels
             },
             probes: ServiceProbes {
-                liveness: HealthProbe { port: 8088, ..HealthProbe::liveness() },
-                readiness: HealthProbe { port: 8088, ..HealthProbe::readiness() },
-                startup: HealthProbe { port: 8088, ..HealthProbe::startup() },
+                liveness: HealthProbe {
+                    port: 8088,
+                    ..HealthProbe::liveness()
+                },
+                readiness: HealthProbe {
+                    port: 8088,
+                    ..HealthProbe::readiness()
+                },
+                startup: HealthProbe {
+                    port: 8088,
+                    ..HealthProbe::startup()
+                },
             },
         },
         MeshServiceDescriptor {
             name: "agnos-synapse".to_string(),
             namespace: "agnos".to_string(),
             version: "0.0.0".to_string(),
-            ports: vec![
-                ServicePort {
-                    name: "http-rest".to_string(),
-                    port: 8080,
-                    protocol: PortProtocol::Http,
-                },
-            ],
+            ports: vec![ServicePort {
+                name: "http-rest".to_string(),
+                port: 8080,
+                protocol: PortProtocol::Http,
+            }],
             annotations: annotations.clone(),
             labels: {
                 let mut labels = HashMap::new();
@@ -353,9 +359,18 @@ pub fn all_service_descriptors(config: &MeshConfig) -> Vec<MeshServiceDescriptor
                 labels
             },
             probes: ServiceProbes {
-                liveness: HealthProbe { port: 8080, ..HealthProbe::liveness() },
-                readiness: HealthProbe { port: 8080, ..HealthProbe::readiness() },
-                startup: HealthProbe { port: 8080, ..HealthProbe::startup() },
+                liveness: HealthProbe {
+                    port: 8080,
+                    ..HealthProbe::liveness()
+                },
+                readiness: HealthProbe {
+                    port: 8080,
+                    ..HealthProbe::readiness()
+                },
+                startup: HealthProbe {
+                    port: 8080,
+                    ..HealthProbe::startup()
+                },
             },
         },
     ]
@@ -399,7 +414,10 @@ mod tests {
         let config = MeshConfig::for_envoy();
         let annotations = config.sidecar_annotations();
         assert_eq!(annotations.get("sidecar.istio.io/inject").unwrap(), "true");
-        assert_eq!(annotations.get("security.istio.io/tlsMode").unwrap(), "istio");
+        assert_eq!(
+            annotations.get("security.istio.io/tlsMode").unwrap(),
+            "istio"
+        );
         assert!(annotations.contains_key("traffic.sidecar.istio.io/excludeOutboundIPRanges"));
     }
 
@@ -417,7 +435,9 @@ mod tests {
         let annotations = config.sidecar_annotations();
         assert_eq!(annotations.get("linkerd.io/inject").unwrap(), "enabled");
         assert_eq!(
-            annotations.get("config.linkerd.io/proxy-require-identity-on-inbound").unwrap(),
+            annotations
+                .get("config.linkerd.io/proxy-require-identity-on-inbound")
+                .unwrap(),
             "true"
         );
     }
@@ -450,7 +470,11 @@ mod tests {
     #[test]
     fn test_service_ports() {
         let config = MeshConfig::default();
-        let port_names: Vec<&str> = config.service_ports.iter().map(|p| p.name.as_str()).collect();
+        let port_names: Vec<&str> = config
+            .service_ports
+            .iter()
+            .map(|p| p.name.as_str())
+            .collect();
         assert!(port_names.contains(&"http-rest"));
         assert!(port_names.contains(&"grpc"));
         assert!(port_names.contains(&"metrics"));
@@ -496,11 +520,17 @@ mod tests {
         let config = MeshConfig::for_linkerd();
         let descriptors = all_service_descriptors(&config);
 
-        let hoosh = descriptors.iter().find(|d| d.name == "agnos-llm-gateway").unwrap();
+        let hoosh = descriptors
+            .iter()
+            .find(|d| d.name == "agnos-llm-gateway")
+            .unwrap();
         assert_eq!(hoosh.probes.liveness.port, 8088);
         assert_eq!(hoosh.probes.readiness.port, 8088);
 
-        let synapse = descriptors.iter().find(|d| d.name == "agnos-synapse").unwrap();
+        let synapse = descriptors
+            .iter()
+            .find(|d| d.name == "agnos-synapse")
+            .unwrap();
         assert_eq!(synapse.probes.liveness.port, 8080);
     }
 
@@ -521,7 +551,9 @@ mod tests {
     #[test]
     fn test_custom_annotations_preserved() {
         let mut config = MeshConfig::for_envoy();
-        config.annotations.insert("custom/key".to_string(), "value".to_string());
+        config
+            .annotations
+            .insert("custom/key".to_string(), "value".to_string());
         let annotations = config.sidecar_annotations();
         assert_eq!(annotations.get("custom/key").unwrap(), "value");
         // Envoy annotations still present

@@ -87,6 +87,15 @@ pub struct CreateCollectionRequest {
 }
 
 // ---------------------------------------------------------------------------
+// Validation limits
+// ---------------------------------------------------------------------------
+
+/// Maximum number of vectors in a single insert request.
+const VECTOR_INSERT_MAX_ITEMS: usize = 1_000;
+/// Maximum allowed value for top_k in search requests.
+const VECTOR_SEARCH_MAX_TOP_K: usize = 100;
+
+// ---------------------------------------------------------------------------
 // Handlers
 // ---------------------------------------------------------------------------
 
@@ -95,6 +104,20 @@ pub async fn vector_search_handler(
     State(state): State<ApiState>,
     Json(req): Json<VectorSearchRequest>,
 ) -> impl IntoResponse {
+    if req.top_k > VECTOR_SEARCH_MAX_TOP_K {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": format!(
+                    "top_k {} exceeds maximum allowed value of {}",
+                    req.top_k, VECTOR_SEARCH_MAX_TOP_K
+                ),
+                "code": 400
+            })),
+        )
+            .into_response();
+    }
+
     if req.embedding.is_empty() {
         return (
             StatusCode::BAD_REQUEST,
@@ -153,6 +176,20 @@ pub async fn vector_insert_handler(
         return (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": "Vectors list must not be empty", "code": 400})),
+        )
+            .into_response();
+    }
+
+    if req.vectors.len() > VECTOR_INSERT_MAX_ITEMS {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": format!(
+                    "Too many vectors: {} exceeds maximum of {} per request",
+                    req.vectors.len(), VECTOR_INSERT_MAX_ITEMS
+                ),
+                "code": 400
+            })),
         )
             .into_response();
     }

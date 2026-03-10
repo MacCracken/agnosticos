@@ -17,6 +17,9 @@ pub struct MemorySetRequest {
     pub tags: Vec<String>,
 }
 
+/// Maximum allowed serialized size of a memory value (1 MB).
+const MEMORY_VALUE_MAX_BYTES: usize = 1_048_576;
+
 // ---------------------------------------------------------------------------
 // Memory handlers
 // ---------------------------------------------------------------------------
@@ -44,11 +47,29 @@ pub async fn memory_set_handler(
     Path((id, key)): Path<(String, String)>,
     Json(req): Json<MemorySetRequest>,
 ) -> impl IntoResponse {
+    let serialized_size = serde_json::to_string(&req.value)
+        .map(|s| s.len())
+        .unwrap_or(0);
+    if serialized_size > MEMORY_VALUE_MAX_BYTES {
+        return (
+            StatusCode::PAYLOAD_TOO_LARGE,
+            Json(serde_json::json!({
+                "error": format!(
+                    "Memory value too large: {} bytes exceeds {} byte limit",
+                    serialized_size, MEMORY_VALUE_MAX_BYTES
+                ),
+                "code": 413
+            })),
+        )
+            .into_response();
+    }
+
     state.memory_store.set(&id, &key, req.value).await;
     (
         StatusCode::OK,
         Json(serde_json::json!({"status": "stored", "key": key})),
     )
+        .into_response()
 }
 
 pub async fn memory_list_handler(

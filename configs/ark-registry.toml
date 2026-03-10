@@ -1,0 +1,98 @@
+# ark-registry.toml — AGNOS Package Registry Configuration
+#
+# Defines where .ark packages are hosted and how ark resolves them.
+# This file is read by ark and nous at runtime.
+
+[registry]
+# Primary package registry URL
+url = "https://packages.agnos.org/v1"
+
+# Fallback mirrors (tried in order if primary is down)
+mirrors = [
+    "https://mirror1.agnos.org/v1",
+]
+
+# Local cache directory for downloaded packages
+cache_dir = "/var/cache/ark/packages"
+
+# Maximum cache size in MB (0 = unlimited)
+cache_max_mb = 5120
+
+# How often to refresh the package index (seconds)
+refresh_interval = 3600
+
+[registry.auth]
+# Authentication method: "none", "token", "certificate"
+method = "none"
+
+# Token for authenticated registries (set via ARK_REGISTRY_TOKEN env)
+# token = ""
+
+[signing]
+# Require Ed25519 signature verification for all packages
+require_signatures = true
+
+# Trusted signing keys directory
+keyring_dir = "/etc/ark/trusted-keys.d"
+
+# AGNOS project signing key (built-in trust anchor)
+agnos_key = "AGNOS-SIGNING-KEY-ED25519-PLACEHOLDER"
+
+[packages]
+# Package database location
+db_path = "/var/lib/ark/installed.db"
+
+# File manifest storage
+manifest_dir = "/var/lib/ark/manifests"
+
+# Transaction log
+transaction_log = "/var/log/ark/transactions.log"
+
+# Maximum number of old package versions to keep
+keep_versions = 2
+
+[build]
+# Default build flags applied to all packages
+default_cflags = "-O2 -pipe"
+default_ldflags = "-Wl,--as-needed"
+
+# Security hardening applied by default
+default_hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+# Reproducibility
+use_source_date_epoch = true
+strip_build_paths = true
+
+[sources]
+# Recognized package sources and their priorities
+# Lower number = higher priority
+
+[sources.base]
+priority = 10
+path = "recipes/base"
+description = "LFS base system packages"
+
+[sources.desktop]
+priority = 20
+path = "recipes/desktop"
+description = "Desktop and graphics stack"
+
+[sources.network]
+priority = 20
+path = "recipes/network"
+description = "Networking packages"
+
+[sources.ai]
+priority = 30
+path = "recipes/ai"
+description = "AI/ML infrastructure"
+
+[sources.marketplace]
+priority = 50
+path = "recipes/marketplace"
+description = "AGNOS marketplace agents and apps"
+
+[sources.browser]
+priority = 40
+path = "recipes/browser"
+description = "Web browser packages"

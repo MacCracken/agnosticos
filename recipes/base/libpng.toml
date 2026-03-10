@@ -1,29 +1,33 @@
-# Autoconf — Automatic configure script generator
-# Generates portable configure scripts from configure.ac templates.
+# libpng — PNG reference library
+# PNG image format support. Used by freetype, desktop apps, etc.
 #
-# LFS Ch. 8.45
+# BLFS
 
 [package]
-name = "autoconf"
-version = "2.72"
-description = "GNU Autoconf — configure script generator"
-license = "GPL-3.0"
-groups = ["base", "build", "tier1"]
+name = "libpng"
+version = "1.6.44"
+description = "libpng — PNG reference library"
+license = "Libpng"
+groups = ["base", "core", "tier1"]
 release = 1
 arch = "x86_64"
 
 [source]
-url = "https://ftp.gnu.org/gnu/autoconf/autoconf-2.72.tar.xz"
+url = "https://download.sourceforge.net/libpng/libpng-1.6.44.tar.xz"
 sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
 patches = []
 
 [depends]
-runtime = ["glibc", "perl", "m4"]
+runtime = ["glibc", "zlib"]
 build = ["gcc", "make"]
 
 [build]
 pre_build = ""
-configure = "./configure --prefix=/usr"
+configure = """
+./configure \
+    --prefix=/usr \
+    --disable-static
+"""
 make = "make -j$(nproc)"
 check = "make check || true"
 install = "make DESTDIR=$PKG install"

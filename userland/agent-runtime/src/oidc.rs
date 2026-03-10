@@ -534,8 +534,8 @@ impl OidcProvider {
 
     /// Validate and decode a token's claims.
     pub fn validate_token(&self, token: &str) -> Result<AgnosClaims, TokenError> {
-        let claims: AgnosClaims = serde_json::from_str(token)
-            .map_err(|e| TokenError::Malformed(e.to_string()))?;
+        let claims: AgnosClaims =
+            serde_json::from_str(token).map_err(|e| TokenError::Malformed(e.to_string()))?;
 
         // Check issuer.
         if claims.iss != self.config.issuer {
@@ -933,7 +933,10 @@ external_providers = []
         let parsed: ExternalIdProvider = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.id, "github");
         assert_eq!(parsed.provider_type, IdProviderType::Oidc);
-        assert_eq!(parsed.claim_mapping.get("login"), Some(&"username".to_string()));
+        assert_eq!(
+            parsed.claim_mapping.get("login"),
+            Some(&"username".to_string())
+        );
     }
 
     #[test]

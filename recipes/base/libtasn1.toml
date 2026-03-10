@@ -1,0 +1,39 @@
+# Libtasn1 — ASN.1 library
+# Used by GnuTLS and p11-kit for certificate parsing.
+#
+# BLFS
+
+[package]
+name = "libtasn1"
+version = "4.19.0"
+description = "Libtasn1 — ASN.1 structure parser library"
+license = "LGPL-2.1"
+groups = ["base", "security", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://ftp.gnu.org/gnu/libtasn1/libtasn1-4.19.0.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc"]
+build = ["gcc", "make"]
+
+[build]
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --disable-static
+"""
+make = "make -j$(nproc)"
+check = "make check"
+install = "make DESTDIR=$PKG install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

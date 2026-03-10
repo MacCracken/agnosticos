@@ -5,10 +5,10 @@
 //! capability routing, sandboxed execution, and audit trails.
 
 use std::collections::HashMap;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 use uuid::Uuid;
 
 // ---------------------------------------------------------------------------
@@ -46,10 +46,12 @@ pub struct DelegationRequest {
 
 /// Sandbox level for delegated tasks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum SandboxLevel {
     /// Minimal sandbox — Landlock only.
     Minimal,
     /// Standard sandbox — Landlock + seccomp.
+    #[default]
     Standard,
     /// Strict sandbox — Landlock + seccomp + network isolation.
     Strict,
@@ -57,11 +59,6 @@ pub enum SandboxLevel {
     Maximum,
 }
 
-impl Default for SandboxLevel {
-    fn default() -> Self {
-        Self::Standard
-    }
-}
 
 /// Result of a delegation request.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -720,7 +717,9 @@ mod tests {
         assert!(policy.enabled);
         assert!(policy.require_auth);
         assert_eq!(policy.max_concurrent, 10);
-        assert!(policy.allowed_capabilities.contains(&"code-review".to_string()));
+        assert!(policy
+            .allowed_capabilities
+            .contains(&"code-review".to_string()));
     }
 
     #[test]

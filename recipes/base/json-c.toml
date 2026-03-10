@@ -1,0 +1,42 @@
+# json-c — JSON library for C
+# Used by cryptsetup for LUKS2 metadata.
+#
+# BLFS
+
+[package]
+name = "json-c"
+version = "0.18"
+description = "json-c — JSON implementation in C"
+license = "MIT"
+groups = ["base", "core", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://s3.amazonaws.com/json-c_releases/releases/json-c-0.18.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc"]
+build = ["gcc", "cmake", "ninja"]
+
+[build]
+pre_build = "mkdir build && cd build"
+configure = """
+cd build
+cmake .. \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DBUILD_STATIC_LIBS=OFF \
+    -G Ninja
+"""
+make = "cd build && ninja -j$(nproc)"
+check = "cd build && ninja test || true"
+install = "cd build && DESTDIR=$PKG ninja install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

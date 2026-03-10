@@ -1,0 +1,84 @@
+# Dockerfile.takumi — Takumi builder container
+#
+# Clean-room environment for building all AGNOS .ark packages from source.
+# Produces deterministic, reproducible builds with SOURCE_DATE_EPOCH.
+#
+# Usage:
+#   docker build -f Dockerfile.takumi -t agnos-builder .
+#   docker run --rm -v $(pwd)/dist:/output agnos-builder recipes/base/coreutils.toml
+#   docker run --rm -v $(pwd)/dist:/output agnos-builder --all
+
+FROM debian:bookworm-slim AS builder
+
+LABEL org.opencontainers.image.title="AGNOS Takumi Builder"
+LABEL org.opencontainers.image.description="Build .ark packages from takumi recipes"
+LABEL org.opencontainers.image.source="https://github.com/agnostos/agnos"
+
+# Deterministic builds: fix SOURCE_DATE_EPOCH to repo commit time.
+# Override at build time with --build-arg SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)
+ARG SOURCE_DATE_EPOCH=0
+ENV SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}
+
+# Prevent interactive prompts
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=UTC
+
+# Install build dependencies — covers all LFS/BLFS recipes
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # Core build tools
+    build-essential gcc g++ make autoconf automake libtool \
+    pkg-config cmake ninja-build meson \
+    bison flex gawk texinfo groff-base \
+    # Compression
+    gzip bzip2 xz-utils zstd liblz4-dev \
+    zlib1g-dev libbz2-dev liblzma-dev libzstd-dev \
+    # Crypto/TLS
+    libssl-dev libgnutls28-dev \
+    # Libraries
+    libncurses-dev libreadline-dev libffi-dev \
+    libexpat1-dev libgdbm-dev libattr1-dev libacl1-dev \
+    libcap-dev libelf-dev libseccomp-dev \
+    libpam0g-dev libaudit-dev \
+    # Networking
+    libmnl-dev libnftnl-dev libcurl4-openssl-dev \
+    # Python/Perl (for build scripts)
+    python3 python3-pip perl \
+    # Utilities
+    curl wget git cpio bc file patch diffutils findutils \
+    # Kernel build
+    bc kmod \
+    # Signing
+    gnupg \
+    # Cleanup
+    && rm -rf /var/lib/apt/lists/*
+
+# Create builder user (don't build as root)
+RUN useradd -m -s /bin/bash builder \
+    && mkdir -p /build /cache /output /recipes \
+    && chown -R builder:builder /build /cache /output
+
+# Copy build scripts
+COPY scripts/ark-build.sh /usr/local/bin/ark-build
+COPY scripts/ark-build-all.sh /usr/local/bin/ark-build-all
+COPY scripts/ark-sign.sh /usr/local/bin/ark-sign
+COPY scripts/generate-sbom.sh /usr/local/bin/generate-sbom
+RUN chmod +x /usr/local/bin/ark-*  /usr/local/bin/generate-sbom
+
+# Copy all recipes
+COPY recipes/ /recipes/
+
+# Set deterministic build environment
+ENV ARK_OUTPUT_DIR=/output
+ENV ARK_BUILD_DIR=/build
+ENV ARK_CACHE_DIR=/cache
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
+# Reproducibility: strip paths from debug info, fix timestamps
+ENV CFLAGS_DETERMINISTIC="-fdebug-prefix-map=/build=. -ffile-prefix-map=/build=."
+ENV FORCE_UNSAFE_CONFIGURE=1
+
+WORKDIR /build
+VOLUME ["/output", "/cache"]
+
+ENTRYPOINT ["/usr/local/bin/ark-build"]
+CMD ["--help"]

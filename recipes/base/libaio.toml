@@ -1,0 +1,37 @@
+# Libaio — Linux kernel AIO access library
+# Async I/O used by LVM2 and database systems.
+#
+# BLFS
+
+[package]
+name = "libaio"
+version = "0.3.113"
+description = "Libaio — Linux kernel asynchronous I/O library"
+license = "LGPL-2.1"
+groups = ["base", "core", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://pagure.io/libaio/archive/libaio-0.3.113/libaio-0.3.113.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc"]
+build = ["gcc", "make"]
+
+[build]
+pre_build = ""
+configure = ""
+make = "make -j$(nproc)"
+check = ""
+install = "make prefix=/usr DESTDIR=$PKG install"
+post_install = """
+rm -f $PKG/usr/lib/libaio.a
+"""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

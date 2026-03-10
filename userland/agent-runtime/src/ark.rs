@@ -1199,8 +1199,13 @@ impl TransactionLog {
     }
 
     /// Fail a transaction with an error message.
+    /// Only transitions from InProgress state; already-completed transactions
+    /// cannot be failed.
     pub fn fail(&mut self, txn_id: &str, error: &str) -> bool {
         if let Some(txn) = self.transactions.iter_mut().find(|t| t.id == txn_id) {
+            if txn.status != TransactionStatus::InProgress {
+                return false;
+            }
             txn.status = TransactionStatus::Failed(error.to_string());
             txn.completed_at = Some(Utc::now());
             return true;
@@ -2026,10 +2031,29 @@ mod tests {
         let id = log.begin("root");
         assert!(log.fail(&id, "disk full"));
         let txn = log.get(&id).unwrap();
-        assert_eq!(
-            txn.status,
-            TransactionStatus::Failed("disk full".into())
-        );
+        assert_eq!(txn.status, TransactionStatus::Failed("disk full".into()));
+    }
+
+    #[test]
+    fn transaction_fail_rejects_committed() {
+        let mut log = TransactionLog::new();
+        let id = log.begin("root");
+        log.commit(&id);
+        // Cannot fail an already-committed transaction
+        assert!(!log.fail(&id, "too late"));
+        let txn = log.get(&id).unwrap();
+        assert_eq!(txn.status, TransactionStatus::Committed);
+    }
+
+    #[test]
+    fn transaction_fail_rejects_rolled_back() {
+        let mut log = TransactionLog::new();
+        let id = log.begin("root");
+        log.rollback(&id);
+        // Cannot fail an already-rolled-back transaction
+        assert!(!log.fail(&id, "too late"));
+        let txn = log.get(&id).unwrap();
+        assert_eq!(txn.status, TransactionStatus::RolledBack);
     }
 
     #[test]

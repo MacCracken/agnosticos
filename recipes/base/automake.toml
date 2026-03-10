@@ -30,6 +30,6 @@ install = "make DESTDIR=$PKG install"
 post_install = ""
 
 [security]
-hardening = []
-cflags = ""
-ldflags = ""
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [2026.3.10] - 2026-03-10
 
+### Security — Audit Rounds 1-10
+
+#### Rounds 6-10: API robustness, test coverage, cross-crate security
+
+- **luks.rs**: Fixed partial `getrandom()` read — now loops until buffer is fully filled (prevents weak crypto keys on signal interruption)
+- **rag.rs**: Added input size validation — max 1MB for ingest text, max 10KB for queries
+- **vectors.rs**: Added bounds — max 1000 vectors per insert, max 100 for top_k search
+- **memory.rs**: Added value size check — max 1MB serialized
+- **history.rs**: Set 0600 permissions on shell history file to prevent credential leaks
+- **remote_client.rs**: Added tests for `url_encode()` function
+- **clippy**: Fixed 4 derivable Default impls (delegation, federation, service_mesh, vector_rest)
+
+#### Rounds 1-5: Input validation, dependency completeness, consistency
+
+- **agnova.rs**: Added input validation for partition labels (alphanumeric, hyphens, underscores only, max 36 chars)
+- **agnova.rs**: Added validation that only the last partition may use fill-remaining (size_mb = None)
+- **agnova.rs**: Added full_name validation (rejects shell metacharacters and passwd field separators)
+- **agnova.rs**: Added group name validation (1-32 chars, lowercase alphanumeric plus _ and -)
+- **agnova.rs**: Fixed empty-partitions panic in `plan_encryption_ops()` (was `len() - 1` underflow)
+- **agnova.rs**: Fixed spurious quotes in parted label arg (was `format!("\"{}\"")`, now `part.label.clone()`)
+- **ark.rs**: `TransactionLog::fail()` now checks state — only transitions from InProgress (prevents failing committed/rolled-back transactions)
+- **remote_client.rs**: Added URL percent-encoding for marketplace search query/category parameters
+- **state.rs**: Replaced `expect()` panics in marketplace registry init with graceful `in_memory()` fallback
+- **local_registry.rs**: Added `LocalRegistry::in_memory()` constructor for fallback scenarios
+
+### Added — Missing Dependency Recipes (20 packages)
+
+- **`libcap-ng.toml`** (0.8.5), **`libmnl.toml`** (1.0.5), **`libnftnl.toml`** (1.2.8) — netfilter deps
+- **`nettle.toml`** (3.10.1), **`libtasn1.toml`** (4.19.0), **`libunistring.toml`** (1.3) — GnuTLS deps
+- **`libgcrypt.toml`** (1.11.0), **`libgpg-error.toml`** (1.51), **`libassuan.toml`** (3.0.2), **`libksba.toml`** (1.6.7), **`npth.toml`** (1.8) — GnuPG deps
+- **`json-c.toml`** (0.18), **`libargon2.toml`** (20190702), **`lvm2.toml`** (2.03.28), **`libaio.toml`** (0.3.113) — cryptsetup deps
+- **`libarchive.toml`** (3.7.7) — CMake dep
+- **`curl.toml`** (8.12.1), **`libnghttp2.toml`** (1.64.0) — Rust/network deps
+- **`freetype.toml`** (2.13.3), **`libpng.toml`** (1.6.44) — GRUB/desktop deps
+- **`autoconf.toml`**, **`automake.toml`**: Added standard hardening flags (were empty)
+
+### Added — Phase 12D: Build Reproducibility & CI
+
+- **`Dockerfile.takumi`**: Clean-room builder container (Debian Bookworm), all LFS/BLFS build deps, non-root builder user, deterministic env (SOURCE_DATE_EPOCH, path stripping)
+- **`.github/workflows/base-system.yml`**: Nightly CI pipeline — builds takumi container, builds all 88 base recipes (7 parallel groups), generates SBOM, boots ISO in QEMU with UEFI
+- **`configs/ark-registry.toml`**: Package registry config — URL, mirrors, signing policy, package DB paths, transaction log, build defaults, source priorities
+- **`scripts/ark-build.sh`**: Added SOURCE_DATE_EPOCH auto-detection from git, CFLAGS_DETERMINISTIC for reproducible debug info
+- QEMU boot test: 60s timeout, checks for GRUB menu and login prompt, uploads boot log as artifact
+
 ### Added — Phase 12A: Argonaut Real Init (61 new tests, 117 total)
 
 - **Runlevel system**: 5 runlevels (Emergency/Rescue/Console/Graphical/Container) with BootMode mapping and runtime switching

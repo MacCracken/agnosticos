@@ -15,6 +15,26 @@ use super::local_registry::InstalledMarketplacePackage;
 use super::MarketplaceManifest;
 
 // ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/// Percent-encode a string for safe use in URL query parameters.
+fn url_encode(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    for b in s.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                result.push(b as char);
+            }
+            _ => {
+                result.push_str(&format!("%{:02X}", b));
+            }
+        }
+    }
+    result
+}
+
+// ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
@@ -146,9 +166,13 @@ impl RegistryClient {
             return self.cached_search(query);
         }
 
-        let mut url = format!("{}/v1/packages/search?q={}", self.base_url, query);
+        let mut url = format!(
+            "{}/v1/packages/search?q={}",
+            self.base_url,
+            url_encode(query)
+        );
         if let Some(cat) = category {
-            url.push_str(&format!("&category={}", cat));
+            url.push_str(&format!("&category={}", url_encode(cat)));
         }
         url.push_str(&format!("&page={}", page));
 
@@ -269,11 +293,7 @@ impl RegistryClient {
     ///
     /// Uploads the `.agnos-agent` bundle and optional `.sig` sidecar file.
     /// Requires a valid API token.
-    pub async fn publish(
-        &self,
-        bundle_path: &Path,
-        api_token: &str,
-    ) -> Result<PublishResponse> {
+    pub async fn publish(&self, bundle_path: &Path, api_token: &str) -> Result<PublishResponse> {
         if self.offline {
             anyhow::bail!("Cannot publish in offline mode");
         }
@@ -284,7 +304,9 @@ impl RegistryClient {
         let sha256 = {
             use sha2::{Digest, Sha256};
             let hash = Sha256::digest(&bundle_bytes);
-            hash.iter().map(|b| format!("{:02x}", b)).collect::<String>()
+            hash.iter()
+                .map(|b| format!("{:02x}", b))
+                .collect::<String>()
         };
 
         let bundle_name = bundle_path
@@ -327,7 +349,10 @@ impl RegistryClient {
             .header("X-Package-SHA256", &sha256)
             .header("X-Package-Name", &bundle_name)
             .header("Content-Type", "application/octet-stream")
-            .header("X-Package-Metadata", serde_json::to_string(&payload).unwrap_or_default())
+            .header(
+                "X-Package-Metadata",
+                serde_json::to_string(&payload).unwrap_or_default(),
+            )
             .body(bundle_bytes)
             .timeout(DOWNLOAD_TIMEOUT)
             .send()
@@ -652,11 +677,37 @@ mod tests {
     }
 
     #[test]
+    fn test_url_encode_plain_text() {
+        assert_eq!(url_encode("hello"), "hello");
+    }
+
+    #[test]
+    fn test_url_encode_spaces() {
+        assert_eq!(url_encode("hello world"), "hello%20world");
+    }
+
+    #[test]
+    fn test_url_encode_special_chars() {
+        assert_eq!(url_encode("&"), "%26");
+        assert_eq!(url_encode("="), "%3D");
+        assert_eq!(url_encode("?"), "%3F");
+        assert_eq!(url_encode("key=value&foo=bar"), "key%3Dvalue%26foo%3Dbar");
+    }
+
+    #[test]
+    fn test_url_encode_unicode() {
+        // "é" is U+00E9, encoded as two UTF-8 bytes: 0xC3, 0xA9
+        let encoded = url_encode("café");
+        assert_eq!(encoded, "caf%C3%A9");
+    }
+
+    #[test]
     fn test_publish_response_serialization() {
         let resp = PublishResponse {
             name: "test-app".to_string(),
             version: "1.0.0".to_string(),
-            download_url: "https://registry.agnos.org/v1/packages/test-app/1.0.0/download".to_string(),
+            download_url: "https://registry.agnos.org/v1/packages/test-app/1.0.0/download"
+                .to_string(),
             replaced: false,
         };
         let json = serde_json::to_string(&resp).unwrap();

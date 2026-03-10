@@ -36,17 +36,14 @@ pub struct CreateCollectionRequest {
 
 /// Distance metric for vector similarity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum DistanceMetric {
+    #[default]
     Cosine,
     Euclidean,
     DotProduct,
 }
 
-impl Default for DistanceMetric {
-    fn default() -> Self {
-        Self::Cosine
-    }
-}
 
 /// Request to insert vectors into a collection.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -342,11 +339,7 @@ impl VectorRestService {
     }
 
     /// Record an insert operation (updates vector count).
-    pub fn record_insert(
-        &mut self,
-        collection: &str,
-        count: usize,
-    ) -> Result<(), VectorRestError> {
+    pub fn record_insert(&mut self, collection: &str, count: usize) -> Result<(), VectorRestError> {
         let meta = self
             .collections
             .get_mut(collection)
@@ -360,31 +353,34 @@ impl VectorRestService {
         }
 
         meta.vector_count += count;
-        debug!(collection, count, total = meta.vector_count, "Recorded vector insert");
+        debug!(
+            collection,
+            count,
+            total = meta.vector_count,
+            "Recorded vector insert"
+        );
         Ok(())
     }
 
     /// Record a delete operation (updates vector count).
-    pub fn record_delete(
-        &mut self,
-        collection: &str,
-        count: usize,
-    ) -> Result<(), VectorRestError> {
+    pub fn record_delete(&mut self, collection: &str, count: usize) -> Result<(), VectorRestError> {
         let meta = self
             .collections
             .get_mut(collection)
             .ok_or_else(|| VectorRestError::CollectionNotFound(collection.to_string()))?;
 
         meta.vector_count = meta.vector_count.saturating_sub(count);
-        debug!(collection, count, total = meta.vector_count, "Recorded vector delete");
+        debug!(
+            collection,
+            count,
+            total = meta.vector_count,
+            "Recorded vector delete"
+        );
         Ok(())
     }
 
     /// Validate an insert request against collection constraints.
-    pub fn validate_insert(
-        &self,
-        req: &InsertVectorsRequest,
-    ) -> Result<(), VectorRestError> {
+    pub fn validate_insert(&self, req: &InsertVectorsRequest) -> Result<(), VectorRestError> {
         let meta = self
             .collections
             .get(&req.collection)
@@ -404,10 +400,7 @@ impl VectorRestService {
     }
 
     /// Validate a search request against collection constraints.
-    pub fn validate_search(
-        &self,
-        req: &SearchVectorsRequest,
-    ) -> Result<(), VectorRestError> {
+    pub fn validate_search(&self, req: &SearchVectorsRequest) -> Result<(), VectorRestError> {
         let meta = self
             .collections
             .get(&req.collection)
@@ -813,7 +806,11 @@ mod tests {
         };
         assert!(matches!(
             svc.validate_insert(&insert).unwrap_err(),
-            VectorRestError::DimensionMismatch { expected: 3, got: 2, .. }
+            VectorRestError::DimensionMismatch {
+                expected: 3,
+                got: 2,
+                ..
+            }
         ));
     }
 

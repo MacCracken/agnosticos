@@ -1,0 +1,40 @@
+# FreeType — Font rendering library
+# TrueType/OpenType font engine. Used by grub, desktop apps, etc.
+#
+# BLFS
+
+[package]
+name = "freetype"
+version = "2.13.3"
+description = "FreeType — font rendering library"
+license = "FTL"
+groups = ["base", "core", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://download.savannah.gnu.org/releases/freetype/freetype-2.13.3.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "zlib", "bzip2", "libpng"]
+build = ["gcc", "make", "pkgconf"]
+
+[build]
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --enable-freetype-config \
+    --disable-static
+"""
+make = "make -j$(nproc)"
+check = ""
+install = "make DESTDIR=$PKG install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

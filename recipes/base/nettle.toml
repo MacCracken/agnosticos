@@ -1,0 +1,39 @@
+# Nettle — Low-level cryptographic library
+# Used by GnuTLS for crypto primitives.
+#
+# BLFS
+
+[package]
+name = "nettle"
+version = "3.10.1"
+description = "Nettle — low-level cryptographic library"
+license = "LGPL-3.0"
+groups = ["base", "security", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://ftp.gnu.org/gnu/nettle/nettle-3.10.1.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "gmp"]
+build = ["gcc", "make"]
+
+[build]
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --disable-static
+"""
+make = "make -j$(nproc)"
+check = "make check"
+install = "make DESTDIR=$PKG install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

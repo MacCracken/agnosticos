@@ -1,7 +1,8 @@
 # AGNOS Development Roadmap
 
 > **Status**: Pre-Beta | **Last Updated**: 2026-03-10
-> **Userland complete** — 9500+ tests, ~82% coverage, 0 warnings
+> **Userland complete** — 9600+ tests (3023 agent-runtime), ~82% coverage, 0 warnings
+> **Base system**: 108 recipes (Phase 10 complete) | **Audit**: 10 rounds complete
 > **Next Milestone**: Beta Release (Target: Q4 2026)
 
 ---
@@ -169,7 +170,7 @@ Temporary tools first, then final system versions.
 
 **Deliverable**: Bootable system from bare metal.
 
-**Phase 10 Total: ~88 base system recipes**
+**Phase 10 Total: ~108 base system recipes**
 
 ---
 
@@ -378,7 +379,7 @@ Wire the LFS base system into AGNOS's own tooling.
 ### Beta Release — Q4 2026
 
 **Criteria:**
-- [ ] Phase 10 complete — ~88 base system recipes, self-hosting toolchain
+- [ ] Phase 10 complete — ~108 base system recipes, self-hosting toolchain
 - [ ] Phase 11 complete — Desktop, networking & AI/ML stack (~62 recipes)
 - [ ] Phase 12 complete — Argonaut init, ark package manager, agnova installer
 - [ ] AGNOS boots from ISO on bare metal (UEFI) and QEMU
@@ -414,10 +415,9 @@ Wire the LFS base system into AGNOS's own tooling.
 | 8A-8M | Complete | 703 | Distribution, PQC, AI safety, formal verification, RL |
 | 9 | Complete | 169 | Cloud services, human-AI collaboration |
 | 9.5 | Complete | 102 | Full convergence (OIDC, delegation, vector REST, marketplace) |
-| **10** | **Not started** | — | **LFS base system (~88 recipes)** |
+| **10** | **Complete** | — | **LFS base system (108 recipes)** |
 | **11** | **Not started** | — | **Desktop, networking & AI/ML stack (~62 recipes)** |
-| **12A-C** | **Complete** | 111 | **Argonaut init, ark pkg mgr, agnova installer execution** |
-| **12D** | **Not started** | — | **Build reproducibility & CI** |
+| **12** | **Complete** | 148 | **System integration: argonaut (117), ark (49), agnova (91), CI** |
 | **13** | **Not started** | — | **Beta polish, hardware, community** |
 
 ---
@@ -430,7 +430,7 @@ Wire the LFS base system into AGNOS's own tooling.
 |--------|--------|---------|--------|
 | Code Coverage | >80% | ~82% | Met |
 | Test Pass Rate | 100% | 100% | Met |
-| Total Tests | 400+ | 9500+ | Met |
+| Total Tests | 400+ | 9600+ | Met |
 | Agent Spawn Time | <500ms | ~300ms | Met |
 | Shell Response Time | <100ms | ~50ms | Met |
 | Memory Overhead | <2GB | ~1.2GB | Met |
@@ -438,7 +438,7 @@ Wire the LFS base system into AGNOS's own tooling.
 | CIS Compliance | >80% | ~85% | Met |
 | Stub Implementations | 0 | 0 | Met |
 | Compiler Warnings | 0 | 0 | Met |
-| Base System Recipes | ~88 | 0 | Phase 10 |
+| Base System Recipes | ~108 | 108 | Complete |
 | Desktop/AI Stack Recipes | ~62 | 0 | Phase 11 |
 | Self-Hosting | Yes | No | Phase 13 |
 
@@ -448,7 +448,7 @@ Wire the LFS base system into AGNOS's own tooling.
 |-----------|-------|-------|
 | agnos-common | 307 | Secrets, telemetry, LLM types, manifest, rate limits, audit chain |
 | agnos-sys | 750+ | 16 modules: audit, mac, netns, dmverity, luks, ima, tpm, secureboot, certpin, bootloader, journald, udev, fuse, pam, update, llm |
-| agent-runtime | 3009+ | Orchestrator, IPC, sandbox, registry, marketplace (88+43), federation (73), migration (54), scheduler (51), PQC (68), explainability (59), safety (77), finetune (73), formal_verify (76), sandbox_v2 (79), rl_optimizer (68), cloud (82), collaboration (87), sigil (46), aegis (55), takumi (57), argonaut (78), agnova (55), database (42), grpc (14), service_mesh (20), oidc (22), delegation (28), vector_rest (24), marketplace_backend (28) |
+| agent-runtime | 3023+ | Orchestrator, IPC, sandbox, registry, marketplace (88+43), federation (73), migration (54), scheduler (51), PQC (68), explainability (59), safety (77), finetune (73), formal_verify (76), sandbox_v2 (79), rl_optimizer (68), cloud (82), collaboration (87), sigil (46), aegis (55), takumi (57), argonaut (117), agnova (91), ark (49), database (42), grpc (14), service_mesh (20), oidc (22), delegation (28), vector_rest (24), marketplace_backend (28) |
 | llm-gateway | 710 | 15 providers (5 native + 10 OpenAI-compatible), rate limiting, streaming, cert pinning, hardware acceleration, token budgets |
 | ai-shell | 1132 | 25+ intents, approval workflow, dashboard, aliases, completion |
 | desktop-environment | 1447+ | Wayland protocol (63+49), screen capture (31), screen recording (22+), plugin host (31), xwayland (20), shell integration (26), theme bridge (18), compositor, renderer |
@@ -496,11 +496,11 @@ Wire the LFS base system into AGNOS's own tooling.
 
 ### Priority Contribution Areas
 
-1. **Base system recipes (Phase 10)** — Port LFS packages to takumi `.toml` format
-2. **Desktop & AI/ML recipes (Phase 11)** — Wayland, Mesa, PipeWire, CUDA, llama.cpp, etc.
-3. **QEMU boot testing** — CI pipeline for automated boot validation
-4. **Hardware testing** — GPU drivers, WiFi, Bluetooth on real hardware
-5. **Documentation** — Installation guide, kernel dev guide
+1. **Desktop & AI/ML recipes (Phase 11)** — Wayland, Mesa, PipeWire, CUDA, llama.cpp, etc.
+2. **QEMU boot testing** — CI pipeline for automated boot validation
+3. **Hardware testing** — GPU drivers, WiFi, Bluetooth on real hardware
+4. **Documentation** — Installation guide, kernel dev guide
+5. **SHA256 verification** — Fill in real checksums for all 108 base recipes
 
 ### Getting Started
 

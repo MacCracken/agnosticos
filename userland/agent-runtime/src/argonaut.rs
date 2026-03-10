@@ -626,7 +626,11 @@ impl ArgonautInit {
             name: "synapse".into(),
             description: "Synapse LLM management and training service".into(),
             binary_path: PathBuf::from("/usr/lib/synapse/bin/synapse"),
-            args: vec!["serve".into(), "--config".into(), "/etc/synapse/synapse.toml".into()],
+            args: vec![
+                "serve".into(),
+                "--config".into(),
+                "/etc/synapse/synapse.toml".into(),
+            ],
             environment: {
                 let mut env = HashMap::new();
                 env.insert("SYNAPSE_DATA_DIR".into(), "/var/lib/synapse".into());
@@ -1159,11 +1163,7 @@ impl ServiceTarget {
                 description: "AGNOS agent runtime and LLM gateway".into(),
                 requires: vec!["daimon".into()],
                 wants: vec!["hoosh".into(), "aegis".into()],
-                active_in: vec![
-                    Runlevel::Console,
-                    Runlevel::Graphical,
-                    Runlevel::Container,
-                ],
+                active_in: vec![Runlevel::Console, Runlevel::Graphical, Runlevel::Container],
             },
             Self {
                 name: "graphical".into(),
@@ -1368,7 +1368,8 @@ impl ArgonautInit {
         // Step 1: Wall message
         let wall_msg = format!(
             "AGNOS system {} in {} seconds",
-            shutdown_type, self.config.shutdown_timeout_ms / 1000
+            shutdown_type,
+            self.config.shutdown_timeout_ms / 1000
         );
         steps.push(ShutdownStep {
             description: "Broadcast shutdown warning".into(),
@@ -1714,11 +1715,7 @@ impl ArgonautInit {
     }
 
     /// Determine what action to take when a service crashes.
-    pub fn on_service_crash(
-        &self,
-        service_name: &str,
-        exit_status: &ExitStatus,
-    ) -> CrashAction {
+    pub fn on_service_crash(&self, service_name: &str, exit_status: &ExitStatus) -> CrashAction {
         let svc = match self.services.get(service_name) {
             Some(s) => s,
             None => return CrashAction::Ignore,
@@ -1733,10 +1730,7 @@ impl ArgonautInit {
                         "service exceeded restart limit"
                     );
                     CrashAction::GiveUp {
-                        reason: format!(
-                            "exceeded restart limit ({} restarts)",
-                            svc.restart_count
-                        ),
+                        reason: format!("exceeded restart limit ({} restarts)", svc.restart_count),
                     }
                 } else {
                     CrashAction::Restart {
@@ -2594,7 +2588,10 @@ mod tests {
 
     #[test]
     fn boot_stage_database_display() {
-        assert_eq!(BootStage::StartDatabaseServices.to_string(), "start-database-services");
+        assert_eq!(
+            BootStage::StartDatabaseServices.to_string(),
+            "start-database-services"
+        );
     }
 
     #[test]
@@ -2653,13 +2650,17 @@ mod tests {
     #[test]
     fn boot_sequence_includes_model_services_for_server() {
         let steps = ArgonautInit::build_boot_sequence(BootMode::Server);
-        assert!(steps.iter().any(|s| s.stage == BootStage::StartModelServices));
+        assert!(steps
+            .iter()
+            .any(|s| s.stage == BootStage::StartModelServices));
     }
 
     #[test]
     fn boot_sequence_excludes_model_services_for_minimal() {
         let steps = ArgonautInit::build_boot_sequence(BootMode::Minimal);
-        assert!(!steps.iter().any(|s| s.stage == BootStage::StartModelServices));
+        assert!(!steps
+            .iter()
+            .any(|s| s.stage == BootStage::StartModelServices));
     }
 
     #[test]
@@ -2697,7 +2698,10 @@ mod tests {
 
     #[test]
     fn runlevel_from_boot_mode() {
-        assert_eq!(Runlevel::from_boot_mode(BootMode::Server), Runlevel::Console);
+        assert_eq!(
+            Runlevel::from_boot_mode(BootMode::Server),
+            Runlevel::Console
+        );
         assert_eq!(
             Runlevel::from_boot_mode(BootMode::Desktop),
             Runlevel::Graphical
@@ -3004,7 +3008,10 @@ mod tests {
             format!("{}", ServiceEventType::HealthCheckFailed { consecutive: 3 }),
             "health-fail(3x)"
         );
-        assert_eq!(format!("{}", ServiceEventType::TimeoutKilled), "timeout-killed");
+        assert_eq!(
+            format!("{}", ServiceEventType::TimeoutKilled),
+            "timeout-killed"
+        );
         assert_eq!(
             format!(
                 "{}",

@@ -238,15 +238,19 @@ impl LuksKey {
         #[cfg(target_os = "linux")]
         {
             let mut data = vec![0u8; size];
-            let bytes_read = unsafe {
-                libc::getrandom(
-                    data.as_mut_ptr() as *mut libc::c_void,
-                    size,
-                    0, // no flags, blocking
-                )
-            };
-            if bytes_read < 0 || bytes_read as usize != size {
-                return Err(SysError::Unknown("getrandom failed".into()));
+            let mut filled = 0usize;
+            while filled < size {
+                let bytes_read = unsafe {
+                    libc::getrandom(
+                        data[filled..].as_mut_ptr() as *mut libc::c_void,
+                        size - filled,
+                        0, // no flags, blocking
+                    )
+                };
+                if bytes_read < 0 {
+                    return Err(SysError::Unknown("getrandom failed".into()));
+                }
+                filled += bytes_read as usize;
             }
             Ok(Self { data })
         }

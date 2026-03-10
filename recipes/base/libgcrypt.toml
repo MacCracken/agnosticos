@@ -1,0 +1,39 @@
+# Libgcrypt — GNU cryptographic library
+# General-purpose crypto library used by GnuPG.
+#
+# BLFS
+
+[package]
+name = "libgcrypt"
+version = "1.11.0"
+description = "Libgcrypt — GNU cryptographic library"
+license = "LGPL-2.1"
+groups = ["base", "security", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://gnupg.org/ftp/gcrypt/libgcrypt/libgcrypt-1.11.0.tar.bz2"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "libgpg-error"]
+build = ["gcc", "make"]
+
+[build]
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --disable-static
+"""
+make = "make -j$(nproc)"
+check = "make check"
+install = "make DESTDIR=$PKG install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

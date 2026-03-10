@@ -678,9 +678,7 @@ impl PhotisBridge {
 
     /// Build authorization headers.
     pub fn auth_headers(&self) -> Vec<(String, String)> {
-        let mut headers = vec![
-            ("Content-Type".to_string(), "application/json".to_string()),
-        ];
+        let mut headers = vec![("Content-Type".to_string(), "application/json".to_string())];
         if let Some(ref key) = self.api_key {
             headers.push(("Authorization".to_string(), format!("Bearer {}", key)));
         }
@@ -702,7 +700,11 @@ impl PhotisBridge {
     }
 
     /// Forward a GET request to Photis Nadi.
-    pub async fn get(&self, path: &str, query: &[(String, String)]) -> Result<serde_json::Value, String> {
+    pub async fn get(
+        &self,
+        path: &str,
+        query: &[(String, String)],
+    ) -> Result<serde_json::Value, String> {
         let url = self.url(path);
         let mut req = reqwest::Client::new().get(&url);
 
@@ -723,11 +725,13 @@ impl PhotisBridge {
     }
 
     /// Forward a POST request to Photis Nadi.
-    pub async fn post(&self, path: &str, body: serde_json::Value) -> Result<serde_json::Value, String> {
+    pub async fn post(
+        &self,
+        path: &str,
+        body: serde_json::Value,
+    ) -> Result<serde_json::Value, String> {
         let url = self.url(path);
-        let mut req = reqwest::Client::new()
-            .post(&url)
-            .json(&body);
+        let mut req = reqwest::Client::new().post(&url).json(&body);
 
         if let Some(ref key) = self.api_key {
             req = req.header("Authorization", format!("Bearer {}", key));
@@ -743,11 +747,13 @@ impl PhotisBridge {
     }
 
     /// Forward a PATCH request to Photis Nadi.
-    pub async fn patch(&self, path: &str, body: serde_json::Value) -> Result<serde_json::Value, String> {
+    pub async fn patch(
+        &self,
+        path: &str,
+        body: serde_json::Value,
+    ) -> Result<serde_json::Value, String> {
         let url = self.url(path);
-        let mut req = reqwest::Client::new()
-            .patch(&url)
-            .json(&body);
+        let mut req = reqwest::Client::new().patch(&url).json(&body);
 
         if let Some(ref key) = self.api_key {
             req = req.header("Authorization", format!("Bearer {}", key));
@@ -1703,7 +1709,10 @@ mod tests {
     fn test_photis_bridge_default() {
         let bridge = PhotisBridge::new();
         assert!(bridge.base_url().starts_with("http"));
-        assert_eq!(bridge.url("/tasks"), format!("{}/api/v1/tasks", bridge.base_url()));
+        assert_eq!(
+            bridge.url("/tasks"),
+            format!("{}/api/v1/tasks", bridge.base_url())
+        );
     }
 
     #[test]
@@ -1723,16 +1732,17 @@ mod tests {
             Some("secret-key".to_string()),
         );
         let headers = bridge.auth_headers();
-        assert!(headers.iter().any(|(k, v)| k == "Authorization" && v == "Bearer secret-key"));
-        assert!(headers.iter().any(|(k, v)| k == "Content-Type" && v == "application/json"));
+        assert!(headers
+            .iter()
+            .any(|(k, v)| k == "Authorization" && v == "Bearer secret-key"));
+        assert!(headers
+            .iter()
+            .any(|(k, v)| k == "Content-Type" && v == "application/json"));
     }
 
     #[test]
     fn test_photis_bridge_no_auth_without_key() {
-        let bridge = PhotisBridge::with_config(
-            "http://localhost:8081".to_string(),
-            None,
-        );
+        let bridge = PhotisBridge::with_config("http://localhost:8081".to_string(), None);
         let headers = bridge.auth_headers();
         assert!(!headers.iter().any(|(k, _)| k == "Authorization"));
     }
@@ -1740,10 +1750,7 @@ mod tests {
     #[tokio::test]
     async fn test_photis_bridge_health_check_offline() {
         // Bridge to a port that nothing is listening on
-        let bridge = PhotisBridge::with_config(
-            "http://127.0.0.1:19999".to_string(),
-            None,
-        );
+        let bridge = PhotisBridge::with_config("http://127.0.0.1:19999".to_string(), None);
         assert!(!bridge.health_check().await);
     }
 

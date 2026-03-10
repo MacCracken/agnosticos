@@ -278,34 +278,75 @@ fn build_gpu_compute_profile(_app_name: &str, data_dir: &str) -> PredefinedProfi
     PredefinedProfile {
         preset: SandboxPreset::GpuCompute,
         landlock_rules: vec![
-            LandlockRule { path: data_dir.to_string(), access: "rw".into() },
-            LandlockRule { path: "/tmp".into(), access: "rw".into() },
+            LandlockRule {
+                path: data_dir.to_string(),
+                access: "rw".into(),
+            },
+            LandlockRule {
+                path: "/tmp".into(),
+                access: "rw".into(),
+            },
             // GPU device access
-            LandlockRule { path: "/dev/dri".into(), access: "rw".into() },
-            LandlockRule { path: "/dev/nvidia0".into(), access: "rw".into() },
-            LandlockRule { path: "/dev/nvidia1".into(), access: "rw".into() },
-            LandlockRule { path: "/dev/nvidiactl".into(), access: "rw".into() },
-            LandlockRule { path: "/dev/nvidia-uvm".into(), access: "rw".into() },
-            LandlockRule { path: "/dev/nvidia-uvm-tools".into(), access: "rw".into() },
-            LandlockRule { path: "/dev/kfd".into(), access: "rw".into() },  // AMD ROCm
+            LandlockRule {
+                path: "/dev/dri".into(),
+                access: "rw".into(),
+            },
+            LandlockRule {
+                path: "/dev/nvidia0".into(),
+                access: "rw".into(),
+            },
+            LandlockRule {
+                path: "/dev/nvidia1".into(),
+                access: "rw".into(),
+            },
+            LandlockRule {
+                path: "/dev/nvidiactl".into(),
+                access: "rw".into(),
+            },
+            LandlockRule {
+                path: "/dev/nvidia-uvm".into(),
+                access: "rw".into(),
+            },
+            LandlockRule {
+                path: "/dev/nvidia-uvm-tools".into(),
+                access: "rw".into(),
+            },
+            LandlockRule {
+                path: "/dev/kfd".into(),
+                access: "rw".into(),
+            }, // AMD ROCm
             // GPU libraries (read-only)
-            LandlockRule { path: "/usr/lib/cuda".into(), access: "ro".into() },
-            LandlockRule { path: "/usr/local/cuda".into(), access: "ro".into() },
-            LandlockRule { path: "/opt/rocm".into(), access: "ro".into() },
-            LandlockRule { path: "/usr/lib/x86_64-linux-gnu".into(), access: "ro".into() },
+            LandlockRule {
+                path: "/usr/lib/cuda".into(),
+                access: "ro".into(),
+            },
+            LandlockRule {
+                path: "/usr/local/cuda".into(),
+                access: "ro".into(),
+            },
+            LandlockRule {
+                path: "/opt/rocm".into(),
+                access: "ro".into(),
+            },
+            LandlockRule {
+                path: "/usr/lib/x86_64-linux-gnu".into(),
+                access: "ro".into(),
+            },
         ],
-        seccomp_mode: "desktop".into(),  // Needs broader syscall set for GPU ioctls
+        seccomp_mode: "desktop".into(), // Needs broader syscall set for GPU ioctls
         network: NetworkRule {
             enabled: true,
             allowed_hosts: vec![
                 "localhost".into(),
                 "127.0.0.1".into(),
-                "huggingface.co".into(), "*.huggingface.co".into(),
-                "hf.co".into(), "*.hf.co".into(),
+                "huggingface.co".into(),
+                "*.huggingface.co".into(),
+                "hf.co".into(),
+                "*.hf.co".into(),
             ],
         },
-        max_memory_mb: 4096,  // GPU workloads need more memory
-        allow_process_spawn: true,  // May spawn GPU helper processes
+        max_memory_mb: 4096,       // GPU workloads need more memory
+        allow_process_spawn: true, // May spawn GPU helper processes
     }
 }
 
@@ -495,19 +536,34 @@ mod tests {
 
     #[test]
     fn gpu_compute_profile_has_device_access() {
-        let profile = build_profile_for_preset(SandboxPreset::GpuCompute, "synapse", "/var/lib/synapse");
-        assert!(profile.landlock_rules.iter().any(|r| r.path.contains("/dev/dri")));
-        assert!(profile.landlock_rules.iter().any(|r| r.path.contains("nvidia")));
-        assert!(profile.landlock_rules.iter().any(|r| r.path.contains("rocm")));
+        let profile =
+            build_profile_for_preset(SandboxPreset::GpuCompute, "synapse", "/var/lib/synapse");
+        assert!(profile
+            .landlock_rules
+            .iter()
+            .any(|r| r.path.contains("/dev/dri")));
+        assert!(profile
+            .landlock_rules
+            .iter()
+            .any(|r| r.path.contains("nvidia")));
+        assert!(profile
+            .landlock_rules
+            .iter()
+            .any(|r| r.path.contains("rocm")));
         assert!(profile.allow_process_spawn);
         assert_eq!(profile.max_memory_mb, 4096);
     }
 
     #[test]
     fn gpu_compute_profile_allows_huggingface() {
-        let profile = build_profile_for_preset(SandboxPreset::GpuCompute, "synapse", "/var/lib/synapse");
+        let profile =
+            build_profile_for_preset(SandboxPreset::GpuCompute, "synapse", "/var/lib/synapse");
         assert!(profile.network.enabled);
-        assert!(profile.network.allowed_hosts.iter().any(|h| h.contains("huggingface")));
+        assert!(profile
+            .network
+            .allowed_hosts
+            .iter()
+            .any(|h| h.contains("huggingface")));
     }
 
     // --- Validation ---

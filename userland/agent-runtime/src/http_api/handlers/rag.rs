@@ -11,10 +11,30 @@ use crate::knowledge_base::KnowledgeSource;
 // RAG & Knowledge Base handlers
 // ---------------------------------------------------------------------------
 
+/// Maximum allowed size for RAG ingest text (1 MB).
+const RAG_INGEST_MAX_TEXT_BYTES: usize = 1_048_576;
+/// Maximum allowed size for RAG query string (10 KB).
+const RAG_QUERY_MAX_BYTES: usize = 10_240;
+
 pub async fn rag_ingest_handler(
     State(state): State<ApiState>,
     Json(req): Json<RagIngestRequest>,
 ) -> impl IntoResponse {
+    if req.text.len() > RAG_INGEST_MAX_TEXT_BYTES {
+        return (
+            StatusCode::PAYLOAD_TOO_LARGE,
+            Json(serde_json::json!({
+                "error": format!(
+                    "Ingest text too large: {} bytes exceeds {} byte limit",
+                    req.text.len(),
+                    RAG_INGEST_MAX_TEXT_BYTES
+                ),
+                "code": 413
+            })),
+        )
+            .into_response();
+    }
+
     let metadata = serde_json::to_value(&req.metadata).unwrap_or_default();
     let mut pipeline = state.rag_pipeline.write().await;
     match pipeline.ingest_text(&req.text, metadata) {
@@ -38,6 +58,21 @@ pub async fn rag_query_handler(
     State(state): State<ApiState>,
     Json(req): Json<RagQueryRequest>,
 ) -> impl IntoResponse {
+    if req.query.len() > RAG_QUERY_MAX_BYTES {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": format!(
+                    "Query too large: {} bytes exceeds {} byte limit",
+                    req.query.len(),
+                    RAG_QUERY_MAX_BYTES
+                ),
+                "code": 400
+            })),
+        )
+            .into_response();
+    }
+
     let pipeline = state.rag_pipeline.read().await;
     let context = pipeline.query_text(&req.query);
     Json(serde_json::json!({
@@ -50,6 +85,7 @@ pub async fn rag_query_handler(
         "formatted_context": context.formatted_context,
         "token_estimate": context.total_tokens_estimate,
     }))
+    .into_response()
 }
 
 pub async fn rag_stats_handler(State(state): State<ApiState>) -> impl IntoResponse {

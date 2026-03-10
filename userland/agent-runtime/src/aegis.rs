@@ -715,7 +715,8 @@ impl AegisSecurityDaemon {
                                 "PostgreSQL data directory {} is world-accessible (mode {:o})",
                                 policy.postgres_data_dir, mode
                             ),
-                            recommendation: "Run: chmod 700 on the PostgreSQL data directory".to_string(),
+                            recommendation: "Run: chmod 700 on the PostgreSQL data directory"
+                                .to_string(),
                         });
                     }
                 }
@@ -738,7 +739,8 @@ impl AegisSecurityDaemon {
                                 "Redis data directory {} is world-accessible (mode {:o})",
                                 policy.redis_data_dir, mode
                             ),
-                            recommendation: "Run: chmod 700 on the Redis data directory".to_string(),
+                            recommendation: "Run: chmod 700 on the Redis data directory"
+                                .to_string(),
                         });
                     }
                 }
@@ -759,7 +761,8 @@ impl AegisSecurityDaemon {
                                 severity: ThreatLevel::Medium,
                                 category: "socket_permissions".to_string(),
                                 description: "PostgreSQL socket is world-writable".to_string(),
-                                recommendation: "Restrict socket permissions to owner/group only".to_string(),
+                                recommendation: "Restrict socket permissions to owner/group only"
+                                    .to_string(),
                             });
                         }
                     }
@@ -1614,17 +1617,16 @@ mod tests {
     #[test]
     fn audit_ddl_operation_creates_event() {
         let mut daemon = default_daemon();
-        daemon.audit_ddl_operation(
-            Some("test-agent".to_string()),
-            "CREATE TABLE",
-            "users",
-        );
+        daemon.audit_ddl_operation(Some("test-agent".to_string()), "CREATE TABLE", "users");
         let events = daemon.events_for_agent("test-agent");
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].event_type, SecurityEventType::DatabaseIntegrity);
         assert_eq!(events[0].threat_level, ThreatLevel::Info);
         assert!(events[0].description.contains("CREATE TABLE"));
-        assert_eq!(events[0].metadata.get("ddl_operation").unwrap(), "CREATE TABLE");
+        assert_eq!(
+            events[0].metadata.get("ddl_operation").unwrap(),
+            "CREATE TABLE"
+        );
         assert_eq!(events[0].metadata.get("ddl_object").unwrap(), "users");
     }
 
@@ -1648,7 +1650,10 @@ mod tests {
         assert!(daemon.is_quarantined("malicious-agent"));
         let events = daemon.events_for_agent("malicious-agent");
         assert_eq!(events.len(), 1);
-        assert_eq!(events[0].event_type, SecurityEventType::DatabaseAccessViolation);
+        assert_eq!(
+            events[0].event_type,
+            SecurityEventType::DatabaseAccessViolation
+        );
     }
 
     #[test]
@@ -1660,8 +1665,14 @@ mod tests {
             "cross-tenant access",
         );
         let events = daemon.events_for_agent("test-agent");
-        assert_eq!(events[0].metadata.get("database").unwrap(), "other_agent_db");
-        assert_eq!(events[0].metadata.get("violation_reason").unwrap(), "cross-tenant access");
+        assert_eq!(
+            events[0].metadata.get("database").unwrap(),
+            "other_agent_db"
+        );
+        assert_eq!(
+            events[0].metadata.get("violation_reason").unwrap(),
+            "cross-tenant access"
+        );
     }
 
     #[test]

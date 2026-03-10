@@ -1,0 +1,42 @@
+# curl — Command line URL transfer tool and library
+# HTTP/HTTPS/FTP client. Used by Rust, package managers, etc.
+#
+# BLFS
+
+[package]
+name = "curl"
+version = "8.12.1"
+description = "curl — URL transfer tool and libcurl library"
+license = "MIT"
+groups = ["base", "core", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://curl.se/download/curl-8.12.1.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "openssl", "zlib", "zstd", "libnghttp2"]
+build = ["gcc", "make", "pkgconf"]
+
+[build]
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --disable-static \
+    --with-openssl \
+    --enable-threaded-resolver \
+    --with-ca-path=/etc/ssl/certs
+"""
+make = "make -j$(nproc)"
+check = "make test || true"
+install = "make DESTDIR=$PKG install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

@@ -140,7 +140,13 @@ impl ApiState {
             crate::marketplace::local_registry::LocalRegistry::new(
                 &std::env::temp_dir().join("agnos-marketplace"),
             )
-            .expect("Failed to create marketplace registry")
+            .unwrap_or_else(|e| {
+                tracing::warn!(
+                    "Failed to create marketplace registry in temp dir: {}; using fallback",
+                    e
+                );
+                crate::marketplace::local_registry::LocalRegistry::in_memory()
+            })
         });
         Self {
             agents: Arc::new(RwLock::new(HashMap::new())),
@@ -176,7 +182,7 @@ impl ApiState {
         let tmp_marketplace = crate::marketplace::local_registry::LocalRegistry::new(
             &std::env::temp_dir().join("agnos-marketplace-test"),
         )
-        .expect("Failed to create test marketplace registry");
+        .unwrap_or_else(|_| crate::marketplace::local_registry::LocalRegistry::in_memory());
         Self {
             agents: Arc::new(RwLock::new(HashMap::new())),
             started_at: Utc::now(),

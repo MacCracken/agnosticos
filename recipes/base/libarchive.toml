@@ -1,0 +1,40 @@
+# Libarchive — Multi-format archive and compression library
+# Reads/writes tar, cpio, zip, 7z, etc. Used by cmake.
+#
+# BLFS
+
+[package]
+name = "libarchive"
+version = "3.7.7"
+description = "Libarchive — multi-format archive library"
+license = "BSD-2-Clause"
+groups = ["base", "core", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/libarchive/libarchive/releases/download/v3.7.7/libarchive-3.7.7.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "zlib", "bzip2", "xz", "zstd", "lz4", "openssl", "expat"]
+build = ["gcc", "make", "pkgconf"]
+
+[build]
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --disable-static \
+    --without-xml2
+"""
+make = "make -j$(nproc)"
+check = "make check || true"
+install = "make DESTDIR=$PKG install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

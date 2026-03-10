@@ -694,6 +694,68 @@ impl AgnovaInstaller {
             }
         }
 
+        // Validate partition labels (used as args to parted/mkfs, must be safe)
+        for (i, part) in self.config.disk.partitions.iter().enumerate() {
+            if part.label.is_empty() {
+                bail!("partition {} has an empty label", i + 1);
+            }
+            if part.label.len() > 36 {
+                bail!("partition {} label is too long (max 36 chars)", i + 1);
+            }
+            if !part
+                .label
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+            {
+                bail!(
+                    "partition {} label '{}' contains invalid characters (allowed: a-z, A-Z, 0-9, -, _)",
+                    i + 1,
+                    part.label
+                );
+            }
+        }
+
+        // Only the last partition may use size_mb = None (fill remaining)
+        for (i, part) in self.config.disk.partitions.iter().enumerate() {
+            if part.size_mb.is_none() && i + 1 < self.config.disk.partitions.len() {
+                bail!(
+                    "partition {} ('{}') has no size (fill remaining) but is not the last partition",
+                    i + 1,
+                    part.label
+                );
+            }
+        }
+
+        // Validate full_name if provided (used as -c arg to useradd)
+        if let Some(ref full_name) = self.config.user.full_name {
+            if full_name.len() > 256 {
+                bail!("user full_name is too long (max 256 chars)");
+            }
+            // Disallow shell metacharacters and colons (passwd field separator)
+            if full_name
+                .chars()
+                .any(|c| matches!(c, ':' | ';' | '|' | '&' | '`' | '\n' | '\0'))
+            {
+                bail!("user full_name contains invalid characters");
+            }
+        }
+
+        // Validate group names
+        for group in &self.config.user.groups {
+            if group.is_empty() || group.len() > 32 {
+                bail!("group name must be 1-32 characters");
+            }
+            if !group
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '-')
+            {
+                bail!(
+                    "group name '{}' contains invalid characters (allowed: a-z, 0-9, _, -)",
+                    group
+                );
+            }
+        }
+
         // Check for a root partition
         let has_root = self
             .config
@@ -1006,10 +1068,7 @@ pub enum SystemOp {
         parents: bool,
     },
     /// Create a symlink.
-    Symlink {
-        target: String,
-        link: String,
-    },
+    Symlink { target: String, link: String },
     /// Mount a filesystem.
     Mount {
         device: String,
@@ -1018,9 +1077,7 @@ pub enum SystemOp {
         options: Vec<String>,
     },
     /// Unmount a filesystem.
-    Unmount {
-        mount_point: String,
-    },
+    Unmount { mount_point: String },
 }
 
 impl fmt::Display for SystemOp {
@@ -1064,12 +1121,7 @@ impl AgnovaInstaller {
         if disk.use_gpt {
             ops.push(SystemOp::Command {
                 binary: "parted".into(),
-                args: vec![
-                    "-s".into(),
-                    device.clone(),
-                    "mklabel".into(),
-                    "gpt".into(),
-                ],
+                args: vec!["-s".into(), device.clone(), "mklabel".into(), "gpt".into()],
                 description: "Create GPT partition table".into(),
                 fatal: true,
             });
@@ -1107,7 +1159,7 @@ impl AgnovaInstaller {
                     "-s".into(),
                     device.clone(),
                     "mkpart".into(),
-                    format!("\"{}\"", part.label),
+                    part.label.clone(),
                     fs_type.into(),
                     format!("{}MiB", start_mb),
                     end.clone(),
@@ -1192,7 +1244,12 @@ impl AgnovaInstaller {
                     part.label.clone(),
                     part_dev.clone(),
                 ],
-                Filesystem::Swap => vec!["mkswap".into(), "-L".into(), part.label.clone(), part_dev.clone()],
+                Filesystem::Swap => vec![
+                    "mkswap".into(),
+                    "-L".into(),
+                    part.label.clone(),
+                    part_dev.clone(),
+                ],
             };
 
             ops.push(SystemOp::Command {
@@ -1220,6 +1277,14 @@ impl AgnovaInstaller {
         let mut ops = Vec::new();
 
         if disk.encrypt {
+            if disk.partitions.is_empty() {
+                return PhaseOps {
+                    phase: InstallPhase::SetupEncryption,
+                    description: "Setup disk encryption (no partitions)".into(),
+                    operations: vec![],
+                };
+            }
+
             // Find the root partition (largest or no size_mb)
             let root_idx = disk
                 .partitions
@@ -1305,10 +1370,7 @@ impl AgnovaInstaller {
                         "    initrd /initramfs-6.6.72-agnos.img\n",
                         "}}\n",
                     ),
-                    boot.default_entry,
-                    boot.timeout_secs,
-                    kernel_cmdline,
-                    kernel_cmdline,
+                    boot.default_entry, boot.timeout_secs, kernel_cmdline, kernel_cmdline,
                 );
 
                 ops.push(SystemOp::WriteFile {
@@ -2188,6 +2250,86 @@ mod tests {
         assert_eq!(FirewallDefault::Allow.to_string(), "allow");
     }
 
+    // -- Audit Round 2: Input validation tests --
+
+    #[test]
+    fn validate_rejects_partition_label_with_spaces() {
+        let mut config = test_config();
+        config.disk.partitions[0].label = "my label".to_string();
+        let installer = AgnovaInstaller::new(config);
+        let err = installer.validate_config().unwrap_err();
+        assert!(err.to_string().contains("invalid characters"));
+    }
+
+    #[test]
+    fn validate_rejects_partition_label_with_shell_chars() {
+        let mut config = test_config();
+        config.disk.partitions[0].label = "root;rm".to_string();
+        let installer = AgnovaInstaller::new(config);
+        assert!(installer.validate_config().is_err());
+    }
+
+    #[test]
+    fn validate_rejects_empty_partition_label() {
+        let mut config = test_config();
+        config.disk.partitions[0].label = String::new();
+        let installer = AgnovaInstaller::new(config);
+        let err = installer.validate_config().unwrap_err();
+        assert!(err.to_string().contains("empty label"));
+    }
+
+    #[test]
+    fn validate_rejects_fill_remaining_not_last() {
+        let mut config = test_config();
+        // First partition has no size (fill remaining), but there's a second partition
+        config.disk.partitions[0].size_mb = None;
+        config.disk.partitions.push(PartitionSpec {
+            label: "extra".to_string(),
+            mount_point: "/data".to_string(),
+            filesystem: Filesystem::Ext4,
+            size_mb: Some(1024),
+            flags: vec![],
+        });
+        let installer = AgnovaInstaller::new(config);
+        let err = installer.validate_config().unwrap_err();
+        assert!(err.to_string().contains("not the last partition"));
+    }
+
+    #[test]
+    fn validate_rejects_full_name_with_colon() {
+        let mut config = test_config();
+        config.user.full_name = Some("user:name".to_string());
+        let installer = AgnovaInstaller::new(config);
+        let err = installer.validate_config().unwrap_err();
+        assert!(err.to_string().contains("full_name"));
+    }
+
+    #[test]
+    fn validate_rejects_group_with_special_chars() {
+        let mut config = test_config();
+        config.user.groups = vec!["valid".to_string(), "bad group!".to_string()];
+        let installer = AgnovaInstaller::new(config);
+        assert!(installer.validate_config().is_err());
+    }
+
+    #[test]
+    fn validate_accepts_valid_partition_labels() {
+        let config = test_config();
+        let installer = AgnovaInstaller::new(config);
+        // Default test_config should pass
+        assert!(installer.validate_config().is_ok());
+    }
+
+    #[test]
+    fn encryption_ops_empty_partitions_no_panic() {
+        let mut config = test_config();
+        config.disk.encrypt = true;
+        config.disk.partitions.clear();
+        let installer = AgnovaInstaller::new(config);
+        let ops = installer.plan_encryption_ops();
+        assert!(ops.operations.is_empty());
+    }
+
     // -----------------------------------------------------------------------
     // Phase 12C: Partition ops tests
     // -----------------------------------------------------------------------
@@ -2528,7 +2670,9 @@ mod tests {
         if let SystemOp::Command { binary, args, .. } = op {
             assert_eq!(binary, "xorriso");
             assert!(args.contains(&"-no-emul-boot".to_string()));
-            assert!(args.contains(&"efi.img".to_string()) || args.iter().any(|a| a.contains("efi")));
+            assert!(
+                args.contains(&"efi.img".to_string()) || args.iter().any(|a| a.contains("efi"))
+            );
         } else {
             panic!("expected Command");
         }

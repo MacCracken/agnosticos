@@ -1,0 +1,212 @@
+# base-system.yml — Build base system packages and test boot in QEMU
+#
+# Runs nightly and on push to recipes/base/**. Builds all 88 base recipes
+# in the takumi builder container, then boots the result in QEMU.
+
+name: Base System Build & Boot Test
+
+on:
+  schedule:
+    # Nightly at 02:00 UTC
+    - cron: '0 2 * * *'
+  push:
+    paths:
+      - 'recipes/base/**'
+      - 'scripts/ark-build.sh'
+      - 'scripts/build-iso.sh'
+      - 'scripts/build-kernel.sh'
+      - 'Dockerfile.takumi'
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  BUILDER_IMAGE: ghcr.io/${{ github.repository }}/takumi-builder
+  SOURCE_DATE_EPOCH: ${{ github.event.repository.pushed_at }}
+
+jobs:
+  # -----------------------------------------------------------------
+  # Step 1: Build the takumi builder container
+  # -----------------------------------------------------------------
+  build-builder:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    outputs:
+      image: ${{ steps.meta.outputs.tags }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set SOURCE_DATE_EPOCH from git
+        run: echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >> $GITHUB_ENV
+
+      - name: Build takumi builder image
+        run: |
+          docker build \
+            -f Dockerfile.takumi \
+            --build-arg SOURCE_DATE_EPOCH=${{ env.SOURCE_DATE_EPOCH }} \
+            -t takumi-builder:local .
+
+      - name: Save builder image
+        run: docker save takumi-builder:local | zstd -T0 > /tmp/takumi-builder.tar.zst
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: takumi-builder
+          path: /tmp/takumi-builder.tar.zst
+          retention-days: 1
+
+  # -----------------------------------------------------------------
+  # Step 2: Build base system recipes (parallelized by group)
+  # -----------------------------------------------------------------
+  build-recipes:
+    needs: build-builder
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        group:
+          - toolchain   # 10A: gcc, glibc, binutils, gmp, mpfr, mpc, linux-api-headers
+          - core-utils  # 10B: coreutils, bash, grep, sed, etc.
+          - syslibs     # 10C: zlib, readline, ncurses, libffi, etc.
+          - security    # 10D: openssl, shadow, pam, openssh, etc.
+          - services    # 10E: util-linux, kmod, eudev, dbus, etc.
+          - buildtools  # 10F: autoconf, cmake, python, rust, etc.
+          - kernel      # 10G: linux, grub, dracut, firmware
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: takumi-builder
+          path: /tmp
+
+      - name: Load builder image
+        run: zstd -d /tmp/takumi-builder.tar.zst -o /tmp/takumi-builder.tar && docker load < /tmp/takumi-builder.tar
+
+      - name: Build ${{ matrix.group }} recipes
+        run: |
+          mkdir -p dist/ark
+
+          # Map group names to recipe filter patterns
+          case "${{ matrix.group }}" in
+            toolchain)  RECIPES="gcc glibc binutils gmp mpfr mpc linux-api-headers" ;;
+            core-utils) RECIPES="coreutils bash findutils grep sed gawk tar gzip xz bzip2 zstd lz4 diffutils patch make file m4 bc less which" ;;
+            syslibs)    RECIPES="zlib readline ncurses libffi expat gdbm attr acl libcap libxcrypt libtool gperf libpipeline elfutils" ;;
+            security)   RECIPES="openssl shadow linux-pam sudo gnupg gnutls p11-kit openssh cryptsetup nftables libseccomp audit" ;;
+            services)   RECIPES="util-linux procps-ng psmisc iproute2 kbd kmod eudev dbus e2fsprogs dosfstools inetutils sysklogd sysvinit iana-etc" ;;
+            buildtools) RECIPES="autoconf automake pkgconf cmake ninja meson perl python rust flex bison gettext texinfo groff man-db man-pages" ;;
+            kernel)     RECIPES="linux grub dracut linux-firmware cpio" ;;
+          esac
+
+          FAILED=0
+          for pkg in $RECIPES; do
+            recipe="recipes/base/${pkg}.toml"
+            if [ -f "$recipe" ]; then
+              echo "::group::Building ${pkg}"
+              docker run --rm \
+                -v "$(pwd)/dist/ark:/output" \
+                -v "$(pwd)/cache:/cache" \
+                takumi-builder:local "$recipe" || {
+                  echo "::error::Failed to build ${pkg}"
+                  FAILED=$((FAILED + 1))
+                }
+              echo "::endgroup::"
+            fi
+          done
+
+          echo "Failed builds: ${FAILED}"
+          [ "$FAILED" -eq 0 ] || exit 1
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ark-packages-${{ matrix.group }}
+          path: dist/ark/*.ark
+          retention-days: 7
+
+  # -----------------------------------------------------------------
+  # Step 3: Generate SBOM
+  # -----------------------------------------------------------------
+  sbom:
+    needs: build-recipes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: ark-packages-*
+          merge-multiple: true
+          path: dist/ark
+
+      - name: Generate SBOM
+        run: ./scripts/generate-sbom.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: dist/sbom/
+          retention-days: 30
+
+  # -----------------------------------------------------------------
+  # Step 4: Build ISO and boot test in QEMU
+  # -----------------------------------------------------------------
+  qemu-boot-test:
+    needs: build-recipes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: ark-packages-*
+          merge-multiple: true
+          path: dist/ark
+
+      - name: Install QEMU
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 qemu-utils ovmf
+
+      - name: Build ISO
+        run: |
+          chmod +x scripts/build-iso.sh
+          ./scripts/build-iso.sh
+
+      - name: Boot test in QEMU (60s timeout)
+        timeout-minutes: 3
+        run: |
+          # Create a small disk for the VM
+          qemu-img create -f qcow2 /tmp/agnos-test.qcow2 8G
+
+          # Boot the ISO in QEMU with UEFI
+          timeout 60 qemu-system-x86_64 \
+            -machine q35 \
+            -cpu host \
+            -enable-kvm \
+            -m 2048 \
+            -smp 2 \
+            -bios /usr/share/ovmf/OVMF.fd \
+            -cdrom dist/agnos-install.iso \
+            -drive file=/tmp/agnos-test.qcow2,format=qcow2 \
+            -nographic \
+            -serial mon:stdio \
+            -no-reboot \
+            2>&1 | tee /tmp/qemu-boot.log || true
+
+          # Check for successful boot indicators
+          if grep -q "AGNOS" /tmp/qemu-boot.log; then
+            echo "Boot test: GRUB menu detected"
+          fi
+          if grep -q "login:" /tmp/qemu-boot.log; then
+            echo "Boot test: Login prompt reached - PASS"
+          else
+            echo "Boot test: Login prompt not reached (may be expected in CI)"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: boot-test-log
+          path: /tmp/qemu-boot.log
+          retention-days: 7

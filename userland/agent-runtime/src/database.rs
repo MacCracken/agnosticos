@@ -385,7 +385,7 @@ pub struct DatabaseStats {
 /// PostgreSQL + pgvector vector store backend.
 /// Generates SQL for vector operations — caller executes against live connection.
 pub struct PostgresVectorBackend {
-    database_name: String,
+    _database_name: String,
     table_name: String,
     dimension: usize,
 }
@@ -393,7 +393,7 @@ pub struct PostgresVectorBackend {
 impl PostgresVectorBackend {
     pub fn new(database_name: &str, table_name: &str, dimension: usize) -> Self {
         Self {
-            database_name: database_name.to_string(),
+            _database_name: database_name.to_string(),
             table_name: table_name.to_string(),
             dimension,
         }
@@ -642,7 +642,12 @@ impl ModelRegistry {
     }
 
     /// Generate a model manifest entry for tracking downloaded models.
-    pub fn model_manifest_entry(&self, repo_id: &str, filename: &str, size_bytes: u64) -> serde_json::Value {
+    pub fn model_manifest_entry(
+        &self,
+        repo_id: &str,
+        filename: &str,
+        size_bytes: u64,
+    ) -> serde_json::Value {
         serde_json::json!({
             "repo_id": repo_id,
             "filename": filename,
@@ -653,8 +658,12 @@ impl ModelRegistry {
         })
     }
 
-    pub fn model_dir(&self) -> &str { &self.model_dir }
-    pub fn hub_url(&self) -> &str { &self.hub_url }
+    pub fn model_dir(&self) -> &str {
+        &self.model_dir
+    }
+    pub fn hub_url(&self) -> &str {
+        &self.hub_url
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -669,26 +678,38 @@ mod model_registry_tests {
     fn hf_download_url_format() {
         let reg = ModelRegistry::new("/models");
         let url = reg.hf_download_url("TheBloke/Llama-2-7B-GGUF", "llama-2-7b.Q4_K_M.gguf");
-        assert_eq!(url, "https://huggingface.co/TheBloke/Llama-2-7B-GGUF/resolve/main/llama-2-7b.Q4_K_M.gguf");
+        assert_eq!(
+            url,
+            "https://huggingface.co/TheBloke/Llama-2-7B-GGUF/resolve/main/llama-2-7b.Q4_K_M.gguf"
+        );
     }
 
     #[test]
     fn hf_api_url_format() {
         let reg = ModelRegistry::new("/models");
-        assert_eq!(reg.hf_api_url("meta-llama/Llama-2-7b"), "https://huggingface.co/api/models/meta-llama/Llama-2-7b");
+        assert_eq!(
+            reg.hf_api_url("meta-llama/Llama-2-7b"),
+            "https://huggingface.co/api/models/meta-llama/Llama-2-7b"
+        );
     }
 
     #[test]
     fn local_model_path() {
         let reg = ModelRegistry::new("/var/lib/synapse/models");
         let path = reg.local_model_path("TheBloke/Llama-2-7B-GGUF", "model.gguf");
-        assert_eq!(path, "/var/lib/synapse/models/TheBloke/Llama-2-7B-GGUF/model.gguf");
+        assert_eq!(
+            path,
+            "/var/lib/synapse/models/TheBloke/Llama-2-7B-GGUF/model.gguf"
+        );
     }
 
     #[test]
     fn local_repo_dir() {
         let reg = ModelRegistry::new("/models");
-        assert_eq!(reg.local_repo_dir("meta-llama/Llama-2-7b"), "/models/meta-llama/Llama-2-7b");
+        assert_eq!(
+            reg.local_repo_dir("meta-llama/Llama-2-7b"),
+            "/models/meta-llama/Llama-2-7b"
+        );
     }
 
     #[test]
@@ -705,8 +726,14 @@ mod model_registry_tests {
         assert_eq!(entry["filename"], "weights.bin");
         assert_eq!(entry["size_bytes"], 1024);
         assert!(entry["downloaded_at"].as_str().is_some());
-        assert!(entry["hub_url"].as_str().unwrap().contains("huggingface.co"));
-        assert!(entry["local_path"].as_str().unwrap().contains("/models/org/model/weights.bin"));
+        assert!(entry["hub_url"]
+            .as_str()
+            .unwrap()
+            .contains("huggingface.co"));
+        assert!(entry["local_path"]
+            .as_str()
+            .unwrap()
+            .contains("/models/org/model/weights.bin"));
     }
 }
 
@@ -804,14 +831,20 @@ mod redis_tests {
     fn redis_set_with_default_ttl() {
         let store = test_store();
         let cmd = store.set_command("session", "data123", None);
-        assert_eq!(cmd, vec!["SET", "agent:test:session", "data123", "EX", "3600"]);
+        assert_eq!(
+            cmd,
+            vec!["SET", "agent:test:session", "data123", "EX", "3600"]
+        );
     }
 
     #[test]
     fn redis_set_with_custom_ttl() {
         let store = test_store();
         let cmd = store.set_command("session", "data123", Some(60));
-        assert_eq!(cmd, vec!["SET", "agent:test:session", "data123", "EX", "60"]);
+        assert_eq!(
+            cmd,
+            vec!["SET", "agent:test:session", "data123", "EX", "60"]
+        );
     }
 
     #[test]
