@@ -61,6 +61,19 @@ pub struct SearchResult {
     pub publisher: String,
 }
 
+/// Response from publishing a package.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PublishResponse {
+    /// Published package name.
+    pub name: String,
+    /// Published version.
+    pub version: String,
+    /// Registry-assigned download URL.
+    pub download_url: String,
+    /// Whether this version replaced an existing one.
+    pub replaced: bool,
+}
+
 /// An available update for an installed package.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateAvailable {
@@ -250,6 +263,95 @@ impl RegistryClient {
         );
 
         Ok(dest)
+    }
+
+    /// Publish a package to the remote registry.
+    ///
+    /// Uploads the `.agnos-agent` bundle and optional `.sig` sidecar file.
+    /// Requires a valid API token.
+    pub async fn publish(
+        &self,
+        bundle_path: &Path,
+        api_token: &str,
+    ) -> Result<PublishResponse> {
+        if self.offline {
+            anyhow::bail!("Cannot publish in offline mode");
+        }
+
+        let bundle_bytes = std::fs::read(bundle_path)
+            .with_context(|| format!("Failed to read bundle: {}", bundle_path.display()))?;
+
+        let sha256 = {
+            use sha2::{Digest, Sha256};
+            let hash = Sha256::digest(&bundle_bytes);
+            hash.iter().map(|b| format!("{:02x}", b)).collect::<String>()
+        };
+
+        let bundle_name = bundle_path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+
+        let url = format!("{}/v1/packages/publish", self.base_url);
+
+        info!(
+            bundle = %bundle_name,
+            size = bundle_bytes.len(),
+            sha256 = %sha256,
+            "Publishing package to registry"
+        );
+
+        // Check for signature sidecar
+        let sig_path = bundle_path.with_extension("agnos-agent.sig");
+        let signature = if sig_path.exists() {
+            let sig_content = std::fs::read_to_string(&sig_path)?;
+            info!("Including signature sidecar");
+            Some(sig_content)
+        } else {
+            None
+        };
+
+        // Upload as JSON with base64-encoded bundle
+        let payload = serde_json::json!({
+            "bundle_name": bundle_name,
+            "bundle_sha256": sha256,
+            "bundle_size": bundle_bytes.len(),
+            "signature": signature,
+        });
+
+        let response = self
+            .client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", api_token))
+            .header("X-Package-SHA256", &sha256)
+            .header("X-Package-Name", &bundle_name)
+            .header("Content-Type", "application/octet-stream")
+            .header("X-Package-Metadata", serde_json::to_string(&payload).unwrap_or_default())
+            .body(bundle_bytes)
+            .timeout(DOWNLOAD_TIMEOUT)
+            .send()
+            .await
+            .context("Failed to reach registry for publish")?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            anyhow::bail!("Publish failed (HTTP {}): {}", status, body);
+        }
+
+        let publish_resp: PublishResponse = response
+            .json()
+            .await
+            .context("Failed to parse publish response")?;
+
+        info!(
+            name = %publish_resp.name,
+            version = %publish_resp.version,
+            "Package published successfully"
+        );
+
+        Ok(publish_resp)
     }
 
     /// Check for available updates given a list of installed packages.
@@ -533,5 +635,33 @@ mod tests {
         assert!(DEFAULT_REGISTRY_URL.starts_with("https://"));
         assert!(REQUEST_TIMEOUT.as_secs() > 0);
         assert!(DOWNLOAD_TIMEOUT > REQUEST_TIMEOUT);
+    }
+
+    #[tokio::test]
+    async fn test_offline_publish_blocked() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut client = RegistryClient::new(DEFAULT_REGISTRY_URL, dir.path()).unwrap();
+        client.set_offline(true);
+
+        let fake_bundle = dir.path().join("test.agnos-agent");
+        std::fs::write(&fake_bundle, b"fake").unwrap();
+
+        let result = client.publish(&fake_bundle, "token").await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("offline"));
+    }
+
+    #[test]
+    fn test_publish_response_serialization() {
+        let resp = PublishResponse {
+            name: "test-app".to_string(),
+            version: "1.0.0".to_string(),
+            download_url: "https://registry.agnos.org/v1/packages/test-app/1.0.0/download".to_string(),
+            replaced: false,
+        };
+        let json = serde_json::to_string(&resp).unwrap();
+        let parsed: PublishResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.name, "test-app");
+        assert!(!parsed.replaced);
     }
 }

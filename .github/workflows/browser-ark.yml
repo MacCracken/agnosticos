@@ -1,0 +1,125 @@
+name: Browser .ark Packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      browser:
+        description: 'Browser to build (or "all")'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - firefox
+          - chromium
+          - zen
+          - brave
+          - librewolf
+          - vivaldi
+          - falkon
+          - midori
+      sign:
+        description: 'Sign packages'
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  ARK_OUTPUT_DIR: dist/ark
+  ARK_CACHE_DIR: /tmp/takumi-cache
+
+jobs:
+  build-browser:
+    name: Build ${{ matrix.browser }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: ${{ inputs.browser == 'all' && fromJSON('["firefox","chromium","zen","brave","librewolf","vivaldi","falkon","midori"]') || fromJSON(format('["{0}"]', inputs.browser)) }}
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install build dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends \
+          build-essential pkg-config cmake ninja-build \
+          libgtk-3-dev libwayland-dev libx11-dev libxrandr-dev \
+          libpulse-dev libasound2-dev libdbus-1-dev \
+          libnss3-dev libnspr4-dev libcairo2-dev libpango1.0-dev \
+          libfontconfig-dev libfreetype-dev libharfbuzz-dev \
+          libssl-dev libsqlite3-dev libicu-dev \
+          python3 python3-pip nodejs npm nasm autoconf2.13 \
+          jq
+
+    - name: Install Rust toolchain
+      if: contains(fromJSON('["firefox","zen","librewolf"]'), matrix.browser)
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Cache source tarballs
+      uses: actions/cache@v4
+      with:
+        path: /tmp/takumi-cache
+        key: browser-source-${{ matrix.browser }}-${{ hashFiles(format('recipes/browser/{0}.toml', matrix.browser)) }}
+
+    - name: Build .ark package
+      run: |
+        chmod +x scripts/ark-build.sh
+        scripts/ark-build.sh "recipes/browser/${{ matrix.browser }}.toml"
+      env:
+        ARK_JOBS: ${{ runner.os == 'Linux' && '4' || '2' }}
+        ARK_SKIP_CHECK: "1"
+
+    - name: Sign package
+      if: inputs.sign
+      run: |
+        chmod +x scripts/ark-sign.sh
+        # Generate ephemeral signing key for CI
+        scripts/ark-sign.sh keygen
+        for ark in dist/ark/*.ark; do
+          scripts/ark-sign.sh sign "$ark"
+        done
+
+    - name: Upload .ark artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ark-${{ matrix.browser }}
+        path: |
+          dist/ark/*.ark
+          dist/ark/*.ark.sig
+        if-no-files-found: error
+
+  summary:
+    name: Build Summary
+    needs: build-browser
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+
+    - name: Summary
+      run: |
+        echo "## Browser .ark Build Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| Browser | Size | Files |" >> $GITHUB_STEP_SUMMARY
+        echo "|---------|------|-------|" >> $GITHUB_STEP_SUMMARY
+        for dir in artifacts/ark-*/; do
+          browser="$(basename "$dir" | sed 's/^ark-//')"
+          count="$(find "$dir" -name '*.ark' | wc -l)"
+          if [ "$count" -gt 0 ]; then
+            size="$(du -sh "$dir"/*.ark 2>/dev/null | cut -f1 || echo 'N/A')"
+            echo "| $browser | $size | $count |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| $browser | FAILED | 0 |" >> $GITHUB_STEP_SUMMARY
+          fi
+        done

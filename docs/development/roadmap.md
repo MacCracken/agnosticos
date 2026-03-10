@@ -1,7 +1,7 @@
 # AGNOS Development Roadmap
 
 > **Status**: Pre-Alpha | **Last Updated**: 2026-03-10
-> **All development phases complete** — 9298+ tests, ~82% coverage, 0 warnings
+> **All development phases complete** — 9300+ tests, ~82% coverage, 0 warnings
 > **Next Milestone**: Alpha Release (Target: Q2 2026)
 
 ---
@@ -85,7 +85,7 @@ All phases are complete. See [CHANGELOG.md](/CHANGELOG.md) for detailed implemen
 ### Web Browser
 
 **Phase 1 — Browser Suite (Alpha)** `recipes/browser/`
-- [ ] Build and package all 8 browsers as `.ark`
+- [ ] Run browser-ark CI workflow to build and package all 8 browsers
 
 **Phase 2 — AI-Integrated WebView (Proposed, Post-Beta)**
 - [ ] Lightweight embedded browser using `wry`/`tauri` WebView
@@ -146,7 +146,7 @@ All 5 consumer apps have marketplace recipes + GitHub release bundling via `ark-
 
 **SecureYeoman** (Bun, ~42MB) | **BullShift** (Rust, ~2.8MB) | **Photis Nadi** (Flutter, ~20MB) | **Agnostic** (Python, ~472KB) | **Synapse** (Rust, pending first release)
 
-- [ ] Publish all to mela marketplace
+- [ ] Run marketplace-publish CI workflow to publish all to mela
 
 ### Full Convergence (Demand-Gated)
 

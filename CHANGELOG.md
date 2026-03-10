@@ -131,6 +131,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Wire protocol types**: `VectorSyncMessage` (Insert/Search/Delete/SyncManifest/AnnounceCollection), `VectorSyncEntry`, `RemoteSearchResult`, `CollectionReplica`
 - **18 new tests**: replica registration, deduplication, remote filtering, node removal, sync messages, result merging, replication strategies, serialization
 
+#### Marketplace Publishing Infrastructure
+- **New script**: `scripts/ark-publish.sh` — publishes `.agnos-agent` bundles to mela marketplace registry
+  - Single bundle or directory batch mode, SHA-256 integrity verification
+  - Dry run (`MELA_DRY_RUN=1`) for validation without upload
+  - Signing integration (`MELA_SIGN=1`) via `ark-sign.sh`
+  - Bearer token auth via `MELA_API_TOKEN`
+- **`RegistryClient::publish()`**: Rust API for programmatic marketplace publishing
+  - Reads bundle bytes, computes SHA-256, uploads with metadata headers
+  - Attaches `.sig` sidecar if present, returns `PublishResponse` (name, version, download_url, replaced)
+- **CI workflow**: `.github/workflows/marketplace-publish.yml` — publish 5 consumer apps to mela
+  - Workflow dispatch with app selection (all or individual) and dry run flag
+  - Matrix: secureyeoman, bullshift, photisnadi, agnostic, synapse
+  - Bundle → sign → validate → publish pipeline
+- **CI workflow**: `.github/workflows/browser-ark.yml` — build 8 browser `.ark` packages
+  - Workflow dispatch with browser selection (all or individual)
+  - Matrix: firefox, chromium, zen, brave, librewolf, vivaldi, falkon, midori
+  - Source caching, build deps, optional signing, 180-minute timeout
+  - Uploads `.ark` + `.ark.sig` artifacts
+
 #### Browser Desktop Entries & MIME Types (all 8 recipes)
 - **Full MIME type associations** on all 8 browser recipes: `text/html`, `text/xml`, `application/xhtml+xml`, `application/xml`, `application/vnd.mozilla.xul+xml`, `x-scheme-handler/http`, `x-scheme-handler/https`
 - **Desktop entries**: Proper `WMClass`, `GenericName`, `Icon`, `Categories` for Zen, Brave, LibreWolf, Vivaldi, Falkon, Midori

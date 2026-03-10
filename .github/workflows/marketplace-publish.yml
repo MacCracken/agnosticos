@@ -1,0 +1,142 @@
+name: Marketplace Publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: 'App to publish (or "all")'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - secureyeoman
+          - bullshift
+          - photisnadi
+          - agnostic
+          - synapse
+      dry_run:
+        description: 'Dry run (validate only, no upload)'
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+env:
+  MELA_REGISTRY_URL: https://registry.agnos.org
+
+jobs:
+  bundle-and-publish:
+    name: ${{ matrix.app }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ inputs.app == 'all' && fromJSON('["secureyeoman","bullshift","photisnadi","agnostic","synapse"]') || fromJSON(format('["{0}"]', inputs.app)) }}
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install tools
+      run: sudo apt-get update && sudo apt-get install -y jq
+
+    - name: Bundle .agnos-agent
+      run: |
+        chmod +x scripts/ark-bundle.sh
+        scripts/ark-bundle.sh "recipes/marketplace/${{ matrix.app }}.toml"
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Sign bundle
+      run: |
+        chmod +x scripts/ark-sign.sh
+        scripts/ark-sign.sh keygen
+        for bundle in dist/marketplace/*.agnos-agent; do
+          scripts/ark-sign.sh sign "$bundle"
+        done
+
+    - name: Validate bundle
+      run: |
+        for bundle in dist/marketplace/*.agnos-agent; do
+          echo "==> Validating: $bundle"
+          # Extract and check manifest
+          tmpdir="$(mktemp -d)"
+          tar xzf "$bundle" -C "$tmpdir"
+          jq . "$tmpdir/manifest.json"
+
+          # Verify required fields
+          name="$(jq -r '.name' "$tmpdir/manifest.json")"
+          version="$(jq -r '.version' "$tmpdir/manifest.json")"
+          echo "    Name: $name"
+          echo "    Version: $version"
+          echo "    Size: $(du -h "$bundle" | cut -f1)"
+
+          # Verify sandbox.json exists
+          [[ -f "$tmpdir/sandbox.json" ]] && echo "    Sandbox: OK" || echo "    Sandbox: MISSING"
+
+          rm -rf "$tmpdir"
+        done
+
+    - name: Publish to mela
+      if: ${{ !inputs.dry_run }}
+      run: |
+        chmod +x scripts/ark-publish.sh
+        scripts/ark-publish.sh dist/marketplace/
+      env:
+        MELA_API_TOKEN: ${{ secrets.MELA_API_TOKEN }}
+        MELA_SIGN: "0"
+
+    - name: Dry run publish
+      if: inputs.dry_run
+      run: |
+        chmod +x scripts/ark-publish.sh
+        scripts/ark-publish.sh dist/marketplace/
+      env:
+        MELA_DRY_RUN: "1"
+
+    - name: Upload bundle artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: marketplace-${{ matrix.app }}
+        path: |
+          dist/marketplace/*.agnos-agent
+          dist/marketplace/*.agnos-agent.sig
+        if-no-files-found: warn
+
+  summary:
+    name: Publish Summary
+    needs: bundle-and-publish
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+
+    - name: Summary
+      run: |
+        echo "## Marketplace Publish Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| App | Bundle | Size |" >> $GITHUB_STEP_SUMMARY
+        echo "|-----|--------|------|" >> $GITHUB_STEP_SUMMARY
+        for dir in artifacts/marketplace-*/; do
+          app="$(basename "$dir" | sed 's/^marketplace-//')"
+          bundle="$(find "$dir" -name '*.agnos-agent' -type f | head -1)"
+          if [ -n "$bundle" ]; then
+            size="$(du -h "$bundle" | cut -f1)"
+            echo "| $app | $(basename "$bundle") | $size |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| $app | FAILED | - |" >> $GITHUB_STEP_SUMMARY
+          fi
+        done
+        echo "" >> $GITHUB_STEP_SUMMARY
+        if [ "${{ inputs.dry_run }}" = "true" ]; then
+          echo "> **Dry run** — bundles validated but not uploaded" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "> **Published** to ${{ env.MELA_REGISTRY_URL }}" >> $GITHUB_STEP_SUMMARY
+        fi
