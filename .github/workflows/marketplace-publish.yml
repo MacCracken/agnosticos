@@ -113,9 +113,10 @@ jobs:
     if: always()
 
     steps:
-    - name: Download all artifacts
+    - name: Download marketplace artifacts
       uses: actions/download-artifact@v4
       with:
+        pattern: marketplace-*
         path: artifacts
 
     - name: Summary

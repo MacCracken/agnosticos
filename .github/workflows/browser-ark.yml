@@ -102,9 +102,10 @@ jobs:
     if: always()
 
     steps:
-    - name: Download all artifacts
+    - name: Download browser artifacts
       uses: actions/download-artifact@v4
       with:
+        pattern: ark-*
         path: artifacts
 
     - name: Summary

@@ -17,9 +17,6 @@ RUN useradd --system --create-home --shell /bin/bash agnos \
     && mkdir -p /run/agnos \
     && chown -R agnos:agnos /var/lib/agnos /var/log/agnos /run/agnos
 
-# Pre-install common agent dependencies for cache efficiency
-RUN cargo install cargo-watch 2>/dev/null || true
-
 # Labels
 LABEL org.opencontainers.image.title="AGNOS Rust Base"
 LABEL org.opencontainers.image.description="Rust base image with AGNOS agent runtime support"
