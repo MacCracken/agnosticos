@@ -27,8 +27,11 @@ pub use handlers::anomaly::BehaviorSampleRequest;
 pub use handlers::audit::{
     AuditChainQueryParams, AuditEvent, AuditForwardRequest, AuditQueryParams,
 };
+pub use handlers::handshake::BatchRegisterRequest;
 pub use handlers::dashboard::{DashboardSyncRequest, StoredDashboardSnapshot};
-pub use handlers::marketplace::{MarketplaceInstallRequest, MarketplaceSearchQuery};
+pub use handlers::marketplace::{
+    MarketplaceInstallRequest, MarketplaceSearchQuery, RemoteInstallRequest, RemoteSearchQuery,
+};
 pub use handlers::memory::MemorySetRequest;
 pub use handlers::profiles::EnvironmentProfile;
 pub use handlers::reasoning::{
@@ -64,6 +67,7 @@ pub fn build_router(state: ApiState) -> Router {
     use handlers::audit::*;
     use handlers::dashboard::*;
     use handlers::database::*;
+    use handlers::handshake::*;
     use handlers::marketplace::*;
     use handlers::memory::*;
     use handlers::profiles::*;
@@ -99,6 +103,7 @@ pub fn build_router(state: ApiState) -> Router {
         // Dashboard sync routes
         .route("/v1/dashboard/sync", post(dashboard_sync_handler))
         .route("/v1/dashboard/latest", get(dashboard_latest_handler))
+        .route("/v1/health/consumers", get(consumer_health_handler))
         // Environment profile routes
         .route("/v1/profiles", get(list_profiles_handler))
         .route("/v1/profiles/:name", get(get_profile_handler))
@@ -196,6 +201,19 @@ pub fn build_router(state: ApiState) -> Router {
             "/v1/marketplace/:name",
             delete(marketplace_uninstall_handler),
         )
+        // Remote marketplace routes
+        .route(
+            "/v1/marketplace/remote/search",
+            get(marketplace_remote_search_handler),
+        )
+        .route(
+            "/v1/marketplace/remote/install",
+            post(marketplace_remote_install_handler),
+        )
+        .route(
+            "/v1/marketplace/remote/:name",
+            get(marketplace_remote_info_handler),
+        )
         // Screen capture routes
         .route("/v1/screen/capture", post(screen_capture_handler))
         .route(
@@ -247,6 +265,16 @@ pub fn build_router(state: ApiState) -> Router {
         )
         .route("/v1/agents/:id/database", get(database_get_handler))
         .route("/v1/database/stats", get(database_stats_handler))
+        // Handshake routes (service discovery, batch registration, events, sandbox listing)
+        .route("/v1/discover", get(service_discovery_handler))
+        .route("/v1/agents/register/batch", post(batch_register_handler))
+        .route("/v1/events/subscribe", get(events_subscribe_handler))
+        .route("/v1/events/publish", post(events_publish_handler))
+        .route("/v1/events/topics", get(events_topics_handler))
+        .route(
+            "/v1/sandbox/profiles/list",
+            get(list_sandbox_profiles_handler),
+        )
         .layer(axum_mw::from_fn_with_state(
             state.clone(),
             middleware::auth_middleware,

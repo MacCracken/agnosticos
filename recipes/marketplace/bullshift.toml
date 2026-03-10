@@ -2,11 +2,11 @@
 # High-performance cross-platform trading platform combining Rust backend
 # with Flutter frontend. Sub-100ms execution target.
 #
-# Status: STUB — complete when BullShift reaches alpha.
+# Status: Ready for packaging — BullShift 2026.3.9 is feature-complete.
 
 [package]
 name = "bullshift"
-version = "2026.3.5"
+version = "2026.3.9"
 description = "BullShift — High-performance cross-platform trading platform"
 license = "MIT"
 groups = ["desktop", "finance", "flutter"]
@@ -54,7 +54,18 @@ min_agnos_version = "2026.3.8"
 [marketplace.sandbox]
 seccomp_mode = "desktop"
 network_access = true
-allowed_hosts = ["*"]  # TODO: restrict to exchange APIs + market data feeds
+# Broker APIs + market data feeds
+allowed_hosts = [
+    "api.binance.com", "stream.binance.com",
+    "api.coinbase.com", "ws-feed.exchange.coinbase.com",
+    "paper-api.alpaca.markets", "api.alpaca.markets", "stream.data.alpaca.markets",
+    "api.tradier.com",
+    "api.robinhood.com",
+    "api.schwab.com",
+    "api.kraken.com", "ws.kraken.com",
+    "api.webull.com",
+    "localhost",
+]
 data_dir = "~/.local/share/bullshift/"
 
 [[marketplace.sandbox.landlock]]
@@ -90,13 +101,13 @@ cd ../flutter && flutter test
 install = """
 # Install Rust backend binary
 mkdir -p $PKG/usr/lib/bullshift/bin
-cp rust/target/release/bullshift-server $PKG/usr/lib/bullshift/bin/ 2>/dev/null || true
+cp rust/target/release/api_server $PKG/usr/lib/bullshift/bin/bullshift-api
 
-# Use agpkg pack-flutter to create .agnos-agent bundle
-# agpkg pack-flutter --build-dir flutter/build/linux/x64/release/bundle \\
-#   --name bullshift --version $VERSION --publisher "BullShift" \\
-#   --description "High-performance trading platform" \\
-#   --category desktop-app --network --output $PKG/
+# Pack Flutter frontend as .agnos-agent bundle
+agpkg pack-flutter --build-dir flutter/build/linux/x64/release/bundle \
+  --name bullshift --version $VERSION --publisher "BullShift" \
+  --description "High-performance trading platform" \
+  --category desktop-app --network --output $PKG/
 
 # Desktop entry for aethersafha
 mkdir -p $PKG/usr/share/applications

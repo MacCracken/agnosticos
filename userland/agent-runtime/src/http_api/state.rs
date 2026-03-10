@@ -12,6 +12,7 @@ use crate::database::DatabaseManager;
 use crate::ipc::RpcRegistry;
 use crate::knowledge_base::KnowledgeBase;
 use crate::learning::AnomalyDetector;
+use crate::pubsub::TopicBroker;
 use crate::rag::{RagConfig, RagPipeline};
 
 use super::handlers::audit::AuditEvent;
@@ -111,6 +112,8 @@ pub struct ApiState {
     pub screen_recording_manager: Arc<RwLock<ScreenRecordingManager>>,
     /// Per-agent database provisioning manager.
     pub database_manager: Arc<RwLock<DatabaseManager>>,
+    /// Topic-based pub/sub broker for inter-agent event streaming.
+    pub topic_broker: Arc<RwLock<TopicBroker>>,
 }
 
 impl std::fmt::Debug for ApiState {
@@ -164,6 +167,7 @@ impl ApiState {
             screen_capture_manager: Arc::new(RwLock::new(ScreenCaptureManager::new())),
             screen_recording_manager: Arc::new(RwLock::new(ScreenRecordingManager::new())),
             database_manager: Arc::new(RwLock::new(DatabaseManager::new())),
+            topic_broker: Arc::new(RwLock::new(TopicBroker::new())),
         }
     }
 
@@ -198,6 +202,7 @@ impl ApiState {
             screen_capture_manager: Arc::new(RwLock::new(ScreenCaptureManager::new())),
             screen_recording_manager: Arc::new(RwLock::new(ScreenRecordingManager::new())),
             database_manager: Arc::new(RwLock::new(DatabaseManager::new())),
+            topic_broker: Arc::new(RwLock::new(TopicBroker::new())),
         }
     }
 

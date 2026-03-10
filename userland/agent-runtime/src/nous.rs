@@ -790,7 +790,7 @@ mod tests {
         let tarball = create_test_tarball(manifest);
         let tarball_path = dir.join(format!("{}.agnos-agent", manifest.agent.name));
         std::fs::write(&tarball_path, &tarball).unwrap();
-        registry.install_package(&tarball_path).unwrap();
+        registry.install_package(&tarball_path, None).unwrap();
     }
 
     // -----------------------------------------------------------------------

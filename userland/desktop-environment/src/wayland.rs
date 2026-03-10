@@ -2117,6 +2117,184 @@ mod wayland_live {
 pub use wayland_live::WaylandState;
 
 // ============================================================================
+// Wayland server accept loop (feature-gated)
+// ============================================================================
+
+#[cfg(feature = "wayland")]
+mod wayland_accept {
+    use std::path::{Path, PathBuf};
+
+    use tokio::net::UnixListener;
+    use tokio::sync::mpsc;
+
+    /// Event dispatched when a new Wayland client connects.
+    #[derive(Debug)]
+    pub enum WaylandServerEvent {
+        /// A new client connection was accepted.
+        ClientConnected {
+            /// File descriptor of the accepted Unix socket.
+            fd: std::os::unix::io::RawFd,
+            /// Client credentials (PID, if obtainable).
+            pid: Option<u32>,
+        },
+        /// The server socket was shut down.
+        Shutdown,
+    }
+
+    /// Configuration for the Wayland accept-loop server.
+    #[derive(Debug, Clone)]
+    pub struct WaylandServerConfig {
+        /// Path to the Unix socket. Defaults to `/run/user/{uid}/wayland-0`.
+        pub socket_path: PathBuf,
+    }
+
+    impl Default for WaylandServerConfig {
+        fn default() -> Self {
+            let uid = unsafe { libc::getuid() };
+            Self {
+                socket_path: PathBuf::from(format!("/run/user/{}/wayland-0", uid)),
+            }
+        }
+    }
+
+    impl WaylandServerConfig {
+        /// Create a config with a custom socket path.
+        pub fn with_path(path: impl Into<PathBuf>) -> Self {
+            Self {
+                socket_path: path.into(),
+            }
+        }
+    }
+
+    /// Wayland Unix socket server that accepts client connections and
+    /// dispatches events to the compositor.
+    ///
+    /// This wraps a tokio [`UnixListener`] and produces [`WaylandServerEvent`]s
+    /// on a channel that the compositor event loop can consume.
+    #[derive(Debug)]
+    pub struct WaylandServer {
+        /// Path where the socket is bound.
+        pub socket_path: PathBuf,
+        /// Sender for server events (client connections, shutdown).
+        event_tx: mpsc::Sender<WaylandServerEvent>,
+        /// Receiver for server events — consumed by the compositor loop.
+        event_rx: Option<mpsc::Receiver<WaylandServerEvent>>,
+    }
+
+    impl WaylandServer {
+        /// Create a new server bound to the configured socket path.
+        ///
+        /// The socket file is created (any pre-existing file at the path is removed).
+        /// Call [`start_server`] to begin the accept loop.
+        pub fn new(config: WaylandServerConfig) -> std::io::Result<Self> {
+            // Remove stale socket if it exists
+            if config.socket_path.exists() {
+                std::fs::remove_file(&config.socket_path)?;
+            }
+
+            // Ensure parent directory exists
+            if let Some(parent) = config.socket_path.parent() {
+                if !parent.exists() {
+                    std::fs::create_dir_all(parent)?;
+                }
+            }
+
+            let (tx, rx) = mpsc::channel(64);
+            Ok(Self {
+                socket_path: config.socket_path,
+                event_tx: tx,
+                event_rx: Some(rx),
+            })
+        }
+
+        /// Take the event receiver. Can only be called once; subsequent calls
+        /// return `None`.
+        pub fn take_event_rx(&mut self) -> Option<mpsc::Receiver<WaylandServerEvent>> {
+            self.event_rx.take()
+        }
+
+        /// Get a clone of the event sender (for the accept loop task).
+        pub fn event_tx(&self) -> mpsc::Sender<WaylandServerEvent> {
+            self.event_tx.clone()
+        }
+
+        /// Socket path this server is bound to.
+        pub fn path(&self) -> &Path {
+            &self.socket_path
+        }
+    }
+
+    /// Start the Wayland client accept loop.
+    ///
+    /// Binds a [`UnixListener`] at the given path and spawns a tokio task that
+    /// accepts connections, extracts peer credentials (PID), and sends
+    /// [`WaylandServerEvent::ClientConnected`] events on the provided channel.
+    ///
+    /// The task runs until the sender is dropped or an unrecoverable error occurs,
+    /// at which point it sends [`WaylandServerEvent::Shutdown`].
+    pub async fn start_server(
+        socket_path: PathBuf,
+        event_tx: mpsc::Sender<WaylandServerEvent>,
+    ) -> std::io::Result<()> {
+        let listener = UnixListener::bind(&socket_path)?;
+        tracing::info!(path = %socket_path.display(), "Wayland server listening");
+
+        tokio::spawn(async move {
+            loop {
+                match listener.accept().await {
+                    Ok((stream, _addr)) => {
+                        // Try to extract peer credentials for the PID
+                        let pid = stream
+                            .peer_cred()
+                            .ok()
+                            .and_then(|cred| cred.pid().map(|p| p as u32));
+
+                        use std::os::unix::io::AsRawFd;
+                        let fd = stream.as_raw_fd();
+
+                        if event_tx
+                            .send(WaylandServerEvent::ClientConnected { fd, pid })
+                            .await
+                            .is_err()
+                        {
+                            tracing::debug!("Event channel closed, shutting down accept loop");
+                            break;
+                        }
+
+                        tracing::debug!(
+                            pid = ?pid,
+                            "Accepted Wayland client connection"
+                        );
+
+                        // Keep the stream alive — in a real compositor this would be
+                        // handed off to the protocol dispatch layer. For now we leak
+                        // the fd intentionally so the connection stays open.
+                        std::mem::forget(stream);
+                    }
+                    Err(e) => {
+                        tracing::error!(error = %e, "Failed to accept Wayland client");
+                        // Transient errors (EMFILE, ENFILE) — continue.
+                        // Fatal errors will manifest as repeated failures and the
+                        // channel will eventually be dropped.
+                        continue;
+                    }
+                }
+            }
+
+            let _ = event_tx.send(WaylandServerEvent::Shutdown).await;
+            tracing::info!("Wayland server accept loop exited");
+        });
+
+        Ok(())
+    }
+}
+
+#[cfg(feature = "wayland")]
+pub use wayland_accept::{
+    start_server, WaylandServer, WaylandServerConfig, WaylandServerEvent,
+};
+
+// ============================================================================
 // Stub when wayland feature is NOT enabled
 // ============================================================================
 

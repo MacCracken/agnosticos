@@ -163,7 +163,15 @@ impl LocalRegistry {
     }
 
     /// Install a package from a `.agnos-agent` tarball.
-    pub fn install_package(&mut self, tarball_path: &Path) -> Result<MarketplaceInstallResult> {
+    ///
+    /// If `keyring` is `Some`, the package signature is verified against the
+    /// publisher key before extraction. Pass `None` to skip verification
+    /// (dev / unsigned-package mode).
+    pub fn install_package(
+        &mut self,
+        tarball_path: &Path,
+        keyring: Option<&PublisherKeyring>,
+    ) -> Result<MarketplaceInstallResult> {
         // Check file size
         let metadata = std::fs::metadata(tarball_path)
             .with_context(|| format!("Failed to stat {}", tarball_path.display()))?;
@@ -196,6 +204,45 @@ impl LocalRegistry {
 
         // Extract and parse manifest
         let manifest = extract_manifest_from_tarball(&tarball_data)?;
+
+        // Verify signature if a keyring was provided
+        if let Some(kr) = keyring {
+            let key_id = &manifest.publisher.key_id;
+            let kv = kr
+                .get_current_key(key_id)
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "No trusted key found for publisher key_id '{}' — \
+                         package signature cannot be verified",
+                        key_id
+                    )
+                })?;
+            let verifying_key = kv.verifying_key().context(
+                "Failed to decode publisher verifying key from keyring",
+            )?;
+
+            // Signature is expected as a `.sig` sidecar file next to the tarball
+            let sig_path = tarball_path.with_extension("sig");
+            let sig_bytes = std::fs::read(&sig_path).with_context(|| {
+                format!(
+                    "Signature file not found at {} — cannot verify package",
+                    sig_path.display()
+                )
+            })?;
+
+            trust::verify_signature(&tarball_data, &sig_bytes, &verifying_key)
+                .context("Package signature verification failed")?;
+
+            info!(
+                "Verified signature for package {} (key_id={})",
+                manifest.agent.name, key_id
+            );
+        } else {
+            debug!(
+                "Skipping signature verification for {} (no keyring provided)",
+                manifest.agent.name
+            );
+        }
 
         // Validate manifest
         let errors = manifest.validate();
@@ -510,7 +557,7 @@ mod tests {
         let tarball_path = dir.path().join("test-pkg.agnos-agent");
         std::fs::write(&tarball_path, &tarball).unwrap();
 
-        let result = registry.install_package(&tarball_path).unwrap();
+        let result = registry.install_package(&tarball_path, None).unwrap();
         assert_eq!(result.name, "test-pkg");
         assert_eq!(result.version, "1.0.0");
         assert!(result.upgraded_from.is_none());
@@ -531,7 +578,7 @@ mod tests {
         let tarball_path = dir.path().join("test.agnos-agent");
         std::fs::write(&tarball_path, &tarball).unwrap();
 
-        registry.install_package(&tarball_path).unwrap();
+        registry.install_package(&tarball_path, None).unwrap();
 
         let pkg = registry.get_package("test-pkg").unwrap();
         assert_eq!(pkg.version(), "1.0.0");
@@ -547,7 +594,7 @@ mod tests {
         let tarball = create_test_tarball(&manifest);
         let tarball_path = dir.path().join("v1.agnos-agent");
         std::fs::write(&tarball_path, &tarball).unwrap();
-        registry.install_package(&tarball_path).unwrap();
+        registry.install_package(&tarball_path, None).unwrap();
 
         // Upgrade
         manifest.agent.version = "2.0.0".to_string();
@@ -555,7 +602,7 @@ mod tests {
         let tarball_path2 = dir.path().join("v2.agnos-agent");
         std::fs::write(&tarball_path2, &tarball2).unwrap();
 
-        let result = registry.install_package(&tarball_path2).unwrap();
+        let result = registry.install_package(&tarball_path2, None).unwrap();
         assert_eq!(result.upgraded_from, Some("1.0.0".to_string()));
         assert_eq!(result.version, "2.0.0");
         assert_eq!(registry.len(), 1);
@@ -570,7 +617,7 @@ mod tests {
         let tarball = create_test_tarball(&manifest);
         let tarball_path = dir.path().join("test.agnos-agent");
         std::fs::write(&tarball_path, &tarball).unwrap();
-        registry.install_package(&tarball_path).unwrap();
+        registry.install_package(&tarball_path, None).unwrap();
 
         let result = registry.uninstall_package("test-pkg").unwrap();
         assert_eq!(result.name, "test-pkg");
@@ -594,7 +641,7 @@ mod tests {
         let tarball = create_test_tarball(&manifest);
         let tarball_path = dir.path().join("test.agnos-agent");
         std::fs::write(&tarball_path, &tarball).unwrap();
-        registry.install_package(&tarball_path).unwrap();
+        registry.install_package(&tarball_path, None).unwrap();
 
         // Search by name
         assert_eq!(registry.search("test").len(), 1);
@@ -615,7 +662,7 @@ mod tests {
         let tarball_path = dir.path().join("test.agnos-agent");
         std::fs::write(&tarball_path, &tarball).unwrap();
 
-        let result = registry.install_package(&tarball_path);
+        let result = registry.install_package(&tarball_path, None);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("quota"));
     }
@@ -644,7 +691,7 @@ mod tests {
         let tarball = create_test_tarball(&manifest);
         let tarball_path = dir.path().join("test.agnos-agent");
         std::fs::write(&tarball_path, &tarball).unwrap();
-        registry.install_package(&tarball_path).unwrap();
+        registry.install_package(&tarball_path, None).unwrap();
 
         assert!(registry.total_installed_size() > 0);
     }
@@ -660,7 +707,7 @@ mod tests {
             let tarball = create_test_tarball(&manifest);
             let tarball_path = dir.path().join("test.agnos-agent");
             std::fs::write(&tarball_path, &tarball).unwrap();
-            registry.install_package(&tarball_path).unwrap();
+            registry.install_package(&tarball_path, None).unwrap();
         }
 
         // Reload and verify
@@ -682,7 +729,7 @@ mod tests {
         let tarball_path = dir.path().join("bad.agnos-agent");
         std::fs::write(&tarball_path, &tarball).unwrap();
 
-        assert!(registry.install_package(&tarball_path).is_err());
+        assert!(registry.install_package(&tarball_path, None).is_err());
     }
 
     #[test]
@@ -701,5 +748,160 @@ mod tests {
         let tarball = create_test_tarball(&manifest);
         let extracted = extract_manifest_from_tarball(&tarball).unwrap();
         assert_eq!(extracted.agent.name, "test-pkg");
+    }
+
+    // -----------------------------------------------------------------------
+    // Signature verification integration tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_install_with_valid_signature() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut registry = LocalRegistry::new(dir.path()).unwrap();
+
+        // Generate a keypair and build a keyring
+        let (sk, vk, key_id) = trust::generate_keypair();
+        let keys_dir = tempfile::tempdir().unwrap();
+        let mut keyring = trust::PublisherKeyring::new(keys_dir.path());
+        keyring.add_key(trust::KeyVersion {
+            key_id: key_id.clone(),
+            valid_from: chrono::Utc::now() - chrono::Duration::hours(1),
+            valid_until: None,
+            public_key_hex: trust::key_id_from_verifying_key(&vk)
+                .chars()
+                .collect::<String>(), // this is just the first 8 bytes; we need full key
+        });
+        // Actually add the full public key hex
+        let mut keyring = trust::PublisherKeyring::new(keys_dir.path());
+        let full_hex: String = vk.to_bytes().iter().map(|b| format!("{:02x}", b)).collect();
+        keyring.add_key(trust::KeyVersion {
+            key_id: key_id.clone(),
+            valid_from: chrono::Utc::now() - chrono::Duration::hours(1),
+            valid_until: None,
+            public_key_hex: full_hex,
+        });
+
+        // Create manifest with matching key_id
+        let mut manifest = sample_manifest();
+        manifest.publisher.key_id = key_id;
+
+        let tarball = create_test_tarball(&manifest);
+        let tarball_path = dir.path().join("signed.agnos-agent");
+        std::fs::write(&tarball_path, &tarball).unwrap();
+
+        // Create signature sidecar
+        let sig = trust::sign_data(&tarball, &sk);
+        let sig_path = tarball_path.with_extension("sig");
+        std::fs::write(&sig_path, &sig).unwrap();
+
+        let result = registry.install_package(&tarball_path, Some(&keyring));
+        assert!(result.is_ok(), "Install with valid signature should succeed");
+        assert_eq!(result.unwrap().name, "test-pkg");
+    }
+
+    #[test]
+    fn test_install_with_invalid_signature() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut registry = LocalRegistry::new(dir.path()).unwrap();
+
+        let (sk, _vk, key_id) = trust::generate_keypair();
+        let (_sk2, vk2, _key_id2) = trust::generate_keypair();
+
+        // Keyring has a different key than the one that signed
+        let keys_dir = tempfile::tempdir().unwrap();
+        let mut keyring = trust::PublisherKeyring::new(keys_dir.path());
+        let full_hex: String = vk2.to_bytes().iter().map(|b| format!("{:02x}", b)).collect();
+        keyring.add_key(trust::KeyVersion {
+            key_id: key_id.clone(),
+            valid_from: chrono::Utc::now() - chrono::Duration::hours(1),
+            valid_until: None,
+            public_key_hex: full_hex,
+        });
+
+        let mut manifest = sample_manifest();
+        manifest.publisher.key_id = key_id;
+        let tarball = create_test_tarball(&manifest);
+        let tarball_path = dir.path().join("badsig.agnos-agent");
+        std::fs::write(&tarball_path, &tarball).unwrap();
+
+        // Sign with sk but keyring has vk2
+        let sig = trust::sign_data(&tarball, &sk);
+        let sig_path = tarball_path.with_extension("sig");
+        std::fs::write(&sig_path, &sig).unwrap();
+
+        let result = registry.install_package(&tarball_path, Some(&keyring));
+        assert!(result.is_err(), "Install with invalid signature should fail");
+        assert!(
+            result.unwrap_err().to_string().contains("verification failed"),
+            "Error should mention verification failure"
+        );
+    }
+
+    #[test]
+    fn test_install_with_missing_signature_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut registry = LocalRegistry::new(dir.path()).unwrap();
+
+        let (_sk, vk, key_id) = trust::generate_keypair();
+        let keys_dir = tempfile::tempdir().unwrap();
+        let mut keyring = trust::PublisherKeyring::new(keys_dir.path());
+        let full_hex: String = vk.to_bytes().iter().map(|b| format!("{:02x}", b)).collect();
+        keyring.add_key(trust::KeyVersion {
+            key_id: key_id.clone(),
+            valid_from: chrono::Utc::now() - chrono::Duration::hours(1),
+            valid_until: None,
+            public_key_hex: full_hex,
+        });
+
+        let mut manifest = sample_manifest();
+        manifest.publisher.key_id = key_id;
+        let tarball = create_test_tarball(&manifest);
+        let tarball_path = dir.path().join("nosig.agnos-agent");
+        std::fs::write(&tarball_path, &tarball).unwrap();
+        // No .sig file written
+
+        let result = registry.install_package(&tarball_path, Some(&keyring));
+        assert!(result.is_err(), "Install without signature file should fail");
+        assert!(
+            result.unwrap_err().to_string().contains("Signature file not found"),
+            "Error should mention missing signature file"
+        );
+    }
+
+    #[test]
+    fn test_install_with_unknown_key_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut registry = LocalRegistry::new(dir.path()).unwrap();
+
+        // Empty keyring — no keys loaded
+        let keys_dir = tempfile::tempdir().unwrap();
+        let keyring = trust::PublisherKeyring::new(keys_dir.path());
+
+        let manifest = sample_manifest(); // key_id = "abc12345"
+        let tarball = create_test_tarball(&manifest);
+        let tarball_path = dir.path().join("unknown.agnos-agent");
+        std::fs::write(&tarball_path, &tarball).unwrap();
+
+        let result = registry.install_package(&tarball_path, Some(&keyring));
+        assert!(result.is_err(), "Install with unknown key_id should fail");
+        assert!(
+            result.unwrap_err().to_string().contains("No trusted key found"),
+            "Error should mention missing key"
+        );
+    }
+
+    #[test]
+    fn test_install_without_keyring_skips_verification() {
+        // This is the dev-mode path: no keyring = no verification
+        let dir = tempfile::tempdir().unwrap();
+        let mut registry = LocalRegistry::new(dir.path()).unwrap();
+
+        let manifest = sample_manifest();
+        let tarball = create_test_tarball(&manifest);
+        let tarball_path = dir.path().join("devmode.agnos-agent");
+        std::fs::write(&tarball_path, &tarball).unwrap();
+
+        let result = registry.install_package(&tarball_path, None);
+        assert!(result.is_ok(), "Install without keyring should succeed (dev mode)");
     }
 }

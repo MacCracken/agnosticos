@@ -2,13 +2,13 @@
 # Cross-platform Kanban task management + daily rituals app.
 # Built with Flutter; packaged as .agnos-agent via agpkg pack-flutter.
 #
-# Status: STUB — complete when Photis Nadi reaches alpha.
+# Status: Ready for packaging — Photis Nadi 2026.3.9-1 is feature-complete.
 
 [package]
 name = "photisnadi"
-version = "2026.2.16"
+version = "2026.3.9"
 description = "Photis Nadi — Kanban task management with daily rituals"
-license = "Proprietary"
+license = "MIT"
 groups = ["desktop", "productivity", "flutter"]
 release = 1
 arch = "x86_64"
@@ -50,7 +50,7 @@ min_agnos_version = "2026.3.8"
 [marketplace.sandbox]
 seccomp_mode = "desktop"
 network_access = true
-allowed_hosts = ["*"]  # TODO: restrict to specific sync backends
+allowed_hosts = ["*.supabase.co", "*.supabase.in"]
 data_dir = "~/.local/share/photisnadi/"
 
 [[marketplace.sandbox.landlock]]
@@ -78,11 +78,15 @@ configure = ""
 make = "flutter build linux --release"
 check = "flutter test"
 install = """
-# Use agpkg pack-flutter to create .agnos-agent bundle
-# agpkg pack-flutter --build-dir build/linux/x64/release/bundle \\
-#   --name photisnadi --version $VERSION --publisher "Photis Nadi" \\
-#   --description "Kanban task management with daily rituals" \\
-#   --category productivity --network --output $PKG/
+# Pack Flutter frontend as .agnos-agent bundle
+agpkg pack-flutter --build-dir build/linux/x64/release/bundle \
+  --name photisnadi --version $VERSION --publisher "Photis Nadi" \
+  --description "Kanban task management with daily rituals" \
+  --category productivity --network --output $PKG/
+
+# Install REST API server (Dart native AOT binary)
+mkdir -p $PKG/usr/lib/photisnadi/bin
+dart compile exe bin/server.dart -o $PKG/usr/lib/photisnadi/bin/photisnadi-api
 
 # Desktop entry for aethersafha
 mkdir -p $PKG/usr/share/applications

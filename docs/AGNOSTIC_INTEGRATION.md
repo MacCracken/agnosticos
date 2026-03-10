@@ -320,6 +320,16 @@ OTEL_SERVICE_NAME=agnostic-qa
 | Environment profiles endpoint | ✅ Complete |
 | Vector search REST API | ✅ Complete |
 | OTLP collector configuration | ✅ Complete |
-| Agnostic agent registration with akd | 📋 Future (Phase 6+) |
+| Token budget pool dashboard (`GET /v1/tokens/pools`) | ✅ Complete |
+| Consumer health aggregation (`GET /v1/health/consumers`) | ✅ Complete |
+| Marketplace recipe (`recipes/marketplace/agnostic.toml`) | ✅ Complete (stub) |
+| Agnostic agent registration with daimon | ✅ Complete |
+| Service discovery (`GET /v1/discover`) | ✅ Complete |
+| Batch agent registration (`POST /v1/agents/register/batch`) | ✅ Complete |
+| Event stream SSE (`GET /v1/events/subscribe`) | ✅ Complete |
+| Event publish (`POST /v1/events/publish`) | ✅ Complete |
+| Event topics listing (`GET /v1/events/topics`) | ✅ Complete |
+| Sandbox profile listing (`GET /v1/sandbox/profiles/list`) | ✅ Complete |
+| SecureYeoman marketplace recipe (`recipes/marketplace/secureyeoman.toml`) | ✅ Complete |
 
 See [ADR-001](adr/adr-001-foundation-and-architecture.md) for the full implementation plan.

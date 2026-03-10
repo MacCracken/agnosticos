@@ -180,3 +180,93 @@ pub async fn dashboard_latest_handler(State(state): State<ApiState>) -> impl Int
             .into_response(),
     }
 }
+
+/// GET /v1/health/consumers — aggregated health of registered consumer services.
+///
+/// Derives consumer health from the latest dashboard snapshot per source and
+/// registered agent heartbeat staleness. A consumer is "healthy" if its most
+/// recent dashboard snapshot is < 120s old and all agents report non-error status.
+pub async fn consumer_health_handler(State(state): State<ApiState>) -> impl IntoResponse {
+    let snapshots = state.dashboard_snapshots.read().await;
+    let agents = state.agents_read().await;
+    let now = Utc::now();
+
+    // Group latest snapshot per source
+    let mut latest_per_source: HashMap<String, &StoredDashboardSnapshot> = HashMap::new();
+    for snap in snapshots.iter() {
+        latest_per_source.insert(snap.payload.source.clone(), snap);
+    }
+
+    let mut consumers: Vec<serde_json::Value> = Vec::new();
+
+    for (source, snap) in &latest_per_source {
+        let age_secs = (now - snap.received_at).num_seconds().max(0) as u64;
+        let stale = age_secs > 120;
+
+        let agent_errors: usize = snap
+            .payload
+            .agents
+            .iter()
+            .filter(|a| a.status == "error")
+            .count();
+
+        let status = if stale {
+            "stale"
+        } else if agent_errors > 0 {
+            "degraded"
+        } else {
+            "healthy"
+        };
+
+        consumers.push(serde_json::json!({
+            "source": source,
+            "status": status,
+            "last_sync_seconds_ago": age_secs,
+            "agents_total": snap.payload.agents.len(),
+            "agents_error": agent_errors,
+            "snapshot_id": snap.snapshot_id,
+        }));
+    }
+
+    // Also report any registered agents whose source projects have no dashboard snapshot
+    let snapshot_sources: std::collections::HashSet<&String> =
+        latest_per_source.keys().collect();
+    let mut orphan_agents: Vec<serde_json::Value> = Vec::new();
+    for (id, entry) in agents.iter() {
+        let agent_source = entry.detail.metadata.get("source_project");
+        if let Some(src) = agent_source {
+            if !snapshot_sources.contains(src) {
+                let hb_age = entry
+                    .detail
+                    .last_heartbeat
+                    .map(|t| (now - t).num_seconds().max(0) as u64);
+                orphan_agents.push(serde_json::json!({
+                    "agent_id": id.to_string(),
+                    "agent_name": entry.detail.name,
+                    "source_project": src,
+                    "last_heartbeat_seconds_ago": hb_age,
+                }));
+            }
+        }
+    }
+
+    let overall = if consumers.iter().all(|c| c["status"] == "healthy") && orphan_agents.is_empty()
+    {
+        "healthy"
+    } else if consumers.iter().any(|c| c["status"] == "stale") {
+        "degraded"
+    } else {
+        "ok"
+    };
+
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "status": overall,
+            "consumers": consumers,
+            "orphan_agents": orphan_agents,
+            "total_consumers": consumers.len(),
+        })),
+    )
+        .into_response()
+}

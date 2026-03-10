@@ -3401,4 +3401,463 @@ mod tests {
         let resp = app.clone().oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::FORBIDDEN);
     }
+
+    // ===== Consumer health tests =====
+
+    #[tokio::test]
+    async fn test_consumer_health_no_data() {
+        let app = test_app();
+        let req = Request::builder()
+            .uri("/v1/health/consumers")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["status"], "healthy");
+        assert_eq!(json["total_consumers"], 0);
+        assert!(json["consumers"].as_array().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_consumer_health_with_recent_sync() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        // Sync a dashboard snapshot
+        let req_body = serde_json::json!({
+            "source": "agnostic",
+            "agents": [
+                {"name": "qa-manager", "status": "active"},
+                {"name": "senior-qa", "status": "idle"}
+            ]
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/dashboard/sync")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        app.clone().oneshot(req).await.unwrap();
+
+        // Check consumer health
+        let req = Request::builder()
+            .uri("/v1/health/consumers")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["total_consumers"], 1);
+        let consumer = &json["consumers"][0];
+        assert_eq!(consumer["source"], "agnostic");
+        assert_eq!(consumer["status"], "healthy");
+        assert_eq!(consumer["agents_total"], 2);
+        assert_eq!(consumer["agents_error"], 0);
+    }
+
+    #[tokio::test]
+    async fn test_consumer_health_degraded_with_errors() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        // Sync a snapshot with an erroring agent
+        let req_body = serde_json::json!({
+            "source": "secureyeoman",
+            "agents": [
+                {"name": "yeoman-agent", "status": "error"},
+                {"name": "yeoman-worker", "status": "active"}
+            ]
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/dashboard/sync")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        app.clone().oneshot(req).await.unwrap();
+
+        // Check consumer health
+        let req = Request::builder()
+            .uri("/v1/health/consumers")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let consumer = &json["consumers"][0];
+        assert_eq!(consumer["status"], "degraded");
+        assert_eq!(consumer["agents_error"], 1);
+    }
+
+    #[tokio::test]
+    async fn test_consumer_health_multiple_sources() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        // Sync from two sources
+        for source in &["agnostic", "secureyeoman"] {
+            let req_body = serde_json::json!({
+                "source": source,
+                "agents": [{"name": "agent-1", "status": "active"}]
+            });
+            let req = Request::builder()
+                .method("POST")
+                .uri("/v1/dashboard/sync")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+                .unwrap();
+            app.clone().oneshot(req).await.unwrap();
+        }
+
+        let req = Request::builder()
+            .uri("/v1/health/consumers")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["total_consumers"], 2);
+    }
+
+    // -----------------------------------------------------------------------
+    // Service discovery (GET /v1/discover)
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_service_discovery() {
+        let app = test_app();
+        let req = Request::builder()
+            .uri("/v1/discover")
+            .body(Body::empty())
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(json["service"], "agnos-agent-runtime");
+        assert_eq!(json["codename"], "daimon");
+        assert_eq!(json["protocol_version"], "1.0");
+        assert!(json["capabilities"].as_array().unwrap().len() > 10);
+        assert!(json["endpoints"]["agents_register"].is_string());
+        assert!(json["endpoints"]["agents_register_batch"].is_string());
+        assert!(json["endpoints"]["events_subscribe"].is_string());
+        assert!(json["companion_services"]["llm_gateway"]["codename"] == "hoosh");
+    }
+
+    // -----------------------------------------------------------------------
+    // Batch agent registration (POST /v1/agents/register/batch)
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_batch_register_agents() {
+        let app = test_app();
+        let req_body = serde_json::json!({
+            "source": "secureyeoman",
+            "agents": [
+                {"name": "sy-researcher", "capabilities": ["web:search", "llm:inference"]},
+                {"name": "sy-coder", "capabilities": ["code:execute", "git:commit"]},
+                {"name": "sy-analyst", "capabilities": ["data:analyze"]}
+            ]
+        });
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/agents/register/batch")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(json["source"], "secureyeoman");
+        assert_eq!(json["registered"], 3);
+        assert_eq!(json["errors"], 0);
+        assert_eq!(json["results"].as_array().unwrap().len(), 3);
+        // All should have UUIDs
+        for result in json["results"].as_array().unwrap() {
+            assert!(result["id"].is_string());
+            assert_eq!(result["status"], "registered");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_batch_register_idempotent() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        // First batch registration
+        let req_body = serde_json::json!({
+            "source": "secureyeoman",
+            "agents": [
+                {"name": "sy-worker-1", "capabilities": ["llm:inference"]}
+            ]
+        });
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/agents/register/batch")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json1: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let first_id = json1["results"][0]["id"].as_str().unwrap().to_string();
+
+        // Second batch registration with same agent
+        let app2 = build_router(state);
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/agents/register/batch")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        let resp = app2.oneshot(req).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json2: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        // Should be marked as already_registered with same ID
+        assert_eq!(json2["already_registered"], 1);
+        assert_eq!(json2["registered"], 0);
+        assert_eq!(
+            json2["results"][0]["id"].as_str().unwrap(),
+            first_id
+        );
+        assert_eq!(json2["results"][0]["status"], "already_registered");
+    }
+
+    #[tokio::test]
+    async fn test_batch_register_empty() {
+        let app = test_app();
+        let req_body = serde_json::json!({
+            "source": "secureyeoman",
+            "agents": []
+        });
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/agents/register/batch")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_batch_register_mixed_results() {
+        let app = test_app();
+        let req_body = serde_json::json!({
+            "source": "secureyeoman",
+            "agents": [
+                {"name": "valid-agent", "capabilities": ["llm"]},
+                {"name": "", "capabilities": []},
+                {"name": "another-valid", "capabilities": ["search"]}
+            ]
+        });
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/agents/register/batch")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(json["registered"], 2);
+        assert_eq!(json["errors"], 1);
+        // Empty name should have error
+        assert_eq!(json["results"][1]["status"], "error");
+        assert!(json["results"][1]["error"].is_string());
+    }
+
+    // -----------------------------------------------------------------------
+    // Event pub/sub (POST /v1/events/publish, GET /v1/events/topics)
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_events_publish() {
+        let app = test_app();
+        let req_body = serde_json::json!({
+            "topic": "agent.task.completed",
+            "sender": "secureyeoman",
+            "payload": {"task_id": "abc123", "duration_ms": 1500},
+            "correlation_id": "corr-001"
+        });
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/events/publish")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(json["topic"], "agent.task.completed");
+        // No subscribers yet, so delivered_to = 0
+        assert_eq!(json["delivered_to"], 0);
+    }
+
+    #[tokio::test]
+    async fn test_events_publish_empty_topic() {
+        let app = test_app();
+        let req_body = serde_json::json!({
+            "topic": "",
+            "sender": "secureyeoman",
+            "payload": {}
+        });
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/events/publish")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_events_topics_empty() {
+        let app = test_app();
+        let req = Request::builder()
+            .uri("/v1/events/topics")
+            .body(Body::empty())
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(json["total_topics"], 0);
+        assert!(json["topics"].as_array().unwrap().is_empty());
+    }
+
+    // -----------------------------------------------------------------------
+    // Sandbox profile listing (GET /v1/sandbox/profiles/list)
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_sandbox_profiles_list() {
+        let app = test_app();
+        let req = Request::builder()
+            .uri("/v1/sandbox/profiles/list")
+            .body(Body::empty())
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        let profiles = json["profiles"].as_array().unwrap();
+        // 6 presets + 1 app-specific (photis-nadi) = 7
+        assert_eq!(profiles.len(), 7);
+        assert_eq!(json["total"], 7);
+
+        // Verify photis-nadi is included
+        let photis = profiles.iter().find(|p| p["preset"] == "photis-nadi");
+        assert!(photis.is_some());
+        assert_eq!(photis.unwrap()["app_specific"], true);
+
+        // Verify browser preset has high memory
+        let browser = profiles.iter().find(|p| p["preset"] == "browser");
+        assert!(browser.is_some());
+        assert_eq!(browser.unwrap()["max_memory_mb"], 2048);
+    }
+
+    // -----------------------------------------------------------------------
+    // Batch register + agents list integration
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_batch_register_agents_visible_in_list() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        // Register a batch
+        let req_body = serde_json::json!({
+            "source": "secureyeoman",
+            "agents": [
+                {"name": "sy-brain", "capabilities": ["llm:inference", "memory:store"]},
+                {"name": "sy-reviewer", "capabilities": ["code:review"]}
+            ]
+        });
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/agents/register/batch")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        app.oneshot(req).await.unwrap();
+
+        // List agents
+        let app2 = build_router(state);
+        let req = Request::builder()
+            .uri("/v1/agents")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app2.oneshot(req).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(json["total"], 2);
+        let agents = json["agents"].as_array().unwrap();
+        let names: Vec<&str> = agents.iter().map(|a| a["name"].as_str().unwrap()).collect();
+        assert!(names.contains(&"sy-brain"));
+        assert!(names.contains(&"sy-reviewer"));
+
+        // Check source metadata was set
+        for agent in agents {
+            assert_eq!(agent["metadata"]["source"], "secureyeoman");
+        }
+    }
 }

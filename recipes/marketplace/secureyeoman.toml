@@ -1,0 +1,182 @@
+# SecureYeoman — Sovereign AI agent platform for AGNOS marketplace
+# Multi-agent orchestration with 279 MCP tools, 31 platform integrations,
+# enterprise security, and real-time dashboard. TypeScript/Bun + React.
+#
+# Status: Ready for packaging — SecureYeoman 2026.3.8 is feature-complete.
+# Already uses ghcr.io/maccracken/agnosticos:latest as Docker base.
+
+[package]
+name = "secureyeoman"
+version = "2026.3.8"
+description = "SecureYeoman — Sovereign AI agent platform with multi-agent orchestration"
+license = "AGPL-3.0-only"
+groups = ["server", "ai", "agents"]
+release = 1
+arch = "x86_64"
+
+[source]
+# Single binary compiled via Bun; no upstream tarball.
+# Build with: npm run build:binary (produces secureyeoman-linux-x64)
+local = true
+build_dir = "dist"
+
+[depends]
+runtime = [
+    "glibc",
+    "openssl",
+    "sqlite",
+    "zlib",
+]
+build = [
+    "bun",
+    "nodejs",
+    "openssl-dev",
+    "zlib-dev",
+]
+
+[marketplace]
+category = "ai-platform"
+runtime = "native-binary"
+publisher = "SecureYeoman"
+tags = ["ai", "agents", "mcp", "orchestration", "security", "llm", "automation", "enterprise"]
+min_agnos_version = "2026.3.8"
+flagship = true
+
+[marketplace.sandbox]
+seccomp_mode = "desktop"
+network_access = true
+# AGNOS local services + external integrations (Slack, Discord, GitHub, etc.)
+# External API access is gated per-integration by SecureYeoman's own RBAC
+allowed_hosts = [
+    "localhost",
+    "127.0.0.1",
+    # GitHub/GitLab APIs
+    "api.github.com", "*.github.com",
+    "gitlab.com", "*.gitlab.com",
+    # AI providers (fallback when hoosh gateway is unreachable)
+    "api.anthropic.com",
+    "api.openai.com",
+    "generativelanguage.googleapis.com",
+    "api.deepseek.com",
+    "api.mistral.ai",
+    "api.groq.com",
+    "api.x.ai",
+    "openrouter.ai",
+    # Messaging integrations
+    "slack.com", "*.slack.com",
+    "discord.com", "*.discord.com",
+    "graph.microsoft.com",
+    "api.telegram.org",
+    # Productivity integrations
+    "api.notion.com",
+    "api.linear.app",
+    "*.atlassian.net",
+    # Vector store backends
+    "*.qdrant.io",
+]
+data_dir = "~/.local/share/secureyeoman/"
+
+[[marketplace.sandbox.landlock]]
+path = "~/.local/share/secureyeoman/"
+access = "rw"
+
+[[marketplace.sandbox.landlock]]
+path = "/tmp"
+access = "rw"
+
+# Font access for dashboard rendering
+[[marketplace.sandbox.landlock]]
+path = "/usr/share/fonts"
+access = "ro"
+
+# Wayland socket
+[[marketplace.sandbox.landlock]]
+path = "/run/user/"
+access = "ro"
+
+# IPC with AGNOS agent runtime (daimon)
+[[marketplace.sandbox.landlock]]
+path = "/run/agnos/"
+access = "rw"
+
+# PostgreSQL data (embedded or sidecar)
+[[marketplace.sandbox.landlock]]
+path = "~/.local/share/secureyeoman/pgdata/"
+access = "rw"
+
+[marketplace.services]
+# SecureYeoman exposes: core API (18789), dashboard (3000), MCP service (3001)
+ports = [18789, 3000, 3001]
+# Uses AGNOS LLM Gateway (hoosh) and Agent Runtime (daimon)
+depends_on = ["llm-gateway", "agent-runtime"]
+
+[marketplace.wayland]
+requirements = ["core", "xdg-shell"]
+
+[build]
+pre_build = """
+# Install dependencies
+npm install --frozen-lockfile
+"""
+configure = ""
+make = """
+# Build all packages
+npm run build
+
+# Compile single binary (Bun standalone)
+npm run build:binary
+"""
+check = """
+npm run test
+"""
+install = """
+# Install the single binary
+mkdir -p $PKG/usr/lib/secureyeoman/bin
+cp dist/secureyeoman-linux-x64 $PKG/usr/lib/secureyeoman/bin/secureyeoman
+chmod +x $PKG/usr/lib/secureyeoman/bin/secureyeoman
+
+# Install default configuration
+mkdir -p $PKG/etc/secureyeoman
+cp .env.example $PKG/etc/secureyeoman/env.defaults
+
+# Symlink into PATH
+mkdir -p $PKG/usr/bin
+ln -sf /usr/lib/secureyeoman/bin/secureyeoman $PKG/usr/bin/secureyeoman
+
+# Desktop entry for aethersafha (opens dashboard)
+mkdir -p $PKG/usr/share/applications
+cat > $PKG/usr/share/applications/secureyeoman.desktop << 'EOF'
+[Desktop Entry]
+Name=SecureYeoman
+Comment=Sovereign AI agent platform
+GenericName=AI Platform
+Exec=secureyeoman --serve
+Icon=secureyeoman
+Terminal=false
+Type=Application
+Categories=Development;ArtificialIntelligence;
+StartupNotify=true
+StartupWMClass=secureyeoman
+EOF
+
+# Systemd service unit for headless/server mode
+mkdir -p $PKG/usr/lib/systemd/user
+cat > $PKG/usr/lib/systemd/user/secureyeoman.service << 'EOF'
+[Unit]
+Description=SecureYeoman AI Agent Platform
+After=network.target agnos-llm-gateway.service agnos-agent-runtime.service
+Wants=agnos-llm-gateway.service agnos-agent-runtime.service
+
+[Service]
+Type=simple
+ExecStart=/usr/lib/secureyeoman/bin/secureyeoman --serve
+Environment=AGNOS_GATEWAY_URL=http://127.0.0.1:8088
+Environment=AGNOS_RUNTIME_URL=http://127.0.0.1:8090
+Environment=SECUREYEOMAN_DATA_DIR=%h/.local/share/secureyeoman
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+EOF
+"""

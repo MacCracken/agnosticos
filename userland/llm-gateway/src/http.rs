@@ -14,7 +14,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::limit::RequestBodyLimitLayer;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use crate::{GatewayConfig, LlmGateway};
 
@@ -64,6 +64,8 @@ pub async fn start_http_server(
         .route("/v1/tokens/reserve", post(tokens_reserve))
         .route("/v1/tokens/report", post(tokens_report))
         .route("/v1/tokens/release", post(tokens_release))
+        .route("/v1/tokens/pools", get(tokens_pools))
+        .route("/v1/tokens/pools/:pool_name", get(tokens_pool_detail))
         .layer(body_limit)
         .layer(cors)
         .with_state(state);
@@ -94,7 +96,6 @@ struct ChatCompletionRequest {
     #[serde(default)]
     top_p: Option<f32>,
     #[serde(default)]
-    #[allow(dead_code)]
     stream: Option<bool>,
     /// OpenAI tool definitions for function calling
     #[serde(default)]
@@ -189,7 +190,7 @@ async fn chat_completions(
     State(state): State<AppState>,
     headers: axum::http::HeaderMap,
     Json(payload): Json<ChatCompletionRequest>,
-) -> impl IntoResponse {
+) -> axum::response::Response {
     // Generate request ID for tracing
     let request_id = uuid::Uuid::new_v4().to_string();
 
@@ -243,7 +244,8 @@ async fn chat_completions(
                             })
                             .unwrap(),
                         ),
-                    );
+                    )
+                        .into_response();
                 }
             }
             None => {
@@ -262,7 +264,8 @@ async fn chat_completions(
                         })
                         .unwrap(),
                     ),
-                );
+                )
+                    .into_response();
             }
         }
     }
@@ -294,7 +297,15 @@ async fn chat_completions(
     };
     request.validate();
 
-    // Run inference
+    // Branch: streaming vs non-streaming
+    if payload.stream == Some(true) {
+        return chat_completions_stream(
+            state, request, agent_id, payload.model, request_id, personality_id,
+        )
+        .await;
+    }
+
+    // Non-streaming inference
     match state.gateway.infer(request, agent_id).await {
         Ok(response) => {
             let now = std::time::SystemTime::now()
@@ -334,6 +345,7 @@ async fn chat_completions(
                 resp_headers,
                 Json(serde_json::to_value(completion).unwrap()),
             )
+                .into_response()
         }
         Err(e) => {
             // Log full error internally but return sanitized message to client
@@ -355,8 +367,107 @@ async fn chat_completions(
                     .unwrap(),
                 ),
             )
+                .into_response()
         }
     }
+}
+
+/// SSE streaming response for `stream: true` chat completions.
+/// Emits OpenAI-compatible `data: {...}\n\n` events followed by `data: [DONE]\n\n`.
+async fn chat_completions_stream(
+    state: AppState,
+    request: agnos_common::InferenceRequest,
+    agent_id: Option<agnos_common::AgentId>,
+    model: String,
+    request_id: String,
+    _personality_id: Option<String>,
+) -> axum::response::Response {
+    let completion_id = format!("chatcmpl-{}", uuid::Uuid::new_v4());
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    let mut rx = match state.gateway.infer_stream(request, agent_id).await {
+        Ok(rx) => rx,
+        Err(e) => {
+            error!(model = %model, error = %e, "Stream inference failed");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({
+                    "error": {
+                        "message": "Streaming inference failed. Check server logs for details.",
+                        "type": "internal_error"
+                    }
+                })),
+            )
+                .into_response();
+        }
+    };
+
+    let stream = async_stream::stream! {
+        loop {
+            match rx.recv().await {
+                Some(Ok(chunk)) => {
+                    let event = serde_json::json!({
+                        "id": completion_id,
+                        "object": "chat.completion.chunk",
+                        "created": now,
+                        "model": model,
+                        "choices": [{
+                            "index": 0,
+                            "delta": {"content": chunk},
+                            "finish_reason": serde_json::Value::Null
+                        }]
+                    });
+                    yield Ok::<_, std::convert::Infallible>(
+                        format!("data: {}\n\n", serde_json::to_string(&event).unwrap())
+                    );
+                }
+                Some(Err(e)) => {
+                    warn!(error = %e, "Stream chunk error");
+                    // Send error event and terminate
+                    let event = serde_json::json!({
+                        "error": {
+                            "message": "Stream interrupted",
+                            "type": "stream_error"
+                        }
+                    });
+                    yield Ok(format!("data: {}\n\n", serde_json::to_string(&event).unwrap()));
+                    break;
+                }
+                None => {
+                    // Stream finished — send final chunk with finish_reason and [DONE]
+                    let final_event = serde_json::json!({
+                        "id": completion_id,
+                        "object": "chat.completion.chunk",
+                        "created": now,
+                        "model": model,
+                        "choices": [{
+                            "index": 0,
+                            "delta": {},
+                            "finish_reason": "stop"
+                        }]
+                    });
+                    yield Ok(format!("data: {}\n\n", serde_json::to_string(&final_event).unwrap()));
+                    yield Ok("data: [DONE]\n\n".to_string());
+                    break;
+                }
+            }
+        }
+    };
+
+    let body = axum::body::Body::from_stream(stream);
+
+    axum::response::Response::builder()
+        .status(StatusCode::OK)
+        .header("content-type", "text/event-stream")
+        .header("cache-control", "no-cache")
+        .header("connection", "keep-alive")
+        .header("x-request-id", &request_id)
+        .body(body)
+        .unwrap()
+        .into_response()
 }
 
 async fn list_models(State(state): State<AppState>) -> Json<ModelsResponse> {
@@ -747,6 +858,90 @@ async fn tokens_release(
             HeaderMap::new(),
             Json(serde_json::json!({
                 "error": format!("Budget pool '{}' not found", payload.pool),
+                "code": "pool_not_found"
+            })),
+        ),
+    }
+}
+
+/// GET /v1/tokens/pools — list all budget pools with summary metrics.
+async fn tokens_pools(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    if let Err(resp) = check_auth(&state, &headers) {
+        return resp;
+    }
+
+    let mgr = state.gateway.budget_manager_read().await;
+    let summaries: Vec<serde_json::Value> = mgr
+        .all_pools()
+        .iter()
+        .map(|pool| {
+            let summary = pool.summary();
+            serde_json::json!({
+                "pool_name": summary.pool_name,
+                "total": summary.total,
+                "used": summary.used,
+                "remaining": summary.total.saturating_sub(summary.used),
+                "usage_percent": if summary.total > 0 {
+                    summary.used as f64 / summary.total as f64
+                } else {
+                    0.0
+                },
+                "period_remaining_seconds": summary.period_remaining_seconds,
+                "project_count": summary.projects.len(),
+            })
+        })
+        .collect();
+
+    (
+        StatusCode::OK,
+        HeaderMap::new(),
+        Json(serde_json::json!({
+            "pools": summaries,
+            "total_pools": summaries.len()
+        })),
+    )
+}
+
+/// GET /v1/tokens/pools/:pool_name — detailed view of a single budget pool.
+async fn tokens_pool_detail(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::extract::Path(pool_name): axum::extract::Path<String>,
+) -> impl IntoResponse {
+    if let Err(resp) = check_auth(&state, &headers) {
+        return resp;
+    }
+
+    let mgr = state.gateway.budget_manager_read().await;
+    match mgr.get_pool(&pool_name) {
+        Some(pool) => {
+            let summary = pool.summary();
+            (
+                StatusCode::OK,
+                HeaderMap::new(),
+                Json(serde_json::json!({
+                    "pool_name": summary.pool_name,
+                    "total": summary.total,
+                    "used": summary.used,
+                    "remaining": summary.total.saturating_sub(summary.used),
+                    "usage_percent": if summary.total > 0 {
+                        summary.used as f64 / summary.total as f64
+                    } else {
+                        0.0
+                    },
+                    "period_remaining_seconds": summary.period_remaining_seconds,
+                    "projects": summary.projects,
+                })),
+            )
+        }
+        None => (
+            StatusCode::NOT_FOUND,
+            HeaderMap::new(),
+            Json(serde_json::json!({
+                "error": format!("Budget pool '{}' not found", pool_name),
                 "code": "pool_not_found"
             })),
         ),
@@ -2860,5 +3055,150 @@ mod tests {
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_tokens_pools_empty() {
+        let gateway = Arc::new(
+            LlmGateway::new(crate::GatewayConfig::default())
+                .await
+                .unwrap(),
+        );
+        let state = AppState {
+            gateway,
+            api_key: None,
+        };
+        let app = Router::new()
+            .route("/v1/tokens/pools", get(tokens_pools))
+            .with_state(state);
+
+        let req = Request::builder()
+            .method("GET")
+            .uri("/v1/tokens/pools")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["total_pools"], 0);
+        assert!(json["pools"].as_array().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_tokens_pools_with_data() {
+        let gateway = Arc::new(
+            LlmGateway::new(crate::GatewayConfig::default())
+                .await
+                .unwrap(),
+        );
+        // Seed a pool with data
+        {
+            let mut mgr = gateway.budget_manager_write().await;
+            let _ = mgr.create_pool("qa-pool", 100_000, chrono::Duration::seconds(3600));
+            if let Some(pool) = mgr.get_pool_mut("qa-pool") {
+                let _ = pool.allocate("agnostic", 50_000);
+                let _ = pool.consume("agnostic", 12_000);
+            }
+        }
+        let state = AppState {
+            gateway,
+            api_key: None,
+        };
+        let app = Router::new()
+            .route("/v1/tokens/pools", get(tokens_pools))
+            .with_state(state);
+
+        let req = Request::builder()
+            .method("GET")
+            .uri("/v1/tokens/pools")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["total_pools"], 1);
+        let pool = &json["pools"][0];
+        assert_eq!(pool["pool_name"], "qa-pool");
+        assert_eq!(pool["total"], 100_000);
+        assert_eq!(pool["used"], 12_000);
+        assert_eq!(pool["remaining"], 88_000);
+        assert_eq!(pool["project_count"], 1);
+    }
+
+    #[tokio::test]
+    async fn test_tokens_pool_detail_not_found() {
+        let gateway = Arc::new(
+            LlmGateway::new(crate::GatewayConfig::default())
+                .await
+                .unwrap(),
+        );
+        let state = AppState {
+            gateway,
+            api_key: None,
+        };
+        let app = Router::new()
+            .route("/v1/tokens/pools/:pool_name", get(tokens_pool_detail))
+            .with_state(state);
+
+        let req = Request::builder()
+            .method("GET")
+            .uri("/v1/tokens/pools/nonexistent")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["code"], "pool_not_found");
+    }
+
+    #[tokio::test]
+    async fn test_tokens_pool_detail_with_projects() {
+        let gateway = Arc::new(
+            LlmGateway::new(crate::GatewayConfig::default())
+                .await
+                .unwrap(),
+        );
+        {
+            let mut mgr = gateway.budget_manager_write().await;
+            let _ = mgr.create_pool("dev", 200_000, chrono::Duration::seconds(7200));
+            if let Some(pool) = mgr.get_pool_mut("dev") {
+                let _ = pool.allocate("agnostic", 100_000);
+                let _ = pool.allocate("secureyeoman", 80_000);
+                let _ = pool.consume("agnostic", 25_000);
+            }
+        }
+        let state = AppState {
+            gateway,
+            api_key: None,
+        };
+        let app = Router::new()
+            .route("/v1/tokens/pools/:pool_name", get(tokens_pool_detail))
+            .with_state(state);
+
+        let req = Request::builder()
+            .method("GET")
+            .uri("/v1/tokens/pools/dev")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["pool_name"], "dev");
+        assert_eq!(json["total"], 200_000);
+        assert_eq!(json["used"], 25_000);
+        let projects = json["projects"].as_array().unwrap();
+        assert_eq!(projects.len(), 2);
     }
 }

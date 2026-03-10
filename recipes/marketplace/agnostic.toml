@@ -1,0 +1,122 @@
+# Agnostic — Multi-agent QA platform for AGNOS marketplace
+# AI-driven QA testing with 6 specialized CrewAI agents, self-healing UI,
+# fuzzy verification, security compliance, and performance analysis.
+# Built with Python; packaged as .agnos-agent via Docker container.
+#
+# Status: STUB — complete when Agnostic reaches beta.
+
+[package]
+name = "agnostic"
+version = "2026.3.9"
+description = "Agnostic — AI-driven multi-agent QA platform"
+license = "MIT"
+groups = ["server", "qa", "python"]
+release = 1
+arch = "x86_64"
+
+[source]
+# Containerized Python application; no upstream tarball.
+# Build with: docker build -t agnostic .
+local = true
+build_dir = "."
+
+[depends]
+runtime = [
+    "glibc",
+    "python3",
+    "openssl",
+    "sqlite",
+    "libffi",
+    "zlib",
+]
+build = [
+    "python3",
+    "pip",
+    "openssl-dev",
+    "libffi-dev",
+    "zlib-dev",
+]
+
+[marketplace]
+category = "developer-tools"
+runtime = "python-container"
+publisher = "Agnostic"
+tags = ["qa", "testing", "ai-agents", "crewai", "security-compliance", "performance", "self-healing"]
+min_agnos_version = "2026.3.8"
+
+[marketplace.sandbox]
+seccomp_mode = "basic"
+network_access = true
+allowed_hosts = [
+    "localhost",
+    "127.0.0.1",
+    # LLM Gateway (hoosh) and Agent Runtime (daimon)
+    # External hosts restricted to AGNOS gateway — no direct LLM provider access needed
+]
+data_dir = "~/.local/share/agnostic/"
+
+[[marketplace.sandbox.landlock]]
+path = "~/.local/share/agnostic/"
+access = "rw"
+
+[[marketplace.sandbox.landlock]]
+path = "/tmp"
+access = "rw"
+
+# PostgreSQL data directory (embedded)
+[[marketplace.sandbox.landlock]]
+path = "/data"
+access = "rw"
+
+# Python packages and runtime (read-only)
+[[marketplace.sandbox.landlock]]
+path = "/usr/lib/python3"
+access = "ro"
+
+[[marketplace.sandbox.landlock]]
+path = "/usr/local/lib/python3"
+access = "ro"
+
+# IPC with AGNOS agent runtime
+[[marketplace.sandbox.landlock]]
+path = "/run/agnos/"
+access = "ro"
+
+[marketplace.services]
+# Agnostic exposes a WebGUI on port 8000 (Chainlit + FastAPI)
+ports = [8000]
+# Requires AGNOS LLM Gateway (hoosh) and Agent Runtime (daimon)
+depends_on = ["llm-gateway", "agent-runtime"]
+
+[build]
+pre_build = """
+# Install Python dependencies
+pip install --no-cache-dir -r requirements.txt
+"""
+configure = ""
+make = "docker build -t agnostic ."
+check = "python run_tests.py --unit"
+install = """
+# Agnostic runs as a container managed by daimon.
+# Install the container image and systemd-style service unit.
+mkdir -p $PKG/usr/lib/agnostic
+mkdir -p $PKG/etc/agnostic
+
+# Copy default configuration
+cp .env.example $PKG/etc/agnostic/env.defaults
+
+# Desktop entry for aethersafha (opens WebGUI in browser)
+mkdir -p $PKG/usr/share/applications
+cat > $PKG/usr/share/applications/agnostic.desktop << 'EOF'
+[Desktop Entry]
+Name=Agnostic QA
+Comment=AI-driven multi-agent QA platform
+GenericName=QA Testing
+Exec=xdg-open http://localhost:8000
+Icon=agnostic
+Terminal=false
+Type=Application
+Categories=Development;Testing;
+StartupNotify=true
+EOF
+"""
