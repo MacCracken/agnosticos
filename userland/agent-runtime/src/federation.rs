@@ -946,8 +946,7 @@ impl AgentPlacement {
 // ---------------------------------------------------------------------------
 
 /// Replication strategy for vector data across federated nodes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum VectorReplicationStrategy {
     /// Every node holds a full copy of every collection.
     #[default]
@@ -957,7 +956,6 @@ pub enum VectorReplicationStrategy {
     /// Collections are sharded — each node holds a subset of vectors.
     Sharded,
 }
-
 
 /// Tracks which collections are hosted on which nodes.
 #[derive(Debug, Clone, Serialize, Deserialize)]

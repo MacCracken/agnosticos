@@ -45,8 +45,7 @@ pub struct DelegationRequest {
 }
 
 /// Sandbox level for delegated tasks.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum SandboxLevel {
     /// Minimal sandbox — Landlock only.
     Minimal,
@@ -58,7 +57,6 @@ pub enum SandboxLevel {
     /// Maximum sandbox — full isolation including encrypted storage.
     Maximum,
 }
-
 
 /// Result of a delegation request.
 #[derive(Debug, Clone, Serialize, Deserialize)]

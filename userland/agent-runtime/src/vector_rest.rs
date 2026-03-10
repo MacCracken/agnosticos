@@ -35,15 +35,13 @@ pub struct CreateCollectionRequest {
 }
 
 /// Distance metric for vector similarity.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum DistanceMetric {
     #[default]
     Cosine,
     Euclidean,
     DotProduct,
 }
-
 
 /// Request to insert vectors into a collection.
 #[derive(Debug, Clone, Serialize, Deserialize)]

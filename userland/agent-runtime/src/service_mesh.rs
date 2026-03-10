@@ -13,8 +13,7 @@ use serde::{Deserialize, Serialize};
 // ---------------------------------------------------------------------------
 
 /// Supported service mesh implementations.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum MeshProvider {
     /// Envoy-based (Istio, standalone Envoy).
     Envoy,
@@ -24,7 +23,6 @@ pub enum MeshProvider {
     #[default]
     None,
 }
-
 
 impl std::fmt::Display for MeshProvider {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
