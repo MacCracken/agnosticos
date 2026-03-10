@@ -30,7 +30,7 @@ RUN curl -fsSL "https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYT
     && cd /tmp/python-src \
     && ./configure \
         --prefix=/usr/local \
-        --with-lto=thin \
+        --with-lto \
         --disable-gil \
         --enable-shared \
         LDFLAGS="-Wl,-rpath,/usr/local/lib" \
