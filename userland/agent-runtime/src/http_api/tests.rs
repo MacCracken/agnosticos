@@ -3645,10 +3645,7 @@ mod tests {
         // Should be marked as already_registered with same ID
         assert_eq!(json2["already_registered"], 1);
         assert_eq!(json2["registered"], 0);
-        assert_eq!(
-            json2["results"][0]["id"].as_str().unwrap(),
-            first_id
-        );
+        assert_eq!(json2["results"][0]["id"].as_str().unwrap(), first_id);
         assert_eq!(json2["results"][0]["status"], "already_registered");
     }
 

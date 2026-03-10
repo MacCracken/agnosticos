@@ -221,9 +221,8 @@ pub async fn marketplace_info_handler(
 
 /// Helper to build a `RegistryClient` from environment or defaults.
 fn build_registry_client() -> Result<RegistryClient, String> {
-    let base_url = std::env::var("AGNOS_REGISTRY_URL").unwrap_or_else(|_| {
-        crate::marketplace::remote_client::DEFAULT_REGISTRY_URL.to_string()
-    });
+    let base_url = std::env::var("AGNOS_REGISTRY_URL")
+        .unwrap_or_else(|_| crate::marketplace::remote_client::DEFAULT_REGISTRY_URL.to_string());
     let cache_dir = std::env::var("AGNOS_MARKETPLACE_CACHE")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|_| std::env::temp_dir().join("agnos-marketplace-cache"));
@@ -251,7 +250,9 @@ pub async fn marketplace_remote_search_handler(
         .search(&params.q, params.category.as_deref(), params.page)
         .await
     {
-        Ok(results) => (StatusCode::OK, Json(serde_json::to_value(results).unwrap())).into_response(),
+        Ok(results) => {
+            (StatusCode::OK, Json(serde_json::to_value(results).unwrap())).into_response()
+        }
         Err(e) => (
             StatusCode::BAD_GATEWAY,
             Json(serde_json::json!({"error": format!("Remote search failed: {}", e)})),
@@ -263,9 +264,7 @@ pub async fn marketplace_remote_search_handler(
 /// `GET /v1/marketplace/remote/:name`
 ///
 /// Fetch the manifest for a remote package. The version defaults to "latest".
-pub async fn marketplace_remote_info_handler(
-    Path(name): Path<String>,
-) -> impl IntoResponse {
+pub async fn marketplace_remote_info_handler(Path(name): Path<String>) -> impl IntoResponse {
     let client = match build_registry_client() {
         Ok(c) => c,
         Err(e) => {
@@ -278,7 +277,11 @@ pub async fn marketplace_remote_info_handler(
     };
 
     match client.fetch_manifest(&name, "latest").await {
-        Ok(manifest) => (StatusCode::OK, Json(serde_json::to_value(manifest).unwrap())).into_response(),
+        Ok(manifest) => (
+            StatusCode::OK,
+            Json(serde_json::to_value(manifest).unwrap()),
+        )
+            .into_response(),
         Err(e) => (
             StatusCode::BAD_GATEWAY,
             Json(serde_json::json!({"error": format!("Failed to fetch manifest: {}", e)})),

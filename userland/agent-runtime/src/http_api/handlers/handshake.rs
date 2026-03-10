@@ -182,9 +182,7 @@ pub async fn batch_register_handler(
         }
 
         // Check for existing agent with same name — return existing ID (idempotent)
-        if let Some((existing_id, _)) = agents
-            .iter()
-            .find(|(_, a)| a.detail.name == agent_req.name)
+        if let Some((existing_id, _)) = agents.iter().find(|(_, a)| a.detail.name == agent_req.name)
         {
             results.push(BatchRegisterResult {
                 name: agent_req.name.clone(),
@@ -308,9 +306,7 @@ pub async fn events_subscribe_handler(
             "correlation_id": msg.correlation_id,
             "timestamp": msg.timestamp,
         });
-        Ok(Event::default()
-            .event(&msg.topic)
-            .data(data.to_string()))
+        Ok(Event::default().event(&msg.topic).data(data.to_string()))
     });
 
     Sse::new(stream).keep_alive(KeepAlive::default())

@@ -300,7 +300,12 @@ async fn chat_completions(
     // Branch: streaming vs non-streaming
     if payload.stream == Some(true) {
         return chat_completions_stream(
-            state, request, agent_id, payload.model, request_id, personality_id,
+            state,
+            request,
+            agent_id,
+            payload.model,
+            request_id,
+            personality_id,
         )
         .await;
     }
@@ -865,10 +870,7 @@ async fn tokens_release(
 }
 
 /// GET /v1/tokens/pools — list all budget pools with summary metrics.
-async fn tokens_pools(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-) -> impl IntoResponse {
+async fn tokens_pools(State(state): State<AppState>, headers: HeaderMap) -> impl IntoResponse {
     if let Err(resp) = check_auth(&state, &headers) {
         return resp;
     }

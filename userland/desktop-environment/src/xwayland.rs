@@ -209,7 +209,10 @@ impl XWaylandManager {
         self.socket_path = PathBuf::from(format!("/tmp/.X11-unix/X{}", self.display_number));
 
         let display_arg = format!(":{}", self.display_number);
-        match self.spawner.spawn("Xwayland", &[&display_arg, "-rootless", "-noreset"]) {
+        match self
+            .spawner
+            .spawn("Xwayland", &[&display_arg, "-rootless", "-noreset"])
+        {
             Ok(child) => {
                 let pid = child.id();
                 self.child = Some(child);
@@ -723,7 +726,7 @@ mod tests {
         let new_pid = result.unwrap();
         assert_eq!(*mgr.state(), XWaylandState::Running);
         assert_eq!(spawner.count(), 2); // spawned twice (start + restart)
-        // PIDs should differ (new sleep process)
+                                        // PIDs should differ (new sleep process)
         assert_ne!(old_pid, new_pid);
 
         mgr.stop().ok();
@@ -807,10 +810,7 @@ mod tests {
         let (mut mgr, _) = mock_manager(config, false);
         mgr.start().expect("start should succeed");
         assert_eq!(mgr.status().display, ":0");
-        assert_eq!(
-            mgr.status().socket_path,
-            PathBuf::from("/tmp/.X11-unix/X0")
-        );
+        assert_eq!(mgr.status().socket_path, PathBuf::from("/tmp/.X11-unix/X0"));
         mgr.stop().ok();
     }
 }

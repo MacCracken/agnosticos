@@ -27,8 +27,8 @@ pub use handlers::anomaly::BehaviorSampleRequest;
 pub use handlers::audit::{
     AuditChainQueryParams, AuditEvent, AuditForwardRequest, AuditQueryParams,
 };
-pub use handlers::handshake::BatchRegisterRequest;
 pub use handlers::dashboard::{DashboardSyncRequest, StoredDashboardSnapshot};
+pub use handlers::handshake::BatchRegisterRequest;
 pub use handlers::marketplace::{
     MarketplaceInstallRequest, MarketplaceSearchQuery, RemoteInstallRequest, RemoteSearchQuery,
 };

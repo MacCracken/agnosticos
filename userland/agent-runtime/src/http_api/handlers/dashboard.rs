@@ -229,8 +229,7 @@ pub async fn consumer_health_handler(State(state): State<ApiState>) -> impl Into
     }
 
     // Also report any registered agents whose source projects have no dashboard snapshot
-    let snapshot_sources: std::collections::HashSet<&String> =
-        latest_per_source.keys().collect();
+    let snapshot_sources: std::collections::HashSet<&String> = latest_per_source.keys().collect();
     let mut orphan_agents: Vec<serde_json::Value> = Vec::new();
     for (id, entry) in agents.iter() {
         let agent_source = entry.detail.metadata.get("source_project");

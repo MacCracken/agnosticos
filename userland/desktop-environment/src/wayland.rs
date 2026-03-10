@@ -2290,9 +2290,7 @@ mod wayland_accept {
 }
 
 #[cfg(feature = "wayland")]
-pub use wayland_accept::{
-    start_server, WaylandServer, WaylandServerConfig, WaylandServerEvent,
-};
+pub use wayland_accept::{start_server, WaylandServer, WaylandServerConfig, WaylandServerEvent};
 
 // ============================================================================
 // Stub when wayland feature is NOT enabled

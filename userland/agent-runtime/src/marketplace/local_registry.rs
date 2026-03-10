@@ -208,18 +208,16 @@ impl LocalRegistry {
         // Verify signature if a keyring was provided
         if let Some(kr) = keyring {
             let key_id = &manifest.publisher.key_id;
-            let kv = kr
-                .get_current_key(key_id)
-                .ok_or_else(|| {
-                    anyhow::anyhow!(
-                        "No trusted key found for publisher key_id '{}' — \
+            let kv = kr.get_current_key(key_id).ok_or_else(|| {
+                anyhow::anyhow!(
+                    "No trusted key found for publisher key_id '{}' — \
                          package signature cannot be verified",
-                        key_id
-                    )
-                })?;
-            let verifying_key = kv.verifying_key().context(
-                "Failed to decode publisher verifying key from keyring",
-            )?;
+                    key_id
+                )
+            })?;
+            let verifying_key = kv
+                .verifying_key()
+                .context("Failed to decode publisher verifying key from keyring")?;
 
             // Signature is expected as a `.sig` sidecar file next to the tarball
             let sig_path = tarball_path.with_extension("sig");
@@ -795,7 +793,10 @@ mod tests {
         std::fs::write(&sig_path, &sig).unwrap();
 
         let result = registry.install_package(&tarball_path, Some(&keyring));
-        assert!(result.is_ok(), "Install with valid signature should succeed");
+        assert!(
+            result.is_ok(),
+            "Install with valid signature should succeed"
+        );
         assert_eq!(result.unwrap().name, "test-pkg");
     }
 
@@ -810,7 +811,11 @@ mod tests {
         // Keyring has a different key than the one that signed
         let keys_dir = tempfile::tempdir().unwrap();
         let mut keyring = trust::PublisherKeyring::new(keys_dir.path());
-        let full_hex: String = vk2.to_bytes().iter().map(|b| format!("{:02x}", b)).collect();
+        let full_hex: String = vk2
+            .to_bytes()
+            .iter()
+            .map(|b| format!("{:02x}", b))
+            .collect();
         keyring.add_key(trust::KeyVersion {
             key_id: key_id.clone(),
             valid_from: chrono::Utc::now() - chrono::Duration::hours(1),
@@ -830,9 +835,15 @@ mod tests {
         std::fs::write(&sig_path, &sig).unwrap();
 
         let result = registry.install_package(&tarball_path, Some(&keyring));
-        assert!(result.is_err(), "Install with invalid signature should fail");
         assert!(
-            result.unwrap_err().to_string().contains("verification failed"),
+            result.is_err(),
+            "Install with invalid signature should fail"
+        );
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("verification failed"),
             "Error should mention verification failure"
         );
     }
@@ -861,9 +872,15 @@ mod tests {
         // No .sig file written
 
         let result = registry.install_package(&tarball_path, Some(&keyring));
-        assert!(result.is_err(), "Install without signature file should fail");
         assert!(
-            result.unwrap_err().to_string().contains("Signature file not found"),
+            result.is_err(),
+            "Install without signature file should fail"
+        );
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Signature file not found"),
             "Error should mention missing signature file"
         );
     }
@@ -885,7 +902,10 @@ mod tests {
         let result = registry.install_package(&tarball_path, Some(&keyring));
         assert!(result.is_err(), "Install with unknown key_id should fail");
         assert!(
-            result.unwrap_err().to_string().contains("No trusted key found"),
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("No trusted key found"),
             "Error should mention missing key"
         );
     }
@@ -902,6 +922,9 @@ mod tests {
         std::fs::write(&tarball_path, &tarball).unwrap();
 
         let result = registry.install_package(&tarball_path, None);
-        assert!(result.is_ok(), "Install without keyring should succeed (dev mode)");
+        assert!(
+            result.is_ok(),
+            "Install without keyring should succeed (dev mode)"
+        );
     }
 }
