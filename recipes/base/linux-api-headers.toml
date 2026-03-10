@@ -1,0 +1,53 @@
+# Linux API Headers — Kernel headers for userspace compilation
+# Exposes the kernel API to glibc and other system libraries.
+# Must be built FIRST in the toolchain — everything else depends on these.
+#
+# LFS Ch. 5.4 / Ch. 8 (same procedure for both passes)
+
+[package]
+name = "linux-api-headers"
+version = "6.6.72"
+description = "Linux kernel API headers for userspace"
+license = "GPL-2.0"
+groups = ["base", "toolchain", "tier0"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.6.72.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = []
+build = ["make"]
+
+[build]
+pre_build = """
+# Sanitise the headers — remove stale files from previous builds.
+make mrproper
+"""
+configure = ""
+make = """
+# Extract userspace API headers only — no kernel compilation.
+make headers
+"""
+check = ""
+install = """
+# Install sanitised headers to /usr/include.
+# find removes non-header files (.install, ..install.cmd) left by kbuild.
+find usr/include -type f ! -name '*.h' -delete
+mkdir -p $PKG/usr/include
+cp -rv usr/include/* $PKG/usr/include/
+
+# Verify critical headers exist
+for hdr in linux/types.h linux/limits.h asm/unistd.h; do
+    test -f "$PKG/usr/include/$hdr" || { echo "MISSING: $hdr"; exit 1; }
+done
+"""
+post_install = ""
+
+[security]
+hardening = []
+cflags = ""
+ldflags = ""

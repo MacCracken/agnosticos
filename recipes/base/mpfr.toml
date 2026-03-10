@@ -1,0 +1,46 @@
+# MPFR — Multiple Precision Floating-Point Reliable Library
+# Required by GCC for floating-point constant folding and optimisations.
+#
+# LFS Ch. 8.21
+
+[package]
+name = "mpfr"
+version = "4.2.2"
+description = "GNU MPFR — Multiple Precision Floating-Point library"
+license = "LGPL-3.0"
+groups = ["base", "toolchain", "tier0"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://ftp.gnu.org/gnu/mpfr/mpfr-4.2.2.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "gmp"]
+build = ["gcc", "make"]
+
+[build]
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --disable-static \
+    --enable-thread-safe \
+    --docdir=/usr/share/doc/mpfr-4.2.2
+"""
+make = "make -j$(nproc)"
+check = "make check"
+install = """
+make DESTDIR=$PKG install
+
+# Remove la file
+rm -fv $PKG/usr/lib/libmpfr.la
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

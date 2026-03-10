@@ -1,0 +1,60 @@
+# GMP — GNU Multiple Precision Arithmetic Library
+# Required by GCC for compile-time arithmetic and optimisations.
+#
+# LFS Ch. 8.20
+
+[package]
+name = "gmp"
+version = "6.3.0"
+description = "GNU Multiple Precision Arithmetic Library"
+license = "LGPL-3.0"
+groups = ["base", "toolchain", "tier0"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://ftp.gnu.org/gnu/gmp/gmp-6.3.0.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc"]
+build = ["gcc", "make", "m4"]
+
+[build]
+pre_build = """
+# On x86_64: optimise for the generic x86_64 ABI so the package works on
+# any x86_64 CPU, not just the build host. Without this, GMP may emit
+# instructions the target CPU doesn't support.
+#
+# LFS: "If you are building for 32-bit x86, but the build CPU supports
+# x86_64, the assembled .o files will be 64-bit and the link will fail."
+"""
+configure = """
+./configure \
+    --prefix=/usr \
+    --enable-cxx \
+    --disable-static \
+    --docdir=/usr/share/doc/gmp-6.3.0 \
+    ABI=64
+"""
+make = "make -j$(nproc)"
+check = """
+# GMP tests are important for verifying correct arithmetic.
+make check 2>&1 | tee gmp-check-log
+# LFS: "ensure all 199 tests passed"
+awk '/# PASS:/{total+=$3} ; END{print total " tests passed"}' gmp-check-log
+"""
+install = """
+make DESTDIR=$PKG install
+
+# Remove la files
+rm -fv $PKG/usr/lib/libgmp.la
+rm -fv $PKG/usr/lib/libgmpxx.la
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

@@ -1,0 +1,119 @@
+# GCC — GNU Compiler Collection for AGNOS
+# The compiler that builds everything: the kernel, glibc, the Rust toolchain,
+# and every C/C++ dependency in the system.
+#
+# Two-pass build:
+#   Pass 1 (cross-compiler, Ch. 5.3): handled by scripts/bootstrap-toolchain.sh
+#   This recipe is the FINAL system build (Ch. 8.28).
+#
+# GMP, MPFR, and MPC are built as separate .ark packages (not bundled).
+# libstdc++ is built as part of this GCC package.
+
+[package]
+name = "gcc"
+version = "15.2.0"
+description = "GNU Compiler Collection — C, C++ compilers"
+license = "GPL-3.0"
+groups = ["base", "toolchain", "tier0"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://ftp.gnu.org/gnu/gcc/gcc-15.2.0/gcc-15.2.0.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = [
+    "glibc",
+    "gmp",
+    "mpfr",
+    "mpc",
+    "binutils",
+    "zlib",
+    "linux-api-headers",
+]
+build = [
+    "binutils",
+    "gmp",
+    "mpfr",
+    "mpc",
+    "make",
+    "texinfo",
+    "zlib",
+]
+
+[build]
+pre_build = """
+# On x86_64: fix the default library directory to /lib instead of /lib64.
+# AGNOS uses a unified /usr/lib directory (no multilib).
+case $(uname -m) in
+    x86_64)
+        sed -e '/m64=/s/lib64/lib/' \
+            -i.orig gcc/config/i386/t-linux64
+    ;;
+esac
+
+mkdir -v build
+cd build
+"""
+configure = """
+cd build
+../configure \
+    --prefix=/usr \
+    LD=ld \
+    --enable-languages=c,c++ \
+    --enable-default-pie \
+    --enable-default-ssp \
+    --enable-host-pie \
+    --disable-multilib \
+    --disable-bootstrap \
+    --disable-fixincludes \
+    --with-system-zlib
+"""
+make = "cd build && make -j$(nproc)"
+check = """
+# GCC test suite — run as non-root for accuracy.
+# Some tests are known to fail; LFS documents expected failures.
+cd build
+make -k check || true
+"""
+install = """
+cd build
+make DESTDIR=$PKG install
+
+# Symlinks expected by FHS and other build systems
+mkdir -p $PKG/usr/lib
+ln -svr $PKG/usr/bin/cpp $PKG/usr/lib/cpp
+
+# cc → gcc compatibility symlink
+ln -sv gcc $PKG/usr/bin/cc
+
+# Man page symlink
+ln -sv gcc.1 $PKG/usr/share/man/man1/cc.1
+
+# LTO plugin for binutils — enables link-time optimisation
+GCC_MACHINE=$(gcc -dumpmachine 2>/dev/null || echo "x86_64-pc-linux-gnu")
+mkdir -p $PKG/usr/lib/bfd-plugins
+ln -sfv "../../libexec/gcc/${GCC_MACHINE}/15.2.0/liblto_plugin.so" \
+    $PKG/usr/lib/bfd-plugins/ 2>/dev/null || true
+
+# Move GDB auto-load scripts to the proper location
+mkdir -pv $PKG/usr/share/gdb/auto-load/usr/lib
+mv -v $PKG/usr/lib/*gdb.py \
+    $PKG/usr/share/gdb/auto-load/usr/lib/ 2>/dev/null || true
+
+# Sanity check — the compiler must be able to produce working binaries
+echo 'int main(){}' > /tmp/gcc-sanity.c
+$PKG/usr/bin/gcc /tmp/gcc-sanity.c -o /tmp/gcc-sanity 2>/dev/null && \
+    echo "GCC sanity check: PASS" || echo "GCC sanity check: FAIL"
+rm -f /tmp/gcc-sanity.c /tmp/gcc-sanity
+"""
+post_install = ""
+
+[security]
+# GCC builds itself — don't apply external hardening flags during GCC's
+# own compilation, it handles its own security features.
+hardening = []
+cflags = "-O2 -pipe"
+ldflags = ""

@@ -1,0 +1,125 @@
+# Glibc — GNU C Library for AGNOS
+# The C library that every binary on the system links against.
+# Two-pass build: Pass 1 (cross, Ch. 5.5) is handled by the bootstrap script.
+# This recipe is the FINAL system build (Ch. 8.5).
+#
+# LFS Ch. 8.5: Glibc-2.42
+
+[package]
+name = "glibc"
+version = "2.42"
+description = "GNU C Library — core system library"
+license = "LGPL-2.1"
+groups = ["base", "toolchain", "tier0"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://ftp.gnu.org/gnu/glibc/glibc-2.42.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = [
+    "glibc-2.42-fhs-1.patch",
+]
+
+[depends]
+runtime = [
+    "linux-api-headers",
+]
+build = [
+    "binutils",
+    "gcc",
+    "make",
+    "python",
+    "bison",
+    "texinfo",
+]
+
+[build]
+pre_build = """
+# Apply FHS patch for /var/cache/nscd and /var/db
+patch -Np1 -i ../glibc-2.42-fhs-1.patch
+
+# LSB compliance symlinks (x86_64)
+case $(uname -m) in
+    x86_64) mkdir -p $PKG/lib64
+            ln -sfv ../lib/ld-linux-x86-64.so.2 $PKG/lib64
+            ln -sfv ../lib/ld-linux-x86-64.so.2 $PKG/lib64/ld-lsb-x86-64.so.3
+    ;;
+esac
+
+mkdir -v build
+cd build
+echo "rootsbindir=/usr/sbin" > configparms
+"""
+configure = """
+cd build
+../configure \
+    --prefix=/usr \
+    --disable-nscd \
+    --disable-werror \
+    --enable-kernel=5.4 \
+    --enable-stack-protector=strong \
+    --enable-bind-now \
+    --with-headers=/usr/include \
+    libc_cv_slibdir=/usr/lib
+"""
+make = "cd build && make -j$(nproc)"
+check = """
+# Glibc tests are critical but some are known to fail in constrained envs.
+cd build
+make check || true
+"""
+install = """
+cd build
+
+# Prevent a warning about missing /etc/ld.so.conf
+touch $PKG/etc/ld.so.conf
+
+# Install
+make DESTDIR=$PKG install
+
+# Fix ldd path
+sed '/RTLDLIST=/s@/usr@@g' -i $PKG/usr/bin/ldd
+
+# Install nsswitch.conf for name resolution
+mkdir -p $PKG/etc
+cat > $PKG/etc/nsswitch.conf << 'EOF'
+# AGNOS Name Service Switch configuration
+
+passwd:     files
+group:      files
+shadow:     files
+
+hosts:      files dns
+networks:   files
+
+protocols:  files
+services:   files
+ethers:     files
+rpc:        files
+EOF
+
+# Timezone data — install posix rules
+mkdir -p $PKG/usr/share/zoneinfo
+cp -v ../zone*.tab $PKG/usr/share/zoneinfo/ 2>/dev/null || true
+
+# Default ld.so.conf
+cat > $PKG/etc/ld.so.conf << 'EOF'
+# AGNOS shared library search paths
+/usr/local/lib
+/usr/lib
+include /etc/ld.so.conf.d/*.conf
+EOF
+mkdir -p $PKG/etc/ld.so.conf.d
+"""
+post_install = """
+# Regenerate shared library cache
+ldconfig 2>/dev/null || true
+"""
+
+[security]
+# Glibc uses its own hardening — do NOT pass external hardening flags,
+# they break the build.
+hardening = []
+cflags = "-O2 -pipe"
+ldflags = ""

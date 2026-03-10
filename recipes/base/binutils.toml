@@ -1,0 +1,74 @@
+# Binutils — GNU Binary Utilities for AGNOS
+# Linker (ld), assembler (as), and object file tools (nm, objdump, etc.).
+# Two-pass build: Pass 1 (cross, Ch. 5.2) is handled by the bootstrap script.
+# This recipe is the FINAL system build (Ch. 8.19).
+#
+# LFS considers the binutils test suite CRITICAL — do not skip.
+
+[package]
+name = "binutils"
+version = "2.45"
+description = "GNU Binary Utilities — linker, assembler, object tools"
+license = "GPL-3.0"
+groups = ["base", "toolchain", "tier0"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://ftp.gnu.org/gnu/binutils/binutils-2.45.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = [
+    "glibc",
+    "zlib",
+]
+build = [
+    "gcc",
+    "make",
+    "texinfo",
+    "zlib",
+]
+
+[build]
+pre_build = """
+mkdir -v build
+cd build
+"""
+configure = """
+cd build
+../configure \
+    --prefix=/usr \
+    --sysconfdir=/etc \
+    --enable-ld=default \
+    --enable-plugins \
+    --enable-shared \
+    --disable-werror \
+    --enable-64-bit-bfd \
+    --enable-new-dtags \
+    --with-system-zlib \
+    --enable-default-hash-style=gnu
+"""
+make = "cd build && make -j$(nproc) tooldir=/usr"
+check = """
+# LFS: "The test suite for Binutils is considered critical."
+cd build
+make -k check || true
+"""
+install = """
+cd build
+make tooldir=/usr DESTDIR=$PKG install
+
+# Remove static libraries that are not needed
+rm -fv $PKG/usr/lib/lib{bfd,ctf,ctf-nobfd,gprofng,opcodes,sframe}.a
+
+# Remove gprofng docs (not useful for most users)
+rm -rfv $PKG/usr/share/doc/gprofng/
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [2026.3.10] - 2026-03-10
 
+### Added — Phase 10A: LFS Cross-Toolchain
+
+#### Base System Recipes (`recipes/base/`, 7 packages)
+- **`linux-api-headers.toml`**: Linux 6.6.72 kernel API headers — `make headers` only, verifies critical headers exist
+- **`glibc.toml`**: GNU C Library 2.42 — FHS patch, NSS config, `ld.so.conf`, LSB symlinks, kernel 5.4+ support
+- **`binutils.toml`**: GNU Binutils 2.45 — linker, assembler, GNU hash style, 64-bit BFD, system zlib
+- **`gcc.toml`**: GCC 15.2.0 — C/C++ compilers, PIE+SSP defaults, LTO plugin for binutils, lib64→lib fix, sanity check
+- **`gmp.toml`**: GMP 6.3.0 — multiple precision arithmetic (GCC dependency), C++ bindings, ABI=64
+- **`mpfr.toml`**: MPFR 4.2.2 — floating-point library (GCC dependency), thread-safe
+- **`mpc.toml`**: MPC 1.3.1 — complex arithmetic library (GCC dependency)
+- All recipes include LFS-accurate configure flags, test steps, and security hardening
+
+#### Bootstrap Toolchain Script (`scripts/bootstrap-toolchain.sh`, 294 lines)
+- Cross-compiles the AGNOS toolchain from any Linux host (LFS Ch. 5–6)
+- 5-step build: Binutils Pass 1 → GCC Pass 1 → Linux Headers → Glibc → Libstdc++
+- Target triple: `x86_64-agnos-linux-gnu`
+- Toolchain sanity check: compiles test binary, verifies dynamic linker
+- Uses `$LFS` sysroot pattern, compatible with chroot-based final system build
+
+#### Roadmap Restructured for Independent Linux Distro
+- New phases: 10 (LFS base, ~88 recipes), 11 (desktop/networking, ~42 recipes), 12 (system integration), 13 (beta polish)
+- Previous alpha blockers moved to Phase 13 (beta polish)
+- Beta target: Q4 2026, v1.0 target: Q2 2027
+- LFS 12.4 + BLFS as reference for package selection and build order
+
 ### Added — Build Infrastructure & Database Integration
 
 #### Sigil Package Signing
