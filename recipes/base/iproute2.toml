@@ -1,0 +1,39 @@
+# Iproute2 — Network configuration utilities
+# ip, ss, tc, bridge, rtmon. Modern replacement for ifconfig/route.
+#
+# LFS Ch. 8.78
+
+[package]
+name = "iproute2"
+version = "6.16.0"
+description = "Iproute2 — network configuration utilities"
+license = "GPL-2.0"
+groups = ["base", "core", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://www.kernel.org/pub/linux/utils/net/iproute2/iproute2-6.16.0.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "elfutils", "libmnl", "libcap"]
+build = ["gcc", "make", "pkgconf", "bison", "flex"]
+
+[build]
+pre_build = """
+# Remove arpd (requires Berkeley DB, not needed)
+sed -i /ARPD/d Makefile
+rm -fv man/man8/arpd.8
+"""
+configure = ""
+make = "make NETNS_RUN_DIR=/run/netns -j$(nproc)"
+check = ""
+install = "make DESTDIR=$PKG SBINDIR=/usr/sbin install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

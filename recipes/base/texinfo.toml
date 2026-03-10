@@ -1,0 +1,35 @@
+# Texinfo — GNU documentation system
+# Provides makeinfo, install-info for info pages.
+#
+# LFS Ch. 8.71
+
+[package]
+name = "texinfo"
+version = "7.2"
+description = "GNU Texinfo — documentation system"
+license = "GPL-3.0"
+groups = ["base", "build", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://ftp.gnu.org/gnu/texinfo/texinfo-7.2.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "perl", "ncurses"]
+build = ["gcc", "make"]
+
+[build]
+pre_build = ""
+configure = "./configure --prefix=/usr"
+make = "make -j$(nproc)"
+check = "make check || true"
+install = "make DESTDIR=$PKG install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

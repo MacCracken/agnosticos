@@ -1,0 +1,45 @@
+# Flex — Lexical analyzer generator
+# Generates scanners (tokenizers). Required by many packages during build.
+#
+# LFS Ch. 8.8
+
+[package]
+name = "flex"
+version = "2.6.4"
+description = "Flex — fast lexical analyzer generator"
+license = "BSD-2-Clause"
+groups = ["base", "build", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/westes/flex/releases/download/v2.6.4/flex-2.6.4.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "m4"]
+build = ["gcc", "make"]
+
+[build]
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --disable-static
+"""
+make = "make -j$(nproc)"
+check = "make check"
+install = """
+make DESTDIR=$PKG install
+
+# lex → flex compatibility symlink
+ln -sv flex $PKG/usr/bin/lex
+ln -sv flex.1 $PKG/usr/share/man/man1/lex.1 2>/dev/null || true
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

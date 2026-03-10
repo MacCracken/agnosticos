@@ -1,0 +1,58 @@
+# Linux-PAM — Pluggable Authentication Modules
+# Flexible authentication framework. Integrates with AGNOS pam.rs module.
+#
+# BLFS (LFS depends on it via shadow)
+
+[package]
+name = "linux-pam"
+version = "1.7.1"
+description = "Linux-PAM — pluggable authentication modules"
+license = "BSD-3-Clause"
+groups = ["base", "security", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/linux-pam/linux-pam/releases/download/v1.7.1/Linux-PAM-1.7.1.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "libxcrypt"]
+build = ["gcc", "make"]
+
+[build]
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --sbindir=/usr/sbin \
+    --sysconfdir=/etc \
+    --libdir=/usr/lib \
+    --enable-securedir=/usr/lib/security \
+    --disable-doc
+"""
+make = "make -j$(nproc)"
+check = ""
+install = """
+make DESTDIR=$PKG install
+
+# Create /etc/pam.d directory
+mkdir -p $PKG/etc/pam.d
+
+# Install a basic /etc/pam.d/other (catch-all deny policy)
+cat > $PKG/etc/pam.d/other << "PAMEOF"
+auth     required  pam_deny.so
+account  required  pam_deny.so
+password required  pam_deny.so
+session  required  pam_deny.so
+PAMEOF
+
+chmod 644 $PKG/etc/pam.d/other
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

@@ -1,0 +1,38 @@
+# IANA-Etc — Network service/protocol definitions
+# Provides /etc/services and /etc/protocols from IANA registries.
+#
+# LFS Ch. 8.3
+
+[package]
+name = "iana-etc"
+version = "20250807"
+description = "IANA-Etc — /etc/services and /etc/protocols"
+license = "MIT"
+groups = ["base", "core", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/Mic92/iana-etc/releases/download/20250807/iana-etc-20250807.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = []
+build = []
+
+[build]
+pre_build = ""
+configure = ""
+make = ""
+check = ""
+install = """
+mkdir -p $PKG/etc
+cp services protocols $PKG/etc/
+"""
+post_install = ""
+
+[security]
+hardening = []
+cflags = ""
+ldflags = ""

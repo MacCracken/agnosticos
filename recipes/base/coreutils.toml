@@ -1,0 +1,61 @@
+# Coreutils — GNU Core Utilities for AGNOS
+# The foundational ~100 commands: ls, cp, mv, cat, chmod, chown, mkdir, etc.
+# Every shell script and build system depends on these.
+#
+# LFS Ch. 8.56
+
+[package]
+name = "coreutils"
+version = "9.7"
+description = "GNU Core Utilities — essential file, shell, and text commands"
+license = "GPL-3.0"
+groups = ["base", "core", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://ftp.gnu.org/gnu/coreutils/coreutils-9.7.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "acl", "attr", "libcap", "gmp"]
+build = ["gcc", "make", "perl"]
+
+[build]
+pre_build = """
+# Apply AGNOS-specific patch for dircolors if present
+[ -f ../coreutils-9.7-agnos-dircolors.patch ] && \
+    patch -Np1 -i ../coreutils-9.7-agnos-dircolors.patch || true
+"""
+configure = """
+# --enable-no-install-program: skip programs provided by other packages
+# (kill → procps-ng, uptime → procps-ng, hostname → inetutils)
+./configure \
+    --prefix=/usr \
+    --enable-no-install-program=kill,uptime,hostname \
+    --enable-single-binary=symlinks
+"""
+make = "make -j$(nproc)"
+check = """
+# Run tests — some require root or specific locales, skip those.
+make NON_ROOT_USERNAME=tester check-root || true
+make RUN_EXPENSIVE_TESTS=yes check || true
+"""
+install = """
+make DESTDIR=$PKG install
+
+# Move critical binaries to /usr/sbin as expected by some scripts
+mkdir -p $PKG/usr/sbin
+mv -v $PKG/usr/bin/chroot $PKG/usr/sbin/chroot
+
+# Install AGNOS default dircolors
+mkdir -p $PKG/etc
+dircolors -p > $PKG/etc/dircolors 2>/dev/null || true
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

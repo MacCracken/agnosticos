@@ -1,0 +1,42 @@
+# GnuTLS — TLS library
+# Alternative TLS implementation used by GnuPG, wget, and some GNOME components.
+#
+# BLFS
+
+[package]
+name = "gnutls"
+version = "3.8.10"
+description = "GnuTLS — Transport Layer Security library"
+license = "LGPL-2.1"
+groups = ["base", "security", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://www.gnupg.org/ftp/gcrypt/gnutls/v3.8/gnutls-3.8.10.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "nettle", "libtasn1", "libunistring", "p11-kit", "zlib"]
+build = ["gcc", "make", "pkgconf"]
+
+[build]
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --disable-static \
+    --with-default-trust-store-pkcs11="pkcs11:" \
+    --disable-doc \
+    --disable-guile
+"""
+make = "make -j$(nproc)"
+check = "make check || true"
+install = "make DESTDIR=$PKG install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

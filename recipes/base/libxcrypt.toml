@@ -1,0 +1,43 @@
+# Libxcrypt — Modern password hashing library
+# Provides crypt(3) with modern algorithms (yescrypt, bcrypt, SHA-512).
+# Replaces the deprecated glibc libcrypt.
+#
+# LFS Ch. 8.27
+
+[package]
+name = "libxcrypt"
+version = "4.4.38"
+description = "Libxcrypt — modern password hashing library"
+license = "LGPL-2.1"
+groups = ["base", "core", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/besser82/libxcrypt/releases/download/v4.4.38/libxcrypt-4.4.38.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc"]
+build = ["gcc", "make"]
+
+[build]
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --enable-hashes=strong,glibc \
+    --enable-obsolete-api=no \
+    --disable-static \
+    --disable-failure-tokens
+"""
+make = "make -j$(nproc)"
+check = "make check"
+install = "make DESTDIR=$PKG install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

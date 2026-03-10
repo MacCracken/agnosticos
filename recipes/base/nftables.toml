@@ -1,0 +1,46 @@
+# nftables — Packet filtering framework
+# Replaces iptables. Used by AGNOS network namespace and firewall subsystem.
+#
+# BLFS
+
+[package]
+name = "nftables"
+version = "1.1.1"
+description = "nftables — packet filtering framework"
+license = "GPL-2.0"
+groups = ["base", "security", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://netfilter.org/projects/nftables/files/nftables-1.1.1.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "libnftnl", "libmnl", "readline", "gmp"]
+build = ["gcc", "make", "pkgconf", "bison", "flex"]
+
+[build]
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --sysconfdir=/etc \
+    --disable-static \
+    --with-cli=readline
+"""
+make = "make -j$(nproc)"
+check = ""
+install = """
+make DESTDIR=$PKG install
+
+# Install default nftables config directory
+mkdir -p $PKG/etc/nftables
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

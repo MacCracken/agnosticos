@@ -1,0 +1,39 @@
+# LZ4 — Extremely fast compression
+# Used by the kernel (lz4 compressed initramfs), zram, and btrfs.
+#
+# LFS Ch. 8.7
+
+[package]
+name = "lz4"
+version = "1.10.0"
+description = "LZ4 — extremely fast compression algorithm"
+license = "BSD-2-Clause"
+groups = ["base", "core", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/lz4/lz4/releases/download/v1.10.0/lz4-1.10.0.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc"]
+build = ["gcc", "make"]
+
+[build]
+pre_build = ""
+configure = ""
+make = """
+make -j$(nproc) BUILD_STATIC=no PREFIX=/usr
+"""
+check = "make -j$(nproc) check || true"
+install = """
+make BUILD_STATIC=no PREFIX=/usr DESTDIR=$PKG install
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

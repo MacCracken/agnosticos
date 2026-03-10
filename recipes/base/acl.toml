@@ -1,0 +1,40 @@
+# ACL — Access Control Lists library and tools
+# POSIX ACLs for fine-grained file permissions beyond rwx.
+# Required by coreutils, tar, systemd/elogind.
+#
+# LFS Ch. 8.18
+
+[package]
+name = "acl"
+version = "2.3.2"
+description = "ACL — access control lists library"
+license = "LGPL-2.1"
+groups = ["base", "core", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://download.savannah.gnu.org/releases/acl/acl-2.3.2.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "attr"]
+build = ["gcc", "make"]
+
+[build]
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --disable-static
+"""
+make = "make -j$(nproc)"
+check = ""
+install = "make DESTDIR=$PKG install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

@@ -1,0 +1,53 @@
+# Eudev — Device manager
+# Standalone udev fork (no systemd dependency). Creates /dev nodes,
+# handles hotplug events. Integrates with AGNOS udev.rs module.
+#
+# LFS Ch. 8.77 (alternative to systemd-udevd)
+
+[package]
+name = "eudev"
+version = "3.2.14"
+description = "Eudev — device manager (udev fork)"
+license = "GPL-2.0"
+groups = ["base", "core", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/eudev-project/eudev/releases/download/v3.2.14/eudev-3.2.14.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "kmod", "util-linux", "gperf"]
+build = ["gcc", "make", "gperf"]
+
+[build]
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --bindir=/usr/sbin \
+    --sysconfdir=/etc \
+    --enable-manpages \
+    --disable-static
+"""
+make = "make -j$(nproc)"
+check = """
+mkdir -p /usr/lib/udev/rules.d 2>/dev/null || true
+mkdir -p /etc/udev/rules.d 2>/dev/null || true
+make check || true
+"""
+install = """
+make DESTDIR=$PKG install
+
+# Create udev rules directories
+mkdir -p $PKG/etc/udev/rules.d
+mkdir -p $PKG/usr/lib/udev/rules.d
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

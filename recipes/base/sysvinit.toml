@@ -1,0 +1,40 @@
+# SysVinit — System V init
+# Traditional init system. Placeholder — argonaut replaces this for AGNOS.
+# Kept for compatibility and as a fallback.
+#
+# LFS Ch. 8.82
+
+[package]
+name = "sysvinit"
+version = "3.14"
+description = "SysVinit — System V init (argonaut fallback)"
+license = "GPL-2.0"
+groups = ["base", "core", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/slicer69/sysvinit/releases/download/3.14/sysvinit-3.14.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc"]
+build = ["gcc", "make"]
+
+[build]
+pre_build = """
+# Apply LFS patch to remove programs provided by other packages
+# (wall from util-linux, mountpoint from util-linux, etc.)
+sed -i 's:wall.1: :;s:mountpoint.1: :;s:mountpoint: :' src/Makefile
+"""
+configure = ""
+make = "make -j$(nproc)"
+check = ""
+install = "make DESTDIR=$PKG install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

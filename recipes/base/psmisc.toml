@@ -1,0 +1,35 @@
+# Psmisc — Process management utilities
+# killall, fuser, pstree, peekfd.
+#
+# LFS Ch. 8.61
+
+[package]
+name = "psmisc"
+version = "23.7"
+description = "Psmisc — process management utilities"
+license = "GPL-2.0"
+groups = ["base", "core", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://sourceforge.net/projects/psmisc/files/psmisc/psmisc-23.7.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "ncurses"]
+build = ["gcc", "make"]
+
+[build]
+pre_build = ""
+configure = "./configure --prefix=/usr"
+make = "make -j$(nproc)"
+check = ""
+install = "make DESTDIR=$PKG install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

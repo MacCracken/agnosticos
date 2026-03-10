@@ -1,0 +1,57 @@
+# Sudo — Privilege escalation
+# Allows permitted users to execute commands as root.
+# Complements the AGNOS shakti subsystem.
+#
+# BLFS
+
+[package]
+name = "sudo"
+version = "1.9.17p2"
+description = "Sudo — execute commands as another user"
+license = "ISC"
+groups = ["base", "security", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://www.sudo.ws/dist/sudo-1.9.17p2.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "linux-pam", "openssl", "zlib"]
+build = ["gcc", "make"]
+
+[build]
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --libexecdir=/usr/lib \
+    --with-secure-path \
+    --with-pam \
+    --with-env-editor \
+    --with-passprompt="[sudo] password for %p: " \
+    --with-all-insults
+"""
+make = "make -j$(nproc)"
+check = ""
+install = """
+make DESTDIR=$PKG install
+
+# Create sudoers.d directory for drop-in files
+mkdir -p $PKG/etc/sudoers.d
+chmod 750 $PKG/etc/sudoers.d
+
+# Enable wheel group by default
+cat > $PKG/etc/sudoers.d/wheel << "SUDOEOF"
+%wheel ALL=(ALL:ALL) ALL
+SUDOEOF
+chmod 440 $PKG/etc/sudoers.d/wheel
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

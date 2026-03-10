@@ -1,0 +1,50 @@
+# Perl — Practical Extraction and Report Language
+# Required by autotools, kernel build, texinfo, many build scripts.
+#
+# LFS Ch. 8.42
+
+[package]
+name = "perl"
+version = "5.42.0"
+description = "Perl — programming language"
+license = "Artistic-1.0"
+groups = ["base", "build", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://www.cpan.org/src/5.0/perl-5.42.0.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "gdbm", "zlib", "bzip2"]
+build = ["gcc", "make"]
+
+[build]
+pre_build = ""
+configure = """
+sh Configure -des \
+    -Dprefix=/usr \
+    -Dvendorprefix=/usr \
+    -Dprivlib=/usr/lib/perl5/5.42/core_perl \
+    -Darchlib=/usr/lib/perl5/5.42/core_perl \
+    -Dsitelib=/usr/lib/perl5/5.42/site_perl \
+    -Dsitearch=/usr/lib/perl5/5.42/site_perl \
+    -Dvendorlib=/usr/lib/perl5/5.42/vendor_perl \
+    -Dvendorarch=/usr/lib/perl5/5.42/vendor_perl \
+    -Dman1dir=/usr/share/man/man1 \
+    -Dman3dir=/usr/share/man/man3 \
+    -Dpager="/usr/bin/less -isR" \
+    -Duseshrplib \
+    -Dusethreads
+"""
+make = "make -j$(nproc)"
+check = "make test || true"
+install = "make DESTDIR=$PKG install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

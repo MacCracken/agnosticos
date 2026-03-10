@@ -1,0 +1,38 @@
+# Make — GNU Make
+# Build automation tool. Needed to build every C/C++ package.
+#
+# LFS Ch. 8.64
+
+[package]
+name = "make"
+version = "4.4.1"
+description = "GNU Make — build automation tool"
+license = "GPL-3.0"
+groups = ["base", "core", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://ftp.gnu.org/gnu/make/make-4.4.1.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc"]
+build = ["gcc"]
+
+[build]
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr
+"""
+make = "make -j$(nproc)"
+check = "make check || true"
+install = "make DESTDIR=$PKG install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

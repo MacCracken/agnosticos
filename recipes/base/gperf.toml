@@ -1,0 +1,36 @@
+# Gperf — Perfect hash function generator
+# Generates optimal hash functions from key sets. Used by eudev, systemd,
+# and several other system packages during build.
+#
+# LFS Ch. 8.34
+
+[package]
+name = "gperf"
+version = "3.3"
+description = "GNU Gperf — perfect hash function generator"
+license = "GPL-3.0"
+groups = ["base", "core", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://ftp.gnu.org/gnu/gperf/gperf-3.3.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc"]
+build = ["gcc", "make"]
+
+[build]
+pre_build = ""
+configure = "./configure --prefix=/usr"
+make = "make -j$(nproc)"
+check = "make check"
+install = "make DESTDIR=$PKG install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

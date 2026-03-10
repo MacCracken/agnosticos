@@ -1,0 +1,38 @@
+# Groff — GNU troff document formatting system
+# Formats man pages. Required by man-db.
+#
+# LFS Ch. 8.62
+
+[package]
+name = "groff"
+version = "1.23.0"
+description = "GNU Groff — document formatting system"
+license = "GPL-3.0"
+groups = ["base", "build", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://ftp.gnu.org/gnu/groff/groff-1.23.0.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc"]
+build = ["gcc", "make"]
+
+[build]
+pre_build = ""
+configure = """
+PAGE=letter ./configure \
+    --prefix=/usr
+"""
+make = "make -j$(nproc)"
+check = ""
+install = "make DESTDIR=$PKG install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

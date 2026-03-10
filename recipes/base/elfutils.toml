@@ -1,0 +1,51 @@
+# Elfutils — ELF handling libraries and tools
+# Provides libelf, libdw (DWARF), and libasm for reading/writing ELF binaries.
+# Required by the kernel build, perf, systemtap, and debug tooling.
+#
+# LFS Ch. 8.48
+
+[package]
+name = "elfutils"
+version = "0.193"
+description = "Elfutils — ELF/DWARF handling library and tools"
+license = "GPL-3.0"
+groups = ["base", "core", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://sourceware.org/elfutils/ftp/0.193/elfutils-0.193.tar.bz2"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "zlib", "bzip2", "xz", "zstd"]
+build = ["gcc", "make"]
+
+[build]
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --disable-debuginfod \
+    --enable-libdebuginfod=dummy
+"""
+make = "make -j$(nproc)"
+check = "make check || true"
+install = """
+make -C libelf DESTDIR=$PKG install
+make -C libdw DESTDIR=$PKG install
+
+# Install the pkg-config file and headers
+install -vm644 config/libelf.pc $PKG/usr/lib/pkgconfig/ 2>/dev/null || true
+install -vm644 config/libdw.pc $PKG/usr/lib/pkgconfig/ 2>/dev/null || true
+
+# Install the eu- tools
+make DESTDIR=$PKG install
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

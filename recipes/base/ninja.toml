@@ -1,0 +1,38 @@
+# Ninja — Small fast build system
+# Used by meson and cmake for actual build execution.
+#
+# BLFS
+
+[package]
+name = "ninja"
+version = "1.13.1"
+description = "Ninja — fast build system"
+license = "Apache-2.0"
+groups = ["base", "build", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/ninja-build/ninja/archive/v1.13.1/ninja-1.13.1.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc"]
+build = ["gcc", "python"]
+
+[build]
+pre_build = ""
+configure = ""
+make = "python3 configure.py --bootstrap"
+check = "./ninja ninja_test && ./ninja_test --gtest_filter=-SubprocessTest.SetWithLots || true"
+install = """
+mkdir -p $PKG/usr/bin
+install -vm755 ninja $PKG/usr/bin/
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

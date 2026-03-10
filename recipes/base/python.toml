@@ -1,0 +1,46 @@
+# Python — Python 3 interpreter
+# Required by meson, ninja, and the AGNOS ML/AI stack.
+#
+# LFS Ch. 8.50
+
+[package]
+name = "python"
+version = "3.13.7"
+description = "Python — programming language interpreter"
+license = "PSF-2.0"
+groups = ["base", "build", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://www.python.org/ftp/python/3.13.7/Python-3.13.7.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "expat", "libffi", "zlib", "openssl", "readline", "ncurses", "gdbm", "bzip2", "xz"]
+build = ["gcc", "make", "pkgconf"]
+
+[build]
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --enable-shared \
+    --with-system-expat \
+    --with-system-ffi \
+    --enable-optimizations \
+    --with-lto
+"""
+make = "make -j$(nproc)"
+check = ""
+install = "make DESTDIR=$PKG install"
+post_install = """
+# Create pip symlink
+ln -sv pip3 $PKG/usr/bin/pip 2>/dev/null || true
+"""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

@@ -1,0 +1,50 @@
+# Audit — Linux Audit Framework
+# Kernel audit event collection, dispatching, and log management.
+# Integrates with AGNOS audit.rs module and cryptographic hash chain.
+#
+# BLFS
+
+[package]
+name = "audit"
+version = "4.0.2"
+description = "Linux Audit — kernel audit framework"
+license = "GPL-2.0"
+groups = ["base", "security", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://people.redhat.com/sgrubb/audit/audit-4.0.2.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "libcap-ng"]
+build = ["gcc", "make"]
+
+[build]
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --sbindir=/usr/sbin \
+    --sysconfdir=/etc \
+    --disable-static \
+    --enable-zos-remote=no \
+    --with-python=no \
+    --with-python3=no
+"""
+make = "make -j$(nproc)"
+check = ""
+install = """
+make DESTDIR=$PKG install
+
+# Create default audit rules directory
+mkdir -p $PKG/etc/audit/rules.d
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

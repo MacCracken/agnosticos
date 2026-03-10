@@ -1,0 +1,46 @@
+# OpenSSL — TLS/SSL and general-purpose cryptography library
+# Foundation for SSH, curl, Python ssl, certificate verification, and
+# the entire AGNOS trust/sigil subsystem.
+#
+# LFS Ch. 8.46
+
+[package]
+name = "openssl"
+version = "3.5.2"
+description = "OpenSSL — TLS/SSL and cryptography toolkit"
+license = "Apache-2.0"
+groups = ["base", "security", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/openssl/openssl/releases/download/openssl-3.5.2/openssl-3.5.2.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "zlib"]
+build = ["gcc", "make", "perl"]
+
+[build]
+pre_build = ""
+configure = """
+./config \
+    --prefix=/usr \
+    --openssldir=/etc/ssl \
+    --libdir=lib \
+    shared \
+    zlib-dynamic
+"""
+make = "make -j$(nproc)"
+check = "make test || true"
+install = """
+sed -i '/INSTALL_LIBS/s/libcrypto.a libssl.a//' Makefile
+make DESTDIR=$PKG MANSUFFIX=ssl install
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

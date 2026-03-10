@@ -1,0 +1,43 @@
+# Kbd — Keyboard utilities
+# loadkeys, setfont, dumpkeys, showkey, etc.
+#
+# LFS Ch. 8.66
+
+[package]
+name = "kbd"
+version = "2.8.0"
+description = "Kbd — keyboard and console font utilities"
+license = "GPL-2.0"
+groups = ["base", "core", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://www.kernel.org/pub/linux/utils/kbd/kbd-2.8.0.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc"]
+build = ["gcc", "make"]
+
+[build]
+pre_build = """
+# Remove redundant resizecons (requires obsolete /dev/vcs)
+sed -i '/RESIZECONS_PROGS=/s/yes/no/' configure
+sed -i 's/resizecons.8 //' docs/man/man8/Makefile.in
+"""
+configure = """
+./configure \
+    --prefix=/usr \
+    --disable-vlock
+"""
+make = "make -j$(nproc)"
+check = "make check || true"
+install = "make DESTDIR=$PKG install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

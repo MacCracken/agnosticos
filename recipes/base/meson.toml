@@ -1,0 +1,37 @@
+# Meson — High-level build system
+# Required by Wayland, Mesa, PipeWire, p11-kit, and many modern projects.
+#
+# BLFS
+
+[package]
+name = "meson"
+version = "1.8.3"
+description = "Meson — high-level build system"
+license = "Apache-2.0"
+groups = ["base", "build", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/mesonbuild/meson/releases/download/1.8.3/meson-1.8.3.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["python", "ninja"]
+build = ["python"]
+
+[build]
+pre_build = ""
+configure = ""
+make = ""
+check = ""
+install = """
+python3 -m pip install --no-build-isolation --prefix=/usr --root=$PKG .
+"""
+post_install = ""
+
+[security]
+hardening = []
+cflags = ""
+ldflags = ""

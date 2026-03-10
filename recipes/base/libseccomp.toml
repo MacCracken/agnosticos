@@ -1,0 +1,40 @@
+# Libseccomp — Seccomp BPF helper library
+# High-level API for building seccomp-bpf filters. Core dependency
+# of the AGNOS sandbox subsystem (seccomp.rs, sandbox_v2.rs).
+#
+# BLFS
+
+[package]
+name = "libseccomp"
+version = "2.5.5"
+description = "Libseccomp — seccomp BPF filter helper library"
+license = "LGPL-2.1"
+groups = ["base", "security", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/seccomp/libseccomp/releases/download/v2.5.5/libseccomp-2.5.5.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc"]
+build = ["gcc", "make"]
+
+[build]
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --disable-static
+"""
+make = "make -j$(nproc)"
+check = "make check"
+install = "make DESTDIR=$PKG install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

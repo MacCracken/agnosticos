@@ -1,0 +1,59 @@
+# Shadow — User/group management utilities
+# Provides useradd, usermod, passwd, login, su, chage, etc.
+# Integrates with PAM when available.
+#
+# LFS Ch. 8.26
+
+[package]
+name = "shadow"
+version = "4.18.0"
+description = "Shadow — user/group management and login utilities"
+license = "BSD-3-Clause"
+groups = ["base", "security", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/shadow-maint/shadow/releases/download/4.18.0/shadow-4.18.0.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "linux-pam", "libxcrypt"]
+build = ["gcc", "make"]
+
+[build]
+pre_build = """
+# Disable installation of the groups program (coreutils provides it)
+sed -i 's/groups$(EXEEXT) //' src/Makefile.in
+find man -name Makefile.in -exec sed -i 's/groups\.1 / /' {} \\;
+find man -name Makefile.in -exec sed -i 's/getspnam\.3 / /' {} \\;
+find man -name Makefile.in -exec sed -i 's/passwd\.5 / /' {} \\;
+
+# Use yescrypt for password hashing (most secure default)
+sed -e 's:#ENCRYPT_METHOD DES:ENCRYPT_METHOD YESCRYPT:' \
+    -e 's:/var/spool/mail:/var/mail:' \
+    -e '/PATH=/{s@/sbin:@@;s@/bin:@@}' \
+    -i etc/login.defs
+"""
+configure = """
+touch /usr/include/lastlog.h 2>/dev/null || true
+./configure \
+    --sysconfdir=/etc \
+    --disable-static \
+    --with-{b,yes}crypt \
+    --without-libbsd \
+    --with-group-name-max-length=32
+"""
+make = "make -j$(nproc)"
+check = ""
+install = "make DESTDIR=$PKG install"
+post_install = """
+# Enable shadowed passwords
+mkdir -p $PKG/etc
+"""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

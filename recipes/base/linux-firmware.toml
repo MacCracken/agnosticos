@@ -1,0 +1,39 @@
+# Linux-firmware — Hardware firmware blobs
+# Binary firmware for WiFi, GPU, Bluetooth, and other hardware.
+# Selectively installed — only include firmware for supported hardware.
+#
+# BLFS
+
+[package]
+name = "linux-firmware"
+version = "20250311"
+description = "Linux firmware — hardware firmware blobs"
+license = "Proprietary"
+groups = ["base", "kernel", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/snapshot/linux-firmware-20250311.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = []
+build = []
+
+[build]
+pre_build = ""
+configure = ""
+make = ""
+check = ""
+install = """
+mkdir -p $PKG/usr/lib/firmware
+make DESTDIR=$PKG FIRMWAREDIR=/usr/lib/firmware install
+"""
+post_install = ""
+
+[security]
+hardening = []
+cflags = ""
+ldflags = ""

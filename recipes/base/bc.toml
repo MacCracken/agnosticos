@@ -1,0 +1,42 @@
+# Bc — Arbitrary precision calculator
+# Used by the kernel build system for calculating constants.
+#
+# LFS Ch. 8.13
+
+[package]
+name = "bc"
+version = "7.0.3"
+description = "Bc — arbitrary precision calculator language"
+license = "BSD-2-Clause"
+groups = ["base", "core", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/gavinhoward/bc/releases/download/7.0.3/bc-7.0.3.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "readline"]
+build = ["gcc", "make"]
+
+[build]
+pre_build = ""
+configure = """
+# bc uses its own configure script (not autotools)
+CC=gcc ./configure \
+    --prefix=/usr \
+    -G \
+    -O3 \
+    -r
+"""
+make = "make -j$(nproc)"
+check = "make test || true"
+install = "make DESTDIR=$PKG install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

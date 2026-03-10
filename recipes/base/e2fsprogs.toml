@@ -1,0 +1,56 @@
+# E2fsprogs — Ext2/3/4 filesystem utilities
+# mke2fs, e2fsck, tune2fs, resize2fs, dumpe2fs, etc.
+#
+# LFS Ch. 8.79
+
+[package]
+name = "e2fsprogs"
+version = "1.47.3"
+description = "E2fsprogs — ext2/3/4 filesystem utilities"
+license = "GPL-2.0"
+groups = ["base", "core", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://sourceforge.net/projects/e2fsprogs/files/e2fsprogs/v1.47.3/e2fsprogs-1.47.3.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "util-linux"]
+build = ["gcc", "make", "pkgconf", "texinfo"]
+
+[build]
+pre_build = "mkdir -v build && cd build"
+configure = """
+cd build
+../configure \
+    --prefix=/usr \
+    --bindir=/usr/bin \
+    --sbindir=/usr/sbin \
+    --sysconfdir=/etc \
+    --enable-elf-shlibs \
+    --disable-libblkid \
+    --disable-libuuid \
+    --disable-uuidd \
+    --disable-fsck
+"""
+make = "cd build && make -j$(nproc)"
+check = "cd build && make check || true"
+install = """
+cd build
+make DESTDIR=$PKG install
+
+# Remove static libraries
+rm -fv $PKG/usr/lib/{libcom_err,libe2p,libext2fs,libss}.a
+
+# Install default mke2fs.conf
+mkdir -p $PKG/etc
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

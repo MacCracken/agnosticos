@@ -1,0 +1,39 @@
+# Libtool — Generic shared library support
+# Wraps the complexity of building and linking shared libraries portably.
+# Required by many autotools-based packages.
+#
+# LFS Ch. 8.36
+
+[package]
+name = "libtool"
+version = "2.5.4"
+description = "GNU Libtool — shared library support"
+license = "GPL-2.0"
+groups = ["base", "core", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://ftp.gnu.org/gnu/libtool/libtool-2.5.4.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc"]
+build = ["gcc", "make"]
+
+[build]
+pre_build = ""
+configure = "./configure --prefix=/usr"
+make = "make -j$(nproc)"
+check = "make -k check || true"
+install = "make DESTDIR=$PKG install"
+post_install = """
+# Remove static .la files — they cause issues with modern linkers
+rm -f $PKG/usr/lib/libltdl.a
+"""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

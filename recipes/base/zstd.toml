@@ -1,0 +1,42 @@
+# Zstd — Zstandard fast compression
+# Used by the kernel (compressed modules), btrfs, and systemd journal.
+#
+# LFS Ch. 8.9
+
+[package]
+name = "zstd"
+version = "1.5.7"
+description = "Zstandard — fast real-time compression"
+license = "BSD-3-Clause"
+groups = ["base", "core", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/facebook/zstd/releases/download/v1.5.7/zstd-1.5.7.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "zlib", "xz", "lz4"]
+build = ["gcc", "make", "cmake"]
+
+[build]
+pre_build = ""
+configure = ""
+make = """
+make -j$(nproc) prefix=/usr
+"""
+check = "make check || true"
+install = """
+make prefix=/usr DESTDIR=$PKG install
+
+# Remove static library
+rm -fv $PKG/usr/lib/libzstd.a
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

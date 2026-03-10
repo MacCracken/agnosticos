@@ -1,0 +1,65 @@
+# GRUB — GRand Unified Bootloader
+# Bootloader with UEFI and BIOS support. Loads the AGNOS kernel.
+#
+# LFS Ch. 10.4
+
+[package]
+name = "grub"
+version = "2.12"
+description = "GRUB — bootloader with UEFI/BIOS support"
+license = "GPL-3.0"
+groups = ["base", "kernel", "tier0"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://ftp.gnu.org/gnu/grub/grub-2.12.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc"]
+build = ["gcc", "make", "flex", "bison", "python", "texinfo", "freetype"]
+
+[build]
+pre_build = """
+# Unset variables that may interfere
+unset {C,CPP,CXX,LD}FLAGS
+"""
+configure = """
+./configure \
+    --prefix=/usr \
+    --sbindir=/usr/sbin \
+    --sysconfdir=/etc \
+    --disable-efiemu \
+    --enable-grub-mkfont \
+    --with-platform=efi \
+    --target=x86_64 \
+    --disable-werror
+"""
+make = "make -j$(nproc)"
+check = ""
+install = """
+make DESTDIR=$PKG install
+
+# Create default grub directory
+mkdir -p $PKG/boot/grub
+
+# Create default grub config
+mkdir -p $PKG/etc/default
+cat > $PKG/etc/default/grub << "GRUBCONF"
+# AGNOS GRUB defaults
+GRUB_DEFAULT=0
+GRUB_TIMEOUT=5
+GRUB_DISTRIBUTOR="AGNOS"
+GRUB_CMDLINE_LINUX_DEFAULT="quiet"
+GRUB_CMDLINE_LINUX=""
+GRUB_DISABLE_OS_PROBER=true
+GRUBCONF
+"""
+post_install = ""
+
+[security]
+hardening = []
+cflags = ""
+ldflags = ""

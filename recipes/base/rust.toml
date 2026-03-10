@@ -1,0 +1,65 @@
+# Rust — Systems programming language
+# Required to compile the entire AGNOS userland (daimon, hoosh, agnoshi, etc.).
+#
+# BLFS
+
+[package]
+name = "rust"
+version = "1.89.0"
+description = "Rust — systems programming language"
+license = "MIT"
+groups = ["base", "build", "tier0"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://static.rust-lang.org/dist/rustc-1.89.0-src.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "gcc", "openssl", "zlib", "curl"]
+build = ["gcc", "make", "cmake", "ninja", "python", "curl"]
+
+[build]
+pre_build = """
+# Create config.toml for the Rust build system (x.py)
+cat > config.toml << "RUSTCONF"
+# AGNOS Rust build configuration
+changelog-seen = 2
+
+[llvm]
+targets = "X86"
+link-shared = false
+
+[build]
+docs = false
+extended = true
+tools = ["cargo", "clippy", "rustfmt", "rust-analyzer"]
+
+[install]
+prefix = "/usr"
+docdir = "share/doc/rust-1.89.0"
+
+[rust]
+channel = "stable"
+description = "AGNOS Rust 1.89.0"
+rpath = false
+
+[target.x86_64-unknown-linux-gnu]
+llvm-config = "/usr/bin/llvm-config"
+RUSTCONF
+"""
+configure = ""
+make = "python3 x.py build -j$(nproc)"
+check = ""
+install = """
+DESTDIR=$PKG python3 x.py install
+"""
+post_install = ""
+
+[security]
+# Rust handles its own compiler flags
+hardening = []
+cflags = "-O2 -pipe"
+ldflags = ""

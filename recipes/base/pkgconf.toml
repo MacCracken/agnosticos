@@ -1,0 +1,45 @@
+# Pkgconf — Package configuration tool
+# Drop-in pkg-config replacement. Resolves compiler/linker flags from .pc files.
+#
+# LFS Ch. 8.10
+
+[package]
+name = "pkgconf"
+version = "2.5.1"
+description = "Pkgconf — package configuration tool"
+license = "ISC"
+groups = ["base", "build", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://distfiles.ariadne.space/pkgconf/pkgconf-2.5.1.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc"]
+build = ["gcc", "make"]
+
+[build]
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --disable-static
+"""
+make = "make -j$(nproc)"
+check = ""
+install = """
+make DESTDIR=$PKG install
+
+# Provide pkg-config compatibility symlink
+ln -sv pkgconf $PKG/usr/bin/pkg-config
+ln -sv pkgconf.1 $PKG/usr/share/man/man1/pkg-config.1 2>/dev/null || true
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

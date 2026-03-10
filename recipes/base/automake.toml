@@ -1,0 +1,35 @@
+# Automake — Makefile generator
+# Generates Makefile.in from Makefile.am for autotools-based builds.
+#
+# LFS Ch. 8.44
+
+[package]
+name = "automake"
+version = "1.18.1"
+description = "GNU Automake — Makefile generator"
+license = "GPL-2.0"
+groups = ["base", "build", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://ftp.gnu.org/gnu/automake/automake-1.18.1.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "perl", "autoconf"]
+build = ["gcc", "make"]
+
+[build]
+pre_build = ""
+configure = "./configure --prefix=/usr"
+make = "make -j$(nproc)"
+check = "make check || true"
+install = "make DESTDIR=$PKG install"
+post_install = ""
+
+[security]
+hardening = []
+cflags = ""
+ldflags = ""

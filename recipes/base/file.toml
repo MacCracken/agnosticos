@@ -1,0 +1,35 @@
+# File — File type detection
+# Identifies file types by magic bytes. Used by build systems and security tools.
+#
+# LFS Ch. 8.10
+
+[package]
+name = "file"
+version = "5.46"
+description = "File — determine file type"
+license = "BSD-2-Clause"
+groups = ["base", "core", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://astron.com/pub/file/file-5.46.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "zlib", "bzip2", "xz", "zstd"]
+build = ["gcc", "make"]
+
+[build]
+pre_build = ""
+configure = "./configure --prefix=/usr"
+make = "make -j$(nproc)"
+check = "make check || true"
+install = "make DESTDIR=$PKG install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

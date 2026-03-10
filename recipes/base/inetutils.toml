@@ -1,0 +1,47 @@
+# Inetutils — Basic networking utilities
+# hostname, ping, traceroute, ifconfig, telnet, ftp, etc.
+#
+# LFS Ch. 8.41
+
+[package]
+name = "inetutils"
+version = "2.6"
+description = "Inetutils — basic networking utilities"
+license = "GPL-3.0"
+groups = ["base", "core", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://ftp.gnu.org/gnu/inetutils/inetutils-2.6.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "readline", "ncurses"]
+build = ["gcc", "make"]
+
+[build]
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --bindir=/usr/bin \
+    --localstatedir=/var \
+    --disable-logger \
+    --disable-whois \
+    --disable-rcp \
+    --disable-rexec \
+    --disable-rlogin \
+    --disable-rsh \
+    --disable-servers
+"""
+make = "make -j$(nproc)"
+check = "make check || true"
+install = "make DESTDIR=$PKG install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

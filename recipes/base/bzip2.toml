@@ -1,0 +1,65 @@
+# Bzip2 — Block-sorting compression
+# Used for .tar.bz2 archives. Some older source tarballs still use it.
+#
+# LFS Ch. 8.6
+
+[package]
+name = "bzip2"
+version = "1.0.8"
+description = "Bzip2 — block-sorting file compressor"
+license = "BSD"
+groups = ["base", "core", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://www.sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = [
+    "bzip2-1.0.8-install_docs-1.patch",
+]
+
+[depends]
+runtime = ["glibc"]
+build = ["gcc", "make"]
+
+[build]
+pre_build = """
+# Apply docs installation patch if present
+[ -f ../bzip2-1.0.8-install_docs-1.patch ] && \
+    patch -Np1 -i ../bzip2-1.0.8-install_docs-1.patch || true
+
+# Fix relative symlinks and ensure shared library is built
+sed -i 's@\\(ln -s -f \\)$(PREFIX)/bin/@\\1@' Makefile
+sed -i "s@(PREFIX)/man@(PREFIX)/share/man@g" Makefile
+"""
+configure = ""
+make = """
+# Build shared library first, then static
+make -f Makefile-libbz2_so -j$(nproc)
+make clean
+make -j$(nproc)
+"""
+check = ""
+install = """
+make PREFIX=$PKG/usr install
+
+# Install shared library
+cp -av libbz2.so* $PKG/usr/lib/
+ln -sv libbz2.so.1.0.8 $PKG/usr/lib/libbz2.so
+
+# Install shared-linked binary
+cp -v bzip2-shared $PKG/usr/bin/bzip2
+for tool in bunzip2 bzcat; do
+    ln -sfv bzip2 $PKG/usr/bin/$tool
+done
+
+# Remove static library
+rm -fv $PKG/usr/lib/libbz2.a
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

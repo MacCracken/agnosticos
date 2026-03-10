@@ -1,0 +1,40 @@
+# Dosfstools — FAT filesystem utilities
+# mkfs.fat, fsck.fat, fatlabel. Required for EFI System Partition.
+#
+# BLFS
+
+[package]
+name = "dosfstools"
+version = "4.2"
+description = "Dosfstools — FAT/EFI filesystem utilities"
+license = "GPL-3.0"
+groups = ["base", "core", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/dosfstools/dosfstools/releases/download/v4.2/dosfstools-4.2.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc"]
+build = ["gcc", "make"]
+
+[build]
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --enable-compat-symlinks \
+    --mandir=/usr/share/man
+"""
+make = "make -j$(nproc)"
+check = ""
+install = "make DESTDIR=$PKG install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

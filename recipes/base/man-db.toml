@@ -1,0 +1,44 @@
+# Man-db — Man page viewer
+# Provides man, whatis, apropos, mandb, catman.
+#
+# LFS Ch. 8.73
+
+[package]
+name = "man-db"
+version = "2.13.1"
+description = "Man-db — man page viewer and database"
+license = "GPL-2.0"
+groups = ["base", "build", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://download.savannah.gnu.org/releases/man-db/man-db-2.13.1.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "groff", "less", "libpipeline", "gdbm"]
+build = ["gcc", "make", "pkgconf"]
+
+[build]
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --sysconfdir=/etc \
+    --disable-setuid \
+    --enable-cache-owner=bin \
+    --with-browser=/usr/bin/lynx \
+    --with-vgrind=/usr/bin/vgrind \
+    --with-grap=/usr/bin/grap
+"""
+make = "make -j$(nproc)"
+check = "make check || true"
+install = "make DESTDIR=$PKG install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

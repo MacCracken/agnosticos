@@ -1,0 +1,51 @@
+# Dracut — Initramfs generator
+# Creates initramfs images for early boot (disk unlock, module loading).
+# Supports LUKS, LVM, network boot.
+#
+# BLFS
+
+[package]
+name = "dracut"
+version = "105"
+description = "Dracut — initramfs infrastructure"
+license = "GPL-2.0"
+groups = ["base", "kernel", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/dracut-ng/dracut-ng/releases/download/105/dracut-105.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "bash", "coreutils", "kmod", "util-linux", "findutils", "grep", "sed", "gawk", "cpio"]
+build = ["make"]
+
+[build]
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --sysconfdir=/etc \
+    --libdir=/usr/lib
+"""
+make = "make -j$(nproc)"
+check = ""
+install = "make DESTDIR=$PKG install"
+post_install = """
+# Create default dracut config for AGNOS
+mkdir -p $PKG/etc/dracut.conf.d
+cat > $PKG/etc/dracut.conf.d/agnos.conf << "DRACUTEOF"
+# AGNOS default dracut configuration
+hostonly="yes"
+hostonly_cmdline="no"
+use_fstab="yes"
+compress="zstd"
+DRACUTEOF
+"""
+
+[security]
+hardening = []
+cflags = ""
+ldflags = ""

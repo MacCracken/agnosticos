@@ -1,0 +1,39 @@
+# Man-pages — Linux man pages
+# System call, library function, and file format documentation.
+#
+# LFS Ch. 8.2
+
+[package]
+name = "man-pages"
+version = "6.15"
+description = "Linux man pages"
+license = "GPL-2.0"
+groups = ["base", "build", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://www.kernel.org/pub/linux/docs/man-pages/man-pages-6.15.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = []
+build = []
+
+[build]
+pre_build = ""
+configure = ""
+make = ""
+check = ""
+install = """
+# Remove pages that conflict with other packages
+rm -v man3/crypt* 2>/dev/null || true
+make prefix=/usr DESTDIR=$PKG install
+"""
+post_install = ""
+
+[security]
+hardening = []
+cflags = ""
+ldflags = ""

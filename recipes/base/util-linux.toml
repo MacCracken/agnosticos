@@ -1,0 +1,55 @@
+# Util-linux — Essential system utilities
+# ~50 tools: mount, fdisk, lsblk, blkid, hwclock, chroot, etc.
+#
+# LFS Ch. 8.80
+
+[package]
+name = "util-linux"
+version = "2.41.1"
+description = "Util-linux — essential system utilities"
+license = "GPL-2.0"
+groups = ["base", "core", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://www.kernel.org/pub/linux/utils/util-linux/v2.41/util-linux-2.41.1.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "ncurses", "readline", "zlib", "libcap-ng"]
+build = ["gcc", "make", "pkgconf"]
+
+[build]
+pre_build = ""
+configure = """
+./configure \
+    ADJTIME_PATH=/var/lib/hwclock/adjtime \
+    --prefix=/usr \
+    --bindir=/usr/bin \
+    --sbindir=/usr/sbin \
+    --libdir=/usr/lib \
+    --sysconfdir=/etc \
+    --disable-static \
+    --without-python \
+    --without-systemd \
+    --without-systemdsystemunitdir \
+    --disable-chfn-chsh \
+    --disable-login \
+    --disable-nologin \
+    --disable-su \
+    --disable-setpriv \
+    --disable-runuser \
+    --disable-pylibmount \
+    --runstatedir=/run
+"""
+make = "make -j$(nproc)"
+check = ""
+install = "make DESTDIR=$PKG install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

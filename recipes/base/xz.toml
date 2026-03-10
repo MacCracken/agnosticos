@@ -1,0 +1,40 @@
+# Xz — XZ Utils (LZMA compression)
+# Used for .tar.xz archives (kernel sources, most GNU tarballs).
+#
+# LFS Ch. 8.8
+
+[package]
+name = "xz"
+version = "5.8.1"
+description = "XZ Utils — LZMA compression"
+license = "LGPL-2.1"
+groups = ["base", "core", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/tukaani-project/xz/releases/download/v5.8.1/xz-5.8.1.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc"]
+build = ["gcc", "make"]
+
+[build]
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --disable-static \
+    --docdir=/usr/share/doc/xz-5.8.1
+"""
+make = "make -j$(nproc)"
+check = "make check || true"
+install = "make DESTDIR=$PKG install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

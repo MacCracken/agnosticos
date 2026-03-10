@@ -1,0 +1,58 @@
+# Sysklogd — System logging daemon
+# Traditional syslog daemon. Provides syslogd and klogd.
+#
+# LFS Ch. 8.81
+
+[package]
+name = "sysklogd"
+version = "2.7.2"
+description = "Sysklogd — system logging daemon"
+license = "GPL-2.0"
+groups = ["base", "core", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/troglobit/sysklogd/releases/download/v2.7.2/sysklogd-2.7.2.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc"]
+build = ["gcc", "make"]
+
+[build]
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --sysconfdir=/etc \
+    --runstatedir=/run \
+    --without-logger
+"""
+make = "make -j$(nproc)"
+check = ""
+install = """
+make DESTDIR=$PKG install
+
+# Create default syslog.conf
+mkdir -p $PKG/etc
+cat > $PKG/etc/syslog.conf << "SYSEOF"
+# /etc/syslog.conf - AGNOS default syslog configuration
+auth,authpriv.*     /var/log/auth.log
+*.*;auth,authpriv.none  -/var/log/syslog
+daemon.*            -/var/log/daemon.log
+kern.*              -/var/log/kern.log
+mail.*              -/var/log/mail.log
+user.*              -/var/log/user.log
+*.emerg             *
+SYSEOF
+
+mkdir -p $PKG/var/log
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

@@ -1,0 +1,62 @@
+# Bash — Bourne-Again Shell for AGNOS
+# Default interactive and scripting shell. Every init script, build recipe,
+# and system tool depends on bash.
+#
+# LFS Ch. 8.35
+
+[package]
+name = "bash"
+version = "5.3"
+description = "GNU Bash — Bourne-Again Shell"
+license = "GPL-3.0"
+groups = ["base", "core", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://ftp.gnu.org/gnu/bash/bash-5.3.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "readline", "ncurses"]
+build = ["gcc", "make", "bison"]
+
+[build]
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --without-bash-malloc \
+    --with-installed-readline \
+    --docdir=/usr/share/doc/bash-5.3
+"""
+make = "make -j$(nproc)"
+check = """
+# Run test suite (not as root for accurate results)
+chown -R tester . 2>/dev/null || true
+su -s /usr/bin/expect tester << 'TESTS' || true
+set timeout -1
+spawn make tests
+expect eof
+lassign [wait] _ _ _ value
+exit $value
+TESTS
+"""
+install = """
+make DESTDIR=$PKG install
+
+# /bin/bash symlink — many scripts hardcode this path
+mkdir -p $PKG/bin
+ln -sv /usr/bin/bash $PKG/bin/bash
+
+# /bin/sh → bash (POSIX shell)
+ln -sv bash $PKG/bin/sh
+ln -sv bash $PKG/usr/bin/sh
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

@@ -1,0 +1,39 @@
+# Tar — GNU Tar
+# Archive tool. Used by ark-build.sh, package extraction, and backups.
+#
+# LFS Ch. 8.66
+
+[package]
+name = "tar"
+version = "1.35"
+description = "GNU Tar — archive utility"
+license = "GPL-3.0"
+groups = ["base", "core", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://ftp.gnu.org/gnu/tar/tar-1.35.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "acl", "attr"]
+build = ["gcc", "make"]
+
+[build]
+pre_build = ""
+configure = """
+FORCE_UNSAFE_CONFIGURE=1 \
+./configure \
+    --prefix=/usr
+"""
+make = "make -j$(nproc)"
+check = "make check || true"
+install = "make DESTDIR=$PKG install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

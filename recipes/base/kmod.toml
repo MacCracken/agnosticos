@@ -1,0 +1,52 @@
+# Kmod — Kernel module utilities
+# modprobe, lsmod, insmod, rmmod, depmod, modinfo.
+#
+# LFS Ch. 8.76
+
+[package]
+name = "kmod"
+version = "34.2"
+description = "Kmod — kernel module loading utilities"
+license = "LGPL-2.1"
+groups = ["base", "core", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://www.kernel.org/pub/linux/utils/kernel/kmod/kmod-34.2.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "zlib", "xz", "zstd", "openssl"]
+build = ["gcc", "make", "pkgconf"]
+
+[build]
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --sysconfdir=/etc \
+    --with-openssl \
+    --with-xz \
+    --with-zstd \
+    --with-zlib
+"""
+make = "make -j$(nproc)"
+check = ""
+install = """
+make DESTDIR=$PKG install
+
+# Create symlinks for the traditional module-init-tools names
+mkdir -p $PKG/usr/sbin
+for tool in depmod insmod modinfo modprobe rmmod; do
+    ln -sfv ../bin/kmod $PKG/usr/sbin/$tool
+done
+ln -sfv kmod $PKG/usr/bin/lsmod
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

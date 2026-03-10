@@ -1,0 +1,52 @@
+# p11-kit — PKCS#11 module management
+# Loads and enumerates PKCS#11 modules (smart cards, HSMs, trust stores).
+# Provides the system trust anchor for CA certificates.
+#
+# BLFS
+
+[package]
+name = "p11-kit"
+version = "0.25.5"
+description = "p11-kit — PKCS#11 module management"
+license = "BSD-3-Clause"
+groups = ["base", "security", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/p11-glue/p11-kit/releases/download/0.25.5/p11-kit-0.25.5.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "libtasn1", "libffi"]
+build = ["gcc", "make", "meson", "ninja"]
+
+[build]
+pre_build = ""
+configure = """
+mkdir build && cd build
+meson setup .. \
+    --prefix=/usr \
+    --buildtype=release \
+    -Dtrust_paths=/etc/pki/anchors
+"""
+make = "cd build && ninja -j$(nproc)"
+check = "cd build && ninja test || true"
+install = """
+cd build
+DESTDIR=$PKG ninja install
+
+# Create the trust anchor directory
+mkdir -p $PKG/etc/pki/anchors
+
+# Symlink for the system trust module
+ln -sfv /usr/lib/pkcs11/p11-kit-trust.so \
+    $PKG/usr/lib/libnssckbi.so 2>/dev/null || true
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

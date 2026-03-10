@@ -1,0 +1,52 @@
+# D-Bus — Message bus system
+# IPC for desktop applications, polkit, NetworkManager, etc.
+#
+# BLFS
+
+[package]
+name = "dbus"
+version = "1.16.2"
+description = "D-Bus — interprocess communication message bus"
+license = "AFL-2.1"
+groups = ["base", "core", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://dbus.freedesktop.org/releases/dbus/dbus-1.16.2.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "expat", "libcap-ng"]
+build = ["gcc", "make", "pkgconf"]
+
+[build]
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --sysconfdir=/etc \
+    --localstatedir=/var \
+    --runstatedir=/run \
+    --disable-static \
+    --disable-doxygen-docs \
+    --disable-xml-docs \
+    --with-system-socket=/run/dbus/system_bus_socket \
+    --with-console-auth-dir=/run/console
+"""
+make = "make -j$(nproc)"
+check = "make check || true"
+install = """
+make DESTDIR=$PKG install
+
+# Create runtime directories
+mkdir -p $PKG/var/lib/dbus
+mkdir -p $PKG/run/dbus
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

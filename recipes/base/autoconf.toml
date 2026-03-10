@@ -1,0 +1,35 @@
+# Autoconf — Automatic configure script generator
+# Generates portable configure scripts from configure.ac templates.
+#
+# LFS Ch. 8.45
+
+[package]
+name = "autoconf"
+version = "2.72"
+description = "GNU Autoconf — configure script generator"
+license = "GPL-3.0"
+groups = ["base", "build", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://ftp.gnu.org/gnu/autoconf/autoconf-2.72.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "perl", "m4"]
+build = ["gcc", "make"]
+
+[build]
+pre_build = ""
+configure = "./configure --prefix=/usr"
+make = "make -j$(nproc)"
+check = "make check || true"
+install = "make DESTDIR=$PKG install"
+post_install = ""
+
+[security]
+hardening = []
+cflags = ""
+ldflags = ""

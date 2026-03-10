@@ -7,6 +7,98 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [2026.3.10] - 2026-03-10
 
+### Added — Phase 10G: Kernel & Bootloader (`recipes/base/`, 5 packages)
+
+- **`linux.toml`**: Linux 6.6.72 LTS — AGNOS kernel build, custom modules, agnos_defconfig
+- **`grub.toml`**: GRUB 2.12 — UEFI bootloader, AGNOS defaults, EFI platform
+- **`dracut.toml`**: Dracut 105 — initramfs generator, zstd compression, hostonly mode
+- **`linux-firmware.toml`**: Linux firmware 20250311 — WiFi/GPU/Bluetooth firmware blobs
+- **`cpio.toml`**: GNU Cpio 2.15 — archive utility (dracut dependency)
+- Kernel signing (Secure Boot with AGNOS key) is a Phase 12 integration item
+
+### Added — Phase 10F: Build Tools & Languages (`recipes/base/`, 16 packages)
+
+- **`autoconf.toml`**: GNU Autoconf 2.72 — configure script generator
+- **`automake.toml`**: GNU Automake 1.18.1 — Makefile generator
+- **`pkgconf.toml`**: Pkgconf 2.5.1 — pkg-config replacement, compatibility symlink
+- **`cmake.toml`**: CMake 4.1.0 — cross-platform build system (Mesa, LLVM dependency)
+- **`ninja.toml`**: Ninja 1.13.1 — fast build system (meson backend)
+- **`meson.toml`**: Meson 1.8.3 — high-level build system (Wayland, Mesa, PipeWire)
+- **`perl.toml`**: Perl 5.42.0 — required by autotools, kernel build, texinfo
+- **`python.toml`**: Python 3.13.7 — shared build, LTO, system libs, pip symlink
+- **`rust.toml`**: Rust 1.89.0 — AGNOS userland compiler, cargo/clippy/rustfmt/rust-analyzer
+- **`flex.toml`**: Flex 2.6.4 — lexical analyzer, lex compatibility symlink
+- **`bison.toml`**: GNU Bison 3.8.2 — parser generator
+- **`gettext.toml`**: GNU Gettext 0.26 — internationalization framework
+- **`texinfo.toml`**: GNU Texinfo 7.2 — documentation system
+- **`groff.toml`**: GNU Groff 1.23.0 — document formatting (man pages)
+- **`man-db.toml`**: Man-db 2.13.1 — man page viewer and database
+- **`man-pages.toml`**: Linux man-pages 6.15 — system call and library documentation
+
+### Added — Phase 10E: System Services & Init (`recipes/base/`, 14 packages)
+
+- **`util-linux.toml`**: Util-linux 2.41.1 — mount, fdisk, lsblk, ~50 system tools
+- **`procps-ng.toml`**: Procps-ng 4.0.5 — ps, top, free, vmstat, pgrep
+- **`psmisc.toml`**: Psmisc 23.7 — killall, fuser, pstree
+- **`iproute2.toml`**: Iproute2 6.16.0 — ip, ss, tc, bridge (modern networking)
+- **`kbd.toml`**: Kbd 2.8.0 — keyboard/console font utilities
+- **`kmod.toml`**: Kmod 34.2 — modprobe, lsmod, insmod, depmod
+- **`eudev.toml`**: Eudev 3.2.14 — device manager (udev fork, no systemd)
+- **`dbus.toml`**: D-Bus 1.16.2 — interprocess communication message bus
+- **`e2fsprogs.toml`**: E2fsprogs 1.47.3 — ext2/3/4 filesystem tools
+- **`dosfstools.toml`**: Dosfstools 4.2 — FAT/EFI filesystem tools
+- **`inetutils.toml`**: Inetutils 2.6 — hostname, ping, traceroute
+- **`sysklogd.toml`**: Sysklogd 2.7.2 — system logging daemon, default syslog.conf
+- **`sysvinit.toml`**: SysVinit 3.14 — fallback init (argonaut replaces)
+- **`iana-etc.toml`**: IANA-Etc 20250807 — /etc/services, /etc/protocols
+
+### Added — Phase 10D: Security & Crypto (`recipes/base/`, 12 packages)
+
+- **`openssl.toml`**: OpenSSL 3.5.2 — TLS/SSL and crypto toolkit, shared-only, /etc/ssl
+- **`shadow.toml`**: Shadow 4.18.0 — user/group management, yescrypt default, PAM integration
+- **`linux-pam.toml`**: Linux-PAM 1.7.1 — pluggable auth modules, catch-all deny policy
+- **`sudo.toml`**: Sudo 1.9.17p2 — privilege escalation, PAM+SSL, wheel group enabled
+- **`gnupg.toml`**: GnuPG 2.4.8 — OpenPGP for package signing verification (sigil)
+- **`gnutls.toml`**: GnuTLS 3.8.10 — TLS library (GnuPG, wget dependency)
+- **`p11-kit.toml`**: p11-kit 0.25.5 — PKCS#11 module management, meson build
+- **`openssh.toml`**: OpenSSH 10.0p1 — SSH client/server, PAM integration, privsep
+- **`cryptsetup.toml`**: Cryptsetup 2.8.1 — LUKS disk encryption (integrates with luks.rs)
+- **`nftables.toml`**: nftables 1.1.1 — packet filtering (replaces iptables)
+- **`libseccomp.toml`**: Libseccomp 2.5.5 — seccomp BPF helper (sandbox subsystem)
+- **`audit.toml`**: Linux Audit 4.0.2 — kernel audit framework (integrates with audit.rs)
+- All recipes include security hardening flags and AGNOS subsystem integration notes
+
+### Added — Phase 10C: System Libraries (`recipes/base/`, 14 packages)
+
+- **`zlib.toml`**: Zlib 1.3.1 — universal compression library, shared-only (static removed)
+- **`readline.toml`**: GNU Readline 8.3 — line editing, links ncursesw
+- **`ncurses.toml`**: Ncurses 6.5 — terminal UI, wide-character build, non-wide compat symlinks
+- **`libffi.toml`**: Libffi 3.5.2 — foreign function interface (Python, GLib dependency)
+- **`expat.toml`**: Expat 2.7.1 — stream XML parser (dbus, Python, cmake dependency)
+- **`gdbm.toml`**: GDBM 1.26 — key-value database, libgdbm-compat enabled
+- **`attr.toml`**: Attr 2.5.2 — extended file attributes library
+- **`acl.toml`**: ACL 2.3.2 — POSIX access control lists (depends on attr)
+- **`libcap.toml`**: Libcap 2.76 — POSIX capabilities (sandbox/security subsystem)
+- **`libxcrypt.toml`**: Libxcrypt 4.4.38 — modern password hashing (yescrypt, bcrypt, SHA-512)
+- **`libtool.toml`**: GNU Libtool 2.5.4 — shared library build wrapper
+- **`gperf.toml`**: GNU Gperf 3.3 — perfect hash generator (eudev build dependency)
+- **`libpipeline.toml`**: Libpipeline 1.5.8 — pipeline manipulation (man-db dependency)
+- **`elfutils.toml`**: Elfutils 0.193 — ELF/DWARF library and tools (kernel, perf dependency)
+- All recipes include LFS-accurate configure flags, test steps, and security hardening
+
+### Added — Phase 11E: AI/ML Infrastructure (Roadmap)
+
+Added 20 AI/ML packages to roadmap as Phase 11E, making GPU compute, model
+training, and inference first-class system capabilities:
+
+- **GPU compute**: NVIDIA CUDA toolkit, AMD ROCm, NCCL (multi-GPU), Vulkan compute tools
+- **Linear algebra**: OpenBLAS, LAPACK
+- **Inference engines**: llama.cpp (system .ark), Ollama, ONNX Runtime, vLLM
+- **Python ML ecosystem**: NumPy, SciPy, Pandas, PyTorch, HuggingFace Transformers, safetensors
+- **Infrastructure**: Podman (rootless containers), crun (OCI runtime), Jupyter server, HuggingFace Hub CLI
+
+Phase 11 recipe count: 42 → 62. Total distro recipes: ~150.
+
 ### Added — Phase 10A: LFS Cross-Toolchain
 
 #### Base System Recipes (`recipes/base/`, 7 packages)
@@ -18,6 +110,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`mpfr.toml`**: MPFR 4.2.2 — floating-point library (GCC dependency), thread-safe
 - **`mpc.toml`**: MPC 1.3.1 — complex arithmetic library (GCC dependency)
 - All recipes include LFS-accurate configure flags, test steps, and security hardening
+
+#### Phase 10B: Core Utilities (`recipes/base/`, 20 packages)
+- **coreutils** 9.7 — ls, cp, mv, cat, chmod + ~100 commands, single-binary symlinks mode
+- **bash** 5.3 — default shell, /bin/bash + /bin/sh symlinks, readline support
+- **findutils** 4.10.0 — find, xargs, locate
+- **grep** 3.12 — pattern matching
+- **sed** 4.9 — stream editor
+- **gawk** 5.3.2 — AWK, awk→gawk symlink, MPFR support
+- **tar** 1.35 — archive tool, ACL/attr support
+- **gzip** 1.14, **bzip2** 1.0.8, **xz** 5.8.1, **zstd** 1.5.7, **lz4** 1.10.0 — 5 compression tools
+- **diffutils** 3.12 — diff, cmp, sdiff
+- **patch** 2.8 — apply diffs
+- **make** 4.4.1 — build automation
+- **file** 5.46 — file type detection via magic bytes
+- **m4** 1.4.20 — macro processor (autoconf dependency)
+- **bc** 7.0.3 — calculator (kernel build dependency)
+- **less** 679 — terminal pager
+- **which** 2.21 — command path lookup
 
 #### Bootstrap Toolchain Script (`scripts/bootstrap-toolchain.sh`, 294 lines)
 - Cross-compiles the AGNOS toolchain from any Linux host (LFS Ch. 5–6)

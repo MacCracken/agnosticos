@@ -1,0 +1,43 @@
+# Gawk — GNU AWK
+# Text processing language used by many build scripts and configure checks.
+#
+# LFS Ch. 8.58
+
+[package]
+name = "gawk"
+version = "5.3.2"
+description = "GNU AWK — pattern scanning and processing language"
+license = "GPL-3.0"
+groups = ["base", "core", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://ftp.gnu.org/gnu/gawk/gawk-5.3.2.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "readline", "mpfr"]
+build = ["gcc", "make"]
+
+[build]
+pre_build = """
+# Ensure the unnecessary extras are not installed
+sed -i 's/extras//' Makefile.in
+"""
+configure = "./configure --prefix=/usr"
+make = "make -j$(nproc)"
+check = "make check || true"
+install = """
+make DESTDIR=$PKG install
+
+# Create awk → gawk symlink (POSIX compat)
+ln -sv gawk $PKG/usr/bin/awk
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

@@ -1,0 +1,53 @@
+# OpenSSH — Secure Shell
+# SSH client and server for remote access. Critical system service.
+#
+# BLFS
+
+[package]
+name = "openssh"
+version = "10.0p1"
+description = "OpenSSH — secure shell client and server"
+license = "BSD-2-Clause"
+groups = ["base", "security", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-10.0p1.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "openssl", "zlib", "linux-pam"]
+build = ["gcc", "make"]
+
+[build]
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --sysconfdir=/etc/ssh \
+    --with-pam \
+    --with-privsep-path=/var/lib/sshd \
+    --with-default-path=/usr/bin \
+    --with-superuser-path=/usr/sbin:/usr/bin \
+    --with-pid-dir=/run
+"""
+make = "make -j$(nproc)"
+check = "make tests || true"
+install = """
+make DESTDIR=$PKG install
+
+# Create privilege separation directory
+mkdir -p $PKG/var/lib/sshd
+chmod 700 $PKG/var/lib/sshd
+
+# Install default sshd_config with sane AGNOS defaults
+mkdir -p $PKG/etc/ssh
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

@@ -240,7 +240,36 @@ the network. Recipes go in `recipes/desktop/` and `recipes/network/`.
 | 9 | upower | 1.90.x | Power management |
 | 10 | gstreamer | 1.26.x | Multimedia framework |
 
-**Phase 11 Total: ~42 desktop/networking recipes**
+### 11E — AI/ML Infrastructure
+
+Packages needed to run ML/AI workloads natively. Recipes go in `recipes/ai/`.
+Hoosh already provides 15 LLM providers; these packages make GPU compute,
+model training, and inference available as first-class system capabilities.
+
+| # | Package | Version | Notes |
+|---|---------|---------|-------|
+| 1 | nvidia-cuda-toolkit | 12.x | CUDA compiler, runtime, math libs (.ark) |
+| 2 | rocm | 6.x | AMD GPU compute stack (HIP, rocBLAS, MIOpen) |
+| 3 | openblas | 0.3.x | Optimized BLAS for CPU linear algebra |
+| 4 | lapack | 3.12.x | Linear algebra routines (Fortran + C interface) |
+| 5 | llama-cpp | latest | llama.cpp as system package (CUDA/ROCm/Vulkan backends) |
+| 6 | ollama | latest | Local LLM runner (wraps llama.cpp, manages models) |
+| 7 | onnxruntime | 1.x | ONNX model inference (CPU, CUDA, ROCm providers) |
+| 8 | vllm | latest | High-throughput LLM serving (PagedAttention) |
+| 9 | python-numpy | 1.26.x | NumPy as .ark (links OpenBLAS) |
+| 10 | python-scipy | 1.14.x | Scientific computing |
+| 11 | python-pandas | 2.2.x | Data manipulation |
+| 12 | python-pytorch | 2.x | PyTorch (CPU + CUDA + ROCm variants) |
+| 13 | python-transformers | 4.x | HuggingFace transformers library |
+| 14 | python-safetensors | 0.4.x | Safe model serialization format |
+| 15 | nccl | 2.x | NVIDIA multi-GPU communication |
+| 16 | podman | 5.x | Rootless container runtime (OCI-compatible) |
+| 17 | crun | 1.x | OCI runtime (lightweight, rootless) |
+| 18 | jupyter-server | 2.x | Jupyter notebook/lab server |
+| 19 | vulkan-compute-tools | — | Vulkan SPIR-V compiler + validation layers for GPU compute |
+| 20 | huggingface-hub-cli | latest | Model download/management CLI |
+
+**Phase 11 Total: ~62 desktop/networking/AI recipes**
 
 ---
 
@@ -350,7 +379,7 @@ Wire the LFS base system into AGNOS's own tooling.
 
 **Criteria:**
 - [ ] Phase 10 complete — ~88 base system recipes, self-hosting toolchain
-- [ ] Phase 11 complete — Desktop + networking stack (~42 recipes)
+- [ ] Phase 11 complete — Desktop, networking & AI/ML stack (~62 recipes)
 - [ ] Phase 12 complete — Argonaut init, ark package manager, agnova installer
 - [ ] AGNOS boots from ISO on bare metal (UEFI) and QEMU
 - [ ] Self-hosting: can rebuild itself from source
@@ -386,7 +415,7 @@ Wire the LFS base system into AGNOS's own tooling.
 | 9 | Complete | 169 | Cloud services, human-AI collaboration |
 | 9.5 | Complete | 102 | Full convergence (OIDC, delegation, vector REST, marketplace) |
 | **10** | **Not started** | — | **LFS base system (~88 recipes)** |
-| **11** | **Not started** | — | **Desktop & networking stack (~42 recipes)** |
+| **11** | **Not started** | — | **Desktop, networking & AI/ML stack (~62 recipes)** |
 | **12** | **Not started** | — | **System integration (argonaut, ark, agnova, CI)** |
 | **13** | **Not started** | — | **Beta polish, hardware, community** |
 
@@ -409,7 +438,7 @@ Wire the LFS base system into AGNOS's own tooling.
 | Stub Implementations | 0 | 0 | Met |
 | Compiler Warnings | 0 | 0 | Met |
 | Base System Recipes | ~88 | 0 | Phase 10 |
-| Desktop Stack Recipes | ~42 | 0 | Phase 11 |
+| Desktop/AI Stack Recipes | ~62 | 0 | Phase 11 |
 | Self-Hosting | Yes | No | Phase 13 |
 
 ### By Component
@@ -467,7 +496,7 @@ Wire the LFS base system into AGNOS's own tooling.
 ### Priority Contribution Areas
 
 1. **Base system recipes (Phase 10)** — Port LFS packages to takumi `.toml` format
-2. **Desktop stack recipes (Phase 11)** — Wayland, Mesa, PipeWire, etc.
+2. **Desktop & AI/ML recipes (Phase 11)** — Wayland, Mesa, PipeWire, CUDA, llama.cpp, etc.
 3. **QEMU boot testing** — CI pipeline for automated boot validation
 4. **Hardware testing** — GPU drivers, WiFi, Bluetooth on real hardware
 5. **Documentation** — Installation guide, kernel dev guide

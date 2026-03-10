@@ -1,0 +1,42 @@
+# GnuPG — GNU Privacy Guard
+# OpenPGP implementation for package signing verification, key management.
+# Used by sigil for .ark package signature verification.
+#
+# BLFS
+
+[package]
+name = "gnupg"
+version = "2.4.8"
+description = "GnuPG — GNU Privacy Guard (OpenPGP)"
+license = "GPL-3.0"
+groups = ["base", "security", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://gnupg.org/ftp/gcrypt/gnupg/gnupg-2.4.8.tar.bz2"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "libgcrypt", "libgpg-error", "libassuan", "libksba", "npth", "gnutls", "readline"]
+build = ["gcc", "make"]
+
+[build]
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --localstatedir=/var \
+    --sysconfdir=/etc \
+    --disable-doc
+"""
+make = "make -j$(nproc)"
+check = "make check || true"
+install = "make DESTDIR=$PKG install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

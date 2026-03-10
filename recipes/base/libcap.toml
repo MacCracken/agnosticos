@@ -1,0 +1,39 @@
+# Libcap — POSIX capabilities library
+# Implements POSIX 1003.1e capabilities (fine-grained root splitting).
+# Used by the AGNOS sandbox, shadow, elogind, and security subsystem.
+#
+# LFS Ch. 8.24
+
+[package]
+name = "libcap"
+version = "2.76"
+description = "Libcap — POSIX capabilities library"
+license = "BSD-3-Clause"
+groups = ["base", "core", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://www.kernel.org/pub/linux/libs/security/linux-privs/libcap2/libcap-2.76.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc"]
+build = ["gcc", "make"]
+
+[build]
+pre_build = """
+# Prevent installing the static library
+sed -i '/install -m.*STA/d' libcap/Makefile
+"""
+configure = ""
+make = "make prefix=/usr lib=lib -j$(nproc)"
+check = "make test"
+install = "make prefix=/usr lib=lib DESTDIR=$PKG install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"
