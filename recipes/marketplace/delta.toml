@@ -1,0 +1,120 @@
+# Delta — Code hosting, CI/CD, and artifact registry for AGNOS
+# Git hosting with smart HTTP, pull requests, code review, webhooks.
+# Rust binary, port 8070, SQLite/PostgreSQL storage.
+#
+# Status: Alpha — Phases 1-3 complete (Foundation, Git, Code Review).
+# Source: https://github.com/MacCracken/delta
+
+[package]
+name = "delta"
+version = "0.1.0"
+description = "Delta — Code hosting platform with CI/CD and artifact registry"
+license = "GPL-3.0"
+groups = ["server", "devtools"]
+release = 1
+arch = "x86_64"
+
+[source]
+local = true
+build_dir = "target/release"
+github_release = "MacCracken/delta"
+release_asset = "delta-api"
+
+[depends]
+runtime = [
+    "glibc",
+    "openssl",
+    "zlib",
+]
+build = [
+    "rust",
+    "gcc",
+    "make",
+    "pkgconf",
+    "openssl",
+    "zlib",
+]
+
+[marketplace]
+category = "devtools"
+runtime = "native-binary"
+publisher = "Delta"
+tags = ["git", "code-hosting", "ci-cd", "artifact-registry", "pull-requests", "devtools"]
+min_agnos_version = "2026.3.10"
+
+[marketplace.sandbox]
+seccomp_mode = "server"
+network_access = true
+allowed_hosts = ["localhost", "127.0.0.1"]
+data_dir = "/var/lib/delta/"
+
+[[marketplace.sandbox.landlock]]
+path = "/var/lib/delta/"
+access = "rw"
+
+[[marketplace.sandbox.landlock]]
+path = "/etc/delta/"
+access = "ro"
+
+[[marketplace.sandbox.landlock]]
+path = "/run/agnos/"
+access = "rw"
+
+[marketplace.services]
+ports = [8070]
+depends_on = []
+
+[build]
+pre_build = ""
+configure = ""
+make = "cargo build --release --workspace"
+check = "cargo test --workspace"
+install = """
+# Install binary
+mkdir -p $PKG/usr/local/bin
+cp target/release/delta-api $PKG/usr/local/bin/delta-server
+
+# Install config
+mkdir -p $PKG/etc/delta
+cp config/delta.example.toml $PKG/etc/delta/config.toml
+
+# Create data directories
+mkdir -p $PKG/var/lib/delta/repos
+mkdir -p $PKG/var/lib/delta/artifacts
+mkdir -p $PKG/var/lib/delta/data
+
+# Systemd service
+mkdir -p $PKG/usr/lib/systemd/system
+cat > $PKG/usr/lib/systemd/system/delta.service << 'SVCEOF'
+[Unit]
+Description=Delta Code Hosting Platform
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=delta
+Group=delta
+ExecStart=/usr/local/bin/delta-server --config /etc/delta/config.toml
+Environment=RUST_LOG=info
+WorkingDirectory=/var/lib/delta
+Restart=on-failure
+RestartSec=5
+
+# Security hardening
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+ReadWritePaths=/var/lib/delta
+
+[Install]
+WantedBy=multi-user.target
+SVCEOF
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

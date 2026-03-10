@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [2026.3.10] - 2026-03-10
 
+### Fixed — CI Pipeline
+
+- **`.github/workflows/base-system.yml`**: Replaced broken full-build CI (all 108 packages failed because LFS bootstrap requires ordered builds, not parallel) with recipe validation CI
+- **`scripts/ark-validate-recipes.sh`**: New script validates recipe format, required fields, and dependency closure across all recipes. 0 errors on 108 recipes
+- CI now validates recipes on every push, full LFS bootstrap is manual-trigger only (takes hours)
+- Fixed flaky `test_llama_cpp_infer_stream_channel_sends_error` — added timeout + graceful channel-closed handling
+
+### Added — Delta Consumer Integration
+
+- **`recipes/marketplace/delta.toml`**: Marketplace recipe for Delta code hosting platform (Rust binary, port 8070, systemd service)
+- Updated roadmap with Delta AGNOS-side integration items (mela listing, agnoshi intent, daimon health)
+
 ### Security — Audit Rounds 1-10
 
 #### Rounds 6-10: API robustness, test coverage, cross-crate security

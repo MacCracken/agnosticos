@@ -362,7 +362,27 @@ Wire the LFS base system into AGNOS's own tooling.
 | 6 | Third-party security audit | External vendor (previously P1 alpha blocker) |
 | 7 | Bug tracker triage | Public issue templates |
 
-### 13D — Previous Alpha Items (Moved)
+### 13D — Consumer App Integration
+
+| # | App | Recipe | Status | Notes |
+|---|-----|--------|--------|-------|
+| 1 | SecureYeoman | `recipes/marketplace/secureyeoman.toml` | Ready | Flagship, 20,500+ tests, 279 MCP tools |
+| 2 | Photis Nadi | `recipes/marketplace/photisnadi.toml` | Ready | Flutter productivity, 389 tests |
+| 3 | BullShift | `recipes/marketplace/bullshift.toml` | Ready | Trading platform, 552 tests |
+| 4 | AGNOSTIC | `recipes/marketplace/agnostic.toml` | Stub | Python/CrewAI QA platform |
+| 5 | **Delta** | `recipes/marketplace/delta.toml` | **Recipe created** | Code hosting (port 8070), CI/CD, artifact registry. 49 tests. Needs: mela listing, agnoshi `delta` intent, daimon health consumer |
+
+#### Delta AGNOS-Side Integration Items
+
+| # | Item | Status | Notes |
+|---|------|--------|-------|
+| 1 | Marketplace recipe | Done | `recipes/marketplace/delta.toml` — Rust binary build, systemd service |
+| 2 | Mela listing | Not started | Register Delta in marketplace registry with metadata |
+| 3 | Agnoshi `delta` intent | Not started | Shell commands: `delta create-repo`, `delta pr`, `delta push` |
+| 4 | Daimon consumer health | Not started | Add Delta to `/v1/health/consumers` monitoring |
+| 5 | Documentation | Not started | Delta installation guide in AGNOS docs |
+
+### 13E — Previous Alpha Items (Moved)
 
 | # | Item | Status | Notes |
 |---|------|--------|-------|
