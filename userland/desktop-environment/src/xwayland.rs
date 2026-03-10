@@ -162,11 +162,7 @@ impl XWaylandManager {
     pub fn with_spawner(config: XWaylandConfig, spawner: Box<dyn ProcessSpawner>) -> Self {
         let display_number = config.display_number;
         let socket_path = PathBuf::from(format!("/tmp/.X11-unix/X{}", display_number));
-        let initial_state = if config.enabled {
-            XWaylandState::Disabled // Don't auto-start; caller invokes start()
-        } else {
-            XWaylandState::Disabled
-        };
+        let initial_state = XWaylandState::Disabled; // Don't auto-start; caller invokes start()
         Self {
             config,
             state: initial_state,
