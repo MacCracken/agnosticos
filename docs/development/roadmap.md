@@ -2,8 +2,8 @@
 
 > **Status**: Pre-Beta | **Last Updated**: 2026-03-10
 > **Userland complete** — 9878+ tests (3027 agent-runtime), ~82% coverage, 0 warnings
-> **Base system**: 108 base + 84 Phase 11 recipes | **Audit**: 15 rounds complete
-> **Next Milestone**: Beta Release (Target: Q4 2026)
+> **Recipes**: 109 base + 49 desktop + 25 AI + 9 network + 8 browser + 6 marketplace + 4 python + 3 database = 214 total, 0 validation errors
+> **Phases 10–12 complete** | **Audit**: 15 rounds | **Next**: Phase 13 (Beta Polish)
 
 ---
 
@@ -399,9 +399,9 @@ Wire the LFS base system into AGNOS's own tooling.
 ### Beta Release — Q4 2026
 
 **Criteria:**
-- [ ] Phase 10 complete — ~108 base system recipes, self-hosting toolchain
-- [ ] Phase 11 complete — Desktop, networking & AI/ML stack (~62 recipes)
-- [ ] Phase 12 complete — Argonaut init, ark package manager, agnova installer
+- [x] Phase 10 complete — 108 base system recipes, self-hosting toolchain
+- [x] Phase 11 complete — 84 desktop, networking & AI/ML recipes
+- [x] Phase 12 complete — Argonaut init, ark package manager, agnova installer
 - [ ] AGNOS boots from ISO on bare metal (UEFI) and QEMU
 - [ ] Self-hosting: can rebuild itself from source
 - [ ] Third-party security audit complete
@@ -436,7 +436,7 @@ Wire the LFS base system into AGNOS's own tooling.
 | 9 | Complete | 169 | Cloud services, human-AI collaboration |
 | 9.5 | Complete | 102 | Full convergence (OIDC, delegation, vector REST, marketplace) |
 | **10** | **Complete** | — | **LFS base system (108 recipes)** |
-| **11** | **Not started** | — | **Desktop, networking & AI/ML stack (~62 recipes)** |
+| **11** | **Complete** | — | **Desktop, networking & AI/ML stack (84 recipes)** |
 | **12** | **Complete** | 148 | **System integration: argonaut (117), ark (49), agnova (91), CI** |
 | **13** | **Not started** | — | **Beta polish, hardware, community** |
 
@@ -450,7 +450,7 @@ Wire the LFS base system into AGNOS's own tooling.
 |--------|--------|---------|--------|
 | Code Coverage | >80% | ~82% | Met |
 | Test Pass Rate | 100% | 100% | Met |
-| Total Tests | 400+ | 9600+ | Met |
+| Total Tests | 400+ | 9878+ | Met |
 | Agent Spawn Time | <500ms | ~300ms | Met |
 | Shell Response Time | <100ms | ~50ms | Met |
 | Memory Overhead | <2GB | ~1.2GB | Met |
@@ -459,7 +459,9 @@ Wire the LFS base system into AGNOS's own tooling.
 | Stub Implementations | 0 | 0 | Met |
 | Compiler Warnings | 0 | 0 | Met |
 | Base System Recipes | ~108 | 108 | Complete |
-| Desktop/AI Stack Recipes | ~62 | 84 | Phase 11 (complete) |
+| Desktop/AI Stack Recipes | ~62 | 84 | Complete |
+| Recipe Validation Errors | 0 | 0 | Complete |
+| Security Audit Rounds | 15 | 15 | Complete |
 | Self-Hosting | Yes | No | Phase 13 |
 
 ### By Component
@@ -516,11 +518,11 @@ Wire the LFS base system into AGNOS's own tooling.
 
 ### Priority Contribution Areas
 
-1. **Desktop & AI/ML recipes (Phase 11)** — Wayland, Mesa, PipeWire, CUDA, llama.cpp, etc.
-2. **QEMU boot testing** — CI pipeline for automated boot validation
-3. **Hardware testing** — GPU drivers, WiFi, Bluetooth on real hardware
-4. **Documentation** — Installation guide, kernel dev guide
-5. **SHA256 verification** — Fill in real checksums for all 108 base recipes
+1. **Self-hosting validation (Phase 13A)** — Build AGNOS on AGNOS, full bootstrap test
+2. **Hardware testing (Phase 13B)** — GPU drivers, WiFi, Bluetooth on real hardware
+3. **QEMU boot testing** — CI pipeline for automated boot validation
+4. **Documentation (Phase 13C)** — Installation guide, kernel dev guide, video tutorials
+5. **SHA256 verification** — Fill in real checksums for all 192 recipes
 
 ### Getting Started
 

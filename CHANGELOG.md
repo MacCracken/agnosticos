@@ -55,10 +55,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Audit pagination (1 test), dashboard bounds (1 test), SSRF URL rejection (1 test)
   - Federation node validation (3 tests), LUKS passphrase length (3 tests)
 
+### Fixed — CI/CD Pipeline
+
+- **`release.yml`**: Increased `runtime-images` timeout from 15→60 minutes — python3.13t compiles CPython from source and needs more time
+- **`release.yml`**: Changed `create-release` artifact download from unfiltered (all artifacts) to `pattern: agnos-linux-*` — prevents download failures when unrelated jobs (fuzzing, CIS) have no artifacts
+- **`marketplace-publish.yml`**: Same fix — filtered artifact download to `pattern: marketplace-*`
+- **`browser-ark.yml`**: Same fix — filtered artifact download to `pattern: ark-*`
+- **`Dockerfile.rust`**: Removed `cargo install cargo-watch` — slow to compile, unnecessary in base image
+- **`Dockerfile.python3.13t`**: Removed — free-threaded Python 3.13 is experimental, no official Docker image, pydantic-core and other key packages lack pre-built wheels (require Rust/maturin to compile from source). Standard Python 3.13 covers all current use cases
+- **Marketplace recipes**: Added missing `[security]` sections to 5 recipes (agnostic, bullshift, photisnadi, secureyeoman, synapse)
+- **`ark-validate-recipes.sh`**: Skip `url`/`sha256` checks for `local = true` recipes (marketplace apps use local builds)
+
 ### Fixed — Docker Base Images
 
 - **`Dockerfile.node`**: Added `unzip` to apt-get install — required by Bun installer script
-- **`Dockerfile.python3.13t`**: Changed base image from `python:3.13-slim-bookworm` to `python:3.13t-slim-bookworm` — the standard 3.13 image doesn't support `PYTHON_GIL=0` (fatal error: "Disabling the GIL is not supported by this build"). Added build-time assertion to verify free-threaded support
+- **`Dockerfile.python3.13t`**: Removed (see CI/CD section above)
 
 ### Added — Delta Consumer Integration
 
@@ -344,8 +355,7 @@ Phase 11 recipe count: 42 → 62. Total distro recipes: ~150.
 - **`Dockerfile.python3.13`**: new Python 3.13 base image
 - **`Dockerfile.python3.14`**: new Python 3.14 RC base image
 - **`Dockerfile.rust`**: new Rust base image with libssl-dev, pkg-config
-- **`Dockerfile.python3.13t`**: new Python 3.13 free-threaded (GIL-disabled) base image with `PYTHON_GIL=0`
-- **CI publishing**: All 5 runtime images built and pushed to `ghcr.io/maccracken/agnosticos:<tag>` on each release (multi-arch: amd64 + arm64)
+- **CI publishing**: All 4 runtime images built and pushed to `ghcr.io/maccracken/agnosticos:<tag>` on each release (multi-arch: amd64 + arm64)
 
 #### Synapse AGNOS Integration (argonaut 78 tests, +10)
 - **New boot stage**: `BootStage::StartModelServices` between `StartLlmGateway` and `StartCompositor`

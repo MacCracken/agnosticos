@@ -15,8 +15,9 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # Build verification
+  # Build verification (skipped when called from release — release does its own --release build)
   build:
+    if: github.event_name != 'workflow_call'
     name: Build ${{ matrix.name }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -227,7 +228,7 @@ jobs:
         test -f SECURITY.md
         test -f LICENSE
 
-  # Container build
+  # Container build (already skips on workflow_call since event_name != 'push')
   container:
     runs-on: ubuntu-latest
     timeout-minutes: 45

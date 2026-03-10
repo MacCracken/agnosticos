@@ -298,9 +298,6 @@ jobs:
           - dockerfile: docker/Dockerfile.python3.13
             tag: python3.13
             title: "Python 3.13"
-          - dockerfile: docker/Dockerfile.python3.13t
-            tag: python3.13t
-            title: "Python 3.13t (Free-Threaded)"
           - dockerfile: docker/Dockerfile.python3.14
             tag: python3.14
             title: "Python 3.14"
