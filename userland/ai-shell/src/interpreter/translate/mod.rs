@@ -2,6 +2,7 @@ mod aequi;
 mod agnos;
 mod agnostic;
 mod delta;
+mod edge;
 mod filesystem;
 mod knowledge;
 mod marketplace;
@@ -96,6 +97,13 @@ impl Interpreter {
             | Intent::DeltaPr { .. }
             | Intent::DeltaPush { .. }
             | Intent::DeltaCiStatus { .. } => delta::translate_delta(intent),
+
+            // Edge fleet management
+            Intent::EdgeListNodes { .. }
+            | Intent::EdgeDeploy { .. }
+            | Intent::EdgeUpdate { .. }
+            | Intent::EdgeHealth { .. }
+            | Intent::EdgeDecommission { .. } => edge::translate_edge(intent),
 
             // Photis Nadi
             Intent::TaskList { .. }

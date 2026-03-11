@@ -1191,11 +1191,32 @@ mod tests {
 
     // --- 3d. Memory bridge tests ---
 
+    /// Register a test agent via the API and return its UUID.
+    async fn register_test_agent(app: &Router) -> Uuid {
+        let req_body = serde_json::json!({
+            "name": format!("test-agent-{}", Uuid::new_v4()),
+            "capabilities": ["memory:read", "memory:write"],
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/agents/register")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        json["id"].as_str().unwrap().parse().unwrap()
+    }
+
     #[tokio::test]
     async fn test_memory_set_and_get() {
         let state = test_state();
         let app = build_router(state.clone());
-        let id = Uuid::new_v4();
+        let id = register_test_agent(&app).await;
 
         // Set
         let req_body = serde_json::json!({"value": {"greeting": "hello"}, "tags": ["test"]});
@@ -1242,7 +1263,7 @@ mod tests {
     async fn test_memory_list_keys() {
         let state = test_state();
         let app = build_router(state.clone());
-        let id = Uuid::new_v4();
+        let id = register_test_agent(&app).await;
 
         // Set two keys
         for key in ["alpha", "beta"] {
@@ -1275,7 +1296,7 @@ mod tests {
     async fn test_memory_delete_key() {
         let state = test_state();
         let app = build_router(state.clone());
-        let id = Uuid::new_v4();
+        let id = register_test_agent(&app).await;
 
         // Set
         let req_body = serde_json::json!({"value": "data"});
@@ -1324,7 +1345,7 @@ mod tests {
     async fn test_memory_list_empty() {
         let state = test_state();
         let app = build_router(state.clone());
-        let id = Uuid::new_v4();
+        let id = register_test_agent(&app).await;
 
         let req = Request::builder()
             .uri(format!("/v1/agents/{}/memory", id))
@@ -1344,8 +1365,8 @@ mod tests {
     async fn test_memory_isolation_between_agents() {
         let state = test_state();
         let app = build_router(state.clone());
-        let id1 = Uuid::new_v4();
-        let id2 = Uuid::new_v4();
+        let id1 = register_test_agent(&app).await;
+        let id2 = register_test_agent(&app).await;
 
         // Set same key for different agents
         let req_body = serde_json::json!({"value": "agent1-data"});

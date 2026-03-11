@@ -435,28 +435,40 @@ impl Supervisor {
             .get_config(agent_id)
             .ok_or_else(|| anyhow::anyhow!("Config not found for agent {}", agent_id))?;
 
-        let cg = CgroupController::new(agent_id)?;
+        let max_memory = config.resource_limits.max_memory;
+        let max_cpu_time = config.resource_limits.max_cpu_time;
+        let pid = agent.pid;
 
-        // Apply memory limit
-        if config.resource_limits.max_memory > 0 {
-            cg.set_memory_limit(config.resource_limits.max_memory)?;
-        }
+        // CGroup filesystem ops are blocking — run on a blocking thread with timeout
+        let cgroup_result = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            tokio::task::spawn_blocking(move || -> Result<()> {
+                let cg = CgroupController::new(agent_id)?;
 
-        // Apply CPU limit: convert max_cpu_time (ms total) to a bandwidth quota.
-        // We use 100ms period and grant proportional quota based on limit.
-        // A max_cpu_time of 0 means unlimited.
-        if config.resource_limits.max_cpu_time > 0 {
-            // Allow full CPU for the period — the hard limit is enforced by the
-            // kernel OOM / cpu throttle.  We set quota = period (one full core).
-            let period_us: u64 = 100_000; // 100 ms
-            let quota_us = period_us; // 1 core equivalent by default
-            cg.set_cpu_limit(quota_us, period_us)?;
-        }
+                // Apply memory limit
+                if max_memory > 0 {
+                    cg.set_memory_limit(max_memory)?;
+                }
 
-        // Place the agent's process in the cgroup
-        if let Some(pid) = agent.pid {
-            cg.add_pid(pid)?;
-        }
+                // Apply CPU limit
+                if max_cpu_time > 0 {
+                    let period_us: u64 = 100_000; // 100 ms
+                    let quota_us = period_us; // 1 core equivalent by default
+                    cg.set_cpu_limit(quota_us, period_us)?;
+                }
+
+                // Place the agent's process in the cgroup
+                if let Some(pid) = pid {
+                    cg.add_pid(pid)?;
+                }
+                Ok(())
+            }),
+        )
+        .await
+        .map_err(|_| anyhow::anyhow!("cgroup setup timed out for agent {}", agent_id))?
+        .map_err(|e| anyhow::anyhow!("cgroup task failed: {}", e))?;
+
+        cgroup_result?;
 
         self.cgroups.write().await.insert(agent_id, ());
         Ok(())

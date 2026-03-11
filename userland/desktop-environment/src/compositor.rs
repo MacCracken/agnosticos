@@ -14,7 +14,7 @@ use crate::renderer::{
 
 #[derive(Debug, Error)]
 pub enum CompositorError {
-    #[error("Window not found: {0}")]
+    #[error("Window not found")]
     WindowNotFound(Uuid),
     #[error("Display server error: {0}")]
     DisplayServerError(String),
@@ -1813,10 +1813,12 @@ mod tests {
     }
 
     #[test]
-    fn test_compositor_error_display_window_not_found_contains_uuid() {
+    fn test_compositor_error_display_window_not_found_hides_uuid() {
         let id = Uuid::new_v4();
         let err = CompositorError::WindowNotFound(id);
-        assert!(err.to_string().contains(&id.to_string()));
+        // Surface IDs must NOT leak in error messages (info leakage fix)
+        assert!(!err.to_string().contains(&id.to_string()));
+        assert_eq!(err.to_string(), "Window not found");
     }
 
     #[test]

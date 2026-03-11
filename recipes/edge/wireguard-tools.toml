@@ -1,0 +1,41 @@
+# WireGuard Tools — VPN Mesh Networking (Edge Profile)
+# Userspace tools for WireGuard VPN (kernel module in kernel-edge).
+# Phase 14B — edge fleet mesh networking via WireGuard tunnels.
+#
+# Phase 14 — Edge OS Profile
+
+[package]
+name = "wireguard-tools"
+version = "1.0.20210914"
+description = "WireGuard VPN userspace tools — wg, wg-quick"
+license = "GPL-2.0"
+groups = ["edge", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://git.zx2c4.com/wireguard-tools/snapshot/wireguard-tools-1.0.20210914.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "bash", "iproute2", "openssl"]
+build = ["gcc", "make"]
+
+[build]
+strip = true
+install_docs = false
+pre_build = ""
+configure = ""
+make = "make -C src -j$(nproc) WITH_BASHCOMPLETION=no WITH_WGQUICK=yes WITH_SYSTEMDUNITS=no"
+check = ""
+install = """
+make -C src DESTDIR=$PKG PREFIX=/usr WITH_BASHCOMPLETION=no WITH_WGQUICK=yes WITH_SYSTEMDUNITS=no install
+rm -rf $PKG/usr/share/man $PKG/usr/share/doc
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-Os -pipe"
+ldflags = "-Wl,--as-needed"

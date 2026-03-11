@@ -11,6 +11,7 @@ use agnos_common::{audit::AuditChain, telemetry::SpanCollector};
 use desktop_environment::{Compositor, ScreenCaptureManager, ScreenRecordingManager};
 
 use crate::database::DatabaseManager;
+use crate::edge::{EdgeFleetConfig, EdgeFleetManager};
 use crate::ipc::RpcRegistry;
 use crate::knowledge_base::KnowledgeBase;
 use crate::learning::AnomalyDetector;
@@ -28,6 +29,9 @@ use super::types::AgentDetail;
 pub struct RegisteredAgentEntry {
     pub detail: AgentDetail,
 }
+
+/// Maximum number of keys per agent in the memory store.
+const MAX_KEYS_PER_AGENT: usize = 1_000;
 
 /// In-memory per-agent key-value store for the REST API bridge.
 /// Maps agent_id -> key -> value.
@@ -48,11 +52,17 @@ impl ApiMemoryStore {
         data.get(agent_id).and_then(|m| m.get(key).cloned())
     }
 
-    pub async fn set(&self, agent_id: &str, key: &str, value: serde_json::Value) {
+    /// Store a key-value pair. Returns `false` if the per-agent key limit is
+    /// reached and the key does not already exist (i.e. insert was rejected).
+    pub async fn set(&self, agent_id: &str, key: &str, value: serde_json::Value) -> bool {
         let mut data = self.data.write().await;
-        data.entry(agent_id.to_string())
-            .or_default()
-            .insert(key.to_string(), value);
+        let agent_map = data.entry(agent_id.to_string()).or_default();
+        // Reject new keys if the agent already has too many
+        if agent_map.len() >= MAX_KEYS_PER_AGENT && !agent_map.contains_key(key) {
+            return false;
+        }
+        agent_map.insert(key.to_string(), value);
+        true
     }
 
     pub async fn delete(&self, agent_id: &str, key: &str) -> bool {
@@ -123,6 +133,8 @@ pub struct ApiState {
         Arc<RwLock<HashMap<String, crate::http_api::handlers::sandbox::CustomSandboxProfile>>>,
     /// Per-agent RAG ingest rate limiter (agent_id -> (count, window_start)).
     pub rag_ingest_rate_limits: Arc<Mutex<HashMap<String, (u32, Instant)>>>,
+    /// Edge fleet manager for IoT/edge node registration, health, and routing.
+    pub edge_fleet: Arc<RwLock<EdgeFleetManager>>,
 }
 
 impl std::fmt::Debug for ApiState {
@@ -186,6 +198,7 @@ impl ApiState {
             external_mcp_tools: Arc::new(RwLock::new(Vec::new())),
             custom_sandbox_profiles: Arc::new(RwLock::new(HashMap::new())),
             rag_ingest_rate_limits: Arc::new(Mutex::new(HashMap::new())),
+            edge_fleet: Arc::new(RwLock::new(EdgeFleetManager::new(EdgeFleetConfig::default()))),
         }
     }
 
@@ -224,6 +237,7 @@ impl ApiState {
             external_mcp_tools: Arc::new(RwLock::new(Vec::new())),
             custom_sandbox_profiles: Arc::new(RwLock::new(HashMap::new())),
             rag_ingest_rate_limits: Arc::new(Mutex::new(HashMap::new())),
+            edge_fleet: Arc::new(RwLock::new(EdgeFleetManager::new(EdgeFleetConfig::default()))),
         }
     }
 

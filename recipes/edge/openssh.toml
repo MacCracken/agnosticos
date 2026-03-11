@@ -1,0 +1,63 @@
+# OpenSSH — Secure Shell (Edge Profile)
+# Client and server, minimal config, no X11 forwarding.
+#
+# Phase 14 — Edge OS Profile
+
+[package]
+name = "openssh"
+version = "10.0p1"
+description = "OpenSSH client and server — edge minimal build"
+license = "BSD-2-Clause"
+groups = ["edge", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-10.0p1.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "openssl", "zlib"]
+build = ["gcc", "make", "pkgconf"]
+
+[build]
+strip = true
+install_docs = false
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --sysconfdir=/etc/ssh \
+    --with-ssl-engine \
+    --without-xauth \
+    --disable-strip \
+    --disable-static \
+    --disable-lastlog \
+    --disable-utmp \
+    --disable-utmpx \
+    --disable-wtmp \
+    --disable-wtmpx
+"""
+make = "make -j$(nproc)"
+check = ""
+install = """
+make DESTDIR=$PKG install
+rm -rf $PKG/usr/share/man $PKG/usr/share/doc
+
+# Edge-hardened sshd_config defaults
+cat > $PKG/etc/ssh/sshd_config.d/edge.conf << 'EDGECONF'
+PermitRootLogin no
+PasswordAuthentication no
+X11Forwarding no
+MaxAuthTries 3
+ClientAliveInterval 300
+ClientAliveCountMax 2
+EDGECONF
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

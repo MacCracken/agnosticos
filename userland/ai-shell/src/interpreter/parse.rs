@@ -95,6 +95,58 @@ impl Interpreter {
             return Intent::AgnosticAgentStatus { agent_type };
         }
 
+        // --- Edge fleet management intents (before greedy list/show) ---
+        if let Some(caps) = self.try_captures("edge_list", input_lower) {
+            let status = caps
+                .get(3)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            return Intent::EdgeListNodes { status };
+        }
+
+        if let Some(caps) = self.try_captures("edge_deploy", input_lower) {
+            let task = caps.get(1).map_or("", |m| m.as_str()).trim().to_string();
+            let node = caps
+                .get(2)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !task.is_empty() {
+                return Intent::EdgeDeploy { task, node };
+            }
+        }
+
+        if let Some(caps) = self.try_captures("edge_update", input_lower) {
+            // Group 1: "edge update <node>", Group 2: "update node <node>"
+            let node = caps
+                .get(1)
+                .or_else(|| caps.get(2))
+                .map_or("", |m| m.as_str())
+                .trim()
+                .to_string();
+            let version = caps
+                .get(3)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !node.is_empty() {
+                return Intent::EdgeUpdate { node, version };
+            }
+        }
+
+        if let Some(caps) = self.try_captures("edge_health", input_lower) {
+            let node = caps
+                .get(2)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty() && s != "fleet" && s != "all" && s != "nodes");
+            return Intent::EdgeHealth { node };
+        }
+
+        if let Some(caps) = self.try_captures("edge_decommission", input_lower) {
+            let node = caps.get(1).map_or("", |m| m.as_str()).trim().to_string();
+            if !node.is_empty() {
+                return Intent::EdgeDecommission { node };
+            }
+        }
+
         // --- Delta code hosting intents (before greedy list/show) ---
         if let Some(caps) = self.try_captures("delta_create_repo", input_lower) {
             let name = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();

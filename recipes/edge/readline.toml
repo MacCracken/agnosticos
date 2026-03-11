@@ -1,0 +1,46 @@
+# readline — Line Editing Library (Edge Profile)
+# Required by bash, nftables, and interactive CLI tools.
+#
+# Phase 14 — Edge OS Profile
+
+[package]
+name = "readline"
+version = "8.2.13"
+description = "GNU readline — line editing and history library"
+license = "GPL-3.0"
+groups = ["edge", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://ftp.gnu.org/gnu/readline/readline-8.2.13.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "ncurses"]
+build = ["gcc", "make"]
+
+[build]
+strip = true
+install_docs = false
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --disable-static \
+    --with-curses
+"""
+make = "make -j$(nproc) SHLIB_LIBS='-lncursesw'"
+check = ""
+install = """
+make DESTDIR=$PKG SHLIB_LIBS='-lncursesw' install
+rm -rf $PKG/usr/share/man $PKG/usr/share/info $PKG/usr/share/doc
+rm -f $PKG/usr/lib/libreadline.a $PKG/usr/lib/libhistory.a
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-Os -pipe"
+ldflags = "-Wl,--as-needed"

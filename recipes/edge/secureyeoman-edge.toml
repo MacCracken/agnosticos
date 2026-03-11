@@ -1,0 +1,195 @@
+# SecureYeoman Edge — Lightweight IoT agent for AGNOS edge devices
+# Statically linked Go binary (~6.5 MB) for constrained hardware.
+# Connects to a parent SecureYeoman instance for orchestration, runs
+# local agent tasks, reports telemetry, and accepts OTA updates.
+#
+# This is the edge/IoT variant — the full SecureYeoman platform is in
+# recipes/marketplace/secureyeoman.toml (TypeScript/Bun, ~128 MB).
+#
+# Phase 14 — Edge OS Profile
+
+[package]
+name = "secureyeoman-edge"
+version = "2026.3.11"
+description = "SecureYeoman Edge — lightweight IoT agent for constrained hardware"
+license = "AGPL-3.0-only"
+groups = ["edge", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+# Static Go binary built by SecureYeoman CI.
+# Release: https://github.com/MacCracken/SecureYeoman/releases
+# Asset: secureyeoman-edge-linux-amd64 (~6.5 MB, statically linked, signed)
+local = true
+build_dir = "dist"
+github_release = "MacCracken/SecureYeoman"
+release_asset = "secureyeoman-edge-linux-amd64"
+
+[depends]
+# Statically linked — zero runtime dependencies
+runtime = []
+build = ["go"]
+
+[marketplace]
+category = "ai-agent"
+runtime = "native-binary"
+publisher = "SecureYeoman"
+tags = ["ai", "agents", "edge", "iot", "mcp", "lightweight"]
+min_agnos_version = "2026.3.11"
+
+[marketplace.sandbox]
+# Edge-specific seccomp profile: client-only networking, no execve
+seccomp_mode = "edge"
+network_access = true
+allowed_hosts = [
+    "localhost",
+    "127.0.0.1",
+    # Parent SecureYeoman instance (configurable at runtime)
+    "*.local",
+]
+data_dir = "/var/lib/secureyeoman-edge/"
+
+[[marketplace.sandbox.landlock]]
+path = "/var/lib/secureyeoman-edge/"
+access = "rw"
+
+[[marketplace.sandbox.landlock]]
+path = "/tmp"
+access = "rw"
+
+# IPC with AGNOS edge agent runtime (daimon)
+[[marketplace.sandbox.landlock]]
+path = "/run/agnos/"
+access = "rw"
+
+# TLS certificates for parent connection
+[[marketplace.sandbox.landlock]]
+path = "/etc/ssl/certs/"
+access = "ro"
+
+[marketplace.services]
+# Edge agent exposes only a health/metrics endpoint
+ports = [18790]
+depends_on = ["agent-runtime"]
+
+[build]
+strip = true
+install_docs = false
+pre_build = ""
+configure = ""
+make = """
+CGO_ENABLED=0 go build \
+    -ldflags '-s -w -extldflags "-static"' \
+    -tags 'netgo osusergo edge' \
+    -trimpath \
+    -o dist/secureyeoman-edge \
+    ./cmd/secureyeoman-edge
+"""
+check = """
+go test -tags edge ./cmd/secureyeoman-edge/... ./pkg/edge/...
+"""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-Os -pipe"
+ldflags = "-Wl,--as-needed"
+
+install = """
+# Install the static binary directly into /usr/bin (no lib dir needed)
+mkdir -p $PKG/usr/bin
+cp dist/secureyeoman-edge $PKG/usr/bin/secureyeoman-edge
+chmod +x $PKG/usr/bin/secureyeoman-edge
+
+# Install edge configuration
+mkdir -p $PKG/etc/secureyeoman
+cat > $PKG/etc/secureyeoman/edge.toml << 'CONF'
+[agent]
+mode = "edge"
+# Parent SecureYeoman instance to connect to (set via env or mDNS)
+parent_url = ""
+# Registration happens automatically via AGNOS fleet management
+auto_register = true
+
+[resources]
+# Conservative defaults for constrained hardware
+max_memory_mb = 32
+max_concurrent_tasks = 2
+telemetry_interval_secs = 60
+heartbeat_interval_secs = 30
+
+[security]
+# Use AGNOS edge security: seccomp, Landlock, cert pinning
+sandbox = true
+tls_verify = true
+# Pin parent cert hash (set during initial registration)
+parent_cert_pin = ""
+
+[tasks]
+# Accept tasks matching these capability tags
+tags = []
+# Report GPU availability for routing
+gpu_available = false
+
+[ota]
+enabled = true
+check_interval_secs = 3600
+require_signature = true
+rollback_on_failure = true
+
+[telemetry]
+enabled = true
+local_buffer_max_mb = 4
+CONF
+
+# Install init script (sysvinit style for edge — no systemd on minimal rootfs)
+mkdir -p $PKG/etc/init.d
+cat > $PKG/etc/init.d/secureyeoman-edge << 'INITSCRIPT'
+#!/bin/sh
+### BEGIN INIT INFO
+# Provides:          secureyeoman-edge
+# Required-Start:    $network agnos-edge-agent
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Description:       SecureYeoman Edge IoT Agent
+### END INIT INFO
+
+CONFIG="/etc/secureyeoman/edge.toml"
+PIDFILE="/var/run/secureyeoman-edge.pid"
+
+case "$1" in
+    start)
+        echo "Starting SecureYeoman Edge..."
+        /usr/bin/secureyeoman-edge --config "$CONFIG" &
+        echo $! > "$PIDFILE"
+        ;;
+    stop)
+        echo "Stopping SecureYeoman Edge..."
+        [ -f "$PIDFILE" ] && kill "$(cat "$PIDFILE")" 2>/dev/null
+        rm -f "$PIDFILE"
+        ;;
+    restart)
+        $0 stop
+        sleep 1
+        $0 start
+        ;;
+    status)
+        if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+            echo "SecureYeoman Edge is running (PID $(cat "$PIDFILE"))"
+        else
+            echo "SecureYeoman Edge is not running"
+            exit 1
+        fi
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart|status}"
+        exit 1
+        ;;
+esac
+INITSCRIPT
+chmod 755 $PKG/etc/init.d/secureyeoman-edge
+
+# Data directory
+mkdir -p $PKG/var/lib/secureyeoman-edge
+"""
+post_install = ""

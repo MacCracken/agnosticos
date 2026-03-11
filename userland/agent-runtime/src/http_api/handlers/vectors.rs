@@ -133,10 +133,10 @@ pub async fn vector_search_handler(
             let mut items: Vec<VectorSearchResult> = results
                 .into_iter()
                 .map(|r| VectorSearchResult {
-                    id: r.entry.id.to_string(),
+                    id: r.id.to_string(),
                     score: r.score,
-                    content: r.entry.content,
-                    metadata: r.entry.metadata,
+                    content: r.content,
+                    metadata: r.metadata,
                 })
                 .collect();
 

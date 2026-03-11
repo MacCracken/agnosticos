@@ -290,8 +290,8 @@ async fn chat_completions(
         model: payload.model.clone(),
         prompt,
         max_tokens: payload.max_tokens.unwrap_or(1024),
-        temperature: payload.temperature.unwrap_or(0.7),
-        top_p: payload.top_p.unwrap_or(1.0),
+        temperature: payload.temperature.unwrap_or(0.7).clamp(0.0, 2.0),
+        top_p: payload.top_p.unwrap_or(1.0).clamp(0.0, 1.0),
         presence_penalty: 0.0,
         frequency_penalty: 0.0,
     };

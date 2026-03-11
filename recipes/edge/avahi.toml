@@ -1,0 +1,64 @@
+# Avahi — mDNS/DNS-SD (Edge Profile)
+# Zero-configuration networking for edge peer discovery.
+# Phase 14B — fleet management requires mDNS for LAN node discovery.
+#
+# Phase 14 — Edge OS Profile
+
+[package]
+name = "avahi"
+version = "0.8"
+description = "Avahi — mDNS/DNS-SD daemon for edge peer discovery"
+license = "LGPL-2.1"
+groups = ["edge", "tier2"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/avahi/avahi/releases/download/v0.8/avahi-0.8.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "dbus", "libcap"]
+build = ["gcc", "make", "pkgconf", "intltool"]
+
+[build]
+strip = true
+install_docs = false
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --sysconfdir=/etc \
+    --localstatedir=/var \
+    --disable-static \
+    --disable-nls \
+    --disable-qt3 \
+    --disable-qt4 \
+    --disable-qt5 \
+    --disable-gtk \
+    --disable-gtk3 \
+    --disable-mono \
+    --disable-monodoc \
+    --disable-python \
+    --disable-manpages \
+    --disable-libevent \
+    --enable-dbus \
+    --enable-libdaemon \
+    --with-distro=none \
+    --with-avahi-user=avahi \
+    --with-avahi-group=avahi
+"""
+make = "make -j$(nproc)"
+check = ""
+install = """
+make DESTDIR=$PKG install
+rm -rf $PKG/usr/share/man $PKG/usr/share/doc $PKG/usr/share/locale
+rm -f $PKG/usr/lib/libavahi-*.a
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-Os -pipe"
+ldflags = "-Wl,--as-needed"

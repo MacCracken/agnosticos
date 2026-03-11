@@ -1,0 +1,70 @@
+# ncurses — Terminal Library (Edge Profile)
+# Wide-character support, minimal terminfo database.
+#
+# Phase 14 — Edge OS Profile
+
+[package]
+name = "ncurses"
+version = "6.5"
+description = "ncurses — terminal handling library (wide-char)"
+license = "MIT"
+groups = ["edge", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://ftp.gnu.org/gnu/ncurses/ncurses-6.5.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc"]
+build = ["gcc", "make"]
+
+[build]
+strip = true
+install_docs = false
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --with-shared \
+    --without-debug \
+    --without-normal \
+    --without-cxx-binding \
+    --without-ada \
+    --without-tests \
+    --disable-nls \
+    --disable-stripping \
+    --enable-widec \
+    --enable-pc-files \
+    --with-pkg-config-libdir=/usr/lib/pkgconfig
+"""
+make = "make -j$(nproc)"
+check = ""
+install = """
+make DESTDIR=$PKG install
+
+# Provide non-wide-char compatibility symlinks
+for lib in ncurses form panel menu; do
+    ln -sfv lib${lib}w.so $PKG/usr/lib/lib${lib}.so
+    ln -sfv ${lib}w.pc $PKG/usr/lib/pkgconfig/${lib}.pc
+done
+ln -sfv libncursesw.so $PKG/usr/lib/libcurses.so
+
+# Keep only essential terminfo entries (linux, xterm, vt100, screen)
+find $PKG/usr/share/terminfo -mindepth 2 -maxdepth 2 \
+    ! -name 'linux' ! -name 'xterm' ! -name 'xterm-256color' \
+    ! -name 'vt100' ! -name 'vt220' ! -name 'screen' \
+    ! -name 'screen-256color' ! -name 'dumb' \
+    -delete 2>/dev/null || true
+find $PKG/usr/share/terminfo -empty -type d -delete 2>/dev/null || true
+
+rm -rf $PKG/usr/share/man $PKG/usr/share/doc
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-Os -pipe"
+ldflags = "-Wl,--as-needed"

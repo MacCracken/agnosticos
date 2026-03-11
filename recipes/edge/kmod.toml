@@ -1,0 +1,55 @@
+# kmod — Kernel Module Tools (Edge Profile)
+# modprobe, insmod, rmmod, lsmod, depmod for managing kernel modules.
+#
+# Phase 14 — Edge OS Profile
+
+[package]
+name = "kmod"
+version = "33"
+description = "kmod — kernel module loading and management tools"
+license = "LGPL-2.1"
+groups = ["edge", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://mirrors.kernel.org/pub/linux/utils/kernel/kmod/kmod-33.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "zlib"]
+build = ["gcc", "make", "pkgconf"]
+
+[build]
+strip = true
+install_docs = false
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --sysconfdir=/etc \
+    --with-zlib \
+    --without-xz \
+    --without-zstd \
+    --disable-manpages \
+    --disable-static
+"""
+make = "make -j$(nproc)"
+check = ""
+install = """
+make DESTDIR=$PKG install
+
+# Create traditional symlinks
+mkdir -p $PKG/usr/sbin
+for tool in depmod insmod modinfo modprobe rmmod lsmod; do
+    ln -sfv ../bin/kmod $PKG/usr/sbin/$tool
+done
+rm -rf $PKG/usr/share/man $PKG/usr/share/doc
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-Os -pipe"
+ldflags = "-Wl,--as-needed"

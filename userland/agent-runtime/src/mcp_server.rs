@@ -376,6 +376,45 @@ pub fn build_tool_manifest() -> McpToolManifest {
             json!({"direction": {"type": "string", "description": "Sync direction: push, pull, both"}}),
             vec![]
         ),
+        // ----- Edge fleet management tools (5) -----
+        tool!(
+            "edge_list",
+            "List edge nodes in the fleet with optional status filter",
+            json!({"status": {"type": "string", "description": "Filter by status: online, suspect, offline, updating, decommissioned"}}),
+            vec![]
+        ),
+        tool!(
+            "edge_deploy",
+            "Deploy a task to an edge node (routes to best match if no node specified)",
+            json!({
+                "task": {"type": "string", "description": "Task description or binary to deploy"},
+                "node_id": {"type": "string", "description": "Target node ID (optional — auto-routes if omitted)"},
+                "required_tags": {"type": "array", "items": {"type": "string"}, "description": "Required capability tags"},
+                "require_gpu": {"type": "boolean", "description": "Whether task requires GPU"}
+            }),
+            vec!["task"]
+        ),
+        tool!(
+            "edge_update",
+            "Trigger OTA update on an edge node",
+            json!({
+                "node_id": {"type": "string", "description": "Edge node ID to update"},
+                "version": {"type": "string", "description": "Target version (default: latest)"}
+            }),
+            vec!["node_id"]
+        ),
+        tool!(
+            "edge_health",
+            "Get health status of an edge node or the entire fleet",
+            json!({"node_id": {"type": "string", "description": "Specific node ID (omit for fleet-wide stats)"}}),
+            vec![]
+        ),
+        tool!(
+            "edge_decommission",
+            "Decommission an edge node (mark for removal from fleet)",
+            json!({"node_id": {"type": "string", "description": "Edge node ID to decommission"}}),
+            vec!["node_id"]
+        ),
     ];
 
     McpToolManifest { tools }
@@ -556,6 +595,11 @@ async fn dispatch_tool_call(
         "photis_get_rituals" => handle_photis_get_rituals(&call.arguments).await,
         "photis_analytics" => handle_photis_analytics(&call.arguments).await,
         "photis_sync" => handle_photis_sync(&call.arguments).await,
+        "edge_list" => handle_edge_list(state, &call.arguments).await,
+        "edge_deploy" => handle_edge_deploy(state, &call.arguments).await,
+        "edge_update" => handle_edge_update(state, &call.arguments).await,
+        "edge_health" => handle_edge_health(state, &call.arguments).await,
+        "edge_decommission" => handle_edge_decommission(state, &call.arguments).await,
         unknown => {
             // Check external tools
             let external = state.external_mcp_tools.read().await;
@@ -1388,6 +1432,194 @@ async fn handle_photis_sync(args: &serde_json::Value) -> McpToolResult {
             "message": format!("Photis Nadi not reachable at {}", bridge.base_url()),
             "_source": "mock",
         }))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Edge Fleet Management MCP Handlers
+// ---------------------------------------------------------------------------
+
+async fn handle_edge_list(state: &ApiState, args: &serde_json::Value) -> McpToolResult {
+    let status_filter = get_optional_string_arg(args, "status");
+
+    if let Some(ref s) = status_filter {
+        if let Err(e) = validate_enum_opt(
+            &status_filter,
+            "status",
+            &["online", "suspect", "offline", "updating", "decommissioned"],
+        ) {
+            return e;
+        }
+        let _ = s; // used above
+    }
+
+    let fleet = state.edge_fleet.read().await;
+    let filter = status_filter.as_deref().and_then(|s| match s {
+        "online" => Some(crate::edge::EdgeNodeStatus::Online),
+        "suspect" => Some(crate::edge::EdgeNodeStatus::Suspect),
+        "offline" => Some(crate::edge::EdgeNodeStatus::Offline),
+        "updating" => Some(crate::edge::EdgeNodeStatus::Updating),
+        "decommissioned" => Some(crate::edge::EdgeNodeStatus::Decommissioned),
+        _ => None,
+    });
+
+    let nodes = fleet.list_nodes(filter);
+    let node_list: Vec<serde_json::Value> = nodes
+        .iter()
+        .map(|n| {
+            serde_json::json!({
+                "id": n.id,
+                "name": n.name,
+                "status": n.status.to_string(),
+                "arch": n.capabilities.arch,
+                "agent_binary": n.agent_binary,
+                "agent_version": n.agent_version,
+                "os_version": n.os_version,
+                "active_tasks": n.active_tasks,
+                "tpm_attested": n.tpm_attested,
+                "last_heartbeat": n.last_heartbeat.to_rfc3339(),
+            })
+        })
+        .collect();
+
+    info!(count = node_list.len(), "Edge: list nodes");
+    success_result(serde_json::json!({
+        "nodes": node_list,
+        "total": node_list.len(),
+    }))
+}
+
+async fn handle_edge_deploy(state: &ApiState, args: &serde_json::Value) -> McpToolResult {
+    let task = match extract_required_string(args, "task") {
+        Ok(t) => t,
+        Err(e) => return e,
+    };
+
+    let node_id = get_optional_string_arg(args, "node_id");
+    let required_tags: Vec<String> = args
+        .get("required_tags")
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
+        .unwrap_or_default();
+    let require_gpu = args
+        .get("require_gpu")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    let fleet = state.edge_fleet.read().await;
+
+    let target = if let Some(ref nid) = node_id {
+        match fleet.get_node(nid) {
+            Some(n) if n.status == crate::edge::EdgeNodeStatus::Online => Some(n),
+            Some(_) => return error_result(format!("Node {} is not online", nid)),
+            None => return error_result(format!("Node {} not found", nid)),
+        }
+    } else {
+        fleet.route_task(&required_tags, require_gpu, None).into_iter().next()
+    };
+
+    match target {
+        Some(node) => {
+            info!(task = %task, node = %node.id, name = %node.name, "Edge: deploy task");
+            success_result(serde_json::json!({
+                "status": "deployed",
+                "task": task,
+                "node_id": node.id,
+                "node_name": node.name,
+                "arch": node.capabilities.arch,
+            }))
+        }
+        None => error_result("No suitable edge node available for this task".into()),
+    }
+}
+
+async fn handle_edge_update(state: &ApiState, args: &serde_json::Value) -> McpToolResult {
+    let node_id = match extract_required_string(args, "node_id") {
+        Ok(id) => id,
+        Err(e) => return e,
+    };
+    let version = get_optional_string_arg(args, "version").unwrap_or_else(|| "latest".into());
+
+    let mut fleet = state.edge_fleet.write().await;
+    match fleet.start_update(&node_id) {
+        Ok(()) => {
+            info!(node = %node_id, version = %version, "Edge: OTA update started");
+            success_result(serde_json::json!({
+                "status": "updating",
+                "node_id": node_id,
+                "target_version": version,
+            }))
+        }
+        Err(e) => error_result(format!("Failed to start update: {}", e)),
+    }
+}
+
+async fn handle_edge_health(state: &ApiState, args: &serde_json::Value) -> McpToolResult {
+    let node_id = get_optional_string_arg(args, "node_id");
+
+    if let Some(nid) = node_id {
+        // Per-node query: read lock only, no health sweep
+        let fleet = state.edge_fleet.read().await;
+        match fleet.get_node(&nid) {
+            Some(node) => {
+                info!(node = %nid, status = %node.status, "Edge: node health");
+                success_result(serde_json::json!({
+                    "node_id": node.id,
+                    "name": node.name,
+                    "status": node.status.to_string(),
+                    "last_heartbeat": node.last_heartbeat.to_rfc3339(),
+                    "active_tasks": node.active_tasks,
+                    "tasks_completed": node.tasks_completed,
+                    "tpm_attested": node.tpm_attested,
+                    "capabilities": {
+                        "arch": node.capabilities.arch,
+                        "cpu_cores": node.capabilities.cpu_cores,
+                        "memory_mb": node.capabilities.memory_mb,
+                        "disk_mb": node.capabilities.disk_mb,
+                        "has_gpu": node.capabilities.has_gpu,
+                        "network_quality": node.capabilities.network_quality,
+                    },
+                }))
+            }
+            None => error_result(format!("Node {} not found", nid)),
+        }
+    } else {
+        // Fleet-wide query: write lock needed for check_health sweep
+        let mut fleet = state.edge_fleet.write().await;
+        fleet.check_health();
+        let stats = fleet.stats();
+        info!(total = stats.total_nodes, online = stats.online, "Edge: fleet health");
+        success_result(serde_json::json!({
+            "fleet": {
+                "total_nodes": stats.total_nodes,
+                "online": stats.online,
+                "suspect": stats.suspect,
+                "offline": stats.offline,
+                "updating": stats.updating,
+                "decommissioned": stats.decommissioned,
+                "active_tasks": stats.active_tasks,
+                "tasks_completed": stats.tasks_completed,
+            }
+        }))
+    }
+}
+
+async fn handle_edge_decommission(state: &ApiState, args: &serde_json::Value) -> McpToolResult {
+    let node_id = match extract_required_string(args, "node_id") {
+        Ok(id) => id,
+        Err(e) => return e,
+    };
+
+    let mut fleet = state.edge_fleet.write().await;
+    match fleet.decommission(&node_id) {
+        Ok(node) => {
+            info!(node = %node_id, name = %node.name, "Edge: node decommissioned");
+            success_result(serde_json::json!({
+                "status": "decommissioned",
+                "node_id": node.id,
+                "node_name": node.name,
+            }))
+        }
+        Err(e) => error_result(format!("Failed to decommission: {}", e)),
     }
 }
 
@@ -2328,6 +2560,10 @@ mod tests {
         ApiState::with_api_key(None)
     }
 
+    fn parse_result(result: &McpToolResult) -> serde_json::Value {
+        serde_json::from_str(&result.content[0].text).unwrap_or_default()
+    }
+
     fn build_test_router() -> axum::Router {
         let state = test_state();
         crate::http_api::build_router(state)
@@ -2374,7 +2610,7 @@ mod tests {
             .await
             .unwrap();
         let manifest: McpToolManifest = serde_json::from_slice(&body).unwrap();
-        assert_eq!(manifest.tools.len(), 31);
+        assert_eq!(manifest.tools.len(), 36);
     }
 
     #[tokio::test]
@@ -2697,7 +2933,7 @@ mod tests {
     #[tokio::test]
     async fn test_manifest_contains_all_31_tools() {
         let manifest = build_tool_manifest();
-        assert_eq!(manifest.tools.len(), 31);
+        assert_eq!(manifest.tools.len(), 36);
         let names: Vec<&str> = manifest.tools.iter().map(|t| t.name.as_str()).collect();
         for expected in &[
             "agnos_health",
@@ -2731,6 +2967,11 @@ mod tests {
             "photis_get_rituals",
             "photis_analytics",
             "photis_sync",
+            "edge_list",
+            "edge_deploy",
+            "edge_update",
+            "edge_health",
+            "edge_decommission",
         ] {
             assert!(names.contains(expected), "Missing tool: {}", expected);
         }
@@ -3992,5 +4233,220 @@ mod tests {
         let text = &result.content[0].text;
         let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
         assert_eq!(parsed["status"], "ok");
+    }
+
+    // -----------------------------------------------------------------------
+    // Edge fleet MCP tool tests (Phase 14E)
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_edge_list_empty_fleet() {
+        let state = test_state();
+        let result = handle_edge_list(&state, &serde_json::json!({})).await;
+        assert!(!result.is_error);
+        let parsed = parse_result(&result);
+        assert_eq!(parsed["total"], 0);
+    }
+
+    #[tokio::test]
+    async fn test_edge_list_with_nodes() {
+        let state = test_state();
+        {
+            let mut fleet = state.edge_fleet.write().await;
+            fleet
+                .register_node(
+                    "test-rpi".into(),
+                    crate::edge::EdgeCapabilities::default(),
+                    "secureyeoman-edge".into(),
+                    "1.0".into(),
+                    "2026.3.11".into(),
+                    "http://parent:8090".into(),
+                )
+                .unwrap();
+        }
+        let result = handle_edge_list(&state, &serde_json::json!({})).await;
+        assert!(!result.is_error);
+        let parsed = parse_result(&result);
+        assert_eq!(parsed["total"], 1);
+        assert_eq!(parsed["nodes"][0]["name"], "test-rpi");
+    }
+
+    #[tokio::test]
+    async fn test_edge_list_filter_status() {
+        let state = test_state();
+        let result = handle_edge_list(&state, &serde_json::json!({"status": "online"})).await;
+        assert!(!result.is_error);
+    }
+
+    #[tokio::test]
+    async fn test_edge_list_invalid_status() {
+        let state = test_state();
+        let result = handle_edge_list(&state, &serde_json::json!({"status": "invalid"})).await;
+        assert!(result.is_error);
+    }
+
+    #[tokio::test]
+    async fn test_edge_health_fleet_wide() {
+        let state = test_state();
+        let result = handle_edge_health(&state, &serde_json::json!({})).await;
+        assert!(!result.is_error);
+        let parsed = parse_result(&result);
+        assert_eq!(parsed["fleet"]["total_nodes"], 0);
+    }
+
+    #[tokio::test]
+    async fn test_edge_health_specific_node() {
+        let state = test_state();
+        let node_id;
+        {
+            let mut fleet = state.edge_fleet.write().await;
+            node_id = fleet
+                .register_node(
+                    "health-test".into(),
+                    crate::edge::EdgeCapabilities::default(),
+                    "edge".into(),
+                    "1.0".into(),
+                    "1.0".into(),
+                    "http://parent:8090".into(),
+                )
+                .unwrap();
+        }
+        let result =
+            handle_edge_health(&state, &serde_json::json!({"node_id": node_id})).await;
+        assert!(!result.is_error);
+        let parsed = parse_result(&result);
+        assert_eq!(parsed["name"], "health-test");
+        assert_eq!(parsed["status"], "online");
+    }
+
+    #[tokio::test]
+    async fn test_edge_health_unknown_node() {
+        let state = test_state();
+        let result =
+            handle_edge_health(&state, &serde_json::json!({"node_id": "nonexistent"})).await;
+        assert!(result.is_error);
+    }
+
+    #[tokio::test]
+    async fn test_edge_deploy_no_nodes() {
+        let state = test_state();
+        let result =
+            handle_edge_deploy(&state, &serde_json::json!({"task": "run-scan"})).await;
+        assert!(result.is_error);
+    }
+
+    #[tokio::test]
+    async fn test_edge_deploy_auto_route() {
+        let state = test_state();
+        {
+            let mut fleet = state.edge_fleet.write().await;
+            fleet
+                .register_node(
+                    "deploy-target".into(),
+                    crate::edge::EdgeCapabilities::default(),
+                    "edge".into(),
+                    "1.0".into(),
+                    "1.0".into(),
+                    "http://parent:8090".into(),
+                )
+                .unwrap();
+        }
+        let result =
+            handle_edge_deploy(&state, &serde_json::json!({"task": "run-scan"})).await;
+        assert!(!result.is_error);
+        let parsed = parse_result(&result);
+        assert_eq!(parsed["status"], "deployed");
+        assert_eq!(parsed["node_name"], "deploy-target");
+    }
+
+    #[tokio::test]
+    async fn test_edge_deploy_missing_task() {
+        let state = test_state();
+        let result = handle_edge_deploy(&state, &serde_json::json!({})).await;
+        assert!(result.is_error);
+    }
+
+    #[tokio::test]
+    async fn test_edge_update_success() {
+        let state = test_state();
+        let node_id;
+        {
+            let mut fleet = state.edge_fleet.write().await;
+            node_id = fleet
+                .register_node(
+                    "update-node".into(),
+                    crate::edge::EdgeCapabilities::default(),
+                    "edge".into(),
+                    "1.0".into(),
+                    "1.0".into(),
+                    "http://parent:8090".into(),
+                )
+                .unwrap();
+        }
+        let result = handle_edge_update(
+            &state,
+            &serde_json::json!({"node_id": node_id, "version": "2.0"}),
+        )
+        .await;
+        assert!(!result.is_error);
+        let parsed = parse_result(&result);
+        assert_eq!(parsed["status"], "updating");
+    }
+
+    #[tokio::test]
+    async fn test_edge_update_missing_node_id() {
+        let state = test_state();
+        let result = handle_edge_update(&state, &serde_json::json!({})).await;
+        assert!(result.is_error);
+    }
+
+    #[tokio::test]
+    async fn test_edge_decommission_success() {
+        let state = test_state();
+        let node_id;
+        {
+            let mut fleet = state.edge_fleet.write().await;
+            node_id = fleet
+                .register_node(
+                    "decom-node".into(),
+                    crate::edge::EdgeCapabilities::default(),
+                    "edge".into(),
+                    "1.0".into(),
+                    "1.0".into(),
+                    "http://parent:8090".into(),
+                )
+                .unwrap();
+        }
+        let result =
+            handle_edge_decommission(&state, &serde_json::json!({"node_id": node_id})).await;
+        assert!(!result.is_error);
+        let parsed = parse_result(&result);
+        assert_eq!(parsed["status"], "decommissioned");
+    }
+
+    #[tokio::test]
+    async fn test_edge_decommission_missing_id() {
+        let state = test_state();
+        let result = handle_edge_decommission(&state, &serde_json::json!({})).await;
+        assert!(result.is_error);
+    }
+
+    #[tokio::test]
+    async fn test_edge_decommission_unknown() {
+        let state = test_state();
+        let result =
+            handle_edge_decommission(&state, &serde_json::json!({"node_id": "fake"})).await;
+        assert!(result.is_error);
+    }
+
+    #[tokio::test]
+    async fn test_edge_tools_in_manifest() {
+        let manifest = build_tool_manifest();
+        let names: Vec<&str> = manifest.tools.iter().map(|t| t.name.as_str()).collect();
+        assert!(names.contains(&"edge_list"));
+        assert!(names.contains(&"edge_deploy"));
+        assert!(names.contains(&"edge_update"));
+        assert!(names.contains(&"edge_health"));
+        assert!(names.contains(&"edge_decommission"));
     }
 }

@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [2026.3.11] - 2026-03-11
 
+### Added — Phase 14: Edge OS Profile (Complete)
+
+- **Edge boot mode in argonaut** (14A-1): 4th boot mode (`Edge`) — skips compositor and shell, boots directly to daimon + edge agent. `SafeCommand` struct replaces shell string commands for dm-verity/LUKS operations. `validate_device_path()` enforces `/dev/` prefix and safe character set
+- **Edge seccomp profile** (14D-2): Client-only networking — `bind`, `listen`, `accept4` removed from edge syscall allowlist. Edge agents connect to parent but cannot accept inbound connections. 7 new edge-specific tests
+- **Edge fleet management in daimon** (14E-1): `EdgeFleetManager` with node registry, health tracking, task routing, peer discovery, OTA updates. `NodeNotOnline` error variant distinguishes offline from decommissioned nodes. Peer address validation (`host:port` format, 256 peer limit). Certificate pin validation (64 hex char SHA-256). 37 tests
+- **Edge HTTP API**: `/v1/edge/*` endpoints — fleet CRUD, node registration, health, task deployment, OTA updates. Input length validation (255 chars fields, 2048 URLs). Sanitized error responses (no user-supplied IDs in "not found" messages)
+- **5 Edge MCP tools** (14E-3): `edge_list`, `edge_deploy`, `edge_update`, `edge_health`, `edge_decommission` — registered in MCP manifest (31 → 36 tools). Read/write lock optimization for per-node vs fleet-wide health queries
+- **Edge agnoshi intents** (14E-2): `list edge nodes`, `deploy to edge`, `update edge node`, `edge health`, `decommission edge node`. Updated regex prevents false matches (e.g. "update status" no longer parsed as edge update). 14 new tests
+- **Edge Docker container** (14C-4): `docker/Dockerfile.edge` — multi-stage build with `rust:1.86-alpine3.21` builder + `alpine:3.21` runtime. Static musl binary, tini PID 1, UID/GID 900:900, 35.5 MB image. Health check on port 8090
+- **SecureYeoman Edge IoT recipe**: `recipes/edge/secureyeoman-edge.toml` — Go static binary (~6.5 MB) for constrained hardware. Zero runtime deps, edge seccomp, sysvinit init script, OTA with rollback, conservative resource limits (32 MB RAM, 2 concurrent tasks)
+- **29 edge recipes**: Minimal package set for edge rootfs (~49 MB target)
+
+### Security — Phase 14 Audit Fixes
+
+- **CRITICAL**: Shell command injection in argonaut dm-verity/LUKS — replaced `format!()` shell strings with `SafeCommand` struct (binary + args vector)
+- **HIGH**: `verify_update_signature` stub logged at `info!` → `warn!`, rejects decommissioned nodes
+- **HIGH**: `set_parent_cert_pin` now validates 64 hex character SHA-256 format
+- **HIGH**: `discover_peers` validates `host:port` format, caps at 256 peers
+- **HIGH**: Edge HTTP handlers sanitize error responses — no user-supplied data in error messages
+
+### Fixed — Engineering Backlog (13 items)
+
+- **Tarball symlink path traversal** (`local_registry.rs`): Reject symlink/hardlink entries in tarballs, verify resolved path stays within extraction directory
+- **Agent ID authorization** (`handlers/memory.rs`): Memory endpoints now require agent to be registered — prevents unauthorized cross-agent access via path parameter manipulation
+- **Memory store per-agent key limit** (`state.rs`): Cap at 1,000 keys per agent to prevent memory exhaustion attacks
+- **Prompt injection Unicode bypass** (`safety.rs`): Strip zero-width characters (U+200B-U+200F, U+202A-U+202E, U+2060-U+2064, U+FEFF, variation selectors) before pattern matching
+- **XWayland surface ID leakage** (`compositor.rs`, `screen_capture.rs`): Remove surface UUIDs from error Display strings
+- **CGroup blocking I/O** (`supervisor.rs`): Wrap cgroup filesystem ops in `spawn_blocking` with 5-second timeout
+- **Temperature/top_p clamping** (`llm-gateway/http.rs`): Clamp temperature to [0.0, 2.0] and top_p to [0.0, 1.0] at API boundary
+- **Audit buffer pagination** (`handlers/audit.rs`): Replace unchecked slice indexing with iterator-based `skip().take()`, cap at 1000 per page
+- **Vector search clone elimination** (`vector_store.rs`): Search results return id/metadata/content/created_at directly instead of cloning full VectorEntry (eliminates embedding vector copies)
+- **Cache TTL per-request** (`llm-gateway/cache.rs`): Added `set_with_ttl()` for per-request cache duration alongside existing global TTL
+- **Desktop SIGHUP handler** (`desktop-environment/main.rs`): Handle SIGHUP for config reload in main event loop
+- **Audit chain persistence** (`agnos-common/audit.rs`): Added `save_to_file()`/`load_from_file()` with atomic writes and integrity verification on load
+- **HTTP benchmarks** (`benches/runtime_benchmarks.rs`): Added criterion benchmarks for health check, agent list, memory set/get endpoints
+
 ## [2026.3.10] - 2026-03-10
 
 ### Added — Consumer API Improvements (5 features, 13 new tests)

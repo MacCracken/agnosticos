@@ -1,0 +1,49 @@
+# iproute2 — Networking Tools (Edge Profile)
+# ip, ss, bridge — essential network management for edge nodes.
+#
+# Phase 14 — Edge OS Profile
+
+[package]
+name = "iproute2"
+version = "6.12.0"
+description = "iproute2 — ip/ss/bridge networking tools"
+license = "GPL-2.0"
+groups = ["edge", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://mirrors.kernel.org/pub/linux/utils/net/iproute2/iproute2-6.12.0.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "libcap", "nftables"]
+build = ["gcc", "make", "pkgconf", "flex", "bison"]
+
+[build]
+strip = true
+install_docs = false
+pre_build = ""
+configure = """
+# iproute2 uses a configure script but not autoconf
+./configure \
+    --prefix=/usr \
+    --libdir=/usr/lib
+"""
+make = "make -j$(nproc) SUBDIRS='lib ip misc'"
+check = ""
+install = """
+make DESTDIR=$PKG SUBDIRS='lib ip misc' install
+
+# Keep only ip, ss, bridge; remove tc/nstat/routel etc.
+rm -f $PKG/usr/sbin/tc $PKG/usr/sbin/nstat $PKG/usr/sbin/routel
+rm -f $PKG/usr/sbin/lnstat $PKG/usr/sbin/ifstat $PKG/usr/sbin/rtstat
+rm -rf $PKG/usr/share/man $PKG/usr/share/doc
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-Os -pipe"
+ldflags = "-Wl,--as-needed"

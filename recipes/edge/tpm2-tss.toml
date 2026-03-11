@@ -1,0 +1,53 @@
+# tpm2-tss — TPM2 Software Stack (Edge Profile)
+# ESAPI/SAPI/TCTI layers for TPM 2.0 communication.
+# Foundation for tpm2-tools and AGNOS integrity verification.
+#
+# Phase 14 — Edge OS Profile
+
+[package]
+name = "tpm2-tss"
+version = "4.1.3"
+description = "tpm2-tss — TPM 2.0 Software Stack (ESAPI/SAPI/TCTI)"
+license = "BSD-2-Clause"
+groups = ["edge", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/tpm2-software/tpm2-tss/releases/download/4.1.3/tpm2-tss-4.1.3.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "openssl", "json-c", "curl"]
+build = ["gcc", "make", "pkgconf"]
+
+[build]
+strip = true
+install_docs = false
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --disable-static \
+    --disable-fapi \
+    --disable-policy \
+    --disable-doxygen-doc \
+    --disable-defaultflags \
+    --with-crypto=ossl \
+    --with-udevrulesdir=/usr/lib/udev/rules.d \
+    --runstatedir=/run
+"""
+make = "make -j$(nproc)"
+check = ""
+install = """
+make DESTDIR=$PKG install
+rm -rf $PKG/usr/share/man $PKG/usr/share/doc
+rm -f $PKG/usr/lib/libtss2-*.a
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

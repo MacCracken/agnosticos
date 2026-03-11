@@ -703,12 +703,41 @@ impl PromptInjectionDetector {
         Self { patterns }
     }
 
+    /// Strip Unicode zero-width and directional override characters that can
+    /// be used to hide injection patterns from substring matching.
+    fn normalize_input(input: &str) -> String {
+        input
+            .chars()
+            .filter(|c| {
+                !matches!(
+                    *c,
+                    '\u{200B}' // Zero-Width Space
+                    | '\u{200C}' // Zero-Width Non-Joiner
+                    | '\u{200D}' // Zero-Width Joiner
+                    | '\u{200E}' // Left-to-Right Mark
+                    | '\u{200F}' // Right-to-Left Mark
+                    | '\u{202A}' // Left-to-Right Embedding
+                    | '\u{202B}' // Right-to-Left Embedding
+                    | '\u{202C}' // Pop Directional Formatting
+                    | '\u{202D}' // Left-to-Right Override
+                    | '\u{202E}' // Right-to-Left Override
+                    | '\u{2060}' // Word Joiner
+                    | '\u{2061}'..='\u{2064}' // Invisible operators
+                    | '\u{FEFF}' // BOM / Zero-Width No-Break Space
+                    | '\u{FE00}'..='\u{FE0F}' // Variation selectors
+                )
+            })
+            .collect()
+    }
+
     /// Check a string for prompt-injection patterns.
     pub fn check_input(&self, input: &str) -> InjectionResult {
+        // Normalize: strip zero-width/invisible characters before matching
+        let normalized = Self::normalize_input(input);
         let mut detected: Vec<String> = Vec::new();
 
         for (label, check_fn) in &self.patterns {
-            if check_fn(input) {
+            if check_fn(&normalized) {
                 detected.push(label.clone());
             }
         }

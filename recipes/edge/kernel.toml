@@ -1,0 +1,84 @@
+# Linux Kernel — Edge OS Profile
+# Minimal 6.6 LTS kernel for edge devices (<256 MB disk, <128 MB RAM).
+# Uses edge defconfig: no desktop, no sound, no GPU, minimal filesystems.
+# Default arch x86_64; aarch64 via CROSS_COMPILE=aarch64-linux-gnu-.
+#
+# Phase 14 — Edge OS Profile
+
+[package]
+name = "kernel-edge"
+version = "6.6.80"
+description = "Linux 6.6 LTS kernel — edge defconfig, minimal modules"
+license = "GPL-2.0"
+groups = ["edge", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.6.80.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = []
+build = ["gcc", "make", "bc", "flex", "bison", "elfutils", "openssl", "perl"]
+
+[build]
+strip = true
+install_docs = false
+pre_build = """
+# Copy edge defconfig — stripped-down config for headless IoT/edge nodes
+cp -v ../kernel-edge-defconfig .config || make tinyconfig
+# Overlay edge-specific options
+scripts/config --enable CONFIG_MODULES
+scripts/config --enable CONFIG_NET
+scripts/config --enable CONFIG_INET
+scripts/config --enable CONFIG_IPV6
+scripts/config --enable CONFIG_NETFILTER
+scripts/config --enable CONFIG_NF_TABLES
+scripts/config --enable CONFIG_WIREGUARD
+scripts/config --enable CONFIG_DM_CRYPT
+scripts/config --enable CONFIG_DM_VERITY
+scripts/config --enable CONFIG_CRYPTO_USER_API
+scripts/config --enable CONFIG_TCG_TPM
+scripts/config --enable CONFIG_SECCOMP
+scripts/config --enable CONFIG_LANDLOCK
+scripts/config --enable CONFIG_EXT4_FS
+scripts/config --enable CONFIG_SQUASHFS
+scripts/config --enable CONFIG_SQUASHFS_XZ
+scripts/config --enable CONFIG_OVERLAY_FS
+scripts/config --enable CONFIG_TMPFS
+scripts/config --enable CONFIG_DEVTMPFS
+scripts/config --enable CONFIG_DEVTMPFS_MOUNT
+scripts/config --enable CONFIG_CGROUPS
+scripts/config --enable CONFIG_NAMESPACES
+scripts/config --disable CONFIG_SOUND
+scripts/config --disable CONFIG_DRM
+scripts/config --disable CONFIG_USB_PRINTER
+scripts/config --disable CONFIG_NFS_FS
+scripts/config --disable CONFIG_CIFS
+scripts/config --disable CONFIG_WIRELESS
+scripts/config --set-val CONFIG_LOG_BUF_SHIFT 14
+make olddefconfig
+"""
+configure = ""
+make = "make -j$(nproc) bzImage modules"
+check = ""
+install = """
+make INSTALL_MOD_PATH=$PKG modules_install
+mkdir -p $PKG/boot
+cp -v arch/x86/boot/bzImage $PKG/boot/vmlinuz-6.6.80-edge
+cp -v System.map $PKG/boot/System.map-6.6.80-edge
+cp -v .config $PKG/boot/config-6.6.80-edge
+
+# Strip modules
+find $PKG/lib/modules -name '*.ko' -exec strip --strip-debug {} \;
+# Remove build/source symlinks (save space)
+rm -rf $PKG/lib/modules/*/build $PKG/lib/modules/*/source
+"""
+post_install = "depmod -a 6.6.80-edge"
+
+[security]
+hardening = ["stackprotector", "fortify"]
+cflags = "-O2 -pipe"
+ldflags = ""

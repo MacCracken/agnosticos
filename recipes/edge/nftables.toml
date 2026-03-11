@@ -1,0 +1,68 @@
+# nftables — Firewall (Edge Profile)
+# Replaces iptables; provides packet filtering for edge security.
+#
+# Phase 14 — Edge OS Profile
+
+[package]
+name = "nftables"
+version = "1.1.1"
+description = "nftables — modern packet filtering firewall for edge"
+license = "GPL-2.0"
+groups = ["edge", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://netfilter.org/projects/nftables/files/nftables-1.1.1.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "libmnl", "libnftnl", "readline", "ncurses"]
+build = ["gcc", "make", "pkgconf", "flex", "bison"]
+
+[build]
+strip = true
+install_docs = false
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --sysconfdir=/etc \
+    --disable-static \
+    --disable-man-doc \
+    --disable-nls \
+    --with-cli=readline \
+    --without-python
+"""
+make = "make -j$(nproc)"
+check = ""
+install = """
+make DESTDIR=$PKG install
+
+# Install edge-default firewall rules
+mkdir -p $PKG/etc/nftables
+cat > $PKG/etc/nftables/edge-default.nft << 'NFT'
+#!/usr/sbin/nft -f
+flush ruleset
+table inet filter {
+    chain input {
+        type filter hook input priority 0; policy drop;
+        ct state established,related accept
+        iif lo accept
+        tcp dport 22 accept
+        tcp dport 8090 accept
+        icmp type echo-request limit rate 5/second accept
+    }
+    chain forward { type filter hook forward priority 0; policy drop; }
+    chain output { type filter hook output priority 0; policy accept; }
+}
+NFT
+rm -rf $PKG/usr/share/man $PKG/usr/share/doc
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-Os -pipe"
+ldflags = "-Wl,--as-needed"

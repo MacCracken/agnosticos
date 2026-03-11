@@ -1,0 +1,55 @@
+# Bash — Bourne-Again Shell (Edge Profile)
+# Minimal build: no NLS, no help files, static-friendly.
+#
+# Phase 14 — Edge OS Profile
+
+[package]
+name = "bash"
+version = "5.2.37"
+description = "GNU Bash shell — minimal edge build"
+license = "GPL-3.0"
+groups = ["edge", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://ftp.gnu.org/gnu/bash/bash-5.2.37.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "readline", "ncurses"]
+build = ["gcc", "make"]
+
+[build]
+strip = true
+install_docs = false
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --without-bash-malloc \
+    --disable-nls \
+    --disable-profiling \
+    --disable-help-builtin \
+    --with-installed-readline
+"""
+make = "make -j$(nproc)"
+check = ""
+install = """
+make DESTDIR=$PKG install
+
+# Link as /bin/sh
+mkdir -p $PKG/bin
+ln -sfv /usr/bin/bash $PKG/bin/bash
+ln -sfv /usr/bin/bash $PKG/bin/sh
+
+# Remove docs
+rm -rf $PKG/usr/share/man $PKG/usr/share/info $PKG/usr/share/doc
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-Os -pipe"
+ldflags = "-Wl,--as-needed"

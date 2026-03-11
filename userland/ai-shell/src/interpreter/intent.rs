@@ -211,6 +211,16 @@ pub enum Intent {
     },
     /// Show Delta CI pipeline status
     DeltaCiStatus { repo: Option<String> },
+    /// List edge nodes in the fleet
+    EdgeListNodes { status: Option<String> },
+    /// Deploy a task to an edge node
+    EdgeDeploy { task: String, node: Option<String> },
+    /// Trigger OTA update on an edge node
+    EdgeUpdate { node: String, version: Option<String> },
+    /// Get edge node or fleet health status
+    EdgeHealth { node: Option<String> },
+    /// Decommission an edge node
+    EdgeDecommission { node: String },
     /// Piped command chain (cmd1 | cmd2)
     Pipeline { commands: Vec<String> },
     /// Question/Information request

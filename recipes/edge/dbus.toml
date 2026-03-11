@@ -1,0 +1,52 @@
+# D-Bus — Message Bus (Edge Profile)
+# Minimal system bus only, no session bus, no X11 support.
+#
+# Phase 14 — Edge OS Profile
+
+[package]
+name = "dbus"
+version = "1.16.0"
+description = "D-Bus — minimal system message bus for edge"
+license = "AFL-2.1"
+groups = ["edge", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://dbus.freedesktop.org/releases/dbus/dbus-1.16.0.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "libcap"]
+build = ["gcc", "make", "pkgconf", "meson", "ninja"]
+
+[build]
+strip = true
+install_docs = false
+pre_build = ""
+configure = """
+meson setup build \
+    --prefix=/usr \
+    --sysconfdir=/etc \
+    -Ddoxygen_docs=disabled \
+    -Dxml_docs=disabled \
+    -Dmodular_tests=disabled \
+    -Dapparmor=disabled \
+    -Dselinux=disabled \
+    -Dx11_autolaunch=disabled \
+    -Duser_session=false \
+    -Dsystem_socket=/run/dbus/system_bus_socket
+"""
+make = "ninja -C build -j$(nproc)"
+check = ""
+install = """
+DESTDIR=$PKG ninja -C build install
+rm -rf $PKG/usr/share/man $PKG/usr/share/doc
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-Os -pipe"
+ldflags = "-Wl,--as-needed"

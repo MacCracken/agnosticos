@@ -1,0 +1,96 @@
+# Dockerfile.edge — AGNOS Edge OS minimal container image
+#
+# Produces a <50 MB OCI image containing only the agent_runtime binary
+# for headless edge deployments (IoT gateways, industrial controllers,
+# fleet-managed devices).
+#
+# Usage:
+#   docker build -f docker/Dockerfile.edge \
+#     -t ghcr.io/maccracken/agnosticos:edge .
+#
+# Multi-stage build:
+#   1. builder  — compile agent-runtime with --release (musl, static)
+#   2. runtime  — alpine:3.19 with binary + ca-certificates only
+
+# ---------------------------------------------------------------------------
+# Stage 1: Builder — compile agent-runtime as a static musl binary
+# ---------------------------------------------------------------------------
+FROM rust:1.86-alpine3.21 AS builder
+
+RUN apk add --no-cache musl-dev openssl-dev openssl-libs-static pkgconf perl make
+
+WORKDIR /build
+
+# Copy the entire userland workspace (workspace Cargo.toml references all members)
+COPY userland/ ./
+
+# Build agent_runtime with edge feature flags
+# RUSTFLAGS: static linking, strip symbols, optimize for size
+ENV OPENSSL_STATIC=1
+ENV OPENSSL_DIR=/usr
+RUN RUSTFLAGS="-C target-feature=+crt-static -C strip=symbols -C opt-level=s" \
+    cargo build --release --bin agent_runtime \
+        --target x86_64-unknown-linux-musl \
+    && cp target/x86_64-unknown-linux-musl/release/agent_runtime /agent_runtime \
+    && strip /agent_runtime 2>/dev/null || true
+
+# ---------------------------------------------------------------------------
+# Stage 2: Runtime — minimal edge image
+# ---------------------------------------------------------------------------
+FROM alpine:3.21 AS runtime
+
+# OCI annotations
+LABEL org.opencontainers.image.title="AGNOS Edge"
+LABEL org.opencontainers.image.description="AGNOS Edge OS — minimal agent runtime for edge devices"
+LABEL org.opencontainers.image.source="https://github.com/maccracken/agnosticos"
+LABEL org.opencontainers.image.licenses="GPL-3.0"
+LABEL org.opencontainers.image.vendor="AGNOS Project"
+ARG AGNOS_VERSION=dev
+LABEL org.opencontainers.image.version="${AGNOS_VERSION}"
+
+# Install only what we absolutely need: CA certs for TLS, curl for healthcheck
+RUN apk add --no-cache ca-certificates curl tini \
+    && rm -rf /var/cache/apk/*
+
+# Create system user (no shell, no home — edge is headless)
+RUN addgroup -g 900 -S agnos && \
+    adduser -u 900 -G agnos -S -D -H -s /sbin/nologin agnos
+
+# Create required runtime directories
+RUN mkdir -p \
+    /run/agnos/agents \
+    /var/lib/agnos/agents \
+    /var/lib/agnos/secrets \
+    /var/log/agnos \
+    /etc/agnos \
+    && chown -R agnos:agnos /run/agnos /var/lib/agnos /var/log/agnos /etc/agnos
+
+# Copy the statically-linked agent_runtime binary
+COPY --from=builder --chmod=755 /agent_runtime /usr/local/bin/agent_runtime
+
+# Copy VERSION file
+COPY VERSION /etc/agnos/version
+
+# Edge mode environment: read-only rootfs, minimal resource usage
+ENV AGNOS_EDGE_MODE=1 \
+    AGNOS_READONLY_ROOTFS=1 \
+    AGNOS_LOG_FORMAT=json \
+    AGNOS_RUNTIME_BIND=0.0.0.0 \
+    RUST_LOG=info \
+    AGNOS_DISABLE_DESKTOP=1 \
+    AGNOS_DISABLE_LLM_LOCAL=1
+
+# Expose daimon API port only (no hoosh on edge by default)
+EXPOSE 8090
+
+# Health check against agent-runtime
+HEALTHCHECK --interval=15s --timeout=3s --start-period=5s --retries=3 \
+    CMD curl -sf http://127.0.0.1:8090/v1/health || exit 1
+
+# Use tini as PID 1 for signal forwarding
+ENTRYPOINT ["tini", "--"]
+
+# Run as non-root
+USER agnos
+
+CMD ["/usr/local/bin/agent_runtime", "daemon"]

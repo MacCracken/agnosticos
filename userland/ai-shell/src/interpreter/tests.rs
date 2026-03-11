@@ -2842,4 +2842,173 @@ mod tests {
         assert!(body.contains("agnostic_agent_status"));
         assert_eq!(t.permission, PermissionLevel::Safe);
     }
+
+    // ====================================================================
+    // Edge intent parsing & translation tests (Phase 14E)
+    // ====================================================================
+
+    #[test]
+    fn test_parse_edge_list_nodes() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("edge list nodes");
+        assert!(
+            matches!(intent, Intent::EdgeListNodes { .. }),
+            "Expected EdgeListNodes, got {:?}",
+            intent
+        );
+    }
+
+    #[test]
+    fn test_parse_edge_list_with_status() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("edge list nodes status online");
+        if let Intent::EdgeListNodes { status } = intent {
+            assert_eq!(status, Some("online".to_string()));
+        } else {
+            panic!("Expected EdgeListNodes, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_parse_edge_deploy() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("edge deploy inference-model");
+        if let Intent::EdgeDeploy { task, node } = intent {
+            assert_eq!(task, "inference-model");
+            assert!(node.is_none());
+        } else {
+            panic!("Expected EdgeDeploy, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_parse_edge_deploy_to_node() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("edge deploy my-task on node-42");
+        if let Intent::EdgeDeploy { task, node } = intent {
+            assert_eq!(task, "my-task");
+            assert_eq!(node, Some("node-42".to_string()));
+        } else {
+            panic!("Expected EdgeDeploy, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_parse_edge_update_node() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("edge update node-1");
+        if let Intent::EdgeUpdate { node, version } = intent {
+            assert_eq!(node, "node-1");
+            assert!(version.is_none());
+        } else {
+            panic!("Expected EdgeUpdate, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_parse_edge_update_with_version() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("edge update node-1 to 2.0.0");
+        if let Intent::EdgeUpdate { node, version } = intent {
+            assert_eq!(node, "node-1");
+            assert_eq!(version, Some("2.0.0".to_string()));
+        } else {
+            panic!("Expected EdgeUpdate, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_parse_edge_health() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("edge health of node-5");
+        if let Intent::EdgeHealth { node } = intent {
+            assert_eq!(node, Some("node-5".to_string()));
+        } else {
+            panic!("Expected EdgeHealth, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_parse_edge_health_fleet() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("edge health fleet");
+        if let Intent::EdgeHealth { node } = intent {
+            assert!(node.is_none());
+        } else {
+            panic!("Expected EdgeHealth, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_parse_edge_decommission() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("edge decommission node-3");
+        if let Intent::EdgeDecommission { node } = intent {
+            assert_eq!(node, "node-3");
+        } else {
+            panic!("Expected EdgeDecommission, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_parse_update_status_not_edge() {
+        // "update status" should be SystemUpdate, NOT EdgeUpdate
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("update status");
+        assert!(
+            matches!(intent, Intent::SystemUpdate { .. }),
+            "Expected SystemUpdate, got {:?}",
+            intent
+        );
+    }
+
+    #[test]
+    fn test_translate_edge_list() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::EdgeListNodes { status: None };
+        let t = interpreter.translate(&intent).unwrap();
+        assert_eq!(t.command, "curl");
+        let body = t.args.last().unwrap();
+        assert!(body.contains("edge_list"));
+    }
+
+    #[test]
+    fn test_translate_edge_deploy() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::EdgeDeploy {
+            task: "my-task".to_string(),
+            node: None,
+        };
+        let t = interpreter.translate(&intent).unwrap();
+        assert_eq!(t.command, "curl");
+        let body = t.args.last().unwrap();
+        assert!(body.contains("edge_deploy"));
+        assert!(body.contains("my-task"));
+    }
+
+    #[test]
+    fn test_translate_edge_decommission() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::EdgeDecommission {
+            node: "node-1".to_string(),
+        };
+        let t = interpreter.translate(&intent).unwrap();
+        assert_eq!(t.command, "curl");
+        let body = t.args.last().unwrap();
+        assert!(body.contains("edge_decommission"));
+        assert!(body.contains("node-1"));
+    }
+
+    #[test]
+    fn test_parse_update_node_keyword() {
+        // "update node foo" should parse as EdgeUpdate (using "node" keyword)
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("update node rpi-001");
+        if let Intent::EdgeUpdate { node, version } = intent {
+            assert_eq!(node, "rpi-001");
+            assert!(version.is_none());
+        } else {
+            panic!("Expected EdgeUpdate, got {:?}", intent);
+        }
+    }
 }

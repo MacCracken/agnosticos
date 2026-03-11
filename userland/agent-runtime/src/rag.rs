@@ -271,9 +271,9 @@ impl RagPipeline {
             .into_iter()
             .filter(|r| r.score >= self.config.min_relevance_score)
             .map(|r| RetrievedChunk {
-                content: r.entry.content,
+                content: r.content,
                 score: r.score,
-                metadata: r.entry.metadata,
+                metadata: r.metadata,
             })
             .collect();
 

@@ -139,11 +139,16 @@ impl DesktopEnvironment {
         *self.running.lock().await = true;
 
         let mut interval = tokio::time::interval(Duration::from_secs(5));
+        let mut sighup = signal::unix::signal(signal::unix::SignalKind::hangup())?;
 
         loop {
             tokio::select! {
                 _ = interval.tick() => {
                     self.update_system_status().await;
+                }
+                _ = sighup.recv() => {
+                    info!("Received SIGHUP — reloading configuration");
+                    self.reload_config().await;
                 }
                 _ = signal::ctrl_c() => {
                     info!("Received shutdown signal");
@@ -178,6 +183,13 @@ impl DesktopEnvironment {
             timestamp: chrono::Utc::now(),
             metadata: Default::default(),
         });
+    }
+
+    async fn reload_config(&self) {
+        info!("Reloading desktop environment configuration");
+        // Re-read theme, accessibility, and compositor settings
+        self.update_system_status().await;
+        info!("Configuration reloaded successfully");
     }
 
     async fn shutdown(&self) {

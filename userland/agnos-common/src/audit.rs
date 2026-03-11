@@ -204,6 +204,45 @@ impl AuditChain {
     pub fn last_hash(&self) -> Option<&str> {
         self.entries.last().map(|e| e.entry_hash.as_str())
     }
+
+    /// Persist the audit chain to a JSON file for crash recovery.
+    pub fn save_to_file(&self, path: &std::path::Path) -> std::result::Result<(), String> {
+        let data = serde_json::to_vec(self).map_err(|e| format!("serialize: {e}"))?;
+        // Write to a temp file first, then rename for atomicity
+        let tmp = path.with_extension("tmp");
+        std::fs::write(&tmp, &data).map_err(|e| format!("write: {e}"))?;
+        std::fs::rename(&tmp, path).map_err(|e| format!("rename: {e}"))?;
+        Ok(())
+    }
+
+    /// Load a previously persisted audit chain from a JSON file.
+    /// Returns a fresh chain if the file does not exist or is invalid.
+    pub fn load_from_file(path: &std::path::Path) -> Self {
+        let data = match std::fs::read(path) {
+            Ok(d) => d,
+            Err(_) => return Self::new(),
+        };
+        match serde_json::from_slice::<AuditChain>(&data) {
+            Ok(mut chain) => {
+                // Verify integrity on load
+                if chain.verify().is_err() {
+                    tracing::warn!(
+                        "Audit chain at {} failed verification — starting fresh",
+                        path.display()
+                    );
+                    return Self::new();
+                }
+                // Ensure next_sequence is consistent
+                chain.next_sequence = chain
+                    .entries
+                    .last()
+                    .map(|e| e.event.sequence + 1)
+                    .unwrap_or(0);
+                chain
+            }
+            Err(_) => Self::new(),
+        }
+    }
 }
 
 impl Default for AuditChain {

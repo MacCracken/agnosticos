@@ -89,13 +89,23 @@ impl ResponseCache {
         None
     }
 
-    /// Store a response in the cache
+    /// Store a response in the cache with the default TTL.
     pub async fn set(&self, request: &InferenceRequest, response: InferenceResponse) {
+        self.set_with_ttl(request, response, self.ttl).await;
+    }
+
+    /// Store a response with a custom TTL (e.g. shorter for high-temperature requests).
+    pub async fn set_with_ttl(
+        &self,
+        request: &InferenceRequest,
+        response: InferenceResponse,
+        ttl: Duration,
+    ) {
         let key = Self::make_key(request);
         let now = Instant::now();
         let entry = CacheEntry {
             response,
-            expires_at: now + self.ttl,
+            expires_at: now + ttl,
             last_accessed: now,
         };
 

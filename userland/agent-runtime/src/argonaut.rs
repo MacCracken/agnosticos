@@ -32,6 +32,11 @@ pub enum BootMode {
     Desktop,
     /// Bare minimum: agent-runtime only (container/embedded use).
     Minimal,
+    /// Edge: constrained hardware (RPi, NUC, IoT). Boots daimon + edge agent
+    /// only. No compositor, no shell, no LLM gateway. Read-only rootfs,
+    /// dm-verity enforced, LUKS enabled, minimal seccomp profile.
+    /// Target: <256 MB disk, <128 MB RAM, <3s boot.
+    Edge,
 }
 
 impl fmt::Display for BootMode {
@@ -40,6 +45,38 @@ impl fmt::Display for BootMode {
             Self::Server => write!(f, "server"),
             Self::Desktop => write!(f, "desktop"),
             Self::Minimal => write!(f, "minimal"),
+            Self::Edge => write!(f, "edge"),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Edge boot configuration (Phase 14D)
+// ---------------------------------------------------------------------------
+
+/// Security and performance configuration for Edge boot mode.
+///
+/// Controls LUKS full-disk encryption, TPM attestation requirements,
+/// read-only rootfs enforcement, and maximum allowed boot time.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EdgeBootConfig {
+    /// Whether the rootfs should be mounted read-only (dm-verity enforced).
+    pub readonly_rootfs: bool,
+    /// Whether LUKS full-disk encryption is enabled for the data partition.
+    pub luks_enabled: bool,
+    /// Whether TPM 2.0 attestation is required during boot.
+    pub tpm_attestation: bool,
+    /// Maximum boot time in milliseconds before the watchdog triggers.
+    pub max_boot_time_ms: u64,
+}
+
+impl Default for EdgeBootConfig {
+    fn default() -> Self {
+        Self {
+            readonly_rootfs: true,
+            luks_enabled: true,
+            tpm_attestation: false,
+            max_boot_time_ms: 3000,
         }
     }
 }
@@ -473,6 +510,32 @@ impl ArgonautInit {
             completed_at: None,
             error: None,
         });
+        // Edge mode: enforce dm-verity, TPM attestation, then straight to
+        // agent-runtime. No databases, no LLM gateway, no compositor/shell.
+        if mode == BootMode::Edge {
+            steps.push(BootStep {
+                stage: BootStage::StartAgentRuntime,
+                description: "Start daimon (agent-runtime) in edge mode on port 8090".into(),
+                required: true,
+                timeout_ms: 3000,
+                status: BootStepStatus::Pending,
+                started_at: None,
+                completed_at: None,
+                error: None,
+            });
+            steps.push(BootStep {
+                stage: BootStage::BootComplete,
+                description: "Edge boot complete — agent ready".into(),
+                required: true,
+                timeout_ms: 500,
+                status: BootStepStatus::Pending,
+                started_at: None,
+                completed_at: None,
+                error: None,
+            });
+            return steps;
+        }
+
         // Server and Desktop get database services.
         if mode == BootMode::Server || mode == BootMode::Desktop {
             steps.push(BootStep {
@@ -658,6 +721,46 @@ impl ArgonautInit {
     /// Return the default AGNOS services for a boot mode.
     pub fn default_services(mode: BootMode) -> Vec<ServiceDefinition> {
         let mut services = Vec::new();
+
+        // Edge mode: agent-runtime only, no database dependencies.
+        if mode == BootMode::Edge {
+            services.push(ServiceDefinition {
+                name: "agent-runtime".into(),
+                description: "Daimon agent orchestrator (edge mode)".into(),
+                binary_path: PathBuf::from("/usr/lib/agnos/agent_runtime"),
+                args: vec![
+                    "--port".into(),
+                    "8090".into(),
+                    "--mode".into(),
+                    "edge".into(),
+                ],
+                environment: {
+                    let mut env = HashMap::new();
+                    env.insert("AGNOS_EDGE_MODE".into(), "1".into());
+                    env.insert("AGNOS_READONLY_ROOTFS".into(), "1".into());
+                    env.insert("AGNOS_EDGE_LUKS".into(), "1".into());
+                    env
+                },
+                depends_on: vec![],
+                required_for_modes: vec![BootMode::Edge],
+                restart_policy: RestartPolicy::Always,
+                health_check: Some(HealthCheck {
+                    check_type: HealthCheckType::HttpGet(
+                        "http://127.0.0.1:8090/v1/health".into(),
+                    ),
+                    interval_ms: 10_000,
+                    timeout_ms: 2000,
+                    retries: 3,
+                }),
+                ready_check: Some(ReadyCheck {
+                    check_type: HealthCheckType::TcpConnect("127.0.0.1".into(), 8090),
+                    timeout_ms: 3000,
+                    retries: 5,
+                    retry_delay_ms: 200,
+                }),
+            });
+            return services;
+        }
 
         // Database services for Server and Desktop modes.
         if mode == BootMode::Server || mode == BootMode::Desktop {
@@ -1071,6 +1174,8 @@ pub enum Runlevel {
     Graphical,
     /// Container: minimal services for container/embedded use.
     Container,
+    /// Edge: constrained IoT/edge device, agent-runtime only.
+    Edge,
 }
 
 impl Runlevel {
@@ -1081,6 +1186,7 @@ impl Runlevel {
             Self::Console => Some(BootMode::Server),
             Self::Graphical => Some(BootMode::Desktop),
             Self::Container => Some(BootMode::Minimal),
+            Self::Edge => Some(BootMode::Edge),
         }
     }
 
@@ -1090,6 +1196,7 @@ impl Runlevel {
             BootMode::Server => Self::Console,
             BootMode::Desktop => Self::Graphical,
             BootMode::Minimal => Self::Container,
+            BootMode::Edge => Self::Edge,
         }
     }
 
@@ -1101,6 +1208,7 @@ impl Runlevel {
             Self::Console => 3,
             Self::Graphical => 5,
             Self::Container => 7,
+            Self::Edge => 8,
         }
     }
 }
@@ -1113,6 +1221,7 @@ impl fmt::Display for Runlevel {
             Self::Console => write!(f, "console"),
             Self::Graphical => write!(f, "graphical"),
             Self::Container => write!(f, "container"),
+            Self::Edge => write!(f, "edge"),
         }
     }
 }
@@ -1171,6 +1280,13 @@ impl ServiceTarget {
                 requires: vec!["aethersafha".into()],
                 wants: vec!["pipewire".into(), "agnoshi".into()],
                 active_in: vec![Runlevel::Graphical],
+            },
+            Self {
+                name: "edge".into(),
+                description: "Edge device — minimal agent runtime".into(),
+                requires: vec!["daimon".into()],
+                wants: vec!["aegis".into()],
+                active_in: vec![Runlevel::Edge],
             },
         ]
     }
@@ -1778,6 +1894,121 @@ fn backoff_delay(restart_count: u32) -> u64 {
     delay.min(30_000)
 }
 
+// ---------------------------------------------------------------------------
+// Read-only rootfs with dm-verity (Phase 14A-3/4)
+// ---------------------------------------------------------------------------
+
+/// Generate mount commands to configure a read-only root filesystem with
+/// writable tmpfs overlays for directories that require writes at runtime.
+///
+/// This is used during Edge boot to lock down the root partition, ensuring
+/// integrity while still allowing ephemeral writes to `/tmp`, `/var/run`,
+/// `/var/log`, and `/var/tmp`.
+pub fn configure_readonly_rootfs() -> Vec<String> {
+    vec![
+        "mount -o remount,ro /".to_string(),
+        "mount -t tmpfs tmpfs /tmp -o size=64M,noexec,nosuid".to_string(),
+        "mount -t tmpfs tmpfs /var/run -o size=16M,nosuid".to_string(),
+        "mount -t tmpfs tmpfs /var/log -o size=32M,nosuid".to_string(),
+        "mount -t tmpfs tmpfs /var/tmp -o size=16M,noexec,nosuid".to_string(),
+    ]
+}
+
+/// Generate dm-verity verification and activation commands for a root device.
+///
+/// Validates the integrity of a root filesystem partition using dm-verity by
+/// checking the provided SHA-256 root hash against the hash device, then
+/// activating a read-only verified mapping at `/dev/mapper/verified-root`.
+///
+/// # Errors
+///
+/// Returns an error if any parameter is empty or the root hash is not exactly
+/// 64 hex characters (SHA-256 digest length).
+/// A structured command representation to avoid shell injection.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SafeCommand {
+    pub binary: String,
+    pub args: Vec<String>,
+}
+
+impl SafeCommand {
+    /// Format as a display string (for logging only — NOT for shell execution).
+    pub fn display(&self) -> String {
+        let mut parts = vec![self.binary.clone()];
+        parts.extend(self.args.iter().cloned());
+        parts.join(" ")
+    }
+}
+
+/// Validate a device path to prevent injection.
+fn validate_device_path(path: &str) -> Result<(), String> {
+    if path.is_empty() {
+        return Err("device path cannot be empty".to_string());
+    }
+    if !path.starts_with("/dev/") {
+        return Err(format!(
+            "device path must start with /dev/, got: {}",
+            &path[..path.len().min(20)]
+        ));
+    }
+    if !path
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | '-' | '_' | '.'))
+    {
+        return Err("device path contains invalid characters".to_string());
+    }
+    Ok(())
+}
+
+pub fn verify_rootfs_integrity(
+    root_device: &str,
+    hash_device: &str,
+    root_hash: &str,
+) -> Result<Vec<SafeCommand>, String> {
+    if root_device.is_empty() || hash_device.is_empty() || root_hash.is_empty() {
+        return Err("dm-verity parameters cannot be empty".to_string());
+    }
+    if root_hash.len() != 64 {
+        return Err("Root hash must be 64 hex characters (SHA-256)".to_string());
+    }
+    if !root_hash.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err("Root hash must contain only hex characters (0-9, a-f)".to_string());
+    }
+    validate_device_path(root_device)?;
+    validate_device_path(hash_device)?;
+
+    Ok(vec![
+        SafeCommand {
+            binary: "veritysetup".to_string(),
+            args: vec![
+                "verify".to_string(),
+                root_device.to_string(),
+                hash_device.to_string(),
+                root_hash.to_string(),
+            ],
+        },
+        SafeCommand {
+            binary: "veritysetup".to_string(),
+            args: vec![
+                "open".to_string(),
+                root_device.to_string(),
+                "verified-root".to_string(),
+                hash_device.to_string(),
+                root_hash.to_string(),
+            ],
+        },
+        SafeCommand {
+            binary: "mount".to_string(),
+            args: vec![
+                "-o".to_string(),
+                "ro".to_string(),
+                "/dev/mapper/verified-root".to_string(),
+                "/mnt/root".to_string(),
+            ],
+        },
+    ])
+}
+
 // ===========================================================================
 // Tests
 // ===========================================================================
@@ -1839,6 +2070,11 @@ mod tests {
     #[test]
     fn boot_mode_display_minimal() {
         assert_eq!(BootMode::Minimal.to_string(), "minimal");
+    }
+
+    #[test]
+    fn boot_mode_display_edge() {
+        assert_eq!(BootMode::Edge.to_string(), "edge");
     }
 
     // --- BootStage ordering ---
@@ -2737,12 +2973,13 @@ mod tests {
     #[test]
     fn default_targets_exist() {
         let targets = ServiceTarget::defaults();
-        assert_eq!(targets.len(), 4);
+        assert_eq!(targets.len(), 5);
         let names: Vec<&str> = targets.iter().map(|t| t.name.as_str()).collect();
         assert!(names.contains(&"basic"));
         assert!(names.contains(&"network"));
         assert!(names.contains(&"agnos-core"));
         assert!(names.contains(&"graphical"));
+        assert!(names.contains(&"edge"));
     }
 
     #[test]
@@ -3206,5 +3443,287 @@ mod tests {
         // Capped at 30s
         assert_eq!(backoff_delay(5), 30000);
         assert_eq!(backoff_delay(10), 30000);
+    }
+
+    // -----------------------------------------------------------------------
+    // Phase 14A: Edge boot mode tests
+    // -----------------------------------------------------------------------
+
+    fn edge_config() -> ArgonautConfig {
+        ArgonautConfig {
+            boot_mode: BootMode::Edge,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn boot_sequence_edge_minimal_stages() {
+        let steps = ArgonautInit::build_boot_sequence(BootMode::Edge);
+        let stages: Vec<BootStage> = steps.iter().map(|s| s.stage).collect();
+        // Edge gets: MountFS, DevMgr, Verify, Security, AgentRuntime, BootComplete = 6
+        assert_eq!(steps.len(), 6);
+        assert!(stages.contains(&BootStage::MountFilesystems));
+        assert!(stages.contains(&BootStage::VerifyRootfs));
+        assert!(stages.contains(&BootStage::StartAgentRuntime));
+        assert!(stages.contains(&BootStage::BootComplete));
+        // Must NOT have these:
+        assert!(!stages.contains(&BootStage::StartDatabaseServices));
+        assert!(!stages.contains(&BootStage::StartLlmGateway));
+        assert!(!stages.contains(&BootStage::StartModelServices));
+        assert!(!stages.contains(&BootStage::StartCompositor));
+        assert!(!stages.contains(&BootStage::StartShell));
+    }
+
+    #[test]
+    fn boot_sequence_edge_fast_timeouts() {
+        let steps = ArgonautInit::build_boot_sequence(BootMode::Edge);
+        let rt_step = steps
+            .iter()
+            .find(|s| s.stage == BootStage::StartAgentRuntime)
+            .unwrap();
+        // Edge agent-runtime timeout should be 3s (tight for fast boot)
+        assert_eq!(rt_step.timeout_ms, 3000);
+        let complete = steps
+            .iter()
+            .find(|s| s.stage == BootStage::BootComplete)
+            .unwrap();
+        assert_eq!(complete.timeout_ms, 500);
+    }
+
+    #[test]
+    fn default_services_edge() {
+        let svcs = ArgonautInit::default_services(BootMode::Edge);
+        assert_eq!(svcs.len(), 1);
+        assert_eq!(svcs[0].name, "agent-runtime");
+        assert!(svcs[0].depends_on.is_empty());
+        assert!(svcs[0].required_for_modes.contains(&BootMode::Edge));
+        // Edge mode env vars
+        assert_eq!(svcs[0].environment.get("AGNOS_EDGE_MODE").unwrap(), "1");
+        assert_eq!(
+            svcs[0].environment.get("AGNOS_READONLY_ROOTFS").unwrap(),
+            "1"
+        );
+    }
+
+    #[test]
+    fn edge_services_no_databases() {
+        let svcs = ArgonautInit::default_services(BootMode::Edge);
+        let names: Vec<&str> = svcs.iter().map(|s| s.name.as_str()).collect();
+        assert!(!names.contains(&"postgres"));
+        assert!(!names.contains(&"redis"));
+        assert!(!names.contains(&"llm-gateway"));
+        assert!(!names.contains(&"synapse"));
+        assert!(!names.contains(&"aethersafha"));
+        assert!(!names.contains(&"agnoshi"));
+    }
+
+    #[test]
+    fn edge_init_creates_single_service() {
+        let init = ArgonautInit::new(edge_config());
+        assert_eq!(init.services.len(), 1);
+        assert!(init.services.contains_key("agent-runtime"));
+    }
+
+    #[test]
+    fn edge_boot_can_complete() {
+        let mut init = ArgonautInit::new(edge_config());
+        for step in &mut init.boot_sequence {
+            step.status = BootStepStatus::Complete;
+        }
+        assert!(init.is_boot_complete());
+    }
+
+    #[test]
+    fn edge_shutdown_plan() {
+        let init = ArgonautInit::new(edge_config());
+        let plan = init.plan_shutdown(ShutdownType::Reboot).unwrap();
+        assert_eq!(plan.shutdown_type, ShutdownType::Reboot);
+        assert!(plan
+            .steps
+            .iter()
+            .any(|s| s.action == ShutdownAction::CloseLuks));
+    }
+
+    #[test]
+    fn runlevel_edge_mapping() {
+        assert_eq!(Runlevel::Edge.to_boot_mode(), Some(BootMode::Edge));
+        assert_eq!(Runlevel::from_boot_mode(BootMode::Edge), Runlevel::Edge);
+        assert_eq!(Runlevel::Edge.level(), 8);
+        assert_eq!(format!("{}", Runlevel::Edge), "edge");
+    }
+
+    #[test]
+    fn edge_target_active_in_edge_runlevel() {
+        let targets = ServiceTarget::defaults();
+        let edge = targets.iter().find(|t| t.name == "edge").unwrap();
+        assert!(edge.is_active_in(Runlevel::Edge));
+        assert!(!edge.is_active_in(Runlevel::Console));
+        assert!(!edge.is_active_in(Runlevel::Graphical));
+        assert!(edge.requires.contains(&"daimon".to_string()));
+        assert!(edge.wants.contains(&"aegis".to_string()));
+    }
+
+    #[test]
+    fn edge_service_state_lifecycle() {
+        let mut init = ArgonautInit::new(edge_config());
+        assert!(init.set_service_state("agent-runtime", ServiceState::Starting));
+        assert!(init.set_service_state("agent-runtime", ServiceState::Running));
+        let stats = init.stats();
+        assert_eq!(stats.boot_mode, BootMode::Edge);
+        assert_eq!(stats.services_running, 1);
+    }
+
+    // --- Read-only rootfs / dm-verity (Phase 14A-3/4) ---
+
+    #[test]
+    fn readonly_rootfs_returns_five_commands() {
+        let cmds = configure_readonly_rootfs();
+        assert_eq!(cmds.len(), 5);
+    }
+
+    #[test]
+    fn readonly_rootfs_remounts_root_ro() {
+        let cmds = configure_readonly_rootfs();
+        assert_eq!(cmds[0], "mount -o remount,ro /");
+    }
+
+    #[test]
+    fn readonly_rootfs_tmpfs_noexec() {
+        let cmds = configure_readonly_rootfs();
+        // /tmp and /var/tmp should have noexec
+        assert!(cmds[1].contains("noexec"));
+        assert!(cmds[4].contains("noexec"));
+        // /var/run and /var/log should NOT have noexec
+        assert!(!cmds[2].contains("noexec"));
+        assert!(!cmds[3].contains("noexec"));
+    }
+
+    #[test]
+    fn verify_rootfs_integrity_success() {
+        let hash = "a".repeat(64);
+        let result = verify_rootfs_integrity("/dev/sda1", "/dev/sda2", &hash);
+        assert!(result.is_ok());
+        let cmds = result.unwrap();
+        assert_eq!(cmds.len(), 3);
+        assert_eq!(cmds[0].binary, "veritysetup");
+        assert_eq!(cmds[0].args[0], "verify");
+        assert_eq!(cmds[1].binary, "veritysetup");
+        assert_eq!(cmds[1].args[0], "open");
+        assert_eq!(cmds[2].binary, "mount");
+        assert!(cmds[2].args.contains(&"/dev/mapper/verified-root".to_string()));
+    }
+
+    #[test]
+    fn verify_rootfs_integrity_empty_params() {
+        let hash = "a".repeat(64);
+        assert!(verify_rootfs_integrity("", "/dev/sda2", &hash).is_err());
+        assert!(verify_rootfs_integrity("/dev/sda1", "", &hash).is_err());
+        assert!(verify_rootfs_integrity("/dev/sda1", "/dev/sda2", "").is_err());
+    }
+
+    #[test]
+    fn verify_rootfs_integrity_bad_hash_length() {
+        let result = verify_rootfs_integrity("/dev/sda1", "/dev/sda2", "abcdef");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("64 hex characters"));
+
+        let long_hash = "a".repeat(128);
+        let result = verify_rootfs_integrity("/dev/sda1", "/dev/sda2", &long_hash);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn verify_rootfs_integrity_bad_hash_chars() {
+        // 64 chars but non-hex
+        let hash = "g".repeat(64);
+        let result = verify_rootfs_integrity("/dev/sda1", "/dev/sda2", &hash);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("hex characters"));
+    }
+
+    #[test]
+    fn verify_rootfs_integrity_bad_device_path() {
+        let hash = "a".repeat(64);
+        // Path without /dev/ prefix
+        let result = verify_rootfs_integrity("/tmp/sda1", "/dev/sda2", &hash);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("/dev/"));
+
+        // Path with shell metacharacters
+        let result = verify_rootfs_integrity("/dev/sda1; rm -rf /", "/dev/sda2", &hash);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("invalid characters"));
+    }
+
+    #[test]
+    fn verify_rootfs_integrity_commands_contain_devices() {
+        let hash = "b".repeat(64);
+        let cmds = verify_rootfs_integrity("/dev/vda1", "/dev/vda2", &hash).unwrap();
+        assert!(cmds[0].args.contains(&"/dev/vda1".to_string()));
+        assert!(cmds[0].args.contains(&"/dev/vda2".to_string()));
+        assert!(cmds[0].args.contains(&hash));
+        assert!(cmds[1].args.contains(&"/dev/vda1".to_string()));
+        assert!(cmds[1].args.contains(&"verified-root".to_string()));
+    }
+
+    #[test]
+    fn verify_rootfs_integrity_mount_is_readonly() {
+        let hash = "c".repeat(64);
+        let cmds = verify_rootfs_integrity("/dev/sda1", "/dev/sda2", &hash).unwrap();
+        assert!(cmds[2].args.contains(&"ro".to_string()));
+    }
+
+    #[test]
+    fn safe_command_display() {
+        let cmd = SafeCommand {
+            binary: "mount".to_string(),
+            args: vec!["-o".to_string(), "ro".to_string(), "/dev/sda1".to_string()],
+        };
+        assert_eq!(cmd.display(), "mount -o ro /dev/sda1");
+    }
+
+    // -----------------------------------------------------------------------
+    // Phase 14D: Edge Security tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn edge_boot_config_defaults() {
+        let cfg = EdgeBootConfig::default();
+        assert!(cfg.readonly_rootfs);
+        assert!(cfg.luks_enabled);
+        assert!(!cfg.tpm_attestation);
+        assert_eq!(cfg.max_boot_time_ms, 3000);
+    }
+
+    #[test]
+    fn edge_boot_config_custom() {
+        let cfg = EdgeBootConfig {
+            readonly_rootfs: false,
+            luks_enabled: false,
+            tpm_attestation: true,
+            max_boot_time_ms: 5000,
+        };
+        assert!(!cfg.readonly_rootfs);
+        assert!(!cfg.luks_enabled);
+        assert!(cfg.tpm_attestation);
+        assert_eq!(cfg.max_boot_time_ms, 5000);
+    }
+
+    #[test]
+    fn edge_boot_config_serde_roundtrip() {
+        let cfg = EdgeBootConfig::default();
+        let json = serde_json::to_string(&cfg).unwrap();
+        let deserialized: EdgeBootConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.luks_enabled, cfg.luks_enabled);
+        assert_eq!(deserialized.readonly_rootfs, cfg.readonly_rootfs);
+        assert_eq!(deserialized.tpm_attestation, cfg.tpm_attestation);
+        assert_eq!(deserialized.max_boot_time_ms, cfg.max_boot_time_ms);
+    }
+
+    #[test]
+    fn default_services_edge_has_luks_env() {
+        let svcs = ArgonautInit::default_services(BootMode::Edge);
+        assert_eq!(svcs.len(), 1);
+        assert_eq!(svcs[0].environment.get("AGNOS_EDGE_LUKS").unwrap(), "1");
     }
 }

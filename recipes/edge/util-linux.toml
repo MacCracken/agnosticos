@@ -1,0 +1,63 @@
+# util-linux — System Utilities (Edge Profile)
+# Only mount, umount, fdisk, lsblk, blkid, losetup, swapon/swapoff.
+# No login/su (provided by other packages), no Python bindings.
+#
+# Phase 14 — Edge OS Profile
+
+[package]
+name = "util-linux"
+version = "2.40.4"
+description = "util-linux — mount, fdisk, lsblk essentials for edge"
+license = "GPL-2.0"
+groups = ["edge", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://mirrors.kernel.org/pub/linux/utils/util-linux/v2.40/util-linux-2.40.4.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "zlib", "ncurses"]
+build = ["gcc", "make", "pkgconf"]
+
+[build]
+strip = true
+install_docs = false
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --libdir=/usr/lib \
+    --runstatedir=/run \
+    --disable-nls \
+    --disable-static \
+    --disable-pylibmount \
+    --disable-login \
+    --disable-nologin \
+    --disable-su \
+    --disable-runuser \
+    --disable-setpriv \
+    --disable-chfn-chsh \
+    --disable-wall \
+    --disable-write \
+    --disable-mesg \
+    --disable-last \
+    --disable-utmpdump \
+    --disable-raw \
+    --without-python \
+    --without-systemd
+"""
+make = "make -j$(nproc)"
+check = ""
+install = """
+make DESTDIR=$PKG install
+rm -rf $PKG/usr/share/man $PKG/usr/share/doc $PKG/usr/share/bash-completion
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-Os -pipe"
+ldflags = "-Wl,--as-needed"

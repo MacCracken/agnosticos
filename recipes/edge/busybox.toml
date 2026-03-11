@@ -1,0 +1,52 @@
+# BusyBox — Fallback Utilities (Edge Profile)
+# Provides lightweight fallback for less-critical commands:
+# vi, wget, less, grep, find, awk, sed, tar, gzip, etc.
+# Does NOT override coreutils or bash (installed with --install-no-usr).
+#
+# Phase 14 — Edge OS Profile
+
+[package]
+name = "busybox"
+version = "1.37.0"
+description = "BusyBox — compact fallback UNIX utilities for edge"
+license = "GPL-2.0"
+groups = ["edge", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://busybox.net/downloads/busybox-1.37.0.tar.bz2"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc"]
+build = ["gcc", "make"]
+
+[build]
+strip = true
+install_docs = false
+pre_build = """
+# Start from default config, then trim for edge
+make defconfig
+# Disable applets already provided by full packages
+sed -i 's/CONFIG_BASH=y/# CONFIG_BASH is not set/' .config
+sed -i 's/CONFIG_SH_IS_BASH=y/# CONFIG_SH_IS_BASH is not set/' .config
+sed -i 's/CONFIG_FEATURE_SH_IS_ASH=y/CONFIG_FEATURE_SH_IS_ASH=y/' .config
+"""
+configure = ""
+make = "make -j$(nproc)"
+check = ""
+install = """
+make CONFIG_PREFIX=$PKG/usr install
+
+# Remove symlinks that conflict with coreutils/bash
+rm -f $PKG/usr/bin/bash $PKG/usr/bin/sh
+rm -f $PKG/usr/sbin/chroot
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector"]
+cflags = "-Os -pipe"
+ldflags = "-Wl,--as-needed"

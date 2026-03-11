@@ -1,0 +1,46 @@
+# CA Certificates — Mozilla CA Bundle (Edge Profile)
+# Provides trusted root certificates for TLS validation.
+#
+# Phase 14 — Edge OS Profile
+
+[package]
+name = "ca-certificates"
+version = "2024.12.14"
+description = "Mozilla CA certificate bundle for TLS verification"
+license = "MPL-2.0"
+groups = ["edge", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://curl.se/ca/cacert-2024-12-14.pem"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["openssl"]
+build = []
+
+[build]
+strip = true
+install_docs = false
+pre_build = ""
+configure = ""
+make = ""
+check = ""
+install = """
+mkdir -p $PKG/etc/ssl/certs
+cp -v cacert-2024-12-14.pem $PKG/etc/ssl/certs/ca-certificates.crt
+ln -sfv certs/ca-certificates.crt $PKG/etc/ssl/cert.pem
+
+# Create individual cert files via openssl rehash
+mkdir -p $PKG/etc/ssl/certs
+cd $PKG/etc/ssl/certs
+openssl rehash . 2>/dev/null || true
+"""
+post_install = ""
+
+[security]
+hardening = []
+cflags = ""
+ldflags = ""

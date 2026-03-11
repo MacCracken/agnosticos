@@ -8,6 +8,7 @@ pub mod cloud;
 pub mod collaboration;
 pub mod database;
 pub mod delegation;
+pub mod edge;
 pub mod explainability;
 pub mod federation;
 pub mod file_watcher;

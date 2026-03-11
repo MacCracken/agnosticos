@@ -1,0 +1,52 @@
+# eudev — Device Manager (Edge Profile)
+# Standalone udev fork (no systemd dependency) for device hotplug.
+#
+# Phase 14 — Edge OS Profile
+
+[package]
+name = "eudev"
+version = "3.2.14"
+description = "eudev — standalone device manager for edge nodes"
+license = "GPL-2.0"
+groups = ["edge", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/eudev-project/eudev/releases/download/v3.2.14/eudev-3.2.14.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "kmod", "util-linux"]
+build = ["gcc", "make", "pkgconf", "gperf"]
+
+[build]
+strip = true
+install_docs = false
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --sysconfdir=/etc \
+    --with-rootprefix= \
+    --disable-manpages \
+    --disable-static \
+    --disable-introspection \
+    --enable-hwdb
+"""
+make = "make -j$(nproc)"
+check = ""
+install = """
+make DESTDIR=$PKG install
+
+# Install minimal hardware database
+udevadm hwdb --update --root=$PKG 2>/dev/null || true
+rm -rf $PKG/usr/share/man $PKG/usr/share/doc
+"""
+post_install = "udevadm control --reload 2>/dev/null || true"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-Os -pipe"
+ldflags = "-Wl,--as-needed"

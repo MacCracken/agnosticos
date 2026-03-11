@@ -153,6 +153,106 @@ fn bench_anomaly_detection(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_http_request_handling(c: &mut Criterion) {
+    use agent_runtime::http_api::{build_router, state::ApiState};
+
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let state = ApiState::new();
+    let app = build_router(state.clone());
+
+    // Pre-register an agent for memory benchmarks
+    let agent_id = rt.block_on(async {
+        let req_body = serde_json::json!({
+            "name": "bench-agent",
+            "capabilities": ["memory:read"],
+        });
+        let req = axum::http::Request::builder()
+            .method("POST")
+            .uri("/v1/agents/register")
+            .header("content-type", "application/json")
+            .body(axum::body::Body::from(
+                serde_json::to_vec(&req_body).unwrap(),
+            ))
+            .unwrap();
+        let resp = tower::ServiceExt::oneshot(app.clone(), req)
+            .await
+            .unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        json["id"].as_str().unwrap().to_string()
+    });
+
+    let mut group = c.benchmark_group("http_requests");
+
+    group.bench_function("health_check", |b| {
+        b.iter(|| {
+            rt.block_on(async {
+                let req = axum::http::Request::builder()
+                    .uri("/v1/health")
+                    .body(axum::body::Body::empty())
+                    .unwrap();
+                let resp = tower::ServiceExt::oneshot(app.clone(), req)
+                    .await
+                    .unwrap();
+                black_box(resp.status())
+            })
+        });
+    });
+
+    group.bench_function("agents_list", |b| {
+        b.iter(|| {
+            rt.block_on(async {
+                let req = axum::http::Request::builder()
+                    .uri("/v1/agents")
+                    .body(axum::body::Body::empty())
+                    .unwrap();
+                let resp = tower::ServiceExt::oneshot(app.clone(), req)
+                    .await
+                    .unwrap();
+                black_box(resp.status())
+            })
+        });
+    });
+
+    group.bench_function("memory_set", |b| {
+        let body_bytes =
+            serde_json::to_vec(&serde_json::json!({"value": "bench-data"})).unwrap();
+        b.iter(|| {
+            rt.block_on(async {
+                let req = axum::http::Request::builder()
+                    .method("PUT")
+                    .uri(format!("/v1/agents/{}/memory/bench-key", agent_id))
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(body_bytes.clone()))
+                    .unwrap();
+                let resp = tower::ServiceExt::oneshot(app.clone(), req)
+                    .await
+                    .unwrap();
+                black_box(resp.status())
+            })
+        });
+    });
+
+    group.bench_function("memory_get", |b| {
+        b.iter(|| {
+            rt.block_on(async {
+                let req = axum::http::Request::builder()
+                    .uri(format!("/v1/agents/{}/memory/bench-key", agent_id))
+                    .body(axum::body::Body::empty())
+                    .unwrap();
+                let resp = tower::ServiceExt::oneshot(app.clone(), req)
+                    .await
+                    .unwrap();
+                black_box(resp.status())
+            })
+        });
+    });
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_vector_search,
@@ -160,5 +260,6 @@ criterion_group!(
     bench_knowledge_search,
     bench_rpc_registry,
     bench_anomaly_detection,
+    bench_http_request_handling,
 );
 criterion_main!(benches);

@@ -1,0 +1,51 @@
+# cryptsetup — LUKS Encryption (Edge Profile)
+# Disk encryption for edge data partitions via LUKS2.
+# Required by AGNOS security model for encrypted storage.
+#
+# Phase 14 — Edge OS Profile
+
+[package]
+name = "cryptsetup"
+version = "2.7.5"
+description = "cryptsetup — LUKS disk encryption tools"
+license = "GPL-2.0"
+groups = ["edge", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://mirrors.kernel.org/pub/linux/utils/cryptsetup/v2.7/cryptsetup-2.7.5.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "device-mapper", "openssl", "util-linux", "json-c"]
+build = ["gcc", "make", "pkgconf"]
+
+[build]
+strip = true
+install_docs = false
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --disable-static \
+    --disable-nls \
+    --disable-asciidoc \
+    --disable-ssh-token \
+    --with-crypto_backend=openssl \
+    --with-default-luks-format=LUKS2
+"""
+make = "make -j$(nproc)"
+check = ""
+install = """
+make DESTDIR=$PKG install
+rm -rf $PKG/usr/share/man $PKG/usr/share/doc
+rm -f $PKG/usr/lib/libcryptsetup.a
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

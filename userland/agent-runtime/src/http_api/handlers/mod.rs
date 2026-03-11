@@ -4,6 +4,7 @@ pub mod ark;
 pub mod audit;
 pub mod dashboard;
 pub mod database;
+pub mod edge;
 pub mod handshake;
 pub mod marketplace;
 pub mod memory;

@@ -1,0 +1,68 @@
+# curl — URL Transfer Tool (Edge Profile)
+# HTTPS only, no FTP/LDAP/SMTP/telnet protocols.
+#
+# Phase 14 — Edge OS Profile
+
+[package]
+name = "curl"
+version = "8.12.1"
+description = "curl — HTTPS-only transfer tool for edge"
+license = "MIT"
+groups = ["edge", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://curl.se/download/curl-8.12.1.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "openssl", "zlib", "ca-certificates"]
+build = ["gcc", "make", "pkgconf"]
+
+[build]
+strip = true
+install_docs = false
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --with-openssl \
+    --with-ca-bundle=/etc/ssl/certs/ca-certificates.crt \
+    --disable-static \
+    --disable-nls \
+    --disable-ldap \
+    --disable-ldaps \
+    --disable-ftp \
+    --disable-file \
+    --disable-dict \
+    --disable-gopher \
+    --disable-imap \
+    --disable-mqtt \
+    --disable-pop3 \
+    --disable-rtsp \
+    --disable-smb \
+    --disable-smtp \
+    --disable-telnet \
+    --disable-tftp \
+    --disable-manual \
+    --without-libpsl \
+    --without-libidn2 \
+    --without-brotli \
+    --without-zstd \
+    --without-libssh2
+"""
+make = "make -j$(nproc)"
+check = ""
+install = """
+make DESTDIR=$PKG install
+rm -rf $PKG/usr/share/man $PKG/usr/share/doc
+rm -f $PKG/usr/lib/libcurl.a
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-Os -pipe"
+ldflags = "-Wl,--as-needed"

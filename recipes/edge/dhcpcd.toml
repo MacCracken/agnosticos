@@ -1,0 +1,48 @@
+# dhcpcd — DHCP Client (Edge Profile)
+# Lightweight DHCP/DHCPv6 client for edge network bootstrapping.
+#
+# Phase 14 — Edge OS Profile
+
+[package]
+name = "dhcpcd"
+version = "10.1.0"
+description = "DHCP client daemon — lightweight network configuration"
+license = "BSD-2-Clause"
+groups = ["edge", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/NetworkConfiguration/dhcpcd/releases/download/v10.1.0/dhcpcd-10.1.0.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "eudev"]
+build = ["gcc", "make"]
+
+[build]
+strip = true
+install_docs = false
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --sysconfdir=/etc \
+    --runstatedir=/run \
+    --dbdir=/var/lib/dhcpcd \
+    --disable-nls \
+    --without-hook-ntp
+"""
+make = "make -j$(nproc)"
+check = ""
+install = """
+make DESTDIR=$PKG install
+rm -rf $PKG/usr/share/man $PKG/usr/share/doc
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-Os -pipe"
+ldflags = "-Wl,--as-needed"

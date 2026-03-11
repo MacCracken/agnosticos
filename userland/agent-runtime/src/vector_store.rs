@@ -38,8 +38,11 @@ pub struct VectorEntry {
 /// A search result returned by [`VectorIndex::search`].
 #[derive(Debug, Clone)]
 pub struct SearchResult {
-    /// The matched entry.
-    pub entry: VectorEntry,
+    /// The matched entry (metadata + content only — embedding excluded for performance).
+    pub id: Uuid,
+    pub metadata: serde_json::Value,
+    pub content: String,
+    pub created_at: DateTime<Utc>,
     /// Cosine similarity score in `[-1.0, 1.0]`.
     pub score: f64,
     /// 0-based rank within the result set.
@@ -169,7 +172,10 @@ impl VectorIndex {
             .into_iter()
             .enumerate()
             .map(|(rank, (entry, score))| SearchResult {
-                entry: entry.clone(),
+                id: entry.id,
+                metadata: entry.metadata.clone(),
+                content: entry.content.clone(),
+                created_at: entry.created_at,
                 score,
                 rank,
             })
@@ -373,7 +379,7 @@ mod tests {
 
         let results = idx.search(&[1.0, 0.0], 1);
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].entry.content, "east");
+        assert_eq!(results[0].content, "east");
         assert!((results[0].score - 1.0).abs() < 1e-9);
         assert_eq!(results[0].rank, 0);
     }
@@ -388,7 +394,7 @@ mod tests {
         let results = idx.search(&[1.0, 0.0], 2);
         assert_eq!(results.len(), 2);
         // First result should be the closest to [1,0].
-        assert_eq!(results[0].entry.content, "a");
+        assert_eq!(results[0].content, "a");
     }
 
     #[test]

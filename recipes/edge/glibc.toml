@@ -1,0 +1,65 @@
+# glibc — GNU C Library (Edge Profile)
+# Minimal locale set (C, C.UTF-8, en_US.UTF-8 only) to save ~80 MB.
+#
+# Phase 14 — Edge OS Profile
+
+[package]
+name = "glibc"
+version = "2.40"
+description = "GNU C Library — minimal locales for edge deployment"
+license = "LGPL-2.1"
+groups = ["edge", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://ftp.gnu.org/gnu/glibc/glibc-2.40.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["kernel-edge"]
+build = ["gcc", "make", "bison", "python3", "texinfo"]
+
+[build]
+strip = true
+install_docs = false
+pre_build = """
+mkdir -p build && cd build
+"""
+configure = """
+cd build && ../configure \
+    --prefix=/usr \
+    --libdir=/usr/lib \
+    --libexecdir=/usr/lib \
+    --enable-kernel=6.6 \
+    --enable-stack-protector=strong \
+    --disable-werror \
+    --disable-nscd \
+    --disable-profile \
+    --disable-timezone-tools \
+    libc_cv_slibdir=/usr/lib
+"""
+make = "cd build && make -j$(nproc)"
+check = ""
+install = """
+cd build && make DESTDIR=$PKG install
+
+# Install only minimal locales (saves ~80 MB)
+mkdir -p $PKG/usr/lib/locale
+localedef --prefix=$PKG -i POSIX -f UTF-8 C.UTF-8 || true
+localedef --prefix=$PKG -i en_US -f UTF-8 en_US.UTF-8 || true
+
+# Remove unnecessary files
+rm -rf $PKG/usr/share/i18n
+rm -rf $PKG/usr/share/locale
+rm -rf $PKG/usr/bin/mtrace
+rm -rf $PKG/usr/bin/sotruss
+rm -rf $PKG/usr/bin/xtrace
+"""
+post_install = "ldconfig"
+
+[security]
+hardening = ["pie", "fullrelro", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = ""

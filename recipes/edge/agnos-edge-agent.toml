@@ -1,0 +1,103 @@
+# AGNOS Edge Agent — The Edge Runtime Binary
+# Core AGNOS agent for edge devices: fleet management, telemetry,
+# OTA updates, health monitoring, and agent orchestration.
+# Built from the agnosticos userland workspace.
+#
+# Phase 14 — Edge OS Profile
+
+[package]
+name = "agnos-edge-agent"
+version = "2026.3.11"
+description = "AGNOS edge agent — fleet management, telemetry, OTA updates"
+license = "GPL-3.0"
+groups = ["edge", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/MacCracken/agnosticos/releases/download/v2026.3.11/agnos-edge-agent-2026.3.11.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "openssl", "dbus", "curl", "nftables", "tpm2-tss"]
+build = ["rust", "gcc", "pkgconf"]
+
+[build]
+strip = true
+install_docs = false
+pre_build = """
+# Build with edge feature flags only
+export CARGO_PROFILE_RELEASE_LTO=true
+export CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1
+export CARGO_PROFILE_RELEASE_OPT_LEVEL=s
+"""
+configure = ""
+make = """
+cargo build --release \
+    --no-default-features \
+    --features edge,tpm,fleet,ota,telemetry,sandbox \
+    -p agent-runtime
+"""
+check = ""
+install = """
+mkdir -p $PKG/usr/bin
+cp -v target/release/agnos-edge-agent $PKG/usr/bin/
+
+# Install edge configuration
+mkdir -p $PKG/etc/agnos
+cat > $PKG/etc/agnos/edge.toml << 'CONF'
+[agent]
+mode = "edge"
+max_memory_mb = 64
+telemetry_interval_secs = 60
+heartbeat_interval_secs = 30
+
+[fleet]
+discovery = "mdns"
+mesh_vpn = "wireguard"
+
+[security]
+sandbox = true
+seccomp = true
+landlock = true
+tpm_verify = true
+read_only_rootfs = true
+
+[ota]
+enabled = true
+check_interval_secs = 3600
+rollback_on_failure = true
+
+[telemetry]
+enabled = true
+export_otlp = true
+local_buffer_max_mb = 8
+CONF
+
+# Install service file (sysvinit/runit style for edge)
+mkdir -p $PKG/etc/init.d
+cat > $PKG/etc/init.d/agnos-edge-agent << 'INITSCRIPT'
+#!/bin/sh
+### BEGIN INIT INFO
+# Provides:          agnos-edge-agent
+# Required-Start:    $network $syslog
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Description:       AGNOS Edge Agent
+### END INIT INFO
+case "$1" in
+    start)   /usr/bin/agnos-edge-agent --config /etc/agnos/edge.toml &;;
+    stop)    killall agnos-edge-agent 2>/dev/null;;
+    restart) $0 stop; $0 start;;
+    *)       echo "Usage: $0 {start|stop|restart}";;
+esac
+INITSCRIPT
+chmod 755 $PKG/etc/init.d/agnos-edge-agent
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-Os -pipe"
+ldflags = "-Wl,--as-needed"

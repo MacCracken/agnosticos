@@ -453,9 +453,32 @@ fn extract_tarball(data: &[u8], dest: &Path) -> Result<u64> {
             continue;
         }
 
+        // Security: reject symlinks to prevent path traversal via symlink targets
+        let entry_type = entry.header().entry_type();
+        if entry_type.is_symlink() || entry_type.is_hard_link() {
+            warn!(
+                "Skipping tarball symlink/hardlink entry: {}",
+                path.display()
+            );
+            continue;
+        }
+
         let dest_path = dest.join(&path);
+
+        // Verify resolved path stays within destination directory
+        let dest_canonical = dest.canonicalize().unwrap_or_else(|_| dest.to_path_buf());
         if let Some(parent) = dest_path.parent() {
             std::fs::create_dir_all(parent)?;
+        }
+        let resolved = dest_path
+            .canonicalize()
+            .unwrap_or_else(|_| dest_path.clone());
+        if !resolved.starts_with(&dest_canonical) {
+            warn!(
+                "Skipping tarball entry escaping destination: {}",
+                path.display()
+            );
+            continue;
         }
 
         total_size += entry.size();

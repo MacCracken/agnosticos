@@ -1,0 +1,51 @@
+# e2fsprogs — ext4 Filesystem Tools (Edge Profile)
+# mke2fs, e2fsck, tune2fs for ext4 rootfs management.
+#
+# Phase 14 — Edge OS Profile
+
+[package]
+name = "e2fsprogs"
+version = "1.47.2"
+description = "e2fsprogs — ext4 filesystem creation and repair tools"
+license = "GPL-2.0"
+groups = ["edge", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://downloads.sourceforge.net/e2fsprogs/e2fsprogs-1.47.2.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "util-linux"]
+build = ["gcc", "make", "pkgconf"]
+
+[build]
+strip = true
+install_docs = false
+pre_build = "mkdir -p build && cd build"
+configure = """
+cd build && ../configure \
+    --prefix=/usr \
+    --sysconfdir=/etc \
+    --enable-elf-shlibs \
+    --disable-nls \
+    --disable-uuidd \
+    --disable-fsck \
+    --disable-libblkid \
+    --disable-libuuid
+"""
+make = "cd build && make -j$(nproc)"
+check = ""
+install = """
+cd build && make DESTDIR=$PKG install
+rm -rf $PKG/usr/share/man $PKG/usr/share/info $PKG/usr/share/doc
+rm -f $PKG/usr/lib/lib*.a
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-Os -pipe"
+ldflags = "-Wl,--as-needed"

@@ -24,10 +24,34 @@ const MEMORY_VALUE_MAX_BYTES: usize = 1_048_576;
 // Memory handlers
 // ---------------------------------------------------------------------------
 
+/// Validate that an agent ID exists in the registry. Returns an error response
+/// if the agent is not registered, preventing unauthorized cross-agent access.
+async fn require_registered_agent(
+    state: &ApiState,
+    id: &str,
+) -> Option<axum::response::Response> {
+    if let Ok(uuid) = id.parse::<::uuid::Uuid>() {
+        let agents = state.agents_read().await;
+        if agents.contains_key(&uuid) {
+            return None; // Agent exists — proceed
+        }
+    }
+    Some(
+        (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": "Agent not found", "code": 404})),
+        )
+            .into_response(),
+    )
+}
+
 pub async fn memory_get_handler(
     State(state): State<ApiState>,
     Path((id, key)): Path<(String, String)>,
 ) -> impl IntoResponse {
+    if let Some(err) = require_registered_agent(&state, &id).await {
+        return err;
+    }
     match state.memory_store.get(&id, &key).await {
         Some(value) => (
             StatusCode::OK,
@@ -47,6 +71,9 @@ pub async fn memory_set_handler(
     Path((id, key)): Path<(String, String)>,
     Json(req): Json<MemorySetRequest>,
 ) -> impl IntoResponse {
+    if let Some(err) = require_registered_agent(&state, &id).await {
+        return err;
+    }
     let serialized_size = serde_json::to_string(&req.value)
         .map(|s| s.len())
         .unwrap_or(0);
@@ -64,7 +91,16 @@ pub async fn memory_set_handler(
             .into_response();
     }
 
-    state.memory_store.set(&id, &key, req.value).await;
+    if !state.memory_store.set(&id, &key, req.value).await {
+        return (
+            StatusCode::INSUFFICIENT_STORAGE,
+            Json(serde_json::json!({
+                "error": "Per-agent key limit reached (max 1000 keys)",
+                "code": 507
+            })),
+        )
+            .into_response();
+    }
     (
         StatusCode::OK,
         Json(serde_json::json!({"status": "stored", "key": key})),
@@ -76,15 +112,21 @@ pub async fn memory_list_handler(
     State(state): State<ApiState>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
+    if let Some(err) = require_registered_agent(&state, &id).await {
+        return err;
+    }
     let keys = state.memory_store.list_keys(&id).await;
     let total = keys.len();
-    Json(serde_json::json!({"keys": keys, "total": total}))
+    Json(serde_json::json!({"keys": keys, "total": total})).into_response()
 }
 
 pub async fn memory_delete_handler(
     State(state): State<ApiState>,
     Path((id, key)): Path<(String, String)>,
 ) -> impl IntoResponse {
+    if let Some(err) = require_registered_agent(&state, &id).await {
+        return err;
+    }
     if state.memory_store.delete(&id, &key).await {
         (
             StatusCode::OK,

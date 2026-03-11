@@ -149,13 +149,13 @@ pub async fn audit_chain_handler(
     let entries = chain.entries();
     let total = entries.len();
     let start = params.offset.min(total);
-    let end = (start + params.limit).min(total);
-    let page = &entries[start..end];
+    let limit = params.limit.min(1000); // cap at 1000 per page
+    let page: Vec<&_> = entries.iter().skip(start).take(limit).collect();
     Json(serde_json::json!({
         "entries": page,
         "total": total,
         "offset": start,
-        "limit": params.limit,
+        "limit": limit,
     }))
 }
 

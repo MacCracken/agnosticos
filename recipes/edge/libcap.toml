@@ -1,0 +1,42 @@
+# libcap — POSIX Capabilities (Edge Profile)
+# Library and tools for POSIX 1003.1e capabilities.
+# Required by coreutils, dbus, and AGNOS sandbox.
+#
+# Phase 14 — Edge OS Profile
+
+[package]
+name = "libcap"
+version = "2.73"
+description = "libcap — POSIX capabilities library and tools"
+license = "BSD-3-Clause"
+groups = ["edge", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://mirrors.kernel.org/pub/linux/libs/security/linux-privs/libcap2/libcap-2.73.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc"]
+build = ["gcc", "make"]
+
+[build]
+strip = true
+install_docs = false
+pre_build = ""
+configure = ""
+make = "make -j$(nproc) lib=lib prefix=/usr"
+check = ""
+install = """
+make DESTDIR=$PKG lib=lib prefix=/usr install
+rm -f $PKG/usr/lib/libcap.a $PKG/usr/lib/libpsx.a
+rm -rf $PKG/usr/share/man $PKG/usr/share/doc
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-Os -pipe"
+ldflags = "-Wl,--as-needed"

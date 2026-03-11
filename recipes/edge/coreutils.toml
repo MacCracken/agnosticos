@@ -1,0 +1,55 @@
+# Coreutils — GNU Core Utilities (Edge Profile)
+# Edge subset: single binary with symlinks, no install-program for
+# programs provided by busybox or other packages.
+#
+# Phase 14 — Edge OS Profile
+
+[package]
+name = "coreutils"
+version = "9.7"
+description = "GNU Core Utilities — edge subset, single binary"
+license = "GPL-3.0"
+groups = ["edge", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://ftp.gnu.org/gnu/coreutils/coreutils-9.7.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "libcap"]
+build = ["gcc", "make"]
+
+[build]
+strip = true
+install_docs = false
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --enable-single-binary=symlinks \
+    --enable-no-install-program=kill,uptime,hostname,pinky,who,users,stdbuf \
+    --disable-nls \
+    --without-gmp \
+    --without-selinux
+"""
+make = "make -j$(nproc)"
+check = ""
+install = """
+make DESTDIR=$PKG install
+
+# Move chroot to sbin
+mkdir -p $PKG/usr/sbin
+mv -v $PKG/usr/bin/chroot $PKG/usr/sbin/chroot
+
+# Remove man/info pages
+rm -rf $PKG/usr/share/man $PKG/usr/share/info
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-Os -pipe"
+ldflags = "-Wl,--as-needed"

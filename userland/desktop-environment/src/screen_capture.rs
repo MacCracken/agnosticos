@@ -127,7 +127,7 @@ pub enum CaptureError {
     RateLimitExceeded(String, u32),
     #[error("capture permission for agent '{0}' has expired")]
     PermissionExpired(String),
-    #[error("window '{0}' not found")]
+    #[error("window not found")]
     WindowNotFound(SurfaceId),
     #[error("capture region is out of bounds")]
     RegionOutOfBounds,

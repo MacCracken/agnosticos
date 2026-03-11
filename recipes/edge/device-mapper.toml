@@ -1,0 +1,55 @@
+# device-mapper — LVM2/dm Tools (Edge Profile)
+# Provides libdevmapper for dm-crypt and dm-verity.
+# Only the device-mapper subset of LVM2 is built.
+#
+# Phase 14 — Edge OS Profile
+
+[package]
+name = "device-mapper"
+version = "2.03.28"
+description = "device-mapper — dm-verity/dm-crypt kernel interface library"
+license = "LGPL-2.1"
+groups = ["edge", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://sourceware.org/ftp/lvm2/LVM2.2.03.28.tgz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "eudev"]
+build = ["gcc", "make", "pkgconf"]
+
+[build]
+strip = true
+install_docs = false
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --disable-static \
+    --enable-pkgconfig \
+    --enable-cmdlib \
+    --enable-dmeventd \
+    --disable-nls \
+    --disable-selinux \
+    --disable-readline \
+    --with-default-dm-run-dir=/run \
+    --with-default-run-dir=/run/lvm \
+    --with-default-pid-dir=/run
+"""
+make = "make -j$(nproc) device-mapper"
+check = ""
+install = """
+make DESTDIR=$PKG install_device-mapper
+rm -rf $PKG/usr/share/man $PKG/usr/share/doc
+rm -f $PKG/usr/lib/libdevmapper.a
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-Os -pipe"
+ldflags = "-Wl,--as-needed"

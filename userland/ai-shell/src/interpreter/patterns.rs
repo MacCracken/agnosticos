@@ -232,5 +232,26 @@ pub(crate) static PATTERNS: Lazy<HashMap<String, Regex>> = Lazy::new(|| {
         "delta_ci",
         r"(?i)^delta\s+(ci|pipeline|build)\s+(status|logs?)(\s+(?:for\s+|in\s+)?(\S+))?$",
     );
+    // --- Edge fleet management intents ---
+    r(
+        "edge_list",
+        r"(?i)^(?:edge\s+)?(list|show)\s+(?:edge\s+)?nodes?(\s+(?:status\s+)?(\S+))?$",
+    );
+    r(
+        "edge_deploy",
+        r"(?i)^(?:edge\s+)?deploy\s+(?:to\s+edge\s+)?(.+?)(?:\s+(?:on|to)\s+(?:node\s+)?(\S+))?$",
+    );
+    r(
+        "edge_update",
+        r"(?i)^(?:edge\s+update\s+(?:edge\s+)?(?:node\s+)?(\S+)|update\s+(?:edge\s+)?node\s+(\S+))(?:\s+(?:to\s+)?(?:version\s+)?(\S+))?$",
+    );
+    r(
+        "edge_health",
+        r"(?i)^(?:edge\s+)?(health|status)\s+(?:of\s+)?(?:(?:edge\s+)?(?:node\s+)?(\S+)|(?:fleet|all|nodes))$",
+    );
+    r(
+        "edge_decommission",
+        r"(?i)^(?:edge\s+)?decommission\s+(?:edge\s+)?(?:node\s+)?(\S+)$",
+    );
     p
 });

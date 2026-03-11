@@ -68,6 +68,7 @@ pub fn build_router(state: ApiState) -> Router {
     use handlers::audit::*;
     use handlers::dashboard::*;
     use handlers::database::*;
+    use handlers::edge;
     use handlers::handshake::*;
     use handlers::marketplace::*;
     use handlers::memory::*;
@@ -304,6 +305,34 @@ pub fn build_router(state: ApiState) -> Router {
         .route(
             "/v1/sandbox/profiles/list",
             get(list_sandbox_profiles_handler),
+        )
+        // Edge fleet management routes (Phase 14E)
+        .route("/v1/edge/nodes", get(edge::edge_list_nodes_handler))
+        .route("/v1/edge/nodes", post(edge::edge_register_node_handler))
+        .route("/v1/edge/nodes/:id", get(edge::edge_get_node_handler))
+        .route(
+            "/v1/edge/nodes/:id/heartbeat",
+            post(edge::edge_heartbeat_handler),
+        )
+        .route(
+            "/v1/edge/nodes/:id/decommission",
+            post(edge::edge_decommission_handler),
+        )
+        .route("/v1/edge/stats", get(edge::edge_stats_handler))
+        .route(
+            "/v1/edge/nodes/:id/update",
+            post(edge::edge_start_update_handler),
+        )
+        .route(
+            "/v1/edge/nodes/:id/update/complete",
+            post(edge::edge_complete_update_handler),
+        )
+        .route("/v1/edge/route", post(edge::edge_route_task_handler))
+        // Edge dashboard & capability routing (Phase 14E-4/5)
+        .route("/v1/edge/dashboard", get(edge::edge_dashboard_handler))
+        .route(
+            "/v1/edge/capabilities/route",
+            post(edge::edge_capability_route_handler),
         )
         .layer(axum_mw::from_fn_with_state(
             state.clone(),

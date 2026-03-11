@@ -20,6 +20,9 @@ pub enum SeccompProfile {
     Shell,
     /// WebAssembly (Wasmtime/Wasmer) (~20 syscalls)
     Wasm,
+    /// Edge device agent (~15 extra syscalls): networking + minimal I/O
+    /// for constrained hardware running a single agent binary.
+    Edge,
     /// Custom allowlist of syscall names
     Custom(Vec<String>),
 }
@@ -228,6 +231,45 @@ fn wasm_syscalls() -> Vec<&'static str> {
     syscalls
 }
 
+/// Syscalls for edge agent — networking + heartbeat, no shell/exec.
+fn edge_syscalls() -> Vec<&'static str> {
+    let mut syscalls = base_syscalls();
+    syscalls.extend_from_slice(&[
+        // Networking — client-only (HTTP heartbeat, A2A outbound, WireGuard)
+        // bind/listen/accept4 deliberately excluded: edge agents connect
+        // to the parent, they do not accept inbound connections.
+        "socket",
+        "connect",
+        "sendto",
+        "recvfrom",
+        "setsockopt",
+        "getsockopt",
+        "shutdown",
+        "getpeername",
+        "getsockname",
+        // File operations (config, state, TLS certs)
+        "access",
+        "faccessat2",
+        "getcwd",
+        "pread64",
+        "pwrite64",
+        "readlink",
+        // Identity (used by TLS libraries)
+        "getuid",
+        "getgid",
+        "geteuid",
+        "uname",
+        // Threading (tokio runtime)
+        "clone3",
+        "sched_yield",
+        "sched_getaffinity",
+        // Signal
+        "sigaltstack",
+        "tgkill",
+    ]);
+    syscalls
+}
+
 /// Get the allowed syscall set for a given profile.
 pub fn allowed_syscalls(profile: &SeccompProfile) -> HashSet<String> {
     match profile {
@@ -235,6 +277,7 @@ pub fn allowed_syscalls(profile: &SeccompProfile) -> HashSet<String> {
         SeccompProfile::Node => node_syscalls().into_iter().map(String::from).collect(),
         SeccompProfile::Shell => shell_syscalls().into_iter().map(String::from).collect(),
         SeccompProfile::Wasm => wasm_syscalls().into_iter().map(String::from).collect(),
+        SeccompProfile::Edge => edge_syscalls().into_iter().map(String::from).collect(),
         SeccompProfile::Custom(list) => list.iter().cloned().collect(),
     }
 }
@@ -265,6 +308,7 @@ pub fn build_seccomp_filter(profile: &SeccompProfile) -> BpfFilterSpec {
         SeccompProfile::Node => "node".to_string(),
         SeccompProfile::Shell => "shell".to_string(),
         SeccompProfile::Wasm => "wasm".to_string(),
+        SeccompProfile::Edge => "edge".to_string(),
         SeccompProfile::Custom(_) => "custom".to_string(),
     };
 
@@ -382,6 +426,7 @@ mod tests {
         assert!(validate_profile(&SeccompProfile::Node).is_ok());
         assert!(validate_profile(&SeccompProfile::Shell).is_ok());
         assert!(validate_profile(&SeccompProfile::Wasm).is_ok());
+        assert!(validate_profile(&SeccompProfile::Edge).is_ok());
     }
 
     #[test]
@@ -439,6 +484,7 @@ mod tests {
             SeccompProfile::Node,
             SeccompProfile::Shell,
             SeccompProfile::Wasm,
+            SeccompProfile::Edge,
         ] {
             let allowed = allowed_syscalls(&profile);
             // If there were duplicates in the Vec, the HashSet would be smaller
@@ -447,6 +493,7 @@ mod tests {
                 SeccompProfile::Node => node_syscalls().len(),
                 SeccompProfile::Shell => shell_syscalls().len(),
                 SeccompProfile::Wasm => wasm_syscalls().len(),
+                SeccompProfile::Edge => edge_syscalls().len(),
                 _ => 0,
             };
             assert_eq!(
@@ -500,6 +547,7 @@ mod tests {
             SeccompProfile::Node,
             SeccompProfile::Shell,
             SeccompProfile::Wasm,
+            SeccompProfile::Edge,
         ] {
             let allowed = allowed_syscalls(&profile);
             for syscall in &base {
@@ -592,6 +640,7 @@ mod tests {
             SeccompProfile::Node,
             SeccompProfile::Shell,
             SeccompProfile::Wasm,
+            SeccompProfile::Edge,
         ] {
             let json = serde_json::to_string(&profile).unwrap();
             let deser: SeccompProfile = serde_json::from_str(&json).unwrap();
@@ -638,5 +687,87 @@ mod tests {
             allowed.contains("eventfd2"),
             "Node profile needs eventfd2 for libuv"
         );
+    }
+
+    // ==================================================================
+    // Edge profile tests
+    // ==================================================================
+
+    #[test]
+    fn test_edge_profile() {
+        let allowed = allowed_syscalls(&SeccompProfile::Edge);
+        // Base (~20) + edge extras (~24, no bind/listen/accept4)
+        assert!(allowed.len() >= 37);
+        // Client-only networking syscalls for heartbeat / A2A outbound
+        assert!(allowed.contains("socket"));
+        assert!(allowed.contains("connect"));
+        assert!(allowed.contains("sendto"));
+        assert!(allowed.contains("recvfrom"));
+        // Server-side syscalls EXCLUDED (edge is client-only)
+        assert!(!allowed.contains("bind"), "Edge should not allow bind");
+        assert!(!allowed.contains("listen"), "Edge should not allow listen");
+        assert!(!allowed.contains("accept4"), "Edge should not allow accept4");
+        // Threading for tokio
+        assert!(allowed.contains("clone3"));
+        assert!(allowed.contains("sched_yield"));
+        // Base syscalls still present
+        assert!(allowed.contains("read"));
+        assert!(allowed.contains("write"));
+        assert!(allowed.contains("exit"));
+    }
+
+    #[test]
+    fn test_edge_no_execve() {
+        let allowed = allowed_syscalls(&SeccompProfile::Edge);
+        assert!(
+            !allowed.contains("execve"),
+            "Edge profile should not allow execve — single binary, no shell"
+        );
+    }
+
+    #[test]
+    fn test_edge_has_tls_identity_syscalls() {
+        let allowed = allowed_syscalls(&SeccompProfile::Edge);
+        assert!(allowed.contains("getuid"));
+        assert!(allowed.contains("getgid"));
+        assert!(allowed.contains("geteuid"));
+        assert!(allowed.contains("uname"));
+    }
+
+    #[test]
+    fn test_edge_has_file_ops() {
+        let allowed = allowed_syscalls(&SeccompProfile::Edge);
+        assert!(allowed.contains("access"));
+        assert!(allowed.contains("getcwd"));
+        assert!(allowed.contains("pread64"));
+        assert!(allowed.contains("pwrite64"));
+    }
+
+    #[test]
+    fn test_build_seccomp_filter_edge() {
+        let filter = build_seccomp_filter(&SeccompProfile::Edge);
+        assert_eq!(filter.profile_name, "edge");
+        assert_eq!(filter.default_action, "kill");
+        assert!(filter.allowed.contains("socket"));
+        assert!(filter.allowed.contains("read"));
+    }
+
+    #[test]
+    fn test_edge_more_restrictive_than_python() {
+        let edge = allowed_syscalls(&SeccompProfile::Edge);
+        let python = allowed_syscalls(&SeccompProfile::Python);
+        // Edge shouldn't have fork/clone (Python does), but has networking
+        // Both are similar size; edge lacks execve, fork, etc.
+        assert!(!edge.contains("execve"));
+        assert!(python.contains("clone"));
+    }
+
+    #[test]
+    fn test_edge_serialization_roundtrip() {
+        let profile = SeccompProfile::Edge;
+        let json = serde_json::to_string(&profile).unwrap();
+        assert_eq!(json, "\"Edge\"");
+        let deser: SeccompProfile = serde_json::from_str(&json).unwrap();
+        assert_eq!(deser, SeccompProfile::Edge);
     }
 }

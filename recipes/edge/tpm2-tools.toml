@@ -1,0 +1,47 @@
+# tpm2-tools — TPM 2.0 Command-Line Tools (Edge Profile)
+# Provides tpm2_* commands for measured boot, sealing, attestation.
+# Required by AGNOS trust/integrity model on edge devices.
+#
+# Phase 14 — Edge OS Profile
+
+[package]
+name = "tpm2-tools"
+version = "5.7"
+description = "tpm2-tools — TPM 2.0 CLI for measured boot and attestation"
+license = "BSD-3-Clause"
+groups = ["edge", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/tpm2-software/tpm2-tools/releases/download/5.7/tpm2-tools-5.7.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "tpm2-tss", "openssl", "curl"]
+build = ["gcc", "make", "pkgconf"]
+
+[build]
+strip = true
+install_docs = false
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --disable-static \
+    --disable-fapi \
+    --without-bash-completion
+"""
+make = "make -j$(nproc)"
+check = ""
+install = """
+make DESTDIR=$PKG install
+rm -rf $PKG/usr/share/man $PKG/usr/share/doc $PKG/usr/share/bash-completion
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"
