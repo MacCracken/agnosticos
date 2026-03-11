@@ -9,8 +9,8 @@ use agnos_common::AgentId;
 
 use crate::http_api::handlers::audit::AuditEvent;
 use crate::http_api::state::ApiState;
-use crate::http_api::MAX_AUDIT_BUFFER;
 use crate::learning::BehaviorSample;
+// MAX_AUDIT_BUFFER eviction handled by ApiState::push_audit_event (H17)
 
 // ---------------------------------------------------------------------------
 // Anomaly detection request/response types
@@ -58,12 +58,11 @@ pub async fn anomaly_submit_handler(
     let mut detector = state.anomaly_detector.write().await;
     let alerts = detector.record_behavior(parsed, sample);
 
-    // Log alerts to audit buffer if any
+    // Log alerts to audit buffer if any -- FIFO eviction via ApiState (H17)
     if !alerts.is_empty() {
-        let mut audit = state.audit_buffer.write().await;
         for alert in &alerts {
-            if audit.len() < MAX_AUDIT_BUFFER {
-                audit.push_back(AuditEvent {
+            state
+                .push_audit_event(AuditEvent {
                     timestamp: chrono::Utc::now().to_rfc3339(),
                     action: format!("anomaly_detected:{}", alert.metric),
                     agent: Some(req.agent_id.clone()),
@@ -75,8 +74,8 @@ pub async fn anomaly_submit_handler(
                         "deviation_sigmas": alert.deviation_sigmas,
                     }),
                     outcome: "alert".to_string(),
-                });
-            }
+                })
+                .await;
         }
     }
 

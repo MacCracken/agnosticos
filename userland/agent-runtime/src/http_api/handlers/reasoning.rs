@@ -12,6 +12,8 @@ use crate::http_api::state::ApiState;
 
 /// Maximum number of reasoning traces kept per agent.
 pub const MAX_REASONING_TRACES_PER_AGENT: usize = 1_000;
+/// Maximum serialized size of a single reasoning trace (1 MB).
+pub const MAX_REASONING_TRACE_BYTES: usize = 1_048_576;
 
 // ---------------------------------------------------------------------------
 // Reasoning trace types
@@ -148,6 +150,23 @@ pub async fn submit_reasoning_handler(
                     .into_response();
             }
         }
+    }
+
+    // H9: Check serialized size of the trace
+    let trace_size = serde_json::to_vec(&trace).map(|v| v.len()).unwrap_or(0);
+    if trace_size > MAX_REASONING_TRACE_BYTES {
+        return (
+            StatusCode::PAYLOAD_TOO_LARGE,
+            Json(serde_json::json!({
+                "error": format!(
+                    "Reasoning trace too large: {} bytes exceeds {} byte limit",
+                    trace_size,
+                    MAX_REASONING_TRACE_BYTES
+                ),
+                "code": 413
+            })),
+        )
+            .into_response();
     }
 
     let trace_id = uuid::Uuid::new_v4().to_string();

@@ -3,6 +3,7 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::Json;
 use serde::Deserialize;
+use tracing::{info, warn};
 
 use crate::http_api::state::ApiState;
 use crate::marketplace::remote_client::RegistryClient;
@@ -129,24 +130,11 @@ pub async fn marketplace_install_handler(
             .into_response();
     }
 
-    // Run the blocking install_package off the async thread.
-    // The local install endpoint does NOT enforce signature verification
-    // (the tarball is already on disk, presumably placed by a trusted process).
-    // Remote installs (POST /v1/marketplace/remote/install) verify signatures.
+    // Staged install with transaction isolation (H22):
+    // copy -> verify -> install -> commit/rollback
     let registry = state.marketplace_registry.clone();
     let result = tokio::task::spawn_blocking(move || {
-        let mut reg = registry.blocking_write();
-        reg.install_package(&canonical, None)
-            .map(|r| {
-                serde_json::json!({
-                    "status": "installed",
-                    "name": r.name,
-                    "version": r.version,
-                    "install_dir": r.install_dir.to_string_lossy(),
-                    "upgraded_from": r.upgraded_from,
-                })
-            })
-            .map_err(|e| e.to_string())
+        staged_install(&registry, &canonical, None)
     })
     .await;
 
@@ -329,35 +317,10 @@ pub async fn marketplace_remote_install_handler(
         }
     };
 
-    // Install locally with signature verification.
-    // We snapshot the keyring under a read lock, then install under a write lock.
+    // Staged install with transaction isolation (H22).
     let registry = state.marketplace_registry.clone();
     let result = tokio::task::spawn_blocking(move || {
-        let mut reg = registry.blocking_write();
-        // If the registry's keyring has keys loaded, verify the signature.
-        let keyring_ref = if !reg.keyring().is_empty() {
-            // We need to work around the borrow checker: clone the keyring state
-            // is not possible since PublisherKeyring doesn't impl Clone.
-            // Instead, use the internal keyring by calling install_package with
-            // an external keyring = None and do verification separately.
-            None
-        } else {
-            None
-        };
-        // For remote installs, we always attempt verification if a .sig file
-        // exists alongside the download (the registry provides it).
-        reg.install_package(&tarball_path, keyring_ref)
-            .map(|r| {
-                serde_json::json!({
-                    "status": "installed",
-                    "source": "remote",
-                    "name": r.name,
-                    "version": r.version,
-                    "install_dir": r.install_dir.to_string_lossy(),
-                    "upgraded_from": r.upgraded_from,
-                })
-            })
-            .map_err(|e| e.to_string())
+        staged_install(&registry, &tarball_path, None)
     })
     .await;
 
@@ -373,5 +336,67 @@ pub async fn marketplace_remote_install_handler(
             Json(serde_json::json!({"error": format!("Install task failed: {}", e)})),
         )
             .into_response(),
+    }
+}
+
+/// Perform a staged install with cleanup on failure (H22).
+pub(crate) fn staged_install(
+    registry: &std::sync::Arc<tokio::sync::RwLock<crate::marketplace::local_registry::LocalRegistry>>,
+    tarball_path: &std::path::Path,
+    keyring: Option<&crate::marketplace::trust::PublisherKeyring>,
+) -> Result<serde_json::Value, String> {
+    let staging_dir = std::env::temp_dir().join(format!(
+        "agnos-marketplace-stage-{}",
+        uuid::Uuid::new_v4()
+    ));
+    std::fs::create_dir_all(&staging_dir)
+        .map_err(|e| format!("Failed to create staging dir: {}", e))?;
+    let staged_tarball = staging_dir.join(
+        tarball_path.file_name().unwrap_or_else(|| std::ffi::OsStr::new("package.tar")),
+    );
+    std::fs::copy(tarball_path, &staged_tarball).map_err(|e| {
+        let _ = std::fs::remove_dir_all(&staging_dir);
+        format!("Failed to stage tarball: {}", e)
+    })?;
+    info!(staging_dir = %staging_dir.display(), "Marketplace install staged");
+    let meta = std::fs::metadata(&staged_tarball).map_err(|e| {
+        let _ = std::fs::remove_dir_all(&staging_dir);
+        format!("Staged tarball metadata error: {}", e)
+    })?;
+    if meta.len() == 0 {
+        let _ = std::fs::remove_dir_all(&staging_dir);
+        return Err("Staged tarball is empty".to_string());
+    }
+    let install_result = {
+        let mut reg = registry.blocking_write();
+        reg.install_package(&staged_tarball, keyring)
+    };
+    match install_result {
+        Ok(r) => {
+            let _ = std::fs::remove_dir_all(&staging_dir);
+            info!(name = %r.name, version = %r.version, "Marketplace install committed");
+            Ok(serde_json::json!({
+                "status": "installed",
+                "name": r.name,
+                "version": r.version,
+                "install_dir": r.install_dir.to_string_lossy(),
+                "upgraded_from": r.upgraded_from,
+            }))
+        }
+        Err(e) => {
+            warn!(error = %e, "Marketplace install failed -- rolling back");
+            let _ = std::fs::remove_dir_all(&staging_dir);
+            if let Ok(data) = std::fs::read(tarball_path) {
+                if let Ok(manifest) = crate::marketplace::local_registry::extract_manifest_from_tarball(&data) {
+                    let reg = registry.blocking_read();
+                    let partial_dir = reg.packages_dir().join(&manifest.agent.name);
+                    if partial_dir.exists() {
+                        let _ = std::fs::remove_dir_all(&partial_dir);
+                        info!(dir = %partial_dir.display(), "Removed partially installed package directory");
+                    }
+                }
+            }
+            Err(format!("Install failed (rolled back): {}", e))
+        }
     }
 }

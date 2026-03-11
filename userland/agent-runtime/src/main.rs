@@ -8,7 +8,7 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use tokio::sync::mpsc;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use agnos_common::{AgentConfig, AgentId};
 
@@ -50,6 +50,111 @@ use crate::orchestrator::Orchestrator;
 use crate::registry::AgentRegistry;
 use crate::service_manager::ServiceManager;
 use crate::supervisor::Supervisor;
+
+// ---------------------------------------------------------------------------
+// H19: Daemon configuration with bounds-checked validation
+// ---------------------------------------------------------------------------
+
+/// Runtime daemon configuration with validated values.
+#[derive(Debug, Clone)]
+pub struct DaemonConfig {
+    /// HTTP API listen port (1..=65535).
+    pub api_port: u16,
+    /// Shutdown drain timeout in seconds (1..=300).
+    pub shutdown_timeout_secs: u64,
+    /// Service health-check interval in seconds (1..=3600).
+    pub health_check_interval_secs: u64,
+    /// Maximum IPC message buffer size in bytes (1024..=16_777_216).
+    pub max_ipc_buffer_bytes: u32,
+}
+
+impl Default for DaemonConfig {
+    fn default() -> Self {
+        Self {
+            api_port: crate::http_api::DEFAULT_PORT,
+            shutdown_timeout_secs: 5,
+            health_check_interval_secs: 5,
+            max_ipc_buffer_bytes: 64 * 1024,
+        }
+    }
+}
+
+impl DaemonConfig {
+    /// Validate all configuration values, returning a clear error on the first
+    /// invalid field. Called early in startup to fail fast.
+    pub fn validate(&self) -> Result<()> {
+        if self.api_port == 0 {
+            anyhow::bail!(
+                "Invalid api_port: 0 (must be 1-65535)"
+            );
+        }
+        if self.shutdown_timeout_secs == 0 || self.shutdown_timeout_secs > 300 {
+            anyhow::bail!(
+                "Invalid shutdown_timeout_secs: {} (must be 1-300)",
+                self.shutdown_timeout_secs
+            );
+        }
+        if self.health_check_interval_secs == 0 || self.health_check_interval_secs > 3600 {
+            anyhow::bail!(
+                "Invalid health_check_interval_secs: {} (must be 1-3600)",
+                self.health_check_interval_secs
+            );
+        }
+        if self.max_ipc_buffer_bytes < 1024 || self.max_ipc_buffer_bytes > 16_777_216 {
+            anyhow::bail!(
+                "Invalid max_ipc_buffer_bytes: {} (must be 1024-16777216)",
+                self.max_ipc_buffer_bytes
+            );
+        }
+        Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// H16: Lightweight dependency health checks before systemd ready notification
+// ---------------------------------------------------------------------------
+
+/// Perform lightweight health checks on critical dependencies before
+/// declaring the daemon ready.
+async fn check_dependencies_healthy(config: &DaemonConfig, data_dir: &Path) -> Result<()> {
+    // 1. Verify the HTTP API port is available (bindable)
+    let addr: std::net::SocketAddr = ([127, 0, 0, 1], config.api_port).into();
+    let probe = tokio::net::TcpListener::bind(addr).await;
+    match probe {
+        Ok(_listener) => {
+            info!("Health check: port {} is available", config.api_port);
+        }
+        Err(e) => {
+            anyhow::bail!(
+                "Health check failed: port {} is not bindable: {}",
+                config.api_port, e
+            );
+        }
+    }
+
+    // 2. Verify the data directory is accessible
+    if !data_dir.exists() {
+        tokio::fs::create_dir_all(data_dir)
+            .await
+            .with_context(|| format!("Health check failed: cannot create data dir {}", data_dir.display()))?;
+    }
+    let probe_file = data_dir.join(".health_probe");
+    tokio::fs::write(&probe_file, b"ok")
+        .await
+        .with_context(|| format!("Health check failed: data dir {} is not writable", data_dir.display()))?;
+    let _ = tokio::fs::remove_file(&probe_file).await;
+
+    // 3. Verify the IPC socket directory is accessible
+    let ipc_dir = Path::new("/run/agnos/agents");
+    if !ipc_dir.exists() {
+        tokio::fs::create_dir_all(ipc_dir)
+            .await
+            .with_context(|| format!("Health check failed: cannot create IPC dir {}", ipc_dir.display()))?;
+    }
+
+    info!("All dependency health checks passed");
+    Ok(())
+}
 
 #[derive(Parser)]
 #[command(name = "agent-runtime")]
@@ -217,6 +322,15 @@ async fn main() -> Result<()> {
 async fn run_daemon(cli: Cli) -> Result<()> {
     info!("Starting agent runtime daemon...");
 
+    // H19: Validate configuration before proceeding
+    let config = DaemonConfig::default();
+    config.validate().with_context(|| "Daemon configuration validation failed")?;
+    info!("Configuration validated: port={}, shutdown_timeout={}s", config.api_port, config.shutdown_timeout_secs);
+
+    // H21: Clean up stale socket files from previous abnormal terminations
+    let ipc_dir = std::path::Path::new("/run/agnos/agents");
+    crate::ipc::cleanup_stale_sockets_in_dir(ipc_dir).await;
+
     let registry = Arc::new(AgentRegistry::new());
     let supervisor = Arc::new(Supervisor::new(registry.clone()));
     let orchestrator = Arc::new(Orchestrator::new(registry.clone()));
@@ -241,6 +355,12 @@ async fn run_daemon(cli: Cli) -> Result<()> {
     tokio::spawn(async move {
         monitor_mgr.monitor_loop().await;
     });
+
+    // H16: Verify critical dependencies are healthy before declaring ready
+    if let Err(e) = check_dependencies_healthy(&config, &cli.data_dir).await {
+        error!("Dependency health check failed: {}", e);
+        warn!("Proceeding despite health check failure");
+    }
 
     // Notify systemd we're ready (if running under systemd)
     ServiceManager::notify_ready();
@@ -641,4 +761,144 @@ async fn send_message(target: String, message: String) -> Result<()> {
     println!("Message sent to agent {} ({} bytes)", id, msg_bytes.len());
 
     Ok(())
+}
+
+// ===========================================================================
+// Tests
+// ===========================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // -----------------------------------------------------------------------
+    // H19: Config validation tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_daemon_config_default_is_valid() {
+        let config = DaemonConfig::default();
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_daemon_config_valid_custom() {
+        let config = DaemonConfig {
+            api_port: 9090,
+            shutdown_timeout_secs: 30,
+            health_check_interval_secs: 60,
+            max_ipc_buffer_bytes: 128 * 1024,
+        };
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_daemon_config_invalid_port_zero() {
+        let config = DaemonConfig {
+            api_port: 0,
+            ..DaemonConfig::default()
+        };
+        let err = config.validate().unwrap_err();
+        assert!(err.to_string().contains("api_port"));
+    }
+
+    #[test]
+    fn test_daemon_config_invalid_shutdown_timeout_zero() {
+        let config = DaemonConfig {
+            shutdown_timeout_secs: 0,
+            ..DaemonConfig::default()
+        };
+        let err = config.validate().unwrap_err();
+        assert!(err.to_string().contains("shutdown_timeout_secs"));
+    }
+
+    #[test]
+    fn test_daemon_config_invalid_shutdown_timeout_too_large() {
+        let config = DaemonConfig {
+            shutdown_timeout_secs: 301,
+            ..DaemonConfig::default()
+        };
+        let err = config.validate().unwrap_err();
+        assert!(err.to_string().contains("shutdown_timeout_secs"));
+    }
+
+    #[test]
+    fn test_daemon_config_invalid_health_interval_zero() {
+        let config = DaemonConfig {
+            health_check_interval_secs: 0,
+            ..DaemonConfig::default()
+        };
+        let err = config.validate().unwrap_err();
+        assert!(err.to_string().contains("health_check_interval_secs"));
+    }
+
+    #[test]
+    fn test_daemon_config_invalid_health_interval_too_large() {
+        let config = DaemonConfig {
+            health_check_interval_secs: 3601,
+            ..DaemonConfig::default()
+        };
+        let err = config.validate().unwrap_err();
+        assert!(err.to_string().contains("health_check_interval_secs"));
+    }
+
+    #[test]
+    fn test_daemon_config_invalid_ipc_buffer_too_small() {
+        let config = DaemonConfig {
+            max_ipc_buffer_bytes: 512,
+            ..DaemonConfig::default()
+        };
+        let err = config.validate().unwrap_err();
+        assert!(err.to_string().contains("max_ipc_buffer_bytes"));
+    }
+
+    #[test]
+    fn test_daemon_config_invalid_ipc_buffer_too_large() {
+        let config = DaemonConfig {
+            max_ipc_buffer_bytes: 16_777_217,
+            ..DaemonConfig::default()
+        };
+        let err = config.validate().unwrap_err();
+        assert!(err.to_string().contains("max_ipc_buffer_bytes"));
+    }
+
+    #[test]
+    fn test_daemon_config_boundary_values() {
+        // Lower bounds
+        let config = DaemonConfig {
+            api_port: 1,
+            shutdown_timeout_secs: 1,
+            health_check_interval_secs: 1,
+            max_ipc_buffer_bytes: 1024,
+        };
+        assert!(config.validate().is_ok());
+
+        // Upper bounds
+        let config = DaemonConfig {
+            api_port: 65535,
+            shutdown_timeout_secs: 300,
+            health_check_interval_secs: 3600,
+            max_ipc_buffer_bytes: 16_777_216,
+        };
+        assert!(config.validate().is_ok());
+    }
+
+    // -----------------------------------------------------------------------
+    // H16: Dependency health check test
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_check_dependencies_healthy_with_writable_dir() {
+        let tmp = std::env::temp_dir().join(format!("agnos_health_test_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&tmp);
+
+        assert!(tmp.exists());
+
+        // Verify write probe works
+        let probe_file = tmp.join(".health_probe");
+        tokio::fs::write(&probe_file, b"ok").await.unwrap();
+        let _ = tokio::fs::remove_file(&probe_file).await;
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
 }

@@ -255,6 +255,9 @@ pub struct ServiceManager {
     services: Arc<RwLock<HashMap<String, ServiceRuntime>>>,
     definitions: Arc<RwLock<HashMap<String, ServiceDefinition>>>,
     config_dir: PathBuf,
+    /// H20: Tracks the order in which services were actually started,
+    /// used as the authoritative source for reverse-order shutdown.
+    start_order: Arc<RwLock<Vec<String>>>,
 }
 
 impl ServiceManager {
@@ -264,6 +267,7 @@ impl ServiceManager {
             services: Arc::new(RwLock::new(HashMap::new())),
             definitions: Arc::new(RwLock::new(HashMap::new())),
             config_dir: config_dir.into(),
+            start_order: Arc::new(RwLock::new(Vec::new())),
         }
     }
 
@@ -366,6 +370,13 @@ impl ServiceManager {
         let order = topological_sort(&enabled)?;
         info!("Boot order: {}", order.join(" -> "));
 
+        // H20: Record the topological start order for deterministic shutdown
+        {
+            let mut start_order = self.start_order.write().await;
+            start_order.clear();
+            start_order.extend(order.iter().cloned());
+        }
+
         // Group by dependency level for parallel startup
         let levels = dependency_levels(&enabled, &order);
 
@@ -430,7 +441,17 @@ impl ServiceManager {
             }
         }
 
-        start_service_inner(&self.services, &self.definitions, name).await
+        start_service_inner(&self.services, &self.definitions, name).await?;
+
+        // H20: Record start order for deterministic reverse shutdown
+        {
+            let mut order = self.start_order.write().await;
+            if !order.contains(&name.to_string()) {
+                order.push(name.to_string());
+            }
+        }
+
+        Ok(())
     }
 
     /// Stop a single service by name.
@@ -490,20 +511,37 @@ impl ServiceManager {
     }
 
     /// Shutdown all services in reverse dependency order.
+    ///
+    /// H20: Uses the recorded start order (from boot) reversed, ensuring
+    /// dependents are stopped before their dependencies. Falls back to
+    /// topological sort of definitions if no start order was recorded.
     pub async fn shutdown_all(&self) -> Result<()> {
         info!("AGNOS service manager: shutting down all services");
 
-        let defs = self.definitions.read().await;
-        let all: HashMap<String, ServiceDefinition> = defs.clone();
-        drop(defs);
+        // H20: Prefer recorded start order (reversed) for deterministic shutdown
+        let reversed = {
+            let start_order = self.start_order.read().await;
+            if !start_order.is_empty() {
+                let mut rev = start_order.clone();
+                rev.reverse();
+                info!("Shutdown order (reverse of start): {}", rev.join(" -> "));
+                rev
+            } else {
+                // Fallback to topological sort of definitions
+                let defs = self.definitions.read().await;
+                let all: HashMap<String, ServiceDefinition> = defs.clone();
+                drop(defs);
 
-        if all.is_empty() {
-            return Ok(());
-        }
+                if all.is_empty() {
+                    return Ok(());
+                }
 
-        let order = topological_sort(&all).unwrap_or_default();
-        // Reverse: stop dependents before their dependencies
-        let reversed: Vec<_> = order.into_iter().rev().collect();
+                let order = topological_sort(&all).unwrap_or_default();
+                let rev: Vec<_> = order.into_iter().rev().collect();
+                info!("Shutdown order (topo fallback): {}", rev.join(" -> "));
+                rev
+            }
+        };
 
         for name in &reversed {
             if let Err(e) = self.stop_service(name).await {
@@ -513,6 +551,11 @@ impl ServiceManager {
 
         info!("AGNOS service manager: all services stopped");
         Ok(())
+    }
+
+    /// Returns the recorded start order (for testing/inspection).
+    pub async fn get_start_order(&self) -> Vec<String> {
+        self.start_order.read().await.clone()
     }
 
     /// Restart a service (stop then start).
@@ -2466,6 +2509,100 @@ enabled = false
         assert_eq!(deser.to_start, vec!["a"]);
         assert_eq!(deser.to_stop, vec!["b"]);
         assert_eq!(deser.unchanged, vec!["c"]);
+    }
+
+    // ==================================================================
+    // H20: Shutdown ordering tests
+    // ==================================================================
+
+    #[tokio::test]
+    async fn test_shutdown_uses_reverse_start_order() {
+        let mgr = ServiceManager::new("/tmp/agnos-test-h20-shutdown");
+
+        // Register: a -> b -> c (c depends on b, b depends on a)
+        mgr.register(ServiceDefinition {
+            name: "a".to_string(),
+            exec_start: "/bin/sleep".to_string(),
+            args: vec!["60".to_string()],
+            service_type: ServiceType::Simple,
+            restart: RestartPolicy::No,
+            ..make_def("a", &[])
+        })
+        .await;
+
+        mgr.register(ServiceDefinition {
+            name: "b".to_string(),
+            exec_start: "/bin/sleep".to_string(),
+            args: vec!["60".to_string()],
+            service_type: ServiceType::Simple,
+            restart: RestartPolicy::No,
+            after: vec!["a".to_string()],
+            ..make_def("b", &[])
+        })
+        .await;
+
+        mgr.register(ServiceDefinition {
+            name: "c".to_string(),
+            exec_start: "/bin/sleep".to_string(),
+            args: vec!["60".to_string()],
+            service_type: ServiceType::Simple,
+            restart: RestartPolicy::No,
+            after: vec!["b".to_string()],
+            ..make_def("c", &[])
+        })
+        .await;
+
+        // Boot records start order
+        mgr.boot().await.unwrap();
+
+        let start_order = mgr.get_start_order().await;
+        assert_eq!(start_order, vec!["a", "b", "c"]);
+
+        // Shutdown in reverse order
+        mgr.shutdown_all().await.unwrap();
+
+        for name in &["a", "b", "c"] {
+            let status = mgr.get_status(name).await.unwrap();
+            assert_eq!(status.state, ServiceState::Stopped);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_start_order_tracking() {
+        let mgr = ServiceManager::new("/tmp/agnos-test-h20-start-order");
+
+        mgr.register(ServiceDefinition {
+            name: "first".to_string(),
+            exec_start: "/bin/sleep".to_string(),
+            args: vec!["60".to_string()],
+            service_type: ServiceType::Simple,
+            restart: RestartPolicy::No,
+            ..make_def("first", &[])
+        })
+        .await;
+
+        mgr.register(ServiceDefinition {
+            name: "second".to_string(),
+            exec_start: "/bin/sleep".to_string(),
+            args: vec!["60".to_string()],
+            service_type: ServiceType::Simple,
+            restart: RestartPolicy::No,
+            after: vec!["first".to_string()],
+            ..make_def("second", &[])
+        })
+        .await;
+
+        // Start individually (not via boot)
+        mgr.start_service("second").await.unwrap();
+
+        let order = mgr.get_start_order().await;
+        // "first" should have been auto-started before "second"
+        assert_eq!(order.len(), 2);
+        let first_idx = order.iter().position(|x| x == "first").unwrap();
+        let second_idx = order.iter().position(|x| x == "second").unwrap();
+        assert!(first_idx < second_idx);
+
+        mgr.shutdown_all().await.unwrap();
     }
 
     // helper for tests

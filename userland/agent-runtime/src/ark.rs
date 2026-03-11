@@ -1102,16 +1102,69 @@ pub enum TransactionOpStatus {
     RolledBack,
 }
 
+/// Default path for the persistent transaction log.
+pub const DEFAULT_TRANSACTION_LOG_PATH: &str = "/var/lib/agnos/ark/transaction.log";
+
 /// The transaction log stores all past transactions for auditing and rollback.
+/// When a log_path is set, state-changing operations persist to an append-only
+/// JSONL file for crash recovery (H18 audit finding).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TransactionLog {
     transactions: Vec<Transaction>,
     next_id: u64,
+    #[serde(skip)]
+    log_path: Option<PathBuf>,
 }
 
 impl TransactionLog {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Create a transaction log backed by a JSONL file. Replays existing
+    /// entries on load; starts empty if file does not exist.
+    pub fn load(path: &std::path::Path) -> Result<Self> {
+        let mut log = Self { transactions: Vec::new(), next_id: 0, log_path: Some(path.to_path_buf()) };
+        if path.exists() {
+            let contents = std::fs::read_to_string(path)
+                .with_context(|| format!("Failed to read transaction log {}", path.display()))?;
+            for (lineno, line) in contents.lines().enumerate() {
+                let trimmed = line.trim();
+                if trimmed.is_empty() { continue; }
+                match serde_json::from_str::<Transaction>(trimmed) {
+                    Ok(txn) => {
+                        if let Some(num_str) = txn.id.strip_prefix("txn-") {
+                            if let Ok(num) = num_str.parse::<u64>() {
+                                if num >= log.next_id { log.next_id = num; }
+                            }
+                        }
+                        if let Some(pos) = log.transactions.iter().position(|t| t.id == txn.id) {
+                            log.transactions[pos] = txn;
+                        } else {
+                            log.transactions.push(txn);
+                        }
+                    }
+                    Err(e) => { warn!(lineno = lineno + 1, error = %e, "Skipping corrupt transaction log entry"); }
+                }
+            }
+            info!(transactions = log.transactions.len(), path = %path.display(), "Recovered transaction log from disk");
+        } else {
+            debug!(path = %path.display(), "No existing transaction log -- starting fresh");
+        }
+        Ok(log)
+    }
+
+    /// Persist a single transaction to the append-only log file.
+    fn persist(&self, txn: &Transaction) {
+        if let Some(ref path) = self.log_path {
+            if let Some(parent) = path.parent() { let _ = std::fs::create_dir_all(parent); }
+            if let Ok(json_line) = serde_json::to_string(txn) {
+                use std::io::Write;
+                if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+                    let _ = writeln!(f, "{}", json_line);
+                }
+            }
+        }
     }
 
     /// Begin a new transaction.
@@ -1165,52 +1218,52 @@ impl TransactionLog {
         false
     }
 
-    /// Commit a transaction (all operations succeeded).
+    /// Commit a transaction. Persists to log file when backed by disk.
     pub fn commit(&mut self, txn_id: &str) -> bool {
-        if let Some(txn) = self.transactions.iter_mut().find(|t| t.id == txn_id) {
-            if txn.status == TransactionStatus::InProgress {
-                txn.status = TransactionStatus::Committed;
-                txn.completed_at = Some(Utc::now());
-                info!(txn_id = txn_id, "transaction committed");
-                return true;
-            }
-        }
-        false
+        let idx = match self.transactions.iter().position(|t| t.id == txn_id) {
+            Some(i) => i, None => return false,
+        };
+        if self.transactions[idx].status != TransactionStatus::InProgress { return false; }
+        self.transactions[idx].status = TransactionStatus::Committed;
+        self.transactions[idx].completed_at = Some(Utc::now());
+        info!(txn_id = txn_id, "transaction committed");
+        let snapshot = self.transactions[idx].clone();
+        self.persist(&snapshot);
+        true
     }
 
-    /// Roll back a transaction (mark all pending ops as rolled back).
+    /// Roll back a transaction. Persists to log file when backed by disk.
     pub fn rollback(&mut self, txn_id: &str) -> bool {
-        if let Some(txn) = self.transactions.iter_mut().find(|t| t.id == txn_id) {
-            if txn.status == TransactionStatus::InProgress {
-                for op in &mut txn.operations {
-                    if op.status == TransactionOpStatus::Pending
-                        || op.status == TransactionOpStatus::InProgress
-                    {
-                        op.status = TransactionOpStatus::RolledBack;
-                    }
-                }
-                txn.status = TransactionStatus::RolledBack;
-                txn.completed_at = Some(Utc::now());
-                warn!(txn_id = txn_id, "transaction rolled back");
-                return true;
+        let idx = match self.transactions.iter().position(|t| t.id == txn_id) {
+            Some(i) => i, None => return false,
+        };
+        if self.transactions[idx].status != TransactionStatus::InProgress { return false; }
+        for op in &mut self.transactions[idx].operations {
+            if op.status == TransactionOpStatus::Pending
+                || op.status == TransactionOpStatus::InProgress
+            {
+                op.status = TransactionOpStatus::RolledBack;
             }
         }
-        false
+        self.transactions[idx].status = TransactionStatus::RolledBack;
+        self.transactions[idx].completed_at = Some(Utc::now());
+        warn!(txn_id = txn_id, "transaction rolled back");
+        let snapshot = self.transactions[idx].clone();
+        self.persist(&snapshot);
+        true
     }
 
-    /// Fail a transaction with an error message.
-    /// Only transitions from InProgress state; already-completed transactions
-    /// cannot be failed.
+    /// Fail a transaction with an error message. Persists to disk.
     pub fn fail(&mut self, txn_id: &str, error: &str) -> bool {
-        if let Some(txn) = self.transactions.iter_mut().find(|t| t.id == txn_id) {
-            if txn.status != TransactionStatus::InProgress {
-                return false;
-            }
-            txn.status = TransactionStatus::Failed(error.to_string());
-            txn.completed_at = Some(Utc::now());
-            return true;
-        }
-        false
+        let idx = match self.transactions.iter().position(|t| t.id == txn_id) {
+            Some(i) => i, None => return false,
+        };
+        if self.transactions[idx].status != TransactionStatus::InProgress { return false; }
+        self.transactions[idx].status = TransactionStatus::Failed(error.to_string());
+        self.transactions[idx].completed_at = Some(Utc::now());
+        let snapshot = self.transactions[idx].clone();
+        self.persist(&snapshot);
+        true
     }
 
     /// Get a transaction by ID.
@@ -2669,5 +2722,49 @@ mod tests {
         } else {
             panic!("Expected Search command");
         }
+    }
+
+    // H18: Transaction log persistence tests
+    #[test]
+    fn transaction_log_persist_and_recover() {
+        let tmp = TempDir::new().unwrap();
+        let log_path = tmp.path().join("transaction.log");
+        {
+            let mut log = TransactionLog::load(&log_path).unwrap();
+            assert!(log.is_empty());
+            let id1 = log.begin("user1");
+            log.add_op(&id1, TransactionOp { op_type: TransactionOpType::Install, package: "pkg-a".into(), version: Some("1.0".into()), source: PackageSource::System, status: TransactionOpStatus::Pending, error: None });
+            log.commit(&id1);
+            let id2 = log.begin("user2");
+            log.add_op(&id2, TransactionOp { op_type: TransactionOpType::Remove, package: "pkg-b".into(), version: None, source: PackageSource::Marketplace, status: TransactionOpStatus::InProgress, error: None });
+            log.rollback(&id2);
+            let id3 = log.begin("user3");
+            log.fail(&id3, "disk full");
+            assert_eq!(log.len(), 3);
+        }
+        assert!(log_path.exists());
+        let recovered = TransactionLog::load(&log_path).unwrap();
+        assert_eq!(recovered.len(), 3);
+        assert_eq!(recovered.get("txn-000001").unwrap().status, TransactionStatus::Committed);
+        assert_eq!(recovered.get("txn-000002").unwrap().status, TransactionStatus::RolledBack);
+        assert!(matches!(recovered.get("txn-000003").unwrap().status, TransactionStatus::Failed(_)));
+    }
+
+    #[test]
+    fn transaction_log_fresh_start_no_file() {
+        let tmp = TempDir::new().unwrap();
+        let log = TransactionLog::load(&tmp.path().join("nonexistent.log")).unwrap();
+        assert!(log.is_empty());
+    }
+
+    #[test]
+    fn transaction_log_survives_corrupt_lines() {
+        let tmp = TempDir::new().unwrap();
+        let log_path = tmp.path().join("corrupt.log");
+        { let mut log = TransactionLog::load(&log_path).unwrap(); let id = log.begin("user1"); log.commit(&id); }
+        { use std::io::Write; let mut f = std::fs::OpenOptions::new().append(true).open(&log_path).unwrap(); writeln!(f, "{{not valid json}}").unwrap(); }
+        let recovered = TransactionLog::load(&log_path).unwrap();
+        assert_eq!(recovered.len(), 1);
+        assert_eq!(recovered.get("txn-000001").unwrap().status, TransactionStatus::Committed);
     }
 }

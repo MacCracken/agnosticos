@@ -56,22 +56,41 @@ pub async fn system_update_check_handler(
 ) -> impl IntoResponse {
     let mut config = agnos_sys::update::UpdateConfig::default();
     if let Some(url) = req.update_url {
-        // Prevent SSRF: only allow HTTPS URLs to known update server domains.
-        // Extract host by stripping "https://" prefix and taking up to next '/' or end.
-        let allowed_hosts: &[&str] = &["updates.agnos.org", "releases.agnos.org"];
-        let is_allowed = url.strip_prefix("https://").is_some_and(|rest| {
-            let host = rest.split('/').next().unwrap_or("");
-            // Reject URLs with userinfo (user:pass@host), port, or empty host
-            !host.contains('@') && !host.contains(':') && allowed_hosts.contains(&host)
-        });
-        if !is_allowed {
+        // Prevent SSRF: reject private IPs, non-http(s) schemes, credentials,
+        // and localhost targets using the shared URL validator.
+        if let Err(reason) = crate::http_api::types::validate_url_no_ssrf(&url) {
             return (
                 StatusCode::BAD_REQUEST,
-                Json(
-                    serde_json::json!({"error": "Invalid or disallowed update URL. Only HTTPS URLs to official update servers are permitted."}),
-                ),
+                Json(serde_json::json!({
+                    "error": format!("Invalid update URL: {reason}")
+                })),
             );
         }
+
+        // Additionally restrict to HTTPS and known official update hosts.
+        let allowed_hosts: &[&str] = &["updates.agnos.org", "releases.agnos.org"];
+        let parsed = url::Url::parse(&url).expect("already validated");
+        if parsed.scheme() != "https" {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "error": "Only HTTPS URLs are permitted for system updates"
+                })),
+            );
+        }
+        let host = parsed.host_str().unwrap_or("");
+        if !allowed_hosts.contains(&host) {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "error": format!(
+                        "Disallowed update host '{host}'. Only official update servers are permitted: {}",
+                        allowed_hosts.join(", ")
+                    )
+                })),
+            );
+        }
+
         config.update_url = url;
     }
     let current_version = env!("CARGO_PKG_VERSION");
@@ -176,5 +195,51 @@ pub async fn system_update_confirm_handler() -> impl IntoResponse {
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({"error": format!("Confirm failed: {e}")})),
         ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::http_api::types::validate_url_no_ssrf;
+
+    #[test]
+    fn update_url_rejects_private_ip() {
+        assert!(validate_url_no_ssrf("https://10.0.0.1/update").is_err());
+        assert!(validate_url_no_ssrf("https://192.168.1.1/update").is_err());
+        assert!(validate_url_no_ssrf("https://172.16.0.1/update").is_err());
+        assert!(validate_url_no_ssrf("https://127.0.0.1/update").is_err());
+    }
+
+    #[test]
+    fn update_url_rejects_localhost() {
+        assert!(validate_url_no_ssrf("https://localhost/update").is_err());
+        assert!(validate_url_no_ssrf("http://localhost:8090/v1/health").is_err());
+    }
+
+    #[test]
+    fn update_url_rejects_non_https() {
+        assert!(validate_url_no_ssrf("ftp://updates.agnos.org/latest").is_err());
+        assert!(validate_url_no_ssrf("file:///etc/passwd").is_err());
+    }
+
+    #[test]
+    fn update_url_rejects_credentials() {
+        assert!(validate_url_no_ssrf("https://user:pass@updates.agnos.org/latest").is_err());
+    }
+
+    #[test]
+    fn update_url_rejects_ipv6_loopback() {
+        assert!(validate_url_no_ssrf("https://[::1]/update").is_err());
+    }
+
+    #[test]
+    fn update_url_rejects_link_local() {
+        assert!(validate_url_no_ssrf("https://169.254.1.1/update").is_err());
+    }
+
+    #[test]
+    fn update_url_accepts_valid_public_url() {
+        assert!(validate_url_no_ssrf("https://updates.agnos.org/v1/latest").is_ok());
+        assert!(validate_url_no_ssrf("https://releases.agnos.org/manifest.json").is_ok());
     }
 }

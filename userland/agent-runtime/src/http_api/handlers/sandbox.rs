@@ -580,6 +580,23 @@ pub async fn upsert_custom_profile_handler(
             .into_response();
     }
 
+    // Validate all syscall names in seccomp rules against the known allowlist
+    for rule in &req.config.seccomp_rules {
+        if !is_known_syscall(&rule.syscall) {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "error": format!(
+                        "Unknown syscall '{}' in seccomp_rules; only valid Linux x86_64 syscall names are accepted",
+                        rule.syscall
+                    ),
+                    "code": 400
+                })),
+            )
+                .into_response();
+        }
+    }
+
     let profile = CustomSandboxProfile {
         name: name.clone(),
         config: req.config,
@@ -623,5 +640,133 @@ pub async fn delete_custom_profile_handler(
             Json(serde_json::json!({"error": format!("Custom profile '{}' not found", name), "code": 404})),
         )
             .into_response(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn known_syscall_accepts_valid() {
+        assert!(is_known_syscall("read"));
+        assert!(is_known_syscall("write"));
+        assert!(is_known_syscall("openat"));
+        assert!(is_known_syscall("clone3"));
+        assert!(is_known_syscall("io_uring_setup"));
+    }
+
+    #[test]
+    fn known_syscall_rejects_invalid() {
+        assert!(!is_known_syscall("not_a_syscall"));
+        assert!(!is_known_syscall(""));
+        assert!(!is_known_syscall("READ"));
+        assert!(!is_known_syscall("evil_inject; rm -rf /"));
+    }
+
+    #[test]
+    fn path_traversal_detection() {
+        assert!(path_has_traversal("../etc/passwd"));
+        assert!(path_has_traversal("/home/../etc/shadow"));
+        assert!(!path_has_traversal("/home/user/data"));
+        assert!(!path_has_traversal("/tmp"));
+    }
+
+    #[tokio::test]
+    async fn translate_rejects_unknown_syscall() {
+        let profile = ExternalSandboxProfile {
+            name: "test".to_string(),
+            filesystem: vec![],
+            network_mode: "none".to_string(),
+            allowed_hosts: vec![],
+            allowed_ports: vec![],
+            blocked_syscalls: vec!["read".to_string(), "bogus_syscall".to_string()],
+            isolate_network: None,
+            mac_profile: None,
+        };
+        let resp = translate_sandbox_profile_handler(Json(profile))
+            .await
+            .into_response();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        let body = axum::body::to_bytes(resp.into_body(), 65536)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(json["error"].as_str().unwrap().contains("bogus_syscall"));
+    }
+
+    #[tokio::test]
+    async fn translate_accepts_valid_syscalls() {
+        let profile = ExternalSandboxProfile {
+            name: "test".to_string(),
+            filesystem: vec![],
+            network_mode: "none".to_string(),
+            allowed_hosts: vec![],
+            allowed_ports: vec![],
+            blocked_syscalls: vec!["ptrace".to_string(), "mount".to_string()],
+            isolate_network: None,
+            mac_profile: None,
+        };
+        let resp = translate_sandbox_profile_handler(Json(profile))
+            .await
+            .into_response();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn upsert_rejects_unknown_syscall_in_config() {
+        use agnos_common::{SeccompAction, SeccompRule};
+        let state = crate::http_api::state::ApiState::with_api_key(None);
+        let config = SandboxConfig {
+            seccomp_rules: vec![SeccompRule {
+                syscall: "invented_syscall".to_string(),
+                action: SeccompAction::Deny,
+            }],
+            ..SandboxConfig::default()
+        };
+        let req = UpsertSandboxProfileRequest {
+            config,
+            description: None,
+            created_by: None,
+        };
+        let resp = upsert_custom_profile_handler(
+            State(state),
+            Path("test_profile".to_string()),
+            Json(req),
+        )
+        .await
+        .into_response();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        let body = axum::body::to_bytes(resp.into_body(), 65536)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(json["error"].as_str().unwrap().contains("invented_syscall"));
+    }
+
+    #[tokio::test]
+    async fn upsert_accepts_valid_syscall_config() {
+        use agnos_common::{SeccompAction, SeccompRule};
+        let state = crate::http_api::state::ApiState::with_api_key(None);
+        let config = SandboxConfig {
+            seccomp_rules: vec![SeccompRule {
+                syscall: "ptrace".to_string(),
+                action: SeccompAction::Deny,
+            }],
+            ..SandboxConfig::default()
+        };
+        let req = UpsertSandboxProfileRequest {
+            config,
+            description: None,
+            created_by: None,
+        };
+        let resp = upsert_custom_profile_handler(
+            State(state),
+            Path("valid_profile".to_string()),
+            Json(req),
+        )
+        .await
+        .into_response();
+        assert!(resp.status() == StatusCode::CREATED || resp.status() == StatusCode::OK);
     }
 }

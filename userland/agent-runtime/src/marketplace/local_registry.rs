@@ -385,6 +385,11 @@ impl LocalRegistry {
     pub fn keyring_mut(&mut self) -> &mut PublisherKeyring {
         &mut self.keyring
     }
+
+    /// Path to the packages installation directory.
+    pub fn packages_dir(&self) -> std::path::PathBuf {
+        self.root_dir.join("packages")
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -392,7 +397,7 @@ impl LocalRegistry {
 // ---------------------------------------------------------------------------
 
 /// Extract the `manifest.json` from a gzipped tarball.
-fn extract_manifest_from_tarball(data: &[u8]) -> Result<MarketplaceManifest> {
+pub fn extract_manifest_from_tarball(data: &[u8]) -> Result<MarketplaceManifest> {
     let decoder = flate2::read::GzDecoder::new(data);
     let mut archive = tar::Archive::new(decoder);
 

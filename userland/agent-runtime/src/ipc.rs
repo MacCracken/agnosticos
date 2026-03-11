@@ -4,6 +4,7 @@
 //! Uses length-prefixed framing: each message is preceded by a 4-byte big-endian length.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use anyhow::{Context, Result};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -25,6 +26,18 @@ const MAX_GLOBAL_SUBSCRIBERS: usize = 16;
 
 /// Maximum concurrent connections per agent socket.
 const MAX_CONCURRENT_CONNECTIONS: usize = 64;
+
+/// H15: Maximum total file descriptors (connections) across all agent sockets.
+/// This prevents fd exhaustion at the process level.
+const MAX_GLOBAL_FD_LIMIT: usize = 1024;
+
+/// H15: Global counter tracking active IPC connections across all agent sockets.
+static GLOBAL_ACTIVE_CONNECTIONS: AtomicUsize = AtomicUsize::new(0);
+
+/// Returns the current number of active IPC connections globally.
+pub fn active_connection_count() -> usize {
+    GLOBAL_ACTIVE_CONNECTIONS.load(Ordering::Relaxed)
+}
 
 /// IPC endpoint for agent communication
 pub struct AgentIpc {
@@ -60,8 +73,10 @@ impl AgentIpc {
             tokio::fs::create_dir_all(parent).await?;
         }
 
-        // Remove old socket if it exists
-        let _ = tokio::fs::remove_file(&self.socket_path).await;
+        // H21: Detect and clean up stale socket files from previous runs.
+        // Try connecting to see if something is already listening. If not,
+        // remove the stale file so we can bind.
+        cleanup_stale_socket(&self.socket_path).await;
 
         let listener = UnixListener::bind(&self.socket_path)
             .with_context(|| format!("Failed to bind to socket: {}", self.socket_path.display()))?;
@@ -90,12 +105,27 @@ impl AgentIpc {
             loop {
                 match listener.accept().await {
                     Ok((stream, _)) => {
+                        // H15: Check global fd limit before accepting
+                        let global_count = GLOBAL_ACTIVE_CONNECTIONS.load(Ordering::Relaxed);
+                        if global_count >= MAX_GLOBAL_FD_LIMIT {
+                            warn!(
+                                agent_id = %agent_id,
+                                active = global_count,
+                                max = MAX_GLOBAL_FD_LIMIT,
+                                "Connection rejected: global fd limit reached"
+                            );
+                            drop(stream);
+                            continue;
+                        }
+
                         let tx = tx.clone();
                         let permit = conn_semaphore.clone().try_acquire_owned();
                         match permit {
                             Ok(permit) => {
+                                GLOBAL_ACTIVE_CONNECTIONS.fetch_add(1, Ordering::Relaxed);
                                 tokio::spawn(async move {
                                     handle_connection(stream, tx, agent_id).await;
+                                    GLOBAL_ACTIVE_CONNECTIONS.fetch_sub(1, Ordering::Relaxed);
                                     drop(permit);
                                 });
                             }
@@ -130,6 +160,58 @@ impl Drop for AgentIpc {
         // Clean up socket file on shutdown
         let _ = std::fs::remove_file(&self.socket_path);
         debug!("Cleaned up IPC socket: {}", self.socket_path.display());
+    }
+}
+
+/// H21: Clean up a stale socket file left from a previous run.
+///
+/// If the socket file exists, tries a non-blocking connect to check whether
+/// a live listener is behind it. If the connect fails, the file is stale and
+/// is removed so a new listener can bind.
+pub async fn cleanup_stale_socket(path: &std::path::Path) {
+    if !path.exists() {
+        return;
+    }
+
+    // Try to connect — if it succeeds, something is already listening
+    match tokio::time::timeout(
+        std::time::Duration::from_millis(500),
+        UnixStream::connect(path),
+    )
+    .await
+    {
+        Ok(Ok(_stream)) => {
+            warn!(
+                "Socket {} is already in use by another process",
+                path.display()
+            );
+        }
+        _ => {
+            // Connection failed or timed out — stale socket
+            info!(
+                "Removing stale socket file: {}",
+                path.display()
+            );
+            let _ = tokio::fs::remove_file(path).await;
+        }
+    }
+}
+
+/// H21: Clean up all stale `.sock` files in the agent socket directory.
+///
+/// Call this on daemon startup to remove leftover sockets from previous
+/// abnormal terminations (crash, SIGKILL, power loss, etc.).
+pub async fn cleanup_stale_sockets_in_dir(dir: &std::path::Path) {
+    let mut entries = match tokio::fs::read_dir(dir).await {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+
+    while let Ok(Some(entry)) = entries.next_entry().await {
+        let path = entry.path();
+        if path.extension().is_some_and(|e| e == "sock") {
+            cleanup_stale_socket(&path).await;
+        }
     }
 }
 
@@ -1717,5 +1799,74 @@ mod tests {
 
         // Latest registration wins
         assert_eq!(reg.find_handler("shared_method"), Some(a2));
+    }
+
+    // ==================================================================
+    // H15: Global fd limit tracking
+    // ==================================================================
+
+    #[test]
+    fn test_max_global_fd_limit_constant() {
+        assert_eq!(MAX_GLOBAL_FD_LIMIT, 1024);
+    }
+
+    #[test]
+    fn test_global_active_connections_counter() {
+        let before = active_connection_count();
+        GLOBAL_ACTIVE_CONNECTIONS.fetch_add(1, Ordering::Relaxed);
+        assert_eq!(active_connection_count(), before + 1);
+        GLOBAL_ACTIVE_CONNECTIONS.fetch_sub(1, Ordering::Relaxed);
+        assert_eq!(active_connection_count(), before);
+    }
+
+    // ==================================================================
+    // H21: Stale socket cleanup
+    // ==================================================================
+
+    #[tokio::test]
+    async fn test_cleanup_stale_socket_removes_dead_file() {
+        let tmp = std::env::temp_dir().join(format!("agnos_stale_test_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&tmp);
+        let sock_path = tmp.join("stale.sock");
+
+        // Create a regular file pretending to be a stale socket
+        std::fs::File::create(&sock_path).unwrap();
+        assert!(sock_path.exists());
+
+        // Should detect it's stale (can't connect) and remove it
+        cleanup_stale_socket(&sock_path).await;
+        assert!(!sock_path.exists());
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[tokio::test]
+    async fn test_cleanup_stale_socket_nonexistent_is_noop() {
+        let path = std::path::Path::new("/tmp/agnos_stale_test_nonexistent.sock");
+        cleanup_stale_socket(path).await;
+    }
+
+    #[tokio::test]
+    async fn test_cleanup_stale_sockets_in_dir() {
+        let tmp = std::env::temp_dir().join(format!("agnos_stale_dir_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&tmp);
+
+        std::fs::File::create(tmp.join("agent1.sock")).unwrap();
+        std::fs::File::create(tmp.join("agent2.sock")).unwrap();
+        std::fs::File::create(tmp.join("not_a_socket.txt")).unwrap();
+
+        cleanup_stale_sockets_in_dir(&tmp).await;
+
+        assert!(!tmp.join("agent1.sock").exists());
+        assert!(!tmp.join("agent2.sock").exists());
+        assert!(tmp.join("not_a_socket.txt").exists());
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[tokio::test]
+    async fn test_cleanup_stale_sockets_in_nonexistent_dir() {
+        let path = std::path::Path::new("/tmp/agnos_stale_dir_nonexistent_xyz");
+        cleanup_stale_sockets_in_dir(path).await;
     }
 }

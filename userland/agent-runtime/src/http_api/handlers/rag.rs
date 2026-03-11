@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
@@ -15,6 +17,36 @@ use crate::knowledge_base::KnowledgeSource;
 const RAG_INGEST_MAX_TEXT_BYTES: usize = 1_048_576;
 /// Maximum allowed size for RAG query string (10 KB).
 const RAG_QUERY_MAX_BYTES: usize = 10_240;
+/// Maximum RAG ingestions per agent per window.
+const RAG_INGEST_RATE_LIMIT: u32 = 100;
+/// Rate limit window duration in seconds.
+const RAG_INGEST_RATE_WINDOW_SECS: u64 = 60;
+/// Maximum length for a knowledge source name.
+const MAX_KNOWLEDGE_SOURCE_NAME_LEN: usize = 128;
+
+/// Validate a knowledge source name: alphanumeric, hyphens, underscores only; max 128 chars.
+fn validate_knowledge_source_name(name: &str) -> Result<(), String> {
+    if name.is_empty() {
+        return Err("Knowledge source name must not be empty".to_string());
+    }
+    if name.len() > MAX_KNOWLEDGE_SOURCE_NAME_LEN {
+        return Err(format!(
+            "Knowledge source name too long: {} chars exceeds {} char limit",
+            name.len(),
+            MAX_KNOWLEDGE_SOURCE_NAME_LEN
+        ));
+    }
+    if !name
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(
+            "Knowledge source name may only contain alphanumeric characters, hyphens, and underscores"
+                .to_string(),
+        );
+    }
+    Ok(())
+}
 
 pub async fn rag_ingest_handler(
     State(state): State<ApiState>,
@@ -33,6 +65,39 @@ pub async fn rag_ingest_handler(
             })),
         )
             .into_response();
+    }
+
+    // Per-agent rate limiting (H6)
+    let agent_key = req
+        .agent_id
+        .as_deref()
+        .unwrap_or("anonymous")
+        .to_string();
+    {
+        let mut limits = state.rag_ingest_rate_limits.lock().await;
+        let now = Instant::now();
+        let entry = limits.entry(agent_key.clone()).or_insert((0, now));
+        // Reset window if expired
+        if now.duration_since(entry.1).as_secs() >= RAG_INGEST_RATE_WINDOW_SECS {
+            entry.0 = 0;
+            entry.1 = now;
+        }
+        if entry.0 >= RAG_INGEST_RATE_LIMIT {
+            return (
+                StatusCode::TOO_MANY_REQUESTS,
+                Json(serde_json::json!({
+                    "error": format!(
+                        "Rate limit exceeded: max {} ingestions per {} seconds per agent",
+                        RAG_INGEST_RATE_LIMIT,
+                        RAG_INGEST_RATE_WINDOW_SECS
+                    ),
+                    "agent_id": agent_key,
+                    "code": 429
+                })),
+            )
+                .into_response();
+        }
+        entry.0 += 1;
     }
 
     let metadata = serde_json::to_value(&req.metadata).unwrap_or_default();
@@ -112,7 +177,17 @@ pub async fn knowledge_search_handler(
             "manifest" => KnowledgeSource::AgentManifest,
             "audit" => KnowledgeSource::AuditLog,
             "config" => KnowledgeSource::ConfigFile,
-            other => KnowledgeSource::Custom(other.to_string()),
+            other => {
+                // H10: Validate custom source names to prevent injection
+                if let Err(e) = validate_knowledge_source_name(other) {
+                    return (
+                        StatusCode::BAD_REQUEST,
+                        Json(serde_json::json!({"error": e, "code": 400})),
+                    )
+                        .into_response();
+                }
+                KnowledgeSource::Custom(other.to_string())
+            }
         };
         kb.search_by_source(&source, req.limit)
             .into_iter()
@@ -139,6 +214,7 @@ pub async fn knowledge_search_handler(
         })).collect::<Vec<_>>(),
         "total": results.len(),
     }))
+    .into_response()
 }
 
 pub async fn knowledge_stats_handler(State(state): State<ApiState>) -> impl IntoResponse {
@@ -160,7 +236,17 @@ pub async fn knowledge_index_handler(
         Some("manifest") => KnowledgeSource::AgentManifest,
         Some("audit") => KnowledgeSource::AuditLog,
         Some("config") => KnowledgeSource::ConfigFile,
-        Some(other) => KnowledgeSource::Custom(other.to_string()),
+        Some(other) => {
+            // H10: Validate custom source names to prevent injection
+            if let Err(e) = validate_knowledge_source_name(other) {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({"error": e, "code": 400})),
+                )
+                    .into_response();
+            }
+            KnowledgeSource::Custom(other.to_string())
+        }
         None => KnowledgeSource::ConfigFile,
     };
     // Validate and canonicalize the path to prevent traversal attacks

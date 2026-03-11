@@ -1,7 +1,9 @@
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
+use std::time::Instant;
 
 use chrono::{DateTime, Utc};
+use tokio::sync::Mutex;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
@@ -119,6 +121,8 @@ pub struct ApiState {
     /// Custom sandbox profiles (name -> profile config).
     pub custom_sandbox_profiles:
         Arc<RwLock<HashMap<String, crate::http_api::handlers::sandbox::CustomSandboxProfile>>>,
+    /// Per-agent RAG ingest rate limiter (agent_id -> (count, window_start)).
+    pub rag_ingest_rate_limits: Arc<Mutex<HashMap<String, (u32, Instant)>>>,
 }
 
 impl std::fmt::Debug for ApiState {
@@ -181,6 +185,7 @@ impl ApiState {
             topic_broker: Arc::new(RwLock::new(TopicBroker::new())),
             external_mcp_tools: Arc::new(RwLock::new(Vec::new())),
             custom_sandbox_profiles: Arc::new(RwLock::new(HashMap::new())),
+            rag_ingest_rate_limits: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -218,6 +223,7 @@ impl ApiState {
             topic_broker: Arc::new(RwLock::new(TopicBroker::new())),
             external_mcp_tools: Arc::new(RwLock::new(Vec::new())),
             custom_sandbox_profiles: Arc::new(RwLock::new(HashMap::new())),
+            rag_ingest_rate_limits: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -238,6 +244,43 @@ impl ApiState {
     /// Return the instant the API state was created.
     pub fn started_at(&self) -> DateTime<Utc> {
         self.started_at
+    }
+
+    /// Push an audit event into the buffer, evicting the oldest entry if the
+    /// buffer has reached the configured maximum (MAX_AUDIT_BUFFER).
+    /// Centralised FIFO eviction (H17 audit finding).
+    pub async fn push_audit_event(&self, event: super::handlers::audit::AuditEvent) {
+        let mut buffer = self.audit_buffer.write().await;
+        if buffer.len() >= super::MAX_AUDIT_BUFFER {
+            let evicted = buffer.len() - super::MAX_AUDIT_BUFFER + 1;
+            for _ in 0..evicted {
+                buffer.pop_front();
+            }
+        }
+        buffer.push_back(event);
+    }
+
+    /// Push a trace entry, evicting the oldest if at capacity (MAX_TRACES).
+    /// Centralised FIFO eviction (H17 trace finding).
+    pub async fn push_trace(&self, trace: serde_json::Value) {
+        let mut traces = self.traces.write().await;
+        if traces.len() >= super::MAX_TRACES {
+            let evicted = traces.len() - super::MAX_TRACES + 1;
+            for _ in 0..evicted {
+                traces.pop_front();
+            }
+        }
+        traces.push_back(trace);
+    }
+
+    /// Current number of audit events in the buffer.
+    pub async fn audit_buffer_len(&self) -> usize {
+        self.audit_buffer.read().await.len()
+    }
+
+    /// Current number of trace entries in the buffer.
+    pub async fn traces_len(&self) -> usize {
+        self.traces.read().await.len()
     }
 }
 

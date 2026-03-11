@@ -153,13 +153,24 @@ pub fn chunk_text(text: &str, chunk_size: usize, overlap: usize) -> Vec<String> 
 
     let overlap = overlap.min(chunk_size.saturating_sub(1));
     let step = chunk_size - overlap;
-    let chars: Vec<char> = text.chars().collect();
+
+    // Build a byte-offset index for each char boundary so we can slice
+    // directly from the source string without collecting all chars.
+    let char_boundaries: Vec<usize> = text.char_indices().map(|(i, _)| i).collect();
+    let char_count = char_boundaries.len();
+
     let mut chunks = Vec::new();
     let mut start = 0;
 
-    while start < chars.len() {
-        let end = (start + chunk_size).min(chars.len());
-        chunks.push(chars[start..end].iter().collect::<String>());
+    while start < char_count {
+        let end = (start + chunk_size).min(char_count);
+        let byte_start = char_boundaries[start];
+        let byte_end = if end < char_count {
+            char_boundaries[end]
+        } else {
+            text.len()
+        };
+        chunks.push(text[byte_start..byte_end].to_string());
         start += step;
     }
 
@@ -344,6 +355,19 @@ mod tests {
     fn test_chunk_size_larger_than_text() {
         let chunks = chunk_text("hi", 100, 0);
         assert_eq!(chunks, vec!["hi"]);
+    }
+
+    #[test]
+    fn test_chunk_multibyte_unicode() {
+        // Each emoji is a single char but multiple bytes — verify
+        // char_indices-based slicing handles them correctly.
+        let text = "\u{1F600}\u{1F601}\u{1F602}\u{1F603}\u{1F604}\u{1F605}"; // 6 emoji chars
+        let chunks = chunk_text(text, 3, 1);
+        // step = 2: [0..3], [2..5], [4..6]
+        assert_eq!(chunks.len(), 3);
+        assert_eq!(chunks[0], "\u{1F600}\u{1F601}\u{1F602}");
+        assert_eq!(chunks[1], "\u{1F602}\u{1F603}\u{1F604}");
+        assert_eq!(chunks[2], "\u{1F604}\u{1F605}");
     }
 
     // -- tokenize --

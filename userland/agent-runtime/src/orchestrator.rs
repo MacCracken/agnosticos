@@ -289,6 +289,19 @@ impl Orchestrator {
         Ok(())
     }
 
+    /// Convert a [`Permission`] variant to a lowercase static string,
+    /// avoiding `format!("{:?}")` allocations on the hot scoring path.
+    fn permission_to_str(p: agnos_common::Permission) -> &'static str {
+        match p {
+            agnos_common::Permission::FileRead => "fileread",
+            agnos_common::Permission::FileWrite => "filewrite",
+            agnos_common::Permission::NetworkAccess => "networkaccess",
+            agnos_common::Permission::ProcessSpawn => "processspawn",
+            agnos_common::Permission::LlmInference => "llminference",
+            agnos_common::Permission::AuditRead => "auditread",
+        }
+    }
+
     /// Score an agent for a given task's requirements.
     ///
     /// Weights:
@@ -338,16 +351,16 @@ impl Orchestrator {
         // --- Capability match (20%) ---
         if let Some(config) = config {
             if !requirements.required_capabilities.is_empty() {
-                let agent_caps: std::collections::HashSet<String> = config
+                let agent_caps: std::collections::HashSet<&'static str> = config
                     .permissions
                     .iter()
-                    .map(|p| format!("{:?}", p).to_lowercase())
+                    .map(|p| Self::permission_to_str(*p))
                     .collect();
 
                 let matched = requirements
                     .required_capabilities
                     .iter()
-                    .filter(|cap| agent_caps.contains(&cap.to_lowercase()))
+                    .filter(|cap| agent_caps.contains(cap.to_lowercase().as_str()))
                     .count();
 
                 let ratio = if requirements.required_capabilities.is_empty() {
@@ -448,12 +461,25 @@ impl Orchestrator {
         }
     }
 
+    /// How often (in scheduler ticks) to proactively prune results.
+    /// With a 100 ms tick interval this triggers roughly every 10 seconds.
+    const PRUNE_INTERVAL_TICKS: u64 = 100;
+
     /// Task scheduler loop
     async fn scheduler_loop(orchestrator: Self) {
         let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(100));
+        let mut tick_count: u64 = 0;
 
         loop {
             interval.tick().await;
+            tick_count = tick_count.wrapping_add(1);
+
+            // Proactive pruning — ensures results map stays bounded even
+            // when no new results arrive (e.g., long-running tasks).
+            if tick_count % Self::PRUNE_INTERVAL_TICKS == 0 {
+                let mut state = orchestrator.state.write().await;
+                Self::prune_results(&mut state.results);
+            }
 
             let priorities = [
                 TaskPriority::Critical,
@@ -3134,5 +3160,87 @@ mod tests {
         let next = orchestrator.peek_next_task().await.unwrap();
         assert_eq!(next.id, high_id);
         assert_eq!(next.priority, TaskPriority::High);
+    }
+
+    // ==================================================================
+    // H13: permission_to_str avoids format! allocations
+    // ==================================================================
+
+    #[test]
+    fn test_permission_to_str_all_variants() {
+        use agnos_common::Permission;
+        assert_eq!(Orchestrator::permission_to_str(Permission::FileRead), "fileread");
+        assert_eq!(Orchestrator::permission_to_str(Permission::FileWrite), "filewrite");
+        assert_eq!(Orchestrator::permission_to_str(Permission::NetworkAccess), "networkaccess");
+        assert_eq!(Orchestrator::permission_to_str(Permission::ProcessSpawn), "processspawn");
+        assert_eq!(Orchestrator::permission_to_str(Permission::LlmInference), "llminference");
+        assert_eq!(Orchestrator::permission_to_str(Permission::AuditRead), "auditread");
+    }
+
+    #[test]
+    fn test_permission_to_str_matches_debug_lowercase() {
+        use agnos_common::Permission;
+        let all = [
+            Permission::FileRead,
+            Permission::FileWrite,
+            Permission::NetworkAccess,
+            Permission::ProcessSpawn,
+            Permission::LlmInference,
+            Permission::AuditRead,
+        ];
+        for p in &all {
+            let debug_str = format!("{:?}", p).to_lowercase();
+            assert_eq!(
+                Orchestrator::permission_to_str(*p),
+                debug_str.as_str(),
+                "Mismatch for {:?}",
+                p,
+            );
+        }
+    }
+
+    #[test]
+    fn test_score_agent_capability_match_uses_static_str() {
+        use crate::agent::AgentHandle;
+
+        let handle = AgentHandle {
+            id: AgentId::new(),
+            name: "cap-static".to_string(),
+            status: agnos_common::AgentStatus::Running,
+            created_at: chrono::Utc::now(),
+            started_at: None,
+            resource_usage: agnos_common::ResourceUsage::default(),
+            pid: None,
+        };
+
+        let config = AgentConfig {
+            permissions: vec![
+                agnos_common::Permission::FileRead,
+                agnos_common::Permission::NetworkAccess,
+            ],
+            ..Default::default()
+        };
+
+        let requirements = TaskRequirements {
+            required_capabilities: vec!["fileread".to_string(), "networkaccess".to_string()],
+            ..Default::default()
+        };
+
+        let score = Orchestrator::score_agent(&handle, Some(&config), &requirements, 0);
+        // Full cap match (0.2) + memory (0.4) + cpu (0.3) = 0.9
+        assert!(
+            (score - 0.9).abs() < 0.01,
+            "Expected ~0.9 for full capability match, got {}",
+            score,
+        );
+    }
+
+    // ==================================================================
+    // H12: proactive pruning constant
+    // ==================================================================
+
+    #[test]
+    fn test_prune_interval_ticks_is_positive() {
+        assert!(Orchestrator::PRUNE_INTERVAL_TICKS > 0);
     }
 }

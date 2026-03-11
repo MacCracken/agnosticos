@@ -4390,7 +4390,7 @@ mod tests {
             "name": "custom_tool",
             "description": "A custom external tool",
             "inputSchema": {"type": "object", "properties": {}},
-            "callback_url": "http://localhost:9999/tools/custom",
+            "callback_url": "https://mcp-tools.example.com/tools/custom",
             "source": "secureyeoman"
         });
 
@@ -4432,7 +4432,7 @@ mod tests {
             "name": "agnos_health",
             "description": "Conflict",
             "inputSchema": {"type": "object"},
-            "callback_url": "http://localhost:9999/nope"
+            "callback_url": "https://mcp-tools.example.com/nope"
         });
 
         let req = Request::builder()
@@ -4455,7 +4455,7 @@ mod tests {
             "name": "to_remove_tool",
             "description": "Will be removed",
             "inputSchema": {"type": "object"},
-            "callback_url": "http://localhost:9999/remove"
+            "callback_url": "https://mcp-tools.example.com/remove"
         });
         let req = Request::builder()
             .method("POST")
@@ -4512,7 +4512,7 @@ mod tests {
             "name": "replaceable_tool",
             "description": "version 1",
             "inputSchema": {"type": "object"},
-            "callback_url": "http://localhost:9999/v1"
+            "callback_url": "https://mcp-tools.example.com/v1"
         });
         let req = Request::builder()
             .method("POST")
@@ -4528,7 +4528,7 @@ mod tests {
             "name": "replaceable_tool",
             "description": "version 2",
             "inputSchema": {"type": "object"},
-            "callback_url": "http://localhost:9999/v2"
+            "callback_url": "https://mcp-tools.example.com/v2"
         });
         let req = Request::builder()
             .method("POST")
@@ -5886,5 +5886,344 @@ mod tests {
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    // -----------------------------------------------------------------------
+    // H6: RAG ingest per-agent rate limiting
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_rag_ingest_rate_limit() {
+        let state = test_state();
+
+        // Directly fill the rate limit counter to just under the limit
+        {
+            let mut limits = state.rag_ingest_rate_limits.lock().await;
+            limits.insert(
+                "rate-test-agent".to_string(),
+                (99, std::time::Instant::now()),
+            );
+        }
+
+        let app = build_router(state);
+
+        // The 100th request should succeed (at the limit)
+        let body = serde_json::json!({
+            "text": "request at limit",
+            "agent_id": "rate-test-agent"
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/rag/ingest")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // The 101st request should be rate-limited
+        let body = serde_json::json!({
+            "text": "one too many",
+            "agent_id": "rate-test-agent"
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/rag/ingest")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::TOO_MANY_REQUESTS);
+
+        let resp_body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&resp_body).unwrap();
+        assert_eq!(json["code"], 429);
+        assert!(json["error"].as_str().unwrap().contains("Rate limit"));
+
+        // A different agent should still be allowed
+        let body = serde_json::json!({
+            "text": "from another agent",
+            "agent_id": "other-agent"
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/rag/ingest")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    // -----------------------------------------------------------------------
+    // H9: Reasoning trace size limit
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_reasoning_trace_too_large() {
+        let app = test_app();
+        let agent_id = Uuid::new_v4();
+
+        // Create a trace with content exceeding 1 MB
+        let large_content = "x".repeat(1_100_000);
+        let body = serde_json::json!({
+            "task": "test task",
+            "steps": [{
+                "step": 1,
+                "kind": "thought",
+                "content": large_content
+            }],
+            "duration_ms": 100
+        });
+
+        let req = Request::builder()
+            .method("POST")
+            .uri(&format!("/v1/agents/{}/reasoning", agent_id))
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
+
+        let resp_body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&resp_body).unwrap();
+        assert_eq!(json["code"], 413);
+        assert!(json["error"].as_str().unwrap().contains("too large"));
+    }
+
+    #[tokio::test]
+    async fn test_reasoning_trace_within_limit() {
+        let app = test_app();
+        let agent_id = Uuid::new_v4();
+
+        let body = serde_json::json!({
+            "task": "small task",
+            "steps": [{
+                "step": 1,
+                "kind": "thought",
+                "content": "a short thought"
+            }],
+            "duration_ms": 50
+        });
+
+        let req = Request::builder()
+            .method("POST")
+            .uri(&format!("/v1/agents/{}/reasoning", agent_id))
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+    }
+
+    // -----------------------------------------------------------------------
+    // H10: Knowledge source name injection prevention
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_knowledge_search_rejects_invalid_source_name() {
+        let app = test_app();
+
+        // Path separator in source name
+        let body = serde_json::json!({
+            "query": "test",
+            "source": "../etc/passwd"
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/knowledge/search")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+        // Name too long
+        let long_name = "a".repeat(200);
+        let body = serde_json::json!({
+            "query": "test",
+            "source": long_name
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/knowledge/search")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_knowledge_search_accepts_valid_custom_source() {
+        let app = test_app();
+
+        let body = serde_json::json!({
+            "query": "test",
+            "source": "my_custom-source123"
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/knowledge/search")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    // -----------------------------------------------------------------------
+    // H11: RPC method name validation
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_rpc_register_rejects_invalid_method_name() {
+        let app = test_app();
+        let agent_id = Uuid::new_v4();
+
+        // Method name with special characters
+        let body = serde_json::json!({
+            "agent_id": agent_id.to_string(),
+            "methods": ["valid.method", "bad/method!"]
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/rpc/register")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+
+        let resp_body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&resp_body).unwrap();
+        assert!(json["error"].as_str().unwrap().contains("alphanumeric"));
+    }
+
+    #[tokio::test]
+    async fn test_rpc_register_rejects_too_long_method_name() {
+        let app = test_app();
+        let agent_id = Uuid::new_v4();
+
+        let long_name = "a".repeat(300);
+        let body = serde_json::json!({
+            "agent_id": agent_id.to_string(),
+            "methods": [long_name]
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/rpc/register")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_rpc_call_rejects_invalid_method_name() {
+        let app = test_app();
+
+        let body = serde_json::json!({
+            "method": "bad method!",
+            "params": {}
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/rpc/call")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_rpc_register_accepts_valid_method_names() {
+        let app = test_app();
+        let agent_id = Uuid::new_v4();
+
+        let body = serde_json::json!({
+            "agent_id": agent_id.to_string(),
+            "methods": ["agent.do_work", "my-method", "simple_call"]
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/rpc/register")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    // H17: Bounded audit/trace buffers with FIFO eviction
+    #[tokio::test]
+    async fn test_audit_buffer_fifo_eviction() {
+        let state = test_state();
+        let max = crate::http_api::MAX_AUDIT_BUFFER;
+        {
+            let mut buf = state.audit_buffer.write().await;
+            for i in 0..max {
+                buf.push_back(AuditEvent {
+                    timestamp: Utc::now().to_rfc3339(),
+                    action: format!("action-{}", i),
+                    agent: None,
+                    details: serde_json::Value::Null,
+                    outcome: "success".to_string(),
+                });
+            }
+            assert_eq!(buf.len(), max);
+        }
+        state.push_audit_event(AuditEvent {
+            timestamp: Utc::now().to_rfc3339(),
+            action: "overflow-action".to_string(),
+            agent: None,
+            details: serde_json::Value::Null,
+            outcome: "success".to_string(),
+        }).await;
+        let buf = state.audit_buffer.read().await;
+        assert_eq!(buf.len(), max);
+        assert_ne!(buf.front().unwrap().action, "action-0");
+        assert_eq!(buf.back().unwrap().action, "overflow-action");
+    }
+
+    #[tokio::test]
+    async fn test_trace_buffer_fifo_eviction() {
+        let state = test_state();
+        let max = crate::http_api::MAX_TRACES;
+        {
+            let mut traces = state.traces.write().await;
+            for i in 0..max {
+                traces.push_back(serde_json::json!({"id": i}));
+            }
+            assert_eq!(traces.len(), max);
+        }
+        state.push_trace(serde_json::json!({"id": "overflow"})).await;
+        let traces = state.traces.read().await;
+        assert_eq!(traces.len(), max);
+        assert_ne!(traces.front().unwrap()["id"], 0);
+        assert_eq!(traces.back().unwrap()["id"], "overflow");
+    }
+
+    // H22: Marketplace install transaction isolation
+    #[tokio::test]
+    async fn test_marketplace_staged_install_nonexistent_tarball() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let registry = crate::marketplace::local_registry::LocalRegistry::new(tmp.path()).unwrap();
+        let registry_arc = std::sync::Arc::new(tokio::sync::RwLock::new(registry));
+        let fake_tarball = tmp.path().join("nonexistent.tar.gz");
+        let result = crate::http_api::handlers::marketplace::staged_install(
+            &registry_arc, &fake_tarball, None,
+        );
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("Failed") || err.contains("stage"), "error should indicate staging failure: {}", err);
     }
 }

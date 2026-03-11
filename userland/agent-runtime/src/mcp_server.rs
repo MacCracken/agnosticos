@@ -360,6 +360,19 @@ pub async fn mcp_register_tool_handler(
             .into_response();
     }
 
+    // Prevent SSRF: reject private IPs, non-http(s) schemes, credentials,
+    // and localhost targets before storing the callback URL.
+    if let Err(reason) = crate::http_api::types::validate_url_no_ssrf(&req.callback_url) {
+        return (
+            axum::http::StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": format!("Invalid callback_url: {reason}"),
+                "code": 400
+            })),
+        )
+            .into_response();
+    }
+
     // Reject names that collide with built-in tools
     let manifest = build_tool_manifest();
     if manifest.tools.iter().any(|t| t.name == req.name) {
@@ -427,18 +440,30 @@ pub async fn mcp_deregister_tool_handler(
 }
 
 /// `POST /v1/mcp/tools/call` — dispatch an MCP tool call to the appropriate logic.
+///
+/// H27/H29: All responses use the standard MCP envelope (`McpToolResult` with
+/// `content` + `isError`). A per-request UUID is generated for log correlation.
 pub async fn mcp_tool_call_handler(
     State(state): State<ApiState>,
     Json(call): Json<McpToolCall>,
 ) -> impl IntoResponse {
-    info!(tool = %call.name, "MCP tool call received");
-    debug!(tool = %call.name, arguments = %call.arguments, "MCP tool call details");
+    let request_id = Uuid::new_v4();
+    info!(request_id = %request_id, tool = %call.name, "MCP tool call received");
+    debug!(request_id = %request_id, tool = %call.name, arguments = %call.arguments, "MCP tool call details");
 
-    let result = dispatch_tool_call(&state, &call).await;
+    let result = dispatch_tool_call(&state, &call, request_id).await;
+
+    if result.is_error {
+        debug!(request_id = %request_id, tool = %call.name, "MCP tool call completed with error");
+    } else {
+        debug!(request_id = %request_id, tool = %call.name, "MCP tool call completed successfully");
+    }
+
     Json(result)
 }
 
-async fn dispatch_tool_call(state: &ApiState, call: &McpToolCall) -> McpToolResult {
+async fn dispatch_tool_call(state: &ApiState, call: &McpToolCall, request_id: Uuid) -> McpToolResult {
+    debug!(request_id = %request_id, tool = %call.name, "Dispatching MCP tool call");
     match call.name.as_str() {
         "agnos_health" => handle_health(state).await,
         "agnos_list_agents" => handle_list_agents(state).await,
@@ -475,21 +500,43 @@ async fn dispatch_tool_call(state: &ApiState, call: &McpToolCall) -> McpToolResu
             // Check external tools
             let external = state.external_mcp_tools.read().await;
             if let Some(ext) = external.iter().find(|t| t.tool.name == unknown) {
+                debug!(request_id = %request_id, tool = %unknown, callback = %ext.callback_url, "Forwarding to external MCP tool");
                 dispatch_external_tool(ext, call).await
             } else {
-                warn!(tool = %unknown, "Unknown MCP tool called");
+                warn!(request_id = %request_id, tool = %unknown, "Unknown MCP tool called");
                 error_result(format!("Unknown tool: {}", unknown))
             }
         }
     }
 }
 
+/// Shared HTTP client for external MCP tool calls — created once, reused for
+/// all dispatches to avoid per-call TLS/connection-pool overhead.
+static EXTERNAL_HTTP_CLIENT: std::sync::LazyLock<reqwest::Client> =
+    std::sync::LazyLock::new(|| {
+        reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new())
+    });
+
 /// Proxy an MCP tool call to an externally registered callback URL.
 async fn dispatch_external_tool(ext: &ExternalMcpTool, call: &McpToolCall) -> McpToolResult {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .unwrap_or_else(|_| reqwest::Client::new());
+    // Defense-in-depth: re-validate the callback URL at dispatch time in case
+    // it was stored before the SSRF check was added at registration.
+    if let Err(reason) = crate::http_api::types::validate_url_no_ssrf(&ext.callback_url) {
+        warn!(
+            tool = %call.name,
+            url = %ext.callback_url,
+            reason = %reason,
+            "Blocked SSRF attempt in external MCP tool callback"
+        );
+        return error_result(format!(
+            "Callback URL blocked by SSRF policy: {reason}"
+        ));
+    }
+
+    let client = &*EXTERNAL_HTTP_CLIENT;
 
     match client.post(&ext.callback_url).json(call).send().await {
         Ok(resp) if resp.status().is_success() => match resp.json::<McpToolResult>().await {
@@ -549,6 +596,49 @@ fn get_optional_string_arg(args: &serde_json::Value, key: &str) -> Option<String
 }
 
 // ---------------------------------------------------------------------------
+// H24: Consolidated JSON validation helpers (replacing 35+ duplicated patterns)
+// ---------------------------------------------------------------------------
+
+/// Extract a required string field from MCP tool arguments, returning an
+/// `McpToolResult` error if the field is missing or not a string.
+fn extract_required_string(args: &serde_json::Value, field: &str) -> Result<String, McpToolResult> {
+    get_string_arg(args, field).ok_or_else(|| {
+        error_result(format!("Missing required argument: {}", field))
+    })
+}
+
+/// Extract a required string field and parse it as a UUID, returning an
+/// `McpToolResult` error for missing fields or invalid UUIDs.
+fn extract_required_uuid(args: &serde_json::Value, field: &str) -> Result<Uuid, McpToolResult> {
+    let raw = extract_required_string(args, field)?;
+    Uuid::parse_str(&raw).map_err(|_| error_result(format!("Invalid UUID for '{}': {}", field, raw)))
+}
+
+/// Extract an optional unsigned integer field from MCP tool arguments.
+fn extract_optional_u64(args: &serde_json::Value, field: &str, default: u64) -> u64 {
+    args.get(field).and_then(|v| v.as_u64()).unwrap_or(default)
+}
+
+/// Validate that an optional string value belongs to an allowed set.
+fn validate_enum_opt(
+    value: &Option<String>,
+    field: &str,
+    allowed: &[&str],
+) -> Result<(), McpToolResult> {
+    if let Some(ref v) = value {
+        if !allowed.contains(&v.as_str()) {
+            return Err(error_result(format!(
+                "Invalid {} '{}': must be {}",
+                field,
+                v,
+                allowed.join(", ")
+            )));
+        }
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // Tool Implementations
 // ---------------------------------------------------------------------------
 
@@ -578,14 +668,9 @@ async fn handle_list_agents(state: &ApiState) -> McpToolResult {
 }
 
 async fn handle_get_agent(state: &ApiState, args: &serde_json::Value) -> McpToolResult {
-    let agent_id = match get_string_arg(args, "agent_id") {
-        Some(id) => id,
-        None => return error_result("Missing required argument: agent_id".to_string()),
-    };
-
-    let uuid = match Uuid::parse_str(&agent_id) {
+    let uuid = match extract_required_uuid(args, "agent_id") {
         Ok(id) => id,
-        Err(_) => return error_result(format!("Invalid UUID: {}", agent_id)),
+        Err(e) => return e,
     };
 
     let agents = state.agents_read().await;
@@ -596,9 +681,9 @@ async fn handle_get_agent(state: &ApiState, args: &serde_json::Value) -> McpTool
 }
 
 async fn handle_register_agent(state: &ApiState, args: &serde_json::Value) -> McpToolResult {
-    let name = match get_string_arg(args, "name") {
-        Some(n) => n,
-        None => return error_result("Missing required argument: name".to_string()),
+    let name = match extract_required_string(args, "name") {
+        Ok(n) => n,
+        Err(e) => return e,
     };
 
     if name.is_empty() {
@@ -678,14 +763,9 @@ async fn handle_register_agent(state: &ApiState, args: &serde_json::Value) -> Mc
 }
 
 async fn handle_deregister_agent(state: &ApiState, args: &serde_json::Value) -> McpToolResult {
-    let agent_id = match get_string_arg(args, "agent_id") {
-        Some(id) => id,
-        None => return error_result("Missing required argument: agent_id".to_string()),
-    };
-
-    let uuid = match Uuid::parse_str(&agent_id) {
+    let uuid = match extract_required_uuid(args, "agent_id") {
         Ok(id) => id,
-        Err(_) => return error_result(format!("Invalid UUID: {}", agent_id)),
+        Err(e) => return e,
     };
 
     let mut agents = state.agents_write().await;
@@ -702,14 +782,9 @@ async fn handle_deregister_agent(state: &ApiState, args: &serde_json::Value) -> 
 }
 
 async fn handle_heartbeat(state: &ApiState, args: &serde_json::Value) -> McpToolResult {
-    let agent_id = match get_string_arg(args, "agent_id") {
-        Some(id) => id,
-        None => return error_result("Missing required argument: agent_id".to_string()),
-    };
-
-    let uuid = match Uuid::parse_str(&agent_id) {
+    let uuid = match extract_required_uuid(args, "agent_id") {
         Ok(id) => id,
-        Err(_) => return error_result(format!("Invalid UUID: {}", agent_id)),
+        Err(e) => return e,
     };
 
     let status = get_optional_string_arg(args, "status");
@@ -770,14 +845,14 @@ async fn handle_get_metrics(state: &ApiState) -> McpToolResult {
 }
 
 async fn handle_forward_audit(state: &ApiState, args: &serde_json::Value) -> McpToolResult {
-    let action = match get_string_arg(args, "action") {
-        Some(a) => a,
-        None => return error_result("Missing required argument: action".to_string()),
+    let action = match extract_required_string(args, "action") {
+        Ok(a) => a,
+        Err(e) => return e,
     };
 
-    let source = match get_string_arg(args, "source") {
-        Some(s) => s,
-        None => return error_result("Missing required argument: source".to_string()),
+    let source = match extract_required_string(args, "source") {
+        Ok(s) => s,
+        Err(e) => return e,
     };
 
     let agent = get_optional_string_arg(args, "agent");
@@ -814,14 +889,14 @@ async fn handle_forward_audit(state: &ApiState, args: &serde_json::Value) -> Mcp
 }
 
 async fn handle_memory_get(state: &ApiState, args: &serde_json::Value) -> McpToolResult {
-    let agent_id = match get_string_arg(args, "agent_id") {
-        Some(id) => id,
-        None => return error_result("Missing required argument: agent_id".to_string()),
+    let agent_id = match extract_required_string(args, "agent_id") {
+        Ok(id) => id,
+        Err(e) => return e,
     };
 
-    let key = match get_string_arg(args, "key") {
-        Some(k) => k,
-        None => return error_result("Missing required argument: key".to_string()),
+    let key = match extract_required_string(args, "key") {
+        Ok(k) => k,
+        Err(e) => return e,
     };
 
     match state.memory_store.get(&agent_id, &key).await {
@@ -835,14 +910,14 @@ async fn handle_memory_get(state: &ApiState, args: &serde_json::Value) -> McpToo
 }
 
 async fn handle_memory_set(state: &ApiState, args: &serde_json::Value) -> McpToolResult {
-    let agent_id = match get_string_arg(args, "agent_id") {
-        Some(id) => id,
-        None => return error_result("Missing required argument: agent_id".to_string()),
+    let agent_id = match extract_required_string(args, "agent_id") {
+        Ok(id) => id,
+        Err(e) => return e,
     };
 
-    let key = match get_string_arg(args, "key") {
-        Some(k) => k,
-        None => return error_result("Missing required argument: key".to_string()),
+    let key = match extract_required_string(args, "key") {
+        Ok(k) => k,
+        Err(e) => return e,
     };
 
     let value = match args.get("value") {
@@ -917,7 +992,10 @@ impl PhotisBridge {
             .await
         {
             Ok(resp) => resp.status().is_success(),
-            Err(_) => false,
+            Err(e) => {
+                debug!(url = %url, error = %e, "Photis Nadi health check failed");
+                false
+            }
         }
     }
 
@@ -1010,13 +1088,8 @@ async fn handle_photis_list_tasks(args: &serde_json::Value) -> McpToolResult {
     let status = get_optional_string_arg(args, "status");
     let board_id = get_optional_string_arg(args, "board_id");
 
-    if let Some(ref s) = status {
-        if !["todo", "in_progress", "done"].contains(&s.as_str()) {
-            return error_result(format!(
-                "Invalid status '{}': must be todo, in_progress, or done",
-                s
-            ));
-        }
+    if let Err(e) = validate_enum_opt(&status, "status", &["todo", "in_progress", "done"]) {
+        return e;
     }
 
     let bridge = PhotisBridge::new();
@@ -1057,9 +1130,9 @@ async fn handle_photis_list_tasks(args: &serde_json::Value) -> McpToolResult {
 }
 
 async fn handle_photis_create_task(args: &serde_json::Value) -> McpToolResult {
-    let title = match get_string_arg(args, "title") {
-        Some(t) => t,
-        None => return error_result("Missing required argument: title".to_string()),
+    let title = match extract_required_string(args, "title") {
+        Ok(t) => t,
+        Err(e) => return e,
     };
 
     if title.is_empty() {
@@ -1072,11 +1145,9 @@ async fn handle_photis_create_task(args: &serde_json::Value) -> McpToolResult {
     let priority =
         get_optional_string_arg(args, "priority").unwrap_or_else(|| "medium".to_string());
 
-    if !["low", "medium", "high"].contains(&priority.as_str()) {
-        return error_result(format!(
-            "Invalid priority '{}': must be low, medium, or high",
-            priority
-        ));
+    let priority_opt = Some(priority.clone());
+    if let Err(e) = validate_enum_opt(&priority_opt, "priority", &["low", "medium", "high"]) {
+        return e;
     }
 
     let bridge = PhotisBridge::new();
@@ -1110,30 +1181,20 @@ async fn handle_photis_create_task(args: &serde_json::Value) -> McpToolResult {
 }
 
 async fn handle_photis_update_task(args: &serde_json::Value) -> McpToolResult {
-    let task_id = match get_string_arg(args, "task_id") {
-        Some(id) => id,
-        None => return error_result("Missing required argument: task_id".to_string()),
+    let task_id = match extract_required_string(args, "task_id") {
+        Ok(id) => id,
+        Err(e) => return e,
     };
 
     let title = get_optional_string_arg(args, "title");
     let status = get_optional_string_arg(args, "status");
     let priority = get_optional_string_arg(args, "priority");
 
-    if let Some(ref s) = status {
-        if !["todo", "in_progress", "done"].contains(&s.as_str()) {
-            return error_result(format!(
-                "Invalid status '{}': must be todo, in_progress, or done",
-                s
-            ));
-        }
+    if let Err(e) = validate_enum_opt(&status, "status", &["todo", "in_progress", "done"]) {
+        return e;
     }
-    if let Some(ref p) = priority {
-        if !["low", "medium", "high"].contains(&p.as_str()) {
-            return error_result(format!(
-                "Invalid priority '{}': must be low, medium, or high",
-                p
-            ));
-        }
+    if let Err(e) = validate_enum_opt(&priority, "priority", &["low", "medium", "high"]) {
+        return e;
     }
 
     let bridge = PhotisBridge::new();
@@ -1203,20 +1264,12 @@ async fn handle_photis_analytics(args: &serde_json::Value) -> McpToolResult {
     let period = get_optional_string_arg(args, "period").unwrap_or_else(|| "week".to_string());
     let metric = get_optional_string_arg(args, "metric");
 
-    if !["day", "week", "month"].contains(&period.as_str()) {
-        return error_result(format!(
-            "Invalid period '{}': must be day, week, or month",
-            period
-        ));
+    let period_opt = Some(period.clone());
+    if let Err(e) = validate_enum_opt(&period_opt, "period", &["day", "week", "month"]) {
+        return e;
     }
-
-    if let Some(ref m) = metric {
-        if !["tasks_completed", "streak", "velocity"].contains(&m.as_str()) {
-            return error_result(format!(
-                "Invalid metric '{}': must be tasks_completed, streak, or velocity",
-                m
-            ));
-        }
+    if let Err(e) = validate_enum_opt(&metric, "metric", &["tasks_completed", "streak", "velocity"]) {
+        return e;
     }
 
     let bridge = PhotisBridge::new();
@@ -1248,11 +1301,9 @@ async fn handle_photis_sync(args: &serde_json::Value) -> McpToolResult {
     let direction =
         get_optional_string_arg(args, "direction").unwrap_or_else(|| "both".to_string());
 
-    if !["push", "pull", "both"].contains(&direction.as_str()) {
-        return error_result(format!(
-            "Invalid direction '{}': must be push, pull, or both",
-            direction
-        ));
+    let direction_opt = Some(direction.clone());
+    if let Err(e) = validate_enum_opt(&direction_opt, "direction", &["push", "pull", "both"]) {
+        return e;
     }
 
     // Sync is Photis Nadi internal — trigger via health check + report status.
@@ -1349,10 +1400,8 @@ async fn handle_aequi_estimate_tax(args: &serde_json::Value) -> McpToolResult {
     let quarter = get_optional_string_arg(args, "quarter");
     let year = get_optional_string_arg(args, "year");
 
-    if let Some(ref q) = quarter {
-        if !["1", "2", "3", "4"].contains(&q.as_str()) {
-            return error_result(format!("Invalid quarter '{}': must be 1-4", q));
-        }
+    if let Err(e) = validate_enum_opt(&quarter, "quarter", &["1", "2", "3", "4"]) {
+        return e;
     }
 
     let bridge = AequiBridge::new();
@@ -1423,9 +1472,9 @@ async fn handle_aequi_schedule_c(args: &serde_json::Value) -> McpToolResult {
 }
 
 async fn handle_aequi_import_bank(args: &serde_json::Value) -> McpToolResult {
-    let file_path = match get_string_arg(args, "file_path") {
-        Some(p) => p,
-        None => return error_result("Missing required argument: file_path".to_string()),
+    let file_path = match extract_required_string(args, "file_path") {
+        Ok(p) => p,
+        Err(e) => return e,
     };
 
     if file_path.is_empty() {
@@ -1433,10 +1482,8 @@ async fn handle_aequi_import_bank(args: &serde_json::Value) -> McpToolResult {
     }
 
     let format = get_optional_string_arg(args, "format");
-    if let Some(ref f) = format {
-        if !["ofx", "qfx", "csv"].contains(&f.as_str()) {
-            return error_result(format!("Invalid format '{}': must be ofx, qfx, or csv", f));
-        }
+    if let Err(e) = validate_enum_opt(&format, "format", &["ofx", "qfx", "csv"]) {
+        return e;
     }
 
     let bridge = AequiBridge::new();
@@ -1468,13 +1515,8 @@ async fn handle_aequi_import_bank(args: &serde_json::Value) -> McpToolResult {
 async fn handle_aequi_balances(args: &serde_json::Value) -> McpToolResult {
     let account_type = get_optional_string_arg(args, "account_type");
 
-    if let Some(ref t) = account_type {
-        if !["asset", "liability", "equity", "revenue", "expense"].contains(&t.as_str()) {
-            return error_result(format!(
-                "Invalid account_type '{}': must be asset, liability, equity, revenue, or expense",
-                t
-            ));
-        }
+    if let Err(e) = validate_enum_opt(&account_type, "account_type", &["asset", "liability", "equity", "revenue", "expense"]) {
+        return e;
     }
 
     let bridge = AequiBridge::new();
@@ -1509,15 +1551,10 @@ async fn handle_aequi_balances(args: &serde_json::Value) -> McpToolResult {
 
 async fn handle_aequi_receipts(args: &serde_json::Value) -> McpToolResult {
     let status = get_optional_string_arg(args, "status");
-    let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(20) as usize;
+    let limit = extract_optional_u64(args, "limit", 20) as usize;
 
-    if let Some(ref s) = status {
-        if !["pending_review", "reviewed", "matched", "all"].contains(&s.as_str()) {
-            return error_result(format!(
-                "Invalid status '{}': must be pending_review, reviewed, matched, or all",
-                s
-            ));
-        }
+    if let Err(e) = validate_enum_opt(&status, "status", &["pending_review", "reviewed", "matched", "all"]) {
+        return e;
     }
 
     let bridge = AequiBridge::new();
@@ -1628,9 +1665,9 @@ impl AgnosticBridge {
 // ---------------------------------------------------------------------------
 
 async fn handle_agnostic_run_suite(args: &serde_json::Value) -> McpToolResult {
-    let suite = match get_string_arg(args, "suite") {
-        Some(s) => s,
-        None => return error_result("Missing required argument: suite".to_string()),
+    let suite = match extract_required_string(args, "suite") {
+        Ok(s) => s,
+        Err(e) => return e,
     };
 
     if suite.is_empty() {
@@ -1672,9 +1709,9 @@ async fn handle_agnostic_run_suite(args: &serde_json::Value) -> McpToolResult {
 }
 
 async fn handle_agnostic_test_status(args: &serde_json::Value) -> McpToolResult {
-    let run_id = match get_string_arg(args, "run_id") {
-        Some(id) => id,
-        None => return error_result("Missing required argument: run_id".to_string()),
+    let run_id = match extract_required_string(args, "run_id") {
+        Ok(id) => id,
+        Err(e) => return e,
     };
 
     let bridge = AgnosticBridge::new();
@@ -1705,18 +1742,16 @@ async fn handle_agnostic_test_status(args: &serde_json::Value) -> McpToolResult 
 }
 
 async fn handle_agnostic_test_report(args: &serde_json::Value) -> McpToolResult {
-    let run_id = match get_string_arg(args, "run_id") {
-        Some(id) => id,
-        None => return error_result("Missing required argument: run_id".to_string()),
+    let run_id = match extract_required_string(args, "run_id") {
+        Ok(id) => id,
+        Err(e) => return e,
     };
 
     let format = get_optional_string_arg(args, "format").unwrap_or_else(|| "summary".to_string());
 
-    if !["summary", "full", "json"].contains(&format.as_str()) {
-        return error_result(format!(
-            "Invalid format '{}': must be summary, full, or json",
-            format
-        ));
+    let format_opt = Some(format.clone());
+    if let Err(e) = validate_enum_opt(&format_opt, "format", &["summary", "full", "json"]) {
+        return e;
     }
 
     let bridge = AgnosticBridge::new();
@@ -1754,13 +1789,8 @@ async fn handle_agnostic_test_report(args: &serde_json::Value) -> McpToolResult 
 async fn handle_agnostic_list_suites(args: &serde_json::Value) -> McpToolResult {
     let category = get_optional_string_arg(args, "category");
 
-    if let Some(ref c) = category {
-        if !["ui", "api", "security", "performance", "all"].contains(&c.as_str()) {
-            return error_result(format!(
-                "Invalid category '{}': must be ui, api, security, performance, or all",
-                c
-            ));
-        }
+    if let Err(e) = validate_enum_opt(&category, "category", &["ui", "api", "security", "performance", "all"]) {
+        return e;
     }
 
     let bridge = AgnosticBridge::new();
@@ -1806,19 +1836,8 @@ async fn handle_agnostic_list_suites(args: &serde_json::Value) -> McpToolResult 
 async fn handle_agnostic_agent_status(args: &serde_json::Value) -> McpToolResult {
     let agent_type = get_optional_string_arg(args, "agent_type");
 
-    if let Some(ref t) = agent_type {
-        if ![
-            "ui",
-            "api",
-            "security",
-            "performance",
-            "accessibility",
-            "self-healing",
-        ]
-        .contains(&t.as_str())
-        {
-            return error_result(format!("Invalid agent_type '{}': must be ui, api, security, performance, accessibility, or self-healing", t));
-        }
+    if let Err(e) = validate_enum_opt(&agent_type, "agent_type", &["ui", "api", "security", "performance", "accessibility", "self-healing"]) {
+        return e;
     }
 
     let bridge = AgnosticBridge::new();
@@ -1938,10 +1957,13 @@ impl DeltaBridge {
     async fn health_check(&self) -> bool {
         let client = reqwest::Client::new();
         let url = format!("{}/api/v1/health", self.base_url);
-        matches!(
-            client.get(&url).timeout(std::time::Duration::from_secs(2)).send().await,
-            Ok(r) if r.status().is_success()
-        )
+        match client.get(&url).timeout(std::time::Duration::from_secs(2)).send().await {
+            Ok(r) => r.status().is_success(),
+            Err(e) => {
+                debug!(url = %url, error = %e, "Delta health check failed");
+                false
+            }
+        }
     }
 }
 
@@ -1950,9 +1972,9 @@ impl DeltaBridge {
 // ---------------------------------------------------------------------------
 
 async fn handle_delta_create_repository(args: &serde_json::Value) -> McpToolResult {
-    let name = match get_string_arg(args, "name") {
-        Some(n) => n,
-        None => return error_result("Missing required argument: name".to_string()),
+    let name = match extract_required_string(args, "name") {
+        Ok(n) => n,
+        Err(e) => return e,
     };
 
     if name.is_empty() {
@@ -1963,11 +1985,9 @@ async fn handle_delta_create_repository(args: &serde_json::Value) -> McpToolResu
     let visibility =
         get_optional_string_arg(args, "visibility").unwrap_or_else(|| "private".to_string());
 
-    if !["public", "private"].contains(&visibility.as_str()) {
-        return error_result(format!(
-            "Invalid visibility '{}': must be public or private",
-            visibility
-        ));
+    let vis_opt = Some(visibility.clone());
+    if let Err(e) = validate_enum_opt(&vis_opt, "visibility", &["public", "private"]) {
+        return e;
     }
 
     let bridge = DeltaBridge::new();
@@ -2001,7 +2021,7 @@ async fn handle_delta_create_repository(args: &serde_json::Value) -> McpToolResu
 
 async fn handle_delta_list_repositories(args: &serde_json::Value) -> McpToolResult {
     let owner = get_optional_string_arg(args, "owner");
-    let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(20) as usize;
+    let limit = extract_optional_u64(args, "limit", 20) as usize;
 
     let bridge = DeltaBridge::new();
     let mut query = Vec::new();
@@ -2045,16 +2065,14 @@ async fn handle_delta_list_repositories(args: &serde_json::Value) -> McpToolResu
 }
 
 async fn handle_delta_pull_request(args: &serde_json::Value) -> McpToolResult {
-    let action = match get_string_arg(args, "action") {
-        Some(a) => a,
-        None => return error_result("Missing required argument: action".to_string()),
+    let action = match extract_required_string(args, "action") {
+        Ok(a) => a,
+        Err(e) => return e,
     };
 
-    if !["list", "create", "merge", "close"].contains(&action.as_str()) {
-        return error_result(format!(
-            "Invalid action '{}': must be list, create, merge, or close",
-            action
-        ));
+    let action_opt = Some(action.clone());
+    if let Err(e) = validate_enum_opt(&action_opt, "action", &["list", "create", "merge", "close"]) {
+        return e;
     }
 
     let repo = get_optional_string_arg(args, "repo");
@@ -2636,7 +2654,7 @@ mod tests {
                 name: tool.name.clone(),
                 arguments: serde_json::json!({}),
             };
-            let result = dispatch_tool_call(&state, &call).await;
+            let result = dispatch_tool_call(&state, &call, Uuid::new_v4()).await;
             // Should NOT be "Unknown tool" for any manifest tool
             // (some may error for missing args, but not "Unknown tool")
             if result.is_error {
@@ -3666,5 +3684,182 @@ mod tests {
         names.sort();
         names.dedup();
         assert_eq!(names.len(), count_before, "Duplicate tool names found");
+    }
+
+    #[tokio::test]
+    async fn test_register_tool_rejects_private_ip_callback() {
+        let router = build_test_router();
+        let body = serde_json::json!({"name":"ssrf_priv","description":"t","inputSchema":{"type":"object"},"callback_url":"http://10.0.0.1:9090/cb"});
+        let req = Request::builder().method("POST").uri("/v1/mcp/tools").header("content-type","application/json").body(Body::from(serde_json::to_string(&body).unwrap())).unwrap();
+        let resp = router.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        let b = axum::body::to_bytes(resp.into_body(), 65536).await.unwrap();
+        let j: serde_json::Value = serde_json::from_slice(&b).unwrap();
+        assert!(j["error"].as_str().unwrap().contains("private"));
+    }
+
+    #[tokio::test]
+    async fn test_register_tool_rejects_localhost_callback() {
+        let router = build_test_router();
+        let body = serde_json::json!({"name":"ssrf_lh","description":"t","inputSchema":{"type":"object"},"callback_url":"http://localhost:8090/v1/health"});
+        let req = Request::builder().method("POST").uri("/v1/mcp/tools").header("content-type","application/json").body(Body::from(serde_json::to_string(&body).unwrap())).unwrap();
+        let resp = router.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        let b = axum::body::to_bytes(resp.into_body(), 65536).await.unwrap();
+        let j: serde_json::Value = serde_json::from_slice(&b).unwrap();
+        assert!(j["error"].as_str().unwrap().contains("localhost"));
+    }
+
+    #[tokio::test]
+    async fn test_register_tool_rejects_ftp_callback() {
+        let router = build_test_router();
+        let body = serde_json::json!({"name":"ssrf_ftp","description":"t","inputSchema":{"type":"object"},"callback_url":"ftp://example.com/cb"});
+        let req = Request::builder().method("POST").uri("/v1/mcp/tools").header("content-type","application/json").body(Body::from(serde_json::to_string(&body).unwrap())).unwrap();
+        let resp = router.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        let b = axum::body::to_bytes(resp.into_body(), 65536).await.unwrap();
+        let j: serde_json::Value = serde_json::from_slice(&b).unwrap();
+        assert!(j["error"].as_str().unwrap().contains("scheme"));
+    }
+
+    #[tokio::test]
+    async fn test_register_tool_rejects_cred_callback() {
+        let router = build_test_router();
+        let body = serde_json::json!({"name":"ssrf_cred","description":"t","inputSchema":{"type":"object"},"callback_url":"https://a:b@example.com/cb"});
+        let req = Request::builder().method("POST").uri("/v1/mcp/tools").header("content-type","application/json").body(Body::from(serde_json::to_string(&body).unwrap())).unwrap();
+        let resp = router.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        let b = axum::body::to_bytes(resp.into_body(), 65536).await.unwrap();
+        let j: serde_json::Value = serde_json::from_slice(&b).unwrap();
+        assert!(j["error"].as_str().unwrap().contains("credentials"));
+    }
+
+    #[tokio::test]
+    async fn test_register_tool_accepts_public_callback() {
+        let router = build_test_router();
+        let body = serde_json::json!({"name":"ext_ok","description":"ok","inputSchema":{"type":"object"},"callback_url":"https://example.com:9090/cb"});
+        let req = Request::builder().method("POST").uri("/v1/mcp/tools").header("content-type","application/json").body(Body::from(serde_json::to_string(&body).unwrap())).unwrap();
+        let resp = router.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+    }
+
+    #[tokio::test]
+    async fn test_dispatch_blocks_ssrf_link_local() {
+        let ext = ExternalMcpTool { tool: McpToolDescription { name: "evil".into(), description: "t".into(), input_schema: serde_json::json!({}) }, callback_url: "http://169.254.169.254/latest/meta-data/".into(), source: "test".into() };
+        let call = McpToolCall { name: "evil".into(), arguments: serde_json::json!({}) };
+        let result = dispatch_external_tool(&ext, &call).await;
+        assert!(result.is_error);
+        assert!(result.content[0].text.contains("SSRF") || result.content[0].text.contains("private"));
+    }
+
+    // -----------------------------------------------------------------------
+    // H24: JSON validation helper tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_extract_required_string_present() {
+        let args = serde_json::json!({"name": "hello"});
+        let result = extract_required_string(&args, "name");
+        assert_eq!(result.unwrap(), "hello");
+    }
+
+    #[test]
+    fn test_extract_required_string_missing() {
+        let args = serde_json::json!({});
+        let result = extract_required_string(&args, "name");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.is_error);
+        assert!(err.content[0].text.contains("Missing required argument: name"));
+    }
+
+    #[test]
+    fn test_extract_required_string_null_value() {
+        let args = serde_json::json!({"name": null});
+        let result = extract_required_string(&args, "name");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_extract_required_uuid_valid() {
+        let args = serde_json::json!({"id": "550e8400-e29b-41d4-a716-446655440000"});
+        let result = extract_required_uuid(&args, "id");
+        assert!(result.is_ok());
+        assert_eq!(
+            result.unwrap().to_string(),
+            "550e8400-e29b-41d4-a716-446655440000"
+        );
+    }
+
+    #[test]
+    fn test_extract_required_uuid_invalid() {
+        let args = serde_json::json!({"id": "not-a-uuid"});
+        let result = extract_required_uuid(&args, "id");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.content[0].text.contains("Invalid UUID"));
+    }
+
+    #[test]
+    fn test_extract_required_uuid_missing() {
+        let args = serde_json::json!({});
+        let result = extract_required_uuid(&args, "id");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.content[0].text.contains("Missing required argument"));
+    }
+
+    #[test]
+    fn test_extract_optional_u64_present() {
+        let args = serde_json::json!({"limit": 42});
+        assert_eq!(extract_optional_u64(&args, "limit", 10), 42);
+    }
+
+    #[test]
+    fn test_extract_optional_u64_missing() {
+        let args = serde_json::json!({});
+        assert_eq!(extract_optional_u64(&args, "limit", 10), 10);
+    }
+
+    #[test]
+    fn test_validate_enum_opt_valid() {
+        let v = Some("todo".to_string());
+        assert!(validate_enum_opt(&v, "status", &["todo", "done"]).is_ok());
+    }
+
+    #[test]
+    fn test_validate_enum_opt_invalid() {
+        let v = Some("invalid".to_string());
+        let result = validate_enum_opt(&v, "status", &["todo", "done"]);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.content[0].text.contains("Invalid status"));
+    }
+
+    #[test]
+    fn test_validate_enum_opt_none() {
+        let v: Option<String> = None;
+        assert!(validate_enum_opt(&v, "status", &["todo", "done"]).is_ok());
+    }
+
+    // -----------------------------------------------------------------------
+    // H29: Request ID correlation test
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_mcp_dispatch_generates_request_id() {
+        // Verify that dispatch_tool_call accepts a request_id and does not
+        // panic or alter behavior based on it.
+        let state = test_state();
+        let call = McpToolCall {
+            name: "agnos_health".to_string(),
+            arguments: serde_json::json!({}),
+        };
+        let request_id = Uuid::new_v4();
+        let result = dispatch_tool_call(&state, &call, request_id).await;
+        assert!(!result.is_error);
+        let text = &result.content[0].text;
+        let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+        assert_eq!(parsed["status"], "ok");
     }
 }
