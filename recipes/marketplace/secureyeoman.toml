@@ -2,12 +2,12 @@
 # Multi-agent orchestration with 279 MCP tools, 31 platform integrations,
 # enterprise security, and real-time dashboard. TypeScript/Bun + React.
 #
-# Status: Ready for packaging — SecureYeoman 2026.3.10 is feature-complete.
+# Status: Ready for packaging — SecureYeoman 2026.3.11 is feature-complete.
 # Already uses ghcr.io/maccracken/agnosticos:latest as Docker base.
 
 [package]
 name = "secureyeoman"
-version = "2026.3.10"
+version = "2026.3.11"
 description = "SecureYeoman — Sovereign AI agent platform with multi-agent orchestration"
 license = "AGPL-3.0-only"
 groups = ["server", "ai", "agents"]
@@ -42,7 +42,7 @@ category = "ai-platform"
 runtime = "native-binary"
 publisher = "SecureYeoman"
 tags = ["ai", "agents", "mcp", "orchestration", "security", "llm", "automation", "enterprise"]
-min_agnos_version = "2026.3.10"
+min_agnos_version = "2026.3.11"
 flagship = true
 
 [marketplace.sandbox]

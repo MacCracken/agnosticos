@@ -520,7 +520,7 @@ mod tests {
             version: "1.0.0".to_string(),
             sha256: "abc123".to_string(),
             size_bytes: 1024,
-            min_agnos_version: "2026.3.10".to_string(),
+            min_agnos_version: "2026.3.11".to_string(),
             published_at: 1710000000,
             yanked: false,
             changelog: "Initial release".to_string(),

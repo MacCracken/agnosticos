@@ -1,7 +1,7 @@
 # AGNOS API Reference
 
-> **Last Updated:** 2026-03-10
-> **Version:** 2026.3.10
+> **Last Updated:** 2026-03-11
+> **Version:** 2026.3.11
 
 AGNOS exposes two HTTP/JSON services for interacting with the system. Both bind to `127.0.0.1` by default.
 

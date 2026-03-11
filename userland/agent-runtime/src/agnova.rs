@@ -1397,9 +1397,14 @@ impl AgnovaInstaller {
                         "    initrd /initramfs-{}.img\n",
                         "}}\n",
                     ),
-                    boot.default_entry, boot.timeout_secs,
-                    kver, kernel_cmdline, kver,
-                    kver, kernel_cmdline, kver,
+                    boot.default_entry,
+                    boot.timeout_secs,
+                    kver,
+                    kernel_cmdline,
+                    kver,
+                    kver,
+                    kernel_cmdline,
+                    kver,
                 );
 
                 ops.push(SystemOp::MakeDir {
@@ -1644,10 +1649,13 @@ impl AgnovaInstaller {
         let mut ops = Vec::new();
 
         // Sort partitions: mount "/" first, then others by mount-point depth
-        let mut sorted: Vec<(usize, &PartitionSpec)> =
-            disk.partitions.iter().enumerate().collect();
+        let mut sorted: Vec<(usize, &PartitionSpec)> = disk.partitions.iter().enumerate().collect();
         sorted.sort_by_key(|(_, p)| {
-            if p.mount_point == "/" { 0 } else { p.mount_point.matches('/').count() }
+            if p.mount_point == "/" {
+                0
+            } else {
+                p.mount_point.matches('/').count()
+            }
         });
 
         for (i, part) in &sorted {
@@ -1699,9 +1707,24 @@ impl AgnovaInstaller {
 
         // Create required directory hierarchy
         for dir in &[
-            "bin", "sbin", "lib", "lib64", "usr/bin", "usr/sbin", "usr/lib",
-            "etc", "var/log", "var/lib/agnos/ark/installed", "tmp", "proc",
-            "sys", "dev", "run", "home", "root", "boot",
+            "bin",
+            "sbin",
+            "lib",
+            "lib64",
+            "usr/bin",
+            "usr/sbin",
+            "usr/lib",
+            "etc",
+            "var/log",
+            "var/lib/agnos/ark/installed",
+            "tmp",
+            "proc",
+            "sys",
+            "dev",
+            "run",
+            "home",
+            "root",
+            "boot",
         ] {
             ops.push(SystemOp::MakeDir {
                 path: format!("{}/{}", target_root, dir),
@@ -1877,7 +1900,12 @@ impl AgnovaInstaller {
         // Enable core argonaut services
         let services = match self.config.mode {
             InstallMode::Server | InstallMode::Desktop => vec![
-                "daimon", "hoosh", "aegis", "nftables", "sshd", "networkmanager",
+                "daimon",
+                "hoosh",
+                "aegis",
+                "nftables",
+                "sshd",
+                "networkmanager",
             ],
             InstallMode::Minimal => vec!["nftables", "sshd", "networkmanager"],
             InstallMode::Custom => vec!["nftables", "sshd", "networkmanager"],
@@ -3105,7 +3133,10 @@ mod tests {
         assert_eq!(ops.phase, InstallPhase::MountFilesystems);
         assert!(!ops.operations.is_empty());
         // First real mount should be root
-        let first_mount = ops.operations.iter().find(|op| matches!(op, SystemOp::Mount { .. }));
+        let first_mount = ops
+            .operations
+            .iter()
+            .find(|op| matches!(op, SystemOp::Mount { .. }));
         if let Some(SystemOp::Mount { mount_point, .. }) = first_mount {
             assert_eq!(mount_point, "/mnt/");
         } else {
@@ -3121,9 +3152,10 @@ mod tests {
         assert_eq!(ops.phase, InstallPhase::InstallBase);
         // Should have directory creation + tar extraction + ark fallback
         assert!(ops.operations.len() >= 3);
-        let has_tar = ops.operations.iter().any(|op| {
-            matches!(op, SystemOp::Command { binary, .. } if binary == "tar")
-        });
+        let has_tar = ops
+            .operations
+            .iter()
+            .any(|op| matches!(op, SystemOp::Command { binary, .. } if binary == "tar"));
         assert!(has_tar, "expected tar extraction");
     }
 
@@ -3133,9 +3165,10 @@ mod tests {
         let installer = AgnovaInstaller::new(config);
         let ops = installer.plan_install_packages_ops("/mnt");
         assert_eq!(ops.phase, InstallPhase::InstallPackages);
-        let has_ark = ops.operations.iter().any(|op| {
-            matches!(op, SystemOp::Command { binary, .. } if binary == "ark")
-        });
+        let has_ark = ops
+            .operations
+            .iter()
+            .any(|op| matches!(op, SystemOp::Command { binary, .. } if binary == "ark"));
         assert!(has_ark, "expected ark install command");
     }
 
@@ -3145,12 +3178,14 @@ mod tests {
         let installer = AgnovaInstaller::new(config);
         let ops = installer.plan_security_ops("/mnt");
         assert_eq!(ops.phase, InstallPhase::SetupSecurity);
-        let has_nft = ops.operations.iter().any(|op| {
-            matches!(op, SystemOp::WriteFile { path, .. } if path.contains("nftables"))
-        });
-        let has_sysctl = ops.operations.iter().any(|op| {
-            matches!(op, SystemOp::WriteFile { path, .. } if path.contains("sysctl"))
-        });
+        let has_nft = ops
+            .operations
+            .iter()
+            .any(|op| matches!(op, SystemOp::WriteFile { path, .. } if path.contains("nftables")));
+        let has_sysctl = ops
+            .operations
+            .iter()
+            .any(|op| matches!(op, SystemOp::WriteFile { path, .. } if path.contains("sysctl")));
         assert!(has_nft, "expected nftables config");
         assert!(has_sysctl, "expected sysctl hardening");
     }
@@ -3162,9 +3197,10 @@ mod tests {
         let installer = AgnovaInstaller::new(config);
         let ops = installer.plan_first_boot_ops("/mnt");
         assert_eq!(ops.phase, InstallPhase::FirstBootSetup);
-        let has_chroot = ops.operations.iter().any(|op| {
-            matches!(op, SystemOp::Command { binary, .. } if binary == "chroot")
-        });
+        let has_chroot = ops
+            .operations
+            .iter()
+            .any(|op| matches!(op, SystemOp::Command { binary, .. } if binary == "chroot"));
         assert!(has_chroot, "expected chroot service enable");
         // Desktop mode should enable compositor
         let has_compositor = ops.operations.iter().any(|op| {
@@ -3174,7 +3210,10 @@ mod tests {
                 false
             }
         });
-        assert!(has_compositor, "expected compositor enable for Desktop mode");
+        assert!(
+            has_compositor,
+            "expected compositor enable for Desktop mode"
+        );
     }
 
     #[test]
@@ -3183,24 +3222,40 @@ mod tests {
         let installer = AgnovaInstaller::new(config);
         let ops = installer.plan_cleanup_ops("/mnt");
         assert_eq!(ops.phase, InstallPhase::Cleanup);
-        let has_sync = ops.operations.iter().any(|op| {
-            matches!(op, SystemOp::Command { binary, .. } if binary == "sync")
-        });
-        let has_unmount = ops.operations.iter().any(|op| matches!(op, SystemOp::Unmount { .. }));
+        let has_sync = ops
+            .operations
+            .iter()
+            .any(|op| matches!(op, SystemOp::Command { binary, .. } if binary == "sync"));
+        let has_unmount = ops
+            .operations
+            .iter()
+            .any(|op| matches!(op, SystemOp::Unmount { .. }));
         assert!(has_sync, "expected sync");
         assert!(has_unmount, "expected unmount");
     }
 
     #[test]
     fn partition_device_helper_sda() {
-        assert_eq!(AgnovaInstaller::partition_device("/dev/sda", 0), "/dev/sda1");
-        assert_eq!(AgnovaInstaller::partition_device("/dev/sda", 2), "/dev/sda3");
+        assert_eq!(
+            AgnovaInstaller::partition_device("/dev/sda", 0),
+            "/dev/sda1"
+        );
+        assert_eq!(
+            AgnovaInstaller::partition_device("/dev/sda", 2),
+            "/dev/sda3"
+        );
     }
 
     #[test]
     fn partition_device_helper_nvme() {
-        assert_eq!(AgnovaInstaller::partition_device("/dev/nvme0n1", 0), "/dev/nvme0n1p1");
-        assert_eq!(AgnovaInstaller::partition_device("/dev/mmcblk0", 1), "/dev/mmcblk0p2");
+        assert_eq!(
+            AgnovaInstaller::partition_device("/dev/nvme0n1", 0),
+            "/dev/nvme0n1p1"
+        );
+        assert_eq!(
+            AgnovaInstaller::partition_device("/dev/mmcblk0", 1),
+            "/dev/mmcblk0p2"
+        );
     }
 
     #[test]
@@ -3224,12 +3279,12 @@ mod tests {
         config.bootloader.bootloader_type = BootloaderType::SystemdBoot;
         let installer = AgnovaInstaller::new(config);
         let ops = installer.plan_bootloader_ops("/mnt");
-        let has_loader_conf = ops.operations.iter().any(|op| {
-            matches!(op, SystemOp::WriteFile { path, .. } if path.contains("loader.conf"))
-        });
-        let has_entry = ops.operations.iter().any(|op| {
-            matches!(op, SystemOp::WriteFile { path, .. } if path.contains("agnos.conf"))
-        });
+        let has_loader_conf = ops.operations.iter().any(
+            |op| matches!(op, SystemOp::WriteFile { path, .. } if path.contains("loader.conf")),
+        );
+        let has_entry = ops.operations.iter().any(
+            |op| matches!(op, SystemOp::WriteFile { path, .. } if path.contains("agnos.conf")),
+        );
         let has_rescue = ops.operations.iter().any(|op| {
             matches!(op, SystemOp::WriteFile { path, .. } if path.contains("agnos-rescue.conf"))
         });
@@ -3246,14 +3301,24 @@ mod tests {
         let ops = installer.plan_bootloader_ops("/mnt");
         let grub_cfg = ops.operations.iter().find_map(|op| {
             if let SystemOp::WriteFile { path, content, .. } = op {
-                if path.contains("grub.cfg") { Some(content.as_str()) } else { None }
+                if path.contains("grub.cfg") {
+                    Some(content.as_str())
+                } else {
+                    None
+                }
             } else {
                 None
             }
         });
         let cfg = grub_cfg.expect("grub.cfg should exist");
-        assert!(cfg.contains("vmlinuz-"), "should reference kernel by version");
-        assert!(cfg.contains("initramfs-"), "should reference initramfs by version");
+        assert!(
+            cfg.contains("vmlinuz-"),
+            "should reference kernel by version"
+        );
+        assert!(
+            cfg.contains("initramfs-"),
+            "should reference initramfs by version"
+        );
         // Should NOT have bare "6.6.72" hardcoded without the installer method
         assert!(cfg.contains(installer.kernel_version()));
     }

@@ -595,8 +595,10 @@ pub mod helpers {
                 llm_inference_with_options("prompt", Some("model"), Some(0.5), Some(256)).await;
             // May succeed if a live gateway is running, otherwise errors
             if let Err(e) = &result {
-                assert!(e.to_string().contains("LLM gateway request failed")
-                    || e.to_string().contains("LLM"));
+                assert!(
+                    e.to_string().contains("LLM gateway request failed")
+                        || e.to_string().contains("LLM")
+                );
             }
         }
 
@@ -622,8 +624,10 @@ pub mod helpers {
             let result = llm_list_models().await;
             // May succeed if a live gateway is running, otherwise errors
             if let Err(e) = &result {
-                assert!(e.to_string().contains("LLM gateway request failed")
-                    || e.to_string().contains("LLM"));
+                assert!(
+                    e.to_string().contains("LLM gateway request failed")
+                        || e.to_string().contains("LLM")
+                );
             }
         }
 

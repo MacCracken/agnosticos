@@ -3071,21 +3071,26 @@ LISTEN   0       128     0.0.0.0:80          0.0.0.0:*          users:((\"nginx\
     fn test_config_for_all_tools_has_binary() {
         for tool in ALL_TOOLS.iter() {
             let config = NetworkToolConfig::for_tool(*tool);
-            assert!(!config.binary_name.is_empty(), "Tool {:?} has empty binary", tool);
+            assert!(
+                !config.binary_name.is_empty(),
+                "Tool {:?} has empty binary",
+                tool
+            );
             assert_eq!(config.tool, *tool);
         }
     }
 
     #[test]
     fn test_critical_tools_require_approval() {
-        let critical_tools = [
-            NetworkTool::PacketCapture,
-            NetworkTool::WebScan,
-        ];
+        let critical_tools = [NetworkTool::PacketCapture, NetworkTool::WebScan];
         for tool in &critical_tools {
             let config = NetworkToolConfig::for_tool(*tool);
             assert_eq!(config.risk_level, RiskLevel::Critical);
-            assert!(config.requires_approval, "{:?} should require approval", tool);
+            assert!(
+                config.requires_approval,
+                "{:?} should require approval",
+                tool
+            );
         }
     }
 
@@ -3095,7 +3100,11 @@ LISTEN   0       128     0.0.0.0:80          0.0.0.0:*          users:((\"nginx\
         for tool in &low_tools {
             let config = NetworkToolConfig::for_tool(*tool);
             assert_eq!(config.risk_level, RiskLevel::Low);
-            assert!(!config.requires_approval, "{:?} should not require approval", tool);
+            assert!(
+                !config.requires_approval,
+                "{:?} should not require approval",
+                tool
+            );
         }
     }
 
@@ -3341,7 +3350,9 @@ LISTEN   0       128     0.0.0.0:80          0.0.0.0:*          users:((\"nginx\
 
     #[test]
     fn test_port_scanner_custom_ports_override() {
-        let scanner = PortScanner::new().profile(ScanProfile::Thorough).ports("22,80,443");
+        let scanner = PortScanner::new()
+            .profile(ScanProfile::Thorough)
+            .ports("22,80,443");
         let args = scanner.build_args();
         // -p- and -F should be removed, replaced by custom ports
         assert!(!args.contains(&"-p-".to_string()));

@@ -68,10 +68,7 @@ pub(crate) fn translate_agnostic(intent: &Intent) -> Result<Translation> {
                 serde_json::Value::String(run_id.clone()),
             );
             if let Some(f) = format {
-                args_json.insert(
-                    "format".to_string(),
-                    serde_json::Value::String(f.clone()),
-                );
+                args_json.insert("format".to_string(), serde_json::Value::String(f.clone()));
             }
             let body = serde_json::json!({"name": "agnostic_test_report", "arguments": args_json});
             Ok(Translation {
@@ -95,13 +92,9 @@ pub(crate) fn translate_agnostic(intent: &Intent) -> Result<Translation> {
         Intent::AgnosticListSuites { category } => {
             let mut args_json = serde_json::Map::new();
             if let Some(c) = category {
-                args_json.insert(
-                    "category".to_string(),
-                    serde_json::Value::String(c.clone()),
-                );
+                args_json.insert("category".to_string(), serde_json::Value::String(c.clone()));
             }
-            let body =
-                serde_json::json!({"name": "agnostic_list_suites", "arguments": args_json});
+            let body = serde_json::json!({"name": "agnostic_list_suites", "arguments": args_json});
             Ok(Translation {
                 command: "curl".to_string(),
                 args: vec![
@@ -134,8 +127,7 @@ pub(crate) fn translate_agnostic(intent: &Intent) -> Result<Translation> {
                     serde_json::Value::String(t.clone()),
                 );
             }
-            let body =
-                serde_json::json!({"name": "agnostic_agent_status", "arguments": args_json});
+            let body = serde_json::json!({"name": "agnostic_agent_status", "arguments": args_json});
             Ok(Translation {
                 command: "curl".to_string(),
                 args: vec![

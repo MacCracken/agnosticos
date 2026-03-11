@@ -247,7 +247,11 @@ impl SelfHostValidator {
             let found = which_bin(tool).is_some();
             checks.push(CheckResult {
                 name: format!("{}_present", tool),
-                status: if found { CheckStatus::Pass } else { CheckStatus::Fail },
+                status: if found {
+                    CheckStatus::Pass
+                } else {
+                    CheckStatus::Fail
+                },
                 detail: which_bin(tool).map(|p| p.to_string_lossy().to_string()),
             });
         }
@@ -280,7 +284,11 @@ impl SelfHostValidator {
             let found = pkg_config_exists(lib);
             checks.push(CheckResult {
                 name: format!("lib_{}", lib),
-                status: if found { CheckStatus::Pass } else { CheckStatus::Fail },
+                status: if found {
+                    CheckStatus::Pass
+                } else {
+                    CheckStatus::Fail
+                },
                 detail: None,
             });
         }
@@ -289,7 +297,11 @@ impl SelfHostValidator {
         let disk_ok = check_disk_space(&self.config.root, self.config.min_disk_gb);
         checks.push(CheckResult {
             name: "disk_space".into(),
-            status: if disk_ok { CheckStatus::Pass } else { CheckStatus::Fail },
+            status: if disk_ok {
+                CheckStatus::Pass
+            } else {
+                CheckStatus::Fail
+            },
             detail: Some(format!("minimum {}GB required", self.config.min_disk_gb)),
         });
 
@@ -297,7 +309,11 @@ impl SelfHostValidator {
         let mem_ok = check_memory(self.config.min_memory_mb);
         checks.push(CheckResult {
             name: "memory".into(),
-            status: if mem_ok { CheckStatus::Pass } else { CheckStatus::Fail },
+            status: if mem_ok {
+                CheckStatus::Pass
+            } else {
+                CheckStatus::Fail
+            },
             detail: Some(format!("minimum {}MB required", self.config.min_memory_mb)),
         });
 
@@ -327,9 +343,7 @@ impl SelfHostValidator {
         // Find kernel build directory
         let kver = get_kernel_version();
         let build_dir_candidates = [
-            self.config
-                .root
-                .join(format!("lib/modules/{}/build", kver)),
+            self.config.root.join(format!("lib/modules/{}/build", kver)),
             self.config.root.join("usr/src/linux"),
         ];
 
@@ -371,7 +385,11 @@ impl SelfHostValidator {
             let found = which_bin(tool).is_some();
             checks.push(CheckResult {
                 name: format!("{}_present", tool),
-                status: if found { CheckStatus::Pass } else { CheckStatus::Fail },
+                status: if found {
+                    CheckStatus::Pass
+                } else {
+                    CheckStatus::Fail
+                },
                 detail: None,
             });
         }
@@ -439,11 +457,7 @@ impl SelfHostValidator {
 
         // Check each required crate
         for crate_name in &self.config.required_crates {
-            let crate_dir = self
-                .config
-                .source_path
-                .join("userland")
-                .join(crate_name);
+            let crate_dir = self.config.source_path.join("userland").join(crate_name);
             let crate_toml = crate_dir.join("Cargo.toml");
             checks.push(CheckResult {
                 name: format!("crate_{}", crate_name),
@@ -478,7 +492,11 @@ impl SelfHostValidator {
             let found = pkg_config_exists(lib);
             checks.push(CheckResult {
                 name: format!("syslib_{}", lib),
-                status: if found { CheckStatus::Pass } else { CheckStatus::Fail },
+                status: if found {
+                    CheckStatus::Pass
+                } else {
+                    CheckStatus::Fail
+                },
                 detail: Some(format!("needed for {}", purpose)),
             });
         }
@@ -589,7 +607,11 @@ impl SelfHostValidator {
                 let found = recipes.iter().any(|r| r.name == *pkg);
                 checks.push(CheckResult {
                     name: format!("recipe_{}", pkg),
-                    status: if found { CheckStatus::Pass } else { CheckStatus::Fail },
+                    status: if found {
+                        CheckStatus::Pass
+                    } else {
+                        CheckStatus::Fail
+                    },
                     detail: None,
                 });
             }
@@ -728,9 +750,11 @@ fn check_dependency_closure(recipes: &[RecipeInfo]) -> (bool, Vec<String>) {
 
     for recipe in recipes {
         for dep in recipe.runtime_deps.iter().chain(recipe.build_deps.iter()) {
-            if !known.contains(dep.as_str()) && !virtual_pkgs.contains(dep.as_str())
-                && !missing.contains(dep) {
-                    missing.push(dep.clone());
+            if !known.contains(dep.as_str())
+                && !virtual_pkgs.contains(dep.as_str())
+                && !missing.contains(dep)
+            {
+                missing.push(dep.clone());
             }
         }
     }
@@ -822,11 +846,7 @@ fn count_files_with_extension(dir: &Path, ext: &str) -> usize {
         .map(|entries| {
             entries
                 .flatten()
-                .filter(|e| {
-                    e.path()
-                        .extension()
-                        .is_some_and(|e| e == ext)
-                })
+                .filter(|e| e.path().extension().is_some_and(|e| e == ext))
                 .count()
         })
         .unwrap_or(0)
@@ -841,9 +861,18 @@ fn build_phase_report(
     checks: Vec<CheckResult>,
     start: std::time::Instant,
 ) -> PhaseReport {
-    let passed = checks.iter().filter(|c| c.status == CheckStatus::Pass).count();
-    let failed = checks.iter().filter(|c| c.status == CheckStatus::Fail).count();
-    let skipped = checks.iter().filter(|c| c.status == CheckStatus::Skip).count();
+    let passed = checks
+        .iter()
+        .filter(|c| c.status == CheckStatus::Pass)
+        .count();
+    let failed = checks
+        .iter()
+        .filter(|c| c.status == CheckStatus::Fail)
+        .count();
+    let skipped = checks
+        .iter()
+        .filter(|c| c.status == CheckStatus::Skip)
+        .count();
     let duration_ms = start.elapsed().as_millis() as u64;
 
     PhaseReport {
@@ -953,8 +982,11 @@ mod tests {
                 detail: None,
             },
         ];
-        let report =
-            build_phase_report(ValidationPhase::Toolchain, checks, std::time::Instant::now());
+        let report = build_phase_report(
+            ValidationPhase::Toolchain,
+            checks,
+            std::time::Instant::now(),
+        );
         assert_eq!(report.passed, 2);
         assert_eq!(report.failed, 1);
         assert_eq!(report.skipped, 1);
@@ -965,7 +997,7 @@ mod tests {
     fn test_self_host_report_ready() {
         let report = SelfHostReport {
             timestamp: "2026-03-10T00:00:00Z".into(),
-            version: "2026.3.10".into(),
+            version: "2026.3.11".into(),
             phases: vec![PhaseReport {
                 phase: ValidationPhase::Toolchain,
                 checks: vec![CheckResult {
@@ -990,7 +1022,7 @@ mod tests {
     fn test_self_host_report_not_ready() {
         let report = SelfHostReport {
             timestamp: "2026-03-10T00:00:00Z".into(),
-            version: "2026.3.10".into(),
+            version: "2026.3.11".into(),
             phases: vec![],
             total_passed: 5,
             total_failed: 2,
@@ -1226,11 +1258,7 @@ install = "make install"
         assert_eq!(report.phases.len(), 4);
         assert_eq!(
             report.total_passed + report.total_failed + report.total_skipped,
-            report
-                .phases
-                .iter()
-                .map(|p| p.checks.len())
-                .sum::<usize>()
+            report.phases.iter().map(|p| p.checks.len()).sum::<usize>()
         );
     }
 
@@ -1238,7 +1266,7 @@ install = "make install"
     fn test_selfhost_report_serialization() {
         let report = SelfHostReport {
             timestamp: "2026-03-10T00:00:00Z".into(),
-            version: "2026.3.10".into(),
+            version: "2026.3.11".into(),
             phases: vec![PhaseReport {
                 phase: ValidationPhase::Toolchain,
                 checks: vec![
@@ -1270,7 +1298,7 @@ install = "make install"
         assert!(json.contains("\"fail\""));
 
         let deserialized: SelfHostReport = serde_json::from_str(&json).unwrap();
-        assert_eq!(deserialized.version, "2026.3.10");
+        assert_eq!(deserialized.version, "2026.3.11");
         assert!(!deserialized.ready);
     }
 
@@ -1309,8 +1337,7 @@ install = "make install"
                 detail: None,
             },
         ];
-        let report =
-            build_phase_report(ValidationPhase::Kernel, checks, std::time::Instant::now());
+        let report = build_phase_report(ValidationPhase::Kernel, checks, std::time::Instant::now());
         assert_eq!(report.passed, 0);
         assert_eq!(report.failed, 2);
     }
@@ -1389,7 +1416,9 @@ install = "make install"
     fn test_required_crates_comprehensive() {
         let config = SelfHostConfig::default();
         assert!(config.required_crates.contains(&"agnos-common".to_string()));
-        assert!(config.required_crates.contains(&"agent-runtime".to_string()));
+        assert!(config
+            .required_crates
+            .contains(&"agent-runtime".to_string()));
         assert!(config.required_crates.contains(&"llm-gateway".to_string()));
         assert!(config.required_crates.contains(&"ai-shell".to_string()));
         assert!(config

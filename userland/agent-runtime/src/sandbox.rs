@@ -1507,7 +1507,11 @@ mod tests {
     #[test]
     fn test_seccomp_filter_chaining() {
         let mut filter = SeccompFilter::new();
-        filter.allow("socket").allow("bind").deny("ptrace").deny("personality");
+        filter
+            .allow("socket")
+            .allow("bind")
+            .deny("ptrace")
+            .deny("personality");
         assert!(filter.allowed_syscalls.contains("socket"));
         assert!(filter.allowed_syscalls.contains("bind"));
         assert!(filter.denied_syscalls.contains("ptrace"));

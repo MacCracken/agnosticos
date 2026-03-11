@@ -7,7 +7,7 @@
 
 [package]
 name = "agnostic"
-version = "2026.3.10"
+version = "2026.3.11"
 description = "Agnostic — AI-driven multi-agent QA platform"
 license = "MIT"
 groups = ["server", "qa", "python"]
@@ -45,7 +45,7 @@ category = "developer-tools"
 runtime = "python-container"
 publisher = "Agnostic"
 tags = ["qa", "testing", "ai-agents", "crewai", "security-compliance", "performance", "self-healing"]
-min_agnos_version = "2026.3.10"
+min_agnos_version = "2026.3.11"
 
 [marketplace.sandbox]
 seccomp_mode = "basic"

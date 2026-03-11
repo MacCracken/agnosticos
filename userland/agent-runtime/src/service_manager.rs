@@ -2238,7 +2238,11 @@ enabled = false
 
     #[test]
     fn test_restart_policy_serialization_roundtrip() {
-        let variants = [RestartPolicy::No, RestartPolicy::Always, RestartPolicy::OnFailure];
+        let variants = [
+            RestartPolicy::No,
+            RestartPolicy::Always,
+            RestartPolicy::OnFailure,
+        ];
         for v in &variants {
             let json = serde_json::to_string(v).unwrap();
             let deser: RestartPolicy = serde_json::from_str(&json).unwrap();
@@ -2248,7 +2252,11 @@ enabled = false
 
     #[test]
     fn test_service_type_serialization_roundtrip() {
-        let variants = [ServiceType::Simple, ServiceType::Notify, ServiceType::Oneshot];
+        let variants = [
+            ServiceType::Simple,
+            ServiceType::Notify,
+            ServiceType::Oneshot,
+        ];
         for v in &variants {
             let json = serde_json::to_string(v).unwrap();
             let deser: ServiceType = serde_json::from_str(&json).unwrap();
@@ -2301,16 +2309,22 @@ enabled = false
     #[test]
     fn test_dependency_levels_independent() {
         let mut services = HashMap::new();
-        services.insert("a".to_string(), ServiceDefinition {
-            name: "a".to_string(),
-            exec_start: "/bin/a".to_string(),
-            ..service_def_defaults()
-        });
-        services.insert("b".to_string(), ServiceDefinition {
-            name: "b".to_string(),
-            exec_start: "/bin/b".to_string(),
-            ..service_def_defaults()
-        });
+        services.insert(
+            "a".to_string(),
+            ServiceDefinition {
+                name: "a".to_string(),
+                exec_start: "/bin/a".to_string(),
+                ..service_def_defaults()
+            },
+        );
+        services.insert(
+            "b".to_string(),
+            ServiceDefinition {
+                name: "b".to_string(),
+                exec_start: "/bin/b".to_string(),
+                ..service_def_defaults()
+            },
+        );
         let order = topological_sort(&services).unwrap();
         let levels = dependency_levels(&services, &order);
         // Both should be level 0 (no deps)
@@ -2321,23 +2335,32 @@ enabled = false
     #[test]
     fn test_dependency_levels_chain() {
         let mut services = HashMap::new();
-        services.insert("base".to_string(), ServiceDefinition {
-            name: "base".to_string(),
-            exec_start: "/bin/base".to_string(),
-            ..service_def_defaults()
-        });
-        services.insert("mid".to_string(), ServiceDefinition {
-            name: "mid".to_string(),
-            exec_start: "/bin/mid".to_string(),
-            after: vec!["base".to_string()],
-            ..service_def_defaults()
-        });
-        services.insert("top".to_string(), ServiceDefinition {
-            name: "top".to_string(),
-            exec_start: "/bin/top".to_string(),
-            after: vec!["mid".to_string()],
-            ..service_def_defaults()
-        });
+        services.insert(
+            "base".to_string(),
+            ServiceDefinition {
+                name: "base".to_string(),
+                exec_start: "/bin/base".to_string(),
+                ..service_def_defaults()
+            },
+        );
+        services.insert(
+            "mid".to_string(),
+            ServiceDefinition {
+                name: "mid".to_string(),
+                exec_start: "/bin/mid".to_string(),
+                after: vec!["base".to_string()],
+                ..service_def_defaults()
+            },
+        );
+        services.insert(
+            "top".to_string(),
+            ServiceDefinition {
+                name: "top".to_string(),
+                exec_start: "/bin/top".to_string(),
+                after: vec!["mid".to_string()],
+                ..service_def_defaults()
+            },
+        );
         let order = topological_sort(&services).unwrap();
         let levels = dependency_levels(&services, &order);
         assert_eq!(levels.len(), 3);
@@ -2370,9 +2393,7 @@ enabled = false
 
     #[test]
     fn test_fleet_reconcile_stop_removed() {
-        let config = FleetConfig {
-            services: vec![],
-        };
+        let config = FleetConfig { services: vec![] };
         let plan = config.reconcile(&["old-svc".to_string()]);
         assert!(plan.to_start.is_empty());
         assert_eq!(plan.to_stop, vec!["old-svc"]);

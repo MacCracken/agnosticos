@@ -2,12 +2,12 @@
 # High-performance cross-platform trading platform built in Rust.
 # Sub-100ms execution target. CI releases on GitHub.
 #
-# Status: Ready for packaging — BullShift 2026.3.10 is feature-complete.
+# Status: Ready for packaging — BullShift 2026.3.11 is feature-complete.
 # Release asset: bullshift-linux-amd64.tar.gz (~2.7 MB)
 
 [package]
 name = "bullshift"
-version = "2026.3.10"
+version = "2026.3.11"
 description = "BullShift — High-performance cross-platform trading platform"
 license = "MIT"
 groups = ["server", "finance", "rust"]
@@ -39,7 +39,7 @@ category = "finance"
 runtime = "native-binary"
 publisher = "BullShift"
 tags = ["trading", "finance", "market-data", "rust", "high-performance"]
-min_agnos_version = "2026.3.10"
+min_agnos_version = "2026.3.11"
 
 [marketplace.sandbox]
 seccomp_mode = "desktop"

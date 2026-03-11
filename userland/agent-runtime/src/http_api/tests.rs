@@ -4323,7 +4323,11 @@ mod tests {
             .await
             .unwrap();
         let reg_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        let id1: Uuid = reg_json["results"][0]["id"].as_str().unwrap().parse().unwrap();
+        let id1: Uuid = reg_json["results"][0]["id"]
+            .as_str()
+            .unwrap()
+            .parse()
+            .unwrap();
 
         // Deregister only the first by ID
         let app2 = build_router(state.clone());
@@ -4547,7 +4551,10 @@ mod tests {
             .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         let tools = json["tools"].as_array().unwrap();
-        let matching: Vec<_> = tools.iter().filter(|t| t["name"] == "replaceable_tool").collect();
+        let matching: Vec<_> = tools
+            .iter()
+            .filter(|t| t["name"] == "replaceable_tool")
+            .collect();
         assert_eq!(matching.len(), 1);
         assert_eq!(matching[0]["description"], "version 2");
     }
@@ -5880,5 +5887,4 @@ mod tests {
         let resp = app.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
     }
-
 }

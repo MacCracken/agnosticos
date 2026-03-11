@@ -612,21 +612,14 @@ async fn dispatch_external_tool(ext: &ExternalMcpTool, call: &McpToolCall) -> Mc
         .build()
         .unwrap_or_else(|_| reqwest::Client::new());
 
-    match client
-        .post(&ext.callback_url)
-        .json(call)
-        .send()
-        .await
-    {
-        Ok(resp) if resp.status().is_success() => {
-            match resp.json::<McpToolResult>().await {
-                Ok(result) => result,
-                Err(e) => {
-                    warn!(tool = %call.name, error = %e, "Failed to parse external tool response");
-                    error_result(format!("External tool returned invalid response: {}", e))
-                }
+    match client.post(&ext.callback_url).json(call).send().await {
+        Ok(resp) if resp.status().is_success() => match resp.json::<McpToolResult>().await {
+            Ok(result) => result,
+            Err(e) => {
+                warn!(tool = %call.name, error = %e, "Failed to parse external tool response");
+                error_result(format!("External tool returned invalid response: {}", e))
             }
-        }
+        },
         Ok(resp) => {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
@@ -746,8 +739,7 @@ async fn handle_register_agent(state: &ApiState, args: &serde_json::Value) -> Mc
         .and_then(|v| serde_json::from_value(v.clone()).ok())
         .unwrap_or_default();
 
-    let client_id: Option<Uuid> = get_string_arg(args, "id")
-        .and_then(|s| Uuid::parse_str(&s).ok());
+    let client_id: Option<Uuid> = get_string_arg(args, "id").and_then(|s| Uuid::parse_str(&s).ok());
 
     let req = RegisterAgentRequest {
         name: name.clone(),
@@ -1437,7 +1429,11 @@ impl AequiBridge {
         &self.base_url
     }
 
-    async fn get(&self, path: &str, query: &[(String, String)]) -> Result<serde_json::Value, String> {
+    async fn get(
+        &self,
+        path: &str,
+        query: &[(String, String)],
+    ) -> Result<serde_json::Value, String> {
         let client = reqwest::Client::new();
         let url = format!("{}{}", self.base_url, path);
         let mut req = client.get(&url).query(query);
@@ -1560,10 +1556,7 @@ async fn handle_aequi_import_bank(args: &serde_json::Value) -> McpToolResult {
     let format = get_optional_string_arg(args, "format");
     if let Some(ref f) = format {
         if !["ofx", "qfx", "csv"].contains(&f.as_str()) {
-            return error_result(format!(
-                "Invalid format '{}': must be ofx, qfx, or csv",
-                f
-            ));
+            return error_result(format!("Invalid format '{}': must be ofx, qfx, or csv", f));
         }
     }
 
@@ -1671,7 +1664,10 @@ async fn handle_aequi_receipts(args: &serde_json::Value) -> McpToolResult {
                 if s == "all" {
                     receipts
                 } else {
-                    receipts.into_iter().filter(|r| r["status"].as_str() == Some(s.as_str())).collect()
+                    receipts
+                        .into_iter()
+                        .filter(|r| r["status"].as_str() == Some(s.as_str()))
+                        .collect()
                 }
             } else {
                 receipts
@@ -1715,7 +1711,11 @@ impl AgnosticBridge {
         &self.base_url
     }
 
-    async fn get(&self, path: &str, query: &[(String, String)]) -> Result<serde_json::Value, String> {
+    async fn get(
+        &self,
+        path: &str,
+        query: &[(String, String)],
+    ) -> Result<serde_json::Value, String> {
         let client = reqwest::Client::new();
         let url = format!("{}{}", self.base_url, path);
         let mut req = client.get(&url).query(query);
@@ -1831,8 +1831,7 @@ async fn handle_agnostic_test_report(args: &serde_json::Value) -> McpToolResult 
         None => return error_result("Missing required argument: run_id".to_string()),
     };
 
-    let format = get_optional_string_arg(args, "format")
-        .unwrap_or_else(|| "summary".to_string());
+    let format = get_optional_string_arg(args, "format").unwrap_or_else(|| "summary".to_string());
 
     if !["summary", "full", "json"].contains(&format.as_str()) {
         return error_result(format!(
@@ -1843,7 +1842,10 @@ async fn handle_agnostic_test_report(args: &serde_json::Value) -> McpToolResult 
 
     let bridge = AgnosticBridge::new();
     let query = vec![("format".to_string(), format.clone())];
-    match bridge.get(&format!("/api/v1/runs/{}/report", run_id), &query).await {
+    match bridge
+        .get(&format!("/api/v1/runs/{}/report", run_id), &query)
+        .await
+    {
         Ok(response) => {
             info!(run_id = %run_id, "Agnostic: test report (bridged)");
             success_result(response)
@@ -1905,7 +1907,10 @@ async fn handle_agnostic_list_suites(args: &serde_json::Value) -> McpToolResult 
                 if c == "all" {
                     suites
                 } else {
-                    suites.into_iter().filter(|s| s["category"].as_str() == Some(c.as_str())).collect()
+                    suites
+                        .into_iter()
+                        .filter(|s| s["category"].as_str() == Some(c.as_str()))
+                        .collect()
                 }
             } else {
                 suites
@@ -1923,8 +1928,15 @@ async fn handle_agnostic_agent_status(args: &serde_json::Value) -> McpToolResult
     let agent_type = get_optional_string_arg(args, "agent_type");
 
     if let Some(ref t) = agent_type {
-        if !["ui", "api", "security", "performance", "accessibility", "self-healing"]
-            .contains(&t.as_str())
+        if ![
+            "ui",
+            "api",
+            "security",
+            "performance",
+            "accessibility",
+            "self-healing",
+        ]
+        .contains(&t.as_str())
         {
             return error_result(format!("Invalid agent_type '{}': must be ui, api, security, performance, accessibility, or self-healing", t));
         }
@@ -1952,7 +1964,10 @@ async fn handle_agnostic_agent_status(args: &serde_json::Value) -> McpToolResult
                 serde_json::json!({"type": "self-healing", "status": "idle", "last_run": "2026-03-10T14:30:00Z", "tests_run_today": 12}),
             ];
             let filtered: Vec<_> = if let Some(ref t) = agent_type {
-                agents.into_iter().filter(|a| a["type"].as_str() == Some(t.as_str())).collect()
+                agents
+                    .into_iter()
+                    .filter(|a| a["type"].as_str() == Some(t.as_str()))
+                    .collect()
             } else {
                 agents
             };
@@ -2008,7 +2023,11 @@ impl DeltaBridge {
             .map_err(|e| e.to_string())
     }
 
-    async fn get(&self, path: &str, query: &[(String, String)]) -> Result<serde_json::Value, String> {
+    async fn get(
+        &self,
+        path: &str,
+        query: &[(String, String)],
+    ) -> Result<serde_json::Value, String> {
         let client = Self::build_client()?;
         let url = format!("{}{}", self.base_url, path);
         let mut req = client.get(&url).query(query);
@@ -2103,10 +2122,7 @@ async fn handle_delta_create_repository(args: &serde_json::Value) -> McpToolResu
 
 async fn handle_delta_list_repositories(args: &serde_json::Value) -> McpToolResult {
     let owner = get_optional_string_arg(args, "owner");
-    let limit = args
-        .get("limit")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(20) as usize;
+    let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(20) as usize;
 
     let bridge = DeltaBridge::new();
     let mut query = Vec::new();
@@ -2190,8 +2206,8 @@ async fn handle_delta_pull_request(args: &serde_json::Value) -> McpToolResult {
             }
         }
         "create" => {
-            let title = get_optional_string_arg(args, "title")
-                .unwrap_or_else(|| "Untitled PR".to_string());
+            let title =
+                get_optional_string_arg(args, "title").unwrap_or_else(|| "Untitled PR".to_string());
             let source_branch = get_optional_string_arg(args, "source_branch")
                 .unwrap_or_else(|| "feature".to_string());
             let target_branch = get_optional_string_arg(args, "target_branch")
@@ -3085,12 +3101,7 @@ mod tests {
     #[tokio::test]
     async fn test_delta_create_repository_missing_name() {
         let router = build_test_router();
-        let result = call_tool(
-            &router,
-            "delta_create_repository",
-            serde_json::json!({}),
-        )
-        .await;
+        let result = call_tool(&router, "delta_create_repository", serde_json::json!({})).await;
         assert!(result.is_error);
     }
 
@@ -3109,12 +3120,7 @@ mod tests {
     #[tokio::test]
     async fn test_delta_list_repositories_mock() {
         let router = build_test_router();
-        let result = call_tool(
-            &router,
-            "delta_list_repositories",
-            serde_json::json!({}),
-        )
-        .await;
+        let result = call_tool(&router, "delta_list_repositories", serde_json::json!({})).await;
         assert!(!result.is_error);
         let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
         assert!(parsed["repositories"].as_array().is_some());
@@ -3122,7 +3128,8 @@ mod tests {
         let source = parsed["_source"].as_str().unwrap_or("");
         assert!(
             source == "mock" || source == "bridge",
-            "expected mock or bridge, got: {}", source
+            "expected mock or bridge, got: {}",
+            source
         );
     }
 
@@ -3171,12 +3178,7 @@ mod tests {
     #[tokio::test]
     async fn test_delta_pull_request_missing_action() {
         let router = build_test_router();
-        let result = call_tool(
-            &router,
-            "delta_pull_request",
-            serde_json::json!({}),
-        )
-        .await;
+        let result = call_tool(&router, "delta_pull_request", serde_json::json!({})).await;
         assert!(result.is_error);
     }
 
@@ -3282,12 +3284,7 @@ mod tests {
     #[tokio::test]
     async fn test_aequi_schedule_c_mock() {
         let router = build_test_router();
-        let result = call_tool(
-            &router,
-            "aequi_schedule_c_preview",
-            serde_json::json!({}),
-        )
-        .await;
+        let result = call_tool(&router, "aequi_schedule_c_preview", serde_json::json!({})).await;
         assert!(!result.is_error);
         let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
         if parsed["_source"] == "mock" {
@@ -3339,12 +3336,7 @@ mod tests {
     #[tokio::test]
     async fn test_aequi_balances_mock() {
         let router = build_test_router();
-        let result = call_tool(
-            &router,
-            "aequi_account_balances",
-            serde_json::json!({}),
-        )
-        .await;
+        let result = call_tool(&router, "aequi_account_balances", serde_json::json!({})).await;
         assert!(!result.is_error);
         let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
         assert!(parsed["accounts"].as_array().is_some());
@@ -3367,12 +3359,7 @@ mod tests {
     #[tokio::test]
     async fn test_aequi_receipts_mock() {
         let router = build_test_router();
-        let result = call_tool(
-            &router,
-            "aequi_list_receipts",
-            serde_json::json!({}),
-        )
-        .await;
+        let result = call_tool(&router, "aequi_list_receipts", serde_json::json!({})).await;
         assert!(!result.is_error);
         let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
         if parsed["_source"] == "mock" {
@@ -3433,12 +3420,7 @@ mod tests {
     #[tokio::test]
     async fn test_agnostic_run_suite_missing_name() {
         let router = build_test_router();
-        let result = call_tool(
-            &router,
-            "agnostic_run_suite",
-            serde_json::json!({}),
-        )
-        .await;
+        let result = call_tool(&router, "agnostic_run_suite", serde_json::json!({})).await;
         assert!(result.is_error);
     }
 
@@ -3461,12 +3443,7 @@ mod tests {
     #[tokio::test]
     async fn test_agnostic_test_status_missing_id() {
         let router = build_test_router();
-        let result = call_tool(
-            &router,
-            "agnostic_test_status",
-            serde_json::json!({}),
-        )
-        .await;
+        let result = call_tool(&router, "agnostic_test_status", serde_json::json!({})).await;
         assert!(result.is_error);
     }
 
@@ -3501,24 +3478,14 @@ mod tests {
     #[tokio::test]
     async fn test_agnostic_test_report_missing_id() {
         let router = build_test_router();
-        let result = call_tool(
-            &router,
-            "agnostic_test_report",
-            serde_json::json!({}),
-        )
-        .await;
+        let result = call_tool(&router, "agnostic_test_report", serde_json::json!({})).await;
         assert!(result.is_error);
     }
 
     #[tokio::test]
     async fn test_agnostic_list_suites_mock() {
         let router = build_test_router();
-        let result = call_tool(
-            &router,
-            "agnostic_list_suites",
-            serde_json::json!({}),
-        )
-        .await;
+        let result = call_tool(&router, "agnostic_list_suites", serde_json::json!({})).await;
         assert!(!result.is_error);
         let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
         assert!(parsed["suites"].as_array().unwrap().len() >= 2);
@@ -3557,12 +3524,7 @@ mod tests {
     #[tokio::test]
     async fn test_agnostic_agent_status_mock() {
         let router = build_test_router();
-        let result = call_tool(
-            &router,
-            "agnostic_agent_status",
-            serde_json::json!({}),
-        )
-        .await;
+        let result = call_tool(&router, "agnostic_agent_status", serde_json::json!({})).await;
         assert!(!result.is_error);
         let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
         assert!(parsed["agents"].as_array().unwrap().len() >= 4);
@@ -3777,7 +3739,11 @@ mod tests {
     #[test]
     fn test_build_tool_manifest_has_tools() {
         let manifest = build_tool_manifest();
-        assert!(manifest.tools.len() >= 20, "Expected at least 20 MCP tools, got {}", manifest.tools.len());
+        assert!(
+            manifest.tools.len() >= 20,
+            "Expected at least 20 MCP tools, got {}",
+            manifest.tools.len()
+        );
     }
 
     #[test]
@@ -3785,8 +3751,16 @@ mod tests {
         let manifest = build_tool_manifest();
         for tool in &manifest.tools {
             assert!(!tool.name.is_empty(), "Tool has empty name");
-            assert!(!tool.description.is_empty(), "Tool {} has empty description", tool.name);
-            assert_eq!(tool.input_schema["type"], "object", "Tool {} schema missing type:object", tool.name);
+            assert!(
+                !tool.description.is_empty(),
+                "Tool {} has empty description",
+                tool.name
+            );
+            assert_eq!(
+                tool.input_schema["type"], "object",
+                "Tool {} schema missing type:object",
+                tool.name
+            );
         }
     }
 
@@ -3795,8 +3769,14 @@ mod tests {
         let manifest = build_tool_manifest();
         let names: Vec<&str> = manifest.tools.iter().map(|t| t.name.as_str()).collect();
         assert!(names.contains(&"agnos_health"), "Missing agnos_health");
-        assert!(names.contains(&"agnos_list_agents"), "Missing agnos_list_agents");
-        assert!(names.contains(&"agnos_register_agent"), "Missing agnos_register_agent");
+        assert!(
+            names.contains(&"agnos_list_agents"),
+            "Missing agnos_list_agents"
+        );
+        assert!(
+            names.contains(&"agnos_register_agent"),
+            "Missing agnos_register_agent"
+        );
     }
 
     #[test]

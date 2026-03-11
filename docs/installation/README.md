@@ -1,6 +1,6 @@
 # AGNOS Installation Guide
 
-> **Version:** 2026.3.10 | **Last Updated:** 2026-03-10
+> **Version:** 2026.3.11 | **Last Updated:** 2026-03-11
 
 This guide covers installing AGNOS on bare metal hardware and virtual machines.
 

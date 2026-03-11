@@ -109,7 +109,11 @@ impl Interpreter {
         }
 
         if let Some(caps) = self.try_captures("delta_pr", input_lower) {
-            let action = caps.get(2).map_or("list", |m| m.as_str()).trim().to_string();
+            let action = caps
+                .get(2)
+                .map_or("list", |m| m.as_str())
+                .trim()
+                .to_string();
             let repo = caps
                 .get(4)
                 .map(|m| m.as_str().trim().to_string())
@@ -630,10 +634,7 @@ impl Interpreter {
             }
         }
 
-        if self
-            .try_captures("marketplace_list", input_lower)
-            .is_some()
-        {
+        if self.try_captures("marketplace_list", input_lower).is_some() {
             return Intent::MarketplaceList;
         }
 

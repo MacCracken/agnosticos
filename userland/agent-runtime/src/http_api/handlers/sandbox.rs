@@ -541,9 +541,7 @@ pub struct UpsertSandboxProfileRequest {
 }
 
 /// GET /v1/sandbox/profiles/custom — list all custom sandbox profiles.
-pub async fn list_custom_profiles_handler(
-    State(state): State<ApiState>,
-) -> impl IntoResponse {
+pub async fn list_custom_profiles_handler(State(state): State<ApiState>) -> impl IntoResponse {
     let profiles = state.custom_sandbox_profiles.read().await;
     let list: Vec<&CustomSandboxProfile> = profiles.values().collect();
     Json(serde_json::json!({

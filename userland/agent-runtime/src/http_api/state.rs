@@ -117,7 +117,8 @@ pub struct ApiState {
     /// Dynamically registered external MCP tools.
     pub external_mcp_tools: Arc<RwLock<Vec<crate::mcp_server::ExternalMcpTool>>>,
     /// Custom sandbox profiles (name -> profile config).
-    pub custom_sandbox_profiles: Arc<RwLock<HashMap<String, crate::http_api::handlers::sandbox::CustomSandboxProfile>>>,
+    pub custom_sandbox_profiles:
+        Arc<RwLock<HashMap<String, crate::http_api::handlers::sandbox::CustomSandboxProfile>>>,
 }
 
 impl std::fmt::Debug for ApiState {

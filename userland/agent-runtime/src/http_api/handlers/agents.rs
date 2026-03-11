@@ -330,7 +330,9 @@ pub async fn batch_deregister_handler(
     let ids_to_remove: Vec<Uuid> = if let Some(ref source) = req.source {
         agents
             .iter()
-            .filter(|(_, entry)| entry.detail.metadata.get("source").map(|s| s.as_str()) == Some(source))
+            .filter(|(_, entry)| {
+                entry.detail.metadata.get("source").map(|s| s.as_str()) == Some(source)
+            })
             .map(|(id, _)| *id)
             .collect()
     } else if let Some(ref ids) = req.ids {
@@ -359,7 +361,10 @@ pub async fn batch_deregister_handler(
         }
     }
 
-    let deregistered = results.iter().filter(|r| r.status == "deregistered").count();
+    let deregistered = results
+        .iter()
+        .filter(|r| r.status == "deregistered")
+        .count();
     let not_found = results.iter().filter(|r| r.status == "not_found").count();
 
     info!(

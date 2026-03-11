@@ -2,12 +2,12 @@
 # Cross-platform Kanban task management + daily rituals app.
 # Built with Flutter; CI releases on GitHub.
 #
-# Status: Ready for packaging — Photis Nadi 2026.3.10 is feature-complete.
+# Status: Ready for packaging — Photis Nadi 2026.3.11 is feature-complete.
 # Release asset: photisnadi-20260310-linux-x64.tar.gz (~20 MB)
 
 [package]
 name = "photisnadi"
-version = "2026.3.10"
+version = "2026.3.11"
 description = "Photis Nadi — Kanban task management with daily rituals"
 license = "MIT"
 groups = ["desktop", "productivity", "flutter"]
@@ -49,7 +49,7 @@ category = "productivity"
 runtime = "flutter"
 publisher = "Photis Nadi"
 tags = ["kanban", "productivity", "rituals", "task-management", "flutter"]
-min_agnos_version = "2026.3.10"
+min_agnos_version = "2026.3.11"
 
 [marketplace.sandbox]
 seccomp_mode = "desktop"

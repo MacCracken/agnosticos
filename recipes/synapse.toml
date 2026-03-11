@@ -3,7 +3,7 @@
 # For marketplace .agnos-agent bundles, see recipes/marketplace/synapse.toml
 
 name = "synapse"
-version = "2026.3.10"
+version = "2026.3.11"
 description = "Synapse — LLM management and training tool"
 license = "MIT"
 groups = ["server", "ai", "llm"]

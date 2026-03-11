@@ -2519,7 +2519,11 @@ mod tests {
         let interpreter = Interpreter::new();
         let intent = interpreter.parse("delta pr list");
         match intent {
-            Intent::DeltaPr { action, repo, title } => {
+            Intent::DeltaPr {
+                action,
+                repo,
+                title,
+            } => {
                 assert_eq!(action, "list");
                 assert!(repo.is_none());
                 assert!(title.is_none());
@@ -2533,7 +2537,11 @@ mod tests {
         let interpreter = Interpreter::new();
         let intent = interpreter.parse("delta pr create in my-project Add feature X");
         match intent {
-            Intent::DeltaPr { action, repo, title } => {
+            Intent::DeltaPr {
+                action,
+                repo,
+                title,
+            } => {
                 assert_eq!(action, "create");
                 assert_eq!(repo, Some("my-project".to_string()));
                 assert_eq!(title, Some("add feature x".to_string()));
@@ -2601,7 +2609,9 @@ mod tests {
         };
         let t = interpreter.translate(&intent).unwrap();
         assert_eq!(t.command, "curl");
-        assert!(t.args.contains(&"http://127.0.0.1:8090/v1/mcp/tools/call".to_string()));
+        assert!(t
+            .args
+            .contains(&"http://127.0.0.1:8090/v1/mcp/tools/call".to_string()));
         let body = t.args.last().unwrap();
         assert!(body.contains("delta_create_repository"));
         assert!(body.contains("test-repo"));
@@ -2691,7 +2701,8 @@ mod tests {
     #[test]
     fn test_parse_agnostic_run_suite_with_target() {
         let interpreter = Interpreter::new();
-        let intent = interpreter.parse("agnostic run suite security audit against http://localhost:3000");
+        let intent =
+            interpreter.parse("agnostic run suite security audit against http://localhost:3000");
         match intent {
             Intent::AgnosticRunSuite { suite, target_url } => {
                 assert_eq!(suite, "security audit");
@@ -2743,7 +2754,10 @@ mod tests {
     fn test_parse_agnostic_list_suites() {
         let interpreter = Interpreter::new();
         let intent = interpreter.parse("list suites");
-        assert!(matches!(intent, Intent::AgnosticListSuites { category: None }));
+        assert!(matches!(
+            intent,
+            Intent::AgnosticListSuites { category: None }
+        ));
     }
 
     #[test]
@@ -2762,7 +2776,10 @@ mod tests {
     fn test_parse_agnostic_agent_status() {
         let interpreter = Interpreter::new();
         let intent = interpreter.parse("qa agent status");
-        assert!(matches!(intent, Intent::AgnosticAgentStatus { agent_type: None }));
+        assert!(matches!(
+            intent,
+            Intent::AgnosticAgentStatus { agent_type: None }
+        ));
     }
 
     #[test]

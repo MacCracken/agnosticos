@@ -7,10 +7,7 @@ pub(crate) fn translate_delta(intent: &Intent) -> Result<Translation> {
     match intent {
         Intent::DeltaCreateRepo { name, description } => {
             let mut args_json = serde_json::Map::new();
-            args_json.insert(
-                "name".to_string(),
-                serde_json::Value::String(name.clone()),
-            );
+            args_json.insert("name".to_string(), serde_json::Value::String(name.clone()));
             if let Some(desc) = description {
                 args_json.insert(
                     "description".to_string(),
@@ -73,8 +70,7 @@ pub(crate) fn translate_delta(intent: &Intent) -> Result<Translation> {
             if let Some(t) = title {
                 args_json.insert("title".to_string(), serde_json::Value::String(t.clone()));
             }
-            let body =
-                serde_json::json!({"name": "delta_pull_request", "arguments": args_json});
+            let body = serde_json::json!({"name": "delta_pull_request", "arguments": args_json});
             Ok(Translation {
                 command: "curl".to_string(),
                 args: vec![
@@ -155,7 +151,8 @@ pub(crate) fn translate_delta(intent: &Intent) -> Result<Translation> {
                 ],
                 description: format!(
                     "Delta CI status{}",
-                    repo.as_ref().map_or(String::new(), |r| format!(" for {}", r))
+                    repo.as_ref()
+                        .map_or(String::new(), |r| format!(" for {}", r))
                 ),
                 permission: PermissionLevel::Safe,
                 explanation: "Retrieves CI pipeline status from Delta via MCP bridge".to_string(),

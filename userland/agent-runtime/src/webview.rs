@@ -399,7 +399,10 @@ impl WebViewManager {
             let agent_count = self
                 .instances
                 .values()
-                .filter(|i| i.agent_id.as_deref() == Some(agent_id.as_str()) && i.state != WebViewState::Closed)
+                .filter(|i| {
+                    i.agent_id.as_deref() == Some(agent_id.as_str())
+                        && i.state != WebViewState::Closed
+                })
                 .count();
             if let Some(perm) = self.permissions.get(agent_id) {
                 if agent_count >= perm.max_instances {
@@ -410,9 +413,7 @@ impl WebViewManager {
             }
         }
 
-        let id = req
-            .id
-            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        let id = req.id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
         if self.instances.contains_key(&id) {
             return Err(WebViewError::InstanceExists { id: id.clone() });
@@ -440,7 +441,10 @@ impl WebViewManager {
             init_script: req.init_script,
         };
 
-        info!("Created WebView instance: {} ({})", instance.id, instance.label);
+        info!(
+            "Created WebView instance: {} ({})",
+            instance.id, instance.label
+        );
         self.instances.insert(id.clone(), instance.clone());
         Ok(instance)
     }
@@ -526,18 +530,13 @@ impl WebViewManager {
     pub fn list_for_agent(&self, agent_id: &str) -> Vec<&WebViewInstance> {
         self.instances
             .values()
-            .filter(|i| {
-                i.agent_id.as_deref() == Some(agent_id) && i.state != WebViewState::Closed
-            })
+            .filter(|i| i.agent_id.as_deref() == Some(agent_id) && i.state != WebViewState::Closed)
             .collect()
     }
 
     /// Grant WebView permissions to an agent.
     pub fn grant_permission(&mut self, perm: WebViewPermission) {
-        info!(
-            "Granted WebView permission to agent {}",
-            perm.agent_id
-        );
+        info!("Granted WebView permission to agent {}", perm.agent_id);
         self.permissions.insert(perm.agent_id.clone(), perm);
     }
 
@@ -1180,9 +1179,7 @@ mod tests {
 
     #[test]
     fn test_webview_error_display() {
-        let err = WebViewError::NotFound {
-            id: "abc".into(),
-        };
+        let err = WebViewError::NotFound { id: "abc".into() };
         assert!(err.to_string().contains("abc"));
 
         let err = WebViewError::TooManyInstances { max: 5 };

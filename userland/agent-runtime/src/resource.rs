@@ -1575,7 +1575,9 @@ mod tests {
         assert_eq!(cloned.name, "Test GPU");
         assert_eq!(cloned.total_memory, 16384);
         assert_eq!(
-            cloned.available_memory.load(std::sync::atomic::Ordering::Relaxed),
+            cloned
+                .available_memory
+                .load(std::sync::atomic::Ordering::Relaxed),
             8192
         );
         assert_eq!(cloned.compute_capability.as_deref(), Some("sm_90"));

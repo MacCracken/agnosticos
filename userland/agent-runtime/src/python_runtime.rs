@@ -55,11 +55,7 @@ impl PythonVersion {
     pub fn parse(s: &str) -> Option<Self> {
         let s = s.trim();
         let free_threaded = s.ends_with('t');
-        let version_str = if free_threaded {
-            &s[..s.len() - 1]
-        } else {
-            s
-        };
+        let version_str = if free_threaded { &s[..s.len() - 1] } else { s };
 
         let parts: Vec<&str> = version_str.split('.').collect();
         if parts.len() != 2 {
@@ -276,12 +272,7 @@ impl Default for PythonRuntimeConfig {
             venv_base_dir: PathBuf::from(VENV_BASE_DIR),
             default_version: None,
             pip_proxy: PipProxyConfig::default(),
-            known_versions: vec![
-                "3.12".into(),
-                "3.13".into(),
-                "3.13t".into(),
-                "3.14".into(),
-            ],
+            known_versions: vec!["3.12".into(), "3.13".into(), "3.13t".into(), "3.14".into()],
         }
     }
 }
@@ -403,8 +394,11 @@ impl PythonRuntimeManager {
         }
 
         // 4. Highest available
-        let mut available: Vec<&InstalledPython> =
-            self.installed.iter().filter(|p| p.is_available && !p.version.free_threaded).collect();
+        let mut available: Vec<&InstalledPython> = self
+            .installed
+            .iter()
+            .filter(|p| p.is_available && !p.version.free_threaded)
+            .collect();
         available.sort_by(|a, b| b.version.cmp(&a.version));
         available.first().map(|p| p.version.clone())
     }
@@ -430,15 +424,11 @@ impl PythonRuntimeManager {
             });
         }
 
-        let version_str = req
-            .python_version
-            .as_deref()
-            .unwrap_or("3.12");
-        let version = PythonVersion::parse(version_str).ok_or_else(|| {
-            PythonError::InvalidVersion {
+        let version_str = req.python_version.as_deref().unwrap_or("3.12");
+        let version =
+            PythonVersion::parse(version_str).ok_or_else(|| PythonError::InvalidVersion {
                 version: version_str.to_string(),
-            }
-        })?;
+            })?;
 
         // Check the version is available
         let python_info = self
@@ -470,7 +460,10 @@ impl PythonRuntimeManager {
             agent_id: req.agent_id,
         };
 
-        info!("Created venv '{}' with Python {}", venv.name, venv.python_version);
+        info!(
+            "Created venv '{}' with Python {}",
+            venv.name, venv.python_version
+        );
         self.venvs.insert(req.name.clone(), venv.clone());
         Ok(venv)
     }
@@ -805,8 +798,14 @@ mod tests {
 
     #[test]
     fn test_version_binary_name() {
-        assert_eq!(PythonVersion::parse("3.12").unwrap().binary_name(), "python3.12");
-        assert_eq!(PythonVersion::parse("3.13t").unwrap().binary_name(), "python3.13t");
+        assert_eq!(
+            PythonVersion::parse("3.12").unwrap().binary_name(),
+            "python3.12"
+        );
+        assert_eq!(
+            PythonVersion::parse("3.13t").unwrap().binary_name(),
+            "python3.13t"
+        );
     }
 
     #[test]
