@@ -1,30 +1,76 @@
 # AGNOS Python 3.13 Base Image
-# For running Python-based agents with AGNOS sandbox
-FROM python:3.13-slim-bookworm AS base
+#
+# Layers Python 3.13 + common ML/QA system libraries on top of the AGNOS
+# runtime image. Provides everything needed to run Python-based agents,
+# QA platforms, and ML workloads on AGNOS.
+#
+# Published as: ghcr.io/maccracken/agnosticos:python3.13
+#
+# Consumers (e.g. Agnostic QA Platform) can simply:
+#   FROM ghcr.io/maccracken/agnosticos:python3.13
 
-# System dependencies for agent-runtime sidecar
+FROM ghcr.io/maccracken/agnosticos:latest
+
+USER root
+
+# ── Python 3.13 + pip ──────────────────────────────────────────────────────
+# Debian trixie ships Python 3.13 as the default python3
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    libseccomp2 \
+    python3 \
+    python3-pip \
+    python3-venv \
+    python3-dev \
+    # Build tools (needed for native Python extensions)
+    gcc \
+    g++ \
+    make \
+    pkg-config \
+    # OpenCV / computer vision
+    libgl1 \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgomp1 \
+    libgthread-2.0-0 \
+    # Crypto / SSL
+    libssl-dev \
+    libffi-dev \
+    # Playwright browser automation
+    libnss3 \
+    libnspr4 \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libcups2 \
+    libdrm2 \
+    libxkbcommon0 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxfixes3 \
+    libxrandr2 \
+    libgbm1 \
+    libasound2 \
+    # General utilities
+    git \
     && rm -rf /var/lib/apt/lists/*
 
-# Create agnos user and directories
-RUN useradd --system --create-home --shell /bin/bash agnos \
-    && mkdir -p /var/lib/agnos/agent-memory \
-    && mkdir -p /var/log/agnos \
-    && mkdir -p /run/agnos \
-    && chown -R agnos:agnos /var/lib/agnos /var/log/agnos /run/agnos
-
-# Python dependencies common to all agents
+# ── Base Python packages (common to all AGNOS Python workloads) ────────────
 COPY docker/requirements-base.txt /tmp/requirements-base.txt
-RUN pip install --no-cache-dir -r /tmp/requirements-base.txt && rm /tmp/requirements-base.txt
+RUN pip install --no-cache-dir --break-system-packages \
+    -r /tmp/requirements-base.txt \
+    && rm /tmp/requirements-base.txt
 
-# Labels
-LABEL org.opencontainers.image.title="AGNOS Python 3.13 Base"
-LABEL org.opencontainers.image.description="Python 3.13 base image with AGNOS agent runtime support"
+# ── Environment ────────────────────────────────────────────────────────────
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+
+# ── Labels ─────────────────────────────────────────────────────────────────
+LABEL org.opencontainers.image.title="AGNOS Python 3.13"
+LABEL org.opencontainers.image.description="Python 3.13 with ML/QA system libraries on AGNOS"
 LABEL org.opencontainers.image.vendor="AGNOS"
+LABEL org.opencontainers.image.base.name="ghcr.io/maccracken/agnosticos:latest"
 
 USER agnos
 WORKDIR /home/agnos
 
-ENTRYPOINT ["python", "-m"]
+ENTRYPOINT ["python3"]

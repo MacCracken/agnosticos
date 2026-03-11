@@ -2216,4 +2216,257 @@ enabled = false
         assert_eq!(deser.name, "midnight");
         assert_eq!(deser.service_name, "cleanup-svc");
     }
+
+    // --- Default helper functions ---
+
+    #[test]
+    fn test_default_max_restarts_value() {
+        assert_eq!(default_max_restarts(), 5);
+    }
+
+    #[test]
+    fn test_default_restart_delay_value() {
+        assert_eq!(default_restart_delay(), 1);
+    }
+
+    #[test]
+    fn test_default_readiness_timeout_value() {
+        assert_eq!(default_readiness_timeout(), 30);
+    }
+
+    // --- Enum serialization roundtrips ---
+
+    #[test]
+    fn test_restart_policy_serialization_roundtrip() {
+        let variants = [RestartPolicy::No, RestartPolicy::Always, RestartPolicy::OnFailure];
+        for v in &variants {
+            let json = serde_json::to_string(v).unwrap();
+            let deser: RestartPolicy = serde_json::from_str(&json).unwrap();
+            assert_eq!(*v, deser);
+        }
+    }
+
+    #[test]
+    fn test_service_type_serialization_roundtrip() {
+        let variants = [ServiceType::Simple, ServiceType::Notify, ServiceType::Oneshot];
+        for v in &variants {
+            let json = serde_json::to_string(v).unwrap();
+            let deser: ServiceType = serde_json::from_str(&json).unwrap();
+            assert_eq!(*v, deser);
+        }
+    }
+
+    #[test]
+    fn test_service_state_serialization_roundtrip() {
+        let variants = [
+            ServiceState::Stopped,
+            ServiceState::Starting,
+            ServiceState::Running,
+            ServiceState::Stopping,
+            ServiceState::Failed,
+            ServiceState::Exited,
+        ];
+        for v in &variants {
+            let json = serde_json::to_string(v).unwrap();
+            let deser: ServiceState = serde_json::from_str(&json).unwrap();
+            assert_eq!(*v, deser);
+        }
+    }
+
+    // --- ServiceDefinition TOML parsing ---
+
+    #[test]
+    fn test_service_definition_from_toml_full() {
+        let toml_str = r#"
+            name = "test-svc"
+            exec_start = "/usr/bin/test"
+            args = ["--flag"]
+            after = ["network.target"]
+            restart = "onfailure"
+            max_restarts = 3
+            description = "A test service"
+        "#;
+        let def: ServiceDefinition = toml::from_str(toml_str).unwrap();
+        assert_eq!(def.name, "test-svc");
+        assert_eq!(def.exec_start, "/usr/bin/test");
+        assert_eq!(def.args, vec!["--flag"]);
+        assert_eq!(def.after, vec!["network.target"]);
+        assert_eq!(def.restart, RestartPolicy::OnFailure);
+        assert_eq!(def.max_restarts, 3);
+        assert!(def.enabled); // default = true
+    }
+
+    // --- dependency_levels ---
+
+    #[test]
+    fn test_dependency_levels_independent() {
+        let mut services = HashMap::new();
+        services.insert("a".to_string(), ServiceDefinition {
+            name: "a".to_string(),
+            exec_start: "/bin/a".to_string(),
+            ..service_def_defaults()
+        });
+        services.insert("b".to_string(), ServiceDefinition {
+            name: "b".to_string(),
+            exec_start: "/bin/b".to_string(),
+            ..service_def_defaults()
+        });
+        let order = topological_sort(&services).unwrap();
+        let levels = dependency_levels(&services, &order);
+        // Both should be level 0 (no deps)
+        assert_eq!(levels.len(), 1);
+        assert_eq!(levels[0].len(), 2);
+    }
+
+    #[test]
+    fn test_dependency_levels_chain() {
+        let mut services = HashMap::new();
+        services.insert("base".to_string(), ServiceDefinition {
+            name: "base".to_string(),
+            exec_start: "/bin/base".to_string(),
+            ..service_def_defaults()
+        });
+        services.insert("mid".to_string(), ServiceDefinition {
+            name: "mid".to_string(),
+            exec_start: "/bin/mid".to_string(),
+            after: vec!["base".to_string()],
+            ..service_def_defaults()
+        });
+        services.insert("top".to_string(), ServiceDefinition {
+            name: "top".to_string(),
+            exec_start: "/bin/top".to_string(),
+            after: vec!["mid".to_string()],
+            ..service_def_defaults()
+        });
+        let order = topological_sort(&services).unwrap();
+        let levels = dependency_levels(&services, &order);
+        assert_eq!(levels.len(), 3);
+    }
+
+    // --- FleetConfig reconcile ---
+
+    #[test]
+    fn test_fleet_reconcile_start_new() {
+        let config = FleetConfig {
+            services: vec![
+                ServiceDefinition {
+                    name: "svc-a".to_string(),
+                    exec_start: "/bin/a".to_string(),
+                    ..service_def_defaults()
+                },
+                ServiceDefinition {
+                    name: "svc-b".to_string(),
+                    exec_start: "/bin/b".to_string(),
+                    ..service_def_defaults()
+                },
+            ],
+        };
+        let plan = config.reconcile(&[]);
+        assert_eq!(plan.to_start.len(), 2);
+        assert!(plan.to_stop.is_empty());
+        assert!(plan.unchanged.is_empty());
+        assert!(plan.has_changes());
+    }
+
+    #[test]
+    fn test_fleet_reconcile_stop_removed() {
+        let config = FleetConfig {
+            services: vec![],
+        };
+        let plan = config.reconcile(&["old-svc".to_string()]);
+        assert!(plan.to_start.is_empty());
+        assert_eq!(plan.to_stop, vec!["old-svc"]);
+        assert!(plan.has_changes());
+    }
+
+    #[test]
+    fn test_fleet_reconcile_no_changes() {
+        let config = FleetConfig {
+            services: vec![ServiceDefinition {
+                name: "running".to_string(),
+                exec_start: "/bin/running".to_string(),
+                ..service_def_defaults()
+            }],
+        };
+        let plan = config.reconcile(&["running".to_string()]);
+        assert!(!plan.has_changes());
+        assert_eq!(plan.unchanged, vec!["running"]);
+    }
+
+    #[test]
+    fn test_fleet_reconcile_disabled_service_not_started() {
+        let config = FleetConfig {
+            services: vec![ServiceDefinition {
+                name: "disabled-svc".to_string(),
+                exec_start: "/bin/x".to_string(),
+                enabled: false,
+                ..service_def_defaults()
+            }],
+        };
+        let plan = config.reconcile(&[]);
+        assert!(plan.to_start.is_empty());
+    }
+
+    // --- ReconciliationPlan ---
+
+    #[test]
+    fn test_reconciliation_plan_summary_all_sections() {
+        let plan = ReconciliationPlan {
+            to_start: vec!["new-svc".to_string()],
+            to_stop: vec!["old-svc".to_string()],
+            unchanged: vec!["stable-svc".to_string()],
+        };
+        let summary = plan.summary();
+        assert!(summary.contains("start: new-svc"));
+        assert!(summary.contains("stop: old-svc"));
+        assert!(summary.contains("unchanged: stable-svc"));
+    }
+
+    #[test]
+    fn test_reconciliation_plan_summary_no_changes() {
+        let plan = ReconciliationPlan {
+            to_start: vec![],
+            to_stop: vec![],
+            unchanged: vec![],
+        };
+        assert_eq!(plan.summary(), "No changes needed");
+        assert!(!plan.has_changes());
+    }
+
+    #[test]
+    fn test_reconciliation_plan_serialization_roundtrip() {
+        let plan = ReconciliationPlan {
+            to_start: vec!["a".to_string()],
+            to_stop: vec!["b".to_string()],
+            unchanged: vec!["c".to_string()],
+        };
+        let json = serde_json::to_string(&plan).unwrap();
+        let deser: ReconciliationPlan = serde_json::from_str(&json).unwrap();
+        assert_eq!(deser.to_start, vec!["a"]);
+        assert_eq!(deser.to_stop, vec!["b"]);
+        assert_eq!(deser.unchanged, vec!["c"]);
+    }
+
+    // helper for tests
+    fn service_def_defaults() -> ServiceDefinition {
+        ServiceDefinition {
+            name: String::new(),
+            exec_start: String::new(),
+            args: vec![],
+            environment: vec![],
+            after: vec![],
+            wants: vec![],
+            restart: RestartPolicy::default(),
+            max_restarts: default_max_restarts(),
+            restart_delay_secs: default_restart_delay(),
+            user: String::new(),
+            group: String::new(),
+            working_directory: String::new(),
+            service_type: ServiceType::default(),
+            readiness_timeout_secs: default_readiness_timeout(),
+            resources: ServiceResources::default(),
+            enabled: true,
+            description: String::new(),
+        }
+    }
 }

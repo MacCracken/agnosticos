@@ -1,35 +1,39 @@
 # AGNOS Node.js 22 Base Image
-# For running Node.js/Bun-based agents (SecureYeoman, etc.) with AGNOS sandbox
-FROM node:22-slim AS base
+#
+# Layers Node.js 22 + Bun on top of the AGNOS runtime image.
+# For running Node.js/TypeScript-based agents (SecureYeoman, etc.)
+#
+# Published as: ghcr.io/maccracken/agnosticos:node22
 
-# System dependencies for agent-runtime sidecar
+FROM ghcr.io/maccracken/agnosticos:latest
+
+USER root
+
+# ── Node.js 22 + Bun ──────────────────────────────────────────────────────
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    libseccomp2 \
-    curl \
-    unzip \
-    tini \
+    gnupg \
+    && mkdir -p /etc/apt/keyrings \
+    && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+       | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
+    && echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main" \
+       > /etc/apt/sources.list.d/nodesource.list \
+    && apt-get update && apt-get install -y --no-install-recommends \
+       nodejs \
+       git \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Bun runtime (used by SecureYeoman and other TypeScript agents)
+# Bun runtime
 RUN curl -fsSL https://bun.sh/install | bash \
     && ln -s /root/.bun/bin/bun /usr/local/bin/bun \
     && ln -s /root/.bun/bin/bunx /usr/local/bin/bunx
 
-# Create agnos user and directories
-RUN useradd --system --create-home --shell /bin/bash agnos \
-    && mkdir -p /var/lib/agnos/agent-memory \
-    && mkdir -p /var/log/agnos \
-    && mkdir -p /run/agnos \
-    && chown -R agnos:agnos /var/lib/agnos /var/log/agnos /run/agnos
-
-# Labels
-LABEL org.opencontainers.image.title="AGNOS Node.js 22 Base"
-LABEL org.opencontainers.image.description="Node.js 22 + Bun base image with AGNOS agent runtime support"
+# ── Labels ─────────────────────────────────────────────────────────────────
+LABEL org.opencontainers.image.title="AGNOS Node.js 22"
+LABEL org.opencontainers.image.description="Node.js 22 + Bun on AGNOS"
 LABEL org.opencontainers.image.vendor="AGNOS"
+LABEL org.opencontainers.image.base.name="ghcr.io/maccracken/agnosticos:latest"
 
 USER agnos
 WORKDIR /home/agnos
 
-ENTRYPOINT ["tini", "--"]
 CMD ["node"]

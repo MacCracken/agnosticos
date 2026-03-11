@@ -21,9 +21,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user
-RUN groupadd -g 1000 agnos && \
-    useradd -u 1000 -g agnos -m -s /bin/sh agnos
+# Create system user for the AGNOS OS runtime (UID 999, below app-space 1000+)
+RUN groupadd -g 999 agnos && \
+    useradd -u 999 -g agnos -m -s /bin/sh agnos
 
 # Create required directories
 RUN mkdir -p \

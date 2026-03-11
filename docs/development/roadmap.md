@@ -167,9 +167,9 @@ Identified via code audit (2026-03-10). Prioritized by impact.
 
 | Metric | Target | Current | Status |
 |--------|--------|---------|--------|
-| Code Coverage | >80% | ~82% | Met |
+| Code Coverage | >80% | ~84.3% | Met |
 | Test Pass Rate | 100% | 100% | Met |
-| Total Tests | 400+ | 10200+ | Met |
+| Total Tests | 400+ | 10400+ | Met |
 | Agent Spawn Time | <500ms | ~300ms | Met |
 | Shell Response Time | <100ms | ~50ms | Met |
 | Memory Overhead | <2GB | ~1.2GB | Met |
@@ -192,7 +192,7 @@ Identified via code audit (2026-03-10). Prioritized by impact.
 |-----------|-------|-------|
 | agnos-common | 307 | Secrets, telemetry, LLM types, manifest, rate limits, audit chain |
 | agnos-sys | 750+ | 16 modules: audit, mac, netns, dmverity, luks, ima, tpm, secureboot, certpin, bootloader, journald, udev, fuse, pam, update, llm |
-| agent-runtime | 3191+ | 31 MCP tools, orchestrator, IPC, sandbox, registry, marketplace, federation, migration, scheduler, PQC, safety, finetune, formal_verify, sandbox_v2, rl_optimizer, cloud, collaboration, sigil, aegis, takumi, argonaut (117), agnova (99), ark (49), grpc, service_mesh, oidc, delegation, vector_rest, marketplace_backend, selfhost (38), webview (28), python_runtime (36) |
+| agent-runtime | 3369+ | 31 MCP tools, orchestrator, IPC, sandbox, registry, marketplace, federation, migration, scheduler, PQC, safety, finetune, formal_verify, sandbox_v2, rl_optimizer, cloud, collaboration, sigil, aegis, takumi, argonaut (117), agnova (99), ark (49), grpc, service_mesh, oidc, delegation, vector_rest, marketplace_backend, selfhost (38), webview (28), python_runtime (36) |
 | llm-gateway | 710 | 15 providers, rate limiting, streaming, cert pinning, hardware acceleration, token budgets |
 | ai-shell | 1472 | 30+ intents (5 Aequi, 5 Agnostic, 5 Delta, 5 Photis, 10+ system), approval workflow, dashboard, aliases |
 | desktop-environment | 1447+ | Wayland protocol, screen capture (31), screen recording (22+), plugin host (31), xwayland (20), shell integration (26), theme bridge (18) |

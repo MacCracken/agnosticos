@@ -3064,4 +3064,324 @@ LISTEN   0       128     0.0.0.0:80          0.0.0.0:*          users:((\"nginx\
         assert_eq!(NetworkTool::AircrackNg.to_string(), "AircrackNg");
         assert_eq!(NetworkTool::Kismet.to_string(), "Kismet");
     }
+
+    // --- NetworkToolConfig coverage for all tool variants ---
+
+    #[test]
+    fn test_config_for_all_tools_has_binary() {
+        for tool in ALL_TOOLS.iter() {
+            let config = NetworkToolConfig::for_tool(*tool);
+            assert!(!config.binary_name.is_empty(), "Tool {:?} has empty binary", tool);
+            assert_eq!(config.tool, *tool);
+        }
+    }
+
+    #[test]
+    fn test_critical_tools_require_approval() {
+        let critical_tools = [
+            NetworkTool::PacketCapture,
+            NetworkTool::WebScan,
+        ];
+        for tool in &critical_tools {
+            let config = NetworkToolConfig::for_tool(*tool);
+            assert_eq!(config.risk_level, RiskLevel::Critical);
+            assert!(config.requires_approval, "{:?} should require approval", tool);
+        }
+    }
+
+    #[test]
+    fn test_low_risk_tools_no_approval() {
+        let low_tools = [NetworkTool::DnsLookup, NetworkTool::HttpClient];
+        for tool in &low_tools {
+            let config = NetworkToolConfig::for_tool(*tool);
+            assert_eq!(config.risk_level, RiskLevel::Low);
+            assert!(!config.requires_approval, "{:?} should not require approval", tool);
+        }
+    }
+
+    // --- Struct construction ---
+
+    #[test]
+    fn test_tool_output_construction() {
+        let output = ToolOutput {
+            stdout: "PORT   STATE SERVICE\n80/tcp open  http".to_string(),
+            stderr: String::new(),
+            exit_code: 0,
+            duration: Duration::from_millis(1500),
+            tool: NetworkTool::PortScan,
+            audit_entry: "scan 192.168.1.1".to_string(),
+        };
+        assert_eq!(output.exit_code, 0);
+        assert_eq!(output.tool, NetworkTool::PortScan);
+        assert!(output.stdout.contains("80/tcp"));
+    }
+
+    #[test]
+    fn test_validated_target_display_all_variants() {
+        let ip = ValidatedTarget::Ip("10.0.0.1".parse().unwrap());
+        assert_eq!(ip.to_string(), "10.0.0.1");
+
+        let cidr = ValidatedTarget::Cidr {
+            addr: "192.168.1.0".parse().unwrap(),
+            prefix: 24,
+        };
+        assert_eq!(cidr.to_string(), "192.168.1.0/24");
+
+        let host = ValidatedTarget::Hostname("example.com".to_string());
+        assert_eq!(host.to_string(), "example.com");
+    }
+
+    #[test]
+    fn test_discovered_port_construction() {
+        let port = DiscoveredPort {
+            port: 443,
+            protocol: "tcp".to_string(),
+            state: "open".to_string(),
+            service: Some("https".to_string()),
+            version: Some("OpenSSL 1.1.1".to_string()),
+        };
+        assert_eq!(port.port, 443);
+        assert_eq!(port.service.as_deref(), Some("https"));
+    }
+
+    #[test]
+    fn test_discovered_host_with_ports() {
+        let host = DiscoveredHost {
+            address: "10.0.0.1".to_string(),
+            hostname: Some("server.local".to_string()),
+            mac_address: Some("AA:BB:CC:DD:EE:FF".to_string()),
+            vendor: Some("ACME Corp".to_string()),
+            state: "up".to_string(),
+            ports: vec![DiscoveredPort {
+                port: 22,
+                protocol: "tcp".to_string(),
+                state: "open".to_string(),
+                service: Some("ssh".to_string()),
+                version: None,
+            }],
+        };
+        assert_eq!(host.ports.len(), 1);
+        assert_eq!(host.hostname.as_deref(), Some("server.local"));
+    }
+
+    #[test]
+    fn test_dns_record_construction() {
+        let rec = DnsRecord {
+            name: "example.com".to_string(),
+            record_type: "A".to_string(),
+            value: "93.184.216.34".to_string(),
+            ttl: Some(300),
+        };
+        assert_eq!(rec.ttl, Some(300));
+    }
+
+    #[test]
+    fn test_trace_hop_construction() {
+        let hop = TraceHop {
+            hop_number: 3,
+            address: Some("10.0.0.1".to_string()),
+            hostname: Some("gateway.local".to_string()),
+            rtt_ms: Some(1.5),
+            loss_pct: Some(0.0),
+        };
+        assert_eq!(hop.hop_number, 3);
+        assert_eq!(hop.rtt_ms, Some(1.5));
+    }
+
+    #[test]
+    fn test_socket_entry_construction() {
+        let entry = SocketEntry {
+            state: "ESTAB".to_string(),
+            protocol: "tcp".to_string(),
+            local_addr: "127.0.0.1:8080".to_string(),
+            remote_addr: "10.0.0.1:54321".to_string(),
+            process: Some("sshd".to_string()),
+        };
+        assert_eq!(entry.state, "ESTAB");
+    }
+
+    // --- Parse functions ---
+
+    #[test]
+    fn test_parse_nmap_port_line_valid() {
+        let port = parse_nmap_port_line("80/tcp   open  http    Apache httpd 2.4.41");
+        assert!(port.is_some());
+        let p = port.unwrap();
+        assert_eq!(p.port, 80);
+        assert_eq!(p.protocol, "tcp");
+        assert_eq!(p.state, "open");
+        assert_eq!(p.service.as_deref(), Some("http"));
+        assert_eq!(p.version.as_deref(), Some("Apache httpd 2.4.41"));
+    }
+
+    #[test]
+    fn test_parse_nmap_port_line_closed() {
+        let port = parse_nmap_port_line("22/tcp   closed  ssh");
+        assert!(port.is_some());
+        assert_eq!(port.unwrap().state, "closed");
+    }
+
+    #[test]
+    fn test_parse_nmap_port_line_filtered() {
+        let port = parse_nmap_port_line("443/tcp   filtered  https");
+        assert!(port.is_some());
+        assert_eq!(port.unwrap().state, "filtered");
+    }
+
+    #[test]
+    fn test_parse_nmap_port_line_invalid() {
+        assert!(parse_nmap_port_line("not a port line").is_none());
+        assert!(parse_nmap_port_line("").is_none());
+        assert!(parse_nmap_port_line("80/tcp running http").is_none()); // invalid state
+    }
+
+    #[test]
+    fn test_parse_output_raw_fallback() {
+        let output = ToolOutput {
+            stdout: "line1\nline2\nline3\n".to_string(),
+            stderr: String::new(),
+            exit_code: 0,
+            duration: Duration::from_secs(1),
+            tool: NetworkTool::HttpClient,
+            audit_entry: "curl example.com".to_string(),
+        };
+        let parsed = parse_output(&output, None);
+        match parsed {
+            ParsedOutput::Raw { summary } => {
+                assert!(summary.contains("HttpClient"));
+                assert!(summary.contains("3 lines"));
+            }
+            _ => panic!("Expected Raw variant"),
+        }
+    }
+
+    #[test]
+    fn test_parse_output_raw_error_exit() {
+        let output = ToolOutput {
+            stdout: "error output\n".to_string(),
+            stderr: "failed".to_string(),
+            exit_code: 1,
+            duration: Duration::from_secs(1),
+            tool: NetworkTool::DirBust,
+            audit_entry: "gobuster".to_string(),
+        };
+        let parsed = parse_output(&output, None);
+        match parsed {
+            ParsedOutput::Raw { summary } => {
+                assert!(summary.contains("exited with code 1"));
+            }
+            _ => panic!("Expected Raw variant"),
+        }
+    }
+
+    // --- Validation helpers ---
+
+    #[test]
+    fn test_reject_broadcast() {
+        let bcast: IpAddr = "255.255.255.255".parse().unwrap();
+        assert!(reject_broadcast(&bcast).is_err());
+
+        let normal: IpAddr = "192.168.1.1".parse().unwrap();
+        assert!(reject_broadcast(&normal).is_ok());
+
+        let v6: IpAddr = "::1".parse().unwrap();
+        assert!(reject_broadcast(&v6).is_ok());
+    }
+
+    #[test]
+    fn test_validate_hostname_valid() {
+        assert!(validate_hostname("example.com").is_ok());
+        assert!(validate_hostname("sub.domain.example.com").is_ok());
+        assert!(validate_hostname("my-host").is_ok());
+    }
+
+    #[test]
+    fn test_validate_hostname_invalid() {
+        assert!(validate_hostname("").is_err());
+        assert!(validate_hostname("-leading").is_err());
+        assert!(validate_hostname("trailing-").is_err());
+        assert!(validate_hostname("has space.com").is_err());
+        let long_host = "a".repeat(254);
+        assert!(validate_hostname(&long_host).is_err());
+    }
+
+    // --- Builder patterns ---
+
+    #[test]
+    fn test_port_scanner_build_args_quick() {
+        let scanner = PortScanner::new().profile(ScanProfile::Quick);
+        let args = scanner.build_args();
+        assert!(args.contains(&"-F".to_string()));
+        assert!(args.contains(&"-T4".to_string()));
+    }
+
+    #[test]
+    fn test_port_scanner_build_args_thorough() {
+        let scanner = PortScanner::new().profile(ScanProfile::Thorough);
+        let args = scanner.build_args();
+        assert!(args.contains(&"-p-".to_string()));
+        assert!(args.contains(&"-sV".to_string()));
+    }
+
+    #[test]
+    fn test_port_scanner_build_args_stealth() {
+        let scanner = PortScanner::new().profile(ScanProfile::Stealth);
+        let args = scanner.build_args();
+        assert!(args.contains(&"-T2".to_string()));
+        assert!(args.contains(&"--randomize-hosts".to_string()));
+    }
+
+    #[test]
+    fn test_port_scanner_build_args_masscan() {
+        let scanner = PortScanner::new().use_masscan(true).ports("80,443");
+        let args = scanner.build_args();
+        assert!(args.contains(&"-p".to_string()));
+        assert!(args.contains(&"80,443".to_string()));
+    }
+
+    #[test]
+    fn test_port_scanner_custom_ports_override() {
+        let scanner = PortScanner::new().profile(ScanProfile::Thorough).ports("22,80,443");
+        let args = scanner.build_args();
+        // -p- and -F should be removed, replaced by custom ports
+        assert!(!args.contains(&"-p-".to_string()));
+        assert!(args.contains(&"22,80,443".to_string()));
+    }
+
+    #[test]
+    fn test_port_scanner_default_fields() {
+        let scanner = PortScanner::default();
+        assert_eq!(scanner.profile, ScanProfile::Standard);
+        assert!(!scanner.use_masscan);
+        assert!(scanner.ports.is_none());
+    }
+
+    #[test]
+    fn test_dns_investigator_builder() {
+        let dns = DnsInvestigator::new()
+            .record_type("MX")
+            .record_type("TXT")
+            .nameserver("8.8.8.8")
+            .enumerate(true);
+        assert!(dns.use_dnsrecon);
+        assert_eq!(dns.record_types, vec!["MX", "TXT"]);
+        assert_eq!(dns.nameserver.as_deref(), Some("8.8.8.8"));
+    }
+
+    #[test]
+    fn test_network_tool_runner_default_impl() {
+        let _runner = NetworkToolRunner::default();
+        let tools = NetworkToolRunner::list_all_tools();
+        assert_eq!(tools.len(), 32);
+    }
+
+    #[test]
+    fn test_network_tool_runner_list_all_configs() {
+        let tools = NetworkToolRunner::list_all_tools();
+        // Every tool should have a non-empty binary and valid risk level
+        for config in &tools {
+            assert!(!config.binary_name.is_empty());
+            assert!(config.max_timeout_secs > 0);
+        }
+    }
 }

@@ -1,28 +1,57 @@
 # AGNOS Rust Base Image
-# For building and running Rust-based agents (BullShift, Synapse, etc.)
-FROM rust:1-slim-bookworm AS base
+#
+# Layers the Rust toolchain + common native build dependencies on top of
+# the AGNOS runtime image. Used by Rust-based ecosystem projects
+# (Synapse, Delta, BullShift, Aequi) as their build stage base.
+#
+# Published as: ghcr.io/maccracken/agnosticos:rust
+#
+# Usage (multi-stage):
+#   FROM ghcr.io/maccracken/agnosticos:rust AS builder
+#   COPY . .
+#   RUN cargo build --release
+#
+#   FROM ghcr.io/maccracken/agnosticos:latest
+#   COPY --from=builder /app/target/release/mybin /usr/local/bin/
 
-# System dependencies
+FROM ghcr.io/maccracken/agnosticos:latest
+
+USER root
+
+# ── Rust toolchain via rustup ────────────────────────────────────────────
+# Install rustup + stable toolchain. Using rustup rather than distro
+# packages gives us control over the exact Rust version.
+ENV RUSTUP_HOME=/usr/local/rustup
+ENV CARGO_HOME=/usr/local/cargo
+ENV PATH="/usr/local/cargo/bin:${PATH}"
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    libseccomp2 \
-    libssl-dev \
+    curl \
+    gcc \
+    g++ \
+    make \
     pkg-config \
+    # Native deps commonly needed by Rust crates
+    libssl-dev \
+    libseccomp-dev \
+    libsqlite3-dev \
+    # Linker
+    binutils \
     && rm -rf /var/lib/apt/lists/*
 
-# Create agnos user and directories
-RUN useradd --system --create-home --shell /bin/bash agnos \
-    && mkdir -p /var/lib/agnos/agent-memory \
-    && mkdir -p /var/log/agnos \
-    && mkdir -p /run/agnos \
-    && chown -R agnos:agnos /var/lib/agnos /var/log/agnos /run/agnos
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+    | sh -s -- -y --default-toolchain stable --profile minimal \
+    && rustup --version \
+    && rustc --version \
+    && cargo --version
 
-# Labels
-LABEL org.opencontainers.image.title="AGNOS Rust Base"
-LABEL org.opencontainers.image.description="Rust base image with AGNOS agent runtime support"
+# ── Labels ───────────────────────────────────────────────────────────────
+LABEL org.opencontainers.image.title="AGNOS Rust"
+LABEL org.opencontainers.image.description="Rust toolchain with native build deps on AGNOS"
 LABEL org.opencontainers.image.vendor="AGNOS"
+LABEL org.opencontainers.image.base.name="ghcr.io/maccracken/agnosticos:latest"
 
 USER agnos
 WORKDIR /home/agnos
 
-CMD ["bash"]
+CMD ["rustc", "--version"]

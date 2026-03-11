@@ -1470,4 +1470,97 @@ mod tests {
         sandbox.teardown().await;
         assert!(sandbox.luks_name.is_none());
     }
+
+    // --- SeccompFilter builder tests ---
+
+    #[test]
+    fn test_seccomp_filter_new_has_all_defaults() {
+        let filter = SeccompFilter::new();
+        assert!(filter.allowed_syscalls.contains("read"));
+        assert!(filter.allowed_syscalls.contains("write"));
+        assert!(filter.allowed_syscalls.contains("openat"));
+        assert!(filter.allowed_syscalls.contains("close"));
+        assert!(filter.allowed_syscalls.contains("exit"));
+        assert!(filter.allowed_syscalls.contains("exit_group"));
+        assert!(filter.allowed_syscalls.contains("mmap"));
+        assert!(filter.allowed_syscalls.contains("munmap"));
+        assert!(filter.allowed_syscalls.contains("mprotect"));
+        assert!(filter.allowed_syscalls.contains("brk"));
+        assert!(filter.allowed_syscalls.contains("fstat"));
+        assert!(filter.allowed_syscalls.contains("lseek"));
+        assert!(filter.allowed_syscalls.contains("pread64"));
+        assert!(filter.allowed_syscalls.contains("pwrite64"));
+        assert!(filter.allowed_syscalls.contains("getpid"));
+        assert!(filter.allowed_syscalls.contains("getppid"));
+        assert!(filter.allowed_syscalls.contains("gettid"));
+        assert!(filter.denied_syscalls.is_empty());
+    }
+
+    #[test]
+    fn test_seccomp_filter_default_equals_new() {
+        let from_new = SeccompFilter::new();
+        let from_default = SeccompFilter::default();
+        assert_eq!(from_new.allowed_syscalls, from_default.allowed_syscalls);
+        assert_eq!(from_new.denied_syscalls, from_default.denied_syscalls);
+    }
+
+    #[test]
+    fn test_seccomp_filter_chaining() {
+        let mut filter = SeccompFilter::new();
+        filter.allow("socket").allow("bind").deny("ptrace").deny("personality");
+        assert!(filter.allowed_syscalls.contains("socket"));
+        assert!(filter.allowed_syscalls.contains("bind"));
+        assert!(filter.denied_syscalls.contains("ptrace"));
+        assert!(filter.denied_syscalls.contains("personality"));
+    }
+
+    // --- build_firewall_policy ---
+
+    #[test]
+    fn test_build_firewall_policy_outbound_ports_only() {
+        let config = SandboxConfig {
+            network_policy: Some(agnos_common::NetworkPolicy {
+                allowed_outbound_ports: vec![80, 443],
+                allowed_outbound_hosts: vec![],
+                allowed_inbound_ports: vec![],
+                enable_nat: false,
+            }),
+            ..SandboxConfig::default()
+        };
+        let sandbox = Sandbox::new(&config).unwrap();
+        let policy = sandbox.build_firewall_policy();
+        assert_eq!(policy.rules.len(), 2);
+    }
+
+    #[test]
+    fn test_build_firewall_policy_outbound_hosts() {
+        let config = SandboxConfig {
+            network_policy: Some(agnos_common::NetworkPolicy {
+                allowed_outbound_ports: vec![],
+                allowed_outbound_hosts: vec!["api.example.com".to_string()],
+                allowed_inbound_ports: vec![],
+                enable_nat: false,
+            }),
+            ..SandboxConfig::default()
+        };
+        let sandbox = Sandbox::new(&config).unwrap();
+        let policy = sandbox.build_firewall_policy();
+        assert_eq!(policy.rules.len(), 1);
+    }
+
+    #[test]
+    fn test_build_firewall_policy_combined() {
+        let config = SandboxConfig {
+            network_policy: Some(agnos_common::NetworkPolicy {
+                allowed_outbound_ports: vec![443],
+                allowed_outbound_hosts: vec!["api.example.com".to_string()],
+                allowed_inbound_ports: vec![8080],
+                enable_nat: true,
+            }),
+            ..SandboxConfig::default()
+        };
+        let sandbox = Sandbox::new(&config).unwrap();
+        let policy = sandbox.build_firewall_policy();
+        assert_eq!(policy.rules.len(), 3); // 1 outbound port + 1 host + 1 inbound
+    }
 }

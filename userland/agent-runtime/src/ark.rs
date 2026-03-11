@@ -2273,4 +2273,401 @@ mod tests {
         let result = db.resolve_install_order(&["a", "b"]);
         assert!(result.is_err());
     }
+
+    // -----------------------------------------------------------------------
+    // Coverage improvement: ArkOutput, InstallPlan, TransactionLog, PackageDb
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_ark_output_display_impl() {
+        let output = ArkOutput {
+            lines: vec![
+                ArkOutputLine::Header("Test".to_string()),
+                ArkOutputLine::Info {
+                    key: "Status".to_string(),
+                    value: "OK".to_string(),
+                },
+                ArkOutputLine::Separator,
+                ArkOutputLine::Success("Done".to_string()),
+                ArkOutputLine::Error("Failed".to_string()),
+                ArkOutputLine::Warning("Caution".to_string()),
+                ArkOutputLine::Package {
+                    name: "nginx".to_string(),
+                    version: "1.25".to_string(),
+                    source: PackageSource::System,
+                    description: "web server".to_string(),
+                },
+            ],
+        };
+        let display = format!("{}", output);
+        let method = output.to_display_string();
+        assert_eq!(display, method);
+        assert!(display.contains("=== Test ==="));
+        assert!(display.contains("Status: OK"));
+        assert!(display.contains("---"));
+        assert!(display.contains("OK: Done"));
+        assert!(display.contains("ERROR: Failed"));
+        assert!(display.contains("WARN: Caution"));
+        assert!(display.contains("nginx"));
+    }
+
+    #[test]
+    fn test_ark_output_default() {
+        let output = ArkOutput::default();
+        assert!(output.lines.is_empty());
+        assert_eq!(format!("{}", output), "");
+    }
+
+    #[test]
+    fn test_install_plan_new_and_default() {
+        let plan = InstallPlan::new();
+        assert!(plan.steps.is_empty());
+        assert!(!plan.requires_root);
+        assert_eq!(plan.estimated_size_bytes, 0);
+
+        let default_plan = InstallPlan::default();
+        assert_eq!(plan.steps.len(), default_plan.steps.len());
+    }
+
+    #[test]
+    fn test_install_plan_serialization() {
+        let plan = InstallPlan {
+            steps: vec![
+                InstallStep::SystemInstall {
+                    package: "curl".to_string(),
+                    version: Some("7.85.0".to_string()),
+                },
+                InstallStep::MarketplaceInstall {
+                    package: "agent".to_string(),
+                    version: None,
+                },
+                InstallStep::FlutterInstall {
+                    package: "app".to_string(),
+                    version: Some("1.0".to_string()),
+                },
+                InstallStep::SystemRemove {
+                    package: "old".to_string(),
+                    purge: true,
+                },
+                InstallStep::MarketplaceRemove {
+                    package: "old-agent".to_string(),
+                },
+                InstallStep::FlutterRemove {
+                    package: "old-app".to_string(),
+                },
+                InstallStep::SystemUpdate,
+            ],
+            requires_root: true,
+            estimated_size_bytes: 2048,
+        };
+        let json = serde_json::to_string(&plan).unwrap();
+        let deser: InstallPlan = serde_json::from_str(&json).unwrap();
+        assert_eq!(deser.steps.len(), 7);
+        assert!(deser.requires_root);
+        assert_eq!(deser.estimated_size_bytes, 2048);
+    }
+
+    #[test]
+    fn test_ark_command_serialization() {
+        let commands = vec![
+            ArkCommand::Install {
+                packages: vec!["nginx".into()],
+                force: true,
+            },
+            ArkCommand::Remove {
+                packages: vec!["old".into()],
+                purge: false,
+            },
+            ArkCommand::Search {
+                query: "web".into(),
+                source: Some(PackageSource::System),
+            },
+            ArkCommand::List {
+                source: Some(PackageSource::Marketplace),
+            },
+            ArkCommand::Info {
+                package: "nginx".into(),
+            },
+            ArkCommand::Update,
+            ArkCommand::Upgrade {
+                packages: Some(vec!["nginx".into()]),
+            },
+            ArkCommand::Status,
+        ];
+        for cmd in &commands {
+            let json = serde_json::to_string(cmd).unwrap();
+            let deser: ArkCommand = serde_json::from_str(&json).unwrap();
+            assert_eq!(&deser, cmd);
+        }
+    }
+
+    #[test]
+    fn test_ark_result_serialization() {
+        let result = ArkResult {
+            success: true,
+            message: "Installed".to_string(),
+            packages_affected: vec!["nginx".into(), "curl".into()],
+            source: PackageSource::System,
+        };
+        let json = serde_json::to_string(&result).unwrap();
+        let deser: ArkResult = serde_json::from_str(&json).unwrap();
+        assert_eq!(deser.success, true);
+        assert_eq!(deser.packages_affected.len(), 2);
+    }
+
+    #[test]
+    fn test_ark_config_default() {
+        let config = ArkConfig::default();
+        assert!(config.confirm_system_installs);
+        assert!(config.confirm_removals);
+        assert!(!config.auto_update_check);
+        assert!(config.color_output);
+    }
+
+    #[test]
+    fn test_transaction_log_lifecycle() {
+        let mut log = TransactionLog::new();
+        assert!(log.is_empty());
+        assert_eq!(log.len(), 0);
+
+        let txn_id = log.begin("root");
+        assert!(!log.is_empty());
+        assert_eq!(log.len(), 1);
+
+        // Add operations
+        let op = TransactionOp {
+            package: "nginx".to_string(),
+            op_type: TransactionOpType::Install,
+            source: PackageSource::System,
+            version: Some("1.25".to_string()),
+            status: TransactionOpStatus::Pending,
+            error: None,
+        };
+        assert!(log.add_op(&txn_id, op));
+
+        // Mark op complete
+        assert!(log.mark_op_complete(&txn_id, "nginx"));
+
+        // Commit
+        assert!(log.commit(&txn_id));
+
+        // Can't commit again
+        assert!(!log.commit(&txn_id));
+
+        // Get and verify
+        let txn = log.get(&txn_id).unwrap();
+        assert_eq!(txn.status, TransactionStatus::Committed);
+        assert!(txn.completed_at.is_some());
+    }
+
+    #[test]
+    fn test_transaction_log_rollback() {
+        let mut log = TransactionLog::new();
+        let txn_id = log.begin("user");
+
+        let op = TransactionOp {
+            package: "failing-pkg".to_string(),
+            op_type: TransactionOpType::Install,
+            source: PackageSource::Marketplace,
+            version: None,
+            status: TransactionOpStatus::Pending,
+            error: None,
+        };
+        log.add_op(&txn_id, op);
+        assert!(log.rollback(&txn_id));
+
+        let txn = log.get(&txn_id).unwrap();
+        assert_eq!(txn.status, TransactionStatus::RolledBack);
+        assert_eq!(txn.operations[0].status, TransactionOpStatus::RolledBack);
+    }
+
+    #[test]
+    fn test_transaction_log_fail() {
+        let mut log = TransactionLog::new();
+        let txn_id = log.begin("user");
+
+        assert!(log.fail(&txn_id, "disk full"));
+        let txn = log.get(&txn_id).unwrap();
+        assert!(matches!(txn.status, TransactionStatus::Failed(_)));
+
+        // Can't fail again
+        assert!(!log.fail(&txn_id, "another error"));
+    }
+
+    #[test]
+    fn test_transaction_log_mark_op_failed() {
+        let mut log = TransactionLog::new();
+        let txn_id = log.begin("user");
+
+        let op = TransactionOp {
+            package: "bad-pkg".to_string(),
+            op_type: TransactionOpType::Install,
+            source: PackageSource::System,
+            version: None,
+            status: TransactionOpStatus::InProgress,
+            error: None,
+        };
+        log.add_op(&txn_id, op);
+        assert!(log.mark_op_failed(&txn_id, "bad-pkg", "checksum mismatch"));
+
+        let txn = log.get(&txn_id).unwrap();
+        assert_eq!(txn.operations[0].status, TransactionOpStatus::Failed);
+        assert_eq!(
+            txn.operations[0].error.as_deref(),
+            Some("checksum mismatch")
+        );
+    }
+
+    #[test]
+    fn test_transaction_log_recent() {
+        let mut log = TransactionLog::new();
+        log.begin("a");
+        log.begin("b");
+        log.begin("c");
+
+        let recent = log.recent(2);
+        assert_eq!(recent.len(), 2);
+    }
+
+    #[test]
+    fn test_transaction_log_sequential_ids() {
+        let mut log = TransactionLog::new();
+        let id1 = log.begin("u");
+        let id2 = log.begin("u");
+        assert_ne!(id1, id2);
+        assert!(id1.starts_with("txn-"));
+        assert!(id2.starts_with("txn-"));
+    }
+
+    #[test]
+    fn test_package_db_by_source() {
+        let mut db = PackageDb::new();
+        db.register(make_db_entry("sys-pkg", "1.0", vec![]));
+
+        let mut mkt_entry = make_db_entry("mkt-pkg", "2.0", vec![]);
+        mkt_entry.source = PackageSource::Marketplace;
+        db.register(mkt_entry);
+
+        let system = db.by_source(&PackageSource::System);
+        assert_eq!(system.len(), 1);
+        assert_eq!(system[0].name, "sys-pkg");
+
+        let marketplace = db.by_source(&PackageSource::Marketplace);
+        assert_eq!(marketplace.len(), 1);
+        assert_eq!(marketplace[0].name, "mkt-pkg");
+    }
+
+    #[test]
+    fn test_package_db_total_size() {
+        let mut db = PackageDb::new();
+        db.register(make_db_entry("a", "1.0", vec![]));
+        db.register(make_db_entry("b", "1.0", vec![]));
+        assert_eq!(db.total_size(), 2048); // 1024 each from make_db_entry
+    }
+
+    #[test]
+    fn test_package_db_owner_of() {
+        let mut db = PackageDb::new();
+        db.register(make_db_entry("nginx", "1.25", vec!["/usr/sbin/nginx"]));
+        assert_eq!(db.owner_of("/usr/sbin/nginx"), Some("nginx"));
+        assert_eq!(db.owner_of("/usr/bin/curl"), None);
+    }
+
+    #[test]
+    fn test_package_db_files_for() {
+        let mut db = PackageDb::new();
+        db.register(make_db_entry(
+            "curl",
+            "7.0",
+            vec!["/usr/bin/curl", "/usr/share/man/curl.1"],
+        ));
+        let files = db.files_for("curl");
+        assert_eq!(files.len(), 2);
+        assert!(files.contains(&"/usr/bin/curl"));
+
+        let empty = db.files_for("nonexistent");
+        assert!(empty.is_empty());
+    }
+
+    #[test]
+    fn test_step_result_serialization() {
+        let sr = StepResult {
+            step: InstallStep::SystemInstall {
+                package: "curl".to_string(),
+                version: None,
+            },
+            success: true,
+            message: "OK".to_string(),
+            duration_ms: 500,
+        };
+        let json = serde_json::to_string(&sr).unwrap();
+        let deser: StepResult = serde_json::from_str(&json).unwrap();
+        assert!(deser.success);
+        assert_eq!(deser.duration_ms, 500);
+    }
+
+    #[test]
+    fn test_plan_execution_result_serialization() {
+        let per = PlanExecutionResult {
+            transaction_id: "txn-000001".to_string(),
+            success: true,
+            steps_completed: 3,
+            steps_failed: 0,
+            total_duration_ms: 1500,
+            step_results: vec![],
+        };
+        let json = serde_json::to_string(&per).unwrap();
+        let deser: PlanExecutionResult = serde_json::from_str(&json).unwrap();
+        assert!(deser.success);
+        assert_eq!(deser.steps_completed, 3);
+    }
+
+    #[test]
+    fn test_integrity_issue_type_serialization() {
+        let types = vec![
+            IntegrityIssueType::NoFileManifest,
+            IntegrityIssueType::MissingFile("/usr/bin/test".to_string()),
+            IntegrityIssueType::ChecksumMismatch("sha256:abc".to_string()),
+        ];
+        for t in &types {
+            let json = serde_json::to_string(t).unwrap();
+            let deser: IntegrityIssueType = serde_json::from_str(&json).unwrap();
+            assert_eq!(&deser, t);
+        }
+    }
+
+    #[test]
+    fn test_parse_source_arg_variations() {
+        // system
+        let cmd = parse_args(&["search", "--source", "system", "test"]).unwrap();
+        if let ArkCommand::Search { source, .. } = cmd {
+            assert_eq!(source, Some(PackageSource::System));
+        } else {
+            panic!("Expected Search command");
+        }
+
+        // apt alias
+        let cmd = parse_args(&["search", "--source", "apt", "test"]).unwrap();
+        if let ArkCommand::Search { source, .. } = cmd {
+            assert_eq!(source, Some(PackageSource::System));
+        } else {
+            panic!("Expected Search command");
+        }
+
+        // marketplace
+        let cmd = parse_args(&["search", "--source", "marketplace", "test"]).unwrap();
+        if let ArkCommand::Search { source, .. } = cmd {
+            assert_eq!(source, Some(PackageSource::Marketplace));
+        } else {
+            panic!("Expected Search command");
+        }
+
+        // flutter
+        let cmd = parse_args(&["search", "--source", "flutter", "test"]).unwrap();
+        if let ArkCommand::Search { source, .. } = cmd {
+            assert_eq!(source, Some(PackageSource::FlutterApp));
+        } else {
+            panic!("Expected Search command");
+        }
+    }
 }

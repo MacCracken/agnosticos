@@ -3572,4 +3572,216 @@ mod tests {
         .await;
         assert!(result.is_error);
     }
+
+    // --- MCP protocol type serialization ---
+
+    #[test]
+    fn test_mcp_tool_param_serialization() {
+        let param = McpToolParam {
+            name: "agent_id".to_string(),
+            param_type: "string".to_string(),
+            description: "The agent identifier".to_string(),
+            required: true,
+        };
+        let json = serde_json::to_value(&param).unwrap();
+        assert_eq!(json["name"], "agent_id");
+        assert_eq!(json["type"], "string"); // serde rename
+        assert_eq!(json["required"], true);
+
+        let deser: McpToolParam = serde_json::from_value(json).unwrap();
+        assert_eq!(deser.name, "agent_id");
+        assert!(deser.required);
+    }
+
+    #[test]
+    fn test_mcp_tool_param_required_defaults_false() {
+        let json = serde_json::json!({
+            "name": "limit",
+            "type": "integer",
+            "description": "Max results"
+        });
+        let param: McpToolParam = serde_json::from_value(json).unwrap();
+        assert!(!param.required);
+    }
+
+    #[test]
+    fn test_mcp_tool_description_serialization() {
+        let desc = McpToolDescription {
+            name: "test_tool".to_string(),
+            description: "A test tool".to_string(),
+            input_schema: serde_json::json!({"type": "object", "properties": {}}),
+        };
+        let json = serde_json::to_value(&desc).unwrap();
+        assert_eq!(json["name"], "test_tool");
+        assert_eq!(json["inputSchema"]["type"], "object"); // serde rename
+    }
+
+    #[test]
+    fn test_mcp_tool_manifest_serialization() {
+        let manifest = McpToolManifest {
+            tools: vec![
+                McpToolDescription {
+                    name: "tool1".to_string(),
+                    description: "First tool".to_string(),
+                    input_schema: serde_json::json!({}),
+                },
+                McpToolDescription {
+                    name: "tool2".to_string(),
+                    description: "Second tool".to_string(),
+                    input_schema: serde_json::json!({}),
+                },
+            ],
+        };
+        let json = serde_json::to_string(&manifest).unwrap();
+        let deser: McpToolManifest = serde_json::from_str(&json).unwrap();
+        assert_eq!(deser.tools.len(), 2);
+        assert_eq!(deser.tools[0].name, "tool1");
+    }
+
+    #[test]
+    fn test_mcp_content_block_serialization() {
+        let block = McpContentBlock {
+            content_type: "text".to_string(),
+            text: "Hello, world!".to_string(),
+        };
+        let json = serde_json::to_value(&block).unwrap();
+        assert_eq!(json["type"], "text"); // serde rename
+        assert_eq!(json["text"], "Hello, world!");
+    }
+
+    #[test]
+    fn test_mcp_tool_result_success() {
+        let result = McpToolResult {
+            content: vec![McpContentBlock {
+                content_type: "text".to_string(),
+                text: "{\"status\":\"ok\"}".to_string(),
+            }],
+            is_error: false,
+        };
+        let json = serde_json::to_value(&result).unwrap();
+        assert_eq!(json["isError"], false); // serde rename
+        assert_eq!(json["content"].as_array().unwrap().len(), 1);
+
+        let deser: McpToolResult = serde_json::from_value(json).unwrap();
+        assert!(!deser.is_error);
+    }
+
+    #[test]
+    fn test_mcp_tool_result_error() {
+        let result = McpToolResult {
+            content: vec![McpContentBlock {
+                content_type: "text".to_string(),
+                text: "not found".to_string(),
+            }],
+            is_error: true,
+        };
+        assert!(result.is_error);
+        assert_eq!(result.content[0].text, "not found");
+    }
+
+    #[test]
+    fn test_external_mcp_tool_serialization() {
+        let tool = ExternalMcpTool {
+            tool: McpToolDescription {
+                name: "ext_tool".to_string(),
+                description: "External tool".to_string(),
+                input_schema: serde_json::json!({"type": "object"}),
+            },
+            callback_url: "http://localhost:9090/callback".to_string(),
+            source: "test-service".to_string(),
+        };
+        let json = serde_json::to_string(&tool).unwrap();
+        let deser: ExternalMcpTool = serde_json::from_str(&json).unwrap();
+        assert_eq!(deser.tool.name, "ext_tool");
+        assert_eq!(deser.callback_url, "http://localhost:9090/callback");
+        assert_eq!(deser.source, "test-service");
+    }
+
+    #[test]
+    fn test_register_mcp_tool_request_deserialization() {
+        let json = serde_json::json!({
+            "name": "my_tool",
+            "description": "My custom tool",
+            "inputSchema": {"type": "object", "properties": {"x": {"type": "string"}}},
+            "callback_url": "http://localhost:3000/tool"
+        });
+        let req: RegisterMcpToolRequest = serde_json::from_value(json).unwrap();
+        assert_eq!(req.name, "my_tool");
+        assert_eq!(req.callback_url, "http://localhost:3000/tool");
+        assert!(req.source.is_none());
+    }
+
+    #[test]
+    fn test_register_mcp_tool_request_with_source() {
+        let json = serde_json::json!({
+            "name": "ext",
+            "description": "External",
+            "inputSchema": {},
+            "callback_url": "http://localhost/cb",
+            "source": "delta"
+        });
+        let req: RegisterMcpToolRequest = serde_json::from_value(json).unwrap();
+        assert_eq!(req.source, Some("delta".to_string()));
+    }
+
+    // --- json_schema_object helper ---
+
+    #[test]
+    fn test_json_schema_object_empty() {
+        let schema = json_schema_object(serde_json::json!({}), vec![]);
+        assert_eq!(schema["type"], "object");
+        assert!(schema["properties"].as_object().unwrap().is_empty());
+        assert!(schema["required"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_json_schema_object_with_properties() {
+        let schema = json_schema_object(
+            serde_json::json!({
+                "name": {"type": "string"},
+                "count": {"type": "integer"}
+            }),
+            vec!["name"],
+        );
+        assert_eq!(schema["type"], "object");
+        assert_eq!(schema["properties"]["name"]["type"], "string");
+        assert_eq!(schema["required"][0], "name");
+    }
+
+    // --- build_tool_manifest ---
+
+    #[test]
+    fn test_build_tool_manifest_has_tools() {
+        let manifest = build_tool_manifest();
+        assert!(manifest.tools.len() >= 20, "Expected at least 20 MCP tools, got {}", manifest.tools.len());
+    }
+
+    #[test]
+    fn test_build_tool_manifest_all_have_schemas() {
+        let manifest = build_tool_manifest();
+        for tool in &manifest.tools {
+            assert!(!tool.name.is_empty(), "Tool has empty name");
+            assert!(!tool.description.is_empty(), "Tool {} has empty description", tool.name);
+            assert_eq!(tool.input_schema["type"], "object", "Tool {} schema missing type:object", tool.name);
+        }
+    }
+
+    #[test]
+    fn test_build_tool_manifest_has_core_tools() {
+        let manifest = build_tool_manifest();
+        let names: Vec<&str> = manifest.tools.iter().map(|t| t.name.as_str()).collect();
+        assert!(names.contains(&"agnos_health"), "Missing agnos_health");
+        assert!(names.contains(&"agnos_list_agents"), "Missing agnos_list_agents");
+        assert!(names.contains(&"agnos_register_agent"), "Missing agnos_register_agent");
+    }
+
+    #[test]
+    fn test_build_tool_manifest_unique_names() {
+        let manifest = build_tool_manifest();
+        let mut names: Vec<&str> = manifest.tools.iter().map(|t| t.name.as_str()).collect();
+        let count_before = names.len();
+        names.sort();
+        names.dedup();
+        assert_eq!(names.len(), count_before, "Duplicate tool names found");
+    }
 }

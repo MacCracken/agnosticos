@@ -5493,4 +5493,392 @@ mod tests {
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert!(json["stats"].is_object());
     }
+
+    // ================================================================
+    // Auth middleware tests
+    // ================================================================
+
+    fn test_state_with_auth() -> ApiState {
+        ApiState::with_api_key(Some("test-secret-key".to_string()))
+    }
+
+    fn test_app_with_auth() -> Router {
+        build_router(test_state_with_auth())
+    }
+
+    #[tokio::test]
+    async fn test_auth_health_no_token_allowed() {
+        let app = test_app_with_auth();
+        let req = Request::builder()
+            .uri("/v1/health")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        // Health endpoint should be accessible without auth
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_auth_missing_token_rejected() {
+        let app = test_app_with_auth();
+        let req = Request::builder()
+            .uri("/v1/agents")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["code"], 401);
+    }
+
+    #[tokio::test]
+    async fn test_auth_invalid_token_rejected() {
+        let app = test_app_with_auth();
+        let req = Request::builder()
+            .uri("/v1/agents")
+            .header("authorization", "Bearer wrong-token")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(json["error"].as_str().unwrap().contains("Invalid"));
+    }
+
+    #[tokio::test]
+    async fn test_auth_valid_token_accepted() {
+        let app = test_app_with_auth();
+        let req = Request::builder()
+            .uri("/v1/agents")
+            .header("authorization", "Bearer test-secret-key")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_auth_malformed_header_rejected() {
+        let app = test_app_with_auth();
+        let req = Request::builder()
+            .uri("/v1/agents")
+            .header("authorization", "Basic dXNlcjpwYXNz")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn test_auth_no_key_dev_mode_passes() {
+        // Default test_app has no api_key — dev mode
+        let app = test_app();
+        let req = Request::builder()
+            .uri("/v1/agents")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    // ================================================================
+    // Additional handler coverage: marketplace with installed packages
+    // ================================================================
+
+    #[tokio::test]
+    async fn test_marketplace_search_with_query() {
+        let app = test_app();
+        let req = Request::builder()
+            .uri("/v1/marketplace/search?q=test-agent")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(json["results"].is_array());
+        assert_eq!(json["query"], "test-agent");
+    }
+
+    #[tokio::test]
+    async fn test_marketplace_install_invalid_path() {
+        let app = test_app();
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/marketplace/install")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                serde_json::to_vec(&serde_json::json!({
+                    "name": "test-pkg",
+                    "version": "1.0",
+                    "path": "/nonexistent/path/to/package.tar"
+                }))
+                .unwrap(),
+            ))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        // Should fail: path doesn't exist, so canonicalize fails
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_marketplace_install_path_traversal() {
+        // Create a temp file to pass canonicalize, but outside allowed dirs
+        let tmp = std::env::temp_dir().join("agnos-test-install.tar");
+        std::fs::write(&tmp, b"fake").ok();
+        let app = test_app();
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/marketplace/install")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                serde_json::to_vec(&serde_json::json!({
+                    "name": "test-pkg",
+                    "version": "1.0",
+                    "path": tmp.to_str().unwrap()
+                }))
+                .unwrap(),
+            ))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        // Should be FORBIDDEN: /tmp/ is not in allowed prefixes (/var/agnos/, /tmp/agnos/)
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+        let _ = std::fs::remove_file(&tmp);
+    }
+
+    // ================================================================
+    // Batch register tests (handshake)
+    // ================================================================
+
+    #[tokio::test]
+    async fn test_batch_register_empty_list() {
+        let app = test_app();
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/agents/register/batch")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                serde_json::to_vec(&serde_json::json!({
+                    "agents": [],
+                    "source": "test"
+                }))
+                .unwrap(),
+            ))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_batch_register_too_many() {
+        let agents: Vec<serde_json::Value> = (0..101)
+            .map(|i| serde_json::json!({"name": format!("agent-{}", i)}))
+            .collect();
+        let app = test_app();
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/agents/register/batch")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                serde_json::to_vec(&serde_json::json!({
+                    "agents": agents,
+                    "source": "test"
+                }))
+                .unwrap(),
+            ))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_batch_register_with_client_id_conflict() {
+        let app = test_app();
+        let dup_id = Uuid::new_v4();
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/agents/register/batch")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                serde_json::to_vec(&serde_json::json!({
+                    "agents": [
+                        {"name": "first", "id": dup_id.to_string()},
+                        {"name": "second", "id": dup_id.to_string()}
+                    ],
+                    "source": "test"
+                }))
+                .unwrap(),
+            ))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let results = json["results"].as_array().unwrap();
+        // First should succeed, second should get "error" (ID already in use)
+        assert_eq!(results[0]["status"], "registered");
+        assert_eq!(results[1]["status"], "error");
+    }
+
+    // ================================================================
+    // Events topics (handshake)
+    // ================================================================
+
+    #[tokio::test]
+    async fn test_events_publish_with_correlation() {
+        let app = test_app();
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/events/publish")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                serde_json::to_vec(&serde_json::json!({
+                    "topic": "test.correlated",
+                    "sender": "test-service",
+                    "payload": {"data": 42},
+                    "correlation_id": "req-123",
+                    "reply_to": "test.reply"
+                }))
+                .unwrap(),
+            ))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_events_topics_list() {
+        let app = test_app();
+        let req = Request::builder()
+            .uri("/v1/events/topics")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(json["topics"].is_array());
+    }
+
+    // ================================================================
+    // Knowledge index path traversal
+    // ================================================================
+
+    #[tokio::test]
+    async fn test_knowledge_index_invalid_path() {
+        let app = test_app();
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/knowledge/index")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                serde_json::to_vec(&serde_json::json!({
+                    "path": "/nonexistent/dir",
+                    "query": ""
+                }))
+                .unwrap(),
+            ))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_knowledge_index_path_traversal() {
+        let tmp = std::env::temp_dir().join("agnos-test-kb-index");
+        std::fs::create_dir_all(&tmp).ok();
+        let app = test_app();
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/knowledge/index")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                serde_json::to_vec(&serde_json::json!({
+                    "path": tmp.to_str().unwrap(),
+                    "query": ""
+                }))
+                .unwrap(),
+            ))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        // Should be FORBIDDEN: /tmp/ not in allowed prefixes
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+        let _ = std::fs::remove_dir(&tmp);
+    }
+
+    // ================================================================
+    // Screen capture permission tests
+    // ================================================================
+
+    #[tokio::test]
+    async fn test_screen_capture_permissions_list_empty() {
+        let app = test_app();
+        let req = Request::builder()
+            .uri("/v1/screen/permissions")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_screen_capture_grant_permission() {
+        let app = test_app();
+        let agent_id = Uuid::new_v4();
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/screen/permissions")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                serde_json::to_vec(&serde_json::json!({
+                    "agent_id": agent_id.to_string(),
+                    "capture_type": "full_screen",
+                    "max_fps": 5
+                }))
+                .unwrap(),
+            ))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        // Handler may require registered agent — just verify it doesn't 500
+        assert_ne!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[tokio::test]
+    async fn test_screen_capture_revoke_nonexistent() {
+        let app = test_app();
+        let agent_id = Uuid::new_v4();
+        let req = Request::builder()
+            .method("DELETE")
+            .uri(&format!("/v1/screen/permissions/{}", agent_id))
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        // Should either succeed (idempotent) or 404
+        assert!(resp.status() == StatusCode::OK || resp.status() == StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_screen_history_list() {
+        let app = test_app();
+        let req = Request::builder()
+            .uri("/v1/screen/history")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
 }
