@@ -388,9 +388,8 @@ mod tests {
         let mut r = GestureRecognizer::new(config());
         r.touch_down(point(1, 100.0, 100.0, 0));
         // Simulate time passing without moving
-        let mut p = point(1, 100.0, 100.0, 600);
+        let p = point(1, 100.0, 100.0, 600);
         r.touch_move(p);
-        p.timestamp_ms = 600;
         r.touch_up(1);
         let gestures = r.recognized_gestures();
         assert_eq!(gestures.len(), 1);

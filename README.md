@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/badge/license-GPLv3-blue)](LICENSE)
 [![Kernel](https://img.shields.io/badge/kernel-Linux%206.6%20LTS-orange)](https://kernel.org)
 [![Security](https://img.shields.io/badge/security-hardened-red)](docs/security/security-guide.md)
-[![Status](https://img.shields.io/badge/status-pre--alpha-yellow)](docs/development/roadmap.md)
+[![Status](https://img.shields.io/badge/status-pre--beta-yellow)](docs/development/roadmap.md)
 
 **AGNOS** is a Linux-based operating system designed from the ground up for AI agents and human-AI collaboration. Built with security-first principles inspired by Arch Linux and enterprise hardened systems, AGNOS provides a sovereign computing environment where AI agents can operate autonomously while remaining fully auditable and controllable by human operators.
 
