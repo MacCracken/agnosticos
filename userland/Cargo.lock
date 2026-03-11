@@ -72,6 +72,7 @@ dependencies = [
  "hostname",
  "libc",
  "nix 0.27.1",
+ "once_cell",
  "rand",
  "reqwest",
  "serde",

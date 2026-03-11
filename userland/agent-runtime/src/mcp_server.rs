@@ -512,8 +512,8 @@ async fn dispatch_tool_call(state: &ApiState, call: &McpToolCall, request_id: Uu
 
 /// Shared HTTP client for external MCP tool calls — created once, reused for
 /// all dispatches to avoid per-call TLS/connection-pool overhead.
-static EXTERNAL_HTTP_CLIENT: std::sync::LazyLock<reqwest::Client> =
-    std::sync::LazyLock::new(|| {
+static EXTERNAL_HTTP_CLIENT: once_cell::sync::Lazy<reqwest::Client> =
+    once_cell::sync::Lazy::new(|| {
         reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(30))
             .build()
