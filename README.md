@@ -148,7 +148,29 @@ docker run -it --privileged \
   -v /dev:/dev \
   -v agnos-data:/var/lib/agnos \
   agnostos/agnos:latest
+
+# For large LLM workloads, increase the virtual memory limit (default 8GB)
+docker run -it --privileged \
+  -e AGNOS_ULIMIT_VMEM=16777216 \
+  agnostos/agnos:latest
+
+# Or disable the virtual memory limit entirely
+docker run -it --privileged \
+  -e AGNOS_ULIMIT_VMEM=unlimited \
+  agnostos/agnos:latest
 ```
+
+**Container environment variables:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AGNOS_ULIMIT_VMEM` | `8388608` (8GB) | Virtual memory limit in KB (`unlimited` to disable) |
+| `AGNOS_ULIMIT_NOFILE` | `4096` | Max open file descriptors |
+| `AGNOS_ULIMIT_NPROC` | `256` | Max user processes |
+| `AGNOS_LOG_FORMAT` | `json` | Log format (`json` or `text`) |
+| `AGNOS_RUNTIME_BIND` | `0.0.0.0` | daimon bind address |
+| `AGNOS_GATEWAY_BIND` | `0.0.0.0` | hoosh bind address |
+| `RUST_LOG` | `info` | Log level (`debug`, `info`, `warn`, `error`) |
 
 ## Quick Start
 

@@ -20,10 +20,10 @@ if command -v capsh >/dev/null 2>&1; then
     echo "Dropping excess capabilities..."
 fi
 
-# Set conservative ulimits
-ulimit -n 4096   2>/dev/null || true  # file descriptors
-ulimit -u 256    2>/dev/null || true  # max processes
-ulimit -v 2097152 2>/dev/null || true # virtual memory (2GB)
+# Set conservative ulimits (overridable via environment)
+ulimit -n "${AGNOS_ULIMIT_NOFILE:-4096}"     2>/dev/null || true  # file descriptors
+ulimit -u "${AGNOS_ULIMIT_NPROC:-256}"       2>/dev/null || true  # max processes
+ulimit -v "${AGNOS_ULIMIT_VMEM:-8388608}"    2>/dev/null || true  # virtual memory (default 8GB)
 
 # Ensure runtime directories exist
 mkdir -p /run/agnos/agents /var/log/agnos /var/lib/agnos/agents 2>/dev/null || true

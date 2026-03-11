@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [2026.3.10] - 2026-03-10
 
+### Fixed — Docker Entrypoint
+
+- **`docker/entrypoint.sh`**: Increased default virtual memory ulimit from 2GB to 8GB — previous limit caused crashes with large LLM models and multi-agent workloads
+- All three ulimits (virtual memory, file descriptors, max processes) are now configurable via environment variables: `AGNOS_ULIMIT_VMEM`, `AGNOS_ULIMIT_NOFILE`, `AGNOS_ULIMIT_NPROC`
+- Set `AGNOS_ULIMIT_VMEM=unlimited` to disable the virtual memory cap entirely
+
 ### Fixed — CI Pipeline
 
 - **`.github/workflows/base-system.yml`**: Replaced broken full-build CI (all 108 packages failed because LFS bootstrap requires ordered builds, not parallel) with recipe validation CI

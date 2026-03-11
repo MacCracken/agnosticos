@@ -76,6 +76,13 @@ docker run -it --rm \
   -v agnos-build-cache:/cache \
   agnos-dev
 
+# For large builds, increase virtual memory limit (default 8GB)
+docker run -it --rm \
+  -e AGNOS_ULIMIT_VMEM=unlimited \
+  -v $(pwd):/workspace \
+  -v agnos-build-cache:/cache \
+  agnos-dev
+
 # Inside container
 make build
 ```

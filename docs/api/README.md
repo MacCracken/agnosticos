@@ -19,6 +19,10 @@ AGNOS exposes two HTTP/JSON services for interacting with the system. Both bind 
 - **Bind address**: Configurable via environment variables:
   - `AGNOS_RUNTIME_BIND` (daimon, default `127.0.0.1:8090`)
   - `AGNOS_GATEWAY_BIND` (hoosh, default `127.0.0.1:8088`)
+- **Container resource limits** (set in entrypoint, overridable via environment):
+  - `AGNOS_ULIMIT_VMEM` — virtual memory in KB (default `8388608` = 8GB, use `unlimited` to disable)
+  - `AGNOS_ULIMIT_NOFILE` — max open file descriptors (default `4096`)
+  - `AGNOS_ULIMIT_NPROC` — max user processes (default `256`)
 
 ---
 
