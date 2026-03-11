@@ -65,12 +65,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added — CI Workflow Updates
 
 - **`marketplace-publish.yml`**: Added Delta and Aequi to app choices and matrix (now 7 apps total)
+- **`selfhost-validation.yml`**: New CI workflow for self-hosting validation (weekly + manual dispatch)
+
+### Changed — Release Pipeline
+
+- **`release.yml`**: Updated release naming from "Alpha" to "Pre-Beta", Docker tags from `alpha` to `pre-beta`
 
 ### Changed — MCP Tool Manifest
 
 - MCP tools expanded from 16 to 31 (10 AGNOS core + 5 Aequi + 5 Agnostic + 5 Delta + 6 Photis)
 - All consumer apps now have full MCP tool coverage with HTTP bridge + mock fallback pattern
-- Test count: agent-runtime 3076+ (was 3027), ai-shell 1472 (was 1132)
+- Test count: agent-runtime 3144+ (was 3027), ai-shell 1472 (was 1132)
 
 ### Fixed — Docker Entrypoint
 
