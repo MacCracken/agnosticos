@@ -1,5 +1,6 @@
 mod aequi;
 mod agnos;
+mod agnostic;
 mod delta;
 mod filesystem;
 mod knowledge;
@@ -81,6 +82,13 @@ impl Interpreter {
             | Intent::AequiImportBank { .. }
             | Intent::AequiBalance
             | Intent::AequiReceipts { .. } => aequi::translate_aequi(intent),
+
+            // Agnostic QA platform
+            Intent::AgnosticRunSuite { .. }
+            | Intent::AgnosticTestStatus { .. }
+            | Intent::AgnosticTestReport { .. }
+            | Intent::AgnosticListSuites { .. }
+            | Intent::AgnosticAgentStatus { .. } => agnostic::translate_agnostic(intent),
 
             // Delta code hosting
             Intent::DeltaCreateRepo { .. }

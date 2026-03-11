@@ -3,7 +3,7 @@
 # fuzzy verification, security compliance, and performance analysis.
 # Built with Python; packaged as .agnos-agent via Docker container.
 #
-# Status: STUB — complete when Agnostic reaches beta.
+# Status: Ready — recipe complete, MCP tools integrated, agnoshi intents added.
 
 [package]
 name = "agnostic"

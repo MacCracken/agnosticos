@@ -241,6 +241,114 @@ pub fn build_tool_manifest() -> McpToolManifest {
                 vec![],
             ),
         },
+        // ----- Aequi accounting tools -----
+        McpToolDescription {
+            name: "aequi_estimate_quarterly_tax".to_string(),
+            description: "Calculate estimated quarterly tax liability".to_string(),
+            input_schema: json_schema_object(
+                serde_json::json!({
+                    "quarter": {"type": "string", "description": "Quarter number (1-4)"},
+                    "year": {"type": "string", "description": "Tax year (e.g. 2026)"}
+                }),
+                vec![],
+            ),
+        },
+        McpToolDescription {
+            name: "aequi_schedule_c_preview".to_string(),
+            description: "Generate a Schedule C (Profit or Loss) preview".to_string(),
+            input_schema: json_schema_object(
+                serde_json::json!({
+                    "year": {"type": "string", "description": "Tax year (e.g. 2026)"}
+                }),
+                vec![],
+            ),
+        },
+        McpToolDescription {
+            name: "aequi_import_bank_statement".to_string(),
+            description: "Import a bank statement file (OFX, QFX, CSV)".to_string(),
+            input_schema: json_schema_object(
+                serde_json::json!({
+                    "file_path": {"type": "string", "description": "Path to the statement file"},
+                    "format": {"type": "string", "description": "File format: ofx, qfx, csv (auto-detected if omitted)"}
+                }),
+                vec!["file_path"],
+            ),
+        },
+        McpToolDescription {
+            name: "aequi_account_balances".to_string(),
+            description: "Get current account balances".to_string(),
+            input_schema: json_schema_object(
+                serde_json::json!({
+                    "account_type": {"type": "string", "description": "Filter by type: asset, liability, equity, revenue, expense"}
+                }),
+                vec![],
+            ),
+        },
+        McpToolDescription {
+            name: "aequi_list_receipts".to_string(),
+            description: "List receipts with optional status filter".to_string(),
+            input_schema: json_schema_object(
+                serde_json::json!({
+                    "status": {"type": "string", "description": "Filter: pending_review, reviewed, matched, all"},
+                    "limit": {"type": "integer", "description": "Max results to return"}
+                }),
+                vec![],
+            ),
+        },
+        // ----- Agnostic QA platform tools -----
+        McpToolDescription {
+            name: "agnostic_run_suite".to_string(),
+            description: "Run a QA test suite".to_string(),
+            input_schema: json_schema_object(
+                serde_json::json!({
+                    "suite": {"type": "string", "description": "Test suite name or ID"},
+                    "target_url": {"type": "string", "description": "Target application URL to test"},
+                    "agents": {"type": "array", "description": "Agent types to use: ui, api, security, performance, accessibility, self-healing"}
+                }),
+                vec!["suite"],
+            ),
+        },
+        McpToolDescription {
+            name: "agnostic_test_status".to_string(),
+            description: "Get status of a running or completed test run".to_string(),
+            input_schema: json_schema_object(
+                serde_json::json!({
+                    "run_id": {"type": "string", "description": "Test run ID"}
+                }),
+                vec!["run_id"],
+            ),
+        },
+        McpToolDescription {
+            name: "agnostic_test_report".to_string(),
+            description: "Get detailed test report with findings".to_string(),
+            input_schema: json_schema_object(
+                serde_json::json!({
+                    "run_id": {"type": "string", "description": "Test run ID"},
+                    "format": {"type": "string", "description": "Report format: summary, full, json (default: summary)"}
+                }),
+                vec!["run_id"],
+            ),
+        },
+        McpToolDescription {
+            name: "agnostic_list_suites".to_string(),
+            description: "List available QA test suites".to_string(),
+            input_schema: json_schema_object(
+                serde_json::json!({
+                    "category": {"type": "string", "description": "Filter by category: ui, api, security, performance, all"}
+                }),
+                vec![],
+            ),
+        },
+        McpToolDescription {
+            name: "agnostic_agent_status".to_string(),
+            description: "Get status of QA testing agents".to_string(),
+            input_schema: json_schema_object(
+                serde_json::json!({
+                    "agent_type": {"type": "string", "description": "Filter by agent type: ui, api, security, performance, accessibility, self-healing"}
+                }),
+                vec![],
+            ),
+        },
         // ----- Photis Nadi task management tools -----
         McpToolDescription {
             name: "photis_list_tasks".to_string(),
@@ -349,6 +457,16 @@ async fn dispatch_tool_call(state: &ApiState, call: &McpToolCall) -> McpToolResu
         "agnos_forward_audit" => handle_forward_audit(state, &call.arguments).await,
         "agnos_memory_get" => handle_memory_get(state, &call.arguments).await,
         "agnos_memory_set" => handle_memory_set(state, &call.arguments).await,
+        "aequi_estimate_quarterly_tax" => handle_aequi_estimate_tax(&call.arguments).await,
+        "aequi_schedule_c_preview" => handle_aequi_schedule_c(&call.arguments).await,
+        "aequi_import_bank_statement" => handle_aequi_import_bank(&call.arguments).await,
+        "aequi_account_balances" => handle_aequi_balances(&call.arguments).await,
+        "aequi_list_receipts" => handle_aequi_receipts(&call.arguments).await,
+        "agnostic_run_suite" => handle_agnostic_run_suite(&call.arguments).await,
+        "agnostic_test_status" => handle_agnostic_test_status(&call.arguments).await,
+        "agnostic_test_report" => handle_agnostic_test_report(&call.arguments).await,
+        "agnostic_list_suites" => handle_agnostic_list_suites(&call.arguments).await,
+        "agnostic_agent_status" => handle_agnostic_agent_status(&call.arguments).await,
         "delta_create_repository" => handle_delta_create_repository(&call.arguments).await,
         "delta_list_repositories" => handle_delta_list_repositories(&call.arguments).await,
         "delta_pull_request" => handle_delta_pull_request(&call.arguments).await,
@@ -1123,6 +1241,552 @@ async fn handle_photis_sync(args: &serde_json::Value) -> McpToolResult {
 }
 
 // ---------------------------------------------------------------------------
+// Aequi Accounting Agent Bridge
+// ---------------------------------------------------------------------------
+
+/// Bridge that proxies MCP tool calls to the Aequi accounting API.
+#[derive(Debug, Clone)]
+pub struct AequiBridge {
+    base_url: String,
+    api_key: Option<String>,
+}
+
+impl AequiBridge {
+    pub fn new() -> Self {
+        Self {
+            base_url: std::env::var("AEQUI_URL")
+                .unwrap_or_else(|_| "http://127.0.0.1:8060".to_string()),
+            api_key: std::env::var("AEQUI_API_KEY").ok(),
+        }
+    }
+
+    pub fn base_url(&self) -> &str {
+        &self.base_url
+    }
+
+    async fn get(&self, path: &str, query: &[(String, String)]) -> Result<serde_json::Value, String> {
+        let client = reqwest::Client::new();
+        let url = format!("{}{}", self.base_url, path);
+        let mut req = client.get(&url).query(query);
+        if let Some(ref key) = self.api_key {
+            req = req.header("Authorization", format!("Bearer {}", key));
+        }
+        let resp = req.send().await.map_err(|e| e.to_string())?;
+        if !resp.status().is_success() {
+            return Err(format!("Aequi API error: {}", resp.status()));
+        }
+        resp.json().await.map_err(|e| e.to_string())
+    }
+
+    async fn post(&self, path: &str, body: serde_json::Value) -> Result<serde_json::Value, String> {
+        let client = reqwest::Client::new();
+        let url = format!("{}{}", self.base_url, path);
+        let mut req = client.post(&url).json(&body);
+        if let Some(ref key) = self.api_key {
+            req = req.header("Authorization", format!("Bearer {}", key));
+        }
+        let resp = req.send().await.map_err(|e| e.to_string())?;
+        if !resp.status().is_success() {
+            return Err(format!("Aequi API error: {}", resp.status()));
+        }
+        resp.json().await.map_err(|e| e.to_string())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Aequi Tool Implementations (bridged)
+// ---------------------------------------------------------------------------
+
+async fn handle_aequi_estimate_tax(args: &serde_json::Value) -> McpToolResult {
+    let quarter = get_optional_string_arg(args, "quarter");
+    let year = get_optional_string_arg(args, "year");
+
+    if let Some(ref q) = quarter {
+        if !["1", "2", "3", "4"].contains(&q.as_str()) {
+            return error_result(format!("Invalid quarter '{}': must be 1-4", q));
+        }
+    }
+
+    let bridge = AequiBridge::new();
+    let mut query = Vec::new();
+    if let Some(ref q) = quarter {
+        query.push(("quarter".to_string(), q.clone()));
+    }
+    if let Some(ref y) = year {
+        query.push(("year".to_string(), y.clone()));
+    }
+
+    match bridge.get("/api/v1/tax/estimate", &query).await {
+        Ok(response) => {
+            info!("Aequi: tax estimate (bridged)");
+            success_result(response)
+        }
+        Err(e) => {
+            warn!(error = %e, "Aequi bridge: falling back to mock for tax estimate");
+            let q = quarter.as_deref().unwrap_or("1");
+            success_result(serde_json::json!({
+                "quarter": q,
+                "year": year.as_deref().unwrap_or("2026"),
+                "estimated_tax": 3250.00,
+                "gross_income": 22500.00,
+                "deductions": 5200.00,
+                "taxable_income": 17300.00,
+                "effective_rate": 0.188,
+                "_source": "mock",
+            }))
+        }
+    }
+}
+
+async fn handle_aequi_schedule_c(args: &serde_json::Value) -> McpToolResult {
+    let year = get_optional_string_arg(args, "year");
+
+    let bridge = AequiBridge::new();
+    let mut query = Vec::new();
+    if let Some(ref y) = year {
+        query.push(("year".to_string(), y.clone()));
+    }
+
+    match bridge.get("/api/v1/tax/schedule-c", &query).await {
+        Ok(response) => {
+            info!("Aequi: schedule C preview (bridged)");
+            success_result(response)
+        }
+        Err(e) => {
+            warn!(error = %e, "Aequi bridge: falling back to mock for schedule C");
+            success_result(serde_json::json!({
+                "year": year.as_deref().unwrap_or("2026"),
+                "gross_receipts": 90000.00,
+                "cost_of_goods_sold": 0.00,
+                "gross_income": 90000.00,
+                "total_expenses": 21400.00,
+                "net_profit": 68600.00,
+                "categories": {
+                    "office_supplies": 1200.00,
+                    "software_subscriptions": 3600.00,
+                    "home_office": 5400.00,
+                    "professional_services": 4800.00,
+                    "equipment_depreciation": 6400.00,
+                },
+                "_source": "mock",
+            }))
+        }
+    }
+}
+
+async fn handle_aequi_import_bank(args: &serde_json::Value) -> McpToolResult {
+    let file_path = match get_string_arg(args, "file_path") {
+        Some(p) => p,
+        None => return error_result("Missing required argument: file_path".to_string()),
+    };
+
+    if file_path.is_empty() {
+        return error_result("File path cannot be empty".to_string());
+    }
+
+    let format = get_optional_string_arg(args, "format");
+    if let Some(ref f) = format {
+        if !["ofx", "qfx", "csv"].contains(&f.as_str()) {
+            return error_result(format!(
+                "Invalid format '{}': must be ofx, qfx, or csv",
+                f
+            ));
+        }
+    }
+
+    let bridge = AequiBridge::new();
+    let body = serde_json::json!({
+        "file_path": file_path,
+        "format": format,
+    });
+
+    match bridge.post("/api/v1/import/bank-statement", body).await {
+        Ok(response) => {
+            info!(file = %file_path, "Aequi: import bank statement (bridged)");
+            success_result(response)
+        }
+        Err(e) => {
+            warn!(error = %e, "Aequi bridge: falling back to mock for import");
+            success_result(serde_json::json!({
+                "status": "imported",
+                "file": file_path,
+                "transactions_imported": 47,
+                "transactions_matched": 12,
+                "transactions_new": 35,
+                "date_range": {"from": "2026-01-01", "to": "2026-01-31"},
+                "_source": "mock",
+            }))
+        }
+    }
+}
+
+async fn handle_aequi_balances(args: &serde_json::Value) -> McpToolResult {
+    let account_type = get_optional_string_arg(args, "account_type");
+
+    if let Some(ref t) = account_type {
+        if !["asset", "liability", "equity", "revenue", "expense"].contains(&t.as_str()) {
+            return error_result(format!(
+                "Invalid account_type '{}': must be asset, liability, equity, revenue, or expense",
+                t
+            ));
+        }
+    }
+
+    let bridge = AequiBridge::new();
+    let mut query = Vec::new();
+    if let Some(ref t) = account_type {
+        query.push(("type".to_string(), t.clone()));
+    }
+
+    match bridge.get("/api/v1/accounts/balances", &query).await {
+        Ok(response) => {
+            info!("Aequi: account balances (bridged)");
+            success_result(response)
+        }
+        Err(e) => {
+            warn!(error = %e, "Aequi bridge: falling back to mock for balances");
+            let accounts = vec![
+                serde_json::json!({"name": "Business Checking", "type": "asset", "balance": 14523.67, "currency": "USD"}),
+                serde_json::json!({"name": "Business Savings", "type": "asset", "balance": 8200.00, "currency": "USD"}),
+                serde_json::json!({"name": "Accounts Receivable", "type": "asset", "balance": 3750.00, "currency": "USD"}),
+                serde_json::json!({"name": "Credit Card", "type": "liability", "balance": -1234.56, "currency": "USD"}),
+            ];
+            success_result(serde_json::json!({
+                "accounts": accounts,
+                "total_assets": 26473.67,
+                "total_liabilities": -1234.56,
+                "net_worth": 25239.11,
+                "_source": "mock",
+            }))
+        }
+    }
+}
+
+async fn handle_aequi_receipts(args: &serde_json::Value) -> McpToolResult {
+    let status = get_optional_string_arg(args, "status");
+    let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(20) as usize;
+
+    if let Some(ref s) = status {
+        if !["pending_review", "reviewed", "matched", "all"].contains(&s.as_str()) {
+            return error_result(format!(
+                "Invalid status '{}': must be pending_review, reviewed, matched, or all",
+                s
+            ));
+        }
+    }
+
+    let bridge = AequiBridge::new();
+    let mut query = Vec::new();
+    if let Some(ref s) = status {
+        query.push(("status".to_string(), s.clone()));
+    }
+    query.push(("limit".to_string(), limit.to_string()));
+
+    match bridge.get("/api/v1/receipts", &query).await {
+        Ok(response) => {
+            info!("Aequi: list receipts (bridged)");
+            success_result(response)
+        }
+        Err(e) => {
+            warn!(error = %e, "Aequi bridge: falling back to mock for receipts");
+            let receipts = vec![
+                serde_json::json!({"id": "rcpt-001", "vendor": "Office Depot", "amount": 87.50, "date": "2026-03-05", "status": "matched", "category": "office_supplies"}),
+                serde_json::json!({"id": "rcpt-002", "vendor": "AWS", "amount": 142.30, "date": "2026-03-01", "status": "pending_review", "category": "software"}),
+                serde_json::json!({"id": "rcpt-003", "vendor": "Starbucks", "amount": 5.75, "date": "2026-03-08", "status": "pending_review", "category": "meals"}),
+            ];
+            let filtered: Vec<_> = if let Some(ref s) = status {
+                if s == "all" {
+                    receipts
+                } else {
+                    receipts.into_iter().filter(|r| r["status"].as_str() == Some(s.as_str())).collect()
+                }
+            } else {
+                receipts
+            };
+            success_result(serde_json::json!({
+                "receipts": filtered,
+                "total": filtered.len(),
+                "_source": "mock",
+            }))
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Agnostic QA Platform Agent Bridge
+// ---------------------------------------------------------------------------
+
+/// Bridge that proxies MCP tool calls to the Agnostic QA platform API.
+#[derive(Debug, Clone)]
+pub struct AgnosticBridge {
+    base_url: String,
+    api_key: Option<String>,
+}
+
+impl AgnosticBridge {
+    pub fn new() -> Self {
+        Self {
+            base_url: std::env::var("AGNOSTIC_URL")
+                .unwrap_or_else(|_| "http://127.0.0.1:8000".to_string()),
+            api_key: std::env::var("AGNOSTIC_API_KEY").ok(),
+        }
+    }
+
+    pub fn base_url(&self) -> &str {
+        &self.base_url
+    }
+
+    async fn get(&self, path: &str, query: &[(String, String)]) -> Result<serde_json::Value, String> {
+        let client = reqwest::Client::new();
+        let url = format!("{}{}", self.base_url, path);
+        let mut req = client.get(&url).query(query);
+        if let Some(ref key) = self.api_key {
+            req = req.header("Authorization", format!("Bearer {}", key));
+        }
+        let resp = req.send().await.map_err(|e| e.to_string())?;
+        if !resp.status().is_success() {
+            return Err(format!("Agnostic API error: {}", resp.status()));
+        }
+        resp.json().await.map_err(|e| e.to_string())
+    }
+
+    async fn post(&self, path: &str, body: serde_json::Value) -> Result<serde_json::Value, String> {
+        let client = reqwest::Client::new();
+        let url = format!("{}{}", self.base_url, path);
+        let mut req = client.post(&url).json(&body);
+        if let Some(ref key) = self.api_key {
+            req = req.header("Authorization", format!("Bearer {}", key));
+        }
+        let resp = req.send().await.map_err(|e| e.to_string())?;
+        if !resp.status().is_success() {
+            return Err(format!("Agnostic API error: {}", resp.status()));
+        }
+        resp.json().await.map_err(|e| e.to_string())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Agnostic Tool Implementations (bridged)
+// ---------------------------------------------------------------------------
+
+async fn handle_agnostic_run_suite(args: &serde_json::Value) -> McpToolResult {
+    let suite = match get_string_arg(args, "suite") {
+        Some(s) => s,
+        None => return error_result("Missing required argument: suite".to_string()),
+    };
+
+    if suite.is_empty() {
+        return error_result("Suite name cannot be empty".to_string());
+    }
+
+    let target_url = get_optional_string_arg(args, "target_url");
+    let agents = args.get("agents").cloned();
+
+    let bridge = AgnosticBridge::new();
+    let mut body = serde_json::json!({
+        "suite": suite,
+    });
+    if let Some(url) = &target_url {
+        body["target_url"] = serde_json::json!(url);
+    }
+    if let Some(a) = agents {
+        body["agents"] = a;
+    }
+
+    match bridge.post("/api/v1/runs", body).await {
+        Ok(response) => {
+            info!(suite = %suite, "Agnostic: run suite (bridged)");
+            success_result(response)
+        }
+        Err(e) => {
+            warn!(error = %e, "Agnostic bridge: falling back to mock for run_suite");
+            let run_id = Uuid::new_v4().to_string();
+            success_result(serde_json::json!({
+                "run_id": run_id,
+                "suite": suite,
+                "status": "running",
+                "agents_active": ["ui", "api", "security"],
+                "started_at": chrono::Utc::now().to_rfc3339(),
+                "_source": "mock",
+            }))
+        }
+    }
+}
+
+async fn handle_agnostic_test_status(args: &serde_json::Value) -> McpToolResult {
+    let run_id = match get_string_arg(args, "run_id") {
+        Some(id) => id,
+        None => return error_result("Missing required argument: run_id".to_string()),
+    };
+
+    let bridge = AgnosticBridge::new();
+    match bridge.get(&format!("/api/v1/runs/{}", run_id), &[]).await {
+        Ok(response) => {
+            info!(run_id = %run_id, "Agnostic: test status (bridged)");
+            success_result(response)
+        }
+        Err(e) => {
+            warn!(error = %e, "Agnostic bridge: falling back to mock for test_status");
+            success_result(serde_json::json!({
+                "run_id": run_id,
+                "status": "completed",
+                "total_tests": 156,
+                "passed": 148,
+                "failed": 5,
+                "skipped": 3,
+                "duration_seconds": 342,
+                "agents": {
+                    "ui": {"status": "completed", "tests": 62},
+                    "api": {"status": "completed", "tests": 48},
+                    "security": {"status": "completed", "tests": 46},
+                },
+                "_source": "mock",
+            }))
+        }
+    }
+}
+
+async fn handle_agnostic_test_report(args: &serde_json::Value) -> McpToolResult {
+    let run_id = match get_string_arg(args, "run_id") {
+        Some(id) => id,
+        None => return error_result("Missing required argument: run_id".to_string()),
+    };
+
+    let format = get_optional_string_arg(args, "format")
+        .unwrap_or_else(|| "summary".to_string());
+
+    if !["summary", "full", "json"].contains(&format.as_str()) {
+        return error_result(format!(
+            "Invalid format '{}': must be summary, full, or json",
+            format
+        ));
+    }
+
+    let bridge = AgnosticBridge::new();
+    let query = vec![("format".to_string(), format.clone())];
+    match bridge.get(&format!("/api/v1/runs/{}/report", run_id), &query).await {
+        Ok(response) => {
+            info!(run_id = %run_id, "Agnostic: test report (bridged)");
+            success_result(response)
+        }
+        Err(e) => {
+            warn!(error = %e, "Agnostic bridge: falling back to mock for test_report");
+            success_result(serde_json::json!({
+                "run_id": run_id,
+                "format": format,
+                "summary": {
+                    "total": 156, "passed": 148, "failed": 5, "skipped": 3,
+                    "pass_rate": 0.968,
+                },
+                "failures": [
+                    {"test": "login_form_validation", "agent": "ui", "message": "Expected error message not displayed for empty email"},
+                    {"test": "rate_limit_enforcement", "agent": "api", "message": "429 not returned after 100 requests/min"},
+                ],
+                "security_findings": [
+                    {"severity": "medium", "title": "Missing CSP header on /dashboard", "agent": "security"},
+                ],
+                "_source": "mock",
+            }))
+        }
+    }
+}
+
+async fn handle_agnostic_list_suites(args: &serde_json::Value) -> McpToolResult {
+    let category = get_optional_string_arg(args, "category");
+
+    if let Some(ref c) = category {
+        if !["ui", "api", "security", "performance", "all"].contains(&c.as_str()) {
+            return error_result(format!(
+                "Invalid category '{}': must be ui, api, security, performance, or all",
+                c
+            ));
+        }
+    }
+
+    let bridge = AgnosticBridge::new();
+    let mut query = Vec::new();
+    if let Some(ref c) = category {
+        query.push(("category".to_string(), c.clone()));
+    }
+
+    match bridge.get("/api/v1/suites", &query).await {
+        Ok(response) => {
+            info!("Agnostic: list suites (bridged)");
+            success_result(response)
+        }
+        Err(e) => {
+            warn!(error = %e, "Agnostic bridge: falling back to mock for list_suites");
+            let suites = vec![
+                serde_json::json!({"id": "suite-001", "name": "Full Regression", "category": "all", "test_count": 312, "agents": ["ui", "api", "security", "performance"]}),
+                serde_json::json!({"id": "suite-002", "name": "Security Audit", "category": "security", "test_count": 89, "agents": ["security"]}),
+                serde_json::json!({"id": "suite-003", "name": "API Contract Tests", "category": "api", "test_count": 156, "agents": ["api"]}),
+                serde_json::json!({"id": "suite-004", "name": "UI Smoke Tests", "category": "ui", "test_count": 45, "agents": ["ui", "accessibility"]}),
+            ];
+            let filtered: Vec<_> = if let Some(ref c) = category {
+                if c == "all" {
+                    suites
+                } else {
+                    suites.into_iter().filter(|s| s["category"].as_str() == Some(c.as_str())).collect()
+                }
+            } else {
+                suites
+            };
+            success_result(serde_json::json!({
+                "suites": filtered,
+                "total": filtered.len(),
+                "_source": "mock",
+            }))
+        }
+    }
+}
+
+async fn handle_agnostic_agent_status(args: &serde_json::Value) -> McpToolResult {
+    let agent_type = get_optional_string_arg(args, "agent_type");
+
+    if let Some(ref t) = agent_type {
+        if !["ui", "api", "security", "performance", "accessibility", "self-healing"]
+            .contains(&t.as_str())
+        {
+            return error_result(format!("Invalid agent_type '{}': must be ui, api, security, performance, accessibility, or self-healing", t));
+        }
+    }
+
+    let bridge = AgnosticBridge::new();
+    let mut query = Vec::new();
+    if let Some(ref t) = agent_type {
+        query.push(("type".to_string(), t.clone()));
+    }
+
+    match bridge.get("/api/v1/agents/status", &query).await {
+        Ok(response) => {
+            info!("Agnostic: agent status (bridged)");
+            success_result(response)
+        }
+        Err(e) => {
+            warn!(error = %e, "Agnostic bridge: falling back to mock for agent_status");
+            let agents = vec![
+                serde_json::json!({"type": "ui", "status": "idle", "last_run": "2026-03-10T14:30:00Z", "tests_run_today": 245}),
+                serde_json::json!({"type": "api", "status": "idle", "last_run": "2026-03-10T14:30:00Z", "tests_run_today": 189}),
+                serde_json::json!({"type": "security", "status": "idle", "last_run": "2026-03-10T13:00:00Z", "tests_run_today": 89}),
+                serde_json::json!({"type": "performance", "status": "idle", "last_run": "2026-03-10T12:00:00Z", "tests_run_today": 34}),
+                serde_json::json!({"type": "accessibility", "status": "idle", "last_run": "2026-03-10T14:30:00Z", "tests_run_today": 67}),
+                serde_json::json!({"type": "self-healing", "status": "idle", "last_run": "2026-03-10T14:30:00Z", "tests_run_today": 12}),
+            ];
+            let filtered: Vec<_> = if let Some(ref t) = agent_type {
+                agents.into_iter().filter(|a| a["type"].as_str() == Some(t.as_str())).collect()
+            } else {
+                agents
+            };
+            success_result(serde_json::json!({
+                "agents": filtered,
+                "total": filtered.len(),
+                "_source": "mock",
+            }))
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Delta Code Hosting Agent Bridge
 // ---------------------------------------------------------------------------
 
@@ -1499,7 +2163,7 @@ mod tests {
             .await
             .unwrap();
         let manifest: McpToolManifest = serde_json::from_slice(&body).unwrap();
-        assert_eq!(manifest.tools.len(), 21);
+        assert_eq!(manifest.tools.len(), 31);
     }
 
     #[tokio::test]
@@ -1516,6 +2180,16 @@ mod tests {
         assert!(names.contains(&"agnos_forward_audit"));
         assert!(names.contains(&"agnos_memory_get"));
         assert!(names.contains(&"agnos_memory_set"));
+        assert!(names.contains(&"aequi_estimate_quarterly_tax"));
+        assert!(names.contains(&"aequi_schedule_c_preview"));
+        assert!(names.contains(&"aequi_import_bank_statement"));
+        assert!(names.contains(&"aequi_account_balances"));
+        assert!(names.contains(&"aequi_list_receipts"));
+        assert!(names.contains(&"agnostic_run_suite"));
+        assert!(names.contains(&"agnostic_test_status"));
+        assert!(names.contains(&"agnostic_test_report"));
+        assert!(names.contains(&"agnostic_list_suites"));
+        assert!(names.contains(&"agnostic_agent_status"));
         assert!(names.contains(&"delta_create_repository"));
         assert!(names.contains(&"delta_list_repositories"));
         assert!(names.contains(&"delta_pull_request"));
@@ -1810,9 +2484,9 @@ mod tests {
     // -----------------------------------------------------------------------
 
     #[tokio::test]
-    async fn test_manifest_contains_all_21_tools() {
+    async fn test_manifest_contains_all_31_tools() {
         let manifest = build_tool_manifest();
-        assert_eq!(manifest.tools.len(), 21);
+        assert_eq!(manifest.tools.len(), 31);
         let names: Vec<&str> = manifest.tools.iter().map(|t| t.name.as_str()).collect();
         for expected in &[
             "agnos_health",
@@ -1825,6 +2499,16 @@ mod tests {
             "agnos_forward_audit",
             "agnos_memory_get",
             "agnos_memory_set",
+            "aequi_estimate_quarterly_tax",
+            "aequi_schedule_c_preview",
+            "aequi_import_bank_statement",
+            "aequi_account_balances",
+            "aequi_list_receipts",
+            "agnostic_run_suite",
+            "agnostic_test_status",
+            "agnostic_test_report",
+            "agnostic_list_suites",
+            "agnostic_agent_status",
             "delta_create_repository",
             "delta_list_repositories",
             "delta_pull_request",
@@ -2338,5 +3022,360 @@ mod tests {
         assert!(!result.is_error);
         let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
         assert_eq!(parsed["status"], "closed");
+    }
+
+    // --- Aequi accounting tool tests ---
+
+    #[tokio::test]
+    async fn test_aequi_tax_estimate_mock() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "aequi_estimate_quarterly_tax",
+            serde_json::json!({}),
+        )
+        .await;
+        assert!(!result.is_error);
+        let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
+        assert!(parsed["estimated_tax"].as_f64().is_some());
+        assert_eq!(parsed["_source"], "mock");
+    }
+
+    #[tokio::test]
+    async fn test_aequi_tax_estimate_with_quarter() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "aequi_estimate_quarterly_tax",
+            serde_json::json!({"quarter": "2"}),
+        )
+        .await;
+        assert!(!result.is_error);
+        let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
+        assert_eq!(parsed["quarter"], "2");
+    }
+
+    #[tokio::test]
+    async fn test_aequi_tax_estimate_invalid_quarter() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "aequi_estimate_quarterly_tax",
+            serde_json::json!({"quarter": "5"}),
+        )
+        .await;
+        assert!(result.is_error);
+    }
+
+    #[tokio::test]
+    async fn test_aequi_schedule_c_mock() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "aequi_schedule_c_preview",
+            serde_json::json!({}),
+        )
+        .await;
+        assert!(!result.is_error);
+        let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
+        assert!(parsed["net_profit"].as_f64().is_some());
+        assert!(parsed["categories"].is_object());
+        assert_eq!(parsed["_source"], "mock");
+    }
+
+    #[tokio::test]
+    async fn test_aequi_import_bank_mock() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "aequi_import_bank_statement",
+            serde_json::json!({"file_path": "/tmp/bank-jan.ofx"}),
+        )
+        .await;
+        assert!(!result.is_error);
+        let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
+        assert_eq!(parsed["status"], "imported");
+        assert!(parsed["transactions_imported"].as_u64().is_some());
+    }
+
+    #[tokio::test]
+    async fn test_aequi_import_bank_missing_path() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "aequi_import_bank_statement",
+            serde_json::json!({}),
+        )
+        .await;
+        assert!(result.is_error);
+    }
+
+    #[tokio::test]
+    async fn test_aequi_import_bank_invalid_format() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "aequi_import_bank_statement",
+            serde_json::json!({"file_path": "/tmp/file.txt", "format": "pdf"}),
+        )
+        .await;
+        assert!(result.is_error);
+    }
+
+    #[tokio::test]
+    async fn test_aequi_balances_mock() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "aequi_account_balances",
+            serde_json::json!({}),
+        )
+        .await;
+        assert!(!result.is_error);
+        let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
+        assert!(parsed["accounts"].as_array().is_some());
+        assert!(parsed["net_worth"].as_f64().is_some());
+        assert_eq!(parsed["_source"], "mock");
+    }
+
+    #[tokio::test]
+    async fn test_aequi_balances_invalid_type() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "aequi_account_balances",
+            serde_json::json!({"account_type": "crypto"}),
+        )
+        .await;
+        assert!(result.is_error);
+    }
+
+    #[tokio::test]
+    async fn test_aequi_receipts_mock() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "aequi_list_receipts",
+            serde_json::json!({}),
+        )
+        .await;
+        assert!(!result.is_error);
+        let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
+        assert!(parsed["receipts"].as_array().is_some());
+        assert_eq!(parsed["_source"], "mock");
+    }
+
+    #[tokio::test]
+    async fn test_aequi_receipts_filtered() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "aequi_list_receipts",
+            serde_json::json!({"status": "pending_review"}),
+        )
+        .await;
+        assert!(!result.is_error);
+        let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
+        let receipts = parsed["receipts"].as_array().unwrap();
+        for r in receipts {
+            assert_eq!(r["status"], "pending_review");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_aequi_receipts_invalid_status() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "aequi_list_receipts",
+            serde_json::json!({"status": "archived"}),
+        )
+        .await;
+        assert!(result.is_error);
+    }
+
+    // --- Agnostic QA platform tool tests ---
+
+    #[tokio::test]
+    async fn test_agnostic_run_suite_mock() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "agnostic_run_suite",
+            serde_json::json!({"suite": "Full Regression"}),
+        )
+        .await;
+        assert!(!result.is_error);
+        let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
+        assert_eq!(parsed["suite"], "Full Regression");
+        assert_eq!(parsed["status"], "running");
+        assert_eq!(parsed["_source"], "mock");
+    }
+
+    #[tokio::test]
+    async fn test_agnostic_run_suite_missing_name() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "agnostic_run_suite",
+            serde_json::json!({}),
+        )
+        .await;
+        assert!(result.is_error);
+    }
+
+    #[tokio::test]
+    async fn test_agnostic_test_status_mock() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "agnostic_test_status",
+            serde_json::json!({"run_id": "run-001"}),
+        )
+        .await;
+        assert!(!result.is_error);
+        let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
+        assert_eq!(parsed["status"], "completed");
+        assert!(parsed["total_tests"].as_u64().is_some());
+        assert_eq!(parsed["_source"], "mock");
+    }
+
+    #[tokio::test]
+    async fn test_agnostic_test_status_missing_id() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "agnostic_test_status",
+            serde_json::json!({}),
+        )
+        .await;
+        assert!(result.is_error);
+    }
+
+    #[tokio::test]
+    async fn test_agnostic_test_report_mock() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "agnostic_test_report",
+            serde_json::json!({"run_id": "run-001"}),
+        )
+        .await;
+        assert!(!result.is_error);
+        let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
+        assert!(parsed["summary"].is_object());
+        assert!(parsed["failures"].as_array().is_some());
+        assert_eq!(parsed["_source"], "mock");
+    }
+
+    #[tokio::test]
+    async fn test_agnostic_test_report_invalid_format() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "agnostic_test_report",
+            serde_json::json!({"run_id": "run-001", "format": "pdf"}),
+        )
+        .await;
+        assert!(result.is_error);
+    }
+
+    #[tokio::test]
+    async fn test_agnostic_test_report_missing_id() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "agnostic_test_report",
+            serde_json::json!({}),
+        )
+        .await;
+        assert!(result.is_error);
+    }
+
+    #[tokio::test]
+    async fn test_agnostic_list_suites_mock() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "agnostic_list_suites",
+            serde_json::json!({}),
+        )
+        .await;
+        assert!(!result.is_error);
+        let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
+        assert!(parsed["suites"].as_array().unwrap().len() >= 2);
+        assert_eq!(parsed["_source"], "mock");
+    }
+
+    #[tokio::test]
+    async fn test_agnostic_list_suites_filtered() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "agnostic_list_suites",
+            serde_json::json!({"category": "security"}),
+        )
+        .await;
+        assert!(!result.is_error);
+        let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
+        let suites = parsed["suites"].as_array().unwrap();
+        for s in suites {
+            assert_eq!(s["category"], "security");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_agnostic_list_suites_invalid_category() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "agnostic_list_suites",
+            serde_json::json!({"category": "chaos"}),
+        )
+        .await;
+        assert!(result.is_error);
+    }
+
+    #[tokio::test]
+    async fn test_agnostic_agent_status_mock() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "agnostic_agent_status",
+            serde_json::json!({}),
+        )
+        .await;
+        assert!(!result.is_error);
+        let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
+        assert!(parsed["agents"].as_array().unwrap().len() >= 4);
+        assert_eq!(parsed["_source"], "mock");
+    }
+
+    #[tokio::test]
+    async fn test_agnostic_agent_status_filtered() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "agnostic_agent_status",
+            serde_json::json!({"agent_type": "security"}),
+        )
+        .await;
+        assert!(!result.is_error);
+        let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
+        let agents = parsed["agents"].as_array().unwrap();
+        assert_eq!(agents.len(), 1);
+        assert_eq!(agents[0]["type"], "security");
+    }
+
+    #[tokio::test]
+    async fn test_agnostic_agent_status_invalid_type() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "agnostic_agent_status",
+            serde_json::json!({"agent_type": "chaos"}),
+        )
+        .await;
+        assert!(result.is_error);
     }
 }

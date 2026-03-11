@@ -175,6 +175,22 @@ pub enum Intent {
     RitualCheck { date: Option<String> },
     /// Show productivity statistics
     ProductivityStats { period: Option<String> },
+    /// Run a QA test suite in Agnostic
+    AgnosticRunSuite {
+        suite: String,
+        target_url: Option<String>,
+    },
+    /// Get test run status from Agnostic
+    AgnosticTestStatus { run_id: String },
+    /// Get test report from Agnostic
+    AgnosticTestReport {
+        run_id: String,
+        format: Option<String>,
+    },
+    /// List available QA test suites
+    AgnosticListSuites { category: Option<String> },
+    /// Get QA agent status from Agnostic
+    AgnosticAgentStatus { agent_type: Option<String> },
     /// Create a repository in Delta
     DeltaCreateRepo {
         name: String,

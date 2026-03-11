@@ -1,7 +1,7 @@
 # AGNOS Development Roadmap
 
 > **Status**: Pre-Beta | **Last Updated**: 2026-03-10
-> **Userland complete** — 9906+ tests (3039 agent-runtime), ~82% coverage, 0 warnings
+> **Userland complete** — 9964+ tests (3076 agent-runtime), ~82% coverage, 0 warnings
 > **Recipes**: 109 base + 49 desktop + 25 AI + 9 network + 8 browser + 6 marketplace + 4 python + 3 database = 214 total, 0 validation errors
 > **Phases 10–12 complete** | **Audit**: 15 rounds | **Next**: Phase 13 (Beta Polish)
 
@@ -369,9 +369,9 @@ Wire the LFS base system into AGNOS's own tooling.
 | 1 | SecureYeoman | `recipes/marketplace/secureyeoman.toml` | Ready | Flagship, 22,000+ tests, 421+ MCP tools |
 | 2 | Photis Nadi | `recipes/marketplace/photisnadi.toml` | Ready | Flutter productivity, 389 tests |
 | 3 | BullShift | `recipes/marketplace/bullshift.toml` | Ready | Trading platform, 552 tests |
-| 4 | AGNOSTIC | `recipes/marketplace/agnostic.toml` | Stub | Python/CrewAI QA platform |
+| 4 | AGNOSTIC | `recipes/marketplace/agnostic.toml` | **Ready** | Python/CrewAI QA platform. MCP tools (5), agnoshi intents (5) |
 | 5 | **Delta** | `recipes/marketplace/delta.toml` | **Ready** | Code hosting (port 8070), CI/CD, artifact registry. 141 tests. MCP tools (5), agnoshi intents (5), CI workflow |
-| 6 | **Aequi** | `recipes/marketplace/aequi.toml` | **Stub** | Self-employed accounting (port 8060). Needs: HTTP API crate (Phase 6), Dockerfile, recipe |
+| 6 | **Aequi** | `recipes/marketplace/aequi.toml` | **Ready** | Self-employed accounting (port 8060). MCP tools (5), agnoshi intents (5), recipe complete |
 
 #### Delta AGNOS-Side Integration Items
 
@@ -451,7 +451,7 @@ Wire the LFS base system into AGNOS's own tooling.
 |--------|--------|---------|--------|
 | Code Coverage | >80% | ~82% | Met |
 | Test Pass Rate | 100% | 100% | Met |
-| Total Tests | 400+ | 9906+ | Met |
+| Total Tests | 400+ | 9964+ | Met |
 | Agent Spawn Time | <500ms | ~300ms | Met |
 | Shell Response Time | <100ms | ~50ms | Met |
 | Memory Overhead | <2GB | ~1.2GB | Met |
@@ -471,9 +471,9 @@ Wire the LFS base system into AGNOS's own tooling.
 |-----------|-------|-------|
 | agnos-common | 307 | Secrets, telemetry, LLM types, manifest, rate limits, audit chain |
 | agnos-sys | 750+ | 16 modules: audit, mac, netns, dmverity, luks, ima, tpm, secureboot, certpin, bootloader, journald, udev, fuse, pam, update, llm |
-| agent-runtime | 3053+ | Orchestrator, IPC, sandbox, registry, marketplace (88+43), federation (73), migration (54), scheduler (51), PQC (68), explainability (59), safety (77), finetune (73), formal_verify (76), sandbox_v2 (79), rl_optimizer (68), cloud (82), collaboration (87), sigil (46), aegis (55), takumi (57), argonaut (117), agnova (91), ark (49), database (42), grpc (14), service_mesh (20), oidc (22), delegation (28), vector_rest (24), marketplace_backend (28) |
+| agent-runtime | 3076+ | Orchestrator, IPC, sandbox, registry, marketplace (88+43), federation (73), migration (54), scheduler (51), PQC (68), explainability (59), safety (77), finetune (73), formal_verify (76), sandbox_v2 (79), rl_optimizer (68), cloud (82), collaboration (87), sigil (46), aegis (55), takumi (57), argonaut (117), agnova (91), ark (49), database (42), grpc (14), service_mesh (20), oidc (22), delegation (28), vector_rest (24), marketplace_backend (28) |
 | llm-gateway | 710 | 15 providers (5 native + 10 OpenAI-compatible), rate limiting, streaming, cert pinning, hardware acceleration, token budgets |
-| ai-shell | 1446 | 25+ intents, approval workflow, dashboard, aliases, completion |
+| ai-shell | 1472 | 25+ intents, approval workflow, dashboard, aliases, completion |
 | desktop-environment | 1447+ | Wayland protocol (63+49), screen capture (31), screen recording (22+), plugin host (31), xwayland (20), shell integration (26), theme bridge (18), compositor, renderer |
 
 ---

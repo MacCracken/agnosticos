@@ -47,6 +47,52 @@ impl Interpreter {
             return Intent::AgentInfo { agent_id };
         }
 
+        // --- Agnostic QA platform intents (before greedy list/show) ---
+        if let Some(caps) = self.try_captures("agnostic_run", &input_lower) {
+            let suite = caps.get(1).map_or("", |m| m.as_str()).trim().to_string();
+            let target_url = caps
+                .get(3)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !suite.is_empty() {
+                return Intent::AgnosticRunSuite { suite, target_url };
+            }
+        }
+
+        if let Some(caps) = self.try_captures("agnostic_status", &input_lower) {
+            let run_id = caps.get(1).map_or("", |m| m.as_str()).trim().to_string();
+            if !run_id.is_empty() {
+                return Intent::AgnosticTestStatus { run_id };
+            }
+        }
+
+        if let Some(caps) = self.try_captures("agnostic_report", &input_lower) {
+            let run_id = caps.get(1).map_or("", |m| m.as_str()).trim().to_string();
+            let format = caps
+                .get(3)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !run_id.is_empty() {
+                return Intent::AgnosticTestReport { run_id, format };
+            }
+        }
+
+        if let Some(caps) = self.try_captures("agnostic_list_suites", &input_lower) {
+            let category = caps
+                .get(2)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            return Intent::AgnosticListSuites { category };
+        }
+
+        if let Some(caps) = self.try_captures("agnostic_agents", &input_lower) {
+            let agent_type = caps
+                .get(2)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            return Intent::AgnosticAgentStatus { agent_type };
+        }
+
         // --- Delta code hosting intents (before greedy list/show) ---
         if let Some(caps) = self.try_captures("delta_create_repo", &input_lower) {
             let name = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();

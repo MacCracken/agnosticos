@@ -190,6 +190,27 @@ pub(crate) static PATTERNS: Lazy<HashMap<String, Regex>> = Lazy::new(|| {
         "productivity_stats",
         r"(?i)^(?:show\s+)?(?:my\s+)?(?:productivity|stats|statistics|analytics)(\s+(daily|weekly|monthly|this week|this month))?$",
     );
+    // --- Agnostic QA platform intents ---
+    r(
+        "agnostic_run",
+        r"(?i)^(?:agnostic\s+)?run\s+(?:test\s+)?suite\s+(.+?)(\s+(?:on|against|for)\s+(.+))?$",
+    );
+    r(
+        "agnostic_status",
+        r"(?i)^(?:agnostic\s+)?test\s+(?:run\s+)?status\s+(?:for\s+)?(\S+)$",
+    );
+    r(
+        "agnostic_report",
+        r"(?i)^(?:agnostic\s+)?test\s+report\s+(?:for\s+)?(\S+)(\s+(?:as\s+|format\s+)(\w+))?$",
+    );
+    r(
+        "agnostic_list_suites",
+        r"(?i)^(?:agnostic\s+)?(?:list|show)\s+(?:test\s+)?suites?(\s+(?:in\s+|category\s+)?(\w+))?$",
+    );
+    r(
+        "agnostic_agents",
+        r"(?i)^(?:agnostic\s+)?(?:qa\s+)?agent\s+status(\s+(?:for\s+)?(\S+))?$",
+    );
     // --- Delta code hosting intents ---
     r(
         "delta_create_repo",

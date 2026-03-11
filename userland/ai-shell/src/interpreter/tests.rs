@@ -2672,4 +2672,157 @@ mod tests {
         assert!(body.contains("delta_ci_status"));
         assert_eq!(t.permission, PermissionLevel::Safe);
     }
+
+    // --- Agnostic QA platform intent tests ---
+
+    #[test]
+    fn test_parse_agnostic_run_suite() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("run suite full regression");
+        match intent {
+            Intent::AgnosticRunSuite { suite, target_url } => {
+                assert_eq!(suite, "full regression");
+                assert!(target_url.is_none());
+            }
+            other => panic!("Expected AgnosticRunSuite, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_agnostic_run_suite_with_target() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("agnostic run suite security audit against http://localhost:3000");
+        match intent {
+            Intent::AgnosticRunSuite { suite, target_url } => {
+                assert_eq!(suite, "security audit");
+                assert_eq!(target_url, Some("http://localhost:3000".to_string()));
+            }
+            other => panic!("Expected AgnosticRunSuite, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_agnostic_test_status() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("test status run-001");
+        match intent {
+            Intent::AgnosticTestStatus { run_id } => {
+                assert_eq!(run_id, "run-001");
+            }
+            other => panic!("Expected AgnosticTestStatus, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_agnostic_test_report() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("test report run-001");
+        match intent {
+            Intent::AgnosticTestReport { run_id, format } => {
+                assert_eq!(run_id, "run-001");
+                assert!(format.is_none());
+            }
+            other => panic!("Expected AgnosticTestReport, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_agnostic_test_report_with_format() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("test report run-001 format json");
+        match intent {
+            Intent::AgnosticTestReport { run_id, format } => {
+                assert_eq!(run_id, "run-001");
+                assert_eq!(format, Some("json".to_string()));
+            }
+            other => panic!("Expected AgnosticTestReport, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_agnostic_list_suites() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("list suites");
+        assert!(matches!(intent, Intent::AgnosticListSuites { category: None }));
+    }
+
+    #[test]
+    fn test_parse_agnostic_list_suites_category() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("show test suites in security");
+        match intent {
+            Intent::AgnosticListSuites { category } => {
+                assert_eq!(category, Some("security".to_string()));
+            }
+            other => panic!("Expected AgnosticListSuites, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_agnostic_agent_status() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("qa agent status");
+        assert!(matches!(intent, Intent::AgnosticAgentStatus { agent_type: None }));
+    }
+
+    #[test]
+    fn test_parse_agnostic_agent_status_filtered() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("agent status for security");
+        match intent {
+            Intent::AgnosticAgentStatus { agent_type } => {
+                assert_eq!(agent_type, Some("security".to_string()));
+            }
+            other => panic!("Expected AgnosticAgentStatus, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_translate_agnostic_run_suite() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::AgnosticRunSuite {
+            suite: "regression".to_string(),
+            target_url: None,
+        };
+        let t = interpreter.translate(&intent).unwrap();
+        assert_eq!(t.command, "curl");
+        let body = t.args.last().unwrap();
+        assert!(body.contains("agnostic_run_suite"));
+        assert!(body.contains("regression"));
+        assert_eq!(t.permission, PermissionLevel::SystemWrite);
+    }
+
+    #[test]
+    fn test_translate_agnostic_test_status() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::AgnosticTestStatus {
+            run_id: "run-001".to_string(),
+        };
+        let t = interpreter.translate(&intent).unwrap();
+        let body = t.args.last().unwrap();
+        assert!(body.contains("agnostic_test_status"));
+        assert_eq!(t.permission, PermissionLevel::Safe);
+    }
+
+    #[test]
+    fn test_translate_agnostic_list_suites() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::AgnosticListSuites { category: None };
+        let t = interpreter.translate(&intent).unwrap();
+        let body = t.args.last().unwrap();
+        assert!(body.contains("agnostic_list_suites"));
+        assert_eq!(t.permission, PermissionLevel::Safe);
+    }
+
+    #[test]
+    fn test_translate_agnostic_agent_status() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::AgnosticAgentStatus {
+            agent_type: Some("security".to_string()),
+        };
+        let t = interpreter.translate(&intent).unwrap();
+        let body = t.args.last().unwrap();
+        assert!(body.contains("agnostic_agent_status"));
+        assert_eq!(t.permission, PermissionLevel::Safe);
+    }
 }
