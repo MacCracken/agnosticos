@@ -171,9 +171,9 @@ jobs:
     - name: Create Release
       uses: softprops/action-gh-release@v2
       with:
-        name: AGNOS ${{ github.ref_name }} (Alpha)
+        name: AGNOS ${{ github.ref_name }} (Pre-Beta)
         body: |
-          > **Alpha Release** — This is a pre-alpha/alpha build. Not recommended for production use.
+          > **Pre-Beta Release** — This is a pre-beta build. Not recommended for production use.
 
           ${{ steps.notes.outputs.notes }}
         draft: false
@@ -246,7 +246,7 @@ jobs:
         tags: |
           type=raw,value=${{ github.ref_name }}
           type=raw,value=latest
-          type=raw,value=alpha
+          type=raw,value=pre-beta
 
     - name: Build and push amd64
       uses: docker/build-push-action@v6
@@ -275,7 +275,7 @@ jobs:
         IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
         VERSION="${{ github.ref_name }}"
 
-        for TAG in "${VERSION}" "latest" "alpha"; do
+        for TAG in "${VERSION}" "latest" "pre-beta"; do
           docker buildx imagetools create \
             --tag "${IMAGE}:${TAG}" \
             "${IMAGE}:${VERSION}-amd64" \

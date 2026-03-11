@@ -17,22 +17,26 @@ A clear and concise description of what you want to happen.
 A clear and concise description of any alternative solutions or features you've considered.
 
 **Affected Component**
-- [ ] Kernel
-- [ ] Agent Runtime
-- [ ] AI Shell
-- [ ] Desktop Environment
+- [ ] Kernel / agnosys
+- [ ] Agent Runtime (daimon)
+- [ ] LLM Gateway (hoosh)
+- [ ] AI Shell (agnoshi)
+- [ ] Desktop Environment (aethersafha)
+- [ ] Package Manager (ark/takumi)
+- [ ] Marketplace (mela)
+- [ ] Sandbox / Security (aegis/sigil)
+- [ ] Installer (agnova)
+- [ ] Init System (argonaut)
 - [ ] Documentation
-- [ ] Build System
-- [ ] Security
+- [ ] Build System / CI
 - [ ] Other
 
-**Phase**
-- [ ] Phase 0: Foundation
-- [ ] Phase 1: Core OS
-- [ ] Phase 2: AI Shell
-- [ ] Phase 3: Agent Runtime
-- [ ] Phase 4: Desktop
-- [ ] Phase 5: Production
+**Priority**
+- [ ] Phase 13A: Self-Hosting Validation
+- [ ] Phase 13C: Community & Documentation
+- [ ] Phase 13E: Alpha Items (Python, WebView, Docker)
+- [ ] Beta Release
+- [ ] v1.0 Release
 - [ ] Future
 
 **Additional context**

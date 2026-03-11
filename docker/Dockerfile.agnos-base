@@ -1,0 +1,142 @@
+# Dockerfile.agnos-base — AGNOS base container image
+#
+# Replaces Debian base with AGNOS .ark packages for a minimal,
+# self-contained runtime image. Uses a multi-stage build:
+#
+#   Stage 1 (bootstrap): Install .ark packages into a clean root
+#   Stage 2 (runtime):   Copy the root into a scratch image
+#
+# Usage:
+#   docker build -f docker/Dockerfile.agnos-base -t ghcr.io/maccracken/agnosticos:base .
+#
+# This image serves as the base for all AGNOS container images,
+# replacing debian:bookworm-slim with a minimal AGNOS userspace.
+
+# ---------------------------------------------------------------------------
+# Stage 1: Bootstrap — install .ark packages into /rootfs
+# ---------------------------------------------------------------------------
+FROM debian:bookworm-slim AS bootstrap
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    bash coreutils tar gzip xz-utils ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+
+# Copy ark package tools
+COPY scripts/ark-install.sh /usr/local/bin/ark-install
+RUN chmod +x /usr/local/bin/ark-install
+
+# Copy pre-built .ark packages (from CI or local build)
+# In practice these come from: make ark-build-all
+COPY build/packages/*.ark /build/packages/
+
+# Create the target rootfs
+RUN mkdir -p /rootfs
+
+# Install core packages into /rootfs
+# These are the minimal set needed for a functional container:
+#   glibc       — C library
+#   openssl     — TLS/crypto
+#   zlib        — compression
+#   coreutils   — basic commands
+#   bash        — shell
+#   ca-certs    — TLS trust store
+RUN /usr/local/bin/ark-install --root /rootfs --packages /build/packages \
+    glibc openssl zlib coreutils bash ca-certificates 2>/dev/null \
+    || { \
+    echo "=== ark-install not available or packages missing ==="; \
+    echo "Falling back to manual rootfs construction..."; \
+    # Fallback: construct minimal rootfs from host system
+    mkdir -p /rootfs/{bin,sbin,lib,lib64,usr/{bin,lib,sbin,share},etc,tmp,var,run}; \
+    mkdir -p /rootfs/etc/{agnos,ssl/certs}; \
+    mkdir -p /rootfs/var/{lib/agnos,log/agnos,run}; \
+    mkdir -p /rootfs/run/agnos; \
+    # Copy essential shared libraries
+    cp -a /lib/x86_64-linux-gnu/libc.so* /rootfs/lib/ 2>/dev/null || true; \
+    cp -a /lib/x86_64-linux-gnu/libm.so* /rootfs/lib/ 2>/dev/null || true; \
+    cp -a /lib/x86_64-linux-gnu/libdl.so* /rootfs/lib/ 2>/dev/null || true; \
+    cp -a /lib/x86_64-linux-gnu/libpthread.so* /rootfs/lib/ 2>/dev/null || true; \
+    cp -a /lib/x86_64-linux-gnu/librt.so* /rootfs/lib/ 2>/dev/null || true; \
+    cp -a /lib/x86_64-linux-gnu/libssl.so* /rootfs/lib/ 2>/dev/null || true; \
+    cp -a /lib/x86_64-linux-gnu/libcrypto.so* /rootfs/lib/ 2>/dev/null || true; \
+    cp -a /lib/x86_64-linux-gnu/libz.so* /rootfs/lib/ 2>/dev/null || true; \
+    cp -a /lib/x86_64-linux-gnu/libgcc_s.so* /rootfs/lib/ 2>/dev/null || true; \
+    cp -a /lib/x86_64-linux-gnu/libstdc++.so* /rootfs/lib/ 2>/dev/null || true; \
+    cp -a /lib64/ld-linux-x86-64.so* /rootfs/lib64/ 2>/dev/null || true; \
+    # Copy CA certificates
+    cp -a /etc/ssl/certs /rootfs/etc/ssl/ 2>/dev/null || true; \
+    # Copy basic utilities
+    for bin in sh bash cat ls cp mv rm mkdir chmod chown ln id whoami date uname hostname; do \
+        cp -a "$(which $bin 2>/dev/null)" /rootfs/bin/ 2>/dev/null || true; \
+    done; \
+    cp -a "$(which curl 2>/dev/null)" /rootfs/usr/bin/ 2>/dev/null || true; \
+    echo "Fallback rootfs constructed."; \
+    }
+
+# Create AGNOS-specific directories and config
+RUN mkdir -p /rootfs/etc/agnos/services \
+    /rootfs/var/lib/agnos \
+    /rootfs/var/log/agnos \
+    /rootfs/run/agnos/agents
+
+# Write AGNOS version
+COPY VERSION /rootfs/etc/agnos/version
+
+# Create agnos user
+RUN echo 'agnos:x:1000:1000:AGNOS:/home/agnos:/bin/bash' >> /rootfs/etc/passwd \
+    && echo 'agnos:x:1000:' >> /rootfs/etc/group \
+    && mkdir -p /rootfs/home/agnos \
+    && echo 'root:x:0:0:root:/root:/bin/bash' >> /rootfs/etc/passwd \
+    && echo 'root:x:0:' >> /rootfs/etc/group
+
+# ---------------------------------------------------------------------------
+# Stage 2: Runtime — minimal AGNOS base image
+# ---------------------------------------------------------------------------
+FROM scratch AS runtime
+
+COPY --from=bootstrap /rootfs /
+
+# Labels
+LABEL org.opencontainers.image.title="AGNOS Base"
+LABEL org.opencontainers.image.description="Minimal AGNOS base image — replaces Debian for AGNOS containers"
+LABEL org.opencontainers.image.vendor="AGNOS Project"
+LABEL org.opencontainers.image.source="https://github.com/agnostos/agnos"
+
+ENV PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+ENV HOME="/home/agnos"
+ENV LANG="C.UTF-8"
+
+WORKDIR /home/agnos
+
+USER agnos:agnos
+
+CMD ["/bin/bash"]
+
+# ---------------------------------------------------------------------------
+# Stage 3: AGNOS runtime (with daimon + hoosh)
+# ---------------------------------------------------------------------------
+FROM runtime AS agnos-runtime
+
+# Switch to root for binary installation
+USER root
+
+# Copy pre-built AGNOS binaries
+COPY --chmod=755 build/release/agent_runtime /usr/local/bin/agent_runtime
+COPY --chmod=755 build/release/llm_gateway /usr/local/bin/llm_gateway
+COPY --chmod=755 build/release/agnsh /usr/local/bin/agnsh
+
+# Copy entrypoint
+COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+# Ports
+EXPOSE 8088 8090
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+    CMD curl -sf http://127.0.0.1:8088/v1/health || exit 1
+
+USER agnos:agnos
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

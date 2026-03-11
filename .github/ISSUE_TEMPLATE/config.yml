@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security Vulnerability (Private)
+    url: https://github.com/agnostos/agnos/security/advisories/new
+    about: Report critical security vulnerabilities privately via GitHub's security advisory feature.
+  - name: Documentation
+    url: https://github.com/agnostos/agnos/tree/main/docs
+    about: Browse the AGNOS documentation before opening an issue.

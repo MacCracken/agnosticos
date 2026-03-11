@@ -24,7 +24,7 @@ YELLOW := \033[33m
 RED := \033[31m
 NC := \033[0m # No Color
 
-.PHONY: all help deps build build-kernel build-userland build-initramfs iso install clean test test-unit test-integration test-security test-coverage lint format check docker-dev release ark-build ark-build-all ark-build-python docker-ark-build docker-ark-build-python ark-sign ark-sign-all ark-verify ark-keygen ark-bundle ark-bundle-all
+.PHONY: all help deps build build-kernel build-userland build-initramfs iso install clean test test-unit test-integration test-security test-coverage lint format check docker-dev release ark-build ark-build-all ark-build-python docker-ark-build docker-ark-build-python ark-sign ark-sign-all ark-verify ark-keygen ark-bundle ark-bundle-all selfhost-validate qemu-boot-test
 
 # Default target
 all: help
@@ -43,6 +43,11 @@ help:
 	@echo "  $(YELLOW)build-userland$(NC)- Build userland components"
 	@echo "  $(YELLOW)build-initramfs$(NC)- Build initial ramdisk"
 	@echo "  $(YELLOW)iso$(NC)           - Create bootable ISO image"
+	@echo ""
+	@echo "$(GREEN)Validation targets:$(NC)"
+	@echo "  $(YELLOW)selfhost-validate$(NC) - Run full self-hosting validation"
+	@echo "  $(YELLOW)selfhost-validate-quick$(NC) - Quick self-hosting check (compile tests only)"
+	@echo "  $(YELLOW)qemu-boot-test$(NC)  - Boot ISO in QEMU and run smoke tests"
 	@echo ""
 	@echo "$(GREEN)Installation targets:$(NC)"
 	@echo "  $(YELLOW)install$(NC)       - Install AGNOS to target device"
@@ -127,6 +132,22 @@ iso: build
 	@echo "$(BLUE)Creating ISO image...$(NC)"
 	./scripts/create-iso.sh
 	@echo "$(GREEN)ISO created: $(DIST_DIR)/agnos-$(VERSION)-$(ARCH).iso$(NC)"
+
+# Self-hosting validation targets
+selfhost-validate:
+	@echo "$(BLUE)Running self-hosting validation...$(NC)"
+	./scripts/selfhost-validate.sh --source "$(CURDIR)" $(SELFHOST_ARGS)
+	@echo "$(GREEN)Self-hosting validation complete$(NC)"
+
+selfhost-validate-quick:
+	@echo "$(BLUE)Running quick self-hosting validation...$(NC)"
+	./scripts/selfhost-validate.sh --source "$(CURDIR)" --quick $(SELFHOST_ARGS)
+	@echo "$(GREEN)Quick self-hosting validation complete$(NC)"
+
+qemu-boot-test: iso
+	@echo "$(BLUE)Running QEMU boot test...$(NC)"
+	./scripts/qemu-boot-test.sh $(QEMU_ARGS)
+	@echo "$(GREEN)QEMU boot test complete$(NC)"
 
 # Installation targets
 install:

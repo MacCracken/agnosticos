@@ -1,0 +1,84 @@
+# BlueZ — Official Linux Bluetooth protocol stack
+# Provides bluetoothd daemon, CLI tools (bluetoothctl, btmgmt),
+# and libraries for Bluetooth Classic + BLE.
+#
+# BLFS
+
+[package]
+name = "bluez"
+version = "5.82"
+description = "BlueZ — Linux Bluetooth protocol stack"
+license = "GPL-2.0-or-later"
+groups = ["desktop", "bluetooth", "hardware"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://www.kernel.org/pub/linux/bluetooth/bluez-5.82.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "dbus", "glib", "readline", "linux-firmware"]
+build = ["gcc", "make", "pkgconf", "autoconf", "automake", "libtool"]
+optional = ["alsa-lib"]
+
+[build]
+pre_build = ""
+configure = """
+./configure --prefix=/usr \
+  --sysconfdir=/etc \
+  --localstatedir=/var \
+  --enable-library \
+  --enable-tools \
+  --enable-experimental \
+  --enable-mesh \
+  --enable-midi \
+  --disable-systemd \
+  --disable-manpages
+"""
+make = "make -j$(nproc)"
+check = "make check || true"
+install = "make DESTDIR=$PKG install"
+post_install = """
+# Default Bluetooth configuration
+mkdir -p $PKG/etc/bluetooth
+cat > $PKG/etc/bluetooth/main.conf << 'BTCONF'
+[General]
+Name = AGNOS
+DiscoverableTimeout = 0
+AlwaysPairable = false
+FastConnectable = true
+
+[Policy]
+AutoEnable = true
+
+[LE]
+MinConnectionInterval = 7
+MaxConnectionInterval = 9
+ConnectionLatency = 0
+BTCONF
+
+# Argonaut service unit
+mkdir -p $PKG/etc/agnos/services
+cat > $PKG/etc/agnos/services/bluetoothd.toml << 'SVC'
+[service]
+name = "bluetoothd"
+description = "Bluetooth daemon"
+exec = "/usr/libexec/bluetooth/bluetoothd --noplugin=sap"
+type = "dbus"
+bus_name = "org.bluez"
+
+[service.depends]
+after = ["dbus"]
+
+[service.restart]
+policy = "on-failure"
+delay_seconds = 3
+SVC
+"""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

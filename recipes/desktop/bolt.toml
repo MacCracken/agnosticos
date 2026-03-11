@@ -1,0 +1,67 @@
+# bolt — Thunderbolt 3/4 device manager
+# Manages Thunderbolt/USB4 device authorization and security levels.
+# Runs as a system daemon, integrates with udev and polkit.
+#
+# BLFS
+
+[package]
+name = "bolt"
+version = "0.9.8"
+description = "bolt — Thunderbolt 3/4 device manager"
+license = "LGPL-2.1-or-later"
+groups = ["desktop", "hardware"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://gitlab.freedesktop.org/bolt/bolt/-/archive/0.9.8/bolt-0.9.8.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "glib", "polkit", "eudev"]
+build = ["gcc", "make", "pkgconf", "meson", "ninja"]
+
+[build]
+pre_build = ""
+configure = """
+mkdir -p build && cd build && \
+meson setup .. --prefix=/usr --buildtype=release \
+  -Dman=false \
+  -Dsystemd=false
+"""
+make = "cd build && ninja -j$(nproc)"
+check = "cd build && meson test || true"
+install = "cd build && DESTDIR=$PKG ninja install"
+post_install = """
+# Argonaut service unit
+mkdir -p $PKG/etc/agnos/services
+cat > $PKG/etc/agnos/services/boltd.toml << 'SVC'
+[service]
+name = "boltd"
+description = "Thunderbolt device manager"
+exec = "/usr/libexec/boltd"
+type = "dbus"
+bus_name = "org.freedesktop.bolt"
+
+[service.depends]
+after = ["dbus", "eudev"]
+
+[service.restart]
+policy = "on-failure"
+delay_seconds = 5
+SVC
+
+# udev rules for Thunderbolt hotplug
+mkdir -p $PKG/usr/lib/udev/rules.d
+cat > $PKG/usr/lib/udev/rules.d/90-bolt.rules << 'UDEV'
+# Thunderbolt devices — notify boltd
+ACTION=="add", SUBSYSTEM=="thunderbolt", TAG+="bolt"
+ACTION=="change", SUBSYSTEM=="thunderbolt", TAG+="bolt"
+UDEV
+"""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

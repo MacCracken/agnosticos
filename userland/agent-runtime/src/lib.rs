@@ -43,6 +43,7 @@ pub mod rollback;
 pub mod safety;
 pub mod sandbox;
 pub mod sandbox_v2;
+pub mod selfhost;
 pub mod scheduler;
 pub mod seccomp_profiles;
 pub mod service_manager;
@@ -55,6 +56,7 @@ pub mod tool_analysis;
 pub mod vector_rest;
 pub mod vector_store;
 pub mod wasm_runtime;
+pub mod webview;
 
 pub use aegis::{
     AegisConfig, AegisSecurityDaemon, AegisStats, QuarantineAction, QuarantineEntry, ScanType,
@@ -174,6 +176,10 @@ pub use scheduler::{
     CronEntry, CronScheduler, NodeCapacity, PreemptionAction, ResourceReq, ScheduledTask,
     SchedulerStats, SchedulingDecision, TaskPriority, TaskScheduler, TaskStatus,
 };
+pub use selfhost::{
+    CheckResult, CheckStatus, PhaseReport, RecipeInfo, SelfHostConfig, SelfHostReport,
+    SelfHostValidator, ValidationPhase,
+};
 pub use service_manager::ServiceManager;
 pub use service_mesh::{MeshConfig, MeshProvider, MeshServiceDescriptor};
 pub use sigil::{
@@ -192,3 +198,8 @@ pub use vector_rest::{
     SearchVectorsResponse, VectorRestError, VectorRestService, VectorServiceStats,
 };
 pub use vector_store::VectorIndex;
+pub use webview::{
+    AiFeature, AiFeatureRequest, AiFeatureResult, CreateWebViewRequest, NavigateRequest,
+    WebViewConfig, WebViewError, WebViewId, WebViewInstance, WebViewIpcMessage, WebViewManager,
+    WebViewPermission, WebViewState, WebViewStats,
+};

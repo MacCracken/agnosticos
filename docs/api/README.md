@@ -1,7 +1,7 @@
 # AGNOS API Reference
 
-> **Last Updated:** 2026-03-08
-> **Version:** 2026.3.8
+> **Last Updated:** 2026-03-10
+> **Version:** 2026.3.10
 
 AGNOS exposes two HTTP/JSON services for interacting with the system. Both bind to `127.0.0.1` by default.
 
@@ -170,11 +170,29 @@ AGNOS exposes two HTTP/JSON services for interacting with the system. Both bind 
 
 **Streaming pattern:** Agents poll `/v1/screen/recording/:id/frames?since=N` where `N` is the last sequence number received. Each frame includes a monotonically increasing `sequence` field. For live view, use `/v1/screen/recording/:id/latest`.
 
+### MCP Tools (Model Context Protocol)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/v1/mcp/tools` | List all 31 available MCP tools |
+| POST | `/v1/mcp/tools/call` | Invoke an MCP tool by name with JSON arguments |
+
+**Available tools (31):**
+
+| Prefix | Tools | Description |
+|--------|-------|-------------|
+| `agnos_*` | 10 | Core runtime: health, agents, heartbeat, metrics, audit, memory |
+| `aequi_*` | 5 | Accounting: tax estimate, Schedule C, bank import, balances, receipts |
+| `agnostic_*` | 5 | QA platform: run suite, test status, test report, list suites, agent status |
+| `delta_*` | 5 | Code hosting: create/list repos, pull requests, push, CI status |
+| `photis_*` | 6 | Task management: list/create/update tasks, rituals, analytics, sync |
+
+Each consumer tool bridges to the real service when available and falls back to mock data for testing.
+
 ### Additional Endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET/POST | `/v1/mcp/tools` | MCP (Model Context Protocol) tool discovery and invocation |
 | GET/POST | `/v1/sandbox/profiles` | Sandbox profile management |
 | GET/POST | `/v1/webhooks` | Webhook registration and management |
 | GET | `/v1/audit` | Query the cryptographic audit log |

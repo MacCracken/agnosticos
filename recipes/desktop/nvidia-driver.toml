@@ -1,0 +1,94 @@
+# NVIDIA proprietary driver — GPU acceleration for NVIDIA hardware
+# Provides kernel modules and userspace libraries for NVIDIA GPUs.
+# Requires matching kernel headers for module compilation.
+#
+# BLFS (proprietary)
+
+[package]
+name = "nvidia-driver"
+version = "570.133.07"
+description = "NVIDIA proprietary GPU driver"
+license = "Proprietary"
+groups = ["desktop", "graphics", "gpu"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://us.download.nvidia.com/XFree86/Linux-x86_64/570.133.07/NVIDIA-Linux-x86_64-570.133.07.run"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "libdrm", "wayland", "openssl", "zlib"]
+build = ["gcc", "make", "linux-api-headers"]
+
+[build]
+pre_build = """
+# Extract the .run installer
+chmod +x NVIDIA-Linux-x86_64-${VERSION}.run
+./NVIDIA-Linux-x86_64-${VERSION}.run --extract-only
+cd NVIDIA-Linux-x86_64-${VERSION}
+"""
+configure = ""
+make = """
+cd NVIDIA-Linux-x86_64-${VERSION}/kernel
+make SYSSRC=/usr/src/linux-headers-$(uname -r) module -j$(nproc)
+"""
+check = ""
+install = """
+cd NVIDIA-Linux-x86_64-${VERSION}
+
+# Kernel modules
+mkdir -p $PKG/usr/lib/modules/$(uname -r)/extra/nvidia
+install -m 644 kernel/nvidia.ko $PKG/usr/lib/modules/$(uname -r)/extra/nvidia/
+install -m 644 kernel/nvidia-modeset.ko $PKG/usr/lib/modules/$(uname -r)/extra/nvidia/
+install -m 644 kernel/nvidia-uvm.ko $PKG/usr/lib/modules/$(uname -r)/extra/nvidia/
+install -m 644 kernel/nvidia-drm.ko $PKG/usr/lib/modules/$(uname -r)/extra/nvidia/
+
+# Userspace libraries
+mkdir -p $PKG/usr/lib
+install -m 755 libEGL_nvidia.so.${VERSION} $PKG/usr/lib/
+install -m 755 libGLESv2_nvidia.so.${VERSION} $PKG/usr/lib/
+install -m 755 libGLX_nvidia.so.${VERSION} $PKG/usr/lib/
+install -m 755 libnvidia-glcore.so.${VERSION} $PKG/usr/lib/
+install -m 755 libnvidia-eglcore.so.${VERSION} $PKG/usr/lib/
+install -m 755 libnvidia-glsi.so.${VERSION} $PKG/usr/lib/
+install -m 755 libnvidia-tls.so.${VERSION} $PKG/usr/lib/
+install -m 755 libnvidia-glvkspirv.so.${VERSION} $PKG/usr/lib/
+
+# Vulkan ICD
+mkdir -p $PKG/usr/share/vulkan/icd.d
+install -m 644 nvidia_icd.json $PKG/usr/share/vulkan/icd.d/
+
+# EGL vendor
+mkdir -p $PKG/usr/share/glvnd/egl_vendor.d
+install -m 644 10_nvidia.json $PKG/usr/share/glvnd/egl_vendor.d/
+
+# nvidia-smi and utilities
+mkdir -p $PKG/usr/bin
+install -m 755 nvidia-smi $PKG/usr/bin/
+install -m 755 nvidia-debugdump $PKG/usr/bin/
+install -m 755 nvidia-persistenced $PKG/usr/bin/
+
+# Firmware
+mkdir -p $PKG/usr/lib/firmware/nvidia/${VERSION}
+cp -a firmware/*.bin $PKG/usr/lib/firmware/nvidia/${VERSION}/ 2>/dev/null || true
+
+# Modprobe config
+mkdir -p $PKG/etc/modprobe.d
+cat > $PKG/etc/modprobe.d/nvidia.conf << 'MODPROBE'
+# Load NVIDIA DRM with modesetting for Wayland
+options nvidia-drm modeset=1
+options nvidia NVreg_UsePageAttributeTable=1
+MODPROBE
+
+# Depmod for module discovery
+mkdir -p $PKG/etc/depmod.d
+echo "search extra/nvidia" > $PKG/etc/depmod.d/nvidia.conf
+"""
+post_install = "depmod -a"
+
+[security]
+hardening = []
+cflags = ""
+ldflags = ""

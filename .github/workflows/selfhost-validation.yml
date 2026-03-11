@@ -1,0 +1,344 @@
+name: Self-Hosting Validation
+
+on:
+  workflow_dispatch:
+    inputs:
+      phase:
+        description: 'Validation phase'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - toolchain
+          - kernel
+          - userland
+          - packages
+          - boot
+      quick:
+        description: 'Quick validation (compile tests only, no full rebuild)'
+        required: false
+        default: true
+        type: boolean
+      boot_test:
+        description: 'Run QEMU boot test (requires ISO artifact)'
+        required: false
+        default: false
+        type: boolean
+  schedule:
+    # Weekly self-hosting check on Sundays at 04:00 UTC
+    - cron: '0 4 * * 0'
+
+concurrency:
+  group: selfhost-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # ---------------------------------------------------------------
+  # Stage 1: Build the ISO (needed for boot test)
+  # ---------------------------------------------------------------
+  build-iso:
+    name: Build AGNOS ISO
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.boot_test == 'true' || github.event.inputs.phase == 'boot' }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential gcc g++ make cmake ninja-build \
+            autoconf automake libtool pkg-config \
+            grub-pc-bin grub-efi-amd64-bin mtools xorriso \
+            squashfs-tools busybox-static \
+            curl wget rsync
+
+      - name: Build kernel
+        run: |
+          ./scripts/build-kernel.sh -v 6.6-lts
+        timeout-minutes: 60
+
+      - name: Build ISO
+        run: |
+          ./scripts/build-iso.sh
+        timeout-minutes: 30
+
+      - name: Upload ISO artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agnos-iso
+          path: build/agnos-*.iso
+          retention-days: 3
+
+  # ---------------------------------------------------------------
+  # Stage 2: QEMU Boot Test
+  # ---------------------------------------------------------------
+  qemu-boot-test:
+    name: QEMU Boot Validation
+    runs-on: ubuntu-latest
+    needs: build-iso
+    if: ${{ github.event.inputs.boot_test == 'true' || github.event.inputs.phase == 'boot' }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install QEMU
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 qemu-utils ovmf socat
+
+      - name: Download ISO artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: agnos-iso
+          path: build/
+
+      - name: Run QEMU boot test
+        run: |
+          chmod +x scripts/qemu-boot-test.sh
+          ./scripts/qemu-boot-test.sh \
+            --timeout 180 \
+            --memory 4096 \
+            --cpus 2 \
+            ${{ github.event.inputs.quick == 'false' && '--selfhost' || '' }}
+
+      - name: Upload boot test logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qemu-boot-logs
+          path: build/qemu-test/
+          retention-days: 7
+
+  # ---------------------------------------------------------------
+  # Stage 3: Toolchain Validation (in container)
+  # ---------------------------------------------------------------
+  validate-toolchain:
+    name: Toolchain Validation
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.inputs.phase == 'all' ||
+      github.event.inputs.phase == 'toolchain' ||
+      github.event_name == 'schedule'
+    timeout-minutes: 30
+    container:
+      image: debian:bookworm
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          apt-get update
+          apt-get install -y \
+            build-essential gcc g++ binutils make cmake \
+            autoconf automake libtool pkg-config \
+            bison flex gawk m4 texinfo perl python3 \
+            bc kmod linux-headers-generic \
+            curl ca-certificates
+
+      - name: Install Rust
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+          . "$HOME/.cargo/env"
+          rustc --version
+          cargo --version
+
+      - name: Validate toolchain
+        run: |
+          . "$HOME/.cargo/env"
+          chmod +x scripts/selfhost-validate.sh
+          ./scripts/selfhost-validate.sh \
+            --phase toolchain \
+            --source "$(pwd)" \
+            --output /tmp/selfhost-results \
+            ${{ github.event.inputs.quick == 'true' && '--quick' || '' }}
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: toolchain-results
+          path: /tmp/selfhost-results/
+          retention-days: 7
+
+  # ---------------------------------------------------------------
+  # Stage 4: Kernel Module Build
+  # ---------------------------------------------------------------
+  validate-kernel:
+    name: Kernel Module Validation
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.inputs.phase == 'all' ||
+      github.event.inputs.phase == 'kernel' ||
+      github.event_name == 'schedule'
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install kernel build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential bc kmod \
+            linux-headers-$(uname -r)
+
+      - name: Validate kernel module build
+        run: |
+          chmod +x scripts/selfhost-validate.sh
+          ./scripts/selfhost-validate.sh \
+            --phase kernel \
+            --source "$(pwd)" \
+            --output /tmp/selfhost-results \
+            ${{ github.event.inputs.quick == 'true' && '--quick' || '' }}
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-results
+          path: /tmp/selfhost-results/
+          retention-days: 7
+
+  # ---------------------------------------------------------------
+  # Stage 5: Userland Build
+  # ---------------------------------------------------------------
+  validate-userland:
+    name: Userland Build Validation
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.inputs.phase == 'all' ||
+      github.event.inputs.phase == 'userland' ||
+      github.event_name == 'schedule'
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libseccomp-dev libcap-dev libssl-dev pkg-config \
+            protobuf-compiler
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            userland/target
+          key: selfhost-cargo-${{ hashFiles('userland/Cargo.lock') }}
+          restore-keys: selfhost-cargo-
+
+      - name: Validate userland build
+        run: |
+          chmod +x scripts/selfhost-validate.sh
+          ./scripts/selfhost-validate.sh \
+            --phase userland \
+            --source "$(pwd)" \
+            --output /tmp/selfhost-results \
+            ${{ github.event.inputs.quick == 'true' && '--quick' || '' }}
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: userland-results
+          path: /tmp/selfhost-results/
+          retention-days: 7
+
+  # ---------------------------------------------------------------
+  # Stage 6: Package Build
+  # ---------------------------------------------------------------
+  validate-packages:
+    name: Package Build Validation
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.inputs.phase == 'all' ||
+      github.event.inputs.phase == 'packages' ||
+      github.event_name == 'schedule'
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential gcc g++ make cmake \
+            autoconf automake libtool pkg-config \
+            curl wget rsync
+
+      - name: Validate package builds
+        run: |
+          chmod +x scripts/selfhost-validate.sh
+          chmod +x scripts/ark-build.sh
+          ./scripts/selfhost-validate.sh \
+            --phase packages \
+            --source "$(pwd)" \
+            --output /tmp/selfhost-results \
+            ${{ github.event.inputs.quick == 'true' && '--quick' || '' }}
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-results
+          path: /tmp/selfhost-results/
+          retention-days: 7
+
+  # ---------------------------------------------------------------
+  # Stage 7: Summary
+  # ---------------------------------------------------------------
+  summary:
+    name: Validation Summary
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - validate-toolchain
+      - validate-kernel
+      - validate-userland
+      - validate-packages
+    steps:
+      - name: Download all results
+        uses: actions/download-artifact@v4
+        with:
+          path: results/
+
+      - name: Generate summary
+        run: |
+          echo "# AGNOS Self-Hosting Validation Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Stage | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+
+          for stage in toolchain kernel userland package; do
+            result_file="results/${stage}-results/results.txt"
+            if [ -f "$result_file" ]; then
+              if grep -q "STATUS: SELFHOST_VALIDATED" "$result_file" 2>/dev/null; then
+                echo "| ${stage} | :white_check_mark: Passed |" >> $GITHUB_STEP_SUMMARY
+              else
+                passed=$(grep "^Passed:" "$result_file" | awk '{print $2}')
+                failed=$(grep "^Failed:" "$result_file" | awk '{print $2}')
+                echo "| ${stage} | :x: Failed (${passed:-0} passed, ${failed:-0} failed) |" >> $GITHUB_STEP_SUMMARY
+              fi
+            else
+              echo "| ${stage} | :warning: Skipped |" >> $GITHUB_STEP_SUMMARY
+            fi
+          done
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Run:** ${{ github.run_id }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Phase:** ${{ github.event.inputs.phase || 'all (scheduled)' }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Quick:** ${{ github.event.inputs.quick || 'true' }}" >> $GITHUB_STEP_SUMMARY

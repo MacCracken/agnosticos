@@ -7,6 +7,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [2026.3.10] - 2026-03-10
 
+### Added — Phase 13A: Self-Hosting Validation Infrastructure (4/4 infra items complete)
+
+- **`scripts/qemu-boot-test.sh`**: QEMU boot validation — boots AGNOS ISO with UEFI/BIOS, runs smoke tests via serial console (kernel, init, filesystems, argonaut, daimon, hoosh, ark, agnsh, networking, security), detects kernel panics and mount failures, optional `--selfhost` flag for toolchain readiness
+- **`scripts/selfhost-validate.sh`**: 4-phase self-hosting validation — toolchain (C/C++/Rust compile, static/shared libs, hardening flags), kernel (module compilation, AGNOS custom modules), userland (`cargo build --release` of all 6 crates), packages (ark-build.sh pipeline, recipe validation, tier-0 package builds). Supports `--quick` and `--phase` selection
+- **`.github/workflows/selfhost-validation.yml`**: CI workflow — weekly scheduled + manual dispatch, 7 jobs (ISO build, QEMU boot, toolchain/kernel/userland/package validation, summary), artifact upload, GitHub step summary with pass/fail table
+- **`agent-runtime/src/selfhost.rs`**: Rust validation module (38 tests) — `SelfHostValidator` with configurable `SelfHostConfig`, recipe discovery with lightweight TOML parsing, dependency closure checking (including virtual packages), system checks (binary lookup, pkg-config, disk space, memory), full serde JSON support for dashboard/API reporting
+- **Makefile**: Added `selfhost-validate`, `selfhost-validate-quick`, `qemu-boot-test` targets
+
+### Added — Phase 13C: Community & Documentation (3/7 complete)
+
+- **`docs/installation/README.md`**: Comprehensive installation guide — bare metal ISO install (agnova), QEMU/KVM virtual machine setup, Docker container quickstart, build from source, post-install configuration (LLM providers, marketplace, desktop, hardening), troubleshooting
+- **`docs/development/kernel-guide.md`**: Kernel development guide — building the AGNOS kernel, writing custom kernel modules (template, standalone + integrated build), kernel configuration (agnos_defconfig), patching workflow, agnosys Rust wrappers for 16 kernel interfaces, security/coding standards, review checklist
+- **`.github/ISSUE_TEMPLATE/security_vulnerability.md`**: Security vulnerability report template — severity levels, affected components, PoC section, private reporting guidance
+- **`.github/ISSUE_TEMPLATE/config.yml`**: Issue template chooser config — disables blank issues, links to private security reporting and docs
+- **`.github/ISSUE_TEMPLATE/feature_request.md`**: Updated — component list and phase references now reflect current project state (13A-13E, all named subsystems)
+
+### Added — Phase 13E: AI-Integrated WebView (28 tests)
+
+- **`agent-runtime/src/webview.rs`**: AI-integrated WebView module — `WebViewManager` for lifecycle management (create, navigate, close, list), hoosh LLM bridge (JavaScript injection for summarize/extract/ask/translate/form-fill/alt-text), `agnos://` custom protocol, per-agent permission model (domain allowlist, instance limits, feature grants, expiry), IPC message queue, navigation history, CSP enforcement, external navigation blocking (localhost-only by default)
+- Security: sandboxed by default, no external navigation unless explicitly enabled, agent-scoped permissions with domain allowlists, JavaScript eval requires explicit grant
+
+### Added — Phase 13E: AGNOS Base Docker Images
+
+- **`docker/Dockerfile.agnos-base`**: Multi-stage AGNOS base container — Stage 1 bootstraps rootfs from .ark packages (with Debian fallback), Stage 2 creates scratch-based minimal image, Stage 3 adds daimon+hoosh runtime. Replaces `debian:bookworm-slim` as the base for all AGNOS containers
+- **`scripts/ark-install.sh`**: Package installer for container/chroot environments — installs .ark packages into target rootfs, handles both wrapped (data.tar.gz inside) and flat .ark formats, maintains installed package database at `/var/lib/agnos/ark/installed/`
+
+### Added — Phase 13B: Hardware Support (8/8 complete)
+
+- **`recipes/desktop/nvidia-driver.toml`**: NVIDIA proprietary GPU driver (570.133.07) — kernel modules, userspace libs, Vulkan ICD, nvidia-smi, modprobe config with DRM modesetting for Wayland
+- **`recipes/desktop/mesa.toml`**: Added `nouveau` to gallium-drivers and vulkan-drivers — NVIDIA open-source GPU support alongside existing AMD radeonsi and Intel iris
+- **`recipes/desktop/bluez.toml`**: BlueZ Bluetooth stack (5.82) — bluetoothd daemon, BLE + mesh support, argonaut service unit, default config
+- **`recipes/desktop/bolt.toml`**: Thunderbolt 3/4 device manager (0.9.8) — boltd daemon, polkit integration, udev rules, argonaut service unit
+- **`recipes/desktop/cups.toml`**: CUPS printing system (2.4.12) — cupsd, localhost-only default, PAM auth, argonaut service unit (optional package)
+- **`recipes/base/linux-firmware.toml`**: WiFi/GPU/Bluetooth firmware blobs (already existed)
+
+### Added — Phase 13D: Consumer App Integration (6/6 complete)
+
+#### Delta Code Hosting (5 MCP tools, 5 agnoshi intents, 28 tests)
+
+- **MCP tools** (`mcp_server.rs`): `delta_create_repository`, `delta_list_repositories`, `delta_pull_request`, `delta_push`, `delta_ci_status` — with DeltaBridge (port 8070) and mock fallbacks (12 tests)
+- **Agnoshi intents** (`ai-shell/`): `DeltaCreateRepo`, `DeltaListRepos`, `DeltaPr`, `DeltaPush`, `DeltaCiStatus` — regex patterns, parse logic, MCP bridge translations (16 tests)
+- **`translate/delta.rs`**: New translation module for Delta shell commands
+
+#### Aequi Accounting (5 MCP tools, 12 tests)
+
+- **MCP tools** (`mcp_server.rs`): `aequi_estimate_quarterly_tax`, `aequi_schedule_c_preview`, `aequi_import_bank_statement`, `aequi_account_balances`, `aequi_list_receipts` — with AequiBridge (port 8060) and mock fallbacks
+- Agnoshi intents for Aequi already existed; now connected end-to-end via MCP handlers
+
+#### AGNOSTIC QA Platform (5 MCP tools, 5 agnoshi intents, 26 tests)
+
+- **MCP tools** (`mcp_server.rs`): `agnostic_run_suite`, `agnostic_test_status`, `agnostic_test_report`, `agnostic_list_suites`, `agnostic_agent_status` — with AgnosticBridge (port 8000) and mock fallbacks (13 tests)
+- **Agnoshi intents** (`ai-shell/`): `AgnosticRunSuite`, `AgnosticTestStatus`, `AgnosticTestReport`, `AgnosticListSuites`, `AgnosticAgentStatus` — regex patterns, parse logic, MCP bridge translations (13 tests)
+- **`translate/agnostic.rs`**: New translation module for Agnostic shell commands
+- **`recipes/marketplace/agnostic.toml`**: Updated status from "STUB" to "Ready"
+
+### Added — CI Workflow Updates
+
+- **`marketplace-publish.yml`**: Added Delta and Aequi to app choices and matrix (now 7 apps total)
+
+### Changed — MCP Tool Manifest
+
+- MCP tools expanded from 16 to 31 (10 AGNOS core + 5 Aequi + 5 Agnostic + 5 Delta + 6 Photis)
+- All consumer apps now have full MCP tool coverage with HTTP bridge + mock fallback pattern
+- Test count: agent-runtime 3076+ (was 3027), ai-shell 1472 (was 1132)
+
 ### Fixed — Docker Entrypoint
 
 - **`docker/entrypoint.sh`**: Increased default virtual memory ulimit from 2GB to 8GB — previous limit caused crashes with large LLM models and multi-agent workloads

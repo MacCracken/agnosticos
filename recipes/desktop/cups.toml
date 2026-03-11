@@ -1,0 +1,108 @@
+# CUPS — Common Unix Printing System
+# Provides print spooler, scheduler, filter system, and web admin UI.
+# Optional package — only installed when printing support is requested.
+#
+# BLFS
+
+[package]
+name = "cups"
+version = "2.4.12"
+description = "CUPS — Common Unix Printing System"
+license = "Apache-2.0"
+groups = ["desktop", "printing"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/OpenPrinting/cups/releases/download/v2.4.12/cups-2.4.12-source.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glibc", "openssl", "zlib", "dbus", "linux-pam", "libusb"]
+build = ["gcc", "make", "pkgconf", "autoconf"]
+optional = ["avahi", "libpaper"]
+
+[build]
+pre_build = ""
+configure = """
+./configure --prefix=/usr \
+  --sysconfdir=/etc \
+  --localstatedir=/var \
+  --with-tls=openssl \
+  --with-dbusdir=/usr/share/dbus-1 \
+  --enable-libpaper=no \
+  --enable-dbus \
+  --enable-pam \
+  --disable-systemd \
+  --with-rundir=/run/cups \
+  --with-docdir=/usr/share/doc/cups
+"""
+make = "make -j$(nproc)"
+check = "make check || true"
+install = "make DESTDIR=$PKG install"
+post_install = """
+# Secure default config
+mkdir -p $PKG/etc/cups
+cat > $PKG/etc/cups/cupsd.conf << 'CUPSCONF'
+# AGNOS CUPS configuration — localhost only by default
+LogLevel warn
+MaxLogSize 0
+Listen localhost:631
+Listen /run/cups/cups.sock
+
+# Web interface (localhost only)
+WebInterface Yes
+
+# Restrict access
+<Location />
+  Order allow,deny
+  Allow localhost
+</Location>
+<Location /admin>
+  Order allow,deny
+  Allow localhost
+</Location>
+<Location /admin/conf>
+  AuthType Default
+  Require user @SYSTEM
+  Order allow,deny
+  Allow localhost
+</Location>
+
+# Security
+ServerAlias *
+DefaultEncryption IfRequested
+CUPSCONF
+
+# Argonaut service unit
+mkdir -p $PKG/etc/agnos/services
+cat > $PKG/etc/agnos/services/cupsd.toml << 'SVC'
+[service]
+name = "cupsd"
+description = "CUPS printing daemon"
+exec = "/usr/sbin/cupsd -f"
+type = "simple"
+
+[service.depends]
+after = ["dbus"]
+boot_mode = ["desktop"]
+
+[service.restart]
+policy = "on-failure"
+delay_seconds = 5
+SVC
+
+# PAM config for CUPS
+mkdir -p $PKG/etc/pam.d
+cat > $PKG/etc/pam.d/cups << 'PAM'
+auth    include system-auth
+account include system-account
+session include system-session
+PAM
+"""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"
