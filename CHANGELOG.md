@@ -59,6 +59,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`handlers/screen_capture.rs`**: `parse_format()` and `parse_target_kind()` deduplicate inline string matching
 - **`handlers/rag.rs`**: `parse_knowledge_source()` consolidates two duplicate match blocks
 
+### Documentation Audit
+
+- Renamed 5 ALL_CAPS doc files to lowercase kebab-case: `architecture.md`, `agent-runtime.md`, `desktop-environment.md`, `troubleshooting.md`, `agnostic-integration.md`
+- Deleted 3 outdated files: `docs/DOCUMENTATION_CLEANUP.md`, `docs/development/phase67-guide.md`, `docs/development/security-testing.md`
+- Merged `security-testing.md` content into `docs/development/testing.md` (fuzzing, manual testing, security tools, penetration checklist)
+- Trimmed overlap between `SECURITY.md` (policy) and `docs/security/security-guide.md` (technical) — each now has a single responsibility with cross-links
+- Updated `README.md`: pre-beta status, 8997+ tests, ~84% coverage, stripped emojis from headers
+- Updated `docs/agent-runtime.md`: 3638 lib tests, 41 MCP tools, added 7 new modules, consumer integration table
+- Fixed cross-references across 8 files (SUPPORT.md, agent-development.md, kernel-guide.md, architecture.md, desktop-environment.md, troubleshooting.md, agnostic-integration.md, README.md)
+
 ## [2026.3.10] - 2026-03-10
 
 ### Added — Consumer API Improvements (5 features, 13 new tests)

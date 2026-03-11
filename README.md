@@ -45,35 +45,35 @@
 
 ## Key Features
 
-### 🧠 Agent-Native Kernel Extensions
+### Agent-Native Kernel Extensions
 - **Agent Kernel Module** — Low-level support for agent lifecycle management
 - **LLM System Calls** — Native kernel interfaces for model inference
 - **Context Switching** — Hardware-accelerated context management for agents
 - **Memory Pools** — Isolated memory regions per agent with automatic cleanup
 
-### 🔒 Security & Auditing
+### Security & Auditing
 - **Landlock + seccomp-bpf** — Mandatory sandboxing for all agent processes
 - **Cryptographic Audit Chain** — Immutable, signed logs of all agent actions
 - **RBAC at Kernel Level** — Fine-grained permissions for agent capabilities
 - **Supply Chain Security** — Reproducible builds, signed packages, SBOM generation
 
-### 🖥️ Command-First Interface
+### Command-First Interface
 - **AI Shell (agnsh)** — Natural language command interface with full bash compatibility
 - **Agent CLI** — Direct control and monitoring of running agents
 - **Audit TTY** — Real-time security event monitoring
 
-### 🖼️ Desktop Environment (Phase 2)
+### Desktop Environment (Phase 2)
 - **Wayland-based compositor** with AI-augmented window management
 - **Contextual Workspace** — Workspaces that follow task context, not just applications
 - **Ambient Intelligence** — Proactive assistance based on current activity
 
-### 🤖 Multi-Agent Support
+### Multi-Agent Support
 - **Agent Kernel** — Orchestrates multiple agents with conflict resolution
 - **Message Bus** — Secure, encrypted inter-agent communication with agent name routing
 - **Resource Scheduler** — Fair allocation of GPU/CPU/memory between agents
 - **Human-in-the-Loop** — Automatic escalation for sensitive operations
 
-### 🌐 Networking Toolkit (Phase 6)
+### Networking Toolkit (Phase 6)
 Inspired by Kali Linux, AGNOS ships a curated networking toolkit pre-configured for agent-driven analysis. All tool invocations are sandboxed and recorded in the cryptographic audit chain:
 - **Reconnaissance** — `nmap`, `masscan`, `netdiscover`, `p0f`
 - **Traffic analysis** — `tcpdump`, `wireshark`/`tshark`, `bettercap`, `termshark`
@@ -82,7 +82,7 @@ Inspired by Kali Linux, AGNOS ships a curated networking toolkit pre-configured 
 - **Web layer** — `nikto`, `ffuf`, `gobuster`, `nuclei`
 - **Agent integration** — natural language queries like `"scan 192.168.1.0/24 for open ports"`
 
-### 🌐 LLM Gateway HTTP API
+### LLM Gateway HTTP API
 - **OpenAI-compatible API** on port 8088 — Drop-in replacement for OpenAI API
 - **Multiple provider support** — Local models (Ollama, llama.cpp) + cloud providers
 - **Request routing** — Route through agents with `X-Agent-Id` headers
@@ -253,11 +253,9 @@ AGNOS Userland (17 named subsystems)
 
 ## Development Status
 
-AGNOS is currently in **pre-alpha** development. See [docs/development/roadmap.md](docs/development/roadmap.md) for the full roadmap and detailed phase breakdown.
+AGNOS is currently in **pre-beta** development. See [docs/development/roadmap.md](docs/development/roadmap.md) for the full roadmap and detailed phase breakdown.
 
-### Current Status: All Development Phases Complete — Alpha Targeting Q2 2026
-
-All 9 development phases are complete (9072+ tests, ~82% coverage, 0 warnings). The sole remaining blocker for alpha is a third-party security audit.
+### Current Status: Phases 0-14 complete. 8997+ tests, ~84% coverage, 0 warnings. Beta targeting Q4 2026.
 
 - [x] **Phase 1-4**: Architecture, build system, CI/CD pipeline
 - [x] **Phase 5**: Agent Runtime (daimon), AI Shell (agnoshi), LLM Gateway (hoosh), Desktop (aethersafha)
@@ -266,17 +264,22 @@ All 9 development phases are complete (9072+ tests, ~82% coverage, 0 warnings). 
 - [x] **Phase 8A-8F**: Distribution — Sigil trust (35 tests), Takumi build (43 tests), Argonaut init (46 tests), Agnova installer (41 tests), Aegis security daemon (40 tests)
 - [x] **Phase 8G-8M**: Research — Post-quantum crypto (68 tests), explainability (59 tests), AI safety (77 tests), fine-tuning (73 tests), formal verification (76 tests), novel sandboxing (77 tests), RL optimization (68 tests)
 - [x] **Phase 9**: Cloud services (82 tests), human-AI collaboration (87 tests)
-- [x] Test coverage: ~82% (9072+ tests, 0 failures)
+- [x] **Phase 10-12**: Platform hardening, integration, and stabilization
+- [x] **Phase 13**: Beta polish (infrastructure, hardware recipes, community prep)
+- [x] **Phase 14**: Edge OS Profile (fleet management, edge boot mode)
+- [x] Test coverage: ~84% (8997+ tests, 0 failures)
 - [x] Performance benchmarks — criterion suites for all major components
 - [x] Security — 5 CVEs fixed, all CI/CD workflows operational
-- [ ] **Third-party security audit** (sole alpha blocker — vendor selection in progress)
+- [ ] **Bootable ISO** (Phase 13A — self-hosting validation)
+- [ ] **Community/docs** (Phase 13C — external documentation and onboarding)
+- [ ] **Third-party security audit** (vendor selection in progress)
 
 ## Documentation
 
 | Document | Description |
 |----------|-------------|
 | [docs/development/roadmap.md](docs/development/roadmap.md) | Development roadmap and MVP tasks |
-| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | System architecture |
+| [architecture.md](docs/architecture.md) | System architecture |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Contribution guidelines |
 | [SECURITY.md](SECURITY.md) | Security policies |
 | [docs/adr/](docs/adr/) | Architecture Decision Records |

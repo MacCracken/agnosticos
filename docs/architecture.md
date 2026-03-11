@@ -1,6 +1,6 @@
 # AGNOS System Architecture
 
-> **Last Updated**: 2026-03-07 | **Version**: 2026.3.7
+> **Last Updated**: 2026-03-11 | **Version**: 2026.3.11
 
 This document provides the technical architecture of AGNOS (AI-Native General Operating System).
 
@@ -506,6 +506,7 @@ AGNOS value is in the security model, agent runtime, and LLM gateway — not the
 ## Related Documentation
 
 - [Development Roadmap](development/roadmap.md)
-- [API Explorer](api/explorer.html)
+- [API Reference](api/README.md)
+- [API Explorer](../userland/docs/api/explorer.html)
 - [Security Guide](security/security-guide.md)
 - [ADR Index](adr/README.md)

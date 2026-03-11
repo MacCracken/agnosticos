@@ -3,8 +3,8 @@
 > **Named subsystem:** daimon (Greek: guiding spirit/daemon)
 > **Port:** 8090
 > **Crate:** `agent-runtime`
-> **Last Updated:** 2026-03-07
-> **Version:** 2026.3.7
+> **Last Updated:** 2026-03-11
+> **Version:** 2026.3.11
 
 ## Overview
 
@@ -42,11 +42,11 @@ All agents communicate over Unix domain sockets at `/run/agnos/agents/{agent_id}
 | Module | Purpose |
 |---|---|
 | `orchestrator.rs` | Task distribution, priority queues, workload balancing, dependency resolution |
-| `supervisor.rs` | Health check loop, failure detection, automatic recovery, graceful shutdown |
+| `supervisor/` | Health check loop, failure detection, automatic recovery, graceful shutdown (module directory) |
 | `registry.rs` | Agent lookup by ID/name/capability, status tracking, discovery |
 | `ipc.rs` | Unix domain sockets, RPC registry/router, message routing, pub/sub |
 | `sandbox.rs` | Landlock, seccomp-bpf, network namespaces, configurable access levels |
-| `sandbox_v2.rs` | Next-gen sandbox with enhanced isolation (77 tests) |
+| `sandbox_v2.rs` | Next-gen sandbox with enhanced isolation (79 tests) |
 | `seccomp_profiles.rs` | Basic filter (20 syscalls) or custom per-agent BPF programs |
 | `capability.rs` | Fine-grained permission grants, delegation, revocation |
 | `resource.rs` | GPU detection/allocation (NVIDIA), CPU cores, memory reservation |
@@ -282,7 +282,7 @@ Screen capture and recording is driven by the desktop environment's `ScreenCaptu
 | GET | `/events/topics` | List active topics with subscriber counts |
 | GET | `/sandbox/profiles/list` | List predefined sandbox profiles |
 
-## MCP Server (16 Tools)
+## MCP Server (41 Tools)
 
 Daimon exposes its capabilities via the Model Context Protocol for integration with external AI services.
 
@@ -312,6 +312,25 @@ Daimon exposes its capabilities via the Model Context Protocol for integration w
 | `photis_analytics` | Get productivity analytics |
 | `photis_sync` | Trigger Supabase sync |
 
+**Consumer bridge tools (20):**
+
+| Prefix | Count | Description |
+|---|---|---|
+| `aequi_*` | 5 | Accounting: tax estimate, Schedule C, bank import, balances, receipts |
+| `agnostic_*` | 5 | QA platform: run suite, test status, report, list suites, agent status |
+| `delta_*` | 5 | Code hosting: repos, pull requests, push, CI status |
+| `shruti_*` | 5 | DAW: track list, mix, record, playback, AI assist |
+
+**Edge tools (5):**
+
+| Tool | Description |
+|---|---|
+| `edge_list` | List edge fleet nodes |
+| `edge_deploy` | Deploy task to edge node |
+| `edge_update` | OTA update edge node |
+| `edge_health` | Check edge node health |
+| `edge_decommission` | Decommission edge node |
+
 ## Major Subsystems
 
 ### Marketplace / Mela (Sanskrit: festive gathering)
@@ -324,30 +343,30 @@ Agent and application marketplace with trust verification, transparency scoring,
 
 ### Sigil (Latin: seal) -- Trust Verification
 
-Cryptographic trust chain for agent packages. Signature verification, trust scoring, certificate pinning. (35 tests)
+Cryptographic trust chain for agent packages. Signature verification, trust scoring, certificate pinning. (46 tests)
 
 ### Aegis (Greek: shield) -- Security Daemon
 
-Real-time security monitoring: threat detection, quarantine, vulnerability scanning, security event correlation. (40 tests)
+Real-time security monitoring: threat detection, quarantine, vulnerability scanning, security event correlation. (55 tests)
 
 ### Takumi (Japanese: master craftsman) -- Build System
 
-Build system for `.ark` packages from source recipes. Handles dependencies, compilation, packaging. (43 tests)
+Build system for `.ark` packages from source recipes. Handles dependencies, compilation, packaging. (56 tests)
 
 ### Argonaut (Greek: heroes of the Argo) -- Init System
 
-System initialization: boot stages, service dependency ordering, health checks, ready checks, restart policies. (46 tests)
+System initialization: boot stages, service dependency ordering, health checks, ready checks, restart policies. Includes Edge boot mode. (132 tests)
 
 ### Agnova (agnos + Latin nova) -- Installer
 
-OS installer: disk layout, partitioning, bootloader config, package selection, network config, security setup. (41 tests)
+OS installer: disk layout, partitioning, bootloader config, package selection, network config, security setup. (91 tests)
 
 ### Ark + Nous -- Package Management
 
 - **Ark:** Unified package manager CLI and API. Handles `.ark` signed tarballs with metadata. Install, remove, search, update, upgrade.
 - **Nous:** Package resolver daemon. Dependency resolution, version constraints, conflict detection.
 
-### Federation (55 tests)
+### Federation (73 tests)
 
 Multi-node agent federation. Cluster management, node scoring, scheduling strategies across federated AGNOS nodes.
 
@@ -355,7 +374,7 @@ Multi-node agent federation. Cluster management, node scoring, scheduling strate
 
 Live agent migration between nodes with state transfer and rollback support.
 
-### Scheduler (47 tests)
+### Scheduler (51 tests)
 
 Advanced scheduling with placement constraints, affinity rules, and resource-aware bin packing.
 
@@ -379,7 +398,7 @@ On-device model fine-tuning pipeline: dataset management, LoRA/QLoRA methods, VR
 
 Runtime invariant monitoring, state machine property checking, verification reports.
 
-### Sandbox V2 (77 tests)
+### Sandbox V2 (79 tests)
 
 Next-generation sandbox with enhanced isolation, tighter seccomp policies, and per-workload profiles.
 
@@ -436,55 +455,57 @@ Full retrieval-augmented generation stack:
 
 ## Module Index
 
-All 50 modules declared in `lib.rs`:
+50+ modules declared in `lib.rs`:
 
 | Module | Module | Module |
 |---|---|---|
 | aegis | agent | agnova |
 | argonaut | ark | capability |
-| cloud | collaboration | explainability |
-| federation | file_watcher | finetune |
-| formal_verify | http_api | integrity |
+| cloud | collaboration | delegation |
+| edge | explainability | federation |
+| file_watcher | finetune | formal_verify |
+| grpc | http_api | integrity |
 | ipc | knowledge_base | learning |
-| lifecycle | marketplace | mcp_server |
-| memory_store | migration | mtls |
-| multimodal | network_tools | nous |
-| orchestrator | package_manager | pqc |
-| pubsub | rag | registry |
-| resource | resource_forecast | rl_optimizer |
-| rollback | safety | sandbox |
-| sandbox_v2 | scheduler | seccomp_profiles |
-| service_manager | sigil | supervisor |
+| lifecycle | marketplace | marketplace_backend |
+| mcp_server | memory_store | migration |
+| mtls | multimodal | network_tools |
+| nous | oidc | orchestrator |
+| package_manager | pqc | pubsub |
+| rag | registry | resource |
+| resource_forecast | rl_optimizer | rollback |
+| safety | sandbox | sandbox_v2 |
+| scheduler | seccomp_profiles | service_manager |
+| service_mesh | sigil | supervisor |
 | swarm | takumi | tool_analysis |
-| vector_store | wasm_runtime | |
+| vector_rest | vector_store | wasm_runtime |
 
 ## Testing
 
-- **Lib tests:** 2603 passed, 0 failed
-- **Coverage:** ~82% (tarpaulin)
+- **Lib tests:** 3638 passed, 0 failed
+- **Coverage:** ~84% (tarpaulin)
 - **Compiler warnings:** 0
 
 Selected subsystem test counts:
 
 | Subsystem | Tests |
 |---|---|
+| Argonaut | 132 |
+| Agnova | 91 |
 | Collaboration | 87 |
 | Cloud | 82 |
+| Sandbox V2 | 79 |
 | Safety | 77 |
-| Sandbox V2 | 77 |
 | Formal Verify | 76 |
 | Finetune | 73 |
+| Federation | 73 |
 | PQC | 68 |
 | RL Optimizer | 68 |
 | Explainability | 59 |
-| Federation | 55 |
+| Takumi | 56 |
+| Aegis | 55 |
 | Migration | 54 |
-| Scheduler | 47 |
-| Argonaut | 46 |
-| Takumi | 43 |
-| Agnova | 41 |
-| Aegis | 40 |
-| Sigil | 35 |
+| Scheduler | 51 |
+| Sigil | 46 |
 
 ## Performance
 
@@ -547,9 +568,14 @@ CPUQuota=50%
 
 | Project | Integration |
 |---|---|
-| AGNOSTIC | REST API on port 8090, agent registration, CrewAI QA workflows |
+| AGNOSTIC | REST API on port 8090, agent registration, CrewAI QA workflows, 5 MCP tools (`agnostic_*`) |
 | SecureYeoman | AGNOS as base Docker image, agent-runtime for orchestration |
 | Photis Nadi | MCP bridge (6 tools), marketplace `.agpkg` packages, Flutter desktop |
+| Aequi | Accounting platform, 5 MCP tools (`aequi_*`), marketplace recipe |
+| Delta | Code hosting platform, 5 MCP tools (`delta_*`), marketplace recipe |
+| Shruti | DAW, 5 MCP tools (`shruti_*`), marketplace recipe |
+| BullShift | Trading platform, marketplace recipe |
+| Synapse | LLM management, marketplace recipe |
 
 ## Related Subsystems
 

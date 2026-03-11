@@ -54,11 +54,7 @@ If you discover a security vulnerability, please report it privately:
 
 **Email**: security@agnos.io
 
-**GPG Key**: [Download public key](https://agnos.io/security.gpg)
-
-```
-Fingerprint: AAAA BBBB CCCC DDDD EEEE  FFFF 0000 1111 2222 3333
-```
+**GPG Key**: Contact security@agnos.io for the GPG public key.
 
 **Include in your report**:
 - Description of the vulnerability
@@ -101,108 +97,7 @@ Scope: Kernel modules, agent runtime, sandbox implementation, cryptographic syst
 
 ## Security Architecture
 
-### Kernel Security
-
-```
-┌─────────────────────────────────────────┐
-│           User Space                    │
-│  ┌─────────────────────────────────┐   │
-│  │ Agent Processes (Sandboxed)    │   │
-│  │ ┌─────────┐ ┌─────────┐         │   │
-│  │ │ Agent 1 │ │ Agent 2 │         │   │
-│  │ │(Landlock│ │(Landlock│         │   │
-│  │ │ seccomp)│ │ seccomp)│         │   │
-│  │ └────┬────┘ └────┬────┘         │   │
-│  └──────┼───────────┼──────────────┘   │
-│         │           │                  │
-├─────────┼───────────┼──────────────────┤
-│         ↓           ↓                  │
-│  ┌─────────────────────────────────┐   │
-│  │    AGNOS Security Module        │   │
-│  │  ┌───────────────────────────┐  │   │
-│  │  │  Landlock Enforcement     │  │   │
-│  │  │  seccomp-bpf Filtering    │  │   │
-│  │  │  Capability Management    │  │   │
-│  │  │  Namespace Isolation      │  │   │
-│  │  │  Audit Event Capture      │  │   │
-│  │  │  Aegis Security Daemon    │  │   │
-│  │  │  Sigil Trust Verification │  │   │
-│  │  └───────────────────────────┘  │   │
-│  └─────────────────────────────────┘   │
-│                   │                     │
-│         ┌─────────┴─────────┐           │
-│         ↓                   ↓           │
-│  ┌─────────────┐     ┌─────────────┐   │
-│  │ Linux Kernel│     │ Audit Kernel│   │
-│  │  (hardened) │     │   Module    │   │
-│  └─────────────┘     └─────────────┘   │
-└─────────────────────────────────────────┘
-```
-
-### Agent Isolation
-
-Each agent runs in a security context with:
-
-- **Landlock**: Filesystem sandboxing
-- **seccomp-bpf**: System call filtering
-- **Namespaces**: PID, network, mount isolation
-- **cgroups**: Resource limits
-- **Capabilities**: Minimal privilege set
-
-### Audit System
-
-```
-Agent Action
-    ↓
-Kernel Audit Hook
-    ↓
-Event Capture (structured)
-    ↓
-HMAC-SHA256 Signing
-    ↓
-Chain Hash (linked to previous)
-    ↓
-Immutable Storage (append-only)
-    ↓
-Integrity Verification
-```
-
-**Audit Log Format**:
-```json
-{
-  "timestamp": "2026-02-11T10:30:00Z",
-  "sequence": 12345,
-  "agent_id": "agent-abc123",
-  "user_id": "user-xyz789",
-  "action": "file.write",
-  "target": "/home/user/document.txt",
-  "result": "success",
-  "metadata": {
-    "process_id": 1234,
-    "capabilities": ["file.write"]
-  },
-  "hash": "sha256:abc...",
-  "previous_hash": "sha256:def...",
-  "signature": "hmac-sha256:ghi..."
-}
-```
-
-### Aegis Security Daemon
-
-Aegis is the centralized security policy daemon that enforces system-wide security rules, monitors agent behavior in real time, and coordinates with the kernel security modules. It manages sandbox lifecycle, threat detection, and automated incident response.
-
-### Sigil Trust System
-
-Sigil provides cryptographic trust verification for agents, packages, and system components. It manages signing keys, verifies package signatures (`.ark` and `.agnos-agent`), enforces trust chains, and integrates with TPM for hardware-backed attestation.
-
-### Post-Quantum Cryptography
-
-AGNOS includes post-quantum cryptographic primitives alongside classical algorithms to provide hybrid security against future quantum computing threats. Key areas include:
-
-- **Key exchange**: Hybrid ML-KEM (Kyber) + X25519
-- **Signatures**: Hybrid ML-DSA (Dilithium) + Ed25519
-- **Hash-based signatures**: SPHINCS+ for long-lived keys
-- **Migration path**: Crypto-agile APIs allow algorithm swaps without breaking changes
+For the full security architecture, threat model, and technical details (sandboxing, permissions, audit logging, Aegis, Sigil, post-quantum cryptography, mTLS, zero-trust), see [docs/security/security-guide.md](docs/security/security-guide.md).
 
 ## Security Hardening Guide
 
@@ -273,37 +168,6 @@ table inet filter {
     }
 }
 ```
-
-## Security Checklist
-
-### For System Administrators
-
-- [ ] Enable disk encryption
-- [ ] Configure secure boot
-- [ ] Set up remote audit logging
-- [ ] Review agent permissions regularly
-- [ ] Update system promptly
-- [ ] Monitor security advisories
-- [ ] Test incident response procedures
-
-### For Developers
-
-- [ ] Run security tests: `make test-security`
-- [ ] Use static analysis: `make security-scan`
-- [ ] Follow secure coding guidelines
-- [ ] Document security implications
-- [ ] Include security tests
-- [ ] Sign all commits
-- [ ] Review dependencies for vulnerabilities
-
-### For Users
-
-- [ ] Keep system updated
-- [ ] Review agent permissions before granting
-- [ ] Monitor audit logs periodically
-- [ ] Use strong passwords/keys
-- [ ] Enable automatic security updates
-- [ ] Report suspicious activity
 
 ## Security Testing
 
@@ -416,7 +280,7 @@ Planned security certifications:
 ## Contact
 
 - **Security Team**: security@agnos.io
-- **GPG Key**: [security.gpg](https://agnos.io/security.gpg)
+- **GPG Key**: Contact security@agnos.io for the GPG public key
 - **Bug Bounty**: [bugcrowd.com/agnos](https://bugcrowd.com/agnos)
 - **Security Advisories**: [agnos.io/security/advisories](https://agnos.io/security/advisories)
 

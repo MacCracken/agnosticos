@@ -488,7 +488,7 @@ use agnos_sys::*;                 // Kernel interface bindings
 
 ## Next Steps
 
-- Read [AGENT_RUNTIME.md](../AGENT_RUNTIME.md) for detailed architecture
+- Read [agent-runtime.md](../agent-runtime.md) for detailed architecture
 - Check [Security Guide](../security/security-guide.md) for security best practices
 - Explore [API Reference](../api/README.md)
 - Join community at #agnos:matrix.org

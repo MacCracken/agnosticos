@@ -1,6 +1,6 @@
 # aethersafha -- AGNOS Desktop Environment
 
-> **Last Updated**: 2026-03-07 | **Version**: 2026.3.7
+> **Last Updated**: 2026-03-11 | **Version**: 2026.3.11
 
 **aethersafha** (Greek *aether* + Arabic *safha* = surface) is the AI-augmented Wayland compositor and desktop environment for AGNOS.
 
@@ -13,7 +13,7 @@ userland/desktop-environment/
     renderer.rs          Software framebuffer renderer, scene graph, damage tracking
     screen_capture.rs    Screenshots: per-agent permissions, rate limiting, PNG/BMP/raw encoding
     screen_recording.rs  Frame-by-frame recording with poll-based streaming for agents
-    wayland.rs         Wayland protocol bridge (feature-gated)
+    wayland/           Wayland protocol bridge (feature-gated, module directory)
     accessibility.rs   AccessibilityTree, AT-SPI2 bridge, high-contrast themes
     plugin_host.rs     Plugin lifecycle, IPC, sandboxing
     xwayland.rs        XWaylandManager, X11 property translation
@@ -193,7 +193,7 @@ Multi-touch gesture recognition (`gestures.rs`) for touchscreen and trackpad inp
 
 ## Tests
 
-**Total: 1447+ tests**
+**Total: 2031 tests**
 
 | Area | Count |
 |---|---|

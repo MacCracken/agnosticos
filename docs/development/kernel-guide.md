@@ -413,4 +413,4 @@ Before submitting a kernel module:
 
 ---
 
-*See also: [ARCHITECTURE.md](/docs/ARCHITECTURE.md) for system overview, [Security Guide](/docs/security/security-guide.md) for hardening details.*
+*See also: [architecture.md](/docs/architecture.md) for system overview, [Security Guide](/docs/security/security-guide.md) for hardening details.*

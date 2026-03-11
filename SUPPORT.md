@@ -9,9 +9,9 @@ Before opening an issue, please check the documentation:
 | Resource | Description |
 |----------|-------------|
 | [README.md](README.md) | Project overview and quick start |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System architecture |
-| [docs/AGENT_RUNTIME.md](docs/AGENT_RUNTIME.md) | Agent runtime guide |
-| [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Common issues and solutions |
+| [docs/architecture.md](docs/architecture.md) | System architecture |
+| [docs/agent-runtime.md](docs/agent-runtime.md) | Agent runtime guide |
+| [docs/troubleshooting.md](docs/troubleshooting.md) | Common issues and solutions |
 | [docs/development/roadmap.md](docs/development/roadmap.md) | Development roadmap |
 | [docs/api/](docs/api/) | API reference |
 
@@ -31,7 +31,7 @@ Before opening an issue, please check the documentation:
 
 Before opening an issue, please:
 1. Search [existing issues](https://github.com/agnostos/agnos/issues) to avoid duplicates
-2. Check the [troubleshooting guide](docs/TROUBLESHOOTING.md)
+2. Check the [troubleshooting guide](docs/troubleshooting.md)
 3. Gather relevant logs and system information
 
 ## Security Vulnerabilities
@@ -43,8 +43,3 @@ Please follow the responsible disclosure process described in [SECURITY.md](SECU
 ## Contributing
 
 Want to fix a bug or add a feature yourself? See [CONTRIBUTING.md](CONTRIBUTING.md) to get started.
-
-## Status Page
-
-> During pre-alpha, there is no dedicated status page. Monitor the
-> [GitHub repository](https://github.com/agnostos/agnos) for announcements.

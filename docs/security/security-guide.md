@@ -222,51 +222,11 @@ AGNOS follows zero-trust principles:
 4. **Security monitoring** - Deploy SIEM tools
 5. **Penetration testing** - Regular security audits
 
-## Security Checklist
+## Vulnerability Reporting & Compliance
 
-### Development
+For vulnerability disclosure policy, bug bounty, response timelines, compliance status, and contact information, see [SECURITY.md](../../SECURITY.md).
 
-- [ ] Security review completed
-- [ ] No hardcoded secrets
-- [ ] Input validation implemented
-- [ ] Error handling secure
-- [ ] Logging comprehensive
-- [ ] Dependencies audited
-
-### Deployment
-
-- [ ] Secure boot enabled
-- [ ] Disk encryption enabled
-- [ ] Firewall configured
-- [ ] SELinux enforcing
-- [ ] Audit logging enabled
-- [ ] Backup system configured
-
-### Operations
-
-- [ ] Regular security updates
-- [ ] Log monitoring active
-- [ ] Permission audits scheduled
-- [ ] Incident response tested
-- [ ] Security training provided
-- [ ] Documentation current
-
-## Vulnerability Reporting
-
-See [SECURITY.md](../SECURITY.md) for vulnerability disclosure policy.
-
-## Compliance
-
-### Standards
-
-- **CIS Benchmarks** - Center for Internet Security
-- **NIST Cybersecurity Framework** - Risk management
-- **ISO 27001** - Information security management
-
-### Certifications (Planned)
-
-- **Common Criteria** - Security evaluation (Target: EAL4+)
-- **FIPS 140-2** - Cryptographic modules (if applicable)
+For the security checklist, see [security-checklist.md](security-checklist.md).
 
 ## References
 

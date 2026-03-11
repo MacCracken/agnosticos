@@ -307,29 +307,6 @@ OTEL_SERVICE_NAME=agnostic-qa
 
 ## Implementation Status
 
-| Feature | Status |
-|---------|--------|
-| `agnos_gateway` provider in Agnostic config | ✅ Complete |
-| AGNOS Gateway OpenAI-compatible HTTP server | ✅ Operational (port 8088) |
-| Token accounting per `X-Agent-Id` | ✅ Complete |
-| Per-agent rate limiting | ✅ Complete |
-| Response caching | ✅ Complete |
-| Reasoning trace ingest endpoint | ✅ Complete |
-| Token budget endpoints | ✅ Complete |
-| Dashboard sync endpoint | ✅ Complete |
-| Environment profiles endpoint | ✅ Complete |
-| Vector search REST API | ✅ Complete |
-| OTLP collector configuration | ✅ Complete |
-| Token budget pool dashboard (`GET /v1/tokens/pools`) | ✅ Complete |
-| Consumer health aggregation (`GET /v1/health/consumers`) | ✅ Complete |
-| Marketplace recipe (`recipes/marketplace/agnostic.toml`) | ✅ Complete (stub) |
-| Agnostic agent registration with daimon | ✅ Complete |
-| Service discovery (`GET /v1/discover`) | ✅ Complete |
-| Batch agent registration (`POST /v1/agents/register/batch`) | ✅ Complete |
-| Event stream SSE (`GET /v1/events/subscribe`) | ✅ Complete |
-| Event publish (`POST /v1/events/publish`) | ✅ Complete |
-| Event topics listing (`GET /v1/events/topics`) | ✅ Complete |
-| Sandbox profile listing (`GET /v1/sandbox/profiles/list`) | ✅ Complete |
-| SecureYeoman marketplace recipe (`recipes/marketplace/secureyeoman.toml`) | ✅ Complete |
+All AGNOS-side integration features are complete: gateway provider, token accounting, rate limiting, caching, reasoning traces, token budgets, dashboard sync, profiles, vector search, OTLP, service discovery, batch operations, event streaming, sandbox profiles, and marketplace recipes for all consumer apps.
 
-See [ADR-001](adr/adr-001-foundation-and-architecture.md) for the full implementation plan.
+See [ADR-001](adr/adr-001-foundation-and-architecture.md) for the full architecture.

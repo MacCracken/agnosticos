@@ -92,18 +92,18 @@ agnsh
 
 ### Agent Won't Start
 
-**Symptoms:** `akd` shows agent in "Failed" state
+**Symptoms:** `daimon` shows agent in "Failed" state
 
 **Solutions:**
 ```bash
 # Check agent daemon status
-systemctl status akd
+systemctl status daimon
 
 # View agent logs
-journalctl -u akd -n 100
+journalctl -u daimon -n 100
 
 # Restart daemon
-systemctl restart akd
+systemctl restart daimon
 ```
 
 ### Agent Sandbox Violations
@@ -120,9 +120,9 @@ systemctl restart akd
 **Symptoms:** Agents can't communicate
 
 **Solutions:**
-- Verify message bus is running: `systemctl status message-bus`
-- Check firewall rules allow local IPC
-- Review IPC logs: `journalctl -u akd | grep IPC`
+- Verify agent-runtime is running: `systemctl status agent-runtime`
+- Check Unix sockets exist: `ls /run/agnos/agents/`
+- Review IPC logs: `journalctl -u agent-runtime | grep IPC`
 
 ---
 
@@ -254,7 +254,7 @@ top
 ps aux --sort=-%cpu | head
 
 # Limit agent CPU via resource manager
-akd-cli set-limits --cpu=50%
+daimon-cli set-limits --cpu=50%
 ```
 
 ### High Memory Usage
@@ -263,7 +263,7 @@ akd-cli set-limits --cpu=50%
 
 **Solutions:**
 - Check memory: `free -h`
-- Kill unnecessary agents: `akd-cli list` then `akd-cli terminate <id>`
+- Kill unnecessary agents: `daimon-cli list` then `daimon-cli terminate <id>`
 - Reduce model sizes
 - Enable swap: `swapon /dev/sdXN`
 
