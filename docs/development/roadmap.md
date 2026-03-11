@@ -195,7 +195,7 @@ for desktop/networking/GPU stack.
 2. **SHA256 verification** — Fill in real checksums for all 248 recipes
 3. **Documentation (Phase 13C)** — Video tutorials, support portal
 4. **Community testing** — Beta tester enrollment + bug tracker setup
-5. **Engineering backlog** — H23 file splitting, H25 enum refactoring, 17 MEDIUM items
+5. **Engineering backlog** — All HIGH items resolved; future items tracked here
 
 ### Getting Started
 
