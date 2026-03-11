@@ -1,5 +1,6 @@
 mod aequi;
 mod agnos;
+mod delta;
 mod filesystem;
 mod knowledge;
 mod marketplace;
@@ -80,6 +81,13 @@ impl Interpreter {
             | Intent::AequiImportBank { .. }
             | Intent::AequiBalance
             | Intent::AequiReceipts { .. } => aequi::translate_aequi(intent),
+
+            // Delta code hosting
+            Intent::DeltaCreateRepo { .. }
+            | Intent::DeltaListRepos
+            | Intent::DeltaPr { .. }
+            | Intent::DeltaPush { .. }
+            | Intent::DeltaCiStatus { .. } => delta::translate_delta(intent),
 
             // Photis Nadi
             Intent::TaskList { .. }

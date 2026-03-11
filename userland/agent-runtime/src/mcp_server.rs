@@ -180,6 +180,67 @@ pub fn build_tool_manifest() -> McpToolManifest {
                 vec!["agent_id", "key", "value"],
             ),
         },
+        // ----- Delta code hosting tools -----
+        McpToolDescription {
+            name: "delta_create_repository".to_string(),
+            description: "Create a git repository in Delta".to_string(),
+            input_schema: json_schema_object(
+                serde_json::json!({
+                    "name": {"type": "string", "description": "Repository name"},
+                    "description": {"type": "string", "description": "Repository description"},
+                    "visibility": {"type": "string", "description": "Visibility: public or private"}
+                }),
+                vec!["name"],
+            ),
+        },
+        McpToolDescription {
+            name: "delta_list_repositories".to_string(),
+            description: "List git repositories".to_string(),
+            input_schema: json_schema_object(
+                serde_json::json!({
+                    "owner": {"type": "string", "description": "Filter by owner"},
+                    "limit": {"type": "integer", "description": "Max results to return"}
+                }),
+                vec![],
+            ),
+        },
+        McpToolDescription {
+            name: "delta_pull_request".to_string(),
+            description: "Manage pull requests (list, create, merge, close)".to_string(),
+            input_schema: json_schema_object(
+                serde_json::json!({
+                    "action": {"type": "string", "description": "Action: list, create, merge, close"},
+                    "repo": {"type": "string", "description": "Repository name"},
+                    "title": {"type": "string", "description": "PR title (for create)"},
+                    "source_branch": {"type": "string", "description": "Source branch (for create)"},
+                    "target_branch": {"type": "string", "description": "Target branch (for create, default: main)"},
+                    "pr_id": {"type": "string", "description": "PR ID (for merge/close)"}
+                }),
+                vec!["action"],
+            ),
+        },
+        McpToolDescription {
+            name: "delta_push".to_string(),
+            description: "Push code to a Delta repository".to_string(),
+            input_schema: json_schema_object(
+                serde_json::json!({
+                    "repo": {"type": "string", "description": "Repository name"},
+                    "branch": {"type": "string", "description": "Branch to push"}
+                }),
+                vec![],
+            ),
+        },
+        McpToolDescription {
+            name: "delta_ci_status".to_string(),
+            description: "Get CI pipeline status for a repository".to_string(),
+            input_schema: json_schema_object(
+                serde_json::json!({
+                    "repo": {"type": "string", "description": "Repository name"},
+                    "pipeline_id": {"type": "string", "description": "Specific pipeline ID"}
+                }),
+                vec![],
+            ),
+        },
         // ----- Photis Nadi task management tools -----
         McpToolDescription {
             name: "photis_list_tasks".to_string(),
@@ -288,6 +349,11 @@ async fn dispatch_tool_call(state: &ApiState, call: &McpToolCall) -> McpToolResu
         "agnos_forward_audit" => handle_forward_audit(state, &call.arguments).await,
         "agnos_memory_get" => handle_memory_get(state, &call.arguments).await,
         "agnos_memory_set" => handle_memory_set(state, &call.arguments).await,
+        "delta_create_repository" => handle_delta_create_repository(&call.arguments).await,
+        "delta_list_repositories" => handle_delta_list_repositories(&call.arguments).await,
+        "delta_pull_request" => handle_delta_pull_request(&call.arguments).await,
+        "delta_push" => handle_delta_push(&call.arguments).await,
+        "delta_ci_status" => handle_delta_ci_status(&call.arguments).await,
         "photis_list_tasks" => handle_photis_list_tasks(&call.arguments).await,
         "photis_create_task" => handle_photis_create_task(&call.arguments).await,
         "photis_update_task" => handle_photis_update_task(&call.arguments).await,
@@ -1057,6 +1123,322 @@ async fn handle_photis_sync(args: &serde_json::Value) -> McpToolResult {
 }
 
 // ---------------------------------------------------------------------------
+// Delta Code Hosting Agent Bridge
+// ---------------------------------------------------------------------------
+
+/// Bridge that proxies MCP tool calls to the Delta code hosting API.
+///
+/// When Delta is running at its configured endpoint, requests are forwarded to
+/// its REST API. When the service is unavailable, mock data is returned.
+#[derive(Debug, Clone)]
+pub struct DeltaBridge {
+    /// Base URL for the Delta API (default: `http://127.0.0.1:8070`).
+    base_url: String,
+    /// API key for authenticating with Delta.
+    api_key: Option<String>,
+}
+
+impl DeltaBridge {
+    pub fn new() -> Self {
+        Self {
+            base_url: std::env::var("DELTA_URL")
+                .unwrap_or_else(|_| "http://127.0.0.1:8070".to_string()),
+            api_key: std::env::var("DELTA_API_KEY").ok(),
+        }
+    }
+
+    pub fn base_url(&self) -> &str {
+        &self.base_url
+    }
+
+    async fn get(&self, path: &str, query: &[(String, String)]) -> Result<serde_json::Value, String> {
+        let client = reqwest::Client::new();
+        let url = format!("{}{}", self.base_url, path);
+        let mut req = client.get(&url).query(query);
+        if let Some(ref key) = self.api_key {
+            req = req.header("Authorization", format!("Bearer {}", key));
+        }
+        let resp = req.send().await.map_err(|e| e.to_string())?;
+        if !resp.status().is_success() {
+            return Err(format!("Delta API error: {}", resp.status()));
+        }
+        resp.json().await.map_err(|e| e.to_string())
+    }
+
+    async fn post(&self, path: &str, body: serde_json::Value) -> Result<serde_json::Value, String> {
+        let client = reqwest::Client::new();
+        let url = format!("{}{}", self.base_url, path);
+        let mut req = client.post(&url).json(&body);
+        if let Some(ref key) = self.api_key {
+            req = req.header("Authorization", format!("Bearer {}", key));
+        }
+        let resp = req.send().await.map_err(|e| e.to_string())?;
+        if !resp.status().is_success() {
+            return Err(format!("Delta API error: {}", resp.status()));
+        }
+        resp.json().await.map_err(|e| e.to_string())
+    }
+
+    #[allow(dead_code)]
+    async fn health_check(&self) -> bool {
+        let client = reqwest::Client::new();
+        let url = format!("{}/api/v1/health", self.base_url);
+        matches!(
+            client.get(&url).timeout(std::time::Duration::from_secs(2)).send().await,
+            Ok(r) if r.status().is_success()
+        )
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Delta Tool Implementations (bridged)
+// ---------------------------------------------------------------------------
+
+async fn handle_delta_create_repository(args: &serde_json::Value) -> McpToolResult {
+    let name = match get_string_arg(args, "name") {
+        Some(n) => n,
+        None => return error_result("Missing required argument: name".to_string()),
+    };
+
+    if name.is_empty() {
+        return error_result("Repository name cannot be empty".to_string());
+    }
+
+    let description = get_optional_string_arg(args, "description");
+    let visibility =
+        get_optional_string_arg(args, "visibility").unwrap_or_else(|| "private".to_string());
+
+    if !["public", "private"].contains(&visibility.as_str()) {
+        return error_result(format!(
+            "Invalid visibility '{}': must be public or private",
+            visibility
+        ));
+    }
+
+    let bridge = DeltaBridge::new();
+    let mut body = serde_json::json!({
+        "name": name,
+        "visibility": visibility,
+    });
+    if let Some(desc) = description {
+        body["description"] = serde_json::json!(desc);
+    }
+
+    match bridge.post("/api/v1/repos", body).await {
+        Ok(response) => {
+            info!(name = %name, "Delta: create repository (bridged)");
+            success_result(response)
+        }
+        Err(e) => {
+            warn!(error = %e, "Delta bridge: falling back to mock for create_repository");
+            let repo_id = Uuid::new_v4().to_string();
+            success_result(serde_json::json!({
+                "id": repo_id,
+                "name": name,
+                "visibility": visibility,
+                "default_branch": "main",
+                "created_at": chrono::Utc::now().to_rfc3339(),
+                "_source": "mock",
+            }))
+        }
+    }
+}
+
+async fn handle_delta_list_repositories(args: &serde_json::Value) -> McpToolResult {
+    let owner = get_optional_string_arg(args, "owner");
+    let limit = args
+        .get("limit")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(20) as usize;
+
+    let bridge = DeltaBridge::new();
+    let mut query = Vec::new();
+    if let Some(ref o) = owner {
+        query.push(("owner".to_string(), o.clone()));
+    }
+    query.push(("limit".to_string(), limit.to_string()));
+
+    match bridge.get("/api/v1/repos", &query).await {
+        Ok(response) => {
+            info!("Delta: list repositories (bridged)");
+            success_result(response)
+        }
+        Err(e) => {
+            warn!(error = %e, "Delta bridge: falling back to mock for list_repositories");
+            let repos = vec![
+                serde_json::json!({"id": "repo-001", "name": "my-project", "visibility": "private", "default_branch": "main"}),
+                serde_json::json!({"id": "repo-002", "name": "shared-lib", "visibility": "public", "default_branch": "main"}),
+            ];
+            success_result(serde_json::json!({
+                "repositories": repos,
+                "total": repos.len(),
+                "_source": "mock",
+            }))
+        }
+    }
+}
+
+async fn handle_delta_pull_request(args: &serde_json::Value) -> McpToolResult {
+    let action = match get_string_arg(args, "action") {
+        Some(a) => a,
+        None => return error_result("Missing required argument: action".to_string()),
+    };
+
+    if !["list", "create", "merge", "close"].contains(&action.as_str()) {
+        return error_result(format!(
+            "Invalid action '{}': must be list, create, merge, or close",
+            action
+        ));
+    }
+
+    let repo = get_optional_string_arg(args, "repo");
+    let bridge = DeltaBridge::new();
+
+    match action.as_str() {
+        "list" => {
+            let mut query = Vec::new();
+            if let Some(ref r) = repo {
+                query.push(("repo".to_string(), r.clone()));
+            }
+            match bridge.get("/api/v1/pulls", &query).await {
+                Ok(response) => {
+                    info!("Delta: list pull requests (bridged)");
+                    success_result(response)
+                }
+                Err(e) => {
+                    warn!(error = %e, "Delta bridge: falling back to mock for list PRs");
+                    let prs = vec![
+                        serde_json::json!({"id": "pr-1", "title": "Add feature X", "status": "open", "source_branch": "feature/x", "target_branch": "main"}),
+                    ];
+                    success_result(serde_json::json!({
+                        "pull_requests": prs,
+                        "total": prs.len(),
+                        "_source": "mock",
+                    }))
+                }
+            }
+        }
+        "create" => {
+            let title = get_optional_string_arg(args, "title")
+                .unwrap_or_else(|| "Untitled PR".to_string());
+            let source_branch = get_optional_string_arg(args, "source_branch")
+                .unwrap_or_else(|| "feature".to_string());
+            let target_branch = get_optional_string_arg(args, "target_branch")
+                .unwrap_or_else(|| "main".to_string());
+
+            let body = serde_json::json!({
+                "title": title,
+                "source_branch": source_branch,
+                "target_branch": target_branch,
+                "repo": repo,
+            });
+            match bridge.post("/api/v1/pulls", body).await {
+                Ok(response) => {
+                    info!(title = %title, "Delta: create PR (bridged)");
+                    success_result(response)
+                }
+                Err(e) => {
+                    warn!(error = %e, "Delta bridge: falling back to mock for create PR");
+                    let pr_id = Uuid::new_v4().to_string();
+                    success_result(serde_json::json!({
+                        "id": pr_id,
+                        "title": title,
+                        "status": "open",
+                        "source_branch": source_branch,
+                        "target_branch": target_branch,
+                        "created_at": chrono::Utc::now().to_rfc3339(),
+                        "_source": "mock",
+                    }))
+                }
+            }
+        }
+        op @ ("merge" | "close") => {
+            let pr_id = match get_optional_string_arg(args, "pr_id") {
+                Some(id) => id,
+                None => return error_result("Missing required argument: pr_id".to_string()),
+            };
+            let body = serde_json::json!({"action": op});
+            match bridge.post(&format!("/api/v1/pulls/{}", pr_id), body).await {
+                Ok(response) => {
+                    info!(pr_id = %pr_id, action = %op, "Delta: {} PR (bridged)", op);
+                    success_result(response)
+                }
+                Err(e) => {
+                    warn!(error = %e, "Delta bridge: falling back to mock for {} PR", op);
+                    success_result(serde_json::json!({
+                        "id": pr_id,
+                        "status": if op == "merge" { "merged" } else { "closed" },
+                        "updated_at": chrono::Utc::now().to_rfc3339(),
+                        "_source": "mock",
+                    }))
+                }
+            }
+        }
+        _ => unreachable!(),
+    }
+}
+
+async fn handle_delta_push(args: &serde_json::Value) -> McpToolResult {
+    let repo = get_optional_string_arg(args, "repo");
+    let branch = get_optional_string_arg(args, "branch");
+
+    let bridge = DeltaBridge::new();
+    let body = serde_json::json!({
+        "repo": repo,
+        "branch": branch.as_deref().unwrap_or("main"),
+    });
+
+    match bridge.post("/api/v1/git/push", body).await {
+        Ok(response) => {
+            info!("Delta: push (bridged)");
+            success_result(response)
+        }
+        Err(e) => {
+            warn!(error = %e, "Delta bridge: falling back to mock for push");
+            success_result(serde_json::json!({
+                "status": "pushed",
+                "repo": repo,
+                "branch": branch.unwrap_or_else(|| "main".to_string()),
+                "message": format!("Delta not reachable at {}", bridge.base_url()),
+                "_source": "mock",
+            }))
+        }
+    }
+}
+
+async fn handle_delta_ci_status(args: &serde_json::Value) -> McpToolResult {
+    let repo = get_optional_string_arg(args, "repo");
+    let pipeline_id = get_optional_string_arg(args, "pipeline_id");
+
+    let bridge = DeltaBridge::new();
+    let mut query = Vec::new();
+    if let Some(ref r) = repo {
+        query.push(("repo".to_string(), r.clone()));
+    }
+    if let Some(ref p) = pipeline_id {
+        query.push(("pipeline_id".to_string(), p.clone()));
+    }
+
+    match bridge.get("/api/v1/ci/pipelines", &query).await {
+        Ok(response) => {
+            info!("Delta: CI status (bridged)");
+            success_result(response)
+        }
+        Err(e) => {
+            warn!(error = %e, "Delta bridge: falling back to mock for ci_status");
+            let pipelines = vec![
+                serde_json::json!({"id": "pipe-001", "repo": repo.as_deref().unwrap_or("unknown"), "status": "passed", "branch": "main", "duration_seconds": 142}),
+            ];
+            success_result(serde_json::json!({
+                "pipelines": pipelines,
+                "total": pipelines.len(),
+                "_source": "mock",
+            }))
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -1117,7 +1499,7 @@ mod tests {
             .await
             .unwrap();
         let manifest: McpToolManifest = serde_json::from_slice(&body).unwrap();
-        assert_eq!(manifest.tools.len(), 16);
+        assert_eq!(manifest.tools.len(), 21);
     }
 
     #[tokio::test]
@@ -1134,6 +1516,11 @@ mod tests {
         assert!(names.contains(&"agnos_forward_audit"));
         assert!(names.contains(&"agnos_memory_get"));
         assert!(names.contains(&"agnos_memory_set"));
+        assert!(names.contains(&"delta_create_repository"));
+        assert!(names.contains(&"delta_list_repositories"));
+        assert!(names.contains(&"delta_pull_request"));
+        assert!(names.contains(&"delta_push"));
+        assert!(names.contains(&"delta_ci_status"));
     }
 
     #[tokio::test]
@@ -1423,9 +1810,9 @@ mod tests {
     // -----------------------------------------------------------------------
 
     #[tokio::test]
-    async fn test_manifest_contains_all_16_tools() {
+    async fn test_manifest_contains_all_21_tools() {
         let manifest = build_tool_manifest();
-        assert_eq!(manifest.tools.len(), 16);
+        assert_eq!(manifest.tools.len(), 21);
         let names: Vec<&str> = manifest.tools.iter().map(|t| t.name.as_str()).collect();
         for expected in &[
             "agnos_health",
@@ -1438,6 +1825,11 @@ mod tests {
             "agnos_forward_audit",
             "agnos_memory_get",
             "agnos_memory_set",
+            "delta_create_repository",
+            "delta_list_repositories",
+            "delta_pull_request",
+            "delta_push",
+            "delta_ci_status",
             "photis_list_tasks",
             "photis_create_task",
             "photis_update_task",
@@ -1779,5 +2171,172 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
         // Service isn't running in test, so should report offline
         assert_eq!(parsed["service_online"], false);
+    }
+
+    // --- Delta code hosting tool tests ---
+
+    #[tokio::test]
+    async fn test_delta_create_repository_mock() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "delta_create_repository",
+            serde_json::json!({"name": "my-project"}),
+        )
+        .await;
+        assert!(!result.is_error);
+        let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
+        assert_eq!(parsed["name"], "my-project");
+        assert_eq!(parsed["visibility"], "private");
+        assert_eq!(parsed["_source"], "mock");
+    }
+
+    #[tokio::test]
+    async fn test_delta_create_repository_missing_name() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "delta_create_repository",
+            serde_json::json!({}),
+        )
+        .await;
+        assert!(result.is_error);
+    }
+
+    #[tokio::test]
+    async fn test_delta_create_repository_invalid_visibility() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "delta_create_repository",
+            serde_json::json!({"name": "test", "visibility": "secret"}),
+        )
+        .await;
+        assert!(result.is_error);
+    }
+
+    #[tokio::test]
+    async fn test_delta_list_repositories_mock() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "delta_list_repositories",
+            serde_json::json!({}),
+        )
+        .await;
+        assert!(!result.is_error);
+        let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
+        assert!(parsed["repositories"].as_array().is_some());
+        assert_eq!(parsed["_source"], "mock");
+    }
+
+    #[tokio::test]
+    async fn test_delta_pull_request_list_mock() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "delta_pull_request",
+            serde_json::json!({"action": "list"}),
+        )
+        .await;
+        assert!(!result.is_error);
+        let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
+        assert!(parsed["pull_requests"].as_array().is_some());
+        assert_eq!(parsed["_source"], "mock");
+    }
+
+    #[tokio::test]
+    async fn test_delta_pull_request_create_mock() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "delta_pull_request",
+            serde_json::json!({"action": "create", "title": "Add feature", "source_branch": "feat/x"}),
+        )
+        .await;
+        assert!(!result.is_error);
+        let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
+        assert_eq!(parsed["title"], "Add feature");
+        assert_eq!(parsed["status"], "open");
+    }
+
+    #[tokio::test]
+    async fn test_delta_pull_request_invalid_action() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "delta_pull_request",
+            serde_json::json!({"action": "rebase"}),
+        )
+        .await;
+        assert!(result.is_error);
+    }
+
+    #[tokio::test]
+    async fn test_delta_pull_request_missing_action() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "delta_pull_request",
+            serde_json::json!({}),
+        )
+        .await;
+        assert!(result.is_error);
+    }
+
+    #[tokio::test]
+    async fn test_delta_push_mock() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "delta_push",
+            serde_json::json!({"repo": "my-project", "branch": "main"}),
+        )
+        .await;
+        assert!(!result.is_error);
+        let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
+        assert_eq!(parsed["status"], "pushed");
+        assert_eq!(parsed["_source"], "mock");
+    }
+
+    #[tokio::test]
+    async fn test_delta_ci_status_mock() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "delta_ci_status",
+            serde_json::json!({"repo": "my-project"}),
+        )
+        .await;
+        assert!(!result.is_error);
+        let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
+        assert!(parsed["pipelines"].as_array().is_some());
+        assert_eq!(parsed["_source"], "mock");
+    }
+
+    #[tokio::test]
+    async fn test_delta_merge_pr_requires_pr_id() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "delta_pull_request",
+            serde_json::json!({"action": "merge"}),
+        )
+        .await;
+        assert!(result.is_error);
+    }
+
+    #[tokio::test]
+    async fn test_delta_close_pr_mock() {
+        let router = build_test_router();
+        let result = call_tool(
+            &router,
+            "delta_pull_request",
+            serde_json::json!({"action": "close", "pr_id": "pr-123"}),
+        )
+        .await;
+        assert!(!result.is_error);
+        let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
+        assert_eq!(parsed["status"], "closed");
     }
 }

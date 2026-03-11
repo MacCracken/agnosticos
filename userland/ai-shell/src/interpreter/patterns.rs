@@ -190,5 +190,26 @@ pub(crate) static PATTERNS: Lazy<HashMap<String, Regex>> = Lazy::new(|| {
         "productivity_stats",
         r"(?i)^(?:show\s+)?(?:my\s+)?(?:productivity|stats|statistics|analytics)(\s+(daily|weekly|monthly|this week|this month))?$",
     );
+    // --- Delta code hosting intents ---
+    r(
+        "delta_create_repo",
+        r"(?i)^delta\s+create[\s-]+(repo|repository)\s+(\S+)(\s+(.+))?$",
+    );
+    r(
+        "delta_list_repos",
+        r"(?i)^delta\s+(list|show)\s+(repos|repositories)$",
+    );
+    r(
+        "delta_pr",
+        r"(?i)^delta\s+(pr|pull[\s-]?request)\s+(list|create|merge|close)(\s+(?:in\s+|for\s+)?(\S+))?(\s+(.+))?$",
+    );
+    r(
+        "delta_push",
+        r"(?i)^delta\s+push(\s+(\S+))?(\s+(?:branch\s+)?(\S+))?$",
+    );
+    r(
+        "delta_ci",
+        r"(?i)^delta\s+(ci|pipeline|build)\s+(status|logs?)(\s+(?:for\s+|in\s+)?(\S+))?$",
+    );
     p
 });

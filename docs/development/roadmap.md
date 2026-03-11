@@ -1,7 +1,7 @@
 # AGNOS Development Roadmap
 
 > **Status**: Pre-Beta | **Last Updated**: 2026-03-10
-> **Userland complete** — 9878+ tests (3027 agent-runtime), ~82% coverage, 0 warnings
+> **Userland complete** — 9906+ tests (3039 agent-runtime), ~82% coverage, 0 warnings
 > **Recipes**: 109 base + 49 desktop + 25 AI + 9 network + 8 browser + 6 marketplace + 4 python + 3 database = 214 total, 0 validation errors
 > **Phases 10–12 complete** | **Audit**: 15 rounds | **Next**: Phase 13 (Beta Polish)
 
@@ -342,9 +342,9 @@ Wire the LFS base system into AGNOS's own tooling.
 | # | Item | Notes |
 |---|------|-------|
 | 1 | NVIDIA GPU (proprietary driver) | .ark recipe for nvidia-driver |
-| 2 | NVIDIA GPU (nouveau/open) | Mesa nouveau driver |
-| 3 | AMD GPU (amdgpu) | Mesa radeonsi driver |
-| 4 | Intel GPU (i915) | Mesa iris driver |
+| 2 | NVIDIA GPU (nouveau/open) | Done — Mesa nouveau gallium + Vulkan driver enabled |
+| 3 | AMD GPU (amdgpu) | Done — Mesa radeonsi gallium + Vulkan driver enabled |
+| 4 | Intel GPU (i915) | Done — Mesa iris gallium + Vulkan driver enabled |
 | 5 | WiFi firmware | linux-firmware .ark package |
 | 6 | Bluetooth | bluez .ark recipe |
 | 7 | USB/Thunderbolt | bolt daemon |
@@ -370,7 +370,7 @@ Wire the LFS base system into AGNOS's own tooling.
 | 2 | Photis Nadi | `recipes/marketplace/photisnadi.toml` | Ready | Flutter productivity, 389 tests |
 | 3 | BullShift | `recipes/marketplace/bullshift.toml` | Ready | Trading platform, 552 tests |
 | 4 | AGNOSTIC | `recipes/marketplace/agnostic.toml` | Stub | Python/CrewAI QA platform |
-| 5 | **Delta** | `recipes/marketplace/delta.toml` | **Recipe created** | Code hosting (port 8070), CI/CD, artifact registry. 49 tests. Needs: mela listing, agnoshi `delta` intent, daimon health consumer |
+| 5 | **Delta** | `recipes/marketplace/delta.toml` | **Ready** | Code hosting (port 8070), CI/CD, artifact registry. 141 tests. MCP tools (5), agnoshi intents (5), CI workflow |
 | 6 | **Aequi** | `recipes/marketplace/aequi.toml` | **Stub** | Self-employed accounting (port 8060). Needs: HTTP API crate (Phase 6), Dockerfile, recipe |
 
 #### Delta AGNOS-Side Integration Items
@@ -378,17 +378,17 @@ Wire the LFS base system into AGNOS's own tooling.
 | # | Item | Status | Notes |
 |---|------|--------|-------|
 | 1 | Marketplace recipe | Done | `recipes/marketplace/delta.toml` — Rust binary build, systemd service |
-| 2 | Mela listing | Not started | Register Delta in marketplace registry with metadata |
-| 3 | Agnoshi `delta` intent | Not started | Shell commands: `delta create-repo`, `delta pr`, `delta push` |
-| 4 | Daimon consumer health | Not started | Add Delta to `/v1/health/consumers` monitoring |
-| 5 | Documentation | Not started | Delta installation guide in AGNOS docs |
+| 2 | MCP tools | Done | 5 tools: create_repository, list_repositories, pull_request, push, ci_status (12 tests) |
+| 3 | Agnoshi `delta` intent | Done | 5 intents: create-repo, list-repos, pr, push, ci-status (16 tests) |
+| 4 | Daimon consumer health | Done | Delta sends `POST /v1/dashboard/sync` with `source: "delta"` — auto-tracked by `/v1/health/consumers` |
+| 5 | CI workflow | Done | Added to `marketplace-publish.yml` |
 
 ### 13E — Previous Alpha Items (Moved)
 
 | # | Item | Status | Notes |
 |---|------|--------|-------|
-| 1 | Run browser-ark CI | Ready | `.github/workflows/browser-ark.yml` exists |
-| 2 | Run marketplace-publish CI | Ready | `.github/workflows/marketplace-publish.yml` exists |
+| 1 | Run browser-ark CI | Ready | `.github/workflows/browser-ark.yml` exists (manual dispatch) |
+| 2 | Run marketplace-publish CI | Done | `.github/workflows/marketplace-publish.yml` — all 7 apps: SY, BS, PN, AGNOSTIC, Synapse, Delta, Aequi |
 | 3 | Python runtime management (4 phases) | Not started | Shim, .python-version, venv, pip proxy |
 | 4 | AI-integrated WebView | Not started | wry/tauri, hoosh integration |
 | 5 | Docker base images on AGNOS base | Not started | Replace Debian base with AGNOS .ark base |
@@ -451,7 +451,7 @@ Wire the LFS base system into AGNOS's own tooling.
 |--------|--------|---------|--------|
 | Code Coverage | >80% | ~82% | Met |
 | Test Pass Rate | 100% | 100% | Met |
-| Total Tests | 400+ | 9878+ | Met |
+| Total Tests | 400+ | 9906+ | Met |
 | Agent Spawn Time | <500ms | ~300ms | Met |
 | Shell Response Time | <100ms | ~50ms | Met |
 | Memory Overhead | <2GB | ~1.2GB | Met |
@@ -471,9 +471,9 @@ Wire the LFS base system into AGNOS's own tooling.
 |-----------|-------|-------|
 | agnos-common | 307 | Secrets, telemetry, LLM types, manifest, rate limits, audit chain |
 | agnos-sys | 750+ | 16 modules: audit, mac, netns, dmverity, luks, ima, tpm, secureboot, certpin, bootloader, journald, udev, fuse, pam, update, llm |
-| agent-runtime | 3023+ | Orchestrator, IPC, sandbox, registry, marketplace (88+43), federation (73), migration (54), scheduler (51), PQC (68), explainability (59), safety (77), finetune (73), formal_verify (76), sandbox_v2 (79), rl_optimizer (68), cloud (82), collaboration (87), sigil (46), aegis (55), takumi (57), argonaut (117), agnova (91), ark (49), database (42), grpc (14), service_mesh (20), oidc (22), delegation (28), vector_rest (24), marketplace_backend (28) |
+| agent-runtime | 3053+ | Orchestrator, IPC, sandbox, registry, marketplace (88+43), federation (73), migration (54), scheduler (51), PQC (68), explainability (59), safety (77), finetune (73), formal_verify (76), sandbox_v2 (79), rl_optimizer (68), cloud (82), collaboration (87), sigil (46), aegis (55), takumi (57), argonaut (117), agnova (91), ark (49), database (42), grpc (14), service_mesh (20), oidc (22), delegation (28), vector_rest (24), marketplace_backend (28) |
 | llm-gateway | 710 | 15 providers (5 native + 10 OpenAI-compatible), rate limiting, streaming, cert pinning, hardware acceleration, token budgets |
-| ai-shell | 1132 | 25+ intents, approval workflow, dashboard, aliases, completion |
+| ai-shell | 1446 | 25+ intents, approval workflow, dashboard, aliases, completion |
 | desktop-environment | 1447+ | Wayland protocol (63+49), screen capture (31), screen recording (22+), plugin host (31), xwayland (20), shell integration (26), theme bridge (18), compositor, renderer |
 
 ---

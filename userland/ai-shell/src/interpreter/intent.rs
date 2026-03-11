@@ -175,6 +175,26 @@ pub enum Intent {
     RitualCheck { date: Option<String> },
     /// Show productivity statistics
     ProductivityStats { period: Option<String> },
+    /// Create a repository in Delta
+    DeltaCreateRepo {
+        name: String,
+        description: Option<String>,
+    },
+    /// List repositories in Delta
+    DeltaListRepos,
+    /// Create or manage a pull request in Delta
+    DeltaPr {
+        action: String,
+        repo: Option<String>,
+        title: Option<String>,
+    },
+    /// Push code to Delta
+    DeltaPush {
+        repo: Option<String>,
+        branch: Option<String>,
+    },
+    /// Show Delta CI pipeline status
+    DeltaCiStatus { repo: Option<String> },
     /// Piped command chain (cmd1 | cmd2)
     Pipeline { commands: Vec<String> },
     /// Question/Information request

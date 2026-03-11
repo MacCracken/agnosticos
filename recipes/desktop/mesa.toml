@@ -27,8 +27,8 @@ configure = """
 mkdir -p build && cd build && \
 meson setup .. --prefix=/usr --buildtype=release \
   -Dplatforms=wayland \
-  -Dgallium-drivers=radeonsi,iris,swrast \
-  -Dvulkan-drivers=amd,intel \
+  -Dgallium-drivers=nouveau,radeonsi,iris,swrast \
+  -Dvulkan-drivers=amd,intel,nouveau \
   -Dglx=disabled \
   -Degl=enabled \
   -Dgles2=enabled \

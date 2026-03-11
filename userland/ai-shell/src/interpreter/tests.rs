@@ -2471,4 +2471,205 @@ mod tests {
         let body = t.args.last().unwrap();
         assert!(body.contains("nginx"));
     }
+
+    // --- Delta code hosting intent tests ---
+
+    #[test]
+    fn test_parse_delta_create_repo() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("delta create repo my-project");
+        match intent {
+            Intent::DeltaCreateRepo { name, description } => {
+                assert_eq!(name, "my-project");
+                assert!(description.is_none());
+            }
+            other => panic!("Expected DeltaCreateRepo, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_delta_create_repository_with_desc() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("delta create repository my-lib A shared library");
+        match intent {
+            Intent::DeltaCreateRepo { name, description } => {
+                assert_eq!(name, "my-lib");
+                assert_eq!(description, Some("a shared library".to_string()));
+            }
+            other => panic!("Expected DeltaCreateRepo, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_delta_list_repos() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("delta list repos");
+        assert!(matches!(intent, Intent::DeltaListRepos));
+    }
+
+    #[test]
+    fn test_parse_delta_list_repositories() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("delta show repositories");
+        assert!(matches!(intent, Intent::DeltaListRepos));
+    }
+
+    #[test]
+    fn test_parse_delta_pr_list() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("delta pr list");
+        match intent {
+            Intent::DeltaPr { action, repo, title } => {
+                assert_eq!(action, "list");
+                assert!(repo.is_none());
+                assert!(title.is_none());
+            }
+            other => panic!("Expected DeltaPr, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_delta_pr_create_in_repo() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("delta pr create in my-project Add feature X");
+        match intent {
+            Intent::DeltaPr { action, repo, title } => {
+                assert_eq!(action, "create");
+                assert_eq!(repo, Some("my-project".to_string()));
+                assert_eq!(title, Some("add feature x".to_string()));
+            }
+            other => panic!("Expected DeltaPr, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_delta_push() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("delta push");
+        match intent {
+            Intent::DeltaPush { repo, branch } => {
+                assert!(repo.is_none());
+                assert!(branch.is_none());
+            }
+            other => panic!("Expected DeltaPush, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_delta_push_with_repo() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("delta push my-project");
+        match intent {
+            Intent::DeltaPush { repo, branch } => {
+                assert_eq!(repo, Some("my-project".to_string()));
+                assert!(branch.is_none());
+            }
+            other => panic!("Expected DeltaPush, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_delta_ci_status() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("delta ci status");
+        match intent {
+            Intent::DeltaCiStatus { repo } => {
+                assert!(repo.is_none());
+            }
+            other => panic!("Expected DeltaCiStatus, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_delta_pipeline_status_for_repo() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("delta pipeline status for my-project");
+        match intent {
+            Intent::DeltaCiStatus { repo } => {
+                assert_eq!(repo, Some("my-project".to_string()));
+            }
+            other => panic!("Expected DeltaCiStatus, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_translate_delta_create_repo() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::DeltaCreateRepo {
+            name: "test-repo".to_string(),
+            description: None,
+        };
+        let t = interpreter.translate(&intent).unwrap();
+        assert_eq!(t.command, "curl");
+        assert!(t.args.contains(&"http://127.0.0.1:8090/v1/mcp/tools/call".to_string()));
+        let body = t.args.last().unwrap();
+        assert!(body.contains("delta_create_repository"));
+        assert!(body.contains("test-repo"));
+        assert_eq!(t.permission, PermissionLevel::SystemWrite);
+    }
+
+    #[test]
+    fn test_translate_delta_list_repos() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::DeltaListRepos;
+        let t = interpreter.translate(&intent).unwrap();
+        assert_eq!(t.command, "curl");
+        let body = t.args.last().unwrap();
+        assert!(body.contains("delta_list_repositories"));
+        assert_eq!(t.permission, PermissionLevel::Safe);
+    }
+
+    #[test]
+    fn test_translate_delta_pr_list() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::DeltaPr {
+            action: "list".to_string(),
+            repo: None,
+            title: None,
+        };
+        let t = interpreter.translate(&intent).unwrap();
+        let body = t.args.last().unwrap();
+        assert!(body.contains("delta_pull_request"));
+        assert_eq!(t.permission, PermissionLevel::Safe);
+    }
+
+    #[test]
+    fn test_translate_delta_pr_create() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::DeltaPr {
+            action: "create".to_string(),
+            repo: Some("my-project".to_string()),
+            title: Some("Add tests".to_string()),
+        };
+        let t = interpreter.translate(&intent).unwrap();
+        let body = t.args.last().unwrap();
+        assert!(body.contains("delta_pull_request"));
+        assert!(body.contains("create"));
+        assert_eq!(t.permission, PermissionLevel::SystemWrite);
+    }
+
+    #[test]
+    fn test_translate_delta_push() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::DeltaPush {
+            repo: Some("my-project".to_string()),
+            branch: Some("main".to_string()),
+        };
+        let t = interpreter.translate(&intent).unwrap();
+        let body = t.args.last().unwrap();
+        assert!(body.contains("delta_push"));
+        assert_eq!(t.permission, PermissionLevel::SystemWrite);
+    }
+
+    #[test]
+    fn test_translate_delta_ci_status() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::DeltaCiStatus {
+            repo: Some("my-project".to_string()),
+        };
+        let t = interpreter.translate(&intent).unwrap();
+        let body = t.args.last().unwrap();
+        assert!(body.contains("delta_ci_status"));
+        assert_eq!(t.permission, PermissionLevel::Safe);
+    }
 }

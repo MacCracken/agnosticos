@@ -47,6 +47,56 @@ impl Interpreter {
             return Intent::AgentInfo { agent_id };
         }
 
+        // --- Delta code hosting intents (before greedy list/show) ---
+        if let Some(caps) = self.try_captures("delta_create_repo", &input_lower) {
+            let name = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();
+            let description = caps.get(4).map(|m| m.as_str().trim().to_string());
+            if !name.is_empty() {
+                return Intent::DeltaCreateRepo { name, description };
+            }
+        }
+
+        if self.try_captures("delta_list_repos", &input_lower).is_some() {
+            return Intent::DeltaListRepos;
+        }
+
+        if let Some(caps) = self.try_captures("delta_pr", &input_lower) {
+            let action = caps.get(2).map_or("list", |m| m.as_str()).trim().to_string();
+            let repo = caps
+                .get(4)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            let title = caps
+                .get(6)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            return Intent::DeltaPr {
+                action,
+                repo,
+                title,
+            };
+        }
+
+        if let Some(caps) = self.try_captures("delta_push", &input_lower) {
+            let repo = caps
+                .get(2)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            let branch = caps
+                .get(4)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            return Intent::DeltaPush { repo, branch };
+        }
+
+        if let Some(caps) = self.try_captures("delta_ci", &input_lower) {
+            let repo = caps
+                .get(4)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            return Intent::DeltaCiStatus { repo };
+        }
+
         // --- Aequi accounting intents (before greedy list/show) ---
         if let Some(caps) = self.try_captures("aequi_tax", &input_lower) {
             let quarter = caps.get(6).map(|m| m.as_str().trim().to_string());
