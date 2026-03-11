@@ -199,7 +199,7 @@ impl CgroupController {
     }
 
     /// Read the configured memory limit from memory.max (bytes).
-    #[allow(dead_code)]
+    #[cfg(test)]
     fn memory_max(&self) -> Option<u64> {
         let s = std::fs::read_to_string(self.path.join("memory.max")).ok()?;
         let trimmed = s.trim();
@@ -226,7 +226,7 @@ impl CgroupController {
     }
 
     /// Read the set of PIDs in this cgroup.
-    #[allow(dead_code)]
+    #[cfg(test)]
     fn pids(&self) -> Vec<u32> {
         std::fs::read_to_string(self.path.join("cgroup.procs"))
             .ok()
@@ -505,7 +505,7 @@ impl Supervisor {
             &format!("agent_id={}", agent_id),
             0,
         ) {
-            warn!("Audit log failed: {}", e);
+            error!("Audit log failed: {}", e);
         }
 
         info!("Unregistered agent {} from supervision", agent_id);
@@ -700,7 +700,6 @@ impl Supervisor {
     /// After `MAX_RESTART_ATTEMPTS` failures, the agent is marked as permanently failed.
     async fn handle_unhealthy_agent(&self, agent_id: AgentId) {
         const MAX_RESTART_ATTEMPTS: u32 = 5;
-        const BASE_BACKOFF_SECS: u64 = 2;
 
         warn!("Taking recovery action for unhealthy agent {}", agent_id);
 
@@ -710,7 +709,7 @@ impl Supervisor {
             &format!("agent_id={}", agent_id),
             1,
         ) {
-            warn!("Audit log failed: {}", e);
+            error!("Audit log failed: {}", e);
         }
 
         // Get current failure count
@@ -734,13 +733,7 @@ impl Supervisor {
             return;
         }
 
-        // Exponential backoff: 2s, 4s, 8s, 16s, 32s — capped at 300s (5 min)
-        const MAX_BACKOFF_SECS: u64 = 300;
-        let backoff = Duration::from_secs(
-            BASE_BACKOFF_SECS
-                .saturating_pow(failure_count)
-                .min(MAX_BACKOFF_SECS),
-        );
+        let backoff = Self::calculate_restart_backoff(failure_count);
         info!(
             "Restarting agent {} (attempt {}/{}) after {:?} backoff",
             agent_id, failure_count, MAX_RESTART_ATTEMPTS, backoff
@@ -761,18 +754,8 @@ impl Supervisor {
 
         tokio::time::sleep(backoff).await;
 
-        // Attempt restart via the AgentControl trait if available
-        let restart_result = {
-            let mut agents = self.running_agents.write().await;
-            if let Some(agent) = agents.get_mut(&agent_id) {
-                Some(agent.restart().await)
-            } else {
-                None
-            }
-        };
-
-        match restart_result {
-            Some(Ok(())) => {
+        match self.attempt_restart(agent_id).await {
+            Ok(true) => {
                 info!("Agent {} restarted successfully", agent_id);
                 if let Err(e) = self
                     .registry
@@ -792,17 +775,7 @@ impl Supervisor {
                     health.consecutive_successes = 0;
                 }
             }
-            Some(Err(e)) => {
-                error!("Failed to restart agent {}: {}", agent_id, e);
-                if let Err(e) = self
-                    .registry
-                    .update_status(agent_id, AgentStatus::Failed)
-                    .await
-                {
-                    error!("Failed to update agent {} status: {}", agent_id, e);
-                }
-            }
-            None => {
+            Ok(false) => {
                 // No AgentControl registered — can't restart programmatically
                 warn!(
                     "No AgentControl registered for agent {}, marking as failed",
@@ -816,6 +789,43 @@ impl Supervisor {
                     error!("Failed to update agent {} status: {}", agent_id, e);
                 }
             }
+            Err(e) => {
+                error!("Failed to restart agent {}: {}", agent_id, e);
+                if let Err(e) = self
+                    .registry
+                    .update_status(agent_id, AgentStatus::Failed)
+                    .await
+                {
+                    error!("Failed to update agent {} status: {}", agent_id, e);
+                }
+            }
+        }
+    }
+
+    /// Calculate exponential backoff duration for restart attempts.
+    ///
+    /// Backoff: 2^failures seconds, capped at 300s (5 min).
+    fn calculate_restart_backoff(consecutive_failures: u32) -> Duration {
+        const BASE_BACKOFF_SECS: u64 = 2;
+        const MAX_BACKOFF_SECS: u64 = 300;
+        Duration::from_secs(
+            BASE_BACKOFF_SECS
+                .saturating_pow(consecutive_failures)
+                .min(MAX_BACKOFF_SECS),
+        )
+    }
+
+    /// Attempt to restart the agent via its AgentControl trait implementation.
+    ///
+    /// Returns `Ok(true)` on successful restart, `Ok(false)` if no AgentControl
+    /// is registered for the agent, or `Err` if the restart itself failed.
+    async fn attempt_restart(&self, agent_id: AgentId) -> Result<bool> {
+        let mut agents = self.running_agents.write().await;
+        if let Some(agent) = agents.get_mut(&agent_id) {
+            agent.restart().await?;
+            Ok(true)
+        } else {
+            Ok(false)
         }
     }
 
@@ -823,12 +833,8 @@ impl Supervisor {
     ///
     /// On Linux with cgroups v2, memory limits are enforced by the kernel OOM
     /// killer automatically (memory.max).  This function reads the actual usage
-    /// from the cgroup counters and updates the registry.  It then checks the
-    /// agent's `ResourceQuota` thresholds:
-    ///
-    /// - **memory_warn_pct** (default 80%): emit warning + audit event
-    /// - **memory_kill_pct** (default 95%): SIGKILL the agent + audit event
-    /// - **cpu_throttle_pct** (default 90%): emit CPU throttle warning + audit event
+    /// from the cgroup counters and updates the registry.  It then delegates to
+    /// `check_memory_limits()` and `check_cpu_limits()` for threshold enforcement.
     ///
     /// If cgroups are unavailable, we fall back to `/proc/{pid}/` reads.
     async fn check_resource_limits(&self, agent_id: AgentId) -> Result<()> {
@@ -867,44 +873,77 @@ impl Supervisor {
             quotas.get(&agent_id).cloned().unwrap_or_default()
         };
 
-        // --- Memory enforcement ---
-        if quota.memory_limit > 0 {
-            let mem_pct = (mem_used as f64 / quota.memory_limit as f64) * 100.0;
+        // Check memory thresholds
+        self.check_memory_limits(agent_id, mem_used, &quota).await;
 
-            if mem_pct >= quota.memory_kill_pct {
-                error!(
-                    "Agent {} EXCEEDED memory kill threshold ({:.1}% >= {:.1}%): {} / {} bytes — sending SIGKILL",
-                    agent_id, mem_pct, quota.memory_kill_pct, mem_used, quota.memory_limit
-                );
-                if let Err(e) = sys_audit::agnos_audit_log_syscall(
-                    "agent_memory_kill",
-                    &format!(
-                        "agent_id={} memory_used={} memory_limit={} pct={:.1} threshold={:.1}",
-                        agent_id, mem_used, quota.memory_limit, mem_pct, quota.memory_kill_pct
-                    ),
-                    1,
-                ) {
-                    warn!("Audit log failed: {}", e);
-                }
-                self.signal_agent(agent_id, libc::SIGKILL).await;
-            } else if mem_pct >= quota.memory_warn_pct {
-                warn!(
-                    "Agent {} approaching memory limit ({:.1}% >= {:.1}%): {} / {} bytes",
-                    agent_id, mem_pct, quota.memory_warn_pct, mem_used, quota.memory_limit
-                );
-                if let Err(e) = sys_audit::agnos_audit_log_syscall(
-                    "agent_memory_warning",
-                    &format!(
-                        "agent_id={} memory_used={} memory_limit={} pct={:.1} threshold={:.1}",
-                        agent_id, mem_used, quota.memory_limit, mem_pct, quota.memory_warn_pct
-                    ),
-                    0,
-                ) {
-                    warn!("Audit log failed: {}", e);
-                }
-            }
+        // Check CPU rate and total time thresholds
+        self.check_cpu_limits(agent_id, cpu_used_us, cpu_used_ms, &quota)
+            .await;
+
+        Ok(())
+    }
+
+    /// Check memory usage against quota thresholds and take action.
+    ///
+    /// - **memory_kill_pct** (default 95%): SIGKILL the agent + audit event
+    /// - **memory_warn_pct** (default 80%): emit warning + audit event
+    async fn check_memory_limits(
+        &self,
+        agent_id: AgentId,
+        memory_current: u64,
+        quota: &ResourceQuota,
+    ) {
+        if quota.memory_limit == 0 {
+            return;
         }
 
+        let mem_pct = (memory_current as f64 / quota.memory_limit as f64) * 100.0;
+
+        if mem_pct >= quota.memory_kill_pct {
+            error!(
+                "Agent {} EXCEEDED memory kill threshold ({:.1}% >= {:.1}%): {} / {} bytes — sending SIGKILL",
+                agent_id, mem_pct, quota.memory_kill_pct, memory_current, quota.memory_limit
+            );
+            if let Err(e) = sys_audit::agnos_audit_log_syscall(
+                "agent_memory_kill",
+                &format!(
+                    "agent_id={} memory_used={} memory_limit={} pct={:.1} threshold={:.1}",
+                    agent_id, memory_current, quota.memory_limit, mem_pct, quota.memory_kill_pct
+                ),
+                1,
+            ) {
+                error!("Audit log failed: {}", e);
+            }
+            self.signal_agent(agent_id, libc::SIGKILL).await;
+        } else if mem_pct >= quota.memory_warn_pct {
+            warn!(
+                "Agent {} approaching memory limit ({:.1}% >= {:.1}%): {} / {} bytes",
+                agent_id, mem_pct, quota.memory_warn_pct, memory_current, quota.memory_limit
+            );
+            if let Err(e) = sys_audit::agnos_audit_log_syscall(
+                "agent_memory_warning",
+                &format!(
+                    "agent_id={} memory_used={} memory_limit={} pct={:.1} threshold={:.1}",
+                    agent_id, memory_current, quota.memory_limit, mem_pct, quota.memory_warn_pct
+                ),
+                0,
+            ) {
+                error!("Audit log failed: {}", e);
+            }
+        }
+    }
+
+    /// Check CPU usage rate and total CPU time against quota thresholds.
+    ///
+    /// - **cpu_throttle_pct** (default 90%): emit CPU throttle warning + audit event
+    /// - **cpu_time_limit**: SIGKILL the agent if total CPU time exceeded + audit event
+    async fn check_cpu_limits(
+        &self,
+        agent_id: AgentId,
+        cpu_usage_us: u64,
+        cpu_used_ms: u64,
+        quota: &ResourceQuota,
+    ) {
         // --- CPU usage rate enforcement ---
         // Calculate CPU usage rate by comparing with previous reading.
         // Rate = (delta_usage_usec / delta_time_usec) * 100 → percentage of one core.
@@ -917,8 +956,8 @@ impl Supervisor {
         if let Some((prev_time, prev_usec)) = prev_reading {
             let elapsed = now.duration_since(prev_time);
             let elapsed_us = elapsed.as_micros() as u64;
-            if elapsed_us > 0 && cpu_used_us >= prev_usec {
-                let delta_cpu_us = cpu_used_us - prev_usec;
+            if elapsed_us > 0 && cpu_usage_us >= prev_usec {
+                let delta_cpu_us = cpu_usage_us - prev_usec;
                 let cpu_rate_pct = (delta_cpu_us as f64 / elapsed_us as f64) * 100.0;
 
                 if cpu_rate_pct >= quota.cpu_throttle_pct {
@@ -934,7 +973,7 @@ impl Supervisor {
                         ),
                         0,
                     ) {
-                        warn!("Audit log failed: {}", e);
+                        error!("Audit log failed: {}", e);
                     }
                 }
             }
@@ -944,9 +983,9 @@ impl Supervisor {
         self.last_cpu_readings
             .write()
             .await
-            .insert(agent_id, (now, cpu_used_us));
+            .insert(agent_id, (now, cpu_usage_us));
 
-        // --- CPU total time enforcement (existing behavior) ---
+        // --- CPU total time enforcement ---
         if quota.cpu_time_limit > 0 && cpu_used_ms > quota.cpu_time_limit {
             error!(
                 "Agent {} EXCEEDED CPU time limit: {} > {} ms — sending SIGKILL",
@@ -960,12 +999,10 @@ impl Supervisor {
                 ),
                 1,
             ) {
-                warn!("Audit log failed: {}", e);
+                error!("Audit log failed: {}", e);
             }
             self.signal_agent(agent_id, libc::SIGKILL).await;
         }
-
-        Ok(())
     }
 
     /// Send a signal to the agent's process.

@@ -53,3 +53,7 @@ harness = false
 [[bench]]
 name = "system_bench"
 harness = false
+
+[[bench]]
+name = "intent_parsing"
+harness = false

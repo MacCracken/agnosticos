@@ -64,25 +64,44 @@ pub struct TaskResult {
     pub duration_ms: u64,
 }
 
+/// Consolidated mutable state for the orchestrator.
+///
+/// Grouping these fields under a single `RwLock` eliminates per-operation
+/// multi-lock acquisition (e.g. `submit_task` previously locked both
+/// `task_queues` and `queued_task_ids` separately). It also makes compound
+/// operations like `cancel_task` and `get_task_status` atomic with respect
+/// to the task lifecycle.
+///
+/// **Why `message_rx` stays separate:** it is a one-shot `Option::take` used
+/// only during `start()`. Including it here would force every hot-path
+/// operation to share a lock with an effectively inert field.
+#[derive(Debug)]
+pub struct OrchestratorState {
+    /// Task queues by priority.
+    pub task_queues: HashMap<TaskPriority, VecDeque<Task>>,
+    /// Currently running tasks.
+    pub running_tasks: HashMap<String, Task>,
+    /// Completed task results.
+    pub results: HashMap<String, TaskResult>,
+    /// O(1) lookup set for queued task IDs.
+    pub queued_task_ids: HashSet<String>,
+}
+
 /// Orchestrator for multi-agent coordination
 ///
-/// All interior state is wrapped in `Arc<RwLock<...>>` so that the orchestrator
-/// can be cheaply cloned and passed to background tasks (e.g. the scheduler loop)
-/// while still sharing the same underlying data structures.
+/// All mutable task-lifecycle state lives in a single `Arc<RwLock<OrchestratorState>>`
+/// so that the orchestrator can be cheaply cloned and passed to background tasks
+/// (e.g. the scheduler loop) while still sharing the same underlying data.
 #[derive(Clone)]
 pub struct Orchestrator {
     registry: Arc<AgentRegistry>,
-    /// Task queues by priority (shared across clones)
-    task_queues: Arc<RwLock<HashMap<TaskPriority, VecDeque<Task>>>>,
-    /// Running tasks (shared across clones)
-    running_tasks: Arc<RwLock<HashMap<String, Task>>>,
-    /// Task results (shared across clones)
-    results: Arc<RwLock<HashMap<String, TaskResult>>>,
-    /// O(1) lookup set for queued task IDs
-    queued_task_ids: Arc<RwLock<HashSet<String>>>,
+    /// Unified mutable state (shared across clones)
+    state: Arc<RwLock<OrchestratorState>>,
     /// Communication bus sender (cheap to clone)
     message_bus: mpsc::Sender<Message>,
-    /// Receiver held until `start()` spawns the message loop
+    /// Receiver held until `start()` spawns the message loop.
+    /// Kept separate from `OrchestratorState` because it is a one-shot take
+    /// used only in `start()` and would needlessly widen the hot-path lock.
     message_rx: Arc<RwLock<Option<mpsc::Receiver<Message>>>>,
 }
 
@@ -104,10 +123,12 @@ impl Orchestrator {
 
         Self {
             registry,
-            task_queues: Arc::new(RwLock::new(queues)),
-            running_tasks: Arc::new(RwLock::new(HashMap::new())),
-            results: Arc::new(RwLock::new(HashMap::new())),
-            queued_task_ids: Arc::new(RwLock::new(HashSet::new())),
+            state: Arc::new(RwLock::new(OrchestratorState {
+                task_queues: queues,
+                running_tasks: HashMap::new(),
+                results: HashMap::new(),
+                queued_task_ids: HashSet::new(),
+            })),
             message_bus,
             message_rx: Arc::new(RwLock::new(Some(message_rx))),
         }
@@ -122,9 +143,8 @@ impl Orchestrator {
 
         // Start the message processing loop with shared state
         if let Some(rx) = self.message_rx.write().await.take() {
-            let results = self.results.clone();
-            let running_tasks = self.running_tasks.clone();
-            tokio::spawn(Self::message_loop(rx, results, running_tasks));
+            let state = self.state.clone();
+            tokio::spawn(Self::message_loop(rx, state));
         }
 
         // Start the task scheduler
@@ -144,9 +164,10 @@ impl Orchestrator {
             task.id, task.priority
         );
 
-        let mut queues = self.task_queues.write().await;
-        self.queued_task_ids.write().await.insert(task.id.clone());
-        queues
+        let mut state = self.state.write().await;
+        state.queued_task_ids.insert(task.id.clone());
+        state
+            .task_queues
             .get_mut(&task.priority)
             .context("Invalid task priority")?
             .push_back(task.clone());
@@ -156,21 +177,17 @@ impl Orchestrator {
 
     /// Get task status
     pub async fn get_task_status(&self, task_id: &str) -> Option<TaskStatus> {
-        // Check if running
-        let running = self.running_tasks.read().await;
-        if running.contains_key(task_id) {
+        let state = self.state.read().await;
+
+        if state.running_tasks.contains_key(task_id) {
             return Some(TaskStatus::Running);
         }
-        drop(running);
 
-        // Check if completed
-        let results = self.results.read().await;
-        if let Some(result) = results.get(task_id) {
+        if let Some(result) = state.results.get(task_id) {
             return Some(TaskStatus::Completed(result.clone()));
         }
 
-        // Check if queued (O(1) lookup via HashSet)
-        if self.queued_task_ids.read().await.contains(task_id) {
+        if state.queued_task_ids.contains(task_id) {
             return Some(TaskStatus::Queued);
         }
 
@@ -179,7 +196,7 @@ impl Orchestrator {
 
     /// Get task result
     pub async fn get_result(&self, task_id: &str) -> Option<TaskResult> {
-        self.results.read().await.get(task_id).cloned()
+        self.state.read().await.results.get(task_id).cloned()
     }
 
     /// Distribute a task to available agents
@@ -227,14 +244,14 @@ impl Orchestrator {
         let mut best_score = f64::NEG_INFINITY;
 
         // Count tasks per agent for fair-share
-        let running = self.running_tasks.read().await;
+        let state = self.state.read().await;
         let mut task_counts: HashMap<AgentId, usize> = HashMap::new();
-        for t in running.values() {
+        for t in state.running_tasks.values() {
             for agent_id in &t.target_agents {
                 *task_counts.entry(*agent_id).or_insert(0) += 1;
             }
         }
-        drop(running);
+        drop(state);
 
         for agent in &available {
             let config = self.registry.get_config(agent.id);
@@ -369,15 +386,10 @@ impl Orchestrator {
             task_id, result.agent_id, result.success
         );
 
-        let mut results = self.results.write().await;
-        results.insert(task_id.clone(), result);
-
-        // Prune old results to prevent unbounded memory growth
-        Self::prune_results(&mut results);
-        drop(results);
-
-        // Remove from running tasks
-        self.running_tasks.write().await.remove(&task_id);
+        let mut state = self.state.write().await;
+        state.results.insert(task_id.clone(), result);
+        Self::prune_results(&mut state.results);
+        state.running_tasks.remove(&task_id);
     }
 
     /// Prune results map if it exceeds MAX_RESULTS, keeping the most recent.
@@ -391,7 +403,6 @@ impl Orchestrator {
             .iter()
             .map(|(k, v)| (k.clone(), v.completed_at))
             .collect();
-        // Partition so the `excess` oldest are in entries[..excess] — O(n)
         entries.select_nth_unstable_by_key(excess - 1, |(_, t)| *t);
         for (key, _) in &entries[..excess] {
             results.remove(key);
@@ -399,18 +410,16 @@ impl Orchestrator {
     }
 
     /// Message processing loop — receives messages from agents and processes
-    /// task results, routing them into the shared results map.
+    /// task results, routing them into the shared state.
     async fn message_loop(
         mut rx: mpsc::Receiver<Message>,
-        results: Arc<RwLock<HashMap<String, TaskResult>>>,
-        running_tasks: Arc<RwLock<HashMap<String, Task>>>,
+        state: Arc<RwLock<OrchestratorState>>,
     ) {
         while let Some(message) = rx.recv().await {
             debug!("Orchestrator received message: {:?}", message);
 
             match message.message_type {
                 MessageType::Response => {
-                    // Try to deserialize as TaskResult
                     if let Ok(result) =
                         serde_json::from_value::<TaskResult>(message.payload.clone())
                     {
@@ -420,12 +429,10 @@ impl Orchestrator {
                             task_id, result.agent_id, result.success
                         );
 
-                        let mut res = results.write().await;
-                        res.insert(task_id.clone(), result);
-                        Self::prune_results(&mut res);
-                        drop(res);
-
-                        running_tasks.write().await.remove(&task_id);
+                        let mut s = state.write().await;
+                        s.results.insert(task_id.clone(), result);
+                        Self::prune_results(&mut s.results);
+                        s.running_tasks.remove(&task_id);
                     } else {
                         debug!("Received non-task response: {:?}", message.payload);
                     }
@@ -448,7 +455,6 @@ impl Orchestrator {
         loop {
             interval.tick().await;
 
-            // Process tasks by priority
             let priorities = [
                 TaskPriority::Critical,
                 TaskPriority::High,
@@ -458,42 +464,45 @@ impl Orchestrator {
             ];
 
             for priority in &priorities {
-                // Read dependency results before acquiring the queue lock
-                let completed_ids: std::collections::HashSet<_> =
-                    orchestrator.results.read().await.keys().cloned().collect();
+                let task_to_distribute = {
+                    let mut state = orchestrator.state.write().await;
 
-                let mut queues = orchestrator.task_queues.write().await;
-                if let Some(queue) = queues.get_mut(priority) {
-                    if let Some(task) = queue.pop_front() {
-                        // Check if all dependencies are satisfied
+                    let task = match state.task_queues.get_mut(priority) {
+                        Some(q) => q.pop_front(),
+                        None => continue,
+                    };
+
+                    if let Some(task) = task {
                         if !task.dependencies.is_empty() {
                             let deps_satisfied = task
                                 .dependencies
                                 .iter()
-                                .all(|dep_id| completed_ids.contains(dep_id));
+                                .all(|dep_id| state.results.contains_key(dep_id));
 
                             if !deps_satisfied {
-                                // Dependencies not yet met — push task back and skip
                                 debug!("Task {} has unsatisfied dependencies, deferring", task.id);
-                                queue.push_back(task);
+                                // Push back -- re-borrow queue now that results borrow is done
+                                if let Some(q) = state.task_queues.get_mut(priority) {
+                                    q.push_back(task);
+                                }
                                 continue;
                             }
                         }
 
-                        drop(queues);
-
-                        // Move from queued set to running tasks
-                        orchestrator.queued_task_ids.write().await.remove(&task.id);
-                        orchestrator
+                        state.queued_task_ids.remove(&task.id);
+                        state
                             .running_tasks
-                            .write()
-                            .await
                             .insert(task.id.clone(), task.clone());
 
-                        // Distribute the task
-                        if let Err(e) = orchestrator.distribute_task(&task).await {
-                            error!("Failed to distribute task {}: {}", task.id, e);
-                        }
+                        Some(task)
+                    } else {
+                        None
+                    }
+                };
+
+                if let Some(task) = task_to_distribute {
+                    if let Err(e) = orchestrator.distribute_task(&task).await {
+                        error!("Failed to distribute task {}: {}", task.id, e);
                     }
                 }
             }
@@ -535,14 +544,9 @@ impl Orchestrator {
 
     /// Get queue statistics (for testing)
     pub async fn get_queue_stats(&self) -> QueueStats {
-        let queued_tasks: usize = self
-            .task_queues
-            .read()
-            .await
-            .values()
-            .map(|q| q.len())
-            .sum();
-        let running_tasks = self.running_tasks.read().await.len();
+        let state = self.state.read().await;
+        let queued_tasks: usize = state.task_queues.values().map(|q| q.len()).sum();
+        let running_tasks = state.running_tasks.len();
 
         QueueStats {
             total_tasks: queued_tasks + running_tasks,
@@ -553,7 +557,7 @@ impl Orchestrator {
 
     /// Peek at next task (for testing)
     pub async fn peek_next_task(&self) -> Option<Task> {
-        let queues = self.task_queues.read().await;
+        let state = self.state.read().await;
 
         for priority in [
             TaskPriority::Critical,
@@ -562,7 +566,7 @@ impl Orchestrator {
             TaskPriority::Low,
             TaskPriority::Background,
         ] {
-            if let Some(queue) = queues.get(&priority) {
+            if let Some(queue) = state.task_queues.get(&priority) {
                 if let Some(task) = queue.front() {
                     return Some(task.clone());
                 }
@@ -573,11 +577,11 @@ impl Orchestrator {
 
     /// Get overdue tasks (for testing)
     pub async fn get_overdue_tasks(&self) -> Vec<Task> {
-        let queues = self.task_queues.read().await;
+        let state = self.state.read().await;
         let now = chrono::Utc::now();
 
         let mut overdue = Vec::new();
-        for queue in queues.values() {
+        for queue in state.task_queues.values() {
             for task in queue.iter() {
                 if let Some(deadline) = task.deadline {
                     if deadline < now {
@@ -592,27 +596,22 @@ impl Orchestrator {
     /// Get agent statistics (for testing)
     pub async fn get_agent_stats(&self) -> AgentOrchestratorStats {
         let agents = self.registry.list_all();
-        let results = self.results.read().await;
+        let state = self.state.read().await;
 
         AgentOrchestratorStats {
             registered_agents: agents.len(),
-            total_tasks_processed: results.len(),
+            total_tasks_processed: state.results.len(),
         }
     }
 
     /// Cancel a task (for testing)
     pub async fn cancel_task(&self, task_id: &str) -> Result<()> {
-        // Acquire and release queues lock before acquiring running_tasks lock
-        // to avoid potential deadlock with the scheduler loop.
-        {
-            let mut queues = self.task_queues.write().await;
-            for queue in queues.values_mut() {
-                queue.retain(|t| t.id != task_id);
-            }
+        let mut state = self.state.write().await;
+        for queue in state.task_queues.values_mut() {
+            queue.retain(|t| t.id != task_id);
         }
-
-        self.queued_task_ids.write().await.remove(task_id);
-        self.running_tasks.write().await.remove(task_id);
+        state.queued_task_ids.remove(task_id);
+        state.running_tasks.remove(task_id);
 
         Ok(())
     }
@@ -863,20 +862,24 @@ mod tests {
         // Manually run one scheduler iteration by calling scheduler_loop logic:
         // pop the task, check deps, push back
         {
-            let mut queues = orchestrator.task_queues.write().await;
-            if let Some(queue) = queues.get_mut(&TaskPriority::Normal) {
-                if let Some(task) = queue.pop_front() {
-                    let results = orchestrator.results.read().await;
-                    let deps_satisfied = task
-                        .dependencies
-                        .iter()
-                        .all(|dep_id| results.contains_key(dep_id));
-                    drop(results);
+            let mut state = orchestrator.state.write().await;
+            let task = state
+                .task_queues
+                .get_mut(&TaskPriority::Normal)
+                .and_then(|q| q.pop_front());
+            if let Some(task) = task {
+                let deps_satisfied = task
+                    .dependencies
+                    .iter()
+                    .all(|dep_id| state.results.contains_key(dep_id));
 
-                    // Deps not satisfied — push back
-                    assert!(!deps_satisfied);
-                    queue.push_back(task);
-                }
+                // Deps not satisfied -- push back
+                assert!(!deps_satisfied);
+                state
+                    .task_queues
+                    .get_mut(&TaskPriority::Normal)
+                    .unwrap()
+                    .push_back(task);
             }
         }
 
@@ -898,14 +901,13 @@ mod tests {
 
         // Now the dependency is satisfied
         {
-            let queues = orchestrator.task_queues.read().await;
-            if let Some(queue) = queues.get(&TaskPriority::Normal) {
+            let state = orchestrator.state.read().await;
+            if let Some(queue) = state.task_queues.get(&TaskPriority::Normal) {
                 if let Some(task) = queue.front() {
-                    let results = orchestrator.results.read().await;
                     let deps_satisfied = task
                         .dependencies
                         .iter()
-                        .all(|dep_id| results.contains_key(dep_id));
+                        .all(|dep_id| state.results.contains_key(dep_id));
                     assert!(deps_satisfied);
                 }
             }
@@ -1511,8 +1513,8 @@ mod tests {
 
         // Manually insert a "running" task
         {
-            let mut running = orchestrator.running_tasks.write().await;
-            running.insert(
+            let mut state = orchestrator.state.write().await;
+            state.running_tasks.insert(
                 "running-1".to_string(),
                 Task {
                     id: "running-1".to_string(),
@@ -1545,8 +1547,8 @@ mod tests {
         assert!(stored.unwrap().success);
 
         // Should be removed from running
-        let running = orchestrator.running_tasks.read().await;
-        assert!(!running.contains_key("running-1"));
+        let state = orchestrator.state.read().await;
+        assert!(!state.running_tasks.contains_key("running-1"));
     }
 
     #[tokio::test]
@@ -1555,8 +1557,8 @@ mod tests {
 
         // Insert directly into running_tasks
         {
-            let mut running = orchestrator.running_tasks.write().await;
-            running.insert(
+            let mut state = orchestrator.state.write().await;
+            state.running_tasks.insert(
                 "r-task".to_string(),
                 Task {
                     id: "r-task".to_string(),
@@ -1642,8 +1644,8 @@ mod tests {
 
         // Insert task directly into running
         {
-            let mut running = orchestrator.running_tasks.write().await;
-            running.insert(
+            let mut state = orchestrator.state.write().await;
+            state.running_tasks.insert(
                 "cancel-running".to_string(),
                 Task {
                     id: "cancel-running".to_string(),
@@ -1659,8 +1661,8 @@ mod tests {
         }
 
         orchestrator.cancel_task("cancel-running").await.unwrap();
-        let running = orchestrator.running_tasks.read().await;
-        assert!(!running.contains_key("cancel-running"));
+        let state = orchestrator.state.read().await;
+        assert!(!state.running_tasks.contains_key("cancel-running"));
     }
 
     #[tokio::test]
@@ -2412,8 +2414,8 @@ mod tests {
         };
 
         let id = orchestrator.submit_task(task).await.unwrap();
-        let queues = orchestrator.task_queues.read().await;
-        let queue = queues.get(&TaskPriority::Normal).unwrap();
+        let state = orchestrator.state.read().await;
+        let queue = state.task_queues.get(&TaskPriority::Normal).unwrap();
         let submitted = queue.iter().find(|t| t.id == id).unwrap();
         // created_at should be updated to approximately now
         assert!(submitted.created_at > old_time);
@@ -2532,8 +2534,8 @@ mod tests {
 
         // Move 2 to running
         {
-            let mut running = orchestrator.running_tasks.write().await;
-            running.insert(
+            let mut state = orchestrator.state.write().await;
+            state.running_tasks.insert(
                 "running-a".to_string(),
                 Task {
                     id: "running-a".to_string(),
@@ -2546,7 +2548,7 @@ mod tests {
                     requirements: TaskRequirements::default(),
                 },
             );
-            running.insert(
+            state.running_tasks.insert(
                 "running-b".to_string(),
                 Task {
                     id: "running-b".to_string(),
@@ -2682,14 +2684,13 @@ mod tests {
 
         // Manually simulate scheduler check: dependency is satisfied
         {
-            let queues = orchestrator.task_queues.read().await;
-            let queue = queues.get(&TaskPriority::Normal).unwrap();
+            let state = orchestrator.state.read().await;
+            let queue = state.task_queues.get(&TaskPriority::Normal).unwrap();
             let task = queue.front().unwrap();
-            let results = orchestrator.results.read().await;
             let deps_satisfied = task
                 .dependencies
                 .iter()
-                .all(|dep_id| results.contains_key(dep_id));
+                .all(|dep_id| state.results.contains_key(dep_id));
             assert!(deps_satisfied);
         }
     }
@@ -2710,14 +2711,13 @@ mod tests {
         };
         orchestrator.submit_task(task).await.unwrap();
 
-        let queues = orchestrator.task_queues.read().await;
-        let queue = queues.get(&TaskPriority::Normal).unwrap();
+        let state = orchestrator.state.read().await;
+        let queue = state.task_queues.get(&TaskPriority::Normal).unwrap();
         let task = queue.front().unwrap();
-        let results = orchestrator.results.read().await;
         let deps_satisfied = task
             .dependencies
             .iter()
-            .all(|dep_id| results.contains_key(dep_id));
+            .all(|dep_id| state.results.contains_key(dep_id));
         assert!(!deps_satisfied);
     }
 
@@ -2752,14 +2752,13 @@ mod tests {
         };
         orchestrator.submit_task(task).await.unwrap();
 
-        let queues = orchestrator.task_queues.read().await;
-        let queue = queues.get(&TaskPriority::Normal).unwrap();
+        let state = orchestrator.state.read().await;
+        let queue = state.task_queues.get(&TaskPriority::Normal).unwrap();
         let task = queue.front().unwrap();
-        let results = orchestrator.results.read().await;
         let deps_satisfied = task
             .dependencies
             .iter()
-            .all(|dep_id| results.contains_key(dep_id));
+            .all(|dep_id| state.results.contains_key(dep_id));
         assert!(deps_satisfied);
     }
 
@@ -2791,14 +2790,13 @@ mod tests {
         };
         orchestrator.submit_task(task).await.unwrap();
 
-        let queues = orchestrator.task_queues.read().await;
-        let queue = queues.get(&TaskPriority::Normal).unwrap();
+        let state = orchestrator.state.read().await;
+        let queue = state.task_queues.get(&TaskPriority::Normal).unwrap();
         let task = queue.front().unwrap();
-        let results = orchestrator.results.read().await;
         let deps_satisfied = task
             .dependencies
             .iter()
-            .all(|dep_id| results.contains_key(dep_id));
+            .all(|dep_id| state.results.contains_key(dep_id));
         assert!(!deps_satisfied);
     }
 
@@ -2922,8 +2920,8 @@ mod tests {
 
         // Also add to running (simulating race)
         {
-            let mut running = orchestrator.running_tasks.write().await;
-            running.insert(
+            let mut state = orchestrator.state.write().await;
+            state.running_tasks.insert(
                 id.clone(),
                 Task {
                     id: id.clone(),

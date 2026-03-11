@@ -1,0 +1,127 @@
+# Shruti — Rust-native Digital Audio Workstation for AGNOS
+# Multi-track recording, mixing, DSP, and AI-assisted production.
+# Cargo workspace: 6 crates (engine, dsp, session, plugin, ui, ai).
+#
+# Status: Alpha — Local-only DAW, no network ports.
+# Source: https://github.com/MacCracken/shruti
+
+[package]
+name = "shruti"
+version = "0.1.0"
+description = "Shruti — Rust-native Digital Audio Workstation"
+license = "GPL-3.0"
+groups = ["creative", "audio"]
+release = 1
+arch = "x86_64"
+
+[source]
+local = true
+build_dir = "target/release"
+github_release = "MacCracken/shruti"
+release_asset = "shruti"
+
+[depends]
+runtime = [
+    "glibc",
+    "alsa-lib",
+    "pipewire",
+    "pipewire-jack",
+    "sqlite",
+]
+build = [
+    "rust",
+    "gcc",
+    "make",
+    "pkgconf",
+    "alsa-lib",
+    "pipewire",
+    "sqlite",
+]
+
+[marketplace]
+category = "creative/audio"
+runtime = "native-binary"
+publisher = "Shruti"
+tags = ["daw", "audio", "music", "production", "recording", "mixing"]
+min_agnos_version = "2026.3.11"
+
+[marketplace.sandbox]
+seccomp_mode = "desktop"
+network_access = false
+data_dir = "~/.local/share/shruti/"
+
+[[marketplace.sandbox.landlock]]
+path = "~/.local/share/shruti/"
+access = "rw"
+
+[[marketplace.sandbox.landlock]]
+path = "/dev/snd/"
+access = "rw"
+
+[[marketplace.sandbox.landlock]]
+path = "/run/user/*/pipewire-0"
+access = "rw"
+
+[[marketplace.sandbox.landlock]]
+path = "/tmp/.X11-unix/"
+access = "ro"
+
+[marketplace.sandbox.wayland]
+protocols = ["core", "xdg-shell"]
+
+[marketplace.services]
+ports = []
+depends_on = []
+
+[build]
+pre_build = ""
+configure = ""
+make = "cargo build --release --workspace"
+check = "cargo test --workspace"
+install = """
+# Install binary
+mkdir -p $PKG/usr/local/bin
+cp target/release/shruti $PKG/usr/local/bin/shruti
+
+# Create data directory
+mkdir -p $PKG/usr/share/shruti
+
+# Desktop entry
+mkdir -p $PKG/usr/share/applications
+cat > $PKG/usr/share/applications/shruti.desktop << 'DSKEOF'
+[Desktop Entry]
+Name=Shruti
+Comment=Rust-native Digital Audio Workstation
+Exec=/usr/local/bin/shruti
+Icon=shruti
+Type=Application
+Categories=AudioVideo;Audio;Music;
+MimeType=audio/wav;audio/flac;audio/ogg;
+Keywords=daw;audio;music;production;recording;mixing;
+DSKEOF
+
+# Systemd user service (optional background engine)
+mkdir -p $PKG/usr/lib/systemd/user
+cat > $PKG/usr/lib/systemd/user/shruti-engine.service << 'SVCEOF'
+[Unit]
+Description=Shruti Audio Engine
+After=pipewire.service
+Wants=pipewire.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/shruti --engine-only
+Environment=RUST_LOG=info
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target
+SVCEOF
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

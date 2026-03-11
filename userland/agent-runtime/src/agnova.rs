@@ -109,6 +109,9 @@ pub struct DiskLayout {
     pub use_gpt: bool,
     /// Encrypt the root partition with LUKS2.
     pub encrypt: bool,
+    /// LUKS passphrase (piped via stdin to cryptsetup).
+    #[serde(default, skip_serializing)]
+    pub luks_passphrase: Option<String>,
 }
 
 impl Default for DiskLayout {
@@ -118,6 +121,7 @@ impl Default for DiskLayout {
             partitions: Vec::new(),
             use_gpt: true,
             encrypt: false,
+            luks_passphrase: None,
         }
     }
 }
@@ -726,6 +730,14 @@ impl AgnovaInstaller {
             }
         }
 
+        // MBR partition table supports at most 4 primary partitions
+        if !self.config.disk.use_gpt && self.config.disk.partitions.len() > 4 {
+            bail!(
+                "MBR partition table limited to 4 primary partitions, {} configured",
+                self.config.disk.partitions.len()
+            );
+        }
+
         // Validate full_name if provided (used as -c arg to useradd)
         if let Some(ref full_name) = self.config.user.full_name {
             if full_name.len() > 256 {
@@ -811,6 +823,7 @@ impl AgnovaInstaller {
             ],
             use_gpt: true,
             encrypt,
+            luks_passphrase: None,
         }
     }
 
@@ -1053,6 +1066,9 @@ pub enum SystemOp {
         description: String,
         /// If true, failure aborts the installation.
         fatal: bool,
+        /// Optional data to pipe to the command's stdin.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        stdin: Option<String>,
     },
     /// Write content to a file.
     WriteFile {
@@ -1124,6 +1140,7 @@ impl AgnovaInstaller {
                 args: vec!["-s".into(), device.clone(), "mklabel".into(), "gpt".into()],
                 description: "Create GPT partition table".into(),
                 fatal: true,
+                stdin: None,
             });
         } else {
             ops.push(SystemOp::Command {
@@ -1136,6 +1153,7 @@ impl AgnovaInstaller {
                 ],
                 description: "Create MBR partition table".into(),
                 fatal: true,
+                stdin: None,
             });
         }
 
@@ -1166,6 +1184,7 @@ impl AgnovaInstaller {
                 ],
                 description: format!("Create partition {} ({})", i + 1, part.label),
                 fatal: true,
+                stdin: None,
             });
 
             // Set flags
@@ -1188,6 +1207,7 @@ impl AgnovaInstaller {
                     ],
                     description: format!("Set {} flag on partition {}", flag_name, i + 1),
                     fatal: true,
+                    stdin: None,
                 });
             }
 
@@ -1256,6 +1276,7 @@ impl AgnovaInstaller {
                     part_dev, part.filesystem, part.label
                 ),
                 fatal: true,
+                stdin: None,
             });
         }
 
@@ -1293,6 +1314,7 @@ impl AgnovaInstaller {
             ops.push(SystemOp::Command {
                 binary: "cryptsetup".into(),
                 args: vec![
+                    "--batch-mode".into(),
                     "luksFormat".into(),
                     "--type".into(),
                     "luks2".into(),
@@ -1304,17 +1326,25 @@ impl AgnovaInstaller {
                     "sha512".into(),
                     "--iter-time".into(),
                     "5000".into(),
+                    "--key-file=-".into(),
                     part_dev.clone(),
                 ],
                 description: "Format LUKS2 encrypted volume".into(),
                 fatal: true,
+                stdin: disk.luks_passphrase.clone(),
             });
 
             ops.push(SystemOp::Command {
                 binary: "cryptsetup".into(),
-                args: vec!["open".into(), part_dev, "agnos-root".into()],
+                args: vec![
+                    "open".into(),
+                    "--key-file=-".into(),
+                    part_dev,
+                    "agnos-root".into(),
+                ],
                 description: "Open LUKS volume as agnos-root".into(),
                 fatal: true,
+                stdin: disk.luks_passphrase.clone(),
             });
         }
 
@@ -1365,6 +1395,7 @@ impl AgnovaInstaller {
                         ],
                         description: "Install GRUB EFI bootloader".into(),
                         fatal: true,
+                        stdin: None,
                     });
                 } else {
                     // BIOS / MBR install — write to the disk MBR
@@ -1377,6 +1408,7 @@ impl AgnovaInstaller {
                         ],
                         description: "Install GRUB BIOS bootloader".into(),
                         fatal: true,
+                        stdin: None,
                     });
                 }
 
@@ -1429,6 +1461,7 @@ impl AgnovaInstaller {
                     ],
                     description: "Install systemd-boot".into(),
                     fatal: true,
+                    stdin: None,
                 });
 
                 // Loader config
@@ -1509,6 +1542,7 @@ impl AgnovaInstaller {
             args: useradd_args,
             description: format!("Create user '{}'", user.username),
             fatal: true,
+            stdin: None,
         });
 
         // SSH keys
@@ -1542,6 +1576,7 @@ impl AgnovaInstaller {
                 ],
                 description: format!("Add '{}' to wheel group", user.username),
                 fatal: false,
+                stdin: None,
             });
         }
 
@@ -1592,6 +1627,35 @@ impl AgnovaInstaller {
                 mode: 0o644,
                 owner: None,
             });
+        }
+
+        // Static IP configuration via systemd-networkd
+        if !net.use_dhcp {
+            if let Some(ref static_ip) = net.static_ip {
+                let mut networkd = String::new();
+                networkd.push_str("[Match]\nName=eth0\n\n[Network]\n");
+                networkd.push_str(&format!("Address={}\n", static_ip));
+                if let Some(ref gw) = net.gateway {
+                    networkd.push_str(&format!("Gateway={}\n", gw));
+                }
+                for dns in &net.dns {
+                    networkd.push_str(&format!("DNS={}\n", dns));
+                }
+
+                // Ensure the networkd config directory exists
+                ops.push(SystemOp::MakeDir {
+                    path: format!("{}/etc/systemd/network", target_root),
+                    mode: 0o755,
+                    parents: true,
+                });
+
+                ops.push(SystemOp::WriteFile {
+                    path: format!("{}/etc/systemd/network/10-static.network", target_root),
+                    content: networkd,
+                    mode: 0o644,
+                    owner: None,
+                });
+            }
         }
 
         PhaseOps {
@@ -1667,6 +1731,7 @@ impl AgnovaInstaller {
                     args: vec![part_dev],
                     description: format!("Activate swap ({})", part.label),
                     fatal: false,
+                    stdin: None,
                 });
                 continue;
             }
@@ -1745,6 +1810,7 @@ impl AgnovaInstaller {
             ],
             description: "Extract base system tarball".into(),
             fatal: true,
+            stdin: None,
         });
 
         // Alternatively, install base via ark if packages are available
@@ -1758,6 +1824,7 @@ impl AgnovaInstaller {
             ],
             description: "Install base .ark packages (fallback)".into(),
             fatal: false, // non-fatal: either tarball OR ark method succeeds
+            stdin: None,
         });
 
         PhaseOps {
@@ -1789,6 +1856,7 @@ impl AgnovaInstaller {
                 },
                 description: format!("Install {} mode packages", self.config.mode),
                 fatal: true,
+                stdin: None,
             });
         }
 
@@ -1808,6 +1876,7 @@ impl AgnovaInstaller {
                 },
                 description: "Install extra user-selected packages".into(),
                 fatal: false,
+                stdin: None,
             });
         }
 
@@ -1922,6 +1991,7 @@ impl AgnovaInstaller {
                 ],
                 description: format!("Enable {} service", svc),
                 fatal: false,
+                stdin: None,
             });
         }
 
@@ -1937,6 +2007,7 @@ impl AgnovaInstaller {
                 ],
                 description: "Enable desktop compositor".into(),
                 fatal: false,
+                stdin: None,
             });
         }
 
@@ -1967,6 +2038,7 @@ impl AgnovaInstaller {
             args: vec![],
             description: "Flush filesystem buffers".into(),
             fatal: false,
+            stdin: None,
         });
 
         // Unmount in reverse depth order (deepest first)
@@ -1996,6 +2068,7 @@ impl AgnovaInstaller {
                     args: vec![Self::partition_device(device, i)],
                     description: "Deactivate swap".into(),
                     fatal: false,
+                    stdin: None,
                 });
             }
         }
@@ -2007,6 +2080,7 @@ impl AgnovaInstaller {
                 args: vec!["close".into(), "agnos-root".into()],
                 description: "Close LUKS volume".into(),
                 fatal: false,
+                stdin: None,
             });
         }
 
@@ -2128,6 +2202,7 @@ impl IsoConfig {
             args,
             description: format!("Generate ISO: {}", self.output_path),
             fatal: true,
+            stdin: None,
         }
     }
 }
@@ -3371,6 +3446,7 @@ mod tests {
             args: vec!["-s".into(), "/dev/sda".into()],
             description: "partition disk".into(),
             fatal: true,
+            stdin: None,
         };
         let s = format!("{}", op);
         assert!(s.contains("partition disk"));
@@ -3389,5 +3465,130 @@ mod tests {
             link: "/etc/localtime".into(),
         };
         assert!(format!("{}", op).contains("symlink"));
+    }
+
+    // -- LUKS stdin passphrase piping --
+
+    #[test]
+    fn luks_format_uses_stdin_passphrase() {
+        let mut config = test_config();
+        config.disk.encrypt = true;
+        config.disk.luks_passphrase = Some("hunter2".to_string());
+        let installer = AgnovaInstaller::new(config);
+        let ops = installer.plan_encryption_ops();
+        assert!(ops.operations.len() >= 2);
+
+        // luksFormat command
+        if let SystemOp::Command {
+            args, stdin, binary, ..
+        } = &ops.operations[0]
+        {
+            assert_eq!(binary, "cryptsetup");
+            assert!(args.contains(&"--batch-mode".to_string()));
+            assert!(args.contains(&"--key-file=-".to_string()));
+            assert_eq!(stdin.as_deref(), Some("hunter2"));
+        } else {
+            panic!("expected Command for luksFormat");
+        }
+
+        // open command
+        if let SystemOp::Command {
+            args, stdin, binary, ..
+        } = &ops.operations[1]
+        {
+            assert_eq!(binary, "cryptsetup");
+            assert!(args.contains(&"open".to_string()));
+            assert!(args.contains(&"--key-file=-".to_string()));
+            assert_eq!(stdin.as_deref(), Some("hunter2"));
+        } else {
+            panic!("expected Command for open");
+        }
+    }
+
+    // -- MBR partition count validation --
+
+    #[test]
+    fn validate_rejects_mbr_with_more_than_four_partitions() {
+        let mut config = test_config();
+        config.disk.use_gpt = false;
+        // Create 5 partitions (exceeds MBR limit)
+        config.disk.partitions = (1..=5)
+            .map(|i| PartitionSpec {
+                label: format!("part{}", i),
+                mount_point: if i == 5 {
+                    "/".to_string()
+                } else {
+                    format!("/mnt/{}", i)
+                },
+                filesystem: Filesystem::Ext4,
+                size_mb: if i == 5 { None } else { Some(1024) },
+                flags: Vec::new(),
+            })
+            .collect();
+        let installer = AgnovaInstaller::new(config);
+        let err = installer.validate_config().unwrap_err();
+        assert!(err.to_string().contains("MBR partition table limited to 4"));
+    }
+
+    #[test]
+    fn validate_accepts_mbr_with_four_partitions() {
+        let mut config = test_config();
+        config.disk.use_gpt = false;
+        config.disk.partitions = (1..=4)
+            .map(|i| PartitionSpec {
+                label: format!("part{}", i),
+                mount_point: if i == 4 {
+                    "/".to_string()
+                } else {
+                    format!("/mnt/{}", i)
+                },
+                filesystem: Filesystem::Ext4,
+                size_mb: if i == 4 { None } else { Some(1024) },
+                flags: Vec::new(),
+            })
+            .collect();
+        let installer = AgnovaInstaller::new(config);
+        assert!(installer.validate_config().is_ok());
+    }
+
+    // -- Static IP network configuration --
+
+    #[test]
+    fn plan_network_ops_static_ip_config() {
+        let mut config = test_config();
+        config.network.use_dhcp = false;
+        config.network.static_ip = Some("192.168.1.100/24".to_string());
+        config.network.gateway = Some("192.168.1.1".to_string());
+        config.network.dns = vec!["1.1.1.1".to_string(), "8.8.8.8".to_string()];
+        let installer = AgnovaInstaller::new(config);
+        let ops = installer.plan_network_ops("/mnt/target");
+
+        // Should have: hostname, hosts, resolv.conf, mkdir networkd, 10-static.network
+        let network_file = ops.operations.iter().find(|op| {
+            matches!(op, SystemOp::WriteFile { path, .. } if path.contains("10-static.network"))
+        });
+        assert!(network_file.is_some(), "should generate 10-static.network");
+
+        if let SystemOp::WriteFile { content, path, .. } = network_file.unwrap() {
+            assert!(path.ends_with("/etc/systemd/network/10-static.network"));
+            assert!(content.contains("[Match]"));
+            assert!(content.contains("Name=eth0"));
+            assert!(content.contains("Address=192.168.1.100/24"));
+            assert!(content.contains("Gateway=192.168.1.1"));
+            assert!(content.contains("DNS=1.1.1.1"));
+            assert!(content.contains("DNS=8.8.8.8"));
+        }
+    }
+
+    #[test]
+    fn plan_network_ops_dhcp_no_static_file() {
+        let config = test_config(); // use_dhcp=true by default
+        let installer = AgnovaInstaller::new(config);
+        let ops = installer.plan_network_ops("/mnt/target");
+
+        let has_static = ops.operations.iter().any(|op| {
+            matches!(op, SystemOp::WriteFile { path, .. } if path.contains("10-static.network"))
+        });
+        assert!(!has_static, "DHCP mode should not generate static network config");
     }
 }

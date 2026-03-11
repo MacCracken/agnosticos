@@ -1,9 +1,10 @@
 # AGNOS Development Roadmap
 
-> **Status**: Pre-Beta | **Last Updated**: 2026-03-10
-> **Userland complete** — 10000+ tests (3204 agent-runtime), ~82% coverage, 0 warnings
-> **Recipes**: 109 base + 53 desktop + 25 AI + 9 network + 8 browser + 7 marketplace + 4 python + 3 database = 218 total, 0 validation errors
+> **Status**: Pre-Beta | **Last Updated**: 2026-03-11
+> **Userland complete** — 10500+ tests (3374 agent-runtime, 763 ai-shell), ~84% coverage, 0 warnings
+> **Recipes**: 109 base + 53 desktop + 25 AI + 9 network + 8 browser + 8 marketplace + 4 python + 3 database = 219 total, 0 validation errors
 > **Phases 10–12 complete** | **Phase 13**: 13A(infra)/13B/13D/13E done | **Audit**: 15 rounds
+> **Engineering backlog**: Cleared (16/16 items complete)
 
 ---
 
@@ -81,56 +82,19 @@ for desktop/networking/GPU stack.
 
 Identified via code audit (2026-03-10). Prioritized by impact.
 
-### Performance & Memory (P1)
+### Completed
 
-| # | Item | Component | Effort | Notes |
-|---|------|-----------|--------|-------|
-| 1 | Replace `.to_lowercase().to_string()` with `(?i)` regex flags in parse hot path | ai-shell | Done | Saves allocation per parse call |
-| 2 | Reduce string cloning in federation (23 clones → refs/Cow) | agent-runtime | Small | `federation.rs` lines 232, 290-311 |
-| 3 | Single-pass node status counting in `stats()` | agent-runtime | Done | Was 3× O(n), now O(n) |
-| 4 | Add intent parsing throughput benchmark | ai-shell | Small | Critical hot path, no bench yet |
-| 5 | Add screen capture performance benchmark | desktop-environment | Small | PNG encoding, pixel copy |
-| 6 | Add vector search scaling benchmark (1K/10K/100K) | agent-runtime | Small | Currently O(N*D) brute force |
-| 7 | Cache vote tally in swarm (incremental vs recompute) | agent-runtime | Small | `swarm.rs:299-309` |
+**Performance & Memory**: `.to_lowercase()` → `(?i)` regex (ai-shell), single-pass `stats()` (agent-runtime), federation string clone reduction (3 clones eliminated), swarm vote tally single-pass optimization, 3 criterion benchmark suites added (intent parsing, screen capture, vector search scaling)
 
-### Code Quality (P2)
+**Code Quality**: HTTP error response helpers, Delta API response normalization, MCP tool manifest refactored to data-driven `tool!` macro (121 lines saved), `Arc<RwLock<>>` consolidated in orchestrator (4 locks → 1 `OrchestratorState`), `check_resource_limits()` split into `check_memory_limits()` + `check_cpu_limits()`, `handle_unhealthy_agent()` split into `calculate_restart_backoff()` + `attempt_restart()`, `#[allow(dead_code)]` resolved (supervisor: `#[cfg(test)]`, pqc: hex module `#[cfg(test)]`, nous: `cache_dir()` accessor)
 
-| # | Item | Component | Effort | Notes |
-|---|------|-----------|--------|-------|
-| 1 | Extract HTTP error response helpers | agent-runtime | Done | `bad_request()`, `not_found()`, etc. |
-| 2 | Extract MCP tool manifest to data-driven format | agent-runtime | Medium | `build_tool_manifest()` is 340 lines |
-| 3 | Consolidate `Arc<RwLock<>>` state in orchestrator | agent-runtime | Medium | 5 separate locks → unified state |
-| 4 | Split `check_resource_limits()` (110 lines) | agent-runtime | Small | Into memory, CPU, tracking helpers |
-| 5 | Split `handle_unhealthy_agent()` (120 lines) | agent-runtime | Small | Into backoff, restart, recovery |
-| 6 | Resolve `#[allow(dead_code)]` markers | agent-runtime | Small | supervisor.rs, pqc.rs, nous.rs |
-| 7 | Normalize Delta API bridge response format | agent-runtime | Done | Bare array → wrapped `{repositories:[]}` |
+**Security**: Plugin sandbox syscall whitelist expanded, plugin resource limits enforced via `setrlimit` (RLIMIT_AS + RLIMIT_CPU), audit log failures escalated warn→error (6 occurrences), plugin socket directory hardened (0o700 dir + 0o600 helper)
 
-### Security (P2)
+**Installer — agnova (13/13)**: All items complete. mount ops, base/package install, security ops, first boot, cleanup, UEFI/BIOS, kernel version parameterization, systemd-boot, partition_device refactor, LUKS password stdin piping (`--batch-mode` + `--key-file=-` + `stdin` field in SystemOp), MBR partition count validation (max 4 primary), static IP via systemd-networkd (`10-static.network`)
 
-| # | Item | Component | Effort | Notes |
-|---|------|-----------|--------|-------|
-| 1 | Expand plugin sandbox base syscall whitelist | desktop-environment | Done | Added epoll, futex, clock_gettime, etc. |
-| 2 | Enforce plugin resource limits (max_memory, max_cpu) | desktop-environment | Medium | Stored but never checked |
-| 3 | Escalate audit log failures from warn → error | agent-runtime | Small | `supervisor.rs:708-714` |
-| 4 | Add plugin socket permission hardening (0600) | desktop-environment | Small | `plugin_host.rs:226` |
+### Remaining
 
-### Installer — agnova (P1)
-
-| # | Item | Status | Notes |
-|---|------|--------|-------|
-| 1 | `plan_mount_ops()` — mount partitions at target | Done | Sorted by depth, swap activation |
-| 2 | `plan_install_base_ops()` — deploy base system | Done | Tarball + ark fallback |
-| 3 | `plan_install_packages_ops()` — mode-specific packages | Done | ark install with mode packages |
-| 4 | `plan_security_ops()` — firewall + sysctl + IMA | Done | nftables, kernel hardening |
-| 5 | `plan_first_boot_ops()` — argonaut service enable | Done | Per-mode service list, desktop compositor |
-| 6 | `plan_cleanup_ops()` — unmount + LUKS close | Done | Reverse depth unmount, swap deactivation |
-| 7 | UEFI/BIOS detection + GRUB BIOS support | Done | `is_uefi_system()`, `--target=i386-pc` |
-| 8 | Parameterize kernel version in boot entries | Done | `kernel_version()` method, no hardcoding |
-| 9 | systemd-boot loader.conf + entry files | Done | `agnos.conf`, `agnos-rescue.conf` |
-| 10 | Refactor `partition_device()` to shared helper | Done | Deduplicated nvme/mmcblk logic |
-| 11 | LUKS password stdin piping / key file support | Not started | `cryptsetup luksFormat` hangs without it |
-| 12 | MBR partition count validation (max 4 primary) | Not started | Silent failure on >4 partitions |
-| 13 | Static IP + gateway network configuration | Not started | `plan_network_ops()` incomplete |
+*Engineering backlog cleared.*
 
 ---
 

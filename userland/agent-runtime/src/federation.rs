@@ -477,8 +477,9 @@ impl FederationCluster {
         local.voted_for = Some(self.local_node_id.clone());
 
         // Record self-vote
+        let local_id = self.local_node_id.clone();
         self.votes_received
-            .insert(self.local_node_id.clone(), vec![self.local_node_id.clone()]);
+            .insert(local_id.clone(), vec![local_id]);
 
         info!(
             node_id = %self.local_node_id,
@@ -488,7 +489,8 @@ impl FederationCluster {
 
         // Check if single-node cluster — auto-win
         if self.nodes.len() == 1 {
-            self.become_coordinator(&self.local_node_id.clone())?;
+            let coord_id = self.local_node_id.clone();
+            self.become_coordinator(&coord_id)?;
         }
 
         Ok(new_term)

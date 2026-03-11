@@ -104,343 +104,222 @@ fn json_schema_object(properties: serde_json::Value, required: Vec<&str>) -> ser
     })
 }
 
+/// Helper macro to construct an `McpToolDescription` concisely.
+macro_rules! tool {
+    ($name:expr, $desc:expr, $props:expr, $req:expr) => {
+        McpToolDescription {
+            name: $name.to_string(),
+            description: $desc.to_string(),
+            input_schema: json_schema_object($props, $req),
+        }
+    };
+    ($name:expr, $desc:expr) => {
+        McpToolDescription {
+            name: $name.to_string(),
+            description: $desc.to_string(),
+            input_schema: json_schema_object(serde_json::json!({}), vec![]),
+        }
+    };
+}
+
 /// Build the static MCP tool manifest for the agent runtime.
 pub fn build_tool_manifest() -> McpToolManifest {
+    use serde_json::json;
+
     let tools = vec![
-        McpToolDescription {
-            name: "agnos_health".to_string(),
-            description: "Check agent runtime health status".to_string(),
-            input_schema: json_schema_object(serde_json::json!({}), vec![]),
-        },
-        McpToolDescription {
-            name: "agnos_list_agents".to_string(),
-            description: "List all registered agents".to_string(),
-            input_schema: json_schema_object(serde_json::json!({}), vec![]),
-        },
-        McpToolDescription {
-            name: "agnos_get_agent".to_string(),
-            description: "Get details for a specific agent by ID".to_string(),
-            input_schema: json_schema_object(
-                serde_json::json!({
-                    "agent_id": {"type": "string", "description": "UUID of the agent"}
-                }),
-                vec!["agent_id"],
-            ),
-        },
-        McpToolDescription {
-            name: "agnos_register_agent".to_string(),
-            description: "Register a new agent with the runtime".to_string(),
-            input_schema: json_schema_object(
-                serde_json::json!({
-                    "name": {"type": "string", "description": "Agent name"},
-                    "capabilities": {"type": "array", "items": {"type": "string"}, "description": "Agent capabilities"},
-                    "metadata": {"type": "object", "description": "Additional key-value metadata"}
-                }),
-                vec!["name"],
-            ),
-        },
-        McpToolDescription {
-            name: "agnos_deregister_agent".to_string(),
-            description: "Deregister an agent by ID".to_string(),
-            input_schema: json_schema_object(
-                serde_json::json!({
-                    "agent_id": {"type": "string", "description": "UUID of the agent to deregister"}
-                }),
-                vec!["agent_id"],
-            ),
-        },
-        McpToolDescription {
-            name: "agnos_heartbeat".to_string(),
-            description: "Send a heartbeat for an agent".to_string(),
-            input_schema: json_schema_object(
-                serde_json::json!({
-                    "agent_id": {"type": "string", "description": "UUID of the agent"},
-                    "status": {"type": "string", "description": "Optional status update"},
-                    "current_task": {"type": "string", "description": "Optional current task description"}
-                }),
-                vec!["agent_id"],
-            ),
-        },
-        McpToolDescription {
-            name: "agnos_get_metrics".to_string(),
-            description: "Get agent runtime metrics".to_string(),
-            input_schema: json_schema_object(serde_json::json!({}), vec![]),
-        },
-        McpToolDescription {
-            name: "agnos_forward_audit".to_string(),
-            description: "Forward an audit event to the runtime".to_string(),
-            input_schema: json_schema_object(
-                serde_json::json!({
-                    "action": {"type": "string", "description": "Audit action name"},
-                    "agent": {"type": "string", "description": "Optional agent name or ID"},
-                    "details": {"type": "object", "description": "Arbitrary event details"},
-                    "outcome": {"type": "string", "description": "Event outcome (e.g. success, failure)"},
-                    "source": {"type": "string", "description": "Source identifier for the audit event"}
-                }),
-                vec!["action", "source"],
-            ),
-        },
-        McpToolDescription {
-            name: "agnos_memory_get".to_string(),
-            description: "Get a memory value for an agent by key".to_string(),
-            input_schema: json_schema_object(
-                serde_json::json!({
-                    "agent_id": {"type": "string", "description": "UUID of the agent"},
-                    "key": {"type": "string", "description": "Memory key to retrieve"}
-                }),
-                vec!["agent_id", "key"],
-            ),
-        },
-        McpToolDescription {
-            name: "agnos_memory_set".to_string(),
-            description: "Set a memory value for an agent by key".to_string(),
-            input_schema: json_schema_object(
-                serde_json::json!({
-                    "agent_id": {"type": "string", "description": "UUID of the agent"},
-                    "key": {"type": "string", "description": "Memory key to set"},
-                    "value": {"description": "Value to store (any JSON value)"}
-                }),
-                vec!["agent_id", "key", "value"],
-            ),
-        },
-        // ----- Delta code hosting tools -----
-        McpToolDescription {
-            name: "delta_create_repository".to_string(),
-            description: "Create a git repository in Delta".to_string(),
-            input_schema: json_schema_object(
-                serde_json::json!({
-                    "name": {"type": "string", "description": "Repository name"},
-                    "description": {"type": "string", "description": "Repository description"},
-                    "visibility": {"type": "string", "description": "Visibility: public or private"}
-                }),
-                vec!["name"],
-            ),
-        },
-        McpToolDescription {
-            name: "delta_list_repositories".to_string(),
-            description: "List git repositories".to_string(),
-            input_schema: json_schema_object(
-                serde_json::json!({
-                    "owner": {"type": "string", "description": "Filter by owner"},
-                    "limit": {"type": "integer", "description": "Max results to return"}
-                }),
-                vec![],
-            ),
-        },
-        McpToolDescription {
-            name: "delta_pull_request".to_string(),
-            description: "Manage pull requests (list, create, merge, close)".to_string(),
-            input_schema: json_schema_object(
-                serde_json::json!({
-                    "action": {"type": "string", "description": "Action: list, create, merge, close"},
-                    "repo": {"type": "string", "description": "Repository name"},
-                    "title": {"type": "string", "description": "PR title (for create)"},
-                    "source_branch": {"type": "string", "description": "Source branch (for create)"},
-                    "target_branch": {"type": "string", "description": "Target branch (for create, default: main)"},
-                    "pr_id": {"type": "string", "description": "PR ID (for merge/close)"}
-                }),
-                vec!["action"],
-            ),
-        },
-        McpToolDescription {
-            name: "delta_push".to_string(),
-            description: "Push code to a Delta repository".to_string(),
-            input_schema: json_schema_object(
-                serde_json::json!({
-                    "repo": {"type": "string", "description": "Repository name"},
-                    "branch": {"type": "string", "description": "Branch to push"}
-                }),
-                vec![],
-            ),
-        },
-        McpToolDescription {
-            name: "delta_ci_status".to_string(),
-            description: "Get CI pipeline status for a repository".to_string(),
-            input_schema: json_schema_object(
-                serde_json::json!({
-                    "repo": {"type": "string", "description": "Repository name"},
-                    "pipeline_id": {"type": "string", "description": "Specific pipeline ID"}
-                }),
-                vec![],
-            ),
-        },
-        // ----- Aequi accounting tools -----
-        McpToolDescription {
-            name: "aequi_estimate_quarterly_tax".to_string(),
-            description: "Calculate estimated quarterly tax liability".to_string(),
-            input_schema: json_schema_object(
-                serde_json::json!({
-                    "quarter": {"type": "string", "description": "Quarter number (1-4)"},
-                    "year": {"type": "string", "description": "Tax year (e.g. 2026)"}
-                }),
-                vec![],
-            ),
-        },
-        McpToolDescription {
-            name: "aequi_schedule_c_preview".to_string(),
-            description: "Generate a Schedule C (Profit or Loss) preview".to_string(),
-            input_schema: json_schema_object(
-                serde_json::json!({
-                    "year": {"type": "string", "description": "Tax year (e.g. 2026)"}
-                }),
-                vec![],
-            ),
-        },
-        McpToolDescription {
-            name: "aequi_import_bank_statement".to_string(),
-            description: "Import a bank statement file (OFX, QFX, CSV)".to_string(),
-            input_schema: json_schema_object(
-                serde_json::json!({
-                    "file_path": {"type": "string", "description": "Path to the statement file"},
-                    "format": {"type": "string", "description": "File format: ofx, qfx, csv (auto-detected if omitted)"}
-                }),
-                vec!["file_path"],
-            ),
-        },
-        McpToolDescription {
-            name: "aequi_account_balances".to_string(),
-            description: "Get current account balances".to_string(),
-            input_schema: json_schema_object(
-                serde_json::json!({
-                    "account_type": {"type": "string", "description": "Filter by type: asset, liability, equity, revenue, expense"}
-                }),
-                vec![],
-            ),
-        },
-        McpToolDescription {
-            name: "aequi_list_receipts".to_string(),
-            description: "List receipts with optional status filter".to_string(),
-            input_schema: json_schema_object(
-                serde_json::json!({
-                    "status": {"type": "string", "description": "Filter: pending_review, reviewed, matched, all"},
-                    "limit": {"type": "integer", "description": "Max results to return"}
-                }),
-                vec![],
-            ),
-        },
-        // ----- Agnostic QA platform tools -----
-        McpToolDescription {
-            name: "agnostic_run_suite".to_string(),
-            description: "Run a QA test suite".to_string(),
-            input_schema: json_schema_object(
-                serde_json::json!({
-                    "suite": {"type": "string", "description": "Test suite name or ID"},
-                    "target_url": {"type": "string", "description": "Target application URL to test"},
-                    "agents": {"type": "array", "description": "Agent types to use: ui, api, security, performance, accessibility, self-healing"}
-                }),
-                vec!["suite"],
-            ),
-        },
-        McpToolDescription {
-            name: "agnostic_test_status".to_string(),
-            description: "Get status of a running or completed test run".to_string(),
-            input_schema: json_schema_object(
-                serde_json::json!({
-                    "run_id": {"type": "string", "description": "Test run ID"}
-                }),
-                vec!["run_id"],
-            ),
-        },
-        McpToolDescription {
-            name: "agnostic_test_report".to_string(),
-            description: "Get detailed test report with findings".to_string(),
-            input_schema: json_schema_object(
-                serde_json::json!({
-                    "run_id": {"type": "string", "description": "Test run ID"},
-                    "format": {"type": "string", "description": "Report format: summary, full, json (default: summary)"}
-                }),
-                vec!["run_id"],
-            ),
-        },
-        McpToolDescription {
-            name: "agnostic_list_suites".to_string(),
-            description: "List available QA test suites".to_string(),
-            input_schema: json_schema_object(
-                serde_json::json!({
-                    "category": {"type": "string", "description": "Filter by category: ui, api, security, performance, all"}
-                }),
-                vec![],
-            ),
-        },
-        McpToolDescription {
-            name: "agnostic_agent_status".to_string(),
-            description: "Get status of QA testing agents".to_string(),
-            input_schema: json_schema_object(
-                serde_json::json!({
-                    "agent_type": {"type": "string", "description": "Filter by agent type: ui, api, security, performance, accessibility, self-healing"}
-                }),
-                vec![],
-            ),
-        },
-        // ----- Photis Nadi task management tools -----
-        McpToolDescription {
-            name: "photis_list_tasks".to_string(),
-            description: "List tasks with optional filters".to_string(),
-            input_schema: json_schema_object(
-                serde_json::json!({
-                    "status": {"type": "string", "description": "Filter by status: todo, in_progress, done"},
-                    "board_id": {"type": "string", "description": "Filter by board ID"}
-                }),
-                vec![],
-            ),
-        },
-        McpToolDescription {
-            name: "photis_create_task".to_string(),
-            description: "Create a new task".to_string(),
-            input_schema: json_schema_object(
-                serde_json::json!({
-                    "title": {"type": "string", "description": "Task title"},
-                    "description": {"type": "string", "description": "Task description"},
-                    "board_id": {"type": "string", "description": "Board to add task to"},
-                    "priority": {"type": "string", "description": "Priority: low, medium, high"}
-                }),
-                vec!["title"],
-            ),
-        },
-        McpToolDescription {
-            name: "photis_update_task".to_string(),
-            description: "Update an existing task".to_string(),
-            input_schema: json_schema_object(
-                serde_json::json!({
-                    "task_id": {"type": "string", "description": "UUID of the task to update"},
-                    "title": {"type": "string", "description": "New task title"},
-                    "status": {"type": "string", "description": "New status: todo, in_progress, done"},
-                    "priority": {"type": "string", "description": "New priority: low, medium, high"}
-                }),
-                vec!["task_id"],
-            ),
-        },
-        McpToolDescription {
-            name: "photis_get_rituals".to_string(),
-            description: "Get daily rituals/habits".to_string(),
-            input_schema: json_schema_object(
-                serde_json::json!({
-                    "date": {"type": "string", "description": "ISO date (e.g. 2026-03-06)"}
-                }),
-                vec![],
-            ),
-        },
-        McpToolDescription {
-            name: "photis_analytics".to_string(),
-            description: "Get productivity analytics".to_string(),
-            input_schema: json_schema_object(
-                serde_json::json!({
-                    "period": {"type": "string", "description": "Period: day, week, month"},
-                    "metric": {"type": "string", "description": "Metric: tasks_completed, streak, velocity"}
-                }),
-                vec![],
-            ),
-        },
-        McpToolDescription {
-            name: "photis_sync".to_string(),
-            description: "Trigger sync with Supabase backend".to_string(),
-            input_schema: json_schema_object(
-                serde_json::json!({
-                    "direction": {"type": "string", "description": "Sync direction: push, pull, both"}
-                }),
-                vec![],
-            ),
-        },
+        // ----- AGNOS core runtime tools (10) -----
+        tool!("agnos_health", "Check agent runtime health status"),
+        tool!("agnos_list_agents", "List all registered agents"),
+        tool!("agnos_get_agent", "Get details for a specific agent by ID",
+            json!({"agent_id": {"type": "string", "description": "UUID of the agent"}}),
+            vec!["agent_id"]
+        ),
+        tool!("agnos_register_agent", "Register a new agent with the runtime",
+            json!({
+                "name": {"type": "string", "description": "Agent name"},
+                "capabilities": {"type": "array", "items": {"type": "string"}, "description": "Agent capabilities"},
+                "metadata": {"type": "object", "description": "Additional key-value metadata"}
+            }),
+            vec!["name"]
+        ),
+        tool!("agnos_deregister_agent", "Deregister an agent by ID",
+            json!({"agent_id": {"type": "string", "description": "UUID of the agent to deregister"}}),
+            vec!["agent_id"]
+        ),
+        tool!("agnos_heartbeat", "Send a heartbeat for an agent",
+            json!({
+                "agent_id": {"type": "string", "description": "UUID of the agent"},
+                "status": {"type": "string", "description": "Optional status update"},
+                "current_task": {"type": "string", "description": "Optional current task description"}
+            }),
+            vec!["agent_id"]
+        ),
+        tool!("agnos_get_metrics", "Get agent runtime metrics"),
+        tool!("agnos_forward_audit", "Forward an audit event to the runtime",
+            json!({
+                "action": {"type": "string", "description": "Audit action name"},
+                "agent": {"type": "string", "description": "Optional agent name or ID"},
+                "details": {"type": "object", "description": "Arbitrary event details"},
+                "outcome": {"type": "string", "description": "Event outcome (e.g. success, failure)"},
+                "source": {"type": "string", "description": "Source identifier for the audit event"}
+            }),
+            vec!["action", "source"]
+        ),
+        tool!("agnos_memory_get", "Get a memory value for an agent by key",
+            json!({
+                "agent_id": {"type": "string", "description": "UUID of the agent"},
+                "key": {"type": "string", "description": "Memory key to retrieve"}
+            }),
+            vec!["agent_id", "key"]
+        ),
+        tool!("agnos_memory_set", "Set a memory value for an agent by key",
+            json!({
+                "agent_id": {"type": "string", "description": "UUID of the agent"},
+                "key": {"type": "string", "description": "Memory key to set"},
+                "value": {"description": "Value to store (any JSON value)"}
+            }),
+            vec!["agent_id", "key", "value"]
+        ),
+        // ----- Delta code hosting tools (5) -----
+        tool!("delta_create_repository", "Create a git repository in Delta",
+            json!({
+                "name": {"type": "string", "description": "Repository name"},
+                "description": {"type": "string", "description": "Repository description"},
+                "visibility": {"type": "string", "description": "Visibility: public or private"}
+            }),
+            vec!["name"]
+        ),
+        tool!("delta_list_repositories", "List git repositories",
+            json!({
+                "owner": {"type": "string", "description": "Filter by owner"},
+                "limit": {"type": "integer", "description": "Max results to return"}
+            }),
+            vec![]
+        ),
+        tool!("delta_pull_request", "Manage pull requests (list, create, merge, close)",
+            json!({
+                "action": {"type": "string", "description": "Action: list, create, merge, close"},
+                "repo": {"type": "string", "description": "Repository name"},
+                "title": {"type": "string", "description": "PR title (for create)"},
+                "source_branch": {"type": "string", "description": "Source branch (for create)"},
+                "target_branch": {"type": "string", "description": "Target branch (for create, default: main)"},
+                "pr_id": {"type": "string", "description": "PR ID (for merge/close)"}
+            }),
+            vec!["action"]
+        ),
+        tool!("delta_push", "Push code to a Delta repository",
+            json!({
+                "repo": {"type": "string", "description": "Repository name"},
+                "branch": {"type": "string", "description": "Branch to push"}
+            }),
+            vec![]
+        ),
+        tool!("delta_ci_status", "Get CI pipeline status for a repository",
+            json!({
+                "repo": {"type": "string", "description": "Repository name"},
+                "pipeline_id": {"type": "string", "description": "Specific pipeline ID"}
+            }),
+            vec![]
+        ),
+        // ----- Aequi accounting tools (5) -----
+        tool!("aequi_estimate_quarterly_tax", "Calculate estimated quarterly tax liability",
+            json!({
+                "quarter": {"type": "string", "description": "Quarter number (1-4)"},
+                "year": {"type": "string", "description": "Tax year (e.g. 2026)"}
+            }),
+            vec![]
+        ),
+        tool!("aequi_schedule_c_preview", "Generate a Schedule C (Profit or Loss) preview",
+            json!({"year": {"type": "string", "description": "Tax year (e.g. 2026)"}}),
+            vec![]
+        ),
+        tool!("aequi_import_bank_statement", "Import a bank statement file (OFX, QFX, CSV)",
+            json!({
+                "file_path": {"type": "string", "description": "Path to the statement file"},
+                "format": {"type": "string", "description": "File format: ofx, qfx, csv (auto-detected if omitted)"}
+            }),
+            vec!["file_path"]
+        ),
+        tool!("aequi_account_balances", "Get current account balances",
+            json!({"account_type": {"type": "string", "description": "Filter by type: asset, liability, equity, revenue, expense"}}),
+            vec![]
+        ),
+        tool!("aequi_list_receipts", "List receipts with optional status filter",
+            json!({
+                "status": {"type": "string", "description": "Filter: pending_review, reviewed, matched, all"},
+                "limit": {"type": "integer", "description": "Max results to return"}
+            }),
+            vec![]
+        ),
+        // ----- Agnostic QA platform tools (5) -----
+        tool!("agnostic_run_suite", "Run a QA test suite",
+            json!({
+                "suite": {"type": "string", "description": "Test suite name or ID"},
+                "target_url": {"type": "string", "description": "Target application URL to test"},
+                "agents": {"type": "array", "description": "Agent types to use: ui, api, security, performance, accessibility, self-healing"}
+            }),
+            vec!["suite"]
+        ),
+        tool!("agnostic_test_status", "Get status of a running or completed test run",
+            json!({"run_id": {"type": "string", "description": "Test run ID"}}),
+            vec!["run_id"]
+        ),
+        tool!("agnostic_test_report", "Get detailed test report with findings",
+            json!({
+                "run_id": {"type": "string", "description": "Test run ID"},
+                "format": {"type": "string", "description": "Report format: summary, full, json (default: summary)"}
+            }),
+            vec!["run_id"]
+        ),
+        tool!("agnostic_list_suites", "List available QA test suites",
+            json!({"category": {"type": "string", "description": "Filter by category: ui, api, security, performance, all"}}),
+            vec![]
+        ),
+        tool!("agnostic_agent_status", "Get status of QA testing agents",
+            json!({"agent_type": {"type": "string", "description": "Filter by agent type: ui, api, security, performance, accessibility, self-healing"}}),
+            vec![]
+        ),
+        // ----- Photis Nadi task management tools (6) -----
+        tool!("photis_list_tasks", "List tasks with optional filters",
+            json!({
+                "status": {"type": "string", "description": "Filter by status: todo, in_progress, done"},
+                "board_id": {"type": "string", "description": "Filter by board ID"}
+            }),
+            vec![]
+        ),
+        tool!("photis_create_task", "Create a new task",
+            json!({
+                "title": {"type": "string", "description": "Task title"},
+                "description": {"type": "string", "description": "Task description"},
+                "board_id": {"type": "string", "description": "Board to add task to"},
+                "priority": {"type": "string", "description": "Priority: low, medium, high"}
+            }),
+            vec!["title"]
+        ),
+        tool!("photis_update_task", "Update an existing task",
+            json!({
+                "task_id": {"type": "string", "description": "UUID of the task to update"},
+                "title": {"type": "string", "description": "New task title"},
+                "status": {"type": "string", "description": "New status: todo, in_progress, done"},
+                "priority": {"type": "string", "description": "New priority: low, medium, high"}
+            }),
+            vec!["task_id"]
+        ),
+        tool!("photis_get_rituals", "Get daily rituals/habits",
+            json!({"date": {"type": "string", "description": "ISO date (e.g. 2026-03-06)"}}),
+            vec![]
+        ),
+        tool!("photis_analytics", "Get productivity analytics",
+            json!({
+                "period": {"type": "string", "description": "Period: day, week, month"},
+                "metric": {"type": "string", "description": "Metric: tasks_completed, streak, velocity"}
+            }),
+            vec![]
+        ),
+        tool!("photis_sync", "Trigger sync with Supabase backend",
+            json!({"direction": {"type": "string", "description": "Sync direction: push, pull, both"}}),
+            vec![]
+        ),
     ];
 
     McpToolManifest { tools }
