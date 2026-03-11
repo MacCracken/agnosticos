@@ -12,6 +12,7 @@ USER root
 # ── Node.js 22 + Bun ──────────────────────────────────────────────────────
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gnupg \
+    unzip \
     && mkdir -p /etc/apt/keyrings \
     && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
        | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
@@ -36,4 +37,4 @@ LABEL org.opencontainers.image.base.name="ghcr.io/maccracken/agnosticos:latest"
 USER agnos
 WORKDIR /home/agnos
 
-CMD ["node"]
+ENTRYPOINT ["node"]

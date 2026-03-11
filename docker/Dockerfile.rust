@@ -54,4 +54,4 @@ LABEL org.opencontainers.image.base.name="ghcr.io/maccracken/agnosticos:latest"
 USER agnos
 WORKDIR /home/agnos
 
-CMD ["rustc", "--version"]
+ENTRYPOINT ["rustc"]
