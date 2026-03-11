@@ -635,7 +635,7 @@ pub fn discover_recipes(dir: &Path) -> Vec<RecipeInfo> {
         if path.is_dir() {
             // Recurse into subdirectories
             recipes.extend(discover_recipes(&path));
-        } else if path.extension().map_or(false, |e| e == "toml") {
+        } else if path.extension().is_some_and(|e| e == "toml") {
             if let Some(info) = parse_recipe_info(&path) {
                 recipes.push(info);
             }
@@ -728,10 +728,9 @@ fn check_dependency_closure(recipes: &[RecipeInfo]) -> (bool, Vec<String>) {
 
     for recipe in recipes {
         for dep in recipe.runtime_deps.iter().chain(recipe.build_deps.iter()) {
-            if !known.contains(dep.as_str()) && !virtual_pkgs.contains(dep.as_str()) {
-                if !missing.contains(dep) {
+            if !known.contains(dep.as_str()) && !virtual_pkgs.contains(dep.as_str())
+                && !missing.contains(dep) {
                     missing.push(dep.clone());
-                }
             }
         }
     }
@@ -826,7 +825,7 @@ fn count_files_with_extension(dir: &Path, ext: &str) -> usize {
                 .filter(|e| {
                     e.path()
                         .extension()
-                        .map_or(false, |e| e == ext)
+                        .is_some_and(|e| e == ext)
                 })
                 .count()
         })

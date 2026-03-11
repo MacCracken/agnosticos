@@ -31,7 +31,7 @@ impl Interpreter {
 
         // Check each pattern
         // AGNOS-specific intents matched first (more specific than generic list/show)
-        if let Some(caps) = self.try_captures("audit", &input_lower) {
+        if let Some(caps) = self.try_captures("audit", input_lower) {
             let agent_id = caps.get(7).map(|m| m.as_str().trim().to_string());
             let time_window = caps.get(12).map(|m| m.as_str().trim().to_string());
             return Intent::AuditView {
@@ -41,7 +41,7 @@ impl Interpreter {
             };
         }
 
-        if let Some(caps) = self.try_captures("agent_info", &input_lower) {
+        if let Some(caps) = self.try_captures("agent_info", input_lower) {
             let agent_id = caps
                 .get(8)
                 .map(|m| m.as_str().trim().to_string())
@@ -50,7 +50,7 @@ impl Interpreter {
         }
 
         // --- Agnostic QA platform intents (before greedy list/show) ---
-        if let Some(caps) = self.try_captures("agnostic_run", &input_lower) {
+        if let Some(caps) = self.try_captures("agnostic_run", input_lower) {
             let suite = caps.get(1).map_or("", |m| m.as_str()).trim().to_string();
             let target_url = caps
                 .get(3)
@@ -61,14 +61,14 @@ impl Interpreter {
             }
         }
 
-        if let Some(caps) = self.try_captures("agnostic_status", &input_lower) {
+        if let Some(caps) = self.try_captures("agnostic_status", input_lower) {
             let run_id = caps.get(1).map_or("", |m| m.as_str()).trim().to_string();
             if !run_id.is_empty() {
                 return Intent::AgnosticTestStatus { run_id };
             }
         }
 
-        if let Some(caps) = self.try_captures("agnostic_report", &input_lower) {
+        if let Some(caps) = self.try_captures("agnostic_report", input_lower) {
             let run_id = caps.get(1).map_or("", |m| m.as_str()).trim().to_string();
             let format = caps
                 .get(3)
@@ -79,7 +79,7 @@ impl Interpreter {
             }
         }
 
-        if let Some(caps) = self.try_captures("agnostic_list_suites", &input_lower) {
+        if let Some(caps) = self.try_captures("agnostic_list_suites", input_lower) {
             let category = caps
                 .get(2)
                 .map(|m| m.as_str().trim().to_string())
@@ -87,7 +87,7 @@ impl Interpreter {
             return Intent::AgnosticListSuites { category };
         }
 
-        if let Some(caps) = self.try_captures("agnostic_agents", &input_lower) {
+        if let Some(caps) = self.try_captures("agnostic_agents", input_lower) {
             let agent_type = caps
                 .get(2)
                 .map(|m| m.as_str().trim().to_string())
@@ -96,7 +96,7 @@ impl Interpreter {
         }
 
         // --- Delta code hosting intents (before greedy list/show) ---
-        if let Some(caps) = self.try_captures("delta_create_repo", &input_lower) {
+        if let Some(caps) = self.try_captures("delta_create_repo", input_lower) {
             let name = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();
             let description = caps.get(4).map(|m| m.as_str().trim().to_string());
             if !name.is_empty() {
@@ -104,11 +104,11 @@ impl Interpreter {
             }
         }
 
-        if self.try_captures("delta_list_repos", &input_lower).is_some() {
+        if self.try_captures("delta_list_repos", input_lower).is_some() {
             return Intent::DeltaListRepos;
         }
 
-        if let Some(caps) = self.try_captures("delta_pr", &input_lower) {
+        if let Some(caps) = self.try_captures("delta_pr", input_lower) {
             let action = caps.get(2).map_or("list", |m| m.as_str()).trim().to_string();
             let repo = caps
                 .get(4)
@@ -125,7 +125,7 @@ impl Interpreter {
             };
         }
 
-        if let Some(caps) = self.try_captures("delta_push", &input_lower) {
+        if let Some(caps) = self.try_captures("delta_push", input_lower) {
             let repo = caps
                 .get(2)
                 .map(|m| m.as_str().trim().to_string())
@@ -137,7 +137,7 @@ impl Interpreter {
             return Intent::DeltaPush { repo, branch };
         }
 
-        if let Some(caps) = self.try_captures("delta_ci", &input_lower) {
+        if let Some(caps) = self.try_captures("delta_ci", input_lower) {
             let repo = caps
                 .get(4)
                 .map(|m| m.as_str().trim().to_string())
@@ -146,28 +146,28 @@ impl Interpreter {
         }
 
         // --- Aequi accounting intents (before greedy list/show) ---
-        if let Some(caps) = self.try_captures("aequi_tax", &input_lower) {
+        if let Some(caps) = self.try_captures("aequi_tax", input_lower) {
             let quarter = caps.get(6).map(|m| m.as_str().trim().to_string());
             return Intent::AequiTaxEstimate { quarter };
         }
 
-        if let Some(caps) = self.try_captures("aequi_schedule_c", &input_lower) {
+        if let Some(caps) = self.try_captures("aequi_schedule_c", input_lower) {
             let year = caps.get(4).map(|m| m.as_str().trim().to_string());
             return Intent::AequiScheduleC { year };
         }
 
-        if let Some(caps) = self.try_captures("aequi_import", &input_lower) {
+        if let Some(caps) = self.try_captures("aequi_import", input_lower) {
             let file_path = caps.get(4).map_or("", |m| m.as_str()).trim().to_string();
             if !file_path.is_empty() {
                 return Intent::AequiImportBank { file_path };
             }
         }
 
-        if self.try_captures("aequi_balance", &input_lower).is_some() {
+        if self.try_captures("aequi_balance", input_lower).is_some() {
             return Intent::AequiBalance;
         }
 
-        if let Some(caps) = self.try_captures("aequi_receipts", &input_lower) {
+        if let Some(caps) = self.try_captures("aequi_receipts", input_lower) {
             let status = caps.get(3).map(|m| {
                 let s = m.as_str().trim();
                 match s {
@@ -180,7 +180,7 @@ impl Interpreter {
         }
 
         // --- Photis Nadi task management intents (before greedy list/show) ---
-        if let Some(caps) = self.try_captures("task_list", &input_lower) {
+        if let Some(caps) = self.try_captures("task_list", input_lower) {
             let status = caps.get(4).map(|m| m.as_str().trim().to_string());
             return Intent::TaskList { status };
         }
@@ -193,7 +193,7 @@ impl Interpreter {
             }
         }
 
-        if let Some(caps) = self.try_captures("task_update", &input_lower) {
+        if let Some(caps) = self.try_captures("task_update", input_lower) {
             let task_id = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();
             let status = caps.get(3).map(|m| m.as_str().trim().to_string());
             if !task_id.is_empty() {
@@ -201,12 +201,12 @@ impl Interpreter {
             }
         }
 
-        if let Some(caps) = self.try_captures("ritual_check", &input_lower) {
+        if let Some(caps) = self.try_captures("ritual_check", input_lower) {
             let date = caps.get(2).map(|m| m.as_str().trim().to_string());
             return Intent::RitualCheck { date };
         }
 
-        if let Some(caps) = self.try_captures("productivity_stats", &input_lower) {
+        if let Some(caps) = self.try_captures("productivity_stats", input_lower) {
             let period = caps.get(2).map(|m| match m.as_str().trim() {
                 "daily" => "day".to_string(),
                 "weekly" | "this week" => "week".to_string(),
@@ -216,7 +216,7 @@ impl Interpreter {
             return Intent::ProductivityStats { period };
         }
 
-        if let Some(caps) = self.try_captures("service", &input_lower) {
+        if let Some(caps) = self.try_captures("service", input_lower) {
             let action = caps
                 .get(1)
                 .map(|m| m.as_str().to_string())
@@ -231,7 +231,7 @@ impl Interpreter {
             };
         }
 
-        if let Some(caps) = self.try_captures("network_scan", &input_lower) {
+        if let Some(caps) = self.try_captures("network_scan", input_lower) {
             // Determine which alternative matched based on capture groups:
             // group 2 = port scan target, 3 = ping sweep, 4 = dns lookup,
             // 5 = traceroute, 6 = packet capture, 7 = web scan
@@ -274,7 +274,7 @@ impl Interpreter {
         }
 
         // Extended network tool patterns
-        if let Some(caps) = self.try_captures("network_extended", &input_lower) {
+        if let Some(caps) = self.try_captures("network_extended", input_lower) {
             let full = caps.get(0).map(|m| m.as_str()).unwrap_or("");
             if let Some(target) = caps.get(2) {
                 return Intent::NetworkScan {
@@ -343,7 +343,7 @@ impl Interpreter {
         }
 
         // Journal view
-        if let Some(caps) = self.try_captures("journal", &input_lower) {
+        if let Some(caps) = self.try_captures("journal", input_lower) {
             let unit = caps
                 .get(6)
                 .map(|m| m.as_str().trim().to_string())
@@ -361,7 +361,7 @@ impl Interpreter {
         }
 
         // Journal alt — "show error logs", "show last 50 log entries"
-        if let Some(caps) = self.try_captures("journal_alt", &input_lower) {
+        if let Some(caps) = self.try_captures("journal_alt", input_lower) {
             let lines = caps.get(4).and_then(|m| m.as_str().parse::<usize>().ok());
             let priority = caps.get(5).map(|m| m.as_str().trim().to_string());
             let unit = caps
@@ -381,7 +381,7 @@ impl Interpreter {
         }
 
         // Device info
-        if let Some(caps) = self.try_captures("device_info", &input_lower) {
+        if let Some(caps) = self.try_captures("device_info", input_lower) {
             let subsystem = caps.get(4).map(|m| m.as_str().trim().to_string());
             let device_path = caps
                 .get(9)
@@ -394,7 +394,7 @@ impl Interpreter {
         }
 
         // Device info — specific path: "device info for /dev/sda"
-        if let Some(caps) = self.try_captures("device_path", &input_lower) {
+        if let Some(caps) = self.try_captures("device_path", input_lower) {
             let device_path = caps.get(4).map(|m| m.as_str().trim().to_string());
             return Intent::DeviceInfo {
                 subsystem: None,
@@ -403,7 +403,7 @@ impl Interpreter {
         }
 
         // Mount control — unmount
-        if let Some(caps) = self.try_captures("unmount", &input_lower) {
+        if let Some(caps) = self.try_captures("unmount", input_lower) {
             let mountpoint = caps.get(2).map(|m| m.as_str().trim().to_string());
             return Intent::MountControl {
                 action: "unmount".to_string(),
@@ -413,7 +413,7 @@ impl Interpreter {
         }
 
         // Mount control — mount <device> on <mountpoint>
-        if let Some(caps) = self.try_captures("mount_action", &input_lower) {
+        if let Some(caps) = self.try_captures("mount_action", input_lower) {
             let filesystem = caps.get(1).map(|m| m.as_str().trim().to_string());
             let mountpoint = caps.get(3).map(|m| m.as_str().trim().to_string());
             return Intent::MountControl {
@@ -424,7 +424,7 @@ impl Interpreter {
         }
 
         // Mount control — list mounts
-        if let Some(caps) = self.try_captures("mount", &input_lower) {
+        if let Some(caps) = self.try_captures("mount", input_lower) {
             let filesystem = if caps.get(4).is_some() {
                 Some("fuse".to_string())
             } else {
@@ -438,7 +438,7 @@ impl Interpreter {
         }
 
         // Boot config — set
-        if let Some(caps) = self.try_captures("boot_set", &input_lower) {
+        if let Some(caps) = self.try_captures("boot_set", input_lower) {
             let action_word = caps.get(2).map(|m| m.as_str().trim()).unwrap_or("default");
             let action = match action_word {
                 "timeout" => "timeout".to_string(),
@@ -458,7 +458,7 @@ impl Interpreter {
         }
 
         // Boot config — list/show
-        if self.try_captures("boot", &input_lower).is_some() {
+        if self.try_captures("boot", input_lower).is_some() {
             return Intent::BootConfig {
                 action: "list".to_string(),
                 entry: None,
@@ -467,7 +467,7 @@ impl Interpreter {
         }
 
         // System update
-        if let Some(_caps) = self.try_captures("update", &input_lower) {
+        if let Some(_caps) = self.try_captures("update", input_lower) {
             let action = if input_lower.contains("check") {
                 "check"
             } else if input_lower.contains("apply") {
@@ -485,7 +485,7 @@ impl Interpreter {
         }
 
         // --- Ark unified package manager intents (before greedy list/show) ---
-        if let Some(caps) = self.try_captures("ark_install", &input_lower) {
+        if let Some(caps) = self.try_captures("ark_install", input_lower) {
             let packages_str = caps.get(1).map_or("", |m| m.as_str()).trim();
             if !packages_str.is_empty() {
                 let packages: Vec<String> = packages_str
@@ -499,7 +499,7 @@ impl Interpreter {
             }
         }
 
-        if let Some(caps) = self.try_captures("ark_remove", &input_lower) {
+        if let Some(caps) = self.try_captures("ark_remove", input_lower) {
             let packages_str = caps.get(2).map_or("", |m| m.as_str()).trim();
             if !packages_str.is_empty() {
                 let packages: Vec<String> = packages_str
@@ -510,25 +510,25 @@ impl Interpreter {
             }
         }
 
-        if let Some(caps) = self.try_captures("ark_search", &input_lower) {
+        if let Some(caps) = self.try_captures("ark_search", input_lower) {
             let query = caps.get(1).map_or("", |m| m.as_str()).trim().to_string();
             if !query.is_empty() {
                 return Intent::ArkSearch { query };
             }
         }
 
-        if let Some(caps) = self.try_captures("ark_info", &input_lower) {
+        if let Some(caps) = self.try_captures("ark_info", input_lower) {
             let package = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();
             if !package.is_empty() {
                 return Intent::ArkInfo { package };
             }
         }
 
-        if self.try_captures("ark_update", &input_lower).is_some() {
+        if self.try_captures("ark_update", input_lower).is_some() {
             return Intent::ArkUpdate;
         }
 
-        if let Some(caps) = self.try_captures("ark_upgrade", &input_lower) {
+        if let Some(caps) = self.try_captures("ark_upgrade", input_lower) {
             let packages = caps
                 .get(2)
                 .map(|m| m.as_str().trim())
@@ -541,11 +541,11 @@ impl Interpreter {
             return Intent::ArkUpgrade { packages };
         }
 
-        if self.try_captures("ark_status", &input_lower).is_some() {
+        if self.try_captures("ark_status", input_lower).is_some() {
             return Intent::ArkStatus;
         }
 
-        if let Some(caps) = self.try_captures("list", &input_lower) {
+        if let Some(caps) = self.try_captures("list", input_lower) {
             let path = caps.get(6).map(|m| m.as_str().trim().to_string());
             let all = input_lower.contains("all");
 
@@ -558,7 +558,7 @@ impl Interpreter {
             };
         }
 
-        if let Some(caps) = self.try_captures("show_file", &input_lower) {
+        if let Some(caps) = self.try_captures("show_file", input_lower) {
             if let Some(path) = caps.get(6) {
                 return Intent::ShowFile {
                     path: path.as_str().trim().to_string(),
@@ -567,7 +567,7 @@ impl Interpreter {
             }
         }
 
-        if let Some(caps) = self.try_captures("cd", &input_lower) {
+        if let Some(caps) = self.try_captures("cd", input_lower) {
             if let Some(path) = caps.get(4) {
                 return Intent::ChangeDirectory {
                     path: path.as_str().trim().to_string(),
@@ -575,7 +575,7 @@ impl Interpreter {
             }
         }
 
-        if let Some(caps) = self.try_captures("mkdir", &input_lower) {
+        if let Some(caps) = self.try_captures("mkdir", input_lower) {
             if let Some(path) = caps.get(6) {
                 return Intent::CreateDirectory {
                     path: path.as_str().trim().to_string(),
@@ -583,7 +583,7 @@ impl Interpreter {
             }
         }
 
-        if let Some(caps) = self.try_captures("copy", &input_lower) {
+        if let Some(caps) = self.try_captures("copy", input_lower) {
             if let (Some(source), Some(dest)) = (caps.get(2), caps.get(4)) {
                 return Intent::Copy {
                     source: source.as_str().trim().to_string(),
@@ -592,7 +592,7 @@ impl Interpreter {
             }
         }
 
-        if let Some(caps) = self.try_captures("move", &input_lower) {
+        if let Some(caps) = self.try_captures("move", input_lower) {
             if let (Some(source), Some(dest)) = (caps.get(2), caps.get(4)) {
                 return Intent::Move {
                     source: source.as_str().trim().to_string(),
@@ -601,29 +601,29 @@ impl Interpreter {
             }
         }
 
-        if self.try_captures("ps", &input_lower).is_some() {
+        if self.try_captures("ps", input_lower).is_some() {
             return Intent::ShowProcesses;
         }
 
-        if self.try_captures("sysinfo", &input_lower).is_some() {
+        if self.try_captures("sysinfo", input_lower).is_some() {
             return Intent::SystemInfo;
         }
 
-        if let Some(caps) = self.try_captures("marketplace_install", &input_lower) {
+        if let Some(caps) = self.try_captures("marketplace_install", input_lower) {
             let package = caps.get(3).map_or("", |m| m.as_str()).trim().to_string();
             if !package.is_empty() {
                 return Intent::MarketplaceInstall { package };
             }
         }
 
-        if let Some(caps) = self.try_captures("marketplace_uninstall", &input_lower) {
+        if let Some(caps) = self.try_captures("marketplace_uninstall", input_lower) {
             let package = caps.get(3).map_or("", |m| m.as_str()).trim().to_string();
             if !package.is_empty() {
                 return Intent::MarketplaceUninstall { package };
             }
         }
 
-        if let Some(caps) = self.try_captures("marketplace_search", &input_lower) {
+        if let Some(caps) = self.try_captures("marketplace_search", input_lower) {
             let query = caps.get(4).map_or("", |m| m.as_str()).trim().to_string();
             if !query.is_empty() {
                 return Intent::MarketplaceSearch { query };
@@ -631,20 +631,20 @@ impl Interpreter {
         }
 
         if self
-            .try_captures("marketplace_list", &input_lower)
+            .try_captures("marketplace_list", input_lower)
             .is_some()
         {
             return Intent::MarketplaceList;
         }
 
         if self
-            .try_captures("marketplace_update", &input_lower)
+            .try_captures("marketplace_update", input_lower)
             .is_some()
         {
             return Intent::MarketplaceUpdate;
         }
 
-        if let Some(caps) = self.try_captures("knowledge", &input_lower) {
+        if let Some(caps) = self.try_captures("knowledge", input_lower) {
             let query = caps.get(5).map_or("", |m| m.as_str()).trim().to_string();
             if !query.is_empty() {
                 return Intent::KnowledgeSearch {
@@ -654,7 +654,7 @@ impl Interpreter {
             }
         }
 
-        if let Some(caps) = self.try_captures("rag_query", &input_lower) {
+        if let Some(caps) = self.try_captures("rag_query", input_lower) {
             let query = caps.get(3).map_or("", |m| m.as_str()).trim().to_string();
             if !query.is_empty() {
                 return Intent::RagQuery { query };
@@ -664,7 +664,7 @@ impl Interpreter {
         if self
             .patterns
             .get("question")
-            .is_some_and(|p| p.is_match(&input_lower))
+            .is_some_and(|p| p.is_match(input_lower))
         {
             return Intent::Question {
                 query: input.to_string(),

@@ -360,10 +360,10 @@ mod tests {
         let input = b"What is 2+2?";
         let mut output = [0u8; 256];
         let result = inference(h, input, &mut output);
-        // Gateway not running → HTTP error
+        // Errors whether gateway is running (model not found) or not (connection refused)
         assert!(result.is_err());
         let msg = format!("{}", result.unwrap_err());
-        assert!(msg.contains("LLM Gateway request failed"));
+        assert!(msg.contains("LLM Gateway"), "unexpected error: {}", msg);
         unload_model(h).unwrap();
     }
 
