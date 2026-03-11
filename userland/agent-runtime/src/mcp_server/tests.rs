@@ -1,6 +1,6 @@
 use super::*;
 use super::helpers::{
-    error_result, extract_optional_u64, extract_required_string, extract_required_uuid,
+    extract_optional_u64, extract_required_string, extract_required_uuid,
     success_result, validate_enum_opt,
 };
 use super::manifest::build_tool_manifest;
