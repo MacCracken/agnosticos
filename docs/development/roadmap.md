@@ -134,6 +134,66 @@ Identified via code audit (2026-03-10). Prioritized by impact.
 
 ---
 
+## Phase 14 — Edge OS Profile (Planned)
+
+> Target: Post-beta | Aligned with SecureYeoman 2026.3.11 edge binary
+
+AGNOS as a minimal edge OS for running the SecureYeoman edge binary as an A2A
+sub-agent on constrained hardware (Raspberry Pi, NUCs, IoT gateways, edge
+servers). The edge binary connects upstream to a full SY instance via A2A
+protocol, receives delegated tasks, executes locally, and reports back.
+
+### 14A — Minimal Edge Boot Profile
+
+| # | Item | Effort | Notes |
+|---|------|--------|-------|
+| 1 | Argonaut `Edge` boot mode (4th mode) | Medium | Skip compositor, shell optional, boot → daimon + SY edge only |
+| 2 | Edge recipe set (~30 packages) | Medium | Kernel + coreutils + networking + TLS + SY edge binary — no desktop, no browser, no AI/ML stack |
+| 3 | Target <256 MB disk, <128 MB RAM | Small | Strip debug symbols, minimal firmware, no man pages |
+| 4 | Boot time target <5s to agent-ready | Small | argonaut already targets <3s; edge skips more stages |
+| 5 | Read-only rootfs (dm-verity) | Medium | Immutable base, writable overlay for `/var/lib/secureyeoman` |
+
+### 14B — A2A & Sub-Agent Networking
+
+| # | Item | Effort | Notes |
+|---|------|--------|-------|
+| 1 | mDNS peer discovery (avahi/custom) | Medium | Auto-discover parent SY instance on LAN — replace stub in SY A2A |
+| 2 | Auto-registration on boot | Small | `secureyeoman edge --register <parent-url>` in argonaut service chain |
+| 3 | Mesh networking (WireGuard tunnel) | Medium | Edge ↔ main encrypted tunnel for remote/cross-network deployment |
+| 4 | Heartbeat watchdog integration | Small | argonaut monitors SY edge process, auto-restart on failure |
+| 5 | Bandwidth-aware task acceptance | Small | Edge advertises connection quality; parent routes accordingly |
+
+### 14C — Hardware Targets
+
+| # | Item | Effort | Notes |
+|---|------|--------|-------|
+| 1 | Raspberry Pi 4/5 (aarch64) image | Medium | Pre-built `.img` with edge profile, flash-and-go |
+| 2 | x86_64 NUC/mini-PC image | Small | ISO with edge profile auto-selected |
+| 3 | RISC-V (SiFive, StarFive) | Large | Cross-compile toolchain + kernel config |
+| 4 | OCI container image (edge) | Small | `docker run agnos-edge` for existing Linux hosts |
+
+### 14D — Edge Security
+
+| # | Item | Effort | Notes |
+|---|------|--------|-------|
+| 1 | Hardware attestation (TPM 2.0) | Medium | Edge proves integrity to parent before receiving tasks |
+| 2 | Minimal Landlock + seccomp profile | Small | Tight syscall allowlist for edge binary only |
+| 3 | Encrypted local state (LUKS) | Small | Already supported; ensure edge profile enables by default |
+| 4 | Signed OTA updates via ark | Medium | Parent pushes updates to fleet of edge nodes |
+| 5 | Certificate pinning to parent | Small | Edge only trusts its registered parent instance |
+
+### 14E — Fleet Management
+
+| # | Item | Effort | Notes |
+|---|------|--------|-------|
+| 1 | Edge node registry in daimon | Medium | Track fleet: health, capabilities, load, location |
+| 2 | agnoshi intents for edge fleet | Small | `list edge nodes`, `deploy to edge`, `update edge fleet` |
+| 3 | MCP tools for edge management (5) | Medium | `edge_list`, `edge_deploy`, `edge_update`, `edge_health`, `edge_decommission` |
+| 4 | Dashboard panel in SY | Medium | Edge fleet topology, health, task distribution (SY 2026.3.11+) |
+| 5 | Capability-based task routing | Small | Parent auto-routes tasks to edge nodes by advertised capabilities (GPU, network, location) |
+
+---
+
 ## Release Roadmap
 
 ### Beta Release — Q4 2026
@@ -158,6 +218,15 @@ Identified via code audit (2026-03-10). Prioritized by impact.
 - [ ] Enterprise features: SSO (done), audit logging (done), mTLS (done)
 - [ ] 6 months of beta testing with no critical bugs
 - [ ] Commercial support available
+
+### Edge OS Profile — Post-Beta (aligned with SY 2026.3.11+)
+
+**Criteria:**
+- [ ] Phase 14A complete — Edge boot mode, minimal recipe set, <256 MB disk
+- [ ] Phase 14B complete — mDNS discovery, auto-registration, WireGuard mesh
+- [ ] Phase 14C complete — Raspberry Pi + x86_64 + OCI images
+- [ ] Phase 14D complete — TPM attestation, signed OTA, certificate pinning
+- [ ] Phase 14E complete — Fleet management (daimon registry, MCP tools, SY dashboard)
 
 ---
 
