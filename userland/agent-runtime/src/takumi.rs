@@ -112,9 +112,9 @@ impl fmt::Display for HardeningFlag {
     }
 }
 
-impl HardeningFlag {
-    /// Parse a hardening flag from a string.
-    pub fn from_str_loose(s: &str) -> Result<Self> {
+impl std::str::FromStr for HardeningFlag {
+    type Err = anyhow::Error;
+    fn from_str(s: &str) -> Result<Self> {
         match s.to_lowercase().as_str() {
             "pie" => Ok(Self::Pie),
             "relro" => Ok(Self::Relro),
@@ -124,6 +124,13 @@ impl HardeningFlag {
             "bindnow" | "bind_now" | "bind-now" => Ok(Self::Bindnow),
             _ => bail!("unknown hardening flag: {}", s),
         }
+    }
+}
+
+impl HardeningFlag {
+    /// Parse a hardening flag from a string (alias for FromStr).
+    pub fn from_str_loose(s: &str) -> Result<Self> {
+        s.parse()
     }
 }
 

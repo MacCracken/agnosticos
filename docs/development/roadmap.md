@@ -4,7 +4,7 @@
 > **Userland complete** — 10876+ tests (3622+ agent-runtime, 1554 ai-shell), ~84% coverage, 0 warnings
 > **Recipes**: 109 base + 53 desktop + 25 AI + 9 network + 8 browser + 8 marketplace + 4 python + 3 database + 29 edge = 248 total, 0 validation errors
 > **Phases 10–14 complete** | **Phase 13**: 13A(infra)/13B/13D/13E done | **Phase 14**: Edge OS Profile done | **Audit**: 16 rounds
-> **Audit round 16**: 14 CRITICAL + 27 HIGH fixed, 2 HIGH + 17 MEDIUM remaining
+> **Audit round 16**: 14 CRITICAL + 29 HIGH fixed, 0 HIGH remaining, 17 MEDIUM backlog cleared
 
 ---
 
@@ -66,22 +66,21 @@ for desktop/networking/GPU stack.
 
 ## Engineering Backlog
 
-### HIGH — Remaining (2)
+### All HIGH items resolved
 
-| # | Category | Issue | File(s) | Effort |
-|---|----------|-------|---------|--------|
-| H23 | Quality | 4 monolithic files >3600 lines need splitting | `wayland.rs`, `main.rs`, `mcp_server.rs`, `supervisor.rs` | Large |
-| H25 | Quality | String matching where enums should be used | Multiple | Medium |
+### Recently Fixed (15 items cleared + 4 non-issues removed)
 
-### Recently Fixed (13 items cleared)
+**H23 — File splitting**: `mcp_server.rs` (4,452 → 11 files), `supervisor.rs` (3,609 → 9 files), `wayland.rs` (3,996 → 7 files)
 
-**Security**: Tarball symlink path traversal (reject symlinks + verify resolved paths in `local_registry.rs`), agent ID authorization per-agent (memory handlers require registered agent), memory store per-agent key limit (1000 keys max), prompt injection Unicode bypass (strip zero-width/invisible chars before matching), XWayland surface ID removed from error messages
+**H25 — Enum refactoring**: `MetricKind` enum in resource_forecast, `BehaviorMetric` enum in learning, `FromStr` for `FindingSeverity`/`HardeningFlag`, parser functions for screen_capture formats and RAG knowledge sources
 
-**Performance**: Vector search results no longer clone embeddings (copy only id/metadata/content), CGroup setup runs on `spawn_blocking` with 5s timeout, temperature clamped to [0.0, 2.0] and top_p to [0.0, 1.0] at gateway level
+**Security**: Tarball symlink path traversal, agent ID authorization per-agent (memory handlers), memory store per-agent key limit (1000 keys), prompt injection Unicode bypass (strip zero-width chars), XWayland surface ID removed from error messages
 
-**Ops**: Audit chain persistence (`save_to_file`/`load_from_file` with atomic writes + integrity verification on load), audit buffer pagination uses safe iterator-based `skip().take()` with 1000 per-page cap, desktop environment SIGHUP handler for config reload, cache TTL now per-request via `set_with_ttl()`, HTTP request handling benchmarks (health, agents, memory set/get)
+**Performance**: Vector search results no longer clone embeddings, CGroup setup on `spawn_blocking` with 5s timeout, temperature/top_p clamped at gateway level
 
-**Not issues** (removed from backlog): Rate limiter correctly uses monotonic `Instant`, Pub/Sub wildcard uses efficient `starts_with()` prefix matching, marketplace signature already optional when keyring=None, env_keep uses double-check pattern (allowlist + blocklist)
+**Ops**: Audit chain persistence with atomic writes + integrity verification, audit buffer safe pagination, desktop SIGHUP handler, cache per-request TTL, HTTP request handling benchmarks
+
+**Not issues** (removed): Rate limiter uses monotonic `Instant`, Pub/Sub wildcard uses `starts_with()`, marketplace signature optional when keyring=None, env_keep uses double-check pattern
 
 ---
 

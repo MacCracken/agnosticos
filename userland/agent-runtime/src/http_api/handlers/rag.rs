@@ -48,6 +48,28 @@ fn validate_knowledge_source_name(name: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Parse a knowledge source string into the KnowledgeSource enum.
+fn parse_knowledge_source(
+    s: &str,
+) -> Result<KnowledgeSource, (StatusCode, Json<serde_json::Value>)> {
+    match s {
+        "manpage" => Ok(KnowledgeSource::ManPage),
+        "manifest" => Ok(KnowledgeSource::AgentManifest),
+        "audit" => Ok(KnowledgeSource::AuditLog),
+        "config" => Ok(KnowledgeSource::ConfigFile),
+        other => {
+            if let Err(e) = validate_knowledge_source_name(other) {
+                Err((
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({"error": e, "code": 400})),
+                ))
+            } else {
+                Ok(KnowledgeSource::Custom(other.to_string()))
+            }
+        }
+    }
+}
+
 pub async fn rag_ingest_handler(
     State(state): State<ApiState>,
     Json(req): Json<RagIngestRequest>,
@@ -168,22 +190,9 @@ pub async fn knowledge_search_handler(
 ) -> impl IntoResponse {
     let kb = state.knowledge_base.read().await;
     let results = if let Some(ref src) = req.source {
-        let source = match src.as_str() {
-            "manpage" => KnowledgeSource::ManPage,
-            "manifest" => KnowledgeSource::AgentManifest,
-            "audit" => KnowledgeSource::AuditLog,
-            "config" => KnowledgeSource::ConfigFile,
-            other => {
-                // H10: Validate custom source names to prevent injection
-                if let Err(e) = validate_knowledge_source_name(other) {
-                    return (
-                        StatusCode::BAD_REQUEST,
-                        Json(serde_json::json!({"error": e, "code": 400})),
-                    )
-                        .into_response();
-                }
-                KnowledgeSource::Custom(other.to_string())
-            }
+        let source = match parse_knowledge_source(src) {
+            Ok(s) => s,
+            Err(resp) => return resp.into_response(),
         };
         kb.search_by_source(&source, req.limit)
             .into_iter()
@@ -228,21 +237,10 @@ pub async fn knowledge_index_handler(
     Json(req): Json<KnowledgeIndexRequest>,
 ) -> impl IntoResponse {
     let source = match req.source.as_deref() {
-        Some("manpage") => KnowledgeSource::ManPage,
-        Some("manifest") => KnowledgeSource::AgentManifest,
-        Some("audit") => KnowledgeSource::AuditLog,
-        Some("config") => KnowledgeSource::ConfigFile,
-        Some(other) => {
-            // H10: Validate custom source names to prevent injection
-            if let Err(e) = validate_knowledge_source_name(other) {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(serde_json::json!({"error": e, "code": 400})),
-                )
-                    .into_response();
-            }
-            KnowledgeSource::Custom(other.to_string())
-        }
+        Some(s) => match parse_knowledge_source(s) {
+            Ok(src) => src,
+            Err(resp) => return resp.into_response(),
+        },
         None => KnowledgeSource::ConfigFile,
     };
     // Validate and canonicalize the path to prevent traversal attacks

@@ -43,6 +43,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Audit chain persistence** (`agnos-common/audit.rs`): Added `save_to_file()`/`load_from_file()` with atomic writes and integrity verification on load
 - **HTTP benchmarks** (`benches/runtime_benchmarks.rs`): Added criterion benchmarks for health check, agent list, memory set/get endpoints
 
+### Refactored — H23: Split Monolithic Files
+
+- **`mcp_server.rs`** (4,452 → 12 files): Split into `mcp_server/mod.rs` + `types.rs`, `helpers.rs`, `manifest.rs`, `handlers/{mod,agnos,agnostic,delta,edge,photis,aequi}.rs`, `tests.rs`
+- **`supervisor.rs`** (3,609 → 10 files): Split into `supervisor/mod.rs` + `cgroup.rs`, `circuit_breaker.rs`, `health_check.rs`, `output_capture.rs`, `proc_utils.rs`, `recovery.rs`, `resource_monitor.rs`, `resource_quota.rs`, `tests.rs`
+- **`wayland.rs`** (3,996 → 7 files): Split into `wayland/mod.rs` + `types.rs`, `protocol.rs`, `server.rs`, `popups.rs`, `stub.rs`, `tests.rs`
+- **`main.rs`** (920 → 42 lines + 8 modules): Extracted `cli.rs`, `daemon_config.rs`, `health.rs`, `commands/{mod,daemon,service,package,agent}.rs`
+
+### Refactored — H25: Replace String Matching with Enums
+
+- **`resource_forecast.rs`**: `MetricKind` enum replaces `&str` in `trend()` method — eliminates unknown metric fallback, uses `stability_threshold()` method
+- **`learning.rs`**: `BehaviorMetric` enum (5 variants) replaces string-based metric names — `metric_value()` returns `f64` (infallible), `mean()`/`stddev()`/`is_anomalous()` use enum parameter
+- **`tool_analysis.rs`**: `FromStr` impl for `FindingSeverity` with aliases (MED→Medium, CRIT→Critical)
+- **`takumi.rs`**: `FromStr` impl for `HardeningFlag` — `from_str_loose()` now delegates to standard trait
+- **`handlers/screen_capture.rs`**: `parse_format()` and `parse_target_kind()` deduplicate inline string matching
+- **`handlers/rag.rs`**: `parse_knowledge_source()` consolidates two duplicate match blocks
+
 ## [2026.3.10] - 2026-03-10
 
 ### Added — Consumer API Improvements (5 features, 13 new tests)

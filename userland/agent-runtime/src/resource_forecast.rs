@@ -15,6 +15,43 @@ pub struct ResourceSample {
     pub fd_count: u32,
 }
 
+/// Supported resource metric types.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum MetricKind {
+    Cpu,
+    Memory,
+}
+
+impl MetricKind {
+    /// Threshold for "stable" trend detection.
+    pub fn stability_threshold(self) -> f64 {
+        match self {
+            MetricKind::Cpu => 0.001,    // % per second
+            MetricKind::Memory => 100.0, // bytes per second
+        }
+    }
+}
+
+impl std::fmt::Display for MetricKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MetricKind::Cpu => write!(f, "cpu"),
+            MetricKind::Memory => write!(f, "memory"),
+        }
+    }
+}
+
+impl std::str::FromStr for MetricKind {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "cpu" => Ok(Self::Cpu),
+            "memory" => Ok(Self::Memory),
+            other => Err(format!("unknown metric: {other}")),
+        }
+    }
+}
+
 /// Trend direction derived from the slope of a linear regression.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Trend {
@@ -83,24 +120,17 @@ impl ForecastWindow {
         Some(predicted.max(0.0) as u64)
     }
 
-    /// Determine the trend for a given metric (`"cpu"` or `"memory"`).
-    pub fn trend(&self, metric: &str) -> Trend {
+    /// Determine the trend for a given metric.
+    pub fn trend(&self, metric: MetricKind) -> Trend {
         if self.samples.len() < 2 {
             return Trend::Stable;
         }
         let points = match metric {
-            "cpu" => self.cpu_time_points(),
-            "memory" => self.memory_time_points(),
-            _ => return Trend::Stable,
+            MetricKind::Cpu => self.cpu_time_points(),
+            MetricKind::Memory => self.memory_time_points(),
         };
         let (slope, _) = linear_regression(&points);
-
-        // Threshold for "stable" — small absolute slope
-        let threshold = match metric {
-            "cpu" => 0.001,    // % per second
-            "memory" => 100.0, // bytes per second
-            _ => 0.001,
-        };
+        let threshold = metric.stability_threshold();
 
         if slope > threshold {
             Trend::Rising
@@ -377,7 +407,7 @@ mod tests {
         fw.add_sample(make_sample(0, 10.0, 1000));
         fw.add_sample(make_sample(60, 30.0, 1000));
         fw.add_sample(make_sample(120, 50.0, 1000));
-        assert_eq!(fw.trend("cpu"), Trend::Rising);
+        assert_eq!(fw.trend(MetricKind::Cpu), Trend::Rising);
     }
 
     #[test]
@@ -386,7 +416,7 @@ mod tests {
         fw.add_sample(make_sample(0, 80.0, 1000));
         fw.add_sample(make_sample(60, 50.0, 1000));
         fw.add_sample(make_sample(120, 20.0, 1000));
-        assert_eq!(fw.trend("cpu"), Trend::Falling);
+        assert_eq!(fw.trend(MetricKind::Cpu), Trend::Falling);
     }
 
     #[test]
@@ -395,22 +425,14 @@ mod tests {
         fw.add_sample(make_sample(0, 50.0, 1000));
         fw.add_sample(make_sample(60, 50.0, 1000));
         fw.add_sample(make_sample(120, 50.0, 1000));
-        assert_eq!(fw.trend("cpu"), Trend::Stable);
+        assert_eq!(fw.trend(MetricKind::Cpu), Trend::Stable);
     }
 
     #[test]
     fn test_trend_insufficient_data() {
         let mut fw = ForecastWindow::new(100);
         fw.add_sample(make_sample(0, 50.0, 1000));
-        assert_eq!(fw.trend("cpu"), Trend::Stable);
-    }
-
-    #[test]
-    fn test_trend_unknown_metric() {
-        let mut fw = ForecastWindow::new(100);
-        fw.add_sample(make_sample(0, 10.0, 1000));
-        fw.add_sample(make_sample(60, 50.0, 1000));
-        assert_eq!(fw.trend("unknown"), Trend::Stable);
+        assert_eq!(fw.trend(MetricKind::Cpu), Trend::Stable);
     }
 
     #[test]
@@ -419,7 +441,7 @@ mod tests {
         fw.add_sample(make_sample(0, 10.0, 100_000));
         fw.add_sample(make_sample(60, 10.0, 500_000));
         fw.add_sample(make_sample(120, 10.0, 900_000));
-        assert_eq!(fw.trend("memory"), Trend::Rising);
+        assert_eq!(fw.trend(MetricKind::Memory), Trend::Rising);
     }
 
     #[test]

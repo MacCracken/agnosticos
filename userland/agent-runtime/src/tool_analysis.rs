@@ -58,6 +58,20 @@ impl std::fmt::Display for FindingSeverity {
     }
 }
 
+impl std::str::FromStr for FindingSeverity {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_uppercase().as_str() {
+            "INFO" => Ok(Self::Info),
+            "LOW" => Ok(Self::Low),
+            "MEDIUM" | "MED" => Ok(Self::Medium),
+            "HIGH" => Ok(Self::High),
+            "CRITICAL" | "CRIT" => Ok(Self::Critical),
+            other => Err(format!("unknown severity: {other}")),
+        }
+    }
+}
+
 /// Builds the system prompt for LLM analysis of network tool output.
 fn build_system_prompt(tool: NetworkTool) -> String {
     let tool_context = match tool {
@@ -299,14 +313,7 @@ fn parse_finding_line(line: &str) -> Option<Finding> {
         return None;
     };
 
-    let severity = match severity_str.to_uppercase().as_str() {
-        "INFO" => FindingSeverity::Info,
-        "LOW" => FindingSeverity::Low,
-        "MEDIUM" | "MED" => FindingSeverity::Medium,
-        "HIGH" => FindingSeverity::High,
-        "CRITICAL" | "CRIT" => FindingSeverity::Critical,
-        _ => FindingSeverity::Info,
-    };
+    let severity = severity_str.parse::<FindingSeverity>().unwrap_or(FindingSeverity::Info);
 
     let (category, desc_evidence) = rest.split_once(':')?;
     let (description, evidence) = if let Some((d, e)) = desc_evidence.split_once('|') {

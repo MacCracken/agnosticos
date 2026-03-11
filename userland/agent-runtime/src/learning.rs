@@ -435,6 +435,53 @@ impl Default for ConversationContext {
 // Agent Behavior Anomaly Detection
 // ---------------------------------------------------------------------------
 
+/// Named behavior metrics tracked per sample.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum BehaviorMetric {
+    SyscallCount,
+    NetworkBytes,
+    FileOps,
+    CpuPercent,
+    MemoryBytes,
+}
+
+impl BehaviorMetric {
+    /// All known metric variants.
+    pub const ALL: &'static [BehaviorMetric] = &[
+        BehaviorMetric::SyscallCount,
+        BehaviorMetric::NetworkBytes,
+        BehaviorMetric::FileOps,
+        BehaviorMetric::CpuPercent,
+        BehaviorMetric::MemoryBytes,
+    ];
+}
+
+impl std::fmt::Display for BehaviorMetric {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BehaviorMetric::SyscallCount => write!(f, "syscall_count"),
+            BehaviorMetric::NetworkBytes => write!(f, "network_bytes"),
+            BehaviorMetric::FileOps => write!(f, "file_ops"),
+            BehaviorMetric::CpuPercent => write!(f, "cpu_percent"),
+            BehaviorMetric::MemoryBytes => write!(f, "memory_bytes"),
+        }
+    }
+}
+
+impl std::str::FromStr for BehaviorMetric {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "syscall_count" => Ok(Self::SyscallCount),
+            "network_bytes" => Ok(Self::NetworkBytes),
+            "file_ops" => Ok(Self::FileOps),
+            "cpu_percent" => Ok(Self::CpuPercent),
+            "memory_bytes" => Ok(Self::MemoryBytes),
+            other => Err(format!("unknown behavior metric: {other}")),
+        }
+    }
+}
+
 /// A single behavior sample from an agent at a point in time.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BehaviorSample {
@@ -447,27 +494,15 @@ pub struct BehaviorSample {
 }
 
 impl BehaviorSample {
-    /// Extract the value of a named metric.
-    fn metric_value(&self, metric: &str) -> Option<f64> {
+    /// Extract the value of a metric.
+    fn metric_value(&self, metric: BehaviorMetric) -> f64 {
         match metric {
-            "syscall_count" => Some(self.syscall_count as f64),
-            "network_bytes" => Some(self.network_bytes as f64),
-            "file_ops" => Some(self.file_ops as f64),
-            "cpu_percent" => Some(self.cpu_percent),
-            "memory_bytes" => Some(self.memory_bytes as f64),
-            _ => None,
+            BehaviorMetric::SyscallCount => self.syscall_count as f64,
+            BehaviorMetric::NetworkBytes => self.network_bytes as f64,
+            BehaviorMetric::FileOps => self.file_ops as f64,
+            BehaviorMetric::CpuPercent => self.cpu_percent,
+            BehaviorMetric::MemoryBytes => self.memory_bytes as f64,
         }
-    }
-
-    /// All known metric names.
-    fn metric_names() -> &'static [&'static str] {
-        &[
-            "syscall_count",
-            "network_bytes",
-            "file_ops",
-            "cpu_percent",
-            "memory_bytes",
-        ]
     }
 }
 
@@ -538,43 +573,30 @@ impl BehaviorBaseline {
         }
     }
 
-    /// Compute the mean of a named metric across the window.
-    pub fn mean(&self, metric: &str) -> Option<f64> {
+    /// Compute the mean of a metric across the window.
+    pub fn mean(&self, metric: BehaviorMetric) -> Option<f64> {
         if self.samples.is_empty() {
             return None;
         }
-        let mut sum = 0.0;
-        let mut count = 0u64;
-        for s in &self.samples {
-            if let Some(v) = s.metric_value(metric) {
-                sum += v;
-                count += 1;
-            }
-        }
-        if count == 0 {
-            return None;
-        }
-        Some(sum / count as f64)
+        let sum: f64 = self.samples.iter().map(|s| s.metric_value(metric)).sum();
+        Some(sum / self.samples.len() as f64)
     }
 
-    /// Compute the standard deviation of a named metric across the window.
-    pub fn stddev(&self, metric: &str) -> Option<f64> {
+    /// Compute the standard deviation of a metric across the window.
+    pub fn stddev(&self, metric: BehaviorMetric) -> Option<f64> {
         let m = self.mean(metric)?;
         if self.samples.len() < 2 {
             return Some(0.0);
         }
-        let mut sum_sq = 0.0;
-        let mut count = 0u64;
-        for s in &self.samples {
-            if let Some(v) = s.metric_value(metric) {
-                sum_sq += (v - m) * (v - m);
-                count += 1;
-            }
-        }
-        if count < 2 {
-            return Some(0.0);
-        }
-        Some((sum_sq / (count - 1) as f64).sqrt())
+        let sum_sq: f64 = self
+            .samples
+            .iter()
+            .map(|s| {
+                let v = s.metric_value(metric);
+                (v - m) * (v - m)
+            })
+            .sum();
+        Some((sum_sq / (self.samples.len() - 1) as f64).sqrt())
     }
 
     /// Check if a sample is anomalous (any metric exceeds threshold_sigmas from mean).
@@ -588,7 +610,7 @@ impl BehaviorBaseline {
             return alerts;
         }
 
-        for metric in BehaviorSample::metric_names() {
+        for &metric in BehaviorMetric::ALL {
             let mean = match self.mean(metric) {
                 Some(m) => m,
                 None => continue,
@@ -597,10 +619,7 @@ impl BehaviorBaseline {
                 Some(s) if s > 0.0 => s,
                 _ => continue,
             };
-            let value = match sample.metric_value(metric) {
-                Some(v) => v,
-                None => continue,
-            };
+            let value = sample.metric_value(metric);
 
             let deviation = (value - mean) / sd;
             if deviation.abs() >= threshold_sigmas {
@@ -1085,16 +1104,16 @@ mod tests {
     #[test]
     fn test_baseline_empty_mean() {
         let baseline = BehaviorBaseline::new(agent(1), 100);
-        assert!(baseline.mean("syscall_count").is_none());
-        assert!(baseline.stddev("syscall_count").is_none());
+        assert!(baseline.mean(BehaviorMetric::SyscallCount).is_none());
+        assert!(baseline.stddev(BehaviorMetric::SyscallCount).is_none());
     }
 
     #[test]
     fn test_baseline_single_sample_mean() {
         let mut baseline = BehaviorBaseline::new(agent(1), 100);
         baseline.record(make_sample(100, 200, 10, 50.0, 1024));
-        assert!((baseline.mean("syscall_count").unwrap() - 100.0).abs() < 0.01);
-        assert!((baseline.mean("cpu_percent").unwrap() - 50.0).abs() < 0.01);
+        assert!((baseline.mean(BehaviorMetric::SyscallCount).unwrap() - 100.0).abs() < 0.01);
+        assert!((baseline.mean(BehaviorMetric::CpuPercent).unwrap() - 50.0).abs() < 0.01);
     }
 
     #[test]
@@ -1103,8 +1122,8 @@ mod tests {
         baseline.record(make_sample(100, 0, 0, 10.0, 0));
         baseline.record(make_sample(200, 0, 0, 30.0, 0));
         baseline.record(make_sample(300, 0, 0, 50.0, 0));
-        assert!((baseline.mean("syscall_count").unwrap() - 200.0).abs() < 0.01);
-        assert!((baseline.mean("cpu_percent").unwrap() - 30.0).abs() < 0.01);
+        assert!((baseline.mean(BehaviorMetric::SyscallCount).unwrap() - 200.0).abs() < 0.01);
+        assert!((baseline.mean(BehaviorMetric::CpuPercent).unwrap() - 30.0).abs() < 0.01);
     }
 
     #[test]
@@ -1113,8 +1132,8 @@ mod tests {
         for _ in 0..10 {
             baseline.record(make_sample(100, 0, 0, 50.0, 0));
         }
-        assert!((baseline.stddev("syscall_count").unwrap()).abs() < 0.01);
-        assert!((baseline.stddev("cpu_percent").unwrap()).abs() < 0.01);
+        assert!((baseline.stddev(BehaviorMetric::SyscallCount).unwrap()).abs() < 0.01);
+        assert!((baseline.stddev(BehaviorMetric::CpuPercent).unwrap()).abs() < 0.01);
     }
 
     #[test]
@@ -1124,7 +1143,7 @@ mod tests {
         for v in [2, 4, 4, 4, 5, 5, 7, 9] {
             baseline.record(make_sample(v, 0, 0, 0.0, 0));
         }
-        let sd = baseline.stddev("syscall_count").unwrap();
+        let sd = baseline.stddev(BehaviorMetric::SyscallCount).unwrap();
         assert!((sd - 2.138).abs() < 0.01);
     }
 
@@ -1136,7 +1155,7 @@ mod tests {
         }
         assert_eq!(baseline.sample_count(), 5);
         // Window should contain: 50, 60, 70, 80, 90 -> mean=70
-        assert!((baseline.mean("syscall_count").unwrap() - 70.0).abs() < 0.01);
+        assert!((baseline.mean(BehaviorMetric::SyscallCount).unwrap() - 70.0).abs() < 0.01);
     }
 
     #[test]
@@ -1192,9 +1211,10 @@ mod tests {
     }
 
     #[test]
-    fn test_anomaly_unknown_metric() {
-        let sample = make_sample(100, 0, 0, 0.0, 0);
-        assert!(sample.metric_value("nonexistent").is_none());
+    fn test_behavior_metric_from_str() {
+        assert_eq!("syscall_count".parse::<BehaviorMetric>().unwrap(), BehaviorMetric::SyscallCount);
+        assert_eq!("cpu_percent".parse::<BehaviorMetric>().unwrap(), BehaviorMetric::CpuPercent);
+        assert!("nonexistent".parse::<BehaviorMetric>().is_err());
     }
 
     #[test]
@@ -1249,11 +1269,11 @@ mod tests {
     #[test]
     fn test_behavior_sample_all_metrics() {
         let sample = make_sample(1, 2, 3, 4.0, 5);
-        assert_eq!(sample.metric_value("syscall_count"), Some(1.0));
-        assert_eq!(sample.metric_value("network_bytes"), Some(2.0));
-        assert_eq!(sample.metric_value("file_ops"), Some(3.0));
-        assert_eq!(sample.metric_value("cpu_percent"), Some(4.0));
-        assert_eq!(sample.metric_value("memory_bytes"), Some(5.0));
+        assert_eq!(sample.metric_value(BehaviorMetric::SyscallCount), 1.0);
+        assert_eq!(sample.metric_value(BehaviorMetric::NetworkBytes), 2.0);
+        assert_eq!(sample.metric_value(BehaviorMetric::FileOps), 3.0);
+        assert_eq!(sample.metric_value(BehaviorMetric::CpuPercent), 4.0);
+        assert_eq!(sample.metric_value(BehaviorMetric::MemoryBytes), 5.0);
     }
 
     #[test]
@@ -1261,7 +1281,7 @@ mod tests {
         let mut baseline = BehaviorBaseline::new(agent(1), 100);
         baseline.record(make_sample(100, 0, 0, 0.0, 0));
         // Single sample -> stddev=0
-        assert!((baseline.stddev("syscall_count").unwrap()).abs() < 0.01);
+        assert!((baseline.stddev(BehaviorMetric::SyscallCount).unwrap()).abs() < 0.01);
     }
 
     #[test]

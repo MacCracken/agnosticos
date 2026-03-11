@@ -92,20 +92,9 @@ pub async fn screen_capture_handler(
     let manager = state.screen_capture_manager.read().await;
 
     // Parse format
-    let format = match req.format.as_str() {
-        "raw_argb" | "raw" => desktop_environment::CaptureFormat::RawArgb,
-        "bmp" => desktop_environment::CaptureFormat::Bmp,
-        "png" | "" => desktop_environment::CaptureFormat::Png,
-        other => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({
-                    "error": format!("Unknown format '{}'; expected png, bmp, or raw_argb", other),
-                    "code": 400
-                })),
-            )
-                .into_response();
-        }
+    let format = match parse_format(&req.format) {
+        Ok(f) => f,
+        Err(resp) => return resp.into_response(),
     };
 
     // Parse target
@@ -204,20 +193,9 @@ pub async fn screen_grant_permission_handler(
 
     let mut targets = Vec::new();
     for t in &req.allowed_targets {
-        match t.as_str() {
-            "full_screen" => targets.push(desktop_environment::CaptureTargetKind::FullScreen),
-            "window" => targets.push(desktop_environment::CaptureTargetKind::Window),
-            "region" => targets.push(desktop_environment::CaptureTargetKind::Region),
-            other => {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(serde_json::json!({
-                        "error": format!("Unknown target kind '{}'; expected full_screen, window, or region", other),
-                        "code": 400
-                    })),
-                )
-                    .into_response();
-            }
+        match parse_target_kind(t) {
+            Ok(kind) => targets.push(kind),
+            Err(resp) => return resp.into_response(),
         }
     }
 
@@ -341,6 +319,23 @@ fn parse_capture_target(
             width: *width,
             height: *height,
         }),
+    }
+}
+
+fn parse_target_kind(
+    s: &str,
+) -> Result<desktop_environment::CaptureTargetKind, (StatusCode, Json<serde_json::Value>)> {
+    match s {
+        "full_screen" => Ok(desktop_environment::CaptureTargetKind::FullScreen),
+        "window" => Ok(desktop_environment::CaptureTargetKind::Window),
+        "region" => Ok(desktop_environment::CaptureTargetKind::Region),
+        other => Err((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": format!("Unknown target kind '{}'; expected full_screen, window, or region", other),
+                "code": 400
+            })),
+        )),
     }
 }
 
