@@ -68,11 +68,7 @@ pub async fn rag_ingest_handler(
     }
 
     // Per-agent rate limiting (H6)
-    let agent_key = req
-        .agent_id
-        .as_deref()
-        .unwrap_or("anonymous")
-        .to_string();
+    let agent_key = req.agent_id.as_deref().unwrap_or("anonymous").to_string();
     {
         let mut limits = state.rag_ingest_rate_limits.lock().await;
         let now = Instant::now();

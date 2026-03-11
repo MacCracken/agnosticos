@@ -84,9 +84,7 @@ impl DaemonConfig {
     /// invalid field. Called early in startup to fail fast.
     pub fn validate(&self) -> Result<()> {
         if self.api_port == 0 {
-            anyhow::bail!(
-                "Invalid api_port: 0 (must be 1-65535)"
-            );
+            anyhow::bail!("Invalid api_port: 0 (must be 1-65535)");
         }
         if self.shutdown_timeout_secs == 0 || self.shutdown_timeout_secs > 300 {
             anyhow::bail!(
@@ -127,29 +125,41 @@ async fn check_dependencies_healthy(config: &DaemonConfig, data_dir: &Path) -> R
         Err(e) => {
             anyhow::bail!(
                 "Health check failed: port {} is not bindable: {}",
-                config.api_port, e
+                config.api_port,
+                e
             );
         }
     }
 
     // 2. Verify the data directory is accessible
     if !data_dir.exists() {
-        tokio::fs::create_dir_all(data_dir)
-            .await
-            .with_context(|| format!("Health check failed: cannot create data dir {}", data_dir.display()))?;
+        tokio::fs::create_dir_all(data_dir).await.with_context(|| {
+            format!(
+                "Health check failed: cannot create data dir {}",
+                data_dir.display()
+            )
+        })?;
     }
     let probe_file = data_dir.join(".health_probe");
     tokio::fs::write(&probe_file, b"ok")
         .await
-        .with_context(|| format!("Health check failed: data dir {} is not writable", data_dir.display()))?;
+        .with_context(|| {
+            format!(
+                "Health check failed: data dir {} is not writable",
+                data_dir.display()
+            )
+        })?;
     let _ = tokio::fs::remove_file(&probe_file).await;
 
     // 3. Verify the IPC socket directory is accessible
     let ipc_dir = Path::new("/run/agnos/agents");
     if !ipc_dir.exists() {
-        tokio::fs::create_dir_all(ipc_dir)
-            .await
-            .with_context(|| format!("Health check failed: cannot create IPC dir {}", ipc_dir.display()))?;
+        tokio::fs::create_dir_all(ipc_dir).await.with_context(|| {
+            format!(
+                "Health check failed: cannot create IPC dir {}",
+                ipc_dir.display()
+            )
+        })?;
     }
 
     info!("All dependency health checks passed");
@@ -324,8 +334,13 @@ async fn run_daemon(cli: Cli) -> Result<()> {
 
     // H19: Validate configuration before proceeding
     let config = DaemonConfig::default();
-    config.validate().with_context(|| "Daemon configuration validation failed")?;
-    info!("Configuration validated: port={}, shutdown_timeout={}s", config.api_port, config.shutdown_timeout_secs);
+    config
+        .validate()
+        .with_context(|| "Daemon configuration validation failed")?;
+    info!(
+        "Configuration validated: port={}, shutdown_timeout={}s",
+        config.api_port, config.shutdown_timeout_secs
+    );
 
     // H21: Clean up stale socket files from previous abnormal terminations
     let ipc_dir = std::path::Path::new("/run/agnos/agents");

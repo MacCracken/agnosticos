@@ -688,9 +688,7 @@ mod tests {
             .await
             .into_response();
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
-        let body = axum::body::to_bytes(resp.into_body(), 65536)
-            .await
-            .unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), 65536).await.unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert!(json["error"].as_str().unwrap().contains("bogus_syscall"));
     }
@@ -737,9 +735,7 @@ mod tests {
         .await
         .into_response();
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
-        let body = axum::body::to_bytes(resp.into_body(), 65536)
-            .await
-            .unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), 65536).await.unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert!(json["error"].as_str().unwrap().contains("invented_syscall"));
     }

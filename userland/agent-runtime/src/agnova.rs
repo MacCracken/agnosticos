@@ -3480,7 +3480,10 @@ mod tests {
 
         // luksFormat command
         if let SystemOp::Command {
-            args, stdin, binary, ..
+            args,
+            stdin,
+            binary,
+            ..
         } = &ops.operations[0]
         {
             assert_eq!(binary, "cryptsetup");
@@ -3493,7 +3496,10 @@ mod tests {
 
         // open command
         if let SystemOp::Command {
-            args, stdin, binary, ..
+            args,
+            stdin,
+            binary,
+            ..
         } = &ops.operations[1]
         {
             assert_eq!(binary, "cryptsetup");
@@ -3589,6 +3595,9 @@ mod tests {
         let has_static = ops.operations.iter().any(|op| {
             matches!(op, SystemOp::WriteFile { path, .. } if path.contains("10-static.network"))
         });
-        assert!(!has_static, "DHCP mode should not generate static network config");
+        assert!(
+            !has_static,
+            "DHCP mode should not generate static network config"
+        );
     }
 }

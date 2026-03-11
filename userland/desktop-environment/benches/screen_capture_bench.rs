@@ -6,10 +6,8 @@
 
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 
-use desktop_environment::{
-    CaptureFormat, CaptureTarget, Compositor, ScreenCaptureManager,
-};
 use desktop_environment::renderer::Framebuffer;
+use desktop_environment::{CaptureFormat, CaptureTarget, Compositor, ScreenCaptureManager};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -44,7 +42,12 @@ fn bench_capture_png(c: &mut Criterion) {
             b.iter(|| {
                 black_box(
                     manager
-                        .capture(&compositor, CaptureTarget::FullScreen, CaptureFormat::Png, None)
+                        .capture(
+                            &compositor,
+                            CaptureTarget::FullScreen,
+                            CaptureFormat::Png,
+                            None,
+                        )
                         .unwrap(),
                 );
             });
@@ -64,7 +67,12 @@ fn bench_capture_bmp(c: &mut Criterion) {
             b.iter(|| {
                 black_box(
                     manager
-                        .capture(&compositor, CaptureTarget::FullScreen, CaptureFormat::Bmp, None)
+                        .capture(
+                            &compositor,
+                            CaptureTarget::FullScreen,
+                            CaptureFormat::Bmp,
+                            None,
+                        )
                         .unwrap(),
                 );
             });

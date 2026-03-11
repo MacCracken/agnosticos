@@ -424,10 +424,7 @@ impl Orchestrator {
 
     /// Message processing loop — receives messages from agents and processes
     /// task results, routing them into the shared state.
-    async fn message_loop(
-        mut rx: mpsc::Receiver<Message>,
-        state: Arc<RwLock<OrchestratorState>>,
-    ) {
+    async fn message_loop(mut rx: mpsc::Receiver<Message>, state: Arc<RwLock<OrchestratorState>>) {
         while let Some(message) = rx.recv().await {
             debug!("Orchestrator received message: {:?}", message);
 
@@ -516,9 +513,7 @@ impl Orchestrator {
                         }
 
                         state.queued_task_ids.remove(&task.id);
-                        state
-                            .running_tasks
-                            .insert(task.id.clone(), task.clone());
+                        state.running_tasks.insert(task.id.clone(), task.clone());
 
                         Some(task)
                     } else {
@@ -3169,12 +3164,30 @@ mod tests {
     #[test]
     fn test_permission_to_str_all_variants() {
         use agnos_common::Permission;
-        assert_eq!(Orchestrator::permission_to_str(Permission::FileRead), "fileread");
-        assert_eq!(Orchestrator::permission_to_str(Permission::FileWrite), "filewrite");
-        assert_eq!(Orchestrator::permission_to_str(Permission::NetworkAccess), "networkaccess");
-        assert_eq!(Orchestrator::permission_to_str(Permission::ProcessSpawn), "processspawn");
-        assert_eq!(Orchestrator::permission_to_str(Permission::LlmInference), "llminference");
-        assert_eq!(Orchestrator::permission_to_str(Permission::AuditRead), "auditread");
+        assert_eq!(
+            Orchestrator::permission_to_str(Permission::FileRead),
+            "fileread"
+        );
+        assert_eq!(
+            Orchestrator::permission_to_str(Permission::FileWrite),
+            "filewrite"
+        );
+        assert_eq!(
+            Orchestrator::permission_to_str(Permission::NetworkAccess),
+            "networkaccess"
+        );
+        assert_eq!(
+            Orchestrator::permission_to_str(Permission::ProcessSpawn),
+            "processspawn"
+        );
+        assert_eq!(
+            Orchestrator::permission_to_str(Permission::LlmInference),
+            "llminference"
+        );
+        assert_eq!(
+            Orchestrator::permission_to_str(Permission::AuditRead),
+            "auditread"
+        );
     }
 
     #[test]

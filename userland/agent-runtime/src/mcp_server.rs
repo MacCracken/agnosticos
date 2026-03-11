@@ -130,11 +130,15 @@ pub fn build_tool_manifest() -> McpToolManifest {
         // ----- AGNOS core runtime tools (10) -----
         tool!("agnos_health", "Check agent runtime health status"),
         tool!("agnos_list_agents", "List all registered agents"),
-        tool!("agnos_get_agent", "Get details for a specific agent by ID",
+        tool!(
+            "agnos_get_agent",
+            "Get details for a specific agent by ID",
             json!({"agent_id": {"type": "string", "description": "UUID of the agent"}}),
             vec!["agent_id"]
         ),
-        tool!("agnos_register_agent", "Register a new agent with the runtime",
+        tool!(
+            "agnos_register_agent",
+            "Register a new agent with the runtime",
             json!({
                 "name": {"type": "string", "description": "Agent name"},
                 "capabilities": {"type": "array", "items": {"type": "string"}, "description": "Agent capabilities"},
@@ -142,11 +146,15 @@ pub fn build_tool_manifest() -> McpToolManifest {
             }),
             vec!["name"]
         ),
-        tool!("agnos_deregister_agent", "Deregister an agent by ID",
+        tool!(
+            "agnos_deregister_agent",
+            "Deregister an agent by ID",
             json!({"agent_id": {"type": "string", "description": "UUID of the agent to deregister"}}),
             vec!["agent_id"]
         ),
-        tool!("agnos_heartbeat", "Send a heartbeat for an agent",
+        tool!(
+            "agnos_heartbeat",
+            "Send a heartbeat for an agent",
             json!({
                 "agent_id": {"type": "string", "description": "UUID of the agent"},
                 "status": {"type": "string", "description": "Optional status update"},
@@ -155,7 +163,9 @@ pub fn build_tool_manifest() -> McpToolManifest {
             vec!["agent_id"]
         ),
         tool!("agnos_get_metrics", "Get agent runtime metrics"),
-        tool!("agnos_forward_audit", "Forward an audit event to the runtime",
+        tool!(
+            "agnos_forward_audit",
+            "Forward an audit event to the runtime",
             json!({
                 "action": {"type": "string", "description": "Audit action name"},
                 "agent": {"type": "string", "description": "Optional agent name or ID"},
@@ -165,14 +175,18 @@ pub fn build_tool_manifest() -> McpToolManifest {
             }),
             vec!["action", "source"]
         ),
-        tool!("agnos_memory_get", "Get a memory value for an agent by key",
+        tool!(
+            "agnos_memory_get",
+            "Get a memory value for an agent by key",
             json!({
                 "agent_id": {"type": "string", "description": "UUID of the agent"},
                 "key": {"type": "string", "description": "Memory key to retrieve"}
             }),
             vec!["agent_id", "key"]
         ),
-        tool!("agnos_memory_set", "Set a memory value for an agent by key",
+        tool!(
+            "agnos_memory_set",
+            "Set a memory value for an agent by key",
             json!({
                 "agent_id": {"type": "string", "description": "UUID of the agent"},
                 "key": {"type": "string", "description": "Memory key to set"},
@@ -181,7 +195,9 @@ pub fn build_tool_manifest() -> McpToolManifest {
             vec!["agent_id", "key", "value"]
         ),
         // ----- Delta code hosting tools (5) -----
-        tool!("delta_create_repository", "Create a git repository in Delta",
+        tool!(
+            "delta_create_repository",
+            "Create a git repository in Delta",
             json!({
                 "name": {"type": "string", "description": "Repository name"},
                 "description": {"type": "string", "description": "Repository description"},
@@ -189,14 +205,18 @@ pub fn build_tool_manifest() -> McpToolManifest {
             }),
             vec!["name"]
         ),
-        tool!("delta_list_repositories", "List git repositories",
+        tool!(
+            "delta_list_repositories",
+            "List git repositories",
             json!({
                 "owner": {"type": "string", "description": "Filter by owner"},
                 "limit": {"type": "integer", "description": "Max results to return"}
             }),
             vec![]
         ),
-        tool!("delta_pull_request", "Manage pull requests (list, create, merge, close)",
+        tool!(
+            "delta_pull_request",
+            "Manage pull requests (list, create, merge, close)",
             json!({
                 "action": {"type": "string", "description": "Action: list, create, merge, close"},
                 "repo": {"type": "string", "description": "Repository name"},
@@ -207,14 +227,18 @@ pub fn build_tool_manifest() -> McpToolManifest {
             }),
             vec!["action"]
         ),
-        tool!("delta_push", "Push code to a Delta repository",
+        tool!(
+            "delta_push",
+            "Push code to a Delta repository",
             json!({
                 "repo": {"type": "string", "description": "Repository name"},
                 "branch": {"type": "string", "description": "Branch to push"}
             }),
             vec![]
         ),
-        tool!("delta_ci_status", "Get CI pipeline status for a repository",
+        tool!(
+            "delta_ci_status",
+            "Get CI pipeline status for a repository",
             json!({
                 "repo": {"type": "string", "description": "Repository name"},
                 "pipeline_id": {"type": "string", "description": "Specific pipeline ID"}
@@ -222,29 +246,39 @@ pub fn build_tool_manifest() -> McpToolManifest {
             vec![]
         ),
         // ----- Aequi accounting tools (5) -----
-        tool!("aequi_estimate_quarterly_tax", "Calculate estimated quarterly tax liability",
+        tool!(
+            "aequi_estimate_quarterly_tax",
+            "Calculate estimated quarterly tax liability",
             json!({
                 "quarter": {"type": "string", "description": "Quarter number (1-4)"},
                 "year": {"type": "string", "description": "Tax year (e.g. 2026)"}
             }),
             vec![]
         ),
-        tool!("aequi_schedule_c_preview", "Generate a Schedule C (Profit or Loss) preview",
+        tool!(
+            "aequi_schedule_c_preview",
+            "Generate a Schedule C (Profit or Loss) preview",
             json!({"year": {"type": "string", "description": "Tax year (e.g. 2026)"}}),
             vec![]
         ),
-        tool!("aequi_import_bank_statement", "Import a bank statement file (OFX, QFX, CSV)",
+        tool!(
+            "aequi_import_bank_statement",
+            "Import a bank statement file (OFX, QFX, CSV)",
             json!({
                 "file_path": {"type": "string", "description": "Path to the statement file"},
                 "format": {"type": "string", "description": "File format: ofx, qfx, csv (auto-detected if omitted)"}
             }),
             vec!["file_path"]
         ),
-        tool!("aequi_account_balances", "Get current account balances",
+        tool!(
+            "aequi_account_balances",
+            "Get current account balances",
             json!({"account_type": {"type": "string", "description": "Filter by type: asset, liability, equity, revenue, expense"}}),
             vec![]
         ),
-        tool!("aequi_list_receipts", "List receipts with optional status filter",
+        tool!(
+            "aequi_list_receipts",
+            "List receipts with optional status filter",
             json!({
                 "status": {"type": "string", "description": "Filter: pending_review, reviewed, matched, all"},
                 "limit": {"type": "integer", "description": "Max results to return"}
@@ -252,7 +286,9 @@ pub fn build_tool_manifest() -> McpToolManifest {
             vec![]
         ),
         // ----- Agnostic QA platform tools (5) -----
-        tool!("agnostic_run_suite", "Run a QA test suite",
+        tool!(
+            "agnostic_run_suite",
+            "Run a QA test suite",
             json!({
                 "suite": {"type": "string", "description": "Test suite name or ID"},
                 "target_url": {"type": "string", "description": "Target application URL to test"},
@@ -260,34 +296,46 @@ pub fn build_tool_manifest() -> McpToolManifest {
             }),
             vec!["suite"]
         ),
-        tool!("agnostic_test_status", "Get status of a running or completed test run",
+        tool!(
+            "agnostic_test_status",
+            "Get status of a running or completed test run",
             json!({"run_id": {"type": "string", "description": "Test run ID"}}),
             vec!["run_id"]
         ),
-        tool!("agnostic_test_report", "Get detailed test report with findings",
+        tool!(
+            "agnostic_test_report",
+            "Get detailed test report with findings",
             json!({
                 "run_id": {"type": "string", "description": "Test run ID"},
                 "format": {"type": "string", "description": "Report format: summary, full, json (default: summary)"}
             }),
             vec!["run_id"]
         ),
-        tool!("agnostic_list_suites", "List available QA test suites",
+        tool!(
+            "agnostic_list_suites",
+            "List available QA test suites",
             json!({"category": {"type": "string", "description": "Filter by category: ui, api, security, performance, all"}}),
             vec![]
         ),
-        tool!("agnostic_agent_status", "Get status of QA testing agents",
+        tool!(
+            "agnostic_agent_status",
+            "Get status of QA testing agents",
             json!({"agent_type": {"type": "string", "description": "Filter by agent type: ui, api, security, performance, accessibility, self-healing"}}),
             vec![]
         ),
         // ----- Photis Nadi task management tools (6) -----
-        tool!("photis_list_tasks", "List tasks with optional filters",
+        tool!(
+            "photis_list_tasks",
+            "List tasks with optional filters",
             json!({
                 "status": {"type": "string", "description": "Filter by status: todo, in_progress, done"},
                 "board_id": {"type": "string", "description": "Filter by board ID"}
             }),
             vec![]
         ),
-        tool!("photis_create_task", "Create a new task",
+        tool!(
+            "photis_create_task",
+            "Create a new task",
             json!({
                 "title": {"type": "string", "description": "Task title"},
                 "description": {"type": "string", "description": "Task description"},
@@ -296,7 +344,9 @@ pub fn build_tool_manifest() -> McpToolManifest {
             }),
             vec!["title"]
         ),
-        tool!("photis_update_task", "Update an existing task",
+        tool!(
+            "photis_update_task",
+            "Update an existing task",
             json!({
                 "task_id": {"type": "string", "description": "UUID of the task to update"},
                 "title": {"type": "string", "description": "New task title"},
@@ -305,18 +355,24 @@ pub fn build_tool_manifest() -> McpToolManifest {
             }),
             vec!["task_id"]
         ),
-        tool!("photis_get_rituals", "Get daily rituals/habits",
+        tool!(
+            "photis_get_rituals",
+            "Get daily rituals/habits",
             json!({"date": {"type": "string", "description": "ISO date (e.g. 2026-03-06)"}}),
             vec![]
         ),
-        tool!("photis_analytics", "Get productivity analytics",
+        tool!(
+            "photis_analytics",
+            "Get productivity analytics",
             json!({
                 "period": {"type": "string", "description": "Period: day, week, month"},
                 "metric": {"type": "string", "description": "Metric: tasks_completed, streak, velocity"}
             }),
             vec![]
         ),
-        tool!("photis_sync", "Trigger sync with Supabase backend",
+        tool!(
+            "photis_sync",
+            "Trigger sync with Supabase backend",
             json!({"direction": {"type": "string", "description": "Sync direction: push, pull, both"}}),
             vec![]
         ),
@@ -462,7 +518,11 @@ pub async fn mcp_tool_call_handler(
     Json(result)
 }
 
-async fn dispatch_tool_call(state: &ApiState, call: &McpToolCall, request_id: Uuid) -> McpToolResult {
+async fn dispatch_tool_call(
+    state: &ApiState,
+    call: &McpToolCall,
+    request_id: Uuid,
+) -> McpToolResult {
     debug!(request_id = %request_id, tool = %call.name, "Dispatching MCP tool call");
     match call.name.as_str() {
         "agnos_health" => handle_health(state).await,
@@ -531,9 +591,7 @@ async fn dispatch_external_tool(ext: &ExternalMcpTool, call: &McpToolCall) -> Mc
             reason = %reason,
             "Blocked SSRF attempt in external MCP tool callback"
         );
-        return error_result(format!(
-            "Callback URL blocked by SSRF policy: {reason}"
-        ));
+        return error_result(format!("Callback URL blocked by SSRF policy: {reason}"));
     }
 
     let client = &*EXTERNAL_HTTP_CLIENT;
@@ -602,16 +660,16 @@ fn get_optional_string_arg(args: &serde_json::Value, key: &str) -> Option<String
 /// Extract a required string field from MCP tool arguments, returning an
 /// `McpToolResult` error if the field is missing or not a string.
 fn extract_required_string(args: &serde_json::Value, field: &str) -> Result<String, McpToolResult> {
-    get_string_arg(args, field).ok_or_else(|| {
-        error_result(format!("Missing required argument: {}", field))
-    })
+    get_string_arg(args, field)
+        .ok_or_else(|| error_result(format!("Missing required argument: {}", field)))
 }
 
 /// Extract a required string field and parse it as a UUID, returning an
 /// `McpToolResult` error for missing fields or invalid UUIDs.
 fn extract_required_uuid(args: &serde_json::Value, field: &str) -> Result<Uuid, McpToolResult> {
     let raw = extract_required_string(args, field)?;
-    Uuid::parse_str(&raw).map_err(|_| error_result(format!("Invalid UUID for '{}': {}", field, raw)))
+    Uuid::parse_str(&raw)
+        .map_err(|_| error_result(format!("Invalid UUID for '{}': {}", field, raw)))
 }
 
 /// Extract an optional unsigned integer field from MCP tool arguments.
@@ -1268,7 +1326,11 @@ async fn handle_photis_analytics(args: &serde_json::Value) -> McpToolResult {
     if let Err(e) = validate_enum_opt(&period_opt, "period", &["day", "week", "month"]) {
         return e;
     }
-    if let Err(e) = validate_enum_opt(&metric, "metric", &["tasks_completed", "streak", "velocity"]) {
+    if let Err(e) = validate_enum_opt(
+        &metric,
+        "metric",
+        &["tasks_completed", "streak", "velocity"],
+    ) {
         return e;
     }
 
@@ -1515,7 +1577,11 @@ async fn handle_aequi_import_bank(args: &serde_json::Value) -> McpToolResult {
 async fn handle_aequi_balances(args: &serde_json::Value) -> McpToolResult {
     let account_type = get_optional_string_arg(args, "account_type");
 
-    if let Err(e) = validate_enum_opt(&account_type, "account_type", &["asset", "liability", "equity", "revenue", "expense"]) {
+    if let Err(e) = validate_enum_opt(
+        &account_type,
+        "account_type",
+        &["asset", "liability", "equity", "revenue", "expense"],
+    ) {
         return e;
     }
 
@@ -1553,7 +1619,11 @@ async fn handle_aequi_receipts(args: &serde_json::Value) -> McpToolResult {
     let status = get_optional_string_arg(args, "status");
     let limit = extract_optional_u64(args, "limit", 20) as usize;
 
-    if let Err(e) = validate_enum_opt(&status, "status", &["pending_review", "reviewed", "matched", "all"]) {
+    if let Err(e) = validate_enum_opt(
+        &status,
+        "status",
+        &["pending_review", "reviewed", "matched", "all"],
+    ) {
         return e;
     }
 
@@ -1789,7 +1859,11 @@ async fn handle_agnostic_test_report(args: &serde_json::Value) -> McpToolResult 
 async fn handle_agnostic_list_suites(args: &serde_json::Value) -> McpToolResult {
     let category = get_optional_string_arg(args, "category");
 
-    if let Err(e) = validate_enum_opt(&category, "category", &["ui", "api", "security", "performance", "all"]) {
+    if let Err(e) = validate_enum_opt(
+        &category,
+        "category",
+        &["ui", "api", "security", "performance", "all"],
+    ) {
         return e;
     }
 
@@ -1836,7 +1910,18 @@ async fn handle_agnostic_list_suites(args: &serde_json::Value) -> McpToolResult 
 async fn handle_agnostic_agent_status(args: &serde_json::Value) -> McpToolResult {
     let agent_type = get_optional_string_arg(args, "agent_type");
 
-    if let Err(e) = validate_enum_opt(&agent_type, "agent_type", &["ui", "api", "security", "performance", "accessibility", "self-healing"]) {
+    if let Err(e) = validate_enum_opt(
+        &agent_type,
+        "agent_type",
+        &[
+            "ui",
+            "api",
+            "security",
+            "performance",
+            "accessibility",
+            "self-healing",
+        ],
+    ) {
         return e;
     }
 
@@ -1957,7 +2042,12 @@ impl DeltaBridge {
     async fn health_check(&self) -> bool {
         let client = reqwest::Client::new();
         let url = format!("{}/api/v1/health", self.base_url);
-        match client.get(&url).timeout(std::time::Duration::from_secs(2)).send().await {
+        match client
+            .get(&url)
+            .timeout(std::time::Duration::from_secs(2))
+            .send()
+            .await
+        {
             Ok(r) => r.status().is_success(),
             Err(e) => {
                 debug!(url = %url, error = %e, "Delta health check failed");
@@ -2071,7 +2161,8 @@ async fn handle_delta_pull_request(args: &serde_json::Value) -> McpToolResult {
     };
 
     let action_opt = Some(action.clone());
-    if let Err(e) = validate_enum_opt(&action_opt, "action", &["list", "create", "merge", "close"]) {
+    if let Err(e) = validate_enum_opt(&action_opt, "action", &["list", "create", "merge", "close"])
+    {
         return e;
     }
 
@@ -3690,7 +3781,12 @@ mod tests {
     async fn test_register_tool_rejects_private_ip_callback() {
         let router = build_test_router();
         let body = serde_json::json!({"name":"ssrf_priv","description":"t","inputSchema":{"type":"object"},"callback_url":"http://10.0.0.1:9090/cb"});
-        let req = Request::builder().method("POST").uri("/v1/mcp/tools").header("content-type","application/json").body(Body::from(serde_json::to_string(&body).unwrap())).unwrap();
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/mcp/tools")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_string(&body).unwrap()))
+            .unwrap();
         let resp = router.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
         let b = axum::body::to_bytes(resp.into_body(), 65536).await.unwrap();
@@ -3702,7 +3798,12 @@ mod tests {
     async fn test_register_tool_rejects_localhost_callback() {
         let router = build_test_router();
         let body = serde_json::json!({"name":"ssrf_lh","description":"t","inputSchema":{"type":"object"},"callback_url":"http://localhost:8090/v1/health"});
-        let req = Request::builder().method("POST").uri("/v1/mcp/tools").header("content-type","application/json").body(Body::from(serde_json::to_string(&body).unwrap())).unwrap();
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/mcp/tools")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_string(&body).unwrap()))
+            .unwrap();
         let resp = router.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
         let b = axum::body::to_bytes(resp.into_body(), 65536).await.unwrap();
@@ -3714,7 +3815,12 @@ mod tests {
     async fn test_register_tool_rejects_ftp_callback() {
         let router = build_test_router();
         let body = serde_json::json!({"name":"ssrf_ftp","description":"t","inputSchema":{"type":"object"},"callback_url":"ftp://example.com/cb"});
-        let req = Request::builder().method("POST").uri("/v1/mcp/tools").header("content-type","application/json").body(Body::from(serde_json::to_string(&body).unwrap())).unwrap();
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/mcp/tools")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_string(&body).unwrap()))
+            .unwrap();
         let resp = router.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
         let b = axum::body::to_bytes(resp.into_body(), 65536).await.unwrap();
@@ -3726,7 +3832,12 @@ mod tests {
     async fn test_register_tool_rejects_cred_callback() {
         let router = build_test_router();
         let body = serde_json::json!({"name":"ssrf_cred","description":"t","inputSchema":{"type":"object"},"callback_url":"https://a:b@example.com/cb"});
-        let req = Request::builder().method("POST").uri("/v1/mcp/tools").header("content-type","application/json").body(Body::from(serde_json::to_string(&body).unwrap())).unwrap();
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/mcp/tools")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_string(&body).unwrap()))
+            .unwrap();
         let resp = router.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
         let b = axum::body::to_bytes(resp.into_body(), 65536).await.unwrap();
@@ -3738,18 +3849,36 @@ mod tests {
     async fn test_register_tool_accepts_public_callback() {
         let router = build_test_router();
         let body = serde_json::json!({"name":"ext_ok","description":"ok","inputSchema":{"type":"object"},"callback_url":"https://example.com:9090/cb"});
-        let req = Request::builder().method("POST").uri("/v1/mcp/tools").header("content-type","application/json").body(Body::from(serde_json::to_string(&body).unwrap())).unwrap();
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/mcp/tools")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_string(&body).unwrap()))
+            .unwrap();
         let resp = router.oneshot(req).await.unwrap();
         assert_eq!(resp.status(), StatusCode::CREATED);
     }
 
     #[tokio::test]
     async fn test_dispatch_blocks_ssrf_link_local() {
-        let ext = ExternalMcpTool { tool: McpToolDescription { name: "evil".into(), description: "t".into(), input_schema: serde_json::json!({}) }, callback_url: "http://169.254.169.254/latest/meta-data/".into(), source: "test".into() };
-        let call = McpToolCall { name: "evil".into(), arguments: serde_json::json!({}) };
+        let ext = ExternalMcpTool {
+            tool: McpToolDescription {
+                name: "evil".into(),
+                description: "t".into(),
+                input_schema: serde_json::json!({}),
+            },
+            callback_url: "http://169.254.169.254/latest/meta-data/".into(),
+            source: "test".into(),
+        };
+        let call = McpToolCall {
+            name: "evil".into(),
+            arguments: serde_json::json!({}),
+        };
         let result = dispatch_external_tool(&ext, &call).await;
         assert!(result.is_error);
-        assert!(result.content[0].text.contains("SSRF") || result.content[0].text.contains("private"));
+        assert!(
+            result.content[0].text.contains("SSRF") || result.content[0].text.contains("private")
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -3770,7 +3899,9 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.is_error);
-        assert!(err.content[0].text.contains("Missing required argument: name"));
+        assert!(err.content[0]
+            .text
+            .contains("Missing required argument: name"));
     }
 
     #[test]

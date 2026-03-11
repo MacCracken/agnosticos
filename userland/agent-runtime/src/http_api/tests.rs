@@ -6181,13 +6181,15 @@ mod tests {
             }
             assert_eq!(buf.len(), max);
         }
-        state.push_audit_event(AuditEvent {
-            timestamp: Utc::now().to_rfc3339(),
-            action: "overflow-action".to_string(),
-            agent: None,
-            details: serde_json::Value::Null,
-            outcome: "success".to_string(),
-        }).await;
+        state
+            .push_audit_event(AuditEvent {
+                timestamp: Utc::now().to_rfc3339(),
+                action: "overflow-action".to_string(),
+                agent: None,
+                details: serde_json::Value::Null,
+                outcome: "success".to_string(),
+            })
+            .await;
         let buf = state.audit_buffer.read().await;
         assert_eq!(buf.len(), max);
         assert_ne!(buf.front().unwrap().action, "action-0");
@@ -6205,7 +6207,9 @@ mod tests {
             }
             assert_eq!(traces.len(), max);
         }
-        state.push_trace(serde_json::json!({"id": "overflow"})).await;
+        state
+            .push_trace(serde_json::json!({"id": "overflow"}))
+            .await;
         let traces = state.traces.read().await;
         assert_eq!(traces.len(), max);
         assert_ne!(traces.front().unwrap()["id"], 0);
@@ -6220,10 +6224,16 @@ mod tests {
         let registry_arc = std::sync::Arc::new(tokio::sync::RwLock::new(registry));
         let fake_tarball = tmp.path().join("nonexistent.tar.gz");
         let result = crate::http_api::handlers::marketplace::staged_install(
-            &registry_arc, &fake_tarball, None,
+            &registry_arc,
+            &fake_tarball,
+            None,
         );
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.contains("Failed") || err.contains("stage"), "error should indicate staging failure: {}", err);
+        assert!(
+            err.contains("Failed") || err.contains("stage"),
+            "error should indicate staging failure: {}",
+            err
+        );
     }
 }

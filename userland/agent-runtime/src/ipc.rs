@@ -188,10 +188,7 @@ pub async fn cleanup_stale_socket(path: &std::path::Path) {
         }
         _ => {
             // Connection failed or timed out — stale socket
-            info!(
-                "Removing stale socket file: {}",
-                path.display()
-            );
+            info!("Removing stale socket file: {}", path.display());
             let _ = tokio::fs::remove_file(path).await;
         }
     }

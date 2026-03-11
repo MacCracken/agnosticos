@@ -478,8 +478,7 @@ impl FederationCluster {
 
         // Record self-vote
         let local_id = self.local_node_id.clone();
-        self.votes_received
-            .insert(local_id.clone(), vec![local_id]);
+        self.votes_received.insert(local_id.clone(), vec![local_id]);
 
         info!(
             node_id = %self.local_node_id,

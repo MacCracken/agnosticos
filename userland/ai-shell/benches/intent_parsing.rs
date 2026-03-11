@@ -54,13 +54,9 @@ fn bench_parse_individual_intents(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("intent_parsing/individual");
     for input in INTENT_INPUTS {
-        group.bench_with_input(
-            BenchmarkId::from_parameter(input),
-            input,
-            |b, &input| {
-                b.iter(|| black_box(interpreter.parse(input)));
-            },
-        );
+        group.bench_with_input(BenchmarkId::from_parameter(input), input, |b, &input| {
+            b.iter(|| black_box(interpreter.parse(input)));
+        });
     }
     group.finish();
 }

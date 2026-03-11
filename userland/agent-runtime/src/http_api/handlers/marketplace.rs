@@ -133,10 +133,8 @@ pub async fn marketplace_install_handler(
     // Staged install with transaction isolation (H22):
     // copy -> verify -> install -> commit/rollback
     let registry = state.marketplace_registry.clone();
-    let result = tokio::task::spawn_blocking(move || {
-        staged_install(&registry, &canonical, None)
-    })
-    .await;
+    let result =
+        tokio::task::spawn_blocking(move || staged_install(&registry, &canonical, None)).await;
 
     match result {
         Ok(Ok(json)) => (StatusCode::OK, Json(json)).into_response(),
@@ -319,10 +317,8 @@ pub async fn marketplace_remote_install_handler(
 
     // Staged install with transaction isolation (H22).
     let registry = state.marketplace_registry.clone();
-    let result = tokio::task::spawn_blocking(move || {
-        staged_install(&registry, &tarball_path, None)
-    })
-    .await;
+    let result =
+        tokio::task::spawn_blocking(move || staged_install(&registry, &tarball_path, None)).await;
 
     match result {
         Ok(Ok(json)) => (StatusCode::OK, Json(json)).into_response(),
@@ -341,18 +337,20 @@ pub async fn marketplace_remote_install_handler(
 
 /// Perform a staged install with cleanup on failure (H22).
 pub(crate) fn staged_install(
-    registry: &std::sync::Arc<tokio::sync::RwLock<crate::marketplace::local_registry::LocalRegistry>>,
+    registry: &std::sync::Arc<
+        tokio::sync::RwLock<crate::marketplace::local_registry::LocalRegistry>,
+    >,
     tarball_path: &std::path::Path,
     keyring: Option<&crate::marketplace::trust::PublisherKeyring>,
 ) -> Result<serde_json::Value, String> {
-    let staging_dir = std::env::temp_dir().join(format!(
-        "agnos-marketplace-stage-{}",
-        uuid::Uuid::new_v4()
-    ));
+    let staging_dir =
+        std::env::temp_dir().join(format!("agnos-marketplace-stage-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&staging_dir)
         .map_err(|e| format!("Failed to create staging dir: {}", e))?;
     let staged_tarball = staging_dir.join(
-        tarball_path.file_name().unwrap_or_else(|| std::ffi::OsStr::new("package.tar")),
+        tarball_path
+            .file_name()
+            .unwrap_or_else(|| std::ffi::OsStr::new("package.tar")),
     );
     std::fs::copy(tarball_path, &staged_tarball).map_err(|e| {
         let _ = std::fs::remove_dir_all(&staging_dir);
@@ -387,7 +385,9 @@ pub(crate) fn staged_install(
             warn!(error = %e, "Marketplace install failed -- rolling back");
             let _ = std::fs::remove_dir_all(&staging_dir);
             if let Ok(data) = std::fs::read(tarball_path) {
-                if let Ok(manifest) = crate::marketplace::local_registry::extract_manifest_from_tarball(&data) {
+                if let Ok(manifest) =
+                    crate::marketplace::local_registry::extract_manifest_from_tarball(&data)
+                {
                     let reg = registry.blocking_read();
                     let partial_dir = reg.packages_dir().join(&manifest.agent.name);
                     if partial_dir.exists() {
