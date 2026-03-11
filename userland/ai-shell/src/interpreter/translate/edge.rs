@@ -95,10 +95,7 @@ pub(crate) fn translate_edge(intent: &Intent) -> Result<Translation> {
         Intent::EdgeHealth { node } => {
             let mut args_json = serde_json::Map::new();
             if let Some(n) = node {
-                args_json.insert(
-                    "node_id".to_string(),
-                    serde_json::Value::String(n.clone()),
-                );
+                args_json.insert("node_id".to_string(), serde_json::Value::String(n.clone()));
             }
             let body = serde_json::json!({"name": "edge_health", "arguments": args_json});
             Ok(Translation {
@@ -115,8 +112,7 @@ pub(crate) fn translate_edge(intent: &Intent) -> Result<Translation> {
                 ],
                 description: format!(
                     "Edge health{}",
-                    node.as_ref()
-                        .map_or(String::new(), |n| format!(": {}", n))
+                    node.as_ref().map_or(String::new(), |n| format!(": {}", n))
                 ),
                 permission: PermissionLevel::Safe,
                 explanation: "Gets edge node health status via MCP bridge".to_string(),
@@ -125,8 +121,7 @@ pub(crate) fn translate_edge(intent: &Intent) -> Result<Translation> {
 
         Intent::EdgeDecommission { node } => {
             let args_json = serde_json::json!({"node_id": node});
-            let body =
-                serde_json::json!({"name": "edge_decommission", "arguments": args_json});
+            let body = serde_json::json!({"name": "edge_decommission", "arguments": args_json});
             Ok(Translation {
                 command: "curl".to_string(),
                 args: vec![

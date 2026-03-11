@@ -3,15 +3,15 @@
 //! Monitors agent health, enforces resource limits, and handles failures.
 //! Resource enforcement uses cgroups v2 on Linux for hard memory/CPU limits.
 
-pub mod output_capture;
 pub mod circuit_breaker;
+pub mod output_capture;
 pub mod resource_quota;
 
 mod cgroup;
 mod health_check;
-mod resource_monitor;
-mod recovery;
 mod proc_utils;
+mod recovery;
+mod resource_monitor;
 
 #[cfg(test)]
 mod tests;
@@ -32,8 +32,8 @@ use crate::registry::AgentRegistry;
 use self::cgroup::CgroupController;
 
 // Re-export all public types
-pub use self::output_capture::{OutputCapture, OutputLine, OutputStream};
 pub use self::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig, CircuitState};
+pub use self::output_capture::{OutputCapture, OutputLine, OutputStream};
 pub use self::resource_quota::{AgentHealth, HealthCheckConfig, ResourceQuota};
 
 /// Supervisor for monitoring and managing agents.

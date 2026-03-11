@@ -40,14 +40,20 @@ pub(crate) fn get_optional_string_arg(args: &serde_json::Value, key: &str) -> Op
 
 /// Extract a required string field from MCP tool arguments, returning an
 /// `McpToolResult` error if the field is missing or not a string.
-pub(crate) fn extract_required_string(args: &serde_json::Value, field: &str) -> Result<String, McpToolResult> {
+pub(crate) fn extract_required_string(
+    args: &serde_json::Value,
+    field: &str,
+) -> Result<String, McpToolResult> {
     get_string_arg(args, field)
         .ok_or_else(|| error_result(format!("Missing required argument: {}", field)))
 }
 
 /// Extract a required string field and parse it as a UUID, returning an
 /// `McpToolResult` error for missing fields or invalid UUIDs.
-pub(crate) fn extract_required_uuid(args: &serde_json::Value, field: &str) -> Result<Uuid, McpToolResult> {
+pub(crate) fn extract_required_uuid(
+    args: &serde_json::Value,
+    field: &str,
+) -> Result<Uuid, McpToolResult> {
     let raw = extract_required_string(args, field)?;
     Uuid::parse_str(&raw)
         .map_err(|_| error_result(format!("Invalid UUID for '{}': {}", field, raw)))

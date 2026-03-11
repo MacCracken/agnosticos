@@ -198,7 +198,9 @@ impl ApiState {
             external_mcp_tools: Arc::new(RwLock::new(Vec::new())),
             custom_sandbox_profiles: Arc::new(RwLock::new(HashMap::new())),
             rag_ingest_rate_limits: Arc::new(Mutex::new(HashMap::new())),
-            edge_fleet: Arc::new(RwLock::new(EdgeFleetManager::new(EdgeFleetConfig::default()))),
+            edge_fleet: Arc::new(RwLock::new(EdgeFleetManager::new(
+                EdgeFleetConfig::default(),
+            ))),
         }
     }
 
@@ -237,7 +239,9 @@ impl ApiState {
             external_mcp_tools: Arc::new(RwLock::new(Vec::new())),
             custom_sandbox_profiles: Arc::new(RwLock::new(HashMap::new())),
             rag_ingest_rate_limits: Arc::new(Mutex::new(HashMap::new())),
-            edge_fleet: Arc::new(RwLock::new(EdgeFleetManager::new(EdgeFleetConfig::default()))),
+            edge_fleet: Arc::new(RwLock::new(EdgeFleetManager::new(
+                EdgeFleetConfig::default(),
+            ))),
         }
     }
 

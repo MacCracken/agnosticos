@@ -1,14 +1,14 @@
 use super::*;
+use agnos_common::{AgentId, ResourceUsage, StopReason};
+use anyhow::Result;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use agnos_common::{AgentId, ResourceUsage, StopReason};
-use anyhow::Result;
 use tempfile::TempDir;
 
-use crate::registry::AgentRegistry;
 use super::cgroup;
 use super::proc_utils;
+use crate::registry::AgentRegistry;
 
 struct MockAgentControl {
     healthy: bool,

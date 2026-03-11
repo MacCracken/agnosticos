@@ -313,7 +313,9 @@ fn parse_finding_line(line: &str) -> Option<Finding> {
         return None;
     };
 
-    let severity = severity_str.parse::<FindingSeverity>().unwrap_or(FindingSeverity::Info);
+    let severity = severity_str
+        .parse::<FindingSeverity>()
+        .unwrap_or(FindingSeverity::Info);
 
     let (category, desc_evidence) = rest.split_once(':')?;
     let (description, evidence) = if let Some((d, e)) = desc_evidence.split_once('|') {

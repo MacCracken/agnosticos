@@ -178,7 +178,10 @@ pub struct EdgeFleetManager {
 impl EdgeFleetManager {
     /// Create a new fleet manager.
     pub fn new(config: EdgeFleetConfig) -> Self {
-        info!("Edge fleet manager initialized (max_nodes={})", config.max_nodes);
+        info!(
+            "Edge fleet manager initialized (max_nodes={})",
+            config.max_nodes
+        );
         Self {
             config,
             nodes: HashMap::new(),
@@ -883,13 +886,18 @@ pub struct WireguardConfig {
 /// Errors from edge fleet operations.
 #[derive(Debug, Clone, PartialEq)]
 pub enum EdgeFleetError {
-    FleetFull { max: usize },
+    FleetFull {
+        max: usize,
+    },
     InvalidName(String),
     DuplicateName(String),
     NodeNotFound(String),
     NodeDecommissioned(String),
     NodeNotOnline(String),
-    NodeBusy { node_id: String, active_tasks: u32 },
+    NodeBusy {
+        node_id: String,
+        active_tasks: u32,
+    },
     NotUpdating(String),
     InsufficientBandwidth {
         node_id: String,
@@ -914,11 +922,7 @@ impl fmt::Display for EdgeFleetError {
             Self::NodeBusy {
                 node_id,
                 active_tasks,
-            } => write!(
-                f,
-                "edge node {} has {} active tasks",
-                node_id, active_tasks
-            ),
+            } => write!(f, "edge node {} has {} active tasks", node_id, active_tasks),
             Self::NotUpdating(id) => write!(f, "edge node {} is not in updating state", id),
             Self::InsufficientBandwidth {
                 node_id,
@@ -994,7 +998,7 @@ impl HardwareTarget {
     pub fn supports_gpu(&self) -> bool {
         match self {
             Self::RaspberryPi4 | Self::RaspberryPi5 => true, // VideoCore
-            Self::IntelNuc => true,                           // Intel UHD
+            Self::IntelNuc => true,                          // Intel UHD
             Self::GenericX86_64 | Self::GenericArm64 | Self::OciContainer => false,
         }
     }
@@ -1181,14 +1185,12 @@ mod tests {
         let id = register_test_node(&mut mgr, "node-a");
 
         // Simulate stale heartbeat.
-        mgr.nodes.get_mut(&id).unwrap().last_heartbeat =
-            Utc::now() - chrono::Duration::seconds(35);
+        mgr.nodes.get_mut(&id).unwrap().last_heartbeat = Utc::now() - chrono::Duration::seconds(35);
         mgr.check_health();
         assert_eq!(mgr.get_node(&id).unwrap().status, EdgeNodeStatus::Suspect);
 
         // Simulate very stale heartbeat.
-        mgr.nodes.get_mut(&id).unwrap().last_heartbeat =
-            Utc::now() - chrono::Duration::seconds(90);
+        mgr.nodes.get_mut(&id).unwrap().last_heartbeat = Utc::now() - chrono::Duration::seconds(90);
         mgr.check_health();
         assert_eq!(mgr.get_node(&id).unwrap().status, EdgeNodeStatus::Offline);
     }
@@ -1233,10 +1235,7 @@ mod tests {
         mgr.nodes.get_mut(&id).unwrap().last_heartbeat =
             Utc::now() - chrono::Duration::seconds(999);
         mgr.check_health();
-        assert_eq!(
-            mgr.get_node(&id).unwrap().status,
-            EdgeNodeStatus::Updating
-        );
+        assert_eq!(mgr.get_node(&id).unwrap().status, EdgeNodeStatus::Updating);
     }
 
     // --- Decommission ---
@@ -1817,7 +1816,8 @@ mod tests {
         let mut mgr = EdgeFleetManager::new(test_config());
         let id = register_test_node(&mut mgr, "node-sig");
         assert!(mgr.get_node(&id).unwrap().update_signature.is_none());
-        mgr.set_update_signature(&id, "ed25519:abcdef".into()).unwrap();
+        mgr.set_update_signature(&id, "ed25519:abcdef".into())
+            .unwrap();
         assert_eq!(
             mgr.get_node(&id).unwrap().update_signature.as_deref(),
             Some("ed25519:abcdef")
@@ -1879,8 +1879,12 @@ mod tests {
         mgr.add_discovery_peer("192.168.1.10:8090".into());
         mgr.add_discovery_peer("192.168.1.11:8090".into());
         assert_eq!(mgr.discovered_peers.len(), 2);
-        assert!(mgr.discovered_peers.contains(&"192.168.1.10:8090".to_string()));
-        assert!(mgr.discovered_peers.contains(&"192.168.1.11:8090".to_string()));
+        assert!(mgr
+            .discovered_peers
+            .contains(&"192.168.1.10:8090".to_string()));
+        assert!(mgr
+            .discovered_peers
+            .contains(&"192.168.1.11:8090".to_string()));
     }
 
     #[test]
@@ -1913,7 +1917,9 @@ mod tests {
     #[test]
     fn auto_register_node_success() {
         let mut mgr = EdgeFleetManager::new(test_config());
-        let id = mgr.auto_register_node("edge-rpi-01", test_capabilities()).unwrap();
+        let id = mgr
+            .auto_register_node("edge-rpi-01", test_capabilities())
+            .unwrap();
         assert!(!id.is_empty());
         let node = mgr.get_node(&id).unwrap();
         assert_eq!(node.name, "edge-rpi-01");
@@ -1931,8 +1937,11 @@ mod tests {
     #[test]
     fn auto_register_node_duplicate_rejected() {
         let mut mgr = EdgeFleetManager::new(test_config());
-        mgr.auto_register_node("edge-01", test_capabilities()).unwrap();
-        let err = mgr.auto_register_node("edge-01", test_capabilities()).unwrap_err();
+        mgr.auto_register_node("edge-01", test_capabilities())
+            .unwrap();
+        let err = mgr
+            .auto_register_node("edge-01", test_capabilities())
+            .unwrap_err();
         assert!(matches!(err, EdgeFleetError::DuplicateName(_)));
     }
 

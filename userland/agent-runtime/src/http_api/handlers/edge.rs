@@ -278,7 +278,10 @@ pub async fn edge_get_node_handler(
 ) -> impl IntoResponse {
     let fleet = state.edge_fleet.read().await;
     match fleet.get_node(&id) {
-        Some(node) => (StatusCode::OK, Json(serde_json::json!(EdgeNodeResponse::from_node(node))))
+        Some(node) => (
+            StatusCode::OK,
+            Json(serde_json::json!(EdgeNodeResponse::from_node(node))),
+        )
             .into_response(),
         None => (
             StatusCode::NOT_FOUND,
@@ -473,17 +476,12 @@ pub struct EdgeDashboardSummary {
 /// Return an aggregated dashboard summary of the edge fleet including node
 /// counts by status, GPU availability, average memory, and a fleet health
 /// score (ratio of online nodes to total non-decommissioned nodes).
-pub async fn edge_dashboard_handler(
-    State(state): State<ApiState>,
-) -> impl IntoResponse {
+pub async fn edge_dashboard_handler(State(state): State<ApiState>) -> impl IntoResponse {
     let fleet = state.edge_fleet.read().await;
     let stats = fleet.stats();
     let all_nodes = fleet.list_nodes(None);
 
-    let total_gpu_nodes = all_nodes
-        .iter()
-        .filter(|n| n.capabilities.has_gpu)
-        .count() as u32;
+    let total_gpu_nodes = all_nodes.iter().filter(|n| n.capabilities.has_gpu).count() as u32;
 
     let (total_mem, mem_count) = all_nodes.iter().fold((0u64, 0u64), |(sum, count), n| {
         (sum + n.capabilities.memory_mb, count + 1)
@@ -603,19 +601,13 @@ mod tests {
             .route("/v1/edge/nodes", get(edge_list_nodes_handler))
             .route("/v1/edge/nodes", post(edge_register_node_handler))
             .route("/v1/edge/nodes/:id", get(edge_get_node_handler))
-            .route(
-                "/v1/edge/nodes/:id/heartbeat",
-                post(edge_heartbeat_handler),
-            )
+            .route("/v1/edge/nodes/:id/heartbeat", post(edge_heartbeat_handler))
             .route(
                 "/v1/edge/nodes/:id/decommission",
                 post(edge_decommission_handler),
             )
             .route("/v1/edge/stats", get(edge_stats_handler))
-            .route(
-                "/v1/edge/nodes/:id/update",
-                post(edge_start_update_handler),
-            )
+            .route("/v1/edge/nodes/:id/update", post(edge_start_update_handler))
             .route(
                 "/v1/edge/nodes/:id/update/complete",
                 post(edge_complete_update_handler),
@@ -675,9 +667,7 @@ mod tests {
     }
 
     /// Helper: parse JSON response body.
-    async fn response_json(
-        resp: axum::http::Response<Body>,
-    ) -> serde_json::Value {
+    async fn response_json(resp: axum::http::Response<Body>) -> serde_json::Value {
         let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
             .await
             .unwrap();

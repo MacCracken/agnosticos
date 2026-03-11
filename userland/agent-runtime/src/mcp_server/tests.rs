@@ -1,13 +1,13 @@
-use super::*;
-use super::helpers::{
-    extract_optional_u64, extract_required_string, extract_required_uuid,
-    success_result, validate_enum_opt,
-};
-use super::manifest::build_tool_manifest;
 use super::handlers::edge::{
     handle_edge_decommission, handle_edge_deploy, handle_edge_health, handle_edge_list,
     handle_edge_update,
 };
+use super::helpers::{
+    extract_optional_u64, extract_required_string, extract_required_uuid, success_result,
+    validate_enum_opt,
+};
+use super::manifest::build_tool_manifest;
+use super::*;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use tower::ServiceExt;
@@ -25,11 +25,7 @@ fn build_test_router() -> axum::Router {
     crate::http_api::build_router(state)
 }
 
-async fn call_tool(
-    router: &axum::Router,
-    name: &str,
-    args: serde_json::Value,
-) -> McpToolResult {
+async fn call_tool(router: &axum::Router, name: &str, args: serde_json::Value) -> McpToolResult {
     let body = serde_json::to_string(&McpToolCall {
         name: name.to_string(),
         arguments: args,
@@ -1402,19 +1398,36 @@ fn test_json_schema_object_empty() {
     // Test via build_tool_manifest which uses json_schema_object internally
     let manifest = build_tool_manifest();
     // agnos_health has no properties
-    let health = manifest.tools.iter().find(|t| t.name == "agnos_health").unwrap();
+    let health = manifest
+        .tools
+        .iter()
+        .find(|t| t.name == "agnos_health")
+        .unwrap();
     assert_eq!(health.input_schema["type"], "object");
-    assert!(health.input_schema["properties"].as_object().unwrap().is_empty());
-    assert!(health.input_schema["required"].as_array().unwrap().is_empty());
+    assert!(health.input_schema["properties"]
+        .as_object()
+        .unwrap()
+        .is_empty());
+    assert!(health.input_schema["required"]
+        .as_array()
+        .unwrap()
+        .is_empty());
 }
 
 #[test]
 fn test_json_schema_object_with_properties() {
     let manifest = build_tool_manifest();
     // agnos_get_agent has properties and required
-    let get_agent = manifest.tools.iter().find(|t| t.name == "agnos_get_agent").unwrap();
+    let get_agent = manifest
+        .tools
+        .iter()
+        .find(|t| t.name == "agnos_get_agent")
+        .unwrap();
     assert_eq!(get_agent.input_schema["type"], "object");
-    assert_eq!(get_agent.input_schema["properties"]["agent_id"]["type"], "string");
+    assert_eq!(
+        get_agent.input_schema["properties"]["agent_id"]["type"],
+        "string"
+    );
     assert_eq!(get_agent.input_schema["required"][0], "agent_id");
 }
 
@@ -1572,9 +1585,7 @@ async fn test_dispatch_blocks_ssrf_link_local() {
     };
     let result = dispatch_external_tool(&ext, &call).await;
     assert!(result.is_error);
-    assert!(
-        result.content[0].text.contains("SSRF") || result.content[0].text.contains("private")
-    );
+    assert!(result.content[0].text.contains("SSRF") || result.content[0].text.contains("private"));
 }
 
 // -----------------------------------------------------------------------
@@ -1766,8 +1777,7 @@ async fn test_edge_health_specific_node() {
             )
             .unwrap();
     }
-    let result =
-        handle_edge_health(&state, &serde_json::json!({"node_id": node_id})).await;
+    let result = handle_edge_health(&state, &serde_json::json!({"node_id": node_id})).await;
     assert!(!result.is_error);
     let parsed = parse_result(&result);
     assert_eq!(parsed["name"], "health-test");
@@ -1777,16 +1787,14 @@ async fn test_edge_health_specific_node() {
 #[tokio::test]
 async fn test_edge_health_unknown_node() {
     let state = test_state();
-    let result =
-        handle_edge_health(&state, &serde_json::json!({"node_id": "nonexistent"})).await;
+    let result = handle_edge_health(&state, &serde_json::json!({"node_id": "nonexistent"})).await;
     assert!(result.is_error);
 }
 
 #[tokio::test]
 async fn test_edge_deploy_no_nodes() {
     let state = test_state();
-    let result =
-        handle_edge_deploy(&state, &serde_json::json!({"task": "run-scan"})).await;
+    let result = handle_edge_deploy(&state, &serde_json::json!({"task": "run-scan"})).await;
     assert!(result.is_error);
 }
 
@@ -1806,8 +1814,7 @@ async fn test_edge_deploy_auto_route() {
             )
             .unwrap();
     }
-    let result =
-        handle_edge_deploy(&state, &serde_json::json!({"task": "run-scan"})).await;
+    let result = handle_edge_deploy(&state, &serde_json::json!({"task": "run-scan"})).await;
     assert!(!result.is_error);
     let parsed = parse_result(&result);
     assert_eq!(parsed["status"], "deployed");
@@ -1872,8 +1879,7 @@ async fn test_edge_decommission_success() {
             )
             .unwrap();
     }
-    let result =
-        handle_edge_decommission(&state, &serde_json::json!({"node_id": node_id})).await;
+    let result = handle_edge_decommission(&state, &serde_json::json!({"node_id": node_id})).await;
     assert!(!result.is_error);
     let parsed = parse_result(&result);
     assert_eq!(parsed["status"], "decommissioned");
@@ -1889,8 +1895,7 @@ async fn test_edge_decommission_missing_id() {
 #[tokio::test]
 async fn test_edge_decommission_unknown() {
     let state = test_state();
-    let result =
-        handle_edge_decommission(&state, &serde_json::json!({"node_id": "fake"})).await;
+    let result = handle_edge_decommission(&state, &serde_json::json!({"node_id": "fake"})).await;
     assert!(result.is_error);
 }
 

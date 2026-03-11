@@ -4,8 +4,8 @@ use std::path::Path;
 
 use anyhow::Result;
 
-use crate::cli::PackageCommands;
 use super::truncate;
+use crate::cli::PackageCommands;
 
 pub async fn handle_package_command(action: PackageCommands, data_dir: &Path) -> Result<()> {
     let pkg_dir = data_dir.join("packages");

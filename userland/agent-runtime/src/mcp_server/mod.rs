@@ -4,24 +4,24 @@
 //! services can discover and call. Wraps the existing REST API logic
 //! from [`crate::http_api`] into the MCP tool-call format.
 
-pub mod types;
+pub(crate) mod handlers;
 pub mod helpers;
 pub mod manifest;
-pub(crate) mod handlers;
+pub mod types;
 
 #[cfg(test)]
 mod tests;
 
 // Re-export all public types so callers can still use `crate::mcp_server::X`.
+pub use handlers::aequi::AequiBridge;
+pub use handlers::agnostic::AgnosticBridge;
+pub use handlers::delta::DeltaBridge;
+pub use handlers::photis::PhotisBridge;
+pub use manifest::build_tool_manifest;
 pub use types::{
     ExternalMcpTool, McpContentBlock, McpToolCall, McpToolDescription, McpToolManifest,
     McpToolParam, McpToolResult, RegisterMcpToolRequest,
 };
-pub use manifest::build_tool_manifest;
-pub use handlers::photis::PhotisBridge;
-pub use handlers::aequi::AequiBridge;
-pub use handlers::agnostic::AgnosticBridge;
-pub use handlers::delta::DeltaBridge;
 
 use axum::extract::State;
 use axum::response::IntoResponse;
@@ -31,13 +31,13 @@ use uuid::Uuid;
 
 use crate::http_api::ApiState;
 
-use helpers::error_result;
-use handlers::agnos::*;
 use handlers::aequi::*;
+use handlers::agnos::*;
 use handlers::agnostic::*;
 use handlers::delta::*;
 use handlers::edge::*;
 use handlers::photis::*;
+use helpers::error_result;
 
 // ---------------------------------------------------------------------------
 // HTTP Handlers

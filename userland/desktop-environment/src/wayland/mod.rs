@@ -14,23 +14,25 @@
 //! Without the feature, a compile-time stub is provided so dependent code
 //! still builds.
 
-pub mod types;
+pub mod popups;
 pub mod protocol;
 pub mod server;
 pub mod stub;
-pub mod popups;
+pub mod types;
 
 #[cfg(test)]
 mod tests;
 
 // Re-export all public types from sub-modules for backward compatibility.
-pub use types::*;
-pub use protocol::*;
 pub use popups::*;
+pub use protocol::*;
+pub use types::*;
 
 // Feature-gated re-exports from server/stub.
 #[cfg(feature = "wayland")]
-pub use server::{WaylandState, start_server, WaylandServer, WaylandServerConfig, WaylandServerEvent};
+pub use server::{
+    start_server, WaylandServer, WaylandServerConfig, WaylandServerEvent, WaylandState,
+};
 
 #[cfg(not(feature = "wayland"))]
 pub use stub::WaylandState;

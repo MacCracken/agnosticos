@@ -706,7 +706,10 @@ mod tests {
         // Server-side syscalls EXCLUDED (edge is client-only)
         assert!(!allowed.contains("bind"), "Edge should not allow bind");
         assert!(!allowed.contains("listen"), "Edge should not allow listen");
-        assert!(!allowed.contains("accept4"), "Edge should not allow accept4");
+        assert!(
+            !allowed.contains("accept4"),
+            "Edge should not allow accept4"
+        );
         // Threading for tokio
         assert!(allowed.contains("clone3"));
         assert!(allowed.contains("sched_yield"));

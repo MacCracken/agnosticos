@@ -3,12 +3,12 @@ use std::collections::HashMap;
 use tracing::{debug, info};
 use uuid::Uuid;
 
-use crate::http_api::{ApiState, AuditEvent, RegisterAgentRequest, ResourceNeeds};
 use super::super::helpers::{
     error_result, extract_required_string, extract_required_uuid, get_optional_string_arg,
     get_string_arg, success_result,
 };
 use super::super::types::McpToolResult;
+use crate::http_api::{ApiState, AuditEvent, RegisterAgentRequest, ResourceNeeds};
 
 pub(crate) async fn handle_health(state: &ApiState) -> McpToolResult {
     let agents = state.agents_read().await;
@@ -48,7 +48,10 @@ pub(crate) async fn handle_get_agent(state: &ApiState, args: &serde_json::Value)
     }
 }
 
-pub(crate) async fn handle_register_agent(state: &ApiState, args: &serde_json::Value) -> McpToolResult {
+pub(crate) async fn handle_register_agent(
+    state: &ApiState,
+    args: &serde_json::Value,
+) -> McpToolResult {
     let name = match extract_required_string(args, "name") {
         Ok(n) => n,
         Err(e) => return e,
@@ -130,7 +133,10 @@ pub(crate) async fn handle_register_agent(state: &ApiState, args: &serde_json::V
     }))
 }
 
-pub(crate) async fn handle_deregister_agent(state: &ApiState, args: &serde_json::Value) -> McpToolResult {
+pub(crate) async fn handle_deregister_agent(
+    state: &ApiState,
+    args: &serde_json::Value,
+) -> McpToolResult {
     let uuid = match extract_required_uuid(args, "agent_id") {
         Ok(id) => id,
         Err(e) => return e,
@@ -212,7 +218,10 @@ pub(crate) async fn handle_get_metrics(state: &ApiState) -> McpToolResult {
     }))
 }
 
-pub(crate) async fn handle_forward_audit(state: &ApiState, args: &serde_json::Value) -> McpToolResult {
+pub(crate) async fn handle_forward_audit(
+    state: &ApiState,
+    args: &serde_json::Value,
+) -> McpToolResult {
     let action = match extract_required_string(args, "action") {
         Ok(a) => a,
         Err(e) => return e,

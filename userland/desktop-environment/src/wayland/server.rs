@@ -16,8 +16,8 @@ mod wayland_live {
     use crate::compositor::{Compositor, InputEvent, SurfaceId};
 
     use super::super::protocol::ProtocolAction;
-    use super::super::types::*;
     use super::super::protocol::ProtocolBridge;
+    use super::super::types::*;
 
     /// Per-surface user data stored on `wl_surface` resources.
     #[derive(Debug)]

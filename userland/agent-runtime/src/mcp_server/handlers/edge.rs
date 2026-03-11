@@ -1,11 +1,11 @@
 use tracing::info;
 
-use crate::http_api::ApiState;
 use super::super::helpers::{
     error_result, extract_required_string, get_optional_string_arg, success_result,
     validate_enum_opt,
 };
 use super::super::types::McpToolResult;
+use crate::http_api::ApiState;
 
 pub(crate) async fn handle_edge_list(state: &ApiState, args: &serde_json::Value) -> McpToolResult {
     let status_filter = get_optional_string_arg(args, "status");
@@ -57,7 +57,10 @@ pub(crate) async fn handle_edge_list(state: &ApiState, args: &serde_json::Value)
     }))
 }
 
-pub(crate) async fn handle_edge_deploy(state: &ApiState, args: &serde_json::Value) -> McpToolResult {
+pub(crate) async fn handle_edge_deploy(
+    state: &ApiState,
+    args: &serde_json::Value,
+) -> McpToolResult {
     let task = match extract_required_string(args, "task") {
         Ok(t) => t,
         Err(e) => return e,
@@ -82,7 +85,10 @@ pub(crate) async fn handle_edge_deploy(state: &ApiState, args: &serde_json::Valu
             None => return error_result(format!("Node {} not found", nid)),
         }
     } else {
-        fleet.route_task(&required_tags, require_gpu, None).into_iter().next()
+        fleet
+            .route_task(&required_tags, require_gpu, None)
+            .into_iter()
+            .next()
     };
 
     match target {
@@ -100,7 +106,10 @@ pub(crate) async fn handle_edge_deploy(state: &ApiState, args: &serde_json::Valu
     }
 }
 
-pub(crate) async fn handle_edge_update(state: &ApiState, args: &serde_json::Value) -> McpToolResult {
+pub(crate) async fn handle_edge_update(
+    state: &ApiState,
+    args: &serde_json::Value,
+) -> McpToolResult {
     let node_id = match extract_required_string(args, "node_id") {
         Ok(id) => id,
         Err(e) => return e,
@@ -121,7 +130,10 @@ pub(crate) async fn handle_edge_update(state: &ApiState, args: &serde_json::Valu
     }
 }
 
-pub(crate) async fn handle_edge_health(state: &ApiState, args: &serde_json::Value) -> McpToolResult {
+pub(crate) async fn handle_edge_health(
+    state: &ApiState,
+    args: &serde_json::Value,
+) -> McpToolResult {
     let node_id = get_optional_string_arg(args, "node_id");
 
     if let Some(nid) = node_id {
@@ -155,7 +167,11 @@ pub(crate) async fn handle_edge_health(state: &ApiState, args: &serde_json::Valu
         let mut fleet = state.edge_fleet.write().await;
         fleet.check_health();
         let stats = fleet.stats();
-        info!(total = stats.total_nodes, online = stats.online, "Edge: fleet health");
+        info!(
+            total = stats.total_nodes,
+            online = stats.online,
+            "Edge: fleet health"
+        );
         success_result(serde_json::json!({
             "fleet": {
                 "total_nodes": stats.total_nodes,
@@ -171,7 +187,10 @@ pub(crate) async fn handle_edge_health(state: &ApiState, args: &serde_json::Valu
     }
 }
 
-pub(crate) async fn handle_edge_decommission(state: &ApiState, args: &serde_json::Value) -> McpToolResult {
+pub(crate) async fn handle_edge_decommission(
+    state: &ApiState,
+    args: &serde_json::Value,
+) -> McpToolResult {
     let node_id = match extract_required_string(args, "node_id") {
         Ok(id) => id,
         Err(e) => return e,

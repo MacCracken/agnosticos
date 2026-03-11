@@ -216,7 +216,10 @@ pub enum Intent {
     /// Deploy a task to an edge node
     EdgeDeploy { task: String, node: Option<String> },
     /// Trigger OTA update on an edge node
-    EdgeUpdate { node: String, version: Option<String> },
+    EdgeUpdate {
+        node: String,
+        version: Option<String>,
+    },
     /// Get edge node or fleet health status
     EdgeHealth { node: Option<String> },
     /// Decommission an edge node

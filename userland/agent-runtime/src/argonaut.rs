@@ -745,9 +745,7 @@ impl ArgonautInit {
                 required_for_modes: vec![BootMode::Edge],
                 restart_policy: RestartPolicy::Always,
                 health_check: Some(HealthCheck {
-                    check_type: HealthCheckType::HttpGet(
-                        "http://127.0.0.1:8090/v1/health".into(),
-                    ),
+                    check_type: HealthCheckType::HttpGet("http://127.0.0.1:8090/v1/health".into()),
                     interval_ms: 10_000,
                     timeout_ms: 2000,
                     retries: 3,
@@ -3610,7 +3608,9 @@ mod tests {
         assert_eq!(cmds[1].binary, "veritysetup");
         assert_eq!(cmds[1].args[0], "open");
         assert_eq!(cmds[2].binary, "mount");
-        assert!(cmds[2].args.contains(&"/dev/mapper/verified-root".to_string()));
+        assert!(cmds[2]
+            .args
+            .contains(&"/dev/mapper/verified-root".to_string()));
     }
 
     #[test]

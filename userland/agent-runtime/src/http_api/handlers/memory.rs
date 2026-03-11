@@ -26,10 +26,7 @@ const MEMORY_VALUE_MAX_BYTES: usize = 1_048_576;
 
 /// Validate that an agent ID exists in the registry. Returns an error response
 /// if the agent is not registered, preventing unauthorized cross-agent access.
-async fn require_registered_agent(
-    state: &ApiState,
-    id: &str,
-) -> Option<axum::response::Response> {
+async fn require_registered_agent(state: &ApiState, id: &str) -> Option<axum::response::Response> {
     if let Ok(uuid) = id.parse::<::uuid::Uuid>() {
         let agents = state.agents_read().await;
         if agents.contains_key(&uuid) {

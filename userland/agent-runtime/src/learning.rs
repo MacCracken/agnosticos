@@ -1212,8 +1212,14 @@ mod tests {
 
     #[test]
     fn test_behavior_metric_from_str() {
-        assert_eq!("syscall_count".parse::<BehaviorMetric>().unwrap(), BehaviorMetric::SyscallCount);
-        assert_eq!("cpu_percent".parse::<BehaviorMetric>().unwrap(), BehaviorMetric::CpuPercent);
+        assert_eq!(
+            "syscall_count".parse::<BehaviorMetric>().unwrap(),
+            BehaviorMetric::SyscallCount
+        );
+        assert_eq!(
+            "cpu_percent".parse::<BehaviorMetric>().unwrap(),
+            BehaviorMetric::CpuPercent
+        );
         assert!("nonexistent".parse::<BehaviorMetric>().is_err());
     }
 

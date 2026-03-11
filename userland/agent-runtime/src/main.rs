@@ -7,7 +7,9 @@ use clap::Parser;
 use tracing::info;
 
 use agent_runtime::cli::{Cli, Commands};
-use agent_runtime::commands::agent::{get_status, list_agents, send_message, start_agent, stop_agent};
+use agent_runtime::commands::agent::{
+    get_status, list_agents, send_message, start_agent, stop_agent,
+};
 use agent_runtime::commands::daemon::run_daemon;
 use agent_runtime::commands::package::handle_package_command;
 use agent_runtime::commands::service::handle_service_command;

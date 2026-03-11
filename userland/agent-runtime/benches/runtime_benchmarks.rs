@@ -174,9 +174,7 @@ fn bench_http_request_handling(c: &mut Criterion) {
                 serde_json::to_vec(&req_body).unwrap(),
             ))
             .unwrap();
-        let resp = tower::ServiceExt::oneshot(app.clone(), req)
-            .await
-            .unwrap();
+        let resp = tower::ServiceExt::oneshot(app.clone(), req).await.unwrap();
         let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
             .await
             .unwrap();
@@ -193,9 +191,7 @@ fn bench_http_request_handling(c: &mut Criterion) {
                     .uri("/v1/health")
                     .body(axum::body::Body::empty())
                     .unwrap();
-                let resp = tower::ServiceExt::oneshot(app.clone(), req)
-                    .await
-                    .unwrap();
+                let resp = tower::ServiceExt::oneshot(app.clone(), req).await.unwrap();
                 black_box(resp.status())
             })
         });
@@ -208,17 +204,14 @@ fn bench_http_request_handling(c: &mut Criterion) {
                     .uri("/v1/agents")
                     .body(axum::body::Body::empty())
                     .unwrap();
-                let resp = tower::ServiceExt::oneshot(app.clone(), req)
-                    .await
-                    .unwrap();
+                let resp = tower::ServiceExt::oneshot(app.clone(), req).await.unwrap();
                 black_box(resp.status())
             })
         });
     });
 
     group.bench_function("memory_set", |b| {
-        let body_bytes =
-            serde_json::to_vec(&serde_json::json!({"value": "bench-data"})).unwrap();
+        let body_bytes = serde_json::to_vec(&serde_json::json!({"value": "bench-data"})).unwrap();
         b.iter(|| {
             rt.block_on(async {
                 let req = axum::http::Request::builder()
@@ -227,9 +220,7 @@ fn bench_http_request_handling(c: &mut Criterion) {
                     .header("content-type", "application/json")
                     .body(axum::body::Body::from(body_bytes.clone()))
                     .unwrap();
-                let resp = tower::ServiceExt::oneshot(app.clone(), req)
-                    .await
-                    .unwrap();
+                let resp = tower::ServiceExt::oneshot(app.clone(), req).await.unwrap();
                 black_box(resp.status())
             })
         });
@@ -242,9 +233,7 @@ fn bench_http_request_handling(c: &mut Criterion) {
                     .uri(format!("/v1/agents/{}/memory/bench-key", agent_id))
                     .body(axum::body::Body::empty())
                     .unwrap();
-                let resp = tower::ServiceExt::oneshot(app.clone(), req)
-                    .await
-                    .unwrap();
+                let resp = tower::ServiceExt::oneshot(app.clone(), req).await.unwrap();
                 black_box(resp.status())
             })
         });
