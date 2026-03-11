@@ -2990,4 +2990,151 @@ mod tests {
         Orchestrator::prune_results(&mut results);
         assert!(results.is_empty());
     }
+
+    // -----------------------------------------------------------------------
+    // Coverage improvement: broadcast, store_result, queue stats
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_broadcast_empty_registry_v2() {
+        let orchestrator = create_test_orchestrator();
+        // Should succeed with no agents to broadcast to
+        let result = orchestrator
+            .broadcast(MessageType::Event, serde_json::json!({"event": "test"}))
+            .await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_store_result_success() {
+        let orchestrator = create_test_orchestrator();
+
+        let task = Task {
+            id: "result-task".to_string(),
+            priority: TaskPriority::Normal,
+            target_agents: vec![],
+            payload: serde_json::json!({}),
+            created_at: chrono::Utc::now(),
+            deadline: None,
+            dependencies: vec![],
+            requirements: TaskRequirements::default(),
+        };
+        orchestrator.submit_task(task).await.unwrap();
+
+        let result = TaskResult {
+            task_id: "result-task".to_string(),
+            agent_id: AgentId::new(),
+            success: true,
+            result: Some(serde_json::json!({"output": "done"})),
+            error: None,
+            completed_at: chrono::Utc::now(),
+            duration_ms: 100,
+        };
+        orchestrator.store_result(result).await.unwrap();
+
+        let status = orchestrator.get_task_status("result-task").await;
+        assert!(status.is_some());
+        match status.unwrap() {
+            TaskStatus::Completed(r) => {
+                assert!(r.success);
+                assert_eq!(r.duration_ms, 100);
+            }
+            _ => panic!("Expected Completed status"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_store_result_failure() {
+        let orchestrator = create_test_orchestrator();
+
+        let result = TaskResult {
+            task_id: "failed-task".to_string(),
+            agent_id: AgentId::new(),
+            success: false,
+            result: None,
+            error: Some("something went wrong".to_string()),
+            completed_at: chrono::Utc::now(),
+            duration_ms: 50,
+        };
+        orchestrator.store_result(result).await.unwrap();
+
+        let status = orchestrator.get_task_status("failed-task").await;
+        assert!(status.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_queue_stats_after_multiple_submissions() {
+        let orchestrator = create_test_orchestrator();
+
+        for i in 0..3 {
+            let task = Task {
+                id: format!("stats-task-{}", i),
+                priority: TaskPriority::Normal,
+                target_agents: vec![],
+                payload: serde_json::json!({}),
+                created_at: chrono::Utc::now(),
+                deadline: None,
+                dependencies: vec![],
+                requirements: TaskRequirements::default(),
+            };
+            orchestrator.submit_task(task).await.unwrap();
+        }
+
+        let stats = orchestrator.get_queue_stats().await;
+        assert_eq!(stats.total_tasks, 3);
+        assert_eq!(stats.queued_tasks, 3);
+        assert_eq!(stats.running_tasks, 0);
+    }
+
+    #[tokio::test]
+    async fn test_task_result_serialization_v2() {
+        let result = TaskResult {
+            task_id: "serial-task".to_string(),
+            agent_id: AgentId::new(),
+            success: true,
+            result: Some(serde_json::json!(42)),
+            error: None,
+            completed_at: chrono::Utc::now(),
+            duration_ms: 200,
+        };
+        let json = serde_json::to_string(&result).unwrap();
+        let deser: TaskResult = serde_json::from_str(&json).unwrap();
+        assert_eq!(deser.task_id, "serial-task");
+        assert!(deser.success);
+        assert_eq!(deser.duration_ms, 200);
+    }
+
+    #[tokio::test]
+    async fn test_submit_multiple_priorities_queue_order() {
+        let orchestrator = create_test_orchestrator();
+
+        let bg_task = Task {
+            id: "bg".to_string(),
+            priority: TaskPriority::Background,
+            target_agents: vec![],
+            payload: serde_json::json!({}),
+            created_at: chrono::Utc::now(),
+            deadline: None,
+            dependencies: vec![],
+            requirements: TaskRequirements::default(),
+        };
+        orchestrator.submit_task(bg_task).await.unwrap();
+
+        let high_task = Task {
+            id: "high".to_string(),
+            priority: TaskPriority::High,
+            target_agents: vec![],
+            payload: serde_json::json!({}),
+            created_at: chrono::Utc::now(),
+            deadline: None,
+            dependencies: vec![],
+            requirements: TaskRequirements::default(),
+        };
+        let high_id = orchestrator.submit_task(high_task).await.unwrap();
+
+        // High priority should be peeked first
+        let next = orchestrator.peek_next_task().await.unwrap();
+        assert_eq!(next.id, high_id);
+        assert_eq!(next.priority, TaskPriority::High);
+    }
 }

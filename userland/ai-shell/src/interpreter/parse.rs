@@ -4,19 +4,21 @@ use super::Interpreter;
 impl Interpreter {
     /// Parse natural language input into intent
     pub fn parse(&self, input: &str) -> Intent {
-        let input_lower = input.to_lowercase().trim().to_string();
+        let trimmed = input.trim();
+        let lowered = trimmed.to_lowercase();
+        let input_lower = lowered.as_str();
 
         // Pipeline detection: "X | Y" or "X then Y"
         // Must be checked first to avoid greedy pattern matches consuming pipe chars
-        if input.contains(" | ") || input_lower.contains(" then ") {
-            let parts: Vec<String> = if input.contains(" | ") {
-                input
+        if trimmed.contains(" | ") || input_lower.contains(" then ") {
+            let parts: Vec<String> = if trimmed.contains(" | ") {
+                trimmed
                     .split(" | ")
                     .map(|s| s.trim().to_string())
                     .filter(|s| !s.is_empty())
                     .collect()
             } else {
-                input
+                trimmed
                     .split(" then ")
                     .map(|s| s.trim().to_string())
                     .filter(|s| !s.is_empty())

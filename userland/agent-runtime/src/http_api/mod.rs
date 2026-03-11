@@ -42,6 +42,7 @@ pub use handlers::screen_capture::{
     FramesQuery, GrantPermissionRequest, ScreenCaptureRequest, ScreenCaptureResponse,
     StartRecordingRequest,
 };
+pub use handlers::sandbox::CustomSandboxProfile;
 pub use handlers::traces::{TraceQueryParams, TraceStep, TraceSubmitRequest};
 pub use handlers::webhooks::{RegisterWebhookRequest, WebhookRegistration};
 
@@ -90,6 +91,7 @@ pub fn build_router(state: ApiState) -> Router {
         .route("/v1/agents", get(list_agents_handler))
         .route("/v1/agents/:id", get(get_agent_handler))
         .route("/v1/agents/:id", delete(deregister_agent_handler))
+        .route("/v1/agents/deregister/batch", post(batch_deregister_handler))
         .route("/v1/webhooks", post(register_webhook_handler))
         .route("/v1/webhooks", get(list_webhooks_handler))
         .route("/v1/webhooks/:id", delete(delete_webhook_handler))
@@ -126,9 +128,14 @@ pub fn build_router(state: ApiState) -> Router {
         .route("/v1/traces/spans", get(list_spans_handler))
         .route("/v1/traces/otlp-config", get(otlp_config_handler))
         .route("/v1/mcp/tools", get(crate::mcp_server::mcp_tools_handler))
+        .route("/v1/mcp/tools", post(crate::mcp_server::mcp_register_tool_handler))
         .route(
             "/v1/mcp/tools/call",
             post(crate::mcp_server::mcp_tool_call_handler),
+        )
+        .route(
+            "/v1/mcp/tools/:name",
+            delete(crate::mcp_server::mcp_deregister_tool_handler),
         )
         .route(
             "/v1/sandbox/profiles",
@@ -141,6 +148,22 @@ pub fn build_router(state: ApiState) -> Router {
         .route(
             "/v1/sandbox/profiles/validate",
             post(validate_sandbox_profile_handler),
+        )
+        .route(
+            "/v1/sandbox/profiles/custom",
+            get(list_custom_profiles_handler),
+        )
+        .route(
+            "/v1/sandbox/profiles/custom/:name",
+            get(get_custom_profile_handler),
+        )
+        .route(
+            "/v1/sandbox/profiles/custom/:name",
+            put(upsert_custom_profile_handler),
+        )
+        .route(
+            "/v1/sandbox/profiles/custom/:name",
+            delete(delete_custom_profile_handler),
         )
         // Agent-to-agent RPC routes
         .route("/v1/rpc/methods", get(rpc_list_methods_handler))

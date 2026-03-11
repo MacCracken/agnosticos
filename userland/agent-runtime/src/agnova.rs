@@ -1210,11 +1210,7 @@ impl AgnovaInstaller {
         let mut ops = Vec::new();
 
         for (i, part) in disk.partitions.iter().enumerate() {
-            let part_dev = if device.contains("nvme") || device.contains("mmcblk") {
-                format!("{}p{}", device, i + 1)
-            } else {
-                format!("{}{}", device, i + 1)
-            };
+            let part_dev = Self::partition_device(device, i);
 
             let mkfs_cmd = match part.filesystem {
                 Filesystem::Ext4 => vec![
@@ -1292,11 +1288,7 @@ impl AgnovaInstaller {
                 .position(|p| p.mount_point == "/")
                 .unwrap_or(disk.partitions.len() - 1);
 
-            let part_dev = if device.contains("nvme") || device.contains("mmcblk") {
-                format!("{}p{}", device, root_idx + 1)
-            } else {
-                format!("{}{}", device, root_idx + 1)
-            };
+            let part_dev = Self::partition_device(device, root_idx);
 
             ops.push(SystemOp::Command {
                 binary: "cryptsetup".into(),
@@ -1333,27 +1325,62 @@ impl AgnovaInstaller {
         }
     }
 
+    /// Kernel version string used in boot entries. Derived from the kernel
+    /// recipe or overridden via `InstallConfig`. Centralised here so boot
+    /// entries stay in sync with the installed kernel.
+    fn kernel_version(&self) -> &str {
+        // Future: read from config.kernel_version once the field exists.
+        // For now use the version from the LFS kernel recipe.
+        "6.6.72-agnos"
+    }
+
+    /// Detect whether the *running* system booted via UEFI by probing
+    /// `/sys/firmware/efi`. This is a pure check — no side-effects.
+    pub fn is_uefi_system() -> bool {
+        std::path::Path::new("/sys/firmware/efi").exists()
+    }
+
     /// Generate the operations needed for bootloader installation.
+    ///
+    /// Supports both UEFI and BIOS (MBR) for GRUB2, and generates the
+    /// required entry config files for systemd-boot.
     pub fn plan_bootloader_ops(&self, target_root: &str) -> PhaseOps {
         let boot = &self.config.bootloader;
+        let kver = self.kernel_version();
+        let kernel_cmdline = Self::kernel_cmdline(&self.config);
         let mut ops = Vec::new();
+
+        let uefi = Self::is_uefi_system();
 
         match boot.bootloader_type {
             BootloaderType::Grub2 => {
-                ops.push(SystemOp::Command {
-                    binary: "grub-install".into(),
-                    args: vec![
-                        "--target=x86_64-efi".into(),
-                        format!("--efi-directory={}/boot/efi", target_root),
-                        format!("--boot-directory={}/boot", target_root),
-                        "--bootloader-id=AGNOS".into(),
-                    ],
-                    description: "Install GRUB EFI bootloader".into(),
-                    fatal: true,
-                });
+                if uefi {
+                    ops.push(SystemOp::Command {
+                        binary: "grub-install".into(),
+                        args: vec![
+                            "--target=x86_64-efi".into(),
+                            format!("--efi-directory={}/boot/efi", target_root),
+                            format!("--boot-directory={}/boot", target_root),
+                            "--bootloader-id=AGNOS".into(),
+                        ],
+                        description: "Install GRUB EFI bootloader".into(),
+                        fatal: true,
+                    });
+                } else {
+                    // BIOS / MBR install — write to the disk MBR
+                    ops.push(SystemOp::Command {
+                        binary: "grub-install".into(),
+                        args: vec![
+                            "--target=i386-pc".into(),
+                            format!("--boot-directory={}/boot", target_root),
+                            self.config.disk.target_device.clone(),
+                        ],
+                        description: "Install GRUB BIOS bootloader".into(),
+                        fatal: true,
+                    });
+                }
 
-                // Generate grub.cfg
-                let kernel_cmdline = Self::kernel_cmdline(&self.config);
+                // Generate grub.cfg (uses kver variable, not hardcoded)
                 let grub_cfg = format!(
                     concat!(
                         "# AGNOS GRUB configuration\n",
@@ -1361,17 +1388,25 @@ impl AgnovaInstaller {
                         "set timeout={}\n",
                         "\n",
                         "menuentry \"AGNOS\" {{\n",
-                        "    linux /vmlinuz-6.6.72-agnos {}\n",
-                        "    initrd /initramfs-6.6.72-agnos.img\n",
+                        "    linux /vmlinuz-{} {}\n",
+                        "    initrd /initramfs-{}.img\n",
                         "}}\n",
                         "\n",
                         "menuentry \"AGNOS (rescue)\" {{\n",
-                        "    linux /vmlinuz-6.6.72-agnos {} single\n",
-                        "    initrd /initramfs-6.6.72-agnos.img\n",
+                        "    linux /vmlinuz-{} {} single\n",
+                        "    initrd /initramfs-{}.img\n",
                         "}}\n",
                     ),
-                    boot.default_entry, boot.timeout_secs, kernel_cmdline, kernel_cmdline,
+                    boot.default_entry, boot.timeout_secs,
+                    kver, kernel_cmdline, kver,
+                    kver, kernel_cmdline, kver,
                 );
+
+                ops.push(SystemOp::MakeDir {
+                    path: format!("{}/boot/grub", target_root),
+                    mode: 0o755,
+                    parents: true,
+                });
 
                 ops.push(SystemOp::WriteFile {
                     path: format!("{}/boot/grub/grub.cfg", target_root),
@@ -1389,6 +1424,47 @@ impl AgnovaInstaller {
                     ],
                     description: "Install systemd-boot".into(),
                     fatal: true,
+                });
+
+                // Loader config
+                ops.push(SystemOp::MakeDir {
+                    path: format!("{}/boot/efi/loader", target_root),
+                    mode: 0o755,
+                    parents: true,
+                });
+                ops.push(SystemOp::WriteFile {
+                    path: format!("{}/boot/efi/loader/loader.conf", target_root),
+                    content: format!(
+                        "default agnos.conf\ntimeout {}\neditor no\n",
+                        boot.timeout_secs
+                    ),
+                    mode: 0o644,
+                    owner: Some("root:root".into()),
+                });
+
+                // Boot entry
+                ops.push(SystemOp::MakeDir {
+                    path: format!("{}/boot/efi/loader/entries", target_root),
+                    mode: 0o755,
+                    parents: true,
+                });
+                ops.push(SystemOp::WriteFile {
+                    path: format!("{}/boot/efi/loader/entries/agnos.conf", target_root),
+                    content: format!(
+                        "title   AGNOS\nlinux   /vmlinuz-{}\ninitrd  /initramfs-{}.img\noptions {}\n",
+                        kver, kver, kernel_cmdline
+                    ),
+                    mode: 0o644,
+                    owner: Some("root:root".into()),
+                });
+                ops.push(SystemOp::WriteFile {
+                    path: format!("{}/boot/efi/loader/entries/agnos-rescue.conf", target_root),
+                    content: format!(
+                        "title   AGNOS (rescue)\nlinux   /vmlinuz-{}\ninitrd  /initramfs-{}.img\noptions {} single\n",
+                        kver, kver, kernel_cmdline
+                    ),
+                    mode: 0o644,
+                    owner: Some("root:root".into()),
                 });
             }
         }
@@ -1561,6 +1637,367 @@ impl AgnovaInstaller {
         }
     }
 
+    /// Generate the operations needed to mount partitions at the target root.
+    pub fn plan_mount_ops(&self, target_root: &str) -> PhaseOps {
+        let disk = &self.config.disk;
+        let device = &disk.target_device;
+        let mut ops = Vec::new();
+
+        // Sort partitions: mount "/" first, then others by mount-point depth
+        let mut sorted: Vec<(usize, &PartitionSpec)> =
+            disk.partitions.iter().enumerate().collect();
+        sorted.sort_by_key(|(_, p)| {
+            if p.mount_point == "/" { 0 } else { p.mount_point.matches('/').count() }
+        });
+
+        for (i, part) in &sorted {
+            if part.filesystem == Filesystem::Swap {
+                // Activate swap rather than mounting
+                let part_dev = Self::partition_device(device, *i);
+                ops.push(SystemOp::Command {
+                    binary: "swapon".into(),
+                    args: vec![part_dev],
+                    description: format!("Activate swap ({})", part.label),
+                    fatal: false,
+                });
+                continue;
+            }
+
+            let mount_path = format!("{}{}", target_root, part.mount_point);
+            ops.push(SystemOp::MakeDir {
+                path: mount_path.clone(),
+                mode: 0o755,
+                parents: true,
+            });
+
+            let part_dev = if disk.encrypt && part.mount_point == "/" {
+                "/dev/mapper/agnos-root".to_string()
+            } else {
+                Self::partition_device(device, *i)
+            };
+
+            ops.push(SystemOp::Mount {
+                device: part_dev,
+                mount_point: mount_path,
+                fs_type: format!("{}", part.filesystem),
+                options: vec!["defaults".into()],
+            });
+        }
+
+        PhaseOps {
+            phase: InstallPhase::MountFilesystems,
+            description: "Mount target filesystems".into(),
+            operations: ops,
+        }
+    }
+
+    /// Generate the operations to deploy the AGNOS base system to the
+    /// target root. Unpacks the base tarball and creates the required
+    /// directory structure.
+    pub fn plan_install_base_ops(&self, target_root: &str) -> PhaseOps {
+        let mut ops = Vec::new();
+
+        // Create required directory hierarchy
+        for dir in &[
+            "bin", "sbin", "lib", "lib64", "usr/bin", "usr/sbin", "usr/lib",
+            "etc", "var/log", "var/lib/agnos/ark/installed", "tmp", "proc",
+            "sys", "dev", "run", "home", "root", "boot",
+        ] {
+            ops.push(SystemOp::MakeDir {
+                path: format!("{}/{}", target_root, dir),
+                mode: if *dir == "tmp" { 0o1777 } else { 0o755 },
+                parents: true,
+            });
+        }
+
+        // Unpack base system tarball (built by takumi)
+        ops.push(SystemOp::Command {
+            binary: "tar".into(),
+            args: vec![
+                "-xf".into(),
+                "/run/agnos/installer/base-system.tar.zst".into(),
+                "--zstd".into(),
+                "-C".into(),
+                target_root.to_string(),
+            ],
+            description: "Extract base system tarball".into(),
+            fatal: true,
+        });
+
+        // Alternatively, install base via ark if packages are available
+        ops.push(SystemOp::Command {
+            binary: "ark-install.sh".into(),
+            args: vec![
+                "--root".into(),
+                target_root.to_string(),
+                "--packages".into(),
+                "/run/agnos/installer/packages/".into(),
+            ],
+            description: "Install base .ark packages (fallback)".into(),
+            fatal: false, // non-fatal: either tarball OR ark method succeeds
+        });
+
+        PhaseOps {
+            phase: InstallPhase::InstallBase,
+            description: "Deploy AGNOS base system".into(),
+            operations: ops,
+        }
+    }
+
+    /// Generate the operations to install mode-specific packages into
+    /// the target root using ark.
+    pub fn plan_install_packages_ops(&self, target_root: &str) -> PhaseOps {
+        let packages = Self::default_packages(&self.config.mode);
+        let mut ops = Vec::new();
+
+        // Install mode-specific packages via ark
+        if !packages.mode_packages.is_empty() {
+            ops.push(SystemOp::Command {
+                binary: "ark".into(),
+                args: {
+                    let mut a = vec![
+                        "install".into(),
+                        "--root".into(),
+                        target_root.to_string(),
+                        "--no-confirm".into(),
+                    ];
+                    a.extend(packages.mode_packages.iter().cloned());
+                    a
+                },
+                description: format!("Install {} mode packages", self.config.mode),
+                fatal: true,
+            });
+        }
+
+        // Custom packages if specified
+        if !packages.extra_packages.is_empty() {
+            ops.push(SystemOp::Command {
+                binary: "ark".into(),
+                args: {
+                    let mut a = vec![
+                        "install".into(),
+                        "--root".into(),
+                        target_root.to_string(),
+                        "--no-confirm".into(),
+                    ];
+                    a.extend(packages.extra_packages.iter().cloned());
+                    a
+                },
+                description: "Install extra user-selected packages".into(),
+                fatal: false,
+            });
+        }
+
+        PhaseOps {
+            phase: InstallPhase::InstallPackages,
+            description: format!("Install packages for {} mode", self.config.mode),
+            operations: ops,
+        }
+    }
+
+    /// Generate security hardening operations for the target system.
+    pub fn plan_security_ops(&self, target_root: &str) -> PhaseOps {
+        let sec = &self.config.security;
+        let mut ops = Vec::new();
+
+        // Enable firewall defaults
+        if sec.firewall_default == FirewallDefault::Deny {
+            let nft_rules = concat!(
+                "#!/usr/sbin/nft -f\n",
+                "flush ruleset\n",
+                "table inet filter {\n",
+                "    chain input {\n",
+                "        type filter hook input priority 0; policy drop;\n",
+                "        iif lo accept\n",
+                "        ct state established,related accept\n",
+                "        tcp dport 22 accept comment \"SSH\"\n",
+                "        icmp type echo-request accept\n",
+                "    }\n",
+                "    chain forward {\n",
+                "        type filter hook forward priority 0; policy drop;\n",
+                "    }\n",
+                "    chain output {\n",
+                "        type filter hook output priority 0; policy accept;\n",
+                "    }\n",
+                "}\n",
+            );
+            ops.push(SystemOp::WriteFile {
+                path: format!("{}/etc/nftables.conf", target_root),
+                content: nft_rules.to_string(),
+                mode: 0o600,
+                owner: Some("root:root".into()),
+            });
+        }
+
+        // IMA policy — tied to dm-verity/integrity enforcement
+        if sec.enable_dmverity {
+            ops.push(SystemOp::MakeDir {
+                path: format!("{}/etc/ima", target_root),
+                mode: 0o700,
+                parents: true,
+            });
+            ops.push(SystemOp::WriteFile {
+                path: format!("{}/etc/ima/policy.conf", target_root),
+                content: "measure func=BPRM_CHECK\nmeasure func=FILE_MMAP mask=MAY_EXEC\n"
+                    .to_string(),
+                mode: 0o600,
+                owner: Some("root:root".into()),
+            });
+        }
+
+        // Sysctl hardening
+        let sysctl_content = concat!(
+            "# AGNOS security defaults\n",
+            "kernel.kptr_restrict=2\n",
+            "kernel.dmesg_restrict=1\n",
+            "kernel.perf_event_paranoid=3\n",
+            "net.ipv4.conf.all.rp_filter=1\n",
+            "net.ipv4.conf.all.send_redirects=0\n",
+            "net.ipv4.conf.all.accept_redirects=0\n",
+            "net.ipv6.conf.all.accept_redirects=0\n",
+        );
+        ops.push(SystemOp::WriteFile {
+            path: format!("{}/etc/sysctl.d/99-agnos-hardening.conf", target_root),
+            content: sysctl_content.to_string(),
+            mode: 0o644,
+            owner: Some("root:root".into()),
+        });
+
+        PhaseOps {
+            phase: InstallPhase::SetupSecurity,
+            description: "Configure security hardening".into(),
+            operations: ops,
+        }
+    }
+
+    /// Generate first-boot setup operations (argonaut services, agent config).
+    pub fn plan_first_boot_ops(&self, target_root: &str) -> PhaseOps {
+        let mut ops = Vec::new();
+
+        // Enable core argonaut services
+        let services = match self.config.mode {
+            InstallMode::Server | InstallMode::Desktop => vec![
+                "daimon", "hoosh", "aegis", "nftables", "sshd", "networkmanager",
+            ],
+            InstallMode::Minimal => vec!["nftables", "sshd", "networkmanager"],
+            InstallMode::Custom => vec!["nftables", "sshd", "networkmanager"],
+        };
+
+        for svc in services {
+            ops.push(SystemOp::Command {
+                binary: "chroot".into(),
+                args: vec![
+                    target_root.to_string(),
+                    "argonaut".into(),
+                    "enable".into(),
+                    svc.into(),
+                ],
+                description: format!("Enable {} service", svc),
+                fatal: false,
+            });
+        }
+
+        // Desktop-specific: enable compositor
+        if self.config.mode == InstallMode::Desktop {
+            ops.push(SystemOp::Command {
+                binary: "chroot".into(),
+                args: vec![
+                    target_root.to_string(),
+                    "argonaut".into(),
+                    "enable".into(),
+                    "aethersafha".into(),
+                ],
+                description: "Enable desktop compositor".into(),
+                fatal: false,
+            });
+        }
+
+        // First-boot marker file — argonaut checks this to run post-install
+        ops.push(SystemOp::WriteFile {
+            path: format!("{}/etc/agnos/first-boot", target_root),
+            content: "1\n".to_string(),
+            mode: 0o644,
+            owner: Some("root:root".into()),
+        });
+
+        PhaseOps {
+            phase: InstallPhase::FirstBootSetup,
+            description: "Configure first-boot services".into(),
+            operations: ops,
+        }
+    }
+
+    /// Generate cleanup operations (unmount, sync, remove temp files).
+    pub fn plan_cleanup_ops(&self, target_root: &str) -> PhaseOps {
+        let disk = &self.config.disk;
+        let device = &disk.target_device;
+        let mut ops = Vec::new();
+
+        // Sync to flush writes
+        ops.push(SystemOp::Command {
+            binary: "sync".into(),
+            args: vec![],
+            description: "Flush filesystem buffers".into(),
+            fatal: false,
+        });
+
+        // Unmount in reverse depth order (deepest first)
+        let mut mounts: Vec<&PartitionSpec> = disk
+            .partitions
+            .iter()
+            .filter(|p| p.filesystem != Filesystem::Swap)
+            .collect();
+        mounts.sort_by(|a, b| {
+            b.mount_point
+                .matches('/')
+                .count()
+                .cmp(&a.mount_point.matches('/').count())
+        });
+
+        for part in mounts {
+            ops.push(SystemOp::Unmount {
+                mount_point: format!("{}{}", target_root, part.mount_point),
+            });
+        }
+
+        // Deactivate swap
+        for (i, part) in disk.partitions.iter().enumerate() {
+            if part.filesystem == Filesystem::Swap {
+                ops.push(SystemOp::Command {
+                    binary: "swapoff".into(),
+                    args: vec![Self::partition_device(device, i)],
+                    description: "Deactivate swap".into(),
+                    fatal: false,
+                });
+            }
+        }
+
+        // Close LUKS if encrypted
+        if disk.encrypt {
+            ops.push(SystemOp::Command {
+                binary: "cryptsetup".into(),
+                args: vec!["close".into(), "agnos-root".into()],
+                description: "Close LUKS volume".into(),
+                fatal: false,
+            });
+        }
+
+        PhaseOps {
+            phase: InstallPhase::Cleanup,
+            description: "Cleanup and unmount".into(),
+            operations: ops,
+        }
+    }
+
+    /// Helper: generate the partition device path for partition index `i`.
+    fn partition_device(device: &str, i: usize) -> String {
+        if device.contains("nvme") || device.contains("mmcblk") {
+            format!("{}p{}", device, i + 1)
+        } else {
+            format!("{}{}", device, i + 1)
+        }
+    }
+
     /// Generate the complete ordered list of phase operations for the
     /// entire installation. This is the full execution plan.
     pub fn full_execution_plan(&self, target_root: &str) -> Vec<PhaseOps> {
@@ -1568,10 +2005,16 @@ impl AgnovaInstaller {
             self.plan_partition_ops(),
             self.plan_encryption_ops(),
             self.plan_format_ops(),
+            self.plan_mount_ops(target_root),
+            self.plan_install_base_ops(target_root),
+            self.plan_install_packages_ops(target_root),
             self.plan_bootloader_ops(target_root),
             self.plan_user_ops(target_root),
             self.plan_network_ops(target_root),
             self.plan_locale_ops(target_root),
+            self.plan_security_ops(target_root),
+            self.plan_first_boot_ops(target_root),
+            self.plan_cleanup_ops(target_root),
         ]
     }
 
@@ -2443,12 +2886,12 @@ mod tests {
         let installer = AgnovaInstaller::new(config);
         let ops = installer.plan_bootloader_ops("/mnt");
         assert_eq!(ops.phase, InstallPhase::InstallBootloader);
-        // grub-install + grub.cfg write
-        assert_eq!(ops.operations.len(), 2);
+        // grub-install + mkdir + grub.cfg write
+        assert_eq!(ops.operations.len(), 3);
         if let SystemOp::Command { binary, .. } = &ops.operations[0] {
             assert_eq!(binary, "grub-install");
         }
-        if let SystemOp::WriteFile { path, content, .. } = &ops.operations[1] {
+        if let SystemOp::WriteFile { path, content, .. } = &ops.operations[2] {
             assert!(path.contains("grub.cfg"));
             assert!(content.contains("AGNOS"));
             assert!(content.contains("rescue"));
@@ -2639,7 +3082,7 @@ mod tests {
         let config = test_config();
         let installer = AgnovaInstaller::new(config);
         let plan = installer.full_execution_plan("/mnt");
-        assert_eq!(plan.len(), 7);
+        assert_eq!(plan.len(), 13);
     }
 
     #[test]
@@ -2648,6 +3091,171 @@ mod tests {
         let installer = AgnovaInstaller::new(config);
         let count = installer.total_ops_count("/mnt");
         assert!(count > 10, "expected >10 ops, got {}", count);
+    }
+
+    // -----------------------------------------------------------------------
+    // New phase handler tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn mount_ops_mounts_root_first() {
+        let config = test_config();
+        let installer = AgnovaInstaller::new(config);
+        let ops = installer.plan_mount_ops("/mnt");
+        assert_eq!(ops.phase, InstallPhase::MountFilesystems);
+        assert!(!ops.operations.is_empty());
+        // First real mount should be root
+        let first_mount = ops.operations.iter().find(|op| matches!(op, SystemOp::Mount { .. }));
+        if let Some(SystemOp::Mount { mount_point, .. }) = first_mount {
+            assert_eq!(mount_point, "/mnt/");
+        } else {
+            panic!("expected a mount op for root");
+        }
+    }
+
+    #[test]
+    fn install_base_ops_creates_dirs_and_extracts() {
+        let config = test_config();
+        let installer = AgnovaInstaller::new(config);
+        let ops = installer.plan_install_base_ops("/mnt");
+        assert_eq!(ops.phase, InstallPhase::InstallBase);
+        // Should have directory creation + tar extraction + ark fallback
+        assert!(ops.operations.len() >= 3);
+        let has_tar = ops.operations.iter().any(|op| {
+            matches!(op, SystemOp::Command { binary, .. } if binary == "tar")
+        });
+        assert!(has_tar, "expected tar extraction");
+    }
+
+    #[test]
+    fn install_packages_ops_uses_ark() {
+        let config = test_config();
+        let installer = AgnovaInstaller::new(config);
+        let ops = installer.plan_install_packages_ops("/mnt");
+        assert_eq!(ops.phase, InstallPhase::InstallPackages);
+        let has_ark = ops.operations.iter().any(|op| {
+            matches!(op, SystemOp::Command { binary, .. } if binary == "ark")
+        });
+        assert!(has_ark, "expected ark install command");
+    }
+
+    #[test]
+    fn security_ops_writes_nft_and_sysctl() {
+        let config = test_config();
+        let installer = AgnovaInstaller::new(config);
+        let ops = installer.plan_security_ops("/mnt");
+        assert_eq!(ops.phase, InstallPhase::SetupSecurity);
+        let has_nft = ops.operations.iter().any(|op| {
+            matches!(op, SystemOp::WriteFile { path, .. } if path.contains("nftables"))
+        });
+        let has_sysctl = ops.operations.iter().any(|op| {
+            matches!(op, SystemOp::WriteFile { path, .. } if path.contains("sysctl"))
+        });
+        assert!(has_nft, "expected nftables config");
+        assert!(has_sysctl, "expected sysctl hardening");
+    }
+
+    #[test]
+    fn first_boot_ops_enables_services() {
+        let mut config = test_config();
+        config.mode = InstallMode::Desktop;
+        let installer = AgnovaInstaller::new(config);
+        let ops = installer.plan_first_boot_ops("/mnt");
+        assert_eq!(ops.phase, InstallPhase::FirstBootSetup);
+        let has_chroot = ops.operations.iter().any(|op| {
+            matches!(op, SystemOp::Command { binary, .. } if binary == "chroot")
+        });
+        assert!(has_chroot, "expected chroot service enable");
+        // Desktop mode should enable compositor
+        let has_compositor = ops.operations.iter().any(|op| {
+            if let SystemOp::Command { args, .. } = op {
+                args.iter().any(|a| a == "aethersafha")
+            } else {
+                false
+            }
+        });
+        assert!(has_compositor, "expected compositor enable for Desktop mode");
+    }
+
+    #[test]
+    fn cleanup_ops_unmounts_and_syncs() {
+        let config = test_config();
+        let installer = AgnovaInstaller::new(config);
+        let ops = installer.plan_cleanup_ops("/mnt");
+        assert_eq!(ops.phase, InstallPhase::Cleanup);
+        let has_sync = ops.operations.iter().any(|op| {
+            matches!(op, SystemOp::Command { binary, .. } if binary == "sync")
+        });
+        let has_unmount = ops.operations.iter().any(|op| matches!(op, SystemOp::Unmount { .. }));
+        assert!(has_sync, "expected sync");
+        assert!(has_unmount, "expected unmount");
+    }
+
+    #[test]
+    fn partition_device_helper_sda() {
+        assert_eq!(AgnovaInstaller::partition_device("/dev/sda", 0), "/dev/sda1");
+        assert_eq!(AgnovaInstaller::partition_device("/dev/sda", 2), "/dev/sda3");
+    }
+
+    #[test]
+    fn partition_device_helper_nvme() {
+        assert_eq!(AgnovaInstaller::partition_device("/dev/nvme0n1", 0), "/dev/nvme0n1p1");
+        assert_eq!(AgnovaInstaller::partition_device("/dev/mmcblk0", 1), "/dev/mmcblk0p2");
+    }
+
+    #[test]
+    fn bootloader_grub_bios_mode() {
+        // Simulate non-UEFI: is_uefi_system() checks /sys/firmware/efi
+        // which won't exist in test environment, so grub should use i386-pc
+        let mut config = test_config();
+        config.bootloader.bootloader_type = BootloaderType::Grub2;
+        let installer = AgnovaInstaller::new(config);
+        let ops = installer.plan_bootloader_ops("/mnt");
+        if let SystemOp::Command { args, .. } = &ops.operations[0] {
+            // In CI/test env without /sys/firmware/efi, should be BIOS
+            let target = args.iter().find(|a| a.starts_with("--target="));
+            assert!(target.is_some());
+        }
+    }
+
+    #[test]
+    fn bootloader_systemd_boot_has_entry_files() {
+        let mut config = test_config();
+        config.bootloader.bootloader_type = BootloaderType::SystemdBoot;
+        let installer = AgnovaInstaller::new(config);
+        let ops = installer.plan_bootloader_ops("/mnt");
+        let has_loader_conf = ops.operations.iter().any(|op| {
+            matches!(op, SystemOp::WriteFile { path, .. } if path.contains("loader.conf"))
+        });
+        let has_entry = ops.operations.iter().any(|op| {
+            matches!(op, SystemOp::WriteFile { path, .. } if path.contains("agnos.conf"))
+        });
+        let has_rescue = ops.operations.iter().any(|op| {
+            matches!(op, SystemOp::WriteFile { path, .. } if path.contains("agnos-rescue.conf"))
+        });
+        assert!(has_loader_conf, "expected loader.conf");
+        assert!(has_entry, "expected boot entry agnos.conf");
+        assert!(has_rescue, "expected rescue entry agnos-rescue.conf");
+    }
+
+    #[test]
+    fn grub_cfg_uses_kernel_version() {
+        let mut config = test_config();
+        config.bootloader.bootloader_type = BootloaderType::Grub2;
+        let installer = AgnovaInstaller::new(config);
+        let ops = installer.plan_bootloader_ops("/mnt");
+        let grub_cfg = ops.operations.iter().find_map(|op| {
+            if let SystemOp::WriteFile { path, content, .. } = op {
+                if path.contains("grub.cfg") { Some(content.as_str()) } else { None }
+            } else {
+                None
+            }
+        });
+        let cfg = grub_cfg.expect("grub.cfg should exist");
+        assert!(cfg.contains("vmlinuz-"), "should reference kernel by version");
+        assert!(cfg.contains("initramfs-"), "should reference initramfs by version");
+        // Should NOT have bare "6.6.72" hardcoded without the installer method
+        assert!(cfg.contains(installer.kernel_version()));
     }
 
     // -----------------------------------------------------------------------

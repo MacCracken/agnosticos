@@ -32,10 +32,12 @@ AGNOS exposes two HTTP/JSON services for interacting with the system. Both bind 
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/v1/agents/register` | Register a new agent with capabilities and sandbox profile |
-| POST | `/v1/agents/register/batch` | Register multiple agents in one call (max 100, idempotent) |
+| POST | `/v1/agents/register` | Register a new agent with capabilities and sandbox profile (supports client-specified `id`) |
+| POST | `/v1/agents/register/batch` | Register multiple agents in one call (max 100, idempotent, supports client-specified `id`) |
 | GET | `/v1/agents` | List all registered agents |
 | GET | `/v1/agents/:id` | Get details for a specific agent |
+| DELETE | `/v1/agents/:id` | Deregister a single agent by UUID |
+| POST | `/v1/agents/deregister/batch` | Batch deregister agents by `source` or `ids` list |
 | POST | `/v1/agents/:id/heartbeat` | Send agent heartbeat to keep registration alive |
 | POST | `/v1/agents/heartbeat/batch` | Batch heartbeat for multiple agents (max 100) |
 
@@ -174,10 +176,12 @@ AGNOS exposes two HTTP/JSON services for interacting with the system. Both bind 
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/v1/mcp/tools` | List all 31 available MCP tools |
+| GET | `/v1/mcp/tools` | List all available MCP tools (built-in + externally registered) |
+| POST | `/v1/mcp/tools` | Register an external MCP tool (name, description, inputSchema, callback_url) |
 | POST | `/v1/mcp/tools/call` | Invoke an MCP tool by name with JSON arguments |
+| DELETE | `/v1/mcp/tools/:name` | Deregister an external MCP tool by name |
 
-**Available tools (31):**
+**Built-in tools (31):**
 
 | Prefix | Tools | Description |
 |--------|-------|-------------|
@@ -191,9 +195,23 @@ Each consumer tool bridges to the real service when available and falls back to 
 
 ### Additional Endpoints
 
+### Sandbox Profiles
+
 | Method | Path | Description |
 |--------|------|-------------|
-| GET/POST | `/v1/sandbox/profiles` | Sandbox profile management |
+| POST | `/v1/sandbox/profiles` | Translate an external sandbox profile to AGNOS SandboxConfig |
+| GET | `/v1/sandbox/profiles/default` | Get the default SandboxConfig |
+| POST | `/v1/sandbox/profiles/validate` | Validate a SandboxConfig for issues |
+| GET | `/v1/sandbox/profiles/list` | List predefined sandbox profiles |
+| GET | `/v1/sandbox/profiles/custom` | List custom sandbox profiles |
+| GET | `/v1/sandbox/profiles/custom/:name` | Get a specific custom profile |
+| PUT | `/v1/sandbox/profiles/custom/:name` | Create or update a custom sandbox profile |
+| DELETE | `/v1/sandbox/profiles/custom/:name` | Delete a custom sandbox profile |
+
+### Webhooks and Audit
+
+| Method | Path | Description |
+|--------|------|-------------|
 | GET/POST | `/v1/webhooks` | Webhook registration and management |
 | GET | `/v1/audit` | Query the cryptographic audit log |
 | POST | `/v1/audit/forward` | Forward audit events from consumer services |
@@ -207,10 +225,9 @@ Each consumer tool bridges to the real service when available and falls back to 
 | GET | `/v1/discover` | Service discovery — capabilities, API surface, companion services |
 | POST | `/v1/agents/register/batch` | Batch agent registration (max 100, idempotent) |
 | POST | `/v1/agents/heartbeat/batch` | Batch heartbeat for multiple agents (max 100) |
-| POST | `/v1/events/publish` | Publish event to a topic (supports correlation IDs, reply-to) |
+| POST | `/v1/events/publish` | Publish event to a topic (sender resolved to agent ID, supports correlation IDs, reply-to) |
 | GET | `/v1/events/subscribe` | Subscribe to topics via SSE stream (supports wildcards like `agent.*`) |
 | GET | `/v1/events/topics` | List active topics with subscriber counts and recent messages |
-| GET | `/v1/sandbox/profiles/list` | List predefined sandbox profiles |
 
 ---
 

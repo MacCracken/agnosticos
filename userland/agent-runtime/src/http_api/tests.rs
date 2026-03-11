@@ -480,6 +480,7 @@ mod tests {
     fn test_register_request_serialization() {
         let req = RegisterAgentRequest {
             name: "test".to_string(),
+            id: None,
             capabilities: vec!["file:read".to_string()],
             resource_needs: ResourceNeeds {
                 min_memory_mb: 256,
@@ -4124,5 +4125,1372 @@ mod tests {
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["updated"], 1);
         assert_eq!(json["not_found"], 1);
+    }
+
+    // -----------------------------------------------------------------------
+    // Feature: Client-specified agent IDs (single register)
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_register_agent_with_client_id() {
+        let app = test_app();
+        let client_id = Uuid::new_v4();
+        let req_body = serde_json::json!({
+            "name": "client-id-agent",
+            "id": client_id.to_string(),
+            "capabilities": ["llm:inference"]
+        });
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/agents/register")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["id"], client_id.to_string());
+        assert_eq!(json["name"], "client-id-agent");
+    }
+
+    #[tokio::test]
+    async fn test_register_agent_client_id_conflict() {
+        let state = test_state();
+        let app = build_router(state.clone());
+        let client_id = Uuid::new_v4();
+
+        // Register first agent with a specific ID
+        let req_body = serde_json::json!({
+            "name": "first-agent",
+            "id": client_id.to_string(),
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/agents/register")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        // Try to register second agent with same ID
+        let app2 = build_router(state);
+        let req_body2 = serde_json::json!({
+            "name": "second-agent",
+            "id": client_id.to_string(),
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/agents/register")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body2).unwrap()))
+            .unwrap();
+        let resp = app2.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::CONFLICT);
+    }
+
+    // -----------------------------------------------------------------------
+    // Feature: Client-specified IDs in batch register
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_batch_register_with_client_ids() {
+        let state = test_state();
+        let app = build_router(state.clone());
+        let id1 = Uuid::new_v4();
+        let id2 = Uuid::new_v4();
+
+        let req_body = serde_json::json!({
+            "source": "secureyeoman",
+            "agents": [
+                {"name": "batch-id-1", "id": id1.to_string()},
+                {"name": "batch-id-2", "id": id2.to_string()},
+                {"name": "batch-id-3"}
+            ]
+        });
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/agents/register/batch")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["registered"], 3);
+
+        let results = json["results"].as_array().unwrap();
+        assert_eq!(results[0]["id"], id1.to_string());
+        assert_eq!(results[1]["id"], id2.to_string());
+        // Third agent gets a server-generated ID
+        assert!(results[2]["id"].as_str().is_some());
+        assert_ne!(results[2]["id"], id1.to_string());
+        assert_ne!(results[2]["id"], id2.to_string());
+    }
+
+    // -----------------------------------------------------------------------
+    // Feature: Batch deregister
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_batch_deregister_by_source() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        // Register agents from a source
+        let reg_body = serde_json::json!({
+            "source": "secureyeoman",
+            "agents": [
+                {"name": "sy-to-remove-1"},
+                {"name": "sy-to-remove-2"}
+            ]
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/agents/register/batch")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&reg_body).unwrap()))
+            .unwrap();
+        app.oneshot(req).await.unwrap();
+
+        // Batch deregister by source
+        let app2 = build_router(state.clone());
+        let dereg_body = serde_json::json!({
+            "source": "secureyeoman"
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/agents/deregister/batch")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&dereg_body).unwrap()))
+            .unwrap();
+        let resp = app2.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["deregistered"], 2);
+        assert_eq!(json["not_found"], 0);
+
+        // Verify agents are gone
+        let app3 = build_router(state);
+        let req = Request::builder()
+            .uri("/v1/agents")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app3.oneshot(req).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["total"], 0);
+    }
+
+    #[tokio::test]
+    async fn test_batch_deregister_by_ids() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        // Register agents
+        let reg_body = serde_json::json!({
+            "source": "test",
+            "agents": [
+                {"name": "id-deregist-1"},
+                {"name": "id-deregist-2"}
+            ]
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/agents/register/batch")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&reg_body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let reg_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let id1: Uuid = reg_json["results"][0]["id"].as_str().unwrap().parse().unwrap();
+
+        // Deregister only the first by ID
+        let app2 = build_router(state.clone());
+        let dereg_body = serde_json::json!({
+            "ids": [id1.to_string()]
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/agents/deregister/batch")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&dereg_body).unwrap()))
+            .unwrap();
+        let resp = app2.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["deregistered"], 1);
+
+        // One agent should remain
+        let app3 = build_router(state);
+        let req = Request::builder()
+            .uri("/v1/agents")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app3.oneshot(req).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["total"], 1);
+    }
+
+    #[tokio::test]
+    async fn test_batch_deregister_no_criteria() {
+        let app = test_app();
+        let dereg_body = serde_json::json!({});
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/agents/deregister/batch")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&dereg_body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    // -----------------------------------------------------------------------
+    // Feature: External MCP tool registration
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_mcp_register_external_tool() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        let req_body = serde_json::json!({
+            "name": "custom_tool",
+            "description": "A custom external tool",
+            "inputSchema": {"type": "object", "properties": {}},
+            "callback_url": "http://localhost:9999/tools/custom",
+            "source": "secureyeoman"
+        });
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/mcp/tools")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["name"], "custom_tool");
+        assert_eq!(json["status"], "registered");
+
+        // Verify it appears in the tool manifest
+        let app2 = build_router(state);
+        let req = Request::builder()
+            .uri("/v1/mcp/tools")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app2.oneshot(req).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let tools = json["tools"].as_array().unwrap();
+        assert!(tools.iter().any(|t| t["name"] == "custom_tool"));
+    }
+
+    #[tokio::test]
+    async fn test_mcp_register_builtin_conflict() {
+        let app = test_app();
+        let req_body = serde_json::json!({
+            "name": "agnos_health",
+            "description": "Conflict",
+            "inputSchema": {"type": "object"},
+            "callback_url": "http://localhost:9999/nope"
+        });
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/mcp/tools")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::CONFLICT);
+    }
+
+    #[tokio::test]
+    async fn test_mcp_deregister_external_tool() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        // Register
+        let req_body = serde_json::json!({
+            "name": "to_remove_tool",
+            "description": "Will be removed",
+            "inputSchema": {"type": "object"},
+            "callback_url": "http://localhost:9999/remove"
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/mcp/tools")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        app.oneshot(req).await.unwrap();
+
+        // Deregister
+        let app2 = build_router(state.clone());
+        let req = Request::builder()
+            .method("DELETE")
+            .uri("/v1/mcp/tools/to_remove_tool")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app2.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // Verify it's gone
+        let app3 = build_router(state);
+        let req = Request::builder()
+            .uri("/v1/mcp/tools")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app3.oneshot(req).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let tools = json["tools"].as_array().unwrap();
+        assert!(!tools.iter().any(|t| t["name"] == "to_remove_tool"));
+    }
+
+    #[tokio::test]
+    async fn test_mcp_deregister_not_found() {
+        let app = test_app();
+        let req = Request::builder()
+            .method("DELETE")
+            .uri("/v1/mcp/tools/nonexistent_tool")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_mcp_register_replaces_existing() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        // Register tool
+        let req_body = serde_json::json!({
+            "name": "replaceable_tool",
+            "description": "version 1",
+            "inputSchema": {"type": "object"},
+            "callback_url": "http://localhost:9999/v1"
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/mcp/tools")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        app.oneshot(req).await.unwrap();
+
+        // Register again with new description
+        let app2 = build_router(state.clone());
+        let req_body2 = serde_json::json!({
+            "name": "replaceable_tool",
+            "description": "version 2",
+            "inputSchema": {"type": "object"},
+            "callback_url": "http://localhost:9999/v2"
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/mcp/tools")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body2).unwrap()))
+            .unwrap();
+        let resp = app2.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        // Verify only one instance and it's the updated one
+        let app3 = build_router(state);
+        let req = Request::builder()
+            .uri("/v1/mcp/tools")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app3.oneshot(req).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let tools = json["tools"].as_array().unwrap();
+        let matching: Vec<_> = tools.iter().filter(|t| t["name"] == "replaceable_tool").collect();
+        assert_eq!(matching.len(), 1);
+        assert_eq!(matching[0]["description"], "version 2");
+    }
+
+    // -----------------------------------------------------------------------
+    // Feature: Sandbox profile CRUD
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_sandbox_custom_profile_crud() {
+        let state = test_state();
+
+        // Create a custom profile
+        let app = build_router(state.clone());
+        let profile_body = serde_json::json!({
+            "config": {
+                "filesystem_rules": [
+                    {"path": "/tmp", "access": "ReadWrite"}
+                ],
+                "network_access": "LocalhostOnly",
+                "seccomp_rules": [],
+                "isolate_network": true
+            },
+            "description": "Test custom profile",
+            "created_by": "secureyeoman"
+        });
+        let req = Request::builder()
+            .method("PUT")
+            .uri("/v1/sandbox/profiles/custom/my-profile")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&profile_body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        // Get the profile
+        let app2 = build_router(state.clone());
+        let req = Request::builder()
+            .uri("/v1/sandbox/profiles/custom/my-profile")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app2.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["name"], "my-profile");
+        assert_eq!(json["description"], "Test custom profile");
+
+        // List custom profiles
+        let app3 = build_router(state.clone());
+        let req = Request::builder()
+            .uri("/v1/sandbox/profiles/custom")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app3.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["total"], 1);
+
+        // Update the profile
+        let app4 = build_router(state.clone());
+        let updated_body = serde_json::json!({
+            "config": {
+                "filesystem_rules": [],
+                "network_access": "None",
+                "seccomp_rules": [],
+                "isolate_network": true
+            },
+            "description": "Updated profile"
+        });
+        let req = Request::builder()
+            .method("PUT")
+            .uri("/v1/sandbox/profiles/custom/my-profile")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&updated_body).unwrap()))
+            .unwrap();
+        let resp = app4.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK); // 200 for update
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["status"], "updated");
+
+        // Delete the profile
+        let app5 = build_router(state.clone());
+        let req = Request::builder()
+            .method("DELETE")
+            .uri("/v1/sandbox/profiles/custom/my-profile")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app5.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // Verify it's gone
+        let app6 = build_router(state);
+        let req = Request::builder()
+            .uri("/v1/sandbox/profiles/custom/my-profile")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app6.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_sandbox_custom_profile_delete_not_found() {
+        let app = test_app();
+        let req = Request::builder()
+            .method("DELETE")
+            .uri("/v1/sandbox/profiles/custom/nonexistent")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    // -----------------------------------------------------------------------
+    // Feature: Event publish uses sender field
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_event_publish_echoes_sender() {
+        let app = test_app();
+        let req_body = serde_json::json!({
+            "topic": "test.event",
+            "sender": "my-service",
+            "payload": {"key": "value"}
+        });
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/events/publish")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["topic"], "test.event");
+        assert_eq!(json["sender"], "my-service");
+        assert!(json["sender_id"].as_str().is_some());
+    }
+
+    #[tokio::test]
+    async fn test_event_publish_sender_resolves_agent() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        // Register an agent
+        let reg_body = serde_json::json!({
+            "name": "event-sender-agent",
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/agents/register")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&reg_body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let reg_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let agent_id = reg_json["id"].as_str().unwrap();
+
+        // Publish event using agent name as sender
+        let app2 = build_router(state);
+        let req_body = serde_json::json!({
+            "topic": "test.resolve",
+            "sender": "event-sender-agent",
+            "payload": {}
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/events/publish")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        let resp = app2.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["sender"], "event-sender-agent");
+        assert_eq!(json["sender_id"], agent_id);
+    }
+
+    // -----------------------------------------------------------------------
+    // RPC handler tests
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_rpc_list_methods_empty() {
+        let app = test_app();
+        let req = Request::builder()
+            .uri("/v1/rpc/methods")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(json["methods"].as_array().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_rpc_register_and_list() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        let agent_id = Uuid::new_v4().to_string();
+        let req_body = serde_json::json!({
+            "agent_id": agent_id,
+            "methods": ["greet", "compute"]
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/rpc/register")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["status"], "registered");
+        assert_eq!(json["methods"].as_array().unwrap().len(), 2);
+
+        // List all methods
+        let req = Request::builder()
+            .uri("/v1/rpc/methods")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["methods"].as_array().unwrap().len(), 2);
+
+        // List methods for specific agent
+        let req = Request::builder()
+            .uri(format!("/v1/rpc/methods/{}", agent_id))
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["agent_id"], agent_id);
+        assert_eq!(json["methods"].as_array().unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_rpc_register_invalid_uuid() {
+        let app = test_app();
+        let req_body = serde_json::json!({
+            "agent_id": "not-a-uuid",
+            "methods": ["test"]
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/rpc/register")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_rpc_call_found() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        let agent_id = Uuid::new_v4().to_string();
+        // Register a method
+        let req_body = serde_json::json!({
+            "agent_id": agent_id,
+            "methods": ["hello"]
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/rpc/register")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        app.clone().oneshot(req).await.unwrap();
+
+        // Call it
+        let req_body = serde_json::json!({
+            "method": "hello",
+            "params": {"name": "test"}
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/rpc/call")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["status"], "routed");
+        assert_eq!(json["method"], "hello");
+    }
+
+    #[tokio::test]
+    async fn test_rpc_call_not_found() {
+        let app = test_app();
+        let req_body = serde_json::json!({
+            "method": "nonexistent",
+            "params": {}
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/rpc/call")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_rpc_agent_methods_invalid_uuid() {
+        let app = test_app();
+        let req = Request::builder()
+            .uri("/v1/rpc/methods/not-a-uuid")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    // -----------------------------------------------------------------------
+    // Anomaly detection handler tests
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_anomaly_submit_sample() {
+        let app = test_app();
+        let agent_id = Uuid::new_v4().to_string();
+        let req_body = serde_json::json!({
+            "agent_id": agent_id,
+            "syscall_count": 100,
+            "network_bytes": 5000,
+            "file_ops": 50,
+            "cpu_percent": 25.0,
+            "memory_bytes": 1048576
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/anomaly/sample")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["status"], "recorded");
+        assert_eq!(json["agent_id"], agent_id);
+        assert!(json["alerts"].as_array().is_some());
+    }
+
+    #[tokio::test]
+    async fn test_anomaly_submit_invalid_uuid() {
+        let app = test_app();
+        let req_body = serde_json::json!({
+            "agent_id": "bad-uuid",
+            "syscall_count": 10,
+            "network_bytes": 0,
+            "file_ops": 0,
+            "cpu_percent": 0.0,
+            "memory_bytes": 0
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/anomaly/sample")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_anomaly_alerts_empty() {
+        let app = test_app();
+        let req = Request::builder()
+            .uri("/v1/anomaly/alerts")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["total"], 0);
+        assert!(json["alerts"].as_array().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_anomaly_baseline_not_found() {
+        let app = test_app();
+        let agent_id = Uuid::new_v4().to_string();
+        let req = Request::builder()
+            .uri(format!("/v1/anomaly/baseline/{}", agent_id))
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_anomaly_baseline_after_samples() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        let agent_id = Uuid::new_v4().to_string();
+        // Submit a sample first to create baseline
+        let req_body = serde_json::json!({
+            "agent_id": agent_id,
+            "syscall_count": 100,
+            "network_bytes": 5000,
+            "file_ops": 50,
+            "cpu_percent": 25.0,
+            "memory_bytes": 1048576
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/anomaly/sample")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        app.clone().oneshot(req).await.unwrap();
+
+        // Now check baseline
+        let req = Request::builder()
+            .uri(format!("/v1/anomaly/baseline/{}", agent_id))
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["agent_id"], agent_id);
+        assert!(json["sample_count"].as_u64().unwrap() > 0);
+    }
+
+    #[tokio::test]
+    async fn test_anomaly_baseline_invalid_uuid() {
+        let app = test_app();
+        let req = Request::builder()
+            .uri("/v1/anomaly/baseline/not-a-uuid")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_anomaly_clear_alerts() {
+        let state = test_state();
+        let app = build_router(state.clone());
+        let agent_id = Uuid::new_v4().to_string();
+        let req = Request::builder()
+            .method("DELETE")
+            .uri(format!("/v1/anomaly/alerts/{}", agent_id))
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["status"], "cleared");
+    }
+
+    #[tokio::test]
+    async fn test_anomaly_clear_invalid_uuid() {
+        let app = test_app();
+        let req = Request::builder()
+            .method("DELETE")
+            .uri("/v1/anomaly/alerts/not-a-uuid")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    // -----------------------------------------------------------------------
+    // RAG & Knowledge Base handler tests
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_rag_ingest_and_query() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        // Ingest
+        let req_body = serde_json::json!({
+            "text": "AGNOS is an AI-native operating system built from source.",
+            "metadata": {"source": "docs"}
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/rag/ingest")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["status"], "ingested");
+        assert!(json["chunks"].as_u64().unwrap() > 0);
+
+        // Query
+        let req_body = serde_json::json!({
+            "query": "what is AGNOS?",
+            "top_k": 3
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/rag/query")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["query"], "what is AGNOS?");
+        assert!(json["chunks"].as_array().is_some());
+        assert!(json["formatted_context"].is_string());
+        assert!(json["token_estimate"].is_number());
+    }
+
+    #[tokio::test]
+    async fn test_rag_ingest_too_large() {
+        let app = test_app();
+        // 1 MB + 1 byte exceeds limit
+        let big_text = "x".repeat(1_048_577);
+        let req_body = serde_json::json!({
+            "text": big_text,
+            "metadata": {}
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/rag/ingest")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
+    }
+
+    #[tokio::test]
+    async fn test_rag_query_too_large() {
+        let app = test_app();
+        let big_query = "x".repeat(10_241);
+        let req_body = serde_json::json!({
+            "query": big_query
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/rag/query")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_rag_stats() {
+        let app = test_app();
+        let req = Request::builder()
+            .uri("/v1/rag/stats")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(json["index_size"].is_number());
+        assert!(json["config"].is_object());
+    }
+
+    #[tokio::test]
+    async fn test_knowledge_search_empty() {
+        let app = test_app();
+        let req_body = serde_json::json!({
+            "query": "test search",
+            "limit": 5
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/knowledge/search")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["query"], "test search");
+        assert_eq!(json["total"], 0);
+    }
+
+    #[tokio::test]
+    async fn test_knowledge_search_by_source() {
+        let app = test_app();
+        let req_body = serde_json::json!({
+            "query": "anything",
+            "source": "manpage",
+            "limit": 5
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/knowledge/search")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["total"], 0);
+    }
+
+    #[tokio::test]
+    async fn test_knowledge_stats() {
+        let app = test_app();
+        let req = Request::builder()
+            .uri("/v1/knowledge/stats")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(json["total_entries"].is_number());
+        assert!(json["total_bytes"].is_number());
+    }
+
+    // -----------------------------------------------------------------------
+    // Marketplace handler tests
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_marketplace_installed_empty() {
+        let app = test_app();
+        let req = Request::builder()
+            .uri("/v1/marketplace/installed")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(json["packages"].as_array().unwrap().is_empty());
+        assert_eq!(json["total"], 0);
+    }
+
+    #[tokio::test]
+    async fn test_marketplace_search_empty() {
+        let app = test_app();
+        let req = Request::builder()
+            .uri("/v1/marketplace/search?q=nonexistent")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(json["results"].as_array().is_some());
+        assert_eq!(json["query"], "nonexistent");
+    }
+
+    #[tokio::test]
+    async fn test_marketplace_search_default_query() {
+        let app = test_app();
+        let req = Request::builder()
+            .uri("/v1/marketplace/search")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["query"], "");
+    }
+
+    #[tokio::test]
+    async fn test_marketplace_info_not_found() {
+        let app = test_app();
+        let req = Request::builder()
+            .uri("/v1/marketplace/nonexistent-pkg")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(json["error"].as_str().unwrap().contains("not found"));
+    }
+
+    #[tokio::test]
+    async fn test_marketplace_uninstall_not_found() {
+        let app = test_app();
+        let req = Request::builder()
+            .method("DELETE")
+            .uri("/v1/marketplace/nonexistent-pkg")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    // -----------------------------------------------------------------------
+    // Database handler tests
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_database_provision() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        let agent_id = Uuid::new_v4().to_string();
+        let req_body = serde_json::json!({
+            "postgres": true,
+            "redis": false,
+            "schema": "public",
+            "storage_quota": 104857600,
+            "extensions": ["uuid-ossp"]
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri(format!("/v1/agents/{}/database", agent_id))
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["status"], "provisioned");
+        assert!(json["database"].is_object());
+        assert!(json["provision_sql"].is_array());
+    }
+
+    #[tokio::test]
+    async fn test_database_provision_duplicate() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        let agent_id = Uuid::new_v4().to_string();
+        let req_body = serde_json::json!({"postgres": true});
+
+        // First provision
+        let req = Request::builder()
+            .method("POST")
+            .uri(format!("/v1/agents/{}/database", agent_id))
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        // Duplicate provision
+        let req = Request::builder()
+            .method("POST")
+            .uri(format!("/v1/agents/{}/database", agent_id))
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::CONFLICT);
+    }
+
+    #[tokio::test]
+    async fn test_database_provision_invalid_uuid() {
+        let app = test_app();
+        let req_body = serde_json::json!({"postgres": true});
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/agents/not-a-uuid/database")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_database_get_after_provision() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        let agent_id = Uuid::new_v4().to_string();
+        let req_body = serde_json::json!({"postgres": true, "redis": true});
+        let req = Request::builder()
+            .method("POST")
+            .uri(format!("/v1/agents/{}/database", agent_id))
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        app.clone().oneshot(req).await.unwrap();
+
+        // GET
+        let req = Request::builder()
+            .uri(format!("/v1/agents/{}/database", agent_id))
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(json["database"].is_object());
+    }
+
+    #[tokio::test]
+    async fn test_database_get_not_found() {
+        let app = test_app();
+        let agent_id = Uuid::new_v4().to_string();
+        let req = Request::builder()
+            .uri(format!("/v1/agents/{}/database", agent_id))
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_database_deprovision() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        let agent_id = Uuid::new_v4().to_string();
+        let req_body = serde_json::json!({"postgres": true});
+        let req = Request::builder()
+            .method("POST")
+            .uri(format!("/v1/agents/{}/database", agent_id))
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        app.clone().oneshot(req).await.unwrap();
+
+        // Deprovision
+        let req = Request::builder()
+            .method("DELETE")
+            .uri(format!("/v1/agents/{}/database", agent_id))
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["status"], "deprovisioned");
+        assert!(json["cleanup_sql"].is_array());
+    }
+
+    #[tokio::test]
+    async fn test_database_deprovision_invalid_uuid() {
+        let app = test_app();
+        let req = Request::builder()
+            .method("DELETE")
+            .uri("/v1/agents/not-a-uuid/database")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_database_stats() {
+        let app = test_app();
+        let req = Request::builder()
+            .uri("/v1/database/stats")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(json["stats"].is_object());
     }
 }

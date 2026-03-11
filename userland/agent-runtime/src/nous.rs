@@ -1171,4 +1171,138 @@ mod tests {
         assert!(db.check_updates().unwrap().is_empty());
         assert!(db.get_package_info("anything").unwrap().is_none());
     }
+
+    // -----------------------------------------------------------------------
+    // Coverage improvement: Resolution strategies & flutter source
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_resolve_system_first_strategy() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = tempfile::tempdir().unwrap();
+
+        let manifest = sample_manifest("sys-first-pkg");
+        install_test_package(dir.path(), &manifest);
+
+        let resolver = NousResolver::new(dir.path(), cache.path())
+            .with_strategy(ResolutionStrategy::SystemFirst);
+
+        // Package exists in marketplace but not system; SystemFirst should
+        // fall through to marketplace
+        let result = resolver.resolve("sys-first-pkg").unwrap();
+        assert!(result.is_some());
+        let pkg = result.unwrap();
+        assert_eq!(pkg.name, "sys-first-pkg");
+        assert_eq!(pkg.source, PackageSource::Marketplace);
+    }
+
+    #[test]
+    fn test_resolve_search_all_strategy() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = tempfile::tempdir().unwrap();
+
+        let manifest = sample_manifest("search-all-pkg");
+        install_test_package(dir.path(), &manifest);
+
+        let resolver = NousResolver::new(dir.path(), cache.path())
+            .with_strategy(ResolutionStrategy::SearchAll);
+
+        let result = resolver.resolve("search-all-pkg").unwrap();
+        assert!(result.is_some());
+        let pkg = result.unwrap();
+        assert_eq!(pkg.name, "search-all-pkg");
+    }
+
+    #[test]
+    fn test_resolve_search_all_not_found() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = tempfile::tempdir().unwrap();
+
+        let resolver = NousResolver::new(dir.path(), cache.path())
+            .with_strategy(ResolutionStrategy::SearchAll);
+
+        let result = resolver.resolve("nonexistent-pkg").unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_resolve_only_source_flutter_app() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = tempfile::tempdir().unwrap();
+
+        let manifest = sample_flutter_manifest("flutter-pkg");
+        install_test_package(dir.path(), &manifest);
+
+        let resolver = NousResolver::new(dir.path(), cache.path())
+            .with_strategy(ResolutionStrategy::OnlySource(PackageSource::FlutterApp));
+
+        let result = resolver.resolve("flutter-pkg").unwrap();
+        assert!(result.is_some());
+        let pkg = result.unwrap();
+        assert_eq!(pkg.name, "flutter-pkg");
+        assert_eq!(pkg.source, PackageSource::FlutterApp);
+    }
+
+    #[test]
+    fn test_resolve_only_source_unknown_returns_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = tempfile::tempdir().unwrap();
+
+        let resolver = NousResolver::new(dir.path(), cache.path())
+            .with_strategy(ResolutionStrategy::OnlySource(PackageSource::Unknown));
+
+        let result = resolver.resolve("any-pkg").unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_search_empty_query_returns_all() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = tempfile::tempdir().unwrap();
+
+        let manifest = sample_manifest("searchable-pkg");
+        install_test_package(dir.path(), &manifest);
+
+        let resolver = NousResolver::new(dir.path(), cache.path());
+        let result = resolver.search("searchable").unwrap();
+        assert!(!result.results.is_empty());
+        assert!(result.total_matches > 0);
+    }
+
+    #[test]
+    fn test_search_no_matches() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = tempfile::tempdir().unwrap();
+
+        let resolver = NousResolver::new(dir.path(), cache.path());
+        let result = resolver.search("nonexistent-xyz-123").unwrap();
+        // Marketplace should be empty; system results depend on environment
+        assert!(result.sources_searched.len() >= 1);
+    }
+
+    #[test]
+    fn test_list_installed_with_packages() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = tempfile::tempdir().unwrap();
+
+        let manifest = sample_manifest("list-pkg-a");
+        install_test_package(dir.path(), &manifest);
+
+        let resolver = NousResolver::new(dir.path(), cache.path());
+        let installed = resolver.list_installed().unwrap();
+        assert!(installed.iter().any(|p| p.name == "list-pkg-a"));
+    }
+
+    #[test]
+    fn test_is_system_package_false_for_marketplace() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = tempfile::tempdir().unwrap();
+
+        let manifest = sample_manifest("market-only");
+        install_test_package(dir.path(), &manifest);
+
+        let resolver = NousResolver::new(dir.path(), cache.path());
+        // market-only is a marketplace package, not a system package
+        assert!(!resolver.is_system_package("market-only"));
+    }
 }

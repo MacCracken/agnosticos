@@ -1,8 +1,48 @@
 use std::collections::HashMap;
+use std::fmt;
 
+use axum::http::StatusCode;
+use axum::response::IntoResponse;
+use axum::Json;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+
+// ---------------------------------------------------------------------------
+// Error response helpers — eliminates repeated json!({"error":..., "code":...})
+// ---------------------------------------------------------------------------
+
+/// Build a standard error response with the given HTTP status code and message.
+pub fn error_response(status: StatusCode, msg: impl fmt::Display) -> impl IntoResponse {
+    (
+        status,
+        Json(serde_json::json!({
+            "error": msg.to_string(),
+            "code": status.as_u16(),
+        })),
+    )
+        .into_response()
+}
+
+/// 400 Bad Request convenience helper.
+pub fn bad_request(msg: impl fmt::Display) -> impl IntoResponse {
+    error_response(StatusCode::BAD_REQUEST, msg)
+}
+
+/// 404 Not Found convenience helper.
+pub fn not_found(msg: impl fmt::Display) -> impl IntoResponse {
+    error_response(StatusCode::NOT_FOUND, msg)
+}
+
+/// 409 Conflict convenience helper.
+pub fn conflict(msg: impl fmt::Display) -> impl IntoResponse {
+    error_response(StatusCode::CONFLICT, msg)
+}
+
+/// 500 Internal Server Error convenience helper.
+pub fn internal_error(msg: impl fmt::Display) -> impl IntoResponse {
+    error_response(StatusCode::INTERNAL_SERVER_ERROR, msg)
+}
 
 // ---------------------------------------------------------------------------
 // Request / Response types
@@ -11,12 +51,35 @@ use uuid::Uuid;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegisterAgentRequest {
     pub name: String,
+    /// Optional client-specified UUID. If provided and not already taken, it will
+    /// be used as the agent's ID; otherwise a new UUID is generated server-side.
+    #[serde(default)]
+    pub id: Option<Uuid>,
     #[serde(default)]
     pub capabilities: Vec<String>,
     #[serde(default)]
     pub resource_needs: ResourceNeeds,
     #[serde(default)]
     pub metadata: HashMap<String, String>,
+}
+
+/// Request to deregister multiple agents in a single call.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BatchDeregisterRequest {
+    /// Deregister by source identifier (matches metadata "source" field).
+    #[serde(default)]
+    pub source: Option<String>,
+    /// Deregister by explicit list of UUIDs.
+    #[serde(default)]
+    pub ids: Option<Vec<Uuid>>,
+}
+
+/// Result of a single agent deregistration within a batch.
+#[derive(Debug, Serialize)]
+pub struct BatchDeregisterResult {
+    pub id: Uuid,
+    pub name: String,
+    pub status: String,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

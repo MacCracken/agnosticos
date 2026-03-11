@@ -34,6 +34,7 @@ pub mod orchestrator;
 pub mod package_manager;
 pub mod pqc;
 pub mod pubsub;
+pub mod python_runtime;
 pub mod rag;
 pub mod registry;
 pub mod resource;
@@ -156,6 +157,10 @@ pub use pqc::{
     PqcConfig, PqcKeyStore, PqcMigrationStatus, PqcMode,
 };
 pub use pubsub::TopicBroker;
+pub use python_runtime::{
+    CreateVenvRequest, InstalledPython, PipInstallRecord, PipProxyConfig, PythonError,
+    PythonRuntimeConfig, PythonRuntimeManager, PythonRuntimeStats, PythonVersion, VenvInfo,
+};
 pub use rag::{RagConfig, RagPipeline};
 pub use registry::AgentRegistry;
 pub use rl_optimizer::{

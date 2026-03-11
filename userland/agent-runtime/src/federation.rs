@@ -289,7 +289,7 @@ impl FederationCluster {
     pub fn new(local_node: FederationNode) -> Self {
         let local_id = local_node.node_id.clone();
         let mut nodes = HashMap::new();
-        nodes.insert(local_node.node_id.clone(), local_node);
+        nodes.insert(local_id.clone(), local_node);
 
         info!(node_id = %local_id, "Federation cluster initialised with local node");
 
@@ -661,27 +661,22 @@ impl FederationCluster {
 
     /// Get cluster statistics.
     pub fn stats(&self) -> FederationStats {
-        let live_count = self
-            .nodes
-            .values()
-            .filter(|n| n.status == NodeStatus::Online)
-            .count();
+        let (mut live, mut suspect, mut dead) = (0usize, 0usize, 0usize);
+        for node in self.nodes.values() {
+            match node.status {
+                NodeStatus::Online => live += 1,
+                NodeStatus::Suspect => suspect += 1,
+                NodeStatus::Dead => dead += 1,
+            }
+        }
 
         let uptime_secs = (Utc::now() - self.created_at).num_seconds().max(0) as u64;
 
         FederationStats {
             total_nodes: self.nodes.len(),
-            live_nodes: live_count,
-            suspect_nodes: self
-                .nodes
-                .values()
-                .filter(|n| n.status == NodeStatus::Suspect)
-                .count(),
-            dead_nodes: self
-                .nodes
-                .values()
-                .filter(|n| n.status == NodeStatus::Dead)
-                .count(),
+            live_nodes: live,
+            suspect_nodes: suspect,
+            dead_nodes: dead,
             coordinator_id: self.coordinator_id.clone(),
             cluster_uptime_secs: uptime_secs,
             scheduling_strategy: self.scheduling_strategy,

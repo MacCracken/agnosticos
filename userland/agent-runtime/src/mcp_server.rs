@@ -69,6 +69,29 @@ pub struct McpToolResult {
     pub is_error: bool,
 }
 
+/// An externally registered MCP tool with a callback URL for dispatch.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExternalMcpTool {
+    /// Tool definition (name, description, input_schema).
+    pub tool: McpToolDescription,
+    /// HTTP endpoint to POST tool calls to.
+    pub callback_url: String,
+    /// Source service that registered this tool.
+    pub source: String,
+}
+
+/// Request body for POST /v1/mcp/tools (register external tool).
+#[derive(Debug, Clone, Deserialize)]
+pub struct RegisterMcpToolRequest {
+    pub name: String,
+    pub description: String,
+    #[serde(rename = "inputSchema")]
+    pub input_schema: serde_json::Value,
+    pub callback_url: String,
+    #[serde(default)]
+    pub source: Option<String>,
+}
+
 // ---------------------------------------------------------------------------
 // Tool Manifest
 // ---------------------------------------------------------------------------
@@ -427,10 +450,101 @@ pub fn build_tool_manifest() -> McpToolManifest {
 // Handlers
 // ---------------------------------------------------------------------------
 
-/// `GET /v1/mcp/tools` — return the MCP tool manifest.
-pub async fn mcp_tools_handler() -> impl IntoResponse {
-    let manifest = build_tool_manifest();
+/// `GET /v1/mcp/tools` — return the MCP tool manifest (built-in + external).
+pub async fn mcp_tools_handler(State(state): State<ApiState>) -> impl IntoResponse {
+    let mut manifest = build_tool_manifest();
+    let external = state.external_mcp_tools.read().await;
+    for ext in external.iter() {
+        manifest.tools.push(ext.tool.clone());
+    }
     Json(manifest)
+}
+
+/// `POST /v1/mcp/tools` — register an external MCP tool.
+pub async fn mcp_register_tool_handler(
+    State(state): State<ApiState>,
+    Json(req): Json<RegisterMcpToolRequest>,
+) -> impl IntoResponse {
+    if req.name.is_empty() {
+        return (
+            axum::http::StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "Tool name is required", "code": 400})),
+        )
+            .into_response();
+    }
+
+    if req.callback_url.is_empty() {
+        return (
+            axum::http::StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "callback_url is required", "code": 400})),
+        )
+            .into_response();
+    }
+
+    // Reject names that collide with built-in tools
+    let manifest = build_tool_manifest();
+    if manifest.tools.iter().any(|t| t.name == req.name) {
+        return (
+            axum::http::StatusCode::CONFLICT,
+            Json(serde_json::json!({"error": format!("Tool '{}' conflicts with a built-in tool", req.name), "code": 409})),
+        )
+            .into_response();
+    }
+
+    let mut external = state.external_mcp_tools.write().await;
+
+    // Replace if already registered with same name
+    external.retain(|t| t.tool.name != req.name);
+
+    let source = req.source.unwrap_or_else(|| "external".to_string());
+    let tool = McpToolDescription {
+        name: req.name.clone(),
+        description: req.description,
+        input_schema: req.input_schema,
+    };
+
+    external.push(ExternalMcpTool {
+        tool,
+        callback_url: req.callback_url.clone(),
+        source: source.clone(),
+    });
+
+    info!(tool = %req.name, source = %source, "External MCP tool registered");
+
+    (
+        axum::http::StatusCode::CREATED,
+        Json(serde_json::json!({
+            "name": req.name,
+            "callback_url": req.callback_url,
+            "source": source,
+            "status": "registered",
+        })),
+    )
+        .into_response()
+}
+
+/// `DELETE /v1/mcp/tools/:name` — deregister an external MCP tool.
+pub async fn mcp_deregister_tool_handler(
+    State(state): State<ApiState>,
+    axum::extract::Path(name): axum::extract::Path<String>,
+) -> impl IntoResponse {
+    let mut external = state.external_mcp_tools.write().await;
+    let before = external.len();
+    external.retain(|t| t.tool.name != name);
+    if external.len() < before {
+        info!(tool = %name, "External MCP tool deregistered");
+        (
+            axum::http::StatusCode::OK,
+            Json(serde_json::json!({"status": "deregistered", "name": name})),
+        )
+            .into_response()
+    } else {
+        (
+            axum::http::StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": format!("External tool '{}' not found", name), "code": 404})),
+        )
+            .into_response()
+    }
 }
 
 /// `POST /v1/mcp/tools/call` — dispatch an MCP tool call to the appropriate logic.
@@ -479,8 +593,49 @@ async fn dispatch_tool_call(state: &ApiState, call: &McpToolCall) -> McpToolResu
         "photis_analytics" => handle_photis_analytics(&call.arguments).await,
         "photis_sync" => handle_photis_sync(&call.arguments).await,
         unknown => {
-            warn!(tool = %unknown, "Unknown MCP tool called");
-            error_result(format!("Unknown tool: {}", unknown))
+            // Check external tools
+            let external = state.external_mcp_tools.read().await;
+            if let Some(ext) = external.iter().find(|t| t.tool.name == unknown) {
+                dispatch_external_tool(ext, call).await
+            } else {
+                warn!(tool = %unknown, "Unknown MCP tool called");
+                error_result(format!("Unknown tool: {}", unknown))
+            }
+        }
+    }
+}
+
+/// Proxy an MCP tool call to an externally registered callback URL.
+async fn dispatch_external_tool(ext: &ExternalMcpTool, call: &McpToolCall) -> McpToolResult {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
+
+    match client
+        .post(&ext.callback_url)
+        .json(call)
+        .send()
+        .await
+    {
+        Ok(resp) if resp.status().is_success() => {
+            match resp.json::<McpToolResult>().await {
+                Ok(result) => result,
+                Err(e) => {
+                    warn!(tool = %call.name, error = %e, "Failed to parse external tool response");
+                    error_result(format!("External tool returned invalid response: {}", e))
+                }
+            }
+        }
+        Ok(resp) => {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            warn!(tool = %call.name, status = %status, "External tool call failed");
+            error_result(format!("External tool returned {}: {}", status, body))
+        }
+        Err(e) => {
+            warn!(tool = %call.name, error = %e, "External tool call failed");
+            error_result(format!("Failed to reach external tool: {}", e))
         }
     }
 }
@@ -591,8 +746,12 @@ async fn handle_register_agent(state: &ApiState, args: &serde_json::Value) -> Mc
         .and_then(|v| serde_json::from_value(v.clone()).ok())
         .unwrap_or_default();
 
+    let client_id: Option<Uuid> = get_string_arg(args, "id")
+        .and_then(|s| Uuid::parse_str(&s).ok());
+
     let req = RegisterAgentRequest {
         name: name.clone(),
+        id: client_id,
         capabilities,
         resource_needs: ResourceNeeds::default(),
         metadata,
@@ -605,7 +764,15 @@ async fn handle_register_agent(state: &ApiState, args: &serde_json::Value) -> Mc
         return error_result(format!("Agent '{}' already registered", req.name));
     }
 
-    let id = Uuid::new_v4();
+    // Use client-specified ID if provided and not already taken
+    let id = if let Some(client_id) = req.id {
+        if agents.contains_key(&client_id) {
+            return error_result(format!("Agent ID {} already in use", client_id));
+        }
+        client_id
+    } else {
+        Uuid::new_v4()
+    };
     let now = chrono::Utc::now();
 
     let detail = crate::http_api::AgentDetail {
@@ -1815,8 +1982,16 @@ impl DeltaBridge {
         &self.base_url
     }
 
+    fn build_client() -> Result<reqwest::Client, String> {
+        reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(5))
+            .connect_timeout(std::time::Duration::from_secs(2))
+            .build()
+            .map_err(|e| e.to_string())
+    }
+
     async fn get(&self, path: &str, query: &[(String, String)]) -> Result<serde_json::Value, String> {
-        let client = reqwest::Client::new();
+        let client = Self::build_client()?;
         let url = format!("{}{}", self.base_url, path);
         let mut req = client.get(&url).query(query);
         if let Some(ref key) = self.api_key {
@@ -1830,7 +2005,7 @@ impl DeltaBridge {
     }
 
     async fn post(&self, path: &str, body: serde_json::Value) -> Result<serde_json::Value, String> {
-        let client = reqwest::Client::new();
+        let client = Self::build_client()?;
         let url = format!("{}{}", self.base_url, path);
         let mut req = client.post(&url).json(&body);
         if let Some(ref key) = self.api_key {
@@ -1925,7 +2100,21 @@ async fn handle_delta_list_repositories(args: &serde_json::Value) -> McpToolResu
     match bridge.get("/api/v1/repos", &query).await {
         Ok(response) => {
             info!("Delta: list repositories (bridged)");
-            success_result(response)
+            // Normalize: Delta API returns a bare array; wrap it for consistency
+            let repos = if response.is_array() {
+                response
+            } else {
+                response
+                    .get("repositories")
+                    .cloned()
+                    .unwrap_or(serde_json::json!([]))
+            };
+            let total = repos.as_array().map(|a| a.len()).unwrap_or(0);
+            success_result(serde_json::json!({
+                "repositories": repos,
+                "total": total,
+                "_source": "bridge",
+            }))
         }
         Err(e) => {
             warn!(error = %e, "Delta bridge: falling back to mock for list_repositories");
@@ -2911,7 +3100,12 @@ mod tests {
         assert!(!result.is_error);
         let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
         assert!(parsed["repositories"].as_array().is_some());
-        assert_eq!(parsed["_source"], "mock");
+        // Accepts both mock (no Delta running) and bridge (Delta on 8070)
+        let source = parsed["_source"].as_str().unwrap_or("");
+        assert!(
+            source == "mock" || source == "bridge",
+            "expected mock or bridge, got: {}", source
+        );
     }
 
     #[tokio::test]

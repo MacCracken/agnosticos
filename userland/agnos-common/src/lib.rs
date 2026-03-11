@@ -40,6 +40,10 @@ impl AgentId {
     pub fn new() -> Self {
         Self(Uuid::new_v4())
     }
+
+    pub fn from_uuid(id: Uuid) -> Self {
+        Self(id)
+    }
 }
 
 impl Default for AgentId {

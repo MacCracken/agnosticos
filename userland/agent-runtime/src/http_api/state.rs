@@ -114,6 +114,10 @@ pub struct ApiState {
     pub database_manager: Arc<RwLock<DatabaseManager>>,
     /// Topic-based pub/sub broker for inter-agent event streaming.
     pub topic_broker: Arc<RwLock<TopicBroker>>,
+    /// Dynamically registered external MCP tools.
+    pub external_mcp_tools: Arc<RwLock<Vec<crate::mcp_server::ExternalMcpTool>>>,
+    /// Custom sandbox profiles (name -> profile config).
+    pub custom_sandbox_profiles: Arc<RwLock<HashMap<String, crate::http_api::handlers::sandbox::CustomSandboxProfile>>>,
 }
 
 impl std::fmt::Debug for ApiState {
@@ -174,6 +178,8 @@ impl ApiState {
             screen_recording_manager: Arc::new(RwLock::new(ScreenRecordingManager::new())),
             database_manager: Arc::new(RwLock::new(DatabaseManager::new())),
             topic_broker: Arc::new(RwLock::new(TopicBroker::new())),
+            external_mcp_tools: Arc::new(RwLock::new(Vec::new())),
+            custom_sandbox_profiles: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -209,6 +215,8 @@ impl ApiState {
             screen_recording_manager: Arc::new(RwLock::new(ScreenRecordingManager::new())),
             database_manager: Arc::new(RwLock::new(DatabaseManager::new())),
             topic_broker: Arc::new(RwLock::new(TopicBroker::new())),
+            external_mcp_tools: Arc::new(RwLock::new(Vec::new())),
+            custom_sandbox_profiles: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 

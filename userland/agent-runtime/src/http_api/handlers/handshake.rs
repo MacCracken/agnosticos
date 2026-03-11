@@ -66,7 +66,10 @@ pub async fn service_discovery_handler(State(state): State<ApiState>) -> impl In
         "metrics_prometheus": "/v1/metrics/prometheus",
         "discover": "/v1/discover",
         "mcp_tools": "/v1/mcp/tools",
+        "mcp_tools_register": "/v1/mcp/tools",
         "mcp_tools_call": "/v1/mcp/tools/call",
+        "agents_deregister_batch": "/v1/agents/deregister/batch",
+        "sandbox_profiles_custom": "/v1/sandbox/profiles/custom",
         "audit_forward": "/v1/audit/forward",
         "audit_query": "/v1/audit",
         "audit_chain_verify": "/v1/audit/chain/verify",
@@ -205,7 +208,21 @@ pub async fn batch_register_handler(
             continue;
         }
 
-        let id = Uuid::new_v4();
+        // Use client-specified ID if provided and not already taken
+        let id = if let Some(client_id) = agent_req.id {
+            if agents.contains_key(&client_id) {
+                results.push(BatchRegisterResult {
+                    name: agent_req.name.clone(),
+                    id: Some(client_id),
+                    status: "error".to_string(),
+                    error: Some(format!("Agent ID {} already in use", client_id)),
+                });
+                continue;
+            }
+            client_id
+        } else {
+            Uuid::new_v4()
+        };
         let mut metadata = agent_req.metadata.clone();
         metadata.insert("source".to_string(), req.source.clone());
 
@@ -471,7 +488,15 @@ pub async fn events_publish_handler(
             .into_response();
     }
 
-    let sender_id = agnos_common::AgentId::new();
+    // Look up sender by name in agent registry, or create an ephemeral ID
+    let sender_id = {
+        let agents = state.agents_read().await;
+        agents
+            .iter()
+            .find(|(_, entry)| entry.detail.name == req.sender)
+            .map(|(_, entry)| agnos_common::AgentId::from_uuid(entry.detail.id))
+            .unwrap_or_else(agnos_common::AgentId::new)
+    };
     let mut msg = crate::pubsub::TopicMessage::new(req.topic.clone(), sender_id, req.payload);
     msg.correlation_id = req.correlation_id;
     msg.reply_to = req.reply_to;
@@ -483,6 +508,8 @@ pub async fn events_publish_handler(
         StatusCode::OK,
         Json(serde_json::json!({
             "topic": req.topic,
+            "sender": req.sender,
+            "sender_id": sender_id.to_string(),
             "delivered_to": delivered,
         })),
     )

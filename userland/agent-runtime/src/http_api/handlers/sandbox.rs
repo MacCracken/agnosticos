@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::Json;
@@ -9,6 +10,8 @@ use agnos_common::{
     FilesystemRule, FsAccess, NetworkAccess, NetworkPolicy, SandboxConfig, SeccompAction,
     SeccompRule,
 };
+
+use crate::http_api::state::ApiState;
 
 // ---------------------------------------------------------------------------
 // Sandbox types and helpers
@@ -510,4 +513,117 @@ pub async fn validate_sandbox_profile_handler(
         warnings,
         errors,
     })
+}
+
+// ---------------------------------------------------------------------------
+// Custom sandbox profile CRUD
+// ---------------------------------------------------------------------------
+
+/// A user-created custom sandbox profile stored at runtime.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CustomSandboxProfile {
+    pub name: String,
+    pub config: SandboxConfig,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub created_by: Option<String>,
+}
+
+/// Request body for creating/updating a custom sandbox profile.
+#[derive(Debug, Deserialize)]
+pub struct UpsertSandboxProfileRequest {
+    pub config: SandboxConfig,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub created_by: Option<String>,
+}
+
+/// GET /v1/sandbox/profiles/custom — list all custom sandbox profiles.
+pub async fn list_custom_profiles_handler(
+    State(state): State<ApiState>,
+) -> impl IntoResponse {
+    let profiles = state.custom_sandbox_profiles.read().await;
+    let list: Vec<&CustomSandboxProfile> = profiles.values().collect();
+    Json(serde_json::json!({
+        "profiles": list,
+        "total": list.len(),
+    }))
+}
+
+/// GET /v1/sandbox/profiles/custom/:name — get a specific custom profile.
+pub async fn get_custom_profile_handler(
+    State(state): State<ApiState>,
+    Path(name): Path<String>,
+) -> impl IntoResponse {
+    let profiles = state.custom_sandbox_profiles.read().await;
+    match profiles.get(&name) {
+        Some(profile) => (StatusCode::OK, Json(serde_json::json!(profile))).into_response(),
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": format!("Custom profile '{}' not found", name), "code": 404})),
+        )
+            .into_response(),
+    }
+}
+
+/// PUT /v1/sandbox/profiles/custom/:name — create or update a custom profile.
+pub async fn upsert_custom_profile_handler(
+    State(state): State<ApiState>,
+    Path(name): Path<String>,
+    Json(req): Json<UpsertSandboxProfileRequest>,
+) -> impl IntoResponse {
+    if name.trim().is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "Profile name is required", "code": 400})),
+        )
+            .into_response();
+    }
+
+    let profile = CustomSandboxProfile {
+        name: name.clone(),
+        config: req.config,
+        description: req.description,
+        created_by: req.created_by,
+    };
+
+    let mut profiles = state.custom_sandbox_profiles.write().await;
+    let existed = profiles.insert(name.clone(), profile).is_some();
+
+    let status = if existed {
+        StatusCode::OK
+    } else {
+        StatusCode::CREATED
+    };
+
+    (
+        status,
+        Json(serde_json::json!({
+            "name": name,
+            "status": if existed { "updated" } else { "created" },
+        })),
+    )
+        .into_response()
+}
+
+/// DELETE /v1/sandbox/profiles/custom/:name — delete a custom profile.
+pub async fn delete_custom_profile_handler(
+    State(state): State<ApiState>,
+    Path(name): Path<String>,
+) -> impl IntoResponse {
+    let mut profiles = state.custom_sandbox_profiles.write().await;
+    match profiles.remove(&name) {
+        Some(_) => (
+            StatusCode::OK,
+            Json(serde_json::json!({"status": "deleted", "name": name})),
+        )
+            .into_response(),
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": format!("Custom profile '{}' not found", name), "code": 404})),
+        )
+            .into_response(),
+    }
 }

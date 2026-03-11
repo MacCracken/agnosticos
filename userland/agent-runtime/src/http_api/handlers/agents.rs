@@ -178,33 +178,29 @@ pub async fn register_agent_handler(
     Json(req): Json<RegisterAgentRequest>,
 ) -> impl IntoResponse {
     if req.name.is_empty() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "Agent name is required", "code": 400})),
-        )
-            .into_response();
+        return bad_request("Agent name is required").into_response();
     }
 
     if req.name.len() > 256 {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "Agent name too long (max 256)", "code": 400})),
-        )
-            .into_response();
+        return bad_request("Agent name too long (max 256)").into_response();
     }
 
     let mut agents = state.agents_write().await;
 
     // Check for duplicate names
     if agents.values().any(|a| a.detail.name == req.name) {
-        return (
-            StatusCode::CONFLICT,
-            Json(serde_json::json!({"error": format!("Agent '{}' already registered", req.name), "code": 409})),
-        )
-            .into_response();
+        return conflict(format!("Agent '{}' already registered", req.name)).into_response();
     }
 
-    let id = Uuid::new_v4();
+    // Use client-specified ID if provided and not already taken, else generate
+    let id = if let Some(client_id) = req.id {
+        if agents.contains_key(&client_id) {
+            return conflict(format!("Agent ID {} already in use", client_id)).into_response();
+        }
+        client_id
+    } else {
+        Uuid::new_v4()
+    };
     let now = Utc::now();
 
     let detail = AgentDetail {
@@ -239,11 +235,7 @@ pub async fn register_agent_handler(
 
     match serde_json::to_value(resp) {
         Ok(val) => (StatusCode::CREATED, Json(val)).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({"error": format!("Serialization error: {}", e), "code": 500})),
-        )
-            .into_response(),
+        Err(e) => internal_error(format!("Serialization error: {}", e)).into_response(),
     }
 }
 
@@ -273,11 +265,7 @@ pub async fn heartbeat_handler(
             debug!("Heartbeat received from agent {}", id);
             (StatusCode::OK, Json(serde_json::json!({"status": "ok"}))).into_response()
         }
-        None => (
-            StatusCode::NOT_FOUND,
-            Json(serde_json::json!({"error": format!("Agent {} not found", id), "code": 404})),
-        )
-            .into_response(),
+        None => not_found(format!("Agent {} not found", id)).into_response(),
     }
 }
 
@@ -301,16 +289,9 @@ pub async fn get_agent_handler(
     match agents.get(&id) {
         Some(entry) => match serde_json::to_value(&entry.detail) {
             Ok(val) => (StatusCode::OK, Json(val)).into_response(),
-            Err(e) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": format!("Serialization error: {}", e), "code": 500})),
-            ).into_response(),
+            Err(e) => internal_error(format!("Serialization error: {}", e)).into_response(),
         },
-        None => (
-            StatusCode::NOT_FOUND,
-            Json(serde_json::json!({"error": format!("Agent {} not found", id), "code": 404})),
-        )
-            .into_response(),
+        None => not_found(format!("Agent {} not found", id)).into_response(),
     }
 }
 
@@ -329,12 +310,72 @@ pub async fn deregister_agent_handler(
             )
                 .into_response()
         }
-        None => (
-            StatusCode::NOT_FOUND,
-            Json(serde_json::json!({"error": format!("Agent {} not found", id), "code": 404})),
-        )
-            .into_response(),
+        None => not_found(format!("Agent {} not found", id)).into_response(),
     }
+}
+
+/// POST /v1/agents/deregister/batch — deregister multiple agents by source or ID list.
+pub async fn batch_deregister_handler(
+    State(state): State<ApiState>,
+    Json(req): Json<crate::http_api::types::BatchDeregisterRequest>,
+) -> impl IntoResponse {
+    if req.source.is_none() && req.ids.is_none() {
+        return bad_request("Either 'source' or 'ids' must be provided").into_response();
+    }
+
+    let mut agents = state.agents_write().await;
+    let mut results = Vec::new();
+
+    // Collect IDs to remove
+    let ids_to_remove: Vec<Uuid> = if let Some(ref source) = req.source {
+        agents
+            .iter()
+            .filter(|(_, entry)| entry.detail.metadata.get("source").map(|s| s.as_str()) == Some(source))
+            .map(|(id, _)| *id)
+            .collect()
+    } else if let Some(ref ids) = req.ids {
+        ids.clone()
+    } else {
+        Vec::new()
+    };
+
+    for id in &ids_to_remove {
+        match agents.remove(id) {
+            Some(entry) => {
+                info!("Agent deregistered (batch): {} ({})", entry.detail.name, id);
+                results.push(crate::http_api::types::BatchDeregisterResult {
+                    id: *id,
+                    name: entry.detail.name,
+                    status: "deregistered".to_string(),
+                });
+            }
+            None => {
+                results.push(crate::http_api::types::BatchDeregisterResult {
+                    id: *id,
+                    name: String::new(),
+                    status: "not_found".to_string(),
+                });
+            }
+        }
+    }
+
+    let deregistered = results.iter().filter(|r| r.status == "deregistered").count();
+    let not_found = results.iter().filter(|r| r.status == "not_found").count();
+
+    info!(
+        "Batch deregister: {} removed, {} not found",
+        deregistered, not_found
+    );
+
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "deregistered": deregistered,
+            "not_found": not_found,
+            "results": results,
+        })),
+    )
+        .into_response()
 }
 
 // ---------------------------------------------------------------------------

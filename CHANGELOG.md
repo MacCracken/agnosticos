@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [2026.3.10] - 2026-03-10
 
+### Added — Consumer API Improvements (5 features, 13 new tests)
+
+- **External MCP tool registration** (`POST /v1/mcp/tools`, `DELETE /v1/mcp/tools/:name`): Consumers can register external MCP tools with a callback URL for dispatch. Built-in tool names are protected from collision. External tools appear in `GET /v1/mcp/tools` manifest alongside built-in tools. Tool calls to external tools are proxied via HTTP POST to the callback URL (5 tests)
+- **Sandbox profile CRUD** (`GET/PUT/DELETE /v1/sandbox/profiles/custom/:name`, `GET /v1/sandbox/profiles/custom`): Create, update, list, and delete custom sandbox profiles at runtime. Complements existing predefined preset profiles (2 tests)
+- **Event publish sender resolution**: `POST /v1/events/publish` now resolves the `sender` field against the agent registry (matching by name). Previously the sender string was silently discarded and replaced with a random AgentId. Response now echoes `sender` and `sender_id` (2 tests)
+- **Batch deregister** (`POST /v1/agents/deregister/batch`): Deregister multiple agents by `source` metadata field or explicit UUID list. Simplifies cleanup when a consumer service shuts down (3 tests)
+- **Client-specified agent IDs**: `RegisterAgentRequest` now accepts an optional `id` field. If provided and not already taken, the UUID is preserved; otherwise a new one is generated. Works in both single register (`POST /v1/agents/register`) and batch register (`POST /v1/agents/register/batch`) (3 tests, includes conflict detection)
+- **`AgentId::from_uuid()`**: New constructor on `agnos-common::AgentId` for wrapping existing UUIDs
+- **Service discovery** (`GET /v1/discover`): Advertises new endpoints (`agents_deregister_batch`, `mcp_tools_register`, `sandbox_profiles_custom`)
+
 ### Added — Phase 13A: Self-Hosting Validation Infrastructure (4/4 infra items complete)
 
 - **`scripts/qemu-boot-test.sh`**: QEMU boot validation — boots AGNOS ISO with UEFI/BIOS, runs smoke tests via serial console (kernel, init, filesystems, argonaut, daimon, hoosh, ark, agnsh, networking, security), detects kernel panics and mount failures, optional `--selfhost` flag for toolchain readiness
@@ -14,6 +24,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`.github/workflows/selfhost-validation.yml`**: CI workflow — weekly scheduled + manual dispatch, 7 jobs (ISO build, QEMU boot, toolchain/kernel/userland/package validation, summary), artifact upload, GitHub step summary with pass/fail table
 - **`agent-runtime/src/selfhost.rs`**: Rust validation module (38 tests) — `SelfHostValidator` with configurable `SelfHostConfig`, recipe discovery with lightweight TOML parsing, dependency closure checking (including virtual packages), system checks (binary lookup, pkg-config, disk space, memory), full serde JSON support for dashboard/API reporting
 - **Makefile**: Added `selfhost-validate`, `selfhost-validate-quick`, `qemu-boot-test` targets
+
+### Added — Code Audit: Installer Completion (agnova — 11 new tests, 99 total)
+
+- **`plan_mount_ops()`**: Mount target partitions in correct order (root first, then by depth), swap activation via `swapon`, LUKS mapper support
+- **`plan_install_base_ops()`**: Deploy AGNOS base system — creates FHS directory hierarchy, extracts base tarball (zstd), ark-install.sh fallback
+- **`plan_install_packages_ops()`**: Install mode-specific packages via `ark install --root`, supports base/mode/extra package sets
+- **`plan_security_ops()`**: Security hardening — nftables default-deny firewall, IMA measurement policy, sysctl kernel hardening (kptr_restrict, dmesg_restrict, rp_filter, etc.)
+- **`plan_first_boot_ops()`**: Configure argonaut services per install mode — Server (daimon, hoosh, aegis), Desktop (+aethersafha), Minimal (networking only), first-boot marker file
+- **`plan_cleanup_ops()`**: Post-install cleanup — sync, reverse-depth unmount, swap deactivation, LUKS close
+- **Bootloader fixes**: UEFI/BIOS auto-detection (`is_uefi_system()`), GRUB BIOS support (`--target=i386-pc`), parameterized kernel version (no more hardcoded `6.6.72`), systemd-boot entry files (`loader.conf`, `agnos.conf`, `agnos-rescue.conf`)
+- **`partition_device()` helper**: Deduplicated nvme/mmcblk partition path logic across 3 methods
+- **`full_execution_plan()`**: Now covers all 13 phases (was 7)
+
+### Changed — Code Audit: Performance & Quality Improvements
+
+- **`ai-shell/interpreter/parse.rs`**: Eliminated per-call `to_lowercase().to_string()` allocation — now uses `&str` references throughout parse path
+- **`agent-runtime/federation.rs`**: Single-pass node status counting in `stats()` (was 3× O(n)), reduced double-clone in `FederationCluster::new()`
+- **`agent-runtime/http_api/types.rs`**: Added `error_response()`, `bad_request()`, `not_found()`, `conflict()`, `internal_error()` helpers — used in agents.rs handlers
+- **`desktop-environment/plugin_host.rs`**: Expanded base seccomp syscall whitelist from 7 to 18 syscalls — added epoll, futex, clock_gettime, mprotect, sigaltstack, rt_sigaction, rt_sigprocmask (required for async Rust runtimes)
+- **`agent-runtime/mcp_server.rs`**: Fixed Delta bridge response normalization (bare array → `{repositories:[...]}`) and DeltaBridge HTTP client now uses connect/read timeouts
+
+### Added — Phase 13E: Python Runtime Management (36 tests)
+
+- **`agent-runtime/src/python_runtime.rs`**: Python runtime manager — `PythonRuntimeManager` for version discovery (scans `/usr/bin/python3.*`), `.python-version` file resolution (walks directory tree, matching pyenv behavior), environment variable override (`AGNOS_PYTHON_VERSION`), virtual environment CRUD with per-agent isolation, `generate_shim_script()` for `/usr/bin/python3` routing, `generate_pip_wrapper()` with cache and index config
+- **Pip proxy**: `PipProxyConfig` with package cache, audit trail (`PipInstallRecord`), blocked package list, hash verification requirements, custom index URL support
+- **Free-threaded Python**: First-class support for Python 3.13t (`python3.13t` binary, `lib/python3.13t/` path, `--disable-gil` flag)
+- **Known versions**: 3.12, 3.13, 3.13t (free-threaded), 3.14
 
 ### Added — Phase 13C: Community & Documentation (3/7 complete)
 

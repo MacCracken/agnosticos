@@ -347,8 +347,19 @@ impl PluginHost {
             "close".to_string(),
             "mmap".to_string(),
             "munmap".to_string(),
+            "mprotect".to_string(),
             "brk".to_string(),
             "exit_group".to_string(),
+            // Required for async runtimes (tokio/epoll) and time
+            "poll".to_string(),
+            "epoll_create1".to_string(),
+            "epoll_ctl".to_string(),
+            "epoll_wait".to_string(),
+            "clock_gettime".to_string(),
+            "futex".to_string(),
+            "sigaltstack".to_string(),
+            "rt_sigaction".to_string(),
+            "rt_sigprocmask".to_string(),
         ];
 
         match plugin_type {

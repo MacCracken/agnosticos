@@ -3506,4 +3506,55 @@ mod tests {
         let deser: CircuitBreakerConfig = serde_json::from_str(&json).unwrap();
         assert_eq!(deser.failure_threshold, config.failure_threshold);
     }
+
+    // -----------------------------------------------------------------------
+    // Coverage improvement: get_quota, register_agent quota fallback
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_supervisor_get_quota_returns_none_for_unknown() {
+        let registry = std::sync::Arc::new(crate::registry::AgentRegistry::new());
+        let supervisor = Supervisor::new(registry);
+        let agent_id = AgentId::new();
+        assert!(supervisor.get_quota(agent_id).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_supervisor_get_all_health_empty() {
+        let registry = std::sync::Arc::new(crate::registry::AgentRegistry::new());
+        let supervisor = Supervisor::new(registry);
+        let health = supervisor.get_all_health().await;
+        assert!(health.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_supervisor_register_and_get_health() {
+        let registry = std::sync::Arc::new(crate::registry::AgentRegistry::new());
+        let supervisor = Supervisor::new(registry);
+        let agent_id = AgentId::new();
+
+        supervisor.register_agent(agent_id).await.unwrap();
+
+        let health = supervisor.get_all_health().await;
+        assert_eq!(health.len(), 1);
+        assert_eq!(health[0].agent_id, agent_id);
+        assert!(health[0].is_healthy);
+
+        // Quota should be set to default after register
+        let quota = supervisor.get_quota(agent_id).await;
+        assert!(quota.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_supervisor_unregister_clears_quota() {
+        let registry = std::sync::Arc::new(crate::registry::AgentRegistry::new());
+        let supervisor = Supervisor::new(registry);
+        let agent_id = AgentId::new();
+
+        supervisor.register_agent(agent_id).await.unwrap();
+        assert!(supervisor.get_quota(agent_id).await.is_some());
+
+        let _ = supervisor.unregister_agent(agent_id).await;
+        assert!(supervisor.get_quota(agent_id).await.is_none());
+    }
 }

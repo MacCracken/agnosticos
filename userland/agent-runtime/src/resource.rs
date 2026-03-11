@@ -1556,4 +1556,98 @@ mod tests {
         rm.release_gpu(agent_id).await.unwrap();
         assert!(!rm.get_gpu_allocations().await.contains_key(&agent_id));
     }
+
+    // -----------------------------------------------------------------------
+    // Coverage improvement: GPU device traits, memory detection, allocation
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_gpu_device_clone_preserves_all_fields() {
+        let dev = GpuDevice {
+            id: 7,
+            name: "Test GPU".to_string(),
+            total_memory: 16384,
+            available_memory: AtomicU64::new(8192),
+            compute_capability: Some("sm_90".to_string()),
+        };
+        let cloned = dev.clone();
+        assert_eq!(cloned.id, 7);
+        assert_eq!(cloned.name, "Test GPU");
+        assert_eq!(cloned.total_memory, 16384);
+        assert_eq!(
+            cloned.available_memory.load(std::sync::atomic::Ordering::Relaxed),
+            8192
+        );
+        assert_eq!(cloned.compute_capability.as_deref(), Some("sm_90"));
+    }
+
+    #[tokio::test]
+    async fn test_resource_manager_memory_at_least_1mb() {
+        let rm = ResourceManager::new().await.unwrap();
+        assert!(rm.total_memory > 1_048_576);
+    }
+
+    #[tokio::test]
+    async fn test_allocate_and_release_multiple_gpus() {
+        let rm = ResourceManager::new().await.unwrap();
+
+        {
+            let mut gpus = rm.gpus.write().await;
+            gpus.clear();
+            for i in 0..3 {
+                gpus.push(GpuDevice {
+                    id: i,
+                    name: format!("GPU {}", i),
+                    total_memory: 4096,
+                    available_memory: AtomicU64::new(4096),
+                    compute_capability: None,
+                });
+            }
+        }
+
+        let agent1 = AgentId::new();
+        let agent2 = AgentId::new();
+
+        rm.allocate_gpu(agent1, 2048).await.unwrap();
+        rm.allocate_gpu(agent2, 2048).await.unwrap();
+
+        let allocs = rm.get_gpu_allocations().await;
+        assert!(allocs.contains_key(&agent1));
+        assert!(allocs.contains_key(&agent2));
+
+        rm.release_gpu(agent1).await.unwrap();
+        let allocs = rm.get_gpu_allocations().await;
+        assert!(!allocs.contains_key(&agent1));
+        assert!(allocs.contains_key(&agent2));
+    }
+
+    #[tokio::test]
+    async fn test_memory_reserve_and_release_exact() {
+        let rm = ResourceManager::new().await.unwrap();
+        let total = rm.total_memory;
+
+        // Reserve all memory
+        let agent_id = AgentId::new();
+        rm.reserve_memory(agent_id, total).await.unwrap();
+
+        // Should fail to reserve more
+        let agent2 = AgentId::new();
+        let result = rm.reserve_memory(agent2, 1).await;
+        assert!(result.is_err());
+
+        // Release and retry
+        rm.release_memory(total).await;
+        let result = rm.reserve_memory(agent2, 1).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_cpu_allocate_zero_cores() {
+        let rm = ResourceManager::new().await.unwrap();
+        let agent_id = AgentId::new();
+        let result = rm.allocate_cpu(agent_id, 0).await;
+        assert!(result.is_ok());
+        let cores = result.unwrap();
+        assert!(cores.is_empty());
+    }
 }
