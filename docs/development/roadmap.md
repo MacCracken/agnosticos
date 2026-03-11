@@ -366,11 +366,12 @@ Wire the LFS base system into AGNOS's own tooling.
 
 | # | App | Recipe | Status | Notes |
 |---|-----|--------|--------|-------|
-| 1 | SecureYeoman | `recipes/marketplace/secureyeoman.toml` | Ready | Flagship, 20,500+ tests, 279 MCP tools |
+| 1 | SecureYeoman | `recipes/marketplace/secureyeoman.toml` | Ready | Flagship, 22,000+ tests, 421+ MCP tools |
 | 2 | Photis Nadi | `recipes/marketplace/photisnadi.toml` | Ready | Flutter productivity, 389 tests |
 | 3 | BullShift | `recipes/marketplace/bullshift.toml` | Ready | Trading platform, 552 tests |
 | 4 | AGNOSTIC | `recipes/marketplace/agnostic.toml` | Stub | Python/CrewAI QA platform |
 | 5 | **Delta** | `recipes/marketplace/delta.toml` | **Recipe created** | Code hosting (port 8070), CI/CD, artifact registry. 49 tests. Needs: mela listing, agnoshi `delta` intent, daimon health consumer |
+| 6 | **Aequi** | `recipes/marketplace/aequi.toml` | **Stub** | Self-employed accounting (port 8060). Needs: HTTP API crate (Phase 6), Dockerfile, recipe |
 
 #### Delta AGNOS-Side Integration Items
 

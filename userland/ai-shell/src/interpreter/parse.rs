@@ -47,6 +47,40 @@ impl Interpreter {
             return Intent::AgentInfo { agent_id };
         }
 
+        // --- Aequi accounting intents (before greedy list/show) ---
+        if let Some(caps) = self.try_captures("aequi_tax", &input_lower) {
+            let quarter = caps.get(6).map(|m| m.as_str().trim().to_string());
+            return Intent::AequiTaxEstimate { quarter };
+        }
+
+        if let Some(caps) = self.try_captures("aequi_schedule_c", &input_lower) {
+            let year = caps.get(4).map(|m| m.as_str().trim().to_string());
+            return Intent::AequiScheduleC { year };
+        }
+
+        if let Some(caps) = self.try_captures("aequi_import", &input_lower) {
+            let file_path = caps.get(4).map_or("", |m| m.as_str()).trim().to_string();
+            if !file_path.is_empty() {
+                return Intent::AequiImportBank { file_path };
+            }
+        }
+
+        if self.try_captures("aequi_balance", &input_lower).is_some() {
+            return Intent::AequiBalance;
+        }
+
+        if let Some(caps) = self.try_captures("aequi_receipts", &input_lower) {
+            let status = caps.get(3).map(|m| {
+                let s = m.as_str().trim();
+                match s {
+                    "pending" => "pending_review".to_string(),
+                    "unreviewed" => "pending_review".to_string(),
+                    other => other.to_string(),
+                }
+            });
+            return Intent::AequiReceipts { status };
+        }
+
         // --- Photis Nadi task management intents (before greedy list/show) ---
         if let Some(caps) = self.try_captures("task_list", &input_lower) {
             let status = caps.get(4).map(|m| m.as_str().trim().to_string());

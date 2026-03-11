@@ -1,3 +1,4 @@
+mod aequi;
 mod agnos;
 mod filesystem;
 mod knowledge;
@@ -72,6 +73,13 @@ impl Interpreter {
             | Intent::MarketplaceSearch { .. }
             | Intent::MarketplaceList
             | Intent::MarketplaceUpdate => marketplace::translate_marketplace(intent),
+
+            // Aequi accounting
+            Intent::AequiTaxEstimate { .. }
+            | Intent::AequiScheduleC { .. }
+            | Intent::AequiImportBank { .. }
+            | Intent::AequiBalance
+            | Intent::AequiReceipts { .. } => aequi::translate_aequi(intent),
 
             // Photis Nadi
             Intent::TaskList { .. }

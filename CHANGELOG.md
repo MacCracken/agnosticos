@@ -14,6 +14,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI now validates recipes on every push, full LFS bootstrap is manual-trigger only (takes hours)
 - Fixed flaky `test_llama_cpp_infer_stream_channel_sends_error` — added timeout + graceful channel-closed handling
 
+### Added — Batch Heartbeat Endpoint
+
+- **`POST /v1/agents/heartbeat/batch`**: New endpoint for sending heartbeats for multiple agents in a single request (max 100). Returns per-agent results with `ok`/`not_found` status. Designed for SecureYeoman to keep its agent fleet alive efficiently
+- Updated `/v1/discover` to advertise the new endpoint
+- 4 new tests: batch heartbeat, empty batch, not-found agents, mixed results
+- Updated `docs/AGENT_RUNTIME.md` and `docs/api/README.md` with handshake/events endpoint tables
+
 ### Added — Phase 11: Desktop, Networking & AI/ML Stack (84 recipes)
 
 - **11A — Graphics Stack** (17 recipes in `recipes/desktop/`): wayland, wayland-protocols, mesa, libdrm, libinput, libxkbcommon, vulkan-headers, vulkan-loader, libepoxy, pixman, cairo, pango, harfbuzz, fontconfig, xwayland, wlroots, fribidi

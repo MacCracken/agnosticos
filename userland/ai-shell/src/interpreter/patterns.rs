@@ -151,6 +151,26 @@ pub(crate) static PATTERNS: Lazy<HashMap<String, Regex>> = Lazy::new(|| {
         r"(?i)^(update|upgrade)\s+(packages|agents|all)$",
     );
     r(
+        "aequi_tax",
+        r"(?i)^(show|what|get|estimate|calculate)\s+(my\s+)?(quarterly\s+)?tax\s*(estimate|liability)?(\s+(?:for\s+)?q?(\d))?$",
+    );
+    r(
+        "aequi_schedule_c",
+        r"(?i)^(show|get|preview|generate)\s+(my\s+)?schedule\s*c(\s+(?:for\s+)?(\d{4}))?$",
+    );
+    r(
+        "aequi_import",
+        r"(?i)^import\s+(bank\s+)?(statement|transactions?|ofx|qfx|csv)\s+(from\s+)?(.+)$",
+    );
+    r(
+        "aequi_balance",
+        r"(?i)^(show|get|what|view)\s+(my\s+)?(account\s+)?balance[s]?$",
+    );
+    r(
+        "aequi_receipts",
+        r"(?i)^(show|list|view)\s+(my\s+)?(pending\s+|reviewed\s+|unreviewed\s+)?receipts$",
+    );
+    r(
         "task_list",
         r"(?i)^(show|list|view)\s+(my\s+)?tasks(\s+(?:that are\s+|in\s+|with status\s+)(\w+))?$",
     );

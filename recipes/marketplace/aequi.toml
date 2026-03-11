@@ -1,0 +1,118 @@
+# Aequi — Self-employed accounting platform for AGNOS marketplace
+# Local-first double-entry bookkeeping, receipt OCR, tax estimates,
+# bank import, and Schedule C preview. Built with Rust/Tauri v2.
+#
+# Status: Alpha — Phases 1-4 complete (Core, Import, OCR, Tax Engine).
+# Source: https://github.com/anomalyco/aequi
+
+[package]
+name = "aequi"
+version = "2026.3.10"
+description = "Aequi — Local-first self-employed accounting platform"
+license = "MIT OR AGPL-3.0"
+groups = ["desktop", "finance", "rust"]
+release = 1
+arch = "x86_64"
+
+[source]
+local = true
+build_dir = "target/release"
+github_release = "anomalyco/aequi"
+release_asset = "aequi-*-linux-amd64.tar.gz"
+
+[depends]
+runtime = [
+    "glibc",
+    "openssl",
+    "sqlite",
+    "webkit2gtk-4.1",
+    "librsvg",
+]
+build = [
+    "rust",
+    "nodejs",
+    "openssl-dev",
+    "webkit2gtk-4.1-dev",
+    "librsvg-dev",
+]
+optional = [
+    "tesseract-ocr",
+    "tesseract-ocr-eng",
+]
+
+[marketplace]
+category = "finance"
+runtime = "native-binary"
+publisher = "Aequi"
+tags = ["accounting", "finance", "tax", "bookkeeping", "invoicing", "self-employed", "receipt-ocr"]
+min_agnos_version = "2026.3.10"
+
+[marketplace.sandbox]
+seccomp_mode = "desktop"
+network_access = false
+allowed_hosts = []
+data_dir = "~/.local/share/aequi/"
+
+[[marketplace.sandbox.landlock]]
+path = "~/.local/share/aequi/"
+access = "rw"
+
+[[marketplace.sandbox.landlock]]
+path = "/tmp"
+access = "rw"
+
+[[marketplace.sandbox.landlock]]
+path = "/usr/share/fonts"
+access = "ro"
+
+[[marketplace.sandbox.landlock]]
+path = "/usr/share/tesseract-ocr"
+access = "ro"
+
+[[marketplace.sandbox.landlock]]
+path = "/run/user/"
+access = "ro"
+
+[marketplace.wayland]
+requirements = ["core", "xdg-shell"]
+
+[build]
+pre_build = "npm ci && npm run build"
+configure = ""
+make = "cargo tauri build"
+check = "cargo test --workspace"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+# Install the Tauri binary
+mkdir -p $PKG/usr/lib/aequi/bin
+cp target/release/aequi $PKG/usr/lib/aequi/bin/aequi
+chmod +x $PKG/usr/lib/aequi/bin/aequi
+
+# Symlink into PATH
+mkdir -p $PKG/usr/bin
+ln -sf /usr/lib/aequi/bin/aequi $PKG/usr/bin/aequi
+
+# Tax rule files
+mkdir -p $PKG/usr/share/aequi/rules/tax/us
+cp rules/tax/us/*.toml $PKG/usr/share/aequi/rules/tax/us/
+
+# Desktop entry for aethersafha
+mkdir -p $PKG/usr/share/applications
+cat > $PKG/usr/share/applications/aequi.desktop << 'EOF'
+[Desktop Entry]
+Name=Aequi
+Comment=Local-first self-employed accounting
+GenericName=Accounting
+Exec=aequi
+Icon=aequi
+Terminal=false
+Type=Application
+Categories=Office;Finance;
+StartupNotify=true
+StartupWMClass=aequi
+Keywords=accounting;bookkeeping;tax;invoice;receipt;
+EOF
+"""

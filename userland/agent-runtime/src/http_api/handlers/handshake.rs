@@ -13,7 +13,7 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_stream::StreamExt;
-use tracing::info;
+use tracing::{debug, info};
 use uuid::Uuid;
 
 use crate::http_api::state::{ApiState, RegisteredAgentEntry};
@@ -59,6 +59,7 @@ pub async fn service_discovery_handler(State(state): State<ApiState>) -> impl In
         "agents": "/v1/agents",
         "agents_register": "/v1/agents/register",
         "agents_register_batch": "/v1/agents/register/batch",
+        "agents_heartbeat_batch": "/v1/agents/heartbeat/batch",
         "health": "/v1/health",
         "health_consumers": "/v1/health/consumers",
         "metrics": "/v1/metrics",
@@ -253,6 +254,122 @@ pub async fn batch_register_handler(
             "registered": registered_count,
             "already_registered": existing_count,
             "errors": results.iter().filter(|r| r.status == "error").count(),
+            "results": results,
+        })),
+    )
+        .into_response()
+}
+
+// ---------------------------------------------------------------------------
+// Batch heartbeat
+// ---------------------------------------------------------------------------
+
+/// Request to send heartbeats for multiple agents in a single call.
+#[derive(Debug, Deserialize)]
+pub struct BatchHeartbeatRequest {
+    /// Source service identifier (e.g., "secureyeoman").
+    pub source: String,
+    /// Per-agent heartbeat data.
+    pub heartbeats: Vec<AgentHeartbeatEntry>,
+}
+
+/// A single agent's heartbeat within a batch.
+#[derive(Debug, Deserialize)]
+pub struct AgentHeartbeatEntry {
+    /// Agent ID (UUID).
+    pub id: Uuid,
+    #[serde(default)]
+    pub status: Option<String>,
+    #[serde(default)]
+    pub current_task: Option<String>,
+    #[serde(default)]
+    pub cpu_percent: Option<f32>,
+    #[serde(default)]
+    pub memory_mb: Option<u64>,
+}
+
+/// Result of a single agent heartbeat within a batch.
+#[derive(Debug, Serialize)]
+pub struct BatchHeartbeatResult {
+    pub id: Uuid,
+    pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// POST /v1/agents/heartbeat/batch — send heartbeats for multiple agents in one call.
+/// Designed for SecureYeoman to keep its entire agent fleet alive with a single request.
+pub async fn batch_heartbeat_handler(
+    State(state): State<ApiState>,
+    Json(req): Json<BatchHeartbeatRequest>,
+) -> impl IntoResponse {
+    if req.heartbeats.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "No heartbeats provided", "code": 400})),
+        )
+            .into_response();
+    }
+
+    if req.heartbeats.len() > 100 {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "Maximum 100 heartbeats per batch", "code": 400})),
+        )
+            .into_response();
+    }
+
+    let mut agents = state.agents_write().await;
+    let mut results = Vec::new();
+    let now = Utc::now();
+
+    for hb in &req.heartbeats {
+        match agents.get_mut(&hb.id) {
+            Some(entry) => {
+                entry.detail.last_heartbeat = Some(now);
+                if let Some(ref status) = hb.status {
+                    entry.detail.status = status.clone();
+                }
+                if let Some(ref task) = hb.current_task {
+                    entry.detail.current_task = Some(task.clone());
+                }
+                if let Some(cpu) = hb.cpu_percent {
+                    entry.detail.cpu_percent = Some(cpu);
+                }
+                if let Some(mem) = hb.memory_mb {
+                    entry.detail.memory_mb = Some(mem);
+                }
+
+                results.push(BatchHeartbeatResult {
+                    id: hb.id,
+                    status: "ok".to_string(),
+                    error: None,
+                });
+            }
+            None => {
+                results.push(BatchHeartbeatResult {
+                    id: hb.id,
+                    status: "not_found".to_string(),
+                    error: Some(format!("Agent {} not found", hb.id)),
+                });
+            }
+        }
+    }
+
+    let ok_count = results.iter().filter(|r| r.status == "ok").count();
+    let not_found_count = results.iter().filter(|r| r.status == "not_found").count();
+
+    debug!(
+        "Batch heartbeat from '{}': {} ok, {} not found",
+        req.source, ok_count, not_found_count
+    );
+
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "source": req.source,
+            "updated": ok_count,
+            "not_found": not_found_count,
             "results": results,
         })),
     )

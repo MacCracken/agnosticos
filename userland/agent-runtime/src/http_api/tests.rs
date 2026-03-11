@@ -3971,4 +3971,158 @@ mod tests {
             assert_eq!(agent["metadata"]["source"], "secureyeoman");
         }
     }
+
+    // -----------------------------------------------------------------------
+    // Batch heartbeat tests
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_batch_heartbeat() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        // Register agents first
+        let reg_body = serde_json::json!({
+            "source": "secureyeoman",
+            "agents": [
+                {"name": "hb-agent-1", "capabilities": ["llm"]},
+                {"name": "hb-agent-2", "capabilities": ["search"]}
+            ]
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/agents/register/batch")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&reg_body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let reg_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let id1 = reg_json["results"][0]["id"].as_str().unwrap();
+        let id2 = reg_json["results"][1]["id"].as_str().unwrap();
+
+        // Send batch heartbeat
+        let app2 = build_router(state);
+        let hb_body = serde_json::json!({
+            "source": "secureyeoman",
+            "heartbeats": [
+                {"id": id1, "status": "busy", "cpu_percent": 45.2, "memory_mb": 512},
+                {"id": id2, "current_task": "analyzing data"}
+            ]
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/agents/heartbeat/batch")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&hb_body).unwrap()))
+            .unwrap();
+        let resp = app2.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(json["source"], "secureyeoman");
+        assert_eq!(json["updated"], 2);
+        assert_eq!(json["not_found"], 0);
+        for result in json["results"].as_array().unwrap() {
+            assert_eq!(result["status"], "ok");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_batch_heartbeat_empty() {
+        let app = test_app();
+        let req_body = serde_json::json!({
+            "source": "secureyeoman",
+            "heartbeats": []
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/agents/heartbeat/batch")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_batch_heartbeat_not_found() {
+        let app = test_app();
+        let fake_id = uuid::Uuid::new_v4();
+        let req_body = serde_json::json!({
+            "source": "secureyeoman",
+            "heartbeats": [
+                {"id": fake_id.to_string(), "status": "idle"}
+            ]
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/agents/heartbeat/batch")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["updated"], 0);
+        assert_eq!(json["not_found"], 1);
+        assert_eq!(json["results"][0]["status"], "not_found");
+    }
+
+    #[tokio::test]
+    async fn test_batch_heartbeat_mixed() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        // Register one agent
+        let reg_body = serde_json::json!({
+            "source": "secureyeoman",
+            "agents": [{"name": "hb-mix-agent", "capabilities": ["llm"]}]
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/agents/register/batch")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&reg_body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let reg_json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let real_id = reg_json["results"][0]["id"].as_str().unwrap();
+        let fake_id = uuid::Uuid::new_v4();
+
+        // Batch heartbeat with one real, one fake
+        let app2 = build_router(state);
+        let hb_body = serde_json::json!({
+            "source": "secureyeoman",
+            "heartbeats": [
+                {"id": real_id, "status": "active"},
+                {"id": fake_id.to_string(), "status": "idle"}
+            ]
+        });
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/agents/heartbeat/batch")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&hb_body).unwrap()))
+            .unwrap();
+        let resp = app2.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["updated"], 1);
+        assert_eq!(json["not_found"], 1);
+    }
 }

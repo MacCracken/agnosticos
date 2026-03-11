@@ -93,10 +93,12 @@ All endpoints are prefixed with `/v1`. Bearer token authentication and localhost
 | Method | Endpoint | Description |
 |---|---|---|
 | POST | `/agents/register` | Register a new agent |
+| POST | `/agents/register/batch` | Register multiple agents in one call (max 100) |
 | GET | `/agents` | List all registered agents |
 | GET | `/agents/:id` | Get agent details |
 | DELETE | `/agents/:id` | Deregister an agent |
 | POST | `/agents/:id/heartbeat` | Send heartbeat with status/metrics |
+| POST | `/agents/heartbeat/batch` | Batch heartbeat for multiple agents (max 100) |
 
 ### Health and Metrics
 
@@ -269,6 +271,16 @@ Screen capture and recording is driven by the desktop environment's `ScreenCaptu
 |---|---|---|
 | GET | `/mcp/tools` | List available MCP tools |
 | POST | `/mcp/tools/call` | Execute an MCP tool call |
+
+### Handshake and Events (Consumer Integration)
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/discover` | Service discovery — capabilities, endpoints, companion services |
+| POST | `/events/publish` | Publish an event to a topic (pub/sub) |
+| GET | `/events/subscribe` | Subscribe to topics via SSE stream (supports wildcards) |
+| GET | `/events/topics` | List active topics with subscriber counts |
+| GET | `/sandbox/profiles/list` | List predefined sandbox profiles |
 
 ## MCP Server (16 Tools)
 

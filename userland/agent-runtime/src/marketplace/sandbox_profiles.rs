@@ -100,6 +100,47 @@ pub fn build_photis_nadi_profile() -> PredefinedProfile {
 }
 
 // ---------------------------------------------------------------------------
+// Aequi specific profile
+// ---------------------------------------------------------------------------
+
+/// Build the predefined sandbox profile for **Aequi** (Tauri desktop accounting
+/// app with local SQLite DB and optional Tesseract OCR).
+pub fn build_aequi_profile() -> PredefinedProfile {
+    PredefinedProfile {
+        preset: SandboxPreset::ProductivityApp,
+        landlock_rules: vec![
+            LandlockRule {
+                path: "~/.local/share/aequi/".to_string(),
+                access: "rw".to_string(),
+            },
+            LandlockRule {
+                path: "/tmp".to_string(),
+                access: "rw".to_string(),
+            },
+            LandlockRule {
+                path: "/usr/share/fonts".to_string(),
+                access: "ro".to_string(),
+            },
+            LandlockRule {
+                path: "/usr/share/tesseract-ocr".to_string(),
+                access: "ro".to_string(),
+            },
+            LandlockRule {
+                path: "/usr/share/aequi/rules".to_string(),
+                access: "ro".to_string(),
+            },
+        ],
+        seccomp_mode: "desktop".to_string(),
+        network: NetworkRule {
+            enabled: false,
+            allowed_hosts: vec![],
+        },
+        max_memory_mb: 512,
+        allow_process_spawn: false,
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Generic preset builder
 // ---------------------------------------------------------------------------
 
@@ -463,6 +504,67 @@ mod tests {
     #[test]
     fn test_photis_nadi_profile_validates() {
         let profile = build_photis_nadi_profile();
+        assert!(validate_profile(&profile).is_ok());
+    }
+
+    // --- Aequi profile ---
+
+    #[test]
+    fn test_aequi_profile_preset() {
+        let profile = build_aequi_profile();
+        assert_eq!(profile.preset, SandboxPreset::ProductivityApp);
+    }
+
+    #[test]
+    fn test_aequi_profile_landlock_rules() {
+        let profile = build_aequi_profile();
+        assert_eq!(profile.landlock_rules.len(), 5);
+
+        // SQLite data dir
+        assert!(profile
+            .landlock_rules
+            .iter()
+            .any(|r| r.path == "~/.local/share/aequi/" && r.access == "rw"));
+        // tmp
+        assert!(profile
+            .landlock_rules
+            .iter()
+            .any(|r| r.path == "/tmp" && r.access == "rw"));
+        // fonts (read-only)
+        assert!(profile
+            .landlock_rules
+            .iter()
+            .any(|r| r.path == "/usr/share/fonts" && r.access == "ro"));
+        // tesseract OCR data (read-only)
+        assert!(profile
+            .landlock_rules
+            .iter()
+            .any(|r| r.path == "/usr/share/tesseract-ocr" && r.access == "ro"));
+        // tax rule files (read-only)
+        assert!(profile
+            .landlock_rules
+            .iter()
+            .any(|r| r.path == "/usr/share/aequi/rules" && r.access == "ro"));
+    }
+
+    #[test]
+    fn test_aequi_profile_network_disabled() {
+        let profile = build_aequi_profile();
+        assert!(!profile.network.enabled);
+        assert!(profile.network.allowed_hosts.is_empty());
+    }
+
+    #[test]
+    fn test_aequi_profile_seccomp_and_memory() {
+        let profile = build_aequi_profile();
+        assert_eq!(profile.seccomp_mode, "desktop");
+        assert_eq!(profile.max_memory_mb, 512);
+        assert!(!profile.allow_process_spawn);
+    }
+
+    #[test]
+    fn test_aequi_profile_validates() {
+        let profile = build_aequi_profile();
         assert!(validate_profile(&profile).is_ok());
     }
 

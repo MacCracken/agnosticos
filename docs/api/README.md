@@ -29,9 +29,11 @@ AGNOS exposes two HTTP/JSON services for interacting with the system. Both bind 
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/v1/agents/register` | Register a new agent with capabilities and sandbox profile |
+| POST | `/v1/agents/register/batch` | Register multiple agents in one call (max 100, idempotent) |
 | GET | `/v1/agents` | List all registered agents |
 | GET | `/v1/agents/:id` | Get details for a specific agent |
 | POST | `/v1/agents/:id/heartbeat` | Send agent heartbeat to keep registration alive |
+| POST | `/v1/agents/heartbeat/batch` | Batch heartbeat for multiple agents (max 100) |
 
 ### Health and Metrics
 
@@ -172,6 +174,21 @@ AGNOS exposes two HTTP/JSON services for interacting with the system. Both bind 
 | GET/POST | `/v1/sandbox/profiles` | Sandbox profile management |
 | GET/POST | `/v1/webhooks` | Webhook registration and management |
 | GET | `/v1/audit` | Query the cryptographic audit log |
+| POST | `/v1/audit/forward` | Forward audit events from consumer services |
+| GET | `/v1/audit/chain` | Get cryptographic audit hash chain |
+| GET | `/v1/audit/chain/verify` | Verify audit chain integrity |
+
+### Handshake and Events (Consumer Integration)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/v1/discover` | Service discovery — capabilities, API surface, companion services |
+| POST | `/v1/agents/register/batch` | Batch agent registration (max 100, idempotent) |
+| POST | `/v1/agents/heartbeat/batch` | Batch heartbeat for multiple agents (max 100) |
+| POST | `/v1/events/publish` | Publish event to a topic (supports correlation IDs, reply-to) |
+| GET | `/v1/events/subscribe` | Subscribe to topics via SSE stream (supports wildcards like `agent.*`) |
+| GET | `/v1/events/topics` | List active topics with subscriber counts and recent messages |
+| GET | `/v1/sandbox/profiles/list` | List predefined sandbox profiles |
 
 ---
 

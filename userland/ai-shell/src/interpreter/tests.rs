@@ -1911,6 +1911,172 @@ mod tests {
         }
     }
 
+    // --- Aequi accounting intent tests ---
+
+    #[test]
+    fn test_parse_aequi_tax_estimate() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("show my quarterly tax estimate");
+        if let Intent::AequiTaxEstimate { quarter } = intent {
+            assert!(quarter.is_none());
+        } else {
+            panic!("Expected AequiTaxEstimate, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_parse_aequi_tax_estimate_with_quarter() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("estimate tax for q2");
+        if let Intent::AequiTaxEstimate { quarter } = intent {
+            assert_eq!(quarter.unwrap(), "2");
+        } else {
+            panic!("Expected AequiTaxEstimate, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_parse_aequi_schedule_c() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("show schedule c");
+        if let Intent::AequiScheduleC { year } = intent {
+            assert!(year.is_none());
+        } else {
+            panic!("Expected AequiScheduleC, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_parse_aequi_schedule_c_with_year() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("preview schedule c for 2026");
+        if let Intent::AequiScheduleC { year } = intent {
+            assert_eq!(year.unwrap(), "2026");
+        } else {
+            panic!("Expected AequiScheduleC, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_parse_aequi_import_bank() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("import bank statement from ~/downloads/march.ofx");
+        if let Intent::AequiImportBank { file_path } = intent {
+            assert_eq!(file_path, "~/downloads/march.ofx");
+        } else {
+            panic!("Expected AequiImportBank, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_parse_aequi_import_csv() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("import csv from /tmp/checking.csv");
+        if let Intent::AequiImportBank { file_path } = intent {
+            assert_eq!(file_path, "/tmp/checking.csv");
+        } else {
+            panic!("Expected AequiImportBank, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_parse_aequi_balance() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("show my account balances");
+        if let Intent::AequiBalance = intent {
+            // ok
+        } else {
+            panic!("Expected AequiBalance, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_parse_aequi_receipts() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("show my receipts");
+        if let Intent::AequiReceipts { status } = intent {
+            assert!(status.is_none());
+        } else {
+            panic!("Expected AequiReceipts, got {:?}", intent);
+        }
+    }
+
+    #[test]
+    fn test_parse_aequi_pending_receipts() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("list pending receipts");
+        if let Intent::AequiReceipts { status } = intent {
+            assert_eq!(status.unwrap(), "pending_review");
+        } else {
+            panic!("Expected AequiReceipts, got {:?}", intent);
+        }
+    }
+
+    // --- Aequi translation tests ---
+
+    #[test]
+    fn test_translate_aequi_tax_estimate() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::AequiTaxEstimate {
+            quarter: Some("3".to_string()),
+        };
+        let t = interpreter.translate(&intent).unwrap();
+        assert_eq!(t.command, "curl");
+        let body = t.args.last().unwrap();
+        assert!(body.contains("aequi_estimate_quarterly_tax"));
+        assert!(body.contains("3"));
+    }
+
+    #[test]
+    fn test_translate_aequi_schedule_c() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::AequiScheduleC {
+            year: Some("2026".to_string()),
+        };
+        let t = interpreter.translate(&intent).unwrap();
+        assert_eq!(t.command, "curl");
+        let body = t.args.last().unwrap();
+        assert!(body.contains("aequi_schedule_c_preview"));
+        assert!(body.contains("2026"));
+    }
+
+    #[test]
+    fn test_translate_aequi_import_bank() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::AequiImportBank {
+            file_path: "/tmp/march.ofx".to_string(),
+        };
+        let t = interpreter.translate(&intent).unwrap();
+        assert_eq!(t.command, "curl");
+        let body = t.args.last().unwrap();
+        assert!(body.contains("aequi_import_bank_statement"));
+        assert!(body.contains("/tmp/march.ofx"));
+        assert_eq!(t.permission, PermissionLevel::SystemWrite);
+    }
+
+    #[test]
+    fn test_translate_aequi_balance() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::AequiBalance;
+        let t = interpreter.translate(&intent).unwrap();
+        assert_eq!(t.command, "curl");
+        let body = t.args.last().unwrap();
+        assert!(body.contains("aequi_account_balances"));
+    }
+
+    #[test]
+    fn test_translate_aequi_receipts() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::AequiReceipts {
+            status: Some("pending_review".to_string()),
+        };
+        let t = interpreter.translate(&intent).unwrap();
+        assert_eq!(t.command, "curl");
+        let body = t.args.last().unwrap();
+        assert!(body.contains("aequi_list_receipts"));
+        assert!(body.contains("pending_review"));
+    }
+
     // --- Photis Nadi task management intent tests ---
 
     #[test]

@@ -149,6 +149,16 @@ pub enum Intent {
     MarketplaceList,
     /// Update marketplace packages
     MarketplaceUpdate,
+    /// Show quarterly tax estimate from Aequi
+    AequiTaxEstimate { quarter: Option<String> },
+    /// Show Schedule C preview from Aequi
+    AequiScheduleC { year: Option<String> },
+    /// Import a bank statement into Aequi
+    AequiImportBank { file_path: String },
+    /// Show account balances from Aequi
+    AequiBalance,
+    /// List receipts from Aequi
+    AequiReceipts { status: Option<String> },
     /// List tasks from Photis Nadi
     TaskList { status: Option<String> },
     /// Create a task in Photis Nadi

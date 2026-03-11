@@ -268,6 +268,7 @@ pub fn build_router(state: ApiState) -> Router {
         // Handshake routes (service discovery, batch registration, events, sandbox listing)
         .route("/v1/discover", get(service_discovery_handler))
         .route("/v1/agents/register/batch", post(batch_register_handler))
+        .route("/v1/agents/heartbeat/batch", post(batch_heartbeat_handler))
         .route("/v1/events/subscribe", get(events_subscribe_handler))
         .route("/v1/events/publish", post(events_publish_handler))
         .route("/v1/events/topics", get(events_topics_handler))
