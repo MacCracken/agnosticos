@@ -66,9 +66,15 @@ for desktop/networking/GPU stack.
 
 ## Engineering Backlog
 
-### All HIGH items resolved
+### Active
 
-### Recently Fixed (15 items cleared + 4 non-issues removed)
+| # | Priority | Item | Notes |
+|---|----------|------|-------|
+| H26 | **HIGH** | Upgrade `reqwest` 0.11 → 0.12+ | Eliminates unmaintained `rustls-pemfile` 1.x (RUSTSEC-2025-0134). Breaking change — workspace-wide migration needed (all 6 crates depend on it). |
+
+### Recently Fixed (15 items cleared + 4 non-issues removed + 2 unmaintained deps removed)
+
+**Unmaintained deps**: Removed `ansi_term` (replaced with `console`) and unused `indicatif` from ai-shell. Reduces `cargo audit` warnings from 4 to 2.
 
 **H23 — File splitting**: `mcp_server.rs` (4,452 → 11 files), `supervisor.rs` (3,609 → 9 files), `wayland.rs` (3,996 → 7 files)
 

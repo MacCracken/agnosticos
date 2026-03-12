@@ -3,7 +3,7 @@
 //! Provides a fast, customizable, cross-shell compatible prompt
 //! with AGNOS-specific features like AI mode indicators
 
-use ansi_term::{Color, Style};
+use console::Style;
 use std::path::PathBuf;
 use std::time::SystemTime;
 
@@ -112,16 +112,15 @@ impl PromptModule for AiModeModule {
             return None;
         }
 
-        let (icon, color) = match context.ai_mode.as_str() {
-            "AI-AUTO" => ("🤖", Color::Purple),
-            "AI-ASSIST" => ("👤🤖", Color::Cyan),
-            "HUMAN" => ("👤", Color::Green),
-            "STRICT" => ("🔒", Color::Red),
-            _ => ("●", Color::White),
+        let (icon, style) = match context.ai_mode.as_str() {
+            "AI-AUTO" => ("🤖", Style::new().magenta().bold()),
+            "AI-ASSIST" => ("👤🤖", Style::new().cyan().bold()),
+            "HUMAN" => ("👤", Style::new().green().bold()),
+            "STRICT" => ("🔒", Style::new().red().bold()),
+            _ => ("●", Style::new().white().bold()),
         };
 
-        let style = Style::new().fg(color).bold();
-        Some(format!("{} ", style.paint(icon)))
+        Some(format!("{} ", style.apply_to(icon)))
     }
 
     fn name(&self) -> &'static str {
@@ -143,9 +142,9 @@ impl PromptModule for DirectoryModule {
         };
 
         let path_str = display_path.to_string_lossy();
-        let style = Style::new().fg(Color::Blue).bold();
+        let style = Style::new().blue().bold();
 
-        Some(format!("{} ", style.paint(path_str.to_string())))
+        Some(format!("{} ", style.apply_to(path_str)))
     }
 
     fn name(&self) -> &'static str {
@@ -172,8 +171,8 @@ impl PromptModule for GitBranchModule {
                         .strip_prefix("ref: refs/heads/")
                         .unwrap_or(content.trim());
 
-                    let style = Style::new().fg(Color::Yellow);
-                    return Some(format!("{} ", style.paint(format!("({})", branch))));
+                    let style = Style::new().yellow();
+                    return Some(format!("{} ", style.apply_to(format!("({})", branch))));
                 }
                 break;
             }
@@ -216,8 +215,8 @@ impl PromptModule for ExecutionTimeModule {
             format!("{}.{:03}s", secs, ms)
         };
 
-        let style = Style::new().fg(Color::Yellow).dimmed();
-        Some(format!("{} ", style.paint(format!("took {}", duration))))
+        let style = Style::new().yellow().dim();
+        Some(format!("{} ", style.apply_to(format!("took {}", duration))))
     }
 
     fn name(&self) -> &'static str {
@@ -234,10 +233,10 @@ impl PromptModule for ExitStatusModule {
             return None;
         }
 
-        let style = Style::new().fg(Color::Red).bold();
+        let style = Style::new().red().bold();
         Some(format!(
             "{} ",
-            style.paint(format!("✗ {}", context.last_exit_code))
+            style.apply_to(format!("✗ {}", context.last_exit_code))
         ))
     }
 
@@ -251,14 +250,13 @@ pub struct CharacterModule;
 
 impl PromptModule for CharacterModule {
     fn render(&self, context: &PromptContext) -> Option<String> {
-        let (symbol, color) = if context.last_exit_code == 0 {
-            ("❯", Color::Green)
+        let style = if context.last_exit_code == 0 {
+            Style::new().green().bold()
         } else {
-            ("❯", Color::Red)
+            Style::new().red().bold()
         };
 
-        let style = Style::new().fg(color).bold();
-        Some(format!("{} ", style.paint(symbol)))
+        Some(format!("{} ", style.apply_to("❯")))
     }
 
     fn name(&self) -> &'static str {
@@ -271,15 +269,15 @@ pub struct ContextModule;
 
 impl PromptModule for ContextModule {
     fn render(&self, context: &PromptContext) -> Option<String> {
-        let user_style = Style::new().fg(Color::Yellow);
-        let host_style = Style::new().fg(Color::Green);
-        let sep_style = Style::new().dimmed();
+        let user_style = Style::new().yellow();
+        let host_style = Style::new().green();
+        let sep_style = Style::new().dim();
 
         Some(format!(
             "{}{}{} ",
-            user_style.paint(&context.username),
-            sep_style.paint("@"),
-            host_style.paint(&context.hostname)
+            user_style.apply_to(&context.username),
+            sep_style.apply_to("@"),
+            host_style.apply_to(&context.hostname)
         ))
     }
 
@@ -368,16 +366,16 @@ impl PromptRenderer {
                 let ms = context.cmd_duration_ms % 1000;
                 format!("{}.{:03}s", secs, ms)
             };
-            let style = Style::new().fg(Color::Yellow).dimmed();
-            parts.push(style.paint(duration).to_string());
+            let style = Style::new().yellow().dim();
+            parts.push(style.apply_to(duration).to_string());
         }
 
         // Show current time
         let now = chrono::Local::now();
-        let time_style = Style::new().dimmed();
+        let time_style = Style::new().dim();
         parts.push(
             time_style
-                .paint(now.format("%H:%M:%S").to_string())
+                .apply_to(now.format("%H:%M:%S").to_string())
                 .to_string(),
         );
 

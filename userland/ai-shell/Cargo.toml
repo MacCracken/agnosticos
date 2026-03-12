@@ -33,10 +33,8 @@ dirs = "5.0"
 regex = "1.10"
 once_cell = "1.19"
 shlex = "1.3"
-indicatif = "0.17"
 console = "0.15"
 dialoguer = "0.11"
-ansi_term = "0.12"
 hostname = "0.3"
 chrono = { workspace = true }
 nix = { version = "0.31", features = ["process", "signal", "user"] }
