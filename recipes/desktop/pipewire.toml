@@ -13,7 +13,7 @@ arch = "x86_64"
 
 [source]
 url = "https://gitlab.freedesktop.org/pipewire/pipewire/-/archive/1.4.1/pipewire-1.4.1.tar.gz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "1eba67c6e5acfa23e32d70bdbabab5a3d221c4bfbb12e17aa29fd5051c095fa4"
 patches = []
 
 [depends]

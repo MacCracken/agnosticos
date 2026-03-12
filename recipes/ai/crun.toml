@@ -12,8 +12,8 @@ release = 1
 arch = "x86_64"
 
 [source]
-url = "https://github.com/containers/crun/releases/download/1.20/crun-1.20.tar.xz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+url = "https://github.com/containers/crun/releases/download/1.20/crun-1.20.tar.gz"
+sha256 = "3746ac699d457070de6b460f35f5d9fea5fbdb9e826d4b9d1ca694a58f0ca465"
 patches = []
 
 [depends]

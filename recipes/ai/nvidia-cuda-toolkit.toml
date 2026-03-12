@@ -13,7 +13,7 @@ arch = "x86_64"
 
 [source]
 url = "https://developer.download.nvidia.com/compute/cuda/12.8.1/local_installers/cuda_12.8.1_570.124.06_linux.run"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "228f6bcaf5b7618d032939f431914fc92d0e5ed39ebe37098a24502f26a19797"
 patches = []
 
 [depends]

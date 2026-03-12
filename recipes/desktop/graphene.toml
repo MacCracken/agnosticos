@@ -12,8 +12,8 @@ release = 1
 arch = "x86_64"
 
 [source]
-url = "https://github.com/ebassi/graphene/releases/download/1.10.8/graphene-1.10.8.tar.xz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+url = "https://github.com/ebassi/graphene/archive/refs/tags/1.10.8.tar.gz"
+sha256 = "922dc109d2dc5dc56617a29bd716c79dd84db31721a8493a13a5f79109a4a4ed"
 patches = []
 
 [depends]

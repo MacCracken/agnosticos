@@ -13,7 +13,7 @@ arch = "x86_64"
 
 [source]
 url = "https://github.com/ollama/ollama/archive/refs/tags/v0.6.2.tar.gz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "9a7e4315d8889f2f0cc2d5274685d5b79e59f21ec8a6400ce96bb578d99f35a9"
 patches = []
 
 [depends]

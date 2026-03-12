@@ -13,7 +13,7 @@ arch = "x86_64"
 
 [source]
 url = "https://github.com/containernetworking/plugins/archive/refs/tags/v1.6.2.tar.gz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "aa9a9401d27c1ad440627bbe7093d7e9ff47d325aac27b89a2cbdd56e25f3625"
 patches = []
 
 [depends]

@@ -13,7 +13,7 @@ arch = "x86_64"
 
 [source]
 url = "https://download.gnome.org/sources/json-glib/1.10/json-glib-1.10.6.tar.xz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "77f4bcbf9339528f166b8073458693f0a20b77b7059dbc2db61746a1928b0293"
 patches = []
 
 [depends]

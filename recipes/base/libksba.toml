@@ -14,7 +14,7 @@ arch = "x86_64"
 
 [source]
 url = "https://gnupg.org/ftp/gcrypt/libksba/libksba-1.6.7.tar.bz2"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "cf72510b8ebb4eb6693eef765749d83677a03c79291a311040a5bfd79baab763"
 patches = []
 
 [depends]

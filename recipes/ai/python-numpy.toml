@@ -13,7 +13,7 @@ arch = "x86_64"
 
 [source]
 url = "https://github.com/numpy/numpy/releases/download/v2.2.4/numpy-2.2.4.tar.gz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "9ba03692a45d3eef66559efe1d1096c4b9b75c0986b5dff5530c378fb8331d4f"
 patches = []
 
 [depends]

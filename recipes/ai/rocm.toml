@@ -13,7 +13,7 @@ arch = "x86_64"
 
 [source]
 url = "https://github.com/ROCm/ROCm/archive/refs/tags/rocm-6.4.0.tar.gz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "fcbd078f1e99b1ebbf4623ff499795bf084f5e1573cad790d1651204a82aa0a3"
 patches = []
 
 [depends]

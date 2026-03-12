@@ -15,7 +15,7 @@ arch = "x86_64"
 
 [source]
 url = "https://www.kernel.org/pub/linux/bluetooth/bluez-5.82.tar.xz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "0739fa608a837967ee6d5572b43fb89946a938d1c6c26127158aaefd743a790b"
 patches = []
 
 [depends]

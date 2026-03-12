@@ -14,7 +14,7 @@ arch = "x86_64"
 
 [source]
 url = "https://download.sourceforge.net/libpng/libpng-1.6.44.tar.xz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "60c4da1d5b7f0aa8d158da48e8f8afa9773c1c8baa5d21974df61f1886b8ce8e"
 patches = []
 
 [depends]

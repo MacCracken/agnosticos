@@ -14,7 +14,7 @@ arch = "x86_64"
 
 [source]
 url = "https://ftp.gnu.org/gnu/nettle/nettle-3.10.1.tar.gz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "b0fcdd7fc0cdea6e80dcf1dd85ba794af0d5b4a57e26397eee3bc193272d9132"
 patches = []
 
 [depends]

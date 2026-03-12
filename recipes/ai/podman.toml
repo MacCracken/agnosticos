@@ -13,7 +13,7 @@ arch = "x86_64"
 
 [source]
 url = "https://github.com/containers/podman/archive/refs/tags/v5.5.2.tar.gz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "a2dbd8280cd92d4741f32f5a99d385d7fc6f0dd36bc9cc90a7273767e26d43d9"
 patches = []
 
 [depends]

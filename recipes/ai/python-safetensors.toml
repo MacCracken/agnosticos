@@ -13,7 +13,7 @@ arch = "x86_64"
 
 [source]
 url = "https://github.com/huggingface/safetensors/archive/refs/tags/v0.5.3.tar.gz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "8c91c33013e54cbc7e055c4aa9565ddefa41ebd5a6de0dbdbbffaa6e921b4257"
 patches = []
 
 [depends]

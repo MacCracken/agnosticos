@@ -13,7 +13,7 @@ arch = "x86_64"
 
 [source]
 url = "https://github.com/pytorch/pytorch/releases/download/v2.6.0/pytorch-v2.6.0.tar.gz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "3005690eb7b083c443a38c7657938af63902f524ad87a6c83f1aca38c77e3b57"
 patches = []
 
 [depends]

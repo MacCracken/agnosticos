@@ -11,8 +11,8 @@ release = 1
 arch = "x86_64"
 
 [source]
-url = "https://github.com/nicothegamer/nicothegamer.github.io/archive/refs/tags/v1.76.80.tar.gz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+url = "https://github.com/brave/brave-browser/archive/refs/tags/v1.76.80.tar.gz"
+sha256 = "38ad3e36bac4cd702ddc04cd8271c54a8f7ed773017eeae01cfa9889d74bac3c"
 patches = ["agnos-defaults.patch", "wayland-ozone.patch"]
 
 [depends]

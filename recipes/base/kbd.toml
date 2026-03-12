@@ -14,7 +14,7 @@ arch = "x86_64"
 
 [source]
 url = "https://www.kernel.org/pub/linux/utils/kbd/kbd-2.8.0.tar.xz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "01f5806da7d1d34f594b7b2a6ae1ab23215344cf1064e8edcd3a90fef9776a11"
 patches = []
 
 [depends]

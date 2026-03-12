@@ -13,7 +13,7 @@ arch = "x86_64"
 
 [source]
 url = "https://gitlab.freedesktop.org/pipewire/wireplumber/-/archive/0.5.8/wireplumber-0.5.8.tar.gz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "234667497c6b1dd2457e7f4566567fad6cde31e4cb8990c7d0f149cb45a3894a"
 patches = []
 
 [depends]

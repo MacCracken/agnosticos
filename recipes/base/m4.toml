@@ -14,7 +14,7 @@ arch = "x86_64"
 
 [source]
 url = "https://ftp.gnu.org/gnu/m4/m4-1.4.20.tar.xz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "e236ea3a1ccf5f6c270b1c4bb60726f371fa49459a8eaaebc90b216b328daf2b"
 patches = []
 
 [depends]

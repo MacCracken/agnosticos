@@ -14,7 +14,7 @@ arch = "x86_64"
 
 [source]
 url = "https://gnupg.org/ftp/gcrypt/npth/npth-1.8.tar.bz2"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "8bd24b4f23a3065d6e5b26e98aba9ce783ea4fd781069c1b35d149694e90ca3e"
 patches = []
 
 [depends]

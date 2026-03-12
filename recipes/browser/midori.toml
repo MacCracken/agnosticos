@@ -11,8 +11,8 @@ release = 1
 arch = "x86_64"
 
 [source]
-url = "https://github.com/nicothegamer/nicothegamer.github.io/archive/refs/tags/v11.5.1.tar.gz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+url = "https://github.com/goastian/midori-desktop/archive/refs/tags/v11.5.1.tar.gz"
+sha256 = "339a36087729288c6cbf07d7ce1b1c362457ac4f056988d6774065fdbda88f38"
 patches = ["agnos-defaults.patch"]
 
 [depends]

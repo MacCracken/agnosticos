@@ -13,7 +13,7 @@ arch = "x86_64"
 
 [source]
 url = "https://www.python.org/ftp/python/3.12.9/Python-3.12.9.tar.xz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "7220835d9f90b37c006e9842a8dff4580aaca4318674f947302b8d28f3f81112"
 patches = []
 
 [depends]

@@ -3,7 +3,7 @@
 # For marketplace .agnos-agent bundles, see recipes/marketplace/synapse.toml
 
 name = "synapse"
-version = "2026.3.11"
+version = "2026.3.10"
 description = "Synapse — LLM management and training tool"
 license = "MIT"
 groups = ["server", "ai", "llm"]
@@ -11,8 +11,8 @@ release = 1
 arch = "x86_64"
 
 [source]
-url = "https://github.com/MacCracken/synapse/archive/refs/tags/${version}.tar.gz"
-sha256 = ""
+url = "https://github.com/MacCracken/synapse/archive/refs/tags/2026.3.10.tar.gz"
+sha256 = "bbe421b05b1205ef9dcd95c77d02a308f67e2b6a02fbb13be91d3bc44e5d8c15"
 
 [depends]
 runtime = [

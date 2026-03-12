@@ -298,11 +298,11 @@ impl EdgeFleetManager {
                     warn!(id = %node.id, name = %node.name, elapsed_s = %elapsed, "Edge node offline");
                     node.status = EdgeNodeStatus::Offline;
                 }
-            } else if elapsed > self.config.suspect_threshold_secs {
-                if node.status != EdgeNodeStatus::Suspect {
-                    warn!(id = %node.id, name = %node.name, elapsed_s = %elapsed, "Edge node suspect");
-                    node.status = EdgeNodeStatus::Suspect;
-                }
+            } else if elapsed > self.config.suspect_threshold_secs
+                && node.status != EdgeNodeStatus::Suspect
+            {
+                warn!(id = %node.id, name = %node.name, elapsed_s = %elapsed, "Edge node suspect");
+                node.status = EdgeNodeStatus::Suspect;
             }
         }
     }
@@ -370,9 +370,9 @@ impl EdgeFleetManager {
         candidates.sort_by(|a, b| {
             // Location preference.
             let a_loc = preferred_location
-                .map_or(false, |loc| a.capabilities.location.as_deref() == Some(loc));
+                .is_some_and(|loc| a.capabilities.location.as_deref() == Some(loc));
             let b_loc = preferred_location
-                .map_or(false, |loc| b.capabilities.location.as_deref() == Some(loc));
+                .is_some_and(|loc| b.capabilities.location.as_deref() == Some(loc));
             if a_loc != b_loc {
                 return b_loc.cmp(&a_loc); // preferred location first
             }

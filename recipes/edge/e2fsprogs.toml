@@ -14,7 +14,7 @@ arch = "x86_64"
 
 [source]
 url = "https://downloads.sourceforge.net/e2fsprogs/e2fsprogs-1.47.2.tar.gz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "6dcd67ff9d8b13274ba3f088e4318be4f5b71412cd863524423fc49d39a6371f"
 patches = []
 
 [depends]

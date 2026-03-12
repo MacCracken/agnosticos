@@ -13,7 +13,7 @@ arch = "x86_64"
 
 [source]
 url = "https://0pointer.de/public/libatasmart-0.19.tar.xz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "61f0ea345f63d28ab2ff0dc352c22271661b66bf09642db3a4049ac9dbdb0f8d"
 patches = []
 
 [depends]

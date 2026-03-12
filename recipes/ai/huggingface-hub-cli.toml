@@ -13,7 +13,7 @@ arch = "x86_64"
 
 [source]
 url = "https://github.com/huggingface/huggingface_hub/archive/refs/tags/v0.30.2.tar.gz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "f39cf16161043ea939bb3b7561bd87c28140ecfac573792bb858e7e80754ad24"
 patches = []
 
 [depends]

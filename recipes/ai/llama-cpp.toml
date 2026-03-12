@@ -13,7 +13,7 @@ arch = "x86_64"
 
 [source]
 url = "https://github.com/ggml-org/llama.cpp/archive/refs/tags/b5300.tar.gz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "aa5cf6381d1da516d06e8e88065dcccfa195ab6f8364087db25d0f2596ac338a"
 patches = []
 
 [depends]

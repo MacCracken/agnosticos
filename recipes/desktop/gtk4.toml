@@ -13,7 +13,7 @@ arch = "x86_64"
 
 [source]
 url = "https://download.gnome.org/sources/gtk/4.18/gtk-4.18.3.tar.xz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "081e1bc0b17db41a935af8d1f6f090fb1988936c42ff734d149f3d004119f8bb"
 patches = []
 
 [depends]

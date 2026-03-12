@@ -14,7 +14,7 @@ arch = "x86_64"
 
 [source]
 url = "https://github.com/ninja-build/ninja/archive/v1.13.1/ninja-1.13.1.tar.gz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "f0055ad0369bf2e372955ba55128d000cfcc21777057806015b45e4accbebf23"
 patches = []
 
 [depends]

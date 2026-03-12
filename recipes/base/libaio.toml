@@ -14,7 +14,7 @@ arch = "x86_64"
 
 [source]
 url = "https://pagure.io/libaio/archive/libaio-0.3.113/libaio-0.3.113.tar.gz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "1c561c20670c5c09cc8437a622008c0693c6a7816c1f30332da3796953b2f454"
 patches = []
 
 [depends]

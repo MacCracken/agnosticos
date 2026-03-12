@@ -12,7 +12,7 @@
 #
 # Caches downloaded hashes in /tmp/agnos-checksum-cache/ so re-runs are fast.
 
-set -euo pipefail
+set -uo pipefail
 
 RECIPE_DIR="$(cd "$(dirname "$0")/.." && pwd)/recipes"
 CACHE_DIR="${TMPDIR:-/tmp}/agnos-checksum-cache"
@@ -87,7 +87,10 @@ for recipe in "${RECIPES[@]}"; do
         continue
     fi
 
-    # Check cache first (keyed by URL hash)
+    # Use faster GNU mirror for downloads (content is identical)
+    download_url="${url/ftp.gnu.org/ftpmirror.gnu.org}"
+
+    # Check cache first (keyed by original URL hash for consistency)
     url_hash="$(echo -n "$url" | sha256sum | cut -d' ' -f1)"
     hash_file="$CACHE_DIR/$url_hash.sha256"
 
@@ -95,7 +98,7 @@ for recipe in "${RECIPES[@]}"; do
         real_sha256="$(cat "$hash_file")"
     else
         # Check file size via HEAD request before downloading
-        content_length="$(curl -fsSI --max-time 10 "$url" 2>/dev/null | grep -i '^content-length:' | tr -d '\r' | awk '{print $2}' || echo "")"
+        content_length="$(curl -fsSIL --max-time 10 "$download_url" 2>/dev/null | grep -i '^content-length:' | tail -1 | tr -d '\r' | awk '{print $2}' || echo "")"
         if [[ -n "$content_length" && "$content_length" =~ ^[0-9]+$ ]] && (( content_length > MAX_SIZE * 1024 * 1024 )); then
             size_mb=$(( content_length / 1024 / 1024 ))
             echo "SKIP  $rel_path  (${size_mb}MB exceeds ${MAX_SIZE}MB limit)"
@@ -105,8 +108,8 @@ for recipe in "${RECIPES[@]}"; do
 
         # Download and compute hash
         tmp_file="$CACHE_DIR/$url_hash.download"
-        if ! curl -fsSL --retry 2 --retry-delay 3 --max-time 300 -o "$tmp_file" "$url" 2>/dev/null; then
-            echo "FAIL  $rel_path  (download failed: $url)"
+        if ! curl -fsSL --retry 2 --retry-delay 3 --max-time 300 -o "$tmp_file" "$download_url" 2>/dev/null; then
+            echo "FAIL  $rel_path  (download failed: $download_url)"
             rm -f "$tmp_file"
             ((FAILED++)) || true
             continue

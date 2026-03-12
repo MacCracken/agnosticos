@@ -14,7 +14,7 @@ arch = "x86_64"
 
 [source]
 url = "https://download.savannah.gnu.org/releases/man-db/man-db-2.13.1.tar.xz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "8afebb6f7eb6bb8542929458841f5c7e6f240e30c86358c1fbcefbea076c87d9"
 patches = []
 
 [depends]

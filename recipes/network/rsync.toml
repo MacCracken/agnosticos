@@ -13,7 +13,7 @@ arch = "x86_64"
 
 [source]
 url = "https://download.samba.org/pub/rsync/rsync-3.4.1.tar.gz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "2924bcb3a1ed8b551fc101f740b9f0fe0a202b115027647cf69850d65fd88c52"
 patches = []
 
 [depends]

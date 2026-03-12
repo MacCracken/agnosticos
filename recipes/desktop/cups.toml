@@ -15,7 +15,7 @@ arch = "x86_64"
 
 [source]
 url = "https://github.com/OpenPrinting/cups/releases/download/v2.4.12/cups-2.4.12-source.tar.gz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "b1dde191a4ae2760c47220c82ca6155a28c382701e6c1a0159d1054990231d59"
 patches = []
 
 [depends]

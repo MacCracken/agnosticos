@@ -14,8 +14,8 @@ release = 1
 arch = "x86_64"
 
 [source]
-url = "https://github.com/dracut-ng/dracut-ng/releases/download/105/dracut-105.tar.xz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+url = "https://github.com/dracut-ng/dracut-ng/archive/refs/tags/105.tar.gz"
+sha256 = "a5f94012873f589e2efc3659341f5e383ec90419f5c361a6fd3561f946133f69"
 patches = []
 
 [depends]

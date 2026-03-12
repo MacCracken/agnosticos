@@ -15,7 +15,7 @@ arch = "x86_64"
 
 [source]
 url = "https://gitlab.freedesktop.org/bolt/bolt/-/archive/0.9.8/bolt-0.9.8.tar.gz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "5a4306aa21ee398e1e9f2a5072748c9469c9360bf5edc7dcec2f12fc17be122e"
 patches = []
 
 [depends]

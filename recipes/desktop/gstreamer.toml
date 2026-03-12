@@ -13,7 +13,7 @@ arch = "x86_64"
 
 [source]
 url = "https://gstreamer.freedesktop.org/src/gstreamer/gstreamer-1.26.0.tar.xz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "1b2ee4028010c25b776effa7c396c7e3e1861b60b9417e416f4914abcdff279f"
 patches = []
 
 [depends]

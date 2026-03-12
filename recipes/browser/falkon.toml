@@ -12,7 +12,7 @@ arch = "x86_64"
 
 [source]
 url = "https://download.kde.org/stable/release-service/24.12.3/src/falkon-24.12.3.tar.xz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "8d9d967a0af71901188ab4fc501137a4eb7602ffe5222a3240a38ffa9243b951"
 patches = ["agnos-defaults.patch"]
 
 [depends]

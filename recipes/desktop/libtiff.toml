@@ -13,7 +13,7 @@ arch = "x86_64"
 
 [source]
 url = "https://download.osgeo.org/libtiff/tiff-4.7.0.tar.gz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "67160e3457365ab96c5b3286a0903aa6e78bdc44c4bc737d2e486bcecb6ba976"
 patches = []
 
 [depends]

@@ -13,7 +13,7 @@ arch = "x86_64"
 
 [source]
 url = "https://commondatastorage.googleapis.com/chromium-browser-official/chromium-134.0.6998.88.tar.xz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "1ba3dfb7942b809cd42bd46ac531125f1181f163a6db256a22ba709275153acd"
 patches = ["agnos-defaults.patch", "wayland-ozone.patch"]
 
 [depends]

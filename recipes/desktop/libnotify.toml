@@ -13,7 +13,7 @@ arch = "x86_64"
 
 [source]
 url = "https://download.gnome.org/sources/libnotify/0.8/libnotify-0.8.4.tar.xz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "8fa04d4ebdc155b0a239df88bd9f09e8f2739d5707a1390b427ab4985f83d25a"
 patches = []
 
 [depends]

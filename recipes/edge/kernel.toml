@@ -16,7 +16,7 @@ arch = "x86_64"
 
 [source]
 url = "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.6.80.tar.xz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "6cf911d01324f45c9dd2f44cf06f55bda0ecf383bc498f132a0c549768531327"
 patches = []
 
 [depends]

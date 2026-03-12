@@ -13,7 +13,7 @@ arch = "x86_64"
 
 [source]
 url = "https://github.com/huggingface/transformers/archive/refs/tags/v4.50.3.tar.gz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "3f746fb28fdc033affe6043f012686066ee5a9360d935149ea6503ae28c5a526"
 patches = []
 
 [depends]

@@ -13,7 +13,7 @@ arch = "x86_64"
 
 [source]
 url = "https://github.com/vllm-project/vllm/archive/refs/tags/v0.8.3.tar.gz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "99078eb047a302bcf553aa3c84230631cd4b1288927c326a8be9c714b08faffb"
 patches = []
 
 [depends]

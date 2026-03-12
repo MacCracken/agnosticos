@@ -14,7 +14,7 @@ arch = "x86_64"
 
 [source]
 url = "https://github.com/KhronosGroup/Vulkan-Loader/archive/v1.4.309/Vulkan-Loader-1.4.309.tar.gz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "3e4085a55f6e356fe9dbd47e6dc762be732790add3532943da824b3e8c062827"
 patches = []
 
 [depends]

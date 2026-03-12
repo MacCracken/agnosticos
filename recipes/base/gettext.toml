@@ -14,7 +14,7 @@ arch = "x86_64"
 
 [source]
 url = "https://ftp.gnu.org/gnu/gettext/gettext-0.26.tar.xz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "d1fb86e260cfe7da6031f94d2e44c0da55903dbae0a2fa0fae78c91ae1b56f00"
 patches = []
 
 [depends]

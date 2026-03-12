@@ -12,8 +12,8 @@ release = 1
 arch = "x86_64"
 
 [source]
-url = "https://github.com/storaged-project/libblockdev/releases/download/3.2.1-1/libblockdev-3.2.1.tar.gz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+url = "https://github.com/storaged-project/libblockdev/releases/download/3.2.1/libblockdev-3.2.1.tar.gz"
+sha256 = "318b9e2cedfdfe88161f28079fcb63239aeb5592223f4485b861cfc6ef11189a"
 patches = []
 
 [depends]

@@ -13,7 +13,7 @@ arch = "x86_64"
 
 [source]
 url = "https://github.com/microsoft/onnxruntime/archive/refs/tags/v1.21.0.tar.gz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "b395c72e0e6c6cb28525f4617bc8477c99cf65659c20439fe955c511c2da2cd9"
 patches = []
 
 [depends]

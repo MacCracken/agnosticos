@@ -13,7 +13,7 @@ arch = "x86_64"
 
 [source]
 url = "https://www.alsa-project.org/files/pub/utils/alsa-utils-1.2.14.tar.bz2"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "0794c74d33fed943e7c50609c13089e409312b6c403d6ae8984fc429c0960741"
 patches = []
 
 [depends]

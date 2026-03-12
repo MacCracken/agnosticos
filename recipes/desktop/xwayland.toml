@@ -14,7 +14,7 @@ arch = "x86_64"
 
 [source]
 url = "https://xorg.freedesktop.org/archive/individual/xserver/xwayland-24.1.6.tar.xz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "737e612ca36bbdf415a911644eb7592cf9389846847b47fa46dc705bd754d2d7"
 patches = []
 
 [depends]

@@ -4,7 +4,7 @@
 
 [package]
 name = "networkmanager"
-version = "1.54.0"
+version = "1.51.4"
 description = "networkmanager — Network connection management daemon"
 license = "GPL-2.0"
 groups = ["network"]
@@ -12,8 +12,8 @@ release = 1
 arch = "x86_64"
 
 [source]
-url = "https://download.gnome.org/sources/NetworkManager/1.54/NetworkManager-1.54.0.tar.xz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+url = "https://download.gnome.org/sources/NetworkManager/1.51/NetworkManager-1.51.4.tar.xz"
+sha256 = "865a7cc5686a51d7efe81d7dcb3c5246bfa3b996a58629135354972804ff4d3c"
 patches = []
 
 [depends]

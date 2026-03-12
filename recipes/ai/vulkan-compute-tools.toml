@@ -13,7 +13,7 @@ arch = "x86_64"
 
 [source]
 url = "https://github.com/KhronosGroup/Vulkan-ValidationLayers/archive/refs/tags/v1.4.309.tar.gz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "32ef33def9e347776a68f5bdfde346a762fb9d6763dd6ec7164b7850719efff1"
 patches = []
 
 [depends]

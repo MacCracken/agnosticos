@@ -15,7 +15,7 @@ arch = "x86_64"
 
 [source]
 url = "https://download.savannah.gnu.org/releases/attr/attr-2.5.2.tar.gz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "39bf67452fa41d0948c2197601053f48b3d78a029389734332a6309a680c6c87"
 patches = []
 
 [depends]
