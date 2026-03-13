@@ -5,6 +5,7 @@
 /build/
 /dist/
 /out/
+/output/
 *.o
 *.a
 *.so
