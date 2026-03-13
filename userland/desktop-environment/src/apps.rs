@@ -738,6 +738,115 @@ impl WebBrowserApp {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Shruti DAW — Wayland-native digital audio workstation
+// ---------------------------------------------------------------------------
+
+/// Shruti DAW surface configuration for Wayland embedding.
+#[derive(Debug, Clone)]
+pub struct ShrutiSurfaceConfig {
+    /// Preferred initial width.
+    pub width: u32,
+    /// Preferred initial height.
+    pub height: u32,
+    /// Whether the DAW window should request exclusive audio focus.
+    pub exclusive_audio: bool,
+    /// PipeWire node name for routing.
+    pub pipewire_node: String,
+}
+
+impl Default for ShrutiSurfaceConfig {
+    fn default() -> Self {
+        Self {
+            width: 1400,
+            height: 900,
+            exclusive_audio: false,
+            pipewire_node: "shruti-main".into(),
+        }
+    }
+}
+
+/// Desktop integration for the Shruti DAW.
+#[derive(Debug)]
+pub struct ShrutiApp {
+    pub id: String,
+    pub name: String,
+    pub binary: String,
+    pub data_dir: String,
+    pub surface_config: ShrutiSurfaceConfig,
+    pub is_running: bool,
+}
+
+impl Default for ShrutiApp {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ShrutiApp {
+    pub fn new() -> Self {
+        Self {
+            id: "shruti".to_string(),
+            name: "Shruti".to_string(),
+            binary: "/usr/local/bin/shruti".to_string(),
+            data_dir: "~/.local/share/shruti".to_string(),
+            surface_config: ShrutiSurfaceConfig::default(),
+            is_running: false,
+        }
+    }
+
+    /// Check if Shruti is installed.
+    pub fn is_installed(&self) -> bool {
+        std::path::Path::new(&self.binary).exists()
+    }
+
+    /// Launch Shruti as a Wayland client, optionally opening a session file.
+    pub async fn launch(&mut self, session_path: Option<&str>) -> Result<(), AppError> {
+        if !self.is_installed() {
+            return Err(AppError::AppNotFound(format!(
+                "Shruti not found at {}. Install with: ark install shruti",
+                self.binary
+            )));
+        }
+
+        let mut cmd = tokio::process::Command::new(&self.binary);
+
+        // Wayland environment
+        cmd.env("GDK_BACKEND", "wayland");
+        cmd.env("QT_QPA_PLATFORM", "wayland");
+        cmd.env("SHRUTI_DATA_DIR", &self.data_dir);
+
+        // PipeWire audio routing
+        cmd.env("PIPEWIRE_NODE", &self.surface_config.pipewire_node);
+
+        // Window geometry hints
+        cmd.env("SHRUTI_WINDOW_WIDTH", self.surface_config.width.to_string());
+        cmd.env(
+            "SHRUTI_WINDOW_HEIGHT",
+            self.surface_config.height.to_string(),
+        );
+
+        if self.surface_config.exclusive_audio {
+            cmd.env("SHRUTI_EXCLUSIVE_AUDIO", "1");
+        }
+
+        if let Some(path) = session_path {
+            cmd.arg("--open").arg(path);
+        }
+
+        cmd.stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null());
+
+        cmd.spawn()
+            .map_err(|e| AppError::WindowError(format!("Failed to launch Shruti: {}", e)))?;
+
+        self.is_running = true;
+        info!("Launched Shruti DAW");
+        Ok(())
+    }
+}
+
 #[derive(Debug)]
 pub struct DesktopApplications {
     terminal: TerminalApp,
@@ -746,6 +855,7 @@ pub struct DesktopApplications {
     agent_manager: AgentManagerApp,
     audit_viewer: AuditViewerApp,
     model_manager: ModelManagerApp,
+    shruti: ShrutiApp,
     open_windows: Arc<RwLock<HashMap<Uuid, AppWindow>>>,
 }
 
@@ -773,6 +883,7 @@ impl DesktopApplications {
             agent_manager: AgentManagerApp::new(),
             audit_viewer: AuditViewerApp::new(),
             model_manager: ModelManagerApp::new(),
+            shruti: ShrutiApp::new(),
             open_windows: Arc::new(RwLock::new(HashMap::new())),
         }
     }
@@ -905,6 +1016,28 @@ impl DesktopApplications {
 
     pub fn get_model_manager(&mut self) -> &mut ModelManagerApp {
         &mut self.model_manager
+    }
+
+    /// Open a Shruti DAW window, optionally loading a session file.
+    pub fn open_shruti(&self, session_path: Option<String>) -> Result<AppWindow, AppError> {
+        let title = match &session_path {
+            Some(p) => format!("Shruti — {}", p),
+            None => "Shruti".to_string(),
+        };
+        let mut window = AppWindow::new(AppType::Custom, title);
+        window.width = self.shruti.surface_config.width;
+        window.height = self.shruti.surface_config.height;
+        window.is_ai_enabled = true;
+        self.open_windows
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(window.id, window.clone());
+        info!("Opened Shruti DAW window");
+        Ok(window)
+    }
+
+    pub fn get_shruti(&mut self) -> &mut ShrutiApp {
+        &mut self.shruti
     }
 }
 
@@ -2763,5 +2896,57 @@ mod tests {
         assert_eq!(browsers[5].id, "vivaldi");
         assert_eq!(browsers[6].id, "falkon");
         assert_eq!(browsers[7].id, "midori");
+    }
+
+    // -----------------------------------------------------------------------
+    // Shruti DAW integration
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_shruti_app_new() {
+        let shruti = ShrutiApp::new();
+        assert_eq!(shruti.id, "shruti");
+        assert_eq!(shruti.name, "Shruti");
+        assert_eq!(shruti.binary, "/usr/local/bin/shruti");
+        assert!(!shruti.is_running);
+    }
+
+    #[test]
+    fn test_shruti_surface_config_defaults() {
+        let cfg = ShrutiSurfaceConfig::default();
+        assert_eq!(cfg.width, 1400);
+        assert_eq!(cfg.height, 900);
+        assert!(!cfg.exclusive_audio);
+        assert_eq!(cfg.pipewire_node, "shruti-main");
+    }
+
+    #[test]
+    fn test_desktop_applications_open_shruti() {
+        let apps = DesktopApplications::new();
+        let result = apps.open_shruti(None);
+        assert!(result.is_ok());
+        let window = result.unwrap();
+        assert_eq!(window.title, "Shruti");
+        assert_eq!(window.width, 1400);
+        assert_eq!(window.height, 900);
+        assert!(window.is_ai_enabled);
+        assert_eq!(window.app_type, AppType::Custom);
+    }
+
+    #[test]
+    fn test_desktop_applications_open_shruti_with_session() {
+        let apps = DesktopApplications::new();
+        let result = apps.open_shruti(Some("/home/user/sessions/song.shruti".to_string()));
+        assert!(result.is_ok());
+        let window = result.unwrap();
+        assert!(window.title.contains("song.shruti"));
+    }
+
+    #[test]
+    fn test_desktop_applications_get_shruti() {
+        let mut apps = DesktopApplications::new();
+        let shruti = apps.get_shruti();
+        assert_eq!(shruti.id, "shruti");
+        assert!(!shruti.is_running);
     }
 }

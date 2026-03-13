@@ -718,6 +718,77 @@ impl ArgonautInit {
         }
     }
 
+    /// Return a `ServiceDefinition` for the Shruti DAW.
+    ///
+    /// Shruti is **not** auto-started — users opt-in by adding the
+    /// definition to `ArgonautConfig.services` or enabling it at
+    /// runtime via `enable_optional_service("shruti")`.
+    pub fn shruti_service() -> ServiceDefinition {
+        ServiceDefinition {
+            name: "shruti".into(),
+            description: "Shruti digital audio workstation".into(),
+            binary_path: PathBuf::from("/usr/local/bin/shruti"),
+            args: vec![],
+            environment: {
+                let mut env = HashMap::new();
+                env.insert(
+                    "SHRUTI_DATA_DIR".into(),
+                    "/home/${USER}/.local/share/shruti".into(),
+                );
+                env.insert("PIPEWIRE_RUNTIME_DIR".into(), "/run/user/1000".into());
+                env
+            },
+            depends_on: vec!["agent-runtime".into(), "aethersafha".into()],
+            required_for_modes: vec![], // never auto-started
+            restart_policy: RestartPolicy::OnFailure,
+            health_check: Some(HealthCheck {
+                check_type: HealthCheckType::ProcessAlive,
+                interval_ms: 10_000,
+                timeout_ms: 1000,
+                retries: 3,
+            }),
+            ready_check: None,
+        }
+    }
+
+    /// Return the optional service catalogue. These services are not
+    /// started by default but can be enabled by the user.
+    pub fn optional_services() -> Vec<ServiceDefinition> {
+        vec![Self::shruti_service()]
+    }
+
+    /// Look up an optional service by name.
+    pub fn optional_service(name: &str) -> Option<ServiceDefinition> {
+        Self::optional_services()
+            .into_iter()
+            .find(|s| s.name == name)
+    }
+
+    /// Enable an optional service at runtime by inserting its
+    /// definition into the managed service set. Returns `true` if the
+    /// service was newly inserted, `false` if it was already present.
+    pub fn enable_optional_service(&mut self, name: &str) -> bool {
+        if self.services.contains_key(name) {
+            return false;
+        }
+        if let Some(def) = Self::optional_service(name) {
+            let managed = ManagedService {
+                definition: def.clone(),
+                state: ServiceState::Stopped,
+                pid: None,
+                started_at: None,
+                restart_count: 0,
+                last_health_check: None,
+            };
+            self.services.insert(def.name.clone(), managed);
+            info!(service = name, "enabled optional service");
+            true
+        } else {
+            warn!(service = name, "unknown optional service");
+            false
+        }
+    }
+
     /// Return the default AGNOS services for a boot mode.
     pub fn default_services(mode: BootMode) -> Vec<ServiceDefinition> {
         let mut services = Vec::new();
@@ -3725,5 +3796,78 @@ mod tests {
         let svcs = ArgonautInit::default_services(BootMode::Edge);
         assert_eq!(svcs.len(), 1);
         assert_eq!(svcs[0].environment.get("AGNOS_EDGE_LUKS").unwrap(), "1");
+    }
+
+    // -----------------------------------------------------------------------
+    // Shruti optional service
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn shruti_service_definition() {
+        let svc = ArgonautInit::shruti_service();
+        assert_eq!(svc.name, "shruti");
+        assert_eq!(svc.binary_path, PathBuf::from("/usr/local/bin/shruti"));
+        assert!(svc.depends_on.contains(&"agent-runtime".into()));
+        assert!(svc.depends_on.contains(&"aethersafha".into()));
+        assert!(
+            svc.required_for_modes.is_empty(),
+            "shruti must not auto-start"
+        );
+        assert_eq!(svc.restart_policy, RestartPolicy::OnFailure);
+        assert!(svc.health_check.is_some());
+        assert!(svc.ready_check.is_none());
+    }
+
+    #[test]
+    fn shruti_not_in_default_services() {
+        for mode in [
+            BootMode::Desktop,
+            BootMode::Server,
+            BootMode::Minimal,
+            BootMode::Edge,
+        ] {
+            let svcs = ArgonautInit::default_services(mode);
+            assert!(
+                !svcs.iter().any(|s| s.name == "shruti"),
+                "shruti should not appear in default services for {:?}",
+                mode,
+            );
+        }
+    }
+
+    #[test]
+    fn shruti_optional_service_lookup() {
+        assert!(ArgonautInit::optional_service("shruti").is_some());
+        assert!(ArgonautInit::optional_service("nonexistent").is_none());
+    }
+
+    #[test]
+    fn enable_optional_shruti_service() {
+        let config = ArgonautConfig {
+            boot_mode: BootMode::Desktop,
+            ..Default::default()
+        };
+        let mut init = ArgonautInit::new(config);
+        assert!(!init.services.contains_key("shruti"));
+
+        let added = init.enable_optional_service("shruti");
+        assert!(added);
+        assert!(init.services.contains_key("shruti"));
+        assert_eq!(init.services["shruti"].state, ServiceState::Stopped);
+
+        // Second call is a no-op
+        let added_again = init.enable_optional_service("shruti");
+        assert!(!added_again);
+    }
+
+    #[test]
+    fn shruti_user_config_service() {
+        let config = ArgonautConfig {
+            boot_mode: BootMode::Desktop,
+            services: vec![ArgonautInit::shruti_service()],
+            ..Default::default()
+        };
+        let init = ArgonautInit::new(config);
+        assert!(init.services.contains_key("shruti"));
     }
 }
