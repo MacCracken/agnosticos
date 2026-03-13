@@ -1,6 +1,6 @@
 # AGNOS Development Roadmap
 
-> **Status**: Pre-Beta | **Last Updated**: 2026-03-11
+> **Status**: Pre-Beta | **Last Updated**: 2026-03-13
 > **Userland complete** — 10876+ tests (3622+ agent-runtime, 1554 ai-shell), ~84% coverage, 0 warnings
 > **Recipes**: 109 base + 53 desktop + 25 AI + 9 network + 8 browser + 8 marketplace + 4 python + 3 database + 29 edge = 248 total, 0 validation errors
 > **Phases 10–14 complete** | **Phase 13**: 13A(infra)/13B/13D/13E done | **Phase 14**: Edge OS Profile done | **Audit**: 16 rounds
@@ -71,6 +71,8 @@ for desktop/networking/GPU stack.
 | # | Priority | Item | Notes |
 |---|----------|------|-------|
 | H26 | **HIGH** | Upgrade `reqwest` 0.11 → 0.12+ | Eliminates unmaintained `rustls-pemfile` 1.x (RUSTSEC-2025-0134). Breaking change — workspace-wide migration needed (all 6 crates depend on it). |
+| H27 | **MEDIUM** | Implement `sd_notify` for systemd services | `agent-runtime` and `llm-gateway` use `Type=notify` in systemd units but don't send `READY=1`. Causes service startup failures on ISO boot. Either implement sd_notify via `libsystemd` crate or change to `Type=simple`. |
+| H28 | **MEDIUM** | Systemd unit `Type=notify` → `Type=simple` fallback | Short-term fix: change service units to `Type=simple` so daimon/hoosh start without sd_notify. Long-term: implement proper readiness notification (H27). |
 
 ### Recently Fixed (15 items cleared + 4 non-issues removed + 2 unmaintained deps removed)
 
@@ -100,7 +102,7 @@ for desktop/networking/GPU stack.
 - [x] Phase 12 complete — Argonaut init, ark package manager, agnova installer
 - [x] Phase 13B complete — GPU drivers, WiFi, Bluetooth, Thunderbolt, printing
 - [x] Phase 13D complete — All 6 consumer apps integrated
-- [ ] AGNOS boots from ISO on bare metal (UEFI) and QEMU
+- [x] AGNOS boots from ISO on bare metal (UEFI) and QEMU — verified 2026-03-13 (QEMU live boot, all binaries functional)
 - [ ] Self-hosting: can rebuild itself from source
 - [ ] Third-party security audit complete
 - [ ] Community testing program active
@@ -111,7 +113,7 @@ for desktop/networking/GPU stack.
 - [ ] Phase 13 complete — Documentation, community
 - [ ] All consumer apps published to mela
 - [x] Python runtime management
-- [ ] Enterprise features: SSO (done), audit logging (done), mTLS (done)
+- [x] Enterprise features: SSO, audit logging, mTLS
 - [ ] 6 months of beta testing with no critical bugs
 - [ ] Commercial support available
 
@@ -138,7 +140,7 @@ for desktop/networking/GPU stack.
 | Edge Recipes | ~30 | 29 | Complete |
 | Hardware Recipes | 8 | 8 | Complete |
 | Consumer Apps | 6 | 6 | Complete |
-| MCP Tools | — | 36 | Complete (5 edge tools added) |
+| MCP Tools | — | 41 | Complete (5 edge + 5 shruti tools added) |
 | Recipe Validation Errors | 0 | 0 | Complete |
 | Security Audit Rounds | 15 | 16 | Complete |
 | Self-Hosting Infra | Yes | Yes | Phase 13A (infra done, actual validation pending) |
@@ -224,4 +226,4 @@ See [CONTRIBUTING.md](/CONTRIBUTING.md) for:
 
 ---
 
-*Last Updated: 2026-03-11 | Next Review: 2026-03-18*
+*Last Updated: 2026-03-13 | Next Review: 2026-03-20*

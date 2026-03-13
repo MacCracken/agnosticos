@@ -1,6 +1,6 @@
 # AGNOS Installation Guide
 
-> **Version:** 2026.3.11 | **Last Updated:** 2026-03-11
+> **Version:** 2026.3.12 | **Last Updated:** 2026-03-13
 
 This guide covers installing AGNOS on bare metal hardware and virtual machines.
 
@@ -122,33 +122,64 @@ agnsh
 
 ### Method 2: QEMU/KVM Virtual Machine
 
-#### Quick Start
+#### Quick Start (graphical)
 
 ```bash
 # Build the ISO first
 make iso
 
-# Boot in QEMU with UEFI
-qemu-system-x86_64 \
-  -machine q35,accel=kvm \
-  -m 4096 \
-  -smp 4 \
-  -cdrom build/agnos-*.iso \
+# Boot in QEMU with GUI display
+sudo qemu-system-x86_64 \
+  -m 2G -smp 2 -enable-kvm \
+  -cdrom output/agnos-*-x86_64.iso \
   -boot d \
-  -drive file=agnos-disk.qcow2,format=qcow2,if=virtio \
-  -net nic,model=virtio \
-  -net user,hostfwd=tcp::8090-:8090,hostfwd=tcp::8088-:8088 \
-  -device virtio-rng-pci \
-  -display gtk
+  -nic user,hostfwd=tcp::2222-:22,hostfwd=tcp::18090-:8090,hostfwd=tcp::18088-:8088
 
 # Or use the automated boot test:
 ./scripts/qemu-boot-test.sh --disk 20G
 ```
 
-#### Create the disk image first
+#### Headless / SSH (no display)
+
+If you're connected via SSH or have no graphical environment:
 
 ```bash
+# Serial console mode — boots directly in your terminal
+sudo qemu-system-x86_64 \
+  -m 2G -smp 2 -enable-kvm \
+  -cdrom output/agnos-*-x86_64.iso \
+  -boot d \
+  -nographic \
+  -nic user,hostfwd=tcp::2222-:22,hostfwd=tcp::18090-:8090,hostfwd=tcp::18088-:8088
+```
+
+Select the **"Serial Console"** entry from the GRUB menu for proper serial output.
+To exit QEMU: `Ctrl-a x`.
+
+Alternatively, use VNC:
+```bash
+sudo qemu-system-x86_64 \
+  -m 2G -smp 2 -enable-kvm \
+  -cdrom output/agnos-*-x86_64.iso \
+  -boot d \
+  -vnc :0 \
+  -nic user,hostfwd=tcp::2222-:22,hostfwd=tcp::18090-:8090,hostfwd=tcp::18088-:8088
+```
+Then connect a VNC client to `localhost:5900`.
+
+#### Persistent disk install
+
+```bash
+# Create a disk image for persistent installs
 qemu-img create -f qcow2 agnos-disk.qcow2 40G
+
+# Boot with ISO + disk
+sudo qemu-system-x86_64 \
+  -m 4G -smp 4 -enable-kvm \
+  -cdrom output/agnos-*-x86_64.iso \
+  -boot d \
+  -drive file=agnos-disk.qcow2,format=qcow2,if=virtio \
+  -nic user,hostfwd=tcp::2222-:22,hostfwd=tcp::18090-:8090,hostfwd=tcp::18088-:8088
 ```
 
 #### UEFI Boot (recommended)
@@ -172,16 +203,19 @@ Add to QEMU command:
 
 #### Port Forwarding
 
-To access AGNOS services from the host:
-```bash
--net user,hostfwd=tcp::8090-:8090,hostfwd=tcp::8088-:8088,hostfwd=tcp::2222-:22
-```
+AGNOS services are forwarded to non-conflicting host ports:
 
-Then from the host:
+| Service | Guest Port | Host Port |
+|---------|-----------|-----------|
+| SSH | 22 | 2222 |
+| daimon (agent runtime) | 8090 | 18090 |
+| hoosh (LLM gateway) | 8088 | 18088 |
+
+From the host:
 ```bash
-curl http://localhost:8090/v1/health
-curl http://localhost:8088/v1/models
-ssh -p 2222 user@localhost
+ssh -p 2222 user@localhost             # password: agnos
+curl http://localhost:18090/v1/health  # agent runtime
+curl http://localhost:18088/v1/models  # LLM gateway
 ```
 
 ---
@@ -242,11 +276,16 @@ docker run -d \
 # Install build dependencies (Debian/Ubuntu)
 ./scripts/install-build-deps.sh
 
-# Or manually:
+# Or manually (Debian/Ubuntu):
 sudo apt install build-essential gcc g++ make cmake ninja-build \
   autoconf automake libtool pkg-config bison flex gawk m4 \
   texinfo bc kmod libssl-dev libseccomp-dev libcap-dev \
-  curl wget rsync qemu-system-x86 qemu-utils
+  curl wget rsync qemu-system-x86 qemu-utils \
+  debootstrap squashfs-tools grub-common grub-pc-bin xorriso mtools musl-tools
+
+# Or manually (Arch Linux):
+sudo pacman -S base-devel cmake ninja squashfs-tools grub libisoburn mtools \
+  qemu-full debootstrap debian-archive-keyring musl
 ```
 
 #### Install Rust
@@ -254,6 +293,9 @@ sudo apt install build-essential gcc g++ make cmake ninja-build \
 ```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
+
+# Add musl target for static binaries (required for ISO builds)
+rustup target add x86_64-unknown-linux-musl
 ```
 
 #### Build Everything
@@ -263,8 +305,9 @@ source "$HOME/.cargo/env"
 git clone https://github.com/agnostos/agnos.git
 cd agnos
 
-# Build userland
-cd userland && cargo build --release && cd ..
+# Build userland (static musl binaries for ISO portability)
+cargo build --release --target x86_64-unknown-linux-musl \
+  --manifest-path userland/Cargo.toml
 
 # Build kernel
 ./scripts/build-kernel.sh -v 6.6-lts
@@ -275,6 +318,37 @@ cd userland && cargo build --release && cd ..
 # Build ISO
 make iso
 ```
+
+#### Building the ISO
+
+The ISO builder (`scripts/build-iso.sh`) creates a bootable live image using a Debian
+base with AGNOS userland installed on top. It must be run as root.
+
+```bash
+# Full build (compiles userland + bootstraps rootfs + creates ISO)
+sudo ./scripts/build-iso.sh
+
+# Skip cargo build (use pre-built musl binaries)
+sudo ./scripts/build-iso.sh --skip-build
+
+# Skip debootstrap (reuse existing rootfs, just update binaries + repackage)
+sudo ./scripts/build-iso.sh --skip-build --skip-debootstrap
+```
+
+**Static linking (musl):** The ISO builder compiles with `--target x86_64-unknown-linux-musl`
+to produce fully static binaries. This avoids glibc version mismatches between the build
+host and the Debian-based ISO rootfs. If you build manually, always use the musl target
+for ISO-destined binaries.
+
+**Output:** `output/agnos-VERSION-x86_64.iso` (~350 MB)
+
+The ISO includes:
+- Debian minimal base (systemd, networking, SSH)
+- AGNOS binaries: `agent-runtime`, `llm-gateway`, `agnsh`, `agnos-sudo`
+- Systemd units for daimon (agent runtime) and hoosh (LLM gateway)
+- AGNOS init scripts and sysctl hardening
+- GRUB bootloader with 5 boot modes (normal, live, debug, serial console, recovery)
+- Default login: `user`/`agnos` or `root`/`agnos`
 
 #### Self-Hosting Validation
 

@@ -539,11 +539,14 @@ develop
 
 ### Release Checklist
 
-- [ ] Version bumped in `VERSION` file and `userland/Cargo.toml`
+- [ ] Version bumped in `VERSION`, `userland/Cargo.toml`, and `userland/fuzz/Cargo.toml`
 - [ ] Changelog updated
-- [ ] All tests passing
+- [ ] All tests passing (`cargo test --workspace`)
+- [ ] No compiler warnings (`cargo clippy --workspace`)
 - [ ] Security review completed
 - [ ] Documentation updated
+- [ ] ISO build tested (`sudo ./scripts/build-iso.sh`)
+- [ ] QEMU boot test passed
 - [ ] Release notes written
 - [ ] Tag created and signed
 - [ ] Packages built and signed
@@ -557,7 +560,7 @@ git checkout -b release/v2026.3.5
 
 # Update version — edit the VERSION file, then sync Cargo.toml
 echo "2026.3.5" > VERSION
-# Update version in userland/Cargo.toml [workspace.package] to match
+# Update version in userland/Cargo.toml [workspace.package] and userland/fuzz/Cargo.toml
 
 # Update changelog
 vim CHANGELOG.md
@@ -573,6 +576,33 @@ git tag -s v2026.3.5 -m "Release v2026.3.5"
 git push origin release/v2026.3.5
 git push origin v2026.3.5
 ```
+
+### Building the ISO
+
+The ISO requires musl for static binaries (avoids glibc version mismatches with the
+Debian-based rootfs).
+
+```bash
+# Install dependencies (Arch Linux)
+sudo pacman -S squashfs-tools grub libisoburn mtools qemu-full debootstrap \
+  debian-archive-keyring musl
+
+# Add musl target
+rustup target add x86_64-unknown-linux-musl
+
+# Full build (compiles + bootstraps rootfs + ISO)
+sudo ./scripts/build-iso.sh
+
+# Incremental rebuilds
+cargo build --release --target x86_64-unknown-linux-musl \
+  --manifest-path userland/Cargo.toml
+sudo ./scripts/build-iso.sh --skip-build                  # reuse binaries
+sudo ./scripts/build-iso.sh --skip-build --skip-debootstrap  # reuse rootfs too
+```
+
+Output: `output/agnos-VERSION-x86_64.iso`
+
+See `docs/installation/README.md` for QEMU boot commands and testing instructions.
 
 ## Questions?
 

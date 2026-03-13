@@ -5,6 +5,27 @@ All notable changes to AGNOS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2026.3.13] - 2026-03-13
+
+### Added — Bootable ISO & VM Testing
+
+- **Bootable AGNOS ISO**: Rewrote `scripts/build-iso.sh` — debootstraps Debian Trixie base, installs AGNOS userland (musl static binaries), systemd units, init scripts, sysctl hardening, GRUB bootloader with 5 boot modes (normal, live, debug, serial console, recovery). Default credentials: `user`/`agnos`, `root`/`agnos`
+- **Musl static linking**: ISO build now targets `x86_64-unknown-linux-musl` for fully static binaries — eliminates glibc version mismatches between build host and ISO rootfs
+- **QEMU headless support**: Serial console boot mode, VNC mode, port forwarding for SSH (2222), daimon (18090), hoosh (18088). Works from SSH sessions without X/Wayland display
+- **Incremental ISO rebuilds**: `--skip-build` (reuse binaries) and `--skip-debootstrap` (reuse rootfs) flags for faster iteration
+- **SSH configuration**: sshd configured for TCP listening (Trixie defaults to socket-activated), password auth enabled
+
+### Changed
+
+- **Installation docs** (`docs/installation/README.md`): Added musl build requirements, full `build-iso.sh` usage, headless/serial/VNC QEMU modes, port forwarding table
+- **Contributing docs** (`CONTRIBUTING.md`): Added ISO build + QEMU test to release checklist, new "Building the ISO" section with Arch Linux package list
+- **Roadmap**: Marked "AGNOS boots from ISO" and "Enterprise features" as complete. Added H27/H28 (sd_notify for systemd services) to engineering backlog
+- Added `output/` to `.gitignore`
+
+### Known Issues
+
+- `agent-runtime` and `llm-gateway` systemd services fail at boot — units use `Type=notify` but binaries don't implement `sd_notify`. Tracked as H27/H28 in engineering backlog
+
 ## [2026.3.12] - 2026-03-12
 
 ### Added — Shruti DAW Full AGNOS Integration

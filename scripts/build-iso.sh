@@ -303,12 +303,19 @@ EOF
         systemctl enable systemd-networkd 2>/dev/null || true
         systemctl enable systemd-resolved 2>/dev/null || true
         systemctl enable ssh 2>/dev/null || true
-    "
-
-    # --- Serial console for QEMU ---
-    chroot "$rootfs" /usr/bin/env PATH=/usr/sbin:/usr/bin:/sbin:/bin /bin/bash -c "
+        # Disable socket-activated SSH (Trixie default) — we want sshd listening on TCP
+        systemctl disable sshd-unix-local.socket 2>/dev/null || true
+        systemctl disable sshd-vsock.socket 2>/dev/null || true
         systemctl enable serial-getty@ttyS0.service 2>/dev/null || true
     "
+
+    # --- Ensure sshd listens on TCP port 22 ---
+    mkdir -p "$rootfs/etc/ssh/sshd_config.d"
+    cat > "$rootfs/etc/ssh/sshd_config.d/10-agnos.conf" << 'EOF'
+ListenAddress 0.0.0.0
+PasswordAuthentication yes
+PermitRootLogin yes
+EOF
 
     # --- MOTD ---
     cat > "$rootfs/etc/motd" << EOF
