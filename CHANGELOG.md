@@ -5,6 +5,19 @@ All notable changes to AGNOS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2026.3.12] - 2026-03-12
+
+### Added — Shruti DAW Full AGNOS Integration
+
+- **Argonaut service integration**: `shruti_service()` definition with PipeWire environment, optional auto-start (disabled by default). `enable_optional_service()` runtime method for user opt-in. `optional_services()` catalogue. Dependencies: `agent-runtime` + `aethersafha`. Health check: `ProcessAlive`. 5 tests
+- **Aethersafha Wayland integration**: `ShrutiApp` struct with `ShrutiSurfaceConfig` (1400x900, PipeWire node routing, exclusive audio toggle). `launch()` sets Wayland env vars (`GDK_BACKEND`, `QT_QPA_PLATFORM`), PipeWire routing, window geometry hints, optional session file loading. Added to `DesktopApplications` with `open_shruti()` and `get_shruti()` methods. 5 tests
+- **5 Shruti MCP tools**: `shruti_session`, `shruti_tracks`, `shruti_mixer`, `shruti_transport`, `shruti_export` — registered in MCP manifest (36 → 41 tools). `ShrutiBridge` proxies to Shruti API at `http://127.0.0.1:8091` with mock fallback. Input validation via `validate_enum_opt` on all action/format parameters. 17 tests (including HTTP dispatch)
+- **Shruti agnoshi intents**: 5 `Intent` variants (`ShrutiSession`, `ShrutiTrack`, `ShrutiMixer`, `ShrutiTransport`, `ShrutiExport`). 5 NL regex patterns (`shruti session create`, `shruti add track`, `shruti mixer`, `shruti play/stop/seek`, `shruti export`). Wired translator dispatch to existing `translate/shruti.rs`. 14 tests (9 parse + 5 translate)
+
+### Changed
+
+- Version bump: `2026.3.11` → `2026.3.12`
+
 ## [2026.3.11] - 2026-03-11
 
 ### Added — Phase 14: Edge OS Profile (Complete)

@@ -17,6 +17,7 @@ pub use handlers::aequi::AequiBridge;
 pub use handlers::agnostic::AgnosticBridge;
 pub use handlers::delta::DeltaBridge;
 pub use handlers::photis::PhotisBridge;
+pub use handlers::shruti::ShrutiBridge;
 pub use manifest::build_tool_manifest;
 pub use types::{
     ExternalMcpTool, McpContentBlock, McpToolCall, McpToolDescription, McpToolManifest,
@@ -37,6 +38,7 @@ use handlers::agnostic::*;
 use handlers::delta::*;
 use handlers::edge::*;
 use handlers::photis::*;
+use handlers::shruti::*;
 use helpers::error_result;
 
 // ---------------------------------------------------------------------------
@@ -223,6 +225,11 @@ async fn dispatch_tool_call(
         "edge_update" => handle_edge_update(state, &call.arguments).await,
         "edge_health" => handle_edge_health(state, &call.arguments).await,
         "edge_decommission" => handle_edge_decommission(state, &call.arguments).await,
+        "shruti_session" => handle_shruti_session(&call.arguments).await,
+        "shruti_tracks" => handle_shruti_tracks(&call.arguments).await,
+        "shruti_mixer" => handle_shruti_mixer(&call.arguments).await,
+        "shruti_transport" => handle_shruti_transport(&call.arguments).await,
+        "shruti_export" => handle_shruti_export(&call.arguments).await,
         unknown => {
             // Check external tools
             let external = state.external_mcp_tools.read().await;

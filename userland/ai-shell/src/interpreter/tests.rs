@@ -3011,4 +3011,202 @@ mod tests {
             panic!("Expected EdgeUpdate, got {:?}", intent);
         }
     }
+
+    // -----------------------------------------------------------------------
+    // Shruti DAW — parse + translate tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_parse_shruti_session_create() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("shruti session create my-song");
+        match intent {
+            Intent::ShrutiSession { action, name } => {
+                assert_eq!(action, "create");
+                assert_eq!(name, Some("my-song".to_string()));
+            }
+            other => panic!("Expected ShrutiSession, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_shruti_session_list() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("shruti session list");
+        match intent {
+            Intent::ShrutiSession { action, name } => {
+                assert_eq!(action, "list");
+                assert!(name.is_none());
+            }
+            other => panic!("Expected ShrutiSession, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_shruti_add_track() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("shruti add track vocals type audio");
+        match intent {
+            Intent::ShrutiTrack { action, name, kind } => {
+                assert_eq!(action, "add");
+                assert_eq!(name, Some("vocals".to_string()));
+                assert_eq!(kind, Some("audio".to_string()));
+            }
+            other => panic!("Expected ShrutiTrack, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_shruti_list_tracks() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("shruti list tracks");
+        match intent {
+            Intent::ShrutiTrack { action, name, kind } => {
+                assert_eq!(action, "list");
+                assert!(name.is_none());
+                assert!(kind.is_none());
+            }
+            other => panic!("Expected ShrutiTrack, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_shruti_mixer() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("shruti mixer drums gain -3.5 mute");
+        match intent {
+            Intent::ShrutiMixer {
+                track,
+                gain,
+                mute,
+                solo,
+            } => {
+                assert_eq!(track, "drums");
+                assert_eq!(gain, Some(-3.5));
+                assert_eq!(mute, Some(true));
+                assert!(solo.is_none());
+            }
+            other => panic!("Expected ShrutiMixer, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_shruti_play() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("shruti play");
+        match intent {
+            Intent::ShrutiTransport { action, value } => {
+                assert_eq!(action, "play");
+                assert!(value.is_none());
+            }
+            other => panic!("Expected ShrutiTransport, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_shruti_set_tempo() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("shruti set_tempo 140");
+        match intent {
+            Intent::ShrutiTransport { action, value } => {
+                assert_eq!(action, "set_tempo");
+                assert_eq!(value, Some("140".to_string()));
+            }
+            other => panic!("Expected ShrutiTransport, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_shruti_export() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("shruti export");
+        assert!(matches!(intent, Intent::ShrutiExport { .. }));
+    }
+
+    #[test]
+    fn test_parse_shruti_export_with_format() {
+        let interpreter = Interpreter::new();
+        let intent = interpreter.parse("shruti export to output.flac format flac");
+        match intent {
+            Intent::ShrutiExport { path, format } => {
+                assert_eq!(path, Some("output.flac".to_string()));
+                assert_eq!(format, Some("flac".to_string()));
+            }
+            other => panic!("Expected ShrutiExport, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_translate_shruti_session() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::ShrutiSession {
+            action: "create".to_string(),
+            name: Some("demo".to_string()),
+        };
+        let t = interpreter.translate(&intent).unwrap();
+        assert_eq!(t.command, "curl");
+        let body = t.args.last().unwrap();
+        assert!(body.contains("shruti_session"));
+        assert!(body.contains("create"));
+        assert!(body.contains("demo"));
+    }
+
+    #[test]
+    fn test_translate_shruti_tracks() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::ShrutiTrack {
+            action: "add".to_string(),
+            name: Some("bass".to_string()),
+            kind: Some("audio".to_string()),
+        };
+        let t = interpreter.translate(&intent).unwrap();
+        assert_eq!(t.command, "curl");
+        let body = t.args.last().unwrap();
+        assert!(body.contains("shruti_tracks"));
+        assert!(body.contains("bass"));
+    }
+
+    #[test]
+    fn test_translate_shruti_mixer() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::ShrutiMixer {
+            track: "vocals".to_string(),
+            gain: Some(-6.0),
+            mute: None,
+            solo: Some(true),
+        };
+        let t = interpreter.translate(&intent).unwrap();
+        assert_eq!(t.command, "curl");
+        let body = t.args.last().unwrap();
+        assert!(body.contains("shruti_mixer"));
+        assert!(body.contains("vocals"));
+    }
+
+    #[test]
+    fn test_translate_shruti_transport() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::ShrutiTransport {
+            action: "play".to_string(),
+            value: None,
+        };
+        let t = interpreter.translate(&intent).unwrap();
+        assert_eq!(t.command, "curl");
+        let body = t.args.last().unwrap();
+        assert!(body.contains("shruti_transport"));
+        assert!(body.contains("play"));
+    }
+
+    #[test]
+    fn test_translate_shruti_export() {
+        let interpreter = Interpreter::new();
+        let intent = Intent::ShrutiExport {
+            path: Some("/tmp/out.wav".to_string()),
+            format: Some("wav".to_string()),
+        };
+        let t = interpreter.translate(&intent).unwrap();
+        assert_eq!(t.command, "curl");
+        let body = t.args.last().unwrap();
+        assert!(body.contains("shruti_export"));
+        assert!(body.contains("/tmp/out.wav"));
+    }
 }

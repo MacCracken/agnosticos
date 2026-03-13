@@ -11,6 +11,7 @@ mod network;
 mod package;
 mod photis;
 mod process;
+mod shruti;
 mod system;
 
 use anyhow::{anyhow, Result};
@@ -104,6 +105,13 @@ impl Interpreter {
             | Intent::EdgeUpdate { .. }
             | Intent::EdgeHealth { .. }
             | Intent::EdgeDecommission { .. } => edge::translate_edge(intent),
+
+            // Shruti DAW
+            Intent::ShrutiSession { .. }
+            | Intent::ShrutiTrack { .. }
+            | Intent::ShrutiMixer { .. }
+            | Intent::ShrutiTransport { .. }
+            | Intent::ShrutiExport { .. } => shruti::translate_shruti(intent),
 
             // Photis Nadi
             Intent::TaskList { .. }

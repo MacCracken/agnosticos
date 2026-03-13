@@ -147,6 +147,81 @@ impl Interpreter {
             }
         }
 
+        // --- Shruti DAW intents (before greedy list/show) ---
+        if let Some(caps) = self.try_captures("shruti_session", input_lower) {
+            let action = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();
+            let name = caps
+                .get(4)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !action.is_empty() {
+                return Intent::ShrutiSession { action, name };
+            }
+        }
+
+        if let Some(caps) = self.try_captures("shruti_track", input_lower) {
+            let action = caps.get(1).map_or("", |m| m.as_str()).trim().to_string();
+            let name = caps
+                .get(4)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            let kind = caps
+                .get(6)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !action.is_empty() {
+                return Intent::ShrutiTrack { action, name, kind };
+            }
+        }
+
+        if let Some(caps) = self.try_captures("shruti_mixer", input_lower) {
+            let track = caps.get(1).map_or("", |m| m.as_str()).trim().to_string();
+            let gain = caps
+                .get(3)
+                .and_then(|m| m.as_str().trim().parse::<f64>().ok());
+            let mute = if caps.get(4).is_some() {
+                Some(true)
+            } else {
+                None
+            };
+            let solo = if caps.get(5).is_some() {
+                Some(true)
+            } else {
+                None
+            };
+            if !track.is_empty() {
+                return Intent::ShrutiMixer {
+                    track,
+                    gain,
+                    mute,
+                    solo,
+                };
+            }
+        }
+
+        if let Some(caps) = self.try_captures("shruti_transport", input_lower) {
+            let action = caps.get(1).map_or("", |m| m.as_str()).trim().to_string();
+            let value = caps
+                .get(3)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !action.is_empty() {
+                return Intent::ShrutiTransport { action, value };
+            }
+        }
+
+        if let Some(caps) = self.try_captures("shruti_export", input_lower) {
+            let path = caps
+                .get(1)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            let format = caps
+                .get(3)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            return Intent::ShrutiExport { path, format };
+        }
+
         // --- Delta code hosting intents (before greedy list/show) ---
         if let Some(caps) = self.try_captures("delta_create_repo", input_lower) {
             let name = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();

@@ -30,8 +30,7 @@ pub(crate) fn translate_shruti(intent: &Intent) -> Result<Translation> {
                 description: format!(
                     "Shruti session: {}{}",
                     action,
-                    name.as_ref()
-                        .map_or(String::new(), |n| format!(" '{}'", n))
+                    name.as_ref().map_or(String::new(), |n| format!(" '{}'", n))
                 ),
                 permission: match action.as_str() {
                     "info" => PermissionLevel::Safe,
@@ -78,8 +77,7 @@ pub(crate) fn translate_shruti(intent: &Intent) -> Result<Translation> {
                 description: format!(
                     "Shruti track: {}{}",
                     action,
-                    name.as_ref()
-                        .map_or(String::new(), |n| format!(" '{}'", n))
+                    name.as_ref().map_or(String::new(), |n| format!(" '{}'", n))
                 ),
                 permission: if action == "list" {
                     PermissionLevel::Safe
@@ -137,7 +135,10 @@ pub(crate) fn translate_shruti(intent: &Intent) -> Result<Translation> {
                 ],
                 description: format!("Shruti mixer: {}", track),
                 permission: PermissionLevel::SystemWrite,
-                explanation: format!("Controls mixer for track '{}' in Shruti via MCP bridge", track),
+                explanation: format!(
+                    "Controls mixer for track '{}' in Shruti via MCP bridge",
+                    track
+                ),
             })
         }
 

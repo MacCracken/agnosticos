@@ -319,6 +319,55 @@ pub fn build_tool_manifest() -> McpToolManifest {
             json!({"node_id": {"type": "string", "description": "Edge node ID to decommission"}}),
             vec!["node_id"]
         ),
+        // ----- Shruti DAW tools (5) -----
+        tool!(
+            "shruti_session",
+            "Manage Shruti DAW sessions (create, open, save, close, info, list)",
+            json!({
+                "action": {"type": "string", "description": "Action: create, open, save, close, info, list"},
+                "name": {"type": "string", "description": "Session name (for create/open)"}
+            }),
+            vec!["action"]
+        ),
+        tool!(
+            "shruti_tracks",
+            "Manage tracks in a Shruti session (add, remove, list, rename)",
+            json!({
+                "action": {"type": "string", "description": "Action: add, remove, list, rename"},
+                "name": {"type": "string", "description": "Track name"},
+                "kind": {"type": "string", "description": "Track type: audio, midi, synth, instrument, bus"}
+            }),
+            vec!["action"]
+        ),
+        tool!(
+            "shruti_mixer",
+            "Control Shruti mixer (gain, mute, solo per track)",
+            json!({
+                "track": {"type": "string", "description": "Track name or ID"},
+                "gain": {"type": "number", "description": "Gain in dB"},
+                "mute": {"type": "boolean", "description": "Mute track"},
+                "solo": {"type": "boolean", "description": "Solo track"}
+            }),
+            vec!["track"]
+        ),
+        tool!(
+            "shruti_transport",
+            "Control Shruti playback (play, pause, stop, seek, set_tempo, status)",
+            json!({
+                "action": {"type": "string", "description": "Action: play, pause, stop, seek, set_tempo, status"},
+                "value": {"type": "string", "description": "Value for seek (seconds) or set_tempo (BPM)"}
+            }),
+            vec!["action"]
+        ),
+        tool!(
+            "shruti_export",
+            "Export/bounce Shruti session to audio file",
+            json!({
+                "path": {"type": "string", "description": "Output file path"},
+                "format": {"type": "string", "description": "Audio format: wav, flac, mp3, aac"}
+            }),
+            vec![]
+        ),
     ];
 
     McpToolManifest { tools }

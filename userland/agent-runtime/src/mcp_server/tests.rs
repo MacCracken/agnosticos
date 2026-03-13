@@ -2,6 +2,10 @@ use super::handlers::edge::{
     handle_edge_decommission, handle_edge_deploy, handle_edge_health, handle_edge_list,
     handle_edge_update,
 };
+use super::handlers::shruti::{
+    handle_shruti_export, handle_shruti_mixer, handle_shruti_session, handle_shruti_tracks,
+    handle_shruti_transport,
+};
 use super::helpers::{
     extract_optional_u64, extract_required_string, extract_required_uuid, success_result,
     validate_enum_opt,
@@ -1908,4 +1912,153 @@ async fn test_edge_tools_in_manifest() {
     assert!(names.contains(&"edge_update"));
     assert!(names.contains(&"edge_health"));
     assert!(names.contains(&"edge_decommission"));
+}
+
+// -----------------------------------------------------------------------
+// Shruti DAW MCP tools
+// -----------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_shruti_session_create_mock() {
+    let result =
+        handle_shruti_session(&serde_json::json!({"action": "create", "name": "demo"})).await;
+    assert!(!result.is_error);
+    let parsed = parse_result(&result);
+    assert_eq!(parsed["action"], "create");
+    assert_eq!(parsed["name"], "demo");
+    assert_eq!(parsed["_source"], "mock");
+}
+
+#[tokio::test]
+async fn test_shruti_session_list_mock() {
+    let result = handle_shruti_session(&serde_json::json!({"action": "list"})).await;
+    assert!(!result.is_error);
+    let parsed = parse_result(&result);
+    assert!(parsed["sessions"].is_array());
+}
+
+#[tokio::test]
+async fn test_shruti_session_invalid_action() {
+    let result = handle_shruti_session(&serde_json::json!({"action": "destroy"})).await;
+    assert!(result.is_error);
+}
+
+#[tokio::test]
+async fn test_shruti_session_missing_action() {
+    let result = handle_shruti_session(&serde_json::json!({})).await;
+    assert!(result.is_error);
+}
+
+#[tokio::test]
+async fn test_shruti_tracks_add_mock() {
+    let result = handle_shruti_tracks(
+        &serde_json::json!({"action": "add", "name": "vocals", "kind": "audio"}),
+    )
+    .await;
+    assert!(!result.is_error);
+    let parsed = parse_result(&result);
+    assert_eq!(parsed["action"], "add");
+    assert_eq!(parsed["name"], "vocals");
+    assert_eq!(parsed["kind"], "audio");
+}
+
+#[tokio::test]
+async fn test_shruti_tracks_list_mock() {
+    let result = handle_shruti_tracks(&serde_json::json!({"action": "list"})).await;
+    assert!(!result.is_error);
+    let parsed = parse_result(&result);
+    assert!(parsed["tracks"].is_array());
+}
+
+#[tokio::test]
+async fn test_shruti_tracks_invalid_action() {
+    let result = handle_shruti_tracks(&serde_json::json!({"action": "destroy"})).await;
+    assert!(result.is_error);
+}
+
+#[tokio::test]
+async fn test_shruti_mixer_mock() {
+    let result =
+        handle_shruti_mixer(&serde_json::json!({"track": "drums", "gain": -6.0, "mute": true}))
+            .await;
+    assert!(!result.is_error);
+    let parsed = parse_result(&result);
+    assert_eq!(parsed["track"], "drums");
+    assert_eq!(parsed["gain_db"], -6.0);
+    assert_eq!(parsed["muted"], true);
+}
+
+#[tokio::test]
+async fn test_shruti_mixer_missing_track() {
+    let result = handle_shruti_mixer(&serde_json::json!({"gain": -3.0})).await;
+    assert!(result.is_error);
+}
+
+#[tokio::test]
+async fn test_shruti_transport_play_mock() {
+    let result = handle_shruti_transport(&serde_json::json!({"action": "play"})).await;
+    assert!(!result.is_error);
+    let parsed = parse_result(&result);
+    assert_eq!(parsed["action"], "play");
+}
+
+#[tokio::test]
+async fn test_shruti_transport_status_mock() {
+    let result = handle_shruti_transport(&serde_json::json!({"action": "status"})).await;
+    assert!(!result.is_error);
+    let parsed = parse_result(&result);
+    assert!(parsed.get("state").is_some() || parsed.get("action").is_some());
+}
+
+#[tokio::test]
+async fn test_shruti_transport_invalid_action() {
+    let result = handle_shruti_transport(&serde_json::json!({"action": "rewind"})).await;
+    assert!(result.is_error);
+}
+
+#[tokio::test]
+async fn test_shruti_export_mock() {
+    let result =
+        handle_shruti_export(&serde_json::json!({"path": "/tmp/out.wav", "format": "wav"})).await;
+    assert!(!result.is_error);
+    let parsed = parse_result(&result);
+    assert_eq!(parsed["path"], "/tmp/out.wav");
+    assert_eq!(parsed["format"], "wav");
+}
+
+#[tokio::test]
+async fn test_shruti_export_invalid_format() {
+    let result = handle_shruti_export(&serde_json::json!({"format": "midi"})).await;
+    assert!(result.is_error);
+}
+
+#[tokio::test]
+async fn test_shruti_export_no_args_mock() {
+    let result = handle_shruti_export(&serde_json::json!({})).await;
+    assert!(!result.is_error);
+    let parsed = parse_result(&result);
+    assert_eq!(parsed["_source"], "mock");
+}
+
+#[tokio::test]
+async fn test_shruti_tools_in_manifest() {
+    let manifest = build_tool_manifest();
+    let names: Vec<&str> = manifest.tools.iter().map(|t| t.name.as_str()).collect();
+    assert!(names.contains(&"shruti_session"));
+    assert!(names.contains(&"shruti_tracks"));
+    assert!(names.contains(&"shruti_mixer"));
+    assert!(names.contains(&"shruti_transport"));
+    assert!(names.contains(&"shruti_export"));
+}
+
+#[tokio::test]
+async fn test_shruti_tools_via_http_dispatch() {
+    let router = build_test_router();
+    let result = call_tool(
+        &router,
+        "shruti_session",
+        serde_json::json!({"action": "info"}),
+    )
+    .await;
+    assert!(!result.is_error);
 }

@@ -253,5 +253,26 @@ pub(crate) static PATTERNS: Lazy<HashMap<String, Regex>> = Lazy::new(|| {
         "edge_decommission",
         r"(?i)^(?:edge\s+)?decommission\s+(?:edge\s+)?(?:node\s+)?(\S+)$",
     );
+    // --- Shruti DAW intents ---
+    r(
+        "shruti_session",
+        r"(?i)^shruti\s+(session|project)\s+(create|open|save|close|info|list)(\s+(.+))?$",
+    );
+    r(
+        "shruti_track",
+        r"(?i)^shruti\s+(add|remove|list|rename)\s+(track|tracks)(\s+(\S+))?(\s+(?:type|kind)\s+(audio|midi|synth|instrument|bus))?$",
+    );
+    r(
+        "shruti_mixer",
+        r"(?i)^shruti\s+mix(?:er)?\s+(\S+)(\s+(?:gain|volume)\s+(-?\d+(?:\.\d+)?))?(\s+mute)?(\s+solo)?$",
+    );
+    r(
+        "shruti_transport",
+        r"(?i)^shruti\s+(play|pause|stop|seek|set[\s_]?tempo|status|record)(\s+(.+))?$",
+    );
+    r(
+        "shruti_export",
+        r"(?i)^shruti\s+export(?:\s+(?:to|as)\s+(.+?))?(\s+(?:format|as)\s+(wav|flac|mp3|aac|ogg))?$",
+    );
     p
 });

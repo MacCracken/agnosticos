@@ -224,6 +224,34 @@ pub enum Intent {
     EdgeHealth { node: Option<String> },
     /// Decommission an edge node
     EdgeDecommission { node: String },
+    /// Manage Shruti DAW sessions
+    ShrutiSession {
+        action: String,
+        name: Option<String>,
+    },
+    /// Manage Shruti DAW tracks
+    ShrutiTrack {
+        action: String,
+        name: Option<String>,
+        kind: Option<String>,
+    },
+    /// Control Shruti mixer
+    ShrutiMixer {
+        track: String,
+        gain: Option<f64>,
+        mute: Option<bool>,
+        solo: Option<bool>,
+    },
+    /// Control Shruti transport
+    ShrutiTransport {
+        action: String,
+        value: Option<String>,
+    },
+    /// Export Shruti session
+    ShrutiExport {
+        path: Option<String>,
+        format: Option<String>,
+    },
     /// Piped command chain (cmd1 | cmd2)
     Pipeline { commands: Vec<String> },
     /// Question/Information request
