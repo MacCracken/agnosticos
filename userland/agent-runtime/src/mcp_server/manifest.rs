@@ -524,6 +524,168 @@ pub fn build_tool_manifest() -> McpToolManifest {
             }),
             vec!["action"]
         ),
+        // ----- Synapse LLM management tools (5) -----
+        tool!(
+            "synapse_models",
+            "Manage LLM models in Synapse (download, delete, list, info)",
+            json!({
+                "action": {"type": "string", "description": "Action: download, delete, list, info"},
+                "name": {"type": "string", "description": "Model name or ID"},
+                "source": {"type": "string", "description": "Model source: huggingface, ollama, local"}
+            }),
+            vec!["action"]
+        ),
+        tool!(
+            "synapse_serve",
+            "Start/stop/status of model serving in Synapse",
+            json!({
+                "action": {"type": "string", "description": "Action: start, stop, status, list"},
+                "model": {"type": "string", "description": "Model name to serve"},
+                "port": {"type": "string", "description": "Serving port"}
+            }),
+            vec!["action"]
+        ),
+        tool!(
+            "synapse_finetune",
+            "Manage fine-tuning jobs in Synapse (LoRA, QLoRA, full, DPO, RLHF)",
+            json!({
+                "action": {"type": "string", "description": "Action: start, status, cancel, list"},
+                "model": {"type": "string", "description": "Base model name"},
+                "dataset": {"type": "string", "description": "Training data path"},
+                "method": {"type": "string", "description": "Fine-tuning method: lora, qlora, full, dpo, rlhf"}
+            }),
+            vec!["action"]
+        ),
+        tool!(
+            "synapse_chat",
+            "Run inference/completion via Synapse",
+            json!({
+                "model": {"type": "string", "description": "Model name to use"},
+                "prompt": {"type": "string", "description": "Text prompt"},
+                "temperature": {"type": "number", "description": "Sampling temperature (0.0-2.0)"},
+                "max_tokens": {"type": "string", "description": "Maximum tokens to generate"}
+            }),
+            vec!["model"]
+        ),
+        tool!(
+            "synapse_status",
+            "Get Synapse health, GPU usage, and loaded models",
+            json!({
+                "detail": {"type": "string", "description": "Detail level: brief, full"}
+            }),
+            vec![]
+        ),
+        // ----- BullShift trading tools (5) -----
+        tool!(
+            "bullshift_portfolio",
+            "View BullShift portfolio, positions, and P&L",
+            json!({
+                "action": {"type": "string", "description": "Action: summary, positions, history, pnl"},
+                "account": {"type": "string", "description": "Account ID"},
+                "period": {"type": "string", "description": "Time period: 1d, 1w, 1m, 3m, 1y, all"}
+            }),
+            vec!["action"]
+        ),
+        tool!(
+            "bullshift_orders",
+            "Place, cancel, or list trading orders in BullShift",
+            json!({
+                "action": {"type": "string", "description": "Action: place, cancel, list, status"},
+                "symbol": {"type": "string", "description": "Ticker symbol"},
+                "side": {"type": "string", "description": "Order side: buy, sell"},
+                "quantity": {"type": "string", "description": "Order quantity"},
+                "order_type": {"type": "string", "description": "Order type: market, limit, stop"},
+                "price": {"type": "string", "description": "Limit/stop price"},
+                "order_id": {"type": "string", "description": "Order ID (for cancel/status)"}
+            }),
+            vec!["action"]
+        ),
+        tool!(
+            "bullshift_market",
+            "Get market data, quotes, and watchlist from BullShift",
+            json!({
+                "action": {"type": "string", "description": "Action: quote, search, watchlist, history"},
+                "symbol": {"type": "string", "description": "Ticker symbol"},
+                "query": {"type": "string", "description": "Search term"},
+                "period": {"type": "string", "description": "History period: 1d, 1w, 1m"}
+            }),
+            vec!["action"]
+        ),
+        tool!(
+            "bullshift_alerts",
+            "Manage price alerts in BullShift",
+            json!({
+                "action": {"type": "string", "description": "Action: set, remove, list, triggered"},
+                "symbol": {"type": "string", "description": "Ticker symbol"},
+                "condition": {"type": "string", "description": "Alert condition: above, below, percent_change"},
+                "value": {"type": "string", "description": "Price or percentage value"},
+                "alert_id": {"type": "string", "description": "Alert ID (for remove)"}
+            }),
+            vec!["action"]
+        ),
+        tool!(
+            "bullshift_strategy",
+            "Manage trading strategies in BullShift (list, start, stop, backtest)",
+            json!({
+                "action": {"type": "string", "description": "Action: list, start, stop, backtest, status"},
+                "name": {"type": "string", "description": "Strategy name"},
+                "params": {"type": "string", "description": "Strategy parameters as JSON string"}
+            }),
+            vec!["action"]
+        ),
+        // ----- SecureYeoman AI platform tools (5) -----
+        tool!(
+            "yeoman_agents",
+            "Manage AI agents in SecureYeoman (list, deploy, stop, status)",
+            json!({
+                "action": {"type": "string", "description": "Action: list, deploy, stop, status, info"},
+                "agent_id": {"type": "string", "description": "Agent UUID"},
+                "name": {"type": "string", "description": "Agent name (for deploy)"},
+                "template": {"type": "string", "description": "Agent template"}
+            }),
+            vec!["action"]
+        ),
+        tool!(
+            "yeoman_tasks",
+            "Assign and manage tasks for SecureYeoman agents",
+            json!({
+                "action": {"type": "string", "description": "Action: assign, list, status, cancel"},
+                "agent_id": {"type": "string", "description": "Target agent UUID"},
+                "description": {"type": "string", "description": "Task description"},
+                "task_id": {"type": "string", "description": "Task ID (for status/cancel)"},
+                "priority": {"type": "string", "description": "Priority: low, medium, high"}
+            }),
+            vec!["action"]
+        ),
+        tool!(
+            "yeoman_tools",
+            "Query SecureYeoman's MCP tools catalog (279 built-in tools)",
+            json!({
+                "action": {"type": "string", "description": "Action: list, search, info, categories"},
+                "query": {"type": "string", "description": "Search term"},
+                "category": {"type": "string", "description": "Tool category filter"},
+                "name": {"type": "string", "description": "Tool name (for info)"}
+            }),
+            vec!["action"]
+        ),
+        tool!(
+            "yeoman_integrations",
+            "Manage SecureYeoman platform integrations (Slack, Discord, GitHub, etc.)",
+            json!({
+                "action": {"type": "string", "description": "Action: list, enable, disable, status"},
+                "name": {"type": "string", "description": "Integration name"},
+                "config": {"type": "string", "description": "Integration config as JSON string"}
+            }),
+            vec!["action"]
+        ),
+        tool!(
+            "yeoman_status",
+            "Get SecureYeoman platform health, metrics, and active agent count",
+            json!({
+                "detail": {"type": "string", "description": "Detail level: brief, full"}
+            }),
+            vec![]
+        ),
     ];
 
     McpToolManifest { tools }

@@ -337,5 +337,68 @@ pub(crate) static PATTERNS: Lazy<HashMap<String, Regex>> = Lazy::new(|| {
         "mneme_graph",
         r"(?i)^mneme\s+graph\s+(view|connections|suggest[\s_]?links|stats)(\s+(?:node\s+)?(\S+))?$",
     );
+    // Synapse LLM management
+    r(
+        "synapse_models",
+        r"(?i)^synapse\s+(model|models)\s+(download|delete|list|info)(\s+(.+?))?(\s+(?:from|source)\s+(huggingface|ollama|local))?$",
+    );
+    r(
+        "synapse_serve",
+        r"(?i)^synapse\s+(serve|serving)\s+(start|stop|status|list)(\s+(.+))?$",
+    );
+    r(
+        "synapse_finetune",
+        r"(?i)^synapse\s+(finetune|fine[\s_]?tune|train)\s+(start|status|cancel|list)(\s+(.+?))?(\s+(?:method|using)\s+(lora|qlora|full|dpo|rlhf))?$",
+    );
+    r(
+        "synapse_chat",
+        r"(?i)^synapse\s+(chat|ask|infer|complete|generate)\s+(?:with\s+)?(\S+)(\s+(.+))?$",
+    );
+    r(
+        "synapse_status",
+        r"(?i)^synapse\s+(status|health|gpu)$",
+    );
+    // BullShift trading
+    r(
+        "bullshift_portfolio",
+        r"(?i)^(?:bullshift|trading)\s+(portfolio|positions|pnl|p&l|holdings|balance)\s*(summary|history)?(\s+(?:for|period)\s+(1d|1w|1m|3m|1y|all))?$",
+    );
+    r(
+        "bullshift_orders",
+        r"(?i)^(?:bullshift|trading)\s+(order|orders)\s+(place|cancel|list|status)(\s+(.+?))?(\s+(buy|sell))?$",
+    );
+    r(
+        "bullshift_market",
+        r"(?i)^(?:bullshift|trading)\s+(quote|search|watchlist|history|market|price)\s*(\S+)?$",
+    );
+    r(
+        "bullshift_alerts",
+        r"(?i)^(?:bullshift|trading)\s+(alert|alerts)\s+(set|remove|list|triggered)(\s+(.+))?$",
+    );
+    r(
+        "bullshift_strategy",
+        r"(?i)^(?:bullshift|trading)\s+(strategy|strategies)\s+(list|start|stop|backtest|status)(\s+(.+))?$",
+    );
+    // SecureYeoman AI platform
+    r(
+        "yeoman_agents",
+        r"(?i)^(?:yeoman|secureyeoman)\s+(agent|agents)\s+(list|deploy|stop|status|info)(\s+(.+))?$",
+    );
+    r(
+        "yeoman_tasks",
+        r"(?i)^(?:yeoman|secureyeoman)\s+(task|tasks)\s+(assign|list|status|cancel)(\s+(.+))?$",
+    );
+    r(
+        "yeoman_tools",
+        r"(?i)^(?:yeoman|secureyeoman)\s+(tool|tools)\s+(list|search|info|categories)(\s+(.+))?$",
+    );
+    r(
+        "yeoman_integrations",
+        r"(?i)^(?:yeoman|secureyeoman)\s+(integration|integrations)\s+(list|enable|disable|status)(\s+(.+))?$",
+    );
+    r(
+        "yeoman_status",
+        r"(?i)^(?:yeoman|secureyeoman)\s+(status|health)$",
+    );
     p
 });

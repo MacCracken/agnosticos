@@ -1,10 +1,13 @@
 pub(crate) mod aequi;
 pub(crate) mod agnos;
 pub(crate) mod agnostic;
+pub(crate) mod bullshift;
 pub(crate) mod delta;
 pub(crate) mod edge;
 pub(crate) mod mneme;
 pub(crate) mod photis;
 pub(crate) mod rasa;
 pub(crate) mod shruti;
+pub(crate) mod synapse;
 pub(crate) mod tazama;
+pub(crate) mod yeoman;

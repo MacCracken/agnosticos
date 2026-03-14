@@ -122,9 +122,19 @@ jobs:
         path: sbom/
         if-no-files-found: warn
 
+  # Build bootable ISO/IMG from release binaries
+  build-iso:
+    name: Build ISO Images
+    needs: build-release
+    uses: ./.github/workflows/build-iso.yml
+    with:
+      version: ${{ github.ref_name }}
+    permissions:
+      contents: write
+
   create-release:
     name: Create GitHub Release
-    needs: [build-release, generate-sbom]
+    needs: [build-release, generate-sbom, build-iso]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -146,6 +156,20 @@ jobs:
       with:
         name: sbom-files
         path: artifacts/sbom-files
+      continue-on-error: true
+
+    - name: Download x86_64 ISO
+      uses: actions/download-artifact@v4
+      with:
+        name: agnos-iso-x86_64
+        path: artifacts/iso-x86_64
+      continue-on-error: true
+
+    - name: Download aarch64 image
+      uses: actions/download-artifact@v4
+      with:
+        name: agnos-img-aarch64
+        path: artifacts/img-aarch64
       continue-on-error: true
 
     - name: Generate release notes
@@ -181,6 +205,10 @@ jobs:
         files: |
           artifacts/agnos-*/*.tar.gz
           artifacts/sbom-files/*
+          artifacts/iso-x86_64/*.iso
+          artifacts/iso-x86_64/*.iso.sha256
+          artifacts/img-aarch64/*.img
+          artifacts/img-aarch64/*.img.sha256
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

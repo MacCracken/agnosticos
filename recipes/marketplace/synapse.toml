@@ -4,11 +4,11 @@
 # TensorRT backends. LoRA/QLoRA/full fine-tuning, DPO, RLHF, distillation.
 # Built in Rust; OpenAI-compatible API for drop-in replacement.
 #
-# Status: STUB — no GitHub releases yet. Recipe ready for when CI ships binaries.
+# Status: Released — first tag 2026.3.10 (amd64 + arm64 with SHA256 checksums).
 
 [package]
 name = "synapse"
-version = "2026.3.11"
+version = "2026.3.14"
 description = "Synapse — LLM management and training tool"
 license = "MIT"
 groups = ["server", "ai", "llm", "rust"]
@@ -16,13 +16,11 @@ release = 1
 arch = "x86_64"
 
 [source]
-# Rust binary built by GitHub Actions CI (when releases are available).
+# Rust binary built by GitHub Actions CI.
 # Release: https://github.com/MacCracken/synapse/releases
-# Expected asset: synapse-linux-amd64.tar.gz or synapse-linux-x64
-local = true
-build_dir = "target/release"
+# Asset format: synapse-YYYYMMDD-linux-{amd64,arm64}.tar.gz
 github_release = "MacCracken/synapse"
-release_asset = "synapse-linux-*"
+release_asset = "synapse-*-linux-amd64.tar.gz"
 
 [depends]
 runtime = [
@@ -43,7 +41,7 @@ category = "ai-platform"
 runtime = "native-binary"
 publisher = "Synapse"
 tags = ["llm", "ai", "training", "fine-tuning", "inference", "model-management", "rust", "openai-compatible"]
-min_agnos_version = "2026.3.11"
+min_agnos_version = "2026.3.14"
 
 [marketplace.sandbox]
 seccomp_mode = "desktop"

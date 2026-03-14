@@ -21,6 +21,9 @@ pub use handlers::shruti::ShrutiBridge;
 pub use handlers::tazama::TazamaBridge;
 pub use handlers::rasa::RasaBridge;
 pub use handlers::mneme::MnemeBridge;
+pub use handlers::synapse::SynapseBridge;
+pub use handlers::bullshift::BullShiftBridge;
+pub use handlers::yeoman::YeomanBridge;
 pub use manifest::build_tool_manifest;
 pub use types::{
     ExternalMcpTool, McpContentBlock, McpToolCall, McpToolDescription, McpToolManifest,
@@ -45,6 +48,9 @@ use handlers::shruti::*;
 use handlers::tazama::*;
 use handlers::rasa::*;
 use handlers::mneme::*;
+use handlers::synapse::*;
+use handlers::bullshift::*;
+use handlers::yeoman::*;
 use helpers::error_result;
 
 // ---------------------------------------------------------------------------
@@ -251,6 +257,21 @@ async fn dispatch_tool_call(
         "mneme_search" => handle_mneme_search(&call.arguments).await,
         "mneme_ai" => handle_mneme_ai(&call.arguments).await,
         "mneme_graph" => handle_mneme_graph(&call.arguments).await,
+        "synapse_models" => handle_synapse_models(&call.arguments).await,
+        "synapse_serve" => handle_synapse_serve(&call.arguments).await,
+        "synapse_finetune" => handle_synapse_finetune(&call.arguments).await,
+        "synapse_chat" => handle_synapse_chat(&call.arguments).await,
+        "synapse_status" => handle_synapse_status(&call.arguments).await,
+        "bullshift_portfolio" => handle_bullshift_portfolio(&call.arguments).await,
+        "bullshift_orders" => handle_bullshift_orders(&call.arguments).await,
+        "bullshift_market" => handle_bullshift_market(&call.arguments).await,
+        "bullshift_alerts" => handle_bullshift_alerts(&call.arguments).await,
+        "bullshift_strategy" => handle_bullshift_strategy(&call.arguments).await,
+        "yeoman_agents" => handle_yeoman_agents(&call.arguments).await,
+        "yeoman_tasks" => handle_yeoman_tasks(&call.arguments).await,
+        "yeoman_tools" => handle_yeoman_tools(&call.arguments).await,
+        "yeoman_integrations" => handle_yeoman_integrations(&call.arguments).await,
+        "yeoman_status" => handle_yeoman_status(&call.arguments).await,
         unknown => {
             // Check external tools
             let external = state.external_mcp_tools.read().await;

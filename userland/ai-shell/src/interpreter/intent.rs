@@ -331,6 +331,80 @@ pub enum Intent {
         action: String,
         node_id: Option<String>,
     },
+    /// Manage Synapse LLM models
+    SynapseModels {
+        action: String,
+        name: Option<String>,
+        source: Option<String>,
+    },
+    /// Start/stop/status Synapse model serving
+    SynapseServe {
+        action: String,
+        model: Option<String>,
+    },
+    /// Manage Synapse fine-tuning jobs
+    SynapseFinetune {
+        action: String,
+        model: Option<String>,
+        method: Option<String>,
+    },
+    /// Run inference via Synapse
+    SynapseChat {
+        model: String,
+        prompt: Option<String>,
+    },
+    /// Get Synapse health and GPU status
+    SynapseStatus,
+    /// View BullShift portfolio and positions
+    BullShiftPortfolio {
+        action: String,
+        period: Option<String>,
+    },
+    /// Place/cancel/list trading orders
+    BullShiftOrders {
+        action: String,
+        symbol: Option<String>,
+        side: Option<String>,
+    },
+    /// Get market data and quotes
+    BullShiftMarket {
+        action: String,
+        symbol: Option<String>,
+    },
+    /// Manage price alerts
+    BullShiftAlerts {
+        action: String,
+        symbol: Option<String>,
+    },
+    /// Manage trading strategies
+    BullShiftStrategy {
+        action: String,
+        name: Option<String>,
+    },
+    /// Manage SecureYeoman AI agents
+    YeomanAgents {
+        action: String,
+        agent_id: Option<String>,
+        name: Option<String>,
+    },
+    /// Assign/manage SecureYeoman tasks
+    YeomanTasks {
+        action: String,
+        description: Option<String>,
+        task_id: Option<String>,
+    },
+    /// Query SecureYeoman MCP tools catalog
+    YeomanTools {
+        action: String,
+        query: Option<String>,
+    },
+    /// Manage SecureYeoman integrations
+    YeomanIntegrations {
+        action: String,
+        name: Option<String>,
+    },
+    /// Get SecureYeoman platform status
+    YeomanStatus,
     /// Piped command chain (cmd1 | cmd2)
     Pipeline { commands: Vec<String> },
     /// Question/Information request

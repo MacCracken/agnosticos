@@ -1,6 +1,7 @@
 mod aequi;
 mod agnos;
 mod agnostic;
+mod bullshift;
 mod delta;
 mod edge;
 mod filesystem;
@@ -14,8 +15,10 @@ mod photis;
 mod process;
 mod rasa;
 mod shruti;
+mod synapse;
 mod system;
 mod tazama;
+mod yeoman;
 
 use anyhow::{anyhow, Result};
 
@@ -136,6 +139,27 @@ impl Interpreter {
             | Intent::MnemeSearch { .. }
             | Intent::MnemeAi { .. }
             | Intent::MnemeGraph { .. } => mneme::translate_mneme(intent),
+
+            // Synapse LLM management
+            Intent::SynapseModels { .. }
+            | Intent::SynapseServe { .. }
+            | Intent::SynapseFinetune { .. }
+            | Intent::SynapseChat { .. }
+            | Intent::SynapseStatus => synapse::translate_synapse(intent),
+
+            // BullShift trading
+            Intent::BullShiftPortfolio { .. }
+            | Intent::BullShiftOrders { .. }
+            | Intent::BullShiftMarket { .. }
+            | Intent::BullShiftAlerts { .. }
+            | Intent::BullShiftStrategy { .. } => bullshift::translate_bullshift(intent),
+
+            // SecureYeoman AI platform
+            Intent::YeomanAgents { .. }
+            | Intent::YeomanTasks { .. }
+            | Intent::YeomanTools { .. }
+            | Intent::YeomanIntegrations { .. }
+            | Intent::YeomanStatus => yeoman::translate_yeoman(intent),
 
             // Photis Nadi
             Intent::TaskList { .. }

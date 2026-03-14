@@ -1,0 +1,398 @@
+use tracing::{info, warn};
+use uuid::Uuid;
+
+use super::super::helpers::{
+    extract_required_string, get_optional_string_arg, success_result, validate_enum_opt,
+};
+use super::super::types::McpToolResult;
+
+// ---------------------------------------------------------------------------
+// SecureYeoman Agent Platform Bridge
+// ---------------------------------------------------------------------------
+
+/// Bridge that proxies MCP tool calls to the SecureYeoman platform API.
+///
+/// When SecureYeoman is running at its configured endpoint, requests are
+/// forwarded to its REST API. When the service is unavailable, mock data is
+/// returned.
+#[derive(Debug, Clone)]
+pub struct YeomanBridge {
+    base_url: String,
+    api_key: Option<String>,
+}
+
+impl Default for YeomanBridge {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl YeomanBridge {
+    pub fn new() -> Self {
+        Self {
+            base_url: std::env::var("YEOMAN_URL")
+                .unwrap_or_else(|_| "http://127.0.0.1:18789".to_string()),
+            api_key: std::env::var("YEOMAN_API_KEY").ok(),
+        }
+    }
+
+    pub fn base_url(&self) -> &str {
+        &self.base_url
+    }
+
+    fn build_client() -> Result<reqwest::Client, String> {
+        reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(5))
+            .connect_timeout(std::time::Duration::from_secs(2))
+            .build()
+            .map_err(|e| e.to_string())
+    }
+
+    async fn get(
+        &self,
+        path: &str,
+        query: &[(String, String)],
+    ) -> Result<serde_json::Value, String> {
+        let client = Self::build_client()?;
+        let url = format!("{}{}", self.base_url, path);
+        let mut req = client.get(&url).query(query);
+        if let Some(ref key) = self.api_key {
+            req = req.header("Authorization", format!("Bearer {}", key));
+        }
+        let resp = req.send().await.map_err(|e| e.to_string())?;
+        if !resp.status().is_success() {
+            return Err(format!("SecureYeoman API error: {}", resp.status()));
+        }
+        resp.json().await.map_err(|e| e.to_string())
+    }
+
+    async fn post(&self, path: &str, body: serde_json::Value) -> Result<serde_json::Value, String> {
+        let client = Self::build_client()?;
+        let url = format!("{}{}", self.base_url, path);
+        let mut req = client.post(&url).json(&body);
+        if let Some(ref key) = self.api_key {
+            req = req.header("Authorization", format!("Bearer {}", key));
+        }
+        let resp = req.send().await.map_err(|e| e.to_string())?;
+        if !resp.status().is_success() {
+            return Err(format!("SecureYeoman API error: {}", resp.status()));
+        }
+        resp.json().await.map_err(|e| e.to_string())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// SecureYeoman Tool Implementations (bridged)
+// ---------------------------------------------------------------------------
+
+pub(crate) async fn handle_yeoman_agents(args: &serde_json::Value) -> McpToolResult {
+    let action = match extract_required_string(args, "action") {
+        Ok(a) => a,
+        Err(e) => return e,
+    };
+
+    let action_opt = Some(action.clone());
+    if let Err(e) = validate_enum_opt(
+        &action_opt,
+        "action",
+        &["list", "deploy", "stop", "status", "info"],
+    ) {
+        return e;
+    }
+
+    let agent_id = get_optional_string_arg(args, "agent_id");
+    let name = get_optional_string_arg(args, "name");
+    let template = get_optional_string_arg(args, "template");
+    let bridge = YeomanBridge::new();
+
+    match action.as_str() {
+        "list" | "status" | "info" => {
+            let mut query = Vec::new();
+            if let Some(ref id) = agent_id {
+                query.push(("agent_id".to_string(), id.clone()));
+            }
+            if let Some(ref n) = name {
+                query.push(("name".to_string(), n.clone()));
+            }
+            query.push(("action".to_string(), action.clone()));
+            match bridge.get("/api/v1/agents", &query).await {
+                Ok(response) => {
+                    info!("SecureYeoman: {} agents (bridged)", action);
+                    success_result(response)
+                }
+                Err(e) => {
+                    warn!(error = %e, "SecureYeoman bridge: falling back to mock for agents {}", action);
+                    success_result(serde_json::json!({
+                        "agents": [],
+                        "total": 0,
+                        "_source": "mock",
+                    }))
+                }
+            }
+        }
+        op @ ("deploy" | "stop") => {
+            let body = serde_json::json!({
+                "action": op,
+                "agent_id": agent_id,
+                "name": name,
+                "template": template,
+            });
+            match bridge.post("/api/v1/agents", body).await {
+                Ok(response) => {
+                    info!(action = %op, "SecureYeoman: {} agent (bridged)", op);
+                    success_result(response)
+                }
+                Err(e) => {
+                    warn!(error = %e, "SecureYeoman bridge: falling back to mock for {} agent", op);
+                    let id = agent_id.unwrap_or_else(|| Uuid::new_v4().to_string());
+                    success_result(serde_json::json!({
+                        "agent_id": id,
+                        "action": op,
+                        "name": name.unwrap_or_else(|| "unnamed-agent".to_string()),
+                        "template": template,
+                        "status": "ok",
+                        "_source": "mock",
+                    }))
+                }
+            }
+        }
+        _ => unreachable!(),
+    }
+}
+
+pub(crate) async fn handle_yeoman_tasks(args: &serde_json::Value) -> McpToolResult {
+    let action = match extract_required_string(args, "action") {
+        Ok(a) => a,
+        Err(e) => return e,
+    };
+
+    let action_opt = Some(action.clone());
+    if let Err(e) = validate_enum_opt(
+        &action_opt,
+        "action",
+        &["assign", "list", "status", "cancel"],
+    ) {
+        return e;
+    }
+
+    let agent_id = get_optional_string_arg(args, "agent_id");
+    let description = get_optional_string_arg(args, "description");
+    let task_id = get_optional_string_arg(args, "task_id");
+    let priority = get_optional_string_arg(args, "priority");
+
+    if let Some(ref p) = priority {
+        let p_opt = Some(p.clone());
+        if let Err(e) = validate_enum_opt(&p_opt, "priority", &["low", "medium", "high"]) {
+            return e;
+        }
+    }
+
+    let bridge = YeomanBridge::new();
+
+    match action.as_str() {
+        "list" | "status" => {
+            let mut query = Vec::new();
+            if let Some(ref id) = agent_id {
+                query.push(("agent_id".to_string(), id.clone()));
+            }
+            if let Some(ref tid) = task_id {
+                query.push(("task_id".to_string(), tid.clone()));
+            }
+            query.push(("action".to_string(), action.clone()));
+            match bridge.get("/api/v1/tasks", &query).await {
+                Ok(response) => {
+                    info!("SecureYeoman: {} tasks (bridged)", action);
+                    success_result(response)
+                }
+                Err(e) => {
+                    warn!(error = %e, "SecureYeoman bridge: falling back to mock for tasks {}", action);
+                    success_result(serde_json::json!({
+                        "tasks": [],
+                        "total": 0,
+                        "_source": "mock",
+                    }))
+                }
+            }
+        }
+        op @ ("assign" | "cancel") => {
+            let body = serde_json::json!({
+                "action": op,
+                "agent_id": agent_id,
+                "description": description,
+                "task_id": task_id,
+                "priority": priority,
+            });
+            match bridge.post("/api/v1/tasks", body).await {
+                Ok(response) => {
+                    info!(action = %op, "SecureYeoman: {} task (bridged)", op);
+                    success_result(response)
+                }
+                Err(e) => {
+                    warn!(error = %e, "SecureYeoman bridge: falling back to mock for {} task", op);
+                    let id = task_id.unwrap_or_else(|| Uuid::new_v4().to_string());
+                    success_result(serde_json::json!({
+                        "task_id": id,
+                        "action": op,
+                        "agent_id": agent_id,
+                        "description": description,
+                        "priority": priority.unwrap_or_else(|| "medium".to_string()),
+                        "status": "ok",
+                        "_source": "mock",
+                    }))
+                }
+            }
+        }
+        _ => unreachable!(),
+    }
+}
+
+pub(crate) async fn handle_yeoman_tools(args: &serde_json::Value) -> McpToolResult {
+    let action = match extract_required_string(args, "action") {
+        Ok(a) => a,
+        Err(e) => return e,
+    };
+
+    let action_opt = Some(action.clone());
+    if let Err(e) = validate_enum_opt(
+        &action_opt,
+        "action",
+        &["list", "search", "info", "categories"],
+    ) {
+        return e;
+    }
+
+    let query_str = get_optional_string_arg(args, "query");
+    let category = get_optional_string_arg(args, "category");
+    let name = get_optional_string_arg(args, "name");
+    let bridge = YeomanBridge::new();
+
+    let mut query = Vec::new();
+    query.push(("action".to_string(), action.clone()));
+    if let Some(ref q) = query_str {
+        query.push(("query".to_string(), q.clone()));
+    }
+    if let Some(ref c) = category {
+        query.push(("category".to_string(), c.clone()));
+    }
+    if let Some(ref n) = name {
+        query.push(("name".to_string(), n.clone()));
+    }
+
+    match bridge.get("/api/v1/tools", &query).await {
+        Ok(response) => {
+            info!("SecureYeoman: {} tools (bridged)", action);
+            success_result(response)
+        }
+        Err(e) => {
+            warn!(error = %e, "SecureYeoman bridge: falling back to mock for tools {}", action);
+            success_result(serde_json::json!({
+                "tools": [],
+                "total": 0,
+                "categories": [],
+                "_source": "mock",
+            }))
+        }
+    }
+}
+
+pub(crate) async fn handle_yeoman_integrations(args: &serde_json::Value) -> McpToolResult {
+    let action = match extract_required_string(args, "action") {
+        Ok(a) => a,
+        Err(e) => return e,
+    };
+
+    let action_opt = Some(action.clone());
+    if let Err(e) = validate_enum_opt(
+        &action_opt,
+        "action",
+        &["list", "enable", "disable", "status"],
+    ) {
+        return e;
+    }
+
+    let name = get_optional_string_arg(args, "name");
+    let config = get_optional_string_arg(args, "config");
+    let bridge = YeomanBridge::new();
+
+    match action.as_str() {
+        "list" | "status" => {
+            let mut query = Vec::new();
+            if let Some(ref n) = name {
+                query.push(("name".to_string(), n.clone()));
+            }
+            query.push(("action".to_string(), action.clone()));
+            match bridge.get("/api/v1/integrations", &query).await {
+                Ok(response) => {
+                    info!("SecureYeoman: {} integrations (bridged)", action);
+                    success_result(response)
+                }
+                Err(e) => {
+                    warn!(error = %e, "SecureYeoman bridge: falling back to mock for integrations {}", action);
+                    success_result(serde_json::json!({
+                        "integrations": [],
+                        "total": 0,
+                        "_source": "mock",
+                    }))
+                }
+            }
+        }
+        op @ ("enable" | "disable") => {
+            let body = serde_json::json!({
+                "action": op,
+                "name": name,
+                "config": config,
+            });
+            match bridge.post("/api/v1/integrations", body).await {
+                Ok(response) => {
+                    info!(action = %op, "SecureYeoman: {} integration (bridged)", op);
+                    success_result(response)
+                }
+                Err(e) => {
+                    warn!(error = %e, "SecureYeoman bridge: falling back to mock for {} integration", op);
+                    success_result(serde_json::json!({
+                        "action": op,
+                        "name": name.unwrap_or_else(|| "unknown".to_string()),
+                        "status": "ok",
+                        "_source": "mock",
+                    }))
+                }
+            }
+        }
+        _ => unreachable!(),
+    }
+}
+
+pub(crate) async fn handle_yeoman_status(args: &serde_json::Value) -> McpToolResult {
+    let detail = get_optional_string_arg(args, "detail");
+
+    if let Some(ref d) = detail {
+        let d_opt = Some(d.clone());
+        if let Err(e) = validate_enum_opt(&d_opt, "detail", &["brief", "full"]) {
+            return e;
+        }
+    }
+
+    let bridge = YeomanBridge::new();
+    let mut query = Vec::new();
+    if let Some(ref d) = detail {
+        query.push(("detail".to_string(), d.clone()));
+    }
+
+    match bridge.get("/api/v1/status", &query).await {
+        Ok(response) => {
+            info!("SecureYeoman: platform status (bridged)");
+            success_result(response)
+        }
+        Err(e) => {
+            warn!(error = %e, "SecureYeoman bridge: falling back to mock for platform status");
+            success_result(serde_json::json!({
+                "healthy": false,
+                "active_agents": 0,
+                "total_tools": 279,
+                "integrations_enabled": 0,
+                "message": "SecureYeoman not reachable",
+                "_source": "mock",
+            }))
+        }
+    }
+}

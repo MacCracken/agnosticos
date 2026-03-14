@@ -66,7 +66,7 @@ async fn test_tools_manifest_endpoint() {
         .await
         .unwrap();
     let manifest: McpToolManifest = serde_json::from_slice(&body).unwrap();
-    assert_eq!(manifest.tools.len(), 56);
+    assert_eq!(manifest.tools.len(), 71);
 }
 
 #[tokio::test]
@@ -389,7 +389,7 @@ async fn test_mcp_result_serialization() {
 #[tokio::test]
 async fn test_manifest_contains_all_31_tools() {
     let manifest = build_tool_manifest();
-    assert_eq!(manifest.tools.len(), 56);
+    assert_eq!(manifest.tools.len(), 71);
     let names: Vec<&str> = manifest.tools.iter().map(|t| t.name.as_str()).collect();
     for expected in &[
         "agnos_health",
@@ -448,6 +448,21 @@ async fn test_manifest_contains_all_31_tools() {
         "mneme_search",
         "mneme_ai",
         "mneme_graph",
+        "synapse_models",
+        "synapse_serve",
+        "synapse_finetune",
+        "synapse_chat",
+        "synapse_status",
+        "bullshift_portfolio",
+        "bullshift_orders",
+        "bullshift_market",
+        "bullshift_alerts",
+        "bullshift_strategy",
+        "yeoman_agents",
+        "yeoman_tasks",
+        "yeoman_tools",
+        "yeoman_integrations",
+        "yeoman_status",
     ] {
         assert!(names.contains(expected), "Missing tool: {}", expected);
     }

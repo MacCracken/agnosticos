@@ -439,6 +439,188 @@ impl Interpreter {
             }
         }
 
+        // --- Synapse LLM management intents (before greedy list/show) ---
+        if let Some(caps) = self.try_captures("synapse_models", input_lower) {
+            let action = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();
+            let name = caps
+                .get(4)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            let source = caps
+                .get(6)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !action.is_empty() {
+                return Intent::SynapseModels {
+                    action,
+                    name,
+                    source,
+                };
+            }
+        }
+
+        if let Some(caps) = self.try_captures("synapse_serve", input_lower) {
+            let action = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();
+            let model = caps
+                .get(4)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !action.is_empty() {
+                return Intent::SynapseServe { action, model };
+            }
+        }
+
+        if let Some(caps) = self.try_captures("synapse_finetune", input_lower) {
+            let action = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();
+            let model = caps
+                .get(4)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            let method = caps
+                .get(6)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !action.is_empty() {
+                return Intent::SynapseFinetune {
+                    action,
+                    model,
+                    method,
+                };
+            }
+        }
+
+        if let Some(caps) = self.try_captures("synapse_chat", input_lower) {
+            let model = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();
+            let prompt = caps
+                .get(4)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !model.is_empty() {
+                return Intent::SynapseChat { model, prompt };
+            }
+        }
+
+        if self.try_captures("synapse_status", input_lower).is_some() {
+            return Intent::SynapseStatus;
+        }
+
+        // --- BullShift trading intents (before greedy list/show) ---
+        if let Some(caps) = self.try_captures("bullshift_portfolio", input_lower) {
+            let action = caps.get(1).map_or("summary", |m| m.as_str()).trim().to_string();
+            let period = caps
+                .get(4)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            return Intent::BullShiftPortfolio { action, period };
+        }
+
+        if let Some(caps) = self.try_captures("bullshift_orders", input_lower) {
+            let action = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();
+            let symbol = caps
+                .get(4)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            let side = caps
+                .get(6)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !action.is_empty() {
+                return Intent::BullShiftOrders {
+                    action,
+                    symbol,
+                    side,
+                };
+            }
+        }
+
+        if let Some(caps) = self.try_captures("bullshift_market", input_lower) {
+            let action = caps.get(1).map_or("quote", |m| m.as_str()).trim().to_string();
+            let symbol = caps
+                .get(2)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            return Intent::BullShiftMarket { action, symbol };
+        }
+
+        if let Some(caps) = self.try_captures("bullshift_alerts", input_lower) {
+            let action = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();
+            let symbol = caps
+                .get(4)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !action.is_empty() {
+                return Intent::BullShiftAlerts { action, symbol };
+            }
+        }
+
+        if let Some(caps) = self.try_captures("bullshift_strategy", input_lower) {
+            let action = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();
+            let name = caps
+                .get(4)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !action.is_empty() {
+                return Intent::BullShiftStrategy { action, name };
+            }
+        }
+
+        // --- SecureYeoman AI platform intents (before greedy list/show) ---
+        if let Some(caps) = self.try_captures("yeoman_agents", input_lower) {
+            let action = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();
+            let agent_id = caps
+                .get(4)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !action.is_empty() {
+                return Intent::YeomanAgents {
+                    action,
+                    agent_id: agent_id.clone(),
+                    name: agent_id,
+                };
+            }
+        }
+
+        if let Some(caps) = self.try_captures("yeoman_tasks", input_lower) {
+            let action = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();
+            let description = caps
+                .get(4)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !action.is_empty() {
+                return Intent::YeomanTasks {
+                    action,
+                    description: description.clone(),
+                    task_id: description,
+                };
+            }
+        }
+
+        if let Some(caps) = self.try_captures("yeoman_tools", input_lower) {
+            let action = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();
+            let query = caps
+                .get(4)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !action.is_empty() {
+                return Intent::YeomanTools { action, query };
+            }
+        }
+
+        if let Some(caps) = self.try_captures("yeoman_integrations", input_lower) {
+            let action = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();
+            let name = caps
+                .get(4)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !action.is_empty() {
+                return Intent::YeomanIntegrations { action, name };
+            }
+        }
+
+        if self.try_captures("yeoman_status", input_lower).is_some() {
+            return Intent::YeomanStatus;
+        }
+
         // --- Delta code hosting intents (before greedy list/show) ---
         if let Some(caps) = self.try_captures("delta_create_repo", input_lower) {
             let name = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();

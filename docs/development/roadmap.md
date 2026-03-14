@@ -2,7 +2,7 @@
 
 > **Status**: Pre-Beta | **Last Updated**: 2026-03-13
 > **Userland complete** — 10876+ tests (3622+ agent-runtime, 1554 ai-shell), ~84% coverage, 0 warnings
-> **Recipes**: 109 base + 53 desktop + 25 AI + 9 network + 8 browser + 8 marketplace + 4 python + 3 database + 29 edge = 248 total, 0 validation errors
+> **Recipes**: 109 base + 53 desktop + 25 AI + 9 network + 8 browser + 11 marketplace + 4 python + 3 database + 29 edge = 251 total, 0 validation errors
 > **Phases 10–14 complete** | **Phase 13**: 13A(infra)/13B/13D/13E done | **Phase 14**: Edge OS Profile done | **Audit**: 16 rounds
 > **Audit round 16**: 14 CRITICAL + 29 HIGH fixed, 0 HIGH remaining, 17 MEDIUM backlog cleared
 
@@ -36,7 +36,7 @@ for desktop/networking/GPU stack.
 | **11** | **Desktop & networking stack** — 88 recipes (graphics, audio, networking, desktop libs, AI/ML infra) |
 | **12** | **System integration** — argonaut init (117 tests), ark package manager (49 tests), agnova installer (91 tests), CI/CD |
 | **13B** | **Hardware support** — NVIDIA (proprietary + nouveau), AMD, Intel, WiFi, Bluetooth, Thunderbolt, printing |
-| **13D** | **Consumer app integration** — SecureYeoman, Photis Nadi, BullShift, AGNOSTIC, Delta, Aequi (all with MCP tools + agnoshi intents) |
+| **13D** | **Consumer app integration** — SecureYeoman, Photis Nadi, BullShift, AGNOSTIC, Delta, Aequi, Shruti, Synapse, Tazama, Rasa, Mneme (all with MCP tools + agnoshi intents) |
 | **13E** | **CI, WebView, containers, Python** — browser-ark CI, marketplace-publish CI (7 apps), WebView (28 tests), Docker base images, Python runtime (36 tests) |
 | **14** | **Edge OS Profile** — Edge boot mode, edge seccomp, fleet management (37 tests), 5 MCP tools, 14 agnoshi tests, Docker container (35.5 MB), 29 edge recipes, SecureYeoman Edge IoT recipe |
 
@@ -61,6 +61,41 @@ for desktop/networking/GPU stack.
 | 2 | Support portal | Not started | Discord + forum (needs external setup) |
 | 3 | Community testing program | Not started | Beta tester enrollment (needs external setup) |
 | 4 | Third-party security audit | Not started | External vendor (needs procurement) |
+
+### 13F — Hardware Testing Matrix
+
+| # | Target | Arch | Profile | Status | Notes |
+|---|--------|------|---------|--------|-------|
+| 1 | QEMU x86_64 | x86_64 | Desktop | Done | Verified 2026-03-13, live boot, all binaries functional |
+| 2 | Raspberry Pi 4 | aarch64 | Full | Ready | Binary ready; `build-iso-aarch64.sh` created; dd to microSD |
+| 3 | Intel NUC (bare metal) | x86_64 | Desktop | Not started | UEFI boot, GPU driver validation |
+| 4 | Older x86_64 (~2014 era) | x86_64 | CLI | Not started | Minimum viable hardware floor test |
+| 5 | Older desktop w/ touchscreen (~2014) | x86_64 | Desktop | Not started | Touch input + Wayland validation; tests aethersafha touch events |
+| 6 | ARM64 SBC (QEMU) | aarch64 | Edge | Not started | QEMU aarch64 virt machine validation |
+
+**aarch64 image builder**: `scripts/build-iso-aarch64.sh` — full AGNOS system (Debian arm64 + AGNOS userland) for RPi4/5 microSD. Uses:
+- Debian Trixie arm64 debootstrap (foreign mode with qemu-user-static)
+- Cross-compiled userland via Cross.toml (aarch64-unknown-linux-gnu)
+- RPi boot partition (config.txt, DTBs, kernel, initrd)
+- 2 GB image (256 MB FAT32 boot + ext4 root, expandable after flash)
+
+### 13G — Consumer App Validation
+
+| # | App | MCP Tools | Intents | Release | Bundle Test | Notes |
+|---|-----|-----------|---------|---------|-------------|-------|
+| 1 | SecureYeoman | 5 yeoman_* | 5 | Yes | Not started | Flagship; ports 18789/3000/3001 |
+| 2 | Photis Nadi | 6 photis_* | 5 | Yes | Not started | Flutter runtime |
+| 3 | BullShift | 5 bullshift_* | 5 | Yes | Not started | Native binary ~2.8 MB |
+| 4 | AGNOSTIC | 5 agnostic_* | 5 | Yes | Not started | Python container ~472 KB |
+| 5 | Delta | 5 delta_* | 5 | Yes | Not started | Port 8070 |
+| 6 | Aequi | 5 aequi_* | 5 | Yes | Not started | Tauri v2 |
+| 7 | Synapse | 5 synapse_* | 5 | Yes (2026.3.14) | Not started | Port 8080; LLM management |
+| 8 | Shruti | 5 shruti_* | 5 | No | Blocked | DAW; awaiting first release |
+| 9 | Tazama | 5 tazama_* | 5 | No | Blocked | Video editor; awaiting first release |
+| 10 | Rasa | 5 rasa_* | 5 | No | Blocked | Image editor; awaiting first release |
+| 11 | Mneme | 5 mneme_* | 5 | No | Blocked | Knowledge base; awaiting first release |
+
+**Bundle test** = `ark-bundle.sh` fetches release, produces `.agnos-agent` tarball, installs via mela.
 
 ---
 
@@ -139,8 +174,8 @@ for desktop/networking/GPU stack.
 | Desktop/AI Stack Recipes | ~62 | 88 | Complete |
 | Edge Recipes | ~30 | 29 | Complete |
 | Hardware Recipes | 8 | 8 | Complete |
-| Consumer Apps | 6 | 6 | Complete |
-| MCP Tools | — | 41 | Complete (5 edge + 5 shruti tools added) |
+| Consumer Apps | 6 | 11 | Complete (6 original + Shruti + Synapse + Tazama + Rasa + Mneme) |
+| MCP Tools | — | 71 | Complete (10 agnos + 5 aequi + 5 agnostic + 5 delta + 6 photis + 5 edge + 5 shruti + 5 tazama + 5 rasa + 5 mneme + 5 synapse + 5 bullshift + 5 yeoman) |
 | Recipe Validation Errors | 0 | 0 | Complete |
 | Security Audit Rounds | 15 | 16 | Complete |
 | Self-Hosting Infra | Yes | Yes | Phase 13A (infra done, actual validation pending) |
@@ -153,7 +188,7 @@ for desktop/networking/GPU stack.
 | agnos-sys | 750+ | 16 modules: audit, mac, netns, dmverity, luks, ima, tpm, secureboot, certpin, bootloader, journald, udev, fuse, pam, update, llm |
 | agent-runtime | 3622+ | 36 MCP tools (incl. 5 edge), orchestrator, IPC, sandbox, registry, marketplace, federation, migration, scheduler, PQC, safety, finetune, formal_verify, sandbox_v2, rl_optimizer, cloud, collaboration, sigil, aegis, takumi, argonaut (117), agnova (99), ark (49), edge (37), grpc, service_mesh, oidc, delegation, vector_rest, marketplace_backend, selfhost (38), webview (28), python_runtime (36) |
 | llm-gateway | 860 | 15 providers, rate limiting, streaming, cert pinning, hardware acceleration, token budgets |
-| ai-shell | 1554 | 35+ intents (5 Aequi, 5 Agnostic, 5 Delta, 5 Photis, 5 Edge, 10+ system), approval workflow, dashboard, aliases |
+| ai-shell | 1554 | 50+ intents (5 Aequi, 5 Agnostic, 5 Delta, 5 Photis, 5 Edge, 5 Shruti, 5 Tazama, 5 Rasa, 5 Mneme, 10+ system), approval workflow, dashboard, aliases |
 | desktop-environment | 1692 | Wayland protocol, screen capture (31), screen recording (22+), plugin host (31), xwayland (20), shell integration (26), theme bridge (18) |
 
 ---

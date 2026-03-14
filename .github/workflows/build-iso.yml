@@ -1,0 +1,145 @@
+name: Build ISO Images
+
+# Builds bootable AGNOS images for x86_64 (ISO) and aarch64 (SD card .img).
+# Triggered on release tags or manually. Downloads pre-built binaries from
+# the release workflow artifacts, then runs the ISO build scripts.
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: 'AGNOS version'
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'AGNOS version (leave empty for VERSION file)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  DEBIAN_FRONTEND: noninteractive
+
+jobs:
+  build-x86_64-iso:
+    name: Build x86_64 ISO
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install ISO build dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends \
+          debootstrap \
+          squashfs-tools \
+          grub-pc-bin \
+          grub-efi-amd64-bin \
+          grub-common \
+          grub2-common \
+          xorriso \
+          mtools \
+          debian-archive-keyring
+
+    - name: Download x86_64 binaries
+      uses: actions/download-artifact@v4
+      with:
+        name: agnos-linux-amd64
+        path: artifacts/
+      continue-on-error: true
+
+    - name: Extract binaries (from artifact or build)
+      run: |
+        mkdir -p userland/target/x86_64-unknown-linux-musl/release
+        if ls artifacts/*.tar.gz 1>/dev/null 2>&1; then
+          echo "Using pre-built binaries from artifacts"
+          tar xzf artifacts/*.tar.gz -C /tmp/
+          for bin in agent_runtime llm_gateway agnsh agnos_sudo desktop_environment ai_shell; do
+            find /tmp/ -name "$bin" -type f -exec cp {} userland/target/x86_64-unknown-linux-musl/release/ \;
+          done
+        else
+          echo "No artifacts found — will build from source"
+        fi
+        ls -la userland/target/x86_64-unknown-linux-musl/release/ 2>/dev/null || echo "No binaries yet"
+
+    - name: Build ISO
+      run: |
+        VERSION="${{ inputs.version || '' }}"
+        ARGS="--skip-build"
+        if [ -n "$VERSION" ]; then
+          ARGS="$ARGS --version $VERSION"
+        fi
+        sudo ./scripts/build-iso.sh $ARGS
+
+    - name: Upload x86_64 ISO
+      uses: actions/upload-artifact@v4
+      with:
+        name: agnos-iso-x86_64
+        path: |
+          output/*.iso
+          output/*.iso.sha256
+
+  build-aarch64-img:
+    name: Build aarch64 SD Image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install aarch64 image build dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends \
+          debootstrap \
+          squashfs-tools \
+          dosfstools \
+          parted \
+          e2fsprogs \
+          qemu-user-static \
+          binfmt-support \
+          debian-archive-keyring
+
+    - name: Download aarch64 binaries
+      uses: actions/download-artifact@v4
+      with:
+        name: agnos-linux-arm64
+        path: artifacts/
+      continue-on-error: true
+
+    - name: Extract binaries (from artifact or build)
+      run: |
+        mkdir -p userland/target/aarch64-unknown-linux-gnu/release
+        if ls artifacts/*.tar.gz 1>/dev/null 2>&1; then
+          echo "Using pre-built binaries from artifacts"
+          tar xzf artifacts/*.tar.gz -C /tmp/
+          for bin in agent_runtime llm_gateway agnsh agnos_sudo desktop_environment ai_shell; do
+            find /tmp/ -name "$bin" -type f -exec cp {} userland/target/aarch64-unknown-linux-gnu/release/ \;
+          done
+        else
+          echo "No artifacts found — will need --skip-build disabled"
+        fi
+        ls -la userland/target/aarch64-unknown-linux-gnu/release/ 2>/dev/null || echo "No binaries yet"
+
+    - name: Build aarch64 image
+      run: |
+        VERSION="${{ inputs.version || '' }}"
+        ARGS="--skip-build"
+        if [ -n "$VERSION" ]; then
+          ARGS="$ARGS --version $VERSION"
+        fi
+        sudo ./scripts/build-iso-aarch64.sh $ARGS
+
+    - name: Upload aarch64 image
+      uses: actions/upload-artifact@v4
+      with:
+        name: agnos-img-aarch64
+        path: |
+          output/*-aarch64.img
+          output/*-aarch64.img.sha256
