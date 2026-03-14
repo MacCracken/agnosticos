@@ -5,6 +5,33 @@ All notable changes to AGNOS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2026.3.14] - 2026-03-14
+
+### Added — Consumer App Ecosystem Expansion
+
+- **15 new MCP tool groups** (71 → 100 tools): Added tools for Synapse (7), BullShift (7), SecureYeoman (7), plus expanded all existing consumer projects from 5 to 7 tools each (Delta, Aequi, AGNOSTIC, Shruti, Tazama, Rasa, Mneme, Edge). Photis Nadi expanded to 8
+- **Synapse MCP tools** (7): `synapse_models`, `synapse_serve`, `synapse_finetune`, `synapse_chat`, `synapse_status`, `synapse_benchmark`, `synapse_quantize`. Bridge: `SynapseBridge` → port 8080
+- **BullShift MCP tools** (7): `bullshift_portfolio`, `bullshift_orders`, `bullshift_market`, `bullshift_alerts`, `bullshift_strategy`, `bullshift_accounts`, `bullshift_history`. Bridge: `BullShiftBridge` → port 8075
+- **SecureYeoman MCP tools** (7): `yeoman_agents`, `yeoman_tasks`, `yeoman_tools`, `yeoman_integrations`, `yeoman_status`, `yeoman_logs`, `yeoman_workflows`. Bridge: `YeomanBridge` → port 18789
+- **AGNOSTIC crew management** (5): `agnostic_run_crew`, `agnostic_crew_status`, `agnostic_list_presets`, `agnostic_list_definitions`, `agnostic_create_agent` — AAS (Agent-as-a-Service) crew orchestration
+- **Expanded tools** for existing projects: `delta_branches`/`delta_review`, `aequi_invoices`/`aequi_reports`, `agnostic_coverage`/`agnostic_schedule`, `shruti_plugins`/`shruti_ai`, `tazama_media`/`tazama_subtitles`, `rasa_batch`/`rasa_templates`, `mneme_import`/`mneme_tags`, `photis_boards`/`photis_notes`, `edge_logs`/`edge_config`
+- **Agnoshi intents**: All new tools have corresponding NL intent parsing (regex patterns + translators) in ai-shell
+- **3 new consumer projects**: Tazama (AI video editor), Rasa (AI image editor), Mneme (AI knowledge base) — marketplace recipes, MCP tools, agnoshi intents all integrated. Awaiting first GitHub releases
+- **Synapse recipe updated**: Status changed from stub to released (2026.3.14), asset pattern fixed to match actual naming
+- **SecureYeoman Lite recipe**: `recipes/marketplace/secureyeoman-lite.toml` — standalone lightweight agent binary from same repo
+- **aarch64 SD card image builder**: `scripts/build-iso-aarch64.sh` — full AGNOS system for Raspberry Pi 4/5 (Debian Trixie arm64, cross-compiled userland, RPi boot partition, 2 GB expandable image)
+- **CI/CD ISO workflow**: `.github/workflows/build-iso.yml` — builds x86_64 ISO + aarch64 SD image, publishes as release assets
+- **System requirements doc**: `docs/system-requirements.md` — minimum hardware for Server/Desktop/Edge profiles, "how far back" hardware floor guide
+- **MCP tools reference**: `docs/development/mcp-tools-reference.md` — full reference for all 100 tools, intents, patterns, and integration guide
+- **Hardware testing matrix**: Phase 13F in roadmap — QEMU x86_64 (done), RPi4 aarch64, Intel NUC, older desktop w/ touchscreen, QEMU aarch64
+- **Consumer app validation matrix**: Phase 13G in roadmap — all 11 apps tracked with release/bundle test status
+
+### Changed
+
+- Version bump: `2026.3.13` → `2026.3.14`
+- Roadmap updated: 100 MCP tools, 252 recipes, 11 consumer apps, 13 handler modules
+- Recipe count: 248 → 252 (tazama, rasa, mneme, secureyeoman-lite)
+
 ## [2026.3.13] - 2026-03-13
 
 ### Added — Bootable ISO & VM Testing

@@ -378,7 +378,7 @@ pub(crate) async fn handle_tazama_export(args: &serde_json::Value) -> McpToolRes
                 "path": export_path,
                 "format": export_format,
                 "status": "ok",
-                "message": format!("Tazama not reachable at {}", bridge.base_url()),
+                "message": "Tazama service not reachable",
                 "_source": "mock",
             }))
         }

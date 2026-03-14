@@ -37,12 +37,20 @@ impl AequiBridge {
         &self.base_url
     }
 
+    fn build_client() -> Result<reqwest::Client, String> {
+        reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(5))
+            .connect_timeout(std::time::Duration::from_secs(2))
+            .build()
+            .map_err(|e| e.to_string())
+    }
+
     async fn get(
         &self,
         path: &str,
         query: &[(String, String)],
     ) -> Result<serde_json::Value, String> {
-        let client = reqwest::Client::new();
+        let client = Self::build_client()?;
         let url = format!("{}{}", self.base_url, path);
         let mut req = client.get(&url).query(query);
         if let Some(ref key) = self.api_key {
@@ -56,7 +64,7 @@ impl AequiBridge {
     }
 
     async fn post(&self, path: &str, body: serde_json::Value) -> Result<serde_json::Value, String> {
-        let client = reqwest::Client::new();
+        let client = Self::build_client()?;
         let url = format!("{}{}", self.base_url, path);
         let mut req = client.post(&url).json(&body);
         if let Some(ref key) = self.api_key {

@@ -66,7 +66,9 @@ impl AgentRegistry {
         let capabilities = Self::extract_capabilities(&config);
 
         // Extract domain from metadata if provided (metadata is serde_json::Value)
-        let domain: Option<String> = config.metadata.get("domain")
+        let domain: Option<String> = config
+            .metadata
+            .get("domain")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 

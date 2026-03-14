@@ -57,7 +57,7 @@ pub(crate) fn translate_photis(intent: &Intent) -> Result<Translation> {
                     serde_json::to_string(&body).unwrap(),
                 ],
                 description: format!("Create task: {}", title),
-                permission: PermissionLevel::Safe,
+                permission: PermissionLevel::SystemWrite,
                 explanation: "Creates a new task in Photis Nadi via MCP bridge".to_string(),
             })
         }
@@ -85,7 +85,7 @@ pub(crate) fn translate_photis(intent: &Intent) -> Result<Translation> {
                     serde_json::to_string(&body).unwrap(),
                 ],
                 description: format!("Update task {}", task_id),
-                permission: PermissionLevel::Safe,
+                permission: PermissionLevel::SystemWrite,
                 explanation: "Updates a task in Photis Nadi via MCP bridge".to_string(),
             })
         }

@@ -336,7 +336,7 @@ pub(crate) async fn handle_shruti_export(args: &serde_json::Value) -> McpToolRes
                 "path": export_path,
                 "format": export_format,
                 "status": "ok",
-                "message": format!("Shruti not reachable at {}", bridge.base_url()),
+                "message": "Shruti service not reachable",
                 "_source": "mock",
             }))
         }

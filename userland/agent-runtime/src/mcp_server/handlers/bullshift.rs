@@ -397,8 +397,16 @@ pub(crate) async fn handle_bullshift_strategy(args: &serde_json::Value) -> McpTo
             }
         }
         op @ ("start" | "stop" | "backtest") => {
-            let params_json: Option<serde_json::Value> =
-                params.as_ref().and_then(|p| serde_json::from_str(p).ok());
+            let params_json: Option<serde_json::Value> = match &params {
+                Some(p) => match serde_json::from_str(p) {
+                    Ok(v) => Some(v),
+                    Err(_) => {
+                        warn!("BullShift: invalid JSON in strategy params");
+                        return helpers::error_result("Invalid JSON in 'params' argument");
+                    }
+                },
+                None => None,
+            };
             let body = serde_json::json!({
                 "action": op,
                 "name": name,

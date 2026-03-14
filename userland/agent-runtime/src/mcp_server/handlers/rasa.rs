@@ -360,7 +360,7 @@ pub(crate) async fn handle_rasa_export(args: &serde_json::Value) -> McpToolResul
                 "format": export_format,
                 "quality": quality.unwrap_or(100),
                 "status": "ok",
-                "message": format!("Rasa not reachable at {}", bridge.base_url()),
+                "message": "Rasa service not reachable",
                 "_source": "mock",
             }))
         }

@@ -318,7 +318,7 @@ pub(crate) async fn handle_delta_push(args: &serde_json::Value) -> McpToolResult
                 "status": "pushed",
                 "repo": repo,
                 "branch": branch.unwrap_or_else(|| "main".to_string()),
-                "message": format!("Delta not reachable at {}", bridge.base_url()),
+                "message": "Delta service not reachable",
                 "_source": "mock",
             }))
         }

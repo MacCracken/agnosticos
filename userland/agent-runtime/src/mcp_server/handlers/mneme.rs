@@ -303,7 +303,7 @@ pub(crate) async fn handle_mneme_ai(args: &serde_json::Value) -> McpToolResult {
             success_result(serde_json::json!({
                 "action": action,
                 "status": "processing",
-                "message": format!("Mneme not reachable at {}", bridge.base_url()),
+                "message": "Mneme service not reachable",
                 "_source": "mock",
             }))
         }

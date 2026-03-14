@@ -398,7 +398,7 @@ pub(crate) async fn handle_photis_sync(args: &serde_json::Value) -> McpToolResul
             "status": "offline",
             "direction": direction,
             "service_online": false,
-            "message": format!("Photis Nadi not reachable at {}", bridge.base_url()),
+            "message": "Photis Nadi service not reachable",
             "_source": "mock",
         }))
     }
