@@ -35,10 +35,6 @@ impl SynapseBridge {
         }
     }
 
-    pub fn base_url(&self) -> &str {
-        &self.base_url
-    }
-
     fn build_client() -> Result<reqwest::Client, String> {
         reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(5))

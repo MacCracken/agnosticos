@@ -421,6 +421,27 @@ pub(crate) static PATTERNS: Lazy<HashMap<String, Regex>> = Lazy::new(|| {
         "yeoman_workflows",
         r"(?i)^(?:yeoman|secureyeoman)\s+(workflow|workflows)\s+(list|create|run|stop|status|delete)(\s+(.+))?$",
     );
+    // Agnostic crew management
+    r(
+        "agnostic_run_crew",
+        r"(?i)^agnostic\s+(run[\s_]?crew|crew[\s_]?run)\s+(.+?)(\s+(?:preset|using)\s+(.+))?$",
+    );
+    r(
+        "agnostic_crew_status",
+        r"(?i)^agnostic\s+crew\s+(status|check)\s+(\S+)$",
+    );
+    r(
+        "agnostic_list_presets",
+        r"(?i)^agnostic\s+(list\s+)?presets(\s+(.+))?$",
+    );
+    r(
+        "agnostic_list_definitions",
+        r"(?i)^agnostic\s+(list\s+)?(definitions|agents)(\s+(.+))?$",
+    );
+    r(
+        "agnostic_create_agent",
+        r"(?i)^agnostic\s+create\s+agent\s+(\S+)\s+(.+?)(?:\s+role\s+(.+))?$",
+    );
     // Delta additional
     r(
         "delta_branches",

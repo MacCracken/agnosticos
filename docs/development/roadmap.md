@@ -108,6 +108,17 @@ for desktop/networking/GPU stack.
 | H26 | **HIGH** | Upgrade `reqwest` 0.11 → 0.12+ | Eliminates unmaintained `rustls-pemfile` 1.x (RUSTSEC-2025-0134). Breaking change — workspace-wide migration needed (all 6 crates depend on it). |
 | H27 | **MEDIUM** | Implement `sd_notify` for systemd services | `agent-runtime` and `llm-gateway` use `Type=notify` in systemd units but don't send `READY=1`. Causes service startup failures on ISO boot. Either implement sd_notify via `libsystemd` crate or change to `Type=simple`. |
 | H28 | **MEDIUM** | Systemd unit `Type=notify` → `Type=simple` fallback | Short-term fix: change service units to `Type=simple` so daimon/hoosh start without sd_notify. Long-term: implement proper readiness notification (H27). |
+| H29 | **MEDIUM** | SSRF: validate MCP bridge env var URLs | `*_URL` env vars (SYNAPSE_URL, BULLSHIFT_URL, etc.) accept arbitrary URLs. Should reject `file://`, cloud metadata IPs (169.254.x.x), and non-localhost targets. Affects all 10 bridge structs. |
+| H30 | **MEDIUM** | Delta `delta_review`: require `pr_id` for mutating actions | `approve`, `reject`, `comment` actions don't require `pr_id`. Should return error if `pr_id` is None for non-list actions. |
+| H31 | **LOW** | MCP bridge: reuse `reqwest::Client` across calls | All bridge structs create a new `reqwest::Client` per `get()`/`post()` call via `build_client()`. Should store client in struct or use `Lazy` static for connection pool reuse. |
+| H32 | **LOW** | MCP handlers: add string length limits on inputs | No handler validates input string length. A multi-MB string in `name`, `prompt`, etc. gets serialized to JSON and forwarded. Add limits in `extract_required_string`/`get_optional_string_arg`. |
+| H33 | **LOW** | PhotisBridge: add `connect_timeout` | PhotisBridge uses per-request `.timeout()` but no `connect_timeout()`, unlike other bridges that use `build_client()` with 2s connect timeout. |
+
+### Recently Fixed (Audit Round 17 — 2026-03-14)
+
+**Security**: Photis `TaskCreate`/`TaskUpdate` permissions changed from `Safe` → `SystemWrite` (write ops incorrectly marked read-only). Bridge URL removed from 6 mock error messages (info leak). BullShift strategy `params` JSON parse failure now returns error instead of silently dropping invalid input.
+
+**Performance**: Added `build_client()` with 5s timeout + 2s connect timeout to AequiBridge and AgnosticBridge (previously used `reqwest::Client::new()` with no timeout — potential DoS via hung bridge).
 
 ### Recently Fixed (15 items cleared + 4 non-issues removed + 2 unmaintained deps removed)
 

@@ -99,6 +99,11 @@ impl Interpreter {
             | Intent::AgnosticTestReport { .. }
             | Intent::AgnosticListSuites { .. }
             | Intent::AgnosticAgentStatus { .. }
+            | Intent::AgnosticRunCrew { .. }
+            | Intent::AgnosticCrewStatus { .. }
+            | Intent::AgnosticListPresets { .. }
+            | Intent::AgnosticListDefinitions { .. }
+            | Intent::AgnosticCreateAgent { .. }
             | Intent::AgnosticCoverage { .. }
             | Intent::AgnosticSchedule { .. } => agnostic::translate_agnostic(intent),
 

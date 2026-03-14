@@ -211,6 +211,23 @@ pub enum Intent {
     AgnosticListSuites { category: Option<String> },
     /// Get QA agent status from Agnostic
     AgnosticAgentStatus { agent_type: Option<String> },
+    /// Run an agent crew in Agnostic
+    AgnosticRunCrew {
+        title: String,
+        preset: Option<String>,
+    },
+    /// Get crew run status
+    AgnosticCrewStatus { crew_id: String },
+    /// List agent crew presets
+    AgnosticListPresets { domain: Option<String> },
+    /// List agent definitions
+    AgnosticListDefinitions { domain: Option<String> },
+    /// Create a new agent definition
+    AgnosticCreateAgent {
+        agent_key: String,
+        name: String,
+        role: String,
+    },
     /// Get code coverage from Agnostic
     AgnosticCoverage {
         action: String,

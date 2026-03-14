@@ -116,6 +116,57 @@ impl Interpreter {
             }
         }
 
+        if let Some(caps) = self.try_captures("agnostic_run_crew", input_lower) {
+            let title = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();
+            let preset = caps
+                .get(4)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !title.is_empty() {
+                return Intent::AgnosticRunCrew { title, preset };
+            }
+        }
+
+        if let Some(caps) = self.try_captures("agnostic_crew_status", input_lower) {
+            let crew_id = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();
+            if !crew_id.is_empty() {
+                return Intent::AgnosticCrewStatus { crew_id };
+            }
+        }
+
+        if let Some(caps) = self.try_captures("agnostic_list_presets", input_lower) {
+            let domain = caps
+                .get(3)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            return Intent::AgnosticListPresets { domain };
+        }
+
+        if let Some(caps) = self.try_captures("agnostic_list_definitions", input_lower) {
+            let domain = caps
+                .get(4)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            return Intent::AgnosticListDefinitions { domain };
+        }
+
+        if let Some(caps) = self.try_captures("agnostic_create_agent", input_lower) {
+            let agent_key = caps.get(1).map_or("", |m| m.as_str()).trim().to_string();
+            let name = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();
+            let role = caps
+                .get(3)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty())
+                .unwrap_or_default();
+            if !agent_key.is_empty() && !name.is_empty() {
+                return Intent::AgnosticCreateAgent {
+                    agent_key,
+                    name,
+                    role,
+                };
+            }
+        }
+
         // --- Edge fleet management intents (before greedy list/show) ---
         if let Some(caps) = self.try_captures("edge_list", input_lower) {
             let status = caps

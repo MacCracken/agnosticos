@@ -222,6 +222,148 @@ pub(crate) fn translate_agnostic(intent: &Intent) -> Result<Translation> {
             })
         }
 
+        Intent::AgnosticRunCrew { title, preset } => {
+            let mut args_json = serde_json::Map::new();
+            args_json.insert(
+                "title".to_string(),
+                serde_json::Value::String(title.clone()),
+            );
+            args_json.insert(
+                "description".to_string(),
+                serde_json::Value::String(title.clone()),
+            );
+            if let Some(p) = preset {
+                args_json.insert("preset".to_string(), serde_json::Value::String(p.clone()));
+            }
+            let body = serde_json::json!({"name": "agnostic_run_crew", "arguments": args_json});
+            Ok(Translation {
+                command: "curl".to_string(),
+                args: vec![
+                    "-s".to_string(),
+                    "-X".to_string(),
+                    "POST".to_string(),
+                    "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
+                    "-H".to_string(),
+                    "Content-Type: application/json".to_string(),
+                    "-d".to_string(),
+                    serde_json::to_string(&body).unwrap(),
+                ],
+                description: format!("Agnostic: run crew '{}'", title),
+                permission: PermissionLevel::SystemWrite,
+                explanation: "Runs an agent crew via Agnostic MCP bridge".to_string(),
+            })
+        }
+
+        Intent::AgnosticCrewStatus { crew_id } => {
+            let mut args_json = serde_json::Map::new();
+            args_json.insert(
+                "crew_id".to_string(),
+                serde_json::Value::String(crew_id.clone()),
+            );
+            let body = serde_json::json!({"name": "agnostic_crew_status", "arguments": args_json});
+            Ok(Translation {
+                command: "curl".to_string(),
+                args: vec![
+                    "-s".to_string(),
+                    "-X".to_string(),
+                    "POST".to_string(),
+                    "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
+                    "-H".to_string(),
+                    "Content-Type: application/json".to_string(),
+                    "-d".to_string(),
+                    serde_json::to_string(&body).unwrap(),
+                ],
+                description: format!("Agnostic: crew status {}", crew_id),
+                permission: PermissionLevel::Safe,
+                explanation: "Checks crew run status via Agnostic MCP bridge".to_string(),
+            })
+        }
+
+        Intent::AgnosticListPresets { domain } => {
+            let mut args_json = serde_json::Map::new();
+            if let Some(d) = domain {
+                args_json.insert("domain".to_string(), serde_json::Value::String(d.clone()));
+            }
+            let body = serde_json::json!({"name": "agnostic_list_presets", "arguments": args_json});
+            Ok(Translation {
+                command: "curl".to_string(),
+                args: vec![
+                    "-s".to_string(),
+                    "-X".to_string(),
+                    "POST".to_string(),
+                    "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
+                    "-H".to_string(),
+                    "Content-Type: application/json".to_string(),
+                    "-d".to_string(),
+                    serde_json::to_string(&body).unwrap(),
+                ],
+                description: "Agnostic: list presets".to_string(),
+                permission: PermissionLevel::Safe,
+                explanation: "Lists agent crew presets via Agnostic MCP bridge".to_string(),
+            })
+        }
+
+        Intent::AgnosticListDefinitions { domain } => {
+            let mut args_json = serde_json::Map::new();
+            if let Some(d) = domain {
+                args_json.insert("domain".to_string(), serde_json::Value::String(d.clone()));
+            }
+            let body =
+                serde_json::json!({"name": "agnostic_list_definitions", "arguments": args_json});
+            Ok(Translation {
+                command: "curl".to_string(),
+                args: vec![
+                    "-s".to_string(),
+                    "-X".to_string(),
+                    "POST".to_string(),
+                    "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
+                    "-H".to_string(),
+                    "Content-Type: application/json".to_string(),
+                    "-d".to_string(),
+                    serde_json::to_string(&body).unwrap(),
+                ],
+                description: "Agnostic: list agent definitions".to_string(),
+                permission: PermissionLevel::Safe,
+                explanation: "Lists agent definitions via Agnostic MCP bridge".to_string(),
+            })
+        }
+
+        Intent::AgnosticCreateAgent {
+            agent_key,
+            name,
+            role,
+        } => {
+            let mut args_json = serde_json::Map::new();
+            args_json.insert(
+                "agent_key".to_string(),
+                serde_json::Value::String(agent_key.clone()),
+            );
+            args_json.insert("name".to_string(), serde_json::Value::String(name.clone()));
+            args_json.insert("role".to_string(), serde_json::Value::String(role.clone()));
+            args_json.insert("goal".to_string(), serde_json::Value::String(role.clone()));
+            args_json.insert(
+                "backstory".to_string(),
+                serde_json::Value::String(format!("Agent specializing in {}", role)),
+            );
+            let body = serde_json::json!({"name": "agnostic_create_agent", "arguments": args_json});
+            Ok(Translation {
+                command: "curl".to_string(),
+                args: vec![
+                    "-s".to_string(),
+                    "-X".to_string(),
+                    "POST".to_string(),
+                    "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
+                    "-H".to_string(),
+                    "Content-Type: application/json".to_string(),
+                    "-d".to_string(),
+                    serde_json::to_string(&body).unwrap(),
+                ],
+                description: format!("Agnostic: create agent '{}'", agent_key),
+                permission: PermissionLevel::SystemWrite,
+                explanation: "Creates a new agent definition via Agnostic MCP bridge".to_string(),
+            })
+        }
+
         _ => unreachable!("translate_agnostic called with non-agnostic intent"),
     }
 }

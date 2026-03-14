@@ -12,18 +12,8 @@ pub mod types;
 #[cfg(test)]
 mod tests;
 
-// Re-export all public types so callers can still use `crate::mcp_server::X`.
-pub use handlers::aequi::AequiBridge;
-pub use handlers::agnostic::AgnosticBridge;
-pub use handlers::bullshift::BullShiftBridge;
-pub use handlers::delta::DeltaBridge;
-pub use handlers::mneme::MnemeBridge;
+// Re-export public types so callers can use `crate::mcp_server::X`.
 pub use handlers::photis::PhotisBridge;
-pub use handlers::rasa::RasaBridge;
-pub use handlers::shruti::ShrutiBridge;
-pub use handlers::synapse::SynapseBridge;
-pub use handlers::tazama::TazamaBridge;
-pub use handlers::yeoman::YeomanBridge;
 pub use manifest::build_tool_manifest;
 pub use types::{
     ExternalMcpTool, McpContentBlock, McpToolCall, McpToolDescription, McpToolManifest,

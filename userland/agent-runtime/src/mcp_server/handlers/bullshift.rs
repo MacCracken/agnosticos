@@ -2,7 +2,8 @@ use tracing::{info, warn};
 use uuid::Uuid;
 
 use super::super::helpers::{
-    extract_required_string, get_optional_string_arg, success_result, validate_enum_opt,
+    error_result, extract_required_string, get_optional_string_arg, success_result,
+    validate_enum_opt,
 };
 use super::super::types::McpToolResult;
 
@@ -33,10 +34,6 @@ impl BullShiftBridge {
                 .unwrap_or_else(|_| "http://127.0.0.1:8075".to_string()),
             api_key: std::env::var("BULLSHIFT_API_KEY").ok(),
         }
-    }
-
-    pub fn base_url(&self) -> &str {
-        &self.base_url
     }
 
     fn build_client() -> Result<reqwest::Client, String> {
@@ -402,7 +399,7 @@ pub(crate) async fn handle_bullshift_strategy(args: &serde_json::Value) -> McpTo
                     Ok(v) => Some(v),
                     Err(_) => {
                         warn!("BullShift: invalid JSON in strategy params");
-                        return helpers::error_result("Invalid JSON in 'params' argument");
+                        return error_result("Invalid JSON in 'params' argument".to_string());
                     }
                 },
                 None => None,
