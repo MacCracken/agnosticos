@@ -274,5 +274,68 @@ pub(crate) static PATTERNS: Lazy<HashMap<String, Regex>> = Lazy::new(|| {
         "shruti_export",
         r"(?i)^shruti\s+export(?:\s+(?:to|as)\s+(.+?))?(\s+(?:format|as)\s+(wav|flac|mp3|aac|ogg))?$",
     );
+    // --- Tazama video editor intents ---
+    r(
+        "tazama_project",
+        r"(?i)^tazama\s+(project|video)\s+(create|open|save|close|info|list)(\s+(.+))?$",
+    );
+    r(
+        "tazama_timeline",
+        r"(?i)^tazama\s+(add|remove|split|trim|list|reorder)\s+(clip|clips)(\s+(\S+))?(\s+(?:at|position)\s+(\d+(?:\.\d+)?))?$",
+    );
+    r(
+        "tazama_effects",
+        r"(?i)^tazama\s+(apply|remove|list|preview)\s+(effect|effects|transition|transitions)(\s+(?:type\s+)?(transition|color_grade|filter|text_overlay))?(\s+(?:on|to)\s+(\S+))?$",
+    );
+    r(
+        "tazama_ai",
+        r"(?i)^tazama\s+(scene[\s_]?detect|auto[\s_]?cut|subtitle[\s_]?gen|style[\s_]?transfer|color[\s_]?grade|smart[\s_]?transition)(\s+(.+))?$",
+    );
+    r(
+        "tazama_export",
+        r"(?i)^tazama\s+export(?:\s+(?:to|as)\s+(.+?))?(\s+(?:format|as)\s+(mp4|webm|mov|avi|mkv))?$",
+    );
+    // --- Rasa image editor intents ---
+    r(
+        "rasa_canvas",
+        r"(?i)^rasa\s+(canvas|image)\s+(create|open|save|close|info|list)(\s+(.+))?$",
+    );
+    r(
+        "rasa_layers",
+        r"(?i)^rasa\s+(add|remove|reorder|merge|list|duplicate)\s+(layer|layers)(\s+(\S+))?(\s+(?:type|kind)\s+(raster|vector|text|adjustment))?$",
+    );
+    r(
+        "rasa_tools",
+        r"(?i)^rasa\s+(brush|select|crop|resize|transform|fill)(\s+(.+))?$",
+    );
+    r(
+        "rasa_ai",
+        r"(?i)^rasa\s+(inpaint|upscale|remove[\s_]?bg|gen[\s_]?fill|style[\s_]?transfer|text[\s_]?to[\s_]?image|smart[\s_]?select)(\s+(.+))?$",
+    );
+    r(
+        "rasa_export",
+        r"(?i)^rasa\s+export(?:\s+(?:to|as)\s+(.+?))?(\s+(?:format|as)\s+(png|jpg|webp|svg|tiff|psd))?$",
+    );
+    // --- Mneme knowledge base intents ---
+    r(
+        "mneme_notebook",
+        r"(?i)^mneme\s+(notebook|notebooks)\s+(create|open|delete|list|info)(\s+(.+))?$",
+    );
+    r(
+        "mneme_notes",
+        r"(?i)^mneme\s+(create|edit|delete|list|get)\s+(note|notes)(\s+(.+))?(\s+(?:in|notebook)\s+(\S+))?$",
+    );
+    r(
+        "mneme_search",
+        r"(?i)^mneme\s+search\s+(.+?)(\s+(?:mode|using)\s+(keyword|semantic|hybrid))?$",
+    );
+    r(
+        "mneme_ai",
+        r"(?i)^mneme\s+(summarize|extract[\s_]?concepts|auto[\s_]?link|generate|translate)(\s+(?:note\s+)?(\S+))?$",
+    );
+    r(
+        "mneme_graph",
+        r"(?i)^mneme\s+graph\s+(view|connections|suggest[\s_]?links|stats)(\s+(?:node\s+)?(\S+))?$",
+    );
     p
 });

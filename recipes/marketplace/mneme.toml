@@ -1,0 +1,112 @@
+# Mneme — AI-Native Knowledge Base & Notes for AGNOS
+# Personal knowledge management with semantic AI.
+# Cargo workspace: Rust.
+#
+# Status: Planned — No releases yet.
+# Source: https://github.com/MacCracken/mneme
+
+[package]
+name = "mneme"
+version = "0.1.0"
+description = "Mneme — AI-Native Knowledge Base & Notes"
+license = "GPL-3.0"
+groups = ["productivity", "knowledge"]
+release = 1
+arch = "x86_64"
+
+[source]
+local = true
+build_dir = "target/release"
+github_release = "MacCracken/mneme"
+release_asset = "mneme"
+
+[depends]
+runtime = [
+    "glibc",
+    "sqlite",
+]
+build = [
+    "rust",
+    "gcc",
+    "make",
+    "pkgconf",
+    "sqlite",
+]
+
+[marketplace]
+category = "productivity/knowledge"
+runtime = "native-binary"
+publisher = "Mneme"
+tags = ["notes", "knowledge", "ai", "rag", "wiki", "semantic"]
+min_agnos_version = "2026.3.11"
+
+[marketplace.sandbox]
+seccomp_mode = "desktop"
+network_access = false
+data_dir = "~/.local/share/mneme/"
+
+[[marketplace.sandbox.landlock]]
+path = "~/.local/share/mneme/"
+access = "rw"
+
+[[marketplace.sandbox.landlock]]
+path = "/tmp/.X11-unix/"
+access = "ro"
+
+[marketplace.sandbox.wayland]
+protocols = ["core", "xdg-shell"]
+
+[marketplace.services]
+ports = []
+depends_on = []
+
+[build]
+pre_build = ""
+configure = ""
+make = "cargo build --release --workspace"
+check = "cargo test --workspace"
+install = """
+# Install binary
+mkdir -p $PKG/usr/local/bin
+cp target/release/mneme $PKG/usr/local/bin/mneme
+
+# Create data directory
+mkdir -p $PKG/usr/share/mneme
+
+# Desktop entry
+mkdir -p $PKG/usr/share/applications
+cat > $PKG/usr/share/applications/mneme.desktop << 'DSKEOF'
+[Desktop Entry]
+Name=Mneme
+Comment=AI-Native Knowledge Base & Notes
+Exec=/usr/local/bin/mneme
+Icon=mneme
+Type=Application
+Categories=Office;TextTools;
+MimeType=text/markdown;text/plain;
+Keywords=notes;knowledge;ai;rag;wiki;semantic;
+DSKEOF
+
+# Systemd user service (background semantic indexer)
+mkdir -p $PKG/usr/lib/systemd/user
+cat > $PKG/usr/lib/systemd/user/mneme-indexer.service << 'SVCEOF'
+[Unit]
+Description=Mneme Semantic Indexer
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/mneme --indexer-only
+Environment=RUST_LOG=info
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target
+SVCEOF
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

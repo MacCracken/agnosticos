@@ -7,12 +7,15 @@ mod filesystem;
 mod knowledge;
 mod marketplace;
 mod misc;
+mod mneme;
 mod network;
 mod package;
 mod photis;
 mod process;
+mod rasa;
 mod shruti;
 mod system;
+mod tazama;
 
 use anyhow::{anyhow, Result};
 
@@ -112,6 +115,27 @@ impl Interpreter {
             | Intent::ShrutiMixer { .. }
             | Intent::ShrutiTransport { .. }
             | Intent::ShrutiExport { .. } => shruti::translate_shruti(intent),
+
+            // Tazama video editor
+            Intent::TazamaProject { .. }
+            | Intent::TazamaTimeline { .. }
+            | Intent::TazamaEffects { .. }
+            | Intent::TazamaAi { .. }
+            | Intent::TazamaExport { .. } => tazama::translate_tazama(intent),
+
+            // Rasa image editor
+            Intent::RasaCanvas { .. }
+            | Intent::RasaLayers { .. }
+            | Intent::RasaTools { .. }
+            | Intent::RasaAi { .. }
+            | Intent::RasaExport { .. } => rasa::translate_rasa(intent),
+
+            // Mneme knowledge base
+            Intent::MnemeNotebook { .. }
+            | Intent::MnemeNotes { .. }
+            | Intent::MnemeSearch { .. }
+            | Intent::MnemeAi { .. }
+            | Intent::MnemeGraph { .. } => mneme::translate_mneme(intent),
 
             // Photis Nadi
             Intent::TaskList { .. }

@@ -66,7 +66,7 @@ async fn test_tools_manifest_endpoint() {
         .await
         .unwrap();
     let manifest: McpToolManifest = serde_json::from_slice(&body).unwrap();
-    assert_eq!(manifest.tools.len(), 41);
+    assert_eq!(manifest.tools.len(), 56);
 }
 
 #[tokio::test]
@@ -389,7 +389,7 @@ async fn test_mcp_result_serialization() {
 #[tokio::test]
 async fn test_manifest_contains_all_31_tools() {
     let manifest = build_tool_manifest();
-    assert_eq!(manifest.tools.len(), 41);
+    assert_eq!(manifest.tools.len(), 56);
     let names: Vec<&str> = manifest.tools.iter().map(|t| t.name.as_str()).collect();
     for expected in &[
         "agnos_health",
@@ -428,6 +428,26 @@ async fn test_manifest_contains_all_31_tools() {
         "edge_update",
         "edge_health",
         "edge_decommission",
+        "shruti_session",
+        "shruti_tracks",
+        "shruti_mixer",
+        "shruti_transport",
+        "shruti_export",
+        "tazama_project",
+        "tazama_timeline",
+        "tazama_effects",
+        "tazama_ai",
+        "tazama_export",
+        "rasa_canvas",
+        "rasa_layers",
+        "rasa_tools",
+        "rasa_ai",
+        "rasa_export",
+        "mneme_notebook",
+        "mneme_notes",
+        "mneme_search",
+        "mneme_ai",
+        "mneme_graph",
     ] {
         assert!(names.contains(expected), "Missing tool: {}", expected);
     }

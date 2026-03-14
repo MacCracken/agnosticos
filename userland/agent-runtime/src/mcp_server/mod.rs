@@ -18,6 +18,9 @@ pub use handlers::agnostic::AgnosticBridge;
 pub use handlers::delta::DeltaBridge;
 pub use handlers::photis::PhotisBridge;
 pub use handlers::shruti::ShrutiBridge;
+pub use handlers::tazama::TazamaBridge;
+pub use handlers::rasa::RasaBridge;
+pub use handlers::mneme::MnemeBridge;
 pub use manifest::build_tool_manifest;
 pub use types::{
     ExternalMcpTool, McpContentBlock, McpToolCall, McpToolDescription, McpToolManifest,
@@ -39,6 +42,9 @@ use handlers::delta::*;
 use handlers::edge::*;
 use handlers::photis::*;
 use handlers::shruti::*;
+use handlers::tazama::*;
+use handlers::rasa::*;
+use handlers::mneme::*;
 use helpers::error_result;
 
 // ---------------------------------------------------------------------------
@@ -230,6 +236,21 @@ async fn dispatch_tool_call(
         "shruti_mixer" => handle_shruti_mixer(&call.arguments).await,
         "shruti_transport" => handle_shruti_transport(&call.arguments).await,
         "shruti_export" => handle_shruti_export(&call.arguments).await,
+        "tazama_project" => handle_tazama_project(&call.arguments).await,
+        "tazama_timeline" => handle_tazama_timeline(&call.arguments).await,
+        "tazama_effects" => handle_tazama_effects(&call.arguments).await,
+        "tazama_ai" => handle_tazama_ai(&call.arguments).await,
+        "tazama_export" => handle_tazama_export(&call.arguments).await,
+        "rasa_canvas" => handle_rasa_canvas(&call.arguments).await,
+        "rasa_layers" => handle_rasa_layers(&call.arguments).await,
+        "rasa_tools" => handle_rasa_tools(&call.arguments).await,
+        "rasa_ai" => handle_rasa_ai(&call.arguments).await,
+        "rasa_export" => handle_rasa_export(&call.arguments).await,
+        "mneme_notebook" => handle_mneme_notebook(&call.arguments).await,
+        "mneme_notes" => handle_mneme_notes(&call.arguments).await,
+        "mneme_search" => handle_mneme_search(&call.arguments).await,
+        "mneme_ai" => handle_mneme_ai(&call.arguments).await,
+        "mneme_graph" => handle_mneme_graph(&call.arguments).await,
         unknown => {
             // Check external tools
             let external = state.external_mcp_tools.read().await;

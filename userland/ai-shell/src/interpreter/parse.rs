@@ -222,6 +222,223 @@ impl Interpreter {
             return Intent::ShrutiExport { path, format };
         }
 
+        // --- Tazama video editor intents (before greedy list/show) ---
+        if let Some(caps) = self.try_captures("tazama_project", input_lower) {
+            let action = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();
+            let name = caps
+                .get(4)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !action.is_empty() {
+                return Intent::TazamaProject { action, name };
+            }
+        }
+
+        if let Some(caps) = self.try_captures("tazama_timeline", input_lower) {
+            let action = caps.get(1).map_or("", |m| m.as_str()).trim().to_string();
+            let clip_id = caps
+                .get(4)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            let position = caps
+                .get(6)
+                .and_then(|m| m.as_str().trim().parse::<f64>().ok());
+            if !action.is_empty() {
+                return Intent::TazamaTimeline {
+                    action,
+                    clip_id,
+                    position,
+                };
+            }
+        }
+
+        if let Some(caps) = self.try_captures("tazama_effects", input_lower) {
+            let action = caps.get(1).map_or("", |m| m.as_str()).trim().to_string();
+            let effect_type = caps
+                .get(4)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            let clip_id = caps
+                .get(6)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !action.is_empty() {
+                return Intent::TazamaEffects {
+                    action,
+                    effect_type,
+                    clip_id,
+                };
+            }
+        }
+
+        if let Some(caps) = self.try_captures("tazama_ai", input_lower) {
+            let action = caps
+                .get(1)
+                .map_or("", |m| m.as_str())
+                .trim()
+                .replace(' ', "_")
+                .to_string();
+            let options = caps
+                .get(3)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !action.is_empty() {
+                return Intent::TazamaAi { action, options };
+            }
+        }
+
+        if let Some(caps) = self.try_captures("tazama_export", input_lower) {
+            let path = caps
+                .get(1)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            let format = caps
+                .get(3)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            return Intent::TazamaExport { path, format };
+        }
+
+        // --- Rasa image editor intents (before greedy list/show) ---
+        if let Some(caps) = self.try_captures("rasa_canvas", input_lower) {
+            let action = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();
+            let name = caps
+                .get(4)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !action.is_empty() {
+                return Intent::RasaCanvas { action, name };
+            }
+        }
+
+        if let Some(caps) = self.try_captures("rasa_layers", input_lower) {
+            let action = caps.get(1).map_or("", |m| m.as_str()).trim().to_string();
+            let name = caps
+                .get(4)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            let kind = caps
+                .get(6)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !action.is_empty() {
+                return Intent::RasaLayers { action, name, kind };
+            }
+        }
+
+        if let Some(caps) = self.try_captures("rasa_tools", input_lower) {
+            let action = caps.get(1).map_or("", |m| m.as_str()).trim().to_string();
+            let params = caps
+                .get(3)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !action.is_empty() {
+                return Intent::RasaTools { action, params };
+            }
+        }
+
+        if let Some(caps) = self.try_captures("rasa_ai", input_lower) {
+            let action = caps
+                .get(1)
+                .map_or("", |m| m.as_str())
+                .trim()
+                .replace(' ', "_")
+                .to_string();
+            let prompt = caps
+                .get(3)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !action.is_empty() {
+                return Intent::RasaAi { action, prompt };
+            }
+        }
+
+        if let Some(caps) = self.try_captures("rasa_export", input_lower) {
+            let path = caps
+                .get(1)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            let format = caps
+                .get(3)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            return Intent::RasaExport { path, format };
+        }
+
+        // --- Mneme knowledge base intents (before greedy list/show) ---
+        if let Some(caps) = self.try_captures("mneme_notebook", input_lower) {
+            let action = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();
+            let name = caps
+                .get(4)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !action.is_empty() {
+                return Intent::MnemeNotebook { action, name };
+            }
+        }
+
+        if let Some(caps) = self.try_captures("mneme_notes", input_lower) {
+            let action = caps.get(1).map_or("", |m| m.as_str()).trim().to_string();
+            let title = caps
+                .get(4)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            let notebook_id = caps
+                .get(6)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !action.is_empty() {
+                return Intent::MnemeNotes {
+                    action,
+                    title,
+                    notebook_id,
+                };
+            }
+        }
+
+        if let Some(caps) = self.try_captures("mneme_search", input_lower) {
+            let query = caps.get(1).map_or("", |m| m.as_str()).trim().to_string();
+            let mode = caps
+                .get(3)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !query.is_empty() {
+                return Intent::MnemeSearch { query, mode };
+            }
+        }
+
+        if let Some(caps) = self.try_captures("mneme_ai", input_lower) {
+            let action = caps
+                .get(1)
+                .map_or("", |m| m.as_str())
+                .trim()
+                .replace(' ', "_")
+                .to_string();
+            let note_id = caps
+                .get(3)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !action.is_empty() {
+                return Intent::MnemeAi { action, note_id };
+            }
+        }
+
+        if let Some(caps) = self.try_captures("mneme_graph", input_lower) {
+            let action = caps
+                .get(1)
+                .map_or("", |m| m.as_str())
+                .trim()
+                .replace(' ', "_")
+                .to_string();
+            let node_id = caps
+                .get(3)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !action.is_empty() {
+                return Intent::MnemeGraph { action, node_id };
+            }
+        }
+
         // --- Delta code hosting intents (before greedy list/show) ---
         if let Some(caps) = self.try_captures("delta_create_repo", input_lower) {
             let name = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();

@@ -252,6 +252,85 @@ pub enum Intent {
         path: Option<String>,
         format: Option<String>,
     },
+    /// Manage Tazama video projects
+    TazamaProject {
+        action: String,
+        name: Option<String>,
+    },
+    /// Manage Tazama timeline clips
+    TazamaTimeline {
+        action: String,
+        clip_id: Option<String>,
+        position: Option<f64>,
+    },
+    /// Apply Tazama effects and transitions
+    TazamaEffects {
+        action: String,
+        effect_type: Option<String>,
+        clip_id: Option<String>,
+    },
+    /// Run Tazama AI video features
+    TazamaAi {
+        action: String,
+        options: Option<String>,
+    },
+    /// Export Tazama video project
+    TazamaExport {
+        path: Option<String>,
+        format: Option<String>,
+    },
+    /// Manage Rasa image canvases
+    RasaCanvas {
+        action: String,
+        name: Option<String>,
+    },
+    /// Manage Rasa image layers
+    RasaLayers {
+        action: String,
+        name: Option<String>,
+        kind: Option<String>,
+    },
+    /// Apply Rasa image tools
+    RasaTools {
+        action: String,
+        params: Option<String>,
+    },
+    /// Run Rasa AI image features
+    RasaAi {
+        action: String,
+        prompt: Option<String>,
+    },
+    /// Export Rasa image
+    RasaExport {
+        path: Option<String>,
+        format: Option<String>,
+    },
+    /// Manage Mneme notebooks
+    MnemeNotebook {
+        action: String,
+        name: Option<String>,
+    },
+    /// Manage Mneme notes
+    MnemeNotes {
+        action: String,
+        title: Option<String>,
+        notebook_id: Option<String>,
+    },
+    /// Search Mneme knowledge base
+    MnemeSearch {
+        query: String,
+        mode: Option<String>,
+    },
+    /// Run Mneme AI knowledge features
+    MnemeAi {
+        action: String,
+        note_id: Option<String>,
+    },
+    /// Manage Mneme knowledge graph
+    MnemeGraph {
+        action: String,
+        node_id: Option<String>,
+    },
     /// Piped command chain (cmd1 | cmd2)
     Pipeline { commands: Vec<String> },
     /// Question/Information request

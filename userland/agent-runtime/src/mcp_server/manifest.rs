@@ -368,6 +368,162 @@ pub fn build_tool_manifest() -> McpToolManifest {
             }),
             vec![]
         ),
+        // ----- Tazama video editor tools (5) -----
+        tool!(
+            "tazama_project",
+            "Manage Tazama video projects (create, open, save, close, info, list)",
+            json!({
+                "action": {"type": "string", "description": "Action: create, open, save, close, info, list"},
+                "name": {"type": "string", "description": "Project name (for create/open)"}
+            }),
+            vec!["action"]
+        ),
+        tool!(
+            "tazama_timeline",
+            "Manage timeline clips (add, remove, split, trim, list, reorder)",
+            json!({
+                "action": {"type": "string", "description": "Action: add, remove, split, trim, list, reorder"},
+                "clip_id": {"type": "string", "description": "Clip ID"},
+                "position": {"type": "number", "description": "Position in seconds"},
+                "duration": {"type": "number", "description": "Duration in seconds"}
+            }),
+            vec!["action"]
+        ),
+        tool!(
+            "tazama_effects",
+            "Apply effects and transitions to video clips",
+            json!({
+                "action": {"type": "string", "description": "Action: apply, remove, list, preview"},
+                "effect_type": {"type": "string", "description": "Effect type: transition, color_grade, filter, text_overlay"},
+                "name": {"type": "string", "description": "Effect name"},
+                "clip_id": {"type": "string", "description": "Target clip ID"}
+            }),
+            vec!["action"]
+        ),
+        tool!(
+            "tazama_ai",
+            "AI video features (scene detection, auto-cut, subtitles, style transfer)",
+            json!({
+                "action": {"type": "string", "description": "Action: scene_detect, auto_cut, subtitle_gen, style_transfer, color_grade, smart_transition"},
+                "options": {"type": "string", "description": "Additional options as JSON string"}
+            }),
+            vec!["action"]
+        ),
+        tool!(
+            "tazama_export",
+            "Export/render Tazama video project",
+            json!({
+                "path": {"type": "string", "description": "Output file path"},
+                "format": {"type": "string", "description": "Video format: mp4, webm, mov, avi, mkv"},
+                "resolution": {"type": "string", "description": "Output resolution (e.g. 1920x1080)"},
+                "quality": {"type": "string", "description": "Quality: low, medium, high, lossless"}
+            }),
+            vec![]
+        ),
+        // ----- Rasa image editor tools (5) -----
+        tool!(
+            "rasa_canvas",
+            "Manage Rasa image canvases (create, open, save, close, info, list)",
+            json!({
+                "action": {"type": "string", "description": "Action: create, open, save, close, info, list"},
+                "name": {"type": "string", "description": "Canvas/image name"},
+                "width": {"type": "integer", "description": "Canvas width in pixels"},
+                "height": {"type": "integer", "description": "Canvas height in pixels"}
+            }),
+            vec!["action"]
+        ),
+        tool!(
+            "rasa_layers",
+            "Manage image layers (add, remove, reorder, merge, list, duplicate)",
+            json!({
+                "action": {"type": "string", "description": "Action: add, remove, reorder, merge, list, duplicate"},
+                "layer_id": {"type": "string", "description": "Layer ID"},
+                "name": {"type": "string", "description": "Layer name"},
+                "kind": {"type": "string", "description": "Layer type: raster, vector, text, adjustment"}
+            }),
+            vec!["action"]
+        ),
+        tool!(
+            "rasa_tools",
+            "Apply image editing tools (brush, select, crop, resize, transform, fill)",
+            json!({
+                "action": {"type": "string", "description": "Action: brush, select, crop, resize, transform, fill"},
+                "params": {"type": "string", "description": "Tool-specific parameters as JSON string"}
+            }),
+            vec!["action"]
+        ),
+        tool!(
+            "rasa_ai",
+            "AI image features (inpainting, upscaling, background removal, generative fill)",
+            json!({
+                "action": {"type": "string", "description": "Action: inpaint, upscale, remove_bg, gen_fill, style_transfer, text_to_image, smart_select"},
+                "prompt": {"type": "string", "description": "Text prompt for generative features"},
+                "options": {"type": "string", "description": "Additional options as JSON string"}
+            }),
+            vec!["action"]
+        ),
+        tool!(
+            "rasa_export",
+            "Export Rasa image to file",
+            json!({
+                "path": {"type": "string", "description": "Output file path"},
+                "format": {"type": "string", "description": "Image format: png, jpg, webp, svg, tiff, psd"},
+                "quality": {"type": "integer", "description": "Quality 1-100 (for lossy formats)"}
+            }),
+            vec![]
+        ),
+        // ----- Mneme knowledge base tools (5) -----
+        tool!(
+            "mneme_notebook",
+            "Manage Mneme notebooks (create, open, delete, list, info)",
+            json!({
+                "action": {"type": "string", "description": "Action: create, open, delete, list, info"},
+                "name": {"type": "string", "description": "Notebook name"}
+            }),
+            vec!["action"]
+        ),
+        tool!(
+            "mneme_notes",
+            "Manage notes within Mneme notebooks (create, edit, delete, list, get)",
+            json!({
+                "action": {"type": "string", "description": "Action: create, edit, delete, list, get"},
+                "notebook_id": {"type": "string", "description": "Parent notebook ID"},
+                "title": {"type": "string", "description": "Note title"},
+                "content": {"type": "string", "description": "Note content (markdown)"}
+            }),
+            vec!["action"]
+        ),
+        tool!(
+            "mneme_search",
+            "Semantic search across Mneme knowledge base",
+            json!({
+                "query": {"type": "string", "description": "Search query"},
+                "notebook_id": {"type": "string", "description": "Filter to specific notebook"},
+                "limit": {"type": "integer", "description": "Max results to return"},
+                "mode": {"type": "string", "description": "Search mode: keyword, semantic, hybrid"}
+            }),
+            vec!["query"]
+        ),
+        tool!(
+            "mneme_ai",
+            "AI knowledge features (summarize, extract concepts, auto-link, generate)",
+            json!({
+                "action": {"type": "string", "description": "Action: summarize, extract_concepts, auto_link, generate, translate"},
+                "note_id": {"type": "string", "description": "Target note ID"},
+                "prompt": {"type": "string", "description": "Additional prompt/instructions"}
+            }),
+            vec!["action"]
+        ),
+        tool!(
+            "mneme_graph",
+            "Knowledge graph operations (view, connections, suggest links, stats)",
+            json!({
+                "action": {"type": "string", "description": "Action: view, connections, suggest_links, stats"},
+                "node_id": {"type": "string", "description": "Graph node ID"},
+                "depth": {"type": "integer", "description": "Traversal depth for connections"}
+            }),
+            vec!["action"]
+        ),
     ];
 
     McpToolManifest { tools }
