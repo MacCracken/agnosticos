@@ -66,7 +66,7 @@ async fn test_tools_manifest_endpoint() {
         .await
         .unwrap();
     let manifest: McpToolManifest = serde_json::from_slice(&body).unwrap();
-    assert_eq!(manifest.tools.len(), 71);
+    assert_eq!(manifest.tools.len(), 100);
 }
 
 #[tokio::test]
@@ -389,7 +389,7 @@ async fn test_mcp_result_serialization() {
 #[tokio::test]
 async fn test_manifest_contains_all_31_tools() {
     let manifest = build_tool_manifest();
-    assert_eq!(manifest.tools.len(), 71);
+    assert_eq!(manifest.tools.len(), 100);
     let names: Vec<&str> = manifest.tools.iter().map(|t| t.name.as_str()).collect();
     for expected in &[
         "agnos_health",
@@ -463,6 +463,35 @@ async fn test_manifest_contains_all_31_tools() {
         "yeoman_tools",
         "yeoman_integrations",
         "yeoman_status",
+        "synapse_benchmark",
+        "synapse_quantize",
+        "bullshift_accounts",
+        "bullshift_history",
+        "yeoman_logs",
+        "yeoman_workflows",
+        "delta_branches",
+        "delta_review",
+        "aequi_invoices",
+        "aequi_reports",
+        "agnostic_coverage",
+        "agnostic_schedule",
+        "agnostic_run_crew",
+        "agnostic_crew_status",
+        "agnostic_list_presets",
+        "agnostic_list_definitions",
+        "agnostic_create_agent",
+        "shruti_plugins",
+        "shruti_ai",
+        "tazama_media",
+        "tazama_subtitles",
+        "rasa_batch",
+        "rasa_templates",
+        "mneme_import",
+        "mneme_tags",
+        "photis_boards",
+        "photis_notes",
+        "edge_logs",
+        "edge_config",
     ] {
         assert!(names.contains(expected), "Missing tool: {}", expected);
     }

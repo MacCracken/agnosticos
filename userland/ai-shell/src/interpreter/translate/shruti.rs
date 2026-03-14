@@ -222,6 +222,75 @@ pub(crate) fn translate_shruti(intent: &Intent) -> Result<Translation> {
             })
         }
 
+        Intent::ShrutiPlugins { action, name } => {
+            let mut args_json = serde_json::Map::new();
+            args_json.insert(
+                "action".to_string(),
+                serde_json::Value::String(action.clone()),
+            );
+            if let Some(n) = name {
+                args_json.insert("name".to_string(), serde_json::Value::String(n.clone()));
+            }
+            let body = serde_json::json!({"name": "shruti_plugins", "arguments": args_json});
+            Ok(Translation {
+                command: "curl".to_string(),
+                args: vec![
+                    "-s".to_string(),
+                    "-X".to_string(),
+                    "POST".to_string(),
+                    "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
+                    "-H".to_string(),
+                    "Content-Type: application/json".to_string(),
+                    "-d".to_string(),
+                    serde_json::to_string(&body).unwrap(),
+                ],
+                description: format!(
+                    "Shruti plugins: {}{}",
+                    action,
+                    name.as_ref().map_or(String::new(), |n| format!(" '{}'", n))
+                ),
+                permission: match action.as_str() {
+                    "list" | "info" => PermissionLevel::Safe,
+                    _ => PermissionLevel::SystemWrite,
+                },
+                explanation: "Manages audio plugins via Shruti".to_string(),
+            })
+        }
+
+        Intent::ShrutiAi { action, track } => {
+            let mut args_json = serde_json::Map::new();
+            args_json.insert(
+                "action".to_string(),
+                serde_json::Value::String(action.clone()),
+            );
+            if let Some(t) = track {
+                args_json.insert("track".to_string(), serde_json::Value::String(t.clone()));
+            }
+            let body = serde_json::json!({"name": "shruti_ai", "arguments": args_json});
+            Ok(Translation {
+                command: "curl".to_string(),
+                args: vec![
+                    "-s".to_string(),
+                    "-X".to_string(),
+                    "POST".to_string(),
+                    "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
+                    "-H".to_string(),
+                    "Content-Type: application/json".to_string(),
+                    "-d".to_string(),
+                    serde_json::to_string(&body).unwrap(),
+                ],
+                description: format!(
+                    "Shruti AI: {}{}",
+                    action,
+                    track
+                        .as_ref()
+                        .map_or(String::new(), |t| format!(" on '{}'", t))
+                ),
+                permission: PermissionLevel::SystemWrite,
+                explanation: "Runs AI audio features via Shruti".to_string(),
+            })
+        }
+
         _ => unreachable!("translate_shruti called with non-shruti intent"),
     }
 }

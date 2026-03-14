@@ -1,4 +1,4 @@
-use tracing::info;
+use tracing::{info, warn};
 
 use super::super::helpers::{
     error_result, extract_required_string, get_optional_string_arg, success_result,
@@ -208,4 +208,90 @@ pub(crate) async fn handle_edge_decommission(
         }
         Err(e) => error_result(format!("Failed to decommission: {}", e)),
     }
+}
+
+pub(crate) async fn handle_edge_logs(state: &ApiState, args: &serde_json::Value) -> McpToolResult {
+    let action = match extract_required_string(args, "action") {
+        Ok(a) => a,
+        Err(e) => return e,
+    };
+
+    let action_opt = Some(action.clone());
+    if let Err(e) = validate_enum_opt(
+        &action_opt,
+        "action",
+        &["query", "tail", "search", "export"],
+    ) {
+        return e;
+    }
+
+    let node_id = get_optional_string_arg(args, "node_id");
+    let level = get_optional_string_arg(args, "level");
+    let limit = get_optional_string_arg(args, "limit");
+    let since = get_optional_string_arg(args, "since");
+
+    if let Err(e) = validate_enum_opt(&level, "level", &["debug", "info", "warn", "error"]) {
+        return e;
+    }
+
+    // Validate node exists if specified
+    if let Some(ref nid) = node_id {
+        let fleet = state.edge_fleet.read().await;
+        if fleet.get_node(nid).is_none() {
+            return error_result(format!("Node {} not found", nid));
+        }
+    }
+
+    // Log querying is not yet backed by real storage — return mock
+    warn!(action = %action, node_id = ?node_id, "Edge: logs {} (mock — no log storage yet)", action);
+    info!(action = %action, "Edge: logs {}", action);
+    success_result(serde_json::json!({
+        "entries": [],
+        "total": 0,
+        "action": action,
+        "node_id": node_id,
+        "level": level,
+        "limit": limit,
+        "since": since,
+        "_source": "mock",
+    }))
+}
+
+pub(crate) async fn handle_edge_config(
+    state: &ApiState,
+    args: &serde_json::Value,
+) -> McpToolResult {
+    let action = match extract_required_string(args, "action") {
+        Ok(a) => a,
+        Err(e) => return e,
+    };
+
+    let action_opt = Some(action.clone());
+    if let Err(e) = validate_enum_opt(&action_opt, "action", &["get", "set", "list", "reset"]) {
+        return e;
+    }
+
+    let node_id = get_optional_string_arg(args, "node_id");
+    let key = get_optional_string_arg(args, "key");
+    let value = get_optional_string_arg(args, "value");
+
+    // Validate node exists if specified
+    if let Some(ref nid) = node_id {
+        let fleet = state.edge_fleet.read().await;
+        if fleet.get_node(nid).is_none() {
+            return error_result(format!("Node {} not found", nid));
+        }
+    }
+
+    // Config management is not yet backed by real storage — return mock
+    warn!(action = %action, node_id = ?node_id, "Edge: config {} (mock — no config storage yet)", action);
+    info!(action = %action, "Edge: config {}", action);
+    success_result(serde_json::json!({
+        "config": {},
+        "node_id": node_id,
+        "action": action,
+        "key": key,
+        "value": value,
+        "_source": "mock",
+    }))
 }

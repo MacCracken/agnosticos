@@ -139,6 +139,77 @@ pub(crate) fn translate_aequi(intent: &Intent) -> Result<Translation> {
             })
         }
 
+        Intent::AequiInvoices { action, client } => {
+            let mut args_json = serde_json::Map::new();
+            args_json.insert(
+                "action".to_string(),
+                serde_json::Value::String(action.clone()),
+            );
+            if let Some(c) = client {
+                args_json.insert("client".to_string(), serde_json::Value::String(c.clone()));
+            }
+            let body = serde_json::json!({"name": "aequi_invoices", "arguments": args_json});
+            Ok(Translation {
+                command: "curl".to_string(),
+                args: vec![
+                    "-s".to_string(),
+                    "-X".to_string(),
+                    "POST".to_string(),
+                    "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
+                    "-H".to_string(),
+                    "Content-Type: application/json".to_string(),
+                    "-d".to_string(),
+                    serde_json::to_string(&body).unwrap(),
+                ],
+                description: format!(
+                    "Aequi invoices: {}{}",
+                    action,
+                    client
+                        .as_ref()
+                        .map_or(String::new(), |c| format!(" for '{}'", c))
+                ),
+                permission: match action.as_str() {
+                    "list" | "status" => PermissionLevel::Safe,
+                    _ => PermissionLevel::SystemWrite,
+                },
+                explanation: "Manages invoices via Aequi".to_string(),
+            })
+        }
+
+        Intent::AequiReports { action, period } => {
+            let mut args_json = serde_json::Map::new();
+            args_json.insert(
+                "action".to_string(),
+                serde_json::Value::String(action.clone()),
+            );
+            if let Some(p) = period {
+                args_json.insert("period".to_string(), serde_json::Value::String(p.clone()));
+            }
+            let body = serde_json::json!({"name": "aequi_reports", "arguments": args_json});
+            Ok(Translation {
+                command: "curl".to_string(),
+                args: vec![
+                    "-s".to_string(),
+                    "-X".to_string(),
+                    "POST".to_string(),
+                    "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
+                    "-H".to_string(),
+                    "Content-Type: application/json".to_string(),
+                    "-d".to_string(),
+                    serde_json::to_string(&body).unwrap(),
+                ],
+                description: format!(
+                    "Aequi report: {}{}",
+                    action,
+                    period
+                        .as_ref()
+                        .map_or(String::new(), |p| format!(" ({})", p))
+                ),
+                permission: PermissionLevel::Safe,
+                explanation: "Generates financial report via Aequi".to_string(),
+            })
+        }
+
         _ => unreachable!("translate_aequi called with non-aequi intent"),
     }
 }

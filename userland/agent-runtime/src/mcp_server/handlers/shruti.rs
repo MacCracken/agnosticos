@@ -342,3 +342,132 @@ pub(crate) async fn handle_shruti_export(args: &serde_json::Value) -> McpToolRes
         }
     }
 }
+
+pub(crate) async fn handle_shruti_plugins(args: &serde_json::Value) -> McpToolResult {
+    let action = match extract_required_string(args, "action") {
+        Ok(a) => a,
+        Err(e) => return e,
+    };
+
+    let action_opt = Some(action.clone());
+    if let Err(e) = validate_enum_opt(
+        &action_opt,
+        "action",
+        &["list", "load", "unload", "scan", "info"],
+    ) {
+        return e;
+    }
+
+    let name = get_optional_string_arg(args, "name");
+    let format = get_optional_string_arg(args, "format");
+    let path = get_optional_string_arg(args, "path");
+
+    if let Err(e) = validate_enum_opt(&format, "format", &["vst3", "clap", "lv2"]) {
+        return e;
+    }
+
+    let bridge = ShrutiBridge::new();
+
+    match action.as_str() {
+        "list" | "info" => {
+            let mut query = Vec::new();
+            if let Some(ref n) = name {
+                query.push(("name".to_string(), n.clone()));
+            }
+            if let Some(ref f) = format {
+                query.push(("format".to_string(), f.clone()));
+            }
+            match bridge.get("/api/v1/plugins", &query).await {
+                Ok(response) => {
+                    info!("Shruti: {} plugins (bridged)", action);
+                    success_result(response)
+                }
+                Err(e) => {
+                    warn!(error = %e, "Shruti bridge: falling back to mock for plugins {}", action);
+                    success_result(serde_json::json!({
+                        "plugins": [],
+                        "total": 0,
+                        "formats": ["vst3", "clap", "lv2"],
+                        "_source": "mock",
+                    }))
+                }
+            }
+        }
+        op @ ("load" | "unload" | "scan") => {
+            let body = serde_json::json!({
+                "action": op,
+                "name": name,
+                "format": format,
+                "path": path,
+            });
+            match bridge.post("/api/v1/plugins", body).await {
+                Ok(response) => {
+                    info!(action = %op, "Shruti: {} plugin (bridged)", op);
+                    success_result(response)
+                }
+                Err(e) => {
+                    warn!(error = %e, "Shruti bridge: falling back to mock for {} plugin", op);
+                    let plugin_id = Uuid::new_v4().to_string();
+                    success_result(serde_json::json!({
+                        "id": plugin_id,
+                        "action": op,
+                        "name": name.unwrap_or_else(|| "unknown".to_string()),
+                        "format": format.unwrap_or_else(|| "vst3".to_string()),
+                        "status": "ok",
+                        "_source": "mock",
+                    }))
+                }
+            }
+        }
+        _ => unreachable!(),
+    }
+}
+
+pub(crate) async fn handle_shruti_ai(args: &serde_json::Value) -> McpToolResult {
+    let action = match extract_required_string(args, "action") {
+        Ok(a) => a,
+        Err(e) => return e,
+    };
+
+    let action_opt = Some(action.clone());
+    if let Err(e) = validate_enum_opt(
+        &action_opt,
+        "action",
+        &[
+            "mix_suggest",
+            "master",
+            "stem_split",
+            "denoise",
+            "transcribe",
+            "generate",
+        ],
+    ) {
+        return e;
+    }
+
+    let track = get_optional_string_arg(args, "track");
+    let options = get_optional_string_arg(args, "options");
+    let bridge = ShrutiBridge::new();
+
+    let body = serde_json::json!({
+        "action": action,
+        "track": track,
+        "options": options,
+    });
+
+    match bridge.post("/api/v1/ai", body).await {
+        Ok(response) => {
+            info!(action = %action, "Shruti: AI {} (bridged)", action);
+            success_result(response)
+        }
+        Err(e) => {
+            warn!(error = %e, "Shruti bridge: falling back to mock for AI {}", action);
+            success_result(serde_json::json!({
+                "action": action,
+                "status": "ok",
+                "message": "Shruti AI not reachable",
+                "_source": "mock",
+            }))
+        }
+    }
+}

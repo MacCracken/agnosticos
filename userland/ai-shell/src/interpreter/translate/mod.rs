@@ -89,34 +89,44 @@ impl Interpreter {
             | Intent::AequiScheduleC { .. }
             | Intent::AequiImportBank { .. }
             | Intent::AequiBalance
-            | Intent::AequiReceipts { .. } => aequi::translate_aequi(intent),
+            | Intent::AequiReceipts { .. }
+            | Intent::AequiInvoices { .. }
+            | Intent::AequiReports { .. } => aequi::translate_aequi(intent),
 
             // Agnostic QA platform
             Intent::AgnosticRunSuite { .. }
             | Intent::AgnosticTestStatus { .. }
             | Intent::AgnosticTestReport { .. }
             | Intent::AgnosticListSuites { .. }
-            | Intent::AgnosticAgentStatus { .. } => agnostic::translate_agnostic(intent),
+            | Intent::AgnosticAgentStatus { .. }
+            | Intent::AgnosticCoverage { .. }
+            | Intent::AgnosticSchedule { .. } => agnostic::translate_agnostic(intent),
 
             // Delta code hosting
             Intent::DeltaCreateRepo { .. }
             | Intent::DeltaListRepos
             | Intent::DeltaPr { .. }
             | Intent::DeltaPush { .. }
-            | Intent::DeltaCiStatus { .. } => delta::translate_delta(intent),
+            | Intent::DeltaCiStatus { .. }
+            | Intent::DeltaBranches { .. }
+            | Intent::DeltaReview { .. } => delta::translate_delta(intent),
 
             // Edge fleet management
             Intent::EdgeListNodes { .. }
             | Intent::EdgeDeploy { .. }
             | Intent::EdgeUpdate { .. }
             | Intent::EdgeHealth { .. }
-            | Intent::EdgeDecommission { .. } => edge::translate_edge(intent),
+            | Intent::EdgeDecommission { .. }
+            | Intent::EdgeLogs { .. }
+            | Intent::EdgeConfig { .. } => edge::translate_edge(intent),
 
             // Shruti DAW
             Intent::ShrutiSession { .. }
             | Intent::ShrutiTrack { .. }
             | Intent::ShrutiMixer { .. }
             | Intent::ShrutiTransport { .. }
+            | Intent::ShrutiPlugins { .. }
+            | Intent::ShrutiAi { .. }
             | Intent::ShrutiExport { .. } => shruti::translate_shruti(intent),
 
             // Tazama video editor
@@ -124,6 +134,8 @@ impl Interpreter {
             | Intent::TazamaTimeline { .. }
             | Intent::TazamaEffects { .. }
             | Intent::TazamaAi { .. }
+            | Intent::TazamaMedia { .. }
+            | Intent::TazamaSubtitles { .. }
             | Intent::TazamaExport { .. } => tazama::translate_tazama(intent),
 
             // Rasa image editor
@@ -131,6 +143,8 @@ impl Interpreter {
             | Intent::RasaLayers { .. }
             | Intent::RasaTools { .. }
             | Intent::RasaAi { .. }
+            | Intent::RasaBatch { .. }
+            | Intent::RasaTemplates { .. }
             | Intent::RasaExport { .. } => rasa::translate_rasa(intent),
 
             // Mneme knowledge base
@@ -138,6 +152,8 @@ impl Interpreter {
             | Intent::MnemeNotes { .. }
             | Intent::MnemeSearch { .. }
             | Intent::MnemeAi { .. }
+            | Intent::MnemeImport { .. }
+            | Intent::MnemeTags { .. }
             | Intent::MnemeGraph { .. } => mneme::translate_mneme(intent),
 
             // Synapse LLM management
@@ -145,28 +161,36 @@ impl Interpreter {
             | Intent::SynapseServe { .. }
             | Intent::SynapseFinetune { .. }
             | Intent::SynapseChat { .. }
-            | Intent::SynapseStatus => synapse::translate_synapse(intent),
+            | Intent::SynapseStatus
+            | Intent::SynapseBenchmark { .. }
+            | Intent::SynapseQuantize { .. } => synapse::translate_synapse(intent),
 
             // BullShift trading
             Intent::BullShiftPortfolio { .. }
             | Intent::BullShiftOrders { .. }
             | Intent::BullShiftMarket { .. }
             | Intent::BullShiftAlerts { .. }
-            | Intent::BullShiftStrategy { .. } => bullshift::translate_bullshift(intent),
+            | Intent::BullShiftStrategy { .. }
+            | Intent::BullShiftAccounts { .. }
+            | Intent::BullShiftHistory { .. } => bullshift::translate_bullshift(intent),
 
             // SecureYeoman AI platform
             Intent::YeomanAgents { .. }
             | Intent::YeomanTasks { .. }
             | Intent::YeomanTools { .. }
             | Intent::YeomanIntegrations { .. }
-            | Intent::YeomanStatus => yeoman::translate_yeoman(intent),
+            | Intent::YeomanStatus
+            | Intent::YeomanLogs { .. }
+            | Intent::YeomanWorkflows { .. } => yeoman::translate_yeoman(intent),
 
             // Photis Nadi
             Intent::TaskList { .. }
             | Intent::TaskCreate { .. }
             | Intent::TaskUpdate { .. }
             | Intent::RitualCheck { .. }
-            | Intent::ProductivityStats { .. } => photis::translate_photis(intent),
+            | Intent::ProductivityStats { .. }
+            | Intent::PhotoisBoards { .. }
+            | Intent::PhotoisNotes { .. } => photis::translate_photis(intent),
 
             // Shell / pipeline
             Intent::ShellCommand { .. } | Intent::Pipeline { .. } => misc::translate_misc(intent),

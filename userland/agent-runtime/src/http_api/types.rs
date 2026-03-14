@@ -55,6 +55,10 @@ pub struct RegisterAgentRequest {
     /// be used as the agent's ID; otherwise a new UUID is generated server-side.
     #[serde(default)]
     pub id: Option<Uuid>,
+    /// Domain this agent belongs to (e.g. "qa", "data-engineering", "devops").
+    /// Used for grouping in the Agent HUD and scoping capabilities.
+    #[serde(default)]
+    pub domain: Option<String>,
     #[serde(default)]
     pub capabilities: Vec<String>,
     #[serde(default)]
@@ -115,6 +119,9 @@ pub struct AgentDetail {
     pub id: Uuid,
     pub name: String,
     pub status: String,
+    /// Domain this agent belongs to (e.g. "qa", "data-engineering", "devops").
+    #[serde(default)]
+    pub domain: Option<String>,
     pub capabilities: Vec<String>,
     pub resource_needs: ResourceNeeds,
     pub metadata: HashMap<String, String>,

@@ -76,9 +76,12 @@ pub(crate) async fn handle_register_agent(
 
     let client_id: Option<Uuid> = get_string_arg(args, "id").and_then(|s| Uuid::parse_str(&s).ok());
 
+    let domain = get_string_arg(args, "domain");
+
     let req = RegisterAgentRequest {
         name: name.clone(),
         id: client_id,
+        domain: domain.clone(),
         capabilities,
         resource_needs: ResourceNeeds::default(),
         metadata,
@@ -106,6 +109,7 @@ pub(crate) async fn handle_register_agent(
         id,
         name: req.name.clone(),
         status: "registered".to_string(),
+        domain: req.domain,
         capabilities: req.capabilities,
         resource_needs: req.resource_needs,
         metadata: req.metadata,

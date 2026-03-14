@@ -294,7 +294,11 @@ pub(crate) async fn handle_bullshift_alerts(args: &serde_json::Value) -> McpTool
     let value = get_optional_string_arg(args, "value");
     let alert_id = get_optional_string_arg(args, "alert_id");
 
-    if let Err(e) = validate_enum_opt(&condition, "condition", &["above", "below", "percent_change"]) {
+    if let Err(e) = validate_enum_opt(
+        &condition,
+        "condition",
+        &["above", "below", "percent_change"],
+    ) {
         return e;
     }
 
@@ -393,9 +397,8 @@ pub(crate) async fn handle_bullshift_strategy(args: &serde_json::Value) -> McpTo
             }
         }
         op @ ("start" | "stop" | "backtest") => {
-            let params_json: Option<serde_json::Value> = params.as_ref().and_then(|p| {
-                serde_json::from_str(p).ok()
-            });
+            let params_json: Option<serde_json::Value> =
+                params.as_ref().and_then(|p| serde_json::from_str(p).ok());
             let body = serde_json::json!({
                 "action": op,
                 "name": name,
@@ -420,5 +423,95 @@ pub(crate) async fn handle_bullshift_strategy(args: &serde_json::Value) -> McpTo
             }
         }
         _ => unreachable!(),
+    }
+}
+
+pub(crate) async fn handle_bullshift_accounts(args: &serde_json::Value) -> McpToolResult {
+    let action = match extract_required_string(args, "action") {
+        Ok(a) => a,
+        Err(e) => return e,
+    };
+
+    let action_opt = Some(action.clone());
+    if let Err(e) = validate_enum_opt(&action_opt, "action", &["list", "switch", "status", "info"])
+    {
+        return e;
+    }
+
+    let account_id = get_optional_string_arg(args, "account_id");
+    let broker = get_optional_string_arg(args, "broker");
+
+    let bridge = BullShiftBridge::new();
+    let mut query = vec![("action".to_string(), action.clone())];
+    if let Some(ref id) = account_id {
+        query.push(("account_id".to_string(), id.clone()));
+    }
+    if let Some(ref b) = broker {
+        query.push(("broker".to_string(), b.clone()));
+    }
+
+    match bridge.get("/api/v1/accounts", &query).await {
+        Ok(response) => {
+            info!("BullShift: {} accounts (bridged)", action);
+            success_result(response)
+        }
+        Err(e) => {
+            warn!(error = %e, "BullShift bridge: falling back to mock for accounts {}", action);
+            success_result(serde_json::json!({
+                "accounts": [],
+                "total": 0,
+                "_source": "mock",
+            }))
+        }
+    }
+}
+
+pub(crate) async fn handle_bullshift_history(args: &serde_json::Value) -> McpToolResult {
+    let action = match extract_required_string(args, "action") {
+        Ok(a) => a,
+        Err(e) => return e,
+    };
+
+    let action_opt = Some(action.clone());
+    if let Err(e) = validate_enum_opt(
+        &action_opt,
+        "action",
+        &["trades", "dividends", "tax_report", "export"],
+    ) {
+        return e;
+    }
+
+    let period = get_optional_string_arg(args, "period");
+    let format = get_optional_string_arg(args, "format");
+
+    if let Err(e) = validate_enum_opt(&period, "period", &["1d", "1w", "1m", "3m", "1y", "all"]) {
+        return e;
+    }
+    if let Err(e) = validate_enum_opt(&format, "format", &["json", "csv"]) {
+        return e;
+    }
+
+    let bridge = BullShiftBridge::new();
+    let mut query = vec![("action".to_string(), action.clone())];
+    if let Some(ref p) = period {
+        query.push(("period".to_string(), p.clone()));
+    }
+    if let Some(ref f) = format {
+        query.push(("format".to_string(), f.clone()));
+    }
+
+    match bridge.get("/api/v1/history", &query).await {
+        Ok(response) => {
+            info!("BullShift: {} history (bridged)", action);
+            success_result(response)
+        }
+        Err(e) => {
+            warn!(error = %e, "BullShift bridge: falling back to mock for history {}", action);
+            success_result(serde_json::json!({
+                "trades": [],
+                "total": 0,
+                "_source": "mock",
+            }))
+        }
     }
 }

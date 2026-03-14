@@ -145,6 +145,78 @@ pub(crate) fn translate_photis(intent: &Intent) -> Result<Translation> {
             })
         }
 
+        Intent::PhotoisBoards { action, name } => {
+            let mut args_json = serde_json::Map::new();
+            args_json.insert(
+                "action".to_string(),
+                serde_json::Value::String(action.clone()),
+            );
+            if let Some(n) = name {
+                args_json.insert("name".to_string(), serde_json::Value::String(n.clone()));
+            }
+            let body = serde_json::json!({"name": "photis_boards", "arguments": args_json});
+            Ok(Translation {
+                command: "curl".to_string(),
+                args: vec![
+                    "-s".to_string(),
+                    "-X".to_string(),
+                    "POST".to_string(),
+                    "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
+                    "-H".to_string(),
+                    "Content-Type: application/json".to_string(),
+                    "-d".to_string(),
+                    serde_json::to_string(&body).unwrap(),
+                ],
+                description: format!(
+                    "Photis boards: {}{}",
+                    action,
+                    name.as_ref().map_or(String::new(), |n| format!(" '{}'", n))
+                ),
+                permission: match action.as_str() {
+                    "list" | "info" => PermissionLevel::Safe,
+                    _ => PermissionLevel::SystemWrite,
+                },
+                explanation: "Manages boards via Photis Nadi".to_string(),
+            })
+        }
+
+        Intent::PhotoisNotes { action, content } => {
+            let mut args_json = serde_json::Map::new();
+            args_json.insert(
+                "action".to_string(),
+                serde_json::Value::String(action.clone()),
+            );
+            if let Some(c) = content {
+                args_json.insert("content".to_string(), serde_json::Value::String(c.clone()));
+            }
+            let body = serde_json::json!({"name": "photis_notes", "arguments": args_json});
+            Ok(Translation {
+                command: "curl".to_string(),
+                args: vec![
+                    "-s".to_string(),
+                    "-X".to_string(),
+                    "POST".to_string(),
+                    "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
+                    "-H".to_string(),
+                    "Content-Type: application/json".to_string(),
+                    "-d".to_string(),
+                    serde_json::to_string(&body).unwrap(),
+                ],
+                description: format!(
+                    "Photis notes: {}{}",
+                    action,
+                    content
+                        .as_ref()
+                        .map_or(String::new(), |c| format!(" '{}'", c))
+                ),
+                permission: match action.as_str() {
+                    "list" | "get" | "search" => PermissionLevel::Safe,
+                    _ => PermissionLevel::SystemWrite,
+                },
+                explanation: "Manages notes via Photis Nadi".to_string(),
+            })
+        }
+
         _ => unreachable!("translate_photis called with non-photis intent"),
     }
 }

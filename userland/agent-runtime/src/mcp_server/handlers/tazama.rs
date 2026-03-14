@@ -347,7 +347,8 @@ pub(crate) async fn handle_tazama_export(args: &serde_json::Value) -> McpToolRes
 
     if let Some(ref fmt) = format {
         let fmt_opt = Some(fmt.clone());
-        if let Err(e) = validate_enum_opt(&fmt_opt, "format", &["mp4", "webm", "mov", "avi", "mkv"]) {
+        if let Err(e) = validate_enum_opt(&fmt_opt, "format", &["mp4", "webm", "mov", "avi", "mkv"])
+        {
             return e;
         }
     }
@@ -381,5 +382,150 @@ pub(crate) async fn handle_tazama_export(args: &serde_json::Value) -> McpToolRes
                 "_source": "mock",
             }))
         }
+    }
+}
+
+pub(crate) async fn handle_tazama_media(args: &serde_json::Value) -> McpToolResult {
+    let action = match extract_required_string(args, "action") {
+        Ok(a) => a,
+        Err(e) => return e,
+    };
+
+    let action_opt = Some(action.clone());
+    if let Err(e) = validate_enum_opt(
+        &action_opt,
+        "action",
+        &["import", "list", "info", "delete", "transcode"],
+    ) {
+        return e;
+    }
+
+    let path = get_optional_string_arg(args, "path");
+    let media_id = get_optional_string_arg(args, "media_id");
+    let format = get_optional_string_arg(args, "format");
+    let bridge = TazamaBridge::new();
+
+    match action.as_str() {
+        "list" | "info" => {
+            let mut query = Vec::new();
+            if let Some(ref mid) = media_id {
+                query.push(("media_id".to_string(), mid.clone()));
+            }
+            match bridge.get("/api/v1/media", &query).await {
+                Ok(response) => {
+                    info!("Tazama: {} media (bridged)", action);
+                    success_result(response)
+                }
+                Err(e) => {
+                    warn!(error = %e, "Tazama bridge: falling back to mock for media {}", action);
+                    success_result(serde_json::json!({
+                        "media": [],
+                        "total": 0,
+                        "_source": "mock",
+                    }))
+                }
+            }
+        }
+        op @ ("import" | "delete" | "transcode") => {
+            let body = serde_json::json!({
+                "action": op,
+                "path": path,
+                "media_id": media_id,
+                "format": format,
+            });
+            match bridge.post("/api/v1/media", body).await {
+                Ok(response) => {
+                    info!(action = %op, "Tazama: {} media (bridged)", op);
+                    success_result(response)
+                }
+                Err(e) => {
+                    warn!(error = %e, "Tazama bridge: falling back to mock for {} media", op);
+                    let mid = media_id.unwrap_or_else(|| Uuid::new_v4().to_string());
+                    success_result(serde_json::json!({
+                        "media_id": mid,
+                        "action": op,
+                        "status": "ok",
+                        "_source": "mock",
+                    }))
+                }
+            }
+        }
+        _ => unreachable!(),
+    }
+}
+
+pub(crate) async fn handle_tazama_subtitles(args: &serde_json::Value) -> McpToolResult {
+    let action = match extract_required_string(args, "action") {
+        Ok(a) => a,
+        Err(e) => return e,
+    };
+
+    let action_opt = Some(action.clone());
+    if let Err(e) = validate_enum_opt(
+        &action_opt,
+        "action",
+        &["generate", "edit", "export", "import", "list"],
+    ) {
+        return e;
+    }
+
+    let language = get_optional_string_arg(args, "language");
+    let format = get_optional_string_arg(args, "format");
+    let path = get_optional_string_arg(args, "path");
+
+    if let Err(e) = validate_enum_opt(&format, "format", &["srt", "vtt", "ass"]) {
+        return e;
+    }
+
+    let bridge = TazamaBridge::new();
+
+    match action.as_str() {
+        "list" => {
+            let mut query = Vec::new();
+            if let Some(ref lang) = language {
+                query.push(("language".to_string(), lang.clone()));
+            }
+            match bridge.get("/api/v1/subtitles", &query).await {
+                Ok(response) => {
+                    info!("Tazama: list subtitles (bridged)");
+                    success_result(response)
+                }
+                Err(e) => {
+                    warn!(error = %e, "Tazama bridge: falling back to mock for list subtitles");
+                    success_result(serde_json::json!({
+                        "subtitles": [],
+                        "total": 0,
+                        "_source": "mock",
+                    }))
+                }
+            }
+        }
+        op @ ("generate" | "edit" | "export" | "import") => {
+            let body = serde_json::json!({
+                "action": op,
+                "language": language,
+                "format": format,
+                "path": path,
+            });
+            match bridge.post("/api/v1/subtitles", body).await {
+                Ok(response) => {
+                    info!(action = %op, "Tazama: {} subtitles (bridged)", op);
+                    success_result(response)
+                }
+                Err(e) => {
+                    warn!(error = %e, "Tazama bridge: falling back to mock for {} subtitles", op);
+                    let subtitle_id = Uuid::new_v4().to_string();
+                    success_result(serde_json::json!({
+                        "subtitle_id": subtitle_id,
+                        "action": op,
+                        "language": language.unwrap_or_else(|| "en".to_string()),
+                        "format": format.unwrap_or_else(|| "srt".to_string()),
+                        "status": "ok",
+                        "_source": "mock",
+                    }))
+                }
+            }
+        }
+        _ => unreachable!(),
     }
 }

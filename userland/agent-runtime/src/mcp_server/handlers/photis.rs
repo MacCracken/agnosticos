@@ -403,3 +403,151 @@ pub(crate) async fn handle_photis_sync(args: &serde_json::Value) -> McpToolResul
         }))
     }
 }
+
+pub(crate) async fn handle_photis_boards(args: &serde_json::Value) -> McpToolResult {
+    let action = match extract_required_string(args, "action") {
+        Ok(a) => a,
+        Err(e) => return e,
+    };
+
+    let action_opt = Some(action.clone());
+    if let Err(e) = validate_enum_opt(
+        &action_opt,
+        "action",
+        &["list", "create", "delete", "rename", "info"],
+    ) {
+        return e;
+    }
+
+    let name = get_optional_string_arg(args, "name");
+    let board_id = get_optional_string_arg(args, "board_id");
+    let bridge = PhotisBridge::new();
+
+    match action.as_str() {
+        "list" | "info" => {
+            let mut query = Vec::new();
+            if let Some(ref bid) = board_id {
+                query.push(("board_id".to_string(), bid.clone()));
+            }
+            if let Some(ref n) = name {
+                query.push(("name".to_string(), n.clone()));
+            }
+            match bridge.get("/boards", &query).await {
+                Ok(response) => {
+                    info!("Photis: {} boards (bridged)", action);
+                    success_result(response)
+                }
+                Err(e) => {
+                    warn!(error = %e, "Photis bridge: falling back to mock for boards {}", action);
+                    success_result(serde_json::json!({
+                        "boards": [{"id": "default", "name": "Main Board", "task_count": 0}],
+                        "total": 1,
+                        "_source": "mock",
+                    }))
+                }
+            }
+        }
+        op @ ("create" | "delete" | "rename") => {
+            let body = serde_json::json!({
+                "action": op,
+                "name": name,
+                "board_id": board_id,
+            });
+            match bridge.post("/boards", body).await {
+                Ok(response) => {
+                    info!(action = %op, "Photis: {} board (bridged)", op);
+                    success_result(response)
+                }
+                Err(e) => {
+                    warn!(error = %e, "Photis bridge: falling back to mock for board {}", op);
+                    let bid = board_id.unwrap_or_else(|| Uuid::new_v4().to_string());
+                    success_result(serde_json::json!({
+                        "board_id": bid,
+                        "action": op,
+                        "name": name.unwrap_or_else(|| "Untitled Board".to_string()),
+                        "status": "ok",
+                        "_source": "mock",
+                    }))
+                }
+            }
+        }
+        _ => unreachable!(),
+    }
+}
+
+pub(crate) async fn handle_photis_notes(args: &serde_json::Value) -> McpToolResult {
+    let action = match extract_required_string(args, "action") {
+        Ok(a) => a,
+        Err(e) => return e,
+    };
+
+    let action_opt = Some(action.clone());
+    if let Err(e) = validate_enum_opt(
+        &action_opt,
+        "action",
+        &["create", "list", "get", "delete", "search"],
+    ) {
+        return e;
+    }
+
+    let content = get_optional_string_arg(args, "content");
+    let task_id = get_optional_string_arg(args, "task_id");
+    let note_id = get_optional_string_arg(args, "note_id");
+    let query_str = get_optional_string_arg(args, "query");
+    let bridge = PhotisBridge::new();
+
+    match action.as_str() {
+        "list" | "get" | "search" => {
+            let mut query = Vec::new();
+            if let Some(ref tid) = task_id {
+                query.push(("task_id".to_string(), tid.clone()));
+            }
+            if let Some(ref nid) = note_id {
+                query.push(("note_id".to_string(), nid.clone()));
+            }
+            if let Some(ref q) = query_str {
+                query.push(("query".to_string(), q.clone()));
+            }
+            match bridge.get("/notes", &query).await {
+                Ok(response) => {
+                    info!("Photis: {} notes (bridged)", action);
+                    success_result(response)
+                }
+                Err(e) => {
+                    warn!(error = %e, "Photis bridge: falling back to mock for notes {}", action);
+                    success_result(serde_json::json!({
+                        "notes": [],
+                        "total": 0,
+                        "_source": "mock",
+                    }))
+                }
+            }
+        }
+        op @ ("create" | "delete") => {
+            let body = serde_json::json!({
+                "action": op,
+                "content": content,
+                "task_id": task_id,
+                "note_id": note_id,
+            });
+            match bridge.post("/notes", body).await {
+                Ok(response) => {
+                    info!(action = %op, "Photis: {} note (bridged)", op);
+                    success_result(response)
+                }
+                Err(e) => {
+                    warn!(error = %e, "Photis bridge: falling back to mock for note {}", op);
+                    let nid = note_id.unwrap_or_else(|| Uuid::new_v4().to_string());
+                    success_result(serde_json::json!({
+                        "note_id": nid,
+                        "action": op,
+                        "status": "ok",
+                        "created_at": chrono::Utc::now().to_rfc3339(),
+                        "_source": "mock",
+                    }))
+                }
+            }
+        }
+        _ => unreachable!(),
+    }
+}

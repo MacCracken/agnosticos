@@ -188,10 +188,7 @@ pub(crate) fn translate_tazama(intent: &Intent) -> Result<Translation> {
                 ],
                 description: format!("Tazama AI: {}", action),
                 permission: PermissionLevel::SystemWrite,
-                explanation: format!(
-                    "Runs AI {} on Tazama video via MCP bridge",
-                    action
-                ),
+                explanation: format!("Runs AI {} on Tazama video via MCP bridge", action),
             })
         }
 
@@ -223,8 +220,79 @@ pub(crate) fn translate_tazama(intent: &Intent) -> Result<Translation> {
                         .map_or(String::new(), |f| format!(" as {}", f))
                 ),
                 permission: PermissionLevel::SystemWrite,
-                explanation: "Exports/renders Tazama video project via MCP bridge"
-                    .to_string(),
+                explanation: "Exports/renders Tazama video project via MCP bridge".to_string(),
+            })
+        }
+
+        Intent::TazamaMedia { action, path } => {
+            let mut args_json = serde_json::Map::new();
+            args_json.insert(
+                "action".to_string(),
+                serde_json::Value::String(action.clone()),
+            );
+            if let Some(p) = path {
+                args_json.insert("path".to_string(), serde_json::Value::String(p.clone()));
+            }
+            let body = serde_json::json!({"name": "tazama_media", "arguments": args_json});
+            Ok(Translation {
+                command: "curl".to_string(),
+                args: vec![
+                    "-s".to_string(),
+                    "-X".to_string(),
+                    "POST".to_string(),
+                    "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
+                    "-H".to_string(),
+                    "Content-Type: application/json".to_string(),
+                    "-d".to_string(),
+                    serde_json::to_string(&body).unwrap(),
+                ],
+                description: format!(
+                    "Tazama media: {}{}",
+                    action,
+                    path.as_ref().map_or(String::new(), |p| format!(" '{}'", p))
+                ),
+                permission: match action.as_str() {
+                    "list" | "info" => PermissionLevel::Safe,
+                    _ => PermissionLevel::SystemWrite,
+                },
+                explanation: "Manages media library via Tazama".to_string(),
+            })
+        }
+
+        Intent::TazamaSubtitles { action, language } => {
+            let mut args_json = serde_json::Map::new();
+            args_json.insert(
+                "action".to_string(),
+                serde_json::Value::String(action.clone()),
+            );
+            if let Some(l) = language {
+                args_json.insert("language".to_string(), serde_json::Value::String(l.clone()));
+            }
+            let body = serde_json::json!({"name": "tazama_subtitles", "arguments": args_json});
+            Ok(Translation {
+                command: "curl".to_string(),
+                args: vec![
+                    "-s".to_string(),
+                    "-X".to_string(),
+                    "POST".to_string(),
+                    "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
+                    "-H".to_string(),
+                    "Content-Type: application/json".to_string(),
+                    "-d".to_string(),
+                    serde_json::to_string(&body).unwrap(),
+                ],
+                description: format!(
+                    "Tazama subtitles: {}{}",
+                    action,
+                    language
+                        .as_ref()
+                        .map_or(String::new(), |l| format!(" ({})", l))
+                ),
+                permission: match action.as_str() {
+                    "list" => PermissionLevel::Safe,
+                    _ => PermissionLevel::SystemWrite,
+                },
+                explanation: "Manages subtitles via Tazama".to_string(),
             })
         }
 

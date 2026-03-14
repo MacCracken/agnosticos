@@ -1,4 +1,5 @@
 use tracing::{info, warn};
+use uuid::Uuid;
 
 use super::super::helpers::{
     error_result, extract_optional_u64, extract_required_string, get_optional_string_arg,
@@ -276,6 +277,139 @@ pub(crate) async fn handle_aequi_receipts(args: &serde_json::Value) -> McpToolRe
             success_result(serde_json::json!({
                 "receipts": filtered,
                 "total": filtered.len(),
+                "_source": "mock",
+            }))
+        }
+    }
+}
+
+pub(crate) async fn handle_aequi_invoices(args: &serde_json::Value) -> McpToolResult {
+    let action = match extract_required_string(args, "action") {
+        Ok(a) => a,
+        Err(e) => return e,
+    };
+
+    let action_opt = Some(action.clone());
+    if let Err(e) = validate_enum_opt(
+        &action_opt,
+        "action",
+        &["create", "list", "send", "void", "status"],
+    ) {
+        return e;
+    }
+
+    let client = get_optional_string_arg(args, "client");
+    let amount = get_optional_string_arg(args, "amount");
+    let invoice_id = get_optional_string_arg(args, "invoice_id");
+    let due_date = get_optional_string_arg(args, "due_date");
+
+    let bridge = AequiBridge::new();
+
+    match action.as_str() {
+        "list" | "status" => {
+            let mut query = Vec::new();
+            query.push(("action".to_string(), action.clone()));
+            if let Some(ref c) = client {
+                query.push(("client".to_string(), c.clone()));
+            }
+            if let Some(ref id) = invoice_id {
+                query.push(("invoice_id".to_string(), id.clone()));
+            }
+            match bridge.get("/api/v1/invoices", &query).await {
+                Ok(response) => {
+                    info!(action = %action, "Aequi: invoices {} (bridged)", action);
+                    success_result(response)
+                }
+                Err(e) => {
+                    warn!(error = %e, "Aequi bridge: falling back to mock for invoices {}", action);
+                    success_result(serde_json::json!({
+                        "invoices": [],
+                        "total": 0,
+                        "_source": "mock",
+                    }))
+                }
+            }
+        }
+        op @ ("create" | "send" | "void") => {
+            let mut body = serde_json::json!({
+                "action": op,
+            });
+            if let Some(ref c) = client {
+                body["client"] = serde_json::json!(c);
+            }
+            if let Some(ref a) = amount {
+                body["amount"] = serde_json::json!(a);
+            }
+            if let Some(ref id) = invoice_id {
+                body["invoice_id"] = serde_json::json!(id);
+            }
+            if let Some(ref d) = due_date {
+                body["due_date"] = serde_json::json!(d);
+            }
+            match bridge.post("/api/v1/invoices", body).await {
+                Ok(response) => {
+                    info!(action = %op, "Aequi: {} invoice (bridged)", op);
+                    success_result(response)
+                }
+                Err(e) => {
+                    warn!(error = %e, "Aequi bridge: falling back to mock for {} invoice", op);
+                    let id = invoice_id.unwrap_or_else(|| Uuid::new_v4().to_string());
+                    success_result(serde_json::json!({
+                        "invoice_id": id,
+                        "action": op,
+                        "status": "ok",
+                        "updated_at": chrono::Utc::now().to_rfc3339(),
+                        "_source": "mock",
+                    }))
+                }
+            }
+        }
+        _ => unreachable!(),
+    }
+}
+
+pub(crate) async fn handle_aequi_reports(args: &serde_json::Value) -> McpToolResult {
+    let action = match extract_required_string(args, "action") {
+        Ok(a) => a,
+        Err(e) => return e,
+    };
+
+    let action_opt = Some(action.clone());
+    if let Err(e) = validate_enum_opt(
+        &action_opt,
+        "action",
+        &["pnl", "balance_sheet", "cash_flow", "summary"],
+    ) {
+        return e;
+    }
+
+    let period = get_optional_string_arg(args, "period").unwrap_or_else(|| "ytd".to_string());
+    let year = get_optional_string_arg(args, "year");
+
+    let period_opt = Some(period.clone());
+    if let Err(e) = validate_enum_opt(&period_opt, "period", &["month", "quarter", "year", "ytd"]) {
+        return e;
+    }
+
+    let bridge = AequiBridge::new();
+    let mut query = Vec::new();
+    query.push(("type".to_string(), action.clone()));
+    query.push(("period".to_string(), period.clone()));
+    if let Some(ref y) = year {
+        query.push(("year".to_string(), y.clone()));
+    }
+
+    match bridge.get("/api/v1/reports", &query).await {
+        Ok(response) => {
+            info!(report_type = %action, "Aequi: report (bridged)");
+            success_result(response)
+        }
+        Err(e) => {
+            warn!(error = %e, "Aequi bridge: falling back to mock for report {}", action);
+            success_result(serde_json::json!({
+                "report_type": action,
+                "data": {},
+                "period": period,
                 "_source": "mock",
             }))
         }

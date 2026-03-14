@@ -128,6 +128,9 @@ struct ChatCompletionResponse {
     /// Per-personality accounting ID, echoed from X-Personality-Id request header
     #[serde(skip_serializing_if = "Option::is_none")]
     personality_id: Option<String>,
+    /// Agent domain for per-domain budget rollups, echoed from X-Agent-Domain header
+    #[serde(skip_serializing_if = "Option::is_none")]
+    agent_domain: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -205,10 +208,17 @@ async fn chat_completions(
         .and_then(|h| h.to_str().ok())
         .map(|s| s.to_string());
 
+    // AAS: Extract agent domain for per-domain token budget tracking
+    let agent_domain = headers
+        .get("x-agent-domain")
+        .and_then(|h| h.to_str().ok())
+        .map(|s| s.to_string());
+
     info!(
         request_id = %request_id,
         personality_id = personality_id.as_deref().unwrap_or("-"),
         source_service = source_service.as_deref().unwrap_or("-"),
+        agent_domain = agent_domain.as_deref().unwrap_or("-"),
         model = %payload.model,
         "chat_completions request"
     );
@@ -339,11 +349,17 @@ async fn chat_completions(
                     total_tokens,
                 },
                 personality_id,
+                agent_domain: agent_domain.clone(),
             };
 
             let mut resp_headers = HeaderMap::new();
             resp_headers.insert("x-request-id", request_id.parse().unwrap());
             resp_headers.insert("x-token-usage", total_tokens.to_string().parse().unwrap());
+            if let Some(ref domain) = agent_domain {
+                if let Ok(val) = domain.parse() {
+                    resp_headers.insert("x-agent-domain", val);
+                }
+            }
 
             (
                 StatusCode::OK,
@@ -1025,6 +1041,7 @@ mod tests {
                 total_tokens: 15,
             },
             personality_id: None,
+            agent_domain: None,
         };
 
         let json = serde_json::to_string(&resp).unwrap();
@@ -1282,6 +1299,7 @@ mod tests {
                 total_tokens: 35,
             },
             personality_id: None,
+            agent_domain: None,
         };
 
         let json_val: serde_json::Value = serde_json::to_value(&resp).unwrap();
@@ -1328,6 +1346,7 @@ mod tests {
                 total_tokens: 3,
             },
             personality_id: None,
+            agent_domain: None,
         };
         let json_val: serde_json::Value = serde_json::to_value(&resp).unwrap();
         assert_eq!(json_val["choices"].as_array().unwrap().len(), 2);
@@ -2203,6 +2222,7 @@ mod tests {
                 total_tokens: 0,
             },
             personality_id: None,
+            agent_domain: None,
         };
         let dbg = format!("{:?}", resp);
         assert!(dbg.contains("id"));
@@ -2590,6 +2610,7 @@ mod tests {
                 total_tokens: 0,
             },
             personality_id: Some("persona-sales-bot".to_string()),
+            agent_domain: None,
         };
         let json_val: serde_json::Value = serde_json::to_value(&resp).unwrap();
         assert_eq!(json_val["personality_id"], "persona-sales-bot");
@@ -2609,6 +2630,7 @@ mod tests {
                 total_tokens: 0,
             },
             personality_id: None,
+            agent_domain: None,
         };
         let json_val: serde_json::Value = serde_json::to_value(&resp).unwrap();
         // When None, personality_id should be omitted entirely (skip_serializing_if)

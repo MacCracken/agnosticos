@@ -17,6 +17,8 @@ pub struct AgentRegistry {
     by_name: DashMap<String, AgentId>,
     /// Agents indexed by capability
     by_capability: DashMap<String, Vec<AgentId>>,
+    /// Agents indexed by domain (e.g. "qa", "data-engineering", "devops")
+    by_domain: DashMap<String, Vec<AgentId>>,
     /// Agent statistics
     stats: RwLock<RegistryStats>,
 }
@@ -26,6 +28,7 @@ struct RegisteredAgent {
     handle: AgentHandle,
     config: AgentConfig,
     capabilities: Vec<String>,
+    domain: Option<String>,
 }
 
 /// Registry statistics
@@ -44,6 +47,7 @@ impl AgentRegistry {
             agents: DashMap::new(),
             by_name: DashMap::new(),
             by_capability: DashMap::new(),
+            by_domain: DashMap::new(),
             stats: RwLock::new(RegistryStats::default()),
         }
     }
@@ -61,10 +65,16 @@ impl AgentRegistry {
 
         let capabilities = Self::extract_capabilities(&config);
 
+        // Extract domain from metadata if provided (metadata is serde_json::Value)
+        let domain: Option<String> = config.metadata.get("domain")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
         let registered = RegisteredAgent {
             handle: handle.clone(),
             config,
             capabilities: capabilities.clone(),
+            domain: domain.clone(),
         };
 
         // Insert into primary storage
@@ -74,6 +84,11 @@ impl AgentRegistry {
         // Index by capabilities
         for cap in capabilities {
             self.by_capability.entry(cap).or_default().push(id);
+        }
+
+        // Index by domain
+        if let Some(ref d) = domain {
+            self.by_domain.entry(d.clone()).or_default().push(id);
         }
 
         let mut stats = self.stats.write().await;
@@ -100,6 +115,19 @@ impl AgentRegistry {
                 };
                 if should_remove {
                     self.by_capability.remove(cap);
+                }
+            }
+
+            // Remove from domain index
+            if let Some(ref domain) = agent.domain {
+                let should_remove = if let Some(mut agents) = self.by_domain.get_mut(domain) {
+                    agents.retain(|&agent_id| agent_id != id);
+                    agents.is_empty()
+                } else {
+                    false
+                };
+                if should_remove {
+                    self.by_domain.remove(domain);
                 }
             }
 
@@ -132,6 +160,28 @@ impl AgentRegistry {
                     .collect()
             })
             .unwrap_or_default()
+    }
+
+    /// Find agents by domain
+    pub fn find_by_domain(&self, domain: &str) -> Vec<AgentHandle> {
+        self.by_domain
+            .get(domain)
+            .map(|ids| {
+                ids.iter()
+                    .filter_map(|id| self.agents.get(id).map(|a| a.handle.clone()))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Get an agent's domain
+    pub fn get_domain(&self, id: AgentId) -> Option<String> {
+        self.agents.get(&id).and_then(|a| a.domain.clone())
+    }
+
+    /// List all known domains
+    pub fn list_domains(&self) -> Vec<String> {
+        self.by_domain.iter().map(|e| e.key().clone()).collect()
     }
 
     /// List all agents

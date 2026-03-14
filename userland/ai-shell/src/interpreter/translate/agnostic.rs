@@ -151,6 +151,77 @@ pub(crate) fn translate_agnostic(intent: &Intent) -> Result<Translation> {
             })
         }
 
+        Intent::AgnosticCoverage { action, suite } => {
+            let mut args_json = serde_json::Map::new();
+            args_json.insert(
+                "action".to_string(),
+                serde_json::Value::String(action.clone()),
+            );
+            if let Some(s) = suite {
+                args_json.insert("suite".to_string(), serde_json::Value::String(s.clone()));
+            }
+            let body = serde_json::json!({"name": "agnostic_coverage", "arguments": args_json});
+            Ok(Translation {
+                command: "curl".to_string(),
+                args: vec![
+                    "-s".to_string(),
+                    "-X".to_string(),
+                    "POST".to_string(),
+                    "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
+                    "-H".to_string(),
+                    "Content-Type: application/json".to_string(),
+                    "-d".to_string(),
+                    serde_json::to_string(&body).unwrap(),
+                ],
+                description: format!(
+                    "Agnostic coverage: {}{}",
+                    action,
+                    suite
+                        .as_ref()
+                        .map_or(String::new(), |s| format!(" '{}'", s))
+                ),
+                permission: PermissionLevel::Safe,
+                explanation: "Gets coverage report via Agnostic".to_string(),
+            })
+        }
+
+        Intent::AgnosticSchedule { action, suite } => {
+            let mut args_json = serde_json::Map::new();
+            args_json.insert(
+                "action".to_string(),
+                serde_json::Value::String(action.clone()),
+            );
+            if let Some(s) = suite {
+                args_json.insert("suite".to_string(), serde_json::Value::String(s.clone()));
+            }
+            let body = serde_json::json!({"name": "agnostic_schedule", "arguments": args_json});
+            Ok(Translation {
+                command: "curl".to_string(),
+                args: vec![
+                    "-s".to_string(),
+                    "-X".to_string(),
+                    "POST".to_string(),
+                    "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
+                    "-H".to_string(),
+                    "Content-Type: application/json".to_string(),
+                    "-d".to_string(),
+                    serde_json::to_string(&body).unwrap(),
+                ],
+                description: format!(
+                    "Agnostic schedule: {}{}",
+                    action,
+                    suite
+                        .as_ref()
+                        .map_or(String::new(), |s| format!(" '{}'", s))
+                ),
+                permission: match action.as_str() {
+                    "list" => PermissionLevel::Safe,
+                    _ => PermissionLevel::SystemWrite,
+                },
+                explanation: "Manages test schedules via Agnostic".to_string(),
+            })
+        }
+
         _ => unreachable!("translate_agnostic called with non-agnostic intent"),
     }
 }

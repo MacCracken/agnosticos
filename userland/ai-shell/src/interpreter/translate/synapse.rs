@@ -200,6 +200,87 @@ pub(crate) fn translate_synapse(intent: &Intent) -> Result<Translation> {
             })
         }
 
+        Intent::SynapseBenchmark { action, models } => {
+            let mut args_json = serde_json::Map::new();
+            args_json.insert(
+                "action".to_string(),
+                serde_json::Value::String(action.clone()),
+            );
+            if let Some(m) = models {
+                args_json.insert("models".to_string(), serde_json::Value::String(m.clone()));
+            }
+            let body = serde_json::json!({"name": "synapse_benchmark", "arguments": args_json});
+            Ok(Translation {
+                command: "curl".to_string(),
+                args: vec![
+                    "-s".to_string(),
+                    "-X".to_string(),
+                    "POST".to_string(),
+                    "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
+                    "-H".to_string(),
+                    "Content-Type: application/json".to_string(),
+                    "-d".to_string(),
+                    serde_json::to_string(&body).unwrap(),
+                ],
+                description: format!(
+                    "Synapse benchmark: {}{}",
+                    action,
+                    models
+                        .as_ref()
+                        .map_or(String::new(), |m| format!(" '{}'", m))
+                ),
+                permission: match action.as_str() {
+                    "list" | "status" => PermissionLevel::Safe,
+                    _ => PermissionLevel::SystemWrite,
+                },
+                explanation: "Benchmarks/compares models via Synapse".to_string(),
+            })
+        }
+
+        Intent::SynapseQuantize {
+            action,
+            model,
+            format,
+        } => {
+            let mut args_json = serde_json::Map::new();
+            args_json.insert(
+                "action".to_string(),
+                serde_json::Value::String(action.clone()),
+            );
+            if let Some(m) = model {
+                args_json.insert("model".to_string(), serde_json::Value::String(m.clone()));
+            }
+            if let Some(f) = format {
+                args_json.insert("format".to_string(), serde_json::Value::String(f.clone()));
+            }
+            let body = serde_json::json!({"name": "synapse_quantize", "arguments": args_json});
+            Ok(Translation {
+                command: "curl".to_string(),
+                args: vec![
+                    "-s".to_string(),
+                    "-X".to_string(),
+                    "POST".to_string(),
+                    "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
+                    "-H".to_string(),
+                    "Content-Type: application/json".to_string(),
+                    "-d".to_string(),
+                    serde_json::to_string(&body).unwrap(),
+                ],
+                description: format!(
+                    "Synapse quantize: {}{}",
+                    action,
+                    model
+                        .as_ref()
+                        .map_or(String::new(), |m| format!(" '{}'", m))
+                ),
+                permission: match action.as_str() {
+                    "status" | "list" => PermissionLevel::Safe,
+                    _ => PermissionLevel::SystemWrite,
+                },
+                explanation: "Quantizes/converts model via Synapse".to_string(),
+            })
+        }
+
         _ => unreachable!("translate_synapse called with non-synapse intent"),
     }
 }

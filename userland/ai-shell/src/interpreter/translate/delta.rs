@@ -159,6 +159,81 @@ pub(crate) fn translate_delta(intent: &Intent) -> Result<Translation> {
             })
         }
 
+        Intent::DeltaBranches { action, repo, name } => {
+            let mut args_json = serde_json::Map::new();
+            args_json.insert(
+                "action".to_string(),
+                serde_json::Value::String(action.clone()),
+            );
+            if let Some(r) = repo {
+                args_json.insert("repo".to_string(), serde_json::Value::String(r.clone()));
+            }
+            if let Some(n) = name {
+                args_json.insert("name".to_string(), serde_json::Value::String(n.clone()));
+            }
+            let body = serde_json::json!({"name": "delta_branches", "arguments": args_json});
+            Ok(Translation {
+                command: "curl".to_string(),
+                args: vec![
+                    "-s".to_string(),
+                    "-X".to_string(),
+                    "POST".to_string(),
+                    "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
+                    "-H".to_string(),
+                    "Content-Type: application/json".to_string(),
+                    "-d".to_string(),
+                    serde_json::to_string(&body).unwrap(),
+                ],
+                description: format!(
+                    "Delta branches: {}{}",
+                    action,
+                    name.as_ref().map_or(String::new(), |n| format!(" '{}'", n))
+                ),
+                permission: match action.as_str() {
+                    "list" | "info" => PermissionLevel::Safe,
+                    _ => PermissionLevel::SystemWrite,
+                },
+                explanation: "Manages branches via Delta".to_string(),
+            })
+        }
+
+        Intent::DeltaReview { action, pr_id } => {
+            let mut args_json = serde_json::Map::new();
+            args_json.insert(
+                "action".to_string(),
+                serde_json::Value::String(action.clone()),
+            );
+            if let Some(id) = pr_id {
+                args_json.insert("pr_id".to_string(), serde_json::Value::String(id.clone()));
+            }
+            let body = serde_json::json!({"name": "delta_review", "arguments": args_json});
+            Ok(Translation {
+                command: "curl".to_string(),
+                args: vec![
+                    "-s".to_string(),
+                    "-X".to_string(),
+                    "POST".to_string(),
+                    "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
+                    "-H".to_string(),
+                    "Content-Type: application/json".to_string(),
+                    "-d".to_string(),
+                    serde_json::to_string(&body).unwrap(),
+                ],
+                description: format!(
+                    "Delta review: {}{}",
+                    action,
+                    pr_id
+                        .as_ref()
+                        .map_or(String::new(), |id| format!(" PR #{}", id))
+                ),
+                permission: match action.as_str() {
+                    "list" => PermissionLevel::Safe,
+                    _ => PermissionLevel::SystemWrite,
+                },
+                explanation: "Manages code reviews via Delta".to_string(),
+            })
+        }
+
         _ => unreachable!("translate_delta called with non-delta intent"),
     }
 }

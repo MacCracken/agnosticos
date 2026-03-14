@@ -207,6 +207,7 @@ pub async fn register_agent_handler(
         id,
         name: req.name.clone(),
         status: "registered".to_string(),
+        domain: req.domain,
         capabilities: req.capabilities,
         resource_needs: req.resource_needs,
         metadata: req.metadata,

@@ -8,10 +8,11 @@ use super::super::helpers::{
 use super::super::types::McpToolResult;
 
 // ---------------------------------------------------------------------------
-// Agnostic QA Platform Agent Bridge
+// Agnostic Agentics Systems (AAS) Bridge
 // ---------------------------------------------------------------------------
 
-/// Bridge that proxies MCP tool calls to the Agnostic QA platform API.
+/// Bridge that proxies MCP tool calls to the Agnostic platform API.
+/// Supports both legacy QA tools and the new multi-domain crew management.
 #[derive(Debug, Clone)]
 pub struct AgnosticBridge {
     base_url: String,
@@ -299,6 +300,306 @@ pub(crate) async fn handle_agnostic_agent_status(args: &serde_json::Value) -> Mc
                 "total": filtered.len(),
                 "_source": "mock",
             }))
+        }
+    }
+}
+
+pub(crate) async fn handle_agnostic_coverage(args: &serde_json::Value) -> McpToolResult {
+    let action = match extract_required_string(args, "action") {
+        Ok(a) => a,
+        Err(e) => return e,
+    };
+
+    let action_opt = Some(action.clone());
+    if let Err(e) = validate_enum_opt(
+        &action_opt,
+        "action",
+        &["summary", "detail", "diff", "trend"],
+    ) {
+        return e;
+    }
+
+    let suite = get_optional_string_arg(args, "suite");
+    let path = get_optional_string_arg(args, "path");
+    let threshold = get_optional_string_arg(args, "threshold");
+
+    let bridge = AgnosticBridge::new();
+    let mut query = Vec::new();
+    query.push(("action".to_string(), action.clone()));
+    if let Some(ref s) = suite {
+        query.push(("suite".to_string(), s.clone()));
+    }
+    if let Some(ref p) = path {
+        query.push(("path".to_string(), p.clone()));
+    }
+    if let Some(ref t) = threshold {
+        query.push(("threshold".to_string(), t.clone()));
+    }
+
+    match bridge.get("/api/v1/coverage", &query).await {
+        Ok(response) => {
+            info!(action = %action, "Agnostic: coverage (bridged)");
+            success_result(response)
+        }
+        Err(e) => {
+            warn!(error = %e, "Agnostic bridge: falling back to mock for coverage {}", action);
+            success_result(serde_json::json!({
+                "coverage_pct": 0.0,
+                "lines_covered": 0,
+                "lines_total": 0,
+                "_source": "mock",
+            }))
+        }
+    }
+}
+
+pub(crate) async fn handle_agnostic_schedule(args: &serde_json::Value) -> McpToolResult {
+    let action = match extract_required_string(args, "action") {
+        Ok(a) => a,
+        Err(e) => return e,
+    };
+
+    let action_opt = Some(action.clone());
+    if let Err(e) = validate_enum_opt(
+        &action_opt,
+        "action",
+        &["create", "list", "delete", "pause", "resume"],
+    ) {
+        return e;
+    }
+
+    let suite = get_optional_string_arg(args, "suite");
+    let cron = get_optional_string_arg(args, "cron");
+    let schedule_id = get_optional_string_arg(args, "schedule_id");
+
+    let bridge = AgnosticBridge::new();
+
+    match action.as_str() {
+        "list" => {
+            let mut query = Vec::new();
+            if let Some(ref s) = suite {
+                query.push(("suite".to_string(), s.clone()));
+            }
+            match bridge.get("/api/v1/schedules", &query).await {
+                Ok(response) => {
+                    info!("Agnostic: list schedules (bridged)");
+                    success_result(response)
+                }
+                Err(e) => {
+                    warn!(error = %e, "Agnostic bridge: falling back to mock for list schedules");
+                    success_result(serde_json::json!({
+                        "schedules": [],
+                        "total": 0,
+                        "_source": "mock",
+                    }))
+                }
+            }
+        }
+        op @ ("create" | "delete" | "pause" | "resume") => {
+            let mut body = serde_json::json!({
+                "action": op,
+            });
+            if let Some(ref s) = suite {
+                body["suite"] = serde_json::json!(s);
+            }
+            if let Some(ref c) = cron {
+                body["cron"] = serde_json::json!(c);
+            }
+            if let Some(ref id) = schedule_id {
+                body["schedule_id"] = serde_json::json!(id);
+            }
+            match bridge.post("/api/v1/schedules", body).await {
+                Ok(response) => {
+                    info!(action = %op, "Agnostic: {} schedule (bridged)", op);
+                    success_result(response)
+                }
+                Err(e) => {
+                    warn!(error = %e, "Agnostic bridge: falling back to mock for {} schedule", op);
+                    let id = schedule_id.unwrap_or_else(|| Uuid::new_v4().to_string());
+                    success_result(serde_json::json!({
+                        "schedule_id": id,
+                        "action": op,
+                        "status": "ok",
+                        "updated_at": chrono::Utc::now().to_rfc3339(),
+                        "_source": "mock",
+                    }))
+                }
+            }
+        }
+        _ => unreachable!(),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// AAS Crew Management Tools (Phase 2+)
+// ---------------------------------------------------------------------------
+
+pub(crate) async fn handle_agnostic_run_crew(args: &serde_json::Value) -> McpToolResult {
+    let title = match extract_required_string(args, "title") {
+        Ok(t) => t,
+        Err(e) => return e,
+    };
+    let description = match extract_required_string(args, "description") {
+        Ok(d) => d,
+        Err(e) => return e,
+    };
+
+    let preset = get_optional_string_arg(args, "preset");
+    let target_url = get_optional_string_arg(args, "target_url");
+    let priority = get_optional_string_arg(args, "priority").unwrap_or_else(|| "high".to_string());
+
+    let mut body = serde_json::json!({
+        "title": title,
+        "description": description,
+        "priority": priority,
+    });
+    if let Some(p) = &preset {
+        body["preset"] = serde_json::json!(p);
+    }
+    if let Some(url) = &target_url {
+        body["target_url"] = serde_json::json!(url);
+    }
+    if let Some(keys) = args.get("agent_keys") {
+        body["agent_keys"] = keys.clone();
+    }
+    if let Some(defs) = args.get("agent_definitions") {
+        body["agent_definitions"] = defs.clone();
+    }
+
+    let bridge = AgnosticBridge::new();
+    match bridge.post("/api/v1/crews", body).await {
+        Ok(response) => {
+            info!(title = %title, "Agnostic: run crew (bridged)");
+            success_result(response)
+        }
+        Err(e) => {
+            warn!(error = %e, "Agnostic bridge: crew run failed");
+            error_result(format!("Crew run failed: {}", e))
+        }
+    }
+}
+
+pub(crate) async fn handle_agnostic_crew_status(args: &serde_json::Value) -> McpToolResult {
+    let crew_id = match extract_required_string(args, "crew_id") {
+        Ok(id) => id,
+        Err(e) => return e,
+    };
+
+    let bridge = AgnosticBridge::new();
+    match bridge.get(&format!("/api/v1/crews/{}", crew_id), &[]).await {
+        Ok(response) => {
+            info!(crew_id = %crew_id, "Agnostic: crew status (bridged)");
+            success_result(response)
+        }
+        Err(e) => {
+            warn!(error = %e, "Agnostic bridge: crew status failed");
+            error_result(format!("Crew status failed: {}", e))
+        }
+    }
+}
+
+pub(crate) async fn handle_agnostic_list_presets(args: &serde_json::Value) -> McpToolResult {
+    let domain = get_optional_string_arg(args, "domain");
+
+    let bridge = AgnosticBridge::new();
+    let mut query = Vec::new();
+    if let Some(ref d) = domain {
+        query.push(("domain".to_string(), d.clone()));
+    }
+
+    match bridge.get("/api/v1/presets", &query).await {
+        Ok(response) => {
+            info!("Agnostic: list presets (bridged)");
+            success_result(response)
+        }
+        Err(e) => {
+            warn!(error = %e, "Agnostic bridge: list presets failed");
+            success_result(serde_json::json!({
+                "presets": [
+                    {"name": "qa-standard", "domain": "qa", "agent_count": 6},
+                    {"name": "data-engineering", "domain": "data-engineering", "agent_count": 3},
+                    {"name": "devops", "domain": "devops", "agent_count": 3},
+                ],
+                "_source": "mock",
+            }))
+        }
+    }
+}
+
+pub(crate) async fn handle_agnostic_list_definitions(args: &serde_json::Value) -> McpToolResult {
+    let domain = get_optional_string_arg(args, "domain");
+
+    let bridge = AgnosticBridge::new();
+    let mut query = Vec::new();
+    if let Some(ref d) = domain {
+        query.push(("domain".to_string(), d.clone()));
+    }
+
+    match bridge.get("/api/v1/definitions", &query).await {
+        Ok(response) => {
+            info!("Agnostic: list definitions (bridged)");
+            success_result(response)
+        }
+        Err(e) => {
+            warn!(error = %e, "Agnostic bridge: list definitions failed");
+            success_result(serde_json::json!({
+                "items": [],
+                "total": 0,
+                "_source": "mock",
+            }))
+        }
+    }
+}
+
+pub(crate) async fn handle_agnostic_create_agent(args: &serde_json::Value) -> McpToolResult {
+    let agent_key = match extract_required_string(args, "agent_key") {
+        Ok(k) => k,
+        Err(e) => return e,
+    };
+    let name = match extract_required_string(args, "name") {
+        Ok(n) => n,
+        Err(e) => return e,
+    };
+    let role = match extract_required_string(args, "role") {
+        Ok(r) => r,
+        Err(e) => return e,
+    };
+    let goal = match extract_required_string(args, "goal") {
+        Ok(g) => g,
+        Err(e) => return e,
+    };
+    let backstory = match extract_required_string(args, "backstory") {
+        Ok(b) => b,
+        Err(e) => return e,
+    };
+
+    // Route through A2A create_agent message
+    let bridge = AgnosticBridge::new();
+    let body = serde_json::json!({
+        "id": Uuid::new_v4().to_string(),
+        "type": "a2a:create_agent",
+        "fromPeerId": "agnosticos-daimon",
+        "toPeerId": "agnostic",
+        "timestamp": chrono::Utc::now().timestamp_millis(),
+        "payload": {
+            "agent_key": agent_key,
+            "name": name,
+            "role": role,
+            "goal": goal,
+            "backstory": backstory,
+            "domain": get_optional_string_arg(args, "domain").unwrap_or_else(|| "general".to_string()),
+            "tools": args.get("tools").cloned().unwrap_or(serde_json::json!([])),
+        },
+    });
+
+    match bridge.post("/api/v1/a2a/receive", body).await {
+        Ok(response) => {
+            info!(agent_key = %agent_key, "Agnostic: create agent (bridged)");
+            success_result(response)
+        }
+        Err(e) => {
+            warn!(error = %e, "Agnostic bridge: create agent failed");
+            error_result(format!("Create agent failed: {}", e))
         }
     }
 }

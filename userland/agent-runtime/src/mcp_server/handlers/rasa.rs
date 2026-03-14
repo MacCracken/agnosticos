@@ -177,7 +177,11 @@ pub(crate) async fn handle_rasa_layers(args: &serde_json::Value) -> McpToolResul
 
     if let Some(ref k) = kind {
         let kind_opt = Some(k.clone());
-        if let Err(e) = validate_enum_opt(&kind_opt, "kind", &["raster", "vector", "text", "adjustment"]) {
+        if let Err(e) = validate_enum_opt(
+            &kind_opt,
+            "kind",
+            &["raster", "vector", "text", "adjustment"],
+        ) {
             return e;
         }
     }
@@ -280,7 +284,15 @@ pub(crate) async fn handle_rasa_ai(args: &serde_json::Value) -> McpToolResult {
     if let Err(e) = validate_enum_opt(
         &action_opt,
         "action",
-        &["inpaint", "upscale", "remove_bg", "gen_fill", "style_transfer", "text_to_image", "smart_select"],
+        &[
+            "inpaint",
+            "upscale",
+            "remove_bg",
+            "gen_fill",
+            "style_transfer",
+            "text_to_image",
+            "smart_select",
+        ],
     ) {
         return e;
     }
@@ -318,7 +330,11 @@ pub(crate) async fn handle_rasa_export(args: &serde_json::Value) -> McpToolResul
 
     if let Some(ref fmt) = format {
         let fmt_opt = Some(fmt.clone());
-        if let Err(e) = validate_enum_opt(&fmt_opt, "format", &["png", "jpg", "webp", "svg", "tiff", "psd"]) {
+        if let Err(e) = validate_enum_opt(
+            &fmt_opt,
+            "format",
+            &["png", "jpg", "webp", "svg", "tiff", "psd"],
+        ) {
             return e;
         }
     }
@@ -348,5 +364,159 @@ pub(crate) async fn handle_rasa_export(args: &serde_json::Value) -> McpToolResul
                 "_source": "mock",
             }))
         }
+    }
+}
+
+pub(crate) async fn handle_rasa_batch(args: &serde_json::Value) -> McpToolResult {
+    let action = match extract_required_string(args, "action") {
+        Ok(a) => a,
+        Err(e) => return e,
+    };
+
+    let action_opt = Some(action.clone());
+    if let Err(e) = validate_enum_opt(
+        &action_opt,
+        "action",
+        &["resize", "convert", "optimize", "watermark", "list"],
+    ) {
+        return e;
+    }
+
+    let path = get_optional_string_arg(args, "path");
+    let output = get_optional_string_arg(args, "output");
+    let format = get_optional_string_arg(args, "format");
+    let width = get_optional_string_arg(args, "width");
+    let height = get_optional_string_arg(args, "height");
+    let bridge = RasaBridge::new();
+
+    match action.as_str() {
+        "list" => {
+            let mut query = Vec::new();
+            if let Some(ref p) = path {
+                query.push(("path".to_string(), p.clone()));
+            }
+            match bridge.get("/api/v1/batch", &query).await {
+                Ok(response) => {
+                    info!("Rasa: list batch jobs (bridged)");
+                    success_result(response)
+                }
+                Err(e) => {
+                    warn!(error = %e, "Rasa bridge: falling back to mock for list batch");
+                    success_result(serde_json::json!({
+                        "jobs": [],
+                        "total": 0,
+                        "_source": "mock",
+                    }))
+                }
+            }
+        }
+        op @ ("resize" | "convert" | "optimize" | "watermark") => {
+            let body = serde_json::json!({
+                "action": op,
+                "path": path,
+                "output": output,
+                "format": format,
+                "width": width,
+                "height": height,
+            });
+            match bridge.post("/api/v1/batch", body).await {
+                Ok(response) => {
+                    info!(action = %op, "Rasa: batch {} (bridged)", op);
+                    success_result(response)
+                }
+                Err(e) => {
+                    warn!(error = %e, "Rasa bridge: falling back to mock for batch {}", op);
+                    let job_id = Uuid::new_v4().to_string();
+                    success_result(serde_json::json!({
+                        "job_id": job_id,
+                        "action": op,
+                        "status": "queued",
+                        "_source": "mock",
+                    }))
+                }
+            }
+        }
+        _ => unreachable!(),
+    }
+}
+
+pub(crate) async fn handle_rasa_templates(args: &serde_json::Value) -> McpToolResult {
+    let action = match extract_required_string(args, "action") {
+        Ok(a) => a,
+        Err(e) => return e,
+    };
+
+    let action_opt = Some(action.clone());
+    if let Err(e) = validate_enum_opt(
+        &action_opt,
+        "action",
+        &["list", "create", "apply", "delete", "info"],
+    ) {
+        return e;
+    }
+
+    let name = get_optional_string_arg(args, "name");
+    let category = get_optional_string_arg(args, "category");
+    let template_id = get_optional_string_arg(args, "template_id");
+
+    if let Err(e) = validate_enum_opt(&category, "category", &["social", "print", "web", "banner"])
+    {
+        return e;
+    }
+
+    let bridge = RasaBridge::new();
+
+    match action.as_str() {
+        "list" | "info" => {
+            let mut query = Vec::new();
+            if let Some(ref cat) = category {
+                query.push(("category".to_string(), cat.clone()));
+            }
+            if let Some(ref tid) = template_id {
+                query.push(("template_id".to_string(), tid.clone()));
+            }
+            match bridge.get("/api/v1/templates", &query).await {
+                Ok(response) => {
+                    info!("Rasa: {} templates (bridged)", action);
+                    success_result(response)
+                }
+                Err(e) => {
+                    warn!(error = %e, "Rasa bridge: falling back to mock for templates {}", action);
+                    success_result(serde_json::json!({
+                        "templates": [],
+                        "total": 0,
+                        "categories": ["social", "print", "web", "banner"],
+                        "_source": "mock",
+                    }))
+                }
+            }
+        }
+        op @ ("create" | "apply" | "delete") => {
+            let body = serde_json::json!({
+                "action": op,
+                "name": name,
+                "category": category,
+                "template_id": template_id,
+            });
+            match bridge.post("/api/v1/templates", body).await {
+                Ok(response) => {
+                    info!(action = %op, "Rasa: {} template (bridged)", op);
+                    success_result(response)
+                }
+                Err(e) => {
+                    warn!(error = %e, "Rasa bridge: falling back to mock for {} template", op);
+                    let tid = template_id.unwrap_or_else(|| Uuid::new_v4().to_string());
+                    success_result(serde_json::json!({
+                        "template_id": tid,
+                        "action": op,
+                        "name": name.unwrap_or_else(|| "Untitled".to_string()),
+                        "category": category.unwrap_or_else(|| "social".to_string()),
+                        "status": "ok",
+                        "_source": "mock",
+                    }))
+                }
+            }
+        }
+        _ => unreachable!(),
     }
 }

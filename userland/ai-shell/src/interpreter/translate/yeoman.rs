@@ -40,15 +40,14 @@ pub(crate) fn translate_yeoman(intent: &Intent) -> Result<Translation> {
                 description: format!(
                     "SecureYeoman agents: {}{}",
                     action,
-                    name.as_ref()
-                        .map_or(String::new(), |n| format!(" '{}'", n))
+                    name.as_ref().map_or(String::new(), |n| format!(" '{}'", n))
                 ),
                 permission: match action.as_str() {
                     "list" | "status" | "info" => PermissionLevel::Safe,
                     _ => PermissionLevel::SystemWrite,
                 },
-                explanation:
-                    "Lists/Deploys/Stops/Queries agents via SecureYeoman MCP bridge".to_string(),
+                explanation: "Lists/Deploys/Stops/Queries agents via SecureYeoman MCP bridge"
+                    .to_string(),
             })
         }
 
@@ -69,10 +68,7 @@ pub(crate) fn translate_yeoman(intent: &Intent) -> Result<Translation> {
                 );
             }
             if let Some(id) = task_id {
-                args_json.insert(
-                    "task_id".to_string(),
-                    serde_json::Value::String(id.clone()),
-                );
+                args_json.insert("task_id".to_string(), serde_json::Value::String(id.clone()));
             }
             let body = serde_json::json!({"name": "yeoman_tasks", "arguments": args_json});
             Ok(Translation {
@@ -98,8 +94,8 @@ pub(crate) fn translate_yeoman(intent: &Intent) -> Result<Translation> {
                     "list" | "status" => PermissionLevel::Safe,
                     _ => PermissionLevel::SystemWrite,
                 },
-                explanation:
-                    "Assigns/Lists/Checks/Cancels tasks via SecureYeoman MCP bridge".to_string(),
+                explanation: "Assigns/Lists/Checks/Cancels tasks via SecureYeoman MCP bridge"
+                    .to_string(),
             })
         }
 
@@ -146,8 +142,7 @@ pub(crate) fn translate_yeoman(intent: &Intent) -> Result<Translation> {
             if let Some(n) = name {
                 args_json.insert("name".to_string(), serde_json::Value::String(n.clone()));
             }
-            let body =
-                serde_json::json!({"name": "yeoman_integrations", "arguments": args_json});
+            let body = serde_json::json!({"name": "yeoman_integrations", "arguments": args_json});
             Ok(Translation {
                 command: "curl".to_string(),
                 args: vec![
@@ -163,8 +158,7 @@ pub(crate) fn translate_yeoman(intent: &Intent) -> Result<Translation> {
                 description: format!(
                     "SecureYeoman integration: {}{}",
                     action,
-                    name.as_ref()
-                        .map_or(String::new(), |n| format!(" '{}'", n))
+                    name.as_ref().map_or(String::new(), |n| format!(" '{}'", n))
                 ),
                 permission: match action.as_str() {
                     "list" | "status" => PermissionLevel::Safe,
@@ -194,6 +188,78 @@ pub(crate) fn translate_yeoman(intent: &Intent) -> Result<Translation> {
                 description: "SecureYeoman status".to_string(),
                 permission: PermissionLevel::Safe,
                 explanation: "Checks SecureYeoman platform health via MCP bridge".to_string(),
+            })
+        }
+
+        Intent::YeomanLogs { action, agent_id } => {
+            let mut args_json = serde_json::Map::new();
+            args_json.insert(
+                "action".to_string(),
+                serde_json::Value::String(action.clone()),
+            );
+            if let Some(id) = agent_id {
+                args_json.insert(
+                    "agent_id".to_string(),
+                    serde_json::Value::String(id.clone()),
+                );
+            }
+            let body = serde_json::json!({"name": "yeoman_logs", "arguments": args_json});
+            Ok(Translation {
+                command: "curl".to_string(),
+                args: vec![
+                    "-s".to_string(),
+                    "-X".to_string(),
+                    "POST".to_string(),
+                    "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
+                    "-H".to_string(),
+                    "Content-Type: application/json".to_string(),
+                    "-d".to_string(),
+                    serde_json::to_string(&body).unwrap(),
+                ],
+                description: format!(
+                    "SecureYeoman logs: {}{}",
+                    action,
+                    agent_id
+                        .as_ref()
+                        .map_or(String::new(), |id| format!(" ({})", id))
+                ),
+                permission: PermissionLevel::Safe,
+                explanation: "Queries agent logs via SecureYeoman".to_string(),
+            })
+        }
+
+        Intent::YeomanWorkflows { action, name } => {
+            let mut args_json = serde_json::Map::new();
+            args_json.insert(
+                "action".to_string(),
+                serde_json::Value::String(action.clone()),
+            );
+            if let Some(n) = name {
+                args_json.insert("name".to_string(), serde_json::Value::String(n.clone()));
+            }
+            let body = serde_json::json!({"name": "yeoman_workflows", "arguments": args_json});
+            Ok(Translation {
+                command: "curl".to_string(),
+                args: vec![
+                    "-s".to_string(),
+                    "-X".to_string(),
+                    "POST".to_string(),
+                    "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
+                    "-H".to_string(),
+                    "Content-Type: application/json".to_string(),
+                    "-d".to_string(),
+                    serde_json::to_string(&body).unwrap(),
+                ],
+                description: format!(
+                    "SecureYeoman workflow: {}{}",
+                    action,
+                    name.as_ref().map_or(String::new(), |n| format!(" '{}'", n))
+                ),
+                permission: match action.as_str() {
+                    "list" | "status" => PermissionLevel::Safe,
+                    _ => PermissionLevel::SystemWrite,
+                },
+                explanation: "Manages workflows via SecureYeoman".to_string(),
             })
         }
 

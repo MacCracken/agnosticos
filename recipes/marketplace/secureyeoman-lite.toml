@@ -1,0 +1,115 @@
+# SecureYeoman Lite — Lightweight AI agent for AGNOS marketplace
+# Standalone agent binary from SecureYeoman — runs without the full platform
+# (no dashboard, no database, no 279 MCP tools). Connects back to a
+# SecureYeoman server or operates independently for single-agent workflows.
+#
+# Same repo as SecureYeoman, different build target.
+#
+# Status: Released — SecureYeoman 2026.3.13 (linux-x64 + linux-arm64 + windows-x64)
+# Source: https://github.com/MacCracken/SecureYeoman
+
+[package]
+name = "secureyeoman-lite"
+version = "2026.3.13"
+description = "SecureYeoman Lite — Lightweight standalone AI agent"
+license = "AGPL-3.0-only"
+groups = ["agent", "ai"]
+release = 1
+arch = "x86_64"
+
+[source]
+# Bun-compiled standalone binary from GitHub Actions CI.
+# Release: https://github.com/MacCracken/SecureYeoman/releases
+# Asset: secureyeoman-lite-linux-x64
+github_release = "MacCracken/SecureYeoman"
+release_asset = "secureyeoman-lite-linux-x64"
+
+[depends]
+runtime = [
+    "glibc",
+    "openssl",
+    "zlib",
+]
+build = [
+    "bun",
+    "nodejs",
+]
+
+[marketplace]
+category = "ai-agent"
+runtime = "native-binary"
+publisher = "SecureYeoman"
+tags = ["ai", "agent", "lite", "automation", "mcp", "standalone"]
+min_agnos_version = "2026.3.11"
+
+[marketplace.sandbox]
+seccomp_mode = "desktop"
+network_access = true
+# Connects to SecureYeoman server or AI providers directly
+allowed_hosts = [
+    "localhost",
+    "127.0.0.1",
+    # AI providers
+    "api.anthropic.com",
+    "api.openai.com",
+    "generativelanguage.googleapis.com",
+    "api.deepseek.com",
+    "api.mistral.ai",
+    "api.groq.com",
+    "api.x.ai",
+    "openrouter.ai",
+]
+data_dir = "~/.local/share/secureyeoman-lite/"
+
+[[marketplace.sandbox.landlock]]
+path = "~/.local/share/secureyeoman-lite/"
+access = "rw"
+
+[[marketplace.sandbox.landlock]]
+path = "/tmp"
+access = "rw"
+
+# IPC with AGNOS agent runtime (daimon)
+[[marketplace.sandbox.landlock]]
+path = "/run/agnos/"
+access = "rw"
+
+[marketplace.services]
+ports = []
+depends_on = ["llm-gateway"]
+
+[build]
+pre_build = ""
+configure = ""
+make = "npm run build:lite"
+check = "npm run test"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+# Install the single binary
+mkdir -p $PKG/usr/lib/secureyeoman-lite/bin
+cp dist/secureyeoman-lite-linux-x64 $PKG/usr/lib/secureyeoman-lite/bin/secureyeoman-lite
+chmod +x $PKG/usr/lib/secureyeoman-lite/bin/secureyeoman-lite
+
+# Symlink into PATH
+mkdir -p $PKG/usr/bin
+ln -sf /usr/lib/secureyeoman-lite/bin/secureyeoman-lite $PKG/usr/bin/secureyeoman-lite
+ln -sf /usr/lib/secureyeoman-lite/bin/secureyeoman-lite $PKG/usr/bin/sy-lite
+
+# Desktop entry
+mkdir -p $PKG/usr/share/applications
+cat > $PKG/usr/share/applications/secureyeoman-lite.desktop << 'EOF'
+[Desktop Entry]
+Name=SecureYeoman Lite
+Comment=Lightweight standalone AI agent
+GenericName=AI Agent
+Exec=secureyeoman-lite
+Icon=secureyeoman
+Terminal=true
+Type=Application
+Categories=Development;ArtificialIntelligence;
+StartupNotify=false
+EOF
+"""

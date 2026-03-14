@@ -230,6 +230,7 @@ pub async fn batch_register_handler(
             id,
             name: agent_req.name.clone(),
             status: "registered".to_string(),
+            domain: agent_req.domain.clone(),
             capabilities: agent_req.capabilities.clone(),
             resource_needs: agent_req.resource_needs.clone(),
             metadata,

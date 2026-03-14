@@ -15,14 +15,14 @@ mod tests;
 // Re-export all public types so callers can still use `crate::mcp_server::X`.
 pub use handlers::aequi::AequiBridge;
 pub use handlers::agnostic::AgnosticBridge;
-pub use handlers::delta::DeltaBridge;
-pub use handlers::photis::PhotisBridge;
-pub use handlers::shruti::ShrutiBridge;
-pub use handlers::tazama::TazamaBridge;
-pub use handlers::rasa::RasaBridge;
-pub use handlers::mneme::MnemeBridge;
-pub use handlers::synapse::SynapseBridge;
 pub use handlers::bullshift::BullShiftBridge;
+pub use handlers::delta::DeltaBridge;
+pub use handlers::mneme::MnemeBridge;
+pub use handlers::photis::PhotisBridge;
+pub use handlers::rasa::RasaBridge;
+pub use handlers::shruti::ShrutiBridge;
+pub use handlers::synapse::SynapseBridge;
+pub use handlers::tazama::TazamaBridge;
 pub use handlers::yeoman::YeomanBridge;
 pub use manifest::build_tool_manifest;
 pub use types::{
@@ -41,15 +41,15 @@ use crate::http_api::ApiState;
 use handlers::aequi::*;
 use handlers::agnos::*;
 use handlers::agnostic::*;
+use handlers::bullshift::*;
 use handlers::delta::*;
 use handlers::edge::*;
-use handlers::photis::*;
-use handlers::shruti::*;
-use handlers::tazama::*;
-use handlers::rasa::*;
 use handlers::mneme::*;
+use handlers::photis::*;
+use handlers::rasa::*;
+use handlers::shruti::*;
 use handlers::synapse::*;
-use handlers::bullshift::*;
+use handlers::tazama::*;
 use handlers::yeoman::*;
 use helpers::error_result;
 
@@ -262,16 +262,45 @@ async fn dispatch_tool_call(
         "synapse_finetune" => handle_synapse_finetune(&call.arguments).await,
         "synapse_chat" => handle_synapse_chat(&call.arguments).await,
         "synapse_status" => handle_synapse_status(&call.arguments).await,
+        "synapse_benchmark" => handle_synapse_benchmark(&call.arguments).await,
+        "synapse_quantize" => handle_synapse_quantize(&call.arguments).await,
         "bullshift_portfolio" => handle_bullshift_portfolio(&call.arguments).await,
         "bullshift_orders" => handle_bullshift_orders(&call.arguments).await,
         "bullshift_market" => handle_bullshift_market(&call.arguments).await,
         "bullshift_alerts" => handle_bullshift_alerts(&call.arguments).await,
         "bullshift_strategy" => handle_bullshift_strategy(&call.arguments).await,
+        "bullshift_accounts" => handle_bullshift_accounts(&call.arguments).await,
+        "bullshift_history" => handle_bullshift_history(&call.arguments).await,
         "yeoman_agents" => handle_yeoman_agents(&call.arguments).await,
         "yeoman_tasks" => handle_yeoman_tasks(&call.arguments).await,
         "yeoman_tools" => handle_yeoman_tools(&call.arguments).await,
         "yeoman_integrations" => handle_yeoman_integrations(&call.arguments).await,
         "yeoman_status" => handle_yeoman_status(&call.arguments).await,
+        "yeoman_logs" => handle_yeoman_logs(&call.arguments).await,
+        "yeoman_workflows" => handle_yeoman_workflows(&call.arguments).await,
+        "delta_branches" => handle_delta_branches(&call.arguments).await,
+        "delta_review" => handle_delta_review(&call.arguments).await,
+        "aequi_invoices" => handle_aequi_invoices(&call.arguments).await,
+        "aequi_reports" => handle_aequi_reports(&call.arguments).await,
+        "agnostic_coverage" => handle_agnostic_coverage(&call.arguments).await,
+        "agnostic_schedule" => handle_agnostic_schedule(&call.arguments).await,
+        "agnostic_run_crew" => handle_agnostic_run_crew(&call.arguments).await,
+        "agnostic_crew_status" => handle_agnostic_crew_status(&call.arguments).await,
+        "agnostic_list_presets" => handle_agnostic_list_presets(&call.arguments).await,
+        "agnostic_list_definitions" => handle_agnostic_list_definitions(&call.arguments).await,
+        "agnostic_create_agent" => handle_agnostic_create_agent(&call.arguments).await,
+        "shruti_plugins" => handle_shruti_plugins(&call.arguments).await,
+        "shruti_ai" => handle_shruti_ai(&call.arguments).await,
+        "tazama_media" => handle_tazama_media(&call.arguments).await,
+        "tazama_subtitles" => handle_tazama_subtitles(&call.arguments).await,
+        "rasa_batch" => handle_rasa_batch(&call.arguments).await,
+        "rasa_templates" => handle_rasa_templates(&call.arguments).await,
+        "mneme_import" => handle_mneme_import(&call.arguments).await,
+        "mneme_tags" => handle_mneme_tags(&call.arguments).await,
+        "photis_boards" => handle_photis_boards(&call.arguments).await,
+        "photis_notes" => handle_photis_notes(&call.arguments).await,
+        "edge_logs" => handle_edge_logs(state, &call.arguments).await,
+        "edge_config" => handle_edge_config(state, &call.arguments).await,
         unknown => {
             // Check external tools
             let external = state.external_mcp_tools.read().await;

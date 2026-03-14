@@ -91,7 +91,11 @@ pub(crate) async fn handle_synapse_models(args: &serde_json::Value) -> McpToolRe
     };
 
     let action_opt = Some(action.clone());
-    if let Err(e) = validate_enum_opt(&action_opt, "action", &["download", "delete", "list", "info"]) {
+    if let Err(e) = validate_enum_opt(
+        &action_opt,
+        "action",
+        &["download", "delete", "list", "info"],
+    ) {
         return e;
     }
 
@@ -231,7 +235,11 @@ pub(crate) async fn handle_synapse_finetune(args: &serde_json::Value) -> McpTool
     };
 
     let action_opt = Some(action.clone());
-    if let Err(e) = validate_enum_opt(&action_opt, "action", &["start", "status", "cancel", "list"]) {
+    if let Err(e) = validate_enum_opt(
+        &action_opt,
+        "action",
+        &["start", "status", "cancel", "list"],
+    ) {
         return e;
     }
 
@@ -239,7 +247,8 @@ pub(crate) async fn handle_synapse_finetune(args: &serde_json::Value) -> McpTool
     let dataset = get_optional_string_arg(args, "dataset");
     let method = get_optional_string_arg(args, "method");
 
-    if let Err(e) = validate_enum_opt(&method, "method", &["lora", "qlora", "full", "dpo", "rlhf"]) {
+    if let Err(e) = validate_enum_opt(&method, "method", &["lora", "qlora", "full", "dpo", "rlhf"])
+    {
         return e;
     }
 
@@ -361,5 +370,169 @@ pub(crate) async fn handle_synapse_status(args: &serde_json::Value) -> McpToolRe
                 "_source": "mock",
             }))
         }
+    }
+}
+
+pub(crate) async fn handle_synapse_benchmark(args: &serde_json::Value) -> McpToolResult {
+    let action = match extract_required_string(args, "action") {
+        Ok(a) => a,
+        Err(e) => return e,
+    };
+
+    let action_opt = Some(action.clone());
+    if let Err(e) = validate_enum_opt(&action_opt, "action", &["run", "compare", "list", "status"])
+    {
+        return e;
+    }
+
+    let models = get_optional_string_arg(args, "models");
+    let dataset = get_optional_string_arg(args, "dataset");
+    let metric = get_optional_string_arg(args, "metric");
+
+    if let Err(e) = validate_enum_opt(
+        &metric,
+        "metric",
+        &["latency", "throughput", "accuracy", "perplexity"],
+    ) {
+        return e;
+    }
+
+    let bridge = SynapseBridge::new();
+
+    match action.as_str() {
+        "list" | "status" => {
+            let mut query = Vec::new();
+            if let Some(ref m) = models {
+                query.push(("models".to_string(), m.clone()));
+            }
+            if let Some(ref d) = dataset {
+                query.push(("dataset".to_string(), d.clone()));
+            }
+            if let Some(ref mt) = metric {
+                query.push(("metric".to_string(), mt.clone()));
+            }
+            match bridge.get("/api/v1/benchmark", &query).await {
+                Ok(response) => {
+                    info!("Synapse: {} benchmark (bridged)", action);
+                    success_result(response)
+                }
+                Err(e) => {
+                    warn!(error = %e, "Synapse bridge: falling back to mock for benchmark {}", action);
+                    success_result(serde_json::json!({
+                        "benchmarks": [],
+                        "total": 0,
+                        "_source": "mock",
+                    }))
+                }
+            }
+        }
+        op @ ("run" | "compare") => {
+            let body = serde_json::json!({
+                "action": op,
+                "models": models,
+                "dataset": dataset,
+                "metric": metric,
+            });
+            match bridge.post("/api/v1/benchmark", body).await {
+                Ok(response) => {
+                    info!(action = %op, "Synapse: {} benchmark (bridged)", op);
+                    success_result(response)
+                }
+                Err(e) => {
+                    warn!(error = %e, "Synapse bridge: falling back to mock for benchmark {}", op);
+                    let job_id = Uuid::new_v4().to_string();
+                    success_result(serde_json::json!({
+                        "id": job_id,
+                        "action": op,
+                        "models": models,
+                        "dataset": dataset,
+                        "metric": metric.unwrap_or_else(|| "latency".to_string()),
+                        "status": "ok",
+                        "_source": "mock",
+                    }))
+                }
+            }
+        }
+        _ => unreachable!(),
+    }
+}
+
+pub(crate) async fn handle_synapse_quantize(args: &serde_json::Value) -> McpToolResult {
+    let action = match extract_required_string(args, "action") {
+        Ok(a) => a,
+        Err(e) => return e,
+    };
+
+    let action_opt = Some(action.clone());
+    if let Err(e) = validate_enum_opt(
+        &action_opt,
+        "action",
+        &["start", "status", "list", "cancel"],
+    ) {
+        return e;
+    }
+
+    let model = get_optional_string_arg(args, "model");
+    let format = get_optional_string_arg(args, "format");
+    let bits = get_optional_string_arg(args, "bits");
+
+    if let Err(e) = validate_enum_opt(&format, "format", &["gguf", "gptq", "awq", "bnb"]) {
+        return e;
+    }
+    if let Err(e) = validate_enum_opt(&bits, "bits", &["4", "8"]) {
+        return e;
+    }
+
+    let bridge = SynapseBridge::new();
+
+    match action.as_str() {
+        "status" | "list" => {
+            let mut query = Vec::new();
+            if let Some(ref m) = model {
+                query.push(("model".to_string(), m.clone()));
+            }
+            match bridge.get("/api/v1/quantize", &query).await {
+                Ok(response) => {
+                    info!("Synapse: {} quantize (bridged)", action);
+                    success_result(response)
+                }
+                Err(e) => {
+                    warn!(error = %e, "Synapse bridge: falling back to mock for quantize {}", action);
+                    success_result(serde_json::json!({
+                        "jobs": [],
+                        "total": 0,
+                        "_source": "mock",
+                    }))
+                }
+            }
+        }
+        op @ ("start" | "cancel") => {
+            let body = serde_json::json!({
+                "action": op,
+                "model": model,
+                "format": format,
+                "bits": bits,
+            });
+            match bridge.post("/api/v1/quantize", body).await {
+                Ok(response) => {
+                    info!(action = %op, "Synapse: {} quantize (bridged)", op);
+                    success_result(response)
+                }
+                Err(e) => {
+                    warn!(error = %e, "Synapse bridge: falling back to mock for quantize {}", op);
+                    let job_id = Uuid::new_v4().to_string();
+                    success_result(serde_json::json!({
+                        "id": job_id,
+                        "action": op,
+                        "model": model.unwrap_or_else(|| "unknown".to_string()),
+                        "format": format.unwrap_or_else(|| "gguf".to_string()),
+                        "bits": bits.unwrap_or_else(|| "4".to_string()),
+                        "status": "ok",
+                        "_source": "mock",
+                    }))
+                }
+            }
+        }
+        _ => unreachable!(),
     }
 }

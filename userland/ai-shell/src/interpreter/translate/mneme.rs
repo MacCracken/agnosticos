@@ -130,8 +130,7 @@ pub(crate) fn translate_mneme(intent: &Intent) -> Result<Translation> {
                 description: format!(
                     "Mneme search: '{}'{}",
                     query,
-                    mode.as_ref()
-                        .map_or(String::new(), |m| format!(" ({})", m))
+                    mode.as_ref().map_or(String::new(), |m| format!(" ({})", m))
                 ),
                 permission: PermissionLevel::Safe,
                 explanation: "Searches Mneme knowledge base via MCP bridge".to_string(),
@@ -145,10 +144,7 @@ pub(crate) fn translate_mneme(intent: &Intent) -> Result<Translation> {
                 serde_json::Value::String(action.clone()),
             );
             if let Some(id) = note_id {
-                args_json.insert(
-                    "note_id".to_string(),
-                    serde_json::Value::String(id.clone()),
-                );
+                args_json.insert("note_id".to_string(), serde_json::Value::String(id.clone()));
             }
             let body = serde_json::json!({"name": "mneme_ai", "arguments": args_json});
             Ok(Translation {
@@ -171,10 +167,7 @@ pub(crate) fn translate_mneme(intent: &Intent) -> Result<Translation> {
                         .map_or(String::new(), |id| format!(" ({})", id))
                 ),
                 permission: PermissionLevel::SystemWrite,
-                explanation: format!(
-                    "Runs AI {} on Mneme knowledge via MCP bridge",
-                    action
-                ),
+                explanation: format!("Runs AI {} on Mneme knowledge via MCP bridge", action),
             })
         }
 
@@ -185,10 +178,7 @@ pub(crate) fn translate_mneme(intent: &Intent) -> Result<Translation> {
                 serde_json::Value::String(action.clone()),
             );
             if let Some(id) = node_id {
-                args_json.insert(
-                    "node_id".to_string(),
-                    serde_json::Value::String(id.clone()),
-                );
+                args_json.insert("node_id".to_string(), serde_json::Value::String(id.clone()));
             }
             let body = serde_json::json!({"name": "mneme_graph", "arguments": args_json});
             Ok(Translation {
@@ -215,6 +205,76 @@ pub(crate) fn translate_mneme(intent: &Intent) -> Result<Translation> {
                     _ => PermissionLevel::SystemWrite,
                 },
                 explanation: "Manages Mneme knowledge graph via MCP bridge".to_string(),
+            })
+        }
+
+        Intent::MnemeImport { action, path } => {
+            let mut args_json = serde_json::Map::new();
+            args_json.insert(
+                "action".to_string(),
+                serde_json::Value::String(action.clone()),
+            );
+            if let Some(p) = path {
+                args_json.insert("path".to_string(), serde_json::Value::String(p.clone()));
+            }
+            let body = serde_json::json!({"name": "mneme_import", "arguments": args_json});
+            Ok(Translation {
+                command: "curl".to_string(),
+                args: vec![
+                    "-s".to_string(),
+                    "-X".to_string(),
+                    "POST".to_string(),
+                    "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
+                    "-H".to_string(),
+                    "Content-Type: application/json".to_string(),
+                    "-d".to_string(),
+                    serde_json::to_string(&body).unwrap(),
+                ],
+                description: format!(
+                    "Mneme import: {}{}",
+                    action,
+                    path.as_ref().map_or(String::new(), |p| format!(" '{}'", p))
+                ),
+                permission: match action.as_str() {
+                    "status" => PermissionLevel::Safe,
+                    _ => PermissionLevel::SystemWrite,
+                },
+                explanation: "Imports documents into Mneme".to_string(),
+            })
+        }
+
+        Intent::MnemeTags { action, tag } => {
+            let mut args_json = serde_json::Map::new();
+            args_json.insert(
+                "action".to_string(),
+                serde_json::Value::String(action.clone()),
+            );
+            if let Some(t) = tag {
+                args_json.insert("tag".to_string(), serde_json::Value::String(t.clone()));
+            }
+            let body = serde_json::json!({"name": "mneme_tags", "arguments": args_json});
+            Ok(Translation {
+                command: "curl".to_string(),
+                args: vec![
+                    "-s".to_string(),
+                    "-X".to_string(),
+                    "POST".to_string(),
+                    "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
+                    "-H".to_string(),
+                    "Content-Type: application/json".to_string(),
+                    "-d".to_string(),
+                    serde_json::to_string(&body).unwrap(),
+                ],
+                description: format!(
+                    "Mneme tags: {}{}",
+                    action,
+                    tag.as_ref().map_or(String::new(), |t| format!(" '{}'", t))
+                ),
+                permission: match action.as_str() {
+                    "list" | "search" => PermissionLevel::Safe,
+                    _ => PermissionLevel::SystemWrite,
+                },
+                explanation: "Manages tags via Mneme".to_string(),
             })
         }
 

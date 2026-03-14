@@ -354,9 +354,14 @@ pub(crate) static PATTERNS: Lazy<HashMap<String, Regex>> = Lazy::new(|| {
         "synapse_chat",
         r"(?i)^synapse\s+(chat|ask|infer|complete|generate)\s+(?:with\s+)?(\S+)(\s+(.+))?$",
     );
+    r("synapse_status", r"(?i)^synapse\s+(status|health|gpu)$");
     r(
-        "synapse_status",
-        r"(?i)^synapse\s+(status|health|gpu)$",
+        "synapse_benchmark",
+        r"(?i)^synapse\s+(benchmark|bench|compare)\s+(run|compare|list|status)(\s+(.+))?$",
+    );
+    r(
+        "synapse_quantize",
+        r"(?i)^synapse\s+(quantize|quant|convert)\s+(start|status|list|cancel)(\s+(.+?))?(\s+(?:format|as)\s+(gguf|gptq|awq|bnb))?$",
     );
     // BullShift trading
     r(
@@ -379,6 +384,14 @@ pub(crate) static PATTERNS: Lazy<HashMap<String, Regex>> = Lazy::new(|| {
         "bullshift_strategy",
         r"(?i)^(?:bullshift|trading)\s+(strategy|strategies)\s+(list|start|stop|backtest|status)(\s+(.+))?$",
     );
+    r(
+        "bullshift_accounts",
+        r"(?i)^(?:bullshift|trading)\s+(account|accounts)\s+(list|switch|status|info)(\s+(.+))?$",
+    );
+    r(
+        "bullshift_history",
+        r"(?i)^(?:bullshift|trading)\s+(history|trades|dividends|tax[\s_]?report)\s*(export)?(\s+(?:period|for)\s+(1d|1w|1m|3m|1y|all))?$",
+    );
     // SecureYeoman AI platform
     r(
         "yeoman_agents",
@@ -399,6 +412,95 @@ pub(crate) static PATTERNS: Lazy<HashMap<String, Regex>> = Lazy::new(|| {
     r(
         "yeoman_status",
         r"(?i)^(?:yeoman|secureyeoman)\s+(status|health)$",
+    );
+    r(
+        "yeoman_logs",
+        r"(?i)^(?:yeoman|secureyeoman)\s+(log|logs)\s+(query|stream|tail|search)(\s+(.+))?$",
+    );
+    r(
+        "yeoman_workflows",
+        r"(?i)^(?:yeoman|secureyeoman)\s+(workflow|workflows)\s+(list|create|run|stop|status|delete)(\s+(.+))?$",
+    );
+    // Delta additional
+    r(
+        "delta_branches",
+        r"(?i)^delta\s+(branch|branches)\s+(list|create|delete|protect|info)(\s+(.+))?$",
+    );
+    r(
+        "delta_review",
+        r"(?i)^delta\s+(review|reviews)\s+(request|approve|reject|comment|list)(\s+(.+))?$",
+    );
+    // Aequi additional
+    r(
+        "aequi_invoices",
+        r"(?i)^aequi\s+(invoice|invoices)\s+(create|list|send|void|status)(\s+(.+))?$",
+    );
+    r(
+        "aequi_reports",
+        r"(?i)^aequi\s+(report|reports)\s+(pnl|balance[\s_]?sheet|cash[\s_]?flow|summary)(\s+(?:period|for)\s+(.+))?$",
+    );
+    // Agnostic additional
+    r(
+        "agnostic_coverage",
+        r"(?i)^agnostic\s+(coverage|cov)\s+(summary|detail|diff|trend)(\s+(.+))?$",
+    );
+    r(
+        "agnostic_schedule",
+        r"(?i)^agnostic\s+(schedule|schedules)\s+(create|list|delete|pause|resume)(\s+(.+))?$",
+    );
+    // Shruti additional
+    r(
+        "shruti_plugins",
+        r"(?i)^shruti\s+(plugin|plugins)\s+(list|load|unload|scan|info)(\s+(.+))?$",
+    );
+    r(
+        "shruti_ai",
+        r"(?i)^shruti\s+ai\s+(mix[\s_]?suggest|master|stem[\s_]?split|denoise|transcribe|generate)(\s+(.+))?$",
+    );
+    // Tazama additional
+    r(
+        "tazama_media",
+        r"(?i)^tazama\s+(media|library)\s+(import|list|info|delete|transcode)(\s+(.+))?$",
+    );
+    r(
+        "tazama_subtitles",
+        r"(?i)^tazama\s+(subtitle|subtitles|subs)\s+(generate|edit|export|import|list)(\s+(.+))?$",
+    );
+    // Rasa additional
+    r(
+        "rasa_batch",
+        r"(?i)^rasa\s+batch\s+(resize|convert|optimize|watermark|list)(\s+(.+))?$",
+    );
+    r(
+        "rasa_templates",
+        r"(?i)^rasa\s+(template|templates)\s+(list|create|apply|delete|info)(\s+(.+))?$",
+    );
+    // Mneme additional
+    r(
+        "mneme_import",
+        r"(?i)^mneme\s+import\s+(file|url|clipboard|bulk|status)(\s+(.+))?$",
+    );
+    r(
+        "mneme_tags",
+        r"(?i)^mneme\s+(tag|tags)\s+(list|create|delete|assign|unassign|search)(\s+(.+))?$",
+    );
+    // Photis additional
+    r(
+        "photis_boards",
+        r"(?i)^photis\s+(board|boards)\s+(list|create|delete|rename|info)(\s+(.+))?$",
+    );
+    r(
+        "photis_notes",
+        r"(?i)^photis\s+(note|notes)\s+(create|list|get|delete|search)(\s+(.+))?$",
+    );
+    // Edge additional
+    r(
+        "edge_logs",
+        r"(?i)^edge\s+(log|logs)\s+(query|tail|search|export)(\s+(.+))?$",
+    );
+    r(
+        "edge_config",
+        r"(?i)^edge\s+(config|configuration)\s+(get|set|list|reset)(\s+(.+))?$",
     );
     p
 });

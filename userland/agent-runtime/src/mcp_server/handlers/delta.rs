@@ -356,3 +356,162 @@ pub(crate) async fn handle_delta_ci_status(args: &serde_json::Value) -> McpToolR
         }
     }
 }
+
+pub(crate) async fn handle_delta_branches(args: &serde_json::Value) -> McpToolResult {
+    let action = match extract_required_string(args, "action") {
+        Ok(a) => a,
+        Err(e) => return e,
+    };
+
+    let action_opt = Some(action.clone());
+    if let Err(e) = validate_enum_opt(
+        &action_opt,
+        "action",
+        &["list", "create", "delete", "protect", "info"],
+    ) {
+        return e;
+    }
+
+    let repo = get_optional_string_arg(args, "repo");
+    let name = get_optional_string_arg(args, "name");
+    let from = get_optional_string_arg(args, "from");
+
+    let bridge = DeltaBridge::new();
+
+    match action.as_str() {
+        "list" | "info" => {
+            let mut query = Vec::new();
+            if let Some(ref r) = repo {
+                query.push(("repo".to_string(), r.clone()));
+            }
+            if let Some(ref n) = name {
+                query.push(("name".to_string(), n.clone()));
+            }
+            query.push(("action".to_string(), action.clone()));
+            match bridge.get("/api/v1/branches", &query).await {
+                Ok(response) => {
+                    info!(action = %action, "Delta: branches (bridged)");
+                    success_result(response)
+                }
+                Err(e) => {
+                    warn!(error = %e, "Delta bridge: falling back to mock for branches {}", action);
+                    success_result(serde_json::json!({
+                        "branches": [{"name": "main", "protected": true}],
+                        "total": 1,
+                        "_source": "mock",
+                    }))
+                }
+            }
+        }
+        op @ ("create" | "delete" | "protect") => {
+            let branch_name = match name {
+                Some(n) => n,
+                None => return error_result("Missing required argument: name".to_string()),
+            };
+            let mut body = serde_json::json!({
+                "action": op,
+                "name": branch_name,
+                "repo": repo,
+            });
+            if let Some(ref f) = from {
+                body["from"] = serde_json::json!(f);
+            }
+            match bridge.post("/api/v1/branches", body).await {
+                Ok(response) => {
+                    info!(action = %op, branch = %branch_name, "Delta: {} branch (bridged)", op);
+                    success_result(response)
+                }
+                Err(e) => {
+                    warn!(error = %e, "Delta bridge: falling back to mock for {} branch", op);
+                    success_result(serde_json::json!({
+                        "name": branch_name,
+                        "action": op,
+                        "status": "ok",
+                        "updated_at": chrono::Utc::now().to_rfc3339(),
+                        "_source": "mock",
+                    }))
+                }
+            }
+        }
+        _ => unreachable!(),
+    }
+}
+
+pub(crate) async fn handle_delta_review(args: &serde_json::Value) -> McpToolResult {
+    let action = match extract_required_string(args, "action") {
+        Ok(a) => a,
+        Err(e) => return e,
+    };
+
+    let action_opt = Some(action.clone());
+    if let Err(e) = validate_enum_opt(
+        &action_opt,
+        "action",
+        &["request", "approve", "reject", "comment", "list"],
+    ) {
+        return e;
+    }
+
+    let pr_id = get_optional_string_arg(args, "pr_id");
+    let body_text = get_optional_string_arg(args, "body");
+    let repo = get_optional_string_arg(args, "repo");
+
+    let bridge = DeltaBridge::new();
+
+    match action.as_str() {
+        "list" => {
+            let mut query = Vec::new();
+            if let Some(ref r) = repo {
+                query.push(("repo".to_string(), r.clone()));
+            }
+            if let Some(ref p) = pr_id {
+                query.push(("pr_id".to_string(), p.clone()));
+            }
+            match bridge.get("/api/v1/reviews", &query).await {
+                Ok(response) => {
+                    info!("Delta: list reviews (bridged)");
+                    success_result(response)
+                }
+                Err(e) => {
+                    warn!(error = %e, "Delta bridge: falling back to mock for list reviews");
+                    success_result(serde_json::json!({
+                        "reviews": [],
+                        "total": 0,
+                        "_source": "mock",
+                    }))
+                }
+            }
+        }
+        op @ ("request" | "approve" | "reject" | "comment") => {
+            let mut body = serde_json::json!({
+                "action": op,
+                "repo": repo,
+            });
+            if let Some(ref p) = pr_id {
+                body["pr_id"] = serde_json::json!(p);
+            }
+            if let Some(ref b) = body_text {
+                body["body"] = serde_json::json!(b);
+            }
+            match bridge.post("/api/v1/reviews", body).await {
+                Ok(response) => {
+                    info!(action = %op, "Delta: {} review (bridged)", op);
+                    success_result(response)
+                }
+                Err(e) => {
+                    warn!(error = %e, "Delta bridge: falling back to mock for {} review", op);
+                    let review_id = Uuid::new_v4().to_string();
+                    success_result(serde_json::json!({
+                        "id": review_id,
+                        "action": op,
+                        "pr_id": pr_id,
+                        "status": "submitted",
+                        "created_at": chrono::Utc::now().to_rfc3339(),
+                        "_source": "mock",
+                    }))
+                }
+            }
+        }
+        _ => unreachable!(),
+    }
+}

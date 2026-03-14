@@ -272,7 +272,13 @@ pub(crate) async fn handle_mneme_ai(args: &serde_json::Value) -> McpToolResult {
     if let Err(e) = validate_enum_opt(
         &action_opt,
         "action",
-        &["summarize", "extract_concepts", "auto_link", "generate", "translate"],
+        &[
+            "summarize",
+            "extract_concepts",
+            "auto_link",
+            "generate",
+            "translate",
+        ],
     ) {
         return e;
     }
@@ -365,6 +371,150 @@ pub(crate) async fn handle_mneme_graph(args: &serde_json::Value) -> McpToolResul
                         "action": op,
                         "nodes": 0,
                         "edges": 0,
+                        "_source": "mock",
+                    }))
+                }
+            }
+        }
+        _ => unreachable!(),
+    }
+}
+
+pub(crate) async fn handle_mneme_import(args: &serde_json::Value) -> McpToolResult {
+    let action = match extract_required_string(args, "action") {
+        Ok(a) => a,
+        Err(e) => return e,
+    };
+
+    let action_opt = Some(action.clone());
+    if let Err(e) = validate_enum_opt(
+        &action_opt,
+        "action",
+        &["file", "url", "clipboard", "bulk", "status"],
+    ) {
+        return e;
+    }
+
+    let path = get_optional_string_arg(args, "path");
+    let notebook_id = get_optional_string_arg(args, "notebook_id");
+    let format = get_optional_string_arg(args, "format");
+
+    if let Err(e) = validate_enum_opt(&format, "format", &["markdown", "pdf", "html", "txt"]) {
+        return e;
+    }
+
+    let bridge = MnemeBridge::new();
+
+    match action.as_str() {
+        "status" => {
+            let mut query = Vec::new();
+            if let Some(ref nb) = notebook_id {
+                query.push(("notebook_id".to_string(), nb.clone()));
+            }
+            match bridge.get("/api/v1/import", &query).await {
+                Ok(response) => {
+                    info!("Mneme: import status (bridged)");
+                    success_result(response)
+                }
+                Err(e) => {
+                    warn!(error = %e, "Mneme bridge: falling back to mock for import status");
+                    success_result(serde_json::json!({
+                        "action": "status",
+                        "status": "ok",
+                        "imported": 0,
+                        "_source": "mock",
+                    }))
+                }
+            }
+        }
+        op @ ("file" | "url" | "clipboard" | "bulk") => {
+            let body = serde_json::json!({
+                "action": op,
+                "path": path,
+                "notebook_id": notebook_id,
+                "format": format,
+            });
+            match bridge.post("/api/v1/import", body).await {
+                Ok(response) => {
+                    info!(action = %op, "Mneme: import {} (bridged)", op);
+                    success_result(response)
+                }
+                Err(e) => {
+                    warn!(error = %e, "Mneme bridge: falling back to mock for import {}", op);
+                    success_result(serde_json::json!({
+                        "action": op,
+                        "status": "ok",
+                        "imported": 0,
+                        "_source": "mock",
+                    }))
+                }
+            }
+        }
+        _ => unreachable!(),
+    }
+}
+
+pub(crate) async fn handle_mneme_tags(args: &serde_json::Value) -> McpToolResult {
+    let action = match extract_required_string(args, "action") {
+        Ok(a) => a,
+        Err(e) => return e,
+    };
+
+    let action_opt = Some(action.clone());
+    if let Err(e) = validate_enum_opt(
+        &action_opt,
+        "action",
+        &["list", "create", "delete", "assign", "unassign", "search"],
+    ) {
+        return e;
+    }
+
+    let tag = get_optional_string_arg(args, "tag");
+    let note_id = get_optional_string_arg(args, "note_id");
+    let color = get_optional_string_arg(args, "color");
+    let bridge = MnemeBridge::new();
+
+    match action.as_str() {
+        "list" | "search" => {
+            let mut query = Vec::new();
+            if let Some(ref t) = tag {
+                query.push(("tag".to_string(), t.clone()));
+            }
+            match bridge.get("/api/v1/tags", &query).await {
+                Ok(response) => {
+                    info!("Mneme: {} tags (bridged)", action);
+                    success_result(response)
+                }
+                Err(e) => {
+                    warn!(error = %e, "Mneme bridge: falling back to mock for tags {}", action);
+                    success_result(serde_json::json!({
+                        "tags": [],
+                        "total": 0,
+                        "_source": "mock",
+                    }))
+                }
+            }
+        }
+        op @ ("create" | "delete" | "assign" | "unassign") => {
+            let body = serde_json::json!({
+                "action": op,
+                "tag": tag,
+                "note_id": note_id,
+                "color": color,
+            });
+            match bridge.post("/api/v1/tags", body).await {
+                Ok(response) => {
+                    info!(action = %op, "Mneme: {} tag (bridged)", op);
+                    success_result(response)
+                }
+                Err(e) => {
+                    warn!(error = %e, "Mneme bridge: falling back to mock for tag {}", op);
+                    let tag_id = Uuid::new_v4().to_string();
+                    success_result(serde_json::json!({
+                        "tag_id": tag_id,
+                        "action": op,
+                        "tag": tag.unwrap_or_else(|| "untagged".to_string()),
+                        "status": "ok",
                         "_source": "mock",
                     }))
                 }

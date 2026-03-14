@@ -396,3 +396,131 @@ pub(crate) async fn handle_yeoman_status(args: &serde_json::Value) -> McpToolRes
         }
     }
 }
+
+pub(crate) async fn handle_yeoman_logs(args: &serde_json::Value) -> McpToolResult {
+    let action = match extract_required_string(args, "action") {
+        Ok(a) => a,
+        Err(e) => return e,
+    };
+
+    let action_opt = Some(action.clone());
+    if let Err(e) = validate_enum_opt(
+        &action_opt,
+        "action",
+        &["query", "stream", "tail", "search"],
+    ) {
+        return e;
+    }
+
+    let agent_id = get_optional_string_arg(args, "agent_id");
+    let level = get_optional_string_arg(args, "level");
+    let limit = get_optional_string_arg(args, "limit");
+    let query_str = get_optional_string_arg(args, "query");
+
+    if let Err(e) = validate_enum_opt(&level, "level", &["debug", "info", "warn", "error"]) {
+        return e;
+    }
+
+    let bridge = YeomanBridge::new();
+    let mut query = Vec::new();
+    query.push(("action".to_string(), action.clone()));
+    if let Some(ref id) = agent_id {
+        query.push(("agent_id".to_string(), id.clone()));
+    }
+    if let Some(ref l) = level {
+        query.push(("level".to_string(), l.clone()));
+    }
+    if let Some(ref lim) = limit {
+        query.push(("limit".to_string(), lim.clone()));
+    }
+    if let Some(ref q) = query_str {
+        query.push(("query".to_string(), q.clone()));
+    }
+
+    match bridge.get("/api/v1/logs", &query).await {
+        Ok(response) => {
+            info!("SecureYeoman: {} logs (bridged)", action);
+            success_result(response)
+        }
+        Err(e) => {
+            warn!(error = %e, "SecureYeoman bridge: falling back to mock for logs {}", action);
+            success_result(serde_json::json!({
+                "entries": [],
+                "total": 0,
+                "_source": "mock",
+            }))
+        }
+    }
+}
+
+pub(crate) async fn handle_yeoman_workflows(args: &serde_json::Value) -> McpToolResult {
+    let action = match extract_required_string(args, "action") {
+        Ok(a) => a,
+        Err(e) => return e,
+    };
+
+    let action_opt = Some(action.clone());
+    if let Err(e) = validate_enum_opt(
+        &action_opt,
+        "action",
+        &["list", "create", "run", "stop", "status", "delete"],
+    ) {
+        return e;
+    }
+
+    let name = get_optional_string_arg(args, "name");
+    let workflow_id = get_optional_string_arg(args, "workflow_id");
+    let bridge = YeomanBridge::new();
+
+    match action.as_str() {
+        "list" | "status" => {
+            let mut query = Vec::new();
+            if let Some(ref id) = workflow_id {
+                query.push(("workflow_id".to_string(), id.clone()));
+            }
+            if let Some(ref n) = name {
+                query.push(("name".to_string(), n.clone()));
+            }
+            query.push(("action".to_string(), action.clone()));
+            match bridge.get("/api/v1/workflows", &query).await {
+                Ok(response) => {
+                    info!("SecureYeoman: {} workflows (bridged)", action);
+                    success_result(response)
+                }
+                Err(e) => {
+                    warn!(error = %e, "SecureYeoman bridge: falling back to mock for workflows {}", action);
+                    success_result(serde_json::json!({
+                        "workflows": [],
+                        "total": 0,
+                        "_source": "mock",
+                    }))
+                }
+            }
+        }
+        op @ ("create" | "run" | "stop" | "delete") => {
+            let body = serde_json::json!({
+                "action": op,
+                "name": name,
+                "workflow_id": workflow_id,
+            });
+            match bridge.post("/api/v1/workflows", body).await {
+                Ok(response) => {
+                    info!(action = %op, "SecureYeoman: {} workflow (bridged)", op);
+                    success_result(response)
+                }
+                Err(e) => {
+                    warn!(error = %e, "SecureYeoman bridge: falling back to mock for {} workflow", op);
+                    let id = workflow_id.unwrap_or_else(|| Uuid::new_v4().to_string());
+                    success_result(serde_json::json!({
+                        "workflow_id": id,
+                        "action": op,
+                        "name": name.unwrap_or_else(|| "unnamed-workflow".to_string()),
+                        "status": "ok",
+                        "_source": "mock",
+                    }))
+                }
+            }
+        }
+        _ => unreachable!(),
+    }
+}

@@ -575,7 +575,29 @@ pub fn build_tool_manifest() -> McpToolManifest {
             }),
             vec![]
         ),
-        // ----- BullShift trading tools (5) -----
+        tool!(
+            "synapse_benchmark",
+            "Benchmark and compare LLM models in Synapse",
+            json!({
+                "action": {"type": "string", "description": "Action: run, compare, list, status"},
+                "models": {"type": "string", "description": "Comma-separated model names to benchmark"},
+                "dataset": {"type": "string", "description": "Benchmark dataset name"},
+                "metric": {"type": "string", "description": "Metric: latency, throughput, accuracy, perplexity"}
+            }),
+            vec!["action"]
+        ),
+        tool!(
+            "synapse_quantize",
+            "Quantize/convert LLM models (GGUF, GPTQ, AWQ)",
+            json!({
+                "action": {"type": "string", "description": "Action: start, status, list, cancel"},
+                "model": {"type": "string", "description": "Model name to quantize"},
+                "format": {"type": "string", "description": "Target format: gguf, gptq, awq, bnb"},
+                "bits": {"type": "string", "description": "Quantization bits: 4, 8"}
+            }),
+            vec!["action"]
+        ),
+        // ----- BullShift trading tools (7) -----
         tool!(
             "bullshift_portfolio",
             "View BullShift portfolio, positions, and P&L",
@@ -633,7 +655,27 @@ pub fn build_tool_manifest() -> McpToolManifest {
             }),
             vec!["action"]
         ),
-        // ----- SecureYeoman AI platform tools (5) -----
+        tool!(
+            "bullshift_accounts",
+            "Manage broker accounts in BullShift",
+            json!({
+                "action": {"type": "string", "description": "Action: list, switch, status, info"},
+                "account_id": {"type": "string", "description": "Account identifier"},
+                "broker": {"type": "string", "description": "Broker name"}
+            }),
+            vec!["action"]
+        ),
+        tool!(
+            "bullshift_history",
+            "View trade history and generate reports from BullShift",
+            json!({
+                "action": {"type": "string", "description": "Action: trades, dividends, tax_report, export"},
+                "period": {"type": "string", "description": "Time period: 1d, 1w, 1m, 3m, 1y, all"},
+                "format": {"type": "string", "description": "Export format: json, csv"}
+            }),
+            vec!["action"]
+        ),
+        // ----- SecureYeoman AI platform tools (7) -----
         tool!(
             "yeoman_agents",
             "Manage AI agents in SecureYeoman (list, deploy, stop, status)",
@@ -685,6 +727,284 @@ pub fn build_tool_manifest() -> McpToolManifest {
                 "detail": {"type": "string", "description": "Detail level: brief, full"}
             }),
             vec![]
+        ),
+        tool!(
+            "yeoman_logs",
+            "Query SecureYeoman agent logs",
+            json!({
+                "action": {"type": "string", "description": "Action: query, stream, tail, search"},
+                "agent_id": {"type": "string", "description": "Filter by agent UUID"},
+                "level": {"type": "string", "description": "Log level: debug, info, warn, error"},
+                "limit": {"type": "string", "description": "Max entries to return"},
+                "query": {"type": "string", "description": "Search term"}
+            }),
+            vec!["action"]
+        ),
+        tool!(
+            "yeoman_workflows",
+            "Manage SecureYeoman automation workflows",
+            json!({
+                "action": {"type": "string", "description": "Action: list, create, run, stop, status, delete"},
+                "name": {"type": "string", "description": "Workflow name"},
+                "workflow_id": {"type": "string", "description": "Workflow ID (for run/stop/status/delete)"}
+            }),
+            vec!["action"]
+        ),
+        // ----- Delta code hosting tools (additional) -----
+        tool!(
+            "delta_branches",
+            "Manage git branches in Delta",
+            json!({
+                "action": {"type": "string", "description": "Action: list, create, delete, protect, info"},
+                "repo": {"type": "string", "description": "Repository name"},
+                "name": {"type": "string", "description": "Branch name"},
+                "from": {"type": "string", "description": "Base branch (for create)"}
+            }),
+            vec!["action"]
+        ),
+        tool!(
+            "delta_review",
+            "Code review operations in Delta",
+            json!({
+                "action": {"type": "string", "description": "Action: request, approve, reject, comment, list"},
+                "pr_id": {"type": "string", "description": "Pull request ID"},
+                "body": {"type": "string", "description": "Review comment body"},
+                "repo": {"type": "string", "description": "Repository name"}
+            }),
+            vec!["action"]
+        ),
+        // ----- Aequi accounting tools (additional) -----
+        tool!(
+            "aequi_invoices",
+            "Manage invoices in Aequi",
+            json!({
+                "action": {"type": "string", "description": "Action: create, list, send, void, status"},
+                "client": {"type": "string", "description": "Client name"},
+                "amount": {"type": "string", "description": "Invoice amount"},
+                "invoice_id": {"type": "string", "description": "Invoice ID (for send/void/status)"},
+                "due_date": {"type": "string", "description": "Due date (ISO format)"}
+            }),
+            vec!["action"]
+        ),
+        tool!(
+            "aequi_reports",
+            "Generate financial reports from Aequi",
+            json!({
+                "action": {"type": "string", "description": "Action: pnl, balance_sheet, cash_flow, summary"},
+                "period": {"type": "string", "description": "Period: month, quarter, year, ytd"},
+                "year": {"type": "string", "description": "Tax year"}
+            }),
+            vec!["action"]
+        ),
+        // ----- Agnostic AAS crew management tools (5) -----
+        tool!(
+            "agnostic_run_crew",
+            "Run an agent crew from a preset or inline definitions",
+            json!({
+                "title": {"type": "string", "description": "Task title"},
+                "description": {"type": "string", "description": "Task description"},
+                "preset": {"type": "string", "description": "Preset name: qa-standard, data-engineering, devops"},
+                "agent_keys": {"type": "array", "description": "Agent definition keys to assemble"},
+                "agent_definitions": {"type": "array", "description": "Inline agent definitions"},
+                "target_url": {"type": "string", "description": "Target application URL"},
+                "priority": {"type": "string", "description": "Priority: critical, high, medium, low"}
+            }),
+            vec!["title", "description"]
+        ),
+        tool!(
+            "agnostic_crew_status",
+            "Get status of a running or completed crew",
+            json!({"crew_id": {"type": "string", "description": "Crew ID"}}),
+            vec!["crew_id"]
+        ),
+        tool!(
+            "agnostic_list_presets",
+            "List available agent crew presets (QA, data-engineering, devops, etc.)",
+            json!({"domain": {"type": "string", "description": "Filter by domain"}}),
+            vec![]
+        ),
+        tool!(
+            "agnostic_list_definitions",
+            "List available individual agent definitions",
+            json!({"domain": {"type": "string", "description": "Filter by domain"}}),
+            vec![]
+        ),
+        tool!(
+            "agnostic_create_agent",
+            "Create a new agent definition on the Agnostic platform",
+            json!({
+                "agent_key": {"type": "string", "description": "Unique agent key (kebab-case)"},
+                "name": {"type": "string", "description": "Display name"},
+                "role": {"type": "string", "description": "Agent role description"},
+                "goal": {"type": "string", "description": "Agent goal"},
+                "backstory": {"type": "string", "description": "Agent backstory for LLM context"},
+                "domain": {"type": "string", "description": "Domain: qa, data-engineering, devops, etc."},
+                "tools": {"type": "array", "description": "Tool names to attach"}
+            }),
+            vec!["agent_key", "name", "role", "goal", "backstory"]
+        ),
+        // ----- Agnostic QA tools (additional) -----
+        tool!(
+            "agnostic_coverage",
+            "Get code coverage reports from Agnostic",
+            json!({
+                "action": {"type": "string", "description": "Action: summary, detail, diff, trend"},
+                "suite": {"type": "string", "description": "Test suite name"},
+                "path": {"type": "string", "description": "File/directory filter"},
+                "threshold": {"type": "string", "description": "Minimum coverage percentage"}
+            }),
+            vec!["action"]
+        ),
+        tool!(
+            "agnostic_schedule",
+            "Schedule recurring test runs in Agnostic",
+            json!({
+                "action": {"type": "string", "description": "Action: create, list, delete, pause, resume"},
+                "suite": {"type": "string", "description": "Test suite name"},
+                "cron": {"type": "string", "description": "Cron expression"},
+                "schedule_id": {"type": "string", "description": "Schedule ID (for delete/pause/resume)"}
+            }),
+            vec!["action"]
+        ),
+        // ----- Shruti DAW tools (additional) -----
+        tool!(
+            "shruti_plugins",
+            "Manage audio plugins in Shruti (VST3, CLAP, LV2)",
+            json!({
+                "action": {"type": "string", "description": "Action: list, load, unload, scan, info"},
+                "name": {"type": "string", "description": "Plugin name"},
+                "format": {"type": "string", "description": "Plugin format: vst3, clap, lv2"},
+                "path": {"type": "string", "description": "Plugin path (for load)"}
+            }),
+            vec!["action"]
+        ),
+        tool!(
+            "shruti_ai",
+            "AI-assisted audio features in Shruti",
+            json!({
+                "action": {"type": "string", "description": "Action: mix_suggest, master, stem_split, denoise, transcribe, generate"},
+                "track": {"type": "string", "description": "Target track name"},
+                "options": {"type": "string", "description": "AI parameters as JSON string"}
+            }),
+            vec!["action"]
+        ),
+        // ----- Tazama video editor tools (additional) -----
+        tool!(
+            "tazama_media",
+            "Manage Tazama media library",
+            json!({
+                "action": {"type": "string", "description": "Action: import, list, info, delete, transcode"},
+                "path": {"type": "string", "description": "File path (for import)"},
+                "media_id": {"type": "string", "description": "Media ID (for info/delete)"},
+                "format": {"type": "string", "description": "Target transcode format"}
+            }),
+            vec!["action"]
+        ),
+        tool!(
+            "tazama_subtitles",
+            "Manage subtitles in Tazama (generate, edit, export)",
+            json!({
+                "action": {"type": "string", "description": "Action: generate, edit, export, import, list"},
+                "language": {"type": "string", "description": "Subtitle language"},
+                "format": {"type": "string", "description": "Format: srt, vtt, ass"},
+                "path": {"type": "string", "description": "File path (for import/export)"}
+            }),
+            vec!["action"]
+        ),
+        // ----- Rasa image editor tools (additional) -----
+        tool!(
+            "rasa_batch",
+            "Batch image operations in Rasa (resize, convert, optimize)",
+            json!({
+                "action": {"type": "string", "description": "Action: resize, convert, optimize, watermark, list"},
+                "path": {"type": "string", "description": "Input directory or glob pattern"},
+                "output": {"type": "string", "description": "Output directory"},
+                "format": {"type": "string", "description": "Target format"},
+                "width": {"type": "string", "description": "Target width"},
+                "height": {"type": "string", "description": "Target height"}
+            }),
+            vec!["action"]
+        ),
+        tool!(
+            "rasa_templates",
+            "Manage design templates in Rasa",
+            json!({
+                "action": {"type": "string", "description": "Action: list, create, apply, delete, info"},
+                "name": {"type": "string", "description": "Template name"},
+                "category": {"type": "string", "description": "Category: social, print, web, banner"},
+                "template_id": {"type": "string", "description": "Template ID (for apply/delete/info)"}
+            }),
+            vec!["action"]
+        ),
+        // ----- Mneme knowledge base tools (additional) -----
+        tool!(
+            "mneme_import",
+            "Import documents into Mneme knowledge base",
+            json!({
+                "action": {"type": "string", "description": "Action: file, url, clipboard, bulk, status"},
+                "path": {"type": "string", "description": "File path or URL"},
+                "notebook_id": {"type": "string", "description": "Target notebook"},
+                "format": {"type": "string", "description": "Format: markdown, pdf, html, txt"}
+            }),
+            vec!["action"]
+        ),
+        tool!(
+            "mneme_tags",
+            "Manage tags in Mneme knowledge base",
+            json!({
+                "action": {"type": "string", "description": "Action: list, create, delete, assign, unassign, search"},
+                "tag": {"type": "string", "description": "Tag name"},
+                "note_id": {"type": "string", "description": "Note ID (for assign/unassign)"},
+                "color": {"type": "string", "description": "Tag color"}
+            }),
+            vec!["action"]
+        ),
+        // ----- Photis Nadi tools (additional) -----
+        tool!(
+            "photis_boards",
+            "Manage task boards in Photis Nadi",
+            json!({
+                "action": {"type": "string", "description": "Action: list, create, delete, rename, info"},
+                "name": {"type": "string", "description": "Board name"},
+                "board_id": {"type": "string", "description": "Board ID (for delete/rename/info)"}
+            }),
+            vec!["action"]
+        ),
+        tool!(
+            "photis_notes",
+            "Manage quick notes in Photis Nadi",
+            json!({
+                "action": {"type": "string", "description": "Action: create, list, get, delete, search"},
+                "content": {"type": "string", "description": "Note content"},
+                "task_id": {"type": "string", "description": "Attach to task ID"},
+                "note_id": {"type": "string", "description": "Note ID (for get/delete)"},
+                "query": {"type": "string", "description": "Search term"}
+            }),
+            vec!["action"]
+        ),
+        // ----- Edge fleet tools (additional) -----
+        tool!(
+            "edge_logs",
+            "Query edge node logs",
+            json!({
+                "action": {"type": "string", "description": "Action: query, tail, search, export"},
+                "node_id": {"type": "string", "description": "Filter by node ID"},
+                "level": {"type": "string", "description": "Log level: debug, info, warn, error"},
+                "limit": {"type": "string", "description": "Max entries"},
+                "since": {"type": "string", "description": "Time window: 1h, 1d, 1w"}
+            }),
+            vec!["action"]
+        ),
+        tool!(
+            "edge_config",
+            "Manage edge node configuration",
+            json!({
+                "action": {"type": "string", "description": "Action: get, set, list, reset"},
+                "node_id": {"type": "string", "description": "Target node ID"},
+                "key": {"type": "string", "description": "Config key"},
+                "value": {"type": "string", "description": "Config value (for set)"}
+            }),
+            vec!["action"]
         ),
     ];
 

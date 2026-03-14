@@ -481,6 +481,7 @@ mod tests {
         let req = RegisterAgentRequest {
             name: "test".to_string(),
             id: None,
+            domain: None,
             capabilities: vec!["file:read".to_string()],
             resource_needs: ResourceNeeds {
                 min_memory_mb: 256,

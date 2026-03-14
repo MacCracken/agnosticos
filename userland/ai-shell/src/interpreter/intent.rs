@@ -159,6 +159,16 @@ pub enum Intent {
     AequiBalance,
     /// List receipts from Aequi
     AequiReceipts { status: Option<String> },
+    /// Manage invoices in Aequi
+    AequiInvoices {
+        action: String,
+        client: Option<String>,
+    },
+    /// Generate financial reports
+    AequiReports {
+        action: String,
+        period: Option<String>,
+    },
     /// List tasks from Photis Nadi
     TaskList { status: Option<String> },
     /// Create a task in Photis Nadi
@@ -175,6 +185,16 @@ pub enum Intent {
     RitualCheck { date: Option<String> },
     /// Show productivity statistics
     ProductivityStats { period: Option<String> },
+    /// Manage Photis boards
+    PhotoisBoards {
+        action: String,
+        name: Option<String>,
+    },
+    /// Photis quick notes
+    PhotoisNotes {
+        action: String,
+        content: Option<String>,
+    },
     /// Run a QA test suite in Agnostic
     AgnosticRunSuite {
         suite: String,
@@ -191,6 +211,16 @@ pub enum Intent {
     AgnosticListSuites { category: Option<String> },
     /// Get QA agent status from Agnostic
     AgnosticAgentStatus { agent_type: Option<String> },
+    /// Get code coverage from Agnostic
+    AgnosticCoverage {
+        action: String,
+        suite: Option<String>,
+    },
+    /// Schedule recurring tests in Agnostic
+    AgnosticSchedule {
+        action: String,
+        suite: Option<String>,
+    },
     /// Create a repository in Delta
     DeltaCreateRepo {
         name: String,
@@ -211,6 +241,17 @@ pub enum Intent {
     },
     /// Show Delta CI pipeline status
     DeltaCiStatus { repo: Option<String> },
+    /// Manage Delta branches
+    DeltaBranches {
+        action: String,
+        repo: Option<String>,
+        name: Option<String>,
+    },
+    /// Delta code review
+    DeltaReview {
+        action: String,
+        pr_id: Option<String>,
+    },
     /// List edge nodes in the fleet
     EdgeListNodes { status: Option<String> },
     /// Deploy a task to an edge node
@@ -224,6 +265,17 @@ pub enum Intent {
     EdgeHealth { node: Option<String> },
     /// Decommission an edge node
     EdgeDecommission { node: String },
+    /// Query edge node logs
+    EdgeLogs {
+        action: String,
+        node: Option<String>,
+    },
+    /// Manage edge node config
+    EdgeConfig {
+        action: String,
+        node: Option<String>,
+        key: Option<String>,
+    },
     /// Manage Shruti DAW sessions
     ShrutiSession {
         action: String,
@@ -246,6 +298,16 @@ pub enum Intent {
     ShrutiTransport {
         action: String,
         value: Option<String>,
+    },
+    /// Manage Shruti audio plugins
+    ShrutiPlugins {
+        action: String,
+        name: Option<String>,
+    },
+    /// Shruti AI audio features
+    ShrutiAi {
+        action: String,
+        track: Option<String>,
     },
     /// Export Shruti session
     ShrutiExport {
@@ -274,6 +336,16 @@ pub enum Intent {
         action: String,
         options: Option<String>,
     },
+    /// Manage Tazama media library
+    TazamaMedia {
+        action: String,
+        path: Option<String>,
+    },
+    /// Manage Tazama subtitles
+    TazamaSubtitles {
+        action: String,
+        language: Option<String>,
+    },
     /// Export Tazama video project
     TazamaExport {
         path: Option<String>,
@@ -300,6 +372,16 @@ pub enum Intent {
         action: String,
         prompt: Option<String>,
     },
+    /// Rasa batch image operations
+    RasaBatch {
+        action: String,
+        path: Option<String>,
+    },
+    /// Rasa design templates
+    RasaTemplates {
+        action: String,
+        name: Option<String>,
+    },
     /// Export Rasa image
     RasaExport {
         path: Option<String>,
@@ -317,15 +399,19 @@ pub enum Intent {
         notebook_id: Option<String>,
     },
     /// Search Mneme knowledge base
-    MnemeSearch {
-        query: String,
-        mode: Option<String>,
-    },
+    MnemeSearch { query: String, mode: Option<String> },
     /// Run Mneme AI knowledge features
     MnemeAi {
         action: String,
         note_id: Option<String>,
     },
+    /// Import documents into Mneme
+    MnemeImport {
+        action: String,
+        path: Option<String>,
+    },
+    /// Manage Mneme tags
+    MnemeTags { action: String, tag: Option<String> },
     /// Manage Mneme knowledge graph
     MnemeGraph {
         action: String,
@@ -355,6 +441,17 @@ pub enum Intent {
     },
     /// Get Synapse health and GPU status
     SynapseStatus,
+    /// Benchmark/compare LLM models
+    SynapseBenchmark {
+        action: String,
+        models: Option<String>,
+    },
+    /// Quantize/convert models
+    SynapseQuantize {
+        action: String,
+        model: Option<String>,
+        format: Option<String>,
+    },
     /// View BullShift portfolio and positions
     BullShiftPortfolio {
         action: String,
@@ -381,6 +478,16 @@ pub enum Intent {
         action: String,
         name: Option<String>,
     },
+    /// Manage broker accounts
+    BullShiftAccounts {
+        action: String,
+        broker: Option<String>,
+    },
+    /// View trade history
+    BullShiftHistory {
+        action: String,
+        period: Option<String>,
+    },
     /// Manage SecureYeoman AI agents
     YeomanAgents {
         action: String,
@@ -405,6 +512,16 @@ pub enum Intent {
     },
     /// Get SecureYeoman platform status
     YeomanStatus,
+    /// Query SecureYeoman agent logs
+    YeomanLogs {
+        action: String,
+        agent_id: Option<String>,
+    },
+    /// Manage SecureYeoman workflows
+    YeomanWorkflows {
+        action: String,
+        name: Option<String>,
+    },
     /// Piped command chain (cmd1 | cmd2)
     Pipeline { commands: Vec<String> },
     /// Question/Information request

@@ -95,6 +95,27 @@ impl Interpreter {
             return Intent::AgnosticAgentStatus { agent_type };
         }
 
+        if let Some(caps) = self.try_captures("agnostic_coverage", input_lower) {
+            let action = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();
+            let suite = caps
+                .get(4)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !action.is_empty() {
+                return Intent::AgnosticCoverage { action, suite };
+            }
+        }
+        if let Some(caps) = self.try_captures("agnostic_schedule", input_lower) {
+            let action = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();
+            let suite = caps
+                .get(4)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !action.is_empty() {
+                return Intent::AgnosticSchedule { action, suite };
+            }
+        }
+
         // --- Edge fleet management intents (before greedy list/show) ---
         if let Some(caps) = self.try_captures("edge_list", input_lower) {
             let status = caps
@@ -144,6 +165,31 @@ impl Interpreter {
             let node = caps.get(1).map_or("", |m| m.as_str()).trim().to_string();
             if !node.is_empty() {
                 return Intent::EdgeDecommission { node };
+            }
+        }
+
+        if let Some(caps) = self.try_captures("edge_logs", input_lower) {
+            let action = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();
+            let node = caps
+                .get(4)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !action.is_empty() {
+                return Intent::EdgeLogs { action, node };
+            }
+        }
+        if let Some(caps) = self.try_captures("edge_config", input_lower) {
+            let action = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();
+            let node = caps
+                .get(4)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !action.is_empty() {
+                return Intent::EdgeConfig {
+                    action,
+                    node,
+                    key: None,
+                };
             }
         }
 
@@ -220,6 +266,32 @@ impl Interpreter {
                 .map(|m| m.as_str().trim().to_string())
                 .filter(|s| !s.is_empty());
             return Intent::ShrutiExport { path, format };
+        }
+
+        if let Some(caps) = self.try_captures("shruti_plugins", input_lower) {
+            let action = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();
+            let name = caps
+                .get(4)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !action.is_empty() {
+                return Intent::ShrutiPlugins { action, name };
+            }
+        }
+        if let Some(caps) = self.try_captures("shruti_ai", input_lower) {
+            let action = caps
+                .get(1)
+                .map_or("", |m| m.as_str())
+                .trim()
+                .replace(' ', "_")
+                .to_string();
+            let track = caps
+                .get(3)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !action.is_empty() {
+                return Intent::ShrutiAi { action, track };
+            }
         }
 
         // --- Tazama video editor intents (before greedy list/show) ---
@@ -299,6 +371,27 @@ impl Interpreter {
             return Intent::TazamaExport { path, format };
         }
 
+        if let Some(caps) = self.try_captures("tazama_media", input_lower) {
+            let action = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();
+            let path = caps
+                .get(4)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !action.is_empty() {
+                return Intent::TazamaMedia { action, path };
+            }
+        }
+        if let Some(caps) = self.try_captures("tazama_subtitles", input_lower) {
+            let action = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();
+            let language = caps
+                .get(4)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !action.is_empty() {
+                return Intent::TazamaSubtitles { action, language };
+            }
+        }
+
         // --- Rasa image editor intents (before greedy list/show) ---
         if let Some(caps) = self.try_captures("rasa_canvas", input_lower) {
             let action = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();
@@ -363,6 +456,27 @@ impl Interpreter {
                 .map(|m| m.as_str().trim().to_string())
                 .filter(|s| !s.is_empty());
             return Intent::RasaExport { path, format };
+        }
+
+        if let Some(caps) = self.try_captures("rasa_batch", input_lower) {
+            let action = caps.get(1).map_or("", |m| m.as_str()).trim().to_string();
+            let path = caps
+                .get(3)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !action.is_empty() {
+                return Intent::RasaBatch { action, path };
+            }
+        }
+        if let Some(caps) = self.try_captures("rasa_templates", input_lower) {
+            let action = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();
+            let name = caps
+                .get(4)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !action.is_empty() {
+                return Intent::RasaTemplates { action, name };
+            }
         }
 
         // --- Mneme knowledge base intents (before greedy list/show) ---
@@ -439,6 +553,27 @@ impl Interpreter {
             }
         }
 
+        if let Some(caps) = self.try_captures("mneme_import", input_lower) {
+            let action = caps.get(1).map_or("", |m| m.as_str()).trim().to_string();
+            let path = caps
+                .get(3)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !action.is_empty() {
+                return Intent::MnemeImport { action, path };
+            }
+        }
+        if let Some(caps) = self.try_captures("mneme_tags", input_lower) {
+            let action = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();
+            let tag = caps
+                .get(4)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !action.is_empty() {
+                return Intent::MnemeTags { action, tag };
+            }
+        }
+
         // --- Synapse LLM management intents (before greedy list/show) ---
         if let Some(caps) = self.try_captures("synapse_models", input_lower) {
             let action = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();
@@ -504,9 +639,42 @@ impl Interpreter {
             return Intent::SynapseStatus;
         }
 
+        if let Some(caps) = self.try_captures("synapse_benchmark", input_lower) {
+            let action = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();
+            let models = caps
+                .get(4)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !action.is_empty() {
+                return Intent::SynapseBenchmark { action, models };
+            }
+        }
+        if let Some(caps) = self.try_captures("synapse_quantize", input_lower) {
+            let action = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();
+            let model = caps
+                .get(4)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            let format = caps
+                .get(6)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !action.is_empty() {
+                return Intent::SynapseQuantize {
+                    action,
+                    model,
+                    format,
+                };
+            }
+        }
+
         // --- BullShift trading intents (before greedy list/show) ---
         if let Some(caps) = self.try_captures("bullshift_portfolio", input_lower) {
-            let action = caps.get(1).map_or("summary", |m| m.as_str()).trim().to_string();
+            let action = caps
+                .get(1)
+                .map_or("summary", |m| m.as_str())
+                .trim()
+                .to_string();
             let period = caps
                 .get(4)
                 .map(|m| m.as_str().trim().to_string())
@@ -534,7 +702,11 @@ impl Interpreter {
         }
 
         if let Some(caps) = self.try_captures("bullshift_market", input_lower) {
-            let action = caps.get(1).map_or("quote", |m| m.as_str()).trim().to_string();
+            let action = caps
+                .get(1)
+                .map_or("quote", |m| m.as_str())
+                .trim()
+                .to_string();
             let symbol = caps
                 .get(2)
                 .map(|m| m.as_str().trim().to_string())
@@ -562,6 +734,29 @@ impl Interpreter {
             if !action.is_empty() {
                 return Intent::BullShiftStrategy { action, name };
             }
+        }
+
+        if let Some(caps) = self.try_captures("bullshift_accounts", input_lower) {
+            let action = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();
+            let broker = caps
+                .get(4)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !action.is_empty() {
+                return Intent::BullShiftAccounts { action, broker };
+            }
+        }
+        if let Some(caps) = self.try_captures("bullshift_history", input_lower) {
+            let action = caps
+                .get(1)
+                .map_or("trades", |m| m.as_str())
+                .trim()
+                .to_string();
+            let period = caps
+                .get(4)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            return Intent::BullShiftHistory { action, period };
         }
 
         // --- SecureYeoman AI platform intents (before greedy list/show) ---
@@ -621,6 +816,27 @@ impl Interpreter {
             return Intent::YeomanStatus;
         }
 
+        if let Some(caps) = self.try_captures("yeoman_logs", input_lower) {
+            let action = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();
+            let agent_id = caps
+                .get(4)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !action.is_empty() {
+                return Intent::YeomanLogs { action, agent_id };
+            }
+        }
+        if let Some(caps) = self.try_captures("yeoman_workflows", input_lower) {
+            let action = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();
+            let name = caps
+                .get(4)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !action.is_empty() {
+                return Intent::YeomanWorkflows { action, name };
+            }
+        }
+
         // --- Delta code hosting intents (before greedy list/show) ---
         if let Some(caps) = self.try_captures("delta_create_repo", input_lower) {
             let name = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();
@@ -675,6 +891,31 @@ impl Interpreter {
             return Intent::DeltaCiStatus { repo };
         }
 
+        if let Some(caps) = self.try_captures("delta_branches", input_lower) {
+            let action = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();
+            let name = caps
+                .get(4)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !action.is_empty() {
+                return Intent::DeltaBranches {
+                    action,
+                    repo: None,
+                    name,
+                };
+            }
+        }
+        if let Some(caps) = self.try_captures("delta_review", input_lower) {
+            let action = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();
+            let pr_id = caps
+                .get(4)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !action.is_empty() {
+                return Intent::DeltaReview { action, pr_id };
+            }
+        }
+
         // --- Aequi accounting intents (before greedy list/show) ---
         if let Some(caps) = self.try_captures("aequi_tax", input_lower) {
             let quarter = caps.get(6).map(|m| m.as_str().trim().to_string());
@@ -707,6 +948,32 @@ impl Interpreter {
                 }
             });
             return Intent::AequiReceipts { status };
+        }
+
+        if let Some(caps) = self.try_captures("aequi_invoices", input_lower) {
+            let action = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();
+            let client = caps
+                .get(4)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !action.is_empty() {
+                return Intent::AequiInvoices { action, client };
+            }
+        }
+        if let Some(caps) = self.try_captures("aequi_reports", input_lower) {
+            let action = caps
+                .get(2)
+                .map_or("", |m| m.as_str())
+                .trim()
+                .replace(' ', "_")
+                .to_string();
+            let period = caps
+                .get(4)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !action.is_empty() {
+                return Intent::AequiReports { action, period };
+            }
         }
 
         // --- Photis Nadi task management intents (before greedy list/show) ---
@@ -744,6 +1011,27 @@ impl Interpreter {
                 other => other.to_string(),
             });
             return Intent::ProductivityStats { period };
+        }
+
+        if let Some(caps) = self.try_captures("photis_boards", input_lower) {
+            let action = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();
+            let name = caps
+                .get(4)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !action.is_empty() {
+                return Intent::PhotoisBoards { action, name };
+            }
+        }
+        if let Some(caps) = self.try_captures("photis_notes", input_lower) {
+            let action = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();
+            let content = caps
+                .get(4)
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|s| !s.is_empty());
+            if !action.is_empty() {
+                return Intent::PhotoisNotes { action, content };
+            }
         }
 
         if let Some(caps) = self.try_captures("service", input_lower) {
