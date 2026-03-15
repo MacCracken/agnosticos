@@ -71,7 +71,8 @@ for desktop/networking/GPU stack.
 | 3 | Intel NUC (bare metal) | x86_64 | Desktop | Not started | UEFI boot, GPU driver validation |
 | 4 | Older x86_64 (~2014 era) | x86_64 | CLI | Not started | Minimum viable hardware floor test |
 | 5 | Older desktop w/ touchscreen (~2014) | x86_64 | Desktop | Not started | Touch input + Wayland validation; tests aethersafha touch events |
-| 6 | ARM64 SBC (QEMU) | aarch64 | Edge | Not started | QEMU aarch64 virt machine validation |
+| 6 | AWS DeepLens | x86_64 | Edge | Ready | Intel Atom x5-Z8350, 8GB RAM, UVC camera. Kernel config: `edge-deeplens.config`. Build: `edge-image.sh x86_64` |
+| 7 | ARM64 SBC (QEMU) | aarch64 | Edge | Not started | QEMU aarch64 virt machine validation |
 
 **aarch64 image builder**: `scripts/build-iso-aarch64.sh` — full AGNOS system (Debian arm64 + AGNOS userland) for RPi4/5 microSD. Uses:
 - Debian Trixie arm64 debootstrap (foreign mode with qemu-user-static)
@@ -107,7 +108,6 @@ for desktop/networking/GPU stack.
 
 | # | Priority | Item | Notes |
 |---|----------|------|-------|
-| H36 | **LOW** | Feature-gate `desktop_environment` in agent-runtime | `agent-runtime` depends on `desktop_environment` (Wayland compositor, screen capture) even for headless/edge builds. Gate behind `#[cfg(feature = "desktop")]` to allow building a minimal edge binary without compositor code. Requires conditional compilation in `http_api/state.rs`, `screen_capture.rs`, and route registration (~15 files). `release-edge` cargo profile already added for size optimization. |
 | | | | |
 
 ---

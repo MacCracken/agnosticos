@@ -248,6 +248,19 @@ create_rootfs() {
 
     log_step "Configuring AGNOS rootfs (aarch64)..."
 
+    # Mount pseudo-filesystems for chroot (needed by groupadd, apt, etc.)
+    mount -t proc proc "$rootfs/proc" 2>/dev/null || true
+    mount -t sysfs sysfs "$rootfs/sys" 2>/dev/null || true
+    mount -t devpts devpts "$rootfs/dev/pts" -o ptmxmode=0666,newinstance 2>/dev/null || true
+
+    # Cleanup pseudo-fs on exit
+    cleanup_chroot() {
+        umount "$rootfs/dev/pts" 2>/dev/null || true
+        umount "$rootfs/sys" 2>/dev/null || true
+        umount "$rootfs/proc" 2>/dev/null || true
+    }
+    trap 'cleanup_chroot' EXIT
+
     # Helper for chroot — handles both native and foreign
     run_chroot() {
         if [[ "$(uname -m)" != "aarch64" ]]; then
@@ -454,6 +467,11 @@ EOF
 
     # Remove qemu-user-static from rootfs (not needed at runtime)
     rm -f "$rootfs/usr/bin/qemu-aarch64-static"
+
+    # Unmount pseudo-filesystems before creating image
+    umount "$rootfs/dev/pts" 2>/dev/null || true
+    umount "$rootfs/sys" 2>/dev/null || true
+    umount "$rootfs/proc" 2>/dev/null || true
 
     log_info "  -> Rootfs configured"
 }

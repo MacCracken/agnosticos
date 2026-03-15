@@ -39,6 +39,7 @@ pub use handlers::reasoning::{
 };
 pub use handlers::rpc::{RpcCallRequest, RpcRegisterRequest};
 pub use handlers::sandbox::CustomSandboxProfile;
+#[cfg(feature = "desktop")]
 pub use handlers::screen_capture::{
     FramesQuery, GrantPermissionRequest, ScreenCaptureRequest, ScreenCaptureResponse,
     StartRecordingRequest,
@@ -77,13 +78,14 @@ pub fn build_router(state: ApiState) -> Router {
     use handlers::reasoning::*;
     use handlers::rpc::*;
     use handlers::sandbox::*;
+    #[cfg(feature = "desktop")]
     use handlers::screen_capture::*;
     use handlers::system_update::*;
     use handlers::traces::*;
     use handlers::vectors::*;
     use handlers::webhooks::*;
 
-    Router::new()
+    let router = Router::new()
         .route("/v1/health", get(health_handler))
         .route("/v1/metrics", get(metrics_handler))
         .route("/v1/metrics/prometheus", get(prometheus_metrics_handler))
@@ -244,49 +246,6 @@ pub fn build_router(state: ApiState) -> Router {
             "/v1/marketplace/remote/:name",
             get(marketplace_remote_info_handler),
         )
-        // Screen capture routes
-        .route("/v1/screen/capture", post(screen_capture_handler))
-        .route(
-            "/v1/screen/permissions",
-            post(screen_grant_permission_handler),
-        )
-        .route(
-            "/v1/screen/permissions",
-            get(screen_list_permissions_handler),
-        )
-        .route(
-            "/v1/screen/permissions/:agent_id",
-            delete(screen_revoke_permission_handler),
-        )
-        .route("/v1/screen/history", get(screen_history_handler))
-        // Screen recording routes
-        .route("/v1/screen/recording/start", post(recording_start_handler))
-        .route(
-            "/v1/screen/recording/:id/frame",
-            post(recording_frame_handler),
-        )
-        .route(
-            "/v1/screen/recording/:id/pause",
-            post(recording_pause_handler),
-        )
-        .route(
-            "/v1/screen/recording/:id/resume",
-            post(recording_resume_handler),
-        )
-        .route(
-            "/v1/screen/recording/:id/stop",
-            post(recording_stop_handler),
-        )
-        .route("/v1/screen/recording/:id", get(recording_get_handler))
-        .route(
-            "/v1/screen/recording/:id/frames",
-            get(recording_frames_handler),
-        )
-        .route(
-            "/v1/screen/recording/:id/latest",
-            get(recording_latest_handler),
-        )
-        .route("/v1/screen/recordings", get(recording_list_handler))
         // Database provisioning routes
         .route("/v1/agents/:id/database", post(database_provision_handler))
         .route(
@@ -333,7 +292,54 @@ pub fn build_router(state: ApiState) -> Router {
         .route(
             "/v1/edge/capabilities/route",
             post(edge::edge_capability_route_handler),
+        );
+
+    // Desktop-only screen capture and recording routes
+    #[cfg(feature = "desktop")]
+    let router = router
+        .route("/v1/screen/capture", post(screen_capture_handler))
+        .route(
+            "/v1/screen/permissions",
+            post(screen_grant_permission_handler),
         )
+        .route(
+            "/v1/screen/permissions",
+            get(screen_list_permissions_handler),
+        )
+        .route(
+            "/v1/screen/permissions/:agent_id",
+            delete(screen_revoke_permission_handler),
+        )
+        .route("/v1/screen/history", get(screen_history_handler))
+        .route("/v1/screen/recording/start", post(recording_start_handler))
+        .route(
+            "/v1/screen/recording/:id/frame",
+            post(recording_frame_handler),
+        )
+        .route(
+            "/v1/screen/recording/:id/pause",
+            post(recording_pause_handler),
+        )
+        .route(
+            "/v1/screen/recording/:id/resume",
+            post(recording_resume_handler),
+        )
+        .route(
+            "/v1/screen/recording/:id/stop",
+            post(recording_stop_handler),
+        )
+        .route("/v1/screen/recording/:id", get(recording_get_handler))
+        .route(
+            "/v1/screen/recording/:id/frames",
+            get(recording_frames_handler),
+        )
+        .route(
+            "/v1/screen/recording/:id/latest",
+            get(recording_latest_handler),
+        )
+        .route("/v1/screen/recordings", get(recording_list_handler));
+
+    router
         .layer(axum_mw::from_fn_with_state(
             state.clone(),
             middleware::auth_middleware,

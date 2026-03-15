@@ -3161,6 +3161,7 @@ mod tests {
     // Screen capture API tests
     // -----------------------------------------------------------------------
 
+    #[cfg(feature = "desktop")]
     #[tokio::test]
     async fn test_screen_capture_full_screen() {
         let app = test_app();
@@ -3190,6 +3191,7 @@ mod tests {
         assert!(json["data_base64"].as_str().is_some());
     }
 
+    #[cfg(feature = "desktop")]
     #[tokio::test]
     async fn test_screen_capture_bmp_format() {
         let app = test_app();
@@ -3215,6 +3217,7 @@ mod tests {
         assert_eq!(json["format"], "bmp");
     }
 
+    #[cfg(feature = "desktop")]
     #[tokio::test]
     async fn test_screen_capture_raw_format() {
         let app = test_app();
@@ -3234,6 +3237,7 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
     }
 
+    #[cfg(feature = "desktop")]
     #[tokio::test]
     async fn test_screen_capture_region() {
         let app = test_app();
@@ -3253,6 +3257,7 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
     }
 
+    #[cfg(feature = "desktop")]
     #[tokio::test]
     async fn test_screen_capture_invalid_format() {
         let app = test_app();
@@ -3282,6 +3287,7 @@ mod tests {
             .contains("format"));
     }
 
+    #[cfg(feature = "desktop")]
     #[tokio::test]
     async fn test_screen_capture_invalid_surface_id() {
         let app = test_app();
@@ -3301,6 +3307,7 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     }
 
+    #[cfg(feature = "desktop")]
     #[tokio::test]
     async fn test_screen_capture_window_not_found() {
         let app = test_app();
@@ -3321,6 +3328,7 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
     }
 
+    #[cfg(feature = "desktop")]
     #[tokio::test]
     async fn test_screen_capture_agent_permission_denied() {
         let app = test_app();
@@ -3341,6 +3349,7 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::FORBIDDEN);
     }
 
+    #[cfg(feature = "desktop")]
     #[tokio::test]
     async fn test_screen_grant_permission() {
         let app = test_app();
@@ -3369,6 +3378,7 @@ mod tests {
         assert_eq!(json["agent_id"], "agent-1");
     }
 
+    #[cfg(feature = "desktop")]
     #[tokio::test]
     async fn test_screen_grant_permission_empty_agent() {
         let app = test_app();
@@ -3388,6 +3398,7 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     }
 
+    #[cfg(feature = "desktop")]
     #[tokio::test]
     async fn test_screen_grant_permission_invalid_target() {
         let app = test_app();
@@ -3413,6 +3424,7 @@ mod tests {
         assert!(json["error"].as_str().unwrap().contains("screenshot"));
     }
 
+    #[cfg(feature = "desktop")]
     #[tokio::test]
     async fn test_screen_list_permissions_empty() {
         let app = test_app();
@@ -3431,6 +3443,7 @@ mod tests {
         assert!(json["permissions"].as_array().unwrap().is_empty());
     }
 
+    #[cfg(feature = "desktop")]
     #[tokio::test]
     async fn test_screen_revoke_permission_not_found() {
         let app = test_app();
@@ -3444,6 +3457,7 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
     }
 
+    #[cfg(feature = "desktop")]
     #[tokio::test]
     async fn test_screen_history_empty() {
         let app = test_app();
@@ -3462,6 +3476,7 @@ mod tests {
         assert_eq!(json["count"], 0);
     }
 
+    #[cfg(feature = "desktop")]
     #[tokio::test]
     async fn test_screen_permission_workflow() {
         let state = test_state();
@@ -5852,6 +5867,7 @@ mod tests {
     // Screen capture permission tests
     // ================================================================
 
+    #[cfg(feature = "desktop")]
     #[tokio::test]
     async fn test_screen_capture_permissions_list_empty() {
         let app = test_app();
@@ -5863,6 +5879,7 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
     }
 
+    #[cfg(feature = "desktop")]
     #[tokio::test]
     async fn test_screen_capture_grant_permission() {
         let app = test_app();
@@ -5885,6 +5902,7 @@ mod tests {
         assert_ne!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 
+    #[cfg(feature = "desktop")]
     #[tokio::test]
     async fn test_screen_capture_revoke_nonexistent() {
         let app = test_app();
@@ -5899,6 +5917,7 @@ mod tests {
         assert!(resp.status() == StatusCode::OK || resp.status() == StatusCode::NOT_FOUND);
     }
 
+    #[cfg(feature = "desktop")]
     #[tokio::test]
     async fn test_screen_history_list() {
         let app = test_app();

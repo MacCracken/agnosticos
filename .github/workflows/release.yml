@@ -50,6 +50,7 @@ jobs:
             name: linux-arm64-edge
             cross: true
             profile: release-edge
+            no_default_features: true
 
     steps:
     - uses: actions/checkout@v4
@@ -69,7 +70,12 @@ jobs:
 
     - name: Build (cross)
       if: matrix.cross
-      run: cross build --profile ${{ matrix.profile }} --workspace --target ${{ matrix.target }}
+      run: |
+        ARGS="--profile ${{ matrix.profile }} --workspace --target ${{ matrix.target }}"
+        if [ "${{ matrix.no_default_features }}" = "true" ]; then
+          ARGS="$ARGS --no-default-features"
+        fi
+        cross build $ARGS
       working-directory: userland
 
     - name: Package
@@ -179,6 +185,20 @@ jobs:
         path: artifacts/img-aarch64
       continue-on-error: true
 
+    - name: Download edge RPi4 image
+      uses: actions/download-artifact@v4
+      with:
+        name: agnos-edge-img-rpi4
+        path: artifacts/edge-img-rpi4
+      continue-on-error: true
+
+    - name: Download x86_64 edge ISO
+      uses: actions/download-artifact@v4
+      with:
+        name: agnos-edge-iso-x86_64
+        path: artifacts/edge-iso-x86_64
+      continue-on-error: true
+
     - name: Generate release notes
       id: notes
       run: |
@@ -206,6 +226,48 @@ jobs:
         body: |
           > **Pre-Beta Release** — This is a pre-beta build. Not recommended for production use.
 
+          ## Download Guide
+
+          ### Bootable Images (ready to flash)
+
+          | File | Target | How to use |
+          |------|--------|------------|
+          | `agnos-${{ github.ref_name }}-x86_64.iso` | **Desktop PC / VM** | Full AGNOS with Wayland desktop. Boot from USB or use with QEMU/VirtualBox |
+          | `agnos-edge-${{ github.ref_name }}-x86_64.iso` | **x86_64 Edge (DeepLens, NUC)** | Headless edge with SY agent, WireGuard. Flash to USB/eMMC |
+          | `agnos-${{ github.ref_name }}-aarch64.img` | **Raspberry Pi 4/5 (Full)** | Full AGNOS for RPi. `dd` to microSD |
+          | `agnos-edge-${{ github.ref_name }}-aarch64.img` | **Raspberry Pi 4/5 (Edge)** | Minimal edge with SY agent. `dd` to microSD |
+
+          **Flash instructions:**
+          ```bash
+          # ISO (x86_64) — write to USB drive
+          sudo dd if=agnos-*.iso of=/dev/sdX bs=4M status=progress conv=fsync
+
+          # IMG (aarch64) — write to microSD
+          sudo dd if=agnos-*.img of=/dev/sdX bs=4M status=progress conv=fsync
+          # After boot, expand rootfs: sudo parted /dev/mmcblk0 resizepart 2 100% && sudo resize2fs /dev/mmcblk0p2
+          ```
+
+          **Default credentials:** `user` / `agnos`, `root` / `agnos`
+          **SSH:** Enabled on port 22. Agent runtime on 8090, LLM gateway on 8088.
+
+          ### Binary Archives (for manual installation)
+
+          | File | Architecture | Profile |
+          |------|-------------|---------|
+          | `agnos-linux-amd64.tar.gz` | x86_64 | Full (desktop + all services) |
+          | `agnos-linux-arm64.tar.gz` | aarch64 | Full (cross-compiled) |
+          | `agnos-linux-arm64-edge.tar.gz` | aarch64 | Edge (size-optimized, no desktop) |
+
+          ### Other Artifacts
+
+          | File | Description |
+          |------|-------------|
+          | `*.cdx.json` / `*.cdx.xml` | CycloneDX SBOM |
+          | `license-summary.*` | Dependency license report |
+          | `SHA256SUMS` | Checksums for all artifacts |
+
+          ---
+
           ${{ steps.notes.outputs.notes }}
         draft: false
         prerelease: true
@@ -216,6 +278,10 @@ jobs:
           artifacts/iso-x86_64/*.iso.sha256
           artifacts/img-aarch64/*.img
           artifacts/img-aarch64/*.img.sha256
+          artifacts/edge-img-rpi4/*.img
+          artifacts/edge-img-rpi4/*.img.sha256
+          artifacts/edge-iso-x86_64/*.iso
+          artifacts/edge-iso-x86_64/*.iso.sha256
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

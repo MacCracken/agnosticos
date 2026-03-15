@@ -124,6 +124,10 @@ pub(crate) static PATTERNS: Lazy<HashMap<String, Regex>> = Lazy::new(|| {
         r"(?i)^(rag|retrieve|context)\s+(query|search|find|for)\s+(.+)$",
     );
     r("ark_install", r"(?i)^ark\s+install\s+(.+)$");
+    r(
+        "ark_install_group",
+        r"(?i)^(?:ark\s+install\s+--group\s+|install\s+|setup\s+|enable\s+)(desktop|ai|edge)(?:\s+environment)?$",
+    );
     r("ark_remove", r"(?i)^ark\s+(remove|uninstall)\s+(.+)$");
     r("ark_search", r"(?i)^ark\s+search\s+(.+)$");
     r("ark_info", r"(?i)^ark\s+(info|show)\s+(.+)$");

@@ -1,0 +1,114 @@
+# agnos-desktop — Meta-package for the full AGNOS desktop environment
+#
+# Installs the Wayland compositor (aethersafha), GPU drivers, audio stack,
+# fonts, input handling, and all desktop dependencies. Use this to upgrade
+# a headless/edge/CLI AGNOS installation to a full desktop system.
+#
+# Install with: ark install agnos-desktop
+# Or via agnoshi: "install desktop"
+
+[package]
+name = "agnos-desktop"
+version = "2026.3.14"
+description = "AGNOS Desktop Environment (aethersafha compositor + full desktop stack)"
+license = "GPL-3.0"
+groups = ["desktop", "meta"]
+release = 1
+arch = "x86_64"
+
+[source]
+# Meta-package — no source to build, just dependencies
+local = true
+
+[depends]
+# Core desktop — Wayland, compositor, rendering
+runtime = [
+    # Wayland
+    "wayland",
+    "wayland-protocols",
+    "wlroots",
+    "libxkbcommon",
+    "xwayland",
+    # Graphics
+    "mesa",
+    "vulkan-loader",
+    "vulkan-headers",
+    "libdrm",
+    "libepoxy",
+    "cairo",
+    "pixman",
+    "pango",
+    "harfbuzz",
+    "fontconfig",
+    "freetype",
+    "gdk-pixbuf",
+    "graphene",
+    # Input
+    "libinput",
+    "libevdev",
+    "mtdev",
+    # Toolkit
+    "glib",
+    "gtk4",
+    "gobject-introspection",
+    # Audio
+    "alsa-lib",
+    "alsa-utils",
+    "pipewire",
+    "wireplumber",
+    # Media
+    "gstreamer",
+    "gst-plugins-base",
+    "gst-plugins-good",
+    # Fonts
+    "noto-fonts",
+    # Session
+    "elogind",
+    "dbus",
+    # Misc
+    "fribidi",
+    "duktape",
+    "flac",
+    "libblockdev",
+]
+
+[build]
+# Meta-package — nothing to build
+pre_build = ""
+configure = ""
+make = ""
+check = ""
+install = """
+# Install AGNOS desktop compositor binary + systemd unit
+mkdir -p $PKG/usr/bin
+mkdir -p $PKG/usr/lib/systemd/user
+
+# Create desktop target
+cat > $PKG/usr/lib/systemd/user/agnos-desktop.target << 'EOF'
+[Unit]
+Description=AGNOS Desktop Environment
+Requires=dbus.socket
+After=dbus.socket
+
+[Install]
+WantedBy=default.target
+EOF
+
+# Post-install message
+mkdir -p $PKG/usr/share/agnos
+cat > $PKG/usr/share/agnos/desktop-installed.txt << 'EOF'
+AGNOS Desktop Environment installed.
+
+To start the desktop:
+  systemctl --user start agnos-desktop.target
+
+To enable on boot:
+  systemctl --user enable agnos-desktop.target
+
+To rebuild agent-runtime with desktop support:
+  cargo build --release -p agent_runtime  (default features include desktop)
+EOF
+"""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]

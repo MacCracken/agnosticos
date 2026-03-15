@@ -25,6 +25,8 @@ DEBIAN_SUITE="trixie"
 DEBIAN_MIRROR="http://deb.debian.org/debian"
 SKIP_BUILD=0
 SKIP_DEBOOTSTRAP=0
+EDGE_MODE=0
+SY_EDGE_BINARY=""
 
 # Colors
 RED='\033[0;31m'
@@ -50,12 +52,15 @@ Options:
     -a, --arch ARCH         Target architecture (default: x86_64)
     -o, --output DIR        Output directory (default: output/)
     -m, --mirror URL        Debian mirror (default: $DEBIAN_MIRROR)
+    --edge                  Build minimal edge/IoT ISO with SY edge agent
+    --sy-edge-binary PATH   Path to secureyeoman-edge x86_64 binary
     --skip-build            Skip cargo build (use existing binaries)
     --skip-debootstrap      Skip debootstrap (use existing rootfs)
     -h, --help              Show this help message
 
 Examples:
-    sudo $0                         # Full build
+    sudo $0                         # Full desktop build
+    sudo $0 --edge                  # Minimal edge ISO (headless, SY edge)
     sudo $0 --skip-build            # Rebuild ISO without recompiling
     sudo $0 --skip-debootstrap      # Rebuild with new binaries, keep rootfs
 EOF
@@ -69,12 +74,19 @@ parse_args() {
             -a|--arch)      ARCH="$2"; shift 2 ;;
             -o|--output)    OUTPUT_DIR="$2"; shift 2 ;;
             -m|--mirror)    DEBIAN_MIRROR="$2"; shift 2 ;;
+            --edge)         EDGE_MODE=1; shift ;;
+            --sy-edge-binary) SY_EDGE_BINARY="$2"; shift 2 ;;
             --skip-build)   SKIP_BUILD=1; shift ;;
             --skip-debootstrap) SKIP_DEBOOTSTRAP=1; shift ;;
             -h|--help)      usage; exit 0 ;;
             *)              log_error "Unknown option: $1"; usage; exit 1 ;;
         esac
     done
+
+    # Edge defaults
+    if [[ $EDGE_MODE -eq 1 ]]; then
+        [[ "$ISO_NAME" == "agnos" ]] && ISO_NAME="agnos-edge"
+    fi
 }
 
 check_requirements() {
@@ -333,6 +345,89 @@ Default credentials: user/agnos  root/agnos
 
 EOF
 
+    # --- Edge mode: install SY edge agent + WireGuard ---
+    if [[ $EDGE_MODE -eq 1 ]]; then
+        log_step "Installing edge packages..."
+
+        # Auto-detect SY edge binary
+        if [[ -z "$SY_EDGE_BINARY" ]]; then
+            for p in \
+                "$REPO_DIR/../secureyeoman/dist/secureyeoman-edge-linux-x64" \
+                "/tmp/secureyeoman-edge-linux-x64"; do
+                if [[ -f "$p" ]]; then
+                    SY_EDGE_BINARY="$p"
+                    log_info "  -> Auto-detected SY edge binary: $p"
+                    break
+                fi
+            done
+        fi
+
+        if [[ -n "$SY_EDGE_BINARY" ]] && [[ -f "$SY_EDGE_BINARY" ]]; then
+            cp "$SY_EDGE_BINARY" "$rootfs/usr/bin/secureyeoman-edge"
+            chmod 755 "$rootfs/usr/bin/secureyeoman-edge"
+            log_info "  -> Installed secureyeoman-edge ($(du -h "$SY_EDGE_BINARY" | cut -f1))"
+
+            # SY edge config
+            mkdir -p "$rootfs/etc/secureyeoman"
+            cat > "$rootfs/etc/secureyeoman/edge.toml" << 'SYEDGE'
+[agent]
+mode = "edge"
+parent_url = ""
+auto_register = true
+
+[resources]
+max_memory_mb = 32
+max_concurrent_tasks = 2
+
+[security]
+sandbox = true
+tls_verify = true
+
+[ota]
+enabled = true
+check_interval_secs = 3600
+rollback_on_failure = true
+SYEDGE
+
+            # SY edge systemd unit
+            cat > "$rootfs/etc/systemd/system/secureyeoman-edge.service" << 'SYUNIT'
+[Unit]
+Description=SecureYeoman Edge Agent
+After=network-online.target agent-runtime.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/secureyeoman-edge --config /etc/secureyeoman/edge.toml
+Restart=always
+RestartSec=5
+User=agnos
+Group=agnos
+WorkingDirectory=/var/lib/secureyeoman-edge
+StateDirectory=secureyeoman-edge
+
+[Install]
+WantedBy=multi-user.target
+SYUNIT
+
+            mkdir -p "$rootfs/var/lib/secureyeoman-edge"
+            chroot "$rootfs" /usr/bin/env PATH=/usr/sbin:/usr/bin:/sbin:/bin /bin/bash -c "
+                systemctl enable secureyeoman-edge.service 2>/dev/null || true
+            "
+        else
+            log_warn "  -> No SY edge binary (use --sy-edge-binary to include)"
+        fi
+
+        # Install WireGuard
+        chroot "$rootfs" /usr/bin/env PATH=/usr/sbin:/usr/bin:/sbin:/bin /bin/bash -c "
+            apt-get update
+            apt-get install -y --no-install-recommends wireguard-tools
+            apt-get clean
+            rm -rf /var/lib/apt/lists/*
+        "
+        log_info "  -> Edge packages installed"
+    fi
+
     # --- Permissions ---
     chroot "$rootfs" /usr/bin/env PATH=/usr/sbin:/usr/bin:/sbin:/bin /bin/bash -c "
         chown -R agnos:agnos /var/lib/agnos/agents 2>/dev/null || true
@@ -471,13 +566,20 @@ create_iso() {
 main() {
     parse_args "$@"
 
+    local profile="Full Desktop"
+    [[ $EDGE_MODE -eq 1 ]] && profile="Edge/IoT"
+
     log_info "=========================================="
     log_info "  AGNOS ISO Builder"
     log_info "=========================================="
+    log_info "  Profile:  $profile"
     log_info "  Version:  $ISO_VERSION"
     log_info "  Arch:     $ARCH"
     log_info "  Base:     Debian $DEBIAN_SUITE"
     log_info "  Output:   $OUTPUT_DIR/"
+    if [[ $EDGE_MODE -eq 1 ]] && [[ -n "$SY_EDGE_BINARY" ]]; then
+        log_info "  SY Edge:  $SY_EDGE_BINARY"
+    fi
     log_info "=========================================="
     echo ""
 

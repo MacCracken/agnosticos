@@ -8,6 +8,7 @@ use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use agnos_common::{audit::AuditChain, telemetry::SpanCollector};
+#[cfg(feature = "desktop")]
 use desktop_environment::{Compositor, ScreenCaptureManager, ScreenRecordingManager};
 
 use crate::database::DatabaseManager;
@@ -117,10 +118,13 @@ pub struct ApiState {
     /// When `Some`, all endpoints except `GET /v1/health` require it.
     pub api_key: Option<String>,
     /// Desktop compositor for screen capture operations.
+    #[cfg(feature = "desktop")]
     pub compositor: Arc<RwLock<Compositor>>,
     /// Screen capture manager (permissions, rate limits, history).
+    #[cfg(feature = "desktop")]
     pub screen_capture_manager: Arc<RwLock<ScreenCaptureManager>>,
     /// Screen recording manager (sessions, frame buffers, streaming).
+    #[cfg(feature = "desktop")]
     pub screen_recording_manager: Arc<RwLock<ScreenRecordingManager>>,
     /// Per-agent database provisioning manager.
     pub database_manager: Arc<RwLock<DatabaseManager>>,
@@ -190,8 +194,11 @@ impl ApiState {
             )),
             vector_collections: Arc::new(RwLock::new(HashMap::new())),
             api_key,
+            #[cfg(feature = "desktop")]
             compositor: Arc::new(RwLock::new(Compositor::new())),
+            #[cfg(feature = "desktop")]
             screen_capture_manager: Arc::new(RwLock::new(ScreenCaptureManager::new())),
+            #[cfg(feature = "desktop")]
             screen_recording_manager: Arc::new(RwLock::new(ScreenRecordingManager::new())),
             database_manager: Arc::new(RwLock::new(DatabaseManager::new())),
             topic_broker: Arc::new(RwLock::new(TopicBroker::new())),
@@ -231,8 +238,11 @@ impl ApiState {
             )),
             vector_collections: Arc::new(RwLock::new(HashMap::new())),
             api_key,
+            #[cfg(feature = "desktop")]
             compositor: Arc::new(RwLock::new(Compositor::new())),
+            #[cfg(feature = "desktop")]
             screen_capture_manager: Arc::new(RwLock::new(ScreenCaptureManager::new())),
+            #[cfg(feature = "desktop")]
             screen_recording_manager: Arc::new(RwLock::new(ScreenRecordingManager::new())),
             database_manager: Arc::new(RwLock::new(DatabaseManager::new())),
             topic_broker: Arc::new(RwLock::new(TopicBroker::new())),

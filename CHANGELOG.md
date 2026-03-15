@@ -37,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Systemd**: `agnos-init.service` and `agnos-modules.service` now have security hardening (NoNewPrivileges, ProtectSystem=strict, ProtectHome, PrivateTmp, SystemCallFilter, etc.). Module loader retains CAP_SYS_MODULE. All 5 systemd units now consistently hardened
 - **Build profile**: Added `release-edge` cargo profile (opt-level=s, fat LTO, strip, panic=abort) for size-optimized edge binaries. Build with `cargo build --profile release-edge`
 - **H37**: Upgraded wasmtime 36 → 42 (WASI preview1→preview2 migration). Eliminates transitive `fxhash` unmaintained dep (RUSTSEC-2025-0057). `cargo audit` now reports 0 advisories, 0 warnings. Migrated `wasm_runtime.rs` to use `wasmtime_wasi::p1::WasiP1Ctx` and `build_p1()` builder
+- **H36**: Feature-gated `desktop_environment` in agent-runtime behind `desktop` cargo feature (default on). Edge builds with `--no-default-features` exclude Wayland compositor, screen capture/recording handlers, and 19 screen tests. `ApiState` fields, handler module, route registration, and imports all conditionally compiled. Build edge binary: `cargo build --release --no-default-features -p agent_runtime`
 
 ### Changed
 

@@ -85,6 +85,73 @@ jobs:
           output/*.iso
           output/*.iso.sha256
 
+  build-x86_64-edge-iso:
+    name: Build x86_64 Edge ISO
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install ISO build dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends \
+          debootstrap \
+          squashfs-tools \
+          grub-pc-bin \
+          grub-efi-amd64-bin \
+          grub-common \
+          grub2-common \
+          xorriso \
+          mtools \
+          debian-archive-keyring
+
+    - name: Download x86_64 binaries
+      uses: actions/download-artifact@v4
+      with:
+        name: agnos-linux-amd64
+        path: artifacts/
+      continue-on-error: true
+
+    - name: Extract binaries
+      run: |
+        mkdir -p userland/target/x86_64-unknown-linux-musl/release
+        if ls artifacts/*.tar.gz 1>/dev/null 2>&1; then
+          tar xzf artifacts/*.tar.gz -C /tmp/
+          for bin in agent_runtime llm_gateway agnsh agnos_sudo; do
+            find /tmp/ -name "$bin" -type f -exec cp {} userland/target/x86_64-unknown-linux-musl/release/ \;
+          done
+        fi
+
+    - name: Download SY edge binary
+      run: |
+        curl -sfL -o /tmp/secureyeoman-edge-linux-x64 \
+          "https://github.com/MacCracken/SecureYeoman/releases/latest/download/secureyeoman-edge-linux-x64" || {
+          echo "::warning::Could not download SY edge binary"
+        }
+      continue-on-error: true
+
+    - name: Build edge ISO
+      run: |
+        VERSION="${{ inputs.version || '' }}"
+        ARGS="--edge --skip-build"
+        if [ -n "$VERSION" ]; then
+          ARGS="$ARGS --version $VERSION"
+        fi
+        if [ -f /tmp/secureyeoman-edge-linux-x64 ]; then
+          ARGS="$ARGS --sy-edge-binary /tmp/secureyeoman-edge-linux-x64"
+        fi
+        sudo ./scripts/build-iso.sh $ARGS
+
+    - name: Upload x86_64 edge ISO
+      uses: actions/upload-artifact@v4
+      with:
+        name: agnos-edge-iso-x86_64
+        path: |
+          output/agnos-edge-*.iso
+          output/agnos-edge-*.iso.sha256
+
   build-aarch64-img:
     name: Build aarch64 SD Image
     runs-on: ubuntu-latest

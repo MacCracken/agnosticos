@@ -32,6 +32,8 @@ use crate::nous::{
 pub enum ArkCommand {
     /// Install one or more packages.
     Install { packages: Vec<String>, force: bool },
+    /// Install all packages in a group (e.g., `ark install --group desktop`).
+    GroupInstall { group: String, force: bool },
     /// Remove/uninstall packages.
     Remove { packages: Vec<String>, purge: bool },
     /// Search across all sources.
@@ -49,6 +51,17 @@ pub enum ArkCommand {
     Upgrade { packages: Option<Vec<String>> },
     /// Show ark version and status.
     Status,
+}
+
+/// Well-known package groups and their meta-package mappings.
+/// `ark install --group <name>` resolves to installing the meta-package.
+pub fn group_meta_package(group: &str) -> Option<&'static str> {
+    match group {
+        "desktop" => Some("agnos-desktop"),
+        "ai" | "ml" => Some("agnos-ai"),
+        "edge" | "iot" => Some("agnos-edge-agent"),
+        _ => None,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -267,6 +280,16 @@ impl ArkPackageManager {
     pub fn execute(&self, command: &ArkCommand) -> Result<ArkResult> {
         match command {
             ArkCommand::Install { packages, force } => self.install(packages, *force),
+            ArkCommand::GroupInstall { group, force } => {
+                let meta = group_meta_package(group).unwrap_or_else(|| {
+                    warn!(group = %group, "Unknown group, trying as package name");
+                    // Fall back to treating the group name as a package name
+                    // (e.g., `ark install --group agnos-desktop` works too)
+                    group.as_str()
+                });
+                info!(group = %group, meta_package = %meta, "Installing package group");
+                self.install(&[meta.to_string()], *force)
+            }
             ArkCommand::Remove { packages, purge } => self.remove(packages, *purge),
             ArkCommand::Search { query, source } => {
                 let output = self.search(query, source.as_ref())?;
@@ -909,20 +932,32 @@ pub fn parse_args(args: &[&str]) -> Result<ArkCommand> {
     match command {
         "install" => {
             let mut force = false;
+            let mut group: Option<String> = None;
             let mut packages = Vec::new();
-            for &arg in rest {
-                if arg == "--force" || arg == "-f" {
-                    force = true;
-                } else if !arg.starts_with('-') {
-                    packages.push(arg.to_string());
-                } else {
-                    bail!("Unknown flag for install: {}", arg);
+            let mut i = 0;
+            while i < rest.len() {
+                match rest[i] {
+                    "--force" | "-f" => force = true,
+                    "--group" | "-g" => {
+                        i += 1;
+                        if i >= rest.len() {
+                            bail!("--group requires a group name (e.g., desktop, ai, edge)");
+                        }
+                        group = Some(rest[i].to_string());
+                    }
+                    arg if !arg.starts_with('-') => packages.push(arg.to_string()),
+                    arg => bail!("Unknown flag for install: {}", arg),
                 }
+                i += 1;
             }
-            if packages.is_empty() {
-                bail!("install requires at least one package name");
+            if let Some(g) = group {
+                Ok(ArkCommand::GroupInstall { group: g, force })
+            } else {
+                if packages.is_empty() {
+                    bail!("install requires at least one package name or --group <name>");
+                }
+                Ok(ArkCommand::Install { packages, force })
             }
-            Ok(ArkCommand::Install { packages, force })
         }
 
         "remove" | "uninstall" => {
