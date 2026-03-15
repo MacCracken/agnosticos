@@ -2,12 +2,12 @@
 # Non-linear video editing with deep AI integration.
 # Cargo workspace: Rust + GPU compute (Vulkan).
 #
-# Status: Planned — No releases yet.
+# Status: Released — first tag 2026.3.14 (linux + macos-arm64, SBOM + license reports).
 # Source: https://github.com/MacCracken/tazama
 
 [package]
 name = "tazama"
-version = "0.1.0"
+version = "2026.3.14"
 description = "Tazama — AI-Native Video Editor"
 license = "GPL-3.0"
 groups = ["creative", "video"]
@@ -15,10 +15,11 @@ release = 1
 arch = "x86_64"
 
 [source]
-local = true
-build_dir = "target/release"
+# Rust binary built by GitHub Actions CI.
+# Release: https://github.com/MacCracken/tazama/releases
+# Asset format: tazama-YYYY.M.DD-linux.tar.gz
 github_release = "MacCracken/tazama"
-release_asset = "tazama"
+release_asset = "tazama-*-linux.tar.gz"
 
 [depends]
 runtime = [

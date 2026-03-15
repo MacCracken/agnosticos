@@ -92,7 +92,7 @@ for desktop/networking/GPU stack.
 | 6 | Aequi | 5 aequi_* | 5 | Yes | Not started | Tauri v2 |
 | 7 | Synapse | 5 synapse_* | 5 | Yes (2026.3.14) | Not started | Port 8080; LLM management |
 | 8 | Shruti | 5 shruti_* | 5 | No | Blocked | DAW; awaiting first release |
-| 9 | Tazama | 5 tazama_* | 5 | No | Blocked | Video editor; awaiting first release |
+| 9 | Tazama | 7 tazama_* | 7 | Yes (2026.3.14) | Not started | Video editor; ~5.7 MB linux binary |
 | 10 | Rasa | 5 rasa_* | 5 | No | Blocked | Image editor; awaiting first release |
 | 11 | Mneme | 5 mneme_* | 5 | No | Blocked | Knowledge base; awaiting first release |
 
