@@ -91,10 +91,10 @@ for desktop/networking/GPU stack.
 | 5 | Delta | 5 delta_* | 5 | Yes | Not started | Port 8070 |
 | 6 | Aequi | 5 aequi_* | 5 | Yes | Not started | Tauri v2 |
 | 7 | Synapse | 5 synapse_* | 5 | Yes (2026.3.14) | Not started | Port 8080; LLM management |
-| 8 | Shruti | 5 shruti_* | 5 | No | Blocked | DAW; awaiting first release |
+| 8 | Shruti | 7 shruti_* | 7 | Yes (2026.3.14-1) | Not started | DAW; ~8.9 MB linux, 5 platforms |
 | 9 | Tazama | 7 tazama_* | 7 | Yes (2026.3.14) | Not started | Video editor; ~5.7 MB linux binary |
-| 10 | Rasa | 5 rasa_* | 5 | No | Blocked | Image editor; awaiting first release |
-| 11 | Mneme | 5 mneme_* | 5 | No | Blocked | Knowledge base; awaiting first release |
+| 10 | Rasa | 9 rasa_* | 9 | Yes (2026.3.15) | Not started | Image editor; ~3.2 MB linux, amd64+arm64 |
+| 11 | Mneme | 7 mneme_* | 7 | Yes (2026.3.13) | Not started | Knowledge base; ~17 MB linux, amd64+arm64 |
 
 **Bundle test** = `ark-bundle.sh` fetches release, produces `.agnos-agent` tarball, installs via mela.
 

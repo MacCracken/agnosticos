@@ -2,12 +2,12 @@
 # Personal knowledge management with semantic AI.
 # Cargo workspace: Rust.
 #
-# Status: Planned — No releases yet.
+# Status: Released — 2026.3.13 (linux amd64 + arm64, SBOM + SHA256).
 # Source: https://github.com/MacCracken/mneme
 
 [package]
 name = "mneme"
-version = "0.1.0"
+version = "2026.3.13"
 description = "Mneme — AI-Native Knowledge Base & Notes"
 license = "GPL-3.0"
 groups = ["productivity", "knowledge"]
@@ -15,10 +15,8 @@ release = 1
 arch = "x86_64"
 
 [source]
-local = true
-build_dir = "target/release"
 github_release = "MacCracken/mneme"
-release_asset = "mneme"
+release_asset = "mneme-*-linux-amd64.tar.gz"
 
 [depends]
 runtime = [

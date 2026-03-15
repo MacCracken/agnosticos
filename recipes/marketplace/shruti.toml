@@ -2,12 +2,12 @@
 # Multi-track recording, mixing, DSP, and AI-assisted production.
 # Cargo workspace: 6 crates (engine, dsp, session, plugin, ui, ai).
 #
-# Status: Alpha — Local-only DAW, no network ports.
+# Status: Released — 2026.3.14-1 (linux amd64 + arm64, macOS, Windows).
 # Source: https://github.com/MacCracken/shruti
 
 [package]
 name = "shruti"
-version = "0.1.0"
+version = "2026.3.14"
 description = "Shruti — Rust-native Digital Audio Workstation"
 license = "GPL-3.0"
 groups = ["creative", "audio"]
@@ -15,10 +15,8 @@ release = 1
 arch = "x86_64"
 
 [source]
-local = true
-build_dir = "target/release"
 github_release = "MacCracken/shruti"
-release_asset = "shruti"
+release_asset = "shruti-linux-amd64.tar.gz"
 
 [depends]
 runtime = [
