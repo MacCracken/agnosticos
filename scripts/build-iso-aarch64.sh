@@ -50,6 +50,9 @@ BOOT_SIZE_MB=256    # FAT32 boot: kernel, DTBs, firmware, initrd
 # SY edge binary path (set via --sy-edge-binary or auto-detected)
 SY_EDGE_BINARY=""
 
+# Global rootfs path (set by create_rootfs, used by install_edge_packages and cleanup)
+ROOTFS=""
+
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -209,7 +212,8 @@ build_userland() {
 }
 
 create_rootfs() {
-    local rootfs="$WORK_DIR/rootfs"
+    ROOTFS="$WORK_DIR/rootfs"
+    local rootfs="$ROOTFS"
 
     if [[ $SKIP_DEBOOTSTRAP -eq 1 ]] && [[ -d "$rootfs/bin" ]]; then
         log_info "Skipping debootstrap (--skip-debootstrap)"
@@ -255,9 +259,12 @@ create_rootfs() {
 
     # Cleanup pseudo-fs on exit
     cleanup_chroot() {
-        umount "$rootfs/dev/pts" 2>/dev/null || true
-        umount "$rootfs/sys" 2>/dev/null || true
-        umount "$rootfs/proc" 2>/dev/null || true
+        local r="${ROOTFS:-}"
+        if [[ -n "$r" ]]; then
+            umount "$r/dev/pts" 2>/dev/null || true
+            umount "$r/sys" 2>/dev/null || true
+            umount "$r/proc" 2>/dev/null || true
+        fi
     }
     trap 'cleanup_chroot' EXIT
 
@@ -465,14 +472,6 @@ EOF
         rm -rf /tmp/*
     "
 
-    # Remove qemu-user-static from rootfs (not needed at runtime)
-    rm -f "$rootfs/usr/bin/qemu-aarch64-static"
-
-    # Unmount pseudo-filesystems before creating image
-    umount "$rootfs/dev/pts" 2>/dev/null || true
-    umount "$rootfs/sys" 2>/dev/null || true
-    umount "$rootfs/proc" 2>/dev/null || true
-
     log_info "  -> Rootfs configured"
 }
 
@@ -670,7 +669,7 @@ apply_edge_defaults() {
 install_edge_packages() {
     if [[ $EDGE_MODE -eq 0 ]]; then return; fi
 
-    local rootfs="$WORK_DIR/rootfs"
+    local rootfs="${ROOTFS:-$WORK_DIR/rootfs}"
 
     log_step "Installing edge-specific packages..."
 
@@ -783,6 +782,15 @@ main() {
     build_userland
     create_rootfs
     install_edge_packages
+
+    # Remove qemu-user-static from rootfs (not needed at runtime)
+    rm -f "$ROOTFS/usr/bin/qemu-aarch64-static"
+
+    # Unmount pseudo-filesystems before creating image
+    umount "$ROOTFS/dev/pts" 2>/dev/null || true
+    umount "$ROOTFS/sys" 2>/dev/null || true
+    umount "$ROOTFS/proc" 2>/dev/null || true
+
     create_image
 
     echo ""
