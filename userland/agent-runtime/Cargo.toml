@@ -46,8 +46,8 @@ desktop_environment = { workspace = true }
 base64 = { workspace = true }
 url = "2"
 
-wasmtime = { version = "36", optional = true }
-wasmtime-wasi = { version = "36", optional = true }
+wasmtime = { version = "42", optional = true }
+wasmtime-wasi = { version = "42", optional = true }
 
 [features]
 default = []

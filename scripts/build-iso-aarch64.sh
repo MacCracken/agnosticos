@@ -219,9 +219,9 @@ create_rootfs() {
         rm -rf "$rootfs"
 
         # Package list — edge mode is more minimal
-        local include_pkgs="systemd,systemd-sysv,dbus,udev,iproute2,iputils-ping,kmod,procps,openssh-server,sudo,vim-tiny"
+        local include_pkgs="systemd,systemd-sysv,dbus,udev,iproute2,iputils-ping,kmod,procps,openssh-server,sudo,passwd,vim-tiny"
         if [[ $EDGE_MODE -eq 1 ]]; then
-            include_pkgs="systemd,systemd-sysv,dbus,udev,iproute2,iputils-ping,kmod,procps,openssh-server,sudo,ca-certificates,curl"
+            include_pkgs="systemd,systemd-sysv,dbus,udev,iproute2,iputils-ping,kmod,procps,openssh-server,sudo,passwd,ca-certificates,curl"
         fi
 
         # Foreign debootstrap: first stage downloads packages,
@@ -262,8 +262,7 @@ create_rootfs() {
     run_chroot "
         apt-get update
         # linux-image-arm64 is the generic arm64 kernel
-        # passwd provides groupadd/useradd/chpasswd
-        apt-get install -y --no-install-recommends linux-image-arm64 passwd
+        apt-get install -y --no-install-recommends linux-image-arm64
         # RPi WiFi firmware — non-free, may not be available in all mirrors
         apt-get install -y --no-install-recommends firmware-brcm80211 2>/dev/null || true
         apt-get clean

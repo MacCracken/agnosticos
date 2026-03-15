@@ -7,13 +7,11 @@
 use std::path::PathBuf;
 
 #[cfg(feature = "wasm")]
-use anyhow::{Context, Result};
-#[cfg(feature = "wasm")]
 use tracing::{info, warn};
 #[cfg(feature = "wasm")]
 use wasmtime::*;
 #[cfg(feature = "wasm")]
-use wasmtime_wasi::preview1::WasiP1Ctx;
+use wasmtime_wasi::p1::WasiP1Ctx;
 #[cfg(feature = "wasm")]
 use wasmtime_wasi::{DirPerms, FilePerms, WasiCtxBuilder};
 
@@ -67,13 +65,6 @@ struct WasiHostState {
     wasi: WasiP1Ctx,
 }
 
-#[cfg(feature = "wasm")]
-impl WasiHostState {
-    fn wasi_ctx(&mut self) -> &mut WasiP1Ctx {
-        &mut self.wasi
-    }
-}
-
 /// A WASM agent wrapping a Wasmtime engine and compiled module.
 #[cfg(feature = "wasm")]
 pub struct WasmAgent {
@@ -85,20 +76,18 @@ pub struct WasmAgent {
 #[cfg(feature = "wasm")]
 impl WasmAgent {
     /// Load a WASM module from disk.
-    pub fn load(config: WasmAgentConfig) -> Result<Self> {
+    pub fn load(config: WasmAgentConfig) -> anyhow::Result<Self> {
         let mut engine_config = Config::new();
         engine_config.consume_fuel(config.fuel > 0);
 
-        // Memory limit
-        let memory_pages = (config.memory_limit / 65536).max(1) as u64;
-        engine_config.memory_guaranteed_dense_image_size(memory_pages.min(1024) * 65536);
+        let engine = Engine::new(&engine_config)
+            .map_err(|e| anyhow::anyhow!("Failed to create Wasmtime engine: {}", e))?;
 
-        let engine = Engine::new(&engine_config).context("Failed to create Wasmtime engine")?;
-
-        let module = Module::from_file(&engine, &config.module_path).with_context(|| {
-            format!(
-                "Failed to load WASM module from {}",
-                config.module_path.display()
+        let module = Module::from_file(&engine, &config.module_path).map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to load WASM module from {}: {}",
+                config.module_path.display(),
+                e
             )
         })?;
 
@@ -117,8 +106,8 @@ impl WasmAgent {
     }
 
     /// Execute the WASM module's default export (`_start` for WASI).
-    pub fn run(&self) -> Result<WasmExecutionResult> {
-        // Build WASI context
+    pub fn run(&self) -> anyhow::Result<WasmExecutionResult> {
+        // Build WASI context (preview2 API)
         let mut wasi_builder = WasiCtxBuilder::new();
 
         // Inherit stdio for output
@@ -156,16 +145,16 @@ impl WasmAgent {
             store.set_fuel(self.config.fuel)?;
         }
 
-        // Instantiate and run
+        // Instantiate with WASI preview2 linker
         let mut linker = wasmtime::Linker::new(&self.engine);
-        wasmtime_wasi::preview1::add_to_linker_sync(&mut linker, |state: &mut WasiHostState| {
-            state.wasi_ctx()
+        wasmtime_wasi::p1::add_to_linker_sync(&mut linker, |state: &mut WasiHostState| {
+            &mut state.wasi
         })?;
         let instance = linker.instantiate(&mut store, &self.module)?;
 
         let start = instance
             .get_typed_func::<(), ()>(&mut store, "_start")
-            .context("Module has no _start export")?;
+            .map_err(|e| anyhow::anyhow!("Module has no _start export: {}", e))?;
 
         let result = start.call(&mut store, ());
 

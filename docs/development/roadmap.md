@@ -108,7 +108,7 @@ for desktop/networking/GPU stack.
 | # | Priority | Item | Notes |
 |---|----------|------|-------|
 | H36 | **LOW** | Feature-gate `desktop_environment` in agent-runtime | `agent-runtime` depends on `desktop_environment` (Wayland compositor, screen capture) even for headless/edge builds. Gate behind `#[cfg(feature = "desktop")]` to allow building a minimal edge binary without compositor code. Requires conditional compilation in `http_api/state.rs`, `screen_capture.rs`, and route registration (~15 files). `release-edge` cargo profile already added for size optimization. |
-| H37 | **LOW** | Upgrade wasmtime 36 → 42+ | Eliminates transitive `fxhash` unmaintained dep (RUSTSEC-2025-0057). Breaking change: WASI preview1 API removed in wasmtime 38+, needs migration to preview2 in `wasm_runtime.rs`. Feature-gated (`wasm`), not compiled by default. Dependency watch. |
+| | | | |
 
 ---
 
