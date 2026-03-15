@@ -26,6 +26,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Hardware testing matrix**: Phase 13F in roadmap — QEMU x86_64 (done), RPi4 aarch64, Intel NUC, older desktop w/ touchscreen, QEMU aarch64
 - **Consumer app validation matrix**: Phase 13G in roadmap — all 11 apps tracked with release/bundle test status
 
+### Fixed — Engineering Backlog (H26-H29)
+
+- **H26 (HIGH)**: Upgraded `reqwest` 0.11.27 → 0.12.28. Eliminates unmaintained `rustls-pemfile` 1.x (RUSTSEC-2025-0134). Zero breaking changes — all 6 crates compile clean. `cargo audit` now shows only 1 allowed warning (transitive `fxhash` via wasmtime)
+- **H27/H28 (MEDIUM)**: Systemd units changed from `Type=notify` to `Type=simple` with `ExecStartPost` health check. `agent-runtime.service` polls `http://127.0.0.1:8090/v1/health`, `llm-gateway.service` polls `http://127.0.0.1:8088/v1/health` (5 retries, 1s apart). Fixes ISO boot failure where services failed to start without sd_notify
+- **H29 (MEDIUM)**: SSRF protection in `HttpBridge::new()` — validates env var URLs reject `file://`, `ftp://`, cloud metadata IPs (`169.254.x.x`), and link-local addresses (`fe80:`, `fd00:`). Invalid URLs fall back to default localhost with warning log
+
+### Fixed — Systemd Hardening & Build Profiles
+
+- **Systemd**: `agnos-init.service` and `agnos-modules.service` now have security hardening (NoNewPrivileges, ProtectSystem=strict, ProtectHome, PrivateTmp, SystemCallFilter, etc.). Module loader retains CAP_SYS_MODULE. All 5 systemd units now consistently hardened
+- **Build profile**: Added `release-edge` cargo profile (opt-level=s, fat LTO, strip, panic=abort) for size-optimized edge binaries. Build with `cargo build --profile release-edge`
+
 ### Changed
 
 - Version bump: `2026.3.13` → `2026.3.14`

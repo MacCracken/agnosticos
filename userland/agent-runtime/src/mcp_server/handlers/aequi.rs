@@ -6,72 +6,19 @@ use super::super::helpers::{
     success_result, validate_enum_opt,
 };
 use super::super::types::McpToolResult;
+use super::bridge::HttpBridge;
 
 // ---------------------------------------------------------------------------
 // Aequi Accounting Agent Bridge
 // ---------------------------------------------------------------------------
 
-/// Bridge that proxies MCP tool calls to the Aequi accounting API.
-#[derive(Debug, Clone)]
-pub struct AequiBridge {
-    base_url: String,
-    api_key: Option<String>,
-}
-
-impl Default for AequiBridge {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl AequiBridge {
-    pub fn new() -> Self {
-        Self {
-            base_url: std::env::var("AEQUI_URL")
-                .unwrap_or_else(|_| "http://127.0.0.1:8060".to_string()),
-            api_key: std::env::var("AEQUI_API_KEY").ok(),
-        }
-    }
-
-    fn build_client() -> Result<reqwest::Client, String> {
-        reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(5))
-            .connect_timeout(std::time::Duration::from_secs(2))
-            .build()
-            .map_err(|e| e.to_string())
-    }
-
-    async fn get(
-        &self,
-        path: &str,
-        query: &[(String, String)],
-    ) -> Result<serde_json::Value, String> {
-        let client = Self::build_client()?;
-        let url = format!("{}{}", self.base_url, path);
-        let mut req = client.get(&url).query(query);
-        if let Some(ref key) = self.api_key {
-            req = req.header("Authorization", format!("Bearer {}", key));
-        }
-        let resp = req.send().await.map_err(|e| e.to_string())?;
-        if !resp.status().is_success() {
-            return Err(format!("Aequi API error: {}", resp.status()));
-        }
-        resp.json().await.map_err(|e| e.to_string())
-    }
-
-    async fn post(&self, path: &str, body: serde_json::Value) -> Result<serde_json::Value, String> {
-        let client = Self::build_client()?;
-        let url = format!("{}{}", self.base_url, path);
-        let mut req = client.post(&url).json(&body);
-        if let Some(ref key) = self.api_key {
-            req = req.header("Authorization", format!("Bearer {}", key));
-        }
-        let resp = req.send().await.map_err(|e| e.to_string())?;
-        if !resp.status().is_success() {
-            return Err(format!("Aequi API error: {}", resp.status()));
-        }
-        resp.json().await.map_err(|e| e.to_string())
-    }
+pub(crate) fn aequi_bridge() -> HttpBridge {
+    HttpBridge::new(
+        "AEQUI_URL",
+        "http://127.0.0.1:8060",
+        "AEQUI_API_KEY",
+        "Aequi",
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -86,7 +33,7 @@ pub(crate) async fn handle_aequi_estimate_tax(args: &serde_json::Value) -> McpTo
         return e;
     }
 
-    let bridge = AequiBridge::new();
+    let bridge = aequi_bridge();
     let mut query = Vec::new();
     if let Some(ref q) = quarter {
         query.push(("quarter".to_string(), q.clone()));
@@ -120,7 +67,7 @@ pub(crate) async fn handle_aequi_estimate_tax(args: &serde_json::Value) -> McpTo
 pub(crate) async fn handle_aequi_schedule_c(args: &serde_json::Value) -> McpToolResult {
     let year = get_optional_string_arg(args, "year");
 
-    let bridge = AequiBridge::new();
+    let bridge = aequi_bridge();
     let mut query = Vec::new();
     if let Some(ref y) = year {
         query.push(("year".to_string(), y.clone()));
@@ -168,7 +115,7 @@ pub(crate) async fn handle_aequi_import_bank(args: &serde_json::Value) -> McpToo
         return e;
     }
 
-    let bridge = AequiBridge::new();
+    let bridge = aequi_bridge();
     let body = serde_json::json!({
         "file_path": file_path,
         "format": format,
@@ -205,7 +152,7 @@ pub(crate) async fn handle_aequi_balances(args: &serde_json::Value) -> McpToolRe
         return e;
     }
 
-    let bridge = AequiBridge::new();
+    let bridge = aequi_bridge();
     let mut query = Vec::new();
     if let Some(ref t) = account_type {
         query.push(("type".to_string(), t.clone()));
@@ -247,7 +194,7 @@ pub(crate) async fn handle_aequi_receipts(args: &serde_json::Value) -> McpToolRe
         return e;
     }
 
-    let bridge = AequiBridge::new();
+    let bridge = aequi_bridge();
     let mut query = Vec::new();
     if let Some(ref s) = status {
         query.push(("status".to_string(), s.clone()));
@@ -307,7 +254,7 @@ pub(crate) async fn handle_aequi_invoices(args: &serde_json::Value) -> McpToolRe
     let invoice_id = get_optional_string_arg(args, "invoice_id");
     let due_date = get_optional_string_arg(args, "due_date");
 
-    let bridge = AequiBridge::new();
+    let bridge = aequi_bridge();
 
     match action.as_str() {
         "list" | "status" => {
@@ -395,7 +342,7 @@ pub(crate) async fn handle_aequi_reports(args: &serde_json::Value) -> McpToolRes
         return e;
     }
 
-    let bridge = AequiBridge::new();
+    let bridge = aequi_bridge();
     let mut query = Vec::new();
     query.push(("type".to_string(), action.clone()));
     query.push(("period".to_string(), period.clone()));

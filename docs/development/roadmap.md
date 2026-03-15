@@ -103,38 +103,12 @@ for desktop/networking/GPU stack.
 
 ### Active
 
+### Active
+
 | # | Priority | Item | Notes |
 |---|----------|------|-------|
-| H26 | **HIGH** | Upgrade `reqwest` 0.11 → 0.12+ | Eliminates unmaintained `rustls-pemfile` 1.x (RUSTSEC-2025-0134). Breaking change — workspace-wide migration needed (all 6 crates depend on it). |
-| H27 | **MEDIUM** | Implement `sd_notify` for systemd services | `agent-runtime` and `llm-gateway` use `Type=notify` in systemd units but don't send `READY=1`. Causes service startup failures on ISO boot. Either implement sd_notify via `libsystemd` crate or change to `Type=simple`. |
-| H28 | **MEDIUM** | Systemd unit `Type=notify` → `Type=simple` fallback | Short-term fix: change service units to `Type=simple` so daimon/hoosh start without sd_notify. Long-term: implement proper readiness notification (H27). |
-| H29 | **MEDIUM** | SSRF: validate MCP bridge env var URLs | `*_URL` env vars (SYNAPSE_URL, BULLSHIFT_URL, etc.) accept arbitrary URLs. Should reject `file://`, cloud metadata IPs (169.254.x.x), and non-localhost targets. Affects all 10 bridge structs. |
-| H30 | **MEDIUM** | Delta `delta_review`: require `pr_id` for mutating actions | `approve`, `reject`, `comment` actions don't require `pr_id`. Should return error if `pr_id` is None for non-list actions. |
-| H31 | **LOW** | MCP bridge: reuse `reqwest::Client` across calls | All bridge structs create a new `reqwest::Client` per `get()`/`post()` call via `build_client()`. Should store client in struct or use `Lazy` static for connection pool reuse. |
-| H32 | **LOW** | MCP handlers: add string length limits on inputs | No handler validates input string length. A multi-MB string in `name`, `prompt`, etc. gets serialized to JSON and forwarded. Add limits in `extract_required_string`/`get_optional_string_arg`. |
-| H33 | **LOW** | PhotisBridge: add `connect_timeout` | PhotisBridge uses per-request `.timeout()` but no `connect_timeout()`, unlike other bridges that use `build_client()` with 2s connect timeout. |
-
-### Recently Fixed (Audit Round 17 — 2026-03-14)
-
-**Security**: Photis `TaskCreate`/`TaskUpdate` permissions changed from `Safe` → `SystemWrite` (write ops incorrectly marked read-only). Bridge URL removed from 6 mock error messages (info leak). BullShift strategy `params` JSON parse failure now returns error instead of silently dropping invalid input.
-
-**Performance**: Added `build_client()` with 5s timeout + 2s connect timeout to AequiBridge and AgnosticBridge (previously used `reqwest::Client::new()` with no timeout — potential DoS via hung bridge).
-
-### Recently Fixed (15 items cleared + 4 non-issues removed + 2 unmaintained deps removed)
-
-**Unmaintained deps**: Removed `ansi_term` (replaced with `console`) and unused `indicatif` from ai-shell. Reduces `cargo audit` warnings from 4 to 2.
-
-**H23 — File splitting**: `mcp_server.rs` (4,452 → 11 files), `supervisor.rs` (3,609 → 9 files), `wayland.rs` (3,996 → 7 files)
-
-**H25 — Enum refactoring**: `MetricKind` enum in resource_forecast, `BehaviorMetric` enum in learning, `FromStr` for `FindingSeverity`/`HardeningFlag`, parser functions for screen_capture formats and RAG knowledge sources
-
-**Security**: Tarball symlink path traversal, agent ID authorization per-agent (memory handlers), memory store per-agent key limit (1000 keys), prompt injection Unicode bypass (strip zero-width chars), XWayland surface ID removed from error messages
-
-**Performance**: Vector search results no longer clone embeddings, CGroup setup on `spawn_blocking` with 5s timeout, temperature/top_p clamped at gateway level
-
-**Ops**: Audit chain persistence with atomic writes + integrity verification, audit buffer safe pagination, desktop SIGHUP handler, cache per-request TTL, HTTP request handling benchmarks
-
-**Not issues** (removed): Rate limiter uses monotonic `Instant`, Pub/Sub wildcard uses `starts_with()`, marketplace signature optional when keyring=None, env_keep uses double-check pattern
+| H36 | **LOW** | Feature-gate `desktop_environment` in agent-runtime | `agent-runtime` depends on `desktop_environment` (Wayland compositor, screen capture) even for headless/edge builds. Gate behind `#[cfg(feature = "desktop")]` to allow building a minimal edge binary without compositor code. Requires conditional compilation in `http_api/state.rs`, `screen_capture.rs`, and route registration (~15 files). `release-edge` cargo profile already added for size optimization. |
+| H37 | **LOW** | Upgrade wasmtime 36 → 42+ | Eliminates transitive `fxhash` unmaintained dep (RUSTSEC-2025-0057). Breaking change: WASI preview1 API removed in wasmtime 38+, needs migration to preview2 in `wasm_runtime.rs`. Feature-gated (`wasm`), not compiled by default. Dependency watch. |
 
 ---
 

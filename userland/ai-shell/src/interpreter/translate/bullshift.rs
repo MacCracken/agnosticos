@@ -1,36 +1,22 @@
 use anyhow::Result;
 
+use super::mcp_helper::{insert_opt, insert_str, mcp_call};
 use crate::interpreter::intent::{Intent, Translation};
 use crate::security::PermissionLevel;
 
 pub(crate) fn translate_bullshift(intent: &Intent) -> Result<Translation> {
     match intent {
         Intent::BullShiftPortfolio { action, period } => {
-            let mut args_json = serde_json::Map::new();
-            args_json.insert(
-                "action".to_string(),
-                serde_json::Value::String(action.clone()),
-            );
-            if let Some(p) = period {
-                args_json.insert("period".to_string(), serde_json::Value::String(p.clone()));
-            }
-            let body = serde_json::json!({"name": "bullshift_portfolio", "arguments": args_json});
-            Ok(Translation {
-                command: "curl".to_string(),
-                args: vec![
-                    "-s".to_string(),
-                    "-X".to_string(),
-                    "POST".to_string(),
-                    "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
-                    "-H".to_string(),
-                    "Content-Type: application/json".to_string(),
-                    "-d".to_string(),
-                    serde_json::to_string(&body).unwrap(),
-                ],
-                description: format!("BullShift portfolio: {}", action),
-                permission: PermissionLevel::Safe,
-                explanation: format!("Views portfolio {} via BullShift MCP bridge", action),
-            })
+            let mut a = serde_json::Map::new();
+            insert_str(&mut a, "action", action);
+            insert_opt(&mut a, "period", period);
+            Ok(mcp_call(
+                "bullshift_portfolio",
+                a,
+                format!("BullShift portfolio: {}", action),
+                PermissionLevel::Safe,
+                format!("Views portfolio {} via BullShift MCP bridge", action),
+            ))
         }
 
         Intent::BullShiftOrders {
@@ -38,36 +24,19 @@ pub(crate) fn translate_bullshift(intent: &Intent) -> Result<Translation> {
             symbol,
             side,
         } => {
-            let mut args_json = serde_json::Map::new();
-            args_json.insert(
-                "action".to_string(),
-                serde_json::Value::String(action.clone()),
-            );
-            if let Some(s) = symbol {
-                args_json.insert("symbol".to_string(), serde_json::Value::String(s.clone()));
-            }
-            if let Some(sd) = side {
-                args_json.insert("side".to_string(), serde_json::Value::String(sd.clone()));
-            }
-            let body = serde_json::json!({"name": "bullshift_orders", "arguments": args_json});
-            Ok(Translation {
-                command: "curl".to_string(),
-                args: vec![
-                    "-s".to_string(),
-                    "-X".to_string(),
-                    "POST".to_string(),
-                    "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
-                    "-H".to_string(),
-                    "Content-Type: application/json".to_string(),
-                    "-d".to_string(),
-                    serde_json::to_string(&body).unwrap(),
-                ],
-                description: format!("BullShift order: {}", action),
-                permission: match action.as_str() {
+            let mut a = serde_json::Map::new();
+            insert_str(&mut a, "action", action);
+            insert_opt(&mut a, "symbol", symbol);
+            insert_opt(&mut a, "side", side);
+            Ok(mcp_call(
+                "bullshift_orders",
+                a,
+                format!("BullShift order: {}", action),
+                match action.as_str() {
                     "list" | "status" => PermissionLevel::Safe,
                     _ => PermissionLevel::SystemWrite,
                 },
-                explanation: format!(
+                format!(
                     "{} orders via BullShift MCP bridge",
                     match action.as_str() {
                         "place" => "Places",
@@ -77,71 +46,41 @@ pub(crate) fn translate_bullshift(intent: &Intent) -> Result<Translation> {
                         _ => "Manages",
                     }
                 ),
-            })
+            ))
         }
 
         Intent::BullShiftMarket { action, symbol } => {
-            let mut args_json = serde_json::Map::new();
-            args_json.insert(
-                "action".to_string(),
-                serde_json::Value::String(action.clone()),
-            );
-            if let Some(s) = symbol {
-                args_json.insert("symbol".to_string(), serde_json::Value::String(s.clone()));
-            }
-            let body = serde_json::json!({"name": "bullshift_market", "arguments": args_json});
-            Ok(Translation {
-                command: "curl".to_string(),
-                args: vec![
-                    "-s".to_string(),
-                    "-X".to_string(),
-                    "POST".to_string(),
-                    "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
-                    "-H".to_string(),
-                    "Content-Type: application/json".to_string(),
-                    "-d".to_string(),
-                    serde_json::to_string(&body).unwrap(),
-                ],
-                description: format!(
+            let mut a = serde_json::Map::new();
+            insert_str(&mut a, "action", action);
+            insert_opt(&mut a, "symbol", symbol);
+            Ok(mcp_call(
+                "bullshift_market",
+                a,
+                format!(
                     "BullShift market: {}{}",
                     action,
                     symbol
                         .as_ref()
                         .map_or(String::new(), |s| format!(" for {}", s))
                 ),
-                permission: PermissionLevel::Safe,
-                explanation: "Queries market data via BullShift MCP bridge".to_string(),
-            })
+                PermissionLevel::Safe,
+                "Queries market data via BullShift MCP bridge".to_string(),
+            ))
         }
 
         Intent::BullShiftAlerts { action, symbol } => {
-            let mut args_json = serde_json::Map::new();
-            args_json.insert(
-                "action".to_string(),
-                serde_json::Value::String(action.clone()),
-            );
-            if let Some(s) = symbol {
-                args_json.insert("symbol".to_string(), serde_json::Value::String(s.clone()));
-            }
-            let body = serde_json::json!({"name": "bullshift_alerts", "arguments": args_json});
-            Ok(Translation {
-                command: "curl".to_string(),
-                args: vec![
-                    "-s".to_string(),
-                    "-X".to_string(),
-                    "POST".to_string(),
-                    "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
-                    "-H".to_string(),
-                    "Content-Type: application/json".to_string(),
-                    "-d".to_string(),
-                    serde_json::to_string(&body).unwrap(),
-                ],
-                description: format!("BullShift alert: {}", action),
-                permission: match action.as_str() {
+            let mut a = serde_json::Map::new();
+            insert_str(&mut a, "action", action);
+            insert_opt(&mut a, "symbol", symbol);
+            Ok(mcp_call(
+                "bullshift_alerts",
+                a,
+                format!("BullShift alert: {}", action),
+                match action.as_str() {
                     "list" | "triggered" => PermissionLevel::Safe,
                     _ => PermissionLevel::SystemWrite,
                 },
-                explanation: format!(
+                format!(
                     "{} price alerts via BullShift MCP bridge",
                     match action.as_str() {
                         "set" => "Sets",
@@ -151,37 +90,22 @@ pub(crate) fn translate_bullshift(intent: &Intent) -> Result<Translation> {
                         _ => "Manages",
                     }
                 ),
-            })
+            ))
         }
 
         Intent::BullShiftStrategy { action, name } => {
-            let mut args_json = serde_json::Map::new();
-            args_json.insert(
-                "action".to_string(),
-                serde_json::Value::String(action.clone()),
-            );
-            if let Some(n) = name {
-                args_json.insert("name".to_string(), serde_json::Value::String(n.clone()));
-            }
-            let body = serde_json::json!({"name": "bullshift_strategy", "arguments": args_json});
-            Ok(Translation {
-                command: "curl".to_string(),
-                args: vec![
-                    "-s".to_string(),
-                    "-X".to_string(),
-                    "POST".to_string(),
-                    "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
-                    "-H".to_string(),
-                    "Content-Type: application/json".to_string(),
-                    "-d".to_string(),
-                    serde_json::to_string(&body).unwrap(),
-                ],
-                description: format!("BullShift strategy: {}", action),
-                permission: match action.as_str() {
+            let mut a = serde_json::Map::new();
+            insert_str(&mut a, "action", action);
+            insert_opt(&mut a, "name", name);
+            Ok(mcp_call(
+                "bullshift_strategy",
+                a,
+                format!("BullShift strategy: {}", action),
+                match action.as_str() {
                     "list" | "status" => PermissionLevel::Safe,
                     _ => PermissionLevel::SystemWrite,
                 },
-                explanation: format!(
+                format!(
                     "{} trading strategy via BullShift MCP bridge",
                     match action.as_str() {
                         "list" => "Lists",
@@ -192,75 +116,45 @@ pub(crate) fn translate_bullshift(intent: &Intent) -> Result<Translation> {
                         _ => "Manages",
                     }
                 ),
-            })
+            ))
         }
 
         Intent::BullShiftAccounts { action, broker } => {
-            let mut args_json = serde_json::Map::new();
-            args_json.insert(
-                "action".to_string(),
-                serde_json::Value::String(action.clone()),
-            );
-            if let Some(b) = broker {
-                args_json.insert("broker".to_string(), serde_json::Value::String(b.clone()));
-            }
-            let body = serde_json::json!({"name": "bullshift_accounts", "arguments": args_json});
-            Ok(Translation {
-                command: "curl".to_string(),
-                args: vec![
-                    "-s".to_string(),
-                    "-X".to_string(),
-                    "POST".to_string(),
-                    "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
-                    "-H".to_string(),
-                    "Content-Type: application/json".to_string(),
-                    "-d".to_string(),
-                    serde_json::to_string(&body).unwrap(),
-                ],
-                description: format!(
+            let mut a = serde_json::Map::new();
+            insert_str(&mut a, "action", action);
+            insert_opt(&mut a, "broker", broker);
+            Ok(mcp_call(
+                "bullshift_accounts",
+                a,
+                format!(
                     "BullShift accounts: {}{}",
                     action,
                     broker
                         .as_ref()
                         .map_or(String::new(), |b| format!(" '{}'", b))
                 ),
-                permission: PermissionLevel::Safe,
-                explanation: "Views broker accounts via BullShift".to_string(),
-            })
+                PermissionLevel::Safe,
+                "Views broker accounts via BullShift".to_string(),
+            ))
         }
 
         Intent::BullShiftHistory { action, period } => {
-            let mut args_json = serde_json::Map::new();
-            args_json.insert(
-                "action".to_string(),
-                serde_json::Value::String(action.clone()),
-            );
-            if let Some(p) = period {
-                args_json.insert("period".to_string(), serde_json::Value::String(p.clone()));
-            }
-            let body = serde_json::json!({"name": "bullshift_history", "arguments": args_json});
-            Ok(Translation {
-                command: "curl".to_string(),
-                args: vec![
-                    "-s".to_string(),
-                    "-X".to_string(),
-                    "POST".to_string(),
-                    "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
-                    "-H".to_string(),
-                    "Content-Type: application/json".to_string(),
-                    "-d".to_string(),
-                    serde_json::to_string(&body).unwrap(),
-                ],
-                description: format!(
+            let mut a = serde_json::Map::new();
+            insert_str(&mut a, "action", action);
+            insert_opt(&mut a, "period", period);
+            Ok(mcp_call(
+                "bullshift_history",
+                a,
+                format!(
                     "BullShift history: {}{}",
                     action,
                     period
                         .as_ref()
                         .map_or(String::new(), |p| format!(" ({})", p))
                 ),
-                permission: PermissionLevel::Safe,
-                explanation: "Views trade history via BullShift".to_string(),
-            })
+                PermissionLevel::Safe,
+                "Views trade history via BullShift".to_string(),
+            ))
         }
 
         _ => unreachable!("translate_bullshift called with non-bullshift intent"),

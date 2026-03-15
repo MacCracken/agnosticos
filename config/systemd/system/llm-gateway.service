@@ -4,8 +4,9 @@ After=agnos-init.service network.target
 Wants=agnos-init.service
 
 [Service]
-Type=notify
+Type=simple
 ExecStart=/usr/bin/llm-gateway
+ExecStartPost=/bin/sh -c 'for i in 1 2 3 4 5; do sleep 1; curl -sf http://127.0.0.1:8088/v1/health >/dev/null && exit 0; done; exit 1'
 Restart=always
 RestartSec=5
 User=agnos-llm

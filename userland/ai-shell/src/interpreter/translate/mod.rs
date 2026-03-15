@@ -1,3 +1,5 @@
+pub(crate) mod mcp_helper;
+
 mod aequi;
 mod agnos;
 mod agnostic;

@@ -1,11 +1,15 @@
 #!/bin/bash
 # build-iso-aarch64.sh — Build AGNOS bootable aarch64 SD card image
 #
-# Creates a full AGNOS system (Debian Trixie arm64 base + AGNOS userland)
-# bootable on Raspberry Pi 4/5 via microSD. This is the aarch64 equivalent
-# of build-iso.sh — full desktop-capable system, not edge-only.
+# Creates an AGNOS system (Debian Trixie arm64 base + AGNOS userland)
+# bootable on Raspberry Pi 4/5 via microSD.
 #
-# Output: agnos-<version>-aarch64.img (dd to microSD)
+# Profiles:
+#   --edge    Minimal edge/IoT image (~512MB) with SY edge agent, WireGuard,
+#             no desktop, no GPU. For headless RPi4/5 edge fleet nodes.
+#   (default) Full desktop-capable system (~2GB) with all AGNOS binaries.
+#
+# Output: agnos-<version>-aarch64.img (or agnos-edge-<version>-aarch64.img)
 #
 # Requirements:
 #   debootstrap, squashfs-tools, dosfstools (mkfs.vfat), parted,
@@ -36,13 +40,15 @@ DEBIAN_SUITE="trixie"
 DEBIAN_MIRROR="http://deb.debian.org/debian"
 SKIP_BUILD=0
 SKIP_DEBOOTSTRAP=0
+EDGE_MODE=0
 
-# Image sizing — full system, not edge
-# 2 GB is enough for Debian minbase + AGNOS userland + kernel
-# Users can expand rootfs after flashing
+# Image sizing — adjusted by profile (--edge shrinks to 512MB)
 IMG_SIZE_MB=2048
 BOOT_SIZE_MB=256    # FAT32 boot: kernel, DTBs, firmware, initrd
-# Remaining ~1792 MB for ext4 rootfs
+# Remaining space for ext4 rootfs
+
+# SY edge binary path (set via --sy-edge-binary or auto-detected)
+SY_EDGE_BINARY=""
 
 # Colors
 RED='\033[0;31m'
@@ -62,23 +68,26 @@ Usage: $0 [options]
 
 Build AGNOS bootable aarch64 SD card image (Debian Trixie arm64 + AGNOS userland)
 
-This creates a full AGNOS system for Raspberry Pi 4/5. Flash to microSD with:
+Flash to microSD with:
   sudo dd if=output/agnos-<version>-aarch64.img of=/dev/sdX bs=4M status=progress conv=fsync
 
 Options:
     -n, --name NAME         Image name (default: agnos)
     -v, --version VERSION   AGNOS version (default: from VERSION file)
     -o, --output DIR        Output directory (default: output/)
-    -s, --size MB           Image size in MB (default: $IMG_SIZE_MB)
+    -s, --size MB           Image size in MB (default: 2048, edge: 512)
     -m, --mirror URL        Debian mirror (default: $DEBIAN_MIRROR)
+    --edge                  Build minimal edge/IoT image with SY agent
+    --sy-edge-binary PATH   Path to secureyeoman-edge arm64 binary
     --skip-build            Skip cross-compilation (use existing binaries)
     --skip-debootstrap      Skip debootstrap (use existing rootfs)
     -h, --help              Show this help message
 
 Examples:
-    sudo $0                         # Full build
+    sudo $0                         # Full desktop build (2GB)
+    sudo $0 --edge                  # Minimal edge image (512MB)
+    sudo $0 --edge --sy-edge-binary /path/to/secureyeoman-edge-linux-arm64
     sudo $0 --skip-build            # Rebuild image without recompiling
-    sudo $0 --skip-debootstrap      # Rebuild with new binaries, keep rootfs
     sudo $0 --size 4096             # 4 GB image (more room for models)
 EOF
 }
@@ -91,6 +100,8 @@ parse_args() {
             -o|--output)    OUTPUT_DIR="$2"; shift 2 ;;
             -s|--size)      IMG_SIZE_MB="$2"; shift 2 ;;
             -m|--mirror)    DEBIAN_MIRROR="$2"; shift 2 ;;
+            --edge)         EDGE_MODE=1; shift ;;
+            --sy-edge-binary) SY_EDGE_BINARY="$2"; shift 2 ;;
             --skip-build)   SKIP_BUILD=1; shift ;;
             --skip-debootstrap) SKIP_DEBOOTSTRAP=1; shift ;;
             -h|--help)      usage; exit 0 ;;
@@ -141,6 +152,11 @@ build_userland() {
     if [[ $SKIP_BUILD -eq 1 ]]; then
         log_info "Skipping cross-compilation (--skip-build)"
         if [[ ! -d "$USERLAND_DIR/target/aarch64-unknown-linux-gnu/release" ]]; then
+            if [[ $EDGE_MODE -eq 1 ]]; then
+                log_warn "No AGNOS aarch64 binaries — edge image will use SY edge binary only"
+                mkdir -p "$USERLAND_DIR/target/aarch64-unknown-linux-gnu/release"
+                return
+            fi
             log_error "No aarch64 release binaries found. Run without --skip-build first."
             exit 1
         fi
@@ -202,11 +218,17 @@ create_rootfs() {
 
         rm -rf "$rootfs"
 
+        # Package list — edge mode is more minimal
+        local include_pkgs="systemd,systemd-sysv,dbus,udev,iproute2,iputils-ping,kmod,procps,openssh-server,sudo,vim-tiny"
+        if [[ $EDGE_MODE -eq 1 ]]; then
+            include_pkgs="systemd,systemd-sysv,dbus,udev,iproute2,iputils-ping,kmod,procps,openssh-server,sudo,ca-certificates,curl"
+        fi
+
         # Foreign debootstrap: first stage downloads packages,
         # second stage unpacks them (requires qemu-user-static for chroot)
         if [[ "$(uname -m)" != "aarch64" ]]; then
             debootstrap --foreign --variant=minbase --arch="$DEBIAN_ARCH" \
-                --include=systemd,systemd-sysv,dbus,udev,iproute2,iputils-ping,kmod,procps,openssh-server,sudo,vim-tiny \
+                --include="$include_pkgs" \
                 "$DEBIAN_SUITE" "$rootfs" "$DEBIAN_MIRROR"
 
             # Copy qemu-user-static for chroot
@@ -217,7 +239,7 @@ create_rootfs() {
         else
             # Native aarch64 host — no foreign bootstrap needed
             debootstrap --variant=minbase --arch="$DEBIAN_ARCH" \
-                --include=systemd,systemd-sysv,dbus,udev,iproute2,iputils-ping,kmod,procps,openssh-server,sudo,vim-tiny \
+                --include="$include_pkgs" \
                 "$DEBIAN_SUITE" "$rootfs" "$DEBIAN_MIRROR"
         fi
 
@@ -240,16 +262,21 @@ create_rootfs() {
     run_chroot "
         apt-get update
         # linux-image-arm64 is the generic arm64 kernel
-        apt-get install -y --no-install-recommends linux-image-arm64 firmware-brcm80211
+        # passwd provides groupadd/useradd/chpasswd
+        apt-get install -y --no-install-recommends linux-image-arm64 passwd
+        # RPi WiFi firmware — non-free, may not be available in all mirrors
+        apt-get install -y --no-install-recommends firmware-brcm80211 2>/dev/null || true
         apt-get clean
         rm -rf /var/lib/apt/lists/*
     "
 
     # --- Hostname & identity ---
-    echo "agnos" > "$rootfs/etc/hostname"
-    cat > "$rootfs/etc/hosts" << 'EOF'
-127.0.0.1   localhost agnos
-::1         localhost agnos
+    local hostname="agnos"
+    [[ $EDGE_MODE -eq 1 ]] && hostname="agnos-edge"
+    echo "$hostname" > "$rootfs/etc/hostname"
+    cat > "$rootfs/etc/hosts" << EOF
+127.0.0.1   localhost $hostname
+::1         localhost $hostname
 EOF
 
     # --- OS release ---
@@ -380,6 +407,11 @@ PermitRootLogin yes
 EOF
 
     # --- MOTD ---
+    local motd_platform="Raspberry Pi 4/5"
+    local motd_profile=""
+    if [[ $EDGE_MODE -eq 1 ]]; then
+        motd_profile="Edge/IoT Profile — Headless, SY Edge Agent enabled"
+    fi
     cat > "$rootfs/etc/motd" << EOF
 
     ___    _____ _   ______  _____
@@ -389,10 +421,11 @@ EOF
 /_/  |_|\____/_/ |_/\____//____/
 
 AI-Native General Operating System v${ISO_VERSION} [aarch64]
-https://github.com/agnos/agnos
+${motd_profile:+$motd_profile
+}https://github.com/agnos/agnos
 
 Default credentials: user/agnos  root/agnos
-Platform: Raspberry Pi 4/5
+Platform: ${motd_platform}
 
 EOF
 
@@ -510,7 +543,13 @@ create_image() {
     fi
 
     # RPi boot firmware — config.txt + cmdline.txt
-    cat > "$WORK_DIR/mnt_boot/config.txt" << 'RPICFG'
+    local gpu_mem=128
+    local gpu_overlay="dtoverlay=vc4-kms-v3d"
+    if [[ $EDGE_MODE -eq 1 ]]; then
+        gpu_mem=16      # Minimal GPU — headless, no compositor
+        gpu_overlay=""   # No GPU overlay for edge
+    fi
+    cat > "$WORK_DIR/mnt_boot/config.txt" << RPICFG
 # AGNOS — Raspberry Pi boot configuration
 
 # 64-bit mode
@@ -521,13 +560,13 @@ kernel=vmlinuz
 initramfs initrd.img followkernel
 
 # Device tree
-dtoverlay=vc4-kms-v3d
+${gpu_overlay}
 dtparam=i2c_arm=on
 dtparam=spi=on
 dtparam=audio=on
 
-# GPU memory (enough for Wayland compositor)
-gpu_mem=128
+# GPU memory
+gpu_mem=${gpu_mem}
 
 # Serial console (useful for headless setup)
 enable_uart=1
@@ -578,17 +617,147 @@ CMDLINE
     log_info "LLM gateway:   http://<rpi-ip>:8088"
 }
 
+apply_edge_defaults() {
+    if [[ $EDGE_MODE -eq 0 ]]; then return; fi
+
+    # Edge images are much smaller — no desktop, no GPU packages
+    if [[ $IMG_SIZE_MB -eq 2048 ]]; then
+        IMG_SIZE_MB=512
+    fi
+    if [[ $ISO_NAME == "agnos" ]]; then
+        ISO_NAME="agnos-edge"
+    fi
+
+    # Auto-detect SY edge binary if not specified
+    if [[ -z "$SY_EDGE_BINARY" ]]; then
+        local search_paths=(
+            "$REPO_DIR/../secureyeoman/dist/secureyeoman-edge-linux-arm64"
+            "$REPO_DIR/../secureyeoman-edge-linux-arm64"
+        )
+        for p in "${search_paths[@]}"; do
+            if [[ -f "$p" ]]; then
+                SY_EDGE_BINARY="$p"
+                log_info "Auto-detected SY edge binary: $SY_EDGE_BINARY"
+                break
+            fi
+        done
+    fi
+
+    if [[ -n "$SY_EDGE_BINARY" ]] && [[ ! -f "$SY_EDGE_BINARY" ]]; then
+        log_error "SY edge binary not found: $SY_EDGE_BINARY"
+        log_info "Build it with: cd ../secureyeoman && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags '-s -w' -o dist/secureyeoman-edge-linux-arm64 ./cmd/secureyeoman-edge"
+        exit 1
+    fi
+}
+
+install_edge_packages() {
+    if [[ $EDGE_MODE -eq 0 ]]; then return; fi
+
+    local rootfs="$WORK_DIR/rootfs"
+
+    log_step "Installing edge-specific packages..."
+
+    # --- Install SY edge binary ---
+    if [[ -n "$SY_EDGE_BINARY" ]]; then
+        cp "$SY_EDGE_BINARY" "$rootfs/usr/bin/secureyeoman-edge"
+        chmod 755 "$rootfs/usr/bin/secureyeoman-edge"
+        log_info "  -> Installed secureyeoman-edge ($(du -h "$SY_EDGE_BINARY" | cut -f1))"
+    else
+        log_warn "  -> No SY edge binary provided (use --sy-edge-binary to include)"
+    fi
+
+    # --- SY edge config ---
+    mkdir -p "$rootfs/etc/secureyeoman"
+    cat > "$rootfs/etc/secureyeoman/edge.toml" << 'SYEDGE'
+[agent]
+mode = "edge"
+parent_url = ""
+auto_register = true
+
+[resources]
+max_memory_mb = 32
+max_concurrent_tasks = 2
+telemetry_interval_secs = 60
+heartbeat_interval_secs = 30
+
+[security]
+sandbox = true
+tls_verify = true
+parent_cert_pin = ""
+
+[tasks]
+tags = []
+gpu_available = false
+
+[ota]
+enabled = true
+check_interval_secs = 3600
+require_signature = true
+rollback_on_failure = true
+
+[telemetry]
+enabled = true
+local_buffer_max_mb = 4
+SYEDGE
+
+    # --- SY edge systemd unit ---
+    cat > "$rootfs/etc/systemd/system/secureyeoman-edge.service" << 'SYUNIT'
+[Unit]
+Description=SecureYeoman Edge Agent
+After=network-online.target agent-runtime.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/secureyeoman-edge --config /etc/secureyeoman/edge.toml
+Restart=always
+RestartSec=5
+User=agnos
+Group=agnos
+WorkingDirectory=/var/lib/secureyeoman-edge
+StateDirectory=secureyeoman-edge
+
+[Install]
+WantedBy=multi-user.target
+SYUNIT
+
+    # Create data directory and enable service
+    mkdir -p "$rootfs/var/lib/secureyeoman-edge"
+
+    run_chroot "
+        systemctl enable secureyeoman-edge.service 2>/dev/null || true
+    "
+
+    # --- Install WireGuard (edge networking) ---
+    run_chroot "
+        apt-get update
+        apt-get install -y --no-install-recommends wireguard-tools
+        apt-get clean
+        rm -rf /var/lib/apt/lists/*
+    "
+
+    log_info "  -> Edge packages installed"
+}
+
 main() {
     parse_args "$@"
+    apply_edge_defaults
+
+    local profile="Full Desktop"
+    [[ $EDGE_MODE -eq 1 ]] && profile="Edge/IoT (minimal)"
 
     log_info "============================================="
     log_info "  AGNOS aarch64 Image Builder (RPi4/5)"
     log_info "============================================="
+    log_info "  Profile:    $profile"
     log_info "  Version:    $ISO_VERSION"
     log_info "  Arch:       $ARCH"
     log_info "  Base:       Debian $DEBIAN_SUITE $DEBIAN_ARCH"
     log_info "  Image size: ${IMG_SIZE_MB} MB"
     log_info "  Output:     $OUTPUT_DIR/"
+    if [[ $EDGE_MODE -eq 1 ]] && [[ -n "$SY_EDGE_BINARY" ]]; then
+        log_info "  SY Edge:    $SY_EDGE_BINARY"
+    fi
     log_info "============================================="
     echo ""
 
@@ -596,6 +765,7 @@ main() {
     setup_directories
     build_userland
     create_rootfs
+    install_edge_packages
     create_image
 
     echo ""

@@ -11,5 +11,21 @@ ExecStart=/usr/bin/agnos-load-modules.sh
 StandardOutput=journal
 StandardError=journal
 
+# Security hardening — needs kernel module loading capability
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+# Module loading requires CAP_SYS_MODULE and kernel access
+ProtectKernelModules=false
+ProtectKernelTunables=false
+CapabilityBoundingSet=CAP_SYS_MODULE
+SystemCallFilter=@system-service @module
+SystemCallErrorNumber=EPERM
+
 [Install]
 WantedBy=basic.target

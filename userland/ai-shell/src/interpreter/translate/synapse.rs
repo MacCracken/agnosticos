@@ -1,5 +1,6 @@
 use anyhow::Result;
 
+use super::mcp_helper::{insert_opt, insert_str, mcp_call};
 use crate::interpreter::intent::{Intent, Translation};
 use crate::security::PermissionLevel;
 
@@ -10,40 +11,23 @@ pub(crate) fn translate_synapse(intent: &Intent) -> Result<Translation> {
             name,
             source,
         } => {
-            let mut args_json = serde_json::Map::new();
-            args_json.insert(
-                "action".to_string(),
-                serde_json::Value::String(action.clone()),
-            );
-            if let Some(n) = name {
-                args_json.insert("name".to_string(), serde_json::Value::String(n.clone()));
-            }
-            if let Some(s) = source {
-                args_json.insert("source".to_string(), serde_json::Value::String(s.clone()));
-            }
-            let body = serde_json::json!({"name": "synapse_models", "arguments": args_json});
-            Ok(Translation {
-                command: "curl".to_string(),
-                args: vec![
-                    "-s".to_string(),
-                    "-X".to_string(),
-                    "POST".to_string(),
-                    "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
-                    "-H".to_string(),
-                    "Content-Type: application/json".to_string(),
-                    "-d".to_string(),
-                    serde_json::to_string(&body).unwrap(),
-                ],
-                description: format!(
+            let mut a = serde_json::Map::new();
+            insert_str(&mut a, "action", action);
+            insert_opt(&mut a, "name", name);
+            insert_opt(&mut a, "source", source);
+            Ok(mcp_call(
+                "synapse_models",
+                a,
+                format!(
                     "Synapse models: {}{}",
                     action,
                     name.as_ref().map_or(String::new(), |n| format!(" '{}'", n))
                 ),
-                permission: match action.as_str() {
+                match action.as_str() {
                     "list" | "info" => PermissionLevel::Safe,
                     _ => PermissionLevel::SystemWrite,
                 },
-                explanation: format!(
+                format!(
                     "{} model(s) via Synapse MCP bridge",
                     match action.as_str() {
                         "download" => "Downloads",
@@ -52,43 +36,28 @@ pub(crate) fn translate_synapse(intent: &Intent) -> Result<Translation> {
                         _ => "Queries",
                     }
                 ),
-            })
+            ))
         }
 
         Intent::SynapseServe { action, model } => {
-            let mut args_json = serde_json::Map::new();
-            args_json.insert(
-                "action".to_string(),
-                serde_json::Value::String(action.clone()),
-            );
-            if let Some(m) = model {
-                args_json.insert("model".to_string(), serde_json::Value::String(m.clone()));
-            }
-            let body = serde_json::json!({"name": "synapse_serve", "arguments": args_json});
-            Ok(Translation {
-                command: "curl".to_string(),
-                args: vec![
-                    "-s".to_string(),
-                    "-X".to_string(),
-                    "POST".to_string(),
-                    "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
-                    "-H".to_string(),
-                    "Content-Type: application/json".to_string(),
-                    "-d".to_string(),
-                    serde_json::to_string(&body).unwrap(),
-                ],
-                description: format!(
+            let mut a = serde_json::Map::new();
+            insert_str(&mut a, "action", action);
+            insert_opt(&mut a, "model", model);
+            Ok(mcp_call(
+                "synapse_serve",
+                a,
+                format!(
                     "Synapse serve: {}{}",
                     action,
                     model
                         .as_ref()
                         .map_or(String::new(), |m| format!(" '{}'", m))
                 ),
-                permission: match action.as_str() {
+                match action.as_str() {
                     "status" | "list" => PermissionLevel::Safe,
                     _ => PermissionLevel::SystemWrite,
                 },
-                explanation: format!(
+                format!(
                     "{} model serving via Synapse MCP bridge",
                     match action.as_str() {
                         "start" => "Starts",
@@ -96,7 +65,7 @@ pub(crate) fn translate_synapse(intent: &Intent) -> Result<Translation> {
                         _ => "Queries",
                     }
                 ),
-            })
+            ))
         }
 
         Intent::SynapseFinetune {
@@ -104,42 +73,25 @@ pub(crate) fn translate_synapse(intent: &Intent) -> Result<Translation> {
             model,
             method,
         } => {
-            let mut args_json = serde_json::Map::new();
-            args_json.insert(
-                "action".to_string(),
-                serde_json::Value::String(action.clone()),
-            );
-            if let Some(m) = model {
-                args_json.insert("model".to_string(), serde_json::Value::String(m.clone()));
-            }
-            if let Some(mt) = method {
-                args_json.insert("method".to_string(), serde_json::Value::String(mt.clone()));
-            }
-            let body = serde_json::json!({"name": "synapse_finetune", "arguments": args_json});
-            Ok(Translation {
-                command: "curl".to_string(),
-                args: vec![
-                    "-s".to_string(),
-                    "-X".to_string(),
-                    "POST".to_string(),
-                    "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
-                    "-H".to_string(),
-                    "Content-Type: application/json".to_string(),
-                    "-d".to_string(),
-                    serde_json::to_string(&body).unwrap(),
-                ],
-                description: format!(
+            let mut a = serde_json::Map::new();
+            insert_str(&mut a, "action", action);
+            insert_opt(&mut a, "model", model);
+            insert_opt(&mut a, "method", method);
+            Ok(mcp_call(
+                "synapse_finetune",
+                a,
+                format!(
                     "Synapse finetune: {}{}",
                     action,
                     model
                         .as_ref()
                         .map_or(String::new(), |m| format!(" '{}'", m))
                 ),
-                permission: match action.as_str() {
+                match action.as_str() {
                     "status" | "list" => PermissionLevel::Safe,
                     _ => PermissionLevel::SystemWrite,
                 },
-                explanation: format!(
+                format!(
                     "{} fine-tuning job via Synapse MCP bridge",
                     match action.as_str() {
                         "start" => "Starts",
@@ -148,93 +100,50 @@ pub(crate) fn translate_synapse(intent: &Intent) -> Result<Translation> {
                         _ => "Queries",
                     }
                 ),
-            })
+            ))
         }
 
         Intent::SynapseChat { model, prompt } => {
-            let mut args_json = serde_json::Map::new();
-            args_json.insert(
-                "model".to_string(),
-                serde_json::Value::String(model.clone()),
-            );
-            if let Some(p) = prompt {
-                args_json.insert("prompt".to_string(), serde_json::Value::String(p.clone()));
-            }
-            let body = serde_json::json!({"name": "synapse_chat", "arguments": args_json});
-            Ok(Translation {
-                command: "curl".to_string(),
-                args: vec![
-                    "-s".to_string(),
-                    "-X".to_string(),
-                    "POST".to_string(),
-                    "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
-                    "-H".to_string(),
-                    "Content-Type: application/json".to_string(),
-                    "-d".to_string(),
-                    serde_json::to_string(&body).unwrap(),
-                ],
-                description: format!("Synapse chat: {}", model),
-                permission: PermissionLevel::SystemWrite,
-                explanation: "Runs inference via Synapse MCP bridge".to_string(),
-            })
+            let mut a = serde_json::Map::new();
+            insert_str(&mut a, "model", model);
+            insert_opt(&mut a, "prompt", prompt);
+            Ok(mcp_call(
+                "synapse_chat",
+                a,
+                format!("Synapse chat: {}", model),
+                PermissionLevel::SystemWrite,
+                "Runs inference via Synapse MCP bridge".to_string(),
+            ))
         }
 
-        Intent::SynapseStatus => {
-            let args_json = serde_json::Map::new();
-            let body = serde_json::json!({"name": "synapse_status", "arguments": args_json});
-            Ok(Translation {
-                command: "curl".to_string(),
-                args: vec![
-                    "-s".to_string(),
-                    "-X".to_string(),
-                    "POST".to_string(),
-                    "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
-                    "-H".to_string(),
-                    "Content-Type: application/json".to_string(),
-                    "-d".to_string(),
-                    serde_json::to_string(&body).unwrap(),
-                ],
-                description: "Synapse status".to_string(),
-                permission: PermissionLevel::Safe,
-                explanation: "Checks Synapse health and GPU status via MCP bridge".to_string(),
-            })
-        }
+        Intent::SynapseStatus => Ok(mcp_call(
+            "synapse_status",
+            serde_json::Map::new(),
+            "Synapse status".to_string(),
+            PermissionLevel::Safe,
+            "Checks Synapse health and GPU status via MCP bridge".to_string(),
+        )),
 
         Intent::SynapseBenchmark { action, models } => {
-            let mut args_json = serde_json::Map::new();
-            args_json.insert(
-                "action".to_string(),
-                serde_json::Value::String(action.clone()),
-            );
-            if let Some(m) = models {
-                args_json.insert("models".to_string(), serde_json::Value::String(m.clone()));
-            }
-            let body = serde_json::json!({"name": "synapse_benchmark", "arguments": args_json});
-            Ok(Translation {
-                command: "curl".to_string(),
-                args: vec![
-                    "-s".to_string(),
-                    "-X".to_string(),
-                    "POST".to_string(),
-                    "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
-                    "-H".to_string(),
-                    "Content-Type: application/json".to_string(),
-                    "-d".to_string(),
-                    serde_json::to_string(&body).unwrap(),
-                ],
-                description: format!(
+            let mut a = serde_json::Map::new();
+            insert_str(&mut a, "action", action);
+            insert_opt(&mut a, "models", models);
+            Ok(mcp_call(
+                "synapse_benchmark",
+                a,
+                format!(
                     "Synapse benchmark: {}{}",
                     action,
                     models
                         .as_ref()
                         .map_or(String::new(), |m| format!(" '{}'", m))
                 ),
-                permission: match action.as_str() {
+                match action.as_str() {
                     "list" | "status" => PermissionLevel::Safe,
                     _ => PermissionLevel::SystemWrite,
                 },
-                explanation: "Benchmarks/compares models via Synapse".to_string(),
-            })
+                "Benchmarks/compares models via Synapse".to_string(),
+            ))
         }
 
         Intent::SynapseQuantize {
@@ -242,43 +151,26 @@ pub(crate) fn translate_synapse(intent: &Intent) -> Result<Translation> {
             model,
             format,
         } => {
-            let mut args_json = serde_json::Map::new();
-            args_json.insert(
-                "action".to_string(),
-                serde_json::Value::String(action.clone()),
-            );
-            if let Some(m) = model {
-                args_json.insert("model".to_string(), serde_json::Value::String(m.clone()));
-            }
-            if let Some(f) = format {
-                args_json.insert("format".to_string(), serde_json::Value::String(f.clone()));
-            }
-            let body = serde_json::json!({"name": "synapse_quantize", "arguments": args_json});
-            Ok(Translation {
-                command: "curl".to_string(),
-                args: vec![
-                    "-s".to_string(),
-                    "-X".to_string(),
-                    "POST".to_string(),
-                    "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
-                    "-H".to_string(),
-                    "Content-Type: application/json".to_string(),
-                    "-d".to_string(),
-                    serde_json::to_string(&body).unwrap(),
-                ],
-                description: format!(
+            let mut a = serde_json::Map::new();
+            insert_str(&mut a, "action", action);
+            insert_opt(&mut a, "model", model);
+            insert_opt(&mut a, "format", format);
+            Ok(mcp_call(
+                "synapse_quantize",
+                a,
+                format!(
                     "Synapse quantize: {}{}",
                     action,
                     model
                         .as_ref()
                         .map_or(String::new(), |m| format!(" '{}'", m))
                 ),
-                permission: match action.as_str() {
+                match action.as_str() {
                     "status" | "list" => PermissionLevel::Safe,
                     _ => PermissionLevel::SystemWrite,
                 },
-                explanation: "Quantizes/converts model via Synapse".to_string(),
-            })
+                "Quantizes/converts model via Synapse".to_string(),
+            ))
         }
 
         _ => unreachable!("translate_synapse called with non-synapse intent"),

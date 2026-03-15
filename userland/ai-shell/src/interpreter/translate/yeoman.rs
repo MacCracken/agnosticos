@@ -1,5 +1,6 @@
 use anyhow::Result;
 
+use super::mcp_helper::{insert_opt, insert_str, mcp_call};
 use crate::interpreter::intent::{Intent, Translation};
 use crate::security::PermissionLevel;
 
@@ -10,45 +11,24 @@ pub(crate) fn translate_yeoman(intent: &Intent) -> Result<Translation> {
             agent_id,
             name,
         } => {
-            let mut args_json = serde_json::Map::new();
-            args_json.insert(
-                "action".to_string(),
-                serde_json::Value::String(action.clone()),
-            );
-            if let Some(id) = agent_id {
-                args_json.insert(
-                    "agent_id".to_string(),
-                    serde_json::Value::String(id.clone()),
-                );
-            }
-            if let Some(n) = name {
-                args_json.insert("name".to_string(), serde_json::Value::String(n.clone()));
-            }
-            let body = serde_json::json!({"name": "yeoman_agents", "arguments": args_json});
-            Ok(Translation {
-                command: "curl".to_string(),
-                args: vec![
-                    "-s".to_string(),
-                    "-X".to_string(),
-                    "POST".to_string(),
-                    "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
-                    "-H".to_string(),
-                    "Content-Type: application/json".to_string(),
-                    "-d".to_string(),
-                    serde_json::to_string(&body).unwrap(),
-                ],
-                description: format!(
+            let mut a = serde_json::Map::new();
+            insert_str(&mut a, "action", action);
+            insert_opt(&mut a, "agent_id", agent_id);
+            insert_opt(&mut a, "name", name);
+            Ok(mcp_call(
+                "yeoman_agents",
+                a,
+                format!(
                     "SecureYeoman agents: {}{}",
                     action,
                     name.as_ref().map_or(String::new(), |n| format!(" '{}'", n))
                 ),
-                permission: match action.as_str() {
+                match action.as_str() {
                     "list" | "status" | "info" => PermissionLevel::Safe,
                     _ => PermissionLevel::SystemWrite,
                 },
-                explanation: "Lists/Deploys/Stops/Queries agents via SecureYeoman MCP bridge"
-                    .to_string(),
-            })
+                "Lists/Deploys/Stops/Queries agents via SecureYeoman MCP bridge".to_string(),
+            ))
         }
 
         Intent::YeomanTasks {
@@ -56,211 +36,113 @@ pub(crate) fn translate_yeoman(intent: &Intent) -> Result<Translation> {
             description,
             task_id,
         } => {
-            let mut args_json = serde_json::Map::new();
-            args_json.insert(
-                "action".to_string(),
-                serde_json::Value::String(action.clone()),
-            );
-            if let Some(d) = description {
-                args_json.insert(
-                    "description".to_string(),
-                    serde_json::Value::String(d.clone()),
-                );
-            }
-            if let Some(id) = task_id {
-                args_json.insert("task_id".to_string(), serde_json::Value::String(id.clone()));
-            }
-            let body = serde_json::json!({"name": "yeoman_tasks", "arguments": args_json});
-            Ok(Translation {
-                command: "curl".to_string(),
-                args: vec![
-                    "-s".to_string(),
-                    "-X".to_string(),
-                    "POST".to_string(),
-                    "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
-                    "-H".to_string(),
-                    "Content-Type: application/json".to_string(),
-                    "-d".to_string(),
-                    serde_json::to_string(&body).unwrap(),
-                ],
-                description: format!(
+            let mut a = serde_json::Map::new();
+            insert_str(&mut a, "action", action);
+            insert_opt(&mut a, "description", description);
+            insert_opt(&mut a, "task_id", task_id);
+            Ok(mcp_call(
+                "yeoman_tasks",
+                a,
+                format!(
                     "SecureYeoman task: {}{}",
                     action,
                     task_id
                         .as_ref()
                         .map_or(String::new(), |id| format!(" '{}'", id))
                 ),
-                permission: match action.as_str() {
+                match action.as_str() {
                     "list" | "status" => PermissionLevel::Safe,
                     _ => PermissionLevel::SystemWrite,
                 },
-                explanation: "Assigns/Lists/Checks/Cancels tasks via SecureYeoman MCP bridge"
-                    .to_string(),
-            })
+                "Assigns/Lists/Checks/Cancels tasks via SecureYeoman MCP bridge".to_string(),
+            ))
         }
 
         Intent::YeomanTools { action, query } => {
-            let mut args_json = serde_json::Map::new();
-            args_json.insert(
-                "action".to_string(),
-                serde_json::Value::String(action.clone()),
-            );
-            if let Some(q) = query {
-                args_json.insert("query".to_string(), serde_json::Value::String(q.clone()));
-            }
-            let body = serde_json::json!({"name": "yeoman_tools", "arguments": args_json});
-            Ok(Translation {
-                command: "curl".to_string(),
-                args: vec![
-                    "-s".to_string(),
-                    "-X".to_string(),
-                    "POST".to_string(),
-                    "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
-                    "-H".to_string(),
-                    "Content-Type: application/json".to_string(),
-                    "-d".to_string(),
-                    serde_json::to_string(&body).unwrap(),
-                ],
-                description: format!(
+            let mut a = serde_json::Map::new();
+            insert_str(&mut a, "action", action);
+            insert_opt(&mut a, "query", query);
+            Ok(mcp_call(
+                "yeoman_tools",
+                a,
+                format!(
                     "SecureYeoman tools: {}{}",
                     action,
                     query
                         .as_ref()
                         .map_or(String::new(), |q| format!(" '{}'", q))
                 ),
-                permission: PermissionLevel::Safe,
-                explanation: "Queries MCP tools catalog via SecureYeoman MCP bridge".to_string(),
-            })
+                PermissionLevel::Safe,
+                "Queries MCP tools catalog via SecureYeoman MCP bridge".to_string(),
+            ))
         }
 
         Intent::YeomanIntegrations { action, name } => {
-            let mut args_json = serde_json::Map::new();
-            args_json.insert(
-                "action".to_string(),
-                serde_json::Value::String(action.clone()),
-            );
-            if let Some(n) = name {
-                args_json.insert("name".to_string(), serde_json::Value::String(n.clone()));
-            }
-            let body = serde_json::json!({"name": "yeoman_integrations", "arguments": args_json});
-            Ok(Translation {
-                command: "curl".to_string(),
-                args: vec![
-                    "-s".to_string(),
-                    "-X".to_string(),
-                    "POST".to_string(),
-                    "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
-                    "-H".to_string(),
-                    "Content-Type: application/json".to_string(),
-                    "-d".to_string(),
-                    serde_json::to_string(&body).unwrap(),
-                ],
-                description: format!(
+            let mut a = serde_json::Map::new();
+            insert_str(&mut a, "action", action);
+            insert_opt(&mut a, "name", name);
+            Ok(mcp_call(
+                "yeoman_integrations",
+                a,
+                format!(
                     "SecureYeoman integration: {}{}",
                     action,
                     name.as_ref().map_or(String::new(), |n| format!(" '{}'", n))
                 ),
-                permission: match action.as_str() {
+                match action.as_str() {
                     "list" | "status" => PermissionLevel::Safe,
                     _ => PermissionLevel::SystemWrite,
                 },
-                explanation:
-                    "Lists/Enables/Disables/Checks integrations via SecureYeoman MCP bridge"
-                        .to_string(),
-            })
+                "Lists/Enables/Disables/Checks integrations via SecureYeoman MCP bridge"
+                    .to_string(),
+            ))
         }
 
-        Intent::YeomanStatus => {
-            let args_json = serde_json::Map::new();
-            let body = serde_json::json!({"name": "yeoman_status", "arguments": args_json});
-            Ok(Translation {
-                command: "curl".to_string(),
-                args: vec![
-                    "-s".to_string(),
-                    "-X".to_string(),
-                    "POST".to_string(),
-                    "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
-                    "-H".to_string(),
-                    "Content-Type: application/json".to_string(),
-                    "-d".to_string(),
-                    serde_json::to_string(&body).unwrap(),
-                ],
-                description: "SecureYeoman status".to_string(),
-                permission: PermissionLevel::Safe,
-                explanation: "Checks SecureYeoman platform health via MCP bridge".to_string(),
-            })
-        }
+        Intent::YeomanStatus => Ok(mcp_call(
+            "yeoman_status",
+            serde_json::Map::new(),
+            "SecureYeoman status".to_string(),
+            PermissionLevel::Safe,
+            "Checks SecureYeoman platform health via MCP bridge".to_string(),
+        )),
 
         Intent::YeomanLogs { action, agent_id } => {
-            let mut args_json = serde_json::Map::new();
-            args_json.insert(
-                "action".to_string(),
-                serde_json::Value::String(action.clone()),
-            );
-            if let Some(id) = agent_id {
-                args_json.insert(
-                    "agent_id".to_string(),
-                    serde_json::Value::String(id.clone()),
-                );
-            }
-            let body = serde_json::json!({"name": "yeoman_logs", "arguments": args_json});
-            Ok(Translation {
-                command: "curl".to_string(),
-                args: vec![
-                    "-s".to_string(),
-                    "-X".to_string(),
-                    "POST".to_string(),
-                    "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
-                    "-H".to_string(),
-                    "Content-Type: application/json".to_string(),
-                    "-d".to_string(),
-                    serde_json::to_string(&body).unwrap(),
-                ],
-                description: format!(
+            let mut a = serde_json::Map::new();
+            insert_str(&mut a, "action", action);
+            insert_opt(&mut a, "agent_id", agent_id);
+            Ok(mcp_call(
+                "yeoman_logs",
+                a,
+                format!(
                     "SecureYeoman logs: {}{}",
                     action,
                     agent_id
                         .as_ref()
                         .map_or(String::new(), |id| format!(" ({})", id))
                 ),
-                permission: PermissionLevel::Safe,
-                explanation: "Queries agent logs via SecureYeoman".to_string(),
-            })
+                PermissionLevel::Safe,
+                "Queries agent logs via SecureYeoman".to_string(),
+            ))
         }
 
         Intent::YeomanWorkflows { action, name } => {
-            let mut args_json = serde_json::Map::new();
-            args_json.insert(
-                "action".to_string(),
-                serde_json::Value::String(action.clone()),
-            );
-            if let Some(n) = name {
-                args_json.insert("name".to_string(), serde_json::Value::String(n.clone()));
-            }
-            let body = serde_json::json!({"name": "yeoman_workflows", "arguments": args_json});
-            Ok(Translation {
-                command: "curl".to_string(),
-                args: vec![
-                    "-s".to_string(),
-                    "-X".to_string(),
-                    "POST".to_string(),
-                    "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
-                    "-H".to_string(),
-                    "Content-Type: application/json".to_string(),
-                    "-d".to_string(),
-                    serde_json::to_string(&body).unwrap(),
-                ],
-                description: format!(
+            let mut a = serde_json::Map::new();
+            insert_str(&mut a, "action", action);
+            insert_opt(&mut a, "name", name);
+            Ok(mcp_call(
+                "yeoman_workflows",
+                a,
+                format!(
                     "SecureYeoman workflow: {}{}",
                     action,
                     name.as_ref().map_or(String::new(), |n| format!(" '{}'", n))
                 ),
-                permission: match action.as_str() {
+                match action.as_str() {
                     "list" | "status" => PermissionLevel::Safe,
                     _ => PermissionLevel::SystemWrite,
                 },
-                explanation: "Manages workflows via SecureYeoman".to_string(),
-            })
+                "Manages workflows via SecureYeoman".to_string(),
+            ))
         }
 
         _ => unreachable!("translate_yeoman called with non-yeoman intent"),

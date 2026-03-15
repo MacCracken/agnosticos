@@ -6,75 +6,19 @@ use super::super::helpers::{
     validate_enum_opt,
 };
 use super::super::types::McpToolResult;
+use super::bridge::HttpBridge;
 
 // ---------------------------------------------------------------------------
 // BullShift Trading Platform Agent Bridge
 // ---------------------------------------------------------------------------
 
-/// Bridge that proxies MCP tool calls to the BullShift Trading Platform API.
-///
-/// When BullShift is running at its configured endpoint, requests are forwarded
-/// to its REST API. When the service is unavailable, mock data is returned.
-#[derive(Debug, Clone)]
-pub struct BullShiftBridge {
-    base_url: String,
-    api_key: Option<String>,
-}
-
-impl Default for BullShiftBridge {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl BullShiftBridge {
-    pub fn new() -> Self {
-        Self {
-            base_url: std::env::var("BULLSHIFT_URL")
-                .unwrap_or_else(|_| "http://127.0.0.1:8075".to_string()),
-            api_key: std::env::var("BULLSHIFT_API_KEY").ok(),
-        }
-    }
-
-    fn build_client() -> Result<reqwest::Client, String> {
-        reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(5))
-            .connect_timeout(std::time::Duration::from_secs(2))
-            .build()
-            .map_err(|e| e.to_string())
-    }
-
-    async fn get(
-        &self,
-        path: &str,
-        query: &[(String, String)],
-    ) -> Result<serde_json::Value, String> {
-        let client = Self::build_client()?;
-        let url = format!("{}{}", self.base_url, path);
-        let mut req = client.get(&url).query(query);
-        if let Some(ref key) = self.api_key {
-            req = req.header("Authorization", format!("Bearer {}", key));
-        }
-        let resp = req.send().await.map_err(|e| e.to_string())?;
-        if !resp.status().is_success() {
-            return Err(format!("BullShift API error: {}", resp.status()));
-        }
-        resp.json().await.map_err(|e| e.to_string())
-    }
-
-    async fn post(&self, path: &str, body: serde_json::Value) -> Result<serde_json::Value, String> {
-        let client = Self::build_client()?;
-        let url = format!("{}{}", self.base_url, path);
-        let mut req = client.post(&url).json(&body);
-        if let Some(ref key) = self.api_key {
-            req = req.header("Authorization", format!("Bearer {}", key));
-        }
-        let resp = req.send().await.map_err(|e| e.to_string())?;
-        if !resp.status().is_success() {
-            return Err(format!("BullShift API error: {}", resp.status()));
-        }
-        resp.json().await.map_err(|e| e.to_string())
-    }
+pub(crate) fn bullshift_bridge() -> HttpBridge {
+    HttpBridge::new(
+        "BULLSHIFT_URL",
+        "http://127.0.0.1:8075",
+        "BULLSHIFT_API_KEY",
+        "BullShift",
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -103,7 +47,7 @@ pub(crate) async fn handle_bullshift_portfolio(args: &serde_json::Value) -> McpT
         return e;
     }
 
-    let bridge = BullShiftBridge::new();
+    let bridge = bullshift_bridge();
     let mut query = vec![("action".to_string(), action.clone())];
     if let Some(ref a) = account {
         query.push(("account".to_string(), a.clone()));
@@ -159,7 +103,7 @@ pub(crate) async fn handle_bullshift_orders(args: &serde_json::Value) -> McpTool
         return e;
     }
 
-    let bridge = BullShiftBridge::new();
+    let bridge = bullshift_bridge();
 
     match action.as_str() {
         "list" | "status" => {
@@ -240,7 +184,7 @@ pub(crate) async fn handle_bullshift_market(args: &serde_json::Value) -> McpTool
         return e;
     }
 
-    let bridge = BullShiftBridge::new();
+    let bridge = bullshift_bridge();
     let mut query = vec![("action".to_string(), action.clone())];
     if let Some(ref s) = symbol {
         query.push(("symbol".to_string(), s.clone()));
@@ -299,7 +243,7 @@ pub(crate) async fn handle_bullshift_alerts(args: &serde_json::Value) -> McpTool
         return e;
     }
 
-    let bridge = BullShiftBridge::new();
+    let bridge = bullshift_bridge();
 
     match action.as_str() {
         "list" | "triggered" => {
@@ -370,7 +314,7 @@ pub(crate) async fn handle_bullshift_strategy(args: &serde_json::Value) -> McpTo
     let name = get_optional_string_arg(args, "name");
     let params = get_optional_string_arg(args, "params");
 
-    let bridge = BullShiftBridge::new();
+    let bridge = bullshift_bridge();
 
     match action.as_str() {
         "list" | "status" => {
@@ -446,7 +390,7 @@ pub(crate) async fn handle_bullshift_accounts(args: &serde_json::Value) -> McpTo
     let account_id = get_optional_string_arg(args, "account_id");
     let broker = get_optional_string_arg(args, "broker");
 
-    let bridge = BullShiftBridge::new();
+    let bridge = bullshift_bridge();
     let mut query = vec![("action".to_string(), action.clone())];
     if let Some(ref id) = account_id {
         query.push(("account_id".to_string(), id.clone()));
@@ -496,7 +440,7 @@ pub(crate) async fn handle_bullshift_history(args: &serde_json::Value) -> McpToo
         return e;
     }
 
-    let bridge = BullShiftBridge::new();
+    let bridge = bullshift_bridge();
     let mut query = vec![("action".to_string(), action.clone())];
     if let Some(ref p) = period {
         query.push(("period".to_string(), p.clone()));

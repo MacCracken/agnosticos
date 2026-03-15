@@ -5,75 +5,19 @@ use super::super::helpers::{
     extract_required_string, get_optional_string_arg, success_result, validate_enum_opt,
 };
 use super::super::types::McpToolResult;
+use super::bridge::HttpBridge;
 
 // ---------------------------------------------------------------------------
 // Mneme Knowledge Base Agent Bridge
 // ---------------------------------------------------------------------------
 
-/// Bridge that proxies MCP tool calls to the Mneme knowledge base API.
-///
-/// When Mneme is running at its configured endpoint, requests are forwarded
-/// to its REST API. When the service is unavailable, mock data is returned.
-#[derive(Debug, Clone)]
-pub struct MnemeBridge {
-    base_url: String,
-    api_key: Option<String>,
-}
-
-impl Default for MnemeBridge {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl MnemeBridge {
-    pub fn new() -> Self {
-        Self {
-            base_url: std::env::var("MNEME_URL")
-                .unwrap_or_else(|_| "http://127.0.0.1:8094".to_string()),
-            api_key: std::env::var("MNEME_API_KEY").ok(),
-        }
-    }
-
-    fn build_client() -> Result<reqwest::Client, String> {
-        reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(5))
-            .connect_timeout(std::time::Duration::from_secs(2))
-            .build()
-            .map_err(|e| e.to_string())
-    }
-
-    async fn get(
-        &self,
-        path: &str,
-        query: &[(String, String)],
-    ) -> Result<serde_json::Value, String> {
-        let client = Self::build_client()?;
-        let url = format!("{}{}", self.base_url, path);
-        let mut req = client.get(&url).query(query);
-        if let Some(ref key) = self.api_key {
-            req = req.header("Authorization", format!("Bearer {}", key));
-        }
-        let resp = req.send().await.map_err(|e| e.to_string())?;
-        if !resp.status().is_success() {
-            return Err(format!("Mneme API error: {}", resp.status()));
-        }
-        resp.json().await.map_err(|e| e.to_string())
-    }
-
-    async fn post(&self, path: &str, body: serde_json::Value) -> Result<serde_json::Value, String> {
-        let client = Self::build_client()?;
-        let url = format!("{}{}", self.base_url, path);
-        let mut req = client.post(&url).json(&body);
-        if let Some(ref key) = self.api_key {
-            req = req.header("Authorization", format!("Bearer {}", key));
-        }
-        let resp = req.send().await.map_err(|e| e.to_string())?;
-        if !resp.status().is_success() {
-            return Err(format!("Mneme API error: {}", resp.status()));
-        }
-        resp.json().await.map_err(|e| e.to_string())
-    }
+pub(crate) fn mneme_bridge() -> HttpBridge {
+    HttpBridge::new(
+        "MNEME_URL",
+        "http://127.0.0.1:8094",
+        "MNEME_API_KEY",
+        "Mneme",
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -96,7 +40,7 @@ pub(crate) async fn handle_mneme_notebook(args: &serde_json::Value) -> McpToolRe
     }
 
     let name = get_optional_string_arg(args, "name");
-    let bridge = MnemeBridge::new();
+    let bridge = mneme_bridge();
 
     match action.as_str() {
         "list" | "info" => {
@@ -164,7 +108,7 @@ pub(crate) async fn handle_mneme_notes(args: &serde_json::Value) -> McpToolResul
     let notebook_id = get_optional_string_arg(args, "notebook_id");
     let title = get_optional_string_arg(args, "title");
     let content = get_optional_string_arg(args, "content");
-    let bridge = MnemeBridge::new();
+    let bridge = mneme_bridge();
 
     match action.as_str() {
         "list" | "get" => {
@@ -233,7 +177,7 @@ pub(crate) async fn handle_mneme_search(args: &serde_json::Value) -> McpToolResu
         return e;
     }
 
-    let bridge = MnemeBridge::new();
+    let bridge = mneme_bridge();
     let body = serde_json::json!({
         "query": query_str,
         "notebook_id": notebook_id,
@@ -281,7 +225,7 @@ pub(crate) async fn handle_mneme_ai(args: &serde_json::Value) -> McpToolResult {
 
     let note_id = get_optional_string_arg(args, "note_id");
     let prompt = get_optional_string_arg(args, "prompt");
-    let bridge = MnemeBridge::new();
+    let bridge = mneme_bridge();
 
     let body = serde_json::json!({
         "action": action,
@@ -323,7 +267,7 @@ pub(crate) async fn handle_mneme_graph(args: &serde_json::Value) -> McpToolResul
 
     let node_id = get_optional_string_arg(args, "node_id");
     let depth = args.get("depth").and_then(|v| v.as_i64());
-    let bridge = MnemeBridge::new();
+    let bridge = mneme_bridge();
 
     match action.as_str() {
         "view" | "stats" => {
@@ -399,7 +343,7 @@ pub(crate) async fn handle_mneme_import(args: &serde_json::Value) -> McpToolResu
         return e;
     }
 
-    let bridge = MnemeBridge::new();
+    let bridge = mneme_bridge();
 
     match action.as_str() {
         "status" => {
@@ -468,7 +412,7 @@ pub(crate) async fn handle_mneme_tags(args: &serde_json::Value) -> McpToolResult
     let tag = get_optional_string_arg(args, "tag");
     let note_id = get_optional_string_arg(args, "note_id");
     let color = get_optional_string_arg(args, "color");
-    let bridge = MnemeBridge::new();
+    let bridge = mneme_bridge();
 
     match action.as_str() {
         "list" | "search" => {

@@ -22,21 +22,38 @@ pub struct PhotisBridge {
     base_url: String,
     /// API key for authenticating with Photis Nadi.
     api_key: Option<String>,
+    /// Shared HTTP client with connection pool and timeouts.
+    client: reqwest::Client,
 }
 
 impl PhotisBridge {
     /// Create a new bridge with default settings.
     pub fn new() -> Self {
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(10))
+            .connect_timeout(std::time::Duration::from_secs(2))
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new());
         Self {
             base_url: std::env::var("PHOTISNADI_URL")
                 .unwrap_or_else(|_| "http://127.0.0.1:8081".to_string()),
             api_key: std::env::var("PHOTISNADI_API_KEY").ok(),
+            client,
         }
     }
 
     /// Create a bridge with explicit configuration (for testing).
     pub fn with_config(base_url: String, api_key: Option<String>) -> Self {
-        Self { base_url, api_key }
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(10))
+            .connect_timeout(std::time::Duration::from_secs(2))
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new());
+        Self {
+            base_url,
+            api_key,
+            client,
+        }
     }
 
     /// Build the URL for a Photis Nadi API endpoint.
@@ -56,12 +73,7 @@ impl PhotisBridge {
     /// Check if Photis Nadi is reachable.
     pub async fn health_check(&self) -> bool {
         let url = self.url("/health");
-        match reqwest::Client::new()
-            .get(&url)
-            .timeout(std::time::Duration::from_secs(2))
-            .send()
-            .await
-        {
+        match self.client.get(&url).send().await {
             Ok(resp) => resp.status().is_success(),
             Err(e) => {
                 debug!(url = %url, error = %e, "Photis Nadi health check failed");
@@ -77,7 +89,7 @@ impl PhotisBridge {
         query: &[(String, String)],
     ) -> Result<serde_json::Value, String> {
         let url = self.url(path);
-        let mut req = reqwest::Client::new().get(&url);
+        let mut req = self.client.clone().get(&url);
 
         if let Some(ref key) = self.api_key {
             req = req.header("Authorization", format!("Bearer {}", key));
@@ -86,8 +98,7 @@ impl PhotisBridge {
             req = req.query(query);
         }
 
-        req.timeout(std::time::Duration::from_secs(10))
-            .send()
+        req.send()
             .await
             .map_err(|e| format!("Photis Nadi unreachable at {}: {}", self.base_url, e))?
             .json::<serde_json::Value>()
@@ -102,14 +113,13 @@ impl PhotisBridge {
         body: serde_json::Value,
     ) -> Result<serde_json::Value, String> {
         let url = self.url(path);
-        let mut req = reqwest::Client::new().post(&url).json(&body);
+        let mut req = self.client.clone().post(&url).json(&body);
 
         if let Some(ref key) = self.api_key {
             req = req.header("Authorization", format!("Bearer {}", key));
         }
 
-        req.timeout(std::time::Duration::from_secs(10))
-            .send()
+        req.send()
             .await
             .map_err(|e| format!("Photis Nadi unreachable at {}: {}", self.base_url, e))?
             .json::<serde_json::Value>()
@@ -124,14 +134,13 @@ impl PhotisBridge {
         body: serde_json::Value,
     ) -> Result<serde_json::Value, String> {
         let url = self.url(path);
-        let mut req = reqwest::Client::new().patch(&url).json(&body);
+        let mut req = self.client.clone().patch(&url).json(&body);
 
         if let Some(ref key) = self.api_key {
             req = req.header("Authorization", format!("Bearer {}", key));
         }
 
-        req.timeout(std::time::Duration::from_secs(10))
-            .send()
+        req.send()
             .await
             .map_err(|e| format!("Photis Nadi unreachable at {}: {}", self.base_url, e))?
             .json::<serde_json::Value>()

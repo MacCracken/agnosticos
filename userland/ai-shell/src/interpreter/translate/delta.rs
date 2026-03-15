@@ -1,95 +1,51 @@
 use anyhow::Result;
 
+use super::mcp_helper::{insert_opt, insert_str, mcp_call};
 use crate::interpreter::intent::{Intent, Translation};
 use crate::security::PermissionLevel;
 
 pub(crate) fn translate_delta(intent: &Intent) -> Result<Translation> {
     match intent {
         Intent::DeltaCreateRepo { name, description } => {
-            let mut args_json = serde_json::Map::new();
-            args_json.insert("name".to_string(), serde_json::Value::String(name.clone()));
-            if let Some(desc) = description {
-                args_json.insert(
-                    "description".to_string(),
-                    serde_json::Value::String(desc.clone()),
-                );
-            }
-            let body =
-                serde_json::json!({"name": "delta_create_repository", "arguments": args_json});
-            Ok(Translation {
-                command: "curl".to_string(),
-                args: vec![
-                    "-s".to_string(),
-                    "-X".to_string(),
-                    "POST".to_string(),
-                    "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
-                    "-H".to_string(),
-                    "Content-Type: application/json".to_string(),
-                    "-d".to_string(),
-                    serde_json::to_string(&body).unwrap(),
-                ],
-                description: format!("Create Delta repository: {}", name),
-                permission: PermissionLevel::SystemWrite,
-                explanation: "Creates a git repository in Delta via MCP bridge".to_string(),
-            })
+            let mut a = serde_json::Map::new();
+            insert_str(&mut a, "name", name);
+            insert_opt(&mut a, "description", description);
+            Ok(mcp_call(
+                "delta_create_repository",
+                a,
+                format!("Create Delta repository: {}", name),
+                PermissionLevel::SystemWrite,
+                "Creates a git repository in Delta via MCP bridge".to_string(),
+            ))
         }
 
-        Intent::DeltaListRepos => {
-            let body = serde_json::json!({"name": "delta_list_repositories", "arguments": {}});
-            Ok(Translation {
-                command: "curl".to_string(),
-                args: vec![
-                    "-s".to_string(),
-                    "-X".to_string(),
-                    "POST".to_string(),
-                    "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
-                    "-H".to_string(),
-                    "Content-Type: application/json".to_string(),
-                    "-d".to_string(),
-                    serde_json::to_string(&body).unwrap(),
-                ],
-                description: "List Delta repositories".to_string(),
-                permission: PermissionLevel::Safe,
-                explanation: "Lists git repositories from Delta via MCP bridge".to_string(),
-            })
-        }
+        Intent::DeltaListRepos => Ok(mcp_call(
+            "delta_list_repositories",
+            serde_json::Map::new(),
+            "List Delta repositories".to_string(),
+            PermissionLevel::Safe,
+            "Lists git repositories from Delta via MCP bridge".to_string(),
+        )),
 
         Intent::DeltaPr {
             action,
             repo,
             title,
         } => {
-            let mut args_json = serde_json::Map::new();
-            args_json.insert(
-                "action".to_string(),
-                serde_json::Value::String(action.clone()),
-            );
-            if let Some(r) = repo {
-                args_json.insert("repo".to_string(), serde_json::Value::String(r.clone()));
-            }
-            if let Some(t) = title {
-                args_json.insert("title".to_string(), serde_json::Value::String(t.clone()));
-            }
-            let body = serde_json::json!({"name": "delta_pull_request", "arguments": args_json});
-            Ok(Translation {
-                command: "curl".to_string(),
-                args: vec![
-                    "-s".to_string(),
-                    "-X".to_string(),
-                    "POST".to_string(),
-                    "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
-                    "-H".to_string(),
-                    "Content-Type: application/json".to_string(),
-                    "-d".to_string(),
-                    serde_json::to_string(&body).unwrap(),
-                ],
-                description: format!("Delta PR: {}", action),
-                permission: if action == "list" {
+            let mut a = serde_json::Map::new();
+            insert_str(&mut a, "action", action);
+            insert_opt(&mut a, "repo", repo);
+            insert_opt(&mut a, "title", title);
+            Ok(mcp_call(
+                "delta_pull_request",
+                a,
+                format!("Delta PR: {}", action),
+                if action == "list" {
                     PermissionLevel::Safe
                 } else {
                     PermissionLevel::SystemWrite
                 },
-                explanation: format!(
+                format!(
                     "{} pull request in Delta via MCP bridge",
                     match action.as_str() {
                         "create" => "Creates a",
@@ -98,140 +54,82 @@ pub(crate) fn translate_delta(intent: &Intent) -> Result<Translation> {
                         _ => "Lists",
                     }
                 ),
-            })
+            ))
         }
 
         Intent::DeltaPush { repo, branch } => {
-            let mut args_json = serde_json::Map::new();
-            if let Some(r) = repo {
-                args_json.insert("repo".to_string(), serde_json::Value::String(r.clone()));
-            }
-            if let Some(b) = branch {
-                args_json.insert("branch".to_string(), serde_json::Value::String(b.clone()));
-            }
-            let body = serde_json::json!({"name": "delta_push", "arguments": args_json});
-            Ok(Translation {
-                command: "curl".to_string(),
-                args: vec![
-                    "-s".to_string(),
-                    "-X".to_string(),
-                    "POST".to_string(),
-                    "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
-                    "-H".to_string(),
-                    "Content-Type: application/json".to_string(),
-                    "-d".to_string(),
-                    serde_json::to_string(&body).unwrap(),
-                ],
-                description: format!(
+            let mut a = serde_json::Map::new();
+            insert_opt(&mut a, "repo", repo);
+            insert_opt(&mut a, "branch", branch);
+            Ok(mcp_call(
+                "delta_push",
+                a,
+                format!(
                     "Push to Delta{}",
                     repo.as_ref().map_or(String::new(), |r| format!(": {}", r))
                 ),
-                permission: PermissionLevel::SystemWrite,
-                explanation: "Pushes code to a Delta repository via MCP bridge".to_string(),
-            })
+                PermissionLevel::SystemWrite,
+                "Pushes code to a Delta repository via MCP bridge".to_string(),
+            ))
         }
 
         Intent::DeltaCiStatus { repo } => {
-            let mut args_json = serde_json::Map::new();
-            if let Some(r) = repo {
-                args_json.insert("repo".to_string(), serde_json::Value::String(r.clone()));
-            }
-            let body = serde_json::json!({"name": "delta_ci_status", "arguments": args_json});
-            Ok(Translation {
-                command: "curl".to_string(),
-                args: vec![
-                    "-s".to_string(),
-                    "-X".to_string(),
-                    "POST".to_string(),
-                    "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
-                    "-H".to_string(),
-                    "Content-Type: application/json".to_string(),
-                    "-d".to_string(),
-                    serde_json::to_string(&body).unwrap(),
-                ],
-                description: format!(
+            let mut a = serde_json::Map::new();
+            insert_opt(&mut a, "repo", repo);
+            Ok(mcp_call(
+                "delta_ci_status",
+                a,
+                format!(
                     "Delta CI status{}",
                     repo.as_ref()
                         .map_or(String::new(), |r| format!(" for {}", r))
                 ),
-                permission: PermissionLevel::Safe,
-                explanation: "Retrieves CI pipeline status from Delta via MCP bridge".to_string(),
-            })
+                PermissionLevel::Safe,
+                "Retrieves CI pipeline status from Delta via MCP bridge".to_string(),
+            ))
         }
 
         Intent::DeltaBranches { action, repo, name } => {
-            let mut args_json = serde_json::Map::new();
-            args_json.insert(
-                "action".to_string(),
-                serde_json::Value::String(action.clone()),
-            );
-            if let Some(r) = repo {
-                args_json.insert("repo".to_string(), serde_json::Value::String(r.clone()));
-            }
-            if let Some(n) = name {
-                args_json.insert("name".to_string(), serde_json::Value::String(n.clone()));
-            }
-            let body = serde_json::json!({"name": "delta_branches", "arguments": args_json});
-            Ok(Translation {
-                command: "curl".to_string(),
-                args: vec![
-                    "-s".to_string(),
-                    "-X".to_string(),
-                    "POST".to_string(),
-                    "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
-                    "-H".to_string(),
-                    "Content-Type: application/json".to_string(),
-                    "-d".to_string(),
-                    serde_json::to_string(&body).unwrap(),
-                ],
-                description: format!(
+            let mut a = serde_json::Map::new();
+            insert_str(&mut a, "action", action);
+            insert_opt(&mut a, "repo", repo);
+            insert_opt(&mut a, "name", name);
+            Ok(mcp_call(
+                "delta_branches",
+                a,
+                format!(
                     "Delta branches: {}{}",
                     action,
                     name.as_ref().map_or(String::new(), |n| format!(" '{}'", n))
                 ),
-                permission: match action.as_str() {
+                match action.as_str() {
                     "list" | "info" => PermissionLevel::Safe,
                     _ => PermissionLevel::SystemWrite,
                 },
-                explanation: "Manages branches via Delta".to_string(),
-            })
+                "Manages branches via Delta".to_string(),
+            ))
         }
 
         Intent::DeltaReview { action, pr_id } => {
-            let mut args_json = serde_json::Map::new();
-            args_json.insert(
-                "action".to_string(),
-                serde_json::Value::String(action.clone()),
-            );
-            if let Some(id) = pr_id {
-                args_json.insert("pr_id".to_string(), serde_json::Value::String(id.clone()));
-            }
-            let body = serde_json::json!({"name": "delta_review", "arguments": args_json});
-            Ok(Translation {
-                command: "curl".to_string(),
-                args: vec![
-                    "-s".to_string(),
-                    "-X".to_string(),
-                    "POST".to_string(),
-                    "http://127.0.0.1:8090/v1/mcp/tools/call".to_string(),
-                    "-H".to_string(),
-                    "Content-Type: application/json".to_string(),
-                    "-d".to_string(),
-                    serde_json::to_string(&body).unwrap(),
-                ],
-                description: format!(
+            let mut a = serde_json::Map::new();
+            insert_str(&mut a, "action", action);
+            insert_opt(&mut a, "pr_id", pr_id);
+            Ok(mcp_call(
+                "delta_review",
+                a,
+                format!(
                     "Delta review: {}{}",
                     action,
                     pr_id
                         .as_ref()
                         .map_or(String::new(), |id| format!(" PR #{}", id))
                 ),
-                permission: match action.as_str() {
+                match action.as_str() {
                     "list" => PermissionLevel::Safe,
                     _ => PermissionLevel::SystemWrite,
                 },
-                explanation: "Manages code reviews via Delta".to_string(),
-            })
+                "Manages code reviews via Delta".to_string(),
+            ))
         }
 
         _ => unreachable!("translate_delta called with non-delta intent"),

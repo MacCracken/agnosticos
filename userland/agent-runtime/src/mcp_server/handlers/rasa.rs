@@ -5,75 +5,14 @@ use super::super::helpers::{
     extract_required_string, get_optional_string_arg, success_result, validate_enum_opt,
 };
 use super::super::types::McpToolResult;
+use super::bridge::HttpBridge;
 
 // ---------------------------------------------------------------------------
 // Rasa Image Editor Agent Bridge
 // ---------------------------------------------------------------------------
 
-/// Bridge that proxies MCP tool calls to the Rasa image editor API.
-///
-/// When Rasa is running at its configured endpoint, requests are forwarded
-/// to its REST API. When the service is unavailable, mock data is returned.
-#[derive(Debug, Clone)]
-pub struct RasaBridge {
-    base_url: String,
-    api_key: Option<String>,
-}
-
-impl Default for RasaBridge {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl RasaBridge {
-    pub fn new() -> Self {
-        Self {
-            base_url: std::env::var("RASA_URL")
-                .unwrap_or_else(|_| "http://127.0.0.1:8093".to_string()),
-            api_key: std::env::var("RASA_API_KEY").ok(),
-        }
-    }
-
-    fn build_client() -> Result<reqwest::Client, String> {
-        reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(5))
-            .connect_timeout(std::time::Duration::from_secs(2))
-            .build()
-            .map_err(|e| e.to_string())
-    }
-
-    async fn get(
-        &self,
-        path: &str,
-        query: &[(String, String)],
-    ) -> Result<serde_json::Value, String> {
-        let client = Self::build_client()?;
-        let url = format!("{}{}", self.base_url, path);
-        let mut req = client.get(&url).query(query);
-        if let Some(ref key) = self.api_key {
-            req = req.header("Authorization", format!("Bearer {}", key));
-        }
-        let resp = req.send().await.map_err(|e| e.to_string())?;
-        if !resp.status().is_success() {
-            return Err(format!("Rasa API error: {}", resp.status()));
-        }
-        resp.json().await.map_err(|e| e.to_string())
-    }
-
-    async fn post(&self, path: &str, body: serde_json::Value) -> Result<serde_json::Value, String> {
-        let client = Self::build_client()?;
-        let url = format!("{}{}", self.base_url, path);
-        let mut req = client.post(&url).json(&body);
-        if let Some(ref key) = self.api_key {
-            req = req.header("Authorization", format!("Bearer {}", key));
-        }
-        let resp = req.send().await.map_err(|e| e.to_string())?;
-        if !resp.status().is_success() {
-            return Err(format!("Rasa API error: {}", resp.status()));
-        }
-        resp.json().await.map_err(|e| e.to_string())
-    }
+pub(crate) fn rasa_bridge() -> HttpBridge {
+    HttpBridge::new("RASA_URL", "http://127.0.0.1:8093", "RASA_API_KEY", "Rasa")
 }
 
 // ---------------------------------------------------------------------------
@@ -98,7 +37,7 @@ pub(crate) async fn handle_rasa_canvas(args: &serde_json::Value) -> McpToolResul
     let name = get_optional_string_arg(args, "name");
     let width = args.get("width").and_then(|v| v.as_i64());
     let height = args.get("height").and_then(|v| v.as_i64());
-    let bridge = RasaBridge::new();
+    let bridge = rasa_bridge();
 
     match action.as_str() {
         "list" | "info" => {
@@ -182,7 +121,7 @@ pub(crate) async fn handle_rasa_layers(args: &serde_json::Value) -> McpToolResul
         }
     }
 
-    let bridge = RasaBridge::new();
+    let bridge = rasa_bridge();
 
     match action.as_str() {
         "list" => match bridge.get("/api/v1/layers", &[]).await {
@@ -247,7 +186,7 @@ pub(crate) async fn handle_rasa_tools(args: &serde_json::Value) -> McpToolResult
     }
 
     let params = get_optional_string_arg(args, "params");
-    let bridge = RasaBridge::new();
+    let bridge = rasa_bridge();
 
     let body = serde_json::json!({
         "action": action,
@@ -295,7 +234,7 @@ pub(crate) async fn handle_rasa_ai(args: &serde_json::Value) -> McpToolResult {
 
     let prompt = get_optional_string_arg(args, "prompt");
     let options = get_optional_string_arg(args, "options");
-    let bridge = RasaBridge::new();
+    let bridge = rasa_bridge();
 
     let body = serde_json::json!({
         "action": action,
@@ -335,7 +274,7 @@ pub(crate) async fn handle_rasa_export(args: &serde_json::Value) -> McpToolResul
         }
     }
 
-    let bridge = RasaBridge::new();
+    let bridge = rasa_bridge();
     let body = serde_json::json!({
         "path": path,
         "format": format,
@@ -383,7 +322,7 @@ pub(crate) async fn handle_rasa_batch(args: &serde_json::Value) -> McpToolResult
     let format = get_optional_string_arg(args, "format");
     let width = get_optional_string_arg(args, "width");
     let height = get_optional_string_arg(args, "height");
-    let bridge = RasaBridge::new();
+    let bridge = rasa_bridge();
 
     match action.as_str() {
         "list" => {
@@ -460,7 +399,7 @@ pub(crate) async fn handle_rasa_templates(args: &serde_json::Value) -> McpToolRe
         return e;
     }
 
-    let bridge = RasaBridge::new();
+    let bridge = rasa_bridge();
 
     match action.as_str() {
         "list" | "info" => {

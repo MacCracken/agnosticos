@@ -41,9 +41,15 @@ jobs:
           - target: x86_64-unknown-linux-gnu
             name: linux-amd64
             cross: false
+            profile: release
           - target: aarch64-unknown-linux-gnu
             name: linux-arm64
             cross: true
+            profile: release
+          - target: aarch64-unknown-linux-gnu
+            name: linux-arm64-edge
+            cross: true
+            profile: release-edge
 
     steps:
     - uses: actions/checkout@v4
@@ -58,19 +64,20 @@ jobs:
 
     - name: Build (native)
       if: ${{ !matrix.cross }}
-      run: cargo build --release --workspace --target ${{ matrix.target }}
+      run: cargo build --profile ${{ matrix.profile }} --workspace --target ${{ matrix.target }}
       working-directory: userland
 
     - name: Build (cross)
       if: matrix.cross
-      run: cross build --release --workspace --target ${{ matrix.target }}
+      run: cross build --profile ${{ matrix.profile }} --workspace --target ${{ matrix.target }}
       working-directory: userland
 
     - name: Package
       run: |
         mkdir -p agnos-${{ matrix.name }}
+        PROFILE_DIR="${{ matrix.profile }}"
         for bin in agent_runtime llm_gateway desktop_environment ai_shell agnos_sudo agnsh; do
-          cp "userland/target/${{ matrix.target }}/release/${bin}" "agnos-${{ matrix.name }}/" 2>/dev/null || true
+          cp "userland/target/${{ matrix.target }}/${PROFILE_DIR}/${bin}" "agnos-${{ matrix.name }}/" 2>/dev/null || true
         done
         cp -r docs agnos-${{ matrix.name }}/
         cp README.md agnos-${{ matrix.name }}/

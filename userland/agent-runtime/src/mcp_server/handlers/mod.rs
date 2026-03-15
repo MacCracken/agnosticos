@@ -1,3 +1,5 @@
+pub(crate) mod bridge;
+
 pub(crate) mod aequi;
 pub(crate) mod agnos;
 pub(crate) mod agnostic;

@@ -5,75 +5,19 @@ use super::super::helpers::{
     extract_required_string, get_optional_string_arg, success_result, validate_enum_opt,
 };
 use super::super::types::McpToolResult;
+use super::bridge::HttpBridge;
 
 // ---------------------------------------------------------------------------
 // Tazama Video Editor Agent Bridge
 // ---------------------------------------------------------------------------
 
-/// Bridge that proxies MCP tool calls to the Tazama video editor API.
-///
-/// When Tazama is running at its configured endpoint, requests are forwarded
-/// to its REST API. When the service is unavailable, mock data is returned.
-#[derive(Debug, Clone)]
-pub struct TazamaBridge {
-    base_url: String,
-    api_key: Option<String>,
-}
-
-impl Default for TazamaBridge {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl TazamaBridge {
-    pub fn new() -> Self {
-        Self {
-            base_url: std::env::var("TAZAMA_URL")
-                .unwrap_or_else(|_| "http://127.0.0.1:8092".to_string()),
-            api_key: std::env::var("TAZAMA_API_KEY").ok(),
-        }
-    }
-
-    fn build_client() -> Result<reqwest::Client, String> {
-        reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(5))
-            .connect_timeout(std::time::Duration::from_secs(2))
-            .build()
-            .map_err(|e| e.to_string())
-    }
-
-    async fn get(
-        &self,
-        path: &str,
-        query: &[(String, String)],
-    ) -> Result<serde_json::Value, String> {
-        let client = Self::build_client()?;
-        let url = format!("{}{}", self.base_url, path);
-        let mut req = client.get(&url).query(query);
-        if let Some(ref key) = self.api_key {
-            req = req.header("Authorization", format!("Bearer {}", key));
-        }
-        let resp = req.send().await.map_err(|e| e.to_string())?;
-        if !resp.status().is_success() {
-            return Err(format!("Tazama API error: {}", resp.status()));
-        }
-        resp.json().await.map_err(|e| e.to_string())
-    }
-
-    async fn post(&self, path: &str, body: serde_json::Value) -> Result<serde_json::Value, String> {
-        let client = Self::build_client()?;
-        let url = format!("{}{}", self.base_url, path);
-        let mut req = client.post(&url).json(&body);
-        if let Some(ref key) = self.api_key {
-            req = req.header("Authorization", format!("Bearer {}", key));
-        }
-        let resp = req.send().await.map_err(|e| e.to_string())?;
-        if !resp.status().is_success() {
-            return Err(format!("Tazama API error: {}", resp.status()));
-        }
-        resp.json().await.map_err(|e| e.to_string())
-    }
+pub(crate) fn tazama_bridge() -> HttpBridge {
+    HttpBridge::new(
+        "TAZAMA_URL",
+        "http://127.0.0.1:8092",
+        "TAZAMA_API_KEY",
+        "Tazama",
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -96,7 +40,7 @@ pub(crate) async fn handle_tazama_project(args: &serde_json::Value) -> McpToolRe
     }
 
     let name = get_optional_string_arg(args, "name");
-    let bridge = TazamaBridge::new();
+    let bridge = tazama_bridge();
 
     match action.as_str() {
         "list" | "info" => {
@@ -164,7 +108,7 @@ pub(crate) async fn handle_tazama_timeline(args: &serde_json::Value) -> McpToolR
     let clip_id = get_optional_string_arg(args, "clip_id");
     let position = args.get("position").and_then(|v| v.as_f64());
     let duration = args.get("duration").and_then(|v| v.as_f64());
-    let bridge = TazamaBridge::new();
+    let bridge = tazama_bridge();
 
     match action.as_str() {
         "list" => match bridge.get("/api/v1/timeline", &[]).await {
@@ -237,7 +181,7 @@ pub(crate) async fn handle_tazama_effects(args: &serde_json::Value) -> McpToolRe
 
     let name = get_optional_string_arg(args, "name");
     let clip_id = get_optional_string_arg(args, "clip_id");
-    let bridge = TazamaBridge::new();
+    let bridge = tazama_bridge();
 
     match action.as_str() {
         "list" => {
@@ -311,7 +255,7 @@ pub(crate) async fn handle_tazama_ai(args: &serde_json::Value) -> McpToolResult 
     }
 
     let options = get_optional_string_arg(args, "options");
-    let bridge = TazamaBridge::new();
+    let bridge = tazama_bridge();
 
     let body = serde_json::json!({
         "action": action,
@@ -353,7 +297,7 @@ pub(crate) async fn handle_tazama_export(args: &serde_json::Value) -> McpToolRes
         return e;
     }
 
-    let bridge = TazamaBridge::new();
+    let bridge = tazama_bridge();
     let body = serde_json::json!({
         "path": path,
         "format": format,
@@ -399,7 +343,7 @@ pub(crate) async fn handle_tazama_media(args: &serde_json::Value) -> McpToolResu
     let path = get_optional_string_arg(args, "path");
     let media_id = get_optional_string_arg(args, "media_id");
     let format = get_optional_string_arg(args, "format");
-    let bridge = TazamaBridge::new();
+    let bridge = tazama_bridge();
 
     match action.as_str() {
         "list" | "info" => {
@@ -473,7 +417,7 @@ pub(crate) async fn handle_tazama_subtitles(args: &serde_json::Value) -> McpTool
         return e;
     }
 
-    let bridge = TazamaBridge::new();
+    let bridge = tazama_bridge();
 
     match action.as_str() {
         "list" => {

@@ -19,7 +19,7 @@ pub use intent::{Intent, ListOptions, Translation};
 
 /// Natural language interpreter
 pub struct Interpreter {
-    patterns: &'static HashMap<String, Regex>,
+    pub(crate) patterns: &'static HashMap<String, Regex>,
 }
 
 impl Interpreter {
@@ -31,7 +31,11 @@ impl Interpreter {
 
     /// Try to capture against a named pattern. Returns None if the pattern
     /// is missing from the map (defensive) or if it doesn't match.
-    fn try_captures<'a>(&'a self, name: &str, input: &'a str) -> Option<regex::Captures<'a>> {
+    pub(crate) fn try_captures<'a>(
+        &'a self,
+        name: &str,
+        input: &'a str,
+    ) -> Option<regex::Captures<'a>> {
         self.patterns.get(name)?.captures(input)
     }
 }

@@ -6,73 +6,19 @@ use super::super::helpers::{
     validate_enum_opt,
 };
 use super::super::types::McpToolResult;
+use super::bridge::HttpBridge;
 
 // ---------------------------------------------------------------------------
 // Agnostic Agentics Systems (AAS) Bridge
 // ---------------------------------------------------------------------------
 
-/// Bridge that proxies MCP tool calls to the Agnostic platform API.
-/// Supports both legacy QA tools and the new multi-domain crew management.
-#[derive(Debug, Clone)]
-pub struct AgnosticBridge {
-    base_url: String,
-    api_key: Option<String>,
-}
-
-impl Default for AgnosticBridge {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl AgnosticBridge {
-    pub fn new() -> Self {
-        Self {
-            base_url: std::env::var("AGNOSTIC_URL")
-                .unwrap_or_else(|_| "http://127.0.0.1:8000".to_string()),
-            api_key: std::env::var("AGNOSTIC_API_KEY").ok(),
-        }
-    }
-
-    fn build_client() -> Result<reqwest::Client, String> {
-        reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(5))
-            .connect_timeout(std::time::Duration::from_secs(2))
-            .build()
-            .map_err(|e| e.to_string())
-    }
-
-    async fn get(
-        &self,
-        path: &str,
-        query: &[(String, String)],
-    ) -> Result<serde_json::Value, String> {
-        let client = Self::build_client()?;
-        let url = format!("{}{}", self.base_url, path);
-        let mut req = client.get(&url).query(query);
-        if let Some(ref key) = self.api_key {
-            req = req.header("Authorization", format!("Bearer {}", key));
-        }
-        let resp = req.send().await.map_err(|e| e.to_string())?;
-        if !resp.status().is_success() {
-            return Err(format!("Agnostic API error: {}", resp.status()));
-        }
-        resp.json().await.map_err(|e| e.to_string())
-    }
-
-    async fn post(&self, path: &str, body: serde_json::Value) -> Result<serde_json::Value, String> {
-        let client = Self::build_client()?;
-        let url = format!("{}{}", self.base_url, path);
-        let mut req = client.post(&url).json(&body);
-        if let Some(ref key) = self.api_key {
-            req = req.header("Authorization", format!("Bearer {}", key));
-        }
-        let resp = req.send().await.map_err(|e| e.to_string())?;
-        if !resp.status().is_success() {
-            return Err(format!("Agnostic API error: {}", resp.status()));
-        }
-        resp.json().await.map_err(|e| e.to_string())
-    }
+pub(crate) fn agnostic_bridge() -> HttpBridge {
+    HttpBridge::new(
+        "AGNOSTIC_URL",
+        "http://127.0.0.1:8000",
+        "AGNOSTIC_API_KEY",
+        "Agnostic",
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -92,7 +38,7 @@ pub(crate) async fn handle_agnostic_run_suite(args: &serde_json::Value) -> McpTo
     let target_url = get_optional_string_arg(args, "target_url");
     let agents = args.get("agents").cloned();
 
-    let bridge = AgnosticBridge::new();
+    let bridge = agnostic_bridge();
     let mut body = serde_json::json!({
         "suite": suite,
     });
@@ -129,7 +75,7 @@ pub(crate) async fn handle_agnostic_test_status(args: &serde_json::Value) -> Mcp
         Err(e) => return e,
     };
 
-    let bridge = AgnosticBridge::new();
+    let bridge = agnostic_bridge();
     match bridge.get(&format!("/api/v1/runs/{}", run_id), &[]).await {
         Ok(response) => {
             info!(run_id = %run_id, "Agnostic: test status (bridged)");
@@ -169,7 +115,7 @@ pub(crate) async fn handle_agnostic_test_report(args: &serde_json::Value) -> Mcp
         return e;
     }
 
-    let bridge = AgnosticBridge::new();
+    let bridge = agnostic_bridge();
     let query = vec![("format".to_string(), format.clone())];
     match bridge
         .get(&format!("/api/v1/runs/{}/report", run_id), &query)
@@ -212,7 +158,7 @@ pub(crate) async fn handle_agnostic_list_suites(args: &serde_json::Value) -> Mcp
         return e;
     }
 
-    let bridge = AgnosticBridge::new();
+    let bridge = agnostic_bridge();
     let mut query = Vec::new();
     if let Some(ref c) = category {
         query.push(("category".to_string(), c.clone()));
@@ -270,7 +216,7 @@ pub(crate) async fn handle_agnostic_agent_status(args: &serde_json::Value) -> Mc
         return e;
     }
 
-    let bridge = AgnosticBridge::new();
+    let bridge = agnostic_bridge();
     let mut query = Vec::new();
     if let Some(ref t) = agent_type {
         query.push(("type".to_string(), t.clone()));
@@ -327,7 +273,7 @@ pub(crate) async fn handle_agnostic_coverage(args: &serde_json::Value) -> McpToo
     let path = get_optional_string_arg(args, "path");
     let threshold = get_optional_string_arg(args, "threshold");
 
-    let bridge = AgnosticBridge::new();
+    let bridge = agnostic_bridge();
     let mut query = Vec::new();
     query.push(("action".to_string(), action.clone()));
     if let Some(ref s) = suite {
@@ -376,7 +322,7 @@ pub(crate) async fn handle_agnostic_schedule(args: &serde_json::Value) -> McpToo
     let cron = get_optional_string_arg(args, "cron");
     let schedule_id = get_optional_string_arg(args, "schedule_id");
 
-    let bridge = AgnosticBridge::new();
+    let bridge = agnostic_bridge();
 
     match action.as_str() {
         "list" => {
@@ -470,7 +416,7 @@ pub(crate) async fn handle_agnostic_run_crew(args: &serde_json::Value) -> McpToo
         body["agent_definitions"] = defs.clone();
     }
 
-    let bridge = AgnosticBridge::new();
+    let bridge = agnostic_bridge();
     match bridge.post("/api/v1/crews", body).await {
         Ok(response) => {
             info!(title = %title, "Agnostic: run crew (bridged)");
@@ -489,7 +435,7 @@ pub(crate) async fn handle_agnostic_crew_status(args: &serde_json::Value) -> Mcp
         Err(e) => return e,
     };
 
-    let bridge = AgnosticBridge::new();
+    let bridge = agnostic_bridge();
     match bridge.get(&format!("/api/v1/crews/{}", crew_id), &[]).await {
         Ok(response) => {
             info!(crew_id = %crew_id, "Agnostic: crew status (bridged)");
@@ -505,7 +451,7 @@ pub(crate) async fn handle_agnostic_crew_status(args: &serde_json::Value) -> Mcp
 pub(crate) async fn handle_agnostic_list_presets(args: &serde_json::Value) -> McpToolResult {
     let domain = get_optional_string_arg(args, "domain");
 
-    let bridge = AgnosticBridge::new();
+    let bridge = agnostic_bridge();
     let mut query = Vec::new();
     if let Some(ref d) = domain {
         query.push(("domain".to_string(), d.clone()));
@@ -533,7 +479,7 @@ pub(crate) async fn handle_agnostic_list_presets(args: &serde_json::Value) -> Mc
 pub(crate) async fn handle_agnostic_list_definitions(args: &serde_json::Value) -> McpToolResult {
     let domain = get_optional_string_arg(args, "domain");
 
-    let bridge = AgnosticBridge::new();
+    let bridge = agnostic_bridge();
     let mut query = Vec::new();
     if let Some(ref d) = domain {
         query.push(("domain".to_string(), d.clone()));
@@ -578,7 +524,7 @@ pub(crate) async fn handle_agnostic_create_agent(args: &serde_json::Value) -> Mc
     };
 
     // Route through A2A create_agent message
-    let bridge = AgnosticBridge::new();
+    let bridge = agnostic_bridge();
     let body = serde_json::json!({
         "id": Uuid::new_v4().to_string(),
         "type": "a2a:create_agent",

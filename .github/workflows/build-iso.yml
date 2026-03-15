@@ -143,3 +143,78 @@ jobs:
         path: |
           output/*-aarch64.img
           output/*-aarch64.img.sha256
+
+  build-edge-rpi4-img:
+    name: Build Edge RPi4 SD Image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install build dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends \
+          debootstrap \
+          squashfs-tools \
+          dosfstools \
+          parted \
+          e2fsprogs \
+          qemu-user-static \
+          binfmt-support \
+          debian-archive-keyring
+
+    - name: Download aarch64 edge binaries (size-optimized)
+      uses: actions/download-artifact@v4
+      with:
+        name: agnos-linux-arm64-edge
+        path: artifacts/
+      continue-on-error: true
+
+    - name: Fall back to regular arm64 binaries
+      if: failure()
+      uses: actions/download-artifact@v4
+      with:
+        name: agnos-linux-arm64
+        path: artifacts/
+      continue-on-error: true
+
+    - name: Extract AGNOS binaries
+      run: |
+        mkdir -p userland/target/aarch64-unknown-linux-gnu/release
+        if ls artifacts/*.tar.gz 1>/dev/null 2>&1; then
+          tar xzf artifacts/*.tar.gz -C /tmp/
+          for bin in agent_runtime llm_gateway agnsh agnos_sudo; do
+            find /tmp/ -name "$bin" -type f -exec cp {} userland/target/aarch64-unknown-linux-gnu/release/ \;
+          done
+        fi
+
+    - name: Download SY edge binary
+      run: |
+        # Fetch latest secureyeoman-edge arm64 from SY releases
+        curl -sfL -o /tmp/secureyeoman-edge-linux-arm64 \
+          "https://github.com/MacCracken/SecureYeoman/releases/latest/download/secureyeoman-edge-linux-arm64" || {
+          echo "::warning::Could not download SY edge binary — image will be built without it"
+        }
+      continue-on-error: true
+
+    - name: Build edge image
+      run: |
+        VERSION="${{ inputs.version || '' }}"
+        ARGS="--edge --skip-build"
+        if [ -n "$VERSION" ]; then
+          ARGS="$ARGS --version $VERSION"
+        fi
+        if [ -f /tmp/secureyeoman-edge-linux-arm64 ]; then
+          ARGS="$ARGS --sy-edge-binary /tmp/secureyeoman-edge-linux-arm64"
+        fi
+        sudo ./scripts/build-iso-aarch64.sh $ARGS
+
+    - name: Upload edge image
+      uses: actions/upload-artifact@v4
+      with:
+        name: agnos-edge-img-rpi4
+        path: |
+          output/agnos-edge-*-aarch64.img
+          output/agnos-edge-*-aarch64.img.sha256

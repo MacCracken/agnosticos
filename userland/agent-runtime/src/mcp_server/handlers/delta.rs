@@ -1,4 +1,4 @@
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 use uuid::Uuid;
 
 use super::super::helpers::{
@@ -6,95 +6,19 @@ use super::super::helpers::{
     success_result, validate_enum_opt,
 };
 use super::super::types::McpToolResult;
+use super::bridge::HttpBridge;
 
 // ---------------------------------------------------------------------------
 // Delta Code Hosting Agent Bridge
 // ---------------------------------------------------------------------------
 
-/// Bridge that proxies MCP tool calls to the Delta code hosting API.
-///
-/// When Delta is running at its configured endpoint, requests are forwarded to
-/// its REST API. When the service is unavailable, mock data is returned.
-#[derive(Debug, Clone)]
-pub struct DeltaBridge {
-    /// Base URL for the Delta API (default: `http://127.0.0.1:8070`).
-    base_url: String,
-    /// API key for authenticating with Delta.
-    api_key: Option<String>,
-}
-
-impl Default for DeltaBridge {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl DeltaBridge {
-    pub fn new() -> Self {
-        Self {
-            base_url: std::env::var("DELTA_URL")
-                .unwrap_or_else(|_| "http://127.0.0.1:8070".to_string()),
-            api_key: std::env::var("DELTA_API_KEY").ok(),
-        }
-    }
-
-    fn build_client() -> Result<reqwest::Client, String> {
-        reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(5))
-            .connect_timeout(std::time::Duration::from_secs(2))
-            .build()
-            .map_err(|e| e.to_string())
-    }
-
-    async fn get(
-        &self,
-        path: &str,
-        query: &[(String, String)],
-    ) -> Result<serde_json::Value, String> {
-        let client = Self::build_client()?;
-        let url = format!("{}{}", self.base_url, path);
-        let mut req = client.get(&url).query(query);
-        if let Some(ref key) = self.api_key {
-            req = req.header("Authorization", format!("Bearer {}", key));
-        }
-        let resp = req.send().await.map_err(|e| e.to_string())?;
-        if !resp.status().is_success() {
-            return Err(format!("Delta API error: {}", resp.status()));
-        }
-        resp.json().await.map_err(|e| e.to_string())
-    }
-
-    async fn post(&self, path: &str, body: serde_json::Value) -> Result<serde_json::Value, String> {
-        let client = Self::build_client()?;
-        let url = format!("{}{}", self.base_url, path);
-        let mut req = client.post(&url).json(&body);
-        if let Some(ref key) = self.api_key {
-            req = req.header("Authorization", format!("Bearer {}", key));
-        }
-        let resp = req.send().await.map_err(|e| e.to_string())?;
-        if !resp.status().is_success() {
-            return Err(format!("Delta API error: {}", resp.status()));
-        }
-        resp.json().await.map_err(|e| e.to_string())
-    }
-
-    #[allow(dead_code)]
-    async fn health_check(&self) -> bool {
-        let client = reqwest::Client::new();
-        let url = format!("{}/api/v1/health", self.base_url);
-        match client
-            .get(&url)
-            .timeout(std::time::Duration::from_secs(2))
-            .send()
-            .await
-        {
-            Ok(r) => r.status().is_success(),
-            Err(e) => {
-                debug!(url = %url, error = %e, "Delta health check failed");
-                false
-            }
-        }
-    }
+pub(crate) fn delta_bridge() -> HttpBridge {
+    HttpBridge::new(
+        "DELTA_URL",
+        "http://127.0.0.1:8070",
+        "DELTA_API_KEY",
+        "Delta",
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -120,7 +44,7 @@ pub(crate) async fn handle_delta_create_repository(args: &serde_json::Value) -> 
         return e;
     }
 
-    let bridge = DeltaBridge::new();
+    let bridge = delta_bridge();
     let mut body = serde_json::json!({
         "name": name,
         "visibility": visibility,
@@ -153,7 +77,7 @@ pub(crate) async fn handle_delta_list_repositories(args: &serde_json::Value) -> 
     let owner = get_optional_string_arg(args, "owner");
     let limit = extract_optional_u64(args, "limit", 20) as usize;
 
-    let bridge = DeltaBridge::new();
+    let bridge = delta_bridge();
     let mut query = Vec::new();
     if let Some(ref o) = owner {
         query.push(("owner".to_string(), o.clone()));
@@ -207,7 +131,7 @@ pub(crate) async fn handle_delta_pull_request(args: &serde_json::Value) -> McpTo
     }
 
     let repo = get_optional_string_arg(args, "repo");
-    let bridge = DeltaBridge::new();
+    let bridge = delta_bridge();
 
     match action.as_str() {
         "list" => {
@@ -297,7 +221,7 @@ pub(crate) async fn handle_delta_push(args: &serde_json::Value) -> McpToolResult
     let repo = get_optional_string_arg(args, "repo");
     let branch = get_optional_string_arg(args, "branch");
 
-    let bridge = DeltaBridge::new();
+    let bridge = delta_bridge();
     let body = serde_json::json!({
         "repo": repo,
         "branch": branch.as_deref().unwrap_or("main"),
@@ -325,7 +249,7 @@ pub(crate) async fn handle_delta_ci_status(args: &serde_json::Value) -> McpToolR
     let repo = get_optional_string_arg(args, "repo");
     let pipeline_id = get_optional_string_arg(args, "pipeline_id");
 
-    let bridge = DeltaBridge::new();
+    let bridge = delta_bridge();
     let mut query = Vec::new();
     if let Some(ref r) = repo {
         query.push(("repo".to_string(), r.clone()));
@@ -372,7 +296,7 @@ pub(crate) async fn handle_delta_branches(args: &serde_json::Value) -> McpToolRe
     let name = get_optional_string_arg(args, "name");
     let from = get_optional_string_arg(args, "from");
 
-    let bridge = DeltaBridge::new();
+    let bridge = delta_bridge();
 
     match action.as_str() {
         "list" | "info" => {
@@ -452,7 +376,7 @@ pub(crate) async fn handle_delta_review(args: &serde_json::Value) -> McpToolResu
     let body_text = get_optional_string_arg(args, "body");
     let repo = get_optional_string_arg(args, "repo");
 
-    let bridge = DeltaBridge::new();
+    let bridge = delta_bridge();
 
     match action.as_str() {
         "list" => {
@@ -478,14 +402,17 @@ pub(crate) async fn handle_delta_review(args: &serde_json::Value) -> McpToolResu
                 }
             }
         }
-        op @ ("request" | "approve" | "reject" | "comment") => {
+        op @ ("approve" | "reject" | "comment") => {
+            // pr_id is required for approve/reject/comment
+            let pr_id = match pr_id {
+                Some(id) => id,
+                None => return error_result("pr_id is required for review actions".to_string()),
+            };
             let mut body = serde_json::json!({
                 "action": op,
+                "pr_id": pr_id,
                 "repo": repo,
             });
-            if let Some(ref p) = pr_id {
-                body["pr_id"] = serde_json::json!(p);
-            }
             if let Some(ref b) = body_text {
                 body["body"] = serde_json::json!(b);
             }
@@ -496,10 +423,37 @@ pub(crate) async fn handle_delta_review(args: &serde_json::Value) -> McpToolResu
                 }
                 Err(e) => {
                     warn!(error = %e, "Delta bridge: falling back to mock for {} review", op);
+                    success_result(serde_json::json!({
+                        "pr_id": pr_id,
+                        "action": op,
+                        "status": "ok",
+                        "_source": "mock",
+                    }))
+                }
+            }
+        }
+        "request" => {
+            let mut body = serde_json::json!({
+                "action": "request",
+                "repo": repo,
+            });
+            if let Some(ref p) = pr_id {
+                body["pr_id"] = serde_json::json!(p);
+            }
+            if let Some(ref b) = body_text {
+                body["body"] = serde_json::json!(b);
+            }
+            match bridge.post("/api/v1/reviews", body).await {
+                Ok(response) => {
+                    info!("Delta: request review (bridged)");
+                    success_result(response)
+                }
+                Err(e) => {
+                    warn!(error = %e, "Delta bridge: falling back to mock for request review");
                     let review_id = Uuid::new_v4().to_string();
                     success_result(serde_json::json!({
                         "id": review_id,
-                        "action": op,
+                        "action": "request",
                         "pr_id": pr_id,
                         "status": "submitted",
                         "created_at": chrono::Utc::now().to_rfc3339(),

@@ -11,5 +11,20 @@ ExecStart=/usr/lib/agnos/init/agnos-init.sh
 StandardOutput=journal
 StandardError=journal
 
+# Security hardening — init script needs write access to AGNOS dirs
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/agnos /var/log/agnos /run/agnos /etc/agnos
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+SystemCallFilter=@system-service @mount
+SystemCallErrorNumber=EPERM
+
 [Install]
 WantedBy=basic.target

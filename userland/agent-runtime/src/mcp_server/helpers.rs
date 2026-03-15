@@ -22,16 +22,20 @@ pub(crate) fn error_result(message: String) -> McpToolResult {
     }
 }
 
+/// Maximum length for MCP tool string arguments (10 KB).
+/// Prevents forwarding multi-megabyte payloads to consumer bridges.
+const MAX_ARG_STRING_LEN: usize = 10_240;
+
 pub(crate) fn get_string_arg(args: &serde_json::Value, key: &str) -> Option<String> {
     args.get(key)
         .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
+        .map(|s| s[..s.len().min(MAX_ARG_STRING_LEN)].to_string())
 }
 
 pub(crate) fn get_optional_string_arg(args: &serde_json::Value, key: &str) -> Option<String> {
     args.get(key)
         .and_then(|v| if v.is_null() { None } else { v.as_str() })
-        .map(|s| s.to_string())
+        .map(|s| s[..s.len().min(MAX_ARG_STRING_LEN)].to_string())
 }
 
 // ---------------------------------------------------------------------------

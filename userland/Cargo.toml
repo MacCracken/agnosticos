@@ -38,7 +38,7 @@ libc = "0.2"
 parking_lot = "0.12"
 dashmap = "5.5"
 chrono = { version = "0.4", features = ["serde"] }
-reqwest = { version = "0.11", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 sha2 = "0.10"
 axum = "0.7"
 tower = { version = "0.4", features = ["util"] }
@@ -55,8 +55,16 @@ base64 = "0.22"
 opt-level = 3
 lto = "thin"
 codegen-units = 1
+
+# Edge profile — optimized for binary size over speed.
+# Build with: cargo build --profile release-edge
+[profile.release-edge]
+inherits = "release"
+opt-level = "s"
+lto = "fat"
 strip = true
 panic = "abort"
+codegen-units = 1
 
 [profile.dev]
 opt-level = 0
