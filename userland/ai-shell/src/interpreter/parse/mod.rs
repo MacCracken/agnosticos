@@ -1,5 +1,5 @@
-mod core;
 mod creative;
+mod system;
 mod platforms;
 mod tools;
 
@@ -44,7 +44,7 @@ impl Interpreter {
         if let Some(intent) = tools::parse_tools(self, input_lower) {
             return intent;
         }
-        if let Some(intent) = core::parse_core(self, trimmed, input_lower) {
+        if let Some(intent) = system::parse_core(self, trimmed, input_lower) {
             return intent;
         }
 
