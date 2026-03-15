@@ -163,6 +163,31 @@ pub(crate) fn translate_rasa(intent: &Intent) -> Result<Translation> {
             ))
         }
 
+        Intent::RasaAdjustments {
+            action,
+            adjustment_type,
+        } => {
+            let mut a = serde_json::Map::new();
+            insert_str(&mut a, "action", action);
+            insert_opt(&mut a, "type", adjustment_type);
+            Ok(mcp_call(
+                "rasa_adjustments",
+                a,
+                format!(
+                    "Rasa adjustment: {}{}",
+                    action,
+                    adjustment_type
+                        .as_ref()
+                        .map_or(String::new(), |t| format!(" ({})", t))
+                ),
+                match action.as_str() {
+                    "list" => PermissionLevel::Safe,
+                    _ => PermissionLevel::SystemWrite,
+                },
+                "Manages non-destructive adjustment layers via Rasa".to_string(),
+            ))
+        }
+
         _ => unreachable!("translate_rasa called with non-rasa intent"),
     }
 }

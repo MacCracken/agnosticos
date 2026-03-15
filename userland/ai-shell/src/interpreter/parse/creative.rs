@@ -288,6 +288,19 @@ pub(super) fn parse_creative(interp: &Interpreter, input_lower: &str) -> Option<
             return Some(Intent::RasaTemplates { action, name });
         }
     }
+    if let Some(caps) = interp.try_captures("rasa_adjustments", input_lower) {
+        let action = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();
+        let adjustment_type = caps
+            .get(4)
+            .map(|m| m.as_str().trim().to_string())
+            .filter(|s| !s.is_empty());
+        if !action.is_empty() {
+            return Some(Intent::RasaAdjustments {
+                action,
+                adjustment_type,
+            });
+        }
+    }
 
     // --- Mneme knowledge base intents ---
     if let Some(caps) = interp.try_captures("mneme_notebook", input_lower) {

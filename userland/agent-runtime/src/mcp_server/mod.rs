@@ -285,6 +285,7 @@ async fn dispatch_tool_call(
         "tazama_subtitles" => handle_tazama_subtitles(&call.arguments).await,
         "rasa_batch" => handle_rasa_batch(&call.arguments).await,
         "rasa_templates" => handle_rasa_templates(&call.arguments).await,
+        "rasa_adjustments" => handle_rasa_adjustments(&call.arguments).await,
         "mneme_import" => handle_mneme_import(&call.arguments).await,
         "mneme_tags" => handle_mneme_tags(&call.arguments).await,
         "photis_boards" => handle_photis_boards(&call.arguments).await,

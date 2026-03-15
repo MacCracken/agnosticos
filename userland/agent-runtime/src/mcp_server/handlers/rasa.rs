@@ -455,3 +455,83 @@ pub(crate) async fn handle_rasa_templates(args: &serde_json::Value) -> McpToolRe
         _ => unreachable!(),
     }
 }
+
+pub(crate) async fn handle_rasa_adjustments(args: &serde_json::Value) -> McpToolResult {
+    let action = match extract_required_string(args, "action") {
+        Ok(a) => a,
+        Err(e) => return e,
+    };
+
+    let action_opt = Some(action.clone());
+    if let Err(e) = validate_enum_opt(&action_opt, "action", &["add", "set", "remove", "list"]) {
+        return e;
+    }
+
+    let adjustment_type = get_optional_string_arg(args, "type");
+    let document_id = get_optional_string_arg(args, "document_id");
+    let layer_id = get_optional_string_arg(args, "layer_id");
+    let params = get_optional_string_arg(args, "params");
+
+    if let Some(ref t) = adjustment_type {
+        let t_opt = Some(t.clone());
+        if let Err(e) = validate_enum_opt(
+            &t_opt,
+            "type",
+            &["brightness_contrast", "hue_saturation", "curves", "levels"],
+        ) {
+            return e;
+        }
+    }
+
+    let bridge = rasa_bridge();
+
+    match action.as_str() {
+        "list" => {
+            let mut query = Vec::new();
+            if let Some(ref did) = document_id {
+                query.push(("document_id".to_string(), did.clone()));
+            }
+            match bridge.get("/api/v1/adjustments", &query).await {
+                Ok(response) => {
+                    info!("Rasa: list adjustments (bridged)");
+                    success_result(response)
+                }
+                Err(e) => {
+                    warn!(error = %e, "Rasa bridge: falling back to mock for list adjustments");
+                    success_result(serde_json::json!({
+                        "adjustments": [],
+                        "total": 0,
+                        "_source": "mock",
+                    }))
+                }
+            }
+        }
+        op @ ("add" | "set" | "remove") => {
+            let body = serde_json::json!({
+                "action": op,
+                "type": adjustment_type,
+                "document_id": document_id,
+                "layer_id": layer_id,
+                "params": params,
+            });
+            match bridge.post("/api/v1/adjustments", body).await {
+                Ok(response) => {
+                    info!(action = %op, "Rasa: {} adjustment (bridged)", op);
+                    success_result(response)
+                }
+                Err(e) => {
+                    warn!(error = %e, "Rasa bridge: falling back to mock for {} adjustment", op);
+                    let lid = layer_id.unwrap_or_else(|| Uuid::new_v4().to_string());
+                    success_result(serde_json::json!({
+                        "layer_id": lid,
+                        "action": op,
+                        "type": adjustment_type.unwrap_or_else(|| "brightness_contrast".to_string()),
+                        "status": "ok",
+                        "_source": "mock",
+                    }))
+                }
+            }
+        }
+        _ => unreachable!(),
+    }
+}

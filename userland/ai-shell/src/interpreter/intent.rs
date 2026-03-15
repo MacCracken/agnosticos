@@ -399,6 +399,11 @@ pub enum Intent {
         action: String,
         name: Option<String>,
     },
+    /// Rasa non-destructive adjustment layers
+    RasaAdjustments {
+        action: String,
+        adjustment_type: Option<String>,
+    },
     /// Export Rasa image
     RasaExport {
         path: Option<String>,

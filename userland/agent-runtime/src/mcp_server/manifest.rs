@@ -936,6 +936,18 @@ pub fn build_tool_manifest() -> McpToolManifest {
             }),
             vec!["action"]
         ),
+        tool!(
+            "rasa_adjustments",
+            "Manage non-destructive adjustment layers in Rasa (brightness, contrast, curves, levels)",
+            json!({
+                "action": {"type": "string", "description": "Action: add, set, remove, list"},
+                "type": {"type": "string", "description": "Adjustment type: brightness_contrast, hue_saturation, curves, levels"},
+                "document_id": {"type": "string", "description": "Document UUID"},
+                "layer_id": {"type": "string", "description": "Adjustment layer ID (for set/remove)"},
+                "params": {"type": "string", "description": "Adjustment parameters as JSON string"}
+            }),
+            vec!["action"]
+        ),
         // ----- Mneme knowledge base tools (additional) -----
         tool!(
             "mneme_import",

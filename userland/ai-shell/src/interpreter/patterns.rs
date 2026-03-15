@@ -500,6 +500,10 @@ pub(crate) static PATTERNS: Lazy<HashMap<String, Regex>> = Lazy::new(|| {
         "rasa_templates",
         r"(?i)^rasa\s+(template|templates)\s+(list|create|apply|delete|info)(\s+(.+))?$",
     );
+    r(
+        "rasa_adjustments",
+        r"(?i)^rasa\s+(adjustment|adjustments|adjust)\s+(add|set|remove|list)(\s+(.+))?$",
+    );
     // Mneme additional
     r(
         "mneme_import",

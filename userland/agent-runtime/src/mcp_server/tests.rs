@@ -66,7 +66,7 @@ async fn test_tools_manifest_endpoint() {
         .await
         .unwrap();
     let manifest: McpToolManifest = serde_json::from_slice(&body).unwrap();
-    assert_eq!(manifest.tools.len(), 100);
+    assert_eq!(manifest.tools.len(), 101);
 }
 
 #[tokio::test]
@@ -389,7 +389,7 @@ async fn test_mcp_result_serialization() {
 #[tokio::test]
 async fn test_manifest_contains_all_tools() {
     let manifest = build_tool_manifest();
-    assert_eq!(manifest.tools.len(), 100);
+    assert_eq!(manifest.tools.len(), 101);
     let names: Vec<&str> = manifest.tools.iter().map(|t| t.name.as_str()).collect();
     for expected in &[
         "agnos_health",
@@ -486,6 +486,7 @@ async fn test_manifest_contains_all_tools() {
         "tazama_subtitles",
         "rasa_batch",
         "rasa_templates",
+        "rasa_adjustments",
         "mneme_import",
         "mneme_tags",
         "photis_boards",

@@ -152,6 +152,7 @@ impl Interpreter {
             | Intent::RasaAi { .. }
             | Intent::RasaBatch { .. }
             | Intent::RasaTemplates { .. }
+            | Intent::RasaAdjustments { .. }
             | Intent::RasaExport { .. } => rasa::translate_rasa(intent),
 
             // Mneme knowledge base
