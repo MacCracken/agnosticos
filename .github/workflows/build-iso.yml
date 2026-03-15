@@ -57,11 +57,12 @@ jobs:
     - name: Extract binaries (from artifact or build)
       run: |
         mkdir -p userland/target/x86_64-unknown-linux-musl/release
+        EXTRACT_DIR="$(mktemp -d)"
         if ls artifacts/*.tar.gz 1>/dev/null 2>&1; then
           echo "Using pre-built binaries from artifacts"
-          tar xzf artifacts/*.tar.gz -C /tmp/
+          tar xzf artifacts/*.tar.gz -C "$EXTRACT_DIR"
           for bin in agent_runtime llm_gateway agnsh agnos_sudo desktop_environment ai_shell; do
-            find /tmp/ -name "$bin" -type f -exec cp {} userland/target/x86_64-unknown-linux-musl/release/ \;
+            find "$EXTRACT_DIR" -name "$bin" -type f -exec cp {} userland/target/x86_64-unknown-linux-musl/release/ \;
           done
         else
           echo "No artifacts found — will build from source"
@@ -117,10 +118,11 @@ jobs:
     - name: Extract binaries
       run: |
         mkdir -p userland/target/x86_64-unknown-linux-musl/release
+        EXTRACT_DIR="$(mktemp -d)"
         if ls artifacts/*.tar.gz 1>/dev/null 2>&1; then
-          tar xzf artifacts/*.tar.gz -C /tmp/
+          tar xzf artifacts/*.tar.gz -C "$EXTRACT_DIR"
           for bin in agent_runtime llm_gateway agnsh agnos_sudo; do
-            find /tmp/ -name "$bin" -type f -exec cp {} userland/target/x86_64-unknown-linux-musl/release/ \;
+            find "$EXTRACT_DIR" -name "$bin" -type f -exec cp {} userland/target/x86_64-unknown-linux-musl/release/ \;
           done
         fi
 
@@ -183,11 +185,12 @@ jobs:
     - name: Extract binaries (from artifact or build)
       run: |
         mkdir -p userland/target/aarch64-unknown-linux-gnu/release
+        EXTRACT_DIR="$(mktemp -d)"
         if ls artifacts/*.tar.gz 1>/dev/null 2>&1; then
           echo "Using pre-built binaries from artifacts"
-          tar xzf artifacts/*.tar.gz -C /tmp/
+          tar xzf artifacts/*.tar.gz -C "$EXTRACT_DIR"
           for bin in agent_runtime llm_gateway agnsh agnos_sudo desktop_environment ai_shell; do
-            find /tmp/ -name "$bin" -type f -exec cp {} userland/target/aarch64-unknown-linux-gnu/release/ \;
+            find "$EXTRACT_DIR" -name "$bin" -type f -exec cp {} userland/target/aarch64-unknown-linux-gnu/release/ \;
           done
         else
           echo "No artifacts found — will need --skip-build disabled"
@@ -250,10 +253,11 @@ jobs:
     - name: Extract AGNOS binaries
       run: |
         mkdir -p userland/target/aarch64-unknown-linux-gnu/release
+        EXTRACT_DIR="$(mktemp -d)"
         if ls artifacts/*.tar.gz 1>/dev/null 2>&1; then
-          tar xzf artifacts/*.tar.gz -C /tmp/
+          tar xzf artifacts/*.tar.gz -C "$EXTRACT_DIR"
           for bin in agent_runtime llm_gateway agnsh agnos_sudo; do
-            find /tmp/ -name "$bin" -type f -exec cp {} userland/target/aarch64-unknown-linux-gnu/release/ \;
+            find "$EXTRACT_DIR" -name "$bin" -type f -exec cp {} userland/target/aarch64-unknown-linux-gnu/release/ \;
           done
         fi
 
