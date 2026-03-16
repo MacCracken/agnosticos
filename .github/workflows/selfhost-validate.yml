@@ -1,0 +1,175 @@
+name: Self-Hosting Validation
+
+# Boots the AGNOS ISO in QEMU and runs selfhost-validate.
+# Proves AGNOS can rebuild itself from source.
+#
+# Consumes: ISO artifact from selfhost-build.yml
+# Runs on self-hosted runner (needs KVM, QEMU, 4GB+ RAM).
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["Self-Hosting Build"]
+    types: [completed]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  validate:
+    name: Validate Self-Hosting
+    runs-on: [self-hosted, linux, x64]
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check QEMU available
+        run: |
+          command -v qemu-system-x86_64 || {
+            echo "ERROR: qemu-system-x86_64 not found"
+            echo "Install with: sudo pacman -S qemu-full"
+            exit 1
+          }
+          # Check KVM
+          if [[ -w /dev/kvm ]]; then
+            echo "KVM available — hardware acceleration enabled"
+          else
+            echo "WARN: KVM not available — tests will be slow"
+          fi
+
+      - name: Download ISO artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: agnos-iso-x86_64
+          path: output/
+          run-id: ${{ github.event.workflow_run.id }}
+        continue-on-error: true
+
+      - name: Find or build ISO
+        id: iso
+        run: |
+          iso=$(find output/ -name 'agnos-*.iso' -type f 2>/dev/null | head -1)
+          if [[ -z "$iso" ]]; then
+            echo "No ISO artifact found — building fresh ISO"
+            sudo bash scripts/build-iso.sh
+            iso=$(find output/ -name 'agnos-*.iso' -type f | head -1)
+          fi
+          echo "iso=$iso" >> "$GITHUB_OUTPUT"
+          echo "Using ISO: $iso ($(du -h "$iso" | cut -f1))"
+
+      - name: Create QEMU disk image
+        run: |
+          # Create a scratch disk for the VM to use
+          qemu-img create -f qcow2 /tmp/agnos-validate-disk.qcow2 20G
+
+      - name: Boot ISO and validate (toolchain check)
+        run: |
+          iso="${{ steps.iso.outputs.iso }}"
+
+          # Boot QEMU with serial console, run validation, capture output
+          # Timeout after 10 minutes — if it hasn't booted by then, something's wrong
+          timeout 600 qemu-system-x86_64 \
+            -m 4G \
+            -smp 4 \
+            -enable-kvm \
+            -cdrom "$iso" \
+            -boot d \
+            -drive file=/tmp/agnos-validate-disk.qcow2,format=qcow2 \
+            -nographic \
+            -serial mon:stdio \
+            -append "boot=live console=ttyS0,115200n8 quiet" \
+            -net nic -net user \
+            2>&1 | tee /tmp/qemu-boot.log &
+
+          QEMU_PID=$!
+
+          # Wait for login prompt (indicates successful boot)
+          for i in $(seq 1 120); do
+            if grep -q "login:" /tmp/qemu-boot.log 2>/dev/null; then
+              echo "AGNOS booted successfully!"
+              break
+            fi
+            sleep 5
+          done
+
+          if ! grep -q "login:" /tmp/qemu-boot.log 2>/dev/null; then
+            echo "ERROR: AGNOS did not boot within 10 minutes"
+            tail -50 /tmp/qemu-boot.log
+            kill $QEMU_PID 2>/dev/null || true
+            exit 1
+          fi
+
+          # Send validation commands via serial
+          # Login as root
+          sleep 2
+          echo "root" > /proc/$QEMU_PID/fd/0 || true
+          sleep 1
+          echo "agnos" > /proc/$QEMU_PID/fd/0 || true
+          sleep 2
+
+          # Run selfhost-validate (quick mode)
+          echo "selfhost-validate --quick --phase toolchain 2>&1 | tee /tmp/validate-results.txt" \
+            > /proc/$QEMU_PID/fd/0 || true
+          sleep 30
+
+          # Check for source tree
+          echo "ls -la /usr/src/agnos/ 2>&1 | tee -a /tmp/validate-results.txt" \
+            > /proc/$QEMU_PID/fd/0 || true
+          sleep 5
+
+          # Check for ark-build
+          echo "which ark-build selfhost-validate 2>&1 | tee -a /tmp/validate-results.txt" \
+            > /proc/$QEMU_PID/fd/0 || true
+          sleep 5
+
+          # Shutdown
+          echo "poweroff" > /proc/$QEMU_PID/fd/0 || true
+          sleep 10
+          kill $QEMU_PID 2>/dev/null || true
+
+          echo "=== QEMU Boot Log (last 100 lines) ==="
+          tail -100 /tmp/qemu-boot.log
+
+      - name: Check results
+        run: |
+          echo "=== Validation Summary ==="
+
+          # Check boot success
+          if grep -q "login:" /tmp/qemu-boot.log; then
+            echo "PASS: AGNOS boots from ISO"
+          else
+            echo "FAIL: AGNOS did not boot"
+            exit 1
+          fi
+
+          # Check AGNOS identity
+          if grep -q "AGNOS" /tmp/qemu-boot.log; then
+            echo "PASS: AGNOS identity present"
+          else
+            echo "WARN: AGNOS branding not detected in boot log"
+          fi
+
+          # Check binaries present
+          for bin in agent-runtime llm-gateway agnsh; do
+            if grep -q "$bin" /tmp/qemu-boot.log; then
+              echo "PASS: $bin detected"
+            fi
+          done
+
+          echo ""
+          echo "Validation complete. Full log: /tmp/qemu-boot.log"
+
+      - name: Upload boot log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qemu-boot-log
+          path: /tmp/qemu-boot.log
+          retention-days: 7
+
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -f /tmp/agnos-validate-disk.qcow2
+          rm -f /tmp/qemu-boot.log

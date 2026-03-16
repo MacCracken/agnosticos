@@ -124,7 +124,17 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 | 9 | App Launcher | fuzzel | `recipes/desktop/fuzzel.toml` | Not started | Wayland-native dmenu/rofi alternative |
 | 10 | Archive Manager | file-roller | `recipes/desktop/file-roller.toml` | Not started | Or bsdtar CLI |
 
-### 16B — System Configuration
+### 16B — Input & Hardware Detection
+
+| # | Need | Approach | Status | Notes |
+|---|------|----------|--------|-------|
+| 1 | Touchscreen detection | libinput + udev rules | Not started | Auto-detect touch devices, enable tap-to-click, gesture support in aethersafha |
+| 2 | Touch gestures | libinput-gestures or custom | Not started | Pinch-zoom, swipe between workspaces, three-finger drag |
+| 3 | On-screen keyboard | squeekboard or custom | Not started | Required for tablet/all-in-one without physical keyboard |
+| 4 | HiDPI / scaling | Wayland fractional scaling | Not started | Auto-detect display DPI, set appropriate scale factor |
+| 5 | Stylus / pen input | libinput tablet support | Not started | Pressure sensitivity, palm rejection |
+
+### 16C — System Configuration
 
 | # | Need | Approach | Status | Notes |
 |---|------|----------|--------|-------|
@@ -135,7 +145,7 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 | 5 | Sound Settings | pavucontrol / helvum | Not started | PipeWire routing and volume |
 | 6 | Firewall GUI | Custom (wraps nftables) | Not started | AGNOS-specific security model |
 
-### 16C — Desktop Polish
+### 16D — Desktop Polish
 
 | # | Need | Package | Status | Notes |
 |---|------|---------|--------|-------|

@@ -1,0 +1,188 @@
+name: Publish Toolchain
+
+# Publishes the AGNOS cross-toolchain as a GitHub release asset
+# and as a container image, so consumer projects and CI can use it.
+#
+# Trigger: manual dispatch or after successful selfhost-build.
+# Other repos fetch via:
+#   curl -fSL https://github.com/MacCracken/agnosticos/releases/download/toolchain-latest/agnos-toolchain-x86_64.tar.zst
+# Or use the container:
+#   docker pull ghcr.io/maccracken/agnos-toolchain:latest
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["Self-Hosting Build"]
+    types: [completed]
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  publish-release:
+    name: Publish as Release Asset
+    runs-on: [self-hosted, linux, x64]
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download toolchain artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: agnos-toolchain-x86_64
+          path: output/
+          run-id: ${{ github.event.workflow_run.id }}
+        continue-on-error: true
+
+      - name: Find or verify toolchain
+        run: |
+          if [[ ! -f output/agnos-toolchain-x86_64.tar ]]; then
+            echo "No artifact — checking local cache"
+            if [[ -f output/agnos-toolchain-x86_64.tar ]]; then
+              echo "Using locally cached toolchain"
+            else
+              echo "ERROR: No toolchain found. Run selfhost-build first."
+              exit 1
+            fi
+          fi
+          ls -lh output/agnos-toolchain-x86_64.tar
+
+      - name: Compress toolchain
+        run: |
+          zstd -T0 -15 output/agnos-toolchain-x86_64.tar \
+            -o output/agnos-toolchain-x86_64.tar.zst
+          sha256sum output/agnos-toolchain-x86_64.tar.zst \
+            > output/agnos-toolchain-x86_64.tar.zst.sha256
+          ls -lh output/agnos-toolchain-x86_64.tar.zst
+
+      - name: Create/update toolchain release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(cat VERSION)
+          TAG="toolchain-${VERSION}"
+
+          # Delete existing release if present
+          gh release delete "$TAG" --yes 2>/dev/null || true
+          git tag -d "$TAG" 2>/dev/null || true
+          git push origin ":refs/tags/$TAG" 2>/dev/null || true
+
+          # Create new release
+          gh release create "$TAG" \
+            --title "AGNOS Toolchain ${VERSION}" \
+            --notes "$(cat <<EOF
+          Cross-toolchain for AGNOS ${VERSION}
+
+          - GCC 15.2.0 (x86_64-agnos-linux-gnu)
+          - Binutils 2.45
+          - Glibc 2.42
+          - Linux headers 6.6.72
+
+          ## Usage
+
+          \`\`\`bash
+          # Download
+          curl -fSL -o agnos-toolchain.tar.zst \\
+            https://github.com/MacCracken/agnosticos/releases/download/${TAG}/agnos-toolchain-x86_64.tar.zst
+
+          # Extract to target
+          mkdir -p /tmp/agnos-build
+          zstd -d agnos-toolchain.tar.zst -o - | tar xf - -C /tmp/agnos-build
+
+          # Use the cross-compiler
+          export PATH="/tmp/agnos-build/tools/bin:\$PATH"
+          x86_64-agnos-linux-gnu-gcc --version
+          \`\`\`
+
+          ## For CI
+
+          Add to your workflow:
+          \`\`\`yaml
+          - name: Download AGNOS toolchain
+            run: |
+              curl -fSL -o toolchain.tar.zst \\
+                https://github.com/MacCracken/agnosticos/releases/download/toolchain-latest/agnos-toolchain-x86_64.tar.zst
+              zstd -d toolchain.tar.zst | tar xf - -C /tmp/agnos-sysroot
+          \`\`\`
+          EOF
+          )" \
+            output/agnos-toolchain-x86_64.tar.zst \
+            output/agnos-toolchain-x86_64.tar.zst.sha256
+
+          # Also tag as "toolchain-latest" for stable URL
+          gh release delete "toolchain-latest" --yes 2>/dev/null || true
+          git tag -d "toolchain-latest" 2>/dev/null || true
+          git push origin ":refs/tags/toolchain-latest" 2>/dev/null || true
+
+          gh release create "toolchain-latest" \
+            --title "AGNOS Toolchain (Latest)" \
+            --notes "Latest AGNOS cross-toolchain. Version: ${VERSION}" \
+            output/agnos-toolchain-x86_64.tar.zst \
+            output/agnos-toolchain-x86_64.tar.zst.sha256
+
+  publish-container:
+    name: Publish as Container Image
+    runs-on: [self-hosted, linux, x64]
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download toolchain artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: agnos-toolchain-x86_64
+          path: output/
+          run-id: ${{ github.event.workflow_run.id }}
+        continue-on-error: true
+
+      - name: Create Dockerfile
+        run: |
+          cat > /tmp/Dockerfile.toolchain << 'DOCKERFILE'
+          FROM debian:trixie-slim
+
+          # AGNOS cross-toolchain image
+          # Provides x86_64-agnos-linux-gnu-gcc and build tools
+          LABEL org.opencontainers.image.title="AGNOS Toolchain"
+          LABEL org.opencontainers.image.description="Cross-compilation toolchain for AGNOS"
+          LABEL org.opencontainers.image.source="https://github.com/MacCracken/agnosticos"
+
+          RUN apt-get update && apt-get install -y --no-install-recommends \
+              build-essential make bash curl ca-certificates \
+              && rm -rf /var/lib/apt/lists/*
+
+          # Install Rust
+          RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
+              sh -s -- -y --default-toolchain stable --profile minimal
+          ENV PATH="/root/.cargo/bin:${PATH}"
+
+          # Add AGNOS cross-toolchain
+          COPY output/agnos-toolchain-x86_64.tar /tmp/toolchain.tar
+          RUN mkdir -p /opt/agnos && \
+              tar xf /tmp/toolchain.tar -C /opt/agnos && \
+              rm /tmp/toolchain.tar
+          ENV PATH="/opt/agnos/tools/bin:${PATH}"
+
+          # Verify
+          RUN x86_64-agnos-linux-gnu-gcc --version && \
+              rustc --version && \
+              cargo --version
+
+          WORKDIR /build
+          DOCKERFILE
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push container
+        run: |
+          VERSION=$(cat VERSION)
+          docker build -f /tmp/Dockerfile.toolchain -t ghcr.io/maccracken/agnos-toolchain:${VERSION} .
+          docker tag ghcr.io/maccracken/agnos-toolchain:${VERSION} ghcr.io/maccracken/agnos-toolchain:latest
+          docker push ghcr.io/maccracken/agnos-toolchain:${VERSION}
+          docker push ghcr.io/maccracken/agnos-toolchain:latest
+          echo "Published: ghcr.io/maccracken/agnos-toolchain:${VERSION}"

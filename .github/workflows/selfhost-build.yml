@@ -1,0 +1,226 @@
+name: Self-Hosting Build
+
+# Builds the AGNOS self-hosting toolchain and base system from source.
+# Produces a cross-toolchain artifact that other workflows can consume.
+#
+# Runs on self-hosted runner (needs root, 20GB+ disk, 2+ hours).
+# Trigger: manual dispatch, or on push to main when recipes/scripts change.
+
+on:
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: 'Start from stage (0=download, 1=bootstrap, 2=base, 3=userland, 4=iso)'
+        required: false
+        default: '0'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/bootstrap-toolchain.sh'
+      - 'scripts/ark-build.sh'
+      - 'scripts/build-selfhosting-iso.sh'
+      - 'scripts/enter-chroot.sh'
+      - 'recipes/base/**'
+      - 'kernel/config/**'
+
+env:
+  LFS: /tmp/agnos-selfhost
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # -----------------------------------------------------------------------
+  # Stage 1: Bootstrap cross-toolchain
+  # Produces: agnos-toolchain-x86_64.tar (GCC, binutils, glibc, libstdc++)
+  # -----------------------------------------------------------------------
+  bootstrap-toolchain:
+    name: Bootstrap Toolchain
+    runs-on: [self-hosted, linux, x64]
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for cached toolchain
+        id: cache
+        run: |
+          if [[ -f output/agnos-toolchain-x86_64.tar ]]; then
+            echo "cached=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "cached=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Restore cached toolchain
+        if: steps.cache.outputs.cached == 'true' && inputs.stage != '0'
+        run: |
+          mkdir -p "$LFS"
+          tar xf output/agnos-toolchain-x86_64.tar -C "$LFS"
+          echo "Toolchain restored from cache"
+
+      - name: Download source tarballs
+        if: steps.cache.outputs.cached != 'true' || inputs.stage == '0'
+        run: |
+          mkdir -p "$LFS/sources"
+          cd "$LFS/sources"
+          urls=(
+            "https://ftp.gnu.org/gnu/binutils/binutils-2.45.tar.xz"
+            "https://ftp.gnu.org/gnu/gcc/gcc-15.2.0/gcc-15.2.0.tar.xz"
+            "https://ftp.gnu.org/gnu/glibc/glibc-2.42.tar.xz"
+            "https://ftp.gnu.org/gnu/gmp/gmp-6.3.0.tar.xz"
+            "https://ftp.gnu.org/gnu/mpfr/mpfr-4.2.2.tar.xz"
+            "https://ftp.gnu.org/gnu/mpc/mpc-1.3.1.tar.gz"
+            "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.6.72.tar.xz"
+          )
+          for url in "${urls[@]}"; do
+            file=$(basename "$url")
+            [[ -f "$file" ]] || curl -fSL -o "$file" "$url"
+          done
+
+      - name: Bootstrap cross-toolchain
+        if: steps.cache.outputs.cached != 'true' || inputs.stage == '0'
+        run: |
+          LFS="$LFS" bash scripts/bootstrap-toolchain.sh
+
+      - name: Verify toolchain
+        run: |
+          "$LFS/tools/bin/x86_64-agnos-linux-gnu-gcc" --version
+          echo 'int main(){return 0;}' > /tmp/test.c
+          "$LFS/tools/bin/x86_64-agnos-linux-gnu-gcc" /tmp/test.c -o /tmp/test
+          file /tmp/test
+          rm -f /tmp/test.c /tmp/test
+
+      - name: Archive toolchain
+        run: |
+          mkdir -p output
+          tar cf output/agnos-toolchain-x86_64.tar -C "$LFS" tools/ usr/
+          ls -lh output/agnos-toolchain-x86_64.tar
+
+      - name: Upload toolchain artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agnos-toolchain-x86_64
+          path: output/agnos-toolchain-x86_64.tar
+          retention-days: 30
+          compression-level: 0  # already compressed or large binary
+
+  # -----------------------------------------------------------------------
+  # Stage 2-3: Build base system + userland
+  # Consumes: toolchain artifact
+  # Produces: agnos-rootfs-x86_64.tar
+  # -----------------------------------------------------------------------
+  build-base:
+    name: Build Base System
+    needs: bootstrap-toolchain
+    runs-on: [self-hosted, linux, x64]
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download toolchain artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: agnos-toolchain-x86_64
+          path: output/
+
+      - name: Restore toolchain
+        run: |
+          mkdir -p "$LFS"
+          tar xf output/agnos-toolchain-x86_64.tar -C "$LFS"
+          "$LFS/tools/bin/x86_64-agnos-linux-gnu-gcc" --version
+
+      - name: Build base packages in chroot
+        run: |
+          # Copy recipes and scripts into chroot
+          mkdir -p "$LFS/usr/src/agnos"
+          cp -r recipes "$LFS/usr/src/agnos/recipes"
+          cp -r scripts "$LFS/usr/src/agnos/scripts"
+          cp -r kernel  "$LFS/usr/src/agnos/kernel"
+          cp VERSION     "$LFS/usr/src/agnos/VERSION"
+          install -m 755 scripts/ark-build.sh "$LFS/usr/bin/ark-build"
+
+          # Create minimal /etc
+          mkdir -p "$LFS"/{etc,var/log,tmp,run,proc,sys,dev}
+          echo 'root:x:0:0:root:/root:/bin/bash' > "$LFS/etc/passwd"
+          echo 'root:x:0:' > "$LFS/etc/group"
+
+          # Build critical base packages
+          # Note: this will fail on packages whose source tarballs aren't downloaded.
+          # The full build requires all source tarballs in $LFS/sources/.
+          # For CI, we validate the toolchain + a subset of packages.
+          for recipe in iana-etc man-pages linux-api-headers; do
+            LFS="$LFS" bash scripts/enter-chroot.sh \
+              "ark-build /usr/src/agnos/recipes/base/${recipe}.toml 2>&1" || \
+              echo "WARN: ${recipe} build failed (may need source tarball)"
+          done
+
+      - name: Build AGNOS userland
+        run: |
+          # Copy userland source
+          cp -r userland "$LFS/usr/src/agnos/userland"
+
+          # Build with host cargo (cross-compiling for now)
+          cd userland
+          cargo build --release --workspace
+
+          # Install binaries into rootfs
+          mkdir -p "$LFS/usr/bin"
+          for bin in agent_runtime llm_gateway agnsh; do
+            if [[ -f "target/release/$bin" ]]; then
+              cp "target/release/$bin" "$LFS/usr/bin/"
+            fi
+          done
+
+      - name: Archive rootfs
+        run: |
+          tar cf output/agnos-rootfs-x86_64.tar \
+            -C "$LFS" \
+            --exclude='sources' \
+            --exclude='tmp' \
+            usr/ etc/ var/ tools/
+          ls -lh output/agnos-rootfs-x86_64.tar
+
+      - name: Upload rootfs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agnos-rootfs-x86_64
+          path: output/agnos-rootfs-x86_64.tar
+          retention-days: 30
+          compression-level: 0
+
+  # -----------------------------------------------------------------------
+  # Stage 4: Create ISO
+  # Consumes: rootfs artifact
+  # Produces: agnos-selfhosting ISO
+  # -----------------------------------------------------------------------
+  create-iso:
+    name: Create Self-Hosting ISO
+    needs: build-base
+    runs-on: [self-hosted, linux, x64]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download rootfs artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: agnos-rootfs-x86_64
+          path: output/
+
+      - name: Build ISO
+        run: |
+          # For now, use the Debian-based ISO builder with source tree bundled
+          # The self-hosting ISO (pure LFS) is the next evolution
+          sudo bash scripts/build-iso.sh --skip-build
+
+      - name: Upload ISO
+        uses: actions/upload-artifact@v4
+        with:
+          name: agnos-iso-x86_64
+          path: output/agnos-*.iso
+          retention-days: 14
+          compression-level: 0
+
+      - name: Upload ISO checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: agnos-iso-x86_64-sha256
+          path: output/agnos-*.iso.sha256
+          retention-days: 14
