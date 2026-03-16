@@ -135,7 +135,7 @@ jobs:
 
     - name: Run Semgrep
       if: matrix.scan == 'semgrep'
-      uses: semgrep/semgrep-action@v1
+      uses: semgrep/semgrep-action@v2
       with:
         config: >-
           p/security-audit
