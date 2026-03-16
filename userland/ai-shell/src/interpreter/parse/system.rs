@@ -260,7 +260,15 @@ pub(super) fn parse_core(interp: &Interpreter, input: &str, input_lower: &str) -
         return Some(Intent::ArkStatus);
     }
 
-    // Filesystem patterns
+    // Filesystem patterns — grep before list (grep is more specific)
+    if let Some(caps) = interp.try_captures("grep", input_lower) {
+        let pattern = caps.get(3).map_or("", |m| m.as_str()).trim().to_string();
+        let path = caps.get(5).map(|m| m.as_str().trim().to_string());
+        if !pattern.is_empty() {
+            return Some(Intent::SearchContent { pattern, path });
+        }
+    }
+
     if let Some(caps) = interp.try_captures("list", input_lower) {
         let path = caps.get(6).map(|m| m.as_str().trim().to_string());
         let all = input_lower.contains("all");

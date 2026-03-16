@@ -315,9 +315,9 @@ mod tests {
     #[test]
     fn test_parse_search_content_grep_via_list() {
         let interpreter = Interpreter::new();
-        // Due to broad "list" pattern, this may match ListFiles
+        // "search for X in Y" now correctly matches the grep pattern → SearchContent
         let intent = interpreter.parse("search for TODO in src");
-        assert!(matches!(intent, Intent::ListFiles { .. }));
+        assert!(matches!(intent, Intent::SearchContent { .. }));
     }
 
     #[test]

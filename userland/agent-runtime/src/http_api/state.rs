@@ -165,9 +165,9 @@ impl ApiState {
         )
         .unwrap_or_else(|_| {
             // Fallback to temp dir if default path is not writable
-            crate::marketplace::local_registry::LocalRegistry::new(
-                std::path::Path::new("/run/agnos/marketplace"),
-            )
+            crate::marketplace::local_registry::LocalRegistry::new(std::path::Path::new(
+                "/run/agnos/marketplace",
+            ))
             .unwrap_or_else(|e| {
                 tracing::warn!(
                     "Failed to create marketplace registry in temp dir: {}; using fallback",

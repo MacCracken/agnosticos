@@ -149,11 +149,13 @@ if [[ "$START_STAGE" -le 2 ]]; then
     mkdir -p "${LFS}"/{etc,var/log,tmp,run,proc,sys,dev}
 
     # Create minimal /etc files needed for building
+    # nosemgrep: generic.secrets.security.detected-etc-shadow
     cat > "${LFS}/etc/passwd" << 'EOF'
 root:x:0:0:root:/root:/bin/bash
 nobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin
 EOF
 
+    # nosemgrep: generic.secrets.security.detected-etc-shadow
     cat > "${LFS}/etc/group" << 'EOF'
 root:x:0:
 tty:x:5:

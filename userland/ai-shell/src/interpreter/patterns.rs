@@ -581,7 +581,7 @@ pub(crate) static PATTERNS: Lazy<HashMap<String, Regex>> = Lazy::new(|| {
     r("jalwa_status", r"(?i)^(?:jalwa\s+)?(?:playback\s+)?status$");
     r(
         "jalwa_search",
-        r"(?i)^(?:jalwa\s+)?search\s+(?:library\s+)?(?:for\s+)?(.+)$",
+        r"(?i)^jalwa\s+search\s+(?:library\s+)?(?:for\s+)?(.+)$",
     );
     r(
         "jalwa_recommend",

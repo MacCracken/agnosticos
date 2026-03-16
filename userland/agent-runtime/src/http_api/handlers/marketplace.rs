@@ -343,8 +343,10 @@ pub(crate) fn staged_install(
     tarball_path: &std::path::Path,
     keyring: Option<&crate::marketplace::trust::PublisherKeyring>,
 ) -> Result<serde_json::Value, String> {
-    let staging_dir =
-        std::path::PathBuf::from(format!("/run/agnos/marketplace-stage-{}", uuid::Uuid::new_v4()));
+    let staging_dir = std::path::PathBuf::from(format!(
+        "/run/agnos/marketplace-stage-{}",
+        uuid::Uuid::new_v4()
+    ));
     std::fs::create_dir_all(&staging_dir)
         .map_err(|e| format!("Failed to create staging dir: {}", e))?;
     let staged_tarball = staging_dir.join(
