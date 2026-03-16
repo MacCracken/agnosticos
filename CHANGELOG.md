@@ -5,6 +5,26 @@ All notable changes to AGNOS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2026.3.15] - 2026-03-16
+
+### Added — Phase 15: Phylax Threat Detection Engine
+
+- **phylax.rs** — New threat detection subsystem (`agent-runtime/src/phylax.rs`). Pure Rust scanning engine with no external AV dependencies
+- **YARA-compatible rule engine** — Hex-pattern matching with `YaraRule` type, enable/disable per rule, multi-pattern support. 5 built-in rules: EICAR test, reverse shell, crypto miner, base64 dropper, /etc/shadow access
+- **Shannon entropy analysis** — Detects ransomware patterns and encrypted payloads (configurable threshold, default 7.5)
+- **File content inspection** — Magic byte detection (ELF, PE/Windows, suspicious shebangs), polyglot file detection (PDF-at-offset), embedded payload analysis
+- **Scan modes** — On-demand, real-time (fanotify placeholder), scheduled, pre-install, pre-exec
+- **Scan targets** — File, agent, package, and in-memory scanning
+- **Aegis integration** — Configurable forwarding of findings to aegis for quarantine, with severity threshold filtering
+- **65 tests** covering: YARA matching, entropy calculation, magic byte detection, rule management, scan history, stats, config, aegis integration, all built-in rules
+- **Exports**: `PhylaxScanner`, `PhylaxConfig`, `PhylaxStats`, `YaraRule`, `ScanResult`, `ScanFinding`, `ScanTarget`, `ScanMode`, `FindingCategory`, `ThreatSeverity`
+
+### Changed
+
+- Version bump: `2026.3.14-1` → `2026.3.15`
+- Roadmap updated: Phase 15A items 1-2 marked done
+- README: Fixed subsystem count (17 → 18), added phylax and vansh to architecture tree, fixed Docker image and GitHub URLs
+
 ## [2026.3.14] - 2026-03-14
 
 ### Added — Consumer App Ecosystem Expansion

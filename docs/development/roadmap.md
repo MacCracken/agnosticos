@@ -1,6 +1,6 @@
 # AGNOS Development Roadmap
 
-> **Status**: Pre-Beta | **Last Updated**: 2026-03-13
+> **Status**: Pre-Beta | **Last Updated**: 2026-03-16
 > **Userland complete** — 10876+ tests (3622+ agent-runtime, 1554 ai-shell), ~84% coverage, 0 warnings
 > **Recipes**: 109 base + 53 desktop + 25 AI + 9 network + 8 browser + 11 marketplace + 4 python + 3 database + 29 edge = 251 total, 0 validation errors
 > **Phases 10–14 complete** | **Phase 13**: 13A(infra)/13B/13D/13E done | **Phase 14**: Edge OS Profile done | **Audit**: 16 rounds
@@ -112,8 +112,8 @@ no ClamAV dependency, no external AV engine. Pure Rust + ML-powered.
 
 | # | Item | Status | Notes |
 |---|------|--------|-------|
-| 1 | YARA-compatible rule engine | Not started | Native Rust parser for `.yar` rules; no libyara dependency |
-| 2 | File content inspection | Not started | Magic bytes, embedded payloads, polyglot detection |
+| 1 | YARA-compatible rule engine | **Done** | Native Rust parser for hex patterns; no libyara dependency. 5 built-in rules, 65 tests |
+| 2 | File content inspection | **Done** | Magic bytes (ELF, PE, shebang), embedded payloads, polyglot detection, entropy analysis |
 | 3 | Signature database (`.phylax-db`) | Not started | Signed, versioned threat definitions distributed via ark |
 | 4 | On-access scanning (fanotify) | Not started | Real-time filesystem monitoring via `agnos-sys` fanotify bindings |
 | 5 | Scan API endpoints | Not started | `/v1/scan/file`, `/v1/scan/agent`, `/v1/scan/status` |

@@ -1,6 +1,6 @@
 # Security Guide
 
-**Last Updated**: 2026-03-07
+**Last Updated**: 2026-03-16
 
 AGNOS is designed with security as a foundational principle. This guide documents the security architecture, threat model, and best practices.
 
@@ -159,7 +159,18 @@ Aegis (`agent_runtime::aegis`) is the centralized security policy daemon that en
 - Security policy distribution across the system
 - Coordination with kernel security modules (Landlock, seccomp, IMA)
 
-### 7. Sigil Trust System
+### 7. Phylax Threat Detection
+
+Phylax (`agent_runtime::phylax`) is the native threat detection engine — pure Rust, no external AV dependency:
+
+- **YARA-compatible rule engine** — Hex-pattern matching for known malware signatures, crypto miners, reverse shells, base64 droppers
+- **Shannon entropy analysis** — Detects ransomware patterns and encrypted payloads (configurable threshold)
+- **File content inspection** — Magic byte detection (ELF, PE, suspicious shebangs), polyglot file detection, embedded payload analysis
+- **Aegis integration** — Findings above configurable severity are forwarded to aegis for quarantine decisions
+- **Scan modes** — On-demand, real-time (fanotify), scheduled, pre-install, pre-exec
+- **Built-in rules** — 5 default rules (EICAR test, reverse shell, crypto miner, base64 dropper, credential access); extensible via `.phylax-db` signature database
+
+### 8. Sigil Trust System
 
 Sigil (`agent_runtime::sigil`) provides cryptographic trust verification:
 
@@ -168,7 +179,7 @@ Sigil (`agent_runtime::sigil`) provides cryptographic trust verification:
 - TPM-backed hardware attestation for system integrity
 - Transparency log integration for auditable trust decisions
 
-### 8. Post-Quantum Cryptography
+### 9. Post-Quantum Cryptography
 
 AGNOS implements hybrid post-quantum cryptographic schemes:
 
@@ -177,7 +188,7 @@ AGNOS implements hybrid post-quantum cryptographic schemes:
 - **Hash-based signatures**: SPHINCS+ for long-lived signing keys
 - **Crypto-agility**: Algorithm-agnostic APIs in `agnos_common::secrets` allow seamless migration
 
-### 9. Mutual TLS (mTLS)
+### 10. Mutual TLS (mTLS)
 
 All inter-service communication uses mutual TLS (`agent_runtime::mtls`):
 
@@ -186,7 +197,7 @@ All inter-service communication uses mutual TLS (`agent_runtime::mtls`):
 - Certificate rotation with zero-downtime rollover
 - CORS restricted to localhost; Bearer token auth for API endpoints
 
-### 10. Zero-Trust Architecture (ADR-003)
+### 11. Zero-Trust Architecture (ADR-003)
 
 AGNOS follows zero-trust principles:
 
@@ -195,19 +206,6 @@ AGNOS follows zero-trust principles:
 - **Micro-segmentation**: Network namespaces isolate agent traffic
 - **Continuous verification**: Aegis monitors agent behavior throughout lifecycle
 - **Assume breach**: Cryptographic audit chain ensures forensic capability
-
-### 11. Phylax Threat Detection (Planned — Phase 15)
-
-Phylax (`agent_runtime::phylax`) will provide native threat detection and scanning:
-
-- **YARA-compatible rule engine**: Native Rust parser for malware signature matching
-- **ML binary classifier**: ONNX model for static analysis of suspicious binaries
-- **Real-time filesystem monitoring**: fanotify-based on-access scanning
-- **Entropy analysis**: Ransomware detection via high-entropy write pattern recognition
-- **LLM-assisted triage**: Suspicious findings routed through hoosh for explanation
-- **Supply chain scanning**: Dependency analysis for `.ark` and `.agnos-agent` packages
-
-Phylax complements the existing containment model (sandbox-first) with a detection layer, closing the gap between prevention and response.
 
 ## Security Best Practices
 

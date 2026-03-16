@@ -37,6 +37,7 @@ pub mod nous;
 pub mod oidc;
 pub mod orchestrator;
 pub mod package_manager;
+pub mod phylax;
 pub mod pqc;
 pub mod pubsub;
 pub mod python_runtime;
@@ -157,6 +158,10 @@ pub use oidc::{
 };
 pub use orchestrator::Orchestrator;
 pub use package_manager::PackageManager;
+pub use phylax::{
+    FindingCategory, PhylaxConfig, PhylaxScanner, PhylaxStats, ScanFinding, ScanMode, ScanResult,
+    ScanTarget, ThreatSeverity, YaraRule,
+};
 pub use pqc::{
     HybridEncapsulation, HybridKemKeypair, HybridSignature, HybridSigningKeypair, PqcAlgorithm,
     PqcConfig, PqcKeyStore, PqcMigrationStatus, PqcMode,
