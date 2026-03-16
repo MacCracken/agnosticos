@@ -15,47 +15,14 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # Build verification (skipped when called from release — release does its own --release build)
-  build:
-    if: github.event_name != 'workflow_call'
-    name: Build ${{ matrix.name }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: x86_64-unknown-linux-gnu
-            name: linux-amd64
-            cross: false
-          - target: aarch64-unknown-linux-gnu
-            name: linux-arm64
-            cross: true
+  # ============================================================================
+  # STAGE 1 — Validation (all parallel, always runs)
+  #
+  # Quality, tests, security, fuzzing, license, docs must all pass before
+  # any build work begins. These jobs have no inter-dependencies.
+  # ============================================================================
 
-    steps:
-    - uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-
-    - name: Setup Rust environment
-      uses: ./.github/actions/setup-rust-env
-      with:
-        targets: ${{ matrix.target }}
-        cache-prefix: build-${{ matrix.target }}
-        install-cross: ${{ matrix.cross }}
-        install-build-essential: ${{ !matrix.cross }}
-
-    - name: Build userland (native)
-      if: ${{ !matrix.cross }}
-      run: cargo build --workspace --target ${{ matrix.target }}
-      working-directory: userland
-
-    - name: Build userland (cross)
-      if: matrix.cross
-      run: cross build --workspace --target ${{ matrix.target }}
-      working-directory: userland
-
-  # Code quality
+  # Code quality (fmt + clippy)
   quality:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -75,6 +42,49 @@ jobs:
 
     - name: Run clippy
       run: cargo clippy --workspace -- -D warnings
+      working-directory: userland
+
+  # Testing — parallelized by crate
+  test:
+    name: Test ${{ matrix.crate }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        crate: [agent_runtime, ai_shell, desktop_environment, llm_gateway, common-and-sys]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Rust environment
+      uses: ./.github/actions/setup-rust-env
+      with:
+        cache-prefix: test-${{ matrix.crate }}
+
+    - name: Run tests (agent_runtime)
+      if: matrix.crate == 'agent_runtime'
+      run: cargo test -p agent_runtime
+      working-directory: userland
+
+    - name: Run tests (ai_shell)
+      if: matrix.crate == 'ai_shell'
+      run: cargo test -p ai_shell
+      working-directory: userland
+
+    - name: Run tests (desktop_environment)
+      if: matrix.crate == 'desktop_environment'
+      run: cargo test -p desktop_environment
+      working-directory: userland
+
+    - name: Run tests (llm_gateway)
+      if: matrix.crate == 'llm_gateway'
+      run: cargo test -p llm_gateway
+      working-directory: userland
+
+    - name: Run tests (agnos-common + agnos-sys)
+      if: matrix.crate == 'common-and-sys'
+      run: cargo test -p agnos-common -p agnos-sys
       working-directory: userland
 
   # Security scanning — parallelized across 4 independent scan types
@@ -148,15 +158,18 @@ jobs:
       working-directory: userland
       continue-on-error: true
 
-  # Testing — parallelized by crate
-  test:
-    name: Test ${{ matrix.crate }}
+  # Fuzzing — runs on push to main and release (workflow_call)
+  fuzzing:
+    name: Fuzz ${{ matrix.target }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      github.event_name == 'workflow_call'
     strategy:
       fail-fast: false
       matrix:
-        crate: [agent_runtime, ai_shell, desktop_environment, llm_gateway, common-and-sys]
+        target: [fuzz_agent_parse, fuzz_interpreter, fuzz_command_split, fuzz_llm_inference]
 
     steps:
     - uses: actions/checkout@v4
@@ -164,38 +177,132 @@ jobs:
     - name: Setup Rust environment
       uses: ./.github/actions/setup-rust-env
       with:
-        cache-prefix: test-${{ matrix.crate }}
+        toolchain: nightly
+        cache-prefix: fuzz-${{ matrix.target }}
 
-    - name: Run tests (agent_runtime)
-      if: matrix.crate == 'agent_runtime'
-      run: cargo test -p agent_runtime
+    - name: Install cargo-fuzz
+      run: cargo install cargo-fuzz --locked
+
+    - name: Cache fuzzing corpus
+      uses: actions/cache@v4
+      with:
+        path: |
+          userland/fuzz/corpus/
+          userland/fuzz/artifacts/
+        key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
+        restore-keys: |
+          fuzz-corpus-${{ matrix.target }}-
+
+    - name: Run fuzzer (30 minutes)
+      run: |
+        cd userland
+        timeout 1800 cargo fuzz run ${{ matrix.target }} -- -max_total_time=1800 || true
+      continue-on-error: true
+
+    - name: Check for crashes
+      run: |
+        ARTIFACT_DIR="userland/fuzz/artifacts/${{ matrix.target }}"
+        if [ -d "$ARTIFACT_DIR" ] && [ "$(ls -A "$ARTIFACT_DIR" 2>/dev/null)" ]; then
+          echo "::error::Found crashes in ${{ matrix.target }}:"
+          ls -la "$ARTIFACT_DIR/"
+          exit 1
+        fi
+
+    - name: Upload crash artifacts
+      uses: actions/upload-artifact@v4
+      if: failure()
+      with:
+        name: fuzz-crash-${{ matrix.target }}
+        path: userland/fuzz/artifacts/${{ matrix.target }}/
+
+    - name: Upload corpus
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: fuzz-corpus-${{ matrix.target }}
+        path: userland/fuzz/corpus/${{ matrix.target }}/
+
+  # License check
+  license:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Verify LICENSE file
+      run: |
+        test -f LICENSE
+        grep -q "GNU GENERAL PUBLIC LICENSE" LICENSE
+
+  # Documentation
+  docs:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Verify documentation completeness
+      run: |
+        test -f README.md
+        test -f docs/development/roadmap.md
+        test -f CONTRIBUTING.md
+        test -f SECURITY.md
+        test -f LICENSE
+
+  # ============================================================================
+  # STAGE 2 — Build & Artifacts (needs stage 1, push/workflow_call only)
+  #
+  # Build verification, coverage, benchmarks, containers, and .ark packages.
+  # These only run after all stage 1 validation jobs pass.
+  # ============================================================================
+
+  # Build verification (skipped on workflow_call — release does its own --release build)
+  build:
+    name: Build ${{ matrix.name }}
+    needs: [quality, test, security, license, docs]
+    if: github.event_name != 'workflow_call'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            name: linux-amd64
+            cross: false
+          - target: aarch64-unknown-linux-gnu
+            name: linux-arm64
+            cross: true
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Setup Rust environment
+      uses: ./.github/actions/setup-rust-env
+      with:
+        targets: ${{ matrix.target }}
+        cache-prefix: build-${{ matrix.target }}
+        install-cross: ${{ matrix.cross }}
+        install-build-essential: ${{ !matrix.cross }}
+
+    - name: Build userland (native)
+      if: ${{ !matrix.cross }}
+      run: cargo build --workspace --target ${{ matrix.target }}
       working-directory: userland
 
-    - name: Run tests (ai_shell)
-      if: matrix.crate == 'ai_shell'
-      run: cargo test -p ai_shell
+    - name: Build userland (cross)
+      if: matrix.cross
+      run: cross build --workspace --target ${{ matrix.target }}
       working-directory: userland
 
-    - name: Run tests (desktop_environment)
-      if: matrix.crate == 'desktop_environment'
-      run: cargo test -p desktop_environment
-      working-directory: userland
-
-    - name: Run tests (llm_gateway)
-      if: matrix.crate == 'llm_gateway'
-      run: cargo test -p llm_gateway
-      working-directory: userland
-
-    - name: Run tests (agnos-common + agnos-sys)
-      if: matrix.crate == 'common-and-sys'
-      run: cargo test -p agnos-common -p agnos-sys
-      working-directory: userland
-
-  # Coverage — runs after all test jobs pass (single workspace run for accurate totals)
+  # Coverage — runs after stage 1 passes (skip on release — tests already ran)
   coverage:
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    needs: test
+    needs: [quality, test, security, license, docs]
+    if: github.event_name != 'workflow_call'
 
     steps:
     - uses: actions/checkout@v4
@@ -222,6 +329,7 @@ jobs:
   benchmarks:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    needs: [quality, test, security, license, docs]
     if: github.event_name == 'push'
 
     steps:
@@ -246,25 +354,11 @@ jobs:
           userland/benchmark-output.txt
           userland/target/criterion/
 
-  # Documentation
-  docs:
-    runs-on: ubuntu-latest
-
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Verify documentation completeness
-      run: |
-        test -f README.md
-        test -f docs/development/roadmap.md
-        test -f CONTRIBUTING.md
-        test -f SECURITY.md
-        test -f LICENSE
-
-  # Container build (already skips on workflow_call since event_name != 'push')
+  # Container build
   container:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    needs: [quality, test, security, license, docs]
     if: github.event_name == 'push'
 
     steps:
@@ -290,6 +384,7 @@ jobs:
   # Build .ark packages — independent packages in parallel, pgvector after postgresql
   ark-build-independent:
     name: Build .ark (${{ matrix.package }})
+    needs: [quality, test, security, license, docs]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     if: github.event_name == 'push'
@@ -393,85 +488,13 @@ jobs:
           echo ""
         done
 
-  # License check
-  license:
-    runs-on: ubuntu-latest
-
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Verify LICENSE file
-      run: |
-        test -f LICENSE
-        grep -q "GNU GENERAL PUBLIC LICENSE" LICENSE
-
-  # Fuzzing (push to main only, does not block merges)
-  fuzzing:
-    runs-on: ubuntu-latest
-    timeout-minutes: 40
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    strategy:
-      fail-fast: false
-      matrix:
-        target: [fuzz_agent_parse, fuzz_interpreter, fuzz_command_split, fuzz_llm_inference]
-
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Setup Rust environment
-      uses: ./.github/actions/setup-rust-env
-      with:
-        toolchain: nightly
-        cache-prefix: fuzz-${{ matrix.target }}
-
-    - name: Install cargo-fuzz
-      run: cargo install cargo-fuzz --locked
-
-    - name: Cache fuzzing corpus
-      uses: actions/cache@v4
-      with:
-        path: |
-          userland/fuzz/corpus/
-          userland/fuzz/artifacts/
-        key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
-        restore-keys: |
-          fuzz-corpus-${{ matrix.target }}-
-
-    - name: Run fuzzer (30 minutes)
-      run: |
-        cd userland
-        timeout 1800 cargo fuzz run ${{ matrix.target }} -- -max_total_time=1800 || true
-      continue-on-error: true
-
-    - name: Check for crashes
-      run: |
-        ARTIFACT_DIR="userland/fuzz/artifacts/${{ matrix.target }}"
-        if [ -d "$ARTIFACT_DIR" ] && [ "$(ls -A "$ARTIFACT_DIR" 2>/dev/null)" ]; then
-          echo "::error::Found crashes in ${{ matrix.target }}:"
-          ls -la "$ARTIFACT_DIR/"
-          exit 1
-        fi
-
-    - name: Upload crash artifacts
-      uses: actions/upload-artifact@v4
-      if: failure()
-      with:
-        name: fuzz-crash-${{ matrix.target }}
-        path: userland/fuzz/artifacts/${{ matrix.target }}/
-
-    - name: Upload corpus
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: fuzz-corpus-${{ matrix.target }}
-        path: userland/fuzz/corpus/${{ matrix.target }}/
-
-  # CIS Benchmark Validation (informational, push to main only)
+  # CIS Benchmark Validation (informational, push only)
   # NOTE: CI runners are generic Ubuntu — scores will be low. This tracks
   # regressions in the validation script itself, not actual AGNOS compliance.
   # Real CIS scores come from testing on a configured AGNOS image.
   cis-validate:
     runs-on: ubuntu-latest
+    needs: [quality, test, security, license, docs]
     if: github.event_name == 'push'
     continue-on-error: true
 
