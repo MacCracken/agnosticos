@@ -59,22 +59,25 @@ Roadmap for expanding the AGNOS application ecosystem with AI-native tools.
 
 ## Tier 3 — Expected Desktop Applications
 
-### Calendar / Contacts
-- AI: Smart scheduling, conflict detection, natural language event creation
-- Required for complete desktop experience
+### ~~Calendar / Contacts~~ → **Rahd** (Ruznam Ahd) ✓
+- **Status**: Scaffolded (`/home/macro/Repos/rahd`), 49 tests, CI/CD, marketplace recipe
+- Named: Ruznam Ahd (Persian: daily record + Arabic: appointment), CLI: rahd
+- 5 crates: core, store (SQLite), schedule (conflicts/free slots), ai (NL parsing), mcp
 
 ### ~~System Monitor / Task Manager~~ → **Nazar** ✓
 - **Status**: Scaffolded (`/home/macro/Repos/nazar`), 27 tests, CI/CD, marketplace recipe
 - Named: Nazar (Arabic/Persian: نظر — watchful eye)
 - 5 crates: core, api, ui (egui), ai (anomaly + prediction), mcp
 
-### Screenshot / Annotation Tool
-- User-facing tool on top of existing screen capture API
-- AI: OCR, content description, smart crop, redaction suggestions
+### ~~Screenshot / Annotation Tool~~ → **Selah** ✓
+- **Status**: Scaffolded (`/home/macro/Repos/selah`), 50 tests, CI/CD, marketplace recipe
+- Named: Selah (Hebrew: סלה — pause/capture a moment)
+- 4 crates: core, capture (daimon API), annotate (SVG overlay), ai (OCR + redaction)
 
-### Calculator / Unit Converter
-- Natural language math, unit conversion, currency conversion
-- Simple but expected on any OS
+### ~~Calculator / Unit Converter~~ → **Abaco** ✓
+- **Status**: Scaffolded (`/home/macro/Repos/abaco`), 61 tests, CI/CD, marketplace recipe
+- Named: Abaco (Italian/Spanish: abacus)
+- 4 crates: core, eval (expression parser), units (60+ units), ai (NL math)
 
 ---
 

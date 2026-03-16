@@ -1,0 +1,70 @@
+# Abaco — AI-native calculator & unit converter for AGNOS
+# Natural language math, unit conversion, currency conversion.
+# Italian/Spanish: abacus.
+#
+# Status: Development — 2026.3.16 (linux amd64 + arm64).
+# Source: https://github.com/MacCracken/abaco
+
+[package]
+name = "abaco"
+version = "2026.3.16"
+description = "Abaco — AI-native calculator & unit converter for AGNOS"
+license = "GPL-3.0"
+groups = ["desktop", "tools"]
+release = 1
+arch = "x86_64"
+
+[source]
+github_release = "MacCracken/abaco"
+release_asset = "abaco-x86_64-unknown-linux-gnu"
+
+[depends]
+runtime = [
+    "glibc",
+]
+build = [
+    "rust",
+    "gcc",
+    "make",
+    "pkgconf",
+]
+
+[marketplace]
+category = "desktop"
+runtime = "native-binary"
+publisher = "Abaco"
+tags = ["calculator", "math", "units", "conversion", "currency", "ai"]
+min_agnos_version = "2026.3.15"
+
+[marketplace.sandbox]
+seccomp_mode = "basic"
+network_access = true
+data_dir = "~/.local/share/abaco/"
+
+[[marketplace.sandbox.landlock]]
+path = "~/.local/share/abaco/"
+access = "rw"
+
+[[marketplace.sandbox.landlock]]
+path = "/tmp/abaco/"
+access = "rw"
+
+[marketplace.sandbox.network]
+# Currency rates via hoosh
+allowed = ["127.0.0.1:8088"]
+
+[build]
+pre_build = ""
+configure = ""
+make = "cargo build --release --workspace"
+check = "cargo test --workspace"
+install = """
+mkdir -p $PKG/usr/local/bin
+cp target/release/abaco $PKG/usr/local/bin/abaco
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"
