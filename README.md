@@ -109,7 +109,7 @@ Inspired by Kali Linux, AGNOS ships a curated networking toolkit pre-configured 
 
 ```bash
 # Download the latest ISO from releases
-curl -LO https://github.com/agnostos/agnos/releases/latest/download/agnos-$(uname -m).iso
+curl -LO https://github.com/MacCracken/agnosticos/releases/latest/download/agnos-$(uname -m).iso
 
 # Flash to USB (replace /dev/sdX with your USB device)
 sudo dd if=agnos-x86_64.iso of=/dev/sdX bs=4M status=progress
@@ -123,8 +123,8 @@ sudo dd if=agnos-x86_64.iso of=/dev/sdX bs=4M status=progress
 
 ```bash
 # Clone the repository
-git clone https://github.com/agnostos/agnos.git
-cd agnos
+git clone https://github.com/MacCracken/agnosticos.git
+cd agnosticos
 
 # Install build dependencies
 sudo ./scripts/install-build-deps.sh
@@ -147,17 +147,17 @@ docker run -it --privileged \
   --gpus all \
   -v /dev:/dev \
   -v agnos-data:/var/lib/agnos \
-  agnostos/agnos:latest
+  ghcr.io/maccracken/agnosticos:latest
 
 # For large LLM workloads, increase the virtual memory limit (default 8GB)
 docker run -it --privileged \
   -e AGNOS_ULIMIT_VMEM=16777216 \
-  agnostos/agnos:latest
+  ghcr.io/maccracken/agnosticos:latest
 
 # Or disable the virtual memory limit entirely
 docker run -it --privileged \
   -e AGNOS_ULIMIT_VMEM=unlimited \
-  agnostos/agnos:latest
+  ghcr.io/maccracken/agnosticos:latest
 ```
 
 **Container environment variables:**
@@ -229,7 +229,7 @@ Linux 6.6 LTS (Hardened)
 ### User Space
 
 ```
-AGNOS Userland (17 named subsystems)
+AGNOS Userland (18 named subsystems)
 ├── argonaut — init system (boot sequencing, service management)
 ├── daimon — agent orchestrator (port 8090)
 │   ├── Multi-agent IPC, sandbox, registry
@@ -248,7 +248,9 @@ AGNOS Userland (17 named subsystems)
 ├── agnova — OS installer (4 install modes)
 ├── agnosys — kernel interface (Landlock, seccomp, LUKS, TPM)
 ├── agnostik — shared types library
-└── shakti — privilege escalation
+├── shakti — privilege escalation
+├── phylax — threat detection engine (planned)
+└── vansh — voice AI shell (planned)
 ```
 
 ## Development Status
