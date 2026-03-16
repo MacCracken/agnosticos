@@ -196,6 +196,19 @@ AGNOS follows zero-trust principles:
 - **Continuous verification**: Aegis monitors agent behavior throughout lifecycle
 - **Assume breach**: Cryptographic audit chain ensures forensic capability
 
+### 11. Phylax Threat Detection (Planned — Phase 15)
+
+Phylax (`agent_runtime::phylax`) will provide native threat detection and scanning:
+
+- **YARA-compatible rule engine**: Native Rust parser for malware signature matching
+- **ML binary classifier**: ONNX model for static analysis of suspicious binaries
+- **Real-time filesystem monitoring**: fanotify-based on-access scanning
+- **Entropy analysis**: Ransomware detection via high-entropy write pattern recognition
+- **LLM-assisted triage**: Suspicious findings routed through hoosh for explanation
+- **Supply chain scanning**: Dependency analysis for `.ark` and `.agnos-agent` packages
+
+Phylax complements the existing containment model (sandbox-first) with a detection layer, closing the gap between prevention and response.
+
 ## Security Best Practices
 
 ### For Users

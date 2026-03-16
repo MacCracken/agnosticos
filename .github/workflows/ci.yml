@@ -77,24 +77,31 @@ jobs:
       run: cargo clippy --workspace -- -D warnings
       working-directory: userland
 
-  # Security scanning
+  # Security scanning — parallelized across 4 independent scan types
   security:
+    name: Security ${{ matrix.scan }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     permissions:
       actions: read
       contents: read
       security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        scan: [trivy, cargo-audit, semgrep, cargo-deny]
 
     steps:
     - uses: actions/checkout@v4
 
     - name: Setup Rust environment
+      if: matrix.scan == 'cargo-audit' || matrix.scan == 'cargo-deny'
       uses: ./.github/actions/setup-rust-env
       with:
-        cache-prefix: security
+        cache-prefix: security-${{ matrix.scan }}
 
     - name: Run Trivy vulnerability scanner
+      if: matrix.scan == 'trivy'
       uses: aquasecurity/trivy-action@master
       with:
         scan-type: 'fs'
@@ -104,18 +111,20 @@ jobs:
         severity: 'CRITICAL,HIGH'
 
     - name: Upload Trivy scan results
+      if: matrix.scan == 'trivy'
       uses: github/codeql-action/upload-sarif@v3
-      if: always()
       with:
         sarif_file: 'trivy-results.sarif'
 
     - name: Run cargo audit
+      if: matrix.scan == 'cargo-audit'
       run: |
         cargo install cargo-audit --locked
         cargo audit
       working-directory: userland
 
     - name: Run Semgrep
+      if: matrix.scan == 'semgrep'
       uses: semgrep/semgrep-action@v1
       with:
         config: >-
@@ -123,6 +132,7 @@ jobs:
           p/secrets
 
     - name: Dependency vulnerability check
+      if: matrix.scan == 'cargo-deny'
       run: |
         cargo install cargo-deny --locked
         printf '[advisories]\nversion = 2\ndb-path = "~/.cargo/advisory-db"\ndb-urls = ["https://github.com/rustsec/advisory-db"]\nyanked = "warn"\n\n[licenses]\nversion = 2\nallow = ["MIT", "Apache-2.0", "BSD-3-Clause", "GPL-3.0"]\n\n[bans]\nmultiple-versions = "warn"\nwildcards = "allow"\n\n[sources]\nunknown-registry = "warn"\nunknown-git = "warn"\n' > deny.toml
@@ -131,34 +141,22 @@ jobs:
       continue-on-error: true
 
     - name: Check for outdated dependencies
+      if: matrix.scan == 'cargo-deny'
       run: |
         cargo install cargo-outdated --locked
         cargo outdated --root-deps-only 2>/dev/null || true
       working-directory: userland
       continue-on-error: true
 
-    - name: Generate security report
-      run: |
-        mkdir -p security-reports
-        echo "# Security Scan Report - $(date -u +%Y-%m-%dT%H:%M:%SZ)" > security-reports/summary.md
-        echo "" >> security-reports/summary.md
-        echo "## Scans Performed" >> security-reports/summary.md
-        echo "- Trivy filesystem scan" >> security-reports/summary.md
-        echo "- Cargo audit (Rust dependencies)" >> security-reports/summary.md
-        echo "- Semgrep (static analysis)" >> security-reports/summary.md
-        echo "- Cargo deny (vulnerability database)" >> security-reports/summary.md
-
-    - name: Upload security report
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: security-scan-report
-        path: security-reports/
-
-  # Testing
+  # Testing — parallelized by crate
   test:
+    name: Test ${{ matrix.crate }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        crate: [agent-runtime, ai-shell, desktop-environment, llm-gateway, common-and-sys]
 
     steps:
     - uses: actions/checkout@v4
@@ -166,11 +164,46 @@ jobs:
     - name: Setup Rust environment
       uses: ./.github/actions/setup-rust-env
       with:
-        cache-prefix: test
+        cache-prefix: test-${{ matrix.crate }}
 
-    - name: Run tests
-      run: cargo test --workspace
+    - name: Run tests (agent-runtime)
+      if: matrix.crate == 'agent-runtime'
+      run: cargo test -p agent-runtime
       working-directory: userland
+
+    - name: Run tests (ai-shell)
+      if: matrix.crate == 'ai-shell'
+      run: cargo test -p ai-shell
+      working-directory: userland
+
+    - name: Run tests (desktop-environment)
+      if: matrix.crate == 'desktop-environment'
+      run: cargo test -p desktop-environment
+      working-directory: userland
+
+    - name: Run tests (llm-gateway)
+      if: matrix.crate == 'llm-gateway'
+      run: cargo test -p llm-gateway
+      working-directory: userland
+
+    - name: Run tests (agnos-common + agnos-sys)
+      if: matrix.crate == 'common-and-sys'
+      run: cargo test -p agnos-common -p agnos-sys
+      working-directory: userland
+
+  # Coverage — runs after all test jobs pass (single workspace run for accurate totals)
+  coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: test
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Rust environment
+      uses: ./.github/actions/setup-rust-env
+      with:
+        cache-prefix: coverage
 
     - name: Generate coverage report
       run: |
@@ -254,12 +287,22 @@ jobs:
     - name: Test container
       run: docker run --rm agnos:latest echo "Container build successful"
 
-  # Build .ark packages (push to main only, validates recipes end-to-end)
-  ark-build:
-    name: Build .ark packages
+  # Build .ark packages — independent packages in parallel, pgvector after postgresql
+  ark-build-independent:
+    name: Build .ark (${{ matrix.package }})
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 45
     if: github.event_name == 'push'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - package: redis
+            recipe: recipes/database/redis-7.toml
+          - package: cpython
+            recipe: recipes/python/cpython-3.12.toml
+          - package: postgresql
+            recipe: recipes/database/postgresql-17.toml
 
     steps:
     - uses: actions/checkout@v4
@@ -275,26 +318,70 @@ jobs:
           bison flex libxml2-dev libxslt1-dev libicu-dev \
           liblz4-dev libzstd-dev libsystemd-dev
 
-    - name: Build Redis .ark
-      run: ARK_SKIP_CHECK=1 ./scripts/ark-build.sh recipes/database/redis-7.toml
+    - name: Build ${{ matrix.package }} .ark
+      run: ARK_SKIP_CHECK=1 ./scripts/ark-build.sh ${{ matrix.recipe }}
 
-    - name: Build PostgreSQL .ark
-      run: ARK_SKIP_CHECK=1 ./scripts/ark-build.sh recipes/database/postgresql-17.toml
+    - name: Upload .ark artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ark-${{ matrix.package }}
+        path: dist/ark/*.ark
+        retention-days: 30
+
+  # pgvector depends on postgresql — runs after it
+  ark-build-pgvector:
+    name: Build .ark (pgvector)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: ark-build-independent
+    if: github.event_name == 'push'
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install build dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends \
+          build-essential pkg-config \
+          libicu-dev libxml2-dev libxslt1-dev \
+          liblz4-dev libzstd-dev libsystemd-dev
+
+    - name: Download PostgreSQL .ark
+      uses: actions/download-artifact@v4
+      with:
+        name: ark-postgresql
+        path: dist/ark/
 
     - name: Build pgvector .ark
       run: |
-        # Stage PostgreSQL for pgvector build
         mkdir -p /tmp/pg-stage
         tar xzf dist/ark/postgresql17-*-*.ark -C /tmp/pg-stage
         PG_CONFIG=/tmp/pg-stage/usr/bin/pg_config ARK_SKIP_CHECK=1 \
           ./scripts/ark-build.sh recipes/database/pgvector-0.8.toml
 
-    - name: Build CPython 3.12 .ark
-      run: ARK_SKIP_CHECK=1 ./scripts/ark-build.sh recipes/python/cpython-3.12.toml
+    - name: Upload .ark artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ark-pgvector
+        path: dist/ark/pgvector*.ark
+        retention-days: 30
 
-    # NOTE: Browser .ark builds (Firefox, Chromium) are too large for standard
-    # GitHub Actions runners (6+ hours, 100+ GB disk). They are built via the
-    # takumi builder container on dedicated build infrastructure.
+  # Verify all .ark packages after builds complete
+  ark-verify:
+    name: Verify .ark packages
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [ark-build-independent, ark-build-pgvector]
+    if: github.event_name == 'push'
+
+    steps:
+    - name: Download all .ark artifacts
+      uses: actions/download-artifact@v4
+      with:
+        pattern: ark-*
+        path: dist/ark/
+        merge-multiple: true
 
     - name: Verify .ark packages
       run: |
@@ -305,13 +392,6 @@ jobs:
           tar xzf "$ark" -O ./.ark-manifest.toml
           echo ""
         done
-
-    - name: Upload .ark artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: ark-packages
-        path: dist/ark/*.ark
-        retention-days: 30
 
   # License check
   license:

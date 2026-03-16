@@ -100,9 +100,72 @@ for desktop/networking/GPU stack.
 
 ---
 
-## Engineering Backlog
+## Phase 15 — Threat Detection & Scanning (Planned)
 
-### Active
+**Subsystem**: **phylax** (Greek: guardian/watchman) — `agent-runtime/src/phylax.rs`
+
+AGNOS currently excels at **containment** (sandbox-first: Landlock, seccomp, namespaces) but lacks a
+**detection** layer. Phase 15 adds native threat scanning that leverages the AI-native architecture —
+no ClamAV dependency, no external AV engine. Pure Rust + ML-powered.
+
+### 15A — Core Scanning Engine
+
+| # | Item | Status | Notes |
+|---|------|--------|-------|
+| 1 | YARA-compatible rule engine | Not started | Native Rust parser for `.yar` rules; no libyara dependency |
+| 2 | File content inspection | Not started | Magic bytes, embedded payloads, polyglot detection |
+| 3 | Signature database (`.phylax-db`) | Not started | Signed, versioned threat definitions distributed via ark |
+| 4 | On-access scanning (fanotify) | Not started | Real-time filesystem monitoring via `agnos-sys` fanotify bindings |
+| 5 | Scan API endpoints | Not started | `/v1/scan/file`, `/v1/scan/agent`, `/v1/scan/status` |
+| 6 | MCP tools | Not started | `phylax_scan`, `phylax_status`, `phylax_update`, `phylax_quarantine`, `phylax_rules` |
+| 7 | agnoshi intents | Not started | "scan this file", "check for threats", "update threat definitions" |
+
+### 15B — AI-Powered Analysis
+
+| # | Item | Status | Notes |
+|---|------|--------|-------|
+| 1 | ML binary classifier | Not started | ONNX model for static binary analysis (benign vs suspicious) |
+| 2 | LLM-assisted triage | Not started | Route suspicious findings through hoosh for natural language explanation |
+| 3 | Behavioral fingerprinting | Not started | Per-agent behavioral profiles; extends anomaly.rs baselines |
+| 4 | Entropy analysis | Not started | Detect ransomware patterns (rapid encryption, high-entropy writes) |
+| 5 | Supply chain analysis | Not started | Dependency graph scanning for known-vulnerable libs in `.ark`/`.agnos-agent` |
+
+### 15C — Response & Remediation
+
+| # | Item | Status | Notes |
+|---|------|--------|-------|
+| 1 | Enhanced quarantine | Not started | Extend aegis quarantine with content isolation + forensic snapshot |
+| 2 | Automated response policies | Not started | Configurable actions per threat level (alert/quarantine/kill/rollback) |
+| 3 | Threat intelligence feeds | Not started | Optional external feed ingestion (STIX/TAXII compatible) |
+| 4 | Scan reports & dashboard | Not started | `/v1/scan/reports`, integration with aethersafha security UI |
+| 5 | Edge-optimized scanning | Not started | Lightweight rule subset for constrained devices; fleet-wide threat propagation |
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────┐
+│  phylax — Threat Detection Engine                   │
+├──────────┬──────────┬──────────┬────────────────────┤
+│  YARA    │  ML      │  Entropy │  Behavioral        │
+│  Rules   │  Binary  │  Analysis│  Fingerprint       │
+│  Engine  │  Classif.│         │                    │
+├──────────┴──────────┴──────────┴────────────────────┤
+│  fanotify (real-time)  │  on-demand  │  periodic    │
+├────────────────────────┴────────────┴───────────────┤
+│  aegis (policy + quarantine)  │  hoosh (LLM triage) │
+└───────────────────────────────┴─────────────────────┘
+```
+
+**Key design decisions:**
+- No external AV dependency — pure Rust scanning engine
+- AI-native: ML classifier + LLM triage are first-class, not bolted on
+- Integrates with existing aegis quarantine and anomaly detection
+- Threat definitions distributed as signed ark packages
+- Edge-aware: minimal rule subset for constrained devices
+
+---
+
+## Engineering Backlog
 
 ### Active
 
@@ -211,6 +274,7 @@ for desktop/networking/GPU stack.
 | **sigil** | Trust verification | `sigil.rs` |
 | **argonaut** | Init system | `argonaut.rs` |
 | **agnova** | OS installer | `agnova.rs` |
+| **phylax** | Threat detection engine (planned) | `phylax.rs` |
 | **vansh** | Voice AI shell (planned) | TBD |
 
 ---
