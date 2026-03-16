@@ -472,6 +472,30 @@ EOF
         rm -rf /tmp/*
     "
 
+    # --- Edge-specific size reduction ---
+    if [[ $EDGE_MODE -eq 1 ]]; then
+        log_step "Minimizing rootfs for edge deployment..."
+        run_chroot "
+            # Remove docs, man pages, locale data, includes
+            rm -rf /usr/share/doc/* /usr/share/man/* /usr/share/info/*
+            rm -rf /usr/share/locale/* /usr/share/i18n/*
+            rm -rf /usr/include/*
+            rm -rf /usr/src/*
+            rm -rf /usr/games
+            # Remove __pycache__ and .pyc
+            find / -name __pycache__ -type d -exec rm -rf {} + 2>/dev/null || true
+            find / -name '*.pyc' -delete 2>/dev/null || true
+            # Remove unnecessary systemd units
+            rm -f /usr/lib/systemd/system/systemd-pcrlock* 2>/dev/null || true
+            rm -f /usr/lib/systemd/system/systemd-tpm2-setup* 2>/dev/null || true
+            rm -f /usr/lib/systemd/system/systemd-quotacheck* 2>/dev/null || true
+            rm -f /usr/lib/systemd/system/systemd-pstore* 2>/dev/null || true
+            # Strip debug symbols from shared libs
+            find /usr/lib -name '*.so*' -exec strip --strip-unneeded {} 2>/dev/null \; || true
+        "
+        log_info "  -> Edge rootfs minimized"
+    fi
+
     log_info "  -> Rootfs configured"
 }
 
@@ -636,10 +660,13 @@ CMDLINE
 apply_edge_defaults() {
     if [[ $EDGE_MODE -eq 0 ]]; then return; fi
 
-    # Edge images are much smaller — no desktop, no GPU packages
+    # Edge images are smaller — no desktop, no GPU packages
+    # But rootfs still needs ~500MB for Debian minbase + kernel + AGNOS binaries
     if [[ $IMG_SIZE_MB -eq 2048 ]]; then
-        IMG_SIZE_MB=512
+        IMG_SIZE_MB=1024
     fi
+    # Shrink boot partition — 128MB is plenty for kernel + DTBs + initrd
+    BOOT_SIZE_MB=128
     if [[ $ISO_NAME == "agnos" ]]; then
         ISO_NAME="agnos-edge"
     fi
