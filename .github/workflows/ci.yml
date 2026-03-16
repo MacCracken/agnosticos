@@ -156,7 +156,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        crate: [agent-runtime, ai-shell, desktop-environment, llm-gateway, common-and-sys]
+        crate: [agent_runtime, ai_shell, desktop_environment, llm_gateway, common-and-sys]
 
     steps:
     - uses: actions/checkout@v4
@@ -166,24 +166,24 @@ jobs:
       with:
         cache-prefix: test-${{ matrix.crate }}
 
-    - name: Run tests (agent-runtime)
-      if: matrix.crate == 'agent-runtime'
-      run: cargo test -p agent-runtime
+    - name: Run tests (agent_runtime)
+      if: matrix.crate == 'agent_runtime'
+      run: cargo test -p agent_runtime
       working-directory: userland
 
-    - name: Run tests (ai-shell)
-      if: matrix.crate == 'ai-shell'
-      run: cargo test -p ai-shell
+    - name: Run tests (ai_shell)
+      if: matrix.crate == 'ai_shell'
+      run: cargo test -p ai_shell
       working-directory: userland
 
-    - name: Run tests (desktop-environment)
-      if: matrix.crate == 'desktop-environment'
-      run: cargo test -p desktop-environment
+    - name: Run tests (desktop_environment)
+      if: matrix.crate == 'desktop_environment'
+      run: cargo test -p desktop_environment
       working-directory: userland
 
-    - name: Run tests (llm-gateway)
-      if: matrix.crate == 'llm-gateway'
-      run: cargo test -p llm-gateway
+    - name: Run tests (llm_gateway)
+      if: matrix.crate == 'llm_gateway'
+      run: cargo test -p llm_gateway
       working-directory: userland
 
     - name: Run tests (agnos-common + agnos-sys)
