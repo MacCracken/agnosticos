@@ -1018,6 +1018,77 @@ pub fn build_tool_manifest() -> McpToolManifest {
             }),
             vec!["action"]
         ),
+        // ----- Tarang media framework tools (8) -----
+        tool!(
+            "tarang_probe",
+            "Probe a media file and return format, codec, duration, and stream info",
+            json!({"path": {"type": "string", "description": "Path to media file"}}),
+            vec!["path"]
+        ),
+        tool!(
+            "tarang_analyze",
+            "AI-powered media content analysis — classify type, quality, suggest codecs",
+            json!({"path": {"type": "string", "description": "Path to media file"}}),
+            vec!["path"]
+        ),
+        tool!("tarang_codecs", "List all supported audio and video codecs with their backends"),
+        tool!(
+            "tarang_transcribe",
+            "Prepare a transcription request for audio content (routes to hoosh)",
+            json!({
+                "path": {"type": "string", "description": "Path to media file"},
+                "language": {"type": "string", "description": "Language hint (e.g. 'en', 'ja')"}
+            }),
+            vec!["path"]
+        ),
+        tool!(
+            "tarang_formats",
+            "Detect media container format from file header magic bytes",
+            json!({"path": {"type": "string", "description": "Path to media file"}}),
+            vec!["path"]
+        ),
+        tool!(
+            "tarang_fingerprint_index",
+            "Compute audio fingerprint and index in the AGNOS vector store for similarity search",
+            json!({"path": {"type": "string", "description": "Path to audio file"}}),
+            vec!["path"]
+        ),
+        tool!(
+            "tarang_search_similar",
+            "Find media files similar to a given file using audio fingerprint matching",
+            json!({
+                "path": {"type": "string", "description": "Path to reference audio file"},
+                "top_k": {"type": "integer", "description": "Number of results (default: 5)"}
+            }),
+            vec!["path"]
+        ),
+        tool!(
+            "tarang_describe",
+            "Generate a rich AI content description using LLM analysis via hoosh",
+            json!({"path": {"type": "string", "description": "Path to media file"}}),
+            vec!["path"]
+        ),
+        // ----- Jalwa media player tools (5) -----
+        tool!(
+            "jalwa_play",
+            "Play a media file in Jalwa",
+            json!({"path": {"type": "string", "description": "Path to media file"}}),
+            vec!["path"]
+        ),
+        tool!("jalwa_pause", "Pause or resume playback in Jalwa"),
+        tool!("jalwa_status", "Get current playback status from Jalwa"),
+        tool!(
+            "jalwa_search",
+            "Search the Jalwa media library",
+            json!({"query": {"type": "string", "description": "Search query"}}),
+            vec!["query"]
+        ),
+        tool!(
+            "jalwa_recommend",
+            "Get AI-powered media recommendations based on a media item",
+            json!({"item_id": {"type": "string", "description": "Media item ID for recommendations"}}),
+            vec!["item_id"]
+        ),
         // ----- Phylax threat detection tools (5) -----
         tool!(
             "phylax_scan",

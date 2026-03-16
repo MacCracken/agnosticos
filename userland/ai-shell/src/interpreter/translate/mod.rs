@@ -206,7 +206,10 @@ impl Interpreter {
             | Intent::TarangAnalyze { .. }
             | Intent::TarangCodecs
             | Intent::TarangTranscribe { .. }
-            | Intent::TarangFormats { .. } => tarang::translate_tarang(intent),
+            | Intent::TarangFormats { .. }
+            | Intent::TarangFingerprintIndex { .. }
+            | Intent::TarangSearchSimilar { .. }
+            | Intent::TarangDescribe { .. } => tarang::translate_tarang(intent),
 
             // Jalwa media player
             Intent::JalwaPlay { .. }

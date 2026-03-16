@@ -574,6 +574,18 @@ pub(crate) static PATTERNS: Lazy<HashMap<String, Regex>> = Lazy::new(|| {
         "tarang_formats",
         r"(?i)^(?:tarang\s+)?(?:detect\s+)?format\s+(.+)$",
     );
+    r(
+        "tarang_fingerprint_index",
+        r"(?i)^(?:tarang\s+)?(?:index\s+)?fingerprint\s+(.+)$",
+    );
+    r(
+        "tarang_search_similar",
+        r"(?i)^(?:tarang\s+)?(?:find\s+|search\s+)?similar(?:\s+to)?\s+(.+)$",
+    );
+    r(
+        "tarang_describe",
+        r"(?i)^(?:tarang\s+)?describe\s+(.+)$",
+    );
 
     // Jalwa media player
     r("jalwa_play", r"(?i)^(?:jalwa\s+)?play\s+(.+)$");

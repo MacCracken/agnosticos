@@ -579,6 +579,12 @@ pub enum Intent {
     },
     /// Detect media format
     TarangFormats { path: String },
+    /// Index audio fingerprint in vector store
+    TarangFingerprintIndex { path: String },
+    /// Search for similar media by fingerprint
+    TarangSearchSimilar { path: String, top_k: Option<usize> },
+    /// Generate AI content description via hoosh
+    TarangDescribe { path: String },
 
     // Jalwa media player
     /// Play a media file

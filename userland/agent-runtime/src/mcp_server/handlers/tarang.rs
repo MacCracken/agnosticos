@@ -151,3 +151,84 @@ pub(crate) async fn handle_tarang_formats(args: &serde_json::Value) -> McpToolRe
         }
     }
 }
+
+pub(crate) async fn handle_tarang_fingerprint_index(args: &serde_json::Value) -> McpToolResult {
+    let path = match extract_required_string(args, "path") {
+        Ok(p) => p,
+        Err(e) => return e,
+    };
+
+    let bridge = tarang_bridge();
+    let body = serde_json::json!({ "path": path });
+
+    match bridge.post("/api/v1/fingerprint/index", body).await {
+        Ok(response) => {
+            info!(path = %path, "Tarang: fingerprint index (bridged)");
+            success_result(response)
+        }
+        Err(e) => {
+            warn!(error = %e, "Tarang bridge: falling back to mock for fingerprint_index");
+            success_result(serde_json::json!({
+                "path": path,
+                "status": "unavailable",
+                "message": "Tarang service not reachable",
+                "_source": "mock",
+            }))
+        }
+    }
+}
+
+pub(crate) async fn handle_tarang_search_similar(args: &serde_json::Value) -> McpToolResult {
+    let path = match extract_required_string(args, "path") {
+        Ok(p) => p,
+        Err(e) => return e,
+    };
+
+    let top_k = args.get("top_k").and_then(|v| v.as_u64()).unwrap_or(5);
+    let bridge = tarang_bridge();
+    let body = serde_json::json!({ "path": path, "top_k": top_k });
+
+    match bridge.post("/api/v1/fingerprint/search", body).await {
+        Ok(response) => {
+            info!(path = %path, top_k = top_k, "Tarang: search similar (bridged)");
+            success_result(response)
+        }
+        Err(e) => {
+            warn!(error = %e, "Tarang bridge: falling back to mock for search_similar");
+            success_result(serde_json::json!({
+                "path": path,
+                "results": [],
+                "status": "unavailable",
+                "message": "Tarang service not reachable",
+                "_source": "mock",
+            }))
+        }
+    }
+}
+
+pub(crate) async fn handle_tarang_describe(args: &serde_json::Value) -> McpToolResult {
+    let path = match extract_required_string(args, "path") {
+        Ok(p) => p,
+        Err(e) => return e,
+    };
+
+    let bridge = tarang_bridge();
+    let body = serde_json::json!({ "path": path });
+
+    match bridge.post("/api/v1/describe", body).await {
+        Ok(response) => {
+            info!(path = %path, "Tarang: AI content description (bridged)");
+            success_result(response)
+        }
+        Err(e) => {
+            warn!(error = %e, "Tarang bridge: falling back to mock for describe");
+            success_result(serde_json::json!({
+                "path": path,
+                "description": null,
+                "status": "unavailable",
+                "message": "Tarang service not reachable",
+                "_source": "mock",
+            }))
+        }
+    }
+}

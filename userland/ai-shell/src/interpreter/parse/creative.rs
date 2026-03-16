@@ -426,6 +426,24 @@ pub(super) fn parse_creative(interp: &Interpreter, input_lower: &str) -> Option<
             return Some(Intent::TarangFormats { path });
         }
     }
+    if let Some(caps) = interp.try_captures("tarang_fingerprint_index", input_lower) {
+        let path = caps.get(1).map_or("", |m| m.as_str()).trim().to_string();
+        if !path.is_empty() {
+            return Some(Intent::TarangFingerprintIndex { path });
+        }
+    }
+    if let Some(caps) = interp.try_captures("tarang_search_similar", input_lower) {
+        let path = caps.get(1).map_or("", |m| m.as_str()).trim().to_string();
+        if !path.is_empty() {
+            return Some(Intent::TarangSearchSimilar { path, top_k: None });
+        }
+    }
+    if let Some(caps) = interp.try_captures("tarang_describe", input_lower) {
+        let path = caps.get(1).map_or("", |m| m.as_str()).trim().to_string();
+        if !path.is_empty() {
+            return Some(Intent::TarangDescribe { path });
+        }
+    }
 
     // --- Jalwa media player ---
     if let Some(caps) = interp.try_captures("jalwa_play", input_lower) {
