@@ -311,7 +311,10 @@ impl ScanResult {
 
     /// Count findings at the given severity.
     pub fn count_by_severity(&self, severity: ThreatSeverity) -> usize {
-        self.findings.iter().filter(|f| f.severity == severity).count()
+        self.findings
+            .iter()
+            .filter(|f| f.severity == severity)
+            .count()
     }
 }
 
@@ -548,7 +551,10 @@ impl PhylaxScanner {
         // Update stats.
         for finding in &findings {
             self.total_findings += 1;
-            *self.findings_by_severity.entry(finding.severity).or_insert(0) += 1;
+            *self
+                .findings_by_severity
+                .entry(finding.severity)
+                .or_insert(0) += 1;
             *self
                 .findings_by_category
                 .entry(finding.category.clone())
@@ -644,12 +650,7 @@ impl PhylaxScanner {
     }
 
     /// Scan an agent by ID — scans the agent's binary path.
-    pub fn scan_agent(
-        &mut self,
-        agent_id: &str,
-        binary_path: &Path,
-        mode: ScanMode,
-    ) -> ScanResult {
+    pub fn scan_agent(&mut self, agent_id: &str, binary_path: &Path, mode: ScanMode) -> ScanResult {
         let target = ScanTarget::Agent(agent_id.to_string());
         match std::fs::read(binary_path) {
             Ok(data) => self.scan_bytes(&data, target, mode),
@@ -1014,8 +1015,14 @@ mod tests {
     fn finding_category_display() {
         assert_eq!(FindingCategory::Malware.to_string(), "malware");
         assert_eq!(FindingCategory::Ransomware.to_string(), "ransomware");
-        assert_eq!(FindingCategory::EmbeddedPayload.to_string(), "embedded_payload");
-        assert_eq!(FindingCategory::BehaviorAnomaly.to_string(), "behavior_anomaly");
+        assert_eq!(
+            FindingCategory::EmbeddedPayload.to_string(),
+            "embedded_payload"
+        );
+        assert_eq!(
+            FindingCategory::BehaviorAnomaly.to_string(),
+            "behavior_anomaly"
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -1028,7 +1035,10 @@ mod tests {
             ScanTarget::File(PathBuf::from("/tmp/test")).to_string(),
             "file:/tmp/test"
         );
-        assert_eq!(ScanTarget::Agent("agent-1".into()).to_string(), "agent:agent-1");
+        assert_eq!(
+            ScanTarget::Agent("agent-1".into()).to_string(),
+            "agent:agent-1"
+        );
         assert_eq!(
             ScanTarget::Package("my-pkg".into()).to_string(),
             "package:my-pkg"
@@ -1181,7 +1191,10 @@ mod tests {
         let mut data = vec![0x7f, b'E', b'L', b'F'];
         data.extend_from_slice(&[0u8; 100]);
         let result = scanner.scan_bytes(&data, ScanTarget::Memory, ScanMode::OnDemand);
-        assert!(result.findings.iter().any(|f| f.description.contains("ELF")));
+        assert!(result
+            .findings
+            .iter()
+            .any(|f| f.description.contains("ELF")));
     }
 
     #[test]
@@ -1397,11 +1410,7 @@ mod tests {
     fn scan_bytes_updates_stats() {
         let mut scanner = default_scanner();
         scanner.add_rule(sample_rule());
-        scanner.scan_bytes(
-            b"MALWARE here",
-            ScanTarget::Memory,
-            ScanMode::OnDemand,
-        );
+        scanner.scan_bytes(b"MALWARE here", ScanTarget::Memory, ScanMode::OnDemand);
         let stats = scanner.stats();
         assert_eq!(stats.total_scans, 1);
         assert_eq!(stats.dirty_scans, 1);
@@ -1490,14 +1499,24 @@ mod tests {
             started_at: Utc::now(),
             completed_at: Utc::now(),
             findings: vec![
-                ScanFinding::new(ThreatSeverity::Low, FindingCategory::Suspicious, "low", "fix"),
+                ScanFinding::new(
+                    ThreatSeverity::Low,
+                    FindingCategory::Suspicious,
+                    "low",
+                    "fix",
+                ),
                 ScanFinding::new(
                     ThreatSeverity::Critical,
                     FindingCategory::Malware,
                     "crit",
                     "fix",
                 ),
-                ScanFinding::new(ThreatSeverity::Medium, FindingCategory::Suspicious, "med", "fix"),
+                ScanFinding::new(
+                    ThreatSeverity::Medium,
+                    FindingCategory::Suspicious,
+                    "med",
+                    "fix",
+                ),
             ],
             entropy: None,
             file_size: None,
@@ -1696,7 +1715,10 @@ mod tests {
         let data = b"/bin/sh -i >& /dev/tcp";
         let result = scanner.scan_bytes(data, ScanTarget::Memory, ScanMode::OnDemand);
         assert!(
-            result.findings.iter().any(|f| f.severity == ThreatSeverity::Critical),
+            result
+                .findings
+                .iter()
+                .any(|f| f.severity == ThreatSeverity::Critical),
             "should detect reverse shell"
         );
     }

@@ -1,0 +1,88 @@
+# Tarang — AI-native Rust media framework for AGNOS
+# Container parsing, audio decoding (pure Rust via symphonia), video decoding
+# (thin FFI: dav1d, openh264, libvpx), AI content analysis.
+# Replaces ffmpeg as the media pipeline — Rust-owned orchestration, C only for codec math.
+#
+# Status: Scaffolded — 73 tests, 5 MCP tools, 5 crates.
+
+[package]
+name = "tarang"
+version = "2026.3.16"
+description = "Tarang — AI-native Rust media framework"
+license = "GPL-3.0"
+groups = ["server", "media", "rust"]
+release = 1
+arch = "x86_64"
+
+[source]
+github_release = "MacCracken/tarang"
+release_asset = "tarang-*-linux-amd64.tar.gz"
+
+[depends]
+runtime = [
+    "glibc",
+    "openssl",
+    "zlib",
+]
+build = [
+    "rust",
+    "openssl-dev",
+    "zlib-dev",
+]
+
+[marketplace]
+category = "media-framework"
+runtime = "native-binary"
+publisher = "Tarang"
+tags = ["media", "audio", "video", "codec", "decoding", "rust", "symphonia", "ai"]
+min_agnos_version = "2026.3.16"
+
+[marketplace.sandbox]
+seccomp_mode = "desktop"
+network_access = false
+data_dir = "~/.tarang/"
+
+[[marketplace.sandbox.landlock]]
+path = "~/.tarang/"
+access = "rw"
+
+[[marketplace.sandbox.landlock]]
+path = "/tmp"
+access = "rw"
+
+# IPC with daimon + hoosh
+[[marketplace.sandbox.landlock]]
+path = "/run/agnos/"
+access = "rw"
+
+[build]
+pre_build = ""
+configure = ""
+make = "cargo build --release"
+check = "cargo test"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+mkdir -p $PKG/usr/lib/tarang/bin
+cp target/release/tarang $PKG/usr/lib/tarang/bin/tarang
+chmod +x $PKG/usr/lib/tarang/bin/tarang
+
+mkdir -p $PKG/usr/bin
+ln -sf /usr/lib/tarang/bin/tarang $PKG/usr/bin/tarang
+
+mkdir -p $PKG/usr/share/applications
+cat > $PKG/usr/share/applications/tarang.desktop << 'EOF'
+[Desktop Entry]
+Name=Tarang
+Comment=AI-native Rust media framework
+GenericName=Media Framework
+Exec=tarang probe %f
+Icon=tarang
+Terminal=true
+Type=Application
+Categories=AudioVideo;Audio;Video;
+MimeType=audio/mpeg;audio/flac;audio/ogg;audio/wav;video/mp4;video/x-matroska;video/webm;
+EOF
+"""

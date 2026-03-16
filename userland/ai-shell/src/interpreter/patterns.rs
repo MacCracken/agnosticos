@@ -534,23 +534,38 @@ pub(crate) static PATTERNS: Lazy<HashMap<String, Regex>> = Lazy::new(|| {
     // --- Phylax threat detection intents ---
     r(
         "phylax_scan",
-        r"(?i)^(?:phylax\s+)?(?:scan|check|analyze)\s+(?:file\s+|path\s+|for\s+threats\s+)?(.+?)(?:\s+(?:mode|as)\s+(on_demand|pre_install|pre_exec))?$",
+        r"(?i)^(?:phylax\s+(?:scan|check|analyze)|(?:scan|check|analyze)\s+(?:file\s+|path\s+)?(.+?)\s+for\s+threats)\s*(.+?)?\s*(?:\s+(?:mode|as)\s+(on_demand|pre_install|pre_exec))?$",
     );
     r(
         "phylax_findings",
-        r"(?i)^(?:phylax\s+)?(?:show|list|view|get)\s+(?:threat\s+|scan\s+)?findings(?:\s+(?:severity\s+)?(critical|high|medium|low))?$",
+        r"(?i)^(?:phylax\s+)?(?:show|list|view|get)\s+(?:threat\s+)?findings(?:\s+(?:severity\s+)?(critical|high|medium|low))?$",
     );
     r(
         "phylax_history",
-        r"(?i)^(?:phylax\s+)?(?:show|list|view)\s+(?:scan\s+)?history(?:\s+(?:last\s+)?(\d+))?$",
+        r"(?i)^(?:phylax\s+)?(?:show|list|view)\s+(?:threat\s+)?(?:scan\s+)?history(?:\s+(?:last\s+)?(\d+))?$",
     );
     r(
         "phylax_status",
-        r"(?i)^(?:phylax\s+)?(?:scanner|threat|detection)\s+(?:status|health|stats)$",
+        r"(?i)^(?:phylax\s+)?(?:scanner|threat\s+detection|threat\s+scanner)\s+(?:status|health|stats)$",
     );
     r(
         "phylax_rules",
-        r"(?i)^(?:phylax\s+)?(?:show|list|view)\s+(?:detection\s+|scan\s+)?rules$",
+        r"(?i)^(?:phylax\s+)?(?:show|list|view)\s+(?:detection\s+|threat\s+)?rules$",
     );
+
+    // Tarang media framework
+    r("tarang_probe", r"(?i)^(?:tarang\s+)?probe\s+(?:file\s+)?(.+)$");
+    r("tarang_analyze", r"(?i)^(?:tarang\s+)?analyze\s+(?:media\s+)?(.+)$");
+    r("tarang_codecs", r"(?i)^(?:tarang\s+)?(?:list\s+)?(?:supported\s+)?codecs$");
+    r("tarang_transcribe", r"(?i)^(?:tarang\s+)?transcribe\s+(.+?)(?:\s+(?:in|language)\s+(\w+))?$");
+    r("tarang_formats", r"(?i)^(?:tarang\s+)?(?:detect\s+)?format\s+(.+)$");
+
+    // Jalwa media player
+    r("jalwa_play", r"(?i)^(?:jalwa\s+)?play\s+(.+)$");
+    r("jalwa_pause", r"(?i)^(?:jalwa\s+)?pause(?:\s+playback)?$");
+    r("jalwa_status", r"(?i)^(?:jalwa\s+)?(?:playback\s+)?status$");
+    r("jalwa_search", r"(?i)^(?:jalwa\s+)?search\s+(?:library\s+)?(?:for\s+)?(.+)$");
+    r("jalwa_recommend", r"(?i)^(?:jalwa\s+)?recommend(?:\s+(?:like|similar(?:\s+to)?)\s+(\S+))?(?:\s+max\s+(\d+))?$");
+
     p
 });

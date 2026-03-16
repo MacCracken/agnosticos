@@ -13,6 +13,7 @@ use crate::phylax::ScanMode;
 ///
 /// Required args:
 ///   - `target`: file path to scan
+///
 /// Optional args:
 ///   - `mode`: scan mode — "on_demand" (default), "pre_install", or "pre_exec"
 pub(crate) async fn handle_phylax_scan(
@@ -29,7 +30,12 @@ pub(crate) async fn handle_phylax_scan(
         "on_demand" => ScanMode::OnDemand,
         "pre_install" => ScanMode::PreInstall,
         "pre_exec" => ScanMode::PreExec,
-        other => return error_result(format!("Invalid scan mode '{}'; expected one of: on_demand, pre_install, pre_exec", other)),
+        other => {
+            return error_result(format!(
+                "Invalid scan mode '{}'; expected one of: on_demand, pre_install, pre_exec",
+                other
+            ))
+        }
     };
 
     let path = Path::new(&target);
@@ -115,10 +121,7 @@ pub(crate) async fn handle_phylax_rules(
     let enabled_only = args
         .get("enabled_only")
         .and_then(|v| v.as_bool())
-        .or_else(|| {
-            get_optional_string_arg(args, "enabled_only")
-                .map(|s| s == "true" || s == "1")
-        })
+        .or_else(|| get_optional_string_arg(args, "enabled_only").map(|s| s == "true" || s == "1"))
         .unwrap_or(false);
 
     let scanner = state.phylax_scanner.read().await;
@@ -165,10 +168,7 @@ pub(crate) async fn handle_phylax_findings(
     let limit: usize = args
         .get("limit")
         .and_then(|v| v.as_u64())
-        .or_else(|| {
-            get_optional_string_arg(args, "limit")
-                .and_then(|s| s.parse::<u64>().ok())
-        })
+        .or_else(|| get_optional_string_arg(args, "limit").and_then(|s| s.parse::<u64>().ok()))
         .unwrap_or(50) as usize;
 
     let scanner = state.phylax_scanner.read().await;

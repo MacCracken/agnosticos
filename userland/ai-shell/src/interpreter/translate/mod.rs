@@ -7,19 +7,21 @@ mod bullshift;
 mod delta;
 mod edge;
 mod filesystem;
+mod jalwa;
 mod knowledge;
 mod marketplace;
 mod misc;
 mod mneme;
 mod network;
-mod phylax;
 mod package;
 mod photis;
+mod phylax;
 mod process;
 mod rasa;
 mod shruti;
 mod synapse;
 mod system;
+mod tarang;
 mod tazama;
 mod yeoman;
 
@@ -198,6 +200,20 @@ impl Interpreter {
             | Intent::PhylaxHistory { .. }
             | Intent::PhylaxStatus
             | Intent::PhylaxRules => phylax::translate_phylax(intent),
+
+            // Tarang media framework
+            Intent::TarangProbe { .. }
+            | Intent::TarangAnalyze { .. }
+            | Intent::TarangCodecs
+            | Intent::TarangTranscribe { .. }
+            | Intent::TarangFormats { .. } => tarang::translate_tarang(intent),
+
+            // Jalwa media player
+            Intent::JalwaPlay { .. }
+            | Intent::JalwaPause
+            | Intent::JalwaStatus
+            | Intent::JalwaSearch { .. }
+            | Intent::JalwaRecommend { .. } => jalwa::translate_jalwa(intent),
 
             // Photis Nadi
             Intent::TaskList { .. }

@@ -1,0 +1,107 @@
+# Jalwa — AI-native media player for AGNOS
+# Audio + video playback built on the Tarang media framework.
+# Pure Rust audio decoding (symphonia), AI recommendations, smart playlists,
+# library management, transcription routing via hoosh.
+#
+# Name: Jalwa (Persian: manifestation/display)
+# Status: Scaffolded — 66 tests, 5 MCP tools, 4 crates.
+
+[package]
+name = "jalwa"
+version = "2026.3.16"
+description = "Jalwa — AI-native media player"
+license = "GPL-3.0"
+groups = ["desktop", "media", "rust"]
+release = 1
+arch = "x86_64"
+
+[source]
+github_release = "MacCracken/jalwa"
+release_asset = "jalwa-*-linux-amd64.tar.gz"
+
+[depends]
+runtime = [
+    "glibc",
+    "openssl",
+    "zlib",
+    "pipewire",
+    "alsa-lib",
+]
+build = [
+    "rust",
+    "openssl-dev",
+    "zlib-dev",
+]
+
+[marketplace]
+category = "media-player"
+runtime = "native-binary"
+publisher = "Jalwa"
+tags = ["media", "audio", "video", "player", "music", "ai", "rust", "tarang"]
+min_agnos_version = "2026.3.16"
+
+[marketplace.sandbox]
+seccomp_mode = "desktop"
+network_access = false
+data_dir = "~/.jalwa/"
+
+[[marketplace.sandbox.landlock]]
+path = "~/.jalwa/"
+access = "rw"
+
+[[marketplace.sandbox.landlock]]
+path = "/tmp"
+access = "rw"
+
+# Read access to common media directories
+[[marketplace.sandbox.landlock]]
+path = "~/Music"
+access = "ro"
+
+[[marketplace.sandbox.landlock]]
+path = "~/Videos"
+access = "ro"
+
+# PipeWire audio output
+[[marketplace.sandbox.landlock]]
+path = "/run/user"
+access = "rw"
+
+# IPC with daimon + hoosh
+[[marketplace.sandbox.landlock]]
+path = "/run/agnos/"
+access = "rw"
+
+[build]
+pre_build = ""
+configure = ""
+make = "cargo build --release"
+check = "cargo test"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+mkdir -p $PKG/usr/lib/jalwa/bin
+cp target/release/jalwa $PKG/usr/lib/jalwa/bin/jalwa
+chmod +x $PKG/usr/lib/jalwa/bin/jalwa
+
+mkdir -p $PKG/usr/bin
+ln -sf /usr/lib/jalwa/bin/jalwa $PKG/usr/bin/jalwa
+
+mkdir -p $PKG/usr/share/applications
+cat > $PKG/usr/share/applications/jalwa.desktop << 'EOF'
+[Desktop Entry]
+Name=Jalwa
+Comment=AI-native media player
+GenericName=Media Player
+Exec=jalwa play %f
+Icon=jalwa
+Terminal=false
+Type=Application
+Categories=AudioVideo;Audio;Video;Player;
+MimeType=audio/mpeg;audio/flac;audio/ogg;audio/wav;audio/aac;audio/opus;video/mp4;video/x-matroska;video/webm;video/avi;
+StartupNotify=true
+StartupWMClass=jalwa
+EOF
+"""

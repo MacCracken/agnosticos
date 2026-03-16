@@ -38,6 +38,16 @@ These are built, integrated, and have marketplace recipes. Listed for reference 
 
 ## Priority 1 — Essential Desktop (needed for daily-driver OS)
 
+### Media Player — Jalwa (SCAFFOLDED)
+- **Jalwa** (Persian: manifestation/display) — `/home/macro/Repos/jalwa`
+- Audio + video playback, playlist management, library browser, smart playlists
+- Built on **tarang** — pure Rust audio (symphonia), C FFI video (dav1d/openh264/libvpx)
+- AI: Content classification, smart playlists, recommendations, transcription (via hoosh), library insights
+- Infrastructure: tarang for decode, PipeWire for output (recipe exists), Wayland for video display (aethersafha)
+- 4 crates (core, playback, ui, ai), 66 tests, 5 MCP tools, CI/CD ready
+- **Next steps**: Full tarang-audio decode pipeline, PipeWire output, SQLite library persistence, desktop UI
+- **Shared with**: Tazama (video), Shruti (audio) — all three use tarang as decode backend
+
 ### PDF / Document Suite
 - Reader, annotator, form filler, digital signatures
 - AI: OCR, summarization, translation, document Q&A, table extraction
@@ -221,11 +231,11 @@ Use the existing tool, add a marketplace recipe, optionally wrap with agnoshi in
 |------|---------|---------------|----------------|
 | Web Browser | Firefox ESR, Chromium | ✓ Done (`recipes/browser/`) | Aegis phishing, sandboxed |
 | Text Editor | Helix, Neovim | Not started | Agnoshi "edit file" intent exists |
-| Terminal | Alacritty, Foot | Not started | Agnoshi is the primary shell |
-| File Manager | Thunar, PCManFM | Not started | Could wrap with MCP tools |
+| Terminal | Foot (beta), Kitty (post-beta) | Not started | Foot is Wayland-native, minimal. Kitty needs Go 1.26+ (GPU-accelerated, richer features) |
+| File Manager | yazi (beta), Thunar (post-beta) | Not started | yazi is Rust TUI, zero GUI deps. Thunar deferred (4 Xfce libs). AI-native GUI file manager is Priority 1 long-term |
 | PDF Viewer | Zathura, Evince | Not started | Lightweight, solves 80% of PDF need |
 | Archive Manager | File-roller, Xarchiver | Not started | Basic utility |
-| Media Player | mpv, VLC | Not started | PipeWire recipes exist |
+| Media Player | mpv (via tarang) | Not started | Tarang replaces ffmpeg as media backend; mpv recipe uses tarang for decode pipeline. PipeWire recipes exist |
 | Image Viewer | imv, feh, Eye of GNOME | Not started | Selah handles screenshots |
 | Disk Utility | GParted, GNOME Disks | Not started | Partition management |
 | Bluetooth Manager | Blueman | Not started | BlueZ recipe exists |

@@ -113,8 +113,8 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 
 | # | Need | Package | Recipe | Status | Notes |
 |---|------|---------|--------|--------|-------|
-| 1 | File Manager | Thunar | `recipes/desktop/thunar.toml` | Not started | Xfce file manager, lightweight, Wayland via XWayland |
-| 2 | Terminal Emulator | Foot | `recipes/desktop/foot.toml` | Not started | Wayland-native, fast, minimal deps |
+| 1 | File Manager | yazi | `recipes/desktop/yazi.toml` | Not started | Modern Rust TUI file manager, async, rich previews, zero GUI deps. Thunar deferred (heavy Xfce dep chain) |
+| 2 | Terminal Emulator | Foot | `recipes/desktop/foot.toml` | Not started | Wayland-native, fast, minimal deps. Kitty deferred to post-beta (needs Go 1.26+) |
 | 3 | Text Editor | Helix | `recipes/desktop/helix.toml` | Not started | Modern, Rust-native, no config needed |
 | 4 | PDF Viewer | Zathura | `recipes/desktop/zathura.toml` | Not started | Lightweight, plugin-based (PDF/DJVU/PS) |
 | 5 | Image Viewer | imv | `recipes/desktop/imv.toml` | Not started | Wayland-native, fast |
@@ -122,7 +122,7 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 | 7 | Notification Daemon | mako | `recipes/desktop/mako.toml` | Not started | Wayland-native, lightweight |
 | 8 | Clipboard Manager | cliphist | `recipes/desktop/cliphist.toml` | Not started | wl-clipboard + history |
 | 9 | App Launcher | fuzzel | `recipes/desktop/fuzzel.toml` | Not started | Wayland-native dmenu/rofi alternative |
-| 10 | Archive Manager | file-roller | `recipes/desktop/file-roller.toml` | Not started | Or bsdtar CLI |
+| 10 | Archive Manager | ark CLI | — | Done | Already supported via `ark extract`/`ark compress` in daimon + libarchive in base. No GUI recipe needed |
 
 ### 16B — Input & Hardware Detection
 
@@ -258,6 +258,8 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 | 13 | Selah | 5 selah_* | — | Scaffolded | Not started | Screenshot |
 | 14 | Abaco | 5 abaco_* | — | Scaffolded | Not started | Calculator |
 | 15 | Rahd | 5 rahd_* | — | Scaffolded | Not started | Calendar |
+| 16 | Tarang | 5 tarang_* | — | Scaffolded | Not started | Media framework (73 tests) |
+| 17 | Jalwa | 5 jalwa_* | — | Scaffolded | Not started | Media player (66 tests), built on tarang. Priority 1 in os_long_term |
 
 ---
 
@@ -267,7 +269,7 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 
 | # | Priority | Item | Notes |
 |---|----------|------|-------|
-| | | | |
+| 1 | High | Go toolchain bump (1.24.1 → 1.26+) | Current `recipes/ai/go.toml` is 1.24.1. Needed for Kitty kitten tools, cliphist, and modern Go module support. Pre-req for Phase 16A (cliphist) and long-term Kitty recipe |
 
 ---
 

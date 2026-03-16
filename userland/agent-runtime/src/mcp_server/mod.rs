@@ -34,13 +34,15 @@ use handlers::agnostic::*;
 use handlers::bullshift::*;
 use handlers::delta::*;
 use handlers::edge::*;
+use handlers::jalwa::*;
 use handlers::mneme::*;
 use handlers::photis::*;
+use handlers::phylax::*;
 use handlers::rasa::*;
 use handlers::shruti::*;
 use handlers::synapse::*;
+use handlers::tarang::*;
 use handlers::tazama::*;
-use handlers::phylax::*;
 use handlers::yeoman::*;
 use helpers::error_result;
 
@@ -298,6 +300,16 @@ async fn dispatch_tool_call(
         "phylax_rules" => handle_phylax_rules(state, &call.arguments).await,
         "phylax_findings" => handle_phylax_findings(state, &call.arguments).await,
         "phylax_quarantine" => handle_phylax_quarantine(state, &call.arguments).await,
+        "tarang_probe" => handle_tarang_probe(&call.arguments).await,
+        "tarang_analyze" => handle_tarang_analyze(&call.arguments).await,
+        "tarang_codecs" => handle_tarang_codecs(&call.arguments).await,
+        "tarang_transcribe" => handle_tarang_transcribe(&call.arguments).await,
+        "tarang_formats" => handle_tarang_formats(&call.arguments).await,
+        "jalwa_play" => handle_jalwa_play(&call.arguments).await,
+        "jalwa_pause" => handle_jalwa_pause(&call.arguments).await,
+        "jalwa_status" => handle_jalwa_status(&call.arguments).await,
+        "jalwa_search" => handle_jalwa_search(&call.arguments).await,
+        "jalwa_recommend" => handle_jalwa_recommend(&call.arguments).await,
         unknown => {
             // Check external tools
             let external = state.external_mcp_tools.read().await;

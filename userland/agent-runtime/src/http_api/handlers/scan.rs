@@ -89,7 +89,12 @@ pub async fn scan_file_handler(
                 "findings_count": result.findings.len(),
                 "clean": result.clean,
             }),
-            outcome: if result.clean { "clean" } else { "findings_detected" }.to_string(),
+            outcome: if result.clean {
+                "clean"
+            } else {
+                "findings_detected"
+            }
+            .to_string(),
         })
         .await;
 
@@ -152,7 +157,12 @@ pub async fn scan_bytes_handler(
                 "findings_count": result.findings.len(),
                 "clean": result.clean,
             }),
-            outcome: if result.clean { "clean" } else { "findings_detected" }.to_string(),
+            outcome: if result.clean {
+                "clean"
+            } else {
+                "findings_detected"
+            }
+            .to_string(),
         })
         .await;
 

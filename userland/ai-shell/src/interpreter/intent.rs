@@ -565,6 +565,30 @@ pub enum Intent {
     PhylaxStatus,
     /// List phylax detection rules
     PhylaxRules,
+    // Tarang media framework
+    /// Probe a media file
+    TarangProbe { path: String },
+    /// Analyze media content with AI
+    TarangAnalyze { path: String },
+    /// List supported codecs
+    TarangCodecs,
+    /// Prepare transcription request
+    TarangTranscribe { path: String, language: Option<String> },
+    /// Detect media format
+    TarangFormats { path: String },
+
+    // Jalwa media player
+    /// Play a media file
+    JalwaPlay { path: String },
+    /// Pause playback
+    JalwaPause,
+    /// Get playback status
+    JalwaStatus,
+    /// Search media library
+    JalwaSearch { query: String },
+    /// Get AI recommendations
+    JalwaRecommend { item_id: String, max: Option<u32> },
+
     /// Piped command chain (cmd1 | cmd2)
     Pipeline { commands: Vec<String> },
     /// Question/Information request

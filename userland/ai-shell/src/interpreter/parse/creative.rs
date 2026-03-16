@@ -397,6 +397,63 @@ pub(super) fn parse_creative(interp: &Interpreter, input_lower: &str) -> Option<
         }
     }
 
+    // --- Tarang media framework ---
+    if let Some(caps) = interp.try_captures("tarang_probe", input_lower) {
+        let path = caps.get(1).map_or("", |m| m.as_str()).trim().to_string();
+        if !path.is_empty() {
+            return Some(Intent::TarangProbe { path });
+        }
+    }
+    if let Some(caps) = interp.try_captures("tarang_analyze", input_lower) {
+        let path = caps.get(1).map_or("", |m| m.as_str()).trim().to_string();
+        if !path.is_empty() {
+            return Some(Intent::TarangAnalyze { path });
+        }
+    }
+    if interp.try_captures("tarang_codecs", input_lower).is_some() {
+        return Some(Intent::TarangCodecs);
+    }
+    if let Some(caps) = interp.try_captures("tarang_transcribe", input_lower) {
+        let path = caps.get(1).map_or("", |m| m.as_str()).trim().to_string();
+        let language = caps.get(2).map(|m| m.as_str().trim().to_string());
+        if !path.is_empty() {
+            return Some(Intent::TarangTranscribe { path, language });
+        }
+    }
+    if let Some(caps) = interp.try_captures("tarang_formats", input_lower) {
+        let path = caps.get(1).map_or("", |m| m.as_str()).trim().to_string();
+        if !path.is_empty() {
+            return Some(Intent::TarangFormats { path });
+        }
+    }
+
+    // --- Jalwa media player ---
+    if let Some(caps) = interp.try_captures("jalwa_play", input_lower) {
+        let path = caps.get(1).map_or("", |m| m.as_str()).trim().to_string();
+        if !path.is_empty() {
+            return Some(Intent::JalwaPlay { path });
+        }
+    }
+    if interp.try_captures("jalwa_pause", input_lower).is_some() {
+        return Some(Intent::JalwaPause);
+    }
+    if interp.try_captures("jalwa_status", input_lower).is_some() {
+        return Some(Intent::JalwaStatus);
+    }
+    if let Some(caps) = interp.try_captures("jalwa_search", input_lower) {
+        let query = caps.get(1).map_or("", |m| m.as_str()).trim().to_string();
+        if !query.is_empty() {
+            return Some(Intent::JalwaSearch { query });
+        }
+    }
+    if let Some(caps) = interp.try_captures("jalwa_recommend", input_lower) {
+        let item_id = caps.get(1).map_or("", |m| m.as_str()).trim().to_string();
+        let max = caps.get(2).and_then(|m| m.as_str().trim().parse::<u32>().ok());
+        if !item_id.is_empty() {
+            return Some(Intent::JalwaRecommend { item_id, max });
+        }
+    }
+
     // --- Synapse LLM management intents ---
     if let Some(caps) = interp.try_captures("synapse_models", input_lower) {
         let action = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();

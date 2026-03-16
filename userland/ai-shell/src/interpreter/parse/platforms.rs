@@ -482,9 +482,16 @@ pub(super) fn parse_platforms(
 
     // --- Phylax threat detection intents ---
     if let Some(caps) = interp.try_captures("phylax_scan", input_lower) {
-        let target = caps.get(1).map_or("", |m| m.as_str()).trim().to_string();
+        // Group 1: target from "scan <target> for threats"
+        // Group 2: target from "phylax scan <target>"
+        // Group 3: mode
+        let target = caps
+            .get(1)
+            .or_else(|| caps.get(2))
+            .map(|m| m.as_str().trim().to_string())
+            .unwrap_or_default();
         let mode = caps
-            .get(2)
+            .get(3)
             .map(|m| m.as_str().trim().to_string())
             .filter(|s| !s.is_empty());
         if !target.is_empty() {
@@ -492,7 +499,10 @@ pub(super) fn parse_platforms(
         }
     }
 
-    if interp.try_captures("phylax_findings", input_lower).is_some() {
+    if interp
+        .try_captures("phylax_findings", input_lower)
+        .is_some()
+    {
         let caps = interp.try_captures("phylax_findings", input_lower).unwrap();
         let severity = caps
             .get(1)
