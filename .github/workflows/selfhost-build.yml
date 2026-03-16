@@ -4,7 +4,7 @@ name: Self-Hosting Build
 # Produces a cross-toolchain artifact that other workflows can consume.
 #
 # Runs on self-hosted runner (needs root, 20GB+ disk, 2+ hours).
-# Trigger: manual dispatch, or on push to main when recipes/scripts change.
+# Trigger: manual dispatch, or on tagged releases (v* or CalVer 20*).
 
 on:
   workflow_dispatch:
@@ -14,14 +14,7 @@ on:
         required: false
         default: '0'
   push:
-    branches: [main]
-    paths:
-      - 'scripts/bootstrap-toolchain.sh'
-      - 'scripts/ark-build.sh'
-      - 'scripts/build-selfhosting-iso.sh'
-      - 'scripts/enter-chroot.sh'
-      - 'recipes/base/**'
-      - 'kernel/config/**'
+    tags: ['20*']
 
 env:
   LFS: /tmp/agnos-selfhost

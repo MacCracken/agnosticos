@@ -3,7 +3,7 @@ name: Publish Toolchain
 # Publishes the AGNOS cross-toolchain as a GitHub release asset
 # and as a container image, so consumer projects and CI can use it.
 #
-# Trigger: manual dispatch or after successful selfhost-build.
+# Trigger: manual dispatch or after successful selfhost-build (on tagged releases).
 # Other repos fetch via:
 #   curl -fSL https://github.com/MacCracken/agnosticos/releases/download/toolchain-latest/agnos-toolchain-x86_64.tar.zst
 # Or use the container:
@@ -28,6 +28,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Download toolchain artifact
+        if: ${{ github.event.workflow_run.id }}
         uses: actions/download-artifact@v4
         with:
           name: agnos-toolchain-x86_64
@@ -129,6 +130,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Download toolchain artifact
+        if: ${{ github.event.workflow_run.id }}
         uses: actions/download-artifact@v4
         with:
           name: agnos-toolchain-x86_64

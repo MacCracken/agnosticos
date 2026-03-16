@@ -1,6 +1,8 @@
 name: Self-Hosting Validation
 
 on:
+  push:
+    tags: ['20*']
   workflow_dispatch:
     inputs:
       phase:
@@ -25,9 +27,6 @@ on:
         required: false
         default: false
         type: boolean
-  schedule:
-    # Weekly self-hosting check on Sundays at 04:00 UTC
-    - cron: '0 4 * * 0'
 
 concurrency:
   group: selfhost-${{ github.ref }}
@@ -123,9 +122,9 @@ jobs:
     name: Toolchain Validation
     runs-on: ubuntu-latest
     if: >-
+      github.event_name == 'push' ||
       github.event.inputs.phase == 'all' ||
-      github.event.inputs.phase == 'toolchain' ||
-      github.event_name == 'schedule'
+      github.event.inputs.phase == 'toolchain'
     timeout-minutes: 30
     container:
       image: debian:bookworm
@@ -174,9 +173,9 @@ jobs:
     name: Kernel Module Validation
     runs-on: ubuntu-latest
     if: >-
+      github.event_name == 'push' ||
       github.event.inputs.phase == 'all' ||
-      github.event.inputs.phase == 'kernel' ||
-      github.event_name == 'schedule'
+      github.event.inputs.phase == 'kernel'
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -212,9 +211,9 @@ jobs:
     name: Userland Build Validation
     runs-on: ubuntu-latest
     if: >-
+      github.event_name == 'push' ||
       github.event.inputs.phase == 'all' ||
-      github.event.inputs.phase == 'userland' ||
-      github.event_name == 'schedule'
+      github.event.inputs.phase == 'userland'
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
@@ -265,9 +264,9 @@ jobs:
     name: Package Build Validation
     runs-on: ubuntu-latest
     if: >-
+      github.event_name == 'push' ||
       github.event.inputs.phase == 'all' ||
-      github.event.inputs.phase == 'packages' ||
-      github.event_name == 'schedule'
+      github.event.inputs.phase == 'packages'
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
@@ -340,5 +339,5 @@ jobs:
 
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Run:** ${{ github.run_id }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Phase:** ${{ github.event.inputs.phase || 'all (scheduled)' }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Phase:** ${{ github.event.inputs.phase || 'all (tag release)' }}" >> $GITHUB_STEP_SUMMARY
           echo "**Quick:** ${{ github.event.inputs.quick || 'true' }}" >> $GITHUB_STEP_SUMMARY
