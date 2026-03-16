@@ -554,18 +554,39 @@ pub(crate) static PATTERNS: Lazy<HashMap<String, Regex>> = Lazy::new(|| {
     );
 
     // Tarang media framework
-    r("tarang_probe", r"(?i)^(?:tarang\s+)?probe\s+(?:file\s+)?(.+)$");
-    r("tarang_analyze", r"(?i)^(?:tarang\s+)?analyze\s+(?:media\s+)?(.+)$");
-    r("tarang_codecs", r"(?i)^(?:tarang\s+)?(?:list\s+)?(?:supported\s+)?codecs$");
-    r("tarang_transcribe", r"(?i)^(?:tarang\s+)?transcribe\s+(.+?)(?:\s+(?:in|language)\s+(\w+))?$");
-    r("tarang_formats", r"(?i)^(?:tarang\s+)?(?:detect\s+)?format\s+(.+)$");
+    r(
+        "tarang_probe",
+        r"(?i)^(?:tarang\s+)?probe\s+(?:file\s+)?(.+)$",
+    );
+    r(
+        "tarang_analyze",
+        r"(?i)^(?:tarang\s+)?analyze\s+(?:media\s+)?(.+)$",
+    );
+    r(
+        "tarang_codecs",
+        r"(?i)^(?:tarang\s+)?(?:list\s+)?(?:supported\s+)?codecs$",
+    );
+    r(
+        "tarang_transcribe",
+        r"(?i)^(?:tarang\s+)?transcribe\s+(.+?)(?:\s+(?:in|language)\s+(\w+))?$",
+    );
+    r(
+        "tarang_formats",
+        r"(?i)^(?:tarang\s+)?(?:detect\s+)?format\s+(.+)$",
+    );
 
     // Jalwa media player
     r("jalwa_play", r"(?i)^(?:jalwa\s+)?play\s+(.+)$");
     r("jalwa_pause", r"(?i)^(?:jalwa\s+)?pause(?:\s+playback)?$");
     r("jalwa_status", r"(?i)^(?:jalwa\s+)?(?:playback\s+)?status$");
-    r("jalwa_search", r"(?i)^(?:jalwa\s+)?search\s+(?:library\s+)?(?:for\s+)?(.+)$");
-    r("jalwa_recommend", r"(?i)^(?:jalwa\s+)?recommend(?:\s+(?:like|similar(?:\s+to)?)\s+(\S+))?(?:\s+max\s+(\d+))?$");
+    r(
+        "jalwa_search",
+        r"(?i)^(?:jalwa\s+)?search\s+(?:library\s+)?(?:for\s+)?(.+)$",
+    );
+    r(
+        "jalwa_recommend",
+        r"(?i)^(?:jalwa\s+)?recommend(?:\s+(?:like|similar(?:\s+to)?)\s+(\S+))?(?:\s+max\s+(\d+))?$",
+    );
 
     p
 });

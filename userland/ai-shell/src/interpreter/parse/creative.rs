@@ -448,7 +448,9 @@ pub(super) fn parse_creative(interp: &Interpreter, input_lower: &str) -> Option<
     }
     if let Some(caps) = interp.try_captures("jalwa_recommend", input_lower) {
         let item_id = caps.get(1).map_or("", |m| m.as_str()).trim().to_string();
-        let max = caps.get(2).and_then(|m| m.as_str().trim().parse::<u32>().ok());
+        let max = caps
+            .get(2)
+            .and_then(|m| m.as_str().trim().parse::<u32>().ok());
         if !item_id.is_empty() {
             return Some(Intent::JalwaRecommend { item_id, max });
         }

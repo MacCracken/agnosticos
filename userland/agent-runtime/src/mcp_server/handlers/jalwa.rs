@@ -1,8 +1,6 @@
 use tracing::{info, warn};
 
-use super::super::helpers::{
-    extract_required_string, get_optional_string_arg, success_result,
-};
+use super::super::helpers::{extract_required_string, get_optional_string_arg, success_result};
 use super::super::types::McpToolResult;
 use super::bridge::HttpBridge;
 

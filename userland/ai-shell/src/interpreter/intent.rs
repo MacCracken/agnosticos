@@ -573,7 +573,10 @@ pub enum Intent {
     /// List supported codecs
     TarangCodecs,
     /// Prepare transcription request
-    TarangTranscribe { path: String, language: Option<String> },
+    TarangTranscribe {
+        path: String,
+        language: Option<String>,
+    },
     /// Detect media format
     TarangFormats { path: String },
 
