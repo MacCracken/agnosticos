@@ -135,11 +135,9 @@ jobs:
 
     - name: Run Semgrep
       if: matrix.scan == 'semgrep'
-      uses: semgrep/semgrep-action@v2
-      with:
-        config: >-
-          p/security-audit
-          p/secrets
+      run: |
+        pip install semgrep
+        semgrep --config p/security-audit --config p/secrets --error
 
     - name: Dependency vulnerability check
       if: matrix.scan == 'cargo-deny'
