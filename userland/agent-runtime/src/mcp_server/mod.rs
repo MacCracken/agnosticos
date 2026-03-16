@@ -40,6 +40,7 @@ use handlers::rasa::*;
 use handlers::shruti::*;
 use handlers::synapse::*;
 use handlers::tazama::*;
+use handlers::phylax::*;
 use handlers::yeoman::*;
 use helpers::error_result;
 
@@ -292,6 +293,11 @@ async fn dispatch_tool_call(
         "photis_notes" => handle_photis_notes(&call.arguments).await,
         "edge_logs" => handle_edge_logs(state, &call.arguments).await,
         "edge_config" => handle_edge_config(state, &call.arguments).await,
+        "phylax_scan" => handle_phylax_scan(state, &call.arguments).await,
+        "phylax_status" => handle_phylax_status(state).await,
+        "phylax_rules" => handle_phylax_rules(state, &call.arguments).await,
+        "phylax_findings" => handle_phylax_findings(state, &call.arguments).await,
+        "phylax_quarantine" => handle_phylax_quarantine(state, &call.arguments).await,
         unknown => {
             // Check external tools
             let external = state.external_mcp_tools.read().await;

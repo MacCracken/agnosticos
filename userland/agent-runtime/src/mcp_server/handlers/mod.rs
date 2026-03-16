@@ -7,6 +7,7 @@ pub(crate) mod bullshift;
 pub(crate) mod delta;
 pub(crate) mod edge;
 pub(crate) mod mneme;
+pub(crate) mod phylax;
 pub(crate) mod photis;
 pub(crate) mod rasa;
 pub(crate) mod shruti;

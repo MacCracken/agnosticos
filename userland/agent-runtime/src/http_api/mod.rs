@@ -78,6 +78,7 @@ pub fn build_router(state: ApiState) -> Router {
     use handlers::reasoning::*;
     use handlers::rpc::*;
     use handlers::sandbox::*;
+    use handlers::scan::*;
     #[cfg(feature = "desktop")]
     use handlers::screen_capture::*;
     use handlers::system_update::*;
@@ -265,6 +266,12 @@ pub fn build_router(state: ApiState) -> Router {
             "/v1/sandbox/profiles/list",
             get(list_sandbox_profiles_handler),
         )
+        // Phylax threat scanning routes (Phase 15A)
+        .route("/v1/scan/file", post(scan_file_handler))
+        .route("/v1/scan/bytes", post(scan_bytes_handler))
+        .route("/v1/scan/status", get(scan_status_handler))
+        .route("/v1/scan/history", get(scan_history_handler))
+        .route("/v1/scan/rules", get(scan_rules_handler))
         // Edge fleet management routes (Phase 14E)
         .route("/v1/edge/nodes", get(edge::edge_list_nodes_handler))
         .route("/v1/edge/nodes", post(edge::edge_register_node_handler))

@@ -1018,6 +1018,42 @@ pub fn build_tool_manifest() -> McpToolManifest {
             }),
             vec!["action"]
         ),
+        // ----- Phylax threat detection tools (5) -----
+        tool!(
+            "phylax_scan",
+            "Scan a file for threats using phylax detection engine",
+            json!({
+                "target": {"type": "string", "description": "File path to scan"},
+                "mode": {"type": "string", "description": "Scan mode: on_demand, pre_install, pre_exec (default: on_demand)"}
+            }),
+            vec!["target"]
+        ),
+        tool!("phylax_status", "Get phylax threat scanner status and statistics"),
+        tool!(
+            "phylax_rules",
+            "List loaded YARA-compatible detection rules",
+            json!({
+                "enabled_only": {"type": "boolean", "description": "Only show enabled rules (default: false)"}
+            }),
+            vec![]
+        ),
+        tool!(
+            "phylax_findings",
+            "Get recent threat detection findings",
+            json!({
+                "severity": {"type": "string", "description": "Filter by severity: critical, high, medium, low"},
+                "limit": {"type": "integer", "description": "Max findings to return (default: 50)"}
+            }),
+            vec![]
+        ),
+        tool!(
+            "phylax_quarantine",
+            "Forward findings to aegis for quarantine action",
+            json!({
+                "agent_id": {"type": "string", "description": "Agent ID to check for quarantine-worthy findings"}
+            }),
+            vec!["agent_id"]
+        ),
     ];
 
     McpToolManifest { tools }

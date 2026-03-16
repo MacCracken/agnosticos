@@ -63,9 +63,10 @@ Roadmap for expanding the AGNOS application ecosystem with AI-native tools.
 - AI: Smart scheduling, conflict detection, natural language event creation
 - Required for complete desktop experience
 
-### System Monitor / Task Manager
-- Visual frontend for existing metrics APIs (`/v1/metrics`, `/v1/health`)
-- AI: Anomaly detection, resource prediction, process recommendations
+### ~~System Monitor / Task Manager~~ → **Nazar** ✓
+- **Status**: Scaffolded (`/home/macro/Repos/nazar`), 27 tests, CI/CD, marketplace recipe
+- Named: Nazar (Arabic/Persian: نظر — watchful eye)
+- 5 crates: core, api, ui (egui), ai (anomaly + prediction), mcp
 
 ### Screenshot / Annotation Tool
 - User-facing tool on top of existing screen capture API
@@ -81,5 +82,6 @@ Roadmap for expanding the AGNOS application ecosystem with AI-native tools.
 
 - All Tier 1 apps follow the proven consumer project pattern: Rust crates, 5 MCP tools, 5 agnoshi intents, marketplace recipe, `.agnos-agent` bundle
 - Names follow project convention (Swahili/Greek/Sanskrit/Japanese/Persian/Latin)
-- Tier 1 creative suite (Tazama + Chitra + Shruti) forms a coherent AI-native creative platform
+- Tier 1 creative suite (Tazama + Rasa + Shruti) forms a coherent AI-native creative platform
 - Tier 2-3 items can be community-contributed or built as needed for beta completeness
+- Nazar (system monitor) is the first Tier 3 app — separate repo, follows consumer project pattern

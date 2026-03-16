@@ -480,5 +480,41 @@ pub(super) fn parse_platforms(
         }
     }
 
+    // --- Phylax threat detection intents ---
+    if let Some(caps) = interp.try_captures("phylax_scan", input_lower) {
+        let target = caps.get(1).map_or("", |m| m.as_str()).trim().to_string();
+        let mode = caps
+            .get(2)
+            .map(|m| m.as_str().trim().to_string())
+            .filter(|s| !s.is_empty());
+        if !target.is_empty() {
+            return Some(Intent::PhylaxScan { target, mode });
+        }
+    }
+
+    if interp.try_captures("phylax_findings", input_lower).is_some() {
+        let caps = interp.try_captures("phylax_findings", input_lower).unwrap();
+        let severity = caps
+            .get(1)
+            .map(|m| m.as_str().trim().to_string())
+            .filter(|s| !s.is_empty());
+        return Some(Intent::PhylaxFindings { severity });
+    }
+
+    if let Some(caps) = interp.try_captures("phylax_history", input_lower) {
+        let limit = caps
+            .get(1)
+            .and_then(|m| m.as_str().trim().parse::<usize>().ok());
+        return Some(Intent::PhylaxHistory { limit });
+    }
+
+    if interp.try_captures("phylax_status", input_lower).is_some() {
+        return Some(Intent::PhylaxStatus);
+    }
+
+    if interp.try_captures("phylax_rules", input_lower).is_some() {
+        return Some(Intent::PhylaxRules);
+    }
+
     None
 }

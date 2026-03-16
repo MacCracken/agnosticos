@@ -531,5 +531,26 @@ pub(crate) static PATTERNS: Lazy<HashMap<String, Regex>> = Lazy::new(|| {
         "edge_config",
         r"(?i)^edge\s+(config|configuration)\s+(get|set|list|reset)(\s+(.+))?$",
     );
+    // --- Phylax threat detection intents ---
+    r(
+        "phylax_scan",
+        r"(?i)^(?:phylax\s+)?(?:scan|check|analyze)\s+(?:file\s+|path\s+|for\s+threats\s+)?(.+?)(?:\s+(?:mode|as)\s+(on_demand|pre_install|pre_exec))?$",
+    );
+    r(
+        "phylax_findings",
+        r"(?i)^(?:phylax\s+)?(?:show|list|view|get)\s+(?:threat\s+|scan\s+)?findings(?:\s+(?:severity\s+)?(critical|high|medium|low))?$",
+    );
+    r(
+        "phylax_history",
+        r"(?i)^(?:phylax\s+)?(?:show|list|view)\s+(?:scan\s+)?history(?:\s+(?:last\s+)?(\d+))?$",
+    );
+    r(
+        "phylax_status",
+        r"(?i)^(?:phylax\s+)?(?:scanner|threat|detection)\s+(?:status|health|stats)$",
+    );
+    r(
+        "phylax_rules",
+        r"(?i)^(?:phylax\s+)?(?:show|list|view)\s+(?:detection\s+|scan\s+)?rules$",
+    );
     p
 });

@@ -12,6 +12,7 @@ mod marketplace;
 mod misc;
 mod mneme;
 mod network;
+mod phylax;
 mod package;
 mod photis;
 mod process;
@@ -190,6 +191,13 @@ impl Interpreter {
             | Intent::YeomanStatus
             | Intent::YeomanLogs { .. }
             | Intent::YeomanWorkflows { .. } => yeoman::translate_yeoman(intent),
+
+            // Phylax threat detection
+            Intent::PhylaxScan { .. }
+            | Intent::PhylaxFindings { .. }
+            | Intent::PhylaxHistory { .. }
+            | Intent::PhylaxStatus
+            | Intent::PhylaxRules => phylax::translate_phylax(intent),
 
             // Photis Nadi
             Intent::TaskList { .. }

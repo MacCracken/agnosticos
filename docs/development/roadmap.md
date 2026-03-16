@@ -116,9 +116,9 @@ no ClamAV dependency, no external AV engine. Pure Rust + ML-powered.
 | 2 | File content inspection | **Done** | Magic bytes (ELF, PE, shebang), embedded payloads, polyglot detection, entropy analysis |
 | 3 | Signature database (`.phylax-db`) | Not started | Signed, versioned threat definitions distributed via ark |
 | 4 | On-access scanning (fanotify) | Not started | Real-time filesystem monitoring via `agnos-sys` fanotify bindings |
-| 5 | Scan API endpoints | Not started | `/v1/scan/file`, `/v1/scan/agent`, `/v1/scan/status` |
-| 6 | MCP tools | Not started | `phylax_scan`, `phylax_status`, `phylax_update`, `phylax_quarantine`, `phylax_rules` |
-| 7 | agnoshi intents | Not started | "scan this file", "check for threats", "update threat definitions" |
+| 5 | Scan API endpoints | **Done** | `/v1/scan/file`, `/v1/scan/bytes`, `/v1/scan/status`, `/v1/scan/history`, `/v1/scan/rules` |
+| 6 | MCP tools | **Done** | `phylax_scan`, `phylax_status`, `phylax_rules`, `phylax_findings`, `phylax_quarantine` (106 total) |
+| 7 | agnoshi intents | **Done** | "scan /path for threats", "show threat findings", "scanner status", "list rules", "scan history" |
 
 ### 15B — AI-Powered Analysis
 

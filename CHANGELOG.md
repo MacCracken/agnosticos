@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Scan modes** — On-demand, real-time (fanotify placeholder), scheduled, pre-install, pre-exec
 - **Scan targets** — File, agent, package, and in-memory scanning
 - **Aegis integration** — Configurable forwarding of findings to aegis for quarantine, with severity threshold filtering
+- **Scan API endpoints** (5): `POST /v1/scan/file`, `POST /v1/scan/bytes`, `GET /v1/scan/status`, `GET /v1/scan/history`, `GET /v1/scan/rules`
+- **MCP tools** (5): `phylax_scan`, `phylax_status`, `phylax_rules`, `phylax_findings`, `phylax_quarantine` — 106 total MCP tools
+- **Agnoshi intents** (5): `phylax_scan`, `phylax_findings`, `phylax_history`, `phylax_status`, `phylax_rules` — NL commands like "scan /tmp/file for threats", "show threat findings"
 - **65 tests** covering: YARA matching, entropy calculation, magic byte detection, rule management, scan history, stats, config, aegis integration, all built-in rules
 - **Exports**: `PhylaxScanner`, `PhylaxConfig`, `PhylaxStats`, `YaraRule`, `ScanResult`, `ScanFinding`, `ScanTarget`, `ScanMode`, `FindingCategory`, `ThreatSeverity`
 

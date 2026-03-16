@@ -13,6 +13,7 @@ pub mod rag;
 pub mod reasoning;
 pub mod rpc;
 pub mod sandbox;
+pub mod scan;
 #[cfg(feature = "desktop")]
 pub mod screen_capture;
 pub mod system_update;

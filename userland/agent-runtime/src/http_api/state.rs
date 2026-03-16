@@ -16,6 +16,7 @@ use crate::edge::{EdgeFleetConfig, EdgeFleetManager};
 use crate::ipc::RpcRegistry;
 use crate::knowledge_base::KnowledgeBase;
 use crate::learning::AnomalyDetector;
+use crate::phylax::PhylaxScanner;
 use crate::pubsub::TopicBroker;
 use crate::rag::{RagConfig, RagPipeline};
 
@@ -139,6 +140,8 @@ pub struct ApiState {
     pub rag_ingest_rate_limits: Arc<Mutex<HashMap<String, (u32, Instant)>>>,
     /// Edge fleet manager for IoT/edge node registration, health, and routing.
     pub edge_fleet: Arc<RwLock<EdgeFleetManager>>,
+    /// Phylax threat detection scanner.
+    pub phylax_scanner: Arc<RwLock<PhylaxScanner>>,
 }
 
 impl std::fmt::Debug for ApiState {
@@ -208,6 +211,7 @@ impl ApiState {
             edge_fleet: Arc::new(RwLock::new(EdgeFleetManager::new(
                 EdgeFleetConfig::default(),
             ))),
+            phylax_scanner: Arc::new(RwLock::new(PhylaxScanner::with_defaults())),
         }
     }
 
@@ -252,6 +256,7 @@ impl ApiState {
             edge_fleet: Arc::new(RwLock::new(EdgeFleetManager::new(
                 EdgeFleetConfig::default(),
             ))),
+            phylax_scanner: Arc::new(RwLock::new(PhylaxScanner::with_defaults())),
         }
     }
 

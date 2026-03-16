@@ -1,0 +1,109 @@
+# Nazar — AI-native system monitor for AGNOS
+# Real-time hardware/process monitoring with AI-powered anomaly detection.
+# Reads /proc and /sys, connects to daimon (8090) and hoosh (8088).
+#
+# Status: Released — 2026.3.16 (linux amd64 + arm64).
+# Source: https://github.com/MacCracken/nazar
+
+[package]
+name = "nazar"
+version = "2026.3.16"
+description = "Nazar — AI-native system monitor for AGNOS"
+license = "GPL-3.0"
+groups = ["system", "monitoring"]
+release = 1
+arch = "x86_64"
+
+[source]
+github_release = "MacCracken/nazar"
+release_asset = "nazar-x86_64-unknown-linux-gnu"
+
+[depends]
+runtime = [
+    "glibc",
+]
+build = [
+    "rust",
+    "gcc",
+    "make",
+    "pkgconf",
+]
+
+[marketplace]
+category = "system"
+runtime = "native-binary"
+publisher = "Nazar"
+tags = ["monitoring", "system", "performance", "hardware", "ai", "anomaly-detection"]
+min_agnos_version = "2026.3.11"
+
+[marketplace.sandbox]
+seccomp_mode = "basic"
+network_access = true
+data_dir = "~/.local/share/nazar/"
+
+[[marketplace.sandbox.landlock]]
+path = "/proc/"
+access = "ro"
+
+[[marketplace.sandbox.landlock]]
+path = "/sys/class/hwmon/"
+access = "ro"
+
+[[marketplace.sandbox.landlock]]
+path = "/sys/class/thermal/"
+access = "ro"
+
+[[marketplace.sandbox.landlock]]
+path = "/tmp/nazar/"
+access = "rw"
+
+[[marketplace.sandbox.landlock]]
+path = "~/.local/share/nazar/"
+access = "rw"
+
+[marketplace.sandbox.network]
+allowed = ["127.0.0.1:8088", "127.0.0.1:8090", "127.0.0.1:8095"]
+
+[marketplace.services]
+ports = [8095]
+depends_on = ["daimon", "hoosh"]
+
+[build]
+pre_build = ""
+configure = ""
+make = "cargo build --release --workspace"
+check = "cargo test --workspace"
+install = """
+# Install binary
+mkdir -p $PKG/usr/local/bin
+cp target/release/nazar $PKG/usr/local/bin/nazar
+
+# Create data directory
+mkdir -p $PKG/usr/share/nazar
+
+# Systemd service
+mkdir -p $PKG/usr/lib/systemd/system
+cat > $PKG/usr/lib/systemd/system/nazar.service << 'SVCEOF'
+[Unit]
+Description=Nazar System Monitor
+After=network.target
+Wants=daimon.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/nazar --serve
+Environment=RUST_LOG=info
+Environment=NAZAR_PORT=8095
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+SVCEOF
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

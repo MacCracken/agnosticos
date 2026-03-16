@@ -544,6 +544,27 @@ pub enum Intent {
         action: String,
         name: Option<String>,
     },
+    /// Scan a file or path for threats via phylax
+    PhylaxScan {
+        /// Target path to scan
+        target: String,
+        /// Scan mode: on_demand, pre_install, pre_exec
+        mode: Option<String>,
+    },
+    /// Get phylax scan findings
+    PhylaxFindings {
+        /// Filter by severity: critical, high, medium, low
+        severity: Option<String>,
+    },
+    /// View phylax scan history
+    PhylaxHistory {
+        /// Max results
+        limit: Option<usize>,
+    },
+    /// Get phylax scanner status
+    PhylaxStatus,
+    /// List phylax detection rules
+    PhylaxRules,
     /// Piped command chain (cmd1 | cmd2)
     Pipeline { commands: Vec<String> },
     /// Question/Information request
