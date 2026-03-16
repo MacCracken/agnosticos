@@ -43,7 +43,7 @@ SKIP_DEBOOTSTRAP=0
 EDGE_MODE=0
 
 # Image sizing — adjusted by profile (--edge shrinks to 512MB)
-IMG_SIZE_MB=2048
+IMG_SIZE_MB=2047
 BOOT_SIZE_MB=256    # FAT32 boot: kernel, DTBs, firmware, initrd
 # Remaining space for ext4 rootfs
 
@@ -662,7 +662,7 @@ apply_edge_defaults() {
 
     # Edge images are smaller — no desktop, no GPU packages
     # But rootfs still needs ~500MB for Debian minbase + kernel + AGNOS binaries
-    if [[ $IMG_SIZE_MB -eq 2048 ]]; then
+    if [[ $IMG_SIZE_MB -eq 2047 ]]; then
         IMG_SIZE_MB=1024
     fi
     # Shrink boot partition — 128MB is plenty for kernel + DTBs + initrd
