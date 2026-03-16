@@ -428,6 +428,49 @@ SYUNIT
         log_info "  -> Edge packages installed"
     fi
 
+    # --- Self-hosting source tree (Phase 13A) ---
+    log_step "Bundling self-hosting source tree..."
+
+    local src_root="$rootfs/usr/src/agnos"
+    mkdir -p "$src_root"
+
+    # Recipes (all categories)
+    cp -r "$REPO_DIR/recipes" "$src_root/recipes"
+
+    # Build scripts
+    mkdir -p "$src_root/scripts"
+    for script in ark-build.sh bootstrap-toolchain.sh enter-chroot.sh selfhost-validate.sh build-iso.sh; do
+        if [[ -f "$REPO_DIR/scripts/$script" ]]; then
+            cp "$REPO_DIR/scripts/$script" "$src_root/scripts/"
+            chmod +x "$src_root/scripts/$script"
+        fi
+    done
+
+    # Also install key scripts into PATH
+    install -m 755 "$REPO_DIR/scripts/ark-build.sh" "$rootfs/usr/bin/ark-build"
+    install -m 755 "$REPO_DIR/scripts/selfhost-validate.sh" "$rootfs/usr/bin/selfhost-validate"
+
+    # Kernel sources and configs
+    cp -r "$REPO_DIR/kernel" "$src_root/kernel"
+
+    # Userland source (for cargo rebuild)
+    cp -r "$REPO_DIR/userland" "$src_root/userland"
+
+    # VERSION file
+    cp "$REPO_DIR/VERSION" "$src_root/VERSION"
+
+    # Cargo.lock for reproducible builds
+    if [[ -f "$USERLAND_DIR/Cargo.lock" ]]; then
+        cp "$USERLAND_DIR/Cargo.lock" "$src_root/userland/Cargo.lock"
+    fi
+
+    # Source tarballs directory (empty — user downloads via ark-build)
+    mkdir -p "$src_root/sources"
+
+    local src_size
+    src_size=$(du -sh "$src_root" | cut -f1)
+    log_info "  -> Source tree bundled at /usr/src/agnos ($src_size)"
+
     # --- Permissions ---
     chroot "$rootfs" /usr/bin/env PATH=/usr/sbin:/usr/bin:/sbin:/bin /bin/bash -c "
         chown -R agnos:agnos /var/lib/agnos/agents 2>/dev/null || true

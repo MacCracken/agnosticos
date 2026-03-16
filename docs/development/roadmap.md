@@ -73,14 +73,33 @@ Phase 13A (self-hosting) ──→ Phase 16 (desktop recipes) ──→ Phase 13
 
 **This is the single most important remaining work.** Without it, AGNOS is a Debian overlay.
 
+### Infrastructure (Done)
+
 | # | Item | Status | Notes |
 |---|------|--------|-------|
-| 1 | Build AGNOS on AGNOS | Not started | Full bootstrap: compile GCC, Rust, kernel on the built system |
-| 2 | Kernel module build on target | Not started | Compile AGNOS kernel modules without host |
-| 3 | Userland rebuild on target | Not started | `cargo build` of agent-runtime, llm-gateway, etc. |
-| 4 | Package rebuild on target | Not started | `ark-build.sh` works inside AGNOS |
+| 1 | Bootstrap toolchain script | **Done** | `scripts/bootstrap-toolchain.sh` — LFS Ch. 5-6 cross-compiler (binutils, GCC, glibc, libstdc++) |
+| 2 | Chroot enter script | **Done** | `scripts/enter-chroot.sh` — mounts /proc /sys /dev, interactive or command mode |
+| 3 | Package build engine | **Done** | `scripts/ark-build.sh` — cross-compilation, signing, hardening, deterministic builds |
+| 4 | Selfhost validator (shell) | **Done** | `scripts/selfhost-validate.sh` — 4-phase validation (toolchain, kernel, userland, packages) |
+| 5 | Selfhost validator (Rust) | **Done** | `agent-runtime/src/selfhost.rs` — 38 tests, programmatic validation |
+| 6 | Base recipes | **Done** | 109 recipes in `recipes/base/` (GCC 15.2, Rust 1.89, Linux 6.6.72, glibc 2.42) |
+| 7 | Source tree in ISO | **Done** | `build-iso.sh` bundles `/usr/src/agnos` with recipes, scripts, userland source, kernel |
+| 8 | Multi-stage build script | **Done** | `scripts/build-selfhosting-iso.sh` — 5-stage pipeline (download → bootstrap → chroot build → userland → ISO) |
 
-**Dependencies**: Bootable ISO (verified in QEMU 2026-03-13), toolchain recipes (Phase 10 complete).
+### Validation (Remaining — requires real hardware/QEMU execution)
+
+| # | Item | Status | Notes |
+|---|------|--------|-------|
+| 1 | Run bootstrap-toolchain.sh end-to-end | Not started | Build cross-compiler from source tarballs |
+| 2 | Build base system in chroot | Not started | ark-build all 109 base recipes in order |
+| 3 | Build AGNOS userland on target | Not started | `cargo build --release --workspace` inside AGNOS |
+| 4 | Build kernel modules on target | Not started | Compile AGNOS kernel modules without host |
+| 5 | Selfhost-validate passes all phases | Not started | Run `selfhost-validate --phase all` on booted ISO |
+| 6 | CI automation | Not started | GitHub Actions: build ISO → boot QEMU → validate |
+
+**Critical path**: Download tarballs → bootstrap-toolchain.sh → enter-chroot.sh → ark-build recipes → cargo build userland → selfhost-validate
+
+**To attempt now**: `sudo LFS=/mnt/agnos ./scripts/build-selfhosting-iso.sh`
 
 ---
 
