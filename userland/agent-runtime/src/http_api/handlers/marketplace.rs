@@ -217,7 +217,7 @@ fn build_registry_client() -> Result<RegistryClient, String> {
         .unwrap_or_else(|_| crate::marketplace::remote_client::DEFAULT_REGISTRY_URL.to_string());
     let cache_dir = std::env::var("AGNOS_MARKETPLACE_CACHE")
         .map(std::path::PathBuf::from)
-        .unwrap_or_else(|_| std::env::temp_dir().join("agnos-marketplace-cache"));
+        .unwrap_or_else(|_| std::path::PathBuf::from("/run/agnos/marketplace-cache"));
     RegistryClient::new(&base_url, &cache_dir).map_err(|e| e.to_string())
 }
 
@@ -344,7 +344,7 @@ pub(crate) fn staged_install(
     keyring: Option<&crate::marketplace::trust::PublisherKeyring>,
 ) -> Result<serde_json::Value, String> {
     let staging_dir =
-        std::env::temp_dir().join(format!("agnos-marketplace-stage-{}", uuid::Uuid::new_v4()));
+        std::path::PathBuf::from(format!("/run/agnos/marketplace-stage-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&staging_dir)
         .map_err(|e| format!("Failed to create staging dir: {}", e))?;
     let staged_tarball = staging_dir.join(

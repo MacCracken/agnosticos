@@ -166,7 +166,7 @@ impl ApiState {
         .unwrap_or_else(|_| {
             // Fallback to temp dir if default path is not writable
             crate::marketplace::local_registry::LocalRegistry::new(
-                &std::env::temp_dir().join("agnos-marketplace"),
+                std::path::Path::new("/run/agnos/marketplace"),
             )
             .unwrap_or_else(|e| {
                 tracing::warn!(
