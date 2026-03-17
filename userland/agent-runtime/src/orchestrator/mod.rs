@@ -29,6 +29,7 @@ use tokio::sync::{mpsc, RwLock};
 use tracing::info;
 
 use crate::registry::AgentRegistry;
+use crate::resource::ResourceManager;
 
 pub use types::{
     AgentOrchestratorStats, OrchestratorState, QueueStats, Task, TaskPriority, TaskRequirements,
@@ -51,6 +52,8 @@ pub struct Orchestrator {
     /// Kept separate from `OrchestratorState` because it is a one-shot take
     /// used only in `start()` and would needlessly widen the hot-path lock.
     pub(crate) message_rx: Arc<RwLock<Option<mpsc::Receiver<agnos_common::Message>>>>,
+    /// Resource manager for GPU allocation/release during task lifecycle.
+    pub(crate) resource_manager: Option<Arc<ResourceManager>>,
 }
 
 impl Orchestrator {
@@ -79,7 +82,14 @@ impl Orchestrator {
             })),
             message_bus,
             message_rx: Arc::new(RwLock::new(Some(message_rx))),
+            resource_manager: None,
         }
+    }
+
+    /// Attach a resource manager for GPU-aware scheduling.
+    pub fn with_resource_manager(mut self, rm: Arc<ResourceManager>) -> Self {
+        self.resource_manager = Some(rm);
+        self
     }
 
     /// Start the orchestrator

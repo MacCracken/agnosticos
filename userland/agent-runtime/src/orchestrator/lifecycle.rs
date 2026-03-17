@@ -59,12 +59,28 @@ impl Orchestrator {
     }
 
     /// Handle task result and prune old results to prevent unbounded growth.
+    /// Also releases any GPU allocation held by the completing agent.
     pub(crate) async fn handle_result(&self, result: TaskResult) {
         let task_id = result.task_id.clone();
+        let agent_id = result.agent_id;
         info!(
             "Task {} completed by agent {}: success={}",
-            task_id, result.agent_id, result.success
+            task_id, agent_id, result.success
         );
+
+        // Release GPU allocation if resource manager is attached.
+        // We release on every completion — release_gpu is a no-op if
+        // the agent has no GPU allocation.
+        if let Some(ref rm) = self.resource_manager {
+            if let Err(e) = rm.release_gpu(agent_id).await {
+                tracing::warn!(
+                    "Failed to release GPU for agent {} after task {}: {}",
+                    agent_id,
+                    task_id,
+                    e
+                );
+            }
+        }
 
         let mut state = self.state.write().await;
         state.results.insert(task_id.clone(), result);

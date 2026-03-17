@@ -17,6 +17,12 @@ pub struct TaskRequirements {
     pub required_capabilities: Vec<String>,
     /// Preferred agent name (affinity bonus).
     pub preferred_agent: Option<String>,
+    /// Whether this task requires GPU access.
+    pub gpu_required: bool,
+    /// Minimum GPU VRAM in bytes (0 = any GPU is fine).
+    pub min_gpu_memory: u64,
+    /// Required GPU compute capability (e.g. "8.6" for NVIDIA Ampere).
+    pub required_compute_capability: Option<String>,
 }
 
 /// Task priority levels

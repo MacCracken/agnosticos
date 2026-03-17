@@ -10,7 +10,7 @@ use super::bridge::HttpBridge;
 // ---------------------------------------------------------------------------
 // Agnostic Agent System (AAS) Bridge
 // ---------------------------------------------------------------------------
-// API contract aligned with Agnostic v2026.3.16+
+// API contract aligned with Agnostic v2026.3.17-1+
 // Base: http://127.0.0.1:8000/api/v1
 // All task submission routes through crew builder internally.
 

@@ -292,7 +292,7 @@ fn test_score_agent_idle() {
     let config = AgentConfig::default();
     let requirements = TaskRequirements::default();
 
-    let score = Orchestrator::score_agent(&handle, Some(&config), &requirements, 0);
+    let score = Orchestrator::score_agent(&handle, Some(&config), &requirements, 0, &[]);
     // Idle agent with no requirements should get near-max score
     assert!(
         score > 0.8,
@@ -323,7 +323,7 @@ fn test_score_agent_with_load() {
     let config = AgentConfig::default();
     let requirements = TaskRequirements::default();
 
-    let score = Orchestrator::score_agent(&handle, Some(&config), &requirements, 5);
+    let score = Orchestrator::score_agent(&handle, Some(&config), &requirements, 5, &[]);
     // Agent at ~50% resource usage with 5 running tasks
     assert!(score > 0.0, "Score should be positive");
     assert!(score < 0.8, "Score should be lower due to load");
@@ -351,8 +351,8 @@ fn test_score_agent_affinity() {
     };
     let reqs_without = TaskRequirements::default();
 
-    let score_with = Orchestrator::score_agent(&handle, Some(&config), &reqs_with_affinity, 0);
-    let score_without = Orchestrator::score_agent(&handle, Some(&config), &reqs_without, 0);
+    let score_with = Orchestrator::score_agent(&handle, Some(&config), &reqs_with_affinity, 0, &[]);
+    let score_without = Orchestrator::score_agent(&handle, Some(&config), &reqs_without, 0, &[]);
 
     assert!(score_with > score_without, "Affinity should boost score");
 }
@@ -374,8 +374,8 @@ fn test_score_agent_fair_share() {
     let config = AgentConfig::default();
     let requirements = TaskRequirements::default();
 
-    let score_0_tasks = Orchestrator::score_agent(&handle, Some(&config), &requirements, 0);
-    let score_10_tasks = Orchestrator::score_agent(&handle, Some(&config), &requirements, 10);
+    let score_0_tasks = Orchestrator::score_agent(&handle, Some(&config), &requirements, 0, &[]);
+    let score_10_tasks = Orchestrator::score_agent(&handle, Some(&config), &requirements, 10, &[]);
 
     assert!(
         score_0_tasks > score_10_tasks,
@@ -775,7 +775,7 @@ fn test_score_agent_no_config() {
     };
 
     let requirements = TaskRequirements::default();
-    let score = Orchestrator::score_agent(&handle, None, &requirements, 0);
+    let score = Orchestrator::score_agent(&handle, None, &requirements, 0, &[]);
     // Without config we get partial capability match (0.1 instead of 0.2)
     assert!(score > 0.0);
 }
@@ -805,7 +805,7 @@ fn test_score_agent_memory_requirement_not_met() {
         ..Default::default()
     };
 
-    let score = Orchestrator::score_agent(&handle, Some(&config), &requirements, 0);
+    let score = Orchestrator::score_agent(&handle, Some(&config), &requirements, 0, &[]);
     // Memory component should be 0 since requirement not met
     // Total score should be < 0.6 (only CPU + capability)
     assert!(score < 0.7);
@@ -831,7 +831,7 @@ fn test_score_agent_memory_requirement_met() {
         ..Default::default()
     };
 
-    let score = Orchestrator::score_agent(&handle, Some(&config), &requirements, 0);
+    let score = Orchestrator::score_agent(&handle, Some(&config), &requirements, 0, &[]);
     assert!(score > 0.8);
 }
 
@@ -966,7 +966,7 @@ fn test_score_agent_with_capabilities_match() {
         ..Default::default()
     };
 
-    let score = Orchestrator::score_agent(&handle, Some(&config), &requirements, 0);
+    let score = Orchestrator::score_agent(&handle, Some(&config), &requirements, 0, &[]);
     // Should get partial capability match score
     assert!(score > 0.5);
 }
@@ -991,9 +991,9 @@ fn test_score_agent_no_capabilities_match() {
         ..Default::default()
     };
 
-    let score_with_caps = Orchestrator::score_agent(&handle, Some(&config), &requirements, 0);
+    let score_with_caps = Orchestrator::score_agent(&handle, Some(&config), &requirements, 0, &[]);
     let score_no_caps =
-        Orchestrator::score_agent(&handle, Some(&config), &TaskRequirements::default(), 0);
+        Orchestrator::score_agent(&handle, Some(&config), &TaskRequirements::default(), 0, &[]);
 
     // Without matching capabilities, the score should be lower
     assert!(score_no_caps >= score_with_caps);
@@ -1179,8 +1179,8 @@ fn test_score_agent_high_fair_share_penalty() {
     let requirements = TaskRequirements::default();
 
     // With 100 running tasks, penalty is capped at 0.1
-    let score_100 = Orchestrator::score_agent(&handle, Some(&config), &requirements, 100);
-    let score_11 = Orchestrator::score_agent(&handle, Some(&config), &requirements, 11);
+    let score_100 = Orchestrator::score_agent(&handle, Some(&config), &requirements, 100, &[]);
+    let score_11 = Orchestrator::score_agent(&handle, Some(&config), &requirements, 11, &[]);
 
     // Both should have max penalty (0.1), so scores should be equal
     assert!((score_100 - score_11).abs() < 0.001);
@@ -1325,7 +1325,7 @@ fn test_score_agent_maxed_out_resources() {
     let config = AgentConfig::default();
     let requirements = TaskRequirements::default();
 
-    let score = Orchestrator::score_agent(&handle, Some(&config), &requirements, 0);
+    let score = Orchestrator::score_agent(&handle, Some(&config), &requirements, 0, &[]);
     // Memory and CPU headroom are 0, so score should be low
     assert!(
         score < 0.3,
@@ -1354,10 +1354,10 @@ fn test_score_agent_with_preferred_mismatch() {
         ..Default::default()
     };
 
-    let score = Orchestrator::score_agent(&handle, Some(&config), &requirements, 0);
+    let score = Orchestrator::score_agent(&handle, Some(&config), &requirements, 0, &[]);
     // Should not get affinity bonus
     let score_no_pref =
-        Orchestrator::score_agent(&handle, Some(&config), &TaskRequirements::default(), 0);
+        Orchestrator::score_agent(&handle, Some(&config), &TaskRequirements::default(), 0, &[]);
     assert!((score - score_no_pref).abs() < 0.001);
 }
 
@@ -1466,7 +1466,7 @@ fn test_score_agent_no_requirements() {
         pid: None,
     };
     let reqs = TaskRequirements::default();
-    let score = Orchestrator::score_agent(&handle, None, &reqs, 0);
+    let score = Orchestrator::score_agent(&handle, None, &reqs, 0, &[]);
     // With no requirements and no config: memory=0.4, cpu=0.3, capability=0.1
     assert!(score > 0.0, "Score should be positive, got {}", score);
 }
@@ -1487,9 +1487,9 @@ fn test_score_agent_with_affinity() {
         preferred_agent: Some("preferred-agent".to_string()),
         ..Default::default()
     };
-    let score_with_affinity = Orchestrator::score_agent(&handle, None, &reqs, 0);
+    let score_with_affinity = Orchestrator::score_agent(&handle, None, &reqs, 0, &[]);
     let reqs_no_affinity = TaskRequirements::default();
-    let score_without = Orchestrator::score_agent(&handle, None, &reqs_no_affinity, 0);
+    let score_without = Orchestrator::score_agent(&handle, None, &reqs_no_affinity, 0, &[]);
     assert!(
         score_with_affinity > score_without,
         "Affinity should boost score"
@@ -1509,8 +1509,8 @@ fn test_score_agent_fair_share_penalty() {
         pid: None,
     };
     let reqs = TaskRequirements::default();
-    let score_idle = Orchestrator::score_agent(&handle, None, &reqs, 0);
-    let score_busy = Orchestrator::score_agent(&handle, None, &reqs, 5);
+    let score_idle = Orchestrator::score_agent(&handle, None, &reqs, 0, &[]);
+    let score_busy = Orchestrator::score_agent(&handle, None, &reqs, 5, &[]);
     assert!(
         score_idle > score_busy,
         "Idle agent should score higher than busy"
@@ -1547,7 +1547,7 @@ fn test_score_agent_memory_insufficient() {
         min_memory: 200 * 1024 * 1024, // needs 200MB, only 124MB available
         ..Default::default()
     };
-    let score = Orchestrator::score_agent(&handle, Some(&config), &reqs, 0);
+    let score = Orchestrator::score_agent(&handle, Some(&config), &reqs, 0, &[]);
     // Should get 0 for memory component since requirement can't be met
     // But still get points for CPU, capability
     assert!(
@@ -1947,7 +1947,7 @@ fn test_score_agent_zero_resource_usage() {
     let config = AgentConfig::default();
     let requirements = TaskRequirements::default();
 
-    let score = Orchestrator::score_agent(&handle, Some(&config), &requirements, 0);
+    let score = Orchestrator::score_agent(&handle, Some(&config), &requirements, 0, &[]);
     // Fresh agent with no usage and no tasks should get near-maximum score
     assert!(score > 0.85, "Fresh agent should score high, got {}", score);
 }
@@ -1974,13 +1974,13 @@ fn test_score_agent_with_cpu_usage() {
     let config = AgentConfig::default();
     let requirements = TaskRequirements::default();
 
-    let score = Orchestrator::score_agent(&handle, Some(&config), &requirements, 0);
+    let score = Orchestrator::score_agent(&handle, Some(&config), &requirements, 0, &[]);
     // Should be lower than a fresh agent due to CPU usage
     let fresh_handle = AgentHandle {
         resource_usage: agnos_common::ResourceUsage::default(),
         ..handle.clone()
     };
-    let fresh_score = Orchestrator::score_agent(&fresh_handle, Some(&config), &requirements, 0);
+    let fresh_score = Orchestrator::score_agent(&fresh_handle, Some(&config), &requirements, 0, &[]);
     assert!(score < fresh_score);
 }
 
@@ -2202,9 +2202,9 @@ fn test_score_agent_fair_share_capped_at_max() {
 
     // Fair share penalty: running_task_count * 0.01, capped at 0.1
     // At 10 tasks: penalty = 0.1 (capped)
-    let score_10 = Orchestrator::score_agent(&handle, Some(&config), &requirements, 10);
+    let score_10 = Orchestrator::score_agent(&handle, Some(&config), &requirements, 10, &[]);
     // At 20 tasks: penalty = 0.2 but capped at 0.1
-    let score_20 = Orchestrator::score_agent(&handle, Some(&config), &requirements, 20);
+    let score_20 = Orchestrator::score_agent(&handle, Some(&config), &requirements, 20, &[]);
     // Both should have the same penalty (0.1 cap)
     assert!((score_10 - score_20).abs() < 0.001);
 }
@@ -2579,7 +2579,7 @@ fn test_score_agent_capability_match_uses_static_str() {
         ..Default::default()
     };
 
-    let score = Orchestrator::score_agent(&handle, Some(&config), &requirements, 0);
+    let score = Orchestrator::score_agent(&handle, Some(&config), &requirements, 0, &[]);
     // Full cap match (0.2) + memory (0.4) + cpu (0.3) = 0.9
     assert!(
         (score - 0.9).abs() < 0.01,
@@ -2595,4 +2595,332 @@ fn test_score_agent_capability_match_uses_static_str() {
 #[test]
 fn test_prune_interval_ticks_is_positive() {
     assert!(Orchestrator::PRUNE_INTERVAL_TICKS > 0);
+}
+
+// ==================================================================
+// G1: GPU-aware scheduling tests
+// ==================================================================
+
+#[test]
+fn test_task_requirements_gpu_defaults() {
+    let req = TaskRequirements::default();
+    assert!(!req.gpu_required);
+    assert_eq!(req.min_gpu_memory, 0);
+    assert!(req.required_compute_capability.is_none());
+}
+
+#[test]
+fn test_task_requirements_gpu_fields() {
+    let req = TaskRequirements {
+        gpu_required: true,
+        min_gpu_memory: 8 * 1024 * 1024 * 1024,
+        required_compute_capability: Some("8.6".to_string()),
+        ..Default::default()
+    };
+    assert!(req.gpu_required);
+    assert_eq!(req.min_gpu_memory, 8 * 1024 * 1024 * 1024);
+    assert_eq!(
+        req.required_compute_capability,
+        Some("8.6".to_string())
+    );
+}
+
+#[test]
+fn test_score_agent_gpu_required_no_gpus() {
+    use crate::agent::AgentHandle;
+
+    let handle = AgentHandle {
+        id: AgentId::new(),
+        name: "no-gpu".to_string(),
+        status: agnos_common::AgentStatus::Running,
+        created_at: chrono::Utc::now(),
+        started_at: None,
+        resource_usage: agnos_common::ResourceUsage::default(),
+        pid: None,
+    };
+
+    let config = AgentConfig::default();
+    let requirements = TaskRequirements {
+        gpu_required: true,
+        min_gpu_memory: 4 * 1024 * 1024 * 1024,
+        ..Default::default()
+    };
+
+    // No GPUs available — GPU component should be 0
+    let score = Orchestrator::score_agent(&handle, Some(&config), &requirements, 0, &[]);
+    // With GPU required: weights are 0.35 mem + 0.25 cpu + 0.15 gpu + 0.15 cap
+    // GPU = 0, so max possible ≈ 0.75
+    assert!(
+        score < 0.8,
+        "Score with GPU required but no GPUs should be < 0.8, got {}",
+        score
+    );
+}
+
+#[test]
+fn test_score_agent_gpu_required_with_sufficient_gpu() {
+    use crate::agent::AgentHandle;
+    use crate::resource::GpuDevice;
+    use std::sync::atomic::AtomicU64;
+
+    let handle = AgentHandle {
+        id: AgentId::new(),
+        name: "gpu-agent".to_string(),
+        status: agnos_common::AgentStatus::Running,
+        created_at: chrono::Utc::now(),
+        started_at: None,
+        resource_usage: agnos_common::ResourceUsage::default(),
+        pid: None,
+    };
+
+    let config = AgentConfig::default();
+    let requirements = TaskRequirements {
+        gpu_required: true,
+        min_gpu_memory: 4 * 1024 * 1024 * 1024,
+        ..Default::default()
+    };
+
+    let gpus = vec![GpuDevice {
+        id: 0,
+        name: "Test GPU".to_string(),
+        total_memory: 16 * 1024 * 1024 * 1024,
+        available_memory: AtomicU64::new(16 * 1024 * 1024 * 1024),
+        compute_capability: Some("8.6".to_string()),
+    }];
+
+    let score = Orchestrator::score_agent(&handle, Some(&config), &requirements, 0, &gpus);
+    // GPU has full VRAM → GPU score ≈ 1.0 → total should be high
+    assert!(
+        score > 0.8,
+        "Score with GPU available should be high, got {}",
+        score
+    );
+}
+
+#[test]
+fn test_score_agent_gpu_required_insufficient_vram() {
+    use crate::agent::AgentHandle;
+    use crate::resource::GpuDevice;
+    use std::sync::atomic::AtomicU64;
+
+    let handle = AgentHandle {
+        id: AgentId::new(),
+        name: "low-vram".to_string(),
+        status: agnos_common::AgentStatus::Running,
+        created_at: chrono::Utc::now(),
+        started_at: None,
+        resource_usage: agnos_common::ResourceUsage::default(),
+        pid: None,
+    };
+
+    let config = AgentConfig::default();
+    let requirements = TaskRequirements {
+        gpu_required: true,
+        min_gpu_memory: 12 * 1024 * 1024 * 1024, // Needs 12 GB
+        ..Default::default()
+    };
+
+    let gpus = vec![GpuDevice {
+        id: 0,
+        name: "Small GPU".to_string(),
+        total_memory: 8 * 1024 * 1024 * 1024, // Only 8 GB
+        available_memory: AtomicU64::new(8 * 1024 * 1024 * 1024),
+        compute_capability: None,
+    }];
+
+    let score = Orchestrator::score_agent(&handle, Some(&config), &requirements, 0, &gpus);
+    // GPU can't satisfy requirement → GPU score = 0
+    assert!(
+        score < 0.8,
+        "Score with insufficient VRAM should be lower, got {}",
+        score
+    );
+}
+
+#[test]
+fn test_score_agent_gpu_compute_capability_filter() {
+    use crate::agent::AgentHandle;
+    use crate::resource::GpuDevice;
+    use std::sync::atomic::AtomicU64;
+
+    let handle = AgentHandle {
+        id: AgentId::new(),
+        name: "cc-agent".to_string(),
+        status: agnos_common::AgentStatus::Running,
+        created_at: chrono::Utc::now(),
+        started_at: None,
+        resource_usage: agnos_common::ResourceUsage::default(),
+        pid: None,
+    };
+
+    let config = AgentConfig::default();
+    let requirements = TaskRequirements {
+        gpu_required: true,
+        required_compute_capability: Some("8.0".to_string()),
+        ..Default::default()
+    };
+
+    // GPU with compute capability 7.5 — doesn't meet 8.0 requirement
+    let old_gpu = vec![GpuDevice {
+        id: 0,
+        name: "Old GPU".to_string(),
+        total_memory: 16 * 1024 * 1024 * 1024,
+        available_memory: AtomicU64::new(16 * 1024 * 1024 * 1024),
+        compute_capability: Some("7.5".to_string()),
+    }];
+
+    let score_old = Orchestrator::score_agent(&handle, Some(&config), &requirements, 0, &old_gpu);
+
+    // GPU with compute capability 8.6 — meets requirement
+    let new_gpu = vec![GpuDevice {
+        id: 0,
+        name: "New GPU".to_string(),
+        total_memory: 16 * 1024 * 1024 * 1024,
+        available_memory: AtomicU64::new(16 * 1024 * 1024 * 1024),
+        compute_capability: Some("8.6".to_string()),
+    }];
+
+    let score_new = Orchestrator::score_agent(&handle, Some(&config), &requirements, 0, &new_gpu);
+
+    assert!(
+        score_new > score_old,
+        "New GPU (cc 8.6) should score higher than old GPU (cc 7.5)"
+    );
+}
+
+#[test]
+fn test_score_agent_no_gpu_required_weights_unchanged() {
+    use crate::agent::AgentHandle;
+
+    let handle = AgentHandle {
+        id: AgentId::new(),
+        name: "cpu-only".to_string(),
+        status: agnos_common::AgentStatus::Running,
+        created_at: chrono::Utc::now(),
+        started_at: None,
+        resource_usage: agnos_common::ResourceUsage::default(),
+        pid: None,
+    };
+
+    let config = AgentConfig::default();
+    let requirements = TaskRequirements::default(); // gpu_required = false
+
+    // Without GPU requirement, weights revert to original (0.4 + 0.3 + 0.2 = 0.9 max)
+    let score = Orchestrator::score_agent(&handle, Some(&config), &requirements, 0, &[]);
+    assert!(
+        score > 0.85,
+        "Idle agent without GPU requirement should score high, got {}",
+        score
+    );
+}
+
+#[test]
+fn test_score_gpu_empty_snapshot() {
+    let requirements = TaskRequirements {
+        gpu_required: true,
+        ..Default::default()
+    };
+    let score = Orchestrator::score_gpu(&[], &requirements);
+    assert_eq!(score, 0.0);
+}
+
+#[test]
+fn test_score_gpu_full_vram_available() {
+    use crate::resource::GpuDevice;
+    use std::sync::atomic::AtomicU64;
+
+    let gpus = vec![GpuDevice {
+        id: 0,
+        name: "Full GPU".to_string(),
+        total_memory: 16 * 1024 * 1024 * 1024,
+        available_memory: AtomicU64::new(16 * 1024 * 1024 * 1024),
+        compute_capability: None,
+    }];
+
+    let requirements = TaskRequirements {
+        gpu_required: true,
+        min_gpu_memory: 4 * 1024 * 1024 * 1024,
+        ..Default::default()
+    };
+
+    let score = Orchestrator::score_gpu(&gpus, &requirements);
+    assert!(
+        (score - 1.0).abs() < 0.01,
+        "Full VRAM should score ~1.0, got {}",
+        score
+    );
+}
+
+#[test]
+fn test_score_gpu_partial_vram() {
+    use crate::resource::GpuDevice;
+    use std::sync::atomic::AtomicU64;
+
+    let total = 16 * 1024 * 1024 * 1024_u64;
+    let available = 8 * 1024 * 1024 * 1024_u64; // 50% available
+
+    let gpus = vec![GpuDevice {
+        id: 0,
+        name: "Half GPU".to_string(),
+        total_memory: total,
+        available_memory: AtomicU64::new(available),
+        compute_capability: None,
+    }];
+
+    let requirements = TaskRequirements {
+        gpu_required: true,
+        min_gpu_memory: 4 * 1024 * 1024 * 1024, // needs 4 GB, 8 GB available
+        ..Default::default()
+    };
+
+    let score = Orchestrator::score_gpu(&gpus, &requirements);
+    assert!(
+        (score - 0.5).abs() < 0.01,
+        "Half VRAM available should score ~0.5, got {}",
+        score
+    );
+}
+
+#[test]
+fn test_score_gpu_picks_best_gpu() {
+    use crate::resource::GpuDevice;
+    use std::sync::atomic::AtomicU64;
+
+    let gpus = vec![
+        GpuDevice {
+            id: 0,
+            name: "Small GPU".to_string(),
+            total_memory: 4 * 1024 * 1024 * 1024,
+            available_memory: AtomicU64::new(2 * 1024 * 1024 * 1024), // 50%
+            compute_capability: None,
+        },
+        GpuDevice {
+            id: 1,
+            name: "Big GPU".to_string(),
+            total_memory: 16 * 1024 * 1024 * 1024,
+            available_memory: AtomicU64::new(14 * 1024 * 1024 * 1024), // 87.5%
+            compute_capability: None,
+        },
+    ];
+
+    let requirements = TaskRequirements {
+        gpu_required: true,
+        ..Default::default()
+    };
+
+    let score = Orchestrator::score_gpu(&gpus, &requirements);
+    // Should pick the best ratio (87.5% from big GPU)
+    assert!(
+        score > 0.85,
+        "Should pick best GPU ratio, got {}",
+        score
+    );
+}
+
+#[test]
+fn test_orchestrator_with_resource_manager_builder() {
+    let registry = Arc::new(crate::registry::AgentRegistry::new());
+    let orchestrator = Orchestrator::new(registry);
+    assert!(orchestrator.resource_manager.is_none());
+    // with_resource_manager is tested implicitly — just verify the field exists
 }

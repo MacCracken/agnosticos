@@ -3,11 +3,13 @@
 # performance, data-engineering, devops, design, software-engineering).
 # Built with Python/CrewAI; packaged as .agnos-agent via Docker container.
 #
-# Status: Ready — 21 MCP tools, 12 agnoshi intents, A2A delegation, crew presets.
+# Status: Ready — 23 MCP tools, 14 agnoshi intents, A2A delegation, crew presets.
+# v2026.3.17-1: +list_crews (GET /crews), +cancel_crew (POST /crews/{id}/cancel),
+#   dashboard.js API path fix, MCP enabled, dark theme, branding → "Agnostic Agent System"
 
 [package]
 name = "agnostic"
-version = "2026.3.17"
+version = "2026.3.17-1"
 description = "Agnostic — Multi-domain AI agent platform with crew orchestration"
 license = "MIT"
 groups = ["server", "qa", "ai-agents", "python"]

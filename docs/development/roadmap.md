@@ -1,11 +1,11 @@
 # AGNOS Development Roadmap
 
-> **Status**: Pre-Beta | **Last Updated**: 2026-03-17
+> **Status**: Pre-Beta | **Last Updated**: 2026-03-17-1
 > **Userland complete** — 11000+ tests (3800+ agent-runtime, 1554 ai-shell), ~84% coverage, 0 warnings
 > **Recipes**: 115 base + 69 desktop + 25 AI + 9 network + 8 browser + 18 marketplace + 4 python + 3 database + 30 edge = 281 total
 > **Build order**: 176 packages in `recipes/build-order.txt` (base + desktop, dependency-ordered)
 > **Phases 10–14 complete** | **Phase 15A**: Core scanning done (phylax) | **Audit**: 16 rounds
-> **MCP Tools**: 136 built-in + external registration
+> **MCP Tools**: 138 built-in + external registration
 > **Sandbox**: 7 backends (Native, gVisor, Firecracker, WASM, SGX, SEV, Noop) + credential proxy + externalization gate
 
 ---
@@ -265,6 +265,75 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 
 ---
 
+## SecureYeoman & Agnostic Integration
+
+*Cross-project integration items for the AGNOS ecosystem.*
+
+### SecureYeoman Integration
+
+*SY's GPU-aware inference routing works standalone (probes local nvidia-smi/rocm-smi directly). These items let AGNOS expose fleet GPU data that SY can optionally consume for distributed routing.*
+
+| # | Item | Effort | Notes |
+|---|------|--------|-------|
+| 1 | GPU telemetry MCP tool | Small | Expose `agnosys` GPU detection as `agnos_gpu_status` MCP tool. Returns VRAM, utilization, temperature, driver info. SY can query edge device GPU capabilities via the existing bridge |
+| 2 | Local model inventory MCP tool | Small | `agnos_local_models` MCP tool listing models available on the AGNOS host (hoosh + Ollama). SY's local model registry can merge edge device models into its routing pool |
+| 3 | Firecracker GPU passthrough | Medium | When Firecracker sandbox runs on AGNOS with a GPU present, pass `/dev/nvidia*` devices into the microVM so sandboxed inference can use the GPU |
+| 4 | Fleet GPU heartbeat | Medium | Include GPU utilization + VRAM headroom in edge fleet heartbeat telemetry. SY aggregates across fleet for distributed inference decisions |
+
+### Agnostic Integration
+
+| # | Item | Effort | Status | Notes |
+|---|------|--------|--------|-------|
+| 1 | Crew GPU resource requirements | Small | Not started | Allow crew definitions to specify GPU requirements. Orchestrator routes to agents with matching GPU capability |
+| 2 | Agnostic crew listing from AGNOS | Small | **Done** | `agnostic_list_crews` MCP tool + `AgnosticListCrews` agnoshi intent. Status filter + pagination via `GET /crews` |
+| 3 | Agnostic crew cancellation from AGNOS | Small | **Done** | `agnostic_cancel_crew` MCP tool + `AgnosticCancelCrew` agnoshi intent. `POST /crews/{crew_id}/cancel` |
+| 4 | Agnostic crew status in AGNOS HUD | Medium | Not started | Surface active Agnostic crews in aethersafha HUD with real-time status from `GET /crews` endpoint |
+
+---
+
+## GPU Awareness
+
+**Goal**: Make GPU resources a first-class concept across the stack — from hardware detection through agent scheduling, inference routing, and fleet telemetry.
+
+**Existing infrastructure**: `resource.rs` (GPU detection for NVIDIA/AMD/Intel, allocation/release per agent), `acceleration.rs` (CUDA/ROCm/Metal accelerator types, quantization routing), NVIDIA/AMD/Intel driver recipes in 13B.
+
+### G1 — Orchestrator GPU-Aware Scheduling
+
+| # | Item | Status | Notes |
+|---|------|--------|-------|
+| 1 | GPU requirement in `TaskRequirements` | Not started | Add `gpu_required: bool` and `min_vram: u64` to `TaskRequirements`. Scoring in `orchestrator/scoring.rs` factors GPU availability |
+| 2 | GPU headroom in `score_agent` | Not started | Query `ResourceManager::list_gpus()` from scoring path. Agents with available VRAM score higher for GPU tasks |
+| 3 | GPU allocation on task dispatch | Not started | Wire `ResourceManager::allocate_gpu()` into `distribute_task()`. Release on task completion |
+
+### G2 — Hoosh Inference GPU Routing
+
+| # | Item | Status | Notes |
+|---|------|--------|-------|
+| 1 | GPU-aware model placement | Not started | Hoosh selects provider based on GPU availability. Local Ollama/llama.cpp preferred when GPU has capacity |
+| 2 | VRAM budget per model | Not started | Track VRAM consumption per loaded model. Prevent OOM by rejecting loads when VRAM budget exceeded |
+| 3 | Privacy-aware GPU routing | Not started | Route sensitive inference to local GPU when available, cloud only when privacy policy allows |
+| 4 | Quantization auto-select | Not started | Auto-select quantization level based on available VRAM (Q4 for <8GB, Q8 for <16GB, FP16 for 16GB+) |
+
+### G3 — Edge Fleet GPU Telemetry
+
+| # | Item | Status | Notes |
+|---|------|--------|-------|
+| 1 | GPU metrics in edge heartbeat | Not started | Include GPU utilization, VRAM usage, temperature in edge node heartbeat payload |
+| 2 | Fleet GPU dashboard | Not started | `/v1/edge/dashboard` aggregates GPU stats across fleet. Surface in aethersafha |
+| 3 | GPU capability routing | Not started | Edge fleet routes inference requests to nodes with matching GPU capability (CUDA compute version, VRAM) |
+| 4 | Local model registry sync | Not started | Edge nodes advertise locally-loaded models to hoosh. Smart routing offloads inference to nodes with warm models |
+
+### G4 — Consumer App GPU Integration
+
+| # | Item | Status | Notes |
+|---|------|--------|-------|
+| 1 | Crew GPU resource requirements | Not started | Agnostic crew definitions specify GPU requirements. Orchestrator routes to agents with matching GPU capability |
+| 2 | GPU capability probe MCP tool | Not started | `agnos_gpu_info` MCP tool exposes detected GPUs (vendor, VRAM, compute capability) to consumer apps |
+| 3 | Synapse training GPU allocation | Not started | Synapse fine-tuning jobs request GPU allocation via daimon. VRAM-aware batch size selection |
+| 4 | Tarang/Jalwa hardware decode | Not started | Expose VA-API/NVDEC availability to tarang for hardware-accelerated video decode on GPU-equipped nodes |
+
+---
+
 ## Engineering Backlog
 
 ### Active — Module Refactoring
@@ -276,7 +345,7 @@ Large single-file modules (>1500 lines) that should be split into module directo
 | R1 | Medium | `argonaut.rs` | 3873 | `argonaut/` → boot, services, runlevels, edge_boot, tests | Medium |
 | R2 | Medium | `agnova.rs` | 3603 | `agnova/` → partitioning, rootfs, config, validation, tests | Medium |
 | R3 | Medium | `network_tools.rs` | 3398 | `network_tools/` → nmap, nftables, dns, wifi, capture, tests | Medium |
-| R4 | **P0** | `orchestrator.rs` | 3259 | `orchestrator/` → scheduling, lifecycle, routing, state, tests | Medium |
+| R4 | ~~P0~~ | ~~`orchestrator.rs`~~ | ~~3259~~ | **Done** (2026.3.17-1) — `orchestrator/` → mod, types, lifecycle, scheduling, scoring, routing, state, tests (8 files) | — |
 | R5 | Low | `ark.rs` | 2873 | `ark/` → resolver, installer, manifest, signing, tests | Medium |
 | R6 | Low | `service_manager.rs` | 2630 | `service_manager/` → lifecycle, systemd, health, tests | Small |
 | R7 | Low | `federation.rs` | 2565 | `federation/` → discovery, sync, vector_store, gossip, tests | Medium |
@@ -284,7 +353,7 @@ Large single-file modules (>1500 lines) that should be split into module directo
 | R9 | Low | `edge.rs` | 2075 | `edge/` → fleet, ota, telemetry, routing, tests | Small |
 | R10 | Low | `safety.rs` | 2062 | `safety/` → injection, guardrails, policy, tests | Small |
 
-**Pattern to follow**: `sandbox_mod/` (completed in 2026.3.17) — 7 files consolidated from 7 standalone modules, re-exports in `mod.rs`, old files deleted.
+**Pattern to follow**: `sandbox_mod/` (completed in 2026.3.17) and `orchestrator/` (completed in 2026.3.17-1) — re-exports in `mod.rs`, old files deleted. Note: avoid naming submodules `core` (conflicts with Rust's `core` crate in rustfmt).
 
 ### Active — Build & Distribution
 
@@ -368,7 +437,7 @@ Large single-file modules (>1500 lines) that should be split into module directo
 | Desktop/AI Stack Recipes | ~62 | 79 | Complete |
 | Edge Recipes | ~30 | 30 | Complete |
 | Marketplace Recipes | 11 | 18 | Complete (11 released + 7 scaffolded) |
-| MCP Tools | — | 136 | Complete (10 agnos + 5 aequi + 21 agnostic + 7 delta + 8 photis + 5 edge + 7 shruti + 8 tarang + 8 jalwa + 9 rasa + 7 mneme + 7 synapse + 7 bullshift + 7 yeoman + 5 phylax + others) |
+| MCP Tools | — | 138 | Complete (10 agnos + 5 aequi + 23 agnostic + 7 delta + 8 photis + 5 edge + 7 shruti + 8 tarang + 8 jalwa + 9 rasa + 7 mneme + 7 synapse + 7 bullshift + 7 yeoman + 5 phylax + others) |
 | Consumer Apps | 6 | 17 | 11 released + 6 scaffolded |
 | Recipe Validation Errors | 0 | 0 | Complete |
 | Security Audit Rounds | 15 | 16 | Complete |
@@ -457,4 +526,4 @@ See [CONTRIBUTING.md](/CONTRIBUTING.md) for:
 
 ---
 
-*Last Updated: 2026-03-16 | Next Review: 2026-03-23*
+*Last Updated: 2026-03-17 | Next Review: 2026-03-24*
