@@ -358,11 +358,7 @@ impl FirecrackerBackend {
     }
 
     /// Generate a Firecracker VM configuration.
-    pub fn generate_vm_config(
-        &self,
-        vm_id: &str,
-        config: &BackendConfig,
-    ) -> serde_json::Value {
+    pub fn generate_vm_config(&self, vm_id: &str, config: &BackendConfig) -> serde_json::Value {
         let vcpu_count = ((config.cpu_quota_pct as u32) / 25).clamp(1, 4);
         let socket_path = self.work_dir.join(format!("{}.sock", vm_id));
 
@@ -729,11 +725,7 @@ impl SevBackend {
     }
 
     /// Generate QEMU command line for a SEV-SNP VM.
-    pub fn generate_qemu_config(
-        &self,
-        vm_id: &str,
-        config: &BackendConfig,
-    ) -> serde_json::Value {
+    pub fn generate_qemu_config(&self, vm_id: &str, config: &BackendConfig) -> serde_json::Value {
         let vcpus = ((config.cpu_quota_pct as u32) / 25).clamp(1, 4);
         serde_json::json!({
             "machine": "q35,confidential-guest-support=sev0,kernel-irqchip=split",
@@ -765,8 +757,7 @@ impl SevBackend {
     pub fn prepare_vm(&mut self, vm_id: &str, agent_id: &str) -> std::io::Result<PathBuf> {
         let dir = self.work_dir.join(vm_id);
         std::fs::create_dir_all(&dir)?;
-        self.active
-            .insert(vm_id.to_string(), agent_id.to_string());
+        self.active.insert(vm_id.to_string(), agent_id.to_string());
         info!(vm_id = %vm_id, "SEV: VM prepared");
         Ok(dir)
     }
@@ -847,7 +838,9 @@ mod tests {
             ..Default::default()
         };
         let spec = backend.generate_oci_spec(&["test".to_string()], &config);
-        let mem_limit = spec["linux"]["resources"]["memory"]["limit"].as_u64().unwrap();
+        let mem_limit = spec["linux"]["resources"]["memory"]["limit"]
+            .as_u64()
+            .unwrap();
         assert_eq!(mem_limit, 256 * 1024 * 1024);
     }
 
@@ -861,12 +854,16 @@ mod tests {
         };
         let spec = backend.generate_oci_spec(&["test".to_string()], &config);
         let mounts = spec["mounts"].as_array().unwrap();
-        assert!(mounts
-            .iter()
-            .any(|m| m["destination"] == "/opt/data" && m["options"].as_array().unwrap().contains(&serde_json::json!("ro"))));
-        assert!(mounts
-            .iter()
-            .any(|m| m["destination"] == "/workspace" && m["options"].as_array().unwrap().contains(&serde_json::json!("rw"))));
+        assert!(mounts.iter().any(|m| m["destination"] == "/opt/data"
+            && m["options"]
+                .as_array()
+                .unwrap()
+                .contains(&serde_json::json!("ro"))));
+        assert!(mounts.iter().any(|m| m["destination"] == "/workspace"
+            && m["options"]
+                .as_array()
+                .unwrap()
+                .contains(&serde_json::json!("rw"))));
     }
 
     #[test]
@@ -913,7 +910,10 @@ mod tests {
             ..Default::default()
         };
         let vm_config = backend.generate_vm_config("test-vm", &config);
-        assert!(vm_config["network-interfaces"].as_array().unwrap().is_empty());
+        assert!(vm_config["network-interfaces"]
+            .as_array()
+            .unwrap()
+            .is_empty());
     }
 
     #[test]
@@ -924,7 +924,10 @@ mod tests {
             ..Default::default()
         };
         let vm_config = backend.generate_vm_config("test-vm", &config);
-        assert!(!vm_config["network-interfaces"].as_array().unwrap().is_empty());
+        assert!(!vm_config["network-interfaces"]
+            .as_array()
+            .unwrap()
+            .is_empty());
     }
 
     #[test]
@@ -968,7 +971,8 @@ mod tests {
 
     #[test]
     fn test_gvisor_create_and_cleanup_bundle() {
-        let tmpdir = std::env::temp_dir().join(format!("agnos-gvisor-test-{}", uuid::Uuid::new_v4()));
+        let tmpdir =
+            std::env::temp_dir().join(format!("agnos-gvisor-test-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&tmpdir).unwrap();
 
         let mut backend = GVisorBackend {
@@ -1002,7 +1006,8 @@ mod tests {
 
     #[test]
     fn test_gvisor_cleanup_nonexistent_bundle() {
-        let tmpdir = std::env::temp_dir().join(format!("agnos-gvisor-test2-{}", uuid::Uuid::new_v4()));
+        let tmpdir =
+            std::env::temp_dir().join(format!("agnos-gvisor-test2-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&tmpdir).unwrap();
 
         let mut backend = GVisorBackend {
@@ -1037,7 +1042,9 @@ mod tests {
     fn test_gvisor_oci_spec_env_vars() {
         let backend = GVisorBackend::new();
         let mut config = BackendConfig::default();
-        config.env.insert("RUST_LOG".to_string(), "info".to_string());
+        config
+            .env
+            .insert("RUST_LOG".to_string(), "info".to_string());
         config.env.insert("HOME".to_string(), "/tmp".to_string());
         let spec = backend.generate_oci_spec(&["test".to_string()], &config);
         let env = spec["process"]["env"].as_array().unwrap();

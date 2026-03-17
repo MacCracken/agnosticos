@@ -78,15 +78,13 @@ pub struct IntegrityReport {
 /// Read the namespace inode for a process from /proc.
 fn read_namespace_inode(pid: u32, ns: &str) -> Option<u64> {
     let path = format!("/proc/{}/ns/{}", pid, ns);
-    std::fs::read_link(&path)
-        .ok()
-        .and_then(|link| {
-            // Format: "ns_type:[inode]"
-            let s = link.to_string_lossy();
-            let start = s.find('[')?;
-            let end = s.find(']')?;
-            s[start + 1..end].parse::<u64>().ok()
-        })
+    std::fs::read_link(&path).ok().and_then(|link| {
+        // Format: "ns_type:[inode]"
+        let s = link.to_string_lossy();
+        let start = s.find('[')?;
+        let end = s.find(']')?;
+        s[start + 1..end].parse::<u64>().ok()
+    })
 }
 
 /// Check if a process is in a different namespace than PID 1 (init).
@@ -371,8 +369,10 @@ impl OffenderTracker {
     /// Record a violation for an agent.
     pub fn record_violation(&mut self, agent_id: &str, violation_type: &str) {
         let now = chrono::Utc::now();
-        let record = self.records.entry(agent_id.to_string()).or_insert_with(|| {
-            OffenderRecord {
+        let record = self
+            .records
+            .entry(agent_id.to_string())
+            .or_insert_with(|| OffenderRecord {
                 agent_id: agent_id.to_string(),
                 total_violations: 0,
                 violation_types: HashMap::new(),
@@ -380,8 +380,7 @@ impl OffenderTracker {
                 last_violation: now,
                 trust_score: 1.0,
                 suspended: false,
-            }
-        });
+            });
 
         record.total_violations += 1;
         *record
@@ -389,8 +388,7 @@ impl OffenderTracker {
             .entry(violation_type.to_string())
             .or_insert(0) += 1;
         record.last_violation = now;
-        record.trust_score =
-            (record.trust_score - self.trust_decay_per_violation).max(0.0);
+        record.trust_score = (record.trust_score - self.trust_decay_per_violation).max(0.0);
 
         if record.total_violations >= self.suspension_threshold && !record.suspended {
             record.suspended = true;
@@ -610,7 +608,10 @@ mod tests {
         assert_eq!(format!("{}", CheckType::MountNamespace), "mount_namespace");
         assert_eq!(format!("{}", CheckType::NetNamespace), "net_namespace");
         assert_eq!(format!("{}", CheckType::UserNamespace), "user_namespace");
-        assert_eq!(format!("{}", CheckType::FilesystemBoundary), "filesystem_boundary");
+        assert_eq!(
+            format!("{}", CheckType::FilesystemBoundary),
+            "filesystem_boundary"
+        );
         assert_eq!(format!("{}", CheckType::ProcessTree), "process_tree");
         assert_eq!(format!("{}", CheckType::ResourceLimits), "resource_limits");
         assert_eq!(format!("{}", CheckType::SeccompActive), "seccomp_active");
@@ -638,7 +639,9 @@ mod tests {
         assert!(report.checks.len() >= 6);
 
         // The nonexistent sensitive path should pass (not accessible = good)
-        let fs_checks: Vec<_> = report.checks.iter()
+        let fs_checks: Vec<_> = report
+            .checks
+            .iter()
             .filter(|c| c.check_type == CheckType::FilesystemBoundary)
             .collect();
         assert!(!fs_checks.is_empty());

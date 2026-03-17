@@ -297,6 +297,8 @@ async fn dispatch_tool_call(
         "aequi_reports" => handle_aequi_reports(&call.arguments).await,
         "agnostic_run_crew" => handle_agnostic_run_crew(&call.arguments).await,
         "agnostic_crew_status" => handle_agnostic_crew_status(&call.arguments).await,
+        "agnostic_list_crews" => handle_agnostic_list_crews(&call.arguments).await,
+        "agnostic_cancel_crew" => handle_agnostic_cancel_crew(&call.arguments).await,
         "agnostic_list_presets" => handle_agnostic_list_presets(&call.arguments).await,
         "agnostic_list_definitions" => handle_agnostic_list_definitions(&call.arguments).await,
         "agnostic_create_agent" => handle_agnostic_create_agent(&call.arguments).await,

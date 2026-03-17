@@ -431,8 +431,7 @@ mod tests {
         let mut mgr = CredentialProxyManager::new(test_config());
         mgr.prepare_proxy("agent-1");
 
-        let (decision, creds) =
-            mgr.evaluate_request("agent-1", "GET", "api.anthropic.com", None);
+        let (decision, creds) = mgr.evaluate_request("agent-1", "GET", "api.anthropic.com", None);
         assert_eq!(decision, ProxyDecision::AllowedWithCredentials);
         let (name, _) = creds.unwrap();
         assert_eq!(name.as_str(), "x-api-key");
@@ -500,10 +499,19 @@ mod tests {
     #[test]
     fn test_proxy_decision_display() {
         assert_eq!(format!("{}", ProxyDecision::Allowed), "allowed");
-        assert_eq!(format!("{}", ProxyDecision::AllowedWithCredentials), "allowed+creds");
+        assert_eq!(
+            format!("{}", ProxyDecision::AllowedWithCredentials),
+            "allowed+creds"
+        );
         assert_eq!(format!("{}", ProxyDecision::BlockedHost), "blocked:host");
-        assert_eq!(format!("{}", ProxyDecision::BlockedPayloadSize), "blocked:payload_size");
-        assert_eq!(format!("{}", ProxyDecision::BlockedConnect), "blocked:connect");
+        assert_eq!(
+            format!("{}", ProxyDecision::BlockedPayloadSize),
+            "blocked:payload_size"
+        );
+        assert_eq!(
+            format!("{}", ProxyDecision::BlockedConnect),
+            "blocked:connect"
+        );
     }
 
     #[test]

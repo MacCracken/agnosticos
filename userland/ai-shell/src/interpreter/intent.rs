@@ -219,6 +219,10 @@ pub enum Intent {
     },
     /// Get crew run status
     AgnosticCrewStatus { crew_id: String },
+    /// List crews with optional status filter
+    AgnosticListCrews { status: Option<String> },
+    /// Cancel a running or pending crew
+    AgnosticCancelCrew { crew_id: String },
     /// List agent definitions
     AgnosticListDefinitions { domain: Option<String> },
     /// Create a new agent definition

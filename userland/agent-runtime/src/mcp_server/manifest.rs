@@ -924,7 +924,7 @@ pub fn build_tool_manifest() -> McpToolManifest {
             }),
             vec!["action"]
         ),
-        // ----- Agnostic AAS crew management tools (5) -----
+        // ----- Agnostic AAS crew management tools (7) -----
         tool!(
             "agnostic_run_crew",
             "Run an agent crew from a preset or inline definitions",
@@ -943,6 +943,22 @@ pub fn build_tool_manifest() -> McpToolManifest {
             "agnostic_crew_status",
             "Get status of a running or completed crew",
             json!({"crew_id": {"type": "string", "description": "Crew ID"}}),
+            vec!["crew_id"]
+        ),
+        tool!(
+            "agnostic_list_crews",
+            "List crews with optional status filter and pagination",
+            json!({
+                "status": {"type": "string", "description": "Filter by status: running, completed, pending, cancelled, failed"},
+                "page": {"type": "string", "description": "Page number (default: 1)"},
+                "per_page": {"type": "string", "description": "Items per page (default: 20)"}
+            }),
+            vec![]
+        ),
+        tool!(
+            "agnostic_cancel_crew",
+            "Cancel a running or pending crew",
+            json!({"crew_id": {"type": "string", "description": "Crew ID to cancel"}}),
             vec!["crew_id"]
         ),
         tool!(

@@ -12,7 +12,7 @@ use tracing::{info, warn};
 use agnos_common::{AgentConfig, AgentId, AgentStatus, Message, ResourceUsage, StopReason};
 
 use crate::ipc::AgentIpc;
-use crate::sandbox_mod::core::Sandbox;
+use crate::sandbox_mod::sandbox_core::Sandbox;
 
 /// Handle to a running agent
 #[derive(Debug, Clone)]

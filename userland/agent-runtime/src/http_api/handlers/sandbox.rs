@@ -707,9 +707,7 @@ pub async fn apply_landlock_policy_handler(
 ///
 /// Consumer apps (SY, Agnostic) call this to delegate sandbox enforcement
 /// instead of doing userspace-only isolation.
-pub async fn enforce_sandbox_handler(
-    Json(payload): Json<serde_json::Value>,
-) -> impl IntoResponse {
+pub async fn enforce_sandbox_handler(Json(payload): Json<serde_json::Value>) -> impl IntoResponse {
     let agent_id = payload
         .get("agent_id")
         .and_then(|v| v.as_str())
@@ -762,13 +760,9 @@ pub async fn scan_egress_handler(Json(payload): Json<serde_json::Value>) -> impl
         .get("agent_id")
         .and_then(|v| v.as_str())
         .unwrap_or("unknown");
-    let data = payload
-        .get("data")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+    let data = payload.get("data").and_then(|v| v.as_str()).unwrap_or("");
 
-    let mut gate =
-        crate::sandbox_mod::egress_gate::ExternalizationGate::new(Default::default());
+    let mut gate = crate::sandbox_mod::egress_gate::ExternalizationGate::new(Default::default());
     let decision = gate.scan(data.as_bytes(), agent_id);
 
     let status = if decision.allowed {

@@ -101,6 +101,21 @@ pub(super) fn parse_platforms(
         }
     }
 
+    if let Some(caps) = interp.try_captures("agnostic_list_crews", input_lower) {
+        let status = caps
+            .get(3)
+            .map(|m| m.as_str().trim().to_string())
+            .filter(|s| !s.is_empty());
+        return Some(Intent::AgnosticListCrews { status });
+    }
+
+    if let Some(caps) = interp.try_captures("agnostic_cancel_crew", input_lower) {
+        let crew_id = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();
+        if !crew_id.is_empty() {
+            return Some(Intent::AgnosticCancelCrew { crew_id });
+        }
+    }
+
     if let Some(caps) = interp.try_captures("agnostic_list_presets", input_lower) {
         let domain = caps
             .get(3)

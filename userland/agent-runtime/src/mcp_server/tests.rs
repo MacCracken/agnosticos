@@ -66,7 +66,7 @@ async fn test_tools_manifest_endpoint() {
         .await
         .unwrap();
     let manifest: McpToolManifest = serde_json::from_slice(&body).unwrap();
-    assert_eq!(manifest.tools.len(), 136);
+    assert_eq!(manifest.tools.len(), 138);
 }
 
 #[tokio::test]
@@ -389,7 +389,7 @@ async fn test_mcp_result_serialization() {
 #[tokio::test]
 async fn test_manifest_contains_all_tools() {
     let manifest = build_tool_manifest();
-    assert_eq!(manifest.tools.len(), 136);
+    assert_eq!(manifest.tools.len(), 138);
     let names: Vec<&str> = manifest.tools.iter().map(|t| t.name.as_str()).collect();
     for expected in &[
         "agnos_health",
@@ -428,6 +428,13 @@ async fn test_manifest_contains_all_tools() {
         "agnostic_a2a_status",
         "agnostic_a2a_heartbeat",
         "agnostic_agent_status",
+        "agnostic_run_crew",
+        "agnostic_crew_status",
+        "agnostic_list_crews",
+        "agnostic_cancel_crew",
+        "agnostic_list_presets",
+        "agnostic_list_definitions",
+        "agnostic_create_agent",
         "delta_create_repository",
         "delta_list_repositories",
         "delta_pull_request",
@@ -512,6 +519,8 @@ async fn test_manifest_contains_all_tools() {
         "agnostic_a2a_heartbeat",
         "agnostic_run_crew",
         "agnostic_crew_status",
+        "agnostic_list_crews",
+        "agnostic_cancel_crew",
         "agnostic_list_presets",
         "agnostic_list_definitions",
         "agnostic_create_agent",

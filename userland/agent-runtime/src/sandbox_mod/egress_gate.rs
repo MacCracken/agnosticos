@@ -214,11 +214,7 @@ impl ExternalizationGate {
         let compiled: Vec<_> = all_patterns
             .into_iter()
             .filter(|p| !config.ignored_categories.contains(&p.category))
-            .filter_map(|p| {
-                regex::Regex::new(&p.pattern)
-                    .ok()
-                    .map(|r| (p, r))
-            })
+            .filter_map(|p| regex::Regex::new(&p.pattern).ok().map(|r| (p, r)))
             .collect();
 
         Self {
@@ -244,7 +240,11 @@ impl ExternalizationGate {
                     category: "size".into(),
                     offset: 0,
                     match_len: data.len(),
-                    redacted_snippet: format!("{}B exceeds {}B limit", data.len(), self.config.max_scan_size_bytes),
+                    redacted_snippet: format!(
+                        "{}B exceeds {}B limit",
+                        data.len(),
+                        self.config.max_scan_size_bytes
+                    ),
                 }],
                 data_size: data.len(),
                 scan_duration_us: start.elapsed().as_micros() as u64,
@@ -369,7 +369,10 @@ mod tests {
         let data = b"Use this: sk-ant-api03-abcdefghijklmnopqrstuvwxyz";
         let decision = g.scan(data, "agent-1");
         assert!(!decision.allowed);
-        assert!(decision.findings.iter().any(|f| f.pattern_name.contains("Anthropic")));
+        assert!(decision
+            .findings
+            .iter()
+            .any(|f| f.pattern_name.contains("Anthropic")));
     }
 
     #[test]
@@ -386,7 +389,10 @@ mod tests {
         let data = b"-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIB...";
         let decision = g.scan(data, "agent-1");
         assert!(!decision.allowed);
-        assert!(decision.findings.iter().any(|f| f.pattern_name.contains("Private Key")));
+        assert!(decision
+            .findings
+            .iter()
+            .any(|f| f.pattern_name.contains("Private Key")));
     }
 
     #[test]

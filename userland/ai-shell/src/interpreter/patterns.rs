@@ -435,6 +435,14 @@ pub(crate) static PATTERNS: Lazy<HashMap<String, Regex>> = Lazy::new(|| {
         r"(?i)^agnostic\s+crew\s+(status|check)\s+(\S+)$",
     );
     r(
+        "agnostic_list_crews",
+        r"(?i)^agnostic\s+(list\s+)?crews(\s+(running|completed|pending|cancelled|failed))?$",
+    );
+    r(
+        "agnostic_cancel_crew",
+        r"(?i)^agnostic\s+(cancel|stop)\s+crew\s+(\S+)$",
+    );
+    r(
         "agnostic_list_presets",
         r"(?i)^agnostic\s+(list\s+)?presets(\s+(.+))?$",
     );

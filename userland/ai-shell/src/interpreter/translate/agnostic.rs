@@ -149,6 +149,30 @@ pub(crate) fn translate_agnostic(intent: &Intent) -> Result<Translation> {
             ))
         }
 
+        Intent::AgnosticListCrews { status } => {
+            let mut a = serde_json::Map::new();
+            insert_opt(&mut a, "status", status);
+            Ok(mcp_call(
+                "agnostic_list_crews",
+                a,
+                "Agnostic: list crews".to_string(),
+                PermissionLevel::Safe,
+                "Lists crews with optional status filter via Agnostic MCP bridge".to_string(),
+            ))
+        }
+
+        Intent::AgnosticCancelCrew { crew_id } => {
+            let mut a = serde_json::Map::new();
+            insert_str(&mut a, "crew_id", crew_id);
+            Ok(mcp_call(
+                "agnostic_cancel_crew",
+                a,
+                format!("Agnostic: cancel crew {}", crew_id),
+                PermissionLevel::SystemWrite,
+                "Cancels a running or pending crew via Agnostic MCP bridge".to_string(),
+            ))
+        }
+
         Intent::AgnosticListDefinitions { domain } => {
             let mut a = serde_json::Map::new();
             insert_opt(&mut a, "domain", domain);

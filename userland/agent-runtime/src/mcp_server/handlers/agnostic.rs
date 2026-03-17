@@ -8,7 +8,7 @@ use super::super::types::McpToolResult;
 use super::bridge::HttpBridge;
 
 // ---------------------------------------------------------------------------
-// Agnostic Agentics Systems (AAS) Bridge
+// Agnostic Agent System (AAS) Bridge
 // ---------------------------------------------------------------------------
 // API contract aligned with Agnostic v2026.3.16+
 // Base: http://127.0.0.1:8000/api/v1
@@ -630,6 +630,63 @@ pub(crate) async fn handle_agnostic_crew_status(args: &serde_json::Value) -> Mcp
         Err(e) => {
             warn!(error = %e, "Agnostic bridge: crew status failed");
             error_result(format!("Crew status failed: {}", e))
+        }
+    }
+}
+
+/// List crews with optional status filter and pagination.
+/// GET /api/v1/crews
+pub(crate) async fn handle_agnostic_list_crews(args: &serde_json::Value) -> McpToolResult {
+    let status = get_optional_string_arg(args, "status");
+    let page = get_optional_string_arg(args, "page");
+    let per_page = get_optional_string_arg(args, "per_page");
+
+    let bridge = agnostic_bridge();
+    let mut query = Vec::new();
+    if let Some(ref s) = status {
+        query.push(("status".to_string(), s.clone()));
+    }
+    if let Some(ref p) = page {
+        query.push(("page".to_string(), p.clone()));
+    }
+    if let Some(ref pp) = per_page {
+        query.push(("per_page".to_string(), pp.clone()));
+    }
+
+    match bridge.get("/api/v1/crews", &query).await {
+        Ok(response) => {
+            info!("Agnostic: list crews (bridged)");
+            success_result(response)
+        }
+        Err(e) => {
+            warn!(error = %e, "Agnostic bridge: list crews failed");
+            error_result(format!("Crews unavailable: {}", e))
+        }
+    }
+}
+
+/// Cancel a running or pending crew.
+/// POST /api/v1/crews/{crew_id}/cancel
+pub(crate) async fn handle_agnostic_cancel_crew(args: &serde_json::Value) -> McpToolResult {
+    let crew_id = match extract_required_string(args, "crew_id") {
+        Ok(id) => id,
+        Err(e) => return e,
+    };
+
+    let bridge = agnostic_bridge();
+    let body = serde_json::json!({});
+
+    match bridge
+        .post(&format!("/api/v1/crews/{}/cancel", crew_id), body)
+        .await
+    {
+        Ok(response) => {
+            info!(crew_id = %crew_id, "Agnostic: cancel crew (bridged)");
+            success_result(response)
+        }
+        Err(e) => {
+            warn!(error = %e, "Agnostic bridge: cancel crew failed");
+            error_result(format!("Cancel crew failed: {}", e))
         }
     }
 }
