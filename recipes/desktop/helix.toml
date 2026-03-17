@@ -1,0 +1,72 @@
+[package]
+name = "helix"
+version = "25.07.1"
+description = "Post-modern modal text editor written in Rust"
+license = "MPL-2.0"
+groups = ["desktop"]
+
+[source]
+url = "https://github.com/helix-editor/helix/archive/refs/tags/25.07.1.tar.gz"
+sha256 = ""
+patches = []
+
+[depends]
+runtime = ["glibc"]
+build = ["rust", "gcc"]
+optional = []
+
+[build]
+pre_build = ""
+configure = ""
+make = "cargo build --release --locked"
+check = "cargo test --release || true"
+install = """
+mkdir -p $PKG/usr/bin
+cp target/release/hx $PKG/usr/bin/hx
+chmod +x $PKG/usr/bin/hx
+
+mkdir -p $PKG/usr/lib/helix
+cp -r runtime $PKG/usr/lib/helix/runtime
+
+mkdir -p $PKG/etc/helix
+cat > $PKG/etc/helix/config.toml << 'CONF'
+theme = "onedark"
+
+[editor]
+line-number = "relative"
+mouse = true
+bufferline = "multiple"
+color-modes = true
+
+[editor.cursor-shape]
+insert = "bar"
+normal = "block"
+select = "underline"
+
+[editor.file-picker]
+hidden = false
+
+[editor.statusline]
+left = ["mode", "spinner", "file-name", "file-modification-indicator"]
+right = ["diagnostics", "selections", "position", "file-encoding", "file-line-ending", "file-type"]
+CONF
+"""
+post_install = """
+mkdir -p $PKG/usr/share/applications
+cat > $PKG/usr/share/applications/helix.desktop << 'EOF'
+[Desktop Entry]
+Name=Helix
+Comment=Post-modern modal text editor
+Exec=foot -e hx %F
+Icon=text-editor
+Type=Application
+Categories=Utility;TextEditor;
+Keywords=text;editor;
+MimeType=text/plain;
+EOF
+"""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

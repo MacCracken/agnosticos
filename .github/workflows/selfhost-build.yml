@@ -44,14 +44,17 @@ jobs:
       - name: Restore cached toolchain
         if: steps.cache.outputs.cached == 'true' && inputs.stage != '0'
         run: |
-          mkdir -p "$LFS"
+          sudo rm -rf "$LFS"
+          sudo mkdir -p "$LFS"
+          sudo chown "$(id -u):$(id -g)" "$LFS"
           tar xf output/agnos-toolchain-x86_64.tar -C "$LFS"
           echo "Toolchain restored from cache"
 
       - name: Prepare build directory
         run: |
           sudo rm -rf "$LFS"
-          mkdir -p "$LFS"
+          sudo mkdir -p "$LFS"
+          sudo chown "$(id -u):$(id -g)" "$LFS"
 
       - name: Download source tarballs
         if: steps.cache.outputs.cached != 'true' || inputs.stage == '0'
@@ -121,7 +124,8 @@ jobs:
       - name: Restore toolchain
         run: |
           sudo rm -rf "$LFS"
-          mkdir -p "$LFS"
+          sudo mkdir -p "$LFS"
+          sudo chown "$(id -u):$(id -g)" "$LFS"
           tar xf output/agnos-toolchain-x86_64.tar -C "$LFS"
           "$LFS/tools/bin/x86_64-agnos-linux-gnu-gcc" --version
 
@@ -203,10 +207,23 @@ jobs:
           name: agnos-rootfs-x86_64
           path: output/
 
+      - name: Restore binaries from rootfs
+        run: |
+          # Extract built binaries from rootfs artifact so build-iso.sh --skip-build finds them
+          sudo rm -rf /tmp/agnos-rootfs
+          mkdir -p /tmp/agnos-rootfs
+          tar xf output/agnos-rootfs-x86_64.tar -C /tmp/agnos-rootfs
+          mkdir -p userland/target/release
+          for bin in agent_runtime llm_gateway agnsh; do
+            if [[ -f "/tmp/agnos-rootfs/usr/bin/$bin" ]]; then
+              cp "/tmp/agnos-rootfs/usr/bin/$bin" userland/target/release/
+            fi
+          done
+          ls -lh userland/target/release/
+
       - name: Build ISO
         run: |
-          # For now, use the Debian-based ISO builder with source tree bundled
-          # The self-hosting ISO (pure LFS) is the next evolution
+          # Use the Debian-based ISO builder with pre-built binaries
           sudo bash scripts/build-iso.sh --skip-build
 
       - name: Upload ISO

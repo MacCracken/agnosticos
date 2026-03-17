@@ -1,0 +1,68 @@
+[package]
+name = "mpv"
+version = "0.41.0"
+description = "General-purpose media player with Wayland and PipeWire support"
+license = "GPL-2.0-or-later"
+groups = ["desktop"]
+
+[source]
+url = "https://github.com/mpv-player/mpv/archive/refs/tags/v0.41.0.tar.gz"
+sha256 = ""
+patches = []
+
+[depends]
+runtime = ["ffmpeg", "libplacebo", "libass", "wayland", "wayland-protocols", "pipewire", "mesa", "alsa-lib", "libxkbcommon", "lua", "vulkan-loader", "libva"]
+build = ["meson", "ninja", "ffmpeg-dev", "libplacebo-dev", "libass-dev", "wayland-dev", "wayland-protocols-dev", "pipewire-dev", "mesa-dev", "alsa-lib-dev", "libxkbcommon-dev", "lua-dev", "vulkan-headers", "libva-dev", "python-docutils"]
+optional = ["yt-dlp", "vapoursynth"]
+
+[build]
+pre_build = ""
+configure = """
+meson setup build \
+    --prefix=/usr \
+    --buildtype=release \
+    -Dwayland=enabled \
+    -Dpipewire=enabled \
+    -Dvulkan=enabled \
+    -Dlibmpv=true \
+    -Dmanpages=enabled \
+    -Dlua=enabled \
+    -Dgl-wayland=enabled \
+    -Dvaapi=enabled \
+    -Dvaapi-wayland=enabled
+"""
+make = "ninja -C build -j$(nproc)"
+check = "ninja -C build test || true"
+install = "DESTDIR=$PKG ninja -C build install"
+post_install = """
+mkdir -p $PKG/etc/mpv
+cat > $PKG/etc/mpv/mpv.conf << 'CONF'
+# AGNOS default mpv configuration
+vo=gpu-next
+ao=pipewire
+gpu-api=vulkan
+hwdec=auto-safe
+keep-open=yes
+save-position-on-quit=yes
+osd-bar=no
+border=no
+CONF
+
+mkdir -p $PKG/usr/share/applications
+cat > $PKG/usr/share/applications/mpv.desktop << 'EOF'
+[Desktop Entry]
+Name=mpv
+Comment=General-purpose media player
+Exec=mpv --player-operation-mode=pseudo-gui -- %U
+Icon=mpv
+Type=Application
+Categories=AudioVideo;Audio;Video;Player;
+Keywords=media;player;video;audio;
+MimeType=audio/*;video/*;
+EOF
+"""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

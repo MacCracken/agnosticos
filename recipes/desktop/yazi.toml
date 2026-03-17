@@ -1,0 +1,50 @@
+[package]
+name = "yazi"
+version = "26.1.22"
+description = "Blazingly fast TUI file manager written in Rust"
+license = "MIT"
+groups = ["desktop"]
+
+[source]
+url = "https://github.com/sxyazi/yazi/archive/refs/tags/v26.1.22.tar.gz"
+sha256 = ""
+patches = []
+
+[depends]
+runtime = ["glibc"]
+build = ["rust", "gcc"]
+optional = ["ffmpeg", "p7zip", "jq", "poppler", "fd", "ripgrep", "fzf", "zoxide"]
+
+[build]
+pre_build = ""
+configure = ""
+make = "cargo build --release --locked"
+check = "cargo test --release || true"
+install = """
+mkdir -p $PKG/usr/bin
+cp target/release/yazi $PKG/usr/bin/yazi
+chmod +x $PKG/usr/bin/yazi
+
+mkdir -p $PKG/usr/share/yazi
+if [ -d yazi-config ]; then
+    cp -r yazi-config $PKG/usr/share/yazi/config
+fi
+"""
+post_install = """
+mkdir -p $PKG/usr/share/applications
+cat > $PKG/usr/share/applications/yazi.desktop << 'EOF'
+[Desktop Entry]
+Name=Yazi
+Comment=Blazingly fast TUI file manager
+Exec=foot -e yazi %U
+Icon=system-file-manager
+Type=Application
+Categories=System;FileManager;
+Keywords=file;manager;
+EOF
+"""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

@@ -1,0 +1,48 @@
+[package]
+name = "zathura"
+version = "0.5.14"
+description = "Lightweight document viewer with plugin support (PDF, DJVU, PS)"
+license = "Zlib"
+groups = ["desktop"]
+
+[source]
+url = "https://pwmt.org/projects/zathura/download/zathura-0.5.14.tar.xz"
+sha256 = ""
+patches = []
+
+[depends]
+runtime = ["girara", "gtk3", "cairo", "glib", "sqlite", "libmagic", "json-glib"]
+build = ["meson", "ninja", "girara-dev", "gtk3-dev", "cairo-dev", "glib-dev", "sqlite-dev", "libmagic-dev", "json-glib-dev", "scdoc"]
+optional = ["zathura-pdf-poppler", "zathura-djvu", "zathura-ps"]
+
+[build]
+pre_build = ""
+configure = """
+meson setup build \
+    --prefix=/usr \
+    --buildtype=release \
+    -Dmanpages=enabled \
+    -Dsqlite=enabled
+"""
+make = "ninja -C build -j$(nproc)"
+check = "ninja -C build test || true"
+install = "DESTDIR=$PKG ninja -C build install"
+post_install = """
+mkdir -p $PKG/usr/share/applications
+cat > $PKG/usr/share/applications/zathura.desktop << 'EOF'
+[Desktop Entry]
+Name=Zathura
+Comment=Lightweight document viewer
+Exec=zathura %U
+Icon=org.pwmt.zathura
+Type=Application
+Categories=Office;Viewer;
+Keywords=pdf;document;viewer;
+MimeType=application/pdf;application/x-pdf;image/vnd.djvu;application/postscript;
+EOF
+"""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

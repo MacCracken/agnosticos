@@ -1,0 +1,73 @@
+[package]
+name = "mako"
+version = "1.10.0"
+description = "Lightweight Wayland-native notification daemon"
+license = "MIT"
+groups = ["desktop"]
+
+[source]
+url = "https://github.com/emersion/mako/releases/download/v1.10.0/mako-1.10.0.tar.gz"
+sha256 = ""
+patches = []
+
+[depends]
+runtime = ["wayland", "wayland-protocols", "cairo", "pango", "glib", "systemd"]
+build = ["meson", "ninja", "wayland-dev", "wayland-protocols-dev", "cairo-dev", "pango-dev", "glib-dev", "systemd-dev", "scdoc"]
+optional = ["gdk-pixbuf"]
+
+[build]
+pre_build = ""
+configure = """
+meson setup build \
+    --prefix=/usr \
+    --buildtype=release \
+    -Dman-pages=enabled \
+    -Dbash-completions=true \
+    -Dzsh-completions=true
+"""
+make = "ninja -C build -j$(nproc)"
+check = "ninja -C build test || true"
+install = "DESTDIR=$PKG ninja -C build install"
+post_install = """
+mkdir -p $PKG/etc/mako
+cat > $PKG/etc/mako/config << 'CONF'
+# AGNOS default mako configuration
+max-visible=5
+default-timeout=5000
+border-size=2
+border-radius=5
+background-color=#1e1e2e
+text-color=#cdd6f4
+border-color=#89b4fa
+font=sans-serif 11
+
+[urgency=critical]
+background-color=#f38ba8
+text-color=#1e1e2e
+border-color=#f38ba8
+default-timeout=0
+CONF
+
+mkdir -p $PKG/usr/lib/systemd/user
+cat > $PKG/usr/lib/systemd/user/mako.service << 'EOF'
+[Unit]
+Description=Mako notification daemon
+Documentation=man:mako(1)
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=dbus
+BusName=org.freedesktop.Notifications
+ExecStart=/usr/bin/mako
+Restart=on-failure
+
+[Install]
+WantedBy=graphical-session.target
+EOF
+"""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

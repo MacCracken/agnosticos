@@ -2,7 +2,7 @@
 
 > **Status**: Pre-Beta | **Last Updated**: 2026-03-16
 > **Userland complete** — 10900+ tests (3723+ agent-runtime, 1554 ai-shell), ~84% coverage, 0 warnings
-> **Recipes**: 109 base + 54 desktop + 25 AI + 9 network + 8 browser + 18 marketplace + 4 python + 3 database + 30 edge = 260 total
+> **Recipes**: 109 base + 63 desktop + 25 AI + 9 network + 8 browser + 18 marketplace + 4 python + 3 database + 30 edge = 269 total
 > **Phases 10–14 complete** | **Phase 15A**: Core scanning done (phylax) | **Audit**: 16 rounds
 > **MCP Tools**: 122 built-in + external registration
 
@@ -113,16 +113,16 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 
 | # | Need | Package | Recipe | Status | Notes |
 |---|------|---------|--------|--------|-------|
-| 1 | File Manager | yazi | `recipes/desktop/yazi.toml` | Not started | Modern Rust TUI file manager, async, rich previews, zero GUI deps. Thunar deferred (heavy Xfce dep chain) |
-| 2 | Terminal Emulator | Foot | `recipes/desktop/foot.toml` | Not started | Wayland-native, fast, minimal deps. Kitty deferred to post-beta (needs Go 1.26+) |
-| 3 | Text Editor | Helix | `recipes/desktop/helix.toml` | Not started | Modern, Rust-native, no config needed |
-| 4 | PDF Viewer | Zathura | `recipes/desktop/zathura.toml` | Not started | Lightweight, plugin-based (PDF/DJVU/PS) |
-| 5 | Image Viewer | imv | `recipes/desktop/imv.toml` | Not started | Wayland-native, fast |
-| 6 | Media Player | mpv | `recipes/desktop/mpv.toml` | Not started | PipeWire audio, Wayland, GPU decode |
-| 7 | Notification Daemon | mako | `recipes/desktop/mako.toml` | Not started | Wayland-native, lightweight |
-| 8 | Clipboard Manager | cliphist | `recipes/desktop/cliphist.toml` | Not started | wl-clipboard + history |
-| 9 | App Launcher | fuzzel | `recipes/desktop/fuzzel.toml` | Not started | Wayland-native dmenu/rofi alternative |
-| 10 | Archive Manager | ark CLI | — | Done | Already supported via `ark extract`/`ark compress` in daimon + libarchive in base. No GUI recipe needed |
+| 1 | File Manager | yazi | `recipes/desktop/yazi.toml` | **Done** | Modern Rust TUI file manager, async, rich previews, zero GUI deps. Thunar deferred (heavy Xfce dep chain) |
+| 2 | Terminal Emulator | Foot | `recipes/desktop/foot.toml` | **Done** | Wayland-native, fast, minimal deps. Kitty deferred to post-beta (needs Go 1.26+) |
+| 3 | Text Editor | Helix | `recipes/desktop/helix.toml` | **Done** | Modern, Rust-native, default config included |
+| 4 | PDF Viewer | Zathura | `recipes/desktop/zathura.toml` | **Done** | Lightweight, plugin-based (PDF/DJVU/PS) |
+| 5 | Image Viewer | imv | `recipes/desktop/imv.toml` | **Done** | Wayland-native, fast, HEIF/SVG/WebP support |
+| 6 | Media Player | mpv | `recipes/desktop/mpv.toml` | **Done** | PipeWire audio, Vulkan GPU-next, Wayland, VA-API hwdec |
+| 7 | Notification Daemon | mako | `recipes/desktop/mako.toml` | **Done** | Wayland-native, lightweight, systemd user service + default config |
+| 8 | Clipboard Manager | cliphist | `recipes/desktop/cliphist.toml` | **Done** | Go-based, wl-clipboard + systemd user service |
+| 9 | App Launcher | fuzzel | `recipes/desktop/fuzzel.toml` | **Done** | Wayland-native dmenu/rofi alternative |
+| 10 | Archive Manager | ark CLI | — | **Done** | Already supported via `ark extract`/`ark compress` in daimon + libarchive in base. No GUI recipe needed |
 
 ### 16B — Input & Hardware Detection
 
@@ -269,7 +269,13 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 
 | # | Priority | Item | Notes |
 |---|----------|------|-------|
-| 1 | High | Go toolchain bump (1.24.1 → 1.26+) | Current `recipes/ai/go.toml` is 1.24.1. Needed for Kitty kitten tools, cliphist, and modern Go module support. Pre-req for Phase 16A (cliphist) and long-term Kitty recipe |
+| — | — | No active items | Engineering backlog clear |
+
+### Resolved
+
+| # | Item | Resolution |
+|---|------|------------|
+| 1 | Go toolchain bump (1.24.1 → 1.26+) | **Done** — `recipes/ai/go.toml` updated to 1.26.1. Unblocks cliphist, Kitty, modern Go modules |
 
 ---
 
@@ -288,7 +294,7 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 - [x] Phase 15A partial — Phylax core scanning engine
 - [x] AGNOS boots from ISO on bare metal (UEFI) and QEMU
 - [ ] **Self-hosting: can rebuild itself from source (13A)** ← PRIMARY BLOCKER
-- [ ] **Desktop essentials packaged (16A)** — file manager, terminal, PDF viewer, etc.
+- [x] **Desktop essentials packaged (16A)** — foot, helix, yazi, fuzzel, mako, zathura, imv, mpv, cliphist (9/9 + ark CLI)
 - [ ] Third-party security audit complete
 - [ ] Community testing program active
 

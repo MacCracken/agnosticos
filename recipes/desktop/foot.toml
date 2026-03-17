@@ -1,0 +1,48 @@
+[package]
+name = "foot"
+version = "1.26.1"
+description = "Fast, lightweight, Wayland-native terminal emulator"
+license = "MIT"
+groups = ["desktop"]
+
+[source]
+url = "https://codeberg.org/dnkl/foot/releases/download/1.26.1/foot-1.26.1.tar.gz"
+sha256 = ""
+patches = []
+
+[depends]
+runtime = ["wayland", "wayland-protocols", "fcft", "tllist", "pixman", "fontconfig", "freetype", "libxkbcommon", "utf8proc"]
+build = ["meson", "ninja", "wayland-dev", "wayland-protocols-dev", "fcft-dev", "tllist-dev", "pixman-dev", "fontconfig-dev", "freetype-dev", "libxkbcommon-dev", "utf8proc-dev", "scdoc"]
+optional = []
+
+[build]
+pre_build = ""
+configure = """
+meson setup build \
+    --prefix=/usr \
+    --buildtype=release \
+    -Ddocs=enabled \
+    -Dthemes=true \
+    -Dime=true
+"""
+make = "ninja -C build -j$(nproc)"
+check = "ninja -C build test || true"
+install = "DESTDIR=$PKG ninja -C build install"
+post_install = """
+mkdir -p $PKG/usr/share/applications
+cat > $PKG/usr/share/applications/foot.desktop << 'EOF'
+[Desktop Entry]
+Name=Foot
+Comment=Wayland terminal emulator
+Exec=foot
+Icon=utilities-terminal
+Type=Application
+Categories=System;TerminalEmulator;
+Keywords=terminal;shell;
+EOF
+"""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

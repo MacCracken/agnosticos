@@ -1,0 +1,48 @@
+[package]
+name = "imv"
+version = "5.0.1"
+description = "Simple Wayland-native image viewer"
+license = "MIT"
+groups = ["desktop"]
+
+[source]
+url = "https://git.sr.ht/~exec64/imv/archive/v5.0.1.tar.gz"
+sha256 = ""
+patches = []
+
+[depends]
+runtime = ["wayland", "wayland-protocols", "libxkbcommon", "pango", "cairo", "icu", "libpng", "libjpeg-turbo", "librsvg", "libtiff", "libheif"]
+build = ["meson", "ninja", "wayland-dev", "wayland-protocols-dev", "libxkbcommon-dev", "pango-dev", "cairo-dev", "icu-dev", "libpng-dev", "libjpeg-turbo-dev", "librsvg-dev", "libtiff-dev", "libheif-dev", "cmocka"]
+optional = []
+
+[build]
+pre_build = ""
+configure = """
+meson setup build \
+    --prefix=/usr \
+    --buildtype=release \
+    -Dwindows=wayland \
+    -Dman=enabled
+"""
+make = "ninja -C build -j$(nproc)"
+check = "ninja -C build test || true"
+install = "DESTDIR=$PKG ninja -C build install"
+post_install = """
+mkdir -p $PKG/usr/share/applications
+cat > $PKG/usr/share/applications/imv.desktop << 'EOF'
+[Desktop Entry]
+Name=imv
+Comment=Simple image viewer for Wayland
+Exec=imv %U
+Icon=image-viewer
+Type=Application
+Categories=Graphics;Viewer;
+Keywords=image;viewer;picture;photo;
+MimeType=image/png;image/jpeg;image/gif;image/bmp;image/tiff;image/svg+xml;image/webp;image/heif;
+EOF
+"""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

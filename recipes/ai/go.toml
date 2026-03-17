@@ -4,7 +4,7 @@
 
 [package]
 name = "go"
-version = "1.24.1"
+version = "1.26.1"
 description = "go — Go programming language compiler and tools"
 license = "BSD-3-Clause"
 groups = ["ai", "tools"]
@@ -12,8 +12,8 @@ release = 1
 arch = "x86_64"
 
 [source]
-url = "https://go.dev/dl/go1.24.1.linux-amd64.tar.gz"
-sha256 = "cb2396bae64183cdccf81a9a6df0aea3bce9511fc21469fb89a0c00470088073"
+url = "https://go.dev/dl/go1.26.1.linux-amd64.tar.gz"
+sha256 = "031f088e5d955bab8657ede27ad4e3bc5b7c1ba281f05f245bcc304f327c987a"
 patches = []
 
 [depends]

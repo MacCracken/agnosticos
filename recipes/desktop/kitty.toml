@@ -1,0 +1,44 @@
+[package]
+name = "kitty"
+version = "0.46.1"
+description = "GPU-accelerated terminal emulator with kitten tools"
+license = "GPL-3.0"
+groups = ["desktop"]
+
+[source]
+url = "https://github.com/kovidgoyal/kitty/archive/refs/tags/v0.46.1.tar.gz"
+sha256 = ""
+patches = []
+
+[depends]
+runtime = ["python", "harfbuzz", "zlib", "libpng", "lcms2", "xxhash", "openssl", "pixman", "cairo", "freetype", "fontconfig", "libcanberra", "wayland", "wayland-protocols", "libxkbcommon", "dbus", "mesa"]
+build = ["go", "gcc", "python-dev", "harfbuzz-dev", "zlib-dev", "libpng-dev", "lcms2-dev", "xxhash-dev", "openssl-dev", "pixman-dev", "cairo-dev", "freetype-dev", "fontconfig-dev", "wayland-dev", "wayland-protocols-dev", "libxkbcommon-dev", "dbus-dev", "mesa-dev", "simde", "pkg-config"]
+optional = ["imagemagick", "libsystemd"]
+
+[build]
+pre_build = ""
+configure = ""
+make = "python3 setup.py linux-package --prefix=/usr"
+check = ""
+install = """
+mkdir -p $PKG/usr
+cp -r linux-package/* $PKG/usr/
+"""
+post_install = """
+mkdir -p $PKG/usr/share/applications
+cat > $PKG/usr/share/applications/kitty.desktop << 'EOF'
+[Desktop Entry]
+Name=Kitty
+Comment=GPU-accelerated terminal emulator
+Exec=kitty
+Icon=kitty
+Type=Application
+Categories=System;TerminalEmulator;
+Keywords=terminal;shell;
+EOF
+"""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

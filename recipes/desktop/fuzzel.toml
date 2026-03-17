@@ -1,0 +1,46 @@
+[package]
+name = "fuzzel"
+version = "1.14.1"
+description = "Wayland-native application launcher and dmenu replacement"
+license = "MIT"
+groups = ["desktop"]
+
+[source]
+url = "https://codeberg.org/dnkl/fuzzel/releases/download/1.14.1/fuzzel-1.14.1.tar.gz"
+sha256 = ""
+patches = []
+
+[depends]
+runtime = ["wayland", "wayland-protocols", "fcft", "tllist", "cairo", "pango", "libxkbcommon", "pixman"]
+build = ["meson", "ninja", "wayland-dev", "wayland-protocols-dev", "fcft-dev", "tllist-dev", "cairo-dev", "pango-dev", "libxkbcommon-dev", "pixman-dev", "scdoc"]
+optional = []
+
+[build]
+pre_build = ""
+configure = """
+meson setup build \
+    --prefix=/usr \
+    --buildtype=release \
+    -Ddocs=enabled
+"""
+make = "ninja -C build -j$(nproc)"
+check = "ninja -C build test || true"
+install = "DESTDIR=$PKG ninja -C build install"
+post_install = """
+mkdir -p $PKG/usr/share/applications
+cat > $PKG/usr/share/applications/fuzzel.desktop << 'EOF'
+[Desktop Entry]
+Name=Fuzzel
+Comment=Wayland application launcher
+Exec=fuzzel
+Icon=system-search
+Type=Application
+Categories=Utility;
+Keywords=launcher;run;search;
+EOF
+"""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

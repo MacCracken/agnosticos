@@ -1,0 +1,49 @@
+[package]
+name = "cliphist"
+version = "0.7.0"
+description = "Wayland clipboard manager with image support"
+license = "MIT"
+groups = ["desktop"]
+
+[source]
+url = "https://github.com/sentriz/cliphist/archive/refs/tags/v0.7.0.tar.gz"
+sha256 = ""
+patches = []
+
+[depends]
+runtime = ["glibc", "wl-clipboard"]
+build = ["go"]
+optional = ["xdg-utils"]
+
+[build]
+pre_build = ""
+configure = ""
+make = "go build -o cliphist -ldflags='-s -w' ."
+check = "go test ./... || true"
+install = """
+mkdir -p $PKG/usr/bin
+cp cliphist $PKG/usr/bin/cliphist
+chmod +x $PKG/usr/bin/cliphist
+"""
+post_install = """
+mkdir -p $PKG/usr/lib/systemd/user
+cat > $PKG/usr/lib/systemd/user/cliphist-store.service << 'EOF'
+[Unit]
+Description=Clipboard history store
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/bin/sh -c 'wl-paste --watch cliphist store'
+Restart=on-failure
+
+[Install]
+WantedBy=graphical-session.target
+EOF
+"""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"
