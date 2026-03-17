@@ -123,11 +123,18 @@ pub(crate) fn translate_agnostic(intent: &Intent) -> Result<Translation> {
             ))
         }
 
-        Intent::AgnosticRunCrew { title, preset } => {
+        Intent::AgnosticRunCrew {
+            title,
+            preset,
+            gpu_required,
+        } => {
             let mut a = serde_json::Map::new();
             insert_str(&mut a, "title", title);
             insert_str(&mut a, "description", title);
             insert_opt(&mut a, "preset", preset);
+            if *gpu_required {
+                a.insert("gpu_required".to_string(), serde_json::Value::Bool(true));
+            }
             Ok(mcp_call(
                 "agnostic_run_crew",
                 a,

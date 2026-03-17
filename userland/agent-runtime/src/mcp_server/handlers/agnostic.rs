@@ -599,6 +599,12 @@ pub(crate) async fn handle_agnostic_run_crew(args: &serde_json::Value) -> McpToo
     if let Some(defs) = args.get("agent_definitions") {
         body["agent_definitions"] = defs.clone();
     }
+    if let Some(gpu) = args.get("gpu_required") {
+        body["gpu_required"] = gpu.clone();
+    }
+    if let Some(vram) = args.get("min_gpu_memory_mb") {
+        body["min_gpu_memory_mb"] = vram.clone();
+    }
 
     let bridge = agnostic_bridge();
     match bridge.post("/api/v1/crews", body).await {

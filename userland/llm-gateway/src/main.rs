@@ -16,12 +16,14 @@ use uuid::Uuid;
 use agnos_common::{AgentId, InferenceRequest, InferenceResponse, ModelInfo, TokenUsage};
 use agnos_sys::certpin::{self, CertPinResult, CertPinSet};
 
+mod acceleration;
 mod accounting;
 mod cache;
 mod http;
 mod providers;
 pub mod rate_limiter;
 
+use crate::acceleration::AcceleratorRegistry;
 use crate::accounting::{BudgetManager, TokenAccounting};
 use crate::cache::ResponseCache;
 use crate::http::start_http_server;
@@ -119,6 +121,8 @@ pub struct LlmGateway {
     config: GatewayConfig,
     /// TLS certificate pin set for cloud provider verification
     cert_pins: CertPinSet,
+    /// Hardware accelerator registry for GPU-aware model placement.
+    accelerator_registry: AcceleratorRegistry,
 }
 
 /// Gateway configuration
@@ -177,6 +181,17 @@ impl LlmGateway {
         let cache = ResponseCache::new(Duration::from_secs(config.cache_ttl_seconds));
         let accounting = TokenAccounting::new();
 
+        // Detect hardware accelerators for GPU-aware model placement.
+        let accelerator_registry = AcceleratorRegistry::detect_available();
+        if accelerator_registry.has_gpu() {
+            info!(
+                gpu_memory_bytes = accelerator_registry.total_gpu_memory(),
+                "GPU detected — GPU-aware inference routing enabled"
+            );
+        } else {
+            info!("No GPU detected — inference will use CPU or cloud providers");
+        }
+
         Ok(Self {
             providers: RwLock::new(HashMap::new()),
             loaded_models: RwLock::new(HashMap::new()),
@@ -188,6 +203,7 @@ impl LlmGateway {
             budget_manager: RwLock::new(BudgetManager::new()),
             config,
             cert_pins,
+            accelerator_registry,
         })
     }
 
@@ -537,6 +553,14 @@ impl LlmGateway {
     }
 
     /// Return an ordered list of healthy providers to try for a request.
+    /// Selects providers in priority order for GPU-aware inference routing.
+    ///
+    /// Priority:
+    /// 1. **Local GPU providers** (Ollama, llama.cpp) when the model is loaded
+    ///    locally AND a GPU is available — highest throughput, no network latency.
+    /// 2. **Local providers** (Ollama, llama.cpp) when model is loaded locally.
+    /// 3. **Cloud providers** in registration order.
+    ///
     /// Unhealthy providers are appended at the end as last-resort fallbacks.
     /// Acquires all 3 read locks in a single batch to minimize async yield points.
     async fn select_providers_ordered(
@@ -544,7 +568,7 @@ impl LlmGateway {
         request: &InferenceRequest,
     ) -> Result<Vec<(ProviderType, Arc<dyn LlmProvider>)>> {
         // Snapshot all state under locks, then release immediately
-        let (provider_snapshot, health_snapshot, model_loaded) = {
+        let (provider_snapshot, health_snapshot, model_loaded, model_size) = {
             let providers = self.providers.read().await;
             let health = self.provider_health.read().await;
             let loaded = self.loaded_models.read().await;
@@ -557,9 +581,24 @@ impl LlmGateway {
             let hs: HashMap<ProviderType, bool> =
                 health.iter().map(|(&pt, h)| (pt, h.is_healthy)).collect();
             let ml = loaded.contains_key(&request.model);
-            (ps, hs, ml)
+            let ms = loaded.get(&request.model).map(|m| m.size_bytes);
+            (ps, hs, ml, ms)
         };
         // All locks released here
+
+        let has_gpu = self.accelerator_registry.has_gpu();
+        let local_provider_types = [
+            ProviderType::Ollama,
+            ProviderType::LlamaCpp,
+            ProviderType::LocalAi,
+            ProviderType::LmStudio,
+        ];
+
+        // Check if model fits on local GPU (rough estimate: size_bytes ≈ FP16 weight size)
+        let model_fits_on_gpu = has_gpu
+            && model_size
+                .map(|sz| sz <= self.accelerator_registry.total_gpu_memory())
+                .unwrap_or(false);
 
         let mut healthy: Vec<(ProviderType, Arc<dyn LlmProvider>)> = Vec::new();
         let mut unhealthy: Vec<(ProviderType, Arc<dyn LlmProvider>)> = Vec::new();
@@ -572,8 +611,18 @@ impl LlmGateway {
             }
         };
 
-        // Priority 1: If the model is loaded locally, prefer Ollama
-        if model_loaded {
+        // Priority 1: Local GPU-capable providers when model is loaded and fits on GPU
+        if model_loaded && model_fits_on_gpu {
+            for (pt, provider) in &provider_snapshot {
+                if local_provider_types.contains(pt) {
+                    debug!(provider = ?pt, "GPU-aware: prioritizing local GPU provider");
+                    classify(*pt, provider.clone());
+                }
+            }
+        }
+
+        // Priority 2: Local providers when model is loaded (even without GPU)
+        if model_loaded && !model_fits_on_gpu {
             if let Some((_, provider)) = provider_snapshot
                 .iter()
                 .find(|(pt, _)| *pt == ProviderType::Ollama)
@@ -582,9 +631,13 @@ impl LlmGateway {
             }
         }
 
-        // Priority 2: All other providers in registration order
+        // Priority 3: All other providers in registration order
         for (pt, provider) in &provider_snapshot {
-            if *pt == ProviderType::Ollama && model_loaded {
+            // Skip providers already added
+            if model_loaded && local_provider_types.contains(pt) && model_fits_on_gpu {
+                continue;
+            }
+            if *pt == ProviderType::Ollama && model_loaded && !model_fits_on_gpu {
                 continue;
             }
             classify(*pt, provider.clone());
@@ -593,6 +646,11 @@ impl LlmGateway {
         // Healthy first, unhealthy as last resort
         healthy.extend(unhealthy);
         Ok(healthy)
+    }
+
+    /// Returns the hardware accelerator registry (for diagnostics and API exposure).
+    pub fn accelerator_registry(&self) -> &AcceleratorRegistry {
+        &self.accelerator_registry
     }
 
     /// Record a successful call to a provider

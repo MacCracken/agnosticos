@@ -948,7 +948,9 @@ pub fn build_tool_manifest() -> McpToolManifest {
                 "agent_keys": {"type": "array", "description": "Agent definition keys to assemble"},
                 "agent_definitions": {"type": "array", "description": "Inline agent definitions"},
                 "target_url": {"type": "string", "description": "Target application URL"},
-                "priority": {"type": "string", "description": "Priority: critical, high, medium, low"}
+                "priority": {"type": "string", "description": "Priority: critical, high, medium, low"},
+                "gpu_required": {"type": "boolean", "description": "Whether this crew requires GPU acceleration"},
+                "min_gpu_memory_mb": {"type": "integer", "description": "Minimum GPU VRAM in MB (e.g. 8192 for 8GB)"}
             }),
             vec!["title", "description"]
         ),

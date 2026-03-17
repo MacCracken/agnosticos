@@ -216,6 +216,7 @@ pub enum Intent {
     AgnosticRunCrew {
         title: String,
         preset: Option<String>,
+        gpu_required: bool,
     },
     /// Get crew run status
     AgnosticCrewStatus { crew_id: String },

@@ -424,6 +424,56 @@ impl AcceleratorRegistry {
             .sum()
     }
 
+    /// Total GPU/NPU memory (excludes CPU).
+    pub fn total_gpu_memory(&self) -> u64 {
+        self.profiles
+            .iter()
+            .filter(|p| p.available && (p.accelerator.is_gpu() || p.accelerator.is_npu()))
+            .map(|p| p.memory_bytes)
+            .sum()
+    }
+
+    /// Suggest a quantization level based on available GPU VRAM and model size.
+    ///
+    /// - FP16 if best GPU has >= model memory at FP16
+    /// - Int8 if best GPU has >= model memory at Int8
+    /// - Int4 if best GPU has >= model memory at Int4
+    /// - FP16 fallback (CPU) if no GPU can fit the model
+    pub fn suggest_quantization(&self, model_params: u64) -> QuantizationLevel {
+        let best_gpu = self
+            .profiles
+            .iter()
+            .filter(|p| p.available && p.accelerator.is_gpu())
+            .map(|p| p.memory_bytes)
+            .max();
+
+        let gpu_mem = match best_gpu {
+            Some(m) => m,
+            None => return QuantizationLevel::Float16, // No GPU — use FP16 on CPU
+        };
+
+        // Try from highest quality to most compressed
+        for quant in &[
+            QuantizationLevel::Float16,
+            QuantizationLevel::Int8,
+            QuantizationLevel::Int4,
+        ] {
+            if Self::estimate_memory(model_params, quant) <= gpu_mem {
+                return quant.clone();
+            }
+        }
+
+        // Model is too large even at Int4 — fall back to FP16 (will use CPU)
+        QuantizationLevel::Float16
+    }
+
+    /// Returns true if any GPU or NPU is available.
+    pub fn has_gpu(&self) -> bool {
+        self.profiles
+            .iter()
+            .any(|p| p.available && (p.accelerator.is_gpu() || p.accelerator.is_npu()))
+    }
+
     /// Estimates the memory required for a model with `model_params` parameters
     /// at the given quantization level.
     ///

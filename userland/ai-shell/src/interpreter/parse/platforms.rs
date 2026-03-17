@@ -89,8 +89,13 @@ pub(super) fn parse_platforms(
             .get(4)
             .map(|m| m.as_str().trim().to_string())
             .filter(|s| !s.is_empty());
+        let gpu_required = caps.get(5).is_some();
         if !title.is_empty() {
-            return Some(Intent::AgnosticRunCrew { title, preset });
+            return Some(Intent::AgnosticRunCrew {
+                title,
+                preset,
+                gpu_required,
+            });
         }
     }
 

@@ -273,7 +273,7 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 
 | # | Item | Effort | Notes |
 |---|------|--------|-------|
-| 1 | Crew GPU resource requirements | Small | Allow crew definitions to specify GPU requirements. Orchestrator routes to agents with matching GPU capability |
+| 1 | Crew GPU resource requirements | **Done** | `agnostic_run_crew` accepts `gpu_required` + `min_gpu_memory_mb`. Agnoshi `--gpu` flag. Passed through to Agnostic API |
 | 2 | Agnostic crew status in AGNOS HUD | Medium | Surface active Agnostic crews in aethersafha HUD with real-time status from `GET /crews` endpoint |
 
 ---
@@ -286,12 +286,12 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 
 ### G2 — Hoosh Inference GPU Routing
 
-| # | Item | Notes |
-|---|------|-------|
-| 1 | GPU-aware model placement | Hoosh selects provider based on GPU availability. Local Ollama/llama.cpp preferred when GPU has capacity |
-| 2 | VRAM budget per model | Track VRAM consumption per loaded model. Prevent OOM by rejecting loads when VRAM budget exceeded |
-| 3 | Privacy-aware GPU routing | Route sensitive inference to local GPU when available, cloud only when privacy policy allows |
-| 4 | Quantization auto-select | Auto-select quantization level based on available VRAM (Q4 for <8GB, Q8 for <16GB, FP16 for 16GB+) |
+| # | Item | Status | Notes |
+|---|------|--------|-------|
+| 1 | GPU-aware model placement | **Done** | `AcceleratorRegistry::detect_available()` at startup. `select_providers_ordered()` prioritizes local GPU providers when model fits in VRAM |
+| 2 | VRAM budget per model | **Done** | `ModelInfo.size_bytes` checked against `total_gpu_memory()`. Model only routed to GPU if it fits |
+| 3 | Privacy-aware GPU routing | Partial | Local GPU providers prioritized over cloud when model fits. Full privacy header (`x-privacy-local`) not yet enforced |
+| 4 | Quantization auto-select | **Done** | `suggest_quantization(model_params)` selects FP16/Int8/Int4 based on best GPU VRAM. `estimate_memory()` with 20% overhead |
 
 ### G3 — Edge Fleet GPU Routing
 

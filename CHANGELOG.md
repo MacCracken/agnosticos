@@ -22,6 +22,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Agnoshi intents**: +2 agnostic crew management intents (list crews, cancel crew)
 - **12 new GPU scoring tests** covering: no GPUs, sufficient VRAM, insufficient VRAM, compute capability filtering, weight rebalancing, `score_gpu()` edge cases
 - **Selah recipe** updated to v2026.3.17 MVP release (screenshot & annotation, no AI integration yet)
+- **G2: Hoosh GPU-aware inference routing**:
+  - `AcceleratorRegistry::detect_available()` runs at gateway startup, probes NVIDIA/AMD/Intel/Apple GPUs
+  - `select_providers_ordered()` now prioritizes local GPU providers (Ollama, llama.cpp, LocalAI, LM Studio) when model fits in VRAM
+  - `suggest_quantization(model_params)` auto-selects FP16/Int8/Int4 based on available GPU VRAM
+  - `total_gpu_memory()`, `has_gpu()` helpers on `AcceleratorRegistry`
+- **Agnostic crew GPU requirements**: `agnostic_run_crew` MCP tool accepts `gpu_required` and `min_gpu_memory_mb`. Agnoshi `agnostic run crew <title> --gpu` flag. Fields passed through to Agnostic `POST /api/v1/crews`
 
 ### Changed — Module Refactoring
 
