@@ -222,8 +222,11 @@ impl ResourceManager {
         );
     }
 
-    /// Detect available GPUs
-    async fn detect_gpus() -> Result<Vec<GpuDevice>> {
+    /// Detect available GPUs.
+    ///
+    /// Also exposed as a public method so MCP tools (e.g. `agnos_gpu_status`)
+    /// can probe GPUs without instantiating a full `ResourceManager`.
+    pub async fn detect_gpus() -> Result<Vec<GpuDevice>> {
         let mut gpus = Vec::new();
 
         // Try to detect NVIDIA GPUs via nvidia-smi

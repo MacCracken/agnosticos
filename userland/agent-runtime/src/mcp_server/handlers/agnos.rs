@@ -1,6 +1,7 @@
 use std::collections::HashMap;
+use std::sync::atomic::Ordering;
 
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 use super::super::helpers::{
@@ -9,6 +10,7 @@ use super::super::helpers::{
 };
 use super::super::types::McpToolResult;
 use crate::http_api::{ApiState, AuditEvent, RegisterAgentRequest, ResourceNeeds};
+use crate::resource::ResourceManager;
 
 pub(crate) async fn handle_health(state: &ApiState) -> McpToolResult {
     let agents = state.agents_read().await;
@@ -315,4 +317,121 @@ pub(crate) async fn handle_memory_set(state: &ApiState, args: &serde_json::Value
         "key": key,
         "status": "stored",
     }))
+}
+
+// ---------------------------------------------------------------------------
+// GPU & Model Inventory (SY integration)
+// ---------------------------------------------------------------------------
+
+/// Probe and return GPU device information.
+///
+/// Returns VRAM, vendor, compute capability, and driver info for each
+/// detected GPU. SecureYeoman and other consumers use this to discover
+/// edge device GPU capabilities.
+pub(crate) async fn handle_gpu_status(_args: &serde_json::Value) -> McpToolResult {
+    match ResourceManager::detect_gpus().await {
+        Ok(gpus) => {
+            let gpu_list: Vec<_> = gpus
+                .iter()
+                .map(|g| {
+                    serde_json::json!({
+                        "id": g.id,
+                        "name": g.name,
+                        "total_memory_bytes": g.total_memory,
+                        "available_memory_bytes": g.available_memory.load(Ordering::Relaxed),
+                        "compute_capability": g.compute_capability,
+                    })
+                })
+                .collect();
+
+            info!("GPU status probe: {} device(s) detected", gpu_list.len());
+            success_result(serde_json::json!({
+                "gpus": gpu_list,
+                "count": gpu_list.len(),
+            }))
+        }
+        Err(e) => {
+            warn!(error = %e, "GPU detection failed");
+            // Not an error — system may have no GPUs
+            success_result(serde_json::json!({
+                "gpus": [],
+                "count": 0,
+            }))
+        }
+    }
+}
+
+/// List locally available LLM models.
+///
+/// Queries hoosh (LLM gateway) for models available on this host,
+/// including Ollama, llama.cpp, and any other local providers.
+/// SecureYeoman can merge these into its routing pool for distributed
+/// inference across edge devices.
+pub(crate) async fn handle_local_models(_args: &serde_json::Value) -> McpToolResult {
+    let hoosh_url = std::env::var("HOOSH_URL").unwrap_or_else(|_| "http://127.0.0.1:8088".into());
+    let url = format!("{}/v1/models", hoosh_url);
+
+    let client = match reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            warn!(error = %e, "Failed to build HTTP client for hoosh");
+            return success_result(serde_json::json!({
+                "models": [],
+                "count": 0,
+                "source": "hoosh",
+                "_error": format!("HTTP client error: {}", e),
+            }));
+        }
+    };
+
+    match client.get(&url).send().await {
+        Ok(resp) if resp.status().is_success() => match resp.json::<serde_json::Value>().await {
+            Ok(body) => {
+                let models = body
+                    .get("data")
+                    .or_else(|| body.get("models"))
+                    .cloned()
+                    .unwrap_or(serde_json::json!([]));
+                let count = models.as_array().map_or(0, |a| a.len());
+                info!("Local model inventory: {} model(s) from hoosh", count);
+                success_result(serde_json::json!({
+                    "models": models,
+                    "count": count,
+                    "source": "hoosh",
+                    "gateway_url": hoosh_url,
+                }))
+            }
+            Err(e) => {
+                warn!(error = %e, "Failed to parse hoosh model response");
+                success_result(serde_json::json!({
+                    "models": [],
+                    "count": 0,
+                    "source": "hoosh",
+                    "_error": format!("Parse error: {}", e),
+                }))
+            }
+        },
+        Ok(resp) => {
+            let status = resp.status();
+            warn!(%status, "Hoosh returned non-success status");
+            success_result(serde_json::json!({
+                "models": [],
+                "count": 0,
+                "source": "hoosh",
+                "_error": format!("HTTP {}", status),
+            }))
+        }
+        Err(e) => {
+            debug!(error = %e, "Hoosh not reachable — returning empty model list");
+            success_result(serde_json::json!({
+                "models": [],
+                "count": 0,
+                "source": "hoosh",
+                "_error": format!("Connection failed: {}", e),
+            }))
+        }
+    }
 }

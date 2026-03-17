@@ -98,6 +98,19 @@ pub fn build_tool_manifest() -> McpToolManifest {
             }),
             vec!["agent_id", "key", "value"]
         ),
+        // ----- GPU & Model Inventory (SY integration) -----
+        tool!(
+            "agnos_gpu_status",
+            "Probe GPU devices: VRAM, vendor, compute capability, availability",
+            json!({}),
+            vec![]
+        ),
+        tool!(
+            "agnos_local_models",
+            "List locally available LLM models from hoosh (Ollama, llama.cpp, etc.)",
+            json!({}),
+            vec![]
+        ),
         // ----- Delta code hosting tools (5) -----
         tool!(
             "delta_create_repository",

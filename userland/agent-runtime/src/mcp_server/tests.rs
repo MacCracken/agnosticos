@@ -66,7 +66,7 @@ async fn test_tools_manifest_endpoint() {
         .await
         .unwrap();
     let manifest: McpToolManifest = serde_json::from_slice(&body).unwrap();
-    assert_eq!(manifest.tools.len(), 138);
+    assert_eq!(manifest.tools.len(), 140);
 }
 
 #[tokio::test]
@@ -83,6 +83,8 @@ async fn test_manifest_tool_names() {
     assert!(names.contains(&"agnos_forward_audit"));
     assert!(names.contains(&"agnos_memory_get"));
     assert!(names.contains(&"agnos_memory_set"));
+    assert!(names.contains(&"agnos_gpu_status"));
+    assert!(names.contains(&"agnos_local_models"));
     assert!(names.contains(&"aequi_estimate_quarterly_tax"));
     assert!(names.contains(&"aequi_schedule_c_preview"));
     assert!(names.contains(&"aequi_import_bank_statement"));
@@ -389,7 +391,7 @@ async fn test_mcp_result_serialization() {
 #[tokio::test]
 async fn test_manifest_contains_all_tools() {
     let manifest = build_tool_manifest();
-    assert_eq!(manifest.tools.len(), 138);
+    assert_eq!(manifest.tools.len(), 140);
     let names: Vec<&str> = manifest.tools.iter().map(|t| t.name.as_str()).collect();
     for expected in &[
         "agnos_health",
@@ -402,6 +404,8 @@ async fn test_manifest_contains_all_tools() {
         "agnos_forward_audit",
         "agnos_memory_get",
         "agnos_memory_set",
+        "agnos_gpu_status",
+        "agnos_local_models",
         "aequi_estimate_quarterly_tax",
         "aequi_schedule_c_preview",
         "aequi_import_bank_statement",

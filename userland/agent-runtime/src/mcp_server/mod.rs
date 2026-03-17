@@ -206,6 +206,8 @@ async fn dispatch_tool_call(
         "agnos_forward_audit" => handle_forward_audit(state, &call.arguments).await,
         "agnos_memory_get" => handle_memory_get(state, &call.arguments).await,
         "agnos_memory_set" => handle_memory_set(state, &call.arguments).await,
+        "agnos_gpu_status" => handle_gpu_status(&call.arguments).await,
+        "agnos_local_models" => handle_local_models(&call.arguments).await,
         "aequi_estimate_quarterly_tax" => handle_aequi_estimate_tax(&call.arguments).await,
         "aequi_schedule_c_preview" => handle_aequi_schedule_c(&call.arguments).await,
         "aequi_import_bank_statement" => handle_aequi_import_bank(&call.arguments).await,

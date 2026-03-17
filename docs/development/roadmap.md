@@ -5,7 +5,7 @@
 > **Recipes**: 115 base + 69 desktop + 25 AI + 9 network + 8 browser + 18 marketplace + 4 python + 3 database + 30 edge = 281 total
 > **Build order**: 176 packages in `recipes/build-order.txt` (base + desktop, dependency-ordered)
 > **Phases 10–14 complete** | **Phase 15A**: Core scanning done (phylax) | **Audit**: 16 rounds
-> **MCP Tools**: 138 built-in + external registration
+> **MCP Tools**: 140 built-in + external registration
 > **Sandbox**: 7 backends (Native, gVisor, Firecracker, WASM, SGX, SEV, Noop) + credential proxy + externalization gate
 
 ---
@@ -273,12 +273,12 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 
 *SY's GPU-aware inference routing works standalone (probes local nvidia-smi/rocm-smi directly). These items let AGNOS expose fleet GPU data that SY can optionally consume for distributed routing.*
 
-| # | Item | Effort | Notes |
-|---|------|--------|-------|
-| 1 | GPU telemetry MCP tool | Small | Expose `agnosys` GPU detection as `agnos_gpu_status` MCP tool. Returns VRAM, utilization, temperature, driver info. SY can query edge device GPU capabilities via the existing bridge |
-| 2 | Local model inventory MCP tool | Small | `agnos_local_models` MCP tool listing models available on the AGNOS host (hoosh + Ollama). SY's local model registry can merge edge device models into its routing pool |
-| 3 | Firecracker GPU passthrough | Medium | When Firecracker sandbox runs on AGNOS with a GPU present, pass `/dev/nvidia*` devices into the microVM so sandboxed inference can use the GPU |
-| 4 | Fleet GPU heartbeat | Medium | Include GPU utilization + VRAM headroom in edge fleet heartbeat telemetry. SY aggregates across fleet for distributed inference decisions |
+| # | Item | Effort | Status | Notes |
+|---|------|--------|--------|-------|
+| 1 | GPU telemetry MCP tool | Small | **Done** | `agnos_gpu_status` — probes NVIDIA/AMD/Intel GPUs via `ResourceManager::detect_gpus()`. Returns id, name, VRAM total/available, compute capability |
+| 2 | Local model inventory MCP tool | Small | **Done** | `agnos_local_models` — queries hoosh `GET /v1/models` for locally available models (Ollama, llama.cpp, etc.). Graceful fallback when hoosh offline |
+| 3 | Firecracker GPU passthrough | Medium | Not started | When Firecracker sandbox runs on AGNOS with a GPU present, pass `/dev/nvidia*` devices into the microVM so sandboxed inference can use the GPU |
+| 4 | Fleet GPU heartbeat | Medium | Not started | Include GPU utilization + VRAM headroom in edge fleet heartbeat telemetry. SY aggregates across fleet for distributed inference decisions |
 
 ### Agnostic Integration
 
@@ -437,7 +437,7 @@ Large single-file modules (>1500 lines) that should be split into module directo
 | Desktop/AI Stack Recipes | ~62 | 79 | Complete |
 | Edge Recipes | ~30 | 30 | Complete |
 | Marketplace Recipes | 11 | 18 | Complete (11 released + 7 scaffolded) |
-| MCP Tools | — | 138 | Complete (10 agnos + 5 aequi + 23 agnostic + 7 delta + 8 photis + 5 edge + 7 shruti + 8 tarang + 8 jalwa + 9 rasa + 7 mneme + 7 synapse + 7 bullshift + 7 yeoman + 5 phylax + others) |
+| MCP Tools | — | 140 | Complete (12 agnos + 5 aequi + 23 agnostic + 7 delta + 8 photis + 5 edge + 7 shruti + 8 tarang + 8 jalwa + 9 rasa + 7 mneme + 7 synapse + 7 bullshift + 7 yeoman + 5 phylax + others) |
 | Consumer Apps | 6 | 17 | 11 released + 6 scaffolded |
 | Recipe Validation Errors | 0 | 0 | Complete |
 | Security Audit Rounds | 15 | 16 | Complete |
