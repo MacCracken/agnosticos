@@ -6,116 +6,116 @@ use crate::security::PermissionLevel;
 
 pub(crate) fn translate_agnostic(intent: &Intent) -> Result<Translation> {
     match intent {
-        Intent::AgnosticRunSuite { suite, target_url } => {
+        Intent::AgnosticSubmitTask {
+            title,
+            description,
+            target_url,
+        } => {
             let mut a = serde_json::Map::new();
-            insert_str(&mut a, "suite", suite);
+            insert_str(&mut a, "title", title);
+            insert_str(&mut a, "description", description.as_deref().unwrap_or(title));
             insert_opt(&mut a, "target_url", target_url);
             Ok(mcp_call(
-                "agnostic_run_suite",
+                "agnostic_submit_task",
                 a,
-                format!("Run QA suite: {}", suite),
+                format!("Submit QA task: {}", title),
                 PermissionLevel::SystemWrite,
-                "Runs a QA test suite in Agnostic via MCP bridge".to_string(),
+                "Submits a QA task to Agnostic via MCP bridge".to_string(),
             ))
         }
 
-        Intent::AgnosticTestStatus { run_id } => {
+        Intent::AgnosticTaskStatus { task_id } => {
             let mut a = serde_json::Map::new();
-            insert_str(&mut a, "run_id", run_id);
+            insert_str(&mut a, "task_id", task_id);
             Ok(mcp_call(
-                "agnostic_test_status",
+                "agnostic_task_status",
                 a,
-                format!("Test run status: {}", run_id),
+                format!("Task status: {}", task_id),
                 PermissionLevel::Safe,
-                "Gets test run status from Agnostic via MCP bridge".to_string(),
+                "Gets task status from Agnostic via MCP bridge".to_string(),
             ))
         }
 
-        Intent::AgnosticTestReport { run_id, format } => {
+        Intent::AgnosticStructuredResults {
+            session_id,
+            result_type,
+        } => {
             let mut a = serde_json::Map::new();
-            insert_str(&mut a, "run_id", run_id);
-            insert_opt(&mut a, "format", format);
+            insert_str(&mut a, "session_id", session_id);
+            insert_opt(&mut a, "result_type", result_type);
             Ok(mcp_call(
-                "agnostic_test_report",
+                "agnostic_structured_results",
                 a,
-                format!("Test report: {}", run_id),
+                format!("Results: {}", session_id),
                 PermissionLevel::Safe,
-                "Gets test report from Agnostic via MCP bridge".to_string(),
+                "Gets structured results from Agnostic via MCP bridge".to_string(),
             ))
         }
 
-        Intent::AgnosticListSuites { category } => {
+        Intent::AgnosticListPresets { domain } => {
             let mut a = serde_json::Map::new();
-            insert_opt(&mut a, "category", category);
+            insert_opt(&mut a, "domain", domain);
             Ok(mcp_call(
-                "agnostic_list_suites",
+                "agnostic_list_presets",
                 a,
-                format!(
-                    "List QA suites{}",
-                    category
-                        .as_ref()
-                        .map_or(String::new(), |c| format!(" ({})", c))
-                ),
+                "Agnostic: list presets".to_string(),
                 PermissionLevel::Safe,
-                "Lists available QA test suites from Agnostic via MCP bridge".to_string(),
+                "Lists crew presets from Agnostic via MCP bridge".to_string(),
             ))
         }
 
-        Intent::AgnosticAgentStatus { agent_type } => {
-            let mut a = serde_json::Map::new();
-            insert_opt(&mut a, "agent_type", agent_type);
+        Intent::AgnosticAgentStatus => {
+            let a = serde_json::Map::new();
             Ok(mcp_call(
                 "agnostic_agent_status",
                 a,
-                format!(
-                    "QA agent status{}",
-                    agent_type
-                        .as_ref()
-                        .map_or(String::new(), |t| format!(" ({})", t))
-                ),
+                "QA agent status".to_string(),
                 PermissionLevel::Safe,
                 "Gets QA agent status from Agnostic via MCP bridge".to_string(),
             ))
         }
 
-        Intent::AgnosticCoverage { action, suite } => {
+        Intent::AgnosticDashboard { section } => {
             let mut a = serde_json::Map::new();
-            insert_str(&mut a, "action", action);
-            insert_opt(&mut a, "suite", suite);
+            insert_opt(&mut a, "section", section);
             Ok(mcp_call(
-                "agnostic_coverage",
+                "agnostic_dashboard",
                 a,
                 format!(
-                    "Agnostic coverage: {}{}",
-                    action,
-                    suite
+                    "Agnostic dashboard{}",
+                    section
                         .as_ref()
-                        .map_or(String::new(), |s| format!(" '{}'", s))
+                        .map_or(String::new(), |s| format!(" ({})", s))
                 ),
                 PermissionLevel::Safe,
-                "Gets coverage report via Agnostic".to_string(),
+                "Gets QA dashboard snapshot from Agnostic".to_string(),
             ))
         }
 
-        Intent::AgnosticSchedule { action, suite } => {
-            let mut a = serde_json::Map::new();
-            insert_str(&mut a, "action", action);
-            insert_opt(&mut a, "suite", suite);
+        Intent::AgnosticTrends => {
+            let a = serde_json::Map::new();
             Ok(mcp_call(
-                "agnostic_schedule",
+                "agnostic_trends",
                 a,
-                format!(
-                    "Agnostic schedule: {}{}",
-                    action,
-                    suite
-                        .as_ref()
-                        .map_or(String::new(), |s| format!(" '{}'", s))
-                ),
-                match action.as_str() {
-                    "list" => PermissionLevel::Safe,
-                    _ => PermissionLevel::SystemWrite,
-                },
-                "Manages test schedules via Agnostic".to_string(),
+                "Agnostic: quality trends".to_string(),
+                PermissionLevel::Safe,
+                "Gets quality metric trends from Agnostic test history".to_string(),
+            ))
+        }
+
+        Intent::AgnosticCompare {
+            session_a,
+            session_b,
+        } => {
+            let mut a = serde_json::Map::new();
+            insert_str(&mut a, "session_a", session_a);
+            insert_str(&mut a, "session_b", session_b);
+            Ok(mcp_call(
+                "agnostic_compare",
+                a,
+                format!("Agnostic: compare {} vs {}", session_a, session_b),
+                PermissionLevel::Safe,
+                "Compares two test sessions side-by-side via Agnostic".to_string(),
             ))
         }
 

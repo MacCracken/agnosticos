@@ -2686,89 +2686,89 @@ mod tests {
     // --- Agnostic QA platform intent tests ---
 
     #[test]
-    fn test_parse_agnostic_run_suite() {
+    fn test_parse_agnostic_submit_task() {
         let interpreter = Interpreter::new();
         let intent = interpreter.parse("run suite full regression");
         match intent {
-            Intent::AgnosticRunSuite { suite, target_url } => {
-                assert_eq!(suite, "full regression");
+            Intent::AgnosticSubmitTask { title, target_url, .. } => {
+                assert_eq!(title, "full regression");
                 assert!(target_url.is_none());
             }
-            other => panic!("Expected AgnosticRunSuite, got {:?}", other),
+            other => panic!("Expected AgnosticSubmitTask, got {:?}", other),
         }
     }
 
     #[test]
-    fn test_parse_agnostic_run_suite_with_target() {
+    fn test_parse_agnostic_submit_task_with_target() {
         let interpreter = Interpreter::new();
         let intent =
             interpreter.parse("agnostic run suite security audit against http://localhost:3000");
         match intent {
-            Intent::AgnosticRunSuite { suite, target_url } => {
-                assert_eq!(suite, "security audit");
+            Intent::AgnosticSubmitTask { title, target_url, .. } => {
+                assert_eq!(title, "security audit");
                 assert_eq!(target_url, Some("http://localhost:3000".to_string()));
             }
-            other => panic!("Expected AgnosticRunSuite, got {:?}", other),
+            other => panic!("Expected AgnosticSubmitTask, got {:?}", other),
         }
     }
 
     #[test]
-    fn test_parse_agnostic_test_status() {
+    fn test_parse_agnostic_task_status() {
         let interpreter = Interpreter::new();
         let intent = interpreter.parse("test status run-001");
         match intent {
-            Intent::AgnosticTestStatus { run_id } => {
-                assert_eq!(run_id, "run-001");
+            Intent::AgnosticTaskStatus { task_id } => {
+                assert_eq!(task_id, "run-001");
             }
-            other => panic!("Expected AgnosticTestStatus, got {:?}", other),
+            other => panic!("Expected AgnosticTaskStatus, got {:?}", other),
         }
     }
 
     #[test]
-    fn test_parse_agnostic_test_report() {
+    fn test_parse_agnostic_structured_results() {
         let interpreter = Interpreter::new();
         let intent = interpreter.parse("test report run-001");
         match intent {
-            Intent::AgnosticTestReport { run_id, format } => {
-                assert_eq!(run_id, "run-001");
-                assert!(format.is_none());
+            Intent::AgnosticStructuredResults { session_id, result_type } => {
+                assert_eq!(session_id, "run-001");
+                assert!(result_type.is_none());
             }
-            other => panic!("Expected AgnosticTestReport, got {:?}", other),
+            other => panic!("Expected AgnosticStructuredResults, got {:?}", other),
         }
     }
 
     #[test]
-    fn test_parse_agnostic_test_report_with_format() {
+    fn test_parse_agnostic_structured_results_with_type() {
         let interpreter = Interpreter::new();
         let intent = interpreter.parse("test report run-001 format json");
         match intent {
-            Intent::AgnosticTestReport { run_id, format } => {
-                assert_eq!(run_id, "run-001");
-                assert_eq!(format, Some("json".to_string()));
+            Intent::AgnosticStructuredResults { session_id, result_type } => {
+                assert_eq!(session_id, "run-001");
+                assert_eq!(result_type, Some("json".to_string()));
             }
-            other => panic!("Expected AgnosticTestReport, got {:?}", other),
+            other => panic!("Expected AgnosticStructuredResults, got {:?}", other),
         }
     }
 
     #[test]
-    fn test_parse_agnostic_list_suites() {
+    fn test_parse_agnostic_list_presets() {
         let interpreter = Interpreter::new();
         let intent = interpreter.parse("list suites");
         assert!(matches!(
             intent,
-            Intent::AgnosticListSuites { category: None }
+            Intent::AgnosticListPresets { domain: None }
         ));
     }
 
     #[test]
-    fn test_parse_agnostic_list_suites_category() {
+    fn test_parse_agnostic_list_presets_domain() {
         let interpreter = Interpreter::new();
         let intent = interpreter.parse("show test suites in security");
         match intent {
-            Intent::AgnosticListSuites { category } => {
-                assert_eq!(category, Some("security".to_string()));
+            Intent::AgnosticListPresets { domain } => {
+                assert_eq!(domain, Some("security".to_string()));
             }
-            other => panic!("Expected AgnosticListSuites, got {:?}", other),
+            other => panic!("Expected AgnosticListPresets, got {:?}", other),
         }
     }
 
@@ -2776,67 +2776,51 @@ mod tests {
     fn test_parse_agnostic_agent_status() {
         let interpreter = Interpreter::new();
         let intent = interpreter.parse("qa agent status");
-        assert!(matches!(
-            intent,
-            Intent::AgnosticAgentStatus { agent_type: None }
-        ));
+        assert!(matches!(intent, Intent::AgnosticAgentStatus));
     }
 
     #[test]
-    fn test_parse_agnostic_agent_status_filtered() {
+    fn test_translate_agnostic_submit_task() {
         let interpreter = Interpreter::new();
-        let intent = interpreter.parse("agent status for security");
-        match intent {
-            Intent::AgnosticAgentStatus { agent_type } => {
-                assert_eq!(agent_type, Some("security".to_string()));
-            }
-            other => panic!("Expected AgnosticAgentStatus, got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn test_translate_agnostic_run_suite() {
-        let interpreter = Interpreter::new();
-        let intent = Intent::AgnosticRunSuite {
-            suite: "regression".to_string(),
+        let intent = Intent::AgnosticSubmitTask {
+            title: "regression".to_string(),
+            description: Some("regression".to_string()),
             target_url: None,
         };
         let t = interpreter.translate(&intent).unwrap();
         assert_eq!(t.command, "curl");
         let body = t.args.last().unwrap();
-        assert!(body.contains("agnostic_run_suite"));
+        assert!(body.contains("agnostic_submit_task"));
         assert!(body.contains("regression"));
         assert_eq!(t.permission, PermissionLevel::SystemWrite);
     }
 
     #[test]
-    fn test_translate_agnostic_test_status() {
+    fn test_translate_agnostic_task_status() {
         let interpreter = Interpreter::new();
-        let intent = Intent::AgnosticTestStatus {
-            run_id: "run-001".to_string(),
+        let intent = Intent::AgnosticTaskStatus {
+            task_id: "run-001".to_string(),
         };
         let t = interpreter.translate(&intent).unwrap();
         let body = t.args.last().unwrap();
-        assert!(body.contains("agnostic_test_status"));
+        assert!(body.contains("agnostic_task_status"));
         assert_eq!(t.permission, PermissionLevel::Safe);
     }
 
     #[test]
-    fn test_translate_agnostic_list_suites() {
+    fn test_translate_agnostic_list_presets() {
         let interpreter = Interpreter::new();
-        let intent = Intent::AgnosticListSuites { category: None };
+        let intent = Intent::AgnosticListPresets { domain: None };
         let t = interpreter.translate(&intent).unwrap();
         let body = t.args.last().unwrap();
-        assert!(body.contains("agnostic_list_suites"));
+        assert!(body.contains("agnostic_list_presets"));
         assert_eq!(t.permission, PermissionLevel::Safe);
     }
 
     #[test]
     fn test_translate_agnostic_agent_status() {
         let interpreter = Interpreter::new();
-        let intent = Intent::AgnosticAgentStatus {
-            agent_type: Some("security".to_string()),
-        };
+        let intent = Intent::AgnosticAgentStatus;
         let t = interpreter.translate(&intent).unwrap();
         let body = t.args.last().unwrap();
         assert!(body.contains("agnostic_agent_status"));

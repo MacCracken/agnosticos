@@ -3,7 +3,6 @@ use uuid::Uuid;
 
 use super::super::helpers::{
     error_result, extract_required_string, get_optional_string_arg, success_result,
-    validate_enum_opt,
 };
 use super::super::types::McpToolResult;
 use super::bridge::HttpBridge;
@@ -11,6 +10,9 @@ use super::bridge::HttpBridge;
 // ---------------------------------------------------------------------------
 // Agnostic Agentics Systems (AAS) Bridge
 // ---------------------------------------------------------------------------
+// API contract aligned with Agnostic v2026.3.16+
+// Base: http://127.0.0.1:8000/api/v1
+// All task submission routes through crew builder internally.
 
 pub(crate) fn agnostic_bridge() -> HttpBridge {
     HttpBridge::new(
@@ -22,368 +24,567 @@ pub(crate) fn agnostic_bridge() -> HttpBridge {
 }
 
 // ---------------------------------------------------------------------------
-// Agnostic Tool Implementations (bridged)
+// Task Submission (all route through crews internally)
 // ---------------------------------------------------------------------------
 
-pub(crate) async fn handle_agnostic_run_suite(args: &serde_json::Value) -> McpToolResult {
-    let suite = match extract_required_string(args, "suite") {
+/// Submit a QA task.
+/// POST /api/v1/tasks
+pub(crate) async fn handle_agnostic_submit_task(args: &serde_json::Value) -> McpToolResult {
+    let title = match extract_required_string(args, "title") {
+        Ok(s) => s,
+        Err(e) => return e,
+    };
+    let description = match extract_required_string(args, "description") {
         Ok(s) => s,
         Err(e) => return e,
     };
 
-    if suite.is_empty() {
-        return error_result("Suite name cannot be empty".to_string());
-    }
-
     let target_url = get_optional_string_arg(args, "target_url");
-    let agents = args.get("agents").cloned();
+    let priority =
+        get_optional_string_arg(args, "priority").unwrap_or_else(|| "high".to_string());
+    let size = get_optional_string_arg(args, "size").unwrap_or_else(|| "standard".to_string());
 
     let bridge = agnostic_bridge();
     let mut body = serde_json::json!({
-        "suite": suite,
+        "title": title,
+        "description": description,
+        "priority": priority,
+        "size": size,
     });
     if let Some(url) = &target_url {
         body["target_url"] = serde_json::json!(url);
     }
-    if let Some(a) = agents {
-        body["agents"] = a;
+    if let Some(agents) = args.get("agents") {
+        body["agents"] = agents.clone();
+    }
+    if let Some(standards) = args.get("standards") {
+        body["standards"] = standards.clone();
     }
 
-    match bridge.post("/api/v1/runs", body).await {
+    match bridge.post("/api/v1/tasks", body).await {
         Ok(response) => {
-            info!(suite = %suite, "Agnostic: run suite (bridged)");
+            info!(title = %title, "Agnostic: submit task (bridged)");
             success_result(response)
         }
         Err(e) => {
-            warn!(error = %e, "Agnostic bridge: falling back to mock for run_suite");
-            let run_id = Uuid::new_v4().to_string();
+            warn!(error = %e, "Agnostic bridge: submit task failed");
+            let task_id = Uuid::new_v4().to_string();
             success_result(serde_json::json!({
-                "run_id": run_id,
-                "suite": suite,
-                "status": "running",
-                "agents_active": ["ui", "api", "security"],
-                "started_at": chrono::Utc::now().to_rfc3339(),
+                "task_id": task_id,
+                "status": "pending",
                 "_source": "mock",
             }))
         }
     }
 }
 
-pub(crate) async fn handle_agnostic_test_status(args: &serde_json::Value) -> McpToolResult {
-    let run_id = match extract_required_string(args, "run_id") {
+/// Get task status.
+/// GET /api/v1/tasks/{task_id}
+pub(crate) async fn handle_agnostic_task_status(args: &serde_json::Value) -> McpToolResult {
+    let task_id = match extract_required_string(args, "task_id") {
         Ok(id) => id,
         Err(e) => return e,
     };
 
     let bridge = agnostic_bridge();
-    match bridge.get(&format!("/api/v1/runs/{}", run_id), &[]).await {
-        Ok(response) => {
-            info!(run_id = %run_id, "Agnostic: test status (bridged)");
-            success_result(response)
-        }
-        Err(e) => {
-            warn!(error = %e, "Agnostic bridge: falling back to mock for test_status");
-            success_result(serde_json::json!({
-                "run_id": run_id,
-                "status": "completed",
-                "total_tests": 156,
-                "passed": 148,
-                "failed": 5,
-                "skipped": 3,
-                "duration_seconds": 342,
-                "agents": {
-                    "ui": {"status": "completed", "tests": 62},
-                    "api": {"status": "completed", "tests": 48},
-                    "security": {"status": "completed", "tests": 46},
-                },
-                "_source": "mock",
-            }))
-        }
-    }
-}
-
-pub(crate) async fn handle_agnostic_test_report(args: &serde_json::Value) -> McpToolResult {
-    let run_id = match extract_required_string(args, "run_id") {
-        Ok(id) => id,
-        Err(e) => return e,
-    };
-
-    let format = get_optional_string_arg(args, "format").unwrap_or_else(|| "summary".to_string());
-
-    let format_opt = Some(format.clone());
-    if let Err(e) = validate_enum_opt(&format_opt, "format", &["summary", "full", "json"]) {
-        return e;
-    }
-
-    let bridge = agnostic_bridge();
-    let query = vec![("format".to_string(), format.clone())];
     match bridge
-        .get(&format!("/api/v1/runs/{}/report", run_id), &query)
+        .get(&format!("/api/v1/tasks/{}", task_id), &[])
         .await
     {
         Ok(response) => {
-            info!(run_id = %run_id, "Agnostic: test report (bridged)");
+            info!(task_id = %task_id, "Agnostic: task status (bridged)");
             success_result(response)
         }
         Err(e) => {
-            warn!(error = %e, "Agnostic bridge: falling back to mock for test_report");
-            success_result(serde_json::json!({
-                "run_id": run_id,
-                "format": format,
-                "summary": {
-                    "total": 156, "passed": 148, "failed": 5, "skipped": 3,
-                    "pass_rate": 0.968,
-                },
-                "failures": [
-                    {"test": "login_form_validation", "agent": "ui", "message": "Expected error message not displayed for empty email"},
-                    {"test": "rate_limit_enforcement", "agent": "api", "message": "429 not returned after 100 requests/min"},
-                ],
-                "security_findings": [
-                    {"severity": "medium", "title": "Missing CSP header on /dashboard", "agent": "security"},
-                ],
-                "_source": "mock",
-            }))
+            warn!(error = %e, "Agnostic bridge: task status failed");
+            error_result(format!("Task status unavailable: {}", e))
         }
     }
 }
 
-pub(crate) async fn handle_agnostic_list_suites(args: &serde_json::Value) -> McpToolResult {
-    let category = get_optional_string_arg(args, "category");
+// ---------------------------------------------------------------------------
+// Security
+// ---------------------------------------------------------------------------
 
-    if let Err(e) = validate_enum_opt(
-        &category,
-        "category",
-        &["ui", "api", "security", "performance", "all"],
-    ) {
-        return e;
-    }
+/// Run OWASP/GDPR/PCI DSS compliance scan.
+/// POST /api/v1/tasks/security
+pub(crate) async fn handle_agnostic_security_scan(args: &serde_json::Value) -> McpToolResult {
+    let target_url = match extract_required_string(args, "target_url") {
+        Ok(u) => u,
+        Err(e) => return e,
+    };
+
+    let title = get_optional_string_arg(args, "title")
+        .unwrap_or_else(|| "Security Scan".to_string());
+    let description = get_optional_string_arg(args, "description")
+        .unwrap_or_else(|| format!("Security scan: {}", target_url));
+    let size = get_optional_string_arg(args, "size").unwrap_or_else(|| "standard".to_string());
 
     let bridge = agnostic_bridge();
-    let mut query = Vec::new();
-    if let Some(ref c) = category {
-        query.push(("category".to_string(), c.clone()));
+    let mut body = serde_json::json!({
+        "title": title,
+        "description": description,
+        "target_url": target_url,
+        "size": size,
+    });
+    if let Some(standards) = args.get("standards") {
+        body["standards"] = standards.clone();
     }
 
-    match bridge.get("/api/v1/suites", &query).await {
+    match bridge.post("/api/v1/tasks/security", body).await {
         Ok(response) => {
-            info!("Agnostic: list suites (bridged)");
+            info!(target = %target_url, "Agnostic: security scan (bridged)");
             success_result(response)
         }
         Err(e) => {
-            warn!(error = %e, "Agnostic bridge: falling back to mock for list_suites");
-            let suites = vec![
-                serde_json::json!({"id": "suite-001", "name": "Full Regression", "category": "all", "test_count": 312, "agents": ["ui", "api", "security", "performance"]}),
-                serde_json::json!({"id": "suite-002", "name": "Security Audit", "category": "security", "test_count": 89, "agents": ["security"]}),
-                serde_json::json!({"id": "suite-003", "name": "API Contract Tests", "category": "api", "test_count": 156, "agents": ["api"]}),
-                serde_json::json!({"id": "suite-004", "name": "UI Smoke Tests", "category": "ui", "test_count": 45, "agents": ["ui", "accessibility"]}),
-            ];
-            let filtered: Vec<_> = if let Some(ref c) = category {
-                if c == "all" {
-                    suites
-                } else {
-                    suites
-                        .into_iter()
-                        .filter(|s| s["category"].as_str() == Some(c.as_str()))
-                        .collect()
-                }
-            } else {
-                suites
-            };
-            success_result(serde_json::json!({
-                "suites": filtered,
-                "total": filtered.len(),
-                "_source": "mock",
-            }))
+            warn!(error = %e, "Agnostic bridge: security scan failed");
+            error_result(format!("Security scan failed: {}", e))
         }
     }
 }
 
-pub(crate) async fn handle_agnostic_agent_status(args: &serde_json::Value) -> McpToolResult {
-    let agent_type = get_optional_string_arg(args, "agent_type");
+/// Get security findings for a session.
+/// GET /api/v1/results/structured/{session_id}?result_type=security
+pub(crate) async fn handle_agnostic_security_findings(
+    args: &serde_json::Value,
+) -> McpToolResult {
+    let session_id = match extract_required_string(args, "session_id") {
+        Ok(id) => id,
+        Err(e) => return e,
+    };
 
-    if let Err(e) = validate_enum_opt(
-        &agent_type,
-        "agent_type",
-        &[
-            "ui",
-            "api",
-            "security",
-            "performance",
-            "accessibility",
-            "self-healing",
-        ],
-    ) {
-        return e;
+    let bridge = agnostic_bridge();
+    let query = vec![("result_type".to_string(), "security".to_string())];
+    match bridge
+        .get(
+            &format!("/api/v1/results/structured/{}", session_id),
+            &query,
+        )
+        .await
+    {
+        Ok(response) => {
+            info!(session_id = %session_id, "Agnostic: security findings (bridged)");
+            success_result(response)
+        }
+        Err(e) => {
+            warn!(error = %e, "Agnostic bridge: security findings failed");
+            error_result(format!("Security findings unavailable: {}", e))
+        }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Performance
+// ---------------------------------------------------------------------------
+
+/// Run load testing and latency profiling.
+/// POST /api/v1/tasks/performance
+pub(crate) async fn handle_agnostic_performance_test(
+    args: &serde_json::Value,
+) -> McpToolResult {
+    let target_url = match extract_required_string(args, "target_url") {
+        Ok(u) => u,
+        Err(e) => return e,
+    };
+
+    let title = get_optional_string_arg(args, "title")
+        .unwrap_or_else(|| "Performance Test".to_string());
+    let size = get_optional_string_arg(args, "size").unwrap_or_else(|| "standard".to_string());
+
+    let bridge = agnostic_bridge();
+    let mut body = serde_json::json!({
+        "title": title,
+        "description": format!("Performance test: {}", target_url),
+        "target_url": target_url,
+        "size": size,
+    });
+    if let Some(dur) = args.get("duration_seconds") {
+        body["duration_seconds"] = dur.clone();
+    }
+    if let Some(conc) = args.get("concurrency") {
+        body["concurrency"] = conc.clone();
+    }
+
+    match bridge.post("/api/v1/tasks/performance", body).await {
+        Ok(response) => {
+            info!(target = %target_url, "Agnostic: performance test (bridged)");
+            success_result(response)
+        }
+        Err(e) => {
+            warn!(error = %e, "Agnostic bridge: performance test failed");
+            error_result(format!("Performance test failed: {}", e))
+        }
+    }
+}
+
+/// Get performance results for a session.
+/// GET /api/v1/results/structured/{session_id}?result_type=performance
+pub(crate) async fn handle_agnostic_performance_results(
+    args: &serde_json::Value,
+) -> McpToolResult {
+    let session_id = match extract_required_string(args, "session_id") {
+        Ok(id) => id,
+        Err(e) => return e,
+    };
+
+    let bridge = agnostic_bridge();
+    let query = vec![("result_type".to_string(), "performance".to_string())];
+    match bridge
+        .get(
+            &format!("/api/v1/results/structured/{}", session_id),
+            &query,
+        )
+        .await
+    {
+        Ok(response) => {
+            info!(session_id = %session_id, "Agnostic: performance results (bridged)");
+            success_result(response)
+        }
+        Err(e) => {
+            warn!(error = %e, "Agnostic bridge: performance results failed");
+            error_result(format!("Performance results unavailable: {}", e))
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Results & Reports
+// ---------------------------------------------------------------------------
+
+/// Get structured results for a session.
+/// GET /api/v1/results/structured/{session_id}
+pub(crate) async fn handle_agnostic_structured_results(
+    args: &serde_json::Value,
+) -> McpToolResult {
+    let session_id = match extract_required_string(args, "session_id") {
+        Ok(id) => id,
+        Err(e) => return e,
+    };
+
+    let result_type = get_optional_string_arg(args, "result_type");
 
     let bridge = agnostic_bridge();
     let mut query = Vec::new();
-    if let Some(ref t) = agent_type {
-        query.push(("type".to_string(), t.clone()));
+    if let Some(ref rt) = result_type {
+        query.push(("result_type".to_string(), rt.clone()));
     }
 
-    match bridge.get("/api/v1/agents/status", &query).await {
+    match bridge
+        .get(
+            &format!("/api/v1/results/structured/{}", session_id),
+            &query,
+        )
+        .await
+    {
+        Ok(response) => {
+            info!(session_id = %session_id, "Agnostic: structured results (bridged)");
+            success_result(response)
+        }
+        Err(e) => {
+            warn!(error = %e, "Agnostic bridge: structured results failed");
+            error_result(format!("Results unavailable: {}", e))
+        }
+    }
+}
+
+/// Generate a report for a session.
+/// POST /api/v1/reports/generate
+pub(crate) async fn handle_agnostic_generate_report(
+    args: &serde_json::Value,
+) -> McpToolResult {
+    let session_id = match extract_required_string(args, "session_id") {
+        Ok(id) => id,
+        Err(e) => return e,
+    };
+    let format =
+        get_optional_string_arg(args, "format").unwrap_or_else(|| "json".to_string());
+
+    let bridge = agnostic_bridge();
+    let body = serde_json::json!({
+        "session_id": session_id,
+        "format": format,
+    });
+
+    match bridge.post("/api/v1/reports/generate", body).await {
+        Ok(response) => {
+            info!(session_id = %session_id, "Agnostic: generate report (bridged)");
+            success_result(response)
+        }
+        Err(e) => {
+            warn!(error = %e, "Agnostic bridge: report generation failed");
+            error_result(format!("Report generation failed: {}", e))
+        }
+    }
+}
+
+/// List available reports.
+/// GET /api/v1/reports
+pub(crate) async fn handle_agnostic_list_reports(_args: &serde_json::Value) -> McpToolResult {
+    let bridge = agnostic_bridge();
+    match bridge.get("/api/v1/reports", &[]).await {
+        Ok(response) => {
+            info!("Agnostic: list reports (bridged)");
+            success_result(response)
+        }
+        Err(e) => {
+            warn!(error = %e, "Agnostic bridge: list reports failed");
+            error_result(format!("Reports unavailable: {}", e))
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard & Metrics
+// ---------------------------------------------------------------------------
+
+/// Get dashboard snapshot.
+/// GET /api/v1/dashboard
+pub(crate) async fn handle_agnostic_dashboard(_args: &serde_json::Value) -> McpToolResult {
+    let bridge = agnostic_bridge();
+    match bridge.get("/api/v1/dashboard", &[]).await {
+        Ok(response) => {
+            info!("Agnostic: dashboard (bridged)");
+            success_result(response)
+        }
+        Err(e) => {
+            warn!(error = %e, "Agnostic bridge: dashboard failed");
+            error_result(format!("Dashboard unavailable: {}", e))
+        }
+    }
+}
+
+/// List active sessions.
+/// GET /api/v1/dashboard/sessions
+pub(crate) async fn handle_agnostic_list_sessions(_args: &serde_json::Value) -> McpToolResult {
+    let bridge = agnostic_bridge();
+    match bridge.get("/api/v1/dashboard/sessions", &[]).await {
+        Ok(response) => {
+            info!("Agnostic: list sessions (bridged)");
+            success_result(response)
+        }
+        Err(e) => {
+            warn!(error = %e, "Agnostic bridge: list sessions failed");
+            error_result(format!("Sessions unavailable: {}", e))
+        }
+    }
+}
+
+/// Get agent status overview.
+/// GET /api/v1/dashboard/agents
+pub(crate) async fn handle_agnostic_agent_status(_args: &serde_json::Value) -> McpToolResult {
+    let bridge = agnostic_bridge();
+    match bridge.get("/api/v1/dashboard/agents", &[]).await {
         Ok(response) => {
             info!("Agnostic: agent status (bridged)");
             success_result(response)
         }
         Err(e) => {
-            warn!(error = %e, "Agnostic bridge: falling back to mock for agent_status");
-            let agents = vec![
-                serde_json::json!({"type": "ui", "status": "idle", "last_run": "2026-03-10T14:30:00Z", "tests_run_today": 245}),
-                serde_json::json!({"type": "api", "status": "idle", "last_run": "2026-03-10T14:30:00Z", "tests_run_today": 189}),
-                serde_json::json!({"type": "security", "status": "idle", "last_run": "2026-03-10T13:00:00Z", "tests_run_today": 89}),
-                serde_json::json!({"type": "performance", "status": "idle", "last_run": "2026-03-10T12:00:00Z", "tests_run_today": 34}),
-                serde_json::json!({"type": "accessibility", "status": "idle", "last_run": "2026-03-10T14:30:00Z", "tests_run_today": 67}),
-                serde_json::json!({"type": "self-healing", "status": "idle", "last_run": "2026-03-10T14:30:00Z", "tests_run_today": 12}),
-            ];
-            let filtered: Vec<_> = if let Some(ref t) = agent_type {
-                agents
-                    .into_iter()
-                    .filter(|a| a["type"].as_str() == Some(t.as_str()))
-                    .collect()
-            } else {
-                agents
-            };
-            success_result(serde_json::json!({
-                "agents": filtered,
-                "total": filtered.len(),
-                "_source": "mock",
-            }))
+            warn!(error = %e, "Agnostic bridge: agent status failed");
+            error_result(format!("Agent status unavailable: {}", e))
         }
     }
 }
 
-pub(crate) async fn handle_agnostic_coverage(args: &serde_json::Value) -> McpToolResult {
-    let action = match extract_required_string(args, "action") {
-        Ok(a) => a,
-        Err(e) => return e,
-    };
-
-    let action_opt = Some(action.clone());
-    if let Err(e) = validate_enum_opt(
-        &action_opt,
-        "action",
-        &["summary", "detail", "diff", "trend"],
-    ) {
-        return e;
-    }
-
-    let suite = get_optional_string_arg(args, "suite");
-    let path = get_optional_string_arg(args, "path");
-    let threshold = get_optional_string_arg(args, "threshold");
-
+/// Quality metric trends.
+/// GET /api/v1/dashboard/metrics
+pub(crate) async fn handle_agnostic_quality_trends(_args: &serde_json::Value) -> McpToolResult {
     let bridge = agnostic_bridge();
-    let mut query = Vec::new();
-    query.push(("action".to_string(), action.clone()));
-    if let Some(ref s) = suite {
-        query.push(("suite".to_string(), s.clone()));
-    }
-    if let Some(ref p) = path {
-        query.push(("path".to_string(), p.clone()));
-    }
-    if let Some(ref t) = threshold {
-        query.push(("threshold".to_string(), t.clone()));
-    }
-
-    match bridge.get("/api/v1/coverage", &query).await {
+    match bridge.get("/api/v1/dashboard/metrics", &[]).await {
         Ok(response) => {
-            info!(action = %action, "Agnostic: coverage (bridged)");
+            info!("Agnostic: quality trends (bridged)");
             success_result(response)
         }
         Err(e) => {
-            warn!(error = %e, "Agnostic bridge: falling back to mock for coverage {}", action);
-            success_result(serde_json::json!({
-                "coverage_pct": 0.0,
-                "lines_covered": 0,
-                "lines_total": 0,
-                "_source": "mock",
-            }))
+            warn!(error = %e, "Agnostic bridge: quality trends failed");
+            error_result(format!("Trends unavailable: {}", e))
         }
     }
 }
 
-pub(crate) async fn handle_agnostic_schedule(args: &serde_json::Value) -> McpToolResult {
-    let action = match extract_required_string(args, "action") {
-        Ok(a) => a,
+/// Compare two sessions (regression analysis).
+/// POST /api/v1/sessions/compare
+pub(crate) async fn handle_agnostic_session_diff(args: &serde_json::Value) -> McpToolResult {
+    let session_a = match extract_required_string(args, "session_a") {
+        Ok(s) => s,
+        Err(e) => return e,
+    };
+    let session_b = match extract_required_string(args, "session_b") {
+        Ok(s) => s,
         Err(e) => return e,
     };
 
-    let action_opt = Some(action.clone());
-    if let Err(e) = validate_enum_opt(
-        &action_opt,
-        "action",
-        &["create", "list", "delete", "pause", "resume"],
-    ) {
-        return e;
-    }
+    let bridge = agnostic_bridge();
+    let body = serde_json::json!({
+        "session_a": session_a,
+        "session_b": session_b,
+    });
 
-    let suite = get_optional_string_arg(args, "suite");
-    let cron = get_optional_string_arg(args, "cron");
-    let schedule_id = get_optional_string_arg(args, "schedule_id");
+    match bridge.post("/api/v1/sessions/compare", body).await {
+        Ok(response) => {
+            info!("Agnostic: session diff (bridged)");
+            success_result(response)
+        }
+        Err(e) => {
+            warn!(error = %e, "Agnostic bridge: session diff failed");
+            error_result(format!("Session diff failed: {}", e))
+        }
+    }
+}
+
+/// Per-agent metrics.
+/// GET /api/v1/dashboard/agent-metrics
+pub(crate) async fn handle_agnostic_agent_metrics(_args: &serde_json::Value) -> McpToolResult {
+    let bridge = agnostic_bridge();
+    match bridge.get("/api/v1/dashboard/agent-metrics", &[]).await {
+        Ok(response) => success_result(response),
+        Err(e) => error_result(format!("Agent metrics unavailable: {}", e)),
+    }
+}
+
+/// LLM usage metrics.
+/// GET /api/v1/dashboard/llm
+pub(crate) async fn handle_agnostic_llm_usage(_args: &serde_json::Value) -> McpToolResult {
+    let bridge = agnostic_bridge();
+    match bridge.get("/api/v1/dashboard/llm", &[]).await {
+        Ok(response) => success_result(response),
+        Err(e) => error_result(format!("LLM usage unavailable: {}", e)),
+    }
+}
+
+/// Health check.
+/// GET /api/v1/health
+pub(crate) async fn handle_agnostic_health(_args: &serde_json::Value) -> McpToolResult {
+    let bridge = agnostic_bridge();
+    match bridge.get("/api/v1/health", &[]).await {
+        Ok(response) => success_result(response),
+        Err(e) => error_result(format!("Health check failed: {}", e)),
+    }
+}
+
+/// Recommend a preset based on description.
+/// POST /api/v1/presets/recommend
+pub(crate) async fn handle_agnostic_preset_recommend(
+    args: &serde_json::Value,
+) -> McpToolResult {
+    let description = match extract_required_string(args, "description") {
+        Ok(d) => d,
+        Err(e) => return e,
+    };
 
     let bridge = agnostic_bridge();
+    let body = serde_json::json!({ "description": description });
 
-    match action.as_str() {
-        "list" => {
-            let mut query = Vec::new();
-            if let Some(ref s) = suite {
-                query.push(("suite".to_string(), s.clone()));
-            }
-            match bridge.get("/api/v1/schedules", &query).await {
-                Ok(response) => {
-                    info!("Agnostic: list schedules (bridged)");
-                    success_result(response)
-                }
-                Err(e) => {
-                    warn!(error = %e, "Agnostic bridge: falling back to mock for list schedules");
-                    success_result(serde_json::json!({
-                        "schedules": [],
-                        "total": 0,
-                        "_source": "mock",
-                    }))
-                }
-            }
+    match bridge.post("/api/v1/presets/recommend", body).await {
+        Ok(response) => {
+            info!("Agnostic: preset recommend (bridged)");
+            success_result(response)
         }
-        op @ ("create" | "delete" | "pause" | "resume") => {
-            let mut body = serde_json::json!({
-                "action": op,
-            });
-            if let Some(ref s) = suite {
-                body["suite"] = serde_json::json!(s);
-            }
-            if let Some(ref c) = cron {
-                body["cron"] = serde_json::json!(c);
-            }
-            if let Some(ref id) = schedule_id {
-                body["schedule_id"] = serde_json::json!(id);
-            }
-            match bridge.post("/api/v1/schedules", body).await {
-                Ok(response) => {
-                    info!(action = %op, "Agnostic: {} schedule (bridged)", op);
-                    success_result(response)
-                }
-                Err(e) => {
-                    warn!(error = %e, "Agnostic bridge: falling back to mock for {} schedule", op);
-                    let id = schedule_id.unwrap_or_else(|| Uuid::new_v4().to_string());
-                    success_result(serde_json::json!({
-                        "schedule_id": id,
-                        "action": op,
-                        "status": "ok",
-                        "updated_at": chrono::Utc::now().to_rfc3339(),
-                        "_source": "mock",
-                    }))
-                }
-            }
+        Err(e) => {
+            warn!(error = %e, "Agnostic bridge: preset recommend failed");
+            error_result(format!("Preset recommendation failed: {}", e))
         }
-        _ => unreachable!(),
     }
 }
 
 // ---------------------------------------------------------------------------
-// AAS Crew Management Tools (Phase 2+)
+// A2A Protocol
 // ---------------------------------------------------------------------------
 
+/// Delegate a task via A2A.
+/// POST /api/v1/a2a/receive (type: a2a:delegate)
+pub(crate) async fn handle_agnostic_a2a_delegate(args: &serde_json::Value) -> McpToolResult {
+    let title = match extract_required_string(args, "title") {
+        Ok(t) => t,
+        Err(e) => return e,
+    };
+    let description = match extract_required_string(args, "description") {
+        Ok(d) => d,
+        Err(e) => return e,
+    };
+
+    let bridge = agnostic_bridge();
+    let body = serde_json::json!({
+        "id": Uuid::new_v4().to_string(),
+        "type": "a2a:delegate",
+        "fromPeerId": "agnosticos-daimon",
+        "toPeerId": "agnostic",
+        "timestamp": chrono::Utc::now().timestamp_millis(),
+        "payload": {
+            "title": title,
+            "description": description,
+            "target_url": get_optional_string_arg(args, "target_url"),
+            "preset": get_optional_string_arg(args, "preset"),
+            "priority": get_optional_string_arg(args, "priority").unwrap_or_else(|| "high".to_string()),
+        },
+    });
+
+    match bridge.post("/api/v1/a2a/receive", body).await {
+        Ok(response) => {
+            info!(title = %title, "Agnostic: A2A delegate (bridged)");
+            success_result(response)
+        }
+        Err(e) => {
+            warn!(error = %e, "Agnostic bridge: A2A delegate failed");
+            error_result(format!("A2A delegation failed: {}", e))
+        }
+    }
+}
+
+/// Query task status via A2A.
+/// POST /api/v1/a2a/receive (type: a2a:status_query)
+pub(crate) async fn handle_agnostic_a2a_status(args: &serde_json::Value) -> McpToolResult {
+    let task_id = match extract_required_string(args, "task_id") {
+        Ok(id) => id,
+        Err(e) => return e,
+    };
+
+    let bridge = agnostic_bridge();
+    let body = serde_json::json!({
+        "id": Uuid::new_v4().to_string(),
+        "type": "a2a:status_query",
+        "fromPeerId": "agnosticos-daimon",
+        "toPeerId": "agnostic",
+        "timestamp": chrono::Utc::now().timestamp_millis(),
+        "payload": { "task_id": task_id },
+    });
+
+    match bridge.post("/api/v1/a2a/receive", body).await {
+        Ok(response) => {
+            info!(task_id = %task_id, "Agnostic: A2A status query (bridged)");
+            success_result(response)
+        }
+        Err(e) => {
+            warn!(error = %e, "Agnostic bridge: A2A status query failed");
+            error_result(format!("A2A status query failed: {}", e))
+        }
+    }
+}
+
+/// Send A2A heartbeat.
+/// POST /api/v1/a2a/receive (type: a2a:heartbeat)
+pub(crate) async fn handle_agnostic_a2a_heartbeat(_args: &serde_json::Value) -> McpToolResult {
+    let bridge = agnostic_bridge();
+    let body = serde_json::json!({
+        "id": Uuid::new_v4().to_string(),
+        "type": "a2a:heartbeat",
+        "fromPeerId": "agnosticos-daimon",
+        "toPeerId": "agnostic",
+        "timestamp": chrono::Utc::now().timestamp_millis(),
+        "payload": {},
+    });
+
+    match bridge.post("/api/v1/a2a/receive", body).await {
+        Ok(response) => success_result(response),
+        Err(e) => error_result(format!("A2A heartbeat failed: {}", e)),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Crew Management (unchanged)
+// ---------------------------------------------------------------------------
+
+/// Run a crew.
+/// POST /api/v1/crews
 pub(crate) async fn handle_agnostic_run_crew(args: &serde_json::Value) -> McpToolResult {
     let title = match extract_required_string(args, "title") {
         Ok(t) => t,
@@ -396,7 +597,8 @@ pub(crate) async fn handle_agnostic_run_crew(args: &serde_json::Value) -> McpToo
 
     let preset = get_optional_string_arg(args, "preset");
     let target_url = get_optional_string_arg(args, "target_url");
-    let priority = get_optional_string_arg(args, "priority").unwrap_or_else(|| "high".to_string());
+    let priority =
+        get_optional_string_arg(args, "priority").unwrap_or_else(|| "high".to_string());
 
     let mut body = serde_json::json!({
         "title": title,
@@ -429,6 +631,8 @@ pub(crate) async fn handle_agnostic_run_crew(args: &serde_json::Value) -> McpToo
     }
 }
 
+/// Get crew status.
+/// GET /api/v1/crews/{crew_id}
 pub(crate) async fn handle_agnostic_crew_status(args: &serde_json::Value) -> McpToolResult {
     let crew_id = match extract_required_string(args, "crew_id") {
         Ok(id) => id,
@@ -436,7 +640,10 @@ pub(crate) async fn handle_agnostic_crew_status(args: &serde_json::Value) -> Mcp
     };
 
     let bridge = agnostic_bridge();
-    match bridge.get(&format!("/api/v1/crews/{}", crew_id), &[]).await {
+    match bridge
+        .get(&format!("/api/v1/crews/{}", crew_id), &[])
+        .await
+    {
         Ok(response) => {
             info!(crew_id = %crew_id, "Agnostic: crew status (bridged)");
             success_result(response)
@@ -448,13 +655,19 @@ pub(crate) async fn handle_agnostic_crew_status(args: &serde_json::Value) -> Mcp
     }
 }
 
+/// List crew presets.
+/// GET /api/v1/presets
 pub(crate) async fn handle_agnostic_list_presets(args: &serde_json::Value) -> McpToolResult {
     let domain = get_optional_string_arg(args, "domain");
+    let size = get_optional_string_arg(args, "size");
 
     let bridge = agnostic_bridge();
     let mut query = Vec::new();
     if let Some(ref d) = domain {
         query.push(("domain".to_string(), d.clone()));
+    }
+    if let Some(ref s) = size {
+        query.push(("size".to_string(), s.clone()));
     }
 
     match bridge.get("/api/v1/presets", &query).await {
@@ -464,19 +677,16 @@ pub(crate) async fn handle_agnostic_list_presets(args: &serde_json::Value) -> Mc
         }
         Err(e) => {
             warn!(error = %e, "Agnostic bridge: list presets failed");
-            success_result(serde_json::json!({
-                "presets": [
-                    {"name": "qa-standard", "domain": "qa", "agent_count": 6},
-                    {"name": "data-engineering", "domain": "data-engineering", "agent_count": 3},
-                    {"name": "devops", "domain": "devops", "agent_count": 3},
-                ],
-                "_source": "mock",
-            }))
+            success_result(serde_json::json!({ "presets": [], "_source": "mock" }))
         }
     }
 }
 
-pub(crate) async fn handle_agnostic_list_definitions(args: &serde_json::Value) -> McpToolResult {
+/// List agent definitions.
+/// GET /api/v1/definitions
+pub(crate) async fn handle_agnostic_list_definitions(
+    args: &serde_json::Value,
+) -> McpToolResult {
     let domain = get_optional_string_arg(args, "domain");
 
     let bridge = agnostic_bridge();
@@ -492,15 +702,13 @@ pub(crate) async fn handle_agnostic_list_definitions(args: &serde_json::Value) -
         }
         Err(e) => {
             warn!(error = %e, "Agnostic bridge: list definitions failed");
-            success_result(serde_json::json!({
-                "items": [],
-                "total": 0,
-                "_source": "mock",
-            }))
+            success_result(serde_json::json!({ "items": [], "total": 0, "_source": "mock" }))
         }
     }
 }
 
+/// Create an agent via A2A protocol.
+/// POST /api/v1/a2a/receive (type: a2a:create_agent)
 pub(crate) async fn handle_agnostic_create_agent(args: &serde_json::Value) -> McpToolResult {
     let agent_key = match extract_required_string(args, "agent_key") {
         Ok(k) => k,
@@ -523,7 +731,6 @@ pub(crate) async fn handle_agnostic_create_agent(args: &serde_json::Value) -> Mc
         Err(e) => return e,
     };
 
-    // Route through A2A create_agent message
     let bridge = agnostic_bridge();
     let body = serde_json::json!({
         "id": Uuid::new_v4().to_string(),

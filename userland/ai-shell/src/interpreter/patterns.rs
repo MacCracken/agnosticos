@@ -466,12 +466,16 @@ pub(crate) static PATTERNS: Lazy<HashMap<String, Regex>> = Lazy::new(|| {
     );
     // Agnostic additional
     r(
-        "agnostic_coverage",
-        r"(?i)^agnostic\s+(coverage|cov)\s+(summary|detail|diff|trend)(\s+(.+))?$",
+        "agnostic_dashboard",
+        r"(?i)^agnostic\s+(dashboard|dash)(\s+(sessions|agents|metrics|llm))?$",
     );
     r(
-        "agnostic_schedule",
-        r"(?i)^agnostic\s+(schedule|schedules)\s+(create|list|delete|pause|resume)(\s+(.+))?$",
+        "agnostic_trends",
+        r"(?i)^agnostic\s+(trends|quality[\s_]?trends|metrics)$",
+    );
+    r(
+        "agnostic_compare",
+        r"(?i)^agnostic\s+compare\s+(\S+)\s+(\S+)$",
     );
     // Shruti additional
     r(

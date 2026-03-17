@@ -99,18 +99,19 @@ impl Interpreter {
             | Intent::AequiReports { .. } => aequi::translate_aequi(intent),
 
             // Agnostic QA platform
-            Intent::AgnosticRunSuite { .. }
-            | Intent::AgnosticTestStatus { .. }
-            | Intent::AgnosticTestReport { .. }
-            | Intent::AgnosticListSuites { .. }
+            Intent::AgnosticSubmitTask { .. }
+            | Intent::AgnosticTaskStatus { .. }
+            | Intent::AgnosticStructuredResults { .. }
+            | Intent::AgnosticListPresets { .. }
             | Intent::AgnosticAgentStatus { .. }
             | Intent::AgnosticRunCrew { .. }
             | Intent::AgnosticCrewStatus { .. }
             | Intent::AgnosticListPresets { .. }
             | Intent::AgnosticListDefinitions { .. }
             | Intent::AgnosticCreateAgent { .. }
-            | Intent::AgnosticCoverage { .. }
-            | Intent::AgnosticSchedule { .. } => agnostic::translate_agnostic(intent),
+            | Intent::AgnosticDashboard { .. }
+            | Intent::AgnosticTrends
+            | Intent::AgnosticCompare { .. } => agnostic::translate_agnostic(intent),
 
             // Delta code hosting
             Intent::DeltaCreateRepo { .. }

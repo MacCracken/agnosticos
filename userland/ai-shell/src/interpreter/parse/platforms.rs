@@ -9,68 +9,71 @@ pub(super) fn parse_platforms(
 ) -> Option<Intent> {
     // --- Agnostic QA platform intents ---
     if let Some(caps) = interp.try_captures("agnostic_run", input_lower) {
-        let suite = caps.get(1).map_or("", |m| m.as_str()).trim().to_string();
+        let title = caps.get(1).map_or("", |m| m.as_str()).trim().to_string();
         let target_url = caps
             .get(3)
             .map(|m| m.as_str().trim().to_string())
             .filter(|s| !s.is_empty());
-        if !suite.is_empty() {
-            return Some(Intent::AgnosticRunSuite { suite, target_url });
+        if !title.is_empty() {
+            return Some(Intent::AgnosticSubmitTask {
+                title: title.clone(),
+                description: Some(title),
+                target_url,
+            });
         }
     }
 
     if let Some(caps) = interp.try_captures("agnostic_status", input_lower) {
-        let run_id = caps.get(1).map_or("", |m| m.as_str()).trim().to_string();
-        if !run_id.is_empty() {
-            return Some(Intent::AgnosticTestStatus { run_id });
+        let task_id = caps.get(1).map_or("", |m| m.as_str()).trim().to_string();
+        if !task_id.is_empty() {
+            return Some(Intent::AgnosticTaskStatus { task_id });
         }
     }
 
     if let Some(caps) = interp.try_captures("agnostic_report", input_lower) {
-        let run_id = caps.get(1).map_or("", |m| m.as_str()).trim().to_string();
-        let format = caps
+        let session_id = caps.get(1).map_or("", |m| m.as_str()).trim().to_string();
+        let result_type = caps
             .get(3)
             .map(|m| m.as_str().trim().to_string())
             .filter(|s| !s.is_empty());
-        if !run_id.is_empty() {
-            return Some(Intent::AgnosticTestReport { run_id, format });
+        if !session_id.is_empty() {
+            return Some(Intent::AgnosticStructuredResults {
+                session_id,
+                result_type,
+            });
         }
     }
 
     if let Some(caps) = interp.try_captures("agnostic_list_suites", input_lower) {
-        let category = caps
+        let domain = caps
             .get(2)
             .map(|m| m.as_str().trim().to_string())
             .filter(|s| !s.is_empty());
-        return Some(Intent::AgnosticListSuites { category });
+        return Some(Intent::AgnosticListPresets { domain });
     }
 
-    if let Some(caps) = interp.try_captures("agnostic_agents", input_lower) {
-        let agent_type = caps
-            .get(2)
-            .map(|m| m.as_str().trim().to_string())
-            .filter(|s| !s.is_empty());
-        return Some(Intent::AgnosticAgentStatus { agent_type });
+    if interp.try_captures("agnostic_agents", input_lower).is_some() {
+        return Some(Intent::AgnosticAgentStatus);
     }
 
-    if let Some(caps) = interp.try_captures("agnostic_coverage", input_lower) {
-        let action = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();
-        let suite = caps
-            .get(4)
+    if let Some(caps) = interp.try_captures("agnostic_dashboard", input_lower) {
+        let section = caps
+            .get(3)
             .map(|m| m.as_str().trim().to_string())
             .filter(|s| !s.is_empty());
-        if !action.is_empty() {
-            return Some(Intent::AgnosticCoverage { action, suite });
-        }
+        return Some(Intent::AgnosticDashboard { section });
     }
-    if let Some(caps) = interp.try_captures("agnostic_schedule", input_lower) {
-        let action = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();
-        let suite = caps
-            .get(4)
-            .map(|m| m.as_str().trim().to_string())
-            .filter(|s| !s.is_empty());
-        if !action.is_empty() {
-            return Some(Intent::AgnosticSchedule { action, suite });
+    if interp.try_captures("agnostic_trends", input_lower).is_some() {
+        return Some(Intent::AgnosticTrends);
+    }
+    if let Some(caps) = interp.try_captures("agnostic_compare", input_lower) {
+        let session_a = caps.get(1).map_or("", |m| m.as_str()).trim().to_string();
+        let session_b = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();
+        if !session_a.is_empty() && !session_b.is_empty() {
+            return Some(Intent::AgnosticCompare {
+                session_a,
+                session_b,
+            });
         }
     }
 

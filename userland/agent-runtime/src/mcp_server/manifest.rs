@@ -189,42 +189,170 @@ pub fn build_tool_manifest() -> McpToolManifest {
             }),
             vec![]
         ),
-        // ----- Agnostic QA platform tools (5) -----
+        // ----- Agnostic QA platform tools (18) -----
+        // Task management
         tool!(
-            "agnostic_run_suite",
-            "Run a QA test suite",
+            "agnostic_submit_task",
+            "Submit a QA task (routes through quality crew)",
             json!({
-                "suite": {"type": "string", "description": "Test suite name or ID"},
-                "target_url": {"type": "string", "description": "Target application URL to test"},
-                "agents": {"type": "array", "description": "Agent types to use: ui, api, security, performance, accessibility, self-healing"}
+                "title": {"type": "string", "description": "Task title"},
+                "description": {"type": "string", "description": "Task description"},
+                "target_url": {"type": "string", "description": "Target URL to test"},
+                "priority": {"type": "string", "description": "Priority: critical, high, medium, low"},
+                "size": {"type": "string", "description": "Quality team size: lean, standard, large"},
+                "agents": {"type": "array", "description": "Agent types to use"},
+                "standards": {"type": "array", "description": "Compliance standards to check"}
             }),
-            vec!["suite"]
+            vec!["title", "description"]
         ),
         tool!(
-            "agnostic_test_status",
-            "Get status of a running or completed test run",
-            json!({"run_id": {"type": "string", "description": "Test run ID"}}),
-            vec!["run_id"]
+            "agnostic_task_status",
+            "Get QA task status by ID",
+            json!({"task_id": {"type": "string", "description": "Task ID"}}),
+            vec!["task_id"]
         ),
+        // Security
         tool!(
-            "agnostic_test_report",
-            "Get detailed test report with findings",
+            "agnostic_security_scan",
+            "Run OWASP/GDPR/PCI DSS compliance scan via quality crew",
             json!({
-                "run_id": {"type": "string", "description": "Test run ID"},
-                "format": {"type": "string", "description": "Report format: summary, full, json (default: summary)"}
+                "target_url": {"type": "string", "description": "Target URL to scan"},
+                "title": {"type": "string", "description": "Scan title"},
+                "standards": {"type": "array", "description": "Standards: OWASP, GDPR, PCI_DSS, SOC2"},
+                "size": {"type": "string", "description": "Team size: lean, standard, large"}
             }),
-            vec!["run_id"]
+            vec!["target_url"]
         ),
         tool!(
-            "agnostic_list_suites",
-            "List available QA test suites",
-            json!({"category": {"type": "string", "description": "Filter by category: ui, api, security, performance, all"}}),
+            "agnostic_security_findings",
+            "Retrieve security findings for a QA session",
+            json!({"session_id": {"type": "string", "description": "Session ID"}}),
+            vec!["session_id"]
+        ),
+        // Performance
+        tool!(
+            "agnostic_performance_test",
+            "Run load testing and P95/P99 latency profiling",
+            json!({
+                "target_url": {"type": "string", "description": "Target URL to test"},
+                "duration_seconds": {"type": "integer", "description": "Test duration (default: 60)"},
+                "concurrency": {"type": "integer", "description": "Concurrent connections (default: 10)"},
+                "size": {"type": "string", "description": "Team size: lean, standard, large"}
+            }),
+            vec!["target_url"]
+        ),
+        tool!(
+            "agnostic_performance_results",
+            "Retrieve performance test results for a session",
+            json!({"session_id": {"type": "string", "description": "Session ID"}}),
+            vec!["session_id"]
+        ),
+        // Results & reports
+        tool!(
+            "agnostic_structured_results",
+            "Get typed results (security, perf, tests) for a session",
+            json!({
+                "session_id": {"type": "string", "description": "Session ID"},
+                "result_type": {"type": "string", "description": "Type: security, performance, test_execution"}
+            }),
+            vec!["session_id"]
+        ),
+        tool!(
+            "agnostic_generate_report",
+            "Generate a QA report for a session",
+            json!({
+                "session_id": {"type": "string", "description": "Session ID"},
+                "format": {"type": "string", "description": "Format: json, html, pdf"}
+            }),
+            vec!["session_id"]
+        ),
+        tool!(
+            "agnostic_list_reports",
+            "List available QA reports",
+            json!({}),
+            vec![]
+        ),
+        // Dashboard & metrics
+        tool!(
+            "agnostic_dashboard",
+            "Get QA dashboard snapshot",
+            json!({}),
+            vec![]
+        ),
+        tool!(
+            "agnostic_list_sessions",
+            "List active QA sessions",
+            json!({}),
             vec![]
         ),
         tool!(
             "agnostic_agent_status",
-            "Get status of QA testing agents",
-            json!({"agent_type": {"type": "string", "description": "Filter by agent type: ui, api, security, performance, accessibility, self-healing"}}),
+            "Get QA agent status overview",
+            json!({}),
+            vec![]
+        ),
+        tool!(
+            "agnostic_quality_trends",
+            "Quality metrics over time: pass rates, regression frequency",
+            json!({}),
+            vec![]
+        ),
+        tool!(
+            "agnostic_session_diff",
+            "Compare two QA sessions for regression analysis",
+            json!({
+                "session_a": {"type": "string", "description": "First session ID"},
+                "session_b": {"type": "string", "description": "Second session ID"}
+            }),
+            vec!["session_a", "session_b"]
+        ),
+        tool!(
+            "agnostic_agent_metrics",
+            "Per-agent QA metrics",
+            json!({}),
+            vec![]
+        ),
+        tool!(
+            "agnostic_llm_usage",
+            "LLM token usage and cost metrics",
+            json!({}),
+            vec![]
+        ),
+        tool!(
+            "agnostic_health",
+            "Agnostic service health check",
+            json!({}),
+            vec![]
+        ),
+        tool!(
+            "agnostic_preset_recommend",
+            "Recommend a crew preset based on description",
+            json!({"description": {"type": "string", "description": "What you want to accomplish"}}),
+            vec!["description"]
+        ),
+        // A2A protocol
+        tool!(
+            "agnostic_a2a_delegate",
+            "Delegate a task to Agnostic via A2A protocol",
+            json!({
+                "title": {"type": "string", "description": "Task title"},
+                "description": {"type": "string", "description": "Task description"},
+                "target_url": {"type": "string", "description": "Target URL"},
+                "preset": {"type": "string", "description": "Crew preset name"},
+                "priority": {"type": "string", "description": "Priority: critical, high, medium, low"}
+            }),
+            vec!["title", "description"]
+        ),
+        tool!(
+            "agnostic_a2a_status",
+            "Query task status via A2A protocol",
+            json!({"task_id": {"type": "string", "description": "Task ID"}}),
+            vec!["task_id"]
+        ),
+        tool!(
+            "agnostic_a2a_heartbeat",
+            "Send A2A heartbeat to Agnostic",
+            json!({}),
             vec![]
         ),
         // ----- Photis Nadi task management tools (6) -----
@@ -843,29 +971,7 @@ pub fn build_tool_manifest() -> McpToolManifest {
             }),
             vec!["agent_key", "name", "role", "goal", "backstory"]
         ),
-        // ----- Agnostic QA tools (additional) -----
-        tool!(
-            "agnostic_coverage",
-            "Get code coverage reports from Agnostic",
-            json!({
-                "action": {"type": "string", "description": "Action: summary, detail, diff, trend"},
-                "suite": {"type": "string", "description": "Test suite name"},
-                "path": {"type": "string", "description": "File/directory filter"},
-                "threshold": {"type": "string", "description": "Minimum coverage percentage"}
-            }),
-            vec!["action"]
-        ),
-        tool!(
-            "agnostic_schedule",
-            "Schedule recurring test runs in Agnostic",
-            json!({
-                "action": {"type": "string", "description": "Action: create, list, delete, pause, resume"},
-                "suite": {"type": "string", "description": "Test suite name"},
-                "cron": {"type": "string", "description": "Cron expression"},
-                "schedule_id": {"type": "string", "description": "Schedule ID (for delete/pause/resume)"}
-            }),
-            vec!["action"]
-        ),
+        // (agnostic tools moved to main block above)
         // ----- Shruti DAW tools (additional) -----
         tool!(
             "shruti_plugins",

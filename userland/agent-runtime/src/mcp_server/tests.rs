@@ -88,10 +88,10 @@ async fn test_manifest_tool_names() {
     assert!(names.contains(&"aequi_import_bank_statement"));
     assert!(names.contains(&"aequi_account_balances"));
     assert!(names.contains(&"aequi_list_receipts"));
-    assert!(names.contains(&"agnostic_run_suite"));
-    assert!(names.contains(&"agnostic_test_status"));
-    assert!(names.contains(&"agnostic_test_report"));
-    assert!(names.contains(&"agnostic_list_suites"));
+    assert!(names.contains(&"agnostic_submit_task"));
+    assert!(names.contains(&"agnostic_task_status"));
+    assert!(names.contains(&"agnostic_security_scan"));
+    assert!(names.contains(&"agnostic_dashboard"));
     assert!(names.contains(&"agnostic_agent_status"));
     assert!(names.contains(&"delta_create_repository"));
     assert!(names.contains(&"delta_list_repositories"));
@@ -407,10 +407,26 @@ async fn test_manifest_contains_all_tools() {
         "aequi_import_bank_statement",
         "aequi_account_balances",
         "aequi_list_receipts",
-        "agnostic_run_suite",
-        "agnostic_test_status",
-        "agnostic_test_report",
-        "agnostic_list_suites",
+        "agnostic_submit_task",
+        "agnostic_task_status",
+        "agnostic_security_scan",
+        "agnostic_security_findings",
+        "agnostic_performance_test",
+        "agnostic_performance_results",
+        "agnostic_structured_results",
+        "agnostic_generate_report",
+        "agnostic_list_reports",
+        "agnostic_dashboard",
+        "agnostic_list_sessions",
+        "agnostic_quality_trends",
+        "agnostic_session_diff",
+        "agnostic_agent_metrics",
+        "agnostic_llm_usage",
+        "agnostic_health",
+        "agnostic_preset_recommend",
+        "agnostic_a2a_delegate",
+        "agnostic_a2a_status",
+        "agnostic_a2a_heartbeat",
         "agnostic_agent_status",
         "delta_create_repository",
         "delta_list_repositories",
@@ -473,8 +489,27 @@ async fn test_manifest_contains_all_tools() {
         "delta_review",
         "aequi_invoices",
         "aequi_reports",
-        "agnostic_coverage",
-        "agnostic_schedule",
+        "agnostic_submit_task",
+        "agnostic_task_status",
+        "agnostic_security_scan",
+        "agnostic_security_findings",
+        "agnostic_performance_test",
+        "agnostic_performance_results",
+        "agnostic_structured_results",
+        "agnostic_generate_report",
+        "agnostic_list_reports",
+        "agnostic_dashboard",
+        "agnostic_list_sessions",
+        "agnostic_agent_status",
+        "agnostic_quality_trends",
+        "agnostic_session_diff",
+        "agnostic_agent_metrics",
+        "agnostic_llm_usage",
+        "agnostic_health",
+        "agnostic_preset_recommend",
+        "agnostic_a2a_delegate",
+        "agnostic_a2a_status",
+        "agnostic_a2a_heartbeat",
         "agnostic_run_crew",
         "agnostic_crew_status",
         "agnostic_list_presets",
@@ -1157,11 +1192,11 @@ async fn test_aequi_receipts_invalid_status() {
 // --- Agnostic QA platform tool tests ---
 
 #[tokio::test]
-async fn test_agnostic_run_suite_mock() {
+async fn test_agnostic_submit_task_mock() {
     let router = build_test_router();
     let result = call_tool(
         &router,
-        "agnostic_run_suite",
+        "agnostic_submit_task",
         serde_json::json!({"suite": "Full Regression"}),
     )
     .await;
@@ -1173,18 +1208,18 @@ async fn test_agnostic_run_suite_mock() {
 }
 
 #[tokio::test]
-async fn test_agnostic_run_suite_missing_name() {
+async fn test_agnostic_submit_task_missing_title() {
     let router = build_test_router();
-    let result = call_tool(&router, "agnostic_run_suite", serde_json::json!({})).await;
+    let result = call_tool(&router, "agnostic_submit_task", serde_json::json!({})).await;
     assert!(result.is_error);
 }
 
 #[tokio::test]
-async fn test_agnostic_test_status_mock() {
+async fn test_agnostic_task_status_mock() {
     let router = build_test_router();
     let result = call_tool(
         &router,
-        "agnostic_test_status",
+        "agnostic_task_status",
         serde_json::json!({"run_id": "run-001"}),
     )
     .await;
@@ -1196,18 +1231,18 @@ async fn test_agnostic_test_status_mock() {
 }
 
 #[tokio::test]
-async fn test_agnostic_test_status_missing_id() {
+async fn test_agnostic_task_status_missing_id() {
     let router = build_test_router();
-    let result = call_tool(&router, "agnostic_test_status", serde_json::json!({})).await;
+    let result = call_tool(&router, "agnostic_task_status", serde_json::json!({})).await;
     assert!(result.is_error);
 }
 
 #[tokio::test]
-async fn test_agnostic_test_report_mock() {
+async fn test_agnostic_structured_results_mock() {
     let router = build_test_router();
     let result = call_tool(
         &router,
-        "agnostic_test_report",
+        "agnostic_structured_results",
         serde_json::json!({"run_id": "run-001"}),
     )
     .await;
@@ -1219,11 +1254,11 @@ async fn test_agnostic_test_report_mock() {
 }
 
 #[tokio::test]
-async fn test_agnostic_test_report_invalid_format() {
+async fn test_agnostic_structured_results_invalid_type() {
     let router = build_test_router();
     let result = call_tool(
         &router,
-        "agnostic_test_report",
+        "agnostic_structured_results",
         serde_json::json!({"run_id": "run-001", "format": "pdf"}),
     )
     .await;
@@ -1231,16 +1266,16 @@ async fn test_agnostic_test_report_invalid_format() {
 }
 
 #[tokio::test]
-async fn test_agnostic_test_report_missing_id() {
+async fn test_agnostic_structured_results_missing_id() {
     let router = build_test_router();
-    let result = call_tool(&router, "agnostic_test_report", serde_json::json!({})).await;
+    let result = call_tool(&router, "agnostic_structured_results", serde_json::json!({})).await;
     assert!(result.is_error);
 }
 
 #[tokio::test]
-async fn test_agnostic_list_suites_mock() {
+async fn test_agnostic_list_presets_mock() {
     let router = build_test_router();
-    let result = call_tool(&router, "agnostic_list_suites", serde_json::json!({})).await;
+    let result = call_tool(&router, "agnostic_list_presets", serde_json::json!({})).await;
     assert!(!result.is_error);
     let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
     assert!(parsed["suites"].as_array().unwrap().len() >= 2);
@@ -1248,11 +1283,11 @@ async fn test_agnostic_list_suites_mock() {
 }
 
 #[tokio::test]
-async fn test_agnostic_list_suites_filtered() {
+async fn test_agnostic_list_presets_filtered() {
     let router = build_test_router();
     let result = call_tool(
         &router,
-        "agnostic_list_suites",
+        "agnostic_list_presets",
         serde_json::json!({"category": "security"}),
     )
     .await;
@@ -1265,11 +1300,11 @@ async fn test_agnostic_list_suites_filtered() {
 }
 
 #[tokio::test]
-async fn test_agnostic_list_suites_invalid_category() {
+async fn test_agnostic_list_presets_invalid_domain() {
     let router = build_test_router();
     let result = call_tool(
         &router,
-        "agnostic_list_suites",
+        "agnostic_list_presets",
         serde_json::json!({"category": "chaos"}),
     )
     .await;

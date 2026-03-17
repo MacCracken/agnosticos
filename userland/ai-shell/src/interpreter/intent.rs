@@ -195,22 +195,23 @@ pub enum Intent {
         action: String,
         content: Option<String>,
     },
-    /// Run a QA test suite in Agnostic
-    AgnosticRunSuite {
-        suite: String,
+    /// Submit a QA task to Agnostic
+    AgnosticSubmitTask {
+        title: String,
+        description: Option<String>,
         target_url: Option<String>,
     },
-    /// Get test run status from Agnostic
-    AgnosticTestStatus { run_id: String },
-    /// Get test report from Agnostic
-    AgnosticTestReport {
-        run_id: String,
-        format: Option<String>,
+    /// Get task status from Agnostic
+    AgnosticTaskStatus { task_id: String },
+    /// Get structured results from Agnostic
+    AgnosticStructuredResults {
+        session_id: String,
+        result_type: Option<String>,
     },
-    /// List available QA test suites
-    AgnosticListSuites { category: Option<String> },
+    /// List presets (replaces list_suites)
+    AgnosticListPresets { domain: Option<String> },
     /// Get QA agent status from Agnostic
-    AgnosticAgentStatus { agent_type: Option<String> },
+    AgnosticAgentStatus,
     /// Run an agent crew in Agnostic
     AgnosticRunCrew {
         title: String,
@@ -218,8 +219,6 @@ pub enum Intent {
     },
     /// Get crew run status
     AgnosticCrewStatus { crew_id: String },
-    /// List agent crew presets
-    AgnosticListPresets { domain: Option<String> },
     /// List agent definitions
     AgnosticListDefinitions { domain: Option<String> },
     /// Create a new agent definition
@@ -228,15 +227,16 @@ pub enum Intent {
         name: String,
         role: String,
     },
-    /// Get code coverage from Agnostic
-    AgnosticCoverage {
-        action: String,
-        suite: Option<String>,
+    /// Get QA dashboard snapshot from Agnostic
+    AgnosticDashboard {
+        section: Option<String>,
     },
-    /// Schedule recurring tests in Agnostic
-    AgnosticSchedule {
-        action: String,
-        suite: Option<String>,
+    /// Get quality metric trends from Agnostic
+    AgnosticTrends,
+    /// Compare two test sessions in Agnostic
+    AgnosticCompare {
+        session_a: String,
+        session_b: String,
     },
     /// Create a repository in Delta
     DeltaCreateRepo {
