@@ -48,6 +48,11 @@ jobs:
           tar xf output/agnos-toolchain-x86_64.tar -C "$LFS"
           echo "Toolchain restored from cache"
 
+      - name: Prepare build directory
+        run: |
+          sudo rm -rf "$LFS"
+          mkdir -p "$LFS"
+
       - name: Download source tarballs
         if: steps.cache.outputs.cached != 'true' || inputs.stage == '0'
         run: |
@@ -115,6 +120,7 @@ jobs:
 
       - name: Restore toolchain
         run: |
+          sudo rm -rf "$LFS"
           mkdir -p "$LFS"
           tar xf output/agnos-toolchain-x86_64.tar -C "$LFS"
           "$LFS/tools/bin/x86_64-agnos-linux-gnu-gcc" --version
