@@ -1,10 +1,12 @@
 # AGNOS Development Roadmap
 
-> **Status**: Pre-Beta | **Last Updated**: 2026-03-16
-> **Userland complete** — 10900+ tests (3723+ agent-runtime, 1554 ai-shell), ~84% coverage, 0 warnings
-> **Recipes**: 109 base + 63 desktop + 25 AI + 9 network + 8 browser + 18 marketplace + 4 python + 3 database + 30 edge = 269 total
+> **Status**: Pre-Beta | **Last Updated**: 2026-03-17
+> **Userland complete** — 11000+ tests (3800+ agent-runtime, 1554 ai-shell), ~84% coverage, 0 warnings
+> **Recipes**: 115 base + 69 desktop + 25 AI + 9 network + 8 browser + 18 marketplace + 4 python + 3 database + 30 edge = 281 total
+> **Build order**: 176 packages in `recipes/build-order.txt` (base + desktop, dependency-ordered)
 > **Phases 10–14 complete** | **Phase 15A**: Core scanning done (phylax) | **Audit**: 16 rounds
-> **MCP Tools**: 122 built-in + external registration
+> **MCP Tools**: 136 built-in + external registration
+> **Sandbox**: 7 backends (Native, gVisor, Firecracker, WASM, SGX, SEV, Noop) + credential proxy + externalization gate
 
 ---
 
@@ -265,17 +267,51 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 
 ## Engineering Backlog
 
-### Active
+### Active — Module Refactoring
+
+Large single-file modules (>1500 lines) that should be split into module directories for maintainability. Prioritized by size and complexity.
+
+| # | Priority | Module | Lines | Proposed Split | Effort |
+|---|----------|--------|-------|----------------|--------|
+| R1 | Medium | `argonaut.rs` | 3873 | `argonaut/` → boot, services, runlevels, edge_boot, tests | Medium |
+| R2 | Medium | `agnova.rs` | 3603 | `agnova/` → partitioning, rootfs, config, validation, tests | Medium |
+| R3 | Medium | `network_tools.rs` | 3398 | `network_tools/` → nmap, nftables, dns, wifi, capture, tests | Medium |
+| R4 | **P0** | `orchestrator.rs` | 3259 | `orchestrator/` → scheduling, lifecycle, routing, state, tests | Medium |
+| R5 | Low | `ark.rs` | 2873 | `ark/` → resolver, installer, manifest, signing, tests | Medium |
+| R6 | Low | `service_manager.rs` | 2630 | `service_manager/` → lifecycle, systemd, health, tests | Small |
+| R7 | Low | `federation.rs` | 2565 | `federation/` → discovery, sync, vector_store, gossip, tests | Medium |
+| R8 | Low | `sigil.rs` | 2123 | `sigil/` → verify, chain, policy, tests | Small |
+| R9 | Low | `edge.rs` | 2075 | `edge/` → fleet, ota, telemetry, routing, tests | Small |
+| R10 | Low | `safety.rs` | 2062 | `safety/` → injection, guardrails, policy, tests | Small |
+
+**Pattern to follow**: `sandbox_mod/` (completed in 2026.3.17) — 7 files consolidated from 7 standalone modules, re-exports in `mod.rs`, old files deleted.
+
+### Active — Build & Distribution
 
 | # | Priority | Item | Notes |
 |---|----------|------|-------|
-| — | — | No active items | Engineering backlog clear |
+| B1 | High | Selfhost pipeline builds all 176 packages | `selfhost-build.yml` updated, needs first full run |
+| B2 | High | RPi4 hardware boot test | Firmware blobs added, needs physical validation |
+| B3 | Medium | SHA256 checksums for all recipes | Most recipes have empty `sha256 = ""` — fill from upstream |
+| B4 | Medium | Debian removal from installer scripts | `build-installer.sh` / `build-sdcard.sh` still fall back to debootstrap when no base rootfs |
+
+### Active — Sandbox & Security
+
+| # | Priority | Item | Notes |
+|---|----------|------|-------|
+| S1 | High | Wire credential proxy to sandbox lifecycle | `CredentialProxyManager` exists, needs integration with agent spawn in `orchestrator.rs` |
+| S2 | High | Wire externalization gate to network egress | `ExternalizationGate` exists, needs integration at network boundary |
+| S3 | Medium | gVisor/Firecracker runtime execution | Config generation + OCI/VM lifecycle done, needs actual process spawning via `tokio::process::Command` |
+| S4 | Medium | SGX/SEV hardware validation | Backends implemented, need hardware to test |
+| S5 | Low | Offender tracker → sigil trust integration | `OffenderTracker` trust scores should feed into sigil's trust chain |
 
 ### Resolved
 
 | # | Item | Resolution |
 |---|------|------------|
-| 1 | Go toolchain bump (1.24.1 → 1.26+) | **Done** — `recipes/ai/go.toml` updated to 1.26.1. Unblocks cliphist, Kitty, modern Go modules |
+| 1 | Go toolchain bump (1.24.1 → 1.26+) | **Done** — `recipes/ai/go.toml` updated to 1.26.1 |
+| 2 | Sandbox module consolidation | **Done** — 7 files → `sandbox_mod/` (2026.3.17). 303 tests, >95% coverage |
+| 3 | Agnostic MCP API realignment | **Done** — 21 tools updated to match Agnostic v2026.3.16 API (2026.3.17) |
 
 ---
 
@@ -332,7 +368,7 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 | Desktop/AI Stack Recipes | ~62 | 79 | Complete |
 | Edge Recipes | ~30 | 30 | Complete |
 | Marketplace Recipes | 11 | 18 | Complete (11 released + 7 scaffolded) |
-| MCP Tools | — | 122 | Complete (10 agnos + 5 aequi + 5 agnostic + 5 delta + 8 photis + 5 edge + 7 shruti + 8 tarang + 8 jalwa + 9 rasa + 7 mneme + 7 synapse + 7 bullshift + 7 yeoman + 5 phylax + others) |
+| MCP Tools | — | 136 | Complete (10 agnos + 5 aequi + 21 agnostic + 7 delta + 8 photis + 5 edge + 7 shruti + 8 tarang + 8 jalwa + 9 rasa + 7 mneme + 7 synapse + 7 bullshift + 7 yeoman + 5 phylax + others) |
 | Consumer Apps | 6 | 17 | 11 released + 6 scaffolded |
 | Recipe Validation Errors | 0 | 0 | Complete |
 | Security Audit Rounds | 15 | 16 | Complete |

@@ -1,0 +1,68 @@
+# Firecracker — Lightweight microVM manager for sandbox isolation
+# Creates per-task VMs with ~125ms boot. KVM-based, minimal attack surface.
+# Used by daimon's Firecracker sandbox backend.
+#
+# Binary-only distribution from GitHub releases.
+
+[package]
+name = "firecracker"
+version = "1.12.0"
+description = "Firecracker — lightweight microVMs for serverless/sandbox workloads"
+license = "Apache-2.0"
+groups = ["base", "security", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/firecracker-microvm/firecracker/releases/download/v1.12.0/firecracker-v1.12.0-x86_64.tgz"
+sha256 = ""
+patches = []
+
+[depends]
+runtime = ["glibc"]
+build = []
+optional = []
+
+[build]
+pre_build = ""
+configure = ""
+make = ""
+check = ""
+install = """
+mkdir -p $PKG/usr/bin
+
+# Extract binaries from release tarball
+cp release-v*/firecracker-v*-x86_64 $PKG/usr/bin/firecracker 2>/dev/null || \
+    cp firecracker-v*-x86_64 $PKG/usr/bin/firecracker 2>/dev/null || \
+    cp firecracker $PKG/usr/bin/firecracker
+chmod 755 $PKG/usr/bin/firecracker
+
+# Jailer — optional, provides additional cgroup/namespace isolation for the VMM
+if [ -f release-v*/jailer-v*-x86_64 ]; then
+    cp release-v*/jailer-v*-x86_64 $PKG/usr/bin/jailer
+elif [ -f jailer-v*-x86_64 ]; then
+    cp jailer-v*-x86_64 $PKG/usr/bin/jailer
+fi
+[ -f $PKG/usr/bin/jailer ] && chmod 755 $PKG/usr/bin/jailer
+
+# VM working directories for daimon's Firecracker backend
+mkdir -p $PKG/var/lib/agnos/firecracker/vms
+
+# Minimal kernel for microVMs — uses AGNOS edge kernel config
+# The kernel image is built separately by the edge kernel recipe.
+# Symlink to the edge kernel if available.
+mkdir -p $PKG/var/lib/agnos/firecracker
+if [ -f /boot/vmlinuz-agnos-edge ]; then
+    ln -sf /boot/vmlinuz-agnos-edge $PKG/var/lib/agnos/firecracker/vmlinux
+fi
+
+# Base rootfs for microVMs — ext4 image with minimal userspace
+# Built by: scripts/build-edge.sh (squashfs → ext4 conversion)
+# If not present, daimon falls back to gVisor or native sandboxing.
+"""
+post_install = ""
+
+[security]
+hardening = []
+cflags = ""
+ldflags = ""

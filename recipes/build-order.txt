@@ -128,6 +128,8 @@ base/linux-firmware
 base/intel-ucode
 base/amd-ucode
 base/iwd
+base/gvisor
+base/firecracker
 
 # =========================================================================
 # TIER 2: Build system tools (needed for desktop stack)

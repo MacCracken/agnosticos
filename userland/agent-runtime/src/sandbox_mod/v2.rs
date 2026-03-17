@@ -1171,12 +1171,20 @@ pub enum EnvironmentNetworkPolicy {
 /// Sandbox backend preference.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SandboxBackend {
-    /// Standard Landlock + seccomp.
+    /// Standard Landlock + seccomp + namespaces.
     Native,
-    /// gVisor (runsc) container isolation.
+    /// gVisor (runsc) — userspace kernel, full syscall interception.
     GVisor,
-    /// Firecracker microVM.
+    /// Firecracker — KVM microVM, separate kernel per task.
     Firecracker,
+    /// WASM — WebAssembly sandbox, cross-platform, capability-restricted.
+    Wasm,
+    /// Intel SGX — hardware-encrypted enclave via Gramine-SGX.
+    Sgx,
+    /// AMD SEV-SNP — confidential VM with encrypted memory.
+    Sev,
+    /// No isolation — for development/testing only.
+    Noop,
     /// Auto-select best available.
     Auto,
 }
@@ -1187,7 +1195,69 @@ impl std::fmt::Display for SandboxBackend {
             Self::Native => write!(f, "native"),
             Self::GVisor => write!(f, "gvisor"),
             Self::Firecracker => write!(f, "firecracker"),
+            Self::Wasm => write!(f, "wasm"),
+            Self::Sgx => write!(f, "sgx"),
+            Self::Sev => write!(f, "sev"),
+            Self::Noop => write!(f, "noop"),
             Self::Auto => write!(f, "auto"),
+        }
+    }
+}
+
+impl SandboxBackend {
+    /// Check if a backend is available on the current system.
+    pub fn is_available(self) -> bool {
+        match self {
+            Self::Native => {
+                // Landlock available on Linux 5.13+
+                std::path::Path::new("/sys/kernel/security/landlock").exists()
+                    || std::path::Path::new("/proc/sys/kernel/unprivileged_userns_clone").exists()
+            }
+            Self::GVisor => std::path::Path::new("/usr/bin/runsc").exists(),
+            Self::Firecracker => {
+                std::path::Path::new("/usr/bin/firecracker").exists()
+                    && std::path::Path::new("/dev/kvm").exists()
+            }
+            Self::Wasm => true, // Always available (built-in runtime)
+            Self::Sgx => {
+                std::path::Path::new("/dev/sgx_enclave").exists()
+                    && std::path::Path::new("/usr/bin/gramine-sgx").exists()
+            }
+            Self::Sev => {
+                std::path::Path::new("/dev/sev").exists()
+                    && std::path::Path::new("/usr/bin/qemu-system-x86_64").exists()
+            }
+            Self::Noop => true,
+            Self::Auto => true,
+        }
+    }
+
+    /// Auto-select the strongest available backend.
+    pub fn auto_select() -> Self {
+        // Prefer strongest isolation first
+        if Self::Firecracker.is_available() {
+            return Self::Firecracker;
+        }
+        if Self::GVisor.is_available() {
+            return Self::GVisor;
+        }
+        if Self::Native.is_available() {
+            return Self::Native;
+        }
+        Self::Wasm // Fallback — always available
+    }
+
+    /// Isolation strength ranking (higher = stronger).
+    pub fn isolation_strength(self) -> u8 {
+        match self {
+            Self::Noop => 0,
+            Self::Wasm => 1,
+            Self::Native => 2,
+            Self::GVisor => 3,
+            Self::Firecracker => 4,
+            Self::Sgx => 5,
+            Self::Sev => 5,
+            Self::Auto => Self::auto_select().isolation_strength(),
         }
     }
 }

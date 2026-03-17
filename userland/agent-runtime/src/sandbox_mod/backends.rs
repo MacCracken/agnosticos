@@ -465,6 +465,358 @@ impl Default for FirecrackerBackend {
 }
 
 // ---------------------------------------------------------------------------
+// WASM Sandbox Backend
+// ---------------------------------------------------------------------------
+
+/// WASM sandbox backend.
+///
+/// Runs agent tasks as WebAssembly modules with WASI capability restrictions.
+/// Cross-platform, always available (no hardware requirements).
+/// Delegates to the existing `wasm_runtime` module for execution.
+#[derive(Debug)]
+pub struct WasmBackend {
+    /// Maximum memory pages (64KB each).
+    pub max_memory_pages: u32,
+    /// Allowed WASI capabilities.
+    wasi_caps: WasiCapabilities,
+    /// Active WASM instances: instance_id → agent_id.
+    active: HashMap<String, String>,
+}
+
+/// WASI capability flags for the WASM sandbox.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WasiCapabilities {
+    /// Allowed pre-opened directories (read-only).
+    pub readonly_dirs: Vec<String>,
+    /// Allowed pre-opened directories (read-write).
+    pub writable_dirs: Vec<String>,
+    /// Whether stdin/stdout/stderr are connected.
+    pub stdio: bool,
+    /// Whether environment variables are passed through.
+    pub env_passthrough: bool,
+    /// Whether network sockets are allowed.
+    pub network: bool,
+    /// Whether clock/time access is allowed.
+    pub clock: bool,
+}
+
+impl Default for WasiCapabilities {
+    fn default() -> Self {
+        Self {
+            readonly_dirs: vec![],
+            writable_dirs: vec!["/tmp".to_string()],
+            stdio: true,
+            env_passthrough: false,
+            network: false,
+            clock: true,
+        }
+    }
+}
+
+impl WasmBackend {
+    pub fn new() -> Self {
+        Self {
+            max_memory_pages: 256, // 16 MB
+            wasi_caps: WasiCapabilities::default(),
+            active: HashMap::new(),
+        }
+    }
+
+    pub fn with_config(max_memory_mb: u64, caps: WasiCapabilities) -> Self {
+        Self {
+            max_memory_pages: ((max_memory_mb * 1024 * 1024) / 65536) as u32,
+            wasi_caps: caps,
+            active: HashMap::new(),
+        }
+    }
+
+    /// WASM is always available.
+    pub fn is_available(&self) -> bool {
+        true
+    }
+
+    /// Generate WASI configuration for a module.
+    pub fn generate_wasi_config(&self, config: &BackendConfig) -> serde_json::Value {
+        let max_pages = ((config.max_memory_mb * 1024 * 1024) / 65536) as u32;
+        serde_json::json!({
+            "max_memory_pages": max_pages,
+            "max_memory_bytes": config.max_memory_mb * 1024 * 1024,
+            "capabilities": {
+                "readonly_dirs": self.wasi_caps.readonly_dirs,
+                "writable_dirs": self.wasi_caps.writable_dirs,
+                "stdio": self.wasi_caps.stdio,
+                "env_passthrough": self.wasi_caps.env_passthrough,
+                "network": self.wasi_caps.network,
+                "clock": self.wasi_caps.clock,
+            },
+            "timeout_secs": config.timeout_secs,
+        })
+    }
+
+    /// Register an active instance.
+    pub fn register_instance(&mut self, instance_id: &str, agent_id: &str) {
+        self.active
+            .insert(instance_id.to_string(), agent_id.to_string());
+        info!(instance_id = %instance_id, agent_id = %agent_id, "WASM: instance registered");
+    }
+
+    /// Remove an instance.
+    pub fn remove_instance(&mut self, instance_id: &str) {
+        self.active.remove(instance_id);
+    }
+
+    /// Number of active instances.
+    pub fn active_count(&self) -> usize {
+        self.active.len()
+    }
+}
+
+impl Default for WasmBackend {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Intel SGX Backend
+// ---------------------------------------------------------------------------
+
+/// Intel SGX sandbox backend.
+///
+/// Runs agent tasks inside hardware-encrypted enclaves using Gramine-SGX.
+/// Requires SGX-capable hardware (Intel Xeon E/W, some consumer CPUs).
+/// The enclave memory is encrypted by the CPU — even the OS cannot read it.
+#[derive(Debug)]
+pub struct SgxBackend {
+    /// Path to gramine-sgx binary.
+    gramine_path: PathBuf,
+    /// Path to gramine-sgx-sign (manifest signing tool).
+    pub sign_path: PathBuf,
+    /// Enclave working directory.
+    work_dir: PathBuf,
+    /// Active enclaves: enclave_id → agent_id.
+    active: HashMap<String, String>,
+}
+
+impl SgxBackend {
+    pub fn new() -> Self {
+        Self {
+            gramine_path: PathBuf::from("/usr/bin/gramine-sgx"),
+            sign_path: PathBuf::from("/usr/bin/gramine-sgx-sign"),
+            work_dir: PathBuf::from("/var/lib/agnos/sgx/enclaves"),
+            active: HashMap::new(),
+        }
+    }
+
+    /// Check if SGX hardware and Gramine are available.
+    pub fn is_available(&self) -> bool {
+        Path::new("/dev/sgx_enclave").exists() && self.gramine_path.exists()
+    }
+
+    /// Generate a Gramine manifest for an agent task.
+    pub fn generate_manifest(
+        &self,
+        enclave_id: &str,
+        binary_path: &str,
+        config: &BackendConfig,
+    ) -> serde_json::Value {
+        let enclave_size_mb = config.max_memory_mb.max(32); // SGX minimum 32MB
+        serde_json::json!({
+            "loader": {
+                "entrypoint": "file:{{ gramine.libos }}",
+                "log_level": "warning",
+                "argv": [binary_path],
+                "env": config.env,
+            },
+            "libos": {
+                "entrypoint": binary_path,
+            },
+            "sgx": {
+                "enclave_size": format!("{}M", enclave_size_mb),
+                "thread_num": ((config.cpu_quota_pct as u32) / 25).clamp(1, 8),
+                "debug": false,
+                "isvprodid": 1,
+                "isvsvn": 1,
+                "remote_attestation": "none",
+            },
+            "fs": {
+                "mounts": config.readonly_mounts.iter().map(|p| {
+                    serde_json::json!({"path": p, "uri": format!("file:{}", p), "type": "chroot"})
+                }).collect::<Vec<_>>(),
+            },
+            "enclave_id": enclave_id,
+        })
+    }
+
+    /// Prepare an enclave working directory.
+    pub fn prepare_enclave(
+        &mut self,
+        enclave_id: &str,
+        agent_id: &str,
+    ) -> std::io::Result<PathBuf> {
+        let dir = self.work_dir.join(enclave_id);
+        std::fs::create_dir_all(&dir)?;
+        self.active
+            .insert(enclave_id.to_string(), agent_id.to_string());
+        info!(enclave_id = %enclave_id, "SGX: enclave prepared");
+        Ok(dir)
+    }
+
+    /// Clean up an enclave.
+    pub fn cleanup_enclave(&mut self, enclave_id: &str) -> std::io::Result<()> {
+        let dir = self.work_dir.join(enclave_id);
+        if dir.exists() {
+            std::fs::remove_dir_all(&dir)?;
+        }
+        self.active.remove(enclave_id);
+        debug!(enclave_id = %enclave_id, "SGX: enclave cleaned up");
+        Ok(())
+    }
+
+    /// Get the gramine-sgx command line.
+    pub fn gramine_command(&self, manifest_path: &Path) -> Vec<String> {
+        vec![
+            self.gramine_path.to_string_lossy().to_string(),
+            manifest_path.to_string_lossy().to_string(),
+        ]
+    }
+
+    pub fn active_count(&self) -> usize {
+        self.active.len()
+    }
+}
+
+impl Default for SgxBackend {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// AMD SEV-SNP Backend
+// ---------------------------------------------------------------------------
+
+/// AMD SEV-SNP sandbox backend.
+///
+/// Runs agent tasks in confidential VMs with encrypted memory.
+/// Uses QEMU with SEV-SNP memory encryption. Requires AMD EPYC (Milan+).
+/// Even the hypervisor cannot read the VM's memory.
+#[derive(Debug)]
+pub struct SevBackend {
+    /// Path to qemu-system-x86_64.
+    qemu_path: PathBuf,
+    /// Path to OVMF firmware (SEV-capable).
+    ovmf_path: PathBuf,
+    /// VM working directory.
+    work_dir: PathBuf,
+    /// Active VMs: vm_id → agent_id.
+    active: HashMap<String, String>,
+}
+
+impl SevBackend {
+    pub fn new() -> Self {
+        Self {
+            qemu_path: PathBuf::from("/usr/bin/qemu-system-x86_64"),
+            ovmf_path: PathBuf::from("/usr/share/OVMF/OVMF_CODE.fd"),
+            work_dir: PathBuf::from("/var/lib/agnos/sev/vms"),
+            active: HashMap::new(),
+        }
+    }
+
+    /// Check if SEV hardware and QEMU are available.
+    pub fn is_available(&self) -> bool {
+        Path::new("/dev/sev").exists() && self.qemu_path.exists()
+    }
+
+    /// Generate QEMU command line for a SEV-SNP VM.
+    pub fn generate_qemu_config(
+        &self,
+        vm_id: &str,
+        config: &BackendConfig,
+    ) -> serde_json::Value {
+        let vcpus = ((config.cpu_quota_pct as u32) / 25).clamp(1, 4);
+        serde_json::json!({
+            "machine": "q35,confidential-guest-support=sev0,kernel-irqchip=split",
+            "cpu": "EPYC-v4",
+            "smp": vcpus,
+            "memory": format!("{}M", config.max_memory_mb),
+            "sev": {
+                "id": "sev0",
+                "cbitpos": 51,
+                "reduced-phys-bits": 1,
+                "policy": "0x5",
+                "snp": true,
+            },
+            "firmware": self.ovmf_path.to_string_lossy(),
+            "drives": [{
+                "file": format!("{}/{}.qcow2", self.work_dir.to_string_lossy(), vm_id),
+                "format": "qcow2",
+                "if": "virtio"
+            }],
+            "network": match &config.network {
+                NetworkMode::None => "none",
+                _ => "user",
+            },
+            "vm_id": vm_id,
+        })
+    }
+
+    /// Prepare a VM working directory.
+    pub fn prepare_vm(&mut self, vm_id: &str, agent_id: &str) -> std::io::Result<PathBuf> {
+        let dir = self.work_dir.join(vm_id);
+        std::fs::create_dir_all(&dir)?;
+        self.active
+            .insert(vm_id.to_string(), agent_id.to_string());
+        info!(vm_id = %vm_id, "SEV: VM prepared");
+        Ok(dir)
+    }
+
+    /// Clean up a VM.
+    pub fn cleanup_vm(&mut self, vm_id: &str) -> std::io::Result<()> {
+        let dir = self.work_dir.join(vm_id);
+        if dir.exists() {
+            std::fs::remove_dir_all(&dir)?;
+        }
+        self.active.remove(vm_id);
+        debug!(vm_id = %vm_id, "SEV: VM cleaned up");
+        Ok(())
+    }
+
+    pub fn active_count(&self) -> usize {
+        self.active.len()
+    }
+}
+
+impl Default for SevBackend {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Noop Backend (development / disabled)
+// ---------------------------------------------------------------------------
+
+/// No-op sandbox backend — provides no isolation.
+/// Used in development mode or when sandboxing is explicitly disabled.
+#[derive(Debug, Clone, Default)]
+pub struct NoopBackend;
+
+impl NoopBackend {
+    pub fn new() -> Self {
+        Self
+    }
+
+    pub fn is_available(&self) -> bool {
+        true
+    }
+
+    pub fn active_count(&self) -> usize {
+        0
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -858,5 +1210,220 @@ mod tests {
         };
         let json = serde_json::to_string(&result).unwrap();
         assert!(json.contains("\"success\":true"));
+    }
+
+    // --- WASM backend tests ---
+
+    #[test]
+    fn test_wasm_always_available() {
+        let backend = WasmBackend::new();
+        assert!(backend.is_available());
+    }
+
+    #[test]
+    fn test_wasm_default() {
+        let backend = WasmBackend::default();
+        assert_eq!(backend.active_count(), 0);
+        assert_eq!(backend.max_memory_pages, 256); // 16MB
+    }
+
+    #[test]
+    fn test_wasm_with_config() {
+        let backend = WasmBackend::with_config(64, WasiCapabilities::default());
+        assert_eq!(backend.max_memory_pages, 1024); // 64MB / 64KB
+    }
+
+    #[test]
+    fn test_wasm_wasi_config_generation() {
+        let backend = WasmBackend::new();
+        let config = BackendConfig {
+            max_memory_mb: 32,
+            timeout_secs: 60,
+            ..Default::default()
+        };
+        let wasi = backend.generate_wasi_config(&config);
+        assert_eq!(wasi["max_memory_pages"], 512); // 32MB / 64KB
+        assert_eq!(wasi["timeout_secs"], 60);
+        assert!(wasi["capabilities"]["stdio"].as_bool().unwrap());
+        assert!(!wasi["capabilities"]["network"].as_bool().unwrap());
+    }
+
+    #[test]
+    fn test_wasm_instance_lifecycle() {
+        let mut backend = WasmBackend::new();
+        backend.register_instance("inst-1", "agent-1");
+        assert_eq!(backend.active_count(), 1);
+        backend.remove_instance("inst-1");
+        assert_eq!(backend.active_count(), 0);
+    }
+
+    #[test]
+    fn test_wasi_capabilities_default() {
+        let caps = WasiCapabilities::default();
+        assert!(caps.stdio);
+        assert!(!caps.env_passthrough);
+        assert!(!caps.network);
+        assert!(caps.clock);
+        assert!(caps.writable_dirs.contains(&"/tmp".to_string()));
+    }
+
+    // --- SGX backend tests ---
+
+    #[test]
+    fn test_sgx_is_available_false() {
+        let backend = SgxBackend {
+            gramine_path: PathBuf::from("/nonexistent/gramine-sgx"),
+            sign_path: PathBuf::from("/nonexistent"),
+            work_dir: PathBuf::from("/tmp"),
+            active: HashMap::new(),
+        };
+        assert!(!backend.is_available());
+    }
+
+    #[test]
+    fn test_sgx_default() {
+        let backend = SgxBackend::default();
+        assert_eq!(backend.active_count(), 0);
+    }
+
+    #[test]
+    fn test_sgx_manifest_generation() {
+        let backend = SgxBackend::new();
+        let config = BackendConfig {
+            max_memory_mb: 256,
+            cpu_quota_pct: 50,
+            ..Default::default()
+        };
+        let manifest = backend.generate_manifest("enc-1", "/usr/bin/agent_runtime", &config);
+        assert_eq!(manifest["sgx"]["enclave_size"], "256M");
+        assert_eq!(manifest["sgx"]["thread_num"], 2);
+        assert_eq!(manifest["sgx"]["debug"], false);
+        assert_eq!(manifest["enclave_id"], "enc-1");
+    }
+
+    #[test]
+    fn test_sgx_manifest_min_memory() {
+        let backend = SgxBackend::new();
+        let config = BackendConfig {
+            max_memory_mb: 8, // Below 32MB minimum
+            ..Default::default()
+        };
+        let manifest = backend.generate_manifest("enc-1", "/usr/bin/test", &config);
+        assert_eq!(manifest["sgx"]["enclave_size"], "32M"); // Clamped to 32MB
+    }
+
+    #[test]
+    fn test_sgx_prepare_and_cleanup() {
+        let tmpdir = std::env::temp_dir().join(format!("agnos-sgx-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&tmpdir).unwrap();
+
+        let mut backend = SgxBackend {
+            gramine_path: PathBuf::from("/usr/bin/gramine-sgx"),
+            sign_path: PathBuf::from("/usr/bin/gramine-sgx-sign"),
+            work_dir: tmpdir.clone(),
+            active: HashMap::new(),
+        };
+
+        let dir = backend.prepare_enclave("enc-1", "agent-1").unwrap();
+        assert!(dir.exists());
+        assert_eq!(backend.active_count(), 1);
+
+        backend.cleanup_enclave("enc-1").unwrap();
+        assert!(!dir.exists());
+        assert_eq!(backend.active_count(), 0);
+
+        std::fs::remove_dir_all(&tmpdir).ok();
+    }
+
+    #[test]
+    fn test_sgx_gramine_command() {
+        let backend = SgxBackend::new();
+        let cmd = backend.gramine_command(Path::new("/tmp/manifest.sgx"));
+        assert!(cmd.iter().any(|s| s.contains("gramine-sgx")));
+        assert!(cmd.iter().any(|s| s.contains("manifest.sgx")));
+    }
+
+    // --- SEV backend tests ---
+
+    #[test]
+    fn test_sev_is_available_false() {
+        let backend = SevBackend {
+            qemu_path: PathBuf::from("/nonexistent/qemu"),
+            ovmf_path: PathBuf::from("/nonexistent"),
+            work_dir: PathBuf::from("/tmp"),
+            active: HashMap::new(),
+        };
+        assert!(!backend.is_available());
+    }
+
+    #[test]
+    fn test_sev_default() {
+        let backend = SevBackend::default();
+        assert_eq!(backend.active_count(), 0);
+    }
+
+    #[test]
+    fn test_sev_qemu_config() {
+        let backend = SevBackend::new();
+        let config = BackendConfig {
+            max_memory_mb: 512,
+            cpu_quota_pct: 75,
+            network: NetworkMode::None,
+            ..Default::default()
+        };
+        let qemu = backend.generate_qemu_config("vm-1", &config);
+        assert_eq!(qemu["memory"], "512M");
+        assert_eq!(qemu["smp"], 3); // 75 / 25 = 3
+        assert_eq!(qemu["sev"]["snp"], true);
+        assert_eq!(qemu["network"], "none");
+    }
+
+    #[test]
+    fn test_sev_qemu_config_with_network() {
+        let backend = SevBackend::new();
+        let config = BackendConfig {
+            network: NetworkMode::Host,
+            ..Default::default()
+        };
+        let qemu = backend.generate_qemu_config("vm-1", &config);
+        assert_eq!(qemu["network"], "user");
+    }
+
+    #[test]
+    fn test_sev_prepare_and_cleanup() {
+        let tmpdir = std::env::temp_dir().join(format!("agnos-sev-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&tmpdir).unwrap();
+
+        let mut backend = SevBackend {
+            qemu_path: PathBuf::from("/usr/bin/qemu-system-x86_64"),
+            ovmf_path: PathBuf::from("/usr/share/OVMF/OVMF_CODE.fd"),
+            work_dir: tmpdir.clone(),
+            active: HashMap::new(),
+        };
+
+        let dir = backend.prepare_vm("vm-1", "agent-1").unwrap();
+        assert!(dir.exists());
+        assert_eq!(backend.active_count(), 1);
+
+        backend.cleanup_vm("vm-1").unwrap();
+        assert!(!dir.exists());
+        assert_eq!(backend.active_count(), 0);
+
+        std::fs::remove_dir_all(&tmpdir).ok();
+    }
+
+    // --- Noop backend tests ---
+
+    #[test]
+    fn test_noop_always_available() {
+        let backend = NoopBackend::new();
+        assert!(backend.is_available());
+        assert_eq!(backend.active_count(), 0);
+    }
+
+    #[test]
+    fn test_noop_default() {
+        let backend = NoopBackend::default();
+        assert!(backend.is_available());
     }
 }

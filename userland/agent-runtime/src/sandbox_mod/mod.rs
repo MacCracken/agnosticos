@@ -17,9 +17,13 @@ pub mod egress_gate;
 pub mod monitor;
 pub mod seccomp;
 pub mod v2;
+pub mod wasm_runtime;
 
 // Re-export key types at module level
-pub use backends::{BackendConfig, BackendResult, FirecrackerBackend, GVisorBackend, NetworkMode};
+pub use backends::{
+    BackendConfig, BackendResult, FirecrackerBackend, GVisorBackend, NetworkMode, NoopBackend,
+    SevBackend, SgxBackend, WasmBackend, WasiCapabilities,
+};
 pub use self::core::Sandbox;
 pub use credential_proxy::{CredentialProxyConfig, CredentialProxyManager, ProxyDecision};
 pub use egress_gate::{ExternalizationGate, ExternalizationGateConfig, GateDecision};

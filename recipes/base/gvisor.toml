@@ -1,0 +1,57 @@
+# gVisor (runsc) — Userspace kernel for container sandboxing
+# Intercepts all syscalls in userspace, providing stronger isolation
+# than seccomp alone. Used by daimon's GVisor sandbox backend.
+#
+# Binary-only distribution — no source build.
+
+[package]
+name = "gvisor"
+version = "20250310.0"
+description = "gVisor — userspace application kernel for sandboxed containers"
+license = "Apache-2.0"
+groups = ["base", "security", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://storage.googleapis.com/gvisor/releases/release/20250310.0/x86_64/runsc"
+sha256 = ""
+patches = []
+
+[depends]
+runtime = ["glibc"]
+build = []
+optional = []
+
+[build]
+pre_build = ""
+configure = ""
+make = ""
+check = ""
+install = """
+mkdir -p $PKG/usr/bin
+
+# runsc is a static binary — just install it
+cp runsc $PKG/usr/bin/runsc 2>/dev/null || cp "$ARK_CACHE_DIR/runsc" $PKG/usr/bin/runsc
+chmod 755 $PKG/usr/bin/runsc
+
+# OCI runtime spec for containerd/podman integration
+mkdir -p $PKG/etc/containerd
+cat > $PKG/etc/containerd/runsc.toml << 'EOF'
+# gVisor runtime for containerd
+# Add to containerd config as:
+#   [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runsc]
+#     runtime_type = "io.containerd.runsc.v1"
+[runsc_config]
+  platform = "systrap"
+EOF
+
+# Bundle directory for daimon's gVisor backend
+mkdir -p $PKG/var/lib/agnos/gvisor/bundles
+"""
+post_install = ""
+
+[security]
+hardening = []
+cflags = ""
+ldflags = ""

@@ -61,7 +61,6 @@ pub mod takumi;
 pub mod tool_analysis;
 pub mod vector_rest;
 pub mod vector_store;
-pub mod wasm_runtime;
 pub mod webview;
 
 pub use aegis::{
