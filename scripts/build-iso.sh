@@ -27,6 +27,7 @@ SKIP_BUILD=0
 SKIP_DEBOOTSTRAP=0
 EDGE_MODE=0
 SY_EDGE_BINARY=""
+BASE_ROOTFS=""
 
 # Colors
 RED='\033[0;31m'
@@ -56,6 +57,8 @@ Options:
     --sy-edge-binary PATH   Path to secureyeoman-edge x86_64 binary
     --skip-build            Skip cargo build (use existing binaries)
     --skip-debootstrap      Skip debootstrap (use existing rootfs)
+    --base-rootfs PATH      Use AGNOS base rootfs instead of Debian debootstrap
+                            (accepts .tar, .tar.zst, or .tar.gz)
     -h, --help              Show this help message
 
 Examples:
@@ -63,6 +66,7 @@ Examples:
     sudo $0 --edge                  # Minimal edge ISO (headless, SY edge)
     sudo $0 --skip-build            # Rebuild ISO without recompiling
     sudo $0 --skip-debootstrap      # Rebuild with new binaries, keep rootfs
+    sudo $0 --skip-build --base-rootfs /path/to/agnos-base-rootfs.tar.zst
 EOF
 }
 
@@ -78,6 +82,7 @@ parse_args() {
             --sy-edge-binary) SY_EDGE_BINARY="$2"; shift 2 ;;
             --skip-build)   SKIP_BUILD=1; shift ;;
             --skip-debootstrap) SKIP_DEBOOTSTRAP=1; shift ;;
+            --base-rootfs)  BASE_ROOTFS="$2"; shift 2 ;;
             -h|--help)      usage; exit 0 ;;
             *)              log_error "Unknown option: $1"; usage; exit 1 ;;
         esac
@@ -163,7 +168,25 @@ build_userland() {
 create_rootfs() {
     local rootfs="$WORK_DIR/rootfs"
 
-    if [[ $SKIP_DEBOOTSTRAP -eq 1 ]] && [[ -d "$rootfs/bin" ]]; then
+    if [[ -n "$BASE_ROOTFS" ]] && [[ -f "$BASE_ROOTFS" ]]; then
+        # ---- AGNOS base rootfs mode (no Debian dependency) ----
+        log_step "Using AGNOS base rootfs: $BASE_ROOTFS"
+        rm -rf "$rootfs"
+        mkdir -p "$rootfs"
+
+        case "$BASE_ROOTFS" in
+            *.tar.zst) zstd -d "$BASE_ROOTFS" --stdout | tar xf - -C "$rootfs" ;;
+            *.tar.gz)  tar xzf "$BASE_ROOTFS" -C "$rootfs" ;;
+            *.tar)     tar xf "$BASE_ROOTFS" -C "$rootfs" ;;
+            *)         log_error "Unknown rootfs format: $BASE_ROOTFS"; exit 1 ;;
+        esac
+
+        # Ensure essential directories exist
+        mkdir -p "$rootfs"/{proc,sys,dev,tmp,run,var/log,boot}
+
+        log_info "  -> AGNOS base rootfs extracted (no Debian debootstrap)"
+
+    elif [[ $SKIP_DEBOOTSTRAP -eq 1 ]] && [[ -d "$rootfs/bin" ]]; then
         log_info "Skipping debootstrap (--skip-debootstrap)"
     else
         log_step "Bootstrapping Debian $DEBIAN_SUITE base system..."

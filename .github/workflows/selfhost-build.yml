@@ -1,10 +1,14 @@
 name: Self-Hosting Build
 
 # Builds the AGNOS self-hosting toolchain and base system from source.
-# Produces a cross-toolchain artifact that other workflows can consume.
+# Produces a cross-toolchain and base rootfs that are published as persistent
+# release assets. The release workflow then pulls the cached rootfs and overlays
+# freshly compiled userland binaries — no debootstrap needed.
 #
-# Runs on self-hosted runner (needs root, 20GB+ disk, 2+ hours).
-# Trigger: manual dispatch, or on tagged releases (v* or CalVer 20*).
+# This workflow runs RARELY: only when base recipes, toolchain, or kernel change.
+# Tagged releases pull the cached base and only rebuild userland (fast path).
+#
+# Runs on self-hosted runner (needs root, 20GB+ disk, 2+ hours first time).
 
 on:
   workflow_dispatch:
@@ -13,8 +17,15 @@ on:
         description: 'Start from stage (0=download, 1=bootstrap, 2=base, 3=userland, 4=iso)'
         required: false
         default: '0'
-  push:
-    tags: ['20*']
+      force_rebuild:
+        description: 'Force rebuild even if cached base exists'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  packages: write
 
 env:
   LFS: /tmp/agnos-selfhost
@@ -24,43 +35,60 @@ jobs:
   # -----------------------------------------------------------------------
   # Stage 1: Bootstrap cross-toolchain
   # Produces: agnos-toolchain-x86_64.tar (GCC, binutils, glibc, libstdc++)
+  # Published as: release asset "base-rootfs-latest"
   # -----------------------------------------------------------------------
   bootstrap-toolchain:
     name: Bootstrap Toolchain
     runs-on: [self-hosted, linux, x64]
-    timeout-minutes: 60
+    timeout-minutes: 120
     steps:
       - name: Clean workspace (root-owned leftovers)
         run: sudo rm -rf "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/output"
 
+      - name: Configure git for runner
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       - uses: actions/checkout@v4
 
-      - name: Check for cached toolchain
-        id: cache
+      - name: Check for published toolchain
+        id: published
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [[ -f output/agnos-toolchain-x86_64.tar ]]; then
+          if [[ "${{ inputs.force_rebuild }}" == "true" ]]; then
+            echo "cached=false" >> "$GITHUB_OUTPUT"
+            echo "Force rebuild requested"
+          elif gh release view toolchain-latest --json assets -q '.assets[].name' 2>/dev/null | grep -q 'agnos-toolchain-x86_64.tar.zst'; then
             echo "cached=true" >> "$GITHUB_OUTPUT"
+            echo "Published toolchain found — will download instead of rebuilding"
           else
             echo "cached=false" >> "$GITHUB_OUTPUT"
+            echo "No published toolchain found — building from source"
           fi
 
-      - name: Restore cached toolchain
-        if: steps.cache.outputs.cached == 'true' && inputs.stage != '0'
+      - name: Download published toolchain
+        if: steps.published.outputs.cached == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          mkdir -p output
+          gh release download toolchain-latest -p 'agnos-toolchain-x86_64.tar.zst' -D output/
+          zstd -d output/agnos-toolchain-x86_64.tar.zst -o output/agnos-toolchain-x86_64.tar
           sudo rm -rf "$LFS"
           sudo mkdir -p "$LFS"
           sudo chown "$(id -u):$(id -g)" "$LFS"
           tar xf output/agnos-toolchain-x86_64.tar -C "$LFS"
-          echo "Toolchain restored from cache"
+          echo "Toolchain restored from published release"
 
       - name: Prepare build directory
+        if: steps.published.outputs.cached != 'true'
         run: |
           sudo rm -rf "$LFS"
           sudo mkdir -p "$LFS"
           sudo chown "$(id -u):$(id -g)" "$LFS"
 
       - name: Download source tarballs
-        if: steps.cache.outputs.cached != 'true' || inputs.stage == '0'
+        if: steps.published.outputs.cached != 'true'
         run: |
           mkdir -p "$LFS/sources"
           cd "$LFS/sources"
@@ -79,7 +107,7 @@ jobs:
           done
 
       - name: Bootstrap cross-toolchain
-        if: steps.cache.outputs.cached != 'true' || inputs.stage == '0'
+        if: steps.published.outputs.cached != 'true'
         run: |
           LFS="$LFS" bash scripts/bootstrap-toolchain.sh
 
@@ -103,12 +131,12 @@ jobs:
           name: agnos-toolchain-x86_64
           path: output/agnos-toolchain-x86_64.tar
           retention-days: 30
-          compression-level: 0  # already compressed or large binary
+          compression-level: 0
 
   # -----------------------------------------------------------------------
-  # Stage 2-3: Build base system + userland
-  # Consumes: toolchain artifact
-  # Produces: agnos-rootfs-x86_64.tar
+  # Stage 2: Build base system (LFS packages)
+  # Produces: agnos-base-rootfs-x86_64.tar (base system WITHOUT userland)
+  # Published as: release asset "base-rootfs-latest" for reuse by release.yml
   # -----------------------------------------------------------------------
   build-base:
     name: Build Base System
@@ -118,6 +146,9 @@ jobs:
     steps:
       - name: Clean workspace (root-owned leftovers)
         run: sudo rm -rf "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/output"
+
+      - name: Configure git for runner
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - uses: actions/checkout@v4
 
@@ -151,94 +182,143 @@ jobs:
           echo 'root:x:0:' > "$LFS/etc/group"
 
           # Build critical base packages
-          # Note: this will fail on packages whose source tarballs aren't downloaded.
-          # The full build requires all source tarballs in $LFS/sources/.
-          # For CI, we validate the toolchain + a subset of packages.
           for recipe in iana-etc man-pages linux-api-headers; do
             LFS="$LFS" bash scripts/enter-chroot.sh \
               "ark-build /usr/src/agnos/recipes/base/${recipe}.toml 2>&1" || \
               echo "WARN: ${recipe} build failed (may need source tarball)"
           done
 
-      - name: Build AGNOS userland
+      - name: Archive base rootfs (without userland)
         run: |
-          # Copy userland source
-          cp -r userland "$LFS/usr/src/agnos/userland"
-
-          # Build with host cargo (cross-compiling for now)
-          cd userland
-          cargo build --release --workspace
-
-          # Install binaries into rootfs
-          mkdir -p "$LFS/usr/bin"
-          for bin in agent_runtime llm_gateway agnsh; do
-            if [[ -f "target/release/$bin" ]]; then
-              cp "target/release/$bin" "$LFS/usr/bin/"
-            fi
-          done
-
-      - name: Archive rootfs
-        run: |
-          tar cf output/agnos-rootfs-x86_64.tar \
+          mkdir -p output
+          tar cf output/agnos-base-rootfs-x86_64.tar \
             -C "$LFS" \
             --exclude='sources' \
             --exclude='tmp' \
+            --exclude='usr/src' \
             usr/ etc/ var/ tools/
-          ls -lh output/agnos-rootfs-x86_64.tar
+          ls -lh output/agnos-base-rootfs-x86_64.tar
 
-      - name: Upload rootfs artifact
+      - name: Upload base rootfs artifact
         uses: actions/upload-artifact@v4
         with:
-          name: agnos-rootfs-x86_64
-          path: output/agnos-rootfs-x86_64.tar
-          retention-days: 30
+          name: agnos-base-rootfs-x86_64
+          path: output/agnos-base-rootfs-x86_64.tar
+          retention-days: 90
           compression-level: 0
 
+      - name: Publish base rootfs as release asset
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Compress for storage
+          zstd -T0 -15 output/agnos-base-rootfs-x86_64.tar \
+            -o output/agnos-base-rootfs-x86_64.tar.zst
+          sha256sum output/agnos-base-rootfs-x86_64.tar.zst \
+            > output/agnos-base-rootfs-x86_64.tar.zst.sha256
+
+          VERSION=$(cat VERSION)
+
+          # Create/update persistent release for base rootfs
+          gh release delete "base-rootfs-latest" --yes 2>/dev/null || true
+          git tag -d "base-rootfs-latest" 2>/dev/null || true
+          git push origin ":refs/tags/base-rootfs-latest" 2>/dev/null || true
+
+          gh release create "base-rootfs-latest" \
+            --title "AGNOS Base Rootfs (Latest)" \
+            --notes "$(cat <<EOF
+          AGNOS base system rootfs built from source via LFS recipes.
+
+          - Toolchain: GCC ${GCC_VER:-15.2.0}, Binutils ${BINUTILS_VER:-2.45}, Glibc ${GLIBC_VER:-2.42}
+          - Base recipes: 109 packages
+          - Built from AGNOS version: ${VERSION}
+
+          **This is consumed by the release workflow** — it pulls this rootfs
+          and overlays freshly compiled userland binaries to produce the ISO.
+          No debootstrap, no Debian dependency.
+
+          To use manually:
+          \`\`\`bash
+          curl -fSL -o base-rootfs.tar.zst \\
+            https://github.com/MacCracken/agnosticos/releases/download/base-rootfs-latest/agnos-base-rootfs-x86_64.tar.zst
+          mkdir -p /tmp/agnos-rootfs
+          zstd -d base-rootfs.tar.zst | tar xf - -C /tmp/agnos-rootfs
+          \`\`\`
+          EOF
+          )" \
+            output/agnos-base-rootfs-x86_64.tar.zst \
+            output/agnos-base-rootfs-x86_64.tar.zst.sha256
+
   # -----------------------------------------------------------------------
-  # Stage 4: Create ISO
-  # Consumes: rootfs artifact
-  # Produces: agnos-selfhosting ISO
+  # Stage 3: Build userland + create ISO (validates full pipeline)
+  # This is the integration test — proves the base rootfs + userland = bootable
   # -----------------------------------------------------------------------
-  create-iso:
-    name: Create Self-Hosting ISO
+  build-and-iso:
+    name: Build Userland & Create ISO
     needs: build-base
     runs-on: [self-hosted, linux, x64]
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - name: Clean workspace (root-owned leftovers)
         run: sudo rm -rf "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/output"
 
+      - name: Configure git for runner
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       - uses: actions/checkout@v4
 
-      - name: Download rootfs artifact
+      - name: Download base rootfs artifact
         uses: actions/download-artifact@v4
         with:
-          name: agnos-rootfs-x86_64
+          name: agnos-base-rootfs-x86_64
           path: output/
 
-      - name: Restore binaries from rootfs
+      - name: Build userland
         run: |
-          # Extract built binaries from rootfs artifact so build-iso.sh --skip-build finds them
-          sudo rm -rf /tmp/agnos-rootfs
-          mkdir -p /tmp/agnos-rootfs
-          tar xf output/agnos-rootfs-x86_64.tar -C /tmp/agnos-rootfs
-          mkdir -p userland/target/release
-          for bin in agent_runtime llm_gateway agnsh; do
-            if [[ -f "/tmp/agnos-rootfs/usr/bin/$bin" ]]; then
-              cp "/tmp/agnos-rootfs/usr/bin/$bin" userland/target/release/
+          cd userland
+          cargo build --release --workspace
+
+      - name: Assemble rootfs with userland
+        run: |
+          sudo rm -rf "$LFS"
+          sudo mkdir -p "$LFS"
+          sudo chown "$(id -u):$(id -g)" "$LFS"
+
+          # Restore base rootfs
+          tar xf output/agnos-base-rootfs-x86_64.tar -C "$LFS"
+
+          # Overlay userland binaries
+          mkdir -p "$LFS/usr/bin"
+          for bin in agent_runtime llm_gateway agnsh agnos_sudo desktop_environment ai_shell; do
+            if [[ -f "userland/target/release/$bin" ]]; then
+              cp "userland/target/release/$bin" "$LFS/usr/bin/"
+              echo "Installed: $bin"
             fi
           done
-          ls -lh userland/target/release/
 
-      - name: Build ISO
+          # Install systemd units
+          mkdir -p "$LFS/usr/lib/systemd/system"
+          cp -r systemd/*.service "$LFS/usr/lib/systemd/system/" 2>/dev/null || true
+
+          # Install configs
+          mkdir -p "$LFS/etc/agnos"
+          cp -r config/* "$LFS/etc/agnos/" 2>/dev/null || true
+
+      - name: Create ISO from AGNOS rootfs
         run: |
-          # Use the Debian-based ISO builder with pre-built binaries
+          # Place binaries where build-iso.sh expects them
+          mkdir -p userland/target/release
+          for bin in agent_runtime llm_gateway agnsh agnos_sudo desktop_environment ai_shell; do
+            if [[ -f "$LFS/usr/bin/$bin" ]]; then
+              cp "$LFS/usr/bin/$bin" userland/target/release/
+            fi
+          done
           sudo bash scripts/build-iso.sh --skip-build
 
       - name: Upload ISO
         uses: actions/upload-artifact@v4
         with:
-          name: agnos-iso-x86_64
+          name: agnos-selfhost-iso-x86_64
           path: output/agnos-*.iso
           retention-days: 14
           compression-level: 0
@@ -246,6 +326,6 @@ jobs:
       - name: Upload ISO checksum
         uses: actions/upload-artifact@v4
         with:
-          name: agnos-iso-x86_64-sha256
+          name: agnos-selfhost-iso-x86_64-sha256
           path: output/agnos-*.iso.sha256
           retention-days: 14

@@ -5,6 +5,40 @@ All notable changes to AGNOS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2026.3.16-3] - 2026-03-17
+
+### Added — Phase 16A Desktop Essentials & CI/CD Architecture
+
+- **Phase 16A complete** — 9 desktop essential recipes (all new):
+  - `foot.toml` (1.26.1) — Wayland-native terminal emulator, IME support, `.desktop` entry
+  - `helix.toml` (25.07.1) — Rust modal text editor, ships default config + runtime grammars
+  - `yazi.toml` (26.1.22) — Rust TUI file manager, optional rich preview deps
+  - `fuzzel.toml` (1.14.1) — Wayland-native app launcher
+  - `mako.toml` (1.10.0) — Notification daemon, systemd user service, Catppuccin-style config
+  - `zathura.toml` (0.5.14) — Lightweight PDF/DJVU/PS viewer
+  - `imv.toml` (5.0.1) — Wayland-native image viewer (HEIF/SVG/WebP)
+  - `mpv.toml` (0.41.0) — Media player with Vulkan GPU-next, PipeWire audio, VA-API hwdec
+  - `cliphist.toml` (0.7.0) — Go-based clipboard manager with systemd user service
+- **kitty.toml** (0.46.1) — GPU-accelerated terminal emulator with kitten tools
+
+### Changed — CI/CD Two-Tier Build Architecture
+
+- **Two-tier release pipeline**: Slow base rootfs (Tier 1, cached) + fast userland releases (Tier 2)
+  - Tier 1 (`selfhost-build.yml`): Builds toolchain + base rootfs from source, publishes `base-rootfs-latest` release asset. Runs rarely (manual or when base recipes change)
+  - Tier 2 (`release.yml` → `build-iso.yml`): Pulls cached AGNOS base rootfs, overlays userland binaries, creates ISO. No Debian debootstrap needed for normal releases
+- **`build-iso.sh`**: New `--base-rootfs PATH` option — accepts `.tar`, `.tar.zst`, `.tar.gz` AGNOS rootfs, bypasses Debian debootstrap entirely
+- **`build-iso.yml`**: New `use_agnos_base` input — downloads `base-rootfs-latest` release, falls back to Debian debootstrap if unavailable
+- **`selfhost-build.yml`**: Restructured into 3 stages (bootstrap toolchain → build base → build userland + ISO). Publishes base rootfs as persistent release asset. Reuses published toolchain if available. `force_rebuild` input to override cache
+- **`publish-toolchain.yml`**: Added workspace cleanup + git safe.directory for self-hosted runners
+- **Self-hosted runner fixes**: All self-hosted jobs now clean root-owned leftovers (`sudo rm -rf build/ output/`) and configure `git safe.directory` before checkout
+
+### Changed — Toolchain & Recipes
+
+- **Go toolchain**: 1.24.1 → 1.26.1 (`recipes/ai/go.toml`). Unblocks cliphist, Kitty, modern Go modules. Engineering backlog cleared
+- Version bump: `2026.3.16-2` → `2026.3.16-3`
+- Desktop recipes: 54 → 64. Total recipes: 270
+- Roadmap: Phase 16A marked complete, beta criteria checkbox updated, engineering backlog cleared
+
 ## [2026.3.16-2] - 2026-03-16
 
 ### Added — Tarang & Jalwa MCP Tool Expansion

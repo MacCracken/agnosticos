@@ -11,12 +11,22 @@ on:
         description: 'AGNOS version'
         required: true
         type: string
+      use_agnos_base:
+        description: 'Use AGNOS base rootfs instead of Debian debootstrap'
+        required: false
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       version:
         description: 'AGNOS version (leave empty for VERSION file)'
         required: false
         type: string
+      use_agnos_base:
+        description: 'Use AGNOS base rootfs instead of Debian debootstrap'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -45,6 +55,7 @@ jobs:
           grub2-common \
           xorriso \
           mtools \
+          zstd \
           debian-archive-keyring
 
     - name: Download x86_64 binaries
@@ -52,6 +63,21 @@ jobs:
       with:
         name: agnos-linux-amd64
         path: artifacts/
+      continue-on-error: true
+
+    - name: Try downloading AGNOS base rootfs
+      id: agnos-base
+      if: inputs.use_agnos_base
+      run: |
+        echo "Attempting to download AGNOS base rootfs..."
+        if curl -fSL -o /tmp/agnos-base-rootfs-x86_64.tar.zst \
+          "https://github.com/MacCracken/agnosticos/releases/download/base-rootfs-latest/agnos-base-rootfs-x86_64.tar.zst" 2>/dev/null; then
+          echo "available=true" >> "$GITHUB_OUTPUT"
+          echo "AGNOS base rootfs downloaded — will use instead of Debian debootstrap"
+        else
+          echo "available=false" >> "$GITHUB_OUTPUT"
+          echo "AGNOS base rootfs not available — falling back to Debian debootstrap"
+        fi
       continue-on-error: true
 
     - name: Extract binaries (from artifact or build)
@@ -75,6 +101,10 @@ jobs:
         ARGS="--skip-build"
         if [ -n "$VERSION" ]; then
           ARGS="$ARGS --version $VERSION"
+        fi
+        # If AGNOS base rootfs is available, pass it to build-iso.sh
+        if [[ "${{ steps.agnos-base.outputs.available }}" == "true" ]]; then
+          ARGS="$ARGS --base-rootfs /tmp/agnos-base-rootfs-x86_64.tar.zst"
         fi
         sudo ./scripts/build-iso.sh $ARGS
 

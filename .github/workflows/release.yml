@@ -136,12 +136,14 @@ jobs:
         if-no-files-found: warn
 
   # Build bootable ISO/IMG from release binaries
+  # Uses AGNOS base rootfs if published, falls back to Debian debootstrap
   build-iso:
     name: Build ISO Images
     needs: build-release
     uses: ./.github/workflows/build-iso.yml
     with:
       version: ${{ github.ref_name }}
+      use_agnos_base: true
     permissions:
       contents: write
 

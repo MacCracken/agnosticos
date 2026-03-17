@@ -25,6 +25,12 @@ jobs:
     runs-on: [self-hosted, linux, x64]
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     steps:
+      - name: Clean workspace (root-owned leftovers)
+        run: sudo rm -rf "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/output"
+
+      - name: Configure git for runner
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       - uses: actions/checkout@v4
 
       - name: Download toolchain artifact
@@ -127,6 +133,12 @@ jobs:
     runs-on: [self-hosted, linux, x64]
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     steps:
+      - name: Clean workspace (root-owned leftovers)
+        run: sudo rm -rf "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/output"
+
+      - name: Configure git for runner
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       - uses: actions/checkout@v4
 
       - name: Download toolchain artifact
