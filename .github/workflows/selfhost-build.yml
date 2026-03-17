@@ -30,6 +30,9 @@ jobs:
     runs-on: [self-hosted, linux, x64]
     timeout-minutes: 60
     steps:
+      - name: Clean workspace (root-owned leftovers)
+        run: sudo rm -rf "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/output"
+
       - uses: actions/checkout@v4
 
       - name: Check for cached toolchain
@@ -113,6 +116,9 @@ jobs:
     runs-on: [self-hosted, linux, x64]
     timeout-minutes: 240
     steps:
+      - name: Clean workspace (root-owned leftovers)
+        run: sudo rm -rf "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/output"
+
       - uses: actions/checkout@v4
 
       - name: Download toolchain artifact
@@ -199,6 +205,9 @@ jobs:
     runs-on: [self-hosted, linux, x64]
     timeout-minutes: 30
     steps:
+      - name: Clean workspace (root-owned leftovers)
+        run: sudo rm -rf "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/output"
+
       - uses: actions/checkout@v4
 
       - name: Download rootfs artifact
