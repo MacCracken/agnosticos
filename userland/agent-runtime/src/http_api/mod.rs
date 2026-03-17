@@ -175,6 +175,17 @@ pub fn build_router(state: ApiState) -> Router {
             "/v1/sandbox/profiles/custom/:name",
             delete(delete_custom_profile_handler),
         )
+        // Sandbox enforcement API (OS-level delegation for SY, Agnostic, etc.)
+        .route(
+            "/v1/policies/landlock",
+            post(apply_landlock_policy_handler),
+        )
+        .route("/v1/sandbox/enforce", post(enforce_sandbox_handler))
+        .route("/v1/sandbox/scan-egress", post(scan_egress_handler))
+        .route(
+            "/v1/sandbox/credential-proxy/start",
+            post(start_credential_proxy_handler),
+        )
         // Agent-to-agent RPC routes
         .route("/v1/rpc/methods", get(rpc_list_methods_handler))
         .route("/v1/rpc/methods/:agent_id", get(rpc_agent_methods_handler))

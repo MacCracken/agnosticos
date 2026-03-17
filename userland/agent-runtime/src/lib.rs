@@ -49,10 +49,8 @@ pub mod resource_forecast;
 pub mod rl_optimizer;
 pub mod rollback;
 pub mod safety;
-pub mod sandbox;
-pub mod sandbox_v2;
+pub mod sandbox_mod;
 pub mod scheduler;
-pub mod seccomp_profiles;
 pub mod selfhost;
 pub mod service_manager;
 pub mod service_mesh;
@@ -184,7 +182,7 @@ pub use safety::{
     SafetyEngine, SafetyPolicy, SafetyRule, SafetyRuleType, SafetySeverity, SafetyVerdict,
     SafetyViolation,
 };
-pub use sandbox_v2::{
+pub use sandbox_mod::v2::{
     CapabilityStore, CapabilityToken, ComposableSandbox, FlowTracker, PolicyLearner,
     SandboxMetrics, TimeBoundedSandbox,
 };

@@ -1106,6 +1106,183 @@ impl SandboxMetrics {
 }
 
 // ---------------------------------------------------------------------------
+// Environment-Tiered Sandbox Profiles
+// ---------------------------------------------------------------------------
+// Inspired by SecureYeoman's dev/staging/prod/high-security presets.
+
+/// Environment tier for sandbox configuration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum SandboxEnvironment {
+    /// Development — permissive, all tools allowed, full network.
+    Dev,
+    /// Staging — moderate restrictions, some tools blocked.
+    Staging,
+    /// Production — strict, credential proxy required, limited tools.
+    Prod,
+    /// High security — maximum isolation, no network, minimal tools.
+    HighSecurity,
+}
+
+impl std::fmt::Display for SandboxEnvironment {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Dev => write!(f, "dev"),
+            Self::Staging => write!(f, "staging"),
+            Self::Prod => write!(f, "prod"),
+            Self::HighSecurity => write!(f, "high-security"),
+        }
+    }
+}
+
+/// Environment-tiered sandbox profile.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EnvironmentProfile {
+    /// Environment tier.
+    pub environment: SandboxEnvironment,
+    /// Maximum memory in MB.
+    pub max_memory_mb: u64,
+    /// CPU quota as percentage (0-100).
+    pub cpu_quota_pct: u8,
+    /// Network access level.
+    pub network: EnvironmentNetworkPolicy,
+    /// Whether credential proxy is required.
+    pub require_credential_proxy: bool,
+    /// MCP tools blocked in this environment.
+    pub blocked_tools: Vec<String>,
+    /// Seccomp mode: "basic", "strict", "lockdown".
+    pub seccomp_mode: String,
+    /// Whether externalization gate is enabled.
+    pub externalization_gate: bool,
+    /// Sandbox backend preference.
+    pub sandbox_backend: SandboxBackend,
+}
+
+/// Network policy for an environment tier.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum EnvironmentNetworkPolicy {
+    /// Unrestricted network access.
+    Unrestricted,
+    /// Allow only specific ports.
+    AllowPorts(Vec<u16>),
+    /// No network access.
+    None,
+}
+
+/// Sandbox backend preference.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SandboxBackend {
+    /// Standard Landlock + seccomp.
+    Native,
+    /// gVisor (runsc) container isolation.
+    GVisor,
+    /// Firecracker microVM.
+    Firecracker,
+    /// Auto-select best available.
+    Auto,
+}
+
+impl std::fmt::Display for SandboxBackend {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Native => write!(f, "native"),
+            Self::GVisor => write!(f, "gvisor"),
+            Self::Firecracker => write!(f, "firecracker"),
+            Self::Auto => write!(f, "auto"),
+        }
+    }
+}
+
+impl EnvironmentProfile {
+    /// Build the dev profile — permissive for development.
+    pub fn dev() -> Self {
+        Self {
+            environment: SandboxEnvironment::Dev,
+            max_memory_mb: 4096,
+            cpu_quota_pct: 90,
+            network: EnvironmentNetworkPolicy::Unrestricted,
+            require_credential_proxy: false,
+            blocked_tools: vec![],
+            seccomp_mode: "basic".to_string(),
+            externalization_gate: false,
+            sandbox_backend: SandboxBackend::Native,
+        }
+    }
+
+    /// Build the staging profile — moderate restrictions.
+    pub fn staging() -> Self {
+        Self {
+            environment: SandboxEnvironment::Staging,
+            max_memory_mb: 2048,
+            cpu_quota_pct: 70,
+            network: EnvironmentNetworkPolicy::AllowPorts(vec![80, 443, 5432, 6379, 8088, 8090]),
+            require_credential_proxy: false,
+            blocked_tools: vec![],
+            seccomp_mode: "basic".to_string(),
+            externalization_gate: true,
+            sandbox_backend: SandboxBackend::Native,
+        }
+    }
+
+    /// Build the prod profile — strict, credential proxy required.
+    pub fn prod() -> Self {
+        Self {
+            environment: SandboxEnvironment::Prod,
+            max_memory_mb: 1024,
+            cpu_quota_pct: 50,
+            network: EnvironmentNetworkPolicy::AllowPorts(vec![443, 8088, 8090]),
+            require_credential_proxy: true,
+            blocked_tools: vec![
+                "shell_exec".to_string(),
+                "file_delete".to_string(),
+                "docker_exec".to_string(),
+            ],
+            seccomp_mode: "strict".to_string(),
+            externalization_gate: true,
+            sandbox_backend: SandboxBackend::Auto,
+        }
+    }
+
+    /// Build the high-security profile — maximum isolation.
+    pub fn high_security() -> Self {
+        Self {
+            environment: SandboxEnvironment::HighSecurity,
+            max_memory_mb: 512,
+            cpu_quota_pct: 25,
+            network: EnvironmentNetworkPolicy::None,
+            require_credential_proxy: true,
+            blocked_tools: vec![
+                "shell_exec".to_string(),
+                "file_delete".to_string(),
+                "file_write".to_string(),
+                "docker_exec".to_string(),
+                "docker_run".to_string(),
+                "browser_navigate".to_string(),
+                "network_request".to_string(),
+            ],
+            seccomp_mode: "lockdown".to_string(),
+            externalization_gate: true,
+            sandbox_backend: SandboxBackend::Firecracker,
+        }
+    }
+
+    /// Get a profile by name.
+    pub fn by_name(name: &str) -> Option<Self> {
+        match name {
+            "dev" | "development" => Some(Self::dev()),
+            "staging" | "stage" => Some(Self::staging()),
+            "prod" | "production" => Some(Self::prod()),
+            "high-security" | "highsec" => Some(Self::high_security()),
+            _ => None,
+        }
+    }
+
+    /// Check if a tool is blocked in this environment.
+    pub fn is_tool_blocked(&self, tool_name: &str) -> bool {
+        self.blocked_tools.iter().any(|t| t == tool_name)
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 

@@ -1,23 +1,23 @@
-# Agnostic — Multi-agent QA platform for AGNOS marketplace
-# AI-driven QA testing with 6 specialized CrewAI agents, self-healing UI,
-# fuzzy verification, security compliance, and performance analysis.
-# Built with Python; packaged as .agnos-agent via Docker container.
+# Agnostic — Multi-domain AI agent platform for AGNOS marketplace
+# Generalized agent crew orchestration with domain presets (quality, security,
+# performance, data-engineering, devops, design, software-engineering).
+# Built with Python/CrewAI; packaged as .agnos-agent via Docker container.
 #
-# Status: Ready — recipe complete, MCP tools integrated, agnoshi intents added.
+# Status: Ready — 21 MCP tools, 12 agnoshi intents, A2A delegation, crew presets.
 
 [package]
 name = "agnostic"
-version = "2026.3.11"
-description = "Agnostic — AI-driven multi-agent QA platform"
+version = "2026.3.17"
+description = "Agnostic — Multi-domain AI agent platform with crew orchestration"
 license = "MIT"
-groups = ["server", "qa", "python"]
+groups = ["server", "qa", "ai-agents", "python"]
 release = 1
 arch = "x86_64"
 
 [source]
 # Python application, built by GitHub Actions CI.
 # Release: https://github.com/MacCracken/agnostic/releases
-# Asset: agnostic-*-py3-none-any.whl (~487 KB)
+# Asset: agnostic-*-py3-none-any.whl (~506 KB)
 local = true
 build_dir = "."
 github_release = "MacCracken/agnostic"
@@ -44,8 +44,8 @@ build = [
 category = "developer-tools"
 runtime = "python-container"
 publisher = "Agnostic"
-tags = ["qa", "testing", "ai-agents", "crewai", "security-compliance", "performance", "self-healing"]
-min_agnos_version = "2026.3.11"
+tags = ["qa", "testing", "ai-agents", "crewai", "security-compliance", "performance", "crew-orchestration", "multi-domain"]
+min_agnos_version = "2026.3.17"
 
 [marketplace.sandbox]
 seccomp_mode = "basic"
