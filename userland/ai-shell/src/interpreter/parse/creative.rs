@@ -475,24 +475,40 @@ pub(super) fn parse_creative(interp: &Interpreter, input_lower: &str) -> Option<
     }
     if let Some(caps) = interp.try_captures("jalwa_queue", input_lower) {
         let action = caps.get(1).map_or("", |m| m.as_str()).trim().to_string();
-        let item_id = caps.get(2).map(|m| m.as_str().trim().to_string()).filter(|s| !s.is_empty());
+        let item_id = caps
+            .get(2)
+            .map(|m| m.as_str().trim().to_string())
+            .filter(|s| !s.is_empty());
         if !action.is_empty() {
             return Some(Intent::JalwaQueue { action, item_id });
         }
     }
     if let Some(caps) = interp.try_captures("jalwa_library", input_lower) {
         let action = caps.get(1).map_or("", |m| m.as_str()).trim().to_string();
-        let path = caps.get(2).map(|m| m.as_str().trim().to_string()).filter(|s| !s.is_empty());
+        let path = caps
+            .get(2)
+            .map(|m| m.as_str().trim().to_string())
+            .filter(|s| !s.is_empty());
         if !action.is_empty() {
             return Some(Intent::JalwaLibrary { action, path });
         }
     }
     if let Some(caps) = interp.try_captures("jalwa_playlist", input_lower) {
         let action = caps.get(1).map_or("", |m| m.as_str()).trim().to_string();
-        let name = caps.get(2).map(|m| m.as_str().trim().to_string()).filter(|s| !s.is_empty());
-        let item_id = caps.get(3).map(|m| m.as_str().trim().to_string()).filter(|s| !s.is_empty());
+        let name = caps
+            .get(2)
+            .map(|m| m.as_str().trim().to_string())
+            .filter(|s| !s.is_empty());
+        let item_id = caps
+            .get(3)
+            .map(|m| m.as_str().trim().to_string())
+            .filter(|s| !s.is_empty());
         if !action.is_empty() {
-            return Some(Intent::JalwaPlaylist { action, name, item_id });
+            return Some(Intent::JalwaPlaylist {
+                action,
+                name,
+                item_id,
+            });
         }
     }
 

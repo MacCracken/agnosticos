@@ -86,7 +86,11 @@ pub(crate) fn translate_jalwa(intent: &Intent) -> Result<Translation> {
                 "Manages the Jalwa media library".to_string(),
             ))
         }
-        Intent::JalwaPlaylist { action, name, item_id } => {
+        Intent::JalwaPlaylist {
+            action,
+            name,
+            item_id,
+        } => {
             let mut a = serde_json::Map::new();
             insert_str(&mut a, "action", action);
             insert_opt(&mut a, "name", name);
