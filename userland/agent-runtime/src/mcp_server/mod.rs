@@ -4,9 +4,11 @@
 //! services can discover and call. Wraps the existing REST API logic
 //! from [`crate::http_api`] into the MCP tool-call format.
 
+pub mod discovery;
 pub(crate) mod handlers;
 pub mod helpers;
 pub mod manifest;
+pub mod tool_sandbox;
 pub mod types;
 
 #[cfg(test)]

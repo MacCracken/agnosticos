@@ -38,6 +38,7 @@ pub mod oidc;
 pub mod orchestrator;
 pub mod package_manager;
 pub mod phylax;
+pub mod phylax_bridge;
 pub mod pqc;
 pub mod pubsub;
 pub mod python_runtime;

@@ -13,6 +13,7 @@ pub mod output;
 pub mod permissions;
 pub mod prompt;
 pub mod sandbox;
+pub mod schema_filter;
 pub mod security;
 pub mod session;
 pub mod ui;

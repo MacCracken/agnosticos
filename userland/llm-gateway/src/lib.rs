@@ -3,6 +3,7 @@
 pub mod acceleration;
 pub mod accounting;
 pub mod cache;
+pub mod mcp_proxy;
 pub mod providers;
 pub mod rate_limiter;
 
