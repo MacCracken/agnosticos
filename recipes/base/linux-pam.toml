@@ -40,7 +40,7 @@ make DESTDIR=$PKG install
 # Create /etc/pam.d directory
 mkdir -p $PKG/etc/pam.d
 
-# Install a basic /etc/pam.d/other (catch-all deny policy)
+# Catch-all deny policy (fallback for unconfigured services)
 cat > $PKG/etc/pam.d/other << "PAMEOF"
 auth     required  pam_deny.so
 account  required  pam_deny.so
@@ -48,7 +48,58 @@ password required  pam_deny.so
 session  required  pam_deny.so
 PAMEOF
 
-chmod 644 $PKG/etc/pam.d/other
+# system-auth — shared auth stack
+cat > $PKG/etc/pam.d/system-auth << "PAMEOF"
+auth      required  pam_unix.so
+account   required  pam_unix.so
+password  required  pam_unix.so sha512 shadow
+session   required  pam_unix.so
+PAMEOF
+
+# login — console/TTY login
+cat > $PKG/etc/pam.d/login << "PAMEOF"
+auth      required  pam_securetty.so
+auth      include   system-auth
+account   include   system-auth
+password  include   system-auth
+session   required  pam_loginuid.so
+session   include   system-auth
+session   optional  pam_motd.so
+PAMEOF
+
+# sudo
+cat > $PKG/etc/pam.d/sudo << "PAMEOF"
+auth      include   system-auth
+account   include   system-auth
+password  include   system-auth
+session   include   system-auth
+PAMEOF
+
+# su
+cat > $PKG/etc/pam.d/su << "PAMEOF"
+auth      sufficient pam_rootok.so
+auth      include    system-auth
+account   include    system-auth
+session   include    system-auth
+PAMEOF
+
+# sshd
+cat > $PKG/etc/pam.d/sshd << "PAMEOF"
+auth      include   system-auth
+account   include   system-auth
+password  include   system-auth
+session   required  pam_loginuid.so
+session   include   system-auth
+PAMEOF
+
+# agnos-agent — authentication for AGNOS agent operations
+cat > $PKG/etc/pam.d/agnos-agent << "PAMEOF"
+auth      required  pam_unix.so
+account   required  pam_unix.so
+session   required  pam_unix.so
+PAMEOF
+
+chmod 644 $PKG/etc/pam.d/*
 """
 post_install = ""
 

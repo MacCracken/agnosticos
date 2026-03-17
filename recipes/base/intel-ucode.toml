@@ -1,0 +1,42 @@
+[package]
+name = "intel-ucode"
+version = "20250311"
+description = "Intel CPU microcode updates"
+license = "Intel"
+groups = ["base", "kernel", "tier1"]
+
+[source]
+url = "https://github.com/intel/Intel-Linux-Processor-Microcode-Data-Files/archive/microcode-20250311.tar.gz"
+sha256 = ""
+patches = []
+
+[depends]
+runtime = []
+build = ["iucode-tool"]
+optional = []
+
+[build]
+pre_build = ""
+configure = ""
+make = ""
+check = ""
+install = """
+mkdir -p $PKG/lib/firmware/intel-ucode
+if command -v iucode_tool >/dev/null 2>&1; then
+    iucode_tool -w $PKG/lib/firmware/intel-ucode intel-ucode/
+else
+    cp -r intel-ucode/* $PKG/lib/firmware/intel-ucode/
+fi
+
+# Early-load initramfs cpio
+mkdir -p $PKG/boot
+if command -v iucode_tool >/dev/null 2>&1; then
+    iucode_tool --write-earlyfw=$PKG/boot/intel-ucode.img intel-ucode/
+fi
+"""
+post_install = ""
+
+[security]
+hardening = []
+cflags = ""
+ldflags = ""

@@ -1,0 +1,59 @@
+[package]
+name = "iwd"
+version = "3.5"
+description = "iNet wireless daemon — modern WiFi management (replaces wpa_supplicant)"
+license = "LGPL-2.1"
+groups = ["base", "network", "tier1"]
+
+[source]
+url = "https://www.kernel.org/pub/linux/network/wireless/iwd-3.5.tar.xz"
+sha256 = ""
+patches = []
+
+[depends]
+runtime = ["glibc", "dbus", "readline"]
+build = ["gcc", "make"]
+optional = []
+
+[build]
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --sysconfdir=/etc \
+    --localstatedir=/var \
+    --enable-external-ell \
+    --disable-manual-pages
+"""
+make = "make -j$(nproc)"
+check = ""
+install = """
+make DESTDIR=$PKG install
+
+# Default config — enable built-in DHCP and DNS
+mkdir -p $PKG/etc/iwd
+cat > $PKG/etc/iwd/main.conf << 'IWDCONF'
+[General]
+EnableNetworkConfiguration=true
+
+[Network]
+NameResolvingService=resolvconf
+IWDCONF
+
+# Systemd integration
+mkdir -p $PKG/usr/lib/systemd/network
+cat > $PKG/usr/lib/systemd/network/25-wireless.network << 'NETCONF'
+[Match]
+Name=wlan* wlp*
+
+[Network]
+DHCP=yes
+IgnoreCarrierLoss=3s
+NETCONF
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

@@ -1,0 +1,82 @@
+[package]
+name = "greetd"
+version = "0.10.3"
+description = "Minimal, unprivileged login manager daemon"
+license = "GPL-3.0"
+groups = ["desktop", "session"]
+
+[source]
+url = "https://git.sr.ht/~kennylevinsen/greetd/archive/0.10.3.tar.gz"
+sha256 = ""
+patches = []
+
+[depends]
+runtime = ["glibc", "linux-pam"]
+build = ["rust"]
+optional = ["tuigreet"]
+
+[build]
+pre_build = ""
+configure = ""
+make = "cargo build --release"
+check = ""
+install = """
+mkdir -p $PKG/usr/bin
+cp target/release/greetd $PKG/usr/bin/
+cp target/release/agreety $PKG/usr/bin/
+
+# greetd config
+mkdir -p $PKG/etc/greetd
+cat > $PKG/etc/greetd/config.toml << 'GREETCFG'
+[terminal]
+vt = 1
+
+[default_session]
+command = "agreety --cmd /bin/bash"
+user = "greeter"
+
+[initial_session]
+command = "aethersafha"
+user = "user"
+GREETCFG
+
+# Greeter user
+mkdir -p $PKG/usr/lib/sysusers.d
+cat > $PKG/usr/lib/sysusers.d/greetd.conf << 'SYSUSERS'
+u greeter - "greetd greeter" /var/lib/greeter
+SYSUSERS
+
+# Systemd service
+mkdir -p $PKG/usr/lib/systemd/system
+cat > $PKG/usr/lib/systemd/system/greetd.service << 'UNIT'
+[Unit]
+Description=greetd login manager
+After=systemd-logind.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/greetd --config /etc/greetd/config.toml
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=agnos-graphical.target
+UNIT
+
+# Wayland session file for aethersafha
+mkdir -p $PKG/usr/share/wayland-sessions
+cat > $PKG/usr/share/wayland-sessions/agnos.desktop << 'DESKTOP'
+[Desktop Entry]
+Name=AgnosticOS Desktop
+Comment=AI-Native Desktop Environment (aethersafha)
+Exec=aethersafha
+Type=Application
+DesktopNames=AGNOS
+DESKTOP
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

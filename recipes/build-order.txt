@@ -125,6 +125,9 @@ base/dracut
 base/linux
 base/grub
 base/linux-firmware
+base/intel-ucode
+base/amd-ucode
+base/iwd
 
 # =========================================================================
 # TIER 2: Build system tools (needed for desktop stack)
@@ -162,6 +165,8 @@ desktop/flac
 desktop/libsndfile
 desktop/pipewire
 desktop/wireplumber
+desktop/gst-plugins-base
+desktop/gst-plugins-good
 
 # =========================================================================
 # TIER 5: Desktop — Text/font rendering
@@ -216,6 +221,8 @@ desktop/yazi
 desktop/helix
 desktop/mpv
 desktop/zathura
+desktop/greetd
+desktop/tuigreet
 
 # =========================================================================
 # TIER 9: Hardware support

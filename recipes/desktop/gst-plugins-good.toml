@@ -1,0 +1,42 @@
+[package]
+name = "gst-plugins-good"
+version = "1.26.0"
+description = "GStreamer good plugins — LGPL codecs, PulseAudio, PipeWire, V4L2"
+license = "LGPL-2.1"
+groups = ["desktop", "multimedia"]
+
+[source]
+url = "https://gstreamer.freedesktop.org/src/gst-plugins-good/gst-plugins-good-1.26.0.tar.xz"
+sha256 = ""
+patches = []
+
+[depends]
+runtime = ["gstreamer", "gst-plugins-base", "glib", "pipewire", "libjpeg-turbo", "libpng", "flac", "libvorbis"]
+build = ["gcc", "make", "pkgconf", "meson", "ninja"]
+optional = []
+
+[build]
+pre_build = ""
+configure = """
+meson setup build \
+    --prefix=/usr \
+    --buildtype=release \
+    -Dexamples=disabled \
+    -Dtests=disabled \
+    -Ddoc=disabled \
+    -Dpipewire=enabled \
+    -Dpulse=disabled \
+    -Dv4l2=enabled \
+    -Djpeg=enabled \
+    -Dpng=enabled \
+    -Dflac=enabled
+"""
+make = "ninja -C build -j$(nproc)"
+check = ""
+install = "DESTDIR=$PKG ninja -C build install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

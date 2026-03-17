@@ -1,0 +1,32 @@
+[package]
+name = "tuigreet"
+version = "0.9.1"
+description = "TUI greeter for greetd — minimal, terminal-based login screen"
+license = "GPL-3.0"
+groups = ["desktop", "session"]
+
+[source]
+url = "https://github.com/apognu/tuigreet/archive/refs/tags/0.9.1.tar.gz"
+sha256 = ""
+patches = []
+
+[depends]
+runtime = ["glibc", "greetd"]
+build = ["rust"]
+optional = []
+
+[build]
+pre_build = ""
+configure = ""
+make = "cargo build --release"
+check = ""
+install = """
+mkdir -p $PKG/usr/bin
+cp target/release/tuigreet $PKG/usr/bin/
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

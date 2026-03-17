@@ -1,0 +1,44 @@
+[package]
+name = "gst-plugins-base"
+version = "1.26.0"
+description = "GStreamer base plugins — essential codecs, audio/video support"
+license = "LGPL-2.0"
+groups = ["desktop", "multimedia"]
+
+[source]
+url = "https://gstreamer.freedesktop.org/src/gst-plugins-base/gst-plugins-base-1.26.0.tar.xz"
+sha256 = ""
+patches = []
+
+[depends]
+runtime = ["gstreamer", "glib", "alsa-lib", "libogg", "libvorbis", "mesa", "wayland", "libdrm", "pango", "cairo"]
+build = ["gcc", "make", "pkgconf", "meson", "ninja"]
+optional = ["pipewire"]
+
+[build]
+pre_build = ""
+configure = """
+meson setup build \
+    --prefix=/usr \
+    --buildtype=release \
+    -Dexamples=disabled \
+    -Dtests=disabled \
+    -Ddoc=disabled \
+    -Dgl=enabled \
+    -Dgl_api=opengl,gles2 \
+    -Dgl_platform=egl \
+    -Dgl_winsys=wayland \
+    -Dalsa=enabled \
+    -Dogg=enabled \
+    -Dvorbis=enabled \
+    -Dpango=enabled
+"""
+make = "ninja -C build -j$(nproc)"
+check = ""
+install = "DESTDIR=$PKG ninja -C build install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"
