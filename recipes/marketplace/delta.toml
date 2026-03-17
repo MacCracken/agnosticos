@@ -7,7 +7,7 @@
 
 [package]
 name = "delta"
-version = "0.1.0"
+version = "2026.3.16"
 description = "Delta — Code hosting platform with CI/CD and artifact registry"
 license = "GPL-3.0"
 groups = ["server", "devtools"]
@@ -18,7 +18,7 @@ arch = "x86_64"
 local = true
 build_dir = "target/release"
 github_release = "MacCracken/delta"
-release_asset = "delta-api"
+release_asset = "delta-{version}-linux-{arch}.tar.gz"
 
 [depends]
 runtime = [
@@ -40,7 +40,7 @@ category = "devtools"
 runtime = "native-binary"
 publisher = "Delta"
 tags = ["git", "code-hosting", "ci-cd", "artifact-registry", "pull-requests", "devtools"]
-min_agnos_version = "2026.3.11"
+min_agnos_version = "2026.3.16"
 
 [marketplace.sandbox]
 seccomp_mode = "server"
