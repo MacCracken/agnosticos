@@ -133,6 +133,15 @@ pub struct EdgeNode {
     pub tpm_attested: bool,
     /// Signature of the last OTA update (for signed OTA verification).
     pub update_signature: Option<String>,
+    /// Latest GPU utilization percentage (0.0–100.0), from heartbeat.
+    #[serde(default)]
+    pub gpu_utilization_pct: Option<f32>,
+    /// Latest GPU memory used in MB, from heartbeat.
+    #[serde(default)]
+    pub gpu_memory_used_mb: Option<u64>,
+    /// Latest GPU temperature in Celsius, from heartbeat.
+    #[serde(default)]
+    pub gpu_temperature_c: Option<f32>,
 }
 
 // ---------------------------------------------------------------------------
@@ -245,6 +254,9 @@ impl EdgeFleetManager {
             tasks_completed: 0,
             tpm_attested: false,
             update_signature: None,
+            gpu_utilization_pct: None,
+            gpu_memory_used_mb: None,
+            gpu_temperature_c: None,
         };
 
         info!(id = %id, name = %name, "Edge node registered");
@@ -252,12 +264,15 @@ impl EdgeFleetManager {
         Ok(id)
     }
 
-    /// Process a heartbeat from an edge node.
+    /// Process a heartbeat from an edge node, including optional GPU telemetry.
     pub fn heartbeat(
         &mut self,
         node_id: &str,
         active_tasks: u32,
         tasks_completed: u64,
+        gpu_utilization_pct: Option<f32>,
+        gpu_memory_used_mb: Option<u64>,
+        gpu_temperature_c: Option<f32>,
     ) -> Result<(), EdgeFleetError> {
         let node = self
             .nodes
@@ -271,6 +286,17 @@ impl EdgeFleetManager {
         node.last_heartbeat = Utc::now();
         node.active_tasks = active_tasks;
         node.tasks_completed = tasks_completed;
+
+        // Update GPU telemetry (only overwrite if provided).
+        if gpu_utilization_pct.is_some() {
+            node.gpu_utilization_pct = gpu_utilization_pct;
+        }
+        if gpu_memory_used_mb.is_some() {
+            node.gpu_memory_used_mb = gpu_memory_used_mb;
+        }
+        if gpu_temperature_c.is_some() {
+            node.gpu_temperature_c = gpu_temperature_c;
+        }
 
         // Restore from suspect/offline if heartbeat arrives.
         if node.status == EdgeNodeStatus::Suspect || node.status == EdgeNodeStatus::Offline {
@@ -1155,7 +1181,7 @@ mod tests {
     fn heartbeat_updates_state() {
         let mut mgr = EdgeFleetManager::new(test_config());
         let id = register_test_node(&mut mgr, "node-a");
-        mgr.heartbeat(&id, 3, 100).unwrap();
+        mgr.heartbeat(&id, 3, 100, None, None, None).unwrap();
         let node = mgr.get_node(&id).unwrap();
         assert_eq!(node.active_tasks, 3);
         assert_eq!(node.tasks_completed, 100);
@@ -1164,7 +1190,9 @@ mod tests {
     #[test]
     fn heartbeat_unknown_node() {
         let mut mgr = EdgeFleetManager::new(test_config());
-        let err = mgr.heartbeat("nonexistent", 0, 0).unwrap_err();
+        let err = mgr
+            .heartbeat("nonexistent", 0, 0, None, None, None)
+            .unwrap_err();
         assert!(matches!(err, EdgeFleetError::NodeNotFound(_)));
     }
 
@@ -1173,7 +1201,7 @@ mod tests {
         let mut mgr = EdgeFleetManager::new(test_config());
         let id = register_test_node(&mut mgr, "node-a");
         mgr.decommission(&id).unwrap();
-        let err = mgr.heartbeat(&id, 0, 0).unwrap_err();
+        let err = mgr.heartbeat(&id, 0, 0, None, None, None).unwrap_err();
         assert!(matches!(err, EdgeFleetError::NodeDecommissioned(_)));
     }
 
@@ -1200,7 +1228,7 @@ mod tests {
         let mut mgr = EdgeFleetManager::new(test_config());
         let id = register_test_node(&mut mgr, "node-a");
         mgr.nodes.get_mut(&id).unwrap().status = EdgeNodeStatus::Suspect;
-        mgr.heartbeat(&id, 0, 0).unwrap();
+        mgr.heartbeat(&id, 0, 0, None, None, None).unwrap();
         assert_eq!(mgr.get_node(&id).unwrap().status, EdgeNodeStatus::Online);
     }
 
@@ -1209,7 +1237,7 @@ mod tests {
         let mut mgr = EdgeFleetManager::new(test_config());
         let id = register_test_node(&mut mgr, "node-a");
         mgr.nodes.get_mut(&id).unwrap().status = EdgeNodeStatus::Offline;
-        mgr.heartbeat(&id, 0, 0).unwrap();
+        mgr.heartbeat(&id, 0, 0, None, None, None).unwrap();
         assert_eq!(mgr.get_node(&id).unwrap().status, EdgeNodeStatus::Online);
     }
 

@@ -64,6 +64,10 @@ pub struct BackendConfig {
     pub network: NetworkMode,
     /// Environment variables for the sandboxed process.
     pub env: HashMap<String, String>,
+    /// Host device paths to pass through to the VM (e.g. `/dev/nvidia0`, `/dev/dri/renderD128`).
+    /// Enables GPU access inside Firecracker/gVisor sandboxes.
+    #[serde(default)]
+    pub device_passthrough: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -86,6 +90,7 @@ impl Default for BackendConfig {
             writable_mounts: vec!["/tmp".to_string()],
             network: NetworkMode::None,
             env: HashMap::new(),
+            device_passthrough: Vec::new(),
         }
     }
 }
@@ -358,14 +363,26 @@ impl FirecrackerBackend {
     }
 
     /// Generate a Firecracker VM configuration.
+    ///
+    /// When `config.device_passthrough` is non-empty, PCI is enabled in the
+    /// guest kernel and VFIO device entries are generated so the VM can
+    /// access host GPUs (e.g. `/dev/nvidia0`, `/dev/dri/renderD128`).
     pub fn generate_vm_config(&self, vm_id: &str, config: &BackendConfig) -> serde_json::Value {
         let vcpu_count = ((config.cpu_quota_pct as u32) / 25).clamp(1, 4);
         let socket_path = self.work_dir.join(format!("{}.sock", vm_id));
 
-        serde_json::json!({
+        // Enable PCI when devices need passthrough (GPU, etc.).
+        let has_devices = !config.device_passthrough.is_empty();
+        let boot_args = if has_devices {
+            "console=ttyS0 reboot=k panic=1 agnos.sandbox=1"
+        } else {
+            "console=ttyS0 reboot=k panic=1 pci=off agnos.sandbox=1"
+        };
+
+        let mut vm_config = serde_json::json!({
             "boot-source": {
                 "kernel_image_path": self.kernel_path.to_string_lossy(),
-                "boot_args": "console=ttyS0 reboot=k panic=1 pci=off agnos.sandbox=1"
+                "boot_args": boot_args
             },
             "drives": [
                 {
@@ -390,7 +407,25 @@ impl FirecrackerBackend {
                 ]),
             },
             "socket_path": socket_path.to_string_lossy(),
-        })
+        });
+
+        // Add device passthrough entries (VFIO-style).
+        if has_devices {
+            let devices: Vec<_> = config
+                .device_passthrough
+                .iter()
+                .enumerate()
+                .map(|(i, path)| {
+                    serde_json::json!({
+                        "device_id": format!("dev{}", i),
+                        "path_on_host": path,
+                    })
+                })
+                .collect();
+            vm_config["devices"] = serde_json::json!(devices);
+        }
+
+        vm_config
     }
 
     /// Prepare a VM work directory.
@@ -1198,10 +1233,12 @@ mod tests {
             writable_mounts: vec!["/workspace".to_string()],
             network: NetworkMode::Host,
             env: HashMap::from([("KEY".to_string(), "VAL".to_string())]),
+            device_passthrough: vec!["/dev/nvidia0".to_string()],
         };
         let json = serde_json::to_string(&config).unwrap();
         let roundtrip: BackendConfig = serde_json::from_str(&json).unwrap();
         assert_eq!(roundtrip.max_memory_mb, 1024);
+        assert_eq!(roundtrip.device_passthrough, vec!["/dev/nvidia0"]);
         assert_eq!(roundtrip.cpu_quota_pct, 75);
     }
 

@@ -277,8 +277,8 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 |---|------|--------|--------|-------|
 | 1 | GPU telemetry MCP tool | Small | **Done** | `agnos_gpu_status` — probes NVIDIA/AMD/Intel GPUs via `ResourceManager::detect_gpus()`. Returns id, name, VRAM total/available, compute capability |
 | 2 | Local model inventory MCP tool | Small | **Done** | `agnos_local_models` — queries hoosh `GET /v1/models` for locally available models (Ollama, llama.cpp, etc.). Graceful fallback when hoosh offline |
-| 3 | Firecracker GPU passthrough | Medium | Not started | When Firecracker sandbox runs on AGNOS with a GPU present, pass `/dev/nvidia*` devices into the microVM so sandboxed inference can use the GPU |
-| 4 | Fleet GPU heartbeat | Medium | Not started | Include GPU utilization + VRAM headroom in edge fleet heartbeat telemetry. SY aggregates across fleet for distributed inference decisions |
+| 3 | Firecracker GPU passthrough | Medium | **Done** | `BackendConfig.device_passthrough` field. VM config conditionally enables PCI bus and adds VFIO device entries when GPU paths provided (e.g. `/dev/nvidia0`) |
+| 4 | Fleet GPU heartbeat | Medium | **Done** | `HeartbeatRequest` accepts `gpu_utilization_pct`, `gpu_memory_used_mb`, `gpu_temperature_c`. Stored on `EdgeNode`, aggregated in `GET /v1/edge/dashboard` (avg utilization, total VRAM used, reporting node count) |
 
 ### Agnostic Integration
 

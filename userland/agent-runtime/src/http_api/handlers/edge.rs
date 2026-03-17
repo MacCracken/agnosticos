@@ -43,6 +43,15 @@ pub struct HeartbeatRequest {
     /// Total tasks completed since registration.
     #[serde(default)]
     pub tasks_completed: u64,
+    /// GPU utilization percentage (0.0–100.0), if GPU present.
+    #[serde(default)]
+    pub gpu_utilization_pct: Option<f32>,
+    /// GPU memory used in MB, if GPU present.
+    #[serde(default)]
+    pub gpu_memory_used_mb: Option<u64>,
+    /// GPU temperature in Celsius, if available.
+    #[serde(default)]
+    pub gpu_temperature_c: Option<f32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -300,7 +309,14 @@ pub async fn edge_heartbeat_handler(
     Json(req): Json<HeartbeatRequest>,
 ) -> impl IntoResponse {
     let mut fleet = state.edge_fleet.write().await;
-    match fleet.heartbeat(&id, req.active_tasks, req.tasks_completed) {
+    match fleet.heartbeat(
+        &id,
+        req.active_tasks,
+        req.tasks_completed,
+        req.gpu_utilization_pct,
+        req.gpu_memory_used_mb,
+        req.gpu_temperature_c,
+    ) {
         Ok(()) => (
             StatusCode::OK,
             Json(serde_json::json!({
@@ -469,6 +485,12 @@ pub struct EdgeDashboardSummary {
     pub total_gpu_nodes: u32,
     pub avg_memory_mb: f64,
     pub fleet_health_score: f64,
+    /// Average GPU utilization across nodes reporting GPU metrics (0.0–100.0).
+    pub avg_gpu_utilization_pct: f64,
+    /// Total GPU memory used across fleet in MB.
+    pub total_gpu_memory_used_mb: u64,
+    /// Number of nodes actively reporting GPU telemetry.
+    pub gpu_reporting_nodes: u32,
 }
 
 /// `GET /v1/edge/dashboard`
@@ -482,6 +504,27 @@ pub async fn edge_dashboard_handler(State(state): State<ApiState>) -> impl IntoR
     let all_nodes = fleet.list_nodes(None);
 
     let total_gpu_nodes = all_nodes.iter().filter(|n| n.capabilities.has_gpu).count() as u32;
+
+    // GPU telemetry aggregation
+    let (gpu_util_sum, gpu_mem_sum, gpu_count) =
+        all_nodes
+            .iter()
+            .fold((0.0_f64, 0_u64, 0_u32), |(util, mem, cnt), n| {
+                if let Some(u) = n.gpu_utilization_pct {
+                    (
+                        util + u as f64,
+                        mem + n.gpu_memory_used_mb.unwrap_or(0),
+                        cnt + 1,
+                    )
+                } else {
+                    (util, mem, cnt)
+                }
+            });
+    let avg_gpu_utilization_pct = if gpu_count > 0 {
+        gpu_util_sum / gpu_count as f64
+    } else {
+        0.0
+    };
 
     let (total_mem, mem_count) = all_nodes.iter().fold((0u64, 0u64), |(sum, count), n| {
         (sum + n.capabilities.memory_mb, count + 1)
@@ -508,6 +551,9 @@ pub async fn edge_dashboard_handler(State(state): State<ApiState>) -> impl IntoR
         total_gpu_nodes,
         avg_memory_mb,
         fleet_health_score,
+        avg_gpu_utilization_pct,
+        total_gpu_memory_used_mb: gpu_mem_sum,
+        gpu_reporting_nodes: gpu_count,
     };
 
     Json(serde_json::json!(summary))
