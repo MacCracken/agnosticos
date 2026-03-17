@@ -1,0 +1,228 @@
+# AGNOS Package Build Order
+#
+# Packages are built in this order by selfhost-build.yml.
+# Each line is a recipe path relative to recipes/.
+# Lines starting with # are comments. Blank lines separate tiers.
+# Within a tier, order matters — dependencies must come first.
+#
+# Tier 0 (toolchain) is handled by bootstrap-toolchain.sh, not listed here.
+# This file covers the FINAL (native) builds from tier 1 onward.
+
+# =========================================================================
+# TIER 1a: Minimal build tools (needed to build everything else)
+# =========================================================================
+base/man-pages
+base/iana-etc
+base/m4
+base/xz
+base/zlib
+base/zstd
+base/lz4
+base/bzip2
+base/expat
+base/libffi
+base/ncurses
+base/readline
+base/attr
+base/acl
+base/libcap
+base/libcap-ng
+base/gdbm
+base/gawk
+base/sed
+base/grep
+base/diffutils
+base/findutils
+base/gzip
+base/tar
+base/patch
+base/make
+base/file
+base/which
+base/less
+base/bison
+base/flex
+base/bc
+base/coreutils
+base/bash
+
+# =========================================================================
+# TIER 1b: Core build chain (perl, texinfo, python, pkgconf)
+# =========================================================================
+base/perl
+base/texinfo
+base/pkgconf
+base/openssl
+base/python
+base/libtool
+base/gettext
+base/autoconf
+base/automake
+base/gperf
+base/libxcrypt
+
+# =========================================================================
+# TIER 1c: System libraries and utilities
+# =========================================================================
+base/libpng
+base/freetype
+base/libpipeline
+base/man-db
+base/libunistring
+base/libffi
+base/json-c
+base/libmnl
+base/libnftnl
+base/util-linux
+base/e2fsprogs
+base/dosfstools
+base/kmod
+base/eudev
+base/procps-ng
+base/psmisc
+base/kbd
+base/shadow
+base/iproute2
+base/inetutils
+base/cpio
+
+# =========================================================================
+# TIER 1d: Networking, crypto, security
+# =========================================================================
+base/libtasn1
+base/p11-kit
+base/nettle
+base/gnutls
+base/libnghttp2
+base/curl
+base/libgpg-error
+base/libgcrypt
+base/libksba
+base/libassuan
+base/npth
+base/gnupg
+base/libseccomp
+base/linux-pam
+base/audit
+base/libargon2
+base/libaio
+base/lvm2
+base/cryptsetup
+base/openssh
+base/dropbear
+base/sudo
+
+# =========================================================================
+# TIER 1e: Init, bootloader, firmware
+# =========================================================================
+base/sysvinit
+base/sysklogd
+base/nftables
+base/groff
+base/dbus
+base/libarchive
+base/dracut
+base/linux
+base/grub
+base/linux-firmware
+
+# =========================================================================
+# TIER 2: Build system tools (needed for desktop stack)
+# =========================================================================
+base/ninja
+base/cmake
+base/meson
+base/llvm
+base/rust
+
+# =========================================================================
+# TIER 3: Desktop — Wayland/graphics foundation
+# =========================================================================
+desktop/wayland
+desktop/wayland-protocols
+desktop/libdrm
+desktop/vulkan-headers
+desktop/vulkan-loader
+desktop/libepoxy
+desktop/libevdev
+desktop/mtdev
+desktop/libinput
+desktop/libxkbcommon
+desktop/pixman
+desktop/mesa
+
+# =========================================================================
+# TIER 4: Desktop — Audio stack
+# =========================================================================
+desktop/alsa-lib
+desktop/alsa-utils
+desktop/libogg
+desktop/libvorbis
+desktop/flac
+desktop/libsndfile
+desktop/pipewire
+desktop/wireplumber
+
+# =========================================================================
+# TIER 5: Desktop — Text/font rendering
+# =========================================================================
+desktop/fontconfig
+desktop/harfbuzz
+desktop/fribidi
+desktop/pango
+desktop/noto-fonts
+desktop/libjpeg-turbo
+desktop/libtiff
+
+# =========================================================================
+# TIER 6: Desktop — Toolkit and session
+# =========================================================================
+desktop/glib
+desktop/gobject-introspection
+desktop/json-glib
+desktop/gdk-pixbuf
+desktop/graphene
+desktop/cairo
+desktop/libnotify
+desktop/elogind
+desktop/polkit
+desktop/dbus
+desktop/upower
+desktop/udisks
+desktop/linux-pam
+desktop/lua
+desktop/duktape
+desktop/pcre2
+desktop/eudev
+
+# =========================================================================
+# TIER 7: Desktop — Compositor and higher-level
+# =========================================================================
+desktop/wlroots
+desktop/xwayland
+desktop/gstreamer
+desktop/gtk4
+
+# =========================================================================
+# TIER 8: Desktop — Applications
+# =========================================================================
+desktop/foot
+desktop/kitty
+desktop/fuzzel
+desktop/mako
+desktop/cliphist
+desktop/imv
+desktop/yazi
+desktop/helix
+desktop/mpv
+desktop/zathura
+
+# =========================================================================
+# TIER 9: Hardware support
+# =========================================================================
+desktop/bluez
+desktop/bolt
+desktop/cups
+desktop/libatasmart
+desktop/libblockdev
+desktop/nvidia-driver

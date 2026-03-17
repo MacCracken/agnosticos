@@ -173,32 +173,46 @@ jobs:
         path: artifacts/sbom-files
       continue-on-error: true
 
-    - name: Download x86_64 ISO
+    - name: Download x86_64 installer ISO
       uses: actions/download-artifact@v4
       with:
-        name: agnos-iso-x86_64
-        path: artifacts/iso-x86_64
+        name: agnos-installer-x86_64
+        path: artifacts/installer-x86_64
       continue-on-error: true
 
-    - name: Download aarch64 image
+    - name: Download x86_64 minimal ISO
       uses: actions/download-artifact@v4
       with:
-        name: agnos-img-aarch64
-        path: artifacts/img-aarch64
+        name: agnos-minimal-x86_64
+        path: artifacts/minimal-x86_64
       continue-on-error: true
 
-    - name: Download edge RPi4 image
+    - name: Download aarch64 SD card image
       uses: actions/download-artifact@v4
       with:
-        name: agnos-edge-img-rpi4
-        path: artifacts/edge-img-rpi4
+        name: agnos-sdcard-aarch64
+        path: artifacts/sdcard-aarch64
+      continue-on-error: true
+
+    - name: Download aarch64 minimal image
+      uses: actions/download-artifact@v4
+      with:
+        name: agnos-minimal-aarch64
+        path: artifacts/minimal-aarch64
       continue-on-error: true
 
     - name: Download x86_64 edge ISO
       uses: actions/download-artifact@v4
       with:
-        name: agnos-edge-iso-x86_64
-        path: artifacts/edge-iso-x86_64
+        name: agnos-edge-x86_64
+        path: artifacts/edge-x86_64
+      continue-on-error: true
+
+    - name: Download aarch64 edge image
+      uses: actions/download-artifact@v4
+      with:
+        name: agnos-edge-aarch64
+        path: artifacts/edge-aarch64
       continue-on-error: true
 
     - name: Generate release notes
@@ -234,10 +248,12 @@ jobs:
 
           | File | Target | How to use |
           |------|--------|------------|
-          | `agnos-${{ github.ref_name }}-x86_64.iso` | **Desktop PC / VM** | Full AGNOS with Wayland desktop. Boot from USB or use with QEMU/VirtualBox |
-          | `agnos-edge-${{ github.ref_name }}-x86_64.iso` | **x86_64 Edge (DeepLens, NUC)** | Headless edge with SY agent, WireGuard. Flash to USB/eMMC |
-          | `agnos-${{ github.ref_name }}-aarch64.img` | **Raspberry Pi 4/5 (Full)** | Full AGNOS for RPi. `dd` to microSD |
-          | `agnos-edge-${{ github.ref_name }}-aarch64.img` | **Raspberry Pi 4/5 (Edge)** | Minimal edge with SY agent. `dd` to microSD |
+          | `agnos-YYYYMMDD-x86_64.iso` | **Desktop PC / VM** | Unified installer — GRUB menu offers Desktop (Wayland) or Server (headless) mode |
+          | `agnos-YYYYMMDD-minimal-x86_64.iso` | **Headless x86_64** | Minimal headless with SY edge agent |
+          | `agnos-YYYYMMDD-aarch64.img` | **Raspberry Pi 4/5** | Full AGNOS for RPi. `dd` to microSD |
+          | `agnos-YYYYMMDD-minimal-aarch64.img` | **RPi 4/5 (Minimal)** | Headless RPi with SY edge agent |
+          | `agnos-YYYYMMDD-edge-x86_64.iso` | **x86_64 Edge (NUC, DeepLens)** | dm-verity protected, LFS-style minimal |
+          | `agnos-YYYYMMDD-edge-aarch64.img` | **RPi 4/5 (Edge)** | dm-verity protected, minimal rootfs |
 
           **Flash instructions:**
           ```bash
@@ -276,14 +292,18 @@ jobs:
         files: |
           artifacts/agnos-*/*.tar.gz
           artifacts/sbom-files/*
-          artifacts/iso-x86_64/*.iso
-          artifacts/iso-x86_64/*.iso.sha256
-          artifacts/img-aarch64/*.img
-          artifacts/img-aarch64/*.img.sha256
-          artifacts/edge-img-rpi4/*.img
-          artifacts/edge-img-rpi4/*.img.sha256
-          artifacts/edge-iso-x86_64/*.iso
-          artifacts/edge-iso-x86_64/*.iso.sha256
+          artifacts/installer-x86_64/*.iso
+          artifacts/installer-x86_64/*.iso.sha256
+          artifacts/minimal-x86_64/*.iso
+          artifacts/minimal-x86_64/*.iso.sha256
+          artifacts/sdcard-aarch64/*.img
+          artifacts/sdcard-aarch64/*.img.sha256
+          artifacts/minimal-aarch64/*.img
+          artifacts/minimal-aarch64/*.img.sha256
+          artifacts/edge-x86_64/*.iso
+          artifacts/edge-x86_64/*.iso.sha256
+          artifacts/edge-aarch64/*.img
+          artifacts/edge-aarch64/*.img.sha256
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

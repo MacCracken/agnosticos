@@ -1,0 +1,20 @@
+[Unit]
+Description=AGNOS PipeWire Audio Service
+After=agnos.target
+ConditionPathExists=/usr/bin/pipewire
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/pipewire
+Restart=on-failure
+RestartSec=2
+User=user
+Group=user
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+
+# Resource limits
+MemoryMax=256M
+CPUQuota=30%
+
+[Install]
+WantedBy=agnos-graphical.target

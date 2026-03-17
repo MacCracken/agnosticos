@@ -1,0 +1,61 @@
+[package]
+name = "dropbear"
+version = "2025.88"
+description = "Lightweight SSH server and client — ideal for edge/embedded"
+license = "MIT"
+groups = ["base", "network", "tier1"]
+
+[source]
+url = "https://matt.ucc.asn.au/dropbear/releases/dropbear-2025.88.tar.bz2"
+sha256 = ""
+patches = []
+
+[depends]
+runtime = ["glibc", "zlib"]
+build = ["gcc", "make"]
+optional = []
+
+[build]
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --sysconfdir=/etc/dropbear \
+    --disable-lastlog \
+    --disable-utmp \
+    --disable-utmpx \
+    --disable-wtmp \
+    --disable-wtmpx \
+    --disable-pam
+"""
+make = "make -j$(nproc) PROGRAMS='dropbear dbclient dropbearkey scp'"
+check = ""
+install = """
+make DESTDIR=$PKG install PROGRAMS='dropbear dbclient dropbearkey scp'
+
+# Create host key directory
+mkdir -p $PKG/etc/dropbear
+
+# Systemd unit
+mkdir -p $PKG/usr/lib/systemd/system
+cat > $PKG/usr/lib/systemd/system/dropbear.service << 'EOF'
+[Unit]
+Description=Dropbear SSH Server
+After=network.target
+
+[Service]
+Type=forking
+ExecStartPre=/usr/bin/dropbearkey -t ed25519 -f /etc/dropbear/dropbear_ed25519_host_key
+ExecStart=/usr/bin/dropbear -p 22 -R -F
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+EOF
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

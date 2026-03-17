@@ -1,0 +1,20 @@
+[Unit]
+Description=AGNOS WirePlumber Session Manager
+After=agnos-pipewire.service
+Requires=agnos-pipewire.service
+ConditionPathExists=/usr/bin/wireplumber
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/wireplumber
+Restart=on-failure
+RestartSec=2
+User=user
+Group=user
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+
+# Resource limits
+MemoryMax=128M
+
+[Install]
+WantedBy=agnos-graphical.target

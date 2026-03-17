@@ -1,8 +1,13 @@
-name: Build ISO Images
+name: Build Bootable Images
 
-# Builds bootable AGNOS images for x86_64 (ISO) and aarch64 (SD card .img).
-# Triggered on release tags or manually. Downloads pre-built binaries from
-# the release workflow artifacts, then runs the ISO build scripts.
+# Builds AGNOS bootable media:
+#   - x86_64 installer ISO (desktop/server unified + minimal)
+#   - aarch64 SD card image (desktop/server unified)
+#   - aarch64 minimal SD card image
+#   - x86_64 edge ISO (dm-verity, LFS-style)
+#   - aarch64 edge SD card image (dm-verity, RPi firmware included)
+#
+# Triggered via workflow_call from release.yml or manually.
 
 on:
   workflow_call:
@@ -35,15 +40,19 @@ env:
   DEBIAN_FRONTEND: noninteractive
 
 jobs:
-  build-x86_64-iso:
-    name: Build x86_64 ISO
+  # =========================================================================
+  # x86_64 Installer ISO (Desktop/Server unified)
+  # Output: agnos-YYYYMMDD-x86_64.iso
+  # =========================================================================
+  build-x86_64-installer:
+    name: Build x86_64 Installer ISO
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
     steps:
     - uses: actions/checkout@v4
 
-    - name: Install ISO build dependencies
+    - name: Install build dependencies
       run: |
         sudo apt-get update
         sudo apt-get install -y --no-install-recommends \
@@ -69,74 +78,61 @@ jobs:
       id: agnos-base
       if: inputs.use_agnos_base
       run: |
-        echo "Attempting to download AGNOS base rootfs..."
         if curl -fSL -o /tmp/agnos-base-rootfs-x86_64.tar.zst \
           "https://github.com/MacCracken/agnosticos/releases/download/base-rootfs-latest/agnos-base-rootfs-x86_64.tar.zst" 2>/dev/null; then
           echo "available=true" >> "$GITHUB_OUTPUT"
-          echo "AGNOS base rootfs downloaded — will use instead of Debian debootstrap"
         else
           echo "available=false" >> "$GITHUB_OUTPUT"
-          echo "AGNOS base rootfs not available — falling back to Debian debootstrap"
         fi
       continue-on-error: true
 
-    - name: Extract binaries (from artifact or build)
+    - name: Extract binaries
       run: |
         mkdir -p userland/target/x86_64-unknown-linux-musl/release
         EXTRACT_DIR="$(mktemp -d)"
         if ls artifacts/*.tar.gz 1>/dev/null 2>&1; then
-          echo "Using pre-built binaries from artifacts"
           tar xzf artifacts/*.tar.gz -C "$EXTRACT_DIR"
           for bin in agent_runtime llm_gateway agnsh agnos_sudo desktop_environment ai_shell; do
             find "$EXTRACT_DIR" -name "$bin" -type f -exec cp {} userland/target/x86_64-unknown-linux-musl/release/ \;
           done
-        else
-          echo "No artifacts found — will build from source"
         fi
-        ls -la userland/target/x86_64-unknown-linux-musl/release/ 2>/dev/null || echo "No binaries yet"
+        ls -la userland/target/x86_64-unknown-linux-musl/release/ 2>/dev/null || echo "No binaries"
 
-    - name: Build ISO
+    - name: Build installer ISO (desktop profile)
       run: |
         VERSION="${{ inputs.version || '' }}"
-        ARGS="--skip-build"
-        if [ -n "$VERSION" ]; then
-          ARGS="$ARGS --version $VERSION"
-        fi
-        # If AGNOS base rootfs is available, pass it to build-iso.sh
-        if [[ "${{ steps.agnos-base.outputs.available }}" == "true" ]]; then
+        ARGS="--profile desktop --skip-build"
+        [ -n "$VERSION" ] && ARGS="$ARGS --version $VERSION"
+        [[ "${{ steps.agnos-base.outputs.available }}" == "true" ]] && \
           ARGS="$ARGS --base-rootfs /tmp/agnos-base-rootfs-x86_64.tar.zst"
-        fi
-        sudo ./scripts/build-iso.sh $ARGS
+        sudo ./scripts/build-installer.sh $ARGS
 
-    - name: Upload x86_64 ISO
+    - name: Upload x86_64 installer ISO
       uses: actions/upload-artifact@v4
       with:
-        name: agnos-iso-x86_64
+        name: agnos-installer-x86_64
         path: |
-          output/*.iso
-          output/*.iso.sha256
+          output/agnos-*-x86_64.iso
+          output/agnos-*-x86_64.iso.sha256
 
-  build-x86_64-edge-iso:
-    name: Build x86_64 Edge ISO
+  # =========================================================================
+  # x86_64 Minimal ISO (headless)
+  # Output: agnos-YYYYMMDD-minimal-x86_64.iso
+  # =========================================================================
+  build-x86_64-minimal:
+    name: Build x86_64 Minimal ISO
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
     steps:
     - uses: actions/checkout@v4
 
-    - name: Install ISO build dependencies
+    - name: Install build dependencies
       run: |
         sudo apt-get update
         sudo apt-get install -y --no-install-recommends \
-          debootstrap \
-          squashfs-tools \
-          grub-pc-bin \
-          grub-efi-amd64-bin \
-          grub-common \
-          grub2-common \
-          xorriso \
-          mtools \
-          debian-archive-keyring
+          debootstrap squashfs-tools grub-pc-bin grub-efi-amd64-bin \
+          grub-common grub2-common xorriso mtools debian-archive-keyring
 
     - name: Download x86_64 binaries
       uses: actions/download-artifact@v4
@@ -159,51 +155,44 @@ jobs:
     - name: Download SY edge binary
       run: |
         curl -sfL -o /tmp/secureyeoman-edge-linux-x64 \
-          "https://github.com/MacCracken/SecureYeoman/releases/latest/download/secureyeoman-edge-linux-x64" || {
-          echo "::warning::Could not download SY edge binary"
-        }
+          "https://github.com/MacCracken/SecureYeoman/releases/latest/download/secureyeoman-edge-linux-x64" || true
       continue-on-error: true
 
-    - name: Build edge ISO
+    - name: Build minimal ISO
       run: |
         VERSION="${{ inputs.version || '' }}"
-        ARGS="--edge --skip-build"
-        if [ -n "$VERSION" ]; then
-          ARGS="$ARGS --version $VERSION"
-        fi
-        if [ -f /tmp/secureyeoman-edge-linux-x64 ]; then
-          ARGS="$ARGS --sy-edge-binary /tmp/secureyeoman-edge-linux-x64"
-        fi
-        sudo ./scripts/build-iso.sh $ARGS
+        ARGS="--profile minimal --skip-build"
+        [ -n "$VERSION" ] && ARGS="$ARGS --version $VERSION"
+        [ -f /tmp/secureyeoman-edge-linux-x64 ] && ARGS="$ARGS --sy-edge-binary /tmp/secureyeoman-edge-linux-x64"
+        sudo ./scripts/build-installer.sh $ARGS
 
-    - name: Upload x86_64 edge ISO
+    - name: Upload minimal ISO
       uses: actions/upload-artifact@v4
       with:
-        name: agnos-edge-iso-x86_64
+        name: agnos-minimal-x86_64
         path: |
-          output/agnos-edge-*.iso
-          output/agnos-edge-*.iso.sha256
+          output/agnos-*-minimal-x86_64.iso
+          output/agnos-*-minimal-x86_64.iso.sha256
 
-  build-aarch64-img:
-    name: Build aarch64 SD Image
+  # =========================================================================
+  # aarch64 SD Card Image (Desktop/Server unified)
+  # Output: agnos-YYYYMMDD-aarch64.img
+  # =========================================================================
+  build-aarch64-sdcard:
+    name: Build aarch64 SD Card Image
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     steps:
     - uses: actions/checkout@v4
 
-    - name: Install aarch64 image build dependencies
+    - name: Install build dependencies
       run: |
         sudo apt-get update
         sudo apt-get install -y --no-install-recommends \
-          debootstrap \
-          squashfs-tools \
-          dosfstools \
-          parted \
-          e2fsprogs \
-          qemu-user-static \
-          binfmt-support \
-          debian-archive-keyring
+          debootstrap dosfstools parted e2fsprogs \
+          qemu-user-static binfmt-support \
+          debian-archive-keyring curl
 
     - name: Download aarch64 binaries
       uses: actions/download-artifact@v4
@@ -212,40 +201,39 @@ jobs:
         path: artifacts/
       continue-on-error: true
 
-    - name: Extract binaries (from artifact or build)
+    - name: Extract binaries
       run: |
         mkdir -p userland/target/aarch64-unknown-linux-gnu/release
         EXTRACT_DIR="$(mktemp -d)"
         if ls artifacts/*.tar.gz 1>/dev/null 2>&1; then
-          echo "Using pre-built binaries from artifacts"
           tar xzf artifacts/*.tar.gz -C "$EXTRACT_DIR"
           for bin in agent_runtime llm_gateway agnsh agnos_sudo desktop_environment ai_shell; do
             find "$EXTRACT_DIR" -name "$bin" -type f -exec cp {} userland/target/aarch64-unknown-linux-gnu/release/ \;
           done
-        else
-          echo "No artifacts found — will need --skip-build disabled"
         fi
-        ls -la userland/target/aarch64-unknown-linux-gnu/release/ 2>/dev/null || echo "No binaries yet"
+        ls -la userland/target/aarch64-unknown-linux-gnu/release/ 2>/dev/null || echo "No binaries"
 
-    - name: Build aarch64 image
+    - name: Build aarch64 SD card image (desktop profile)
       run: |
         VERSION="${{ inputs.version || '' }}"
-        ARGS="--skip-build"
-        if [ -n "$VERSION" ]; then
-          ARGS="$ARGS --version $VERSION"
-        fi
-        sudo ./scripts/build-iso-aarch64.sh $ARGS
+        ARGS="--profile desktop --skip-build"
+        [ -n "$VERSION" ] && ARGS="$ARGS --version $VERSION"
+        sudo ./scripts/build-sdcard.sh $ARGS
 
     - name: Upload aarch64 image
       uses: actions/upload-artifact@v4
       with:
-        name: agnos-img-aarch64
+        name: agnos-sdcard-aarch64
         path: |
-          output/*-aarch64.img
-          output/*-aarch64.img.sha256
+          output/agnos-*-aarch64.img
+          output/agnos-*-aarch64.img.sha256
 
-  build-edge-rpi4-img:
-    name: Build Edge RPi4 SD Image
+  # =========================================================================
+  # aarch64 Minimal SD Card Image
+  # Output: agnos-YYYYMMDD-minimal-aarch64.img
+  # =========================================================================
+  build-aarch64-minimal:
+    name: Build aarch64 Minimal SD Card Image
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -256,16 +244,11 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y --no-install-recommends \
-          debootstrap \
-          squashfs-tools \
-          dosfstools \
-          parted \
-          e2fsprogs \
-          qemu-user-static \
-          binfmt-support \
-          debian-archive-keyring
+          debootstrap dosfstools parted e2fsprogs \
+          qemu-user-static binfmt-support \
+          debian-archive-keyring curl
 
-    - name: Download aarch64 edge binaries (size-optimized)
+    - name: Download aarch64 edge binaries
       uses: actions/download-artifact@v4
       with:
         name: agnos-linux-arm64-edge
@@ -273,14 +256,13 @@ jobs:
       continue-on-error: true
 
     - name: Fall back to regular arm64 binaries
-      if: failure()
       uses: actions/download-artifact@v4
       with:
         name: agnos-linux-arm64
         path: artifacts/
       continue-on-error: true
 
-    - name: Extract AGNOS binaries
+    - name: Extract binaries
       run: |
         mkdir -p userland/target/aarch64-unknown-linux-gnu/release
         EXTRACT_DIR="$(mktemp -d)"
@@ -293,29 +275,83 @@ jobs:
 
     - name: Download SY edge binary
       run: |
-        # Fetch latest secureyeoman-edge arm64 from SY releases
         curl -sfL -o /tmp/secureyeoman-edge-linux-arm64 \
-          "https://github.com/MacCracken/SecureYeoman/releases/latest/download/secureyeoman-edge-linux-arm64" || {
-          echo "::warning::Could not download SY edge binary — image will be built without it"
-        }
+          "https://github.com/MacCracken/SecureYeoman/releases/latest/download/secureyeoman-edge-linux-arm64" || true
       continue-on-error: true
+
+    - name: Build minimal SD card image
+      run: |
+        VERSION="${{ inputs.version || '' }}"
+        ARGS="--profile minimal --skip-build"
+        [ -n "$VERSION" ] && ARGS="$ARGS --version $VERSION"
+        [ -f /tmp/secureyeoman-edge-linux-arm64 ] && ARGS="$ARGS --sy-edge-binary /tmp/secureyeoman-edge-linux-arm64"
+        sudo ./scripts/build-sdcard.sh $ARGS
+
+    - name: Upload minimal aarch64 image
+      uses: actions/upload-artifact@v4
+      with:
+        name: agnos-minimal-aarch64
+        path: |
+          output/agnos-*-minimal-aarch64.img
+          output/agnos-*-minimal-aarch64.img.sha256
+
+  # =========================================================================
+  # x86_64 Edge ISO (dm-verity, LFS-style)
+  # Output: agnos-YYYYMMDD-edge-x86_64.iso
+  # =========================================================================
+  build-x86_64-edge:
+    name: Build x86_64 Edge ISO
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install build dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends \
+          squashfs-tools grub-pc-bin grub-efi-amd64-bin \
+          grub-common grub2-common xorriso mtools cryptsetup-bin
+
+    - name: Build edge ISO
+      run: |
+        sudo ./scripts/build-edge.sh x86_64
+
+    - name: Upload edge ISO
+      uses: actions/upload-artifact@v4
+      with:
+        name: agnos-edge-x86_64
+        path: |
+          output/agnos-*-edge-x86_64.iso
+          output/agnos-*-edge-x86_64.iso.sha256
+
+  # =========================================================================
+  # aarch64 Edge SD Card Image (dm-verity, RPi firmware included)
+  # Output: agnos-YYYYMMDD-edge-aarch64.img
+  # =========================================================================
+  build-aarch64-edge:
+    name: Build aarch64 Edge SD Card Image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install build dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends \
+          squashfs-tools dosfstools parted e2fsprogs cryptsetup-bin curl
 
     - name: Build edge image
       run: |
-        VERSION="${{ inputs.version || '' }}"
-        ARGS="--edge --skip-build"
-        if [ -n "$VERSION" ]; then
-          ARGS="$ARGS --version $VERSION"
-        fi
-        if [ -f /tmp/secureyeoman-edge-linux-arm64 ]; then
-          ARGS="$ARGS --sy-edge-binary /tmp/secureyeoman-edge-linux-arm64"
-        fi
-        sudo ./scripts/build-iso-aarch64.sh $ARGS
+        sudo ./scripts/build-edge.sh aarch64
 
     - name: Upload edge image
       uses: actions/upload-artifact@v4
       with:
-        name: agnos-edge-img-rpi4
+        name: agnos-edge-aarch64
         path: |
-          output/agnos-edge-*-aarch64.img
-          output/agnos-edge-*-aarch64.img.sha256
+          output/agnos-*-edge-aarch64.img
+          output/agnos-*-edge-aarch64.img.sha256

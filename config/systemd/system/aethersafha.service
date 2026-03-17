@@ -1,0 +1,44 @@
+[Unit]
+Description=AGNOS Desktop Environment (aethersafha Wayland compositor)
+After=agnos.target agent-runtime.service llm-gateway.service
+Wants=agent-runtime.service llm-gateway.service
+Requires=agnos.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/aethersafha
+Restart=on-failure
+RestartSec=3
+User=user
+Group=user
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+Environment=WAYLAND_DISPLAY=wayland-0
+Environment=XDG_SESSION_TYPE=wayland
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/run/user/1000 /var/lib/agnos /var/log/agnos /tmp
+PrivateTmp=false
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=false
+LockPersonality=true
+
+# Resource limits
+MemoryMax=2G
+CPUQuota=60%
+TasksMax=512
+
+# Needs DRM/GPU access
+CapabilityBoundingSet=CAP_SYS_ADMIN CAP_SYS_TTY_CONFIG
+AmbientCapabilities=CAP_SYS_ADMIN CAP_SYS_TTY_CONFIG
+DeviceAllow=/dev/dri/* rw
+DeviceAllow=/dev/input/* r
+DeviceAllow=/dev/tty* rw
+
+[Install]
+WantedBy=agnos-graphical.target

@@ -166,7 +166,23 @@ jobs:
           tar xf output/agnos-toolchain-x86_64.tar -C "$LFS"
           "$LFS/tools/bin/x86_64-agnos-linux-gnu-gcc" --version
 
-      - name: Build base packages in chroot
+      - name: Download source tarballs
+        run: |
+          # Pre-download all source tarballs referenced in recipes
+          mkdir -p "$LFS/sources"
+          for recipe in recipes/base/*.toml recipes/desktop/*.toml; do
+            url=$(grep '^url\s*=' "$recipe" | head -1 | sed 's/.*=\s*"\(.*\)"/\1/')
+            if [[ -n "$url" && "$url" != *"local"* ]]; then
+              file=$(basename "$url")
+              if [[ ! -f "$LFS/sources/$file" ]]; then
+                curl -fSL -o "$LFS/sources/$file" "$url" 2>/dev/null || \
+                  echo "WARN: Could not download $file"
+              fi
+            fi
+          done
+          echo "Source cache: $(du -sh "$LFS/sources" | cut -f1)"
+
+      - name: Build all packages from recipes
         run: |
           # Copy recipes and scripts into chroot
           mkdir -p "$LFS/usr/src/agnos"
@@ -176,17 +192,42 @@ jobs:
           cp VERSION     "$LFS/usr/src/agnos/VERSION"
           install -m 755 scripts/ark-build.sh "$LFS/usr/bin/ark-build"
 
-          # Create minimal /etc
+          # Create minimal /etc if not present
           mkdir -p "$LFS"/{etc,var/log,tmp,run,proc,sys,dev}
-          echo 'root:x:0:0:root:/root:/bin/bash' > "$LFS/etc/passwd"
-          echo 'root:x:0:' > "$LFS/etc/group"
+          [[ -f "$LFS/etc/passwd" ]] || echo 'root:x:0:0:root:/root:/bin/bash' > "$LFS/etc/passwd"
+          [[ -f "$LFS/etc/group" ]]  || echo 'root:x:0:' > "$LFS/etc/group"
 
-          # Build critical base packages
-          for recipe in iana-etc man-pages linux-api-headers; do
-            LFS="$LFS" bash scripts/enter-chroot.sh \
-              "ark-build /usr/src/agnos/recipes/base/${recipe}.toml 2>&1" || \
-              echo "WARN: ${recipe} build failed (may need source tarball)"
-          done
+          # Build packages in dependency order from build-order.txt
+          BUILT=0
+          FAILED=0
+          SKIPPED=0
+          while IFS= read -r line; do
+            # Skip comments and blank lines
+            [[ -z "$line" || "$line" == \#* ]] && continue
+
+            recipe="/usr/src/agnos/recipes/${line}.toml"
+            pkg=$(basename "$line")
+
+            echo ""
+            echo "========== Building: $pkg =========="
+
+            if LFS="$LFS" bash scripts/enter-chroot.sh \
+              "ARK_CACHE_DIR=/sources ark-build $recipe 2>&1"; then
+              BUILT=$((BUILT + 1))
+              echo "OK: $pkg"
+            else
+              FAILED=$((FAILED + 1))
+              echo "FAIL: $pkg (continuing)"
+            fi
+          done < recipes/build-order.txt
+
+          echo ""
+          echo "=========================================="
+          echo "  Build Summary"
+          echo "=========================================="
+          echo "  Built:   $BUILT"
+          echo "  Failed:  $FAILED"
+          echo "=========================================="
 
       - name: Archive base rootfs (without userland)
         run: |
@@ -304,16 +345,34 @@ jobs:
           mkdir -p "$LFS/etc/agnos"
           cp -r config/* "$LFS/etc/agnos/" 2>/dev/null || true
 
-      - name: Create ISO from AGNOS rootfs
+      - name: Archive complete rootfs (base + desktop + userland)
         run: |
-          # Place binaries where build-iso.sh expects them
+          mkdir -p output
+          tar cf output/agnos-complete-rootfs-x86_64.tar \
+            -C "$LFS" \
+            --exclude='sources' \
+            --exclude='tmp' \
+            usr/ etc/ var/ tools/ boot/ lib/ 2>/dev/null || \
+          tar cf output/agnos-complete-rootfs-x86_64.tar \
+            -C "$LFS" \
+            --exclude='sources' \
+            --exclude='tmp' \
+            usr/ etc/ var/ tools/
+          ls -lh output/agnos-complete-rootfs-x86_64.tar
+
+      - name: Create ISO from AGNOS rootfs (no Debian)
+        run: |
+          # Place binaries where build-installer.sh expects them
           mkdir -p userland/target/release
           for bin in agent_runtime llm_gateway agnsh agnos_sudo desktop_environment ai_shell; do
             if [[ -f "$LFS/usr/bin/$bin" ]]; then
               cp "$LFS/usr/bin/$bin" userland/target/release/
             fi
           done
-          sudo bash scripts/build-iso.sh --skip-build
+          sudo bash scripts/build-installer.sh \
+            --profile desktop \
+            --skip-build \
+            --base-rootfs output/agnos-complete-rootfs-x86_64.tar
 
       - name: Upload ISO
         uses: actions/upload-artifact@v4

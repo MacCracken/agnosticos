@@ -1,0 +1,62 @@
+[package]
+name = "noto-fonts"
+version = "2025.03.01"
+description = "Google Noto fonts — universal Unicode coverage"
+license = "OFL-1.1"
+groups = ["desktop", "fonts"]
+
+[source]
+url = "https://github.com/notofonts/notofonts.github.io/archive/refs/tags/noto-monthly-release-25.3.1.tar.gz"
+sha256 = ""
+patches = []
+
+[depends]
+runtime = ["fontconfig", "freetype"]
+build = []
+optional = []
+
+[build]
+pre_build = ""
+configure = ""
+make = ""
+check = ""
+install = """
+# Install core Noto fonts (Sans, Serif, Mono) — skip CJK/extra for size
+mkdir -p $PKG/usr/share/fonts/noto
+
+for family in NotoSans NotoSerif NotoSansMono; do
+    find . -path "*/${family}*-Regular.ttf" -exec cp {} $PKG/usr/share/fonts/noto/ \;
+    find . -path "*/${family}*-Bold.ttf" -exec cp {} $PKG/usr/share/fonts/noto/ \;
+    find . -path "*/${family}*-Italic.ttf" -exec cp {} $PKG/usr/share/fonts/noto/ \;
+done
+
+# Emoji (single file, ~10MB)
+find . -name 'NotoColorEmoji.ttf' -exec cp {} $PKG/usr/share/fonts/noto/ \; 2>/dev/null || true
+
+# Fontconfig preset — prefer Noto as default
+mkdir -p $PKG/etc/fonts/conf.d
+cat > $PKG/etc/fonts/conf.d/60-noto.conf << 'FONTCONF'
+<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
+<fontconfig>
+  <alias>
+    <family>sans-serif</family>
+    <prefer><family>Noto Sans</family></prefer>
+  </alias>
+  <alias>
+    <family>serif</family>
+    <prefer><family>Noto Serif</family></prefer>
+  </alias>
+  <alias>
+    <family>monospace</family>
+    <prefer><family>Noto Sans Mono</family></prefer>
+  </alias>
+</fontconfig>
+FONTCONF
+"""
+post_install = ""
+
+[security]
+hardening = []
+cflags = ""
+ldflags = ""
