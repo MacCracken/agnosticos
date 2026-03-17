@@ -5,6 +5,33 @@ All notable changes to AGNOS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2026.3.17-1] - 2026-03-17
+
+### Added — GPU Awareness & Ecosystem Integration
+
+- **G1: Orchestrator GPU-aware scheduling** — `TaskRequirements` gains `gpu_required`, `min_gpu_memory`, `required_compute_capability` fields. `score_agent()` rebalances weights to 35/25/15/15/10 when GPU required. New `score_gpu()` evaluates VRAM headroom and compute capability across all detected GPUs. `auto_assign_task()` allocates GPU via `ResourceManager::allocate_gpu()` on dispatch; `handle_result()` releases on completion
+- **SecureYeoman integration (4 items)**:
+  - `agnos_gpu_status` MCP tool — probes NVIDIA/AMD/Intel GPUs via `ResourceManager::detect_gpus()`, returns id, name, VRAM total/available, compute capability
+  - `agnos_local_models` MCP tool — queries hoosh `GET /v1/models` for locally available models, graceful fallback when offline
+  - Firecracker GPU passthrough — `BackendConfig.device_passthrough` field, VM config conditionally enables PCI bus and adds VFIO device entries
+  - Fleet GPU heartbeat — `HeartbeatRequest` accepts `gpu_utilization_pct`, `gpu_memory_used_mb`, `gpu_temperature_c`; stored on `EdgeNode`; aggregated in `GET /v1/edge/dashboard` (avg utilization, total VRAM used, reporting node count)
+- **Agnostic v2026.3.17-1 integration**:
+  - `agnostic_list_crews` MCP tool + `AgnosticListCrews` agnoshi intent — `GET /crews` with status filter and pagination
+  - `agnostic_cancel_crew` MCP tool + `AgnosticCancelCrew` agnoshi intent — `POST /crews/{crew_id}/cancel`
+- **MCP tools**: 136 → 140 built-in (12 agnos + 23 agnostic + others)
+- **Agnoshi intents**: +2 agnostic crew management intents (list crews, cancel crew)
+- **12 new GPU scoring tests** covering: no GPUs, sufficient VRAM, insufficient VRAM, compute capability filtering, weight rebalancing, `score_gpu()` edge cases
+- **Selah recipe** updated to v2026.3.17 MVP release (screenshot & annotation, no AI integration yet)
+
+### Changed — Module Refactoring
+
+- **Orchestrator split** — `orchestrator.rs` (3259 lines) → `orchestrator/` directory (8 files: mod, types, lifecycle, scheduling, scoring, routing, state, tests). 127 tests, all passing
+- **sandbox_mod/core.rs renamed** to `sandbox_core.rs` — fixes `cargo fmt` CI failure caused by `core` shadowing Rust's built-in `core` crate in rustfmt's module resolver
+- **Branding**: "Agnostic Agentics Systems" → "Agnostic Agent System"
+- **Agnostic recipe**: version `2026.3.17` → `2026.3.17-1`, status updated to 23 MCP tools / 14 agnoshi intents
+- **API contract**: aligned with Agnostic v2026.3.17-1+ (new `/crews` and `/crews/{id}/cancel` endpoints)
+- Version bump: `2026.3.17` → `2026.3.17-1`
+
 ## [2026.3.16-3] - 2026-03-17
 
 ### Added — Phase 16A Desktop Essentials & CI/CD Architecture

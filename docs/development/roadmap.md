@@ -1,7 +1,7 @@
 # AGNOS Development Roadmap
 
 > **Status**: Pre-Beta | **Last Updated**: 2026-03-17-1
-> **Userland complete** — 11000+ tests (3800+ agent-runtime, 1554 ai-shell), ~84% coverage, 0 warnings
+> **Userland complete** — 11000+ tests (3900+ agent-runtime, 1554 ai-shell), ~84% coverage, 0 warnings
 > **Recipes**: 115 base + 69 desktop + 25 AI + 9 network + 8 browser + 18 marketplace + 4 python + 3 database + 30 edge = 281 total
 > **Build order**: 176 packages in `recipes/build-order.txt` (base + desktop, dependency-ordered)
 > **Phases 10–14 complete** | **Phase 15A**: Core scanning done (phylax) | **Audit**: 16 rounds
@@ -248,7 +248,7 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 | 1 | SecureYeoman | 7 yeoman_* | 7 | Yes | Not started | Flagship |
 | 2 | Photis Nadi | 8 photis_* | 8 | Yes | Not started | Flutter |
 | 3 | BullShift | 7 bullshift_* | 7 | Yes | Not started | Trading |
-| 4 | AGNOSTIC | 5 agnostic_* | 5 | Yes | Not started | Python |
+| 4 | AGNOSTIC | 23 agnostic_* | 14 | Yes | Not started | Python |
 | 5 | Delta | 7 delta_* | 7 | Yes | Not started | Code hosting |
 | 6 | Aequi | 7 aequi_* | 7 | Yes | Not started | Accounting |
 | 7 | Synapse | 7 synapse_* | 7 | Yes | Not started | LLM management |
@@ -257,7 +257,7 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 | 10 | Rasa | 9 rasa_* | 9 | Yes | Not started | Image editor |
 | 11 | Mneme | 7 mneme_* | 7 | Yes | Not started | Knowledge base |
 | 12 | Nazar | 5 nazar_* | — | Scaffolded | Not started | System monitor |
-| 13 | Selah | 5 selah_* | — | Scaffolded | Not started | Screenshot |
+| 13 | Selah | 5 selah_* | — | Yes (MVP) | Not started | Screenshot, no AI integration yet |
 | 14 | Abaco | 5 abaco_* | — | Scaffolded | Not started | Calculator |
 | 15 | Rahd | 5 rahd_* | — | Scaffolded | Not started | Calendar |
 | 16 | Tarang | 8 tarang_* | 8 | Yes | Not started | Media framework (73 tests) |
@@ -269,25 +269,12 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 
 *Cross-project integration items for the AGNOS ecosystem.*
 
-### SecureYeoman Integration
-
-*SY's GPU-aware inference routing works standalone (probes local nvidia-smi/rocm-smi directly). These items let AGNOS expose fleet GPU data that SY can optionally consume for distributed routing.*
-
-| # | Item | Effort | Status | Notes |
-|---|------|--------|--------|-------|
-| 1 | GPU telemetry MCP tool | Small | **Done** | `agnos_gpu_status` — probes NVIDIA/AMD/Intel GPUs via `ResourceManager::detect_gpus()`. Returns id, name, VRAM total/available, compute capability |
-| 2 | Local model inventory MCP tool | Small | **Done** | `agnos_local_models` — queries hoosh `GET /v1/models` for locally available models (Ollama, llama.cpp, etc.). Graceful fallback when hoosh offline |
-| 3 | Firecracker GPU passthrough | Medium | **Done** | `BackendConfig.device_passthrough` field. VM config conditionally enables PCI bus and adds VFIO device entries when GPU paths provided (e.g. `/dev/nvidia0`) |
-| 4 | Fleet GPU heartbeat | Medium | **Done** | `HeartbeatRequest` accepts `gpu_utilization_pct`, `gpu_memory_used_mb`, `gpu_temperature_c`. Stored on `EdgeNode`, aggregated in `GET /v1/edge/dashboard` (avg utilization, total VRAM used, reporting node count) |
-
 ### Agnostic Integration
 
-| # | Item | Effort | Status | Notes |
-|---|------|--------|--------|-------|
-| 1 | Crew GPU resource requirements | Small | Not started | Allow crew definitions to specify GPU requirements. Orchestrator routes to agents with matching GPU capability |
-| 2 | Agnostic crew listing from AGNOS | Small | **Done** | `agnostic_list_crews` MCP tool + `AgnosticListCrews` agnoshi intent. Status filter + pagination via `GET /crews` |
-| 3 | Agnostic crew cancellation from AGNOS | Small | **Done** | `agnostic_cancel_crew` MCP tool + `AgnosticCancelCrew` agnoshi intent. `POST /crews/{crew_id}/cancel` |
-| 4 | Agnostic crew status in AGNOS HUD | Medium | Not started | Surface active Agnostic crews in aethersafha HUD with real-time status from `GET /crews` endpoint |
+| # | Item | Effort | Notes |
+|---|------|--------|-------|
+| 1 | Crew GPU resource requirements | Small | Allow crew definitions to specify GPU requirements. Orchestrator routes to agents with matching GPU capability |
+| 2 | Agnostic crew status in AGNOS HUD | Medium | Surface active Agnostic crews in aethersafha HUD with real-time status from `GET /crews` endpoint |
 
 ---
 
@@ -295,42 +282,30 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 
 **Goal**: Make GPU resources a first-class concept across the stack — from hardware detection through agent scheduling, inference routing, and fleet telemetry.
 
-**Existing infrastructure**: `resource.rs` (GPU detection for NVIDIA/AMD/Intel, allocation/release per agent), `acceleration.rs` (CUDA/ROCm/Metal accelerator types, quantization routing), NVIDIA/AMD/Intel driver recipes in 13B.
-
-### G1 — Orchestrator GPU-Aware Scheduling
-
-| # | Item | Status | Notes |
-|---|------|--------|-------|
-| 1 | GPU requirement in `TaskRequirements` | **Done** | `gpu_required`, `min_gpu_memory`, `required_compute_capability` fields. Weights rebalance: 35/25/15/15/10 when GPU required |
-| 2 | GPU headroom in `score_agent` | **Done** | `score_gpu()` evaluates VRAM headroom + compute capability filtering. Best GPU ratio used as score (0.0–1.0) |
-| 3 | GPU allocation on task dispatch | **Done** | `auto_assign_task()` allocates via `ResourceManager::allocate_gpu()`. `handle_result()` releases on completion |
+**Existing infrastructure**: `resource.rs` (GPU detection for NVIDIA/AMD/Intel, allocation/release per agent), `acceleration.rs` (CUDA/ROCm/Metal accelerator types, quantization routing), NVIDIA/AMD/Intel driver recipes in 13B. `orchestrator/scoring.rs` (GPU-aware task scoring + allocation). `agnos_gpu_status` + `agnos_local_models` MCP tools. Firecracker `device_passthrough`. Edge heartbeat GPU telemetry + dashboard aggregation.
 
 ### G2 — Hoosh Inference GPU Routing
 
-| # | Item | Status | Notes |
-|---|------|--------|-------|
-| 1 | GPU-aware model placement | Not started | Hoosh selects provider based on GPU availability. Local Ollama/llama.cpp preferred when GPU has capacity |
-| 2 | VRAM budget per model | Not started | Track VRAM consumption per loaded model. Prevent OOM by rejecting loads when VRAM budget exceeded |
-| 3 | Privacy-aware GPU routing | Not started | Route sensitive inference to local GPU when available, cloud only when privacy policy allows |
-| 4 | Quantization auto-select | Not started | Auto-select quantization level based on available VRAM (Q4 for <8GB, Q8 for <16GB, FP16 for 16GB+) |
+| # | Item | Notes |
+|---|------|-------|
+| 1 | GPU-aware model placement | Hoosh selects provider based on GPU availability. Local Ollama/llama.cpp preferred when GPU has capacity |
+| 2 | VRAM budget per model | Track VRAM consumption per loaded model. Prevent OOM by rejecting loads when VRAM budget exceeded |
+| 3 | Privacy-aware GPU routing | Route sensitive inference to local GPU when available, cloud only when privacy policy allows |
+| 4 | Quantization auto-select | Auto-select quantization level based on available VRAM (Q4 for <8GB, Q8 for <16GB, FP16 for 16GB+) |
 
-### G3 — Edge Fleet GPU Telemetry
+### G3 — Edge Fleet GPU Routing
 
-| # | Item | Status | Notes |
-|---|------|--------|-------|
-| 1 | GPU metrics in edge heartbeat | Not started | Include GPU utilization, VRAM usage, temperature in edge node heartbeat payload |
-| 2 | Fleet GPU dashboard | Not started | `/v1/edge/dashboard` aggregates GPU stats across fleet. Surface in aethersafha |
-| 3 | GPU capability routing | Not started | Edge fleet routes inference requests to nodes with matching GPU capability (CUDA compute version, VRAM) |
-| 4 | Local model registry sync | Not started | Edge nodes advertise locally-loaded models to hoosh. Smart routing offloads inference to nodes with warm models |
+| # | Item | Notes |
+|---|------|-------|
+| 1 | GPU capability routing | Edge fleet routes inference requests to nodes with matching GPU capability (CUDA compute version, VRAM) |
+| 2 | Local model registry sync | Edge nodes advertise locally-loaded models to hoosh. Smart routing offloads inference to nodes with warm models |
 
 ### G4 — Consumer App GPU Integration
 
-| # | Item | Status | Notes |
-|---|------|--------|-------|
-| 1 | Crew GPU resource requirements | Not started | Agnostic crew definitions specify GPU requirements. Orchestrator routes to agents with matching GPU capability |
-| 2 | GPU capability probe MCP tool | Not started | `agnos_gpu_info` MCP tool exposes detected GPUs (vendor, VRAM, compute capability) to consumer apps |
-| 3 | Synapse training GPU allocation | Not started | Synapse fine-tuning jobs request GPU allocation via daimon. VRAM-aware batch size selection |
-| 4 | Tarang/Jalwa hardware decode | Not started | Expose VA-API/NVDEC availability to tarang for hardware-accelerated video decode on GPU-equipped nodes |
+| # | Item | Notes |
+|---|------|-------|
+| 1 | Synapse training GPU allocation | Synapse fine-tuning jobs request GPU allocation via daimon. VRAM-aware batch size selection |
+| 2 | Tarang/Jalwa hardware decode | Expose VA-API/NVDEC availability to tarang for hardware-accelerated video decode on GPU-equipped nodes |
 
 ---
 
@@ -345,13 +320,12 @@ Large single-file modules (>1500 lines) that should be split into module directo
 | R1 | Medium | `argonaut.rs` | 3873 | `argonaut/` → boot, services, runlevels, edge_boot, tests | Medium |
 | R2 | Medium | `agnova.rs` | 3603 | `agnova/` → partitioning, rootfs, config, validation, tests | Medium |
 | R3 | Medium | `network_tools.rs` | 3398 | `network_tools/` → nmap, nftables, dns, wifi, capture, tests | Medium |
-| R4 | ~~P0~~ | ~~`orchestrator.rs`~~ | ~~3259~~ | **Done** (2026.3.17-1) — `orchestrator/` → mod, types, lifecycle, scheduling, scoring, routing, state, tests (8 files) | — |
-| R5 | Low | `ark.rs` | 2873 | `ark/` → resolver, installer, manifest, signing, tests | Medium |
-| R6 | Low | `service_manager.rs` | 2630 | `service_manager/` → lifecycle, systemd, health, tests | Small |
-| R7 | Low | `federation.rs` | 2565 | `federation/` → discovery, sync, vector_store, gossip, tests | Medium |
-| R8 | Low | `sigil.rs` | 2123 | `sigil/` → verify, chain, policy, tests | Small |
-| R9 | Low | `edge.rs` | 2075 | `edge/` → fleet, ota, telemetry, routing, tests | Small |
-| R10 | Low | `safety.rs` | 2062 | `safety/` → injection, guardrails, policy, tests | Small |
+| R4 | Low | `ark.rs` | 2873 | `ark/` → resolver, installer, manifest, signing, tests | Medium |
+| R5 | Low | `service_manager.rs` | 2630 | `service_manager/` → lifecycle, systemd, health, tests | Small |
+| R6 | Low | `federation.rs` | 2565 | `federation/` → discovery, sync, vector_store, gossip, tests | Medium |
+| R7 | Low | `sigil.rs` | 2123 | `sigil/` → verify, chain, policy, tests | Small |
+| R8 | Low | `edge.rs` | 2075 | `edge/` → fleet, ota, telemetry, routing, tests | Small |
+| R9 | Low | `safety.rs` | 2062 | `safety/` → injection, guardrails, policy, tests | Small |
 
 **Pattern to follow**: `sandbox_mod/` (completed in 2026.3.17) and `orchestrator/` (completed in 2026.3.17-1) — re-exports in `mod.rs`, old files deleted. Note: avoid naming submodules `core` (conflicts with Rust's `core` crate in rustfmt).
 
@@ -379,8 +353,12 @@ Large single-file modules (>1500 lines) that should be split into module directo
 | # | Item | Resolution |
 |---|------|------------|
 | 1 | Go toolchain bump (1.24.1 → 1.26+) | **Done** — `recipes/ai/go.toml` updated to 1.26.1 |
-| 2 | Sandbox module consolidation | **Done** — 7 files → `sandbox_mod/` (2026.3.17). 303 tests, >95% coverage |
-| 3 | Agnostic MCP API realignment | **Done** — 21 tools updated to match Agnostic v2026.3.16 API (2026.3.17) |
+| 2 | Sandbox module consolidation | **Done** — 7 files → `sandbox_mod/` (2026.3.17). `core.rs` → `sandbox_core.rs` (rustfmt fix, 2026.3.17-1) |
+| 3 | Agnostic MCP API realignment | **Done** — 23 tools aligned with Agnostic v2026.3.17-1 API |
+| 4 | Orchestrator module split | **Done** — 3259-line `orchestrator.rs` → `orchestrator/` (8 files: mod, types, lifecycle, scheduling, scoring, routing, state, tests). 127 tests (2026.3.17-1) |
+| 5 | G1 GPU-aware scheduling | **Done** — `TaskRequirements` GPU fields, `score_gpu()`, GPU allocation on dispatch + release on completion (2026.3.17-1) |
+| 6 | SY integration (4 items) | **Done** — `agnos_gpu_status`, `agnos_local_models` MCP tools, Firecracker `device_passthrough`, edge heartbeat GPU telemetry + dashboard aggregation (2026.3.17-1) |
+| 7 | Agnostic crew management | **Done** — `agnostic_list_crews`, `agnostic_cancel_crew` MCP tools + agnoshi intents (2026.3.17-1) |
 
 ---
 
@@ -449,7 +427,7 @@ Large single-file modules (>1500 lines) that should be split into module directo
 |-----------|-------|-------|
 | agnos-common | 307 | Secrets, telemetry, LLM types, manifest, rate limits, audit chain |
 | agnos-sys | 750+ | 16 modules: audit, mac, netns, dmverity, luks, ima, tpm, secureboot, certpin, bootloader, journald, udev, fuse, pam, update, llm |
-| agent-runtime | 3723+ | Phylax (65), 122 MCP tools, orchestrator, IPC, sandbox, registry, marketplace, federation, migration, scheduler, PQC, safety, finetune, formal_verify, sandbox_v2, rl_optimizer, cloud, collaboration, sigil, aegis, takumi, argonaut, agnova, ark, edge, grpc, service_mesh, oidc, delegation, vector_rest, marketplace_backend, selfhost, webview, python_runtime |
+| agent-runtime | 3900+ | Phylax (65), 140 MCP tools, orchestrator (127, GPU-aware scoring), IPC, sandbox, registry, marketplace, federation, migration, scheduler, PQC, safety, finetune, formal_verify, sandbox_v2, rl_optimizer, cloud, collaboration, sigil, aegis, takumi, argonaut, agnova, ark, edge (GPU heartbeat), grpc, service_mesh, oidc, delegation, vector_rest, marketplace_backend, selfhost, webview, python_runtime |
 | llm-gateway | 860 | 15 providers, rate limiting, streaming, cert pinning, hardware acceleration, token budgets |
 | ai-shell | 1554 | 61+ intents (including 5 phylax, 8 tarang, 8 jalwa), approval workflow, dashboard, aliases |
 | desktop-environment | 1692 | Wayland protocol, screen capture, screen recording, plugin host, xwayland, shell integration, theme bridge |
