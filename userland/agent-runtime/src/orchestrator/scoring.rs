@@ -1,4 +1,28 @@
-//! Agent scoring — load-aware task assignment and capability matching.
+//! Agent scoring — load-aware task assignment, capability matching, and GPU awareness.
+//!
+//! # Scoring Weights
+//!
+//! When a task requires GPU (`gpu_required = true`):
+//! - Memory headroom: 35%
+//! - CPU headroom:    25%
+//! - GPU headroom:    15%
+//! - Capability match: 15%
+//! - Affinity bonus:   10%
+//!
+//! When no GPU is required (default):
+//! - Memory headroom: 40%
+//! - CPU headroom:    30%
+//! - Capability match: 20%
+//! - Affinity bonus:   10%
+//!
+//! # GPU Scoring
+//!
+//! The GPU score evaluates available GPUs against the task's requirements:
+//! - `min_gpu_memory`: minimum VRAM the GPU must have available
+//! - `required_compute_capability`: minimum compute capability string (e.g., "8.0")
+//!
+//! The best-matching GPU's VRAM headroom ratio (available/total) is used as the score.
+//! If no GPU can satisfy the requirements, the GPU component scores 0.0.
 
 use agnos_common::AgentConfig;
 use anyhow::Result;

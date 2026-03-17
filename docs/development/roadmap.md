@@ -301,9 +301,9 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 
 | # | Item | Status | Notes |
 |---|------|--------|-------|
-| 1 | GPU requirement in `TaskRequirements` | Not started | Add `gpu_required: bool` and `min_vram: u64` to `TaskRequirements`. Scoring in `orchestrator/scoring.rs` factors GPU availability |
-| 2 | GPU headroom in `score_agent` | Not started | Query `ResourceManager::list_gpus()` from scoring path. Agents with available VRAM score higher for GPU tasks |
-| 3 | GPU allocation on task dispatch | Not started | Wire `ResourceManager::allocate_gpu()` into `distribute_task()`. Release on task completion |
+| 1 | GPU requirement in `TaskRequirements` | **Done** | `gpu_required`, `min_gpu_memory`, `required_compute_capability` fields. Weights rebalance: 35/25/15/15/10 when GPU required |
+| 2 | GPU headroom in `score_agent` | **Done** | `score_gpu()` evaluates VRAM headroom + compute capability filtering. Best GPU ratio used as score (0.0–1.0) |
+| 3 | GPU allocation on task dispatch | **Done** | `auto_assign_task()` allocates via `ResourceManager::allocate_gpu()`. `handle_result()` releases on completion |
 
 ### G2 — Hoosh Inference GPU Routing
 

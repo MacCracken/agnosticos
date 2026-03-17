@@ -399,6 +399,7 @@ fn test_task_requirements_with_values() {
         min_cpu_shares: 100,
         required_capabilities: vec!["gpu".to_string(), "network".to_string()],
         preferred_agent: Some("my-agent".to_string()),
+        ..Default::default()
     };
     assert_eq!(req.min_memory, 512 * 1024 * 1024);
     assert_eq!(req.min_cpu_shares, 100);
@@ -413,6 +414,7 @@ fn test_task_requirements_clone() {
         min_cpu_shares: 50,
         required_capabilities: vec!["cap1".to_string()],
         preferred_agent: Some("agent-x".to_string()),
+        ..Default::default()
     };
     let cloned = req.clone();
     assert_eq!(cloned.min_memory, 1024);
@@ -1368,6 +1370,7 @@ fn test_task_requirements_debug() {
         min_cpu_shares: 10,
         required_capabilities: vec!["cap".to_string()],
         preferred_agent: Some("agent".to_string()),
+        ..Default::default()
     };
     let dbg = format!("{:?}", req);
     assert!(dbg.contains("min_memory"));
@@ -1980,7 +1983,8 @@ fn test_score_agent_with_cpu_usage() {
         resource_usage: agnos_common::ResourceUsage::default(),
         ..handle.clone()
     };
-    let fresh_score = Orchestrator::score_agent(&fresh_handle, Some(&config), &requirements, 0, &[]);
+    let fresh_score =
+        Orchestrator::score_agent(&fresh_handle, Some(&config), &requirements, 0, &[]);
     assert!(score < fresh_score);
 }
 
@@ -2619,10 +2623,7 @@ fn test_task_requirements_gpu_fields() {
     };
     assert!(req.gpu_required);
     assert_eq!(req.min_gpu_memory, 8 * 1024 * 1024 * 1024);
-    assert_eq!(
-        req.required_compute_capability,
-        Some("8.6".to_string())
-    );
+    assert_eq!(req.required_compute_capability, Some("8.6".to_string()));
 }
 
 #[test]
@@ -2910,11 +2911,7 @@ fn test_score_gpu_picks_best_gpu() {
 
     let score = Orchestrator::score_gpu(&gpus, &requirements);
     // Should pick the best ratio (87.5% from big GPU)
-    assert!(
-        score > 0.85,
-        "Should pick best GPU ratio, got {}",
-        score
-    );
+    assert!(score > 0.85, "Should pick best GPU ratio, got {}", score);
 }
 
 #[test]
