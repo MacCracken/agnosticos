@@ -2,9 +2,9 @@
 
 > **Status**: Pre-Beta | **Last Updated**: 2026-03-16
 > **Userland complete** — 10900+ tests (3723+ agent-runtime, 1554 ai-shell), ~84% coverage, 0 warnings
-> **Recipes**: 109 base + 53 desktop + 25 AI + 9 network + 8 browser + 15 marketplace + 4 python + 3 database + 29 edge = 255 total
+> **Recipes**: 109 base + 54 desktop + 25 AI + 9 network + 8 browser + 18 marketplace + 4 python + 3 database + 30 edge = 260 total
 > **Phases 10–14 complete** | **Phase 15A**: Core scanning done (phylax) | **Audit**: 16 rounds
-> **MCP Tools**: 106 built-in + external registration
+> **MCP Tools**: 122 built-in + external registration
 
 ---
 
@@ -95,7 +95,7 @@ Phase 13A (self-hosting) ──→ Phase 16 (desktop recipes) ──→ Phase 13
 | 3 | Build AGNOS userland on target | Not started | `cargo build --release --workspace` inside AGNOS |
 | 4 | Build kernel modules on target | Not started | Compile AGNOS kernel modules without host |
 | 5 | Selfhost-validate passes all phases | Not started | Run `selfhost-validate --phase all` on booted ISO |
-| 6 | CI automation | Not started | GitHub Actions: build ISO → boot QEMU → validate |
+| 6 | CI automation | In progress | GitHub Actions: `publish-toolchain.yml`, `selfhost-build.yml`, `selfhost-validation.yml` — bootstrap toolchain added to CI/CD |
 
 **Critical path**: Download tarballs → bootstrap-toolchain.sh → enter-chroot.sh → ark-build recipes → cargo build userland → selfhost-validate
 
@@ -184,7 +184,7 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 | 3 | Signature database (`.phylax-db`) | Not started | Signed, versioned threat definitions distributed via ark |
 | 4 | On-access scanning (fanotify) | Not started | Real-time filesystem monitoring via `agnos-sys` fanotify bindings |
 | 5 | Scan API endpoints | **Done** | `/v1/scan/file`, `/v1/scan/bytes`, `/v1/scan/status`, `/v1/scan/history`, `/v1/scan/rules` |
-| 6 | MCP tools | **Done** | `phylax_scan`, `phylax_status`, `phylax_rules`, `phylax_findings`, `phylax_quarantine` (106 total) |
+| 6 | MCP tools | **Done** | `phylax_scan`, `phylax_status`, `phylax_rules`, `phylax_findings`, `phylax_quarantine` (122 total) |
 | 7 | agnoshi intents | **Done** | "scan /path for threats", "show threat findings", "scanner status", "list rules", "scan history" |
 
 ### 15B — AI-Powered Analysis
@@ -258,8 +258,8 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 | 13 | Selah | 5 selah_* | — | Scaffolded | Not started | Screenshot |
 | 14 | Abaco | 5 abaco_* | — | Scaffolded | Not started | Calculator |
 | 15 | Rahd | 5 rahd_* | — | Scaffolded | Not started | Calendar |
-| 16 | Tarang | 5 tarang_* | — | Scaffolded | Not started | Media framework (73 tests) |
-| 17 | Jalwa | 5 jalwa_* | — | Scaffolded | Not started | Media player (66 tests), built on tarang. Priority 1 in os_long_term |
+| 16 | Tarang | 8 tarang_* | 8 | Yes | Not started | Media framework (73 tests) |
+| 17 | Jalwa | 8 jalwa_* | 8 | Yes | Not started | Media player (110+ tests), built on tarang. Priority 1 in os_long_term |
 
 ---
 
@@ -284,7 +284,7 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 - [x] Phase 11 complete — 88 desktop, networking & AI/ML recipes
 - [x] Phase 12 complete — Argonaut init, ark package manager, agnova installer
 - [x] Phase 13B complete — GPU drivers, WiFi, Bluetooth, Thunderbolt, printing
-- [x] Phase 13D complete — 11 consumer apps integrated
+- [x] Phase 13D complete — 17 consumer apps integrated
 - [x] Phase 15A partial — Phylax core scanning engine
 - [x] AGNOS boots from ISO on bare metal (UEFI) and QEMU
 - [ ] **Self-hosting: can rebuild itself from source (13A)** ← PRIMARY BLOCKER
@@ -323,11 +323,11 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 | Stub Implementations | 0 | 0 | Met |
 | Compiler Warnings | 0 | 0 | Met |
 | Base System Recipes | ~108 | 109 | Complete |
-| Desktop/AI Stack Recipes | ~62 | 88 | Complete |
-| Edge Recipes | ~30 | 29 | Complete |
-| Marketplace Recipes | 11 | 15 | Complete (11 released + 4 scaffolded) |
-| MCP Tools | — | 106 | Complete (10 agnos + 5 aequi + 5 agnostic + 5 delta + 8 photis + 5 edge + 5 shruti + 5 tazama + 5 rasa + 5 mneme + 5 synapse + 7 bullshift + 7 yeoman + 5 phylax + others) |
-| Consumer Apps | 6 | 15 | 11 released + 4 scaffolded |
+| Desktop/AI Stack Recipes | ~62 | 79 | Complete |
+| Edge Recipes | ~30 | 30 | Complete |
+| Marketplace Recipes | 11 | 18 | Complete (11 released + 7 scaffolded) |
+| MCP Tools | — | 122 | Complete (10 agnos + 5 aequi + 5 agnostic + 5 delta + 8 photis + 5 edge + 7 shruti + 8 tarang + 8 jalwa + 9 rasa + 7 mneme + 7 synapse + 7 bullshift + 7 yeoman + 5 phylax + others) |
+| Consumer Apps | 6 | 17 | 11 released + 6 scaffolded |
 | Recipe Validation Errors | 0 | 0 | Complete |
 | Security Audit Rounds | 15 | 16 | Complete |
 | Self-Hosting | Yes | Pending | Phase 13A — THE blocker |
@@ -338,9 +338,9 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 |-----------|-------|-------|
 | agnos-common | 307 | Secrets, telemetry, LLM types, manifest, rate limits, audit chain |
 | agnos-sys | 750+ | 16 modules: audit, mac, netns, dmverity, luks, ima, tpm, secureboot, certpin, bootloader, journald, udev, fuse, pam, update, llm |
-| agent-runtime | 3723+ | Phylax (65), 106 MCP tools, orchestrator, IPC, sandbox, registry, marketplace, federation, migration, scheduler, PQC, safety, finetune, formal_verify, sandbox_v2, rl_optimizer, cloud, collaboration, sigil, aegis, takumi, argonaut, agnova, ark, edge, grpc, service_mesh, oidc, delegation, vector_rest, marketplace_backend, selfhost, webview, python_runtime |
+| agent-runtime | 3723+ | Phylax (65), 122 MCP tools, orchestrator, IPC, sandbox, registry, marketplace, federation, migration, scheduler, PQC, safety, finetune, formal_verify, sandbox_v2, rl_optimizer, cloud, collaboration, sigil, aegis, takumi, argonaut, agnova, ark, edge, grpc, service_mesh, oidc, delegation, vector_rest, marketplace_backend, selfhost, webview, python_runtime |
 | llm-gateway | 860 | 15 providers, rate limiting, streaming, cert pinning, hardware acceleration, token budgets |
-| ai-shell | 1554 | 55+ intents (including 5 phylax), approval workflow, dashboard, aliases |
+| ai-shell | 1554 | 61+ intents (including 5 phylax, 8 tarang, 8 jalwa), approval workflow, dashboard, aliases |
 | desktop-environment | 1692 | Wayland protocol, screen capture, screen recording, plugin host, xwayland, shell integration, theme bridge |
 
 ---
@@ -364,11 +364,11 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 | Name | Role | Component |
 |------|------|-----------|
 | **hoosh** | LLM inference gateway (port 8088, 15 providers) | `llm-gateway/` |
-| **daimon** | Agent orchestrator (port 8090, 106 MCP tools) | `agent-runtime/` |
+| **daimon** | Agent orchestrator (port 8090, 122 MCP tools) | `agent-runtime/` |
 | **agnosys** | Kernel interface | `agnos-sys/` |
 | **agnostik** | Shared types library | `agnos-common/` |
 | **shakti** | Privilege escalation | `agnos-sudo/` |
-| **agnoshi** | AI shell (`agnsh`, 55+ intents) | `ai-shell/` |
+| **agnoshi** | AI shell (`agnsh`, 61+ intents) | `ai-shell/` |
 | **aethersafha** | Desktop compositor | `desktop-environment/` |
 | **ark** | Unified package manager | `ark.rs`, `/v1/ark/*` |
 | **nous** | Package resolver daemon | `nous.rs` |

@@ -5,6 +5,24 @@ All notable changes to AGNOS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2026.3.16-2] - 2026-03-16
+
+### Added — Tarang & Jalwa MCP Tool Expansion
+
+- **Tarang MCP tools expanded** (5 → 8): Added `tarang_fingerprint_index` (audio fingerprint indexing in vector store), `tarang_search_similar` (fingerprint-based similarity search), `tarang_describe` (AI content description via hoosh). MCP handlers with bridge to Tarang API + mock fallback
+- **Jalwa MCP tools expanded** (5 → 8): Added `jalwa_queue` (list/enqueue/clear/shuffle play queue), `jalwa_library` (stats/scan/list media library), `jalwa_playlist` (list/create/add/remove/export playlists with M3U support). MCP handlers with bridge to Jalwa API + mock fallback
+- **MCP tool manifest**: 106 → 122 built-in tools. Full schema definitions for all 16 new tools with input validation and required fields
+- **Agnoshi intents** (6 new): `TarangFingerprintIndex`, `TarangSearchSimilar`, `TarangDescribe`, `JalwaQueue`, `JalwaLibrary`, `JalwaPlaylist` — NL commands like "fingerprint /path", "find similar to /path", "describe /path", "queue list", "library scan /dir", "playlist create MyList"
+- **Agnoshi patterns** (6 new): Regex patterns for all new intents with full capture group support
+- **Agnoshi translators**: Wired all new intents through `translate/tarang.rs` and `translate/jalwa.rs` with proper MCP call generation, permission levels, and descriptions
+
+### Changed
+
+- Version bump: `2026.3.15` → `2026.3.16-2`
+- MCP test assertions updated: 106 → 122 tools
+- Roadmap updated: MCP tool count, consumer app table (Tarang 8 tools, Jalwa 8 tools), recipe counts
+- Code formatting: `cargo fmt` applied to all ai-shell interpreter files
+
 ## [2026.3.15] - 2026-03-16
 
 ### Added — Phase 15: Phylax Threat Detection Engine
