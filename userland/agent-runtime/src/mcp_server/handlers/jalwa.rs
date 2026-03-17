@@ -116,6 +116,95 @@ pub(crate) async fn handle_jalwa_search(args: &serde_json::Value) -> McpToolResu
     }
 }
 
+pub(crate) async fn handle_jalwa_queue(args: &serde_json::Value) -> McpToolResult {
+    let action = match extract_required_string(args, "action") {
+        Ok(a) => a,
+        Err(e) => return e,
+    };
+
+    let bridge = jalwa_bridge();
+    let body = serde_json::json!({
+        "action": action,
+        "item_id": args.get("item_id").and_then(|v| v.as_str()),
+    });
+
+    match bridge.post("/api/v1/queue", body).await {
+        Ok(response) => {
+            info!(action = %action, "Jalwa: queue management (bridged)");
+            success_result(response)
+        }
+        Err(e) => {
+            warn!(error = %e, "Jalwa bridge: falling back to mock for queue");
+            success_result(serde_json::json!({
+                "action": action,
+                "status": "unavailable",
+                "message": "Jalwa service not reachable",
+                "_source": "mock",
+            }))
+        }
+    }
+}
+
+pub(crate) async fn handle_jalwa_library(args: &serde_json::Value) -> McpToolResult {
+    let action = match extract_required_string(args, "action") {
+        Ok(a) => a,
+        Err(e) => return e,
+    };
+
+    let bridge = jalwa_bridge();
+    let body = serde_json::json!({
+        "action": action,
+        "path": args.get("path").and_then(|v| v.as_str()),
+    });
+
+    match bridge.post("/api/v1/library", body).await {
+        Ok(response) => {
+            info!(action = %action, "Jalwa: library management (bridged)");
+            success_result(response)
+        }
+        Err(e) => {
+            warn!(error = %e, "Jalwa bridge: falling back to mock for library");
+            success_result(serde_json::json!({
+                "action": action,
+                "status": "unavailable",
+                "message": "Jalwa service not reachable",
+                "_source": "mock",
+            }))
+        }
+    }
+}
+
+pub(crate) async fn handle_jalwa_playlist(args: &serde_json::Value) -> McpToolResult {
+    let action = match extract_required_string(args, "action") {
+        Ok(a) => a,
+        Err(e) => return e,
+    };
+
+    let bridge = jalwa_bridge();
+    let body = serde_json::json!({
+        "action": action,
+        "name": args.get("name").and_then(|v| v.as_str()),
+        "item_id": args.get("item_id").and_then(|v| v.as_str()),
+        "output": args.get("output").and_then(|v| v.as_str()),
+    });
+
+    match bridge.post("/api/v1/playlist", body).await {
+        Ok(response) => {
+            info!(action = %action, "Jalwa: playlist management (bridged)");
+            success_result(response)
+        }
+        Err(e) => {
+            warn!(error = %e, "Jalwa bridge: falling back to mock for playlist");
+            success_result(serde_json::json!({
+                "action": action,
+                "status": "unavailable",
+                "message": "Jalwa service not reachable",
+                "_source": "mock",
+            }))
+        }
+    }
+}
+
 pub(crate) async fn handle_jalwa_recommend(args: &serde_json::Value) -> McpToolResult {
     let item_id = match extract_required_string(args, "item_id") {
         Ok(id) => id,

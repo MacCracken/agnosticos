@@ -216,7 +216,10 @@ impl Interpreter {
             | Intent::JalwaPause
             | Intent::JalwaStatus
             | Intent::JalwaSearch { .. }
-            | Intent::JalwaRecommend { .. } => jalwa::translate_jalwa(intent),
+            | Intent::JalwaRecommend { .. }
+            | Intent::JalwaQueue { .. }
+            | Intent::JalwaLibrary { .. }
+            | Intent::JalwaPlaylist { .. } => jalwa::translate_jalwa(intent),
 
             // Photis Nadi
             Intent::TaskList { .. }

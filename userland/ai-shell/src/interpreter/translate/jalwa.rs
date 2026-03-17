@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use super::mcp_helper::{insert_str, mcp_call};
+use super::mcp_helper::{insert_opt, insert_str, mcp_call};
 use crate::interpreter::intent::{Intent, Translation};
 use crate::security::PermissionLevel;
 
@@ -60,6 +60,43 @@ pub(crate) fn translate_jalwa(intent: &Intent) -> Result<Translation> {
                 "Get recommendations".to_string(),
                 PermissionLevel::Safe,
                 "Gets AI-powered media recommendations from Jalwa".to_string(),
+            ))
+        }
+        Intent::JalwaQueue { action, item_id } => {
+            let mut a = serde_json::Map::new();
+            insert_str(&mut a, "action", action);
+            insert_opt(&mut a, "item_id", item_id);
+            Ok(mcp_call(
+                "jalwa_queue",
+                a,
+                format!("Queue: {action}"),
+                PermissionLevel::SystemWrite,
+                "Manages the Jalwa play queue".to_string(),
+            ))
+        }
+        Intent::JalwaLibrary { action, path } => {
+            let mut a = serde_json::Map::new();
+            insert_str(&mut a, "action", action);
+            insert_opt(&mut a, "path", path);
+            Ok(mcp_call(
+                "jalwa_library",
+                a,
+                format!("Library: {action}"),
+                PermissionLevel::Safe,
+                "Manages the Jalwa media library".to_string(),
+            ))
+        }
+        Intent::JalwaPlaylist { action, name, item_id } => {
+            let mut a = serde_json::Map::new();
+            insert_str(&mut a, "action", action);
+            insert_opt(&mut a, "name", name);
+            insert_opt(&mut a, "item_id", item_id);
+            Ok(mcp_call(
+                "jalwa_playlist",
+                a,
+                format!("Playlist: {action}"),
+                PermissionLevel::SystemWrite,
+                "Manages Jalwa playlists".to_string(),
             ))
         }
         _ => unreachable!("translate_jalwa called with non-jalwa intent"),

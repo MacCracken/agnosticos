@@ -599,6 +599,18 @@ pub(crate) static PATTERNS: Lazy<HashMap<String, Regex>> = Lazy::new(|| {
         "jalwa_recommend",
         r"(?i)^(?:jalwa\s+)?recommend(?:\s+(?:like|similar(?:\s+to)?)\s+(\S+))?(?:\s+max\s+(\d+))?$",
     );
+    r(
+        "jalwa_queue",
+        r"(?i)^(?:jalwa\s+)?queue\s+(list|enqueue|clear|shuffle)(?:\s+(\S+))?$",
+    );
+    r(
+        "jalwa_library",
+        r"(?i)^(?:jalwa\s+)?library\s+(stats|scan|list)(?:\s+(.+))?$",
+    );
+    r(
+        "jalwa_playlist",
+        r"(?i)^(?:jalwa\s+)?playlist\s+(list|create|add|remove|export)(?:\s+(.+?))?(?:\s+item\s+(\S+))?$",
+    );
 
     p
 });

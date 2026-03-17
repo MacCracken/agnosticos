@@ -1089,6 +1089,35 @@ pub fn build_tool_manifest() -> McpToolManifest {
             json!({"item_id": {"type": "string", "description": "Media item ID for recommendations"}}),
             vec!["item_id"]
         ),
+        tool!(
+            "jalwa_queue",
+            "Manage the Jalwa play queue (list, enqueue, clear, shuffle)",
+            json!({
+                "action": {"type": "string", "description": "Action: list, enqueue, clear, shuffle"},
+                "item_id": {"type": "string", "description": "UUID of media item (for enqueue)"}
+            }),
+            vec!["action"]
+        ),
+        tool!(
+            "jalwa_library",
+            "Manage the Jalwa media library (stats, scan, list)",
+            json!({
+                "action": {"type": "string", "description": "Action: stats, scan, list"},
+                "path": {"type": "string", "description": "Directory path (for scan)"}
+            }),
+            vec!["action"]
+        ),
+        tool!(
+            "jalwa_playlist",
+            "Manage Jalwa playlists (list, create, add, remove, export)",
+            json!({
+                "action": {"type": "string", "description": "Action: list, create, add, remove, export"},
+                "name": {"type": "string", "description": "Playlist name"},
+                "item_id": {"type": "string", "description": "UUID of media item (for add/remove)"},
+                "output": {"type": "string", "description": "Output M3U file path (for export)"}
+            }),
+            vec!["action"]
+        ),
         // ----- Phylax threat detection tools (5) -----
         tool!(
             "phylax_scan",

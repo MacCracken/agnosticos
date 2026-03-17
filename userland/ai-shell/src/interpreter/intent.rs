@@ -597,6 +597,12 @@ pub enum Intent {
     JalwaSearch { query: String },
     /// Get AI recommendations
     JalwaRecommend { item_id: String, max: Option<u32> },
+    /// Manage play queue
+    JalwaQueue { action: String, item_id: Option<String> },
+    /// Manage media library
+    JalwaLibrary { action: String, path: Option<String> },
+    /// Manage playlists
+    JalwaPlaylist { action: String, name: Option<String>, item_id: Option<String> },
 
     /// Piped command chain (cmd1 | cmd2)
     Pipeline { commands: Vec<String> },

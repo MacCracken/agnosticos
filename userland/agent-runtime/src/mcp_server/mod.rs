@@ -313,6 +313,9 @@ async fn dispatch_tool_call(
         "jalwa_status" => handle_jalwa_status(&call.arguments).await,
         "jalwa_search" => handle_jalwa_search(&call.arguments).await,
         "jalwa_recommend" => handle_jalwa_recommend(&call.arguments).await,
+        "jalwa_queue" => handle_jalwa_queue(&call.arguments).await,
+        "jalwa_library" => handle_jalwa_library(&call.arguments).await,
+        "jalwa_playlist" => handle_jalwa_playlist(&call.arguments).await,
         unknown => {
             // Check external tools
             let external = state.external_mcp_tools.read().await;
