@@ -5,10 +5,10 @@
 //! AGNOS to automatically find and use tools from SecureYeoman, Shruti,
 //! Rasa, and other ecosystem services without manual configuration.
 
+use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use chrono::{DateTime, Utc};
 
 /// A discovered MCP server on the network.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -95,9 +95,7 @@ impl McpDiscoveryManager {
     /// Register a discovered server (called by mDNS listener or manual registration).
     pub async fn register_server(&self, server: DiscoveredMcpServer) -> Result<(), String> {
         let mut servers = self.servers.write().await;
-        if servers.len() >= self.config.max_servers
-            && !servers.contains_key(&server.service_name)
-        {
+        if servers.len() >= self.config.max_servers && !servers.contains_key(&server.service_name) {
             return Err(format!(
                 "Maximum server limit ({}) reached",
                 self.config.max_servers
@@ -171,7 +169,10 @@ impl McpDiscoveryManager {
     /// Build the URL for a discovered server's MCP tools endpoint.
     pub fn tools_url(server: &DiscoveredMcpServer) -> String {
         let scheme = if server.port == 443 { "https" } else { "http" };
-        format!("{}://{}:{}/v1/mcp/tools", scheme, server.hostname, server.port)
+        format!(
+            "{}://{}:{}/v1/mcp/tools",
+            scheme, server.hostname, server.port
+        )
     }
 }
 
@@ -200,7 +201,9 @@ mod tests {
     async fn test_register_and_list() {
         let mgr = McpDiscoveryManager::new(DiscoveryConfig::default());
         mgr.register_server(sample_server("sy-mcp")).await.unwrap();
-        mgr.register_server(sample_server("shruti-mcp")).await.unwrap();
+        mgr.register_server(sample_server("shruti-mcp"))
+            .await
+            .unwrap();
 
         let servers = mgr.list_servers().await;
         assert_eq!(servers.len(), 2);

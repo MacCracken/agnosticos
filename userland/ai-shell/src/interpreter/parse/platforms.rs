@@ -52,7 +52,10 @@ pub(super) fn parse_platforms(
         return Some(Intent::AgnosticListPresets { domain });
     }
 
-    if interp.try_captures("agnostic_agents", input_lower).is_some() {
+    if interp
+        .try_captures("agnostic_agents", input_lower)
+        .is_some()
+    {
         return Some(Intent::AgnosticAgentStatus);
     }
 
@@ -63,7 +66,10 @@ pub(super) fn parse_platforms(
             .filter(|s| !s.is_empty());
         return Some(Intent::AgnosticDashboard { section });
     }
-    if interp.try_captures("agnostic_trends", input_lower).is_some() {
+    if interp
+        .try_captures("agnostic_trends", input_lower)
+        .is_some()
+    {
         return Some(Intent::AgnosticTrends);
     }
     if let Some(caps) = interp.try_captures("agnostic_compare", input_lower) {

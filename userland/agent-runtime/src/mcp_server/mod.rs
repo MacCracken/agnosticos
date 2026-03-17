@@ -216,7 +216,9 @@ async fn dispatch_tool_call(
         "agnostic_security_scan" => handle_agnostic_security_scan(&call.arguments).await,
         "agnostic_security_findings" => handle_agnostic_security_findings(&call.arguments).await,
         "agnostic_performance_test" => handle_agnostic_performance_test(&call.arguments).await,
-        "agnostic_performance_results" => handle_agnostic_performance_results(&call.arguments).await,
+        "agnostic_performance_results" => {
+            handle_agnostic_performance_results(&call.arguments).await
+        }
         "agnostic_structured_results" => handle_agnostic_structured_results(&call.arguments).await,
         "agnostic_generate_report" => handle_agnostic_generate_report(&call.arguments).await,
         "agnostic_list_reports" => handle_agnostic_list_reports(&call.arguments).await,

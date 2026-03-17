@@ -19,7 +19,12 @@ pub struct ToolCategory {
 pub const TOOL_CATEGORIES: &[ToolCategory] = &[
     ToolCategory {
         name: "core",
-        tool_prefixes: &["agnos_health", "agnos_register", "agnos_deregister", "agnos_agents"],
+        tool_prefixes: &[
+            "agnos_health",
+            "agnos_register",
+            "agnos_deregister",
+            "agnos_agents",
+        ],
         keywords: &["health", "status", "agent", "register", "deregister"],
         always_include: true,
     },
@@ -38,25 +43,59 @@ pub const TOOL_CATEGORIES: &[ToolCategory] = &[
     ToolCategory {
         name: "llm",
         tool_prefixes: &["agnos_gateway_", "agnos_chat"],
-        keywords: &["model", "llm", "chat", "inference", "generate", "prompt", "token", "ollama"],
+        keywords: &[
+            "model",
+            "llm",
+            "chat",
+            "inference",
+            "generate",
+            "prompt",
+            "token",
+            "ollama",
+        ],
         always_include: false,
     },
     ToolCategory {
         name: "edge",
         tool_prefixes: &["agnos_edge_", "edge_"],
-        keywords: &["edge", "fleet", "node", "deploy", "ota", "update", "decommission", "iot"],
+        keywords: &[
+            "edge",
+            "fleet",
+            "node",
+            "deploy",
+            "ota",
+            "update",
+            "decommission",
+            "iot",
+        ],
         always_include: false,
     },
     ToolCategory {
         name: "sandbox",
         tool_prefixes: &["agnos_sandbox_"],
-        keywords: &["sandbox", "isolat", "seccomp", "landlock", "permission", "capability"],
+        keywords: &[
+            "sandbox",
+            "isolat",
+            "seccomp",
+            "landlock",
+            "permission",
+            "capability",
+        ],
         always_include: false,
     },
     ToolCategory {
         name: "phylax",
         tool_prefixes: &["phylax_"],
-        keywords: &["scan", "threat", "malware", "yara", "entropy", "suspicious", "phylax", "security"],
+        keywords: &[
+            "scan",
+            "threat",
+            "malware",
+            "yara",
+            "entropy",
+            "suspicious",
+            "phylax",
+            "security",
+        ],
         always_include: false,
     },
     ToolCategory {
@@ -68,7 +107,14 @@ pub const TOOL_CATEGORIES: &[ToolCategory] = &[
     ToolCategory {
         name: "bridge",
         tool_prefixes: &["agnos_bridge_"],
-        keywords: &["bridge", "secureyeoman", "sy", "profile", "sync", "discover"],
+        keywords: &[
+            "bridge",
+            "secureyeoman",
+            "sy",
+            "profile",
+            "sync",
+            "discover",
+        ],
         always_include: false,
     },
     ToolCategory {
@@ -182,11 +228,7 @@ impl SchemaCache {
     }
 
     /// Filter schemas using both fresh keyword matches and cached categories.
-    pub fn filter_with_cache(
-        &mut self,
-        input: &str,
-        all_schemas: &[ToolSchema],
-    ) -> FilterResult {
+    pub fn filter_with_cache(&mut self, input: &str, all_schemas: &[ToolSchema]) -> FilterResult {
         let mut result = filter_schemas(input, all_schemas);
 
         // Add cached categories that aren't already matched
@@ -328,7 +370,10 @@ mod tests {
         let schemas = sample_schemas();
         let result = filter_schemas("discover bridge tools from secureyeoman", &schemas);
         assert!(result.matched_categories.contains(&"bridge".to_string()));
-        assert!(result.schemas.iter().any(|s| s.name == "agnos_bridge_discover"));
+        assert!(result
+            .schemas
+            .iter()
+            .any(|s| s.name == "agnos_bridge_discover"));
     }
 
     #[test]
@@ -374,7 +419,10 @@ mod tests {
     #[test]
     fn test_full_profile_returns_all_on_model_keyword() {
         let schemas = sample_schemas();
-        let result = filter_schemas("list all models and check the audit log for the edge fleet", &schemas);
+        let result = filter_schemas(
+            "list all models and check the audit log for the edge fleet",
+            &schemas,
+        );
         assert!(result.matched_categories.contains(&"llm".to_string()));
         assert!(result.matched_categories.contains(&"audit".to_string()));
         assert!(result.matched_categories.contains(&"edge".to_string()));

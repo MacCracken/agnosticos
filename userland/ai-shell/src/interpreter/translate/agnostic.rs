@@ -13,7 +13,11 @@ pub(crate) fn translate_agnostic(intent: &Intent) -> Result<Translation> {
         } => {
             let mut a = serde_json::Map::new();
             insert_str(&mut a, "title", title);
-            insert_str(&mut a, "description", description.as_deref().unwrap_or(title));
+            insert_str(
+                &mut a,
+                "description",
+                description.as_deref().unwrap_or(title),
+            );
             insert_opt(&mut a, "target_url", target_url);
             Ok(mcp_call(
                 "agnostic_submit_task",
@@ -142,18 +146,6 @@ pub(crate) fn translate_agnostic(intent: &Intent) -> Result<Translation> {
                 format!("Agnostic: crew status {}", crew_id),
                 PermissionLevel::Safe,
                 "Checks crew run status via Agnostic MCP bridge".to_string(),
-            ))
-        }
-
-        Intent::AgnosticListPresets { domain } => {
-            let mut a = serde_json::Map::new();
-            insert_opt(&mut a, "domain", domain);
-            Ok(mcp_call(
-                "agnostic_list_presets",
-                a,
-                "Agnostic: list presets".to_string(),
-                PermissionLevel::Safe,
-                "Lists agent crew presets via Agnostic MCP bridge".to_string(),
             ))
         }
 

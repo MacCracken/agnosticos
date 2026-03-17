@@ -40,8 +40,7 @@ pub(crate) async fn handle_agnostic_submit_task(args: &serde_json::Value) -> Mcp
     };
 
     let target_url = get_optional_string_arg(args, "target_url");
-    let priority =
-        get_optional_string_arg(args, "priority").unwrap_or_else(|| "high".to_string());
+    let priority = get_optional_string_arg(args, "priority").unwrap_or_else(|| "high".to_string());
     let size = get_optional_string_arg(args, "size").unwrap_or_else(|| "standard".to_string());
 
     let bridge = agnostic_bridge();
@@ -87,10 +86,7 @@ pub(crate) async fn handle_agnostic_task_status(args: &serde_json::Value) -> Mcp
     };
 
     let bridge = agnostic_bridge();
-    match bridge
-        .get(&format!("/api/v1/tasks/{}", task_id), &[])
-        .await
-    {
+    match bridge.get(&format!("/api/v1/tasks/{}", task_id), &[]).await {
         Ok(response) => {
             info!(task_id = %task_id, "Agnostic: task status (bridged)");
             success_result(response)
@@ -114,8 +110,8 @@ pub(crate) async fn handle_agnostic_security_scan(args: &serde_json::Value) -> M
         Err(e) => return e,
     };
 
-    let title = get_optional_string_arg(args, "title")
-        .unwrap_or_else(|| "Security Scan".to_string());
+    let title =
+        get_optional_string_arg(args, "title").unwrap_or_else(|| "Security Scan".to_string());
     let description = get_optional_string_arg(args, "description")
         .unwrap_or_else(|| format!("Security scan: {}", target_url));
     let size = get_optional_string_arg(args, "size").unwrap_or_else(|| "standard".to_string());
@@ -145,9 +141,7 @@ pub(crate) async fn handle_agnostic_security_scan(args: &serde_json::Value) -> M
 
 /// Get security findings for a session.
 /// GET /api/v1/results/structured/{session_id}?result_type=security
-pub(crate) async fn handle_agnostic_security_findings(
-    args: &serde_json::Value,
-) -> McpToolResult {
+pub(crate) async fn handle_agnostic_security_findings(args: &serde_json::Value) -> McpToolResult {
     let session_id = match extract_required_string(args, "session_id") {
         Ok(id) => id,
         Err(e) => return e,
@@ -179,16 +173,14 @@ pub(crate) async fn handle_agnostic_security_findings(
 
 /// Run load testing and latency profiling.
 /// POST /api/v1/tasks/performance
-pub(crate) async fn handle_agnostic_performance_test(
-    args: &serde_json::Value,
-) -> McpToolResult {
+pub(crate) async fn handle_agnostic_performance_test(args: &serde_json::Value) -> McpToolResult {
     let target_url = match extract_required_string(args, "target_url") {
         Ok(u) => u,
         Err(e) => return e,
     };
 
-    let title = get_optional_string_arg(args, "title")
-        .unwrap_or_else(|| "Performance Test".to_string());
+    let title =
+        get_optional_string_arg(args, "title").unwrap_or_else(|| "Performance Test".to_string());
     let size = get_optional_string_arg(args, "size").unwrap_or_else(|| "standard".to_string());
 
     let bridge = agnostic_bridge();
@@ -219,9 +211,7 @@ pub(crate) async fn handle_agnostic_performance_test(
 
 /// Get performance results for a session.
 /// GET /api/v1/results/structured/{session_id}?result_type=performance
-pub(crate) async fn handle_agnostic_performance_results(
-    args: &serde_json::Value,
-) -> McpToolResult {
+pub(crate) async fn handle_agnostic_performance_results(args: &serde_json::Value) -> McpToolResult {
     let session_id = match extract_required_string(args, "session_id") {
         Ok(id) => id,
         Err(e) => return e,
@@ -253,9 +243,7 @@ pub(crate) async fn handle_agnostic_performance_results(
 
 /// Get structured results for a session.
 /// GET /api/v1/results/structured/{session_id}
-pub(crate) async fn handle_agnostic_structured_results(
-    args: &serde_json::Value,
-) -> McpToolResult {
+pub(crate) async fn handle_agnostic_structured_results(args: &serde_json::Value) -> McpToolResult {
     let session_id = match extract_required_string(args, "session_id") {
         Ok(id) => id,
         Err(e) => return e,
@@ -289,15 +277,12 @@ pub(crate) async fn handle_agnostic_structured_results(
 
 /// Generate a report for a session.
 /// POST /api/v1/reports/generate
-pub(crate) async fn handle_agnostic_generate_report(
-    args: &serde_json::Value,
-) -> McpToolResult {
+pub(crate) async fn handle_agnostic_generate_report(args: &serde_json::Value) -> McpToolResult {
     let session_id = match extract_required_string(args, "session_id") {
         Ok(id) => id,
         Err(e) => return e,
     };
-    let format =
-        get_optional_string_arg(args, "format").unwrap_or_else(|| "json".to_string());
+    let format = get_optional_string_arg(args, "format").unwrap_or_else(|| "json".to_string());
 
     let bridge = agnostic_bridge();
     let body = serde_json::json!({
@@ -463,9 +448,7 @@ pub(crate) async fn handle_agnostic_health(_args: &serde_json::Value) -> McpTool
 
 /// Recommend a preset based on description.
 /// POST /api/v1/presets/recommend
-pub(crate) async fn handle_agnostic_preset_recommend(
-    args: &serde_json::Value,
-) -> McpToolResult {
+pub(crate) async fn handle_agnostic_preset_recommend(args: &serde_json::Value) -> McpToolResult {
     let description = match extract_required_string(args, "description") {
         Ok(d) => d,
         Err(e) => return e,
@@ -597,8 +580,7 @@ pub(crate) async fn handle_agnostic_run_crew(args: &serde_json::Value) -> McpToo
 
     let preset = get_optional_string_arg(args, "preset");
     let target_url = get_optional_string_arg(args, "target_url");
-    let priority =
-        get_optional_string_arg(args, "priority").unwrap_or_else(|| "high".to_string());
+    let priority = get_optional_string_arg(args, "priority").unwrap_or_else(|| "high".to_string());
 
     let mut body = serde_json::json!({
         "title": title,
@@ -640,10 +622,7 @@ pub(crate) async fn handle_agnostic_crew_status(args: &serde_json::Value) -> Mcp
     };
 
     let bridge = agnostic_bridge();
-    match bridge
-        .get(&format!("/api/v1/crews/{}", crew_id), &[])
-        .await
-    {
+    match bridge.get(&format!("/api/v1/crews/{}", crew_id), &[]).await {
         Ok(response) => {
             info!(crew_id = %crew_id, "Agnostic: crew status (bridged)");
             success_result(response)
@@ -684,9 +663,7 @@ pub(crate) async fn handle_agnostic_list_presets(args: &serde_json::Value) -> Mc
 
 /// List agent definitions.
 /// GET /api/v1/definitions
-pub(crate) async fn handle_agnostic_list_definitions(
-    args: &serde_json::Value,
-) -> McpToolResult {
+pub(crate) async fn handle_agnostic_list_definitions(args: &serde_json::Value) -> McpToolResult {
     let domain = get_optional_string_arg(args, "domain");
 
     let bridge = agnostic_bridge();

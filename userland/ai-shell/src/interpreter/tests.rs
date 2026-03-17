@@ -2690,7 +2690,9 @@ mod tests {
         let interpreter = Interpreter::new();
         let intent = interpreter.parse("run suite full regression");
         match intent {
-            Intent::AgnosticSubmitTask { title, target_url, .. } => {
+            Intent::AgnosticSubmitTask {
+                title, target_url, ..
+            } => {
                 assert_eq!(title, "full regression");
                 assert!(target_url.is_none());
             }
@@ -2704,7 +2706,9 @@ mod tests {
         let intent =
             interpreter.parse("agnostic run suite security audit against http://localhost:3000");
         match intent {
-            Intent::AgnosticSubmitTask { title, target_url, .. } => {
+            Intent::AgnosticSubmitTask {
+                title, target_url, ..
+            } => {
                 assert_eq!(title, "security audit");
                 assert_eq!(target_url, Some("http://localhost:3000".to_string()));
             }
@@ -2729,7 +2733,10 @@ mod tests {
         let interpreter = Interpreter::new();
         let intent = interpreter.parse("test report run-001");
         match intent {
-            Intent::AgnosticStructuredResults { session_id, result_type } => {
+            Intent::AgnosticStructuredResults {
+                session_id,
+                result_type,
+            } => {
                 assert_eq!(session_id, "run-001");
                 assert!(result_type.is_none());
             }
@@ -2742,7 +2749,10 @@ mod tests {
         let interpreter = Interpreter::new();
         let intent = interpreter.parse("test report run-001 format json");
         match intent {
-            Intent::AgnosticStructuredResults { session_id, result_type } => {
+            Intent::AgnosticStructuredResults {
+                session_id,
+                result_type,
+            } => {
                 assert_eq!(session_id, "run-001");
                 assert_eq!(result_type, Some("json".to_string()));
             }

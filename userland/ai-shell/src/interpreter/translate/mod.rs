@@ -106,7 +106,6 @@ impl Interpreter {
             | Intent::AgnosticAgentStatus { .. }
             | Intent::AgnosticRunCrew { .. }
             | Intent::AgnosticCrewStatus { .. }
-            | Intent::AgnosticListPresets { .. }
             | Intent::AgnosticListDefinitions { .. }
             | Intent::AgnosticCreateAgent { .. }
             | Intent::AgnosticDashboard { .. }

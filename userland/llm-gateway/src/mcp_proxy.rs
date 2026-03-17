@@ -9,8 +9,8 @@
 //! This makes tool location and permissions invisible to the LLM —
 //! it only sees tools it's allowed to use.
 
-use std::collections::HashSet;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 
 /// Configuration for the MCP proxy.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -100,10 +100,7 @@ async fn fetch_agent_permissions(
         .map_err(|e| format!("Failed to fetch agent permissions: {}", e))?;
 
     if !res.status().is_success() {
-        return Err(format!(
-            "Agent runtime returned HTTP {}",
-            res.status()
-        ));
+        return Err(format!("Agent runtime returned HTTP {}", res.status()));
     }
 
     #[derive(Deserialize)]

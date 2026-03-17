@@ -4,10 +4,10 @@
 //! tool integration. When Phylax detects a threat, it can forward findings
 //! to SecureYeoman's security tools for deeper analysis and remediation.
 
+use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use chrono::{DateTime, Utc};
 
 /// An external security scanner that Phylax can delegate to.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -135,10 +135,7 @@ impl PhylaxBridge {
 
     /// Dispatch a scan request to all capable external scanners.
     /// Returns a merged list of findings from all scanners.
-    pub async fn dispatch_scan(
-        &self,
-        request: &ExternalScanRequest,
-    ) -> Vec<ExternalScanResponse> {
+    pub async fn dispatch_scan(&self, request: &ExternalScanRequest) -> Vec<ExternalScanResponse> {
         let scanners = self.find_by_capability(&request.scan_type).await;
         let mut responses = Vec::new();
 
@@ -355,7 +352,10 @@ mod tests {
         let native = vec![sample_finding("phylax", FindingSeverity::Info)];
         let external = vec![ExternalScanResponse {
             scanner_id: "failed".into(),
-            findings: vec![sample_finding("should_be_ignored", FindingSeverity::Critical)],
+            findings: vec![sample_finding(
+                "should_be_ignored",
+                FindingSeverity::Critical,
+            )],
             success: false,
             error: Some("timeout".into()),
             duration_ms: 0,

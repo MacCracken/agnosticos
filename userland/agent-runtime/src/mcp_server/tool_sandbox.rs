@@ -77,7 +77,8 @@ pub fn default_edge_profiles() -> Vec<EdgeToolProfile> {
         },
         EdgeToolProfile {
             name: "security".into(),
-            description: "Security-focused profile for network monitoring and threat detection".into(),
+            description: "Security-focused profile for network monitoring and threat detection"
+                .into(),
             allowed_prefixes: vec![
                 "agnos_health".into(),
                 "agnos_agents".into(),
@@ -312,20 +313,32 @@ mod tests {
     #[tokio::test]
     async fn test_apply_edge_profile() {
         let store = ToolSandboxStore::new();
-        let perms = store.apply_edge_profile("edge-agent-1", "sensor").await.unwrap();
+        let perms = store
+            .apply_edge_profile("edge-agent-1", "sensor")
+            .await
+            .unwrap();
         assert_eq!(perms.bridge_profile, Some("sensor".to_string()));
         assert!(perms.allowed_prefixes.contains(&"edge_".to_string()));
         assert!(!perms.allowed_prefixes.contains(&"docker_".to_string()));
 
         // Verify it's enforced
-        assert!(store.check_access("edge-agent-1", "edge_list").await.is_ok());
-        assert!(store.check_access("edge-agent-1", "docker_ps").await.is_err());
+        assert!(store
+            .check_access("edge-agent-1", "edge_list")
+            .await
+            .is_ok());
+        assert!(store
+            .check_access("edge-agent-1", "docker_ps")
+            .await
+            .is_err());
     }
 
     #[tokio::test]
     async fn test_apply_full_profile() {
         let store = ToolSandboxStore::new();
-        let perms = store.apply_edge_profile("edge-agent-1", "full").await.unwrap();
+        let perms = store
+            .apply_edge_profile("edge-agent-1", "full")
+            .await
+            .unwrap();
         assert!(perms.allowed_prefixes.is_empty()); // empty = allow all
         assert!(store.check_access("edge-agent-1", "anything").await.is_ok());
     }

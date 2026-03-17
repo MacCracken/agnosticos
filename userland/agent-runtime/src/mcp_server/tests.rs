@@ -66,7 +66,7 @@ async fn test_tools_manifest_endpoint() {
         .await
         .unwrap();
     let manifest: McpToolManifest = serde_json::from_slice(&body).unwrap();
-    assert_eq!(manifest.tools.len(), 122);
+    assert_eq!(manifest.tools.len(), 136);
 }
 
 #[tokio::test]
@@ -389,7 +389,7 @@ async fn test_mcp_result_serialization() {
 #[tokio::test]
 async fn test_manifest_contains_all_tools() {
     let manifest = build_tool_manifest();
-    assert_eq!(manifest.tools.len(), 122);
+    assert_eq!(manifest.tools.len(), 136);
     let names: Vec<&str> = manifest.tools.iter().map(|t| t.name.as_str()).collect();
     for expected in &[
         "agnos_health",
@@ -1194,16 +1194,17 @@ async fn test_aequi_receipts_invalid_status() {
 #[tokio::test]
 async fn test_agnostic_submit_task_mock() {
     let router = build_test_router();
+    // submit_task returns mock on bridge failure (includes task_id + status)
     let result = call_tool(
         &router,
         "agnostic_submit_task",
-        serde_json::json!({"suite": "Full Regression"}),
+        serde_json::json!({"title": "Full Regression", "description": "Run full regression suite"}),
     )
     .await;
     assert!(!result.is_error);
     let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
-    assert_eq!(parsed["suite"], "Full Regression");
-    assert_eq!(parsed["status"], "running");
+    assert!(parsed["task_id"].is_string());
+    assert_eq!(parsed["status"], "pending");
     assert_eq!(parsed["_source"], "mock");
 }
 
@@ -1215,19 +1216,17 @@ async fn test_agnostic_submit_task_missing_title() {
 }
 
 #[tokio::test]
-async fn test_agnostic_task_status_mock() {
+async fn test_agnostic_task_status_requires_id() {
     let router = build_test_router();
+    // Returns error when bridge unavailable (no mock fallback for status)
     let result = call_tool(
         &router,
         "agnostic_task_status",
-        serde_json::json!({"run_id": "run-001"}),
+        serde_json::json!({"task_id": "task-001"}),
     )
     .await;
-    assert!(!result.is_error);
-    let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
-    assert_eq!(parsed["status"], "completed");
-    assert!(parsed["total_tests"].as_u64().is_some());
-    assert_eq!(parsed["_source"], "mock");
+    // Bridge not running in test → error
+    assert!(result.is_error);
 }
 
 #[tokio::test]
@@ -1238,28 +1237,13 @@ async fn test_agnostic_task_status_missing_id() {
 }
 
 #[tokio::test]
-async fn test_agnostic_structured_results_mock() {
+async fn test_agnostic_structured_results_requires_session() {
     let router = build_test_router();
+    // Bridge not running → error
     let result = call_tool(
         &router,
         "agnostic_structured_results",
-        serde_json::json!({"run_id": "run-001"}),
-    )
-    .await;
-    assert!(!result.is_error);
-    let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
-    assert!(parsed["summary"].is_object());
-    assert!(parsed["failures"].as_array().is_some());
-    assert_eq!(parsed["_source"], "mock");
-}
-
-#[tokio::test]
-async fn test_agnostic_structured_results_invalid_type() {
-    let router = build_test_router();
-    let result = call_tool(
-        &router,
-        "agnostic_structured_results",
-        serde_json::json!({"run_id": "run-001", "format": "pdf"}),
+        serde_json::json!({"session_id": "session-001"}),
     )
     .await;
     assert!(result.is_error);
@@ -1268,84 +1252,72 @@ async fn test_agnostic_structured_results_invalid_type() {
 #[tokio::test]
 async fn test_agnostic_structured_results_missing_id() {
     let router = build_test_router();
-    let result = call_tool(&router, "agnostic_structured_results", serde_json::json!({})).await;
+    let result = call_tool(
+        &router,
+        "agnostic_structured_results",
+        serde_json::json!({}),
+    )
+    .await;
     assert!(result.is_error);
 }
 
 #[tokio::test]
 async fn test_agnostic_list_presets_mock() {
     let router = build_test_router();
+    // list_presets returns mock on bridge failure
     let result = call_tool(&router, "agnostic_list_presets", serde_json::json!({})).await;
     assert!(!result.is_error);
     let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
-    assert!(parsed["suites"].as_array().unwrap().len() >= 2);
+    assert!(parsed["presets"].is_array());
     assert_eq!(parsed["_source"], "mock");
 }
 
 #[tokio::test]
-async fn test_agnostic_list_presets_filtered() {
+async fn test_agnostic_list_presets_with_domain() {
     let router = build_test_router();
+    // Still returns mock — domain is just a filter param
     let result = call_tool(
         &router,
         "agnostic_list_presets",
-        serde_json::json!({"category": "security"}),
+        serde_json::json!({"domain": "security"}),
     )
     .await;
     assert!(!result.is_error);
-    let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
-    let suites = parsed["suites"].as_array().unwrap();
-    for s in suites {
-        assert_eq!(s["category"], "security");
-    }
 }
 
 #[tokio::test]
-async fn test_agnostic_list_presets_invalid_domain() {
+async fn test_agnostic_agent_status_bridge_error() {
     let router = build_test_router();
-    let result = call_tool(
-        &router,
-        "agnostic_list_presets",
-        serde_json::json!({"category": "chaos"}),
-    )
-    .await;
+    // agent_status returns error when bridge unavailable
+    let result = call_tool(&router, "agnostic_agent_status", serde_json::json!({})).await;
     assert!(result.is_error);
 }
 
 #[tokio::test]
-async fn test_agnostic_agent_status_mock() {
+async fn test_agnostic_dashboard_bridge_error() {
     let router = build_test_router();
-    let result = call_tool(&router, "agnostic_agent_status", serde_json::json!({})).await;
-    assert!(!result.is_error);
-    let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
-    assert!(parsed["agents"].as_array().unwrap().len() >= 4);
-    assert_eq!(parsed["_source"], "mock");
+    let result = call_tool(&router, "agnostic_dashboard", serde_json::json!({})).await;
+    assert!(result.is_error);
 }
 
 #[tokio::test]
-async fn test_agnostic_agent_status_filtered() {
+async fn test_agnostic_security_scan_missing_url() {
     let router = build_test_router();
-    let result = call_tool(
-        &router,
-        "agnostic_agent_status",
-        serde_json::json!({"agent_type": "security"}),
-    )
-    .await;
-    assert!(!result.is_error);
-    let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
-    let agents = parsed["agents"].as_array().unwrap();
-    assert_eq!(agents.len(), 1);
-    assert_eq!(agents[0]["type"], "security");
+    let result = call_tool(&router, "agnostic_security_scan", serde_json::json!({})).await;
+    assert!(result.is_error);
 }
 
 #[tokio::test]
-async fn test_agnostic_agent_status_invalid_type() {
+async fn test_agnostic_session_diff_missing_sessions() {
     let router = build_test_router();
-    let result = call_tool(
-        &router,
-        "agnostic_agent_status",
-        serde_json::json!({"agent_type": "chaos"}),
-    )
-    .await;
+    let result = call_tool(&router, "agnostic_session_diff", serde_json::json!({})).await;
+    assert!(result.is_error);
+}
+
+#[tokio::test]
+async fn test_agnostic_a2a_delegate_missing_fields() {
+    let router = build_test_router();
+    let result = call_tool(&router, "agnostic_a2a_delegate", serde_json::json!({})).await;
     assert!(result.is_error);
 }
 

@@ -228,9 +228,7 @@ pub enum Intent {
         role: String,
     },
     /// Get QA dashboard snapshot from Agnostic
-    AgnosticDashboard {
-        section: Option<String>,
-    },
+    AgnosticDashboard { section: Option<String> },
     /// Get quality metric trends from Agnostic
     AgnosticTrends,
     /// Compare two test sessions in Agnostic
