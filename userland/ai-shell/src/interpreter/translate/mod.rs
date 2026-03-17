@@ -103,7 +103,7 @@ impl Interpreter {
             | Intent::AgnosticTaskStatus { .. }
             | Intent::AgnosticStructuredResults { .. }
             | Intent::AgnosticListPresets { .. }
-            | Intent::AgnosticAgentStatus { .. }
+            | Intent::AgnosticAgentStatus
             | Intent::AgnosticRunCrew { .. }
             | Intent::AgnosticCrewStatus { .. }
             | Intent::AgnosticListDefinitions { .. }
