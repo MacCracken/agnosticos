@@ -12,8 +12,8 @@ patches = []
 
 [depends]
 runtime = []
-build = ["iucode-tool"]
-optional = []
+build = []
+optional = ["iucode-tool"]
 
 [build]
 pre_build = ""
