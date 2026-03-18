@@ -230,7 +230,7 @@ jobs:
         cd output
         for img in agnos-*-aarch64.img; do
           [ -f "$img" ] || continue
-          xz -9 -T0 "$img"
+          sudo xz -9 -T0 "$img"
           sha256sum "${img}.xz" > "${img}.xz.sha256"
         done
 
