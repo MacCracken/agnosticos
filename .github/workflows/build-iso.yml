@@ -108,6 +108,9 @@ jobs:
           ARGS="$ARGS --base-rootfs /tmp/agnos-base-rootfs-x86_64.tar.zst"
         sudo ./scripts/build-installer.sh $ARGS
 
+    - name: Fix output permissions
+      run: sudo chown -R "$(id -u):$(id -g)" output/
+
     - name: Upload x86_64 installer ISO
       uses: actions/upload-artifact@v4
       with:
@@ -168,6 +171,9 @@ jobs:
         [ -f /tmp/secureyeoman-edge-linux-x64 ] && ARGS="$ARGS --sy-edge-binary /tmp/secureyeoman-edge-linux-x64"
         sudo ./scripts/build-installer.sh $ARGS
 
+    - name: Fix output permissions
+      run: sudo chown -R "$(id -u):$(id -g)" output/
+
     - name: Upload minimal ISO
       uses: actions/upload-artifact@v4
       with:
@@ -227,10 +233,11 @@ jobs:
 
     - name: Compress aarch64 image
       run: |
+        sudo chown -R "$(id -u):$(id -g)" output/
         cd output
         for img in agnos-*-aarch64.img; do
           [ -f "$img" ] || continue
-          sudo xz -9 -T0 "$img"
+          xz -9 -T0 "$img"
           sha256sum "${img}.xz" > "${img}.xz.sha256"
         done
 
@@ -304,6 +311,7 @@ jobs:
 
     - name: Compress minimal aarch64 image
       run: |
+        sudo chown -R "$(id -u):$(id -g)" output/
         cd output
         for img in agnos-*-minimal-aarch64.img; do
           [ -f "$img" ] || continue
@@ -342,6 +350,9 @@ jobs:
       run: |
         sudo ./scripts/build-edge.sh x86_64
 
+    - name: Fix output permissions
+      run: sudo chown -R "$(id -u):$(id -g)" output/
+
     - name: Upload edge ISO
       uses: actions/upload-artifact@v4
       with:
@@ -374,6 +385,7 @@ jobs:
 
     - name: Compress edge aarch64 image
       run: |
+        sudo chown -R "$(id -u):$(id -g)" output/
         cd output
         for img in agnos-*-edge-aarch64.img; do
           [ -f "$img" ] || continue

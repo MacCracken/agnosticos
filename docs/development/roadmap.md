@@ -108,7 +108,7 @@ Phase 13A (self-hosting) ──→ Phase 16 (desktop recipes) ──→ Phase 13
 
 ## Phase 16 — Desktop Completeness (NEW)
 
-**Strategy**: Package existing open-source tools via takumi recipes to provide a complete desktop experience *now*. AI-native replacements come later (see `os_long_term.md`).
+**Strategy**: Package existing open-source tools via takumi recipes to provide a complete desktop experience *now*. AI-native replacements come later (see `docs/development/applications/roadmap.md`).
 
 ### 16A — Essential Desktop Packages (ship-with-ISO)
 
@@ -436,7 +436,7 @@ All 10 large modules (>2000 lines) have been split into focused module directori
 - [ ] Phase 13C complete — Documentation, community
 - [ ] Phase 16 complete — Full desktop experience
 - [ ] All consumer apps published to mela
-- [ ] AI-native desktop replacements for Priority 1 items (see `os_long_term.md`)
+- [ ] AI-native desktop replacements for Priority 1 items (see `docs/development/applications/roadmap.md`)
 - [x] Python runtime management
 - [x] Enterprise features: SSO, audit logging, mTLS
 - [ ] 6 months of beta testing with no critical bugs
@@ -549,7 +549,7 @@ See [CONTRIBUTING.md](/CONTRIBUTING.md) for:
 - **Repository**: https://github.com/MacCracken/agnosticos
 - **Documentation**: https://docs.agnos.org (planned)
 - **Changelog**: [CHANGELOG.md](/CHANGELOG.md)
-- **Long-term app roadmap**: [os_long_term.md](/os_long_term.md)
+- **Long-term app roadmap**: [docs/development/applications/roadmap.md](/docs/development/applications/roadmap.md)
 - **LFS Reference**: https://www.linuxfromscratch.org/lfs/view/stable/
 - **BLFS Reference**: https://www.linuxfromscratch.org/blfs/view/stable/
 
