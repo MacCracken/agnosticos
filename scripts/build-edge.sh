@@ -838,7 +838,7 @@ build_aarch64_img() {
 
     # Ensure cleanup on exit
     cleanup_loop() {
-        if [[ -n "$loop_dev" ]]; then
+        if [[ -n "${loop_dev:-}" ]]; then
             umount "${loop_dev}p1" 2>/dev/null || true
             umount "${loop_dev}p2" 2>/dev/null || true
             losetup -d "$loop_dev" 2>/dev/null || true

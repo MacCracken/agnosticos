@@ -418,12 +418,9 @@ EOF
 
         # Enable profile-specific units
         local units_to_enable
-        units_to_enable="$(profile_enable_units)"
-        chroot "$rootfs" /usr/bin/env PATH=/usr/sbin:/usr/bin:/sbin:/bin /bin/bash -c "
-            for unit in $units_to_enable; do
-                systemctl enable \"\$unit\" 2>/dev/null || true
-            done
-        "
+        units_to_enable="$(profile_enable_units | tr '\n' ' ')"
+        chroot "$rootfs" /usr/bin/env PATH=/usr/sbin:/usr/bin:/sbin:/bin /bin/bash -c \
+            "for unit in $units_to_enable; do systemctl enable \"\$unit\" 2>/dev/null || true; done"
 
         # Set default target
         local default_target
