@@ -5,77 +5,87 @@ All notable changes to AGNOS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2026.3.17] - 2026-03-17
+## [2026.3.17] - 2026-03-18
 
-### Added — GPU Awareness & Ecosystem Integration
+### Added — GPU Awareness (G1–G4)
 
-- **G1: Orchestrator GPU-aware scheduling** — `TaskRequirements` gains `gpu_required`, `min_gpu_memory`, `required_compute_capability` fields. `score_agent()` rebalances weights to 35/25/15/15/10 when GPU required. New `score_gpu()` evaluates VRAM headroom and compute capability across all detected GPUs. `auto_assign_task()` allocates GPU via `ResourceManager::allocate_gpu()` on dispatch; `handle_result()` releases on completion
-- **SecureYeoman integration (4 items)**:
-  - `agnos_gpu_status` MCP tool — probes NVIDIA/AMD/Intel GPUs via `ResourceManager::detect_gpus()`, returns id, name, VRAM total/available, compute capability
-  - `agnos_local_models` MCP tool — queries hoosh `GET /v1/models` for locally available models, graceful fallback when offline
-  - Firecracker GPU passthrough — `BackendConfig.device_passthrough` field, VM config conditionally enables PCI bus and adds VFIO device entries
-  - Fleet GPU heartbeat — `HeartbeatRequest` accepts `gpu_utilization_pct`, `gpu_memory_used_mb`, `gpu_temperature_c`; stored on `EdgeNode`; aggregated in `GET /v1/edge/dashboard` (avg utilization, total VRAM used, reporting node count)
-- **Agnostic v2026.3.17-1 integration**:
-  - `agnostic_list_crews` MCP tool + `AgnosticListCrews` agnoshi intent — `GET /crews` with status filter and pagination
-  - `agnostic_cancel_crew` MCP tool + `AgnosticCancelCrew` agnoshi intent — `POST /crews/{crew_id}/cancel`
-- **MCP tools**: 136 → 144 built-in (14 agnos + 24 agnostic + 9 tarang + others)
-- **Aethersafha HUD widgets** (3):
-  - `CrewStatusWidget` — polls `agnostic_list_crews` MCP tool, renders crew list with status/progress
-  - `DomainFilterWidget` — groups agents by domain from `GET /v1/agents`, supports active filter/tabs
-  - `GpuStatusWidget` — polls `agnos_gpu_status`, renders VRAM bars, utilization %, temperature with severity bands
-- **Recipe updates**: Agnostic `2026.3.17-2`, Nazar `2026.3.17` (first release), SecureYeoman `2026.3.17`/`2026.3.18`, SecureYeoman Lite `2026.3.17`/`2026.3.18`, Selah `2026.3.17` (MVP), Abaco `2026.3.18` (first release), Rahd `2026.3.18` (first release), Synapse `2026.3.18-1`, Tazama `2026.3.18`, Mneme `2026.3.18`
-- **New SY variant recipes**: `secureyeoman-sqlite.toml` (SQLite-only lightweight), `secureyeoman-agent.toml` (headless worker), `secureyeoman-primary.toml` (full coordinator server)
-- **ark-community** — Community package repository (like AUR for AGNOS). Recipe: `recipes/base/ark-community.toml`. `Community` variant added to `PackageSource` in nous.rs. Git-based recipe index, local takumi builds, GPG-signed submissions, restricted sandbox by default
-- **ESP32 edge agent** — Planned recipe for ESP32 microcontrollers (`recipes/edge/esp32-agent.toml`). MQTT-based sensor telemetry, OTA updates, ESP32-S3 TinyML support. Targets xtensa + riscv32 architectures
-- **Agnoshi intents**: +2 agnostic crew management intents (list crews, cancel crew)
-- **12 new GPU scoring tests** covering: no GPUs, sufficient VRAM, insufficient VRAM, compute capability filtering, weight rebalancing, `score_gpu()` edge cases
-- **Selah recipe** updated to v2026.3.17 MVP release (screenshot & annotation, no AI integration yet)
-- **G2: Hoosh GPU-aware inference routing**:
-  - `AcceleratorRegistry::detect_available()` runs at gateway startup, probes NVIDIA/AMD/Intel/Apple GPUs
-  - `select_providers_ordered()` now prioritizes local GPU providers (Ollama, llama.cpp, LocalAI, LM Studio) when model fits in VRAM
-  - `suggest_quantization(model_params)` auto-selects FP16/Int8/Int4 based on available GPU VRAM
-  - `total_gpu_memory()`, `has_gpu()` helpers on `AcceleratorRegistry`
-  - Privacy routing: `x-privacy-local: true` header restricts inference to local providers only. `infer_local_only()` API method
-- **Agnostic crew GPU requirements**: `agnostic_run_crew` MCP tool accepts `gpu_required` and `min_gpu_memory_mb`. Agnoshi `agnostic run crew <title> --gpu` flag. Fields passed through to Agnostic `POST /api/v1/crews`
-- **G3: Edge fleet GPU routing**:
-  - `EdgeCapabilities` gains `gpu_memory_mb` and `gpu_compute_capability` fields
-  - `route_task()` filters candidates by VRAM threshold and compute capability
-  - `EdgeNode` gains `loaded_models: Vec<String>` populated via heartbeat
-  - New `GET /v1/edge/models` endpoint — deduplicated fleet-wide model inventory with per-node mapping
-  - New fleet methods: `fleet_loaded_models()`, `nodes_by_model()`
-- **G4: Consumer app GPU integration**:
-  - `synapse_finetune` MCP tool gains `gpu_required` and `min_gpu_memory_mb` optional params, forwarded to Synapse API
-  - New `tarang_hw_accel` MCP tool — probes VA-API and NVDEC hardware decode capability. 141 total MCP tools
-- **S1: Credential proxy wired to agent lifecycle**: `CredentialProxyManager` started in `Agent::start()`, injects `http_proxy`/`https_proxy`/`HTTP_PROXY`/`HTTPS_PROXY`/`no_proxy` env vars into child process. Stopped on `Agent::stop()`
-- **S2: Externalization gate wired to sandbox**: `ExternalizationGate` embedded in `Sandbox` struct with 11 built-in patterns (OpenAI/Anthropic/AWS/GitHub keys, bearer tokens, private keys, email, SSN, credit cards, AGNOS internals). `scan_egress()` method for outbound data gating
-- **Agnostic integration (7 items)**:
-  - `agnos_gpu_probe` MCP tool — probes GPUs and writes `/var/lib/agnosys/gpu.json` for Agnostic consumption
-  - `agnos_gpu_recommend` MCP tool — recommends `gpu_memory_budget_mb` at FP16/Q8/Q4/Q2 tiers for crew presets
-  - `agnostic_crew_gpu` MCP tool — extracts GPU placement data from crew response for HUD cards
-  - Agnoshi GPU intents: `AgnosticGpuStatus` ("gpu status") and `AgnosticGpuMemory` ("gpu memory")
-  - RPC auto-registration: `run_crew` success registers `{crew_id}.status`, `{crew_id}.result`, per-agent `.run` methods
-  - `GET /v1/edge/gpu` — fleet-wide GPU aggregation (total GPUs, VRAM, utilization, per-node detail)
-  - GPU event forwarding: orchestrator fires `gpu.allocation` and `gpu.release` events via `gpu_event_tx` channel
-- **MCP tools**: 141 → 144 built-in (14 agnos + 24 agnostic)
+- **G1: Orchestrator GPU-aware scheduling** — `TaskRequirements` gains `gpu_required`, `min_gpu_memory`, `required_compute_capability`. `score_agent()` rebalances to 35/25/15/15/10 when GPU required. `score_gpu()` evaluates VRAM headroom + compute capability. GPU allocated on dispatch via `ResourceManager`, released on completion
+- **G2: Hoosh GPU-aware inference routing** — `AcceleratorRegistry::detect_available()` at gateway startup. `select_providers_ordered()` prioritizes local GPU providers (Ollama, llama.cpp, LocalAI, LM Studio, Synapse) when model fits in VRAM. `suggest_quantization()` auto-selects FP16/Int8/Int4. Privacy routing: `x-privacy-local: true` header restricts to local providers only
+- **G3: Edge fleet GPU routing** — `EdgeCapabilities` gains `gpu_memory_mb` + `gpu_compute_capability`. `route_task()` filters by VRAM threshold and compute capability. `EdgeNode.loaded_models` via heartbeat. `GET /v1/edge/models` fleet-wide model inventory. `GET /v1/edge/gpu` fleet GPU aggregation
+- **G4: Consumer GPU integration** — `synapse_finetune` gains `gpu_required`/`min_gpu_memory_mb`. New `tarang_hw_accel` MCP tool (VA-API/NVDEC probe)
 
-### Changed — Module Refactoring
+### Added — SecureYeoman Integration
 
-- **Orchestrator split** — `orchestrator.rs` (3259 lines) → `orchestrator/` directory (8 files: mod, types, lifecycle, scheduling, scoring, routing, state, tests). 127 tests
-- **Argonaut split** — `argonaut.rs` (3873 lines) → `argonaut/` directory (7 files: mod, types, boot, services, runlevels, edge_boot, tests). 148 tests
-- **Agnova split** — `agnova.rs` (3603 lines) → `agnova/` directory (7 files: mod, types, helpers, validation, partitioning, rootfs, tests). 104 tests
-- **Network tools split** — `network_tools.rs` (3398 lines) → `network_tools/` directory (8 files: mod, types, runner, nmap, dns, capture, scanners, parse, tests). 128 tests
-- **Ark split** — `ark.rs` (2873 lines) → `ark/` directory (3 files: mod, types, tests). 49 tests
-- **Service manager split** — `service_manager.rs` (2630 lines) → `service_manager/` directory (5 files: mod, types, lifecycle, health, tests)
-- **Federation split** — `federation.rs` (2565 lines) → `federation/` directory (7 files: mod, types, discovery, sync, vector_store, gossip, tests). 73 tests
-- **Sigil split** — `sigil.rs` (2123 lines) → `sigil/` directory (6 files: mod, types, policy, verify, chain, tests). 46 tests
-- **Edge split** — `edge.rs` (2075 lines) → `edge/` directory (6 files: mod, types, fleet, ota, telemetry, routing, tests). 210 tests
-- **Safety split** — `safety.rs` (2062 lines) → `safety/` directory (5 files: mod, types, injection, guardrails, policy, tests). 78 tests
-- **S3: Offender→sigil trust integration** — `OffenderTracker` feeds trust demotions to `SigilVerifier` revocation list when agent score drops below threshold
-- **sandbox_mod/core.rs renamed** to `sandbox_core.rs` — fixes `cargo fmt` CI failure caused by `core` shadowing Rust's built-in `core` crate in rustfmt's module resolver
-- **Branding**: "Agnostic Agentics Systems" → "Agnostic Agent System"
-- **Agnostic recipe**: version `2026.3.17` → `2026.3.17-1`, status updated to 23 MCP tools / 14 agnoshi intents
-- **API contract**: aligned with Agnostic v2026.3.17-1+ (new `/crews` and `/crews/{id}/cancel` endpoints)
-- Version bump: `2026.3.16-3` → `2026.3.17`
+- `agnos_gpu_status` MCP tool — probes NVIDIA/AMD/Intel GPUs, returns VRAM/compute capability
+- `agnos_local_models` MCP tool — queries hoosh for locally available models
+- Firecracker GPU passthrough — `BackendConfig.device_passthrough`, conditional PCI bus + VFIO entries
+- Fleet GPU heartbeat — `gpu_utilization_pct`, `gpu_memory_used_mb`, `gpu_temperature_c` in heartbeats + dashboard
+- New SY variant recipes: `secureyeoman-sqlite.toml`, `secureyeoman-agent.toml`, `secureyeoman-primary.toml`
+
+### Added — Agnostic Integration (13 items)
+
+- `agnostic_list_crews` + `agnostic_cancel_crew` MCP tools + agnoshi intents
+- `agnostic_run_crew` gains `gpu_required`/`min_gpu_memory_mb` + agnoshi `--gpu` flag
+- `agnostic_crew_gpu` MCP tool — GPU placement data for HUD cards
+- `agnos_gpu_probe` MCP tool — writes `/var/lib/agnosys/gpu.json`
+- `agnos_gpu_recommend` MCP tool — VRAM budget tiers (FP16/Q8/Q4/Q2) for crew presets
+- Agnoshi GPU intents: `AgnosticGpuStatus`, `AgnosticGpuMemory`
+- RPC auto-registration on crew run success
+- GPU event forwarding via `gpu_event_tx` channel (`gpu.allocation`/`gpu.release`)
+
+### Added — Sandbox & Security Wiring
+
+- **S1**: `CredentialProxyManager` in `Agent::start()`/`stop()` — injects proxy env vars into sandboxed child
+- **S2**: `ExternalizationGate` in `Sandbox` — `scan_egress()` with 11 patterns (API keys, PII, secrets)
+- **S3**: `OffenderTracker` → `SigilVerifier` trust demotion when score drops below threshold
+
+### Added — Aethersafha HUD Widgets
+
+- `CrewStatusWidget` — crew list with status/progress from `agnostic_list_crews`
+- `DomainFilterWidget` — agents grouped by domain, filter tabs
+- `GpuStatusWidget` — per-device VRAM bars, utilization %, temperature with severity bands
+
+### Added — Package Ecosystem
+
+- **ark-community** — Community package repository (like AUR). Recipe: `recipes/base/ark-community.toml`. `Community` variant in `PackageSource`. Git-based recipe index, local takumi builds, GPG-signed, restricted sandbox
+- **ESP32 edge agent** — Planned recipe (`recipes/edge/esp32-agent.toml`). MQTT telemetry, ESP32-S3 TinyML, xtensa + riscv32
+
+### Added — MCP Tools (136 → 144)
+
+New tools: `agnos_gpu_status`, `agnos_local_models`, `agnos_gpu_probe`, `agnos_gpu_recommend`, `agnostic_list_crews`, `agnostic_cancel_crew`, `agnostic_crew_gpu`, `tarang_hw_accel`
+
+### Changed — Module Refactoring (10 splits, ~25,000 lines)
+
+- `orchestrator.rs` (3259) → `orchestrator/` (8 files, 127 tests)
+- `argonaut.rs` (3873) → `argonaut/` (7 files, 148 tests)
+- `agnova.rs` (3603) → `agnova/` (7 files, 104 tests)
+- `network_tools.rs` (3398) → `network_tools/` (9 files, 128 tests)
+- `ark.rs` (2873) → `ark/` (3 files, 49 tests)
+- `service_manager.rs` (2630) → `service_manager/` (5 files)
+- `federation.rs` (2565) → `federation/` (7 files, 73 tests)
+- `sigil.rs` (2123) → `sigil/` (6 files, 46 tests)
+- `edge.rs` (2075) → `edge/` (6 files, 210 tests)
+- `safety.rs` (2062) → `safety/` (5 files, 78 tests)
+- `sandbox_mod/core.rs` → `sandbox_core.rs` (rustfmt `core` crate conflict fix)
+
+### Changed — Branding & Recipes
+
+- "Agnostic Agentics Systems" → "Agnostic Agent System"
+- API contract aligned with Agnostic v2026.3.17-1+
+- Recipe updates: Agnostic `2026.3.17-2`, Nazar `2026.3.17`, SecureYeoman `2026.3.18`, SY Lite `2026.3.18`, SY Edge `2026.3.18`, Selah `2026.3.17` (MVP), Abaco `2026.3.18`, Rahd `2026.3.18`, Synapse `2026.3.18-1`, Tazama `2026.3.18`, Mneme `2026.3.18`
+- Workspace Cargo.toml version: `2026.3.15` → `2026.3.17`
+
+### Fixed — Security Audit (2 rounds, 0 remaining)
+
+- **CRITICAL**: GPU `release_gpu()` used `store(total_memory)` — corrupted VRAM tracking under concurrent allocation. Fixed: tracks `(gpu_id, allocated_bytes)`, uses `fetch_add()` on release
+- **CRITICAL**: Streaming `x-privacy-local` bypass — cloud providers received data during streaming. Fixed: pre-flight `check_local_providers()` validation before streaming
+- **HIGH**: `select_providers_ordered()` Priority 2 only considered Ollama. Fixed: iterates all local providers
+- **HIGH**: `Synapse` missing from `local_provider_types` array. Fixed: added
+- **MEDIUM**: Heartbeat accepts NaN/Inf for GPU metrics. Fixed: `is_finite()` + range bounds
+- **MEDIUM**: Heartbeat `loaded_models` unbounded (DoS vector). Fixed: cap 200 entries, 256 chars/name
+- **MEDIUM**: GPU allocation `insert()` overwrites (memory leak on multi-allocation). Fixed: `entry().extend()`
+- **MEDIUM**: Streaming privacy did double inference. Fixed: lightweight `check_local_providers()`
+- Dead code in scoring, comment accuracy, serialization fallback — all fixed
 
 ## [2026.3.16-3] - 2026-03-17
 
