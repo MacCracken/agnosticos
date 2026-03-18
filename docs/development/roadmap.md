@@ -273,18 +273,16 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 
 | # | Item | Effort | Notes |
 |---|------|--------|-------|
-| 1 | Crew GPU resource requirements | **Done** | `agnostic_run_crew` accepts `gpu_required` + `min_gpu_memory_mb`. Agnoshi `--gpu` flag. Passed through to Agnostic API |
-| 2 | Agnostic crew status in AGNOS HUD | Medium | Surface active Agnostic crews in aethersafha HUD with real-time status from `GET /crews` endpoint |
-
----
-
-## GPU Awareness
-
-**Goal**: Make GPU resources a first-class concept across the stack — from hardware detection through agent scheduling, inference routing, and fleet telemetry.
-
-**Existing infrastructure**: `resource.rs` (GPU detection for NVIDIA/AMD/Intel, allocation/release per agent), `acceleration.rs` (CUDA/ROCm/Metal accelerator types, quantization routing), NVIDIA/AMD/Intel driver recipes in 13B. `orchestrator/scoring.rs` (GPU-aware task scoring + allocation). `agnos_gpu_status` + `agnos_local_models` MCP tools. Firecracker `device_passthrough`. Edge heartbeat GPU telemetry + dashboard aggregation.
-
-*G1–G4 complete. All GPU awareness items resolved — see Resolved section in Engineering Backlog.*
+| 1 | Agnostic crew status in AGNOS HUD | Medium | Surface active Agnostic crews in aethersafha HUD with real-time status from `GET /crews` endpoint |
+| 2 | Agent HUD multi-domain UI | Medium | Group agents by domain in the HUD. Add domain filter/tabs |
+| 3 | RPC method registration for crew agents | Medium | Dynamic agents from presets need RPC methods registered on-the-fly |
+| 4 | `agnosys` GPU probe JSON | Small | Add GPU fields to `agnosys` probe output, write `/var/lib/agnosys/gpu.json` (Agnostic reads this path) |
+| 5 | GPU status in aethersafha HUD | Medium | Consume `GET /api/v1/gpu/status` and `/gpu/memory`. Show per-device VRAM bars, utilization, temperature in Agent HUD |
+| 6 | GPU placement in crew HUD cards | Small | Show which agents are on GPU vs CPU and their VRAM usage (data in crew result `gpu_placement` and `gpu_vram`) |
+| 7 | agnoshi GPU intents | Small | "show gpu status", "show gpu memory" intents calling Agnostic GPU endpoints via MCP |
+| 8 | Fleet GPU aggregation | Medium | Aggregate `GET /api/v1/gpu/status` across fleet nodes into fleet-wide GPU inventory for placement engine |
+| 9 | agnosys GPU budget recommendations | Small | Recommend `gpu_memory_budget_mb` values for crew presets based on observed VRAM usage |
+| 10 | Daimon GPU event forwarding | Medium | Forward GPU allocation/release events from crew runs to daimon event stream for fleet-wide tracking |
 
 ---
 
@@ -296,17 +294,14 @@ Large single-file modules (>1500 lines) that should be split into module directo
 
 | # | Priority | Module | Lines | Proposed Split | Effort |
 |---|----------|--------|-------|----------------|--------|
-| R1 | Medium | `argonaut.rs` | 3873 | `argonaut/` → boot, services, runlevels, edge_boot, tests | Medium |
-| R2 | Medium | `agnova.rs` | 3603 | `agnova/` → partitioning, rootfs, config, validation, tests | Medium |
-| R3 | Medium | `network_tools.rs` | 3398 | `network_tools/` → nmap, nftables, dns, wifi, capture, tests | Medium |
-| R4 | Low | `ark.rs` | 2873 | `ark/` → resolver, installer, manifest, signing, tests | Medium |
-| R5 | Low | `service_manager.rs` | 2630 | `service_manager/` → lifecycle, systemd, health, tests | Small |
-| R6 | Low | `federation.rs` | 2565 | `federation/` → discovery, sync, vector_store, gossip, tests | Medium |
-| R7 | Low | `sigil.rs` | 2123 | `sigil/` → verify, chain, policy, tests | Small |
-| R8 | Low | `edge.rs` | 2075 | `edge/` → fleet, ota, telemetry, routing, tests | Small |
-| R9 | Low | `safety.rs` | 2062 | `safety/` → injection, guardrails, policy, tests | Small |
+| R1 | Low | `ark.rs` | 2873 | `ark/` → resolver, installer, manifest, signing, tests | Medium |
+| R2 | Low | `service_manager.rs` | 2630 | `service_manager/` → lifecycle, systemd, health, tests | Small |
+| R3 | Low | `federation.rs` | 2565 | `federation/` → discovery, sync, vector_store, gossip, tests | Medium |
+| R4 | Low | `sigil.rs` | 2123 | `sigil/` → verify, chain, policy, tests | Small |
+| R5 | Low | `edge.rs` | 2075 | `edge/` → fleet, ota, telemetry, routing, tests | Small |
+| R6 | Low | `safety.rs` | 2062 | `safety/` → injection, guardrails, policy, tests | Small |
 
-**Pattern to follow**: `sandbox_mod/` (completed in 2026.3.17) and `orchestrator/` (completed in 2026.3.17-1) — re-exports in `mod.rs`, old files deleted. Note: avoid naming submodules `core` (conflicts with Rust's `core` crate in rustfmt).
+**Pattern to follow**: `sandbox_mod/`, `orchestrator/`, `argonaut/`, `agnova/`, `network_tools/` (all completed in 2026.3.17-1) — re-exports in `mod.rs`, old files deleted. Note: avoid naming submodules `core` (conflicts with Rust's `core` crate in rustfmt).
 
 ### Active — Build & Distribution
 
@@ -321,29 +316,20 @@ Large single-file modules (>1500 lines) that should be split into module directo
 
 | # | Priority | Item | Notes |
 |---|----------|------|-------|
-| ~~S1~~ | ~~High~~ | ~~Wire credential proxy to sandbox lifecycle~~ | **Done** — `CredentialProxyManager` started in `Agent::start()`, injects `http_proxy`/`https_proxy` env vars, stopped on `Agent::stop()` |
-| ~~S2~~ | ~~High~~ | ~~Wire externalization gate to network egress~~ | **Done** — `ExternalizationGate` embedded in `Sandbox`, `scan_egress()` method gates outbound data with 11 built-in patterns |
-| S3 | Medium | gVisor/Firecracker runtime execution | Config generation + OCI/VM lifecycle done, needs actual process spawning via `tokio::process::Command` |
-| S4 | Medium | SGX/SEV hardware validation | Backends implemented, need hardware to test |
-| S5 | Low | Offender tracker → sigil trust integration | `OffenderTracker` trust scores should feed into sigil's trust chain |
+| S1 | Medium | gVisor/Firecracker runtime execution | Config generation + OCI/VM lifecycle done, needs actual process spawning via `tokio::process::Command` |
+| S2 | Medium | SGX/SEV hardware validation | Backends implemented, need hardware to test |
+| S3 | Low | Offender tracker → sigil trust integration | `OffenderTracker` trust scores should feed into sigil's trust chain |
 
-### Resolved
+### Resolved (2026.3.17-1)
 
-| # | Item | Resolution |
-|---|------|------------|
-| 1 | Go toolchain bump (1.24.1 → 1.26+) | **Done** — `recipes/ai/go.toml` updated to 1.26.1 |
-| 2 | Sandbox module consolidation | **Done** — 7 files → `sandbox_mod/` (2026.3.17). `core.rs` → `sandbox_core.rs` (rustfmt fix, 2026.3.17-1) |
-| 3 | Agnostic MCP API realignment | **Done** — 23 tools aligned with Agnostic v2026.3.17-1 API |
-| 4 | Orchestrator module split | **Done** — 3259-line `orchestrator.rs` → `orchestrator/` (8 files: mod, types, lifecycle, scheduling, scoring, routing, state, tests). 127 tests (2026.3.17-1) |
-| 5 | G1 GPU-aware scheduling | **Done** — `TaskRequirements` GPU fields, `score_gpu()`, GPU allocation on dispatch + release on completion (2026.3.17-1) |
-| 6 | SY integration (4 items) | **Done** — `agnos_gpu_status`, `agnos_local_models` MCP tools, Firecracker `device_passthrough`, edge heartbeat GPU telemetry + dashboard aggregation (2026.3.17-1) |
-| 7 | Agnostic crew management | **Done** — `agnostic_list_crews`, `agnostic_cancel_crew` MCP tools + agnoshi intents (2026.3.17-1) |
-| 8 | G2 Hoosh GPU routing (4 items) | **Done** — GPU-aware provider selection, VRAM budgets, privacy routing (`x-privacy-local`), auto-quantization (2026.3.17-1) |
-| 9 | G3 Edge GPU routing (2 items) | **Done** — `route_task` filters by VRAM + compute capability. `GET /v1/edge/models` fleet model registry. Heartbeat carries `loaded_models` (2026.3.17-1) |
-| 10 | G4 Consumer GPU integration (2 items) | **Done** — `synapse_finetune` GPU hints, `tarang_hw_accel` MCP tool (VA-API/NVDEC probe). 141 MCP tools (2026.3.17-1) |
-| 11 | S1 Credential proxy wiring | **Done** — `CredentialProxyManager` in `Agent::start()`/`stop()`, proxy env vars injected into child process (2026.3.17-1) |
-| 12 | S2 Externalization gate wiring | **Done** — `ExternalizationGate` in `Sandbox`, `scan_egress()` for outbound data with 11 patterns (2026.3.17-1) |
-| 13 | Agnostic crew GPU requirements | **Done** — `gpu_required` + `min_gpu_memory_mb` in `agnostic_run_crew`, `--gpu` agnoshi flag (2026.3.17-1) |
+| Category | Items | Summary |
+|----------|-------|---------|
+| Module splits (4) | orchestrator, argonaut, agnova, network_tools | 14,133 lines → 29 focused files. sandbox_mod `core.rs` → `sandbox_core.rs` (rustfmt fix) |
+| GPU awareness (G1–G4) | Scheduling, hoosh routing, edge fleet, consumer apps | `TaskRequirements` GPU fields, `score_gpu()`, `AcceleratorRegistry`, privacy routing, VRAM budgets, auto-quantization, edge VRAM/CC filtering, fleet model registry, `tarang_hw_accel`, `synapse_finetune` GPU hints |
+| SY integration (4) | GPU telemetry, local models, Firecracker passthrough, fleet heartbeat | `agnos_gpu_status`, `agnos_local_models` MCP tools, `device_passthrough`, heartbeat GPU metrics + dashboard aggregation |
+| Sandbox wiring (S1–S2) | Credential proxy, externalization gate | `CredentialProxyManager` in agent lifecycle, `ExternalizationGate` in sandbox with 11 patterns |
+| Agnostic (3) | Crew management, crew GPU, MCP realignment | `list_crews`, `cancel_crew`, `gpu_required`/`min_gpu_memory_mb` in `run_crew`, 23 tools aligned with v2026.3.17-1 |
+| Toolchain | Go 1.24.1 → 1.26.1 | Unblocked cliphist, Kitty, modern Go modules |
 
 ---
 

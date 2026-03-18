@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Agnostic v2026.3.17-1 integration**:
   - `agnostic_list_crews` MCP tool + `AgnosticListCrews` agnoshi intent — `GET /crews` with status filter and pagination
   - `agnostic_cancel_crew` MCP tool + `AgnosticCancelCrew` agnoshi intent — `POST /crews/{crew_id}/cancel`
-- **MCP tools**: 136 → 140 built-in (12 agnos + 23 agnostic + others)
+- **MCP tools**: 136 → 141 built-in (12 agnos + 23 agnostic + 9 tarang + others)
 - **Agnoshi intents**: +2 agnostic crew management intents (list crews, cancel crew)
 - **12 new GPU scoring tests** covering: no GPUs, sufficient VRAM, insufficient VRAM, compute capability filtering, weight rebalancing, `score_gpu()` edge cases
 - **Selah recipe** updated to v2026.3.17 MVP release (screenshot & annotation, no AI integration yet)
@@ -43,7 +43,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed — Module Refactoring
 
-- **Orchestrator split** — `orchestrator.rs` (3259 lines) → `orchestrator/` directory (8 files: mod, types, lifecycle, scheduling, scoring, routing, state, tests). 127 tests, all passing
+- **Orchestrator split** — `orchestrator.rs` (3259 lines) → `orchestrator/` directory (8 files: mod, types, lifecycle, scheduling, scoring, routing, state, tests). 127 tests
+- **Argonaut split** — `argonaut.rs` (3873 lines) → `argonaut/` directory (7 files: mod, types, boot, services, runlevels, edge_boot, tests). 148 tests
+- **Agnova split** — `agnova.rs` (3603 lines) → `agnova/` directory (7 files: mod, types, helpers, validation, partitioning, rootfs, tests). 104 tests
+- **Network tools split** — `network_tools.rs` (3398 lines) → `network_tools/` directory (8 files: mod, types, runner, nmap, dns, capture, scanners, parse, tests). 128 tests
 - **sandbox_mod/core.rs renamed** to `sandbox_core.rs` — fixes `cargo fmt` CI failure caused by `core` shadowing Rust's built-in `core` crate in rustfmt's module resolver
 - **Branding**: "Agnostic Agentics Systems" → "Agnostic Agent System"
 - **Agnostic recipe**: version `2026.3.17` → `2026.3.17-1`, status updated to 23 MCP tools / 14 agnoshi intents
