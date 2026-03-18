@@ -250,18 +250,18 @@ jobs:
           |------|--------|------------|
           | `agnos-YYYYMMDD-x86_64.iso` | **Desktop PC / VM** | Unified installer — GRUB menu offers Desktop (Wayland) or Server (headless) mode |
           | `agnos-YYYYMMDD-minimal-x86_64.iso` | **Headless x86_64** | Minimal headless with SY edge agent |
-          | `agnos-YYYYMMDD-aarch64.img` | **Raspberry Pi 4/5** | Full AGNOS for RPi. `dd` to microSD |
-          | `agnos-YYYYMMDD-minimal-aarch64.img` | **RPi 4/5 (Minimal)** | Headless RPi with SY edge agent |
+          | `agnos-YYYYMMDD-aarch64.img.xz` | **Raspberry Pi 4/5** | Full AGNOS for RPi. Decompress + `dd` to microSD |
+          | `agnos-YYYYMMDD-minimal-aarch64.img.xz` | **RPi 4/5 (Minimal)** | Headless RPi with SY edge agent |
           | `agnos-YYYYMMDD-edge-x86_64.iso` | **x86_64 Edge (NUC, DeepLens)** | dm-verity protected, LFS-style minimal |
-          | `agnos-YYYYMMDD-edge-aarch64.img` | **RPi 4/5 (Edge)** | dm-verity protected, minimal rootfs |
+          | `agnos-YYYYMMDD-edge-aarch64.img.xz` | **RPi 4/5 (Edge)** | dm-verity protected, minimal rootfs |
 
           **Flash instructions:**
           ```bash
           # ISO (x86_64) — write to USB drive
           sudo dd if=agnos-*.iso of=/dev/sdX bs=4M status=progress conv=fsync
 
-          # IMG (aarch64) — write to microSD
-          sudo dd if=agnos-*.img of=/dev/sdX bs=4M status=progress conv=fsync
+          # IMG.XZ (aarch64) — decompress and write to microSD
+          xzcat agnos-*.img.xz | sudo dd of=/dev/sdX bs=4M status=progress conv=fsync
           # After boot, expand rootfs: sudo parted /dev/mmcblk0 resizepart 2 100% && sudo resize2fs /dev/mmcblk0p2
           ```
 
@@ -296,14 +296,14 @@ jobs:
           artifacts/installer-x86_64/*.iso.sha256
           artifacts/minimal-x86_64/*.iso
           artifacts/minimal-x86_64/*.iso.sha256
-          artifacts/sdcard-aarch64/*.img
-          artifacts/sdcard-aarch64/*.img.sha256
-          artifacts/minimal-aarch64/*.img
-          artifacts/minimal-aarch64/*.img.sha256
+          artifacts/sdcard-aarch64/*.img.xz
+          artifacts/sdcard-aarch64/*.img.xz.sha256
+          artifacts/minimal-aarch64/*.img.xz
+          artifacts/minimal-aarch64/*.img.xz.sha256
           artifacts/edge-x86_64/*.iso
           artifacts/edge-x86_64/*.iso.sha256
-          artifacts/edge-aarch64/*.img
-          artifacts/edge-aarch64/*.img.sha256
+          artifacts/edge-aarch64/*.img.xz
+          artifacts/edge-aarch64/*.img.xz.sha256
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

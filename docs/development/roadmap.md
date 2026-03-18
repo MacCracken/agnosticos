@@ -1,11 +1,12 @@
 # AGNOS Development Roadmap
 
-> **Status**: Pre-Beta | **Last Updated**: 2026-03-17
+> **Status**: Pre-Beta | **Last Updated**: 2026-03-18
 > **Userland complete** — 11000+ tests (3900+ agent-runtime, 1554 ai-shell), ~84% coverage, 0 warnings
-> **Recipes**: 115 base + 69 desktop + 25 AI + 9 network + 8 browser + 18 marketplace + 4 python + 3 database + 30 edge = 281 total
-> **Build order**: 176 packages in `recipes/build-order.txt` (base + desktop, dependency-ordered)
+> **Recipes**: 113 base + 71 desktop + 25 AI + 9 network + 8 browser + 22 marketplace + 4 python + 3 database + 31 edge = 286 OS (+ 90 bazaar community)
+> **Build order**: 178 packages in `recipes/build-order.txt` (base + desktop, dependency-ordered)
 > **Phases 10–14 complete** | **Phase 15A**: Core scanning done (phylax) | **Audit**: 16 rounds
 > **MCP Tools**: 144 built-in + external registration
+> **Consumer Projects**: 18 released (including Vidhana system settings)
 > **Sandbox**: 7 backends (Native, gVisor, Firecracker, WASM, SGX, SEV, Noop) + credential proxy + externalization gate
 
 ---
@@ -140,12 +141,12 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 
 | # | Need | Approach | Status | Notes |
 |---|------|----------|--------|-------|
-| 1 | System Settings UI | Build custom (AGNOS-specific) | Not started | Cannot package — must be native to AGNOS config model |
-| 2 | Network Manager GUI | iwgtk or nm-applet | Not started | WiFi/VPN management for non-CLI users |
-| 3 | Bluetooth Manager | blueman | Not started | BlueZ recipe already exists |
-| 4 | Display Settings | wlr-randr + custom UI | Not started | Multi-monitor, resolution, scaling |
-| 5 | Sound Settings | pavucontrol / helvum | Not started | PipeWire routing and volume |
-| 6 | Firewall GUI | Custom (wraps nftables) | Not started | AGNOS-specific security model |
+| 1 | System Settings UI | **Vidhana** | **Done** | AI-native, 6 crates, 76+ tests, 5 MCP tools, NL control, egui GUI, port 8099. `/home/macro/Repos/vidhana` |
+| 2 | Network Manager GUI | nm-applet | **Bazaar** | Recipe in bazaar community repo (`ark bazaar install network-manager-applet`) |
+| 3 | Bluetooth Manager | blueman | **Bazaar** | Recipe in bazaar (`ark bazaar install blueman`). BlueZ daemon in OS |
+| 4 | Display Settings | Vidhana display panel | **Done** | Brightness, theme, scaling, night light, refresh rate — integrated in Vidhana |
+| 5 | Sound Settings | Vidhana audio panel | **Done** | Volume, mute, device selection — integrated in Vidhana. pavucontrol available via bazaar |
+| 6 | Firewall GUI | firewall-config | **Bazaar** | Recipe in bazaar (`ark bazaar install firewall-config`). nftables daemon in OS |
 
 ### 16D — Desktop Polish
 
@@ -156,9 +157,9 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 | 3 | Icons | Papirus or custom | Not started | Icon theme for desktop |
 | 4 | Cursor theme | Adwaita or custom | Not started | Wayland cursor theme |
 | 5 | GTK theme | Adwaita dark variant | Not started | For XWayland GTK apps |
-| 6 | Keyring / Secrets | gnome-keyring or KeePassXC | Not started | Integrates with agnos-common secrets |
-| 7 | Printing GUI | system-config-printer | Not started | cups.toml recipe exists |
-| 8 | Disk utility | GNOME Disks or custom | Not started | Partition management GUI |
+| 6 | Keyring / Secrets | KeePassXC | **Bazaar** | `ark bazaar install keepassxc` |
+| 7 | Printing GUI | system-config-printer | **Bazaar** | `ark bazaar install system-config-printer`. CUPS daemon in OS |
+| 8 | Disk utility | GParted / GNOME Disks | **Bazaar** | `ark bazaar install gparted` |
 
 ### 16E — Aethersafha Configurability
 
@@ -175,17 +176,18 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 
 **Subsystem**: bazaar (Persian: بازار). Repo: `github.com/MacCracken/bazaar`. Recipe: `recipes/base/bazaar.toml`.
 
-**43 seed recipes** across 8 categories:
+**90 recipes** across 8 categories:
 
 | Category | Count | Highlights |
 |----------|-------|------------|
-| AI | 11 | ollama, llama.cpp, whisper.cpp, stable-diffusion.cpp, onnxruntime, vllm, piper-tts, aider, open-webui, comfyui, fabric, lmstudio, pytorch |
-| Desktops | 17 | Sway (5), Hyprland (8), shared Wayland tools (4: waybar, wofi, grim, slurp, wl-clipboard) |
-| Tools | 14 | ripgrep, fd, bat, eza, fzf, tmux, htop, btop, lazygit, starship, zoxide, dust, tokei, hyperfine, git-delta |
+| AI | 13 | ollama, llama.cpp, whisper.cpp, stable-diffusion.cpp, onnxruntime, vllm, piper-tts, aider, open-webui, comfyui, fabric, lmstudio, pytorch |
+| Desktops | 35 | Sway (5), Hyprland (8), shared Wayland tools, Thunar, Evince, Blueman, nm-applet, dunst, feh, GParted, GNOME Disks, firewall-config, system-config-printer, GTK3/Qt5/libadwaita libs |
+| Tools | 21 | ripgrep, fd, bat, eza, fzf, tmux, htop, btop, lazygit, starship, zoxide, dust, tokei, hyperfine, git-delta, docker, podman, k9s, syncthing, gimp, inkscape, libreoffice |
 | Editors | 3 | neovim, vim, micro |
-| Networking | 3 | wireguard-tools, bandwhich, mtr |
-| Security | 1 | keepassxc |
-| Media | 2 | ffmpeg, yt-dlp |
+| Networking | 4 | wireguard-tools, bandwhich, mtr, tailscale |
+| Security | 3 | keepassxc, age, pass |
+| Media | 4 | ffmpeg, yt-dlp, obs-studio, audacity |
+| Games | 1 | retroarch |
 
 ---
 
@@ -291,6 +293,7 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 | 15 | Rahd | 5 rahd_* | — | Yes | Not started | Calendar |
 | 16 | Tarang | 8 tarang_* | 8 | Yes | Not started | Media framework (73 tests) |
 | 17 | Jalwa | 8 jalwa_* | 8 | Yes | Not started | Media player (110+ tests), built on tarang. Priority 1 in os_long_term |
+| 18 | Vidhana | 5 vidhana_* | 5 | Yes | Not started | System settings (76+ tests), egui GUI, NL control, port 8099 |
 
 ---
 
@@ -319,6 +322,20 @@ All 10 large modules (>2000 lines) have been split into focused module directori
 | B3 | Medium | SHA256 checksums for all recipes | Most recipes have empty `sha256 = ""` — fill from upstream |
 | B4 | Medium | Debian removal from installer scripts | `build-installer.sh` / `build-sdcard.sh` still fall back to debootstrap when no base rootfs |
 | B5 | Medium | Bazaar community repo infrastructure | Git-based community recipe index (like AUR). `ark bazaar` subcommand. Recipe: `recipes/base/bazaar.toml`. `Community` variant in `PackageSource`. Persian: بازار (marketplace/gathering) |
+
+### Active — Consumer Project Reviews
+
+| # | Priority | Project | Item | Notes |
+|---|----------|---------|------|-------|
+| R1 | High | Synapse | Stub RAG embedding | `synapse-api/src/rest/rag.rs` — fake 64D hash vectors, needs real embedding via hoosh |
+| R2 | High | Synapse | Bridge PullModel incomplete | `synapse-bridge/src/server.rs:262` — HuggingFace resolution TODO |
+| R3 | High | Synapse | MCP tools not implemented | 5 synapse_* tools referenced but not in codebase |
+| R4 | High | Synapse | Model catalog empty | `synapse-core/src/registry/catalog.rs` — 4-line stub |
+| R5 | Medium | Synapse | 4 clippy warnings | labeler.rs (too many fn args, manual clamp, filter_map), datasets.rs |
+| R6 | Medium | Synapse | Test panics → assert! | 18+ `panic!()` in CLI tests, 9 in non-test code |
+| R7 | Medium | Synapse | RLHF placeholder | `synapse-train/src/methods/rlhf.rs` — CLI args only, no training logic |
+
+*Reviewed 2026-03-18. Deferred until Synapse's current dev cycle stabilizes.*
 
 ### Active — ESP32 Edge/IoT
 
@@ -443,12 +460,13 @@ All 10 large modules (>2000 lines) have been split into focused module directori
 | CIS Compliance | >80% | ~85% | Met |
 | Stub Implementations | 0 | 0 | Met |
 | Compiler Warnings | 0 | 0 | Met |
-| Base System Recipes | ~108 | 109 | Complete |
-| Desktop/AI Stack Recipes | ~62 | 79 | Complete |
-| Edge Recipes | ~30 | 30 | Complete |
-| Marketplace Recipes | 11 | 18 | Complete (11 released + 7 scaffolded) |
+| Base System Recipes | ~108 | 113 | Complete |
+| Desktop Recipes | ~62 | 71 | Complete (lean OS, optional in bazaar) |
+| Edge Recipes | ~30 | 31 | Complete |
+| Marketplace Recipes | 11 | 22 | Complete (18 released) |
+| Bazaar Community | — | 90 | Seed recipes across 8 categories |
 | MCP Tools | — | 144 | Complete (14 agnos + 5 aequi + 24 agnostic + 7 delta + 8 photis + 5 edge + 7 shruti + 9 tarang + 8 jalwa + 9 rasa + 7 mneme + 7 synapse + 7 bullshift + 7 yeoman + 5 phylax + others) |
-| Consumer Apps | 6 | 17 | 11 released + 6 scaffolded |
+| Consumer Apps | 6 | 18 | 18 released (incl. Vidhana) |
 | Recipe Validation Errors | 0 | 0 | Complete |
 | Security Audit Rounds | 15 | 16 | Complete |
 | Self-Hosting | Yes | Pending | Phase 13A — THE blocker |
@@ -537,4 +555,4 @@ See [CONTRIBUTING.md](/CONTRIBUTING.md) for:
 
 ---
 
-*Last Updated: 2026-03-17 | Next Review: 2026-03-24*
+*Last Updated: 2026-03-18 | Next Review: 2026-03-24*

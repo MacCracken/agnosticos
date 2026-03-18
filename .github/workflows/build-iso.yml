@@ -225,13 +225,22 @@ jobs:
         [ -n "$VERSION" ] && ARGS="$ARGS --version $VERSION"
         sudo ./scripts/build-sdcard.sh $ARGS
 
+    - name: Compress aarch64 image
+      run: |
+        cd output
+        for img in agnos-*-aarch64.img; do
+          [ -f "$img" ] || continue
+          xz -9 -T0 "$img"
+          sha256sum "${img}.xz" > "${img}.xz.sha256"
+        done
+
     - name: Upload aarch64 image
       uses: actions/upload-artifact@v4
       with:
         name: agnos-sdcard-aarch64
         path: |
-          output/agnos-*-aarch64.img
-          output/agnos-*-aarch64.img.sha256
+          output/agnos-*-aarch64.img.xz
+          output/agnos-*-aarch64.img.xz.sha256
 
   # =========================================================================
   # aarch64 Minimal SD Card Image
@@ -293,13 +302,22 @@ jobs:
         [ -f /tmp/secureyeoman-edge-linux-arm64 ] && ARGS="$ARGS --sy-edge-binary /tmp/secureyeoman-edge-linux-arm64"
         sudo ./scripts/build-sdcard.sh $ARGS
 
+    - name: Compress minimal aarch64 image
+      run: |
+        cd output
+        for img in agnos-*-minimal-aarch64.img; do
+          [ -f "$img" ] || continue
+          xz -9 -T0 "$img"
+          sha256sum "${img}.xz" > "${img}.xz.sha256"
+        done
+
     - name: Upload minimal aarch64 image
       uses: actions/upload-artifact@v4
       with:
         name: agnos-minimal-aarch64
         path: |
-          output/agnos-*-minimal-aarch64.img
-          output/agnos-*-minimal-aarch64.img.sha256
+          output/agnos-*-minimal-aarch64.img.xz
+          output/agnos-*-minimal-aarch64.img.xz.sha256
 
   # =========================================================================
   # x86_64 Edge ISO (dm-verity, LFS-style)
@@ -354,10 +372,19 @@ jobs:
       run: |
         sudo ./scripts/build-edge.sh aarch64
 
+    - name: Compress edge aarch64 image
+      run: |
+        cd output
+        for img in agnos-*-edge-aarch64.img; do
+          [ -f "$img" ] || continue
+          xz -9 -T0 "$img"
+          sha256sum "${img}.xz" > "${img}.xz.sha256"
+        done
+
     - name: Upload edge image
       uses: actions/upload-artifact@v4
       with:
         name: agnos-edge-aarch64
         path: |
-          output/agnos-*-edge-aarch64.img
-          output/agnos-*-edge-aarch64.img.sha256
+          output/agnos-*-edge-aarch64.img.xz
+          output/agnos-*-edge-aarch64.img.xz.sha256
