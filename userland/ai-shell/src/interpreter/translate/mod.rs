@@ -112,7 +112,9 @@ impl Interpreter {
             | Intent::AgnosticCreateAgent { .. }
             | Intent::AgnosticDashboard { .. }
             | Intent::AgnosticTrends
-            | Intent::AgnosticCompare { .. } => agnostic::translate_agnostic(intent),
+            | Intent::AgnosticCompare { .. }
+            | Intent::AgnosticGpuStatus
+            | Intent::AgnosticGpuMemory => agnostic::translate_agnostic(intent),
 
             // Delta code hosting
             Intent::DeltaCreateRepo { .. }

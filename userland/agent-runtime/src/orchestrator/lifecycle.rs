@@ -79,6 +79,19 @@ impl Orchestrator {
                     task_id,
                     e
                 );
+            } else {
+                // #10: Forward GPU release event to daimon event stream.
+                if let Some(ref tx) = self.gpu_event_tx {
+                    let event = serde_json::json!({
+                        "event": "gpu.release",
+                        "agent_id": agent_id.to_string(),
+                        "task_id": task_id,
+                        "gpu_ids": serde_json::Value::Null,
+                    });
+                    if let Err(e) = tx.try_send(event) {
+                        tracing::debug!("GPU release event channel full or closed: {}", e);
+                    }
+                }
             }
         }
 

@@ -154,6 +154,20 @@ pub(super) fn parse_platforms(
         }
     }
 
+    if interp
+        .try_captures("agnostic_gpu_status", input_lower)
+        .is_some()
+    {
+        return Some(Intent::AgnosticGpuStatus);
+    }
+
+    if interp
+        .try_captures("agnostic_gpu_memory", input_lower)
+        .is_some()
+    {
+        return Some(Intent::AgnosticGpuMemory);
+    }
+
     // --- Edge fleet management intents ---
     if let Some(caps) = interp.try_captures("edge_list", input_lower) {
         let status = caps

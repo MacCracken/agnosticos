@@ -111,6 +111,29 @@ pub fn build_tool_manifest() -> McpToolManifest {
             json!({}),
             vec![]
         ),
+        tool!(
+            "agnos_gpu_probe",
+            "Probe GPU devices and write snapshot to /var/lib/agnosys/gpu.json; returns VRAM, vendor, compute capability",
+            json!({}),
+            vec![]
+        ),
+        tool!(
+            "agnos_gpu_recommend",
+            "Recommend gpu_memory_budget_mb values for a model at fp16/q8/q4/q2 quantization levels",
+            json!({
+                "model_name": {
+                    "type": "string",
+                    "description": "Model name string (e.g. \"llama3-8b\", \"mistral-7b\", \"llama-70b\"). \
+                                    Parameter count is inferred from size suffix."
+                },
+                "model_params": {
+                    "type": "number",
+                    "description": "Explicit model size in billions of parameters (e.g. 7.0 for a 7B model). \
+                                    Takes precedence over model_name."
+                }
+            }),
+            vec![]
+        ),
         // ----- Delta code hosting tools (5) -----
         tool!(
             "delta_create_repository",
@@ -1003,6 +1026,15 @@ pub fn build_tool_manifest() -> McpToolManifest {
                 "tools": {"type": "array", "description": "Tool names to attach"}
             }),
             vec!["agent_key", "name", "role", "goal", "backstory"]
+        ),
+        tool!(
+            "agnostic_crew_gpu",
+            "Get GPU placement data for a crew: gpu_placement, gpu_vram, per-agent GPU assignments. \
+             Focused data source for HUD GPU badges on crew cards.",
+            json!({
+                "crew_id": {"type": "string", "description": "Crew ID to query for GPU placement data"}
+            }),
+            vec!["crew_id"]
         ),
         // (agnostic tools moved to main block above)
         // ----- Shruti DAW tools (additional) -----

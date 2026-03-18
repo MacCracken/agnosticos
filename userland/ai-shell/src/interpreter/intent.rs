@@ -232,6 +232,10 @@ pub enum Intent {
         name: String,
         role: String,
     },
+    /// Show GPU status via agnosys probe (Agnostic integration)
+    AgnosticGpuStatus,
+    /// Show GPU memory details via agnosys probe (Agnostic integration)
+    AgnosticGpuMemory,
     /// Get QA dashboard snapshot from Agnostic
     AgnosticDashboard { section: Option<String> },
     /// Get quality metric trends from Agnostic

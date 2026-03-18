@@ -485,6 +485,14 @@ pub(crate) static PATTERNS: Lazy<HashMap<String, Regex>> = Lazy::new(|| {
         "agnostic_compare",
         r"(?i)^agnostic\s+compare\s+(\S+)\s+(\S+)$",
     );
+    r(
+        "agnostic_gpu_status",
+        r"(?i)^(?:agnostic\s+)?(?:show\s+)?gpu\s+status$",
+    );
+    r(
+        "agnostic_gpu_memory",
+        r"(?i)^(?:agnostic\s+)?(?:show\s+)?gpu\s+memory$",
+    );
     // Shruti additional
     r(
         "shruti_plugins",

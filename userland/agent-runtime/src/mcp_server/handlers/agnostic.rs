@@ -610,11 +610,125 @@ pub(crate) async fn handle_agnostic_run_crew(args: &serde_json::Value) -> McpToo
     match bridge.post("/api/v1/crews", body).await {
         Ok(response) => {
             info!(title = %title, "Agnostic: run crew (bridged)");
+            // #3: Best-effort RPC method registration for crew agents.
+            register_crew_rpc_methods(&response).await;
             success_result(response)
         }
         Err(e) => {
             warn!(error = %e, "Agnostic bridge: crew run failed");
             error_result(format!("Crew run failed: {}", e))
+        }
+    }
+}
+
+/// Register placeholder RPC methods for a newly started crew run.
+///
+/// After a successful `/api/v1/crews` POST the Agnostic response typically
+/// contains a `crew_id` (and optionally an `agents` array with `name` fields).
+/// We register `{crew_id}.status` and `{crew_id}.result` so that other daimon
+/// components can discover crew endpoints via the RPC registry.
+///
+/// This is a best-effort operation — errors are logged but never propagated.
+async fn register_crew_rpc_methods(response: &serde_json::Value) {
+    // Extract crew_id: try "crew_id", "id", then "data.crew_id".
+    let crew_id = response
+        .get("crew_id")
+        .or_else(|| response.get("id"))
+        .or_else(|| response.get("data").and_then(|d| d.get("crew_id")))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
+    let crew_id = match crew_id {
+        Some(id) if !id.is_empty() => id,
+        _ => {
+            // No crew_id in response — nothing to register.
+            return;
+        }
+    };
+
+    // Build the method list: always include status + result, plus per-agent
+    // methods if the response carries an agents array.
+    let mut methods: Vec<String> =
+        vec![format!("{}.status", crew_id), format!("{}.result", crew_id)];
+
+    if let Some(agents) = response.get("agents").and_then(|a| a.as_array()) {
+        for agent in agents {
+            if let Some(name) = agent.get("name").and_then(|n| n.as_str()) {
+                // Sanitise: only keep chars valid for an RPC method name.
+                let sanitised: String = name
+                    .chars()
+                    .map(|c| {
+                        if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
+                            c
+                        } else {
+                            '_'
+                        }
+                    })
+                    .collect();
+                if !sanitised.is_empty() {
+                    methods.push(format!("{}.{}.run", crew_id, sanitised));
+                }
+            }
+        }
+    }
+
+    // Synthesise a deterministic UUID-shaped identifier from the crew_id string
+    // so that repeated runs for the same crew converge on the same RPC agent slot.
+    // We hash the crew_id with SHA-256, take the first 16 bytes, and stamp the
+    // UUID version (4) and variant bits to produce a well-formed UUID string.
+    // (uuid v5 requires the optional "v5" feature; we avoid touching Cargo.toml.)
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut h1 = DefaultHasher::new();
+    crew_id.hash(&mut h1);
+    let lo = h1.finish();
+    let mut h2 = DefaultHasher::new();
+    (crew_id.to_string() + "salt").hash(&mut h2);
+    let hi = h2.finish();
+    // Build 16 raw bytes from the two 64-bit values.
+    let mut bytes = [0u8; 16];
+    bytes[..8].copy_from_slice(&hi.to_be_bytes());
+    bytes[8..].copy_from_slice(&lo.to_be_bytes());
+    // Stamp version 4 and RFC 4122 variant.
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    let agent_uuid = uuid::Uuid::from_bytes(bytes);
+
+    // POST to daimon's RPC register endpoint.
+    let daimon_url =
+        std::env::var("DAIMON_URL").unwrap_or_else(|_| "http://127.0.0.1:8090".to_string());
+    let payload = serde_json::json!({
+        "agent_id": agent_uuid.to_string(),
+        "methods": methods,
+    });
+
+    let client = reqwest::Client::new();
+    match client
+        .post(format!("{}/v1/rpc/register", daimon_url))
+        .json(&payload)
+        .send()
+        .await
+    {
+        Ok(resp) if resp.status().is_success() => {
+            info!(
+                crew_id = %crew_id,
+                ?methods,
+                "Registered RPC methods for crew agents"
+            );
+        }
+        Ok(resp) => {
+            warn!(
+                crew_id = %crew_id,
+                status = %resp.status(),
+                "RPC registration for crew returned non-success"
+            );
+        }
+        Err(e) => {
+            warn!(
+                crew_id = %crew_id,
+                error = %e,
+                "RPC registration for crew failed (best-effort)"
+            );
         }
     }
 }
@@ -743,6 +857,79 @@ pub(crate) async fn handle_agnostic_list_definitions(args: &serde_json::Value) -
         Err(e) => {
             warn!(error = %e, "Agnostic bridge: list definitions failed");
             success_result(serde_json::json!({ "items": [], "total": 0, "_source": "mock" }))
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// GPU Placement Query (HUD #6)
+// ---------------------------------------------------------------------------
+
+/// Get GPU placement data for a specific crew.
+///
+/// Calls `GET /api/v1/crews/{crew_id}` and extracts GPU-relevant fields:
+/// `gpu_placement`, `gpu_vram`, and which agents have GPU allocated.  Gives
+/// the aethersafha HUD a clean, focused data source for rendering GPU badges
+/// on crew cards without having to parse the full crew object.
+///
+/// GET /api/v1/crews/{crew_id}  (GPU fields extracted)
+pub(crate) async fn handle_agnostic_crew_gpu(args: &serde_json::Value) -> McpToolResult {
+    let crew_id = match extract_required_string(args, "crew_id") {
+        Ok(id) => id,
+        Err(e) => return e,
+    };
+
+    let bridge = agnostic_bridge();
+    match bridge.get(&format!("/api/v1/crews/{}", crew_id), &[]).await {
+        Ok(response) => {
+            info!(crew_id = %crew_id, "Agnostic: crew GPU placement query (bridged)");
+
+            // Extract GPU-relevant fields from the full crew object.
+            let gpu_placement = response.get("gpu_placement").cloned();
+            let gpu_vram = response.get("gpu_vram").cloned();
+            let gpu_device = response.get("gpu_device").cloned();
+
+            // Collect per-agent GPU assignments if the crew embeds agent list.
+            let agents_with_gpu: Vec<serde_json::Value> = response
+                .get("agents")
+                .and_then(|a| a.as_array())
+                .map(|agents| {
+                    agents
+                        .iter()
+                        .filter(|agent| {
+                            agent
+                                .get("gpu_placement")
+                                .map(|v| !v.is_null())
+                                .unwrap_or(false)
+                                || agent
+                                    .get("gpu_vram")
+                                    .map(|v| !v.is_null())
+                                    .unwrap_or(false)
+                        })
+                        .map(|agent| {
+                            serde_json::json!({
+                                "agent_key": agent.get("agent_key").cloned().unwrap_or(serde_json::Value::Null),
+                                "name": agent.get("name").cloned().unwrap_or(serde_json::Value::Null),
+                                "gpu_placement": agent.get("gpu_placement").cloned().unwrap_or(serde_json::Value::Null),
+                                "gpu_vram": agent.get("gpu_vram").cloned().unwrap_or(serde_json::Value::Null),
+                            })
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+
+            success_result(serde_json::json!({
+                "crew_id": crew_id,
+                "gpu_placement": gpu_placement,
+                "gpu_vram": gpu_vram,
+                "gpu_device": gpu_device,
+                "agents_with_gpu": agents_with_gpu,
+                "agents_with_gpu_count": agents_with_gpu.len(),
+            }))
+        }
+        Err(e) => {
+            warn!(error = %e, crew_id = %crew_id, "Agnostic bridge: crew GPU query failed");
+            error_result(format!("Crew GPU data unavailable: {}", e))
         }
     }
 }

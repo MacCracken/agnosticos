@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Agnostic v2026.3.17-1 integration**:
   - `agnostic_list_crews` MCP tool + `AgnosticListCrews` agnoshi intent — `GET /crews` with status filter and pagination
   - `agnostic_cancel_crew` MCP tool + `AgnosticCancelCrew` agnoshi intent — `POST /crews/{crew_id}/cancel`
-- **MCP tools**: 136 → 141 built-in (12 agnos + 23 agnostic + 9 tarang + others)
+- **MCP tools**: 136 → 144 built-in (14 agnos + 24 agnostic + 9 tarang + others)
 - **Agnoshi intents**: +2 agnostic crew management intents (list crews, cancel crew)
 - **12 new GPU scoring tests** covering: no GPUs, sufficient VRAM, insufficient VRAM, compute capability filtering, weight rebalancing, `score_gpu()` edge cases
 - **Selah recipe** updated to v2026.3.17 MVP release (screenshot & annotation, no AI integration yet)
@@ -40,6 +40,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - New `tarang_hw_accel` MCP tool — probes VA-API and NVDEC hardware decode capability. 141 total MCP tools
 - **S1: Credential proxy wired to agent lifecycle**: `CredentialProxyManager` started in `Agent::start()`, injects `http_proxy`/`https_proxy`/`HTTP_PROXY`/`HTTPS_PROXY`/`no_proxy` env vars into child process. Stopped on `Agent::stop()`
 - **S2: Externalization gate wired to sandbox**: `ExternalizationGate` embedded in `Sandbox` struct with 11 built-in patterns (OpenAI/Anthropic/AWS/GitHub keys, bearer tokens, private keys, email, SSN, credit cards, AGNOS internals). `scan_egress()` method for outbound data gating
+- **Agnostic integration (7 items)**:
+  - `agnos_gpu_probe` MCP tool — probes GPUs and writes `/var/lib/agnosys/gpu.json` for Agnostic consumption
+  - `agnos_gpu_recommend` MCP tool — recommends `gpu_memory_budget_mb` at FP16/Q8/Q4/Q2 tiers for crew presets
+  - `agnostic_crew_gpu` MCP tool — extracts GPU placement data from crew response for HUD cards
+  - Agnoshi GPU intents: `AgnosticGpuStatus` ("gpu status") and `AgnosticGpuMemory` ("gpu memory")
+  - RPC auto-registration: `run_crew` success registers `{crew_id}.status`, `{crew_id}.result`, per-agent `.run` methods
+  - `GET /v1/edge/gpu` — fleet-wide GPU aggregation (total GPUs, VRAM, utilization, per-node detail)
+  - GPU event forwarding: orchestrator fires `gpu.allocation` and `gpu.release` events via `gpu_event_tx` channel
+- **MCP tools**: 141 → 144 built-in (14 agnos + 24 agnostic)
 
 ### Changed — Module Refactoring
 

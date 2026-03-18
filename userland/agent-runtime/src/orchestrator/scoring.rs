@@ -102,6 +102,18 @@ impl Orchestrator {
                             "Allocated GPU(s) {:?} for task {} on agent {}",
                             gpu_ids, task.id, best_agent.id
                         );
+                        // #10: Forward GPU allocation event to daimon event stream.
+                        if let Some(ref tx) = self.gpu_event_tx {
+                            let event = serde_json::json!({
+                                "event": "gpu.allocation",
+                                "agent_id": best_agent.id.to_string(),
+                                "task_id": task.id,
+                                "gpu_ids": gpu_ids,
+                            });
+                            if let Err(e) = tx.try_send(event) {
+                                debug!("GPU allocation event channel full or closed: {}", e);
+                            }
+                        }
                     }
                     Err(e) => {
                         tracing::warn!(

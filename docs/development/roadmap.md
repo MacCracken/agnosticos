@@ -5,7 +5,7 @@
 > **Recipes**: 115 base + 69 desktop + 25 AI + 9 network + 8 browser + 18 marketplace + 4 python + 3 database + 30 edge = 281 total
 > **Build order**: 176 packages in `recipes/build-order.txt` (base + desktop, dependency-ordered)
 > **Phases 10–14 complete** | **Phase 15A**: Core scanning done (phylax) | **Audit**: 16 rounds
-> **MCP Tools**: 141 built-in + external registration
+> **MCP Tools**: 144 built-in + external registration
 > **Sandbox**: 7 backends (Native, gVisor, Firecracker, WASM, SGX, SEV, Noop) + credential proxy + externalization gate
 
 ---
@@ -271,18 +271,13 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 
 ### Agnostic Integration
 
+*Data APIs complete for all items. HUD rendering (#1/#2/#5) is aethersafha desktop work.*
+
 | # | Item | Effort | Notes |
 |---|------|--------|-------|
-| 1 | Agnostic crew status in AGNOS HUD | Medium | Surface active Agnostic crews in aethersafha HUD with real-time status from `GET /crews` endpoint |
-| 2 | Agent HUD multi-domain UI | Medium | Group agents by domain in the HUD. Add domain filter/tabs |
-| 3 | RPC method registration for crew agents | Medium | Dynamic agents from presets need RPC methods registered on-the-fly |
-| 4 | `agnosys` GPU probe JSON | Small | Add GPU fields to `agnosys` probe output, write `/var/lib/agnosys/gpu.json` (Agnostic reads this path) |
-| 5 | GPU status in aethersafha HUD | Medium | Consume `GET /api/v1/gpu/status` and `/gpu/memory`. Show per-device VRAM bars, utilization, temperature in Agent HUD |
-| 6 | GPU placement in crew HUD cards | Small | Show which agents are on GPU vs CPU and their VRAM usage (data in crew result `gpu_placement` and `gpu_vram`) |
-| 7 | agnoshi GPU intents | Small | "show gpu status", "show gpu memory" intents calling Agnostic GPU endpoints via MCP |
-| 8 | Fleet GPU aggregation | Medium | Aggregate `GET /api/v1/gpu/status` across fleet nodes into fleet-wide GPU inventory for placement engine |
-| 9 | agnosys GPU budget recommendations | Small | Recommend `gpu_memory_budget_mb` values for crew presets based on observed VRAM usage |
-| 10 | Daimon GPU event forwarding | Medium | Forward GPU allocation/release events from crew runs to daimon event stream for fleet-wide tracking |
+| 1 | Agnostic crew status in AGNOS HUD | Medium | Data ready via `agnostic_list_crews`/`agnostic_crew_status`. Needs aethersafha HUD widget |
+| 2 | Agent HUD multi-domain UI | Medium | Data ready via agent `domain` metadata. Needs aethersafha HUD filter/tabs |
+| 3 | GPU status in aethersafha HUD | Medium | Data ready via `agnos_gpu_status`/`agnos_gpu_probe`. Needs aethersafha VRAM bars widget |
 
 ---
 
@@ -328,7 +323,7 @@ Large single-file modules (>1500 lines) that should be split into module directo
 | GPU awareness (G1–G4) | Scheduling, hoosh routing, edge fleet, consumer apps | `TaskRequirements` GPU fields, `score_gpu()`, `AcceleratorRegistry`, privacy routing, VRAM budgets, auto-quantization, edge VRAM/CC filtering, fleet model registry, `tarang_hw_accel`, `synapse_finetune` GPU hints |
 | SY integration (4) | GPU telemetry, local models, Firecracker passthrough, fleet heartbeat | `agnos_gpu_status`, `agnos_local_models` MCP tools, `device_passthrough`, heartbeat GPU metrics + dashboard aggregation |
 | Sandbox wiring (S1–S2) | Credential proxy, externalization gate | `CredentialProxyManager` in agent lifecycle, `ExternalizationGate` in sandbox with 11 patterns |
-| Agnostic (3) | Crew management, crew GPU, MCP realignment | `list_crews`, `cancel_crew`, `gpu_required`/`min_gpu_memory_mb` in `run_crew`, 23 tools aligned with v2026.3.17-1 |
+| Agnostic (10) | Crew mgmt, crew GPU, RPC registration, GPU probe, GPU intents, fleet GPU, GPU placement, GPU budget, event forwarding | `list_crews`, `cancel_crew`, `run_crew` GPU fields, `agnos_gpu_probe`, `agnos_gpu_recommend`, `agnostic_crew_gpu` MCP tools, agnoshi GPU intents, `GET /v1/edge/gpu`, RPC auto-registration, GPU event channel. 144 total MCP tools |
 | Toolchain | Go 1.24.1 → 1.26.1 | Unblocked cliphist, Kitty, modern Go modules |
 
 ---
@@ -386,7 +381,7 @@ Large single-file modules (>1500 lines) that should be split into module directo
 | Desktop/AI Stack Recipes | ~62 | 79 | Complete |
 | Edge Recipes | ~30 | 30 | Complete |
 | Marketplace Recipes | 11 | 18 | Complete (11 released + 7 scaffolded) |
-| MCP Tools | — | 141 | Complete (12 agnos + 5 aequi + 23 agnostic + 7 delta + 8 photis + 5 edge + 7 shruti + 9 tarang + 8 jalwa + 9 rasa + 7 mneme + 7 synapse + 7 bullshift + 7 yeoman + 5 phylax + others) |
+| MCP Tools | — | 144 | Complete (14 agnos + 5 aequi + 24 agnostic + 7 delta + 8 photis + 5 edge + 7 shruti + 9 tarang + 8 jalwa + 9 rasa + 7 mneme + 7 synapse + 7 bullshift + 7 yeoman + 5 phylax + others) |
 | Consumer Apps | 6 | 17 | 11 released + 6 scaffolded |
 | Recipe Validation Errors | 0 | 0 | Complete |
 | Security Audit Rounds | 15 | 16 | Complete |

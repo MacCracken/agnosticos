@@ -662,6 +662,102 @@ pub async fn edge_fleet_models_handler(State(state): State<ApiState>) -> impl In
     }))
 }
 
+// ---------------------------------------------------------------------------
+// #8: Fleet GPU inventory
+// ---------------------------------------------------------------------------
+
+/// Per-node GPU entry in the fleet GPU inventory response.
+#[derive(Debug, Serialize)]
+pub struct FleetGpuNode {
+    /// Node identifier.
+    pub node_id: String,
+    /// Node name.
+    pub node_name: String,
+    /// Node status.
+    pub node_status: String,
+    /// Total GPU VRAM in MB as advertised in node capabilities.
+    pub gpu_memory_mb: u64,
+    /// CUDA compute capability, if known.
+    pub gpu_compute_capability: Option<String>,
+    /// Latest GPU utilization percentage from heartbeat, if reported.
+    pub gpu_utilization_pct: Option<f32>,
+    /// Latest GPU memory used in MB from heartbeat, if reported.
+    pub gpu_memory_used_mb: Option<u64>,
+    /// Latest GPU temperature in Celsius from heartbeat, if reported.
+    pub gpu_temperature_c: Option<f32>,
+}
+
+/// `GET /v1/edge/gpu`
+///
+/// Aggregate GPU status across all edge fleet nodes into a fleet-wide GPU
+/// inventory.  Only nodes that advertise `has_gpu = true` are included.
+///
+/// Response fields:
+/// - `total_gpu_nodes`  — number of nodes with GPUs (all statuses).
+/// - `online_gpu_nodes` — GPU nodes currently online.
+/// - `total_vram_mb`    — sum of `gpu_memory_mb` across all GPU nodes.
+/// - `vram_used_mb`     — sum of `gpu_memory_used_mb` for nodes reporting it.
+/// - `avg_utilization_pct` — average GPU utilization across reporting nodes.
+/// - `nodes`            — per-node GPU detail list.
+pub async fn edge_fleet_gpu_handler(State(state): State<ApiState>) -> impl IntoResponse {
+    let fleet = state.edge_fleet.read().await;
+    let all_nodes = fleet.list_nodes(None);
+
+    let gpu_nodes: Vec<_> = all_nodes
+        .iter()
+        .filter(|n| n.capabilities.has_gpu)
+        .collect();
+
+    let total_gpu_nodes = gpu_nodes.len() as u32;
+    let online_gpu_nodes = gpu_nodes
+        .iter()
+        .filter(|n| matches!(n.status, crate::edge::EdgeNodeStatus::Online))
+        .count() as u32;
+
+    let total_vram_mb: u64 = gpu_nodes
+        .iter()
+        .map(|n| n.capabilities.gpu_memory_mb.unwrap_or(0))
+        .sum();
+
+    let vram_used_mb: u64 = gpu_nodes.iter().filter_map(|n| n.gpu_memory_used_mb).sum();
+
+    let (util_sum, util_count) = gpu_nodes.iter().fold((0.0_f64, 0u32), |(sum, cnt), n| {
+        if let Some(u) = n.gpu_utilization_pct {
+            (sum + u as f64, cnt + 1)
+        } else {
+            (sum, cnt)
+        }
+    });
+    let avg_utilization_pct = if util_count > 0 {
+        util_sum / util_count as f64
+    } else {
+        0.0
+    };
+
+    let nodes: Vec<FleetGpuNode> = gpu_nodes
+        .iter()
+        .map(|n| FleetGpuNode {
+            node_id: n.id.clone(),
+            node_name: n.name.clone(),
+            node_status: format!("{:?}", n.status).to_lowercase(),
+            gpu_memory_mb: n.capabilities.gpu_memory_mb.unwrap_or(0),
+            gpu_compute_capability: n.capabilities.gpu_compute_capability.clone(),
+            gpu_utilization_pct: n.gpu_utilization_pct,
+            gpu_memory_used_mb: n.gpu_memory_used_mb,
+            gpu_temperature_c: n.gpu_temperature_c,
+        })
+        .collect();
+
+    Json(serde_json::json!({
+        "total_gpu_nodes": total_gpu_nodes,
+        "online_gpu_nodes": online_gpu_nodes,
+        "total_vram_mb": total_vram_mb,
+        "vram_used_mb": vram_used_mb,
+        "avg_utilization_pct": avg_utilization_pct,
+        "nodes": nodes,
+    }))
+}
+
 // ===========================================================================
 // Tests
 // ===========================================================================

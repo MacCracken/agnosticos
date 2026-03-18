@@ -215,6 +215,29 @@ pub(crate) fn translate_agnostic(intent: &Intent) -> Result<Translation> {
             ))
         }
 
+        Intent::AgnosticGpuStatus => {
+            let a = serde_json::Map::new();
+            Ok(mcp_call(
+                "agnos_gpu_probe",
+                a,
+                "GPU status: probe devices and write gpu.json".to_string(),
+                PermissionLevel::Safe,
+                "Probes GPU devices via agnosys and writes /var/lib/agnosys/gpu.json".to_string(),
+            ))
+        }
+
+        Intent::AgnosticGpuMemory => {
+            let a = serde_json::Map::new();
+            Ok(mcp_call(
+                "agnos_gpu_probe",
+                a,
+                "GPU memory: probe device VRAM".to_string(),
+                PermissionLevel::Safe,
+                "Probes GPU VRAM via agnosys (returns total and available memory per device)"
+                    .to_string(),
+            ))
+        }
+
         _ => unreachable!("translate_agnostic called with non-agnostic intent"),
     }
 }

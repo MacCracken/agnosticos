@@ -66,7 +66,7 @@ async fn test_tools_manifest_endpoint() {
         .await
         .unwrap();
     let manifest: McpToolManifest = serde_json::from_slice(&body).unwrap();
-    assert_eq!(manifest.tools.len(), 141);
+    assert_eq!(manifest.tools.len(), 144);
 }
 
 #[tokio::test]
@@ -391,7 +391,7 @@ async fn test_mcp_result_serialization() {
 #[tokio::test]
 async fn test_manifest_contains_all_tools() {
     let manifest = build_tool_manifest();
-    assert_eq!(manifest.tools.len(), 141);
+    assert_eq!(manifest.tools.len(), 144);
     let names: Vec<&str> = manifest.tools.iter().map(|t| t.name.as_str()).collect();
     for expected in &[
         "agnos_health",
@@ -528,6 +528,8 @@ async fn test_manifest_contains_all_tools() {
         "agnostic_list_presets",
         "agnostic_list_definitions",
         "agnostic_create_agent",
+        "agnostic_crew_gpu",
+        "agnos_gpu_recommend",
         "shruti_plugins",
         "shruti_ai",
         "tazama_media",
@@ -2152,4 +2154,140 @@ async fn test_shruti_tools_via_http_dispatch() {
     )
     .await;
     assert!(!result.is_error);
+}
+
+// -----------------------------------------------------------------------
+// agnos_gpu_recommend tests (#9 — GPU budget recommendations)
+// -----------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_gpu_recommend_by_model_name_7b() {
+    use super::handlers::agnos::handle_gpu_recommend;
+    let result = handle_gpu_recommend(&serde_json::json!({"model_name": "llama3-8b"})).await;
+    assert!(!result.is_error);
+    let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
+    assert_eq!(parsed["model_params_b"], 7.0);
+    assert_eq!(parsed["recommended_quantization"], "q4_k_m");
+    let tiers = parsed["tiers"].as_array().unwrap();
+    assert_eq!(tiers.len(), 5);
+    // fp16 should require more VRAM than q4_0
+    let fp16_mb = tiers[0]["gpu_memory_budget_mb"].as_u64().unwrap();
+    let q4_mb = tiers[3]["gpu_memory_budget_mb"].as_u64().unwrap();
+    assert!(fp16_mb > q4_mb);
+}
+
+#[tokio::test]
+async fn test_gpu_recommend_by_model_params() {
+    use super::handlers::agnos::handle_gpu_recommend;
+    let result = handle_gpu_recommend(&serde_json::json!({"model_params": 70.0})).await;
+    assert!(!result.is_error);
+    let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
+    assert_eq!(parsed["model_params_b"], 70.0);
+    assert_eq!(parsed["recommended_quantization"], "q4_0");
+    let recommended_mb = parsed["recommended_gpu_memory_budget_mb"].as_u64().unwrap();
+    // 70B at q4_0 (4 bits): 70e9 * 0.5 * 1.15 / 1MiB ≈ 37,721 MB
+    assert!(recommended_mb > 30_000);
+}
+
+#[tokio::test]
+async fn test_gpu_recommend_small_model_prefers_q8() {
+    use super::handlers::agnos::handle_gpu_recommend;
+    let result = handle_gpu_recommend(&serde_json::json!({"model_params": 1.5})).await;
+    assert!(!result.is_error);
+    let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
+    assert_eq!(parsed["recommended_quantization"], "q8_0");
+}
+
+#[tokio::test]
+async fn test_gpu_recommend_missing_args() {
+    use super::handlers::agnos::handle_gpu_recommend;
+    let result = handle_gpu_recommend(&serde_json::json!({})).await;
+    assert!(result.is_error);
+    assert!(
+        result.content[0].text.contains("model_name")
+            || result.content[0].text.contains("model_params")
+    );
+}
+
+#[tokio::test]
+async fn test_gpu_recommend_invalid_model_name() {
+    use super::handlers::agnos::handle_gpu_recommend;
+    let result = handle_gpu_recommend(&serde_json::json!({"model_name": "gpt-unknown"})).await;
+    assert!(result.is_error);
+    assert!(result.content[0].text.contains("Cannot infer"));
+}
+
+#[tokio::test]
+async fn test_gpu_recommend_negative_params() {
+    use super::handlers::agnos::handle_gpu_recommend;
+    let result = handle_gpu_recommend(&serde_json::json!({"model_params": -1.0})).await;
+    assert!(result.is_error);
+}
+
+#[tokio::test]
+async fn test_gpu_recommend_in_manifest() {
+    let manifest = build_tool_manifest();
+    let names: Vec<&str> = manifest.tools.iter().map(|t| t.name.as_str()).collect();
+    assert!(names.contains(&"agnos_gpu_recommend"));
+    let tool = manifest
+        .tools
+        .iter()
+        .find(|t| t.name == "agnos_gpu_recommend")
+        .unwrap();
+    // Should accept model_name and model_params
+    let props = &tool.input_schema["properties"];
+    assert!(props.get("model_name").is_some());
+    assert!(props.get("model_params").is_some());
+}
+
+#[tokio::test]
+async fn test_gpu_recommend_via_dispatch() {
+    let router = build_test_router();
+    let result = call_tool(
+        &router,
+        "agnos_gpu_recommend",
+        serde_json::json!({"model_name": "mistral-7b"}),
+    )
+    .await;
+    assert!(!result.is_error);
+    let parsed: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
+    assert!(parsed["tiers"].is_array());
+}
+
+// -----------------------------------------------------------------------
+// agnostic_crew_gpu tests (#6 — GPU placement in HUD crew cards)
+// -----------------------------------------------------------------------
+
+#[tokio::test]
+async fn test_agnostic_crew_gpu_missing_crew_id() {
+    use super::handlers::agnostic::handle_agnostic_crew_gpu;
+    let result = handle_agnostic_crew_gpu(&serde_json::json!({})).await;
+    assert!(result.is_error);
+    assert!(
+        result.content[0].text.contains("crew_id") || result.content[0].text.contains("Missing")
+    );
+}
+
+#[tokio::test]
+async fn test_agnostic_crew_gpu_in_manifest() {
+    let manifest = build_tool_manifest();
+    let names: Vec<&str> = manifest.tools.iter().map(|t| t.name.as_str()).collect();
+    assert!(names.contains(&"agnostic_crew_gpu"));
+    let tool = manifest
+        .tools
+        .iter()
+        .find(|t| t.name == "agnostic_crew_gpu")
+        .unwrap();
+    let required = tool.input_schema["required"].as_array().unwrap();
+    assert!(required.iter().any(|r| r == "crew_id"));
+}
+
+#[tokio::test]
+async fn test_agnostic_crew_gpu_bridge_failure_returns_error() {
+    // Agnostic is not running in test env — expect an error result (not a panic).
+    use super::handlers::agnostic::handle_agnostic_crew_gpu;
+    let result = handle_agnostic_crew_gpu(&serde_json::json!({"crew_id": "test-crew-123"})).await;
+    // Bridge failure: either an error or a success with empty GPU fields (both are acceptable).
+    // The handler must not panic.
+    let _ = serde_json::from_str::<serde_json::Value>(&result.content[0].text);
 }

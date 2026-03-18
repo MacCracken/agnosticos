@@ -361,6 +361,195 @@ pub(crate) async fn handle_gpu_status(_args: &serde_json::Value) -> McpToolResul
     }
 }
 
+/// Probe GPU devices, write results to `/var/lib/agnosys/gpu.json`, and return
+/// the JSON content.
+///
+/// Consumers such as Agnostic can call this to discover GPU capabilities on the
+/// host and persist the snapshot for later queries without re-probing.
+pub(crate) async fn handle_gpu_probe_json(_args: &serde_json::Value) -> McpToolResult {
+    let gpus = match ResourceManager::detect_gpus().await {
+        Ok(g) => g,
+        Err(e) => {
+            warn!(error = %e, "GPU detection failed during probe-json");
+            vec![]
+        }
+    };
+
+    let gpu_list: Vec<_> = gpus
+        .iter()
+        .map(|g| {
+            serde_json::json!({
+                "id": g.id,
+                "name": g.name,
+                "total_memory_bytes": g.total_memory,
+                "available_memory_bytes": g.available_memory.load(Ordering::Relaxed),
+                "compute_capability": g.compute_capability,
+            })
+        })
+        .collect();
+
+    let payload = serde_json::json!({
+        "gpus": gpu_list,
+        "count": gpu_list.len(),
+        "probed_at": chrono::Utc::now().to_rfc3339(),
+    });
+
+    // Write to /var/lib/agnosys/gpu.json — best-effort, failure is non-fatal.
+    let dir = std::path::Path::new("/var/lib/agnosys");
+    let json_path = dir.join("gpu.json");
+    match tokio::fs::create_dir_all(dir).await {
+        Ok(_) => {
+            let content = serde_json::to_string_pretty(&payload).unwrap_or_default();
+            if let Err(e) = tokio::fs::write(&json_path, content).await {
+                warn!(path = %json_path.display(), error = %e, "Failed to write gpu.json");
+            } else {
+                info!(path = %json_path.display(), "GPU probe JSON written");
+            }
+        }
+        Err(e) => {
+            warn!(dir = %dir.display(), error = %e, "Failed to create agnosys dir for gpu.json");
+        }
+    }
+
+    info!("GPU probe JSON: {} device(s) detected", gpu_list.len());
+    success_result(payload)
+}
+
+// ---------------------------------------------------------------------------
+// GPU Budget Recommendations (agnosys #9)
+// ---------------------------------------------------------------------------
+
+/// Recommend `gpu_memory_budget_mb` values for a model at various quantization
+/// levels.
+///
+/// Takes a `model_name` string or a raw `model_params` (billions of parameters)
+/// float and returns recommended VRAM budgets — one per quantization tier —
+/// so that crew presets can pick sensible defaults without manual tuning.
+///
+/// Estimation formula (conservative, matches llama.cpp / llm.rs observations):
+///   bytes_per_param = bits / 8.0
+///   model_bytes     = params_B * 1e9 * bytes_per_param
+///   overhead        = model_bytes * 0.15   (KV-cache + activations)
+///   total_mb        = ceil((model_bytes + overhead) / 1_048_576)
+///
+/// Well-known model name aliases resolve to approximate parameter counts:
+///   70b/72b → 70.0B,  65b → 65.0B,  34b/35b → 34.0B,  32b → 32.0B,
+///   13b/14b → 13.0B,  7b/8b → 7.0B,  3b → 3.2B,  1b/1.5b → 1.5B
+pub(crate) async fn handle_gpu_recommend(args: &serde_json::Value) -> McpToolResult {
+    /// Compute VRAM budget in MB for a given bit-width.
+    fn estimate_mb(params_b: f64, bits: f64) -> u64 {
+        let bytes_per_param = bits / 8.0;
+        let model_bytes = params_b * 1_000_000_000.0 * bytes_per_param;
+        let overhead = model_bytes * 0.15;
+        let total_bytes = model_bytes + overhead;
+        (total_bytes / 1_048_576.0).ceil() as u64
+    }
+
+    // Resolve parameter count (in billions) from name or explicit value.
+    let params_b: f64 = if let Some(p) = args.get("model_params").and_then(|v| v.as_f64()) {
+        if p <= 0.0 {
+            return error_result(
+                "model_params must be a positive number (billions of parameters)".to_string(),
+            );
+        }
+        p
+    } else if let Some(name) = args.get("model_name").and_then(|v| v.as_str()) {
+        let lower = name.to_lowercase();
+        if lower.contains("70b") || lower.contains("72b") {
+            70.0
+        } else if lower.contains("65b") {
+            65.0
+        } else if lower.contains("34b") || lower.contains("35b") {
+            34.0
+        } else if lower.contains("32b") {
+            32.0
+        } else if lower.contains("14b") || lower.contains("13b") {
+            13.0
+        } else if lower.contains("8b") || lower.contains("7b") {
+            7.0
+        } else if lower.contains("3b") {
+            3.2
+        } else if lower.contains("1.5b") || lower.contains("1b") {
+            1.5
+        } else {
+            return error_result(format!(
+                "Cannot infer parameter count from model name '{}'. \
+                 Please supply model_params (e.g. 7.0 for a 7B model).",
+                name
+            ));
+        }
+    } else {
+        return error_result(
+            "Provide either model_name (e.g. \"llama3-8b\") or model_params (e.g. 7.0)".to_string(),
+        );
+    };
+
+    let recommended_quant = if params_b <= 4.0 {
+        "q8_0"
+    } else if params_b <= 14.0 {
+        "q4_k_m"
+    } else {
+        "q4_0"
+    };
+
+    let recommended_mb = estimate_mb(
+        params_b,
+        match recommended_quant {
+            "q8_0" => 8.0,
+            "q4_k_m" => 4.5,
+            _ => 4.0,
+        },
+    );
+
+    let quantization_tiers = serde_json::json!([
+        {
+            "quantization": "fp16",
+            "bits": 16,
+            "gpu_memory_budget_mb": estimate_mb(params_b, 16.0),
+            "notes": "Full half-precision. Best quality, highest VRAM.",
+        },
+        {
+            "quantization": "q8_0",
+            "bits": 8,
+            "gpu_memory_budget_mb": estimate_mb(params_b, 8.0),
+            "notes": "8-bit integer. Near fp16 quality, half the VRAM.",
+        },
+        {
+            "quantization": "q4_k_m",
+            "bits": 4,
+            "gpu_memory_budget_mb": estimate_mb(params_b, 4.5),
+            "notes": "4-bit K-quant (recommended). Good quality, ~4-5 bits effective.",
+        },
+        {
+            "quantization": "q4_0",
+            "bits": 4,
+            "gpu_memory_budget_mb": estimate_mb(params_b, 4.0),
+            "notes": "Plain 4-bit. Smallest footprint, some quality loss.",
+        },
+        {
+            "quantization": "q2_k",
+            "bits": 2,
+            "gpu_memory_budget_mb": estimate_mb(params_b, 2.5),
+            "notes": "2-bit K-quant. Minimum viable — significant quality loss.",
+        },
+    ]);
+
+    info!(
+        params_b = params_b,
+        recommended = recommended_quant,
+        "GPU budget recommendation computed"
+    );
+
+    success_result(serde_json::json!({
+        "model_params_b": params_b,
+        "recommended_quantization": recommended_quant,
+        "recommended_gpu_memory_budget_mb": recommended_mb,
+        "tiers": quantization_tiers,
+        "notes": "Estimates include 15% overhead for KV-cache and activations. \
+                  Set gpu_memory_budget_mb in crew presets to the chosen tier value.",
+    }))
+}
+
 /// List locally available LLM models.
 ///
 /// Queries hoosh (LLM gateway) for models available on this host,

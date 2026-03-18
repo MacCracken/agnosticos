@@ -54,6 +54,10 @@ pub struct Orchestrator {
     pub(crate) message_rx: Arc<RwLock<Option<mpsc::Receiver<agnos_common::Message>>>>,
     /// Resource manager for GPU allocation/release during task lifecycle.
     pub(crate) resource_manager: Option<Arc<ResourceManager>>,
+    /// Optional channel for forwarding GPU allocation/release events to the
+    /// daimon event stream (#10).  Each message is a JSON object with fields
+    /// `event`, `agent_id`, `task_id`, and `gpu_ids`.
+    pub(crate) gpu_event_tx: Option<mpsc::Sender<serde_json::Value>>,
 }
 
 impl Orchestrator {
@@ -83,12 +87,20 @@ impl Orchestrator {
             message_bus,
             message_rx: Arc::new(RwLock::new(Some(message_rx))),
             resource_manager: None,
+            gpu_event_tx: None,
         }
     }
 
     /// Attach a resource manager for GPU-aware scheduling.
     pub fn with_resource_manager(mut self, rm: Arc<ResourceManager>) -> Self {
         self.resource_manager = Some(rm);
+        self
+    }
+
+    /// Attach a GPU event channel so that allocation and release events are
+    /// forwarded to the daimon event stream (#10).
+    pub fn with_gpu_event_tx(mut self, tx: mpsc::Sender<serde_json::Value>) -> Self {
+        self.gpu_event_tx = Some(tx);
         self
     }
 
