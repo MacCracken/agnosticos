@@ -8,7 +8,7 @@
 
 [package]
 name = "synapse"
-version = "2026.3.14"
+version = "2026.3.18-1"
 description = "Synapse — LLM management and training tool"
 license = "MIT"
 groups = ["server", "ai", "llm", "rust"]

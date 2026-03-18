@@ -1,0 +1,95 @@
+# ark-community — Community package repository for AGNOS
+#
+# Like Arch's AUR with yay, but for ark. Community members submit takumi recipe
+# TOMLs to a git repo. `ark community` fetches recipes and builds locally via
+# takumi, or downloads pre-built packages from a community build server.
+#
+# Status: Ready — 2026.3.18. Ships as part of base system.
+# Source: https://github.com/MacCracken/ark-community
+#
+# Usage:
+#   ark community search <query>     — search community recipes
+#   ark community install <package>  — fetch recipe, build via takumi, install
+#   ark community update             — sync recipe index from git
+#   ark community list               — list installed community packages
+#   ark community submit <recipe>    — submit a recipe for review (opens PR)
+#
+# Architecture:
+#   - Recipe index: git repo with TOML files (no binaries)
+#   - Build: local via takumi (like makepkg) or pull from build.agnos.org
+#   - Trust: recipes are signed by submitter, reviewed by maintainers
+#   - Sandbox: community packages run in restricted sandbox by default
+#   - Integration: adds `Community` variant to PackageSource enum in nous.rs
+
+[package]
+name = "ark-community"
+version = "2026.3.18"
+description = "Community package repository for ark — user-submitted recipes built via takumi"
+license = "GPL-3.0"
+groups = ["base", "package-management"]
+release = 1
+arch = "x86_64"
+
+[source]
+local = true
+build_dir = "."
+
+[depends]
+runtime = [
+    "ark",
+    "takumi",
+    "git",
+    "gnupg",
+    "curl",
+]
+build = [
+    "rust",
+]
+
+[build]
+configure = ""
+make = "cargo build --release --bin ark-community"
+check = "cargo test --bin ark-community"
+
+install = """
+mkdir -p $PKG/usr/bin
+cp target/release/ark-community $PKG/usr/bin/
+
+# Default config
+mkdir -p $PKG/etc/agnos/ark-community
+cat > $PKG/etc/agnos/ark-community/config.toml << 'CONF'
+# ark-community configuration
+[repository]
+# Git URL for the community recipe index
+url = "https://github.com/MacCracken/agnos-community-recipes.git"
+branch = "main"
+# Local cache directory
+cache_dir = "/var/cache/ark-community"
+
+[build]
+# Build packages locally via takumi (true) or download pre-built (false)
+build_locally = true
+# Pre-built package mirror (used when build_locally = false)
+mirror_url = "https://build.agnos.org/community"
+
+[trust]
+# Require GPG signature on recipes
+require_signature = true
+# Trusted maintainer key IDs
+trusted_keys = []
+# Auto-trust packages with >= N maintainer reviews
+min_reviews = 1
+
+[sandbox]
+# Default sandbox profile for community packages (stricter than marketplace)
+default_profile = "community-restricted"
+# Allow community packages to request network access
+allow_network = false
+CONF
+
+# Symlink so `ark community` works as a subcommand
+ln -sf ark-community $PKG/usr/bin/ark-community
+"""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]

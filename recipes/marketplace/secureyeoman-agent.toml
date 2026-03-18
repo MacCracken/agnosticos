@@ -1,0 +1,128 @@
+# SecureYeoman Agent — Standalone agent binary for AGNOS marketplace
+# Headless single-agent binary from SecureYeoman — no dashboard, no web UI,
+# no platform orchestration. Designed to run as a background worker, CI job
+# runner, or scriptable agent that accepts tasks via stdin / REST / MCP.
+# Connects to a parent SecureYeoman instance or operates standalone.
+#
+# Same repo as SecureYeoman, different build target (build:agent).
+#
+# Status: Released — 2026.3.18 (linux-x64 + linux-arm64)
+# Source: https://github.com/MacCracken/SecureYeoman
+
+[package]
+name = "secureyeoman-agent"
+version = "2026.3.18"
+description = "SecureYeoman Agent — Standalone headless AI agent worker"
+license = "AGPL-3.0-only"
+groups = ["agent", "ai", "automation"]
+release = 1
+arch = "x86_64"
+
+[source]
+# Bun-compiled standalone binary from GitHub Actions CI (agent target).
+# Release: https://github.com/MacCracken/SecureYeoman/releases
+# Asset: secureyeoman-agent-linux-x64
+github_release = "MacCracken/SecureYeoman"
+release_asset = "secureyeoman-agent-linux-x64"
+
+[depends]
+runtime = [
+    "glibc",
+    "openssl",
+    "zlib",
+]
+build = [
+    "bun",
+    "nodejs",
+    "openssl-dev",
+    "zlib-dev",
+]
+
+[marketplace]
+category = "ai-agent"
+runtime = "native-binary"
+publisher = "SecureYeoman"
+tags = ["ai", "agent", "standalone", "headless", "automation", "mcp", "worker"]
+min_agnos_version = "2026.3.11"
+
+[marketplace.sandbox]
+seccomp_mode = "desktop"
+network_access = true
+# Connects to SecureYeoman server or AI providers directly
+allowed_hosts = [
+    "localhost",
+    "127.0.0.1",
+    # AI providers
+    "api.anthropic.com",
+    "api.openai.com",
+    "generativelanguage.googleapis.com",
+    "api.deepseek.com",
+    "api.mistral.ai",
+    "api.groq.com",
+    "api.x.ai",
+    "openrouter.ai",
+    # GitHub/GitLab for CI/CD tasks
+    "api.github.com", "*.github.com",
+    "gitlab.com", "*.gitlab.com",
+]
+data_dir = "~/.local/share/secureyeoman-agent/"
+
+[[marketplace.sandbox.landlock]]
+path = "~/.local/share/secureyeoman-agent/"
+access = "rw"
+
+[[marketplace.sandbox.landlock]]
+path = "/tmp"
+access = "rw"
+
+# IPC with AGNOS agent runtime (daimon)
+[[marketplace.sandbox.landlock]]
+path = "/run/agnos/"
+access = "rw"
+
+[marketplace.services]
+# Agent exposes a local MCP endpoint on 3001 for task injection
+ports = [3001]
+depends_on = ["llm-gateway"]
+
+[build]
+pre_build = ""
+configure = ""
+make = "npm run build:agent"
+check = "npm run test"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+# Install the single binary
+mkdir -p $PKG/usr/lib/secureyeoman-agent/bin
+cp dist/secureyeoman-agent-linux-x64 $PKG/usr/lib/secureyeoman-agent/bin/secureyeoman-agent
+chmod +x $PKG/usr/lib/secureyeoman-agent/bin/secureyeoman-agent
+
+# Symlink into PATH
+mkdir -p $PKG/usr/bin
+ln -sf /usr/lib/secureyeoman-agent/bin/secureyeoman-agent $PKG/usr/bin/secureyeoman-agent
+ln -sf /usr/lib/secureyeoman-agent/bin/secureyeoman-agent $PKG/usr/bin/sy-agent
+
+# Systemd service unit
+mkdir -p $PKG/usr/lib/systemd/user
+cat > $PKG/usr/lib/systemd/user/secureyeoman-agent.service << 'EOF'
+[Unit]
+Description=SecureYeoman Standalone Agent
+After=network.target agnos-llm-gateway.service agnos-agent-runtime.service
+Wants=agnos-llm-gateway.service agnos-agent-runtime.service
+
+[Service]
+Type=simple
+ExecStart=/usr/lib/secureyeoman-agent/bin/secureyeoman-agent --serve
+Environment=AGNOS_GATEWAY_URL=http://127.0.0.1:8088
+Environment=AGNOS_RUNTIME_URL=http://127.0.0.1:8090
+Environment=SECUREYEOMAN_DATA_DIR=%h/.local/share/secureyeoman-agent
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+EOF
+"""

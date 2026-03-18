@@ -5,12 +5,12 @@
 #
 # Same repo as SecureYeoman, different build target.
 #
-# Status: Released — SecureYeoman 2026.3.13 (linux-x64 + linux-arm64 + windows-x64)
+# Status: Released — SecureYeoman 2026.3.18 (linux-x64 + linux-arm64 + windows-x64)
 # Source: https://github.com/MacCracken/SecureYeoman
 
 [package]
 name = "secureyeoman-lite"
-version = "2026.3.13"
+version = "2026.3.18"
 description = "SecureYeoman Lite — Lightweight standalone AI agent"
 license = "AGPL-3.0-only"
 groups = ["agent", "ai"]

@@ -6,14 +6,15 @@
 # Status: Ready — 23 MCP tools, 14 agnoshi intents, A2A delegation, crew presets.
 # v2026.3.17-1: +list_crews (GET /crews), +cancel_crew (POST /crews/{id}/cancel),
 #   dashboard.js API path fix, MCP enabled, dark theme, branding → "Agnostic Agent System"
+# v2026.3.17-2: patch release — see GitHub release notes.
 
 [package]
 name = "agnostic"
-version = "2026.3.17-1"
+version = "2026.3.17-2"
 description = "Agnostic — Multi-domain AI agent platform with crew orchestration"
 license = "MIT"
 groups = ["server", "qa", "ai-agents", "python"]
-release = 1
+release = 2
 arch = "x86_64"
 
 [source]

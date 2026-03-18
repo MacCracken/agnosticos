@@ -13,6 +13,8 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
+use crate::sigil::{RevocationEntry, SigilVerifier};
+
 // ---------------------------------------------------------------------------
 // Check Results
 // ---------------------------------------------------------------------------
@@ -451,6 +453,78 @@ impl OffenderTracker {
     pub fn suspended_count(&self) -> usize {
         self.records.values().filter(|r| r.suspended).count()
     }
+
+    // -----------------------------------------------------------------------
+    // S3: Sigil trust-chain integration
+    // -----------------------------------------------------------------------
+
+    /// Trust score threshold below which sigil records a demotion.
+    ///
+    /// When an agent's trust score drops to or below this value, the
+    /// offender tracker notifies the sigil trust chain so the demotion is
+    /// captured in the system-wide trust audit log.
+    pub const SIGIL_DEMOTION_THRESHOLD: f64 = 0.5;
+
+    /// Record a sandbox policy violation and, if the agent's trust score
+    /// crosses the demotion threshold, write a revocation entry into the
+    /// sigil trust chain.
+    ///
+    /// This is the preferred entry point when a `SigilVerifier` is
+    /// available. Use [`record_violation`] for contexts where sigil is
+    /// not reachable (e.g. unit tests, isolated components).
+    pub fn record_violation_with_sigil(
+        &mut self,
+        agent_id: &str,
+        violation_type: &str,
+        sigil: &mut SigilVerifier,
+    ) {
+        // Capture score before the violation so we can detect threshold crossing.
+        let score_before = self.trust_score(agent_id);
+
+        self.record_violation(agent_id, violation_type);
+
+        let score_after = self.trust_score(agent_id);
+
+        // Notify sigil when the score crosses below the demotion threshold
+        // for the first time (i.e. was above before, now at or below).
+        if score_before > Self::SIGIL_DEMOTION_THRESHOLD
+            && score_after <= Self::SIGIL_DEMOTION_THRESHOLD
+        {
+            warn!(
+                agent_id = %agent_id,
+                trust_score = score_after,
+                threshold = Self::SIGIL_DEMOTION_THRESHOLD,
+                "Trust score crossed demotion threshold — recording in sigil trust chain"
+            );
+
+            let entry = RevocationEntry {
+                // Use agent_id as the key_id so sigil can look it up by agent.
+                key_id: Some(format!("agent:{}", agent_id)),
+                content_hash: None,
+                reason: format!(
+                    "Sandbox offender trust demotion: score dropped to {:.2} (threshold {:.2}) after violation '{}'",
+                    score_after,
+                    Self::SIGIL_DEMOTION_THRESHOLD,
+                    violation_type
+                ),
+                revoked_at: chrono::Utc::now(),
+                revoked_by: "sandbox_offender_tracker".to_string(),
+            };
+
+            if let Err(e) = sigil.add_revocation(entry) {
+                warn!(
+                    agent_id = %agent_id,
+                    error = %e,
+                    "Failed to record trust demotion in sigil chain"
+                );
+            } else {
+                info!(
+                    agent_id = %agent_id,
+                    "Trust demotion recorded in sigil trust chain"
+                );
+            }
+        }
+    }
 }
 
 impl Default for OffenderTracker {
@@ -689,5 +763,70 @@ mod tests {
         assert!(!can_access_sensitive_path("/nonexistent/path"));
         // /tmp should be accessible
         assert!(can_access_sensitive_path("/tmp"));
+    }
+
+    // --- S3: Sigil trust-chain integration tests ---
+
+    #[test]
+    fn test_record_violation_with_sigil_no_demotion_above_threshold() {
+        use crate::marketplace::trust::PublisherKeyring;
+        use crate::sigil::{SigilVerifier, TrustPolicy};
+        use std::path::Path;
+
+        let mut tracker = OffenderTracker::new();
+        let keyring = PublisherKeyring::new(Path::new("/tmp"));
+        let mut sigil = SigilVerifier::new(keyring, TrustPolicy::default());
+
+        // 4 violations: trust_score = 0.6 (above 0.5 threshold)
+        for _ in 0..4 {
+            tracker.record_violation_with_sigil("agent-1", "escape", &mut sigil);
+        }
+        assert!((tracker.trust_score("agent-1") - 0.6).abs() < f64::EPSILON);
+        // No revocation entry yet (threshold not crossed)
+        assert_eq!(sigil.revocation_count(), 0);
+    }
+
+    #[test]
+    fn test_record_violation_with_sigil_demotion_at_threshold() {
+        use crate::marketplace::trust::PublisherKeyring;
+        use crate::sigil::{SigilVerifier, TrustPolicy};
+        use std::path::Path;
+
+        let mut tracker = OffenderTracker::new();
+        let keyring = PublisherKeyring::new(Path::new("/tmp"));
+        let mut sigil = SigilVerifier::new(keyring, TrustPolicy::default());
+
+        // 6th violation drops score to 0.4, clearly below the 0.5 threshold.
+        for _ in 0..6 {
+            tracker.record_violation_with_sigil("agent-2", "namespace_breach", &mut sigil);
+        }
+        let score = tracker.trust_score("agent-2");
+        assert!(score < OffenderTracker::SIGIL_DEMOTION_THRESHOLD);
+        // Sigil should now have a revocation entry for this agent.
+        assert!(sigil.revocation_count() > 0);
+    }
+
+    #[test]
+    fn test_record_violation_with_sigil_demotion_only_once() {
+        use crate::marketplace::trust::PublisherKeyring;
+        use crate::sigil::{SigilVerifier, TrustPolicy};
+        use std::path::Path;
+
+        let mut tracker = OffenderTracker::new();
+        let keyring = PublisherKeyring::new(Path::new("/tmp"));
+        let mut sigil = SigilVerifier::new(keyring, TrustPolicy::default());
+
+        // Cross the threshold exactly once at the 5th violation.
+        for _ in 0..8 {
+            tracker.record_violation_with_sigil("agent-3", "escape", &mut sigil);
+        }
+        // Only one demotion entry should be present (threshold crossed once).
+        assert_eq!(sigil.revocation_count(), 1);
+    }
+
+    #[test]
+    fn test_sigil_demotion_threshold_constant() {
+        // Verify the threshold is the documented 0.5.
+        assert!((OffenderTracker::SIGIL_DEMOTION_THRESHOLD - 0.5).abs() < f64::EPSILON);
     }
 }

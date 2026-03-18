@@ -10,7 +10,7 @@
 
 [package]
 name = "secureyeoman-edge"
-version = "2026.3.11"
+version = "2026.3.18"
 description = "SecureYeoman Edge — lightweight IoT agent for constrained hardware"
 license = "AGPL-3.0-only"
 groups = ["edge", "tier1"]

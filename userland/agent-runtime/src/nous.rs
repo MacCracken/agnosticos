@@ -27,6 +27,8 @@ pub enum PackageSource {
     Marketplace,
     /// Flutter desktop app via agpkg.
     FlutterApp,
+    /// Community-submitted recipe built via takumi (like AUR).
+    Community,
     /// Unknown — not found in any source.
     Unknown,
 }
@@ -37,6 +39,7 @@ impl std::fmt::Display for PackageSource {
             Self::System => write!(f, "system"),
             Self::Marketplace => write!(f, "marketplace"),
             Self::FlutterApp => write!(f, "flutter-app"),
+            Self::Community => write!(f, "community"),
             Self::Unknown => write!(f, "unknown"),
         }
     }
@@ -480,7 +483,9 @@ impl NousResolver {
             }
             ResolutionStrategy::OnlySource(source) => match source {
                 PackageSource::System => self.resolve_from_system(name),
-                PackageSource::Marketplace => self.resolve_from_marketplace(name),
+                PackageSource::Marketplace | PackageSource::Community => {
+                    self.resolve_from_marketplace(name)
+                }
                 PackageSource::FlutterApp => self.resolve_from_flutter(name),
                 PackageSource::Unknown => Ok(None),
             },

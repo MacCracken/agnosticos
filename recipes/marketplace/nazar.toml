@@ -2,12 +2,12 @@
 # Real-time hardware/process monitoring with AI-powered anomaly detection.
 # Reads /proc and /sys, connects to daimon (8090) and hoosh (8088).
 #
-# Status: Released — 2026.3.16 (linux amd64 + arm64).
+# Status: Released — 2026.3.17 (linux amd64 + arm64). First stable release.
 # Source: https://github.com/MacCracken/nazar
 
 [package]
 name = "nazar"
-version = "2026.3.16"
+version = "2026.3.17"
 description = "Nazar — AI-native system monitor for AGNOS"
 license = "GPL-3.0"
 groups = ["system", "monitoring"]

@@ -1,14 +1,20 @@
-# SecureYeoman — Sovereign AI agent platform for AGNOS marketplace
-# Multi-agent orchestration with 279 MCP tools, 31 platform integrations,
-# enterprise security, and real-time dashboard. TypeScript/Bun + React.
+# SecureYeoman Primary — Full primary server for AGNOS marketplace
+# The complete SecureYeoman platform configured for primary/coordinator role:
+# runs all orchestration services, the full dashboard, the PostgreSQL backend,
+# the MCP gateway, and accepts connections from Lite and Edge worker nodes.
+# Intended for deployment as the central hub in a multi-node setup.
 #
-# Status: Released — 2026.3.18. Feature-complete flagship AI agent platform.
-# Already uses ghcr.io/maccracken/agnosticos:latest as Docker base.
+# This is functionally identical to secureyeoman.toml but with explicit
+# primary-mode configuration (SY_ROLE=primary) and additional peer networking
+# allowances for accepting inbound worker connections.
+#
+# Status: Released — 2026.3.18 (linux-x64 + linux-arm64)
+# Source: https://github.com/MacCracken/SecureYeoman
 
 [package]
-name = "secureyeoman"
+name = "secureyeoman-primary"
 version = "2026.3.18"
-description = "SecureYeoman — Sovereign AI agent platform with multi-agent orchestration"
+description = "SecureYeoman Primary — Full primary server with multi-node orchestration"
 license = "AGPL-3.0-only"
 groups = ["server", "ai", "agents"]
 release = 1
@@ -17,9 +23,7 @@ arch = "x86_64"
 [source]
 # Single binary compiled via Bun, built by GitHub Actions CI.
 # Release: https://github.com/MacCracken/SecureYeoman/releases
-# Asset: secureyeoman-linux-x64 (~128 MB, signed with .sig + .cert)
-local = true
-build_dir = "dist"
+# Asset: secureyeoman-linux-x64 — same binary as main release; role set via env
 github_release = "MacCracken/SecureYeoman"
 release_asset = "secureyeoman-linux-x64"
 
@@ -28,6 +32,7 @@ runtime = [
     "glibc",
     "openssl",
     "sqlite",
+    "postgresql",
     "zlib",
 ]
 build = [
@@ -35,24 +40,26 @@ build = [
     "nodejs",
     "openssl-dev",
     "zlib-dev",
+    "postgresql-dev",
 ]
 
 [marketplace]
 category = "ai-platform"
 runtime = "native-binary"
 publisher = "SecureYeoman"
-tags = ["ai", "agents", "mcp", "orchestration", "security", "llm", "automation", "enterprise"]
+tags = ["ai", "agents", "mcp", "orchestration", "security", "llm", "automation", "enterprise", "primary", "multi-node"]
 min_agnos_version = "2026.3.11"
-flagship = true
+flagship = false
 
 [marketplace.sandbox]
 seccomp_mode = "desktop"
 network_access = true
-# AGNOS local services + external integrations (Slack, Discord, GitHub, etc.)
-# External API access is gated per-integration by SecureYeoman's own RBAC
+# AGNOS local services + external integrations + inbound worker connections
 allowed_hosts = [
     "localhost",
     "127.0.0.1",
+    # Inbound worker nodes (LAN/VPN)
+    "*.local",
     # GitHub/GitLab APIs
     "api.github.com", "*.github.com",
     "gitlab.com", "*.gitlab.com",
@@ -77,10 +84,10 @@ allowed_hosts = [
     # Vector store backends
     "*.qdrant.io",
 ]
-data_dir = "~/.local/share/secureyeoman/"
+data_dir = "~/.local/share/secureyeoman-primary/"
 
 [[marketplace.sandbox.landlock]]
-path = "~/.local/share/secureyeoman/"
+path = "~/.local/share/secureyeoman-primary/"
 access = "rw"
 
 [[marketplace.sandbox.landlock]]
@@ -102,15 +109,14 @@ access = "ro"
 path = "/run/agnos/"
 access = "rw"
 
-# PostgreSQL data (embedded or sidecar)
+# PostgreSQL data directory
 [[marketplace.sandbox.landlock]]
-path = "~/.local/share/secureyeoman/pgdata/"
+path = "~/.local/share/secureyeoman-primary/pgdata/"
 access = "rw"
 
 [marketplace.services]
-# SecureYeoman exposes: core API (18789), dashboard (3000), MCP service (3001)
-ports = [18789, 3000, 3001]
-# Uses AGNOS LLM Gateway (hoosh) and Agent Runtime (daimon)
+# Primary server: core API (18789), dashboard (3000), MCP gateway (3001), worker ingress (18790)
+ports = [18789, 18790, 3000, 3001]
 depends_on = ["llm-gateway", "agent-runtime"]
 
 [marketplace.wayland]
@@ -138,56 +144,49 @@ hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
 
 install = """
 # Install the single binary
-mkdir -p $PKG/usr/lib/secureyeoman/bin
-cp dist/secureyeoman-linux-x64 $PKG/usr/lib/secureyeoman/bin/secureyeoman
-chmod +x $PKG/usr/lib/secureyeoman/bin/secureyeoman
+mkdir -p $PKG/usr/lib/secureyeoman-primary/bin
+cp dist/secureyeoman-linux-x64 $PKG/usr/lib/secureyeoman-primary/bin/secureyeoman-primary
+chmod +x $PKG/usr/lib/secureyeoman-primary/bin/secureyeoman-primary
 
 # Install default configuration
-mkdir -p $PKG/etc/secureyeoman
-cp .env.example $PKG/etc/secureyeoman/env.defaults
+mkdir -p $PKG/etc/secureyeoman-primary
+cp .env.example $PKG/etc/secureyeoman-primary/env.defaults
 
 # Symlink into PATH
 mkdir -p $PKG/usr/bin
-ln -sf /usr/lib/secureyeoman/bin/secureyeoman $PKG/usr/bin/secureyeoman
+ln -sf /usr/lib/secureyeoman-primary/bin/secureyeoman-primary $PKG/usr/bin/secureyeoman-primary
 
-# Install app icons (hicolor theme)
-for size in 64 128 256 512; do
-    mkdir -p $PKG/usr/share/icons/hicolor/${size}x${size}/apps
-    cp assets/secureyeoman-${size}.png $PKG/usr/share/icons/hicolor/${size}x${size}/apps/secureyeoman.png
-done
-mkdir -p $PKG/usr/share/icons/hicolor/scalable/apps
-cp assets/secureyeoman.svg $PKG/usr/share/icons/hicolor/scalable/apps/secureyeoman.svg
-
-# Desktop entry for aethersafha (opens dashboard)
+# Desktop entry for aethersafha
 mkdir -p $PKG/usr/share/applications
-cat > $PKG/usr/share/applications/secureyeoman.desktop << 'EOF'
+cat > $PKG/usr/share/applications/secureyeoman-primary.desktop << 'EOF'
 [Desktop Entry]
-Name=SecureYeoman
-Comment=Sovereign AI agent platform
+Name=SecureYeoman Primary
+Comment=Sovereign AI agent platform — primary server mode
 GenericName=AI Platform
-Exec=secureyeoman --serve
+Exec=secureyeoman-primary --serve
 Icon=secureyeoman
 Terminal=false
 Type=Application
 Categories=Development;ArtificialIntelligence;
 StartupNotify=true
-StartupWMClass=secureyeoman
+StartupWMClass=secureyeoman-primary
 EOF
 
-# Systemd service unit for headless/server mode
+# Systemd service unit for primary server mode
 mkdir -p $PKG/usr/lib/systemd/user
-cat > $PKG/usr/lib/systemd/user/secureyeoman.service << 'EOF'
+cat > $PKG/usr/lib/systemd/user/secureyeoman-primary.service << 'EOF'
 [Unit]
-Description=SecureYeoman AI Agent Platform
-After=network.target agnos-llm-gateway.service agnos-agent-runtime.service
+Description=SecureYeoman AI Agent Platform — Primary Server
+After=network.target agnos-llm-gateway.service agnos-agent-runtime.service postgresql.service
 Wants=agnos-llm-gateway.service agnos-agent-runtime.service
 
 [Service]
 Type=simple
-ExecStart=/usr/lib/secureyeoman/bin/secureyeoman --serve
+ExecStart=/usr/lib/secureyeoman-primary/bin/secureyeoman-primary --serve
 Environment=AGNOS_GATEWAY_URL=http://127.0.0.1:8088
 Environment=AGNOS_RUNTIME_URL=http://127.0.0.1:8090
-Environment=SECUREYEOMAN_DATA_DIR=%h/.local/share/secureyeoman
+Environment=SECUREYEOMAN_DATA_DIR=%h/.local/share/secureyeoman-primary
+Environment=SY_ROLE=primary
 Restart=on-failure
 RestartSec=5
 

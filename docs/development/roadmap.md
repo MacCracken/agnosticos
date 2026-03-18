@@ -238,6 +238,8 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 | 5 | Older desktop w/ touchscreen (~2014) | x86_64 | Desktop | Not started | Touch input + Wayland validation |
 | 6 | AWS DeepLens | x86_64 | Edge | Ready | Intel Atom x5-Z8350, 8GB RAM |
 | 7 | ARM64 SBC (QEMU) | aarch64 | Edge | Not started | QEMU aarch64 virt machine validation |
+| 8 | ESP32-S3 (MCU) | xtensa | Edge/IoT | Planned | MQTT agent, sensor telemetry, TinyML. Recipe: `recipes/edge/esp32-agent.toml` |
+| 9 | ESP32-C3 (MCU) | riscv32 | Edge/IoT | Planned | RISC-V core, lowest power, WiFi + Thread/Zigbee |
 
 ---
 
@@ -256,10 +258,10 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 | 9 | Tazama | 7 tazama_* | 7 | Yes | Not started | Video editor |
 | 10 | Rasa | 9 rasa_* | 9 | Yes | Not started | Image editor |
 | 11 | Mneme | 7 mneme_* | 7 | Yes | Not started | Knowledge base |
-| 12 | Nazar | 5 nazar_* | — | Scaffolded | Not started | System monitor |
+| 12 | Nazar | 5 nazar_* | — | Yes | Not started | System monitor |
 | 13 | Selah | 5 selah_* | — | Yes (MVP) | Not started | Screenshot, no AI integration yet |
-| 14 | Abaco | 5 abaco_* | — | Scaffolded | Not started | Calculator |
-| 15 | Rahd | 5 rahd_* | — | Scaffolded | Not started | Calendar |
+| 14 | Abaco | 5 abaco_* | — | Yes | Not started | Calculator |
+| 15 | Rahd | 5 rahd_* | — | Yes | Not started | Calendar |
 | 16 | Tarang | 8 tarang_* | 8 | Yes | Not started | Media framework (73 tests) |
 | 17 | Jalwa | 8 jalwa_* | 8 | Yes | Not started | Media player (110+ tests), built on tarang. Priority 1 in os_long_term |
 
@@ -269,34 +271,17 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 
 *Cross-project integration items for the AGNOS ecosystem.*
 
-### Agnostic Integration
+### Agnostic Integration — Complete
 
-*Data APIs complete for all items. HUD rendering (#1/#2/#5) is aethersafha desktop work.*
-
-| # | Item | Effort | Notes |
-|---|------|--------|-------|
-| 1 | Agnostic crew status in AGNOS HUD | Medium | Data ready via `agnostic_list_crews`/`agnostic_crew_status`. Needs aethersafha HUD widget |
-| 2 | Agent HUD multi-domain UI | Medium | Data ready via agent `domain` metadata. Needs aethersafha HUD filter/tabs |
-| 3 | GPU status in aethersafha HUD | Medium | Data ready via `agnos_gpu_status`/`agnos_gpu_probe`. Needs aethersafha VRAM bars widget |
+*All 13 items resolved. Data APIs + aethersafha HUD widgets all implemented.*
 
 ---
 
 ## Engineering Backlog
 
-### Active — Module Refactoring
+### Module Refactoring — Complete
 
-Large single-file modules (>1500 lines) that should be split into module directories for maintainability. Prioritized by size and complexity.
-
-| # | Priority | Module | Lines | Proposed Split | Effort |
-|---|----------|--------|-------|----------------|--------|
-| R1 | Low | `ark.rs` | 2873 | `ark/` → resolver, installer, manifest, signing, tests | Medium |
-| R2 | Low | `service_manager.rs` | 2630 | `service_manager/` → lifecycle, systemd, health, tests | Small |
-| R3 | Low | `federation.rs` | 2565 | `federation/` → discovery, sync, vector_store, gossip, tests | Medium |
-| R4 | Low | `sigil.rs` | 2123 | `sigil/` → verify, chain, policy, tests | Small |
-| R5 | Low | `edge.rs` | 2075 | `edge/` → fleet, ota, telemetry, routing, tests | Small |
-| R6 | Low | `safety.rs` | 2062 | `safety/` → injection, guardrails, policy, tests | Small |
-
-**Pattern to follow**: `sandbox_mod/`, `orchestrator/`, `argonaut/`, `agnova/`, `network_tools/` (all completed in 2026.3.17) — re-exports in `mod.rs`, old files deleted. Note: avoid naming submodules `core` (conflicts with Rust's `core` crate in rustfmt).
+All 10 large modules (>2000 lines) have been split into focused module directories. Pattern: `mod.rs` re-exports, old monolith deleted, `#[cfg(test)] mod tests;` in dedicated file. Avoid naming submodules `core` (rustfmt conflict).
 
 ### Active — Build & Distribution
 
@@ -306,6 +291,16 @@ Large single-file modules (>1500 lines) that should be split into module directo
 | B2 | High | RPi4 hardware boot test | Firmware blobs added, needs physical validation |
 | B3 | Medium | SHA256 checksums for all recipes | Most recipes have empty `sha256 = ""` — fill from upstream |
 | B4 | Medium | Debian removal from installer scripts | `build-installer.sh` / `build-sdcard.sh` still fall back to debootstrap when no base rootfs |
+| B5 | Medium | ark-community repo infrastructure | Git-based community recipe index (like AUR). `ark community` subcommand. Recipe: `recipes/base/ark-community.toml`. `Community` variant added to `PackageSource` |
+
+### Active — ESP32 Edge/IoT
+
+| # | Priority | Item | Notes |
+|---|----------|------|-------|
+| E1 | Medium | ESP32 agent scaffold | Rust agent binary via esp-rs/esp-hal. MQTT to daimon. WiFi provisioning. Recipe: `recipes/edge/esp32-agent.toml` |
+| E2 | Medium | MQTT bridge in daimon | Accept MQTT heartbeats from MCUs alongside HTTP. Translate to existing edge fleet model |
+| E3 | Low | ESP32-CAM integration | Snap images on motion → daimon screen capture API |
+| E4 | Low | TinyML on ESP32-S3 | Keyword spotting / gesture recognition via vector extensions. Report inferences to daimon |
 
 ### Active — Sandbox & Security
 
@@ -313,17 +308,61 @@ Large single-file modules (>1500 lines) that should be split into module directo
 |---|----------|------|-------|
 | S1 | Medium | gVisor/Firecracker runtime execution | Config generation + OCI/VM lifecycle done, needs actual process spawning via `tokio::process::Command` |
 | S2 | Medium | SGX/SEV hardware validation | Backends implemented, need hardware to test |
-| S3 | Low | Offender tracker → sigil trust integration | `OffenderTracker` trust scores should feed into sigil's trust chain |
+| S3 | **High** | **sy-agnos sandbox image (Phase 1)** | Hardened AGNOS OCI image for SY sandbox use. See below |
+| S4 | Medium | sy-agnos dm-verity (Phase 2) | Enable dm-verity verified rootfs on sy-agnos image |
+| S5 | Low | sy-agnos TPM measured boot (Phase 3) | TPM 2.0 attestation for sy-agnos — requires tpm2-tools on host |
+
+---
+
+## sy-agnos — OS-Level Sandbox for SecureYeoman
+
+**Priority**: High — Cross-project. See [SY ADR 044](https://github.com/MacCracken/secureyeoman/blob/main/docs/adr/044-sy-agnos-sandbox.md).
+
+**Goal**: Build a purpose-built, hardened AGNOS image (`sy-agnos`) that SecureYeoman launches as an execution sandbox. The OS IS the sandbox — immutable rootfs, no shell, baked seccomp, OS-level nftables. Scores 80-88 on SY's sandbox strength scale (between Firecracker 90 and gVisor 70). AGNOS owns the image build; SY owns the driver.
+
+### Phase 1 — sy-agnos Minimal (SY strength 80)
+
+**New recipes** (`recipes/sandbox/`):
+
+- [ ] **`sy-agnos-rootfs.toml`** — Multi-stage image build: edge base → strip (remove /bin/sh, /bin/bash, all package managers, SSH, debug tools, man pages, docs) → install Node.js runtime + SY agent binary → bake seccomp BPF filter → bake nftables default-deny rules → squashfs rootfs
+- [ ] **`sy-agnos-init.toml`** — Minimal argonaut init config: 3-process tree only (argonaut → sy-agent → health-check). No TTY, no login prompt, no getty. Agent starts automatically on boot
+- [ ] **`sy-agnos-nftables.toml`** — Boot-baked nftables ruleset: default-deny egress, configurable allowlist via `/etc/sy-agnos/network-policy.conf`, DNS restricted to specified resolvers, no listening sockets except health endpoint (port 8099)
+
+**Build infrastructure:**
+
+- [ ] **`scripts/build-sy-agnos.sh`** — Builds OCI image from recipes. Inputs: SY agent binary path, network policy (optional). Outputs: `sy-agnos.tar` OCI image
+- [ ] **`/etc/sy-agnos-release`** — JSON metadata: `{ "version": "2026.X.X", "hardening": "minimal", "dmverity": false, "tpm_measured": false, "strength": 80 }`
+- [ ] **CI workflow** — `build-sy-agnos.yml`: builds image, publishes to GHCR (`ghcr.io/maccracken/sy-agnos:latest`), signs with cosign
+- [ ] **Dockerfile.sy-agnos** — Alternative Docker-based build path for users without the full AGNOS build system
+
+**Reuses existing components:**
+- nftables (`recipes/edge/nftables.toml`)
+- libseccomp (`recipes/base/libseccomp.toml`)
+- glibc, openssl, ca-certificates (base recipes)
+- argonaut init (`agent-runtime/src/argonaut.rs`)
+- read_only_rootfs (edge profile pattern)
+
+### Phase 2 — dm-verity (SY strength 85)
+
+- [ ] **dm-verity rootfs** — Enable `agnos-sys/src/dmverity.rs` on sy-agnos image build. Hash tree generated at build time, verified at boot
+- [ ] **Tamper detection** — If rootfs verification fails, refuse to start agent process (exit code 78 — EX_CONFIG)
+- [ ] **Update `/etc/sy-agnos-release`** — `"dmverity": true, "strength": 85`
+
+### Phase 3 — Measured Boot + TPM (SY strength 88)
+
+- [ ] **TPM 2.0 boot measurement** — Extend PCRs at each boot stage using tpm2-tools (already in `recipes/edge/tpm2-tools.toml`)
+- [ ] **Attestation endpoint** — `/v1/attestation` returns signed boot measurements (PCR values + event log). SY verifies before dispatching tasks
+- [ ] **Update `/etc/sy-agnos-release`** — `"tpm_measured": true, "strength": 88`
 
 ### Resolved (2026.3.17)
 
 | Category | Items | Summary |
 |----------|-------|---------|
-| Module splits (4) | orchestrator, argonaut, agnova, network_tools | 14,133 lines → 29 focused files. sandbox_mod `core.rs` → `sandbox_core.rs` (rustfmt fix) |
+| Module splits (10) | orchestrator, argonaut, agnova, network_tools, ark, service_manager, federation, sigil, edge, safety | ~25,000 lines → focused module directories. sandbox_mod `core.rs` → `sandbox_core.rs` (rustfmt fix). All >2000-line monoliths eliminated |
 | GPU awareness (G1–G4) | Scheduling, hoosh routing, edge fleet, consumer apps | `TaskRequirements` GPU fields, `score_gpu()`, `AcceleratorRegistry`, privacy routing, VRAM budgets, auto-quantization, edge VRAM/CC filtering, fleet model registry, `tarang_hw_accel`, `synapse_finetune` GPU hints |
 | SY integration (4) | GPU telemetry, local models, Firecracker passthrough, fleet heartbeat | `agnos_gpu_status`, `agnos_local_models` MCP tools, `device_passthrough`, heartbeat GPU metrics + dashboard aggregation |
-| Sandbox wiring (S1–S2) | Credential proxy, externalization gate | `CredentialProxyManager` in agent lifecycle, `ExternalizationGate` in sandbox with 11 patterns |
-| Agnostic (10) | Crew mgmt, crew GPU, RPC registration, GPU probe, GPU intents, fleet GPU, GPU placement, GPU budget, event forwarding | `list_crews`, `cancel_crew`, `run_crew` GPU fields, `agnos_gpu_probe`, `agnos_gpu_recommend`, `agnostic_crew_gpu` MCP tools, agnoshi GPU intents, `GET /v1/edge/gpu`, RPC auto-registration, GPU event channel. 144 total MCP tools |
+| Sandbox wiring (S1–S3) | Credential proxy, externalization gate, offender→sigil | `CredentialProxyManager` in agent lifecycle, `ExternalizationGate` in sandbox with 11 patterns, `OffenderTracker` feeds trust demotions to `SigilVerifier` revocation list |
+| Agnostic (13) | Crew mgmt, crew GPU, RPC, GPU probe/intents/placement/budget, fleet GPU, event forwarding, 3 HUD widgets | All data APIs + `CrewStatusWidget`, `DomainFilterWidget`, `GpuStatusWidget` in aethersafha `hud/` module. 144 MCP tools |
 | Toolchain | Go 1.24.1 → 1.26.1 | Unblocked cliphist, Kitty, modern Go modules |
 
 ---

@@ -8,6 +8,7 @@ mod ai_features;
 mod apps;
 mod compositor;
 pub mod gestures;
+pub mod hud;
 pub mod plugin_host;
 pub mod renderer;
 pub mod screen_capture;
@@ -81,4 +82,10 @@ pub use screen_capture::{
 pub use screen_recording::{
     RecordedFrame, RecordingConfig, RecordingError, RecordingId, RecordingSession, RecordingState,
     ScreenRecordingManager,
+};
+
+pub use hud::{
+    crew_status::{CrewEntry, CrewRunStatus, CrewStatusRenderData, CrewStatusWidget},
+    domain_filter::{DomainAgentEntry, DomainFilterRenderData, DomainFilterWidget, DomainGroup},
+    gpu_status::{GpuDeviceState, GpuStatusRenderData, GpuStatusWidget, MetricBand},
 };

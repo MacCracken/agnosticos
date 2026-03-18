@@ -1,0 +1,72 @@
+# esp32-agent — AGNOS edge agent for ESP32 microcontrollers
+#
+# Lightweight agent binary for ESP32-series MCUs (ESP32, ESP32-S3, ESP32-C3).
+# Communicates with daimon via MQTT over WiFi. Reports sensor telemetry,
+# receives commands, and can run simple inference on ESP32-S3 (with PSRAM).
+#
+# Status: Planned — 2026.3.18. Architecture design phase.
+# Target: ESP-IDF 5.x + Rust (esp-rs/esp-hal)
+#
+# Hardware support:
+#   ESP32     — WiFi + BT, 520KB SRAM, no AI acceleration
+#   ESP32-S3  — WiFi + BT, 512KB SRAM + 8MB PSRAM, vector extensions (for TinyML)
+#   ESP32-C3  — WiFi + BT, 400KB SRAM, RISC-V core, lowest power
+#   ESP32-C6  — WiFi 6 + BT 5.3 + Thread/Zigbee, 512KB SRAM
+#
+# Communication:
+#   - MQTT to daimon (lightweight, NAT-friendly, works behind firewalls)
+#   - mDNS discovery on local network
+#   - OTA updates via HTTPS from ark build server
+#
+# Capabilities reported in heartbeat:
+#   - arch: "xtensa" (ESP32/S3) or "riscv32" (C3/C6)
+#   - has_gpu: false (ESP32-S3 vector extensions reported as tag "vector-ext")
+#   - memory_mb: 0.5–8 (depending on PSRAM)
+#   - sensors: temperature, humidity, motion, camera (ESP32-CAM)
+#   - tags: ["esp32", "mqtt", "sensor", "battery"] etc.
+#
+# Use cases:
+#   - Environmental monitoring (temp/humidity → daimon telemetry)
+#   - Motion detection (PIR → daimon anomaly alerts)
+#   - Camera snapshots (ESP32-CAM → daimon screen capture API)
+#   - Smart home control (relay/LED → daimon agent commands)
+#   - TinyML inference (ESP32-S3 → keyword spotting, gesture recognition)
+
+[package]
+name = "esp32-agent"
+version = "2026.3.18"
+description = "AGNOS edge agent for ESP32 microcontrollers — MQTT-based sensor telemetry and control"
+license = "GPL-3.0"
+groups = ["edge", "iot", "microcontroller"]
+release = 1
+arch = "xtensa"
+
+[source]
+local = true
+build_dir = "."
+# Cross-compiled from host via esp-rs toolchain
+# No GitHub release yet — built from source
+
+[depends]
+runtime = []
+build = [
+    "rust",
+    "esp-idf",
+]
+
+[build]
+# Requires esp-rs toolchain: rustup target add xtensa-esp32s3-espidf
+configure = "source $IDF_PATH/export.sh"
+make = "cargo build --release --target xtensa-esp32s3-espidf"
+check = ""
+
+install = """
+mkdir -p $PKG/usr/lib/agnos/esp32
+cp target/xtensa-esp32s3-espidf/release/esp32-agent $PKG/usr/lib/agnos/esp32/
+# Also provide the .bin for flashing
+cp target/xtensa-esp32s3-espidf/release/esp32-agent.bin $PKG/usr/lib/agnos/esp32/ 2>/dev/null || true
+"""
+
+[security]
+# MCU binary — standard hardening flags don't apply to bare-metal
+hardening = []

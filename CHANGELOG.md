@@ -19,6 +19,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `agnostic_list_crews` MCP tool + `AgnosticListCrews` agnoshi intent — `GET /crews` with status filter and pagination
   - `agnostic_cancel_crew` MCP tool + `AgnosticCancelCrew` agnoshi intent — `POST /crews/{crew_id}/cancel`
 - **MCP tools**: 136 → 144 built-in (14 agnos + 24 agnostic + 9 tarang + others)
+- **Aethersafha HUD widgets** (3):
+  - `CrewStatusWidget` — polls `agnostic_list_crews` MCP tool, renders crew list with status/progress
+  - `DomainFilterWidget` — groups agents by domain from `GET /v1/agents`, supports active filter/tabs
+  - `GpuStatusWidget` — polls `agnos_gpu_status`, renders VRAM bars, utilization %, temperature with severity bands
+- **Recipe updates**: Agnostic `2026.3.17-2`, Nazar `2026.3.17` (first release), SecureYeoman `2026.3.17`/`2026.3.18`, SecureYeoman Lite `2026.3.17`/`2026.3.18`, Selah `2026.3.17` (MVP), Abaco `2026.3.18` (first release), Rahd `2026.3.18` (first release), Synapse `2026.3.18-1`, Tazama `2026.3.18`, Mneme `2026.3.18`
+- **New SY variant recipes**: `secureyeoman-sqlite.toml` (SQLite-only lightweight), `secureyeoman-agent.toml` (headless worker), `secureyeoman-primary.toml` (full coordinator server)
+- **ark-community** — Community package repository (like AUR for AGNOS). Recipe: `recipes/base/ark-community.toml`. `Community` variant added to `PackageSource` in nous.rs. Git-based recipe index, local takumi builds, GPG-signed submissions, restricted sandbox by default
+- **ESP32 edge agent** — Planned recipe for ESP32 microcontrollers (`recipes/edge/esp32-agent.toml`). MQTT-based sensor telemetry, OTA updates, ESP32-S3 TinyML support. Targets xtensa + riscv32 architectures
 - **Agnoshi intents**: +2 agnostic crew management intents (list crews, cancel crew)
 - **12 new GPU scoring tests** covering: no GPUs, sufficient VRAM, insufficient VRAM, compute capability filtering, weight rebalancing, `score_gpu()` edge cases
 - **Selah recipe** updated to v2026.3.17 MVP release (screenshot & annotation, no AI integration yet)
@@ -56,6 +64,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Argonaut split** — `argonaut.rs` (3873 lines) → `argonaut/` directory (7 files: mod, types, boot, services, runlevels, edge_boot, tests). 148 tests
 - **Agnova split** — `agnova.rs` (3603 lines) → `agnova/` directory (7 files: mod, types, helpers, validation, partitioning, rootfs, tests). 104 tests
 - **Network tools split** — `network_tools.rs` (3398 lines) → `network_tools/` directory (8 files: mod, types, runner, nmap, dns, capture, scanners, parse, tests). 128 tests
+- **Ark split** — `ark.rs` (2873 lines) → `ark/` directory (3 files: mod, types, tests). 49 tests
+- **Service manager split** — `service_manager.rs` (2630 lines) → `service_manager/` directory (5 files: mod, types, lifecycle, health, tests)
+- **Federation split** — `federation.rs` (2565 lines) → `federation/` directory (7 files: mod, types, discovery, sync, vector_store, gossip, tests). 73 tests
+- **Sigil split** — `sigil.rs` (2123 lines) → `sigil/` directory (6 files: mod, types, policy, verify, chain, tests). 46 tests
+- **Edge split** — `edge.rs` (2075 lines) → `edge/` directory (6 files: mod, types, fleet, ota, telemetry, routing, tests). 210 tests
+- **Safety split** — `safety.rs` (2062 lines) → `safety/` directory (5 files: mod, types, injection, guardrails, policy, tests). 78 tests
+- **S3: Offender→sigil trust integration** — `OffenderTracker` feeds trust demotions to `SigilVerifier` revocation list when agent score drops below threshold
 - **sandbox_mod/core.rs renamed** to `sandbox_core.rs` — fixes `cargo fmt` CI failure caused by `core` shadowing Rust's built-in `core` crate in rustfmt's module resolver
 - **Branding**: "Agnostic Agentics Systems" → "Agnostic Agent System"
 - **Agnostic recipe**: version `2026.3.17` → `2026.3.17-1`, status updated to 23 MCP tools / 14 agnoshi intents

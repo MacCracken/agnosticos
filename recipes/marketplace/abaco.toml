@@ -2,12 +2,12 @@
 # Natural language math, unit conversion, currency conversion.
 # Italian/Spanish: abacus.
 #
-# Status: Development — 2026.3.16 (linux amd64 + arm64).
+# Status: Released — 2026.3.18 (linux amd64 + arm64).
 # Source: https://github.com/MacCracken/abaco
 
 [package]
 name = "abaco"
-version = "2026.3.16"
+version = "2026.3.18"
 description = "Abaco — AI-native calculator & unit converter for AGNOS"
 license = "GPL-3.0"
 groups = ["desktop", "tools"]

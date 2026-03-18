@@ -1,27 +1,28 @@
-# SecureYeoman — Sovereign AI agent platform for AGNOS marketplace
-# Multi-agent orchestration with 279 MCP tools, 31 platform integrations,
-# enterprise security, and real-time dashboard. TypeScript/Bun + React.
+# SecureYeoman SQLite — Lightweight single-user variant for AGNOS marketplace
+# Identical feature set to the full platform but uses SQLite instead of
+# PostgreSQL — no sidecar database process, minimal footprint, zero-config
+# persistent storage. Ideal for personal workstations and single-developer use.
 #
-# Status: Released — 2026.3.18. Feature-complete flagship AI agent platform.
-# Already uses ghcr.io/maccracken/agnosticos:latest as Docker base.
+# Same repo as SecureYeoman, different build target (SY_DB_BACKEND=sqlite).
+#
+# Status: Released — 2026.3.18 (linux-x64 + linux-arm64)
+# Source: https://github.com/MacCracken/SecureYeoman
 
 [package]
-name = "secureyeoman"
+name = "secureyeoman-sqlite"
 version = "2026.3.18"
-description = "SecureYeoman — Sovereign AI agent platform with multi-agent orchestration"
+description = "SecureYeoman SQLite — Lightweight single-user AI agent platform"
 license = "AGPL-3.0-only"
 groups = ["server", "ai", "agents"]
 release = 1
 arch = "x86_64"
 
 [source]
-# Single binary compiled via Bun, built by GitHub Actions CI.
+# Bun-compiled standalone binary from GitHub Actions CI (sqlite target).
 # Release: https://github.com/MacCracken/SecureYeoman/releases
-# Asset: secureyeoman-linux-x64 (~128 MB, signed with .sig + .cert)
-local = true
-build_dir = "dist"
+# Asset: secureyeoman-sqlite-linux-x64
 github_release = "MacCracken/SecureYeoman"
-release_asset = "secureyeoman-linux-x64"
+release_asset = "secureyeoman-sqlite-linux-x64"
 
 [depends]
 runtime = [
@@ -34,6 +35,7 @@ build = [
     "bun",
     "nodejs",
     "openssl-dev",
+    "sqlite-dev",
     "zlib-dev",
 ]
 
@@ -41,9 +43,8 @@ build = [
 category = "ai-platform"
 runtime = "native-binary"
 publisher = "SecureYeoman"
-tags = ["ai", "agents", "mcp", "orchestration", "security", "llm", "automation", "enterprise"]
+tags = ["ai", "agents", "mcp", "orchestration", "security", "llm", "automation", "sqlite", "lightweight"]
 min_agnos_version = "2026.3.11"
-flagship = true
 
 [marketplace.sandbox]
 seccomp_mode = "desktop"
@@ -77,10 +78,10 @@ allowed_hosts = [
     # Vector store backends
     "*.qdrant.io",
 ]
-data_dir = "~/.local/share/secureyeoman/"
+data_dir = "~/.local/share/secureyeoman-sqlite/"
 
 [[marketplace.sandbox.landlock]]
-path = "~/.local/share/secureyeoman/"
+path = "~/.local/share/secureyeoman-sqlite/"
 access = "rw"
 
 [[marketplace.sandbox.landlock]]
@@ -102,13 +103,8 @@ access = "ro"
 path = "/run/agnos/"
 access = "rw"
 
-# PostgreSQL data (embedded or sidecar)
-[[marketplace.sandbox.landlock]]
-path = "~/.local/share/secureyeoman/pgdata/"
-access = "rw"
-
 [marketplace.services]
-# SecureYeoman exposes: core API (18789), dashboard (3000), MCP service (3001)
+# SecureYeoman SQLite exposes: core API (18789), dashboard (3000), MCP service (3001)
 ports = [18789, 3000, 3001]
 # Uses AGNOS LLM Gateway (hoosh) and Agent Runtime (daimon)
 depends_on = ["llm-gateway", "agent-runtime"]
@@ -123,14 +119,14 @@ npm install --frozen-lockfile
 """
 configure = ""
 make = """
-# Build all packages
-npm run build
+# Build all packages with SQLite backend
+SY_DB_BACKEND=sqlite npm run build
 
 # Compile single binary (Bun standalone)
-npm run build:binary
+SY_DB_BACKEND=sqlite npm run build:binary
 """
 check = """
-npm run test
+SY_DB_BACKEND=sqlite npm run test
 """
 
 [security]
@@ -138,56 +134,49 @@ hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
 
 install = """
 # Install the single binary
-mkdir -p $PKG/usr/lib/secureyeoman/bin
-cp dist/secureyeoman-linux-x64 $PKG/usr/lib/secureyeoman/bin/secureyeoman
-chmod +x $PKG/usr/lib/secureyeoman/bin/secureyeoman
+mkdir -p $PKG/usr/lib/secureyeoman-sqlite/bin
+cp dist/secureyeoman-sqlite-linux-x64 $PKG/usr/lib/secureyeoman-sqlite/bin/secureyeoman-sqlite
+chmod +x $PKG/usr/lib/secureyeoman-sqlite/bin/secureyeoman-sqlite
 
 # Install default configuration
-mkdir -p $PKG/etc/secureyeoman
-cp .env.example $PKG/etc/secureyeoman/env.defaults
+mkdir -p $PKG/etc/secureyeoman-sqlite
+cp .env.example $PKG/etc/secureyeoman-sqlite/env.defaults
 
 # Symlink into PATH
 mkdir -p $PKG/usr/bin
-ln -sf /usr/lib/secureyeoman/bin/secureyeoman $PKG/usr/bin/secureyeoman
-
-# Install app icons (hicolor theme)
-for size in 64 128 256 512; do
-    mkdir -p $PKG/usr/share/icons/hicolor/${size}x${size}/apps
-    cp assets/secureyeoman-${size}.png $PKG/usr/share/icons/hicolor/${size}x${size}/apps/secureyeoman.png
-done
-mkdir -p $PKG/usr/share/icons/hicolor/scalable/apps
-cp assets/secureyeoman.svg $PKG/usr/share/icons/hicolor/scalable/apps/secureyeoman.svg
+ln -sf /usr/lib/secureyeoman-sqlite/bin/secureyeoman-sqlite $PKG/usr/bin/secureyeoman-sqlite
 
 # Desktop entry for aethersafha (opens dashboard)
 mkdir -p $PKG/usr/share/applications
-cat > $PKG/usr/share/applications/secureyeoman.desktop << 'EOF'
+cat > $PKG/usr/share/applications/secureyeoman-sqlite.desktop << 'EOF'
 [Desktop Entry]
-Name=SecureYeoman
-Comment=Sovereign AI agent platform
+Name=SecureYeoman (SQLite)
+Comment=Sovereign AI agent platform — lightweight SQLite edition
 GenericName=AI Platform
-Exec=secureyeoman --serve
+Exec=secureyeoman-sqlite --serve
 Icon=secureyeoman
 Terminal=false
 Type=Application
 Categories=Development;ArtificialIntelligence;
 StartupNotify=true
-StartupWMClass=secureyeoman
+StartupWMClass=secureyeoman-sqlite
 EOF
 
 # Systemd service unit for headless/server mode
 mkdir -p $PKG/usr/lib/systemd/user
-cat > $PKG/usr/lib/systemd/user/secureyeoman.service << 'EOF'
+cat > $PKG/usr/lib/systemd/user/secureyeoman-sqlite.service << 'EOF'
 [Unit]
-Description=SecureYeoman AI Agent Platform
+Description=SecureYeoman AI Agent Platform (SQLite)
 After=network.target agnos-llm-gateway.service agnos-agent-runtime.service
 Wants=agnos-llm-gateway.service agnos-agent-runtime.service
 
 [Service]
 Type=simple
-ExecStart=/usr/lib/secureyeoman/bin/secureyeoman --serve
+ExecStart=/usr/lib/secureyeoman-sqlite/bin/secureyeoman-sqlite --serve
 Environment=AGNOS_GATEWAY_URL=http://127.0.0.1:8088
 Environment=AGNOS_RUNTIME_URL=http://127.0.0.1:8090
-Environment=SECUREYEOMAN_DATA_DIR=%h/.local/share/secureyeoman
+Environment=SECUREYEOMAN_DATA_DIR=%h/.local/share/secureyeoman-sqlite
+Environment=SY_DB_BACKEND=sqlite
 Restart=on-failure
 RestartSec=5
 
