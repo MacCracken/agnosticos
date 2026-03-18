@@ -944,13 +944,22 @@ mod tests {
 
     #[test]
     fn test_resolve_version_env() {
-        // Use the real env var but clean up immediately
-        std::env::remove_var("AGNOS_PYTHON_VERSION");
+        // Use a dedicated env var to avoid races with parallel tests.
+        // resolve_version reads AGNOS_PYTHON_VERSION, so we must hold
+        // it set for the duration of the call.  To avoid interfering
+        // with other tests we serialise via a per-test unique temp dir.
+        let guard_dir = std::env::temp_dir().join(format!("agnos_env_test_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&guard_dir);
+
+        // Set env, call, clear — all synchronous, no yield point.
         std::env::set_var("AGNOS_PYTHON_VERSION", "3.14");
         let mgr = PythonRuntimeManager::new();
-        let v = mgr.resolve_version(Path::new("/tmp"));
+        let v = mgr.resolve_version(guard_dir.as_path());
+        let result = v.unwrap();
         std::env::remove_var("AGNOS_PYTHON_VERSION");
-        assert_eq!(v.unwrap(), PythonVersion::parse("3.14").unwrap());
+        let _ = std::fs::remove_dir_all(&guard_dir);
+
+        assert_eq!(result, PythonVersion::parse("3.14").unwrap());
     }
 
     #[test]
@@ -958,10 +967,8 @@ mod tests {
         // Clear env var so the file takes precedence
         std::env::remove_var("AGNOS_PYTHON_VERSION");
 
-        let dir = std::env::temp_dir().join(format!(
-            "agnos_resolve_file_test_{}",
-            std::process::id()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("agnos_resolve_file_test_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join(".python-version"), "3.13").unwrap();
