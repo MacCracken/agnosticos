@@ -1614,7 +1614,7 @@ mod tests {
             WindowState::Floating,
             WindowState::Normal,
         ] {
-            compositor.set_window_state(id, state.clone()).unwrap();
+            compositor.set_window_state(id, state).unwrap();
             let windows = compositor.get_windows();
             assert_eq!(windows[0].state, state);
         }
@@ -1745,7 +1745,7 @@ mod tests {
             WindowState::Normal,
         ];
         for state in transitions {
-            compositor.set_window_state(id, state.clone()).unwrap();
+            compositor.set_window_state(id, state).unwrap();
             let w = compositor
                 .get_windows()
                 .into_iter()

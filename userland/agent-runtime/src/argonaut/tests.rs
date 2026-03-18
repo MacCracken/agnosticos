@@ -7,10 +7,10 @@ use chrono::Utc;
 
 use super::edge_boot::{configure_readonly_rootfs, verify_rootfs_integrity};
 use super::types::{
-    ArgonautConfig, BootMode, BootStage, BootStepStatus, CrashAction,
-    EdgeBootConfig, EmergencyShellConfig, ExitStatus, HealthCheckType, ManagedService,
-    RestartPolicy, Runlevel, SafeCommand, ServiceDefinition, ServiceEventType, ServiceState,
-    ServiceTarget, ShutdownAction, ShutdownStepStatus, ShutdownType,
+    ArgonautConfig, BootMode, BootStage, BootStepStatus, CrashAction, EdgeBootConfig,
+    EmergencyShellConfig, ExitStatus, HealthCheckType, ManagedService, RestartPolicy, Runlevel,
+    SafeCommand, ServiceDefinition, ServiceEventType, ServiceState, ServiceTarget, ShutdownAction,
+    ShutdownStepStatus, ShutdownType,
 };
 use super::ArgonautInit;
 

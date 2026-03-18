@@ -1467,7 +1467,7 @@ mod tests {
 
     #[test]
     fn test_noop_default() {
-        let backend = NoopBackend::default();
+        let backend = NoopBackend;
         assert!(backend.is_available());
     }
 }

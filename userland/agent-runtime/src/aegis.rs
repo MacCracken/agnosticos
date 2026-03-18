@@ -1416,7 +1416,7 @@ mod tests {
 
     #[test]
     fn scan_type_variants() {
-        let types = vec![
+        let types = [
             ScanType::OnInstall,
             ScanType::OnExecute,
             ScanType::Periodic,
@@ -1428,7 +1428,7 @@ mod tests {
 
     #[test]
     fn quarantine_action_variants() {
-        let actions = vec![
+        let actions = [
             QuarantineAction::Suspend,
             QuarantineAction::Terminate,
             QuarantineAction::Isolate,

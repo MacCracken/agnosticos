@@ -1091,7 +1091,7 @@ mod tests {
             .clone()
             .oneshot(
                 Request::builder()
-                    .uri(&format!("/v1/edge/nodes/{}", id))
+                    .uri(format!("/v1/edge/nodes/{}", id))
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -1138,7 +1138,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(&format!("/v1/edge/nodes/{}/heartbeat", id))
+                    .uri(format!("/v1/edge/nodes/{}/heartbeat", id))
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_string(&body).unwrap()))
                     .unwrap(),
@@ -1187,7 +1187,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(&format!("/v1/edge/nodes/{}/decommission", id))
+                    .uri(format!("/v1/edge/nodes/{}/decommission", id))
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -1227,7 +1227,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(&format!("/v1/edge/nodes/{}/decommission", id))
+                    .uri(format!("/v1/edge/nodes/{}/decommission", id))
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -1240,7 +1240,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(&format!("/v1/edge/nodes/{}/decommission", id))
+                    .uri(format!("/v1/edge/nodes/{}/decommission", id))
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -1307,7 +1307,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(&format!("/v1/edge/nodes/{}/update", id))
+                    .uri(format!("/v1/edge/nodes/{}/update", id))
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_string(&body).unwrap()))
                     .unwrap(),
@@ -1332,7 +1332,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(&format!("/v1/edge/nodes/{}/update", id))
+                    .uri(format!("/v1/edge/nodes/{}/update", id))
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_string(&body).unwrap()))
                     .unwrap(),
@@ -1374,7 +1374,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(&format!("/v1/edge/nodes/{}/update", id))
+                    .uri(format!("/v1/edge/nodes/{}/update", id))
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_string(&start_body).unwrap()))
                     .unwrap(),
@@ -1389,7 +1389,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(&format!("/v1/edge/nodes/{}/update/complete", id))
+                    .uri(format!("/v1/edge/nodes/{}/update/complete", id))
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_string(&complete_body).unwrap()))
                     .unwrap(),
@@ -1414,7 +1414,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(&format!("/v1/edge/nodes/{}/update/complete", id))
+                    .uri(format!("/v1/edge/nodes/{}/update/complete", id))
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_string(&body).unwrap()))
                     .unwrap(),
@@ -1437,7 +1437,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(&format!("/v1/edge/nodes/{}/update/complete", id))
+                    .uri(format!("/v1/edge/nodes/{}/update/complete", id))
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_string(&body).unwrap()))
                     .unwrap(),
@@ -1987,7 +1987,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(&format!("/v1/edge/nodes/{}/heartbeat", id))
+                    .uri(format!("/v1/edge/nodes/{}/heartbeat", id))
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_string(&hb_body).unwrap()))
                     .unwrap(),
@@ -2036,7 +2036,7 @@ mod tests {
                 .oneshot(
                     Request::builder()
                         .method("POST")
-                        .uri(&format!("/v1/edge/nodes/{}/heartbeat", id))
+                        .uri(format!("/v1/edge/nodes/{}/heartbeat", id))
                         .header("content-type", "application/json")
                         .body(Body::from(serde_json::to_string(&hb_body).unwrap()))
                         .unwrap(),
@@ -2084,7 +2084,7 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(&format!("/v1/edge/nodes/{}/heartbeat", id))
+                    .uri(format!("/v1/edge/nodes/{}/heartbeat", id))
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_string(&body).unwrap()))
                     .unwrap(),

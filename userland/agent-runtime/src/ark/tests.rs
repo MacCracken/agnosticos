@@ -961,7 +961,7 @@ mod tests {
         };
         let json = serde_json::to_string(&result).unwrap();
         let deser: ArkResult = serde_json::from_str(&json).unwrap();
-        assert_eq!(deser.success, true);
+        assert!(deser.success);
         assert_eq!(deser.packages_affected.len(), 2);
     }
 

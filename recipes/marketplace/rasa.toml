@@ -2,12 +2,12 @@
 # Raster/vector image editing with generative AI.
 # Cargo workspace: Rust + GPU compute.
 #
-# Status: Released — 2026.3.15 (linux amd64 + arm64, SBOM + SHA256).
+# Status: Released — 2026.3.18 (linux amd64 + arm64, SBOM + SHA256).
 # Source: https://github.com/MacCracken/rasa
 
 [package]
 name = "rasa"
-version = "2026.3.15"
+version = "2026.3.18"
 description = "Rasa — AI-Native Image Editor & Design Tool"
 license = "GPL-3.0"
 groups = ["creative", "graphics"]

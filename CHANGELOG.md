@@ -47,7 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added — Package Ecosystem
 
-- **ark-community** — Community package repository (like AUR). Recipe: `recipes/base/ark-community.toml`. `Community` variant in `PackageSource`. Git-based recipe index, local takumi builds, GPG-signed, restricted sandbox
+- **bazaar** (Persian: بازار — marketplace/gathering) — Community package repository (like AUR). Recipe: `recipes/base/bazaar.toml`. `Community` variant in `PackageSource`. `ark bazaar` subcommand. Git-based recipe index, local takumi builds, GPG-signed, restricted sandbox
 - **ESP32 edge agent** — Planned recipe (`recipes/edge/esp32-agent.toml`). MQTT telemetry, ESP32-S3 TinyML, xtensa + riscv32
 
 ### Added — MCP Tools (136 → 144)

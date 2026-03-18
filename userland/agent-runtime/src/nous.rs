@@ -1282,7 +1282,7 @@ mod tests {
         let resolver = NousResolver::new(dir.path(), cache.path());
         let result = resolver.search("nonexistent-xyz-123").unwrap();
         // Marketplace should be empty; system results depend on environment
-        assert!(result.sources_searched.len() >= 1);
+        assert!(!result.sources_searched.is_empty());
     }
 
     #[test]

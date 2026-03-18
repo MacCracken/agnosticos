@@ -101,7 +101,7 @@ fn benchmark_task_payload_json(c: &mut Criterion) {
 fn benchmark_agent_status_enum(c: &mut Criterion) {
     c.bench_function("agent_status_clone", |b| {
         let status = AgentStatus::Running;
-        b.iter(|| black_box(status.clone()));
+        b.iter(|| black_box(status));
     });
 }
 

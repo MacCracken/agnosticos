@@ -1,0 +1,98 @@
+# bazaar — Community package repository for AGNOS
+#
+# Persian: بازار — marketplace/gathering. The open bazaar where community
+# members share recipes. Like Arch's AUR with yay, but for ark.
+#
+# Community members submit takumi recipe TOMLs to a git repo. `ark bazaar`
+# fetches recipes and builds locally via takumi, or downloads pre-built
+# packages from a community build server.
+#
+# Status: Planned — 2026.3.18. Ships as part of base system.
+# Source: https://github.com/MacCracken/bazaar
+#
+# Usage:
+#   ark bazaar search <query>     — search community recipes
+#   ark bazaar install <package>  — fetch recipe, build via takumi, install
+#   ark bazaar update             — sync recipe index from git
+#   ark bazaar list               — list installed community packages
+#   ark bazaar submit <recipe>    — submit a recipe for review (opens PR)
+#
+# Architecture:
+#   - Recipe index: git repo with TOML files (no binaries)
+#   - Build: local via takumi (like makepkg) or pull from build.agnos.org
+#   - Trust: recipes are signed by submitter, reviewed by maintainers
+#   - Sandbox: community packages run in restricted sandbox by default
+#   - Integration: `Community` variant in PackageSource enum (nous.rs)
+
+[package]
+name = "bazaar"
+version = "2026.3.18"
+description = "Bazaar — community package repository for ark (user-submitted recipes built via takumi)"
+license = "GPL-3.0"
+groups = ["base", "package-management"]
+release = 1
+arch = "x86_64"
+
+[source]
+local = true
+build_dir = "."
+
+[depends]
+runtime = [
+    "ark",
+    "takumi",
+    "git",
+    "gnupg",
+    "curl",
+]
+build = [
+    "rust",
+]
+
+[build]
+configure = ""
+make = "cargo build --release --bin bazaar"
+check = "cargo test --bin bazaar"
+
+install = """
+mkdir -p $PKG/usr/bin
+cp target/release/bazaar $PKG/usr/bin/
+
+# Default config
+mkdir -p $PKG/etc/agnos/bazaar
+cat > $PKG/etc/agnos/bazaar/config.toml << 'CONF'
+# bazaar configuration
+[repository]
+# Git URL for the community recipe index
+url = "https://github.com/MacCracken/bazaar.git"
+branch = "main"
+# Local cache directory
+cache_dir = "/var/cache/bazaar"
+
+[build]
+# Build packages locally via takumi (true) or download pre-built (false)
+build_locally = true
+# Pre-built package mirror (used when build_locally = false)
+mirror_url = "https://build.agnos.org/bazaar"
+
+[trust]
+# Require GPG signature on recipes
+require_signature = true
+# Trusted maintainer key IDs
+trusted_keys = []
+# Auto-trust packages with >= N maintainer reviews
+min_reviews = 1
+
+[sandbox]
+# Default sandbox profile for community packages (stricter than marketplace)
+default_profile = "community-restricted"
+# Allow community packages to request network access
+allow_network = false
+CONF
+
+# Symlink so `ark bazaar` works as a subcommand
+ln -sf bazaar $PKG/usr/bin/ark-bazaar
+"""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]

@@ -1581,7 +1581,7 @@ mod tests {
             completion_tokens: u32::MAX - 10,
             total_tokens: u32::MAX - 10,
         };
-        accounting.record_usage(agent_id.clone(), usage).await;
+        accounting.record_usage(agent_id, usage).await;
 
         // Record more — should saturate at u32::MAX, not wrap to 0
         let usage2 = TokenUsage {
@@ -1589,7 +1589,7 @@ mod tests {
             completion_tokens: 100,
             total_tokens: 100,
         };
-        accounting.record_usage(agent_id.clone(), usage2).await;
+        accounting.record_usage(agent_id, usage2).await;
 
         let result = accounting.get_usage(agent_id).await.unwrap();
         assert_eq!(result.prompt_tokens, u32::MAX);

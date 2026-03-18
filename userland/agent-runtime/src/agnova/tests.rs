@@ -54,7 +54,7 @@ fn bootloader_type_display() {
 
 #[test]
 fn partition_flag_variants() {
-    let flags = vec![
+    let flags = [
         PartitionFlag::Boot,
         PartitionFlag::Esp,
         PartitionFlag::Lvm,

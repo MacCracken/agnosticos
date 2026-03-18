@@ -1601,10 +1601,10 @@ mod tests {
 
     #[test]
     fn test_reward_serialization() {
-        let r = make_reward(3.14);
+        let r = make_reward(4.2);
         let json = serde_json::to_string(&r).unwrap();
         let r2: Reward = serde_json::from_str(&json).unwrap();
-        assert!((r2.value - 3.14).abs() < 1e-9);
+        assert!((r2.value - 4.2).abs() < 1e-9);
     }
 
     #[test]

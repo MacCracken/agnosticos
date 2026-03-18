@@ -5909,7 +5909,7 @@ mod tests {
         let agent_id = Uuid::new_v4();
         let req = Request::builder()
             .method("DELETE")
-            .uri(&format!("/v1/screen/permissions/{}", agent_id))
+            .uri(format!("/v1/screen/permissions/{}", agent_id))
             .body(Body::empty())
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
@@ -6021,7 +6021,7 @@ mod tests {
 
         let req = Request::builder()
             .method("POST")
-            .uri(&format!("/v1/agents/{}/reasoning", agent_id))
+            .uri(format!("/v1/agents/{}/reasoning", agent_id))
             .header("content-type", "application/json")
             .body(Body::from(serde_json::to_vec(&body).unwrap()))
             .unwrap();
@@ -6053,7 +6053,7 @@ mod tests {
 
         let req = Request::builder()
             .method("POST")
-            .uri(&format!("/v1/agents/{}/reasoning", agent_id))
+            .uri(format!("/v1/agents/{}/reasoning", agent_id))
             .header("content-type", "application/json")
             .body(Body::from(serde_json::to_vec(&body).unwrap()))
             .unwrap();

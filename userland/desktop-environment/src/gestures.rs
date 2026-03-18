@@ -542,7 +542,7 @@ mod tests {
 
     #[test]
     fn test_swipe_direction_variants() {
-        let dirs = vec![
+        let dirs = [
             SwipeDirection::Up,
             SwipeDirection::Down,
             SwipeDirection::Left,

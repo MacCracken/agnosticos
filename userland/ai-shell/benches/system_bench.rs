@@ -264,7 +264,7 @@ fn bench_prompt_render_repeated(c: &mut Criterion) {
             b.iter(|| {
                 for i in 0..n {
                     let mut ctx = make_prompt_context();
-                    ctx.last_exit_code = (i % 2) as i32;
+                    ctx.last_exit_code = (i % 2);
                     ctx.cmd_duration_ms = (i as u64) * 100;
                     black_box(renderer.render(&ctx));
                 }

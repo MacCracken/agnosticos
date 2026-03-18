@@ -1810,7 +1810,7 @@ mod badge_tests {
 
     #[test]
     fn test_trust_level_variants() {
-        let levels = vec![
+        let levels = [
             TrustLevel::System,
             TrustLevel::Verified,
             TrustLevel::Unverified,
@@ -1822,7 +1822,7 @@ mod badge_tests {
 
     #[test]
     fn test_sandbox_status_variants() {
-        let statuses = vec![
+        let statuses = [
             SandboxStatus::Full,
             SandboxStatus::Partial,
             SandboxStatus::None,
@@ -1832,7 +1832,7 @@ mod badge_tests {
 
     #[test]
     fn test_badge_icon_variants() {
-        let icons = vec![
+        let icons = [
             BadgeIcon::Shield,
             BadgeIcon::Lock,
             BadgeIcon::Warning,

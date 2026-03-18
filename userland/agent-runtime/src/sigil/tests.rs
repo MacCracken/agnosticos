@@ -11,8 +11,8 @@ mod tests {
     use crate::marketplace::trust::hash_data;
     use crate::marketplace::trust::PublisherKeyring;
     use crate::sigil::{
-        ArtifactType, RevocationEntry, RevocationList, SigilVerifier, TrustEnforcement,
-        TrustLevel, TrustPolicy, TrustedArtifact,
+        ArtifactType, RevocationEntry, RevocationList, SigilVerifier, TrustEnforcement, TrustLevel,
+        TrustPolicy, TrustedArtifact,
     };
 
     /// Helper: create a temp dir with a file inside.

@@ -326,7 +326,7 @@ mod popup_tests {
 
     #[test]
     fn test_edge_variants() {
-        let edges = vec![Edge::None, Edge::Top, Edge::Bottom, Edge::Left, Edge::Right];
+        let edges = [Edge::None, Edge::Top, Edge::Bottom, Edge::Left, Edge::Right];
         assert_eq!(edges.len(), 5);
         assert_eq!(Edge::default(), Edge::None);
     }

@@ -160,6 +160,33 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 | 7 | Printing GUI | system-config-printer | Not started | cups.toml recipe exists |
 | 8 | Disk utility | GNOME Disks or custom | Not started | Partition management GUI |
 
+### 16E — Aethersafha Configurability
+
+| # | Item | Status | Notes |
+|---|------|--------|-------|
+| 1 | User-facing config file | Not started | Hyprland-style config DSL or TOML for keybinds, gaps, borders, animations |
+| 2 | Session selector in argonaut | Not started | TTY chooser or mini display manager. Select aethersafha, sway, hyprland (from bazaar) |
+| 3 | Hot-reload config | Not started | Watch config file, apply changes without restart |
+| 4 | Plugin API for bars/widgets | Not started | External status bars (waybar) can integrate via IPC protocol |
+
+---
+
+## Bazaar — Community Package Repository
+
+**Subsystem**: bazaar (Persian: بازار). Repo: `github.com/MacCracken/bazaar`. Recipe: `recipes/base/bazaar.toml`.
+
+**43 seed recipes** across 8 categories:
+
+| Category | Count | Highlights |
+|----------|-------|------------|
+| AI | 11 | ollama, llama.cpp, whisper.cpp, stable-diffusion.cpp, onnxruntime, vllm, piper-tts, aider, open-webui, comfyui, fabric, lmstudio, pytorch |
+| Desktops | 17 | Sway (5), Hyprland (8), shared Wayland tools (4: waybar, wofi, grim, slurp, wl-clipboard) |
+| Tools | 14 | ripgrep, fd, bat, eza, fzf, tmux, htop, btop, lazygit, starship, zoxide, dust, tokei, hyperfine, git-delta |
+| Editors | 3 | neovim, vim, micro |
+| Networking | 3 | wireguard-tools, bandwhich, mtr |
+| Security | 1 | keepassxc |
+| Media | 2 | ffmpeg, yt-dlp |
+
 ---
 
 ## Phase 13C — Community & Documentation
@@ -291,7 +318,7 @@ All 10 large modules (>2000 lines) have been split into focused module directori
 | B2 | High | RPi4 hardware boot test | Firmware blobs added, needs physical validation |
 | B3 | Medium | SHA256 checksums for all recipes | Most recipes have empty `sha256 = ""` — fill from upstream |
 | B4 | Medium | Debian removal from installer scripts | `build-installer.sh` / `build-sdcard.sh` still fall back to debootstrap when no base rootfs |
-| B5 | Medium | ark-community repo infrastructure | Git-based community recipe index (like AUR). `ark community` subcommand. Recipe: `recipes/base/ark-community.toml`. `Community` variant added to `PackageSource` |
+| B5 | Medium | Bazaar community repo infrastructure | Git-based community recipe index (like AUR). `ark bazaar` subcommand. Recipe: `recipes/base/bazaar.toml`. `Community` variant in `PackageSource`. Persian: بازار (marketplace/gathering) |
 
 ### Active — ESP32 Edge/IoT
 
@@ -453,12 +480,12 @@ All 10 large modules (>2000 lines) have been split into focused module directori
 
 ---
 
-## Named Subsystems (18)
+## Named Subsystems (19)
 
 | Name | Role | Component |
 |------|------|-----------|
 | **hoosh** | LLM inference gateway (port 8088, 15 providers) | `llm-gateway/` |
-| **daimon** | Agent orchestrator (port 8090, 122 MCP tools) | `agent-runtime/` |
+| **daimon** | Agent orchestrator (port 8090, 144 MCP tools) | `agent-runtime/` |
 | **agnosys** | Kernel interface | `agnos-sys/` |
 | **agnostik** | Shared types library | `agnos-common/` |
 | **shakti** | Privilege escalation | `agnos-sudo/` |
@@ -473,6 +500,7 @@ All 10 large modules (>2000 lines) have been split into focused module directori
 | **argonaut** | Init system | `argonaut.rs` |
 | **agnova** | OS installer | `agnova.rs` |
 | **phylax** | Threat detection engine | `phylax.rs` |
+| **bazaar** | Community package repository (Persian: marketplace/gathering) | `recipes/base/bazaar.toml` |
 | **vansh** | Voice AI shell (planned) | TBD |
 | **AGNOS** | The OS itself | — |
 

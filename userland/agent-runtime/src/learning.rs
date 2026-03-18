@@ -1095,7 +1095,7 @@ mod tests {
             timestamp: chrono::Utc::now(),
             syscall_count: syscall,
             network_bytes: net,
-            file_ops: file_ops,
+            file_ops,
             cpu_percent: cpu,
             memory_bytes: mem,
         }

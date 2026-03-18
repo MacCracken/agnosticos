@@ -680,7 +680,7 @@ mod tests {
 
     #[test]
     fn test_all_actions_exist() {
-        let actions = vec![
+        let actions = [
             AccessibleAction::Click,
             AccessibleAction::Focus,
             AccessibleAction::Expand,

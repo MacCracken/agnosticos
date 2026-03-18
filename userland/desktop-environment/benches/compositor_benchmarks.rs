@@ -32,14 +32,8 @@ fn bench_render_frame(c: &mut Criterion) {
 
         for i in 0..surface_count {
             let id = uuid::Uuid::new_v4();
-            let surface = make_surface(
-                id,
-                (i as i32 * 50) % 1600,
-                (i as i32 * 40) % 800,
-                400,
-                300,
-                Layer::Normal,
-            );
+            let surface =
+                make_surface(id, (i * 50) % 1600, (i * 40) % 800, 400, 300, Layer::Normal);
             let buf = Framebuffer::new(400, 300, 0xFF336699);
             renderer.submit_buffer(id, buf);
             scene.add_surface(surface);

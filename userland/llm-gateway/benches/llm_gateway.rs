@@ -73,7 +73,7 @@ fn benchmark_json_parse(c: &mut Criterion) {
 
 fn benchmark_token_usage(c: &mut Criterion) {
     c.bench_function("token_usage_default", |b| {
-        b.iter(|| TokenUsage::default());
+        b.iter(TokenUsage::default);
     });
 
     c.bench_function("token_usage_calculation", |b| {

@@ -949,7 +949,7 @@ mod tests {
     #[test]
     fn test_all_component_ids() {
         // Ensure all component variants are distinct.
-        let components = vec![
+        let components = [
             ComponentId::Sandbox,
             ComponentId::TrustVerifier,
             ComponentId::AuditChain,
