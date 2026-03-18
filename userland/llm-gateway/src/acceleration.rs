@@ -265,6 +265,7 @@ impl ShardingPlan {
 // ---------------------------------------------------------------------------
 
 /// Configuration for a single inference session.
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct InferenceConfig {
     /// Target accelerator.

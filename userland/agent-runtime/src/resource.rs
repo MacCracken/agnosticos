@@ -37,8 +37,8 @@ impl Clone for GpuDevice {
 pub struct ResourceManager {
     /// Available GPUs
     gpus: RwLock<Vec<GpuDevice>>,
-    /// GPU allocations by agent
-    gpu_allocations: RwLock<HashMap<AgentId, Vec<u32>>>,
+    /// GPU allocations by agent: (gpu_id, allocated_bytes) pairs.
+    gpu_allocations: RwLock<HashMap<AgentId, Vec<(u32, u64)>>>,
     /// CPU core allocations
     cpu_allocations: RwLock<HashMap<AgentId, Vec<usize>>>,
     /// Total system memory
@@ -81,7 +81,7 @@ impl ResourceManager {
         let mut allocations = self.gpu_allocations.write().await;
 
         // Find GPU with sufficient memory
-        let mut allocated_gpus = Vec::new();
+        let mut allocated_gpus: Vec<(u32, u64)> = Vec::new();
 
         for gpu in gpus.iter_mut() {
             let available = gpu.available_memory.load(Ordering::Relaxed);
@@ -90,13 +90,13 @@ impl ResourceManager {
                 gpu.available_memory
                     .fetch_sub(memory_required, Ordering::Relaxed);
 
-                allocated_gpus.push(gpu.id);
-                info!("Allocated GPU {} to agent {}", gpu.id, agent_id);
-
-                if !allocated_gpus.is_empty() {
-                    // For now, only allocate one GPU per agent
-                    break;
-                }
+                allocated_gpus.push((gpu.id, memory_required));
+                info!(
+                    "Allocated GPU {} to agent {} ({} bytes)",
+                    gpu.id, agent_id, memory_required
+                );
+                // For now, only allocate one GPU per agent
+                break;
             }
         }
 
@@ -104,8 +104,9 @@ impl ResourceManager {
             return Err(anyhow::anyhow!("No GPU with sufficient memory available"));
         }
 
-        allocations.insert(agent_id, allocated_gpus.clone());
-        Ok(allocated_gpus)
+        let gpu_ids: Vec<u32> = allocated_gpus.iter().map(|(id, _)| *id).collect();
+        allocations.insert(agent_id, allocated_gpus);
+        Ok(gpu_ids)
     }
 
     /// Release GPU resources from an agent
@@ -116,13 +117,15 @@ impl ResourceManager {
         let mut gpus = self.gpus.write().await;
         let mut allocations = self.gpu_allocations.write().await;
 
-        if let Some(gpu_ids) = allocations.remove(&agent_id) {
-            for gpu_id in gpu_ids {
+        if let Some(allocs) = allocations.remove(&agent_id) {
+            for (gpu_id, allocated_bytes) in allocs {
                 if let Some(gpu) = gpus.iter_mut().find(|g| g.id == gpu_id) {
-                    // Restore full GPU memory (simplified)
                     gpu.available_memory
-                        .store(gpu.total_memory, Ordering::Relaxed);
-                    info!("Released GPU {} from agent {}", gpu_id, agent_id);
+                        .fetch_add(allocated_bytes, Ordering::Relaxed);
+                    info!(
+                        "Released GPU {} from agent {} ({} bytes restored)",
+                        gpu_id, agent_id, allocated_bytes
+                    );
                 }
             }
         }
@@ -135,9 +138,14 @@ impl ResourceManager {
         self.gpus.read().await.clone()
     }
 
-    /// Get current GPU allocations
+    /// Get current GPU allocations (agent_id → gpu_ids).
     pub async fn get_gpu_allocations(&self) -> HashMap<AgentId, Vec<u32>> {
-        self.gpu_allocations.read().await.clone()
+        self.gpu_allocations
+            .read()
+            .await
+            .iter()
+            .map(|(k, v)| (*k, v.iter().map(|(id, _)| *id).collect()))
+            .collect()
     }
 
     /// Allocate CPU cores to an agent

@@ -425,7 +425,7 @@ impl LlmGateway {
     /// LM Studio, Synapse) are considered — cloud providers are excluded for privacy.
     pub async fn infer(
         &self,
-        mut request: InferenceRequest,
+        request: InferenceRequest,
         agent_id: Option<AgentId>,
     ) -> Result<InferenceResponse> {
         self.infer_inner(request, agent_id, false).await
@@ -613,6 +613,7 @@ impl LlmGateway {
             ProviderType::LlamaCpp,
             ProviderType::LocalAi,
             ProviderType::LmStudio,
+            ProviderType::Synapse,
         ];
 
         // Check if model fits on local GPU (rough estimate: size_bytes ≈ FP16 weight size)
@@ -662,24 +663,33 @@ impl LlmGateway {
 
         // Priority 2: Local providers when model is loaded (even without GPU)
         if model_loaded && !model_fits_on_gpu {
-            if let Some((_, provider)) = provider_snapshot
-                .iter()
-                .find(|(pt, _)| *pt == ProviderType::Ollama)
-            {
-                classify(ProviderType::Ollama, provider.clone());
+            for (pt, provider) in &provider_snapshot {
+                if local_provider_types.contains(pt) {
+                    classify(*pt, provider.clone());
+                }
             }
         }
 
+        // Drop the mutable classify closure so we can read healthy/unhealthy.
+        drop(classify);
+
+        // Track which providers were already added in Priority 1/2
+        let already_added: std::collections::HashSet<ProviderType> = healthy
+            .iter()
+            .chain(unhealthy.iter())
+            .map(|(pt, _)| *pt)
+            .collect();
+
         // Priority 3: All other providers in registration order
         for (pt, provider) in &provider_snapshot {
-            // Skip providers already added
-            if model_loaded && local_provider_types.contains(pt) && model_fits_on_gpu {
+            if already_added.contains(pt) {
                 continue;
             }
-            if *pt == ProviderType::Ollama && model_loaded && !model_fits_on_gpu {
-                continue;
+            if *health_snapshot.get(pt).unwrap_or(&true) {
+                healthy.push((*pt, provider.clone()));
+            } else {
+                unhealthy.push((*pt, provider.clone()));
             }
-            classify(*pt, provider.clone());
         }
 
         // Healthy first, unhealthy as last resort

@@ -5,7 +5,7 @@ All notable changes to AGNOS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2026.3.17-1] - 2026-03-17
+## [2026.3.17] - 2026-03-17
 
 ### Added — GPU Awareness & Ecosystem Integration
 
@@ -60,7 +60,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Branding**: "Agnostic Agentics Systems" → "Agnostic Agent System"
 - **Agnostic recipe**: version `2026.3.17` → `2026.3.17-1`, status updated to 23 MCP tools / 14 agnoshi intents
 - **API contract**: aligned with Agnostic v2026.3.17-1+ (new `/crews` and `/crews/{id}/cancel` endpoints)
-- Version bump: `2026.3.17` → `2026.3.17-1`
+- Version bump: `2026.3.16-3` → `2026.3.17`
 
 ## [2026.3.16-3] - 2026-03-17
 

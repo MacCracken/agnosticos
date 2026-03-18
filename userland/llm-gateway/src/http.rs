@@ -323,6 +323,7 @@ async fn chat_completions(
             payload.model,
             request_id,
             personality_id,
+            local_only,
         )
         .await;
     }
@@ -414,7 +415,35 @@ async fn chat_completions_stream(
     model: String,
     request_id: String,
     _personality_id: Option<String>,
+    local_only: bool,
 ) -> axum::response::Response {
+    // Enforce privacy routing for streaming: reject if local_only but no local provider.
+    if local_only {
+        if let Err(e) = state
+            .gateway
+            .infer_local_only(request.clone(), agent_id)
+            .await
+        {
+            // If local-only infer fails, we know no local provider is available.
+            // Check: was it a "no local providers" error?
+            let err_str = e.to_string();
+            if err_str.contains("Privacy mode") || err_str.contains("No LLM provider") {
+                return (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    axum::Json(serde_json::json!({
+                        "error": {
+                            "message": err_str,
+                            "type": "privacy_error",
+                            "code": "no_local_provider"
+                        }
+                    })),
+                )
+                    .into_response();
+            }
+        }
+        // If local_only validation passed, fall through to stream from local provider.
+    }
+
     let completion_id = format!("chatcmpl-{}", uuid::Uuid::new_v4());
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

@@ -1,6 +1,6 @@
 [package]
 name = "agnos-fuzz"
-version = "2026.3.15"
+version = "2026.3.17"
 edition = "2021"
 publish = false
 

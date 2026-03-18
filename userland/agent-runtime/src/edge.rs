@@ -302,20 +302,35 @@ impl EdgeFleetManager {
         node.active_tasks = active_tasks;
         node.tasks_completed = tasks_completed;
 
-        // Update GPU telemetry (only overwrite if provided).
-        if gpu_utilization_pct.is_some() {
-            node.gpu_utilization_pct = gpu_utilization_pct;
+        // Update GPU telemetry (only overwrite if provided and valid).
+        if let Some(pct) = gpu_utilization_pct {
+            if pct.is_finite() && (0.0..=100.0).contains(&pct) {
+                node.gpu_utilization_pct = Some(pct);
+            }
         }
         if gpu_memory_used_mb.is_some() {
             node.gpu_memory_used_mb = gpu_memory_used_mb;
         }
-        if gpu_temperature_c.is_some() {
-            node.gpu_temperature_c = gpu_temperature_c;
+        if let Some(temp) = gpu_temperature_c {
+            if temp.is_finite() && (-50.0..=200.0).contains(&temp) {
+                node.gpu_temperature_c = Some(temp);
+            }
         }
 
         // G3.2: Update locally-loaded models list when provided.
+        // Cap at 200 entries / 256 chars per name to prevent DoS.
         if let Some(models) = loaded_models {
-            node.loaded_models = models;
+            node.loaded_models = models
+                .into_iter()
+                .take(200)
+                .map(|m| {
+                    if m.len() > 256 {
+                        m[..256].to_string()
+                    } else {
+                        m
+                    }
+                })
+                .collect();
         }
 
         // Restore from suspect/offline if heartbeat arrives.

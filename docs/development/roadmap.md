@@ -1,6 +1,6 @@
 # AGNOS Development Roadmap
 
-> **Status**: Pre-Beta | **Last Updated**: 2026-03-17-1
+> **Status**: Pre-Beta | **Last Updated**: 2026-03-17
 > **Userland complete** — 11000+ tests (3900+ agent-runtime, 1554 ai-shell), ~84% coverage, 0 warnings
 > **Recipes**: 115 base + 69 desktop + 25 AI + 9 network + 8 browser + 18 marketplace + 4 python + 3 database + 30 edge = 281 total
 > **Build order**: 176 packages in `recipes/build-order.txt` (base + desktop, dependency-ordered)
@@ -296,7 +296,7 @@ Large single-file modules (>1500 lines) that should be split into module directo
 | R5 | Low | `edge.rs` | 2075 | `edge/` → fleet, ota, telemetry, routing, tests | Small |
 | R6 | Low | `safety.rs` | 2062 | `safety/` → injection, guardrails, policy, tests | Small |
 
-**Pattern to follow**: `sandbox_mod/`, `orchestrator/`, `argonaut/`, `agnova/`, `network_tools/` (all completed in 2026.3.17-1) — re-exports in `mod.rs`, old files deleted. Note: avoid naming submodules `core` (conflicts with Rust's `core` crate in rustfmt).
+**Pattern to follow**: `sandbox_mod/`, `orchestrator/`, `argonaut/`, `agnova/`, `network_tools/` (all completed in 2026.3.17) — re-exports in `mod.rs`, old files deleted. Note: avoid naming submodules `core` (conflicts with Rust's `core` crate in rustfmt).
 
 ### Active — Build & Distribution
 
@@ -315,7 +315,7 @@ Large single-file modules (>1500 lines) that should be split into module directo
 | S2 | Medium | SGX/SEV hardware validation | Backends implemented, need hardware to test |
 | S3 | Low | Offender tracker → sigil trust integration | `OffenderTracker` trust scores should feed into sigil's trust chain |
 
-### Resolved (2026.3.17-1)
+### Resolved (2026.3.17)
 
 | Category | Items | Summary |
 |----------|-------|---------|
