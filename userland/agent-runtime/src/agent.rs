@@ -12,6 +12,7 @@ use tracing::{info, warn};
 use agnos_common::{AgentConfig, AgentId, AgentStatus, Message, ResourceUsage, StopReason};
 
 use crate::ipc::AgentIpc;
+use crate::sandbox_mod::credential_proxy::{CredentialProxyConfig, CredentialProxyManager};
 use crate::sandbox_mod::sandbox_core::Sandbox;
 
 /// Handle to a running agent
@@ -38,6 +39,9 @@ pub struct Agent {
     started_at: Option<Instant>,
     message_tx: mpsc::Sender<Message>,
     _message_rx: Option<mpsc::Receiver<Message>>,
+    /// Credential proxy for injecting secrets into the sandboxed process.
+    /// Present when the agent's sandbox config carries credential rules.
+    credential_proxy: Option<CredentialProxyManager>,
 }
 
 impl Agent {
@@ -59,6 +63,7 @@ impl Agent {
             started_at: None,
             message_tx,
             _message_rx: None,
+            credential_proxy: None,
         };
 
         Ok((agent, message_rx))
@@ -102,6 +107,26 @@ impl Agent {
         // Apply sandbox restrictions
         self.sandbox.apply().await?;
 
+        // S1: Start credential proxy if the sandbox config carries credential rules.
+        // The proxy runs in the parent process; the child only sees http_proxy env vars.
+        let proxy_env_vars =
+            if self.config.sandbox.network_access != agnos_common::NetworkAccess::None {
+                let proxy_cfg = CredentialProxyConfig::default();
+                let mut manager = CredentialProxyManager::new(proxy_cfg);
+                let handle = manager.prepare_proxy(&self.id.to_string());
+                info!(
+                    agent_id = %self.id,
+                    rules = handle.rule_count,
+                    addr = %handle.listen_addr,
+                    "Credential proxy prepared for agent"
+                );
+                let env_vars = handle.env_vars.clone();
+                self.credential_proxy = Some(manager);
+                env_vars
+            } else {
+                std::collections::HashMap::new()
+            };
+
         // Spawn agent process
         let executable = self.find_agent_executable().await?;
 
@@ -113,6 +138,12 @@ impl Agent {
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+
+        // Inject credential proxy environment variables so the child routes
+        // outbound HTTP/HTTPS through the parent-side proxy.
+        for (key, val) in &proxy_env_vars {
+            cmd.env(key, val);
+        }
 
         // Apply resource limits
         if let Some(rlimits) = self.build_resource_limits() {
@@ -173,6 +204,11 @@ impl Agent {
                     process.kill().await.ok();
                 }
             }
+        }
+
+        // S1: Drop credential proxy — stops accepting new proxy connections.
+        if self.credential_proxy.take().is_some() {
+            info!(agent_id = %self.id, "Credential proxy stopped");
         }
 
         let mut status = self.status.write().await;

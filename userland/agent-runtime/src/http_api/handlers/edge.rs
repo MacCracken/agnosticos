@@ -52,6 +52,9 @@ pub struct HeartbeatRequest {
     /// GPU temperature in Celsius, if available.
     #[serde(default)]
     pub gpu_temperature_c: Option<f32>,
+    /// Models currently loaded on the node (G3.2 — used for capability routing).
+    #[serde(default)]
+    pub loaded_models: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -76,6 +79,12 @@ pub struct RouteTaskRequest {
     pub require_gpu: bool,
     /// Preferred geographic location label.
     pub preferred_location: Option<String>,
+    /// Minimum GPU VRAM required in MB (G3.1).
+    #[serde(default)]
+    pub min_gpu_memory_mb: Option<u64>,
+    /// Required CUDA compute capability string, e.g. "8.6" (G3.1).
+    #[serde(default)]
+    pub required_compute_capability: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -316,6 +325,7 @@ pub async fn edge_heartbeat_handler(
         req.gpu_utilization_pct,
         req.gpu_memory_used_mb,
         req.gpu_temperature_c,
+        req.loaded_models,
     ) {
         Ok(()) => (
             StatusCode::OK,
@@ -453,6 +463,8 @@ pub async fn edge_route_task_handler(
         &req.required_tags,
         req.require_gpu,
         req.preferred_location.as_deref(),
+        req.min_gpu_memory_mb,
+        req.required_compute_capability.as_deref(),
     );
 
     let nodes: Vec<EdgeNodeResponse> = candidates
@@ -467,6 +479,8 @@ pub async fn edge_route_task_handler(
             "required_tags": req.required_tags,
             "require_gpu": req.require_gpu,
             "preferred_location": req.preferred_location,
+            "min_gpu_memory_mb": req.min_gpu_memory_mb,
+            "required_compute_capability": req.required_compute_capability,
         },
     }))
 }
@@ -603,6 +617,8 @@ pub async fn edge_capability_route_handler(
             &req.required_tags,
             req.require_gpu,
             req.preferred_location.as_deref(),
+            None,
+            None,
         )
     };
 
@@ -621,6 +637,28 @@ pub async fn edge_capability_route_handler(
             "min_bandwidth": req.min_bandwidth,
             "preferred_location": req.preferred_location,
         },
+    }))
+}
+
+// ---------------------------------------------------------------------------
+// G3.2: Fleet model registry
+// ---------------------------------------------------------------------------
+
+/// `GET /v1/edge/models`
+///
+/// Return a deduplicated, sorted list of all model names currently loaded
+/// across online edge nodes, for advertising to hoosh for local inference
+/// routing.  Each entry in `nodes_with_model` maps node IDs to the models
+/// they have loaded.
+pub async fn edge_fleet_models_handler(State(state): State<ApiState>) -> impl IntoResponse {
+    let fleet = state.edge_fleet.read().await;
+    let all_models = fleet.fleet_loaded_models();
+    let nodes_by_model = fleet.nodes_by_model();
+
+    Json(serde_json::json!({
+        "loaded_models": all_models,
+        "total": all_models.len(),
+        "nodes_by_model": nodes_by_model,
     }))
 }
 
@@ -1661,5 +1699,305 @@ mod tests {
         let json = response_json(resp).await;
         // 0.9 < 0.95, so no match
         assert_eq!(json["total"], 0);
+    }
+
+    // --- G3.1: GPU capability routing via HTTP ---
+
+    fn gpu_router() -> Router {
+        let state = test_state();
+        Router::new()
+            .route("/v1/edge/nodes", post(edge_register_node_handler))
+            .route("/v1/edge/nodes/:id/heartbeat", post(edge_heartbeat_handler))
+            .route("/v1/edge/route", post(edge_route_task_handler))
+            .route("/v1/edge/models", get(edge_fleet_models_handler))
+            .with_state(state)
+    }
+
+    /// Register a GPU-capable node with given VRAM and compute capability.
+    async fn register_gpu_node(
+        app: &Router,
+        name: &str,
+        gpu_memory_mb: u64,
+        compute_capability: &str,
+    ) -> String {
+        let body = serde_json::json!({
+            "name": name,
+            "agent_binary": "edge-gpu-agent",
+            "agent_version": "2026.3.17",
+            "os_version": "2026.3.17",
+            "parent_url": "http://parent:8090",
+            "capabilities": {
+                "arch": "x86_64",
+                "cpu_cores": 32,
+                "memory_mb": 65536,
+                "disk_mb": 1048576,
+                "has_gpu": true,
+                "gpu_memory_mb": gpu_memory_mb,
+                "gpu_compute_capability": compute_capability,
+                "network_quality": 0.99,
+                "location": "dc-east",
+                "tags": ["cuda"]
+            }
+        });
+
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/edge/nodes")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_string(&body).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::CREATED);
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        json["id"].as_str().unwrap().to_string()
+    }
+
+    #[tokio::test]
+    async fn route_task_gpu_vram_filter_via_http() {
+        let app = gpu_router();
+        let _ = register_gpu_node(&app, "h100", 81920, "9.0").await;
+        let _ = register_gpu_node(&app, "a10g", 24576, "8.6").await;
+
+        // Request nodes with at least 40 GB VRAM — only h100 qualifies.
+        let body = serde_json::json!({
+            "required_tags": [],
+            "require_gpu": true,
+            "min_gpu_memory_mb": 40960,
+        });
+
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/edge/route")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_string(&body).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = response_json(resp).await;
+        assert_eq!(json["total"], 1);
+        assert_eq!(json["candidates"][0]["name"], "h100");
+    }
+
+    #[tokio::test]
+    async fn route_task_compute_capability_filter_via_http() {
+        let app = gpu_router();
+        let _ = register_gpu_node(&app, "hopper", 80000, "9.0").await;
+        let _ = register_gpu_node(&app, "ampere", 10240, "8.6").await;
+
+        // Request only Hopper (9.0) nodes.
+        let body = serde_json::json!({
+            "required_tags": [],
+            "require_gpu": true,
+            "required_compute_capability": "9.0",
+        });
+
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/edge/route")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_string(&body).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = response_json(resp).await;
+        assert_eq!(json["total"], 1);
+        assert_eq!(json["candidates"][0]["name"], "hopper");
+    }
+
+    #[tokio::test]
+    async fn route_task_gpu_query_echo_includes_new_fields() {
+        let app = gpu_router();
+        let body = serde_json::json!({
+            "required_tags": [],
+            "require_gpu": true,
+            "min_gpu_memory_mb": 16384_u64,
+            "required_compute_capability": "8.9",
+        });
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/edge/route")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_string(&body).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = response_json(resp).await;
+        assert_eq!(json["query"]["min_gpu_memory_mb"], 16384);
+        assert_eq!(json["query"]["required_compute_capability"], "8.9");
+    }
+
+    // --- G3.2: Fleet model registry via HTTP ---
+
+    #[tokio::test]
+    async fn fleet_models_empty_fleet() {
+        let app = gpu_router();
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/edge/models")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = response_json(resp).await;
+        assert_eq!(json["total"], 0);
+        assert!(json["loaded_models"].as_array().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn fleet_models_after_heartbeat_with_models() {
+        let app = gpu_router();
+        let id = register_node(&app, "model-carrier").await;
+
+        // Send heartbeat with models.
+        let hb_body = serde_json::json!({
+            "active_tasks": 1,
+            "tasks_completed": 10,
+            "loaded_models": ["llama3.2:3b", "mistral:7b"],
+        });
+
+        let _ = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(&format!("/v1/edge/nodes/{}/heartbeat", id))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_string(&hb_body).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/edge/models")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = response_json(resp).await;
+        assert_eq!(json["total"], 2);
+        let models = json["loaded_models"].as_array().unwrap();
+        assert!(models.iter().any(|m| m == "llama3.2:3b"));
+        assert!(models.iter().any(|m| m == "mistral:7b"));
+        // nodes_by_model should list the node.
+        assert!(json["nodes_by_model"][&id].is_array());
+    }
+
+    #[tokio::test]
+    async fn fleet_models_deduplicates_across_nodes() {
+        let app = gpu_router();
+        let id_a = register_node(&app, "node-models-a").await;
+        let id_b = register_node(&app, "node-models-b").await;
+
+        for (id, models) in [
+            (&id_a, vec!["llama3.2:3b", "phi3:mini"]),
+            (&id_b, vec!["llama3.2:3b", "gemma2:9b"]),
+        ] {
+            let hb_body = serde_json::json!({
+                "active_tasks": 0,
+                "tasks_completed": 0,
+                "loaded_models": models,
+            });
+            let _ = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri(&format!("/v1/edge/nodes/{}/heartbeat", id))
+                        .header("content-type", "application/json")
+                        .body(Body::from(serde_json::to_string(&hb_body).unwrap()))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+        }
+
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/edge/models")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let json = response_json(resp).await;
+        // llama3.2:3b appears on both nodes but should only be listed once.
+        assert_eq!(json["total"], 3);
+        let models: Vec<String> = json["loaded_models"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap().to_string())
+            .collect();
+        assert_eq!(models, vec!["gemma2:9b", "llama3.2:3b", "phi3:mini"]);
+    }
+
+    #[tokio::test]
+    async fn heartbeat_with_loaded_models_is_accepted() {
+        let app = gpu_router();
+        let id = register_node(&app, "hb-models-node").await;
+
+        let body = serde_json::json!({
+            "active_tasks": 0,
+            "tasks_completed": 0,
+            "loaded_models": ["deepseek-r1:7b"],
+        });
+
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(&format!("/v1/edge/nodes/{}/heartbeat", id))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_string(&body).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        let json = response_json(resp).await;
+        assert_eq!(json["status"], "ok");
     }
 }

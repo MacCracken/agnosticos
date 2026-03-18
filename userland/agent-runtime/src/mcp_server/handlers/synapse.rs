@@ -192,6 +192,14 @@ pub(crate) async fn handle_synapse_finetune(args: &serde_json::Value) -> McpTool
         return e;
     }
 
+    // GPU allocation hints forwarded to Synapse so it can request the right
+    // hardware from the cluster scheduler before starting the training job.
+    let gpu_required = args
+        .get("gpu_required")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let min_gpu_memory_mb = args.get("min_gpu_memory_mb").and_then(|v| v.as_u64());
+
     let bridge = synapse_bridge();
 
     match action.as_str() {
@@ -216,15 +224,23 @@ pub(crate) async fn handle_synapse_finetune(args: &serde_json::Value) -> McpTool
             }
         }
         op @ ("start" | "cancel") => {
-            let body = serde_json::json!({
+            let mut body = serde_json::json!({
                 "action": op,
                 "model": model,
                 "dataset": dataset,
                 "method": method,
             });
+            // Attach GPU allocation hints when present so Synapse can
+            // reserve the right device before launching training.
+            if gpu_required {
+                body["gpu_required"] = serde_json::Value::Bool(true);
+            }
+            if let Some(min_mb) = min_gpu_memory_mb {
+                body["min_gpu_memory_mb"] = serde_json::Value::Number(min_mb.into());
+            }
             match bridge.post("/api/v1/finetune", body).await {
                 Ok(response) => {
-                    info!(action = %op, "Synapse: {} finetune (bridged)", op);
+                    info!(action = %op, gpu_required = gpu_required, min_gpu_memory_mb = ?min_gpu_memory_mb, "Synapse: {} finetune (bridged)", op);
                     success_result(response)
                 }
                 Err(e) => {
@@ -236,6 +252,8 @@ pub(crate) async fn handle_synapse_finetune(args: &serde_json::Value) -> McpTool
                         "model": model.unwrap_or_else(|| "unknown".to_string()),
                         "dataset": dataset,
                         "method": method.unwrap_or_else(|| "lora".to_string()),
+                        "gpu_required": gpu_required,
+                        "min_gpu_memory_mb": min_gpu_memory_mb,
                         "status": "ok",
                         "_source": "mock",
                     }))

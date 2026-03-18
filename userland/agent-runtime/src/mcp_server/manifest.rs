@@ -688,12 +688,14 @@ pub fn build_tool_manifest() -> McpToolManifest {
         ),
         tool!(
             "synapse_finetune",
-            "Manage fine-tuning jobs in Synapse (LoRA, QLoRA, full, DPO, RLHF)",
+            "Manage fine-tuning jobs in Synapse (LoRA, QLoRA, full, DPO, RLHF). GPU allocation hints are forwarded to Synapse when starting a job.",
             json!({
                 "action": {"type": "string", "description": "Action: start, status, cancel, list"},
                 "model": {"type": "string", "description": "Base model name"},
                 "dataset": {"type": "string", "description": "Training data path"},
-                "method": {"type": "string", "description": "Fine-tuning method: lora, qlora, full, dpo, rlhf"}
+                "method": {"type": "string", "description": "Fine-tuning method: lora, qlora, full, dpo, rlhf"},
+                "gpu_required": {"type": "boolean", "description": "Request dedicated GPU allocation from the scheduler before starting the job"},
+                "min_gpu_memory_mb": {"type": "integer", "description": "Minimum GPU VRAM required in megabytes (e.g. 16384 for 16 GB)"}
             }),
             vec!["action"]
         ),
@@ -1155,7 +1157,7 @@ pub fn build_tool_manifest() -> McpToolManifest {
             }),
             vec!["action"]
         ),
-        // ----- Tarang media framework tools (8) -----
+        // ----- Tarang media framework tools (9) -----
         tool!(
             "tarang_probe",
             "Probe a media file and return format, codec, duration, and stream info",
@@ -1204,6 +1206,10 @@ pub fn build_tool_manifest() -> McpToolManifest {
             "Generate a rich AI content description using LLM analysis via hoosh",
             json!({"path": {"type": "string", "description": "Path to media file"}}),
             vec!["path"]
+        ),
+        tool!(
+            "tarang_hw_accel",
+            "Probe hardware video decode capabilities (VA-API, NVDEC) available to Tarang/Jalwa for hardware-accelerated playback and transcoding"
         ),
         // ----- Jalwa media player tools (5) -----
         tool!(

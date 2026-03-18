@@ -5,7 +5,7 @@
 > **Recipes**: 115 base + 69 desktop + 25 AI + 9 network + 8 browser + 18 marketplace + 4 python + 3 database + 30 edge = 281 total
 > **Build order**: 176 packages in `recipes/build-order.txt` (base + desktop, dependency-ordered)
 > **Phases 10–14 complete** | **Phase 15A**: Core scanning done (phylax) | **Audit**: 16 rounds
-> **MCP Tools**: 140 built-in + external registration
+> **MCP Tools**: 141 built-in + external registration
 > **Sandbox**: 7 backends (Native, gVisor, Firecracker, WASM, SGX, SEV, Noop) + credential proxy + externalization gate
 
 ---
@@ -284,28 +284,7 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 
 **Existing infrastructure**: `resource.rs` (GPU detection for NVIDIA/AMD/Intel, allocation/release per agent), `acceleration.rs` (CUDA/ROCm/Metal accelerator types, quantization routing), NVIDIA/AMD/Intel driver recipes in 13B. `orchestrator/scoring.rs` (GPU-aware task scoring + allocation). `agnos_gpu_status` + `agnos_local_models` MCP tools. Firecracker `device_passthrough`. Edge heartbeat GPU telemetry + dashboard aggregation.
 
-### G2 — Hoosh Inference GPU Routing
-
-| # | Item | Status | Notes |
-|---|------|--------|-------|
-| 1 | GPU-aware model placement | **Done** | `AcceleratorRegistry::detect_available()` at startup. `select_providers_ordered()` prioritizes local GPU providers when model fits in VRAM |
-| 2 | VRAM budget per model | **Done** | `ModelInfo.size_bytes` checked against `total_gpu_memory()`. Model only routed to GPU if it fits |
-| 3 | Privacy-aware GPU routing | **Done** | `x-privacy-local: true` header restricts to local providers only (Ollama, llama.cpp, LocalAI, LM Studio, Synapse). `infer_local_only()` API. Errors clearly if no local provider available |
-| 4 | Quantization auto-select | **Done** | `suggest_quantization(model_params)` selects FP16/Int8/Int4 based on best GPU VRAM. `estimate_memory()` with 20% overhead |
-
-### G3 — Edge Fleet GPU Routing
-
-| # | Item | Notes |
-|---|------|-------|
-| 1 | GPU capability routing | Edge fleet routes inference requests to nodes with matching GPU capability (CUDA compute version, VRAM) |
-| 2 | Local model registry sync | Edge nodes advertise locally-loaded models to hoosh. Smart routing offloads inference to nodes with warm models |
-
-### G4 — Consumer App GPU Integration
-
-| # | Item | Notes |
-|---|------|-------|
-| 1 | Synapse training GPU allocation | Synapse fine-tuning jobs request GPU allocation via daimon. VRAM-aware batch size selection |
-| 2 | Tarang/Jalwa hardware decode | Expose VA-API/NVDEC availability to tarang for hardware-accelerated video decode on GPU-equipped nodes |
+*G1–G4 complete. All GPU awareness items resolved — see Resolved section in Engineering Backlog.*
 
 ---
 
@@ -342,8 +321,8 @@ Large single-file modules (>1500 lines) that should be split into module directo
 
 | # | Priority | Item | Notes |
 |---|----------|------|-------|
-| S1 | High | Wire credential proxy to sandbox lifecycle | `CredentialProxyManager` exists, needs integration with agent spawn in `orchestrator.rs` |
-| S2 | High | Wire externalization gate to network egress | `ExternalizationGate` exists, needs integration at network boundary |
+| ~~S1~~ | ~~High~~ | ~~Wire credential proxy to sandbox lifecycle~~ | **Done** — `CredentialProxyManager` started in `Agent::start()`, injects `http_proxy`/`https_proxy` env vars, stopped on `Agent::stop()` |
+| ~~S2~~ | ~~High~~ | ~~Wire externalization gate to network egress~~ | **Done** — `ExternalizationGate` embedded in `Sandbox`, `scan_egress()` method gates outbound data with 11 built-in patterns |
 | S3 | Medium | gVisor/Firecracker runtime execution | Config generation + OCI/VM lifecycle done, needs actual process spawning via `tokio::process::Command` |
 | S4 | Medium | SGX/SEV hardware validation | Backends implemented, need hardware to test |
 | S5 | Low | Offender tracker → sigil trust integration | `OffenderTracker` trust scores should feed into sigil's trust chain |
@@ -359,6 +338,12 @@ Large single-file modules (>1500 lines) that should be split into module directo
 | 5 | G1 GPU-aware scheduling | **Done** — `TaskRequirements` GPU fields, `score_gpu()`, GPU allocation on dispatch + release on completion (2026.3.17-1) |
 | 6 | SY integration (4 items) | **Done** — `agnos_gpu_status`, `agnos_local_models` MCP tools, Firecracker `device_passthrough`, edge heartbeat GPU telemetry + dashboard aggregation (2026.3.17-1) |
 | 7 | Agnostic crew management | **Done** — `agnostic_list_crews`, `agnostic_cancel_crew` MCP tools + agnoshi intents (2026.3.17-1) |
+| 8 | G2 Hoosh GPU routing (4 items) | **Done** — GPU-aware provider selection, VRAM budgets, privacy routing (`x-privacy-local`), auto-quantization (2026.3.17-1) |
+| 9 | G3 Edge GPU routing (2 items) | **Done** — `route_task` filters by VRAM + compute capability. `GET /v1/edge/models` fleet model registry. Heartbeat carries `loaded_models` (2026.3.17-1) |
+| 10 | G4 Consumer GPU integration (2 items) | **Done** — `synapse_finetune` GPU hints, `tarang_hw_accel` MCP tool (VA-API/NVDEC probe). 141 MCP tools (2026.3.17-1) |
+| 11 | S1 Credential proxy wiring | **Done** — `CredentialProxyManager` in `Agent::start()`/`stop()`, proxy env vars injected into child process (2026.3.17-1) |
+| 12 | S2 Externalization gate wiring | **Done** — `ExternalizationGate` in `Sandbox`, `scan_egress()` for outbound data with 11 patterns (2026.3.17-1) |
+| 13 | Agnostic crew GPU requirements | **Done** — `gpu_required` + `min_gpu_memory_mb` in `agnostic_run_crew`, `--gpu` agnoshi flag (2026.3.17-1) |
 
 ---
 
@@ -415,7 +400,7 @@ Large single-file modules (>1500 lines) that should be split into module directo
 | Desktop/AI Stack Recipes | ~62 | 79 | Complete |
 | Edge Recipes | ~30 | 30 | Complete |
 | Marketplace Recipes | 11 | 18 | Complete (11 released + 7 scaffolded) |
-| MCP Tools | — | 140 | Complete (12 agnos + 5 aequi + 23 agnostic + 7 delta + 8 photis + 5 edge + 7 shruti + 8 tarang + 8 jalwa + 9 rasa + 7 mneme + 7 synapse + 7 bullshift + 7 yeoman + 5 phylax + others) |
+| MCP Tools | — | 141 | Complete (12 agnos + 5 aequi + 23 agnostic + 7 delta + 8 photis + 5 edge + 7 shruti + 9 tarang + 8 jalwa + 9 rasa + 7 mneme + 7 synapse + 7 bullshift + 7 yeoman + 5 phylax + others) |
 | Consumer Apps | 6 | 17 | 11 released + 6 scaffolded |
 | Recipe Validation Errors | 0 | 0 | Complete |
 | Security Audit Rounds | 15 | 16 | Complete |

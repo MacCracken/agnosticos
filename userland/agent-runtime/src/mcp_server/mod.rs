@@ -330,6 +330,7 @@ async fn dispatch_tool_call(
         "tarang_fingerprint_index" => handle_tarang_fingerprint_index(&call.arguments).await,
         "tarang_search_similar" => handle_tarang_search_similar(&call.arguments).await,
         "tarang_describe" => handle_tarang_describe(&call.arguments).await,
+        "tarang_hw_accel" => handle_tarang_hw_accel(&call.arguments).await,
         "jalwa_play" => handle_jalwa_play(&call.arguments).await,
         "jalwa_pause" => handle_jalwa_pause(&call.arguments).await,
         "jalwa_status" => handle_jalwa_status(&call.arguments).await,

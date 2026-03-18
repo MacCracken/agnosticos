@@ -86,7 +86,7 @@ pub(crate) async fn handle_edge_deploy(
         }
     } else {
         fleet
-            .route_task(&required_tags, require_gpu, None)
+            .route_task(&required_tags, require_gpu, None, None, None)
             .into_iter()
             .next()
     };

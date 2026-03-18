@@ -307,7 +307,9 @@ pub fn build_router(state: ApiState) -> Router {
         .route(
             "/v1/edge/capabilities/route",
             post(edge::edge_capability_route_handler),
-        );
+        )
+        // G3.2: Fleet model registry — list all models loaded across online nodes
+        .route("/v1/edge/models", get(edge::edge_fleet_models_handler));
 
     // Desktop-only screen capture and recording routes
     #[cfg(feature = "desktop")]

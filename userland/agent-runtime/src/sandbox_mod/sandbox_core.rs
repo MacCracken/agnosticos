@@ -17,6 +17,8 @@ use agnos_sys::security::{
     self, FilesystemRule as SysFilesystemRule, FsAccess as SysFsAccess, NamespaceFlags,
 };
 
+use super::egress_gate::{ExternalizationGate, ExternalizationGateConfig, GateDecision};
+
 /// Security sandbox for agent processes
 pub struct Sandbox {
     config: SandboxConfig,
@@ -25,6 +27,8 @@ pub struct Sandbox {
     netns_handle: Option<netns::NetNamespaceHandle>,
     /// Name of the LUKS volume (if created)
     luks_name: Option<String>,
+    /// S2: Outbound data scanner — blocks secrets/PII before they leave the sandbox.
+    egress_gate: ExternalizationGate,
 }
 
 impl Sandbox {
@@ -35,7 +39,30 @@ impl Sandbox {
             applied: false,
             netns_handle: None,
             luks_name: None,
+            egress_gate: ExternalizationGate::new(ExternalizationGateConfig::default()),
         })
+    }
+
+    /// S2: Scan outbound data through the externalization gate.
+    ///
+    /// Call this at any network egress point before transmitting data on behalf
+    /// of a sandboxed agent.  Returns the gate decision (allowed / blocked) with
+    /// detailed findings for audit.  Only active when the sandbox has network
+    /// access (`Full`, `Restricted`, or `LocalhostOnly`); `None` mode never
+    /// produces outbound data so the gate is bypassed.
+    pub fn scan_egress(&mut self, data: &[u8], agent_id: &str) -> GateDecision {
+        match self.config.network_access {
+            agnos_common::NetworkAccess::None => {
+                // No network — nothing can leave; allow trivially.
+                GateDecision {
+                    allowed: true,
+                    findings: vec![],
+                    data_size: data.len(),
+                    scan_duration_us: 0,
+                }
+            }
+            _ => self.egress_gate.scan(data, agent_id),
+        }
     }
 
     /// Apply sandbox restrictions to the current process.
@@ -228,7 +255,8 @@ impl Sandbox {
                             warn!("Failed to apply nftables rules: {} (namespace created without firewall)", e);
                         }
                         info!(
-                            "Network access: restricted (namespace '{}' with nftables firewall)",
+                            patterns = self.egress_gate.pattern_count(),
+                            "Network access: restricted (namespace '{}' with nftables firewall + egress gate)",
                             handle.name
                         );
                         self.netns_handle = Some(handle);
@@ -245,8 +273,13 @@ impl Sandbox {
                 }
             }
             agnos_common::NetworkAccess::Full => {
-                // Full access — don't create a new namespace
-                debug!("Network access: full (no isolation)");
+                // Full access — don't create a new namespace.
+                // S2: Egress gate is the primary outbound control for this mode.
+                info!(
+                    patterns = self.egress_gate.pattern_count(),
+                    "Network access: full — egress gate active with {} patterns",
+                    self.egress_gate.pattern_count()
+                );
             }
         }
 

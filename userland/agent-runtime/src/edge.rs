@@ -75,6 +75,12 @@ pub struct EdgeCapabilities {
     pub disk_mb: u64,
     /// Whether a GPU is available.
     pub has_gpu: bool,
+    /// Total GPU VRAM in MB (e.g. 8192 for an 8 GB GPU). `None` if no GPU.
+    #[serde(default)]
+    pub gpu_memory_mb: Option<u64>,
+    /// CUDA compute capability version string (e.g. "8.6", "9.0"). `None` if no CUDA GPU.
+    #[serde(default)]
+    pub gpu_compute_capability: Option<String>,
     /// Network bandwidth quality (0.0 = poor, 1.0 = excellent).
     pub network_quality: f64,
     /// Geographic location label (optional, e.g. "us-east", "office-floor-2").
@@ -91,6 +97,8 @@ impl Default for EdgeCapabilities {
             memory_mb: 1024,
             disk_mb: 4096,
             has_gpu: false,
+            gpu_memory_mb: None,
+            gpu_compute_capability: None,
             network_quality: 0.8,
             location: None,
             tags: Vec::new(),
@@ -142,6 +150,10 @@ pub struct EdgeNode {
     /// Latest GPU temperature in Celsius, from heartbeat.
     #[serde(default)]
     pub gpu_temperature_c: Option<f32>,
+    /// Models currently loaded on this node, advertised to hoosh for local inference routing.
+    /// Updated on each heartbeat. Example: ["llama3.2:3b", "mistral:7b"].
+    #[serde(default)]
+    pub loaded_models: Vec<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -257,6 +269,7 @@ impl EdgeFleetManager {
             gpu_utilization_pct: None,
             gpu_memory_used_mb: None,
             gpu_temperature_c: None,
+            loaded_models: Vec::new(),
         };
 
         info!(id = %id, name = %name, "Edge node registered");
@@ -264,7 +277,8 @@ impl EdgeFleetManager {
         Ok(id)
     }
 
-    /// Process a heartbeat from an edge node, including optional GPU telemetry.
+    /// Process a heartbeat from an edge node, including optional GPU telemetry
+    /// and the list of models currently loaded on the node (G3.2).
     pub fn heartbeat(
         &mut self,
         node_id: &str,
@@ -273,6 +287,7 @@ impl EdgeFleetManager {
         gpu_utilization_pct: Option<f32>,
         gpu_memory_used_mb: Option<u64>,
         gpu_temperature_c: Option<f32>,
+        loaded_models: Option<Vec<String>>,
     ) -> Result<(), EdgeFleetError> {
         let node = self
             .nodes
@@ -296,6 +311,11 @@ impl EdgeFleetManager {
         }
         if gpu_temperature_c.is_some() {
             node.gpu_temperature_c = gpu_temperature_c;
+        }
+
+        // G3.2: Update locally-loaded models list when provided.
+        if let Some(models) = loaded_models {
+            node.loaded_models = models;
         }
 
         // Restore from suspect/offline if heartbeat arrives.
@@ -364,11 +384,19 @@ impl EdgeFleetManager {
 
     /// Find the best node for a task based on required capabilities.
     /// Returns nodes sorted by suitability (least loaded, matching caps).
+    ///
+    /// G3.1: When `min_gpu_memory_mb` is provided, only nodes whose
+    /// `capabilities.gpu_memory_mb` meets or exceeds the threshold are
+    /// considered.  When `required_compute_capability` is provided (e.g.
+    /// `"8.6"`), only nodes advertising that exact CUDA compute capability
+    /// are considered.
     pub fn route_task(
         &self,
         required_tags: &[String],
         require_gpu: bool,
         preferred_location: Option<&str>,
+        min_gpu_memory_mb: Option<u64>,
+        required_compute_capability: Option<&str>,
     ) -> Vec<&EdgeNode> {
         let mut candidates: Vec<&EdgeNode> = self
             .nodes
@@ -381,6 +409,20 @@ impl EdgeFleetManager {
                 // Must have GPU if required.
                 if require_gpu && !n.capabilities.has_gpu {
                     return false;
+                }
+                // G3.1: Filter by minimum GPU VRAM when specified.
+                if let Some(min_vram) = min_gpu_memory_mb {
+                    match n.capabilities.gpu_memory_mb {
+                        Some(vram) if vram >= min_vram => {}
+                        _ => return false,
+                    }
+                }
+                // G3.1: Filter by CUDA compute capability when specified.
+                if let Some(required_cc) = required_compute_capability {
+                    match n.capabilities.gpu_compute_capability.as_deref() {
+                        Some(cc) if cc == required_cc => {}
+                        _ => return false,
+                    }
                 }
                 // Must have all required tags.
                 for tag in required_tags {
@@ -511,7 +553,7 @@ impl EdgeFleetManager {
         min_bandwidth: f64,
         min_memory_mb: u64,
     ) -> Vec<&EdgeNode> {
-        self.route_task(required_tags, require_gpu, preferred_location)
+        self.route_task(required_tags, require_gpu, preferred_location, None, None)
             .into_iter()
             .filter(|n| {
                 n.capabilities.network_quality >= min_bandwidth
@@ -539,6 +581,31 @@ impl EdgeFleetManager {
         debug!(id = %node_id, name = %node.name, "Edge node capabilities updated");
         node.capabilities = capabilities;
         Ok(())
+    }
+
+    /// G3.2: Return a deduplicated list of all model names currently loaded
+    /// across online fleet nodes, for advertising to hoosh.
+    pub fn fleet_loaded_models(&self) -> Vec<String> {
+        let mut seen = std::collections::HashSet::new();
+        let mut models: Vec<String> = self
+            .nodes
+            .values()
+            .filter(|n| n.status == EdgeNodeStatus::Online)
+            .flat_map(|n| n.loaded_models.iter().cloned())
+            .filter(|m| seen.insert(m.clone()))
+            .collect();
+        models.sort();
+        models
+    }
+
+    /// G3.2: Return a map of node_id → loaded model names for all online
+    /// nodes that have at least one loaded model. Useful for targeted routing.
+    pub fn nodes_by_model(&self) -> HashMap<String, Vec<String>> {
+        self.nodes
+            .values()
+            .filter(|n| n.status == EdgeNodeStatus::Online && !n.loaded_models.is_empty())
+            .map(|n| (n.id.clone(), n.loaded_models.clone()))
+            .collect()
     }
 
     /// Fleet statistics.
@@ -1078,6 +1145,8 @@ mod tests {
             memory_mb: 2048,
             disk_mb: 16384,
             has_gpu: false,
+            gpu_memory_mb: None,
+            gpu_compute_capability: None,
             network_quality: 0.9,
             location: Some("office".into()),
             tags: vec!["camera".into(), "bluetooth".into()],
@@ -1181,7 +1250,7 @@ mod tests {
     fn heartbeat_updates_state() {
         let mut mgr = EdgeFleetManager::new(test_config());
         let id = register_test_node(&mut mgr, "node-a");
-        mgr.heartbeat(&id, 3, 100, None, None, None).unwrap();
+        mgr.heartbeat(&id, 3, 100, None, None, None, None).unwrap();
         let node = mgr.get_node(&id).unwrap();
         assert_eq!(node.active_tasks, 3);
         assert_eq!(node.tasks_completed, 100);
@@ -1191,7 +1260,7 @@ mod tests {
     fn heartbeat_unknown_node() {
         let mut mgr = EdgeFleetManager::new(test_config());
         let err = mgr
-            .heartbeat("nonexistent", 0, 0, None, None, None)
+            .heartbeat("nonexistent", 0, 0, None, None, None, None)
             .unwrap_err();
         assert!(matches!(err, EdgeFleetError::NodeNotFound(_)));
     }
@@ -1201,7 +1270,9 @@ mod tests {
         let mut mgr = EdgeFleetManager::new(test_config());
         let id = register_test_node(&mut mgr, "node-a");
         mgr.decommission(&id).unwrap();
-        let err = mgr.heartbeat(&id, 0, 0, None, None, None).unwrap_err();
+        let err = mgr
+            .heartbeat(&id, 0, 0, None, None, None, None)
+            .unwrap_err();
         assert!(matches!(err, EdgeFleetError::NodeDecommissioned(_)));
     }
 
@@ -1228,7 +1299,7 @@ mod tests {
         let mut mgr = EdgeFleetManager::new(test_config());
         let id = register_test_node(&mut mgr, "node-a");
         mgr.nodes.get_mut(&id).unwrap().status = EdgeNodeStatus::Suspect;
-        mgr.heartbeat(&id, 0, 0, None, None, None).unwrap();
+        mgr.heartbeat(&id, 0, 0, None, None, None, None).unwrap();
         assert_eq!(mgr.get_node(&id).unwrap().status, EdgeNodeStatus::Online);
     }
 
@@ -1237,7 +1308,7 @@ mod tests {
         let mut mgr = EdgeFleetManager::new(test_config());
         let id = register_test_node(&mut mgr, "node-a");
         mgr.nodes.get_mut(&id).unwrap().status = EdgeNodeStatus::Offline;
-        mgr.heartbeat(&id, 0, 0, None, None, None).unwrap();
+        mgr.heartbeat(&id, 0, 0, None, None, None, None).unwrap();
         assert_eq!(mgr.get_node(&id).unwrap().status, EdgeNodeStatus::Online);
     }
 
@@ -1321,7 +1392,7 @@ mod tests {
         let mut mgr = EdgeFleetManager::new(test_config());
         register_test_node(&mut mgr, "a");
         register_test_node(&mut mgr, "b");
-        let candidates = mgr.route_task(&[], false, None);
+        let candidates = mgr.route_task(&[], false, None, None, None);
         assert_eq!(candidates.len(), 2);
     }
 
@@ -1331,7 +1402,7 @@ mod tests {
         let id_a = register_test_node(&mut mgr, "a");
         register_test_node(&mut mgr, "b");
         mgr.nodes.get_mut(&id_a).unwrap().status = EdgeNodeStatus::Offline;
-        let candidates = mgr.route_task(&[], false, None);
+        let candidates = mgr.route_task(&[], false, None, None, None);
         assert_eq!(candidates.len(), 1);
         assert_eq!(candidates[0].name, "b");
     }
@@ -1353,7 +1424,7 @@ mod tests {
                 "http://parent:8090".into(),
             )
             .unwrap();
-        let candidates = mgr.route_task(&[], true, None);
+        let candidates = mgr.route_task(&[], true, None, None, None);
         assert_eq!(candidates.len(), 1);
         assert_eq!(candidates[0].id, id_gpu);
     }
@@ -1375,7 +1446,7 @@ mod tests {
         )
         .unwrap();
 
-        let candidates = mgr.route_task(&["camera".into()], false, None);
+        let candidates = mgr.route_task(&["camera".into()], false, None, None, None);
         assert_eq!(candidates.len(), 1);
         assert_eq!(candidates[0].name, "has-camera-bt");
     }
@@ -1408,7 +1479,7 @@ mod tests {
         )
         .unwrap();
 
-        let candidates = mgr.route_task(&[], false, Some("office"));
+        let candidates = mgr.route_task(&[], false, Some("office"), None, None);
         assert_eq!(candidates[0].name, "near");
     }
 
@@ -1419,7 +1490,7 @@ mod tests {
         register_test_node(&mut mgr, "idle");
         mgr.nodes.get_mut(&id_a).unwrap().active_tasks = 5;
 
-        let candidates = mgr.route_task(&[], false, None);
+        let candidates = mgr.route_task(&[], false, None, None, None);
         assert_eq!(candidates[0].name, "idle");
     }
 
@@ -2099,5 +2170,309 @@ mod tests {
             mgr.get_node(&id_fresh).unwrap().status,
             EdgeNodeStatus::Online
         );
+    }
+
+    // === G3.1: GPU capability routing ===
+
+    #[test]
+    fn route_task_gpu_vram_filter_matches() {
+        let mut mgr = EdgeFleetManager::new(test_config());
+        mgr.register_node(
+            "gpu-big".into(),
+            EdgeCapabilities {
+                has_gpu: true,
+                gpu_memory_mb: Some(16384),
+                gpu_compute_capability: Some("8.9".into()),
+                ..test_capabilities()
+            },
+            "edge".into(),
+            "1.0".into(),
+            "1.0".into(),
+            "http://parent:8090".into(),
+        )
+        .unwrap();
+        mgr.register_node(
+            "gpu-small".into(),
+            EdgeCapabilities {
+                has_gpu: true,
+                gpu_memory_mb: Some(8192),
+                gpu_compute_capability: Some("8.6".into()),
+                ..test_capabilities()
+            },
+            "edge".into(),
+            "1.0".into(),
+            "1.0".into(),
+            "http://parent:8090".into(),
+        )
+        .unwrap();
+
+        let candidates = mgr.route_task(&[], true, None, Some(12288), None);
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].name, "gpu-big");
+    }
+
+    #[test]
+    fn route_task_gpu_vram_filter_excludes_no_vram_field() {
+        let mut mgr = EdgeFleetManager::new(test_config());
+        mgr.register_node(
+            "gpu-unknown-vram".into(),
+            EdgeCapabilities {
+                has_gpu: true,
+                gpu_memory_mb: None,
+                ..test_capabilities()
+            },
+            "edge".into(),
+            "1.0".into(),
+            "1.0".into(),
+            "http://parent:8090".into(),
+        )
+        .unwrap();
+
+        let candidates = mgr.route_task(&[], true, None, Some(4096), None);
+        assert!(candidates.is_empty());
+    }
+
+    #[test]
+    fn route_task_compute_capability_filter() {
+        let mut mgr = EdgeFleetManager::new(test_config());
+        mgr.register_node(
+            "ampere".into(),
+            EdgeCapabilities {
+                has_gpu: true,
+                gpu_memory_mb: Some(8192),
+                gpu_compute_capability: Some("8.6".into()),
+                ..test_capabilities()
+            },
+            "edge".into(),
+            "1.0".into(),
+            "1.0".into(),
+            "http://parent:8090".into(),
+        )
+        .unwrap();
+        mgr.register_node(
+            "turing".into(),
+            EdgeCapabilities {
+                has_gpu: true,
+                gpu_memory_mb: Some(8192),
+                gpu_compute_capability: Some("7.5".into()),
+                ..test_capabilities()
+            },
+            "edge".into(),
+            "1.0".into(),
+            "1.0".into(),
+            "http://parent:8090".into(),
+        )
+        .unwrap();
+
+        let candidates = mgr.route_task(&[], true, None, None, Some("8.6"));
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].name, "ampere");
+    }
+
+    #[test]
+    fn route_task_compute_capability_no_match() {
+        let mut mgr = EdgeFleetManager::new(test_config());
+        mgr.register_node(
+            "old-gpu".into(),
+            EdgeCapabilities {
+                has_gpu: true,
+                gpu_memory_mb: Some(4096),
+                gpu_compute_capability: Some("6.1".into()),
+                ..test_capabilities()
+            },
+            "edge".into(),
+            "1.0".into(),
+            "1.0".into(),
+            "http://parent:8090".into(),
+        )
+        .unwrap();
+
+        let candidates = mgr.route_task(&[], true, None, None, Some("9.0"));
+        assert!(candidates.is_empty());
+    }
+
+    #[test]
+    fn route_task_gpu_vram_and_cc_combined() {
+        let mut mgr = EdgeFleetManager::new(test_config());
+        mgr.register_node(
+            "perfect".into(),
+            EdgeCapabilities {
+                has_gpu: true,
+                gpu_memory_mb: Some(24576),
+                gpu_compute_capability: Some("8.9".into()),
+                ..test_capabilities()
+            },
+            "edge".into(),
+            "1.0".into(),
+            "1.0".into(),
+            "http://parent:8090".into(),
+        )
+        .unwrap();
+        mgr.register_node(
+            "wrong-cc".into(),
+            EdgeCapabilities {
+                has_gpu: true,
+                gpu_memory_mb: Some(24576),
+                gpu_compute_capability: Some("7.5".into()),
+                ..test_capabilities()
+            },
+            "edge".into(),
+            "1.0".into(),
+            "1.0".into(),
+            "http://parent:8090".into(),
+        )
+        .unwrap();
+
+        let candidates = mgr.route_task(&[], true, None, Some(16384), Some("8.9"));
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].name, "perfect");
+    }
+
+    #[test]
+    fn default_capabilities_have_no_gpu_fields() {
+        let caps = EdgeCapabilities::default();
+        assert!(caps.gpu_memory_mb.is_none());
+        assert!(caps.gpu_compute_capability.is_none());
+    }
+
+    // === G3.2: Local model registry sync ===
+
+    #[test]
+    fn heartbeat_updates_loaded_models() {
+        let mut mgr = EdgeFleetManager::new(test_config());
+        let id = register_test_node(&mut mgr, "model-node");
+        assert!(mgr.get_node(&id).unwrap().loaded_models.is_empty());
+
+        let models = vec!["llama3.2:3b".to_string(), "mistral:7b".to_string()];
+        mgr.heartbeat(&id, 0, 0, None, None, None, Some(models.clone()))
+            .unwrap();
+        assert_eq!(mgr.get_node(&id).unwrap().loaded_models, models);
+    }
+
+    #[test]
+    fn heartbeat_clears_loaded_models_on_empty_list() {
+        let mut mgr = EdgeFleetManager::new(test_config());
+        let id = register_test_node(&mut mgr, "model-node2");
+        mgr.heartbeat(
+            &id,
+            0,
+            0,
+            None,
+            None,
+            None,
+            Some(vec!["phi3:mini".to_string()]),
+        )
+        .unwrap();
+        assert!(!mgr.get_node(&id).unwrap().loaded_models.is_empty());
+
+        mgr.heartbeat(&id, 0, 0, None, None, None, Some(vec![]))
+            .unwrap();
+        assert!(mgr.get_node(&id).unwrap().loaded_models.is_empty());
+    }
+
+    #[test]
+    fn heartbeat_none_loaded_models_preserves_existing() {
+        let mut mgr = EdgeFleetManager::new(test_config());
+        let id = register_test_node(&mut mgr, "model-node3");
+        let models = vec!["gemma2:9b".to_string()];
+        mgr.heartbeat(&id, 0, 0, None, None, None, Some(models.clone()))
+            .unwrap();
+        mgr.heartbeat(&id, 1, 5, None, None, None, None).unwrap();
+        assert_eq!(mgr.get_node(&id).unwrap().loaded_models, models);
+    }
+
+    #[test]
+    fn fleet_loaded_models_deduplicates() {
+        let mut mgr = EdgeFleetManager::new(test_config());
+        let id_a = register_test_node(&mut mgr, "model-fleet-a");
+        let id_b = register_test_node(&mut mgr, "model-fleet-b");
+
+        mgr.heartbeat(
+            &id_a,
+            0,
+            0,
+            None,
+            None,
+            None,
+            Some(vec!["llama3.2:3b".to_string(), "mistral:7b".to_string()]),
+        )
+        .unwrap();
+        mgr.heartbeat(
+            &id_b,
+            0,
+            0,
+            None,
+            None,
+            None,
+            Some(vec!["mistral:7b".to_string(), "phi3:mini".to_string()]),
+        )
+        .unwrap();
+
+        let all_models = mgr.fleet_loaded_models();
+        assert_eq!(all_models, vec!["llama3.2:3b", "mistral:7b", "phi3:mini"]);
+    }
+
+    #[test]
+    fn fleet_loaded_models_excludes_offline_nodes() {
+        let mut mgr = EdgeFleetManager::new(test_config());
+        let id_online = register_test_node(&mut mgr, "online-model");
+        let id_offline = register_test_node(&mut mgr, "offline-model");
+
+        mgr.heartbeat(
+            &id_online,
+            0,
+            0,
+            None,
+            None,
+            None,
+            Some(vec!["llama3.2:3b".to_string()]),
+        )
+        .unwrap();
+        mgr.heartbeat(
+            &id_offline,
+            0,
+            0,
+            None,
+            None,
+            None,
+            Some(vec!["gemma2:9b".to_string()]),
+        )
+        .unwrap();
+        mgr.nodes.get_mut(&id_offline).unwrap().status = EdgeNodeStatus::Offline;
+
+        let models = mgr.fleet_loaded_models();
+        assert_eq!(models, vec!["llama3.2:3b"]);
+    }
+
+    #[test]
+    fn nodes_by_model_returns_correct_mapping() {
+        let mut mgr = EdgeFleetManager::new(test_config());
+        let id_a = register_test_node(&mut mgr, "model-map-a");
+        let id_b = register_test_node(&mut mgr, "model-map-b");
+
+        mgr.heartbeat(
+            &id_a,
+            0,
+            0,
+            None,
+            None,
+            None,
+            Some(vec!["llama3.2:3b".to_string()]),
+        )
+        .unwrap();
+        mgr.heartbeat(&id_b, 0, 0, None, None, None, None).unwrap();
+
+        let map = mgr.nodes_by_model();
+        assert_eq!(map.len(), 1);
+        assert!(map.contains_key(&id_a));
+        assert!(!map.contains_key(&id_b));
+        assert_eq!(map[&id_a], vec!["llama3.2:3b"]);
+    }
+
+    #[test]
+    fn registered_node_has_empty_loaded_models() {
+        let mut mgr = EdgeFleetManager::new(test_config());
+        let id = register_test_node(&mut mgr, "no-models");
+        assert!(mgr.get_node(&id).unwrap().loaded_models.is_empty());
     }
 }

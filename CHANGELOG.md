@@ -29,6 +29,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `total_gpu_memory()`, `has_gpu()` helpers on `AcceleratorRegistry`
   - Privacy routing: `x-privacy-local: true` header restricts inference to local providers only. `infer_local_only()` API method
 - **Agnostic crew GPU requirements**: `agnostic_run_crew` MCP tool accepts `gpu_required` and `min_gpu_memory_mb`. Agnoshi `agnostic run crew <title> --gpu` flag. Fields passed through to Agnostic `POST /api/v1/crews`
+- **G3: Edge fleet GPU routing**:
+  - `EdgeCapabilities` gains `gpu_memory_mb` and `gpu_compute_capability` fields
+  - `route_task()` filters candidates by VRAM threshold and compute capability
+  - `EdgeNode` gains `loaded_models: Vec<String>` populated via heartbeat
+  - New `GET /v1/edge/models` endpoint — deduplicated fleet-wide model inventory with per-node mapping
+  - New fleet methods: `fleet_loaded_models()`, `nodes_by_model()`
+- **G4: Consumer app GPU integration**:
+  - `synapse_finetune` MCP tool gains `gpu_required` and `min_gpu_memory_mb` optional params, forwarded to Synapse API
+  - New `tarang_hw_accel` MCP tool — probes VA-API and NVDEC hardware decode capability. 141 total MCP tools
+- **S1: Credential proxy wired to agent lifecycle**: `CredentialProxyManager` started in `Agent::start()`, injects `http_proxy`/`https_proxy`/`HTTP_PROXY`/`HTTPS_PROXY`/`no_proxy` env vars into child process. Stopped on `Agent::stop()`
+- **S2: Externalization gate wired to sandbox**: `ExternalizationGate` embedded in `Sandbox` struct with 11 built-in patterns (OpenAI/Anthropic/AWS/GitHub keys, bearer tokens, private keys, email, SSN, credit cards, AGNOS internals). `scan_egress()` method for outbound data gating
 
 ### Changed — Module Refactoring
 

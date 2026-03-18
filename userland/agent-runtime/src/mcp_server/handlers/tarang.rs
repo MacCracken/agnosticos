@@ -1,8 +1,11 @@
+use std::sync::atomic::Ordering;
+
 use tracing::{info, warn};
 
 use super::super::helpers::{extract_required_string, get_optional_string_arg, success_result};
 use super::super::types::McpToolResult;
 use super::bridge::HttpBridge;
+use crate::resource::ResourceManager;
 
 // ---------------------------------------------------------------------------
 // Tarang Media Framework Agent Bridge
@@ -231,4 +234,72 @@ pub(crate) async fn handle_tarang_describe(args: &serde_json::Value) -> McpToolR
             }))
         }
     }
+}
+
+/// Probe hardware video decode capabilities available to Tarang/Jalwa.
+///
+/// Checks for GPU presence via `ResourceManager::detect_gpus()`, then
+/// probes for VA-API (open `/dev/dri/renderD128` or `/usr/lib/dri/`)
+/// and NVDEC (implied by an NVIDIA GPU being present). The result lets
+/// Tarang and Jalwa select the fastest decode path at runtime.
+pub(crate) async fn handle_tarang_hw_accel(_args: &serde_json::Value) -> McpToolResult {
+    // Detect GPUs — used both to report devices and to infer NVDEC.
+    let gpus = match ResourceManager::detect_gpus().await {
+        Ok(g) => g,
+        Err(e) => {
+            warn!(error = %e, "Tarang hw_accel: GPU detection failed, continuing without GPU info");
+            vec![]
+        }
+    };
+
+    let gpu_list: Vec<serde_json::Value> = gpus
+        .iter()
+        .map(|g| {
+            serde_json::json!({
+                "id": g.id,
+                "name": g.name,
+                "total_memory_bytes": g.total_memory,
+                "available_memory_bytes": g.available_memory.load(Ordering::Relaxed),
+                "compute_capability": g.compute_capability,
+            })
+        })
+        .collect();
+
+    // NVDEC is available on any NVIDIA GPU (Kepler/GK1xx and newer).
+    let nvdec_available = gpus
+        .iter()
+        .any(|g| g.name.to_ascii_lowercase().contains("nvidia"));
+
+    // VA-API: prefer the primary DRM render node; fall back to checking
+    // whether the Mesa/Intel/AMD driver directory exists.
+    let vaapi_render_node = std::path::Path::new("/dev/dri/renderD128").exists();
+    let vaapi_driver_dir = std::path::Path::new("/usr/lib/dri").exists();
+    let vaapi_available = vaapi_render_node || vaapi_driver_dir;
+
+    info!(
+        gpus = gpu_list.len(),
+        vaapi = vaapi_available,
+        nvdec = nvdec_available,
+        "Tarang: hardware decode capability probe"
+    );
+
+    success_result(serde_json::json!({
+        "gpus": gpu_list,
+        "gpu_count": gpu_list.len(),
+        "vaapi": {
+            "available": vaapi_available,
+            "render_node": vaapi_render_node,
+            "driver_dir": vaapi_driver_dir,
+        },
+        "nvdec": {
+            "available": nvdec_available,
+        },
+        "recommended_decode_path": if nvdec_available {
+            "nvdec"
+        } else if vaapi_available {
+            "vaapi"
+        } else {
+            "software"
+        },
+    }))
 }
