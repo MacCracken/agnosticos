@@ -220,41 +220,38 @@ Many desktop essentials already exist as open-source packages. Not everything ne
 **Ship as takumi recipe (package existing software):**
 Use the existing tool, add a marketplace recipe, optionally wrap with agnoshi intents and MCP tools for AI integration.
 
-| Need | Package | Recipe Status | AI Integration |
-|------|---------|---------------|----------------|
-| Web Browser | Firefox ESR, Chromium (+6 more) | ✓ Done (`recipes/browser/`, 8 total) | Aegis phishing, sandboxed |
-| Text Editor | Helix, Neovim | ✓ Done | Helix (beta), Neovim (post-beta). Agnoshi "edit file" intent exists |
-| Terminal | Foot, Kitty | ✓ Done | Foot Wayland-native (beta), Kitty GPU-accelerated (post-beta) |
-| File Manager | yazi, Thunar | ✓ Done | yazi TUI (beta), Thunar GUI (post-beta, xfce-libs bundled). AI-native GUI long-term |
-| PDF Viewer | Zathura, Evince | ✓ Done | Zathura lightweight (beta), Evince full-featured (post-beta, poppler dep) |
-| Archive Manager | File-roller, Xarchiver | ✓ Done | File-roller (GTK4/GNOME), Xarchiver (lightweight GTK3) |
-| Media Player | mpv (via tarang) | ✓ Done | Tarang decode backend, PipeWire output. Jalwa is AI-native player |
-| Image Viewer | imv, feh | ✓ Done | imv Wayland-native, feh X11/Xwayland. Selah for screenshots |
-| Disk Utility | GParted, GNOME Disks | ✓ Done | GParted partition editor, GNOME Disks for SMART/benchmarks |
-| Bluetooth Manager | Blueman | ✓ Done | GTK3 frontend for BlueZ daemon |
-| Network Manager | nm-applet | ✓ Done | GTK3 frontend for NetworkManager daemon |
-| System Settings | Vidhana | ✓ Done | AI-native settings app, 5 MCP tools, NL control, egui GUI, port 8099 |
-| Notification Daemon | mako, dunst | ✓ Done | mako Wayland-native (beta), dunst X11+Wayland |
-| Clipboard Manager | wl-clipboard, cliphist | ✓ Done | wl-clipboard (copy/paste), cliphist (history) |
-| Keyring / Secrets | KeePassXC | ✓ Done | Offline-first, Secret Service integration with agnos-common |
-| Firewall GUI | firewall-config (firewalld) | ✓ Done | nftables backend, zone-based management, argonaut service |
-| Printing | CUPS + system-config-printer | ✓ Done | CUPS daemon + GTK printer config GUI |
-| Fonts | fontconfig + font packages | ✓ Done | Noto, Liberation in recipes |
-| Wallpaper / Themes | Custom for aethersafha | Not started | Compositor integration |
+| Need | Package | Where | Notes |
+|------|---------|-------|-------|
+| Web Browser | Firefox ESR, Chromium (+6) | OS (`recipes/browser/`) | Aegis phishing, sandboxed |
+| Text Editor | Helix | OS (`recipes/desktop/`) | Agnoshi "edit file" intent. Neovim in bazaar |
+| Terminal | Foot, Kitty | OS (`recipes/desktop/`) | Foot Wayland-native (beta), Kitty GPU (post-beta) |
+| File Manager | yazi | OS (`recipes/desktop/`) | TUI, zero GUI deps. Thunar in bazaar |
+| PDF Viewer | Zathura | OS (`recipes/desktop/`) | Lightweight. Evince in bazaar |
+| Media Player | mpv | OS (`recipes/desktop/`) | Tarang decode backend. Jalwa is AI-native player |
+| Image Viewer | imv | OS (`recipes/desktop/`) | Wayland-native. feh in bazaar |
+| System Settings | Vidhana | OS (`recipes/marketplace/`) | AI-native, 5 MCP tools, NL control, port 8099 |
+| Notification | mako | OS (`recipes/desktop/`) | Wayland-native. dunst in bazaar |
+| Clipboard | cliphist | OS (`recipes/desktop/`) | wl-clipboard in bazaar |
+| Printing | CUPS | OS (`recipes/desktop/`) | system-config-printer in bazaar |
+| Fonts | fontconfig + Noto | OS (`recipes/desktop/`) | Core rendering |
+| Archive Manager | — | Bazaar | File-roller, Xarchiver |
+| Disk Utility | — | Bazaar | GParted, GNOME Disks |
+| Bluetooth GUI | — | Bazaar | Blueman (BlueZ daemon is in OS) |
+| Network GUI | — | Bazaar | nm-applet (NetworkManager daemon is in OS) |
+| Firewall GUI | — | Bazaar | firewall-config (nftables is in OS) |
+| Secrets Manager | — | Bazaar | KeePassXC |
+| Wallpaper / Themes | — | Not started | Custom for aethersafha |
 
-**18 of 19 packaged** — only Wallpaper/Themes remaining.
+**Strategy**: OS ships the lean essentials. Everything optional lives in Bazaar (`ark bazaar install <pkg>`). Daemons and backends (BlueZ, NetworkManager, nftables, CUPS) are in the OS — GUI frontends are in Bazaar.
 
 **Build AI-native (the long-term roadmap above):**
 Only when the AI integration is the *primary value proposition* and can't be achieved by wrapping an existing tool.
 
 **Hybrid approach:**
 Some items benefit from both — ship the package now, build AI-native later. For example:
-- Zathura + Evince shipping → build AI-native PDF suite later (Priority 1)
-- nm-applet shipping → build AI network manager later (Priority 2)
-- yazi + Thunar shipping → build AI file manager later (Priority 1)
-
-**Bazaar (community recipes):**
-Additional packages beyond the core set can be contributed via Bazaar — the `ark` community repository (`recipes/base/bazaar.toml`). Priority 2-6 AI-native apps and niche desktop utilities are ideal candidates for community-contributed bazaar recipes rather than first-party development.
+- Zathura shipping → build AI-native PDF suite later (Priority 1)
+- yazi shipping → build AI file manager later (Priority 1)
+- nm-applet in bazaar → build AI network manager later (Priority 2)
 
 ---
 
@@ -263,7 +260,7 @@ Additional packages beyond the core set can be contributed via Bazaar — the `a
 | Category | Count | Location |
 |----------|-------|----------|
 | Base system | 113 | `recipes/base/` |
-| Desktop | 92 | `recipes/desktop/` |
+| Desktop | 71 | `recipes/desktop/` |
 | AI infrastructure | 25 | `recipes/ai/` |
 | Browser | 8 | `recipes/browser/` |
 | Network | 9 | `recipes/network/` |
@@ -271,9 +268,10 @@ Additional packages beyond the core set can be contributed via Bazaar — the `a
 | Python | 4 | `recipes/python/` |
 | Database | 3 | `recipes/database/` |
 | Edge | 31 | `recipes/edge/` |
-| **Total** | **307** | |
+| **OS Total** | **286** | |
+| Bazaar (community) | 90 | `MacCracken/bazaar` |
 
-Build order: `recipes/build-order.txt` — 199 packages in dependency order.
+Build order: `recipes/build-order.txt` — 178 packages in dependency order.
 
 ---
 
