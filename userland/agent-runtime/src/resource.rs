@@ -105,7 +105,12 @@ impl ResourceManager {
         }
 
         let gpu_ids: Vec<u32> = allocated_gpus.iter().map(|(id, _)| *id).collect();
-        allocations.insert(agent_id, allocated_gpus);
+        // Extend existing allocations rather than overwriting, so that a second
+        // allocate_gpu call for the same agent doesn't leak the first allocation.
+        allocations
+            .entry(agent_id)
+            .or_insert_with(Vec::new)
+            .extend(allocated_gpus);
         Ok(gpu_ids)
     }
 

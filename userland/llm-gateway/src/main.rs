@@ -572,6 +572,21 @@ impl LlmGateway {
             .ok_or_else(|| anyhow::anyhow!("No LLM provider available"))
     }
 
+    /// Check that at least one local provider is available for the given request.
+    ///
+    /// This is a lightweight validation (no inference performed) used by the
+    /// streaming endpoint to enforce privacy routing without double inference.
+    pub async fn check_local_providers(&self, request: &InferenceRequest) -> Result<()> {
+        let candidates = self.select_providers_ordered(request, true).await?;
+        if candidates.is_empty() {
+            anyhow::bail!(
+                "Privacy mode: no local providers available for model '{}'",
+                request.model
+            );
+        }
+        Ok(())
+    }
+
     /// Return an ordered list of healthy providers to try for a request.
     /// Selects providers in priority order for GPU-aware inference routing.
     ///

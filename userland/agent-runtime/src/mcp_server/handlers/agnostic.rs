@@ -674,8 +674,9 @@ async fn register_crew_rpc_methods(response: &serde_json::Value) {
 
     // Synthesise a deterministic UUID-shaped identifier from the crew_id string
     // so that repeated runs for the same crew converge on the same RPC agent slot.
-    // We hash the crew_id with SHA-256, take the first 16 bytes, and stamp the
-    // UUID version (4) and variant bits to produce a well-formed UUID string.
+    // We hash the crew_id with DefaultHasher (SipHash), using two rounds with
+    // different inputs to produce 16 bytes, then stamp the UUID version (4) and
+    // variant bits to produce a well-formed UUID string.
     // (uuid v5 requires the optional "v5" feature; we avoid touching Cargo.toml.)
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};

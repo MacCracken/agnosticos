@@ -399,7 +399,13 @@ pub(crate) async fn handle_gpu_probe_json(_args: &serde_json::Value) -> McpToolR
     let json_path = dir.join("gpu.json");
     match tokio::fs::create_dir_all(dir).await {
         Ok(_) => {
-            let content = serde_json::to_string_pretty(&payload).unwrap_or_default();
+            let content = match serde_json::to_string_pretty(&payload) {
+                Ok(s) => s,
+                Err(e) => {
+                    warn!(error = %e, "Failed to serialize GPU probe payload to JSON");
+                    String::new()
+                }
+            };
             if let Err(e) = tokio::fs::write(&json_path, content).await {
                 warn!(path = %json_path.display(), error = %e, "Failed to write gpu.json");
             } else {

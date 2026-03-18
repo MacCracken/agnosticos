@@ -232,11 +232,7 @@ impl Orchestrator {
                     .filter(|cap| agent_caps.contains(cap.to_lowercase().as_str()))
                     .count();
 
-                let ratio = if requirements.required_capabilities.is_empty() {
-                    1.0
-                } else {
-                    (matched as f64) / (requirements.required_capabilities.len() as f64)
-                };
+                let ratio = (matched as f64) / (requirements.required_capabilities.len() as f64);
                 score += w_cap * ratio;
             } else {
                 score += w_cap; // No requirements = full match

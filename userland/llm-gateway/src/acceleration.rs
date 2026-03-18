@@ -450,7 +450,11 @@ impl AcceleratorRegistry {
 
         let gpu_mem = match best_gpu {
             Some(m) => m,
-            None => return QuantizationLevel::Float16, // No GPU — use FP16 on CPU
+            // No GPU available — fall back to FP16 on CPU. CPU memory is not
+            // validated here intentionally: the CPU path is a best-effort
+            // fallback and system RAM is assumed sufficient for at least FP16
+            // inference (swapping to disk if needed).
+            None => return QuantizationLevel::Float16,
         };
 
         // Try from highest quality to most compressed
