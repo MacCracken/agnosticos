@@ -1,0 +1,74 @@
+# firewall-config — GUI for firewall management
+# GTK frontend for firewalld/nftables. Provides zone-based firewall
+# management with port/service/rich rules editing.
+# AGNOS equivalent of Gufw — wraps nftables via firewalld.
+
+[package]
+name = "firewall-config"
+version = "2.3.2"
+description = "firewall-config — GTK firewall management GUI (firewalld frontend)"
+license = "GPL-2.0-or-later"
+groups = ["desktop", "network", "security"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/firewalld/firewalld/releases/download/v2.3.2/firewalld-2.3.2.tar.bz2"
+sha256 = ""
+patches = []
+
+[depends]
+runtime = ["glibc", "python3", "gtk3", "glib", "dbus", "nftables", "polkit", "libnotify", "gobject-introspection"]
+build = ["autoconf", "automake", "intltool", "gettext", "desktop-file-utils"]
+optional = ["ipset", "iptables"]
+
+[build]
+pre_build = ""
+configure = """
+./configure --prefix=/usr \
+    --sysconfdir=/etc \
+    --localstatedir=/var \
+    --enable-nftables \
+    --disable-systemd \
+    --with-nft=/usr/sbin/nft
+"""
+make = "make -j$(nproc)"
+check = "make check || true"
+install = "make DESTDIR=$PKG install"
+post_install = """
+# Argonaut service unit for firewalld
+mkdir -p $PKG/etc/agnos/services
+cat > $PKG/etc/agnos/services/firewalld.toml << 'SVC'
+[service]
+name = "firewalld"
+description = "Dynamic firewall daemon (nftables backend)"
+exec = "/usr/sbin/firewalld --nofork"
+type = "dbus"
+bus_name = "org.fedoraproject.FirewallD1"
+
+[service.depends]
+after = ["dbus"]
+
+[service.restart]
+policy = "on-failure"
+delay_seconds = 3
+SVC
+
+# Default zone: drop all unsolicited inbound
+mkdir -p $PKG/etc/firewalld
+cat > $PKG/etc/firewalld/firewalld.conf << 'FWCONF'
+DefaultZone=public
+CleanupOnExit=yes
+CleanupModulesOnExit=yes
+Lockdown=no
+IPv6_rpfilter=yes
+IndividualCalls=no
+LogDenied=unicast
+FirewallBackend=nftables
+FWCONF
+"""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

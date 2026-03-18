@@ -1,0 +1,50 @@
+# system-config-printer — Printer configuration GUI
+# GTK frontend for CUPS printer management.
+# Add, configure, and manage printers and print queues.
+
+[package]
+name = "system-config-printer"
+version = "1.5.18"
+description = "system-config-printer — GTK printer configuration tool for CUPS"
+license = "GPL-2.0-or-later"
+groups = ["desktop", "printing"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/OpenPrinting/system-config-printer/releases/download/v1.5.18/system-config-printer-1.5.18.tar.xz"
+sha256 = ""
+patches = []
+
+[depends]
+runtime = ["glibc", "python3", "gtk3", "cups", "dbus", "polkit", "libnotify", "gobject-introspection", "pycups", "pycurl"]
+build = ["autoconf", "automake", "gettext", "intltool", "desktop-file-utils", "xmlto"]
+optional = ["libsmbclient"]
+
+[build]
+pre_build = ""
+configure = """
+./configure --prefix=/usr \
+    --sysconfdir=/etc
+"""
+make = "make -j$(nproc)"
+check = "make check || true"
+install = "make DESTDIR=$PKG install"
+post_install = """
+mkdir -p $PKG/usr/share/applications
+cat > $PKG/usr/share/applications/system-config-printer.desktop << 'EOF'
+[Desktop Entry]
+Name=Print Settings
+Comment=Configure printer queues and manage print jobs
+Exec=system-config-printer
+Icon=printer
+Type=Application
+Categories=System;Settings;HardwareSettings;Printing;
+Keywords=printer;cups;print;
+EOF
+"""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

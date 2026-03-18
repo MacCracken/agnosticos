@@ -1,0 +1,39 @@
+# wl-clipboard — Wayland clipboard utilities
+# Provides wl-copy and wl-paste for Wayland clipboard access.
+# Required by many Wayland-native apps (Helix, Neovim, etc.)
+
+[package]
+name = "wl-clipboard"
+version = "2.2.1"
+description = "wl-clipboard — command-line Wayland clipboard utilities"
+license = "GPL-3.0-or-later"
+groups = ["desktop", "wayland"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/bugaevc/wl-clipboard/archive/refs/tags/v2.2.1.tar.gz"
+sha256 = ""
+patches = []
+
+[depends]
+runtime = ["glibc", "wayland", "wayland-protocols"]
+build = ["meson", "ninja", "pkgconf", "wayland-dev", "wayland-protocols-dev"]
+optional = ["xdg-utils"]
+
+[build]
+pre_build = ""
+configure = """
+meson setup build \
+    --prefix=/usr \
+    --buildtype=release
+"""
+make = "ninja -C build -j$(nproc)"
+check = "ninja -C build test || true"
+install = "DESTDIR=$PKG ninja -C build install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

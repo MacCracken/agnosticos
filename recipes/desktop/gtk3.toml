@@ -1,0 +1,51 @@
+# GTK 3 — GIMP Toolkit (legacy)
+# Required by many desktop applications (Thunar, Blueman, Xarchiver, etc.)
+# GTK4 is preferred for new apps; GTK3 needed for existing ecosystem.
+#
+# BLFS
+
+[package]
+name = "gtk3"
+version = "3.24.43"
+description = "GTK 3 — multi-platform GUI toolkit"
+license = "LGPL-2.1-or-later"
+groups = ["desktop", "gui"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://download.gnome.org/sources/gtk+/3.24/gtk+-3.24.43.tar.xz"
+sha256 = ""
+patches = []
+
+[depends]
+runtime = ["glibc", "glib", "cairo", "pango", "gdk-pixbuf", "atk", "libepoxy", "libxkbcommon", "wayland", "wayland-protocols", "fontconfig", "freetype", "harfbuzz", "fribidi", "libxrandr", "libxi"]
+build = ["meson", "ninja", "pkgconf", "gobject-introspection", "sassc", "gettext"]
+optional = ["cups", "colord", "libcloudproviders"]
+
+[build]
+pre_build = ""
+configure = """
+meson setup build \
+    --prefix=/usr \
+    --buildtype=release \
+    -Dman=false \
+    -Dgtk_doc=false \
+    -Dbroadway_backend=false \
+    -Dintrospection=true \
+    -Dwayland_backend=true \
+    -Dx11_backend=true
+"""
+make = "ninja -C build -j$(nproc)"
+check = "ninja -C build test || true"
+install = "DESTDIR=$PKG ninja -C build install"
+post_install = """
+# Update icon cache and schemas
+gtk-update-icon-cache -q /usr/share/icons/hicolor 2>/dev/null || true
+glib-compile-schemas /usr/share/glib-2.0/schemas 2>/dev/null || true
+"""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

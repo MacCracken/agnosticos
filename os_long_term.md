@@ -3,7 +3,7 @@
 Roadmap for expanding the AGNOS desktop and tool ecosystem with AI-native applications.
 All items follow the consumer project pattern: separate repo, Rust crates, MCP tools, agnoshi intents, marketplace recipe.
 
-> **Last Updated**: 2026-03-16
+> **Last Updated**: 2026-03-18
 
 ---
 
@@ -11,48 +11,39 @@ All items follow the consumer project pattern: separate repo, Rust crates, MCP t
 
 These are built, integrated, and have marketplace recipes. Listed for reference — not on the roadmap.
 
-| App | Domain | Status |
-|-----|--------|--------|
-| Tazama | Video editor | Released, 7 MCP tools |
-| Rasa | Image editor | Released, 9 MCP tools |
-| Mneme | Knowledge base | Released, 7 MCP tools |
-| Shruti | DAW / audio | Released, 7 MCP tools |
-| Synapse | LLM management | Released, 7 MCP tools |
-| BullShift | Trading | Released, 7 MCP tools |
-| Delta | Code hosting | Released, 7 MCP tools |
-| Aequi | Accounting | Released, 5 MCP tools |
-| AGNOSTIC | QA platform | Released, 5 MCP tools |
-| SecureYeoman | AI agents | Released, 7 MCP tools |
-| Photis Nadi | Productivity | Released, 8 MCP tools |
+| App | Domain | Status | Repo |
+|-----|--------|--------|------|
+| Tazama | Video editor | Released, 7 MCP tools | `MacCracken/tazama` |
+| Rasa | Image editor | Released, 9 MCP tools | `MacCracken/rasa` |
+| Mneme | Knowledge base | Released, 7 MCP tools | `MacCracken/mneme` |
+| Shruti | DAW / audio | Released, 7 MCP tools | `MacCracken/shruti` |
+| Synapse | LLM management | Released, 7 MCP tools | `MacCracken/synapse` |
+| BullShift | Trading | Released, 7 MCP tools | `MacCracken/BullShift` |
+| Delta | Code hosting | Released, 5 MCP tools | `MacCracken/delta` |
+| Aequi | Accounting | Released, 5 MCP tools | `anomalyco/aequi` |
+| AGNOSTIC | QA platform | Released, 5 MCP tools | `MacCracken/agnostic` |
+| SecureYeoman | AI agents | Released, 7 MCP tools | `MacCracken/SecureYeoman` |
+| Photis Nadi | Productivity | Released, 8 MCP tools | `MacCracken/PhotisNadi` |
+| Tarang | Media framework | Released, 8 MCP tools | `MacCracken/tarang` |
+| Jalwa | Media player | Released, 8 MCP tools | `MacCracken/jalwa` |
+| Nazar | System monitor | Released, 5 MCP tools | `MacCracken/nazar` |
+| Selah | Screenshot / annotation | Released, 5 MCP tools | `MacCracken/selah` |
+| Abaco | Calculator / units | Released, 5 MCP tools | `MacCracken/abaco` |
+| Rahd | Calendar / contacts | Released, 5 MCP tools | `MacCracken/rahd` |
+| Vidhana | System settings | Released, 5 MCP tools | `MacCracken/vidhana` |
 
-## Scaffolded (Repos created, CI/CD, tests passing — awaiting first release)
-
-| App | Domain | Tests | Repo |
-|-----|--------|-------|------|
-| Nazar | System monitor | 27 | `/home/macro/Repos/nazar` |
-| Selah | Screenshot / annotation | 50 | `/home/macro/Repos/selah` |
-| Abaco | Calculator / units | 61 | `/home/macro/Repos/abaco` |
-| Rahd | Calendar / contacts | 49 | `/home/macro/Repos/rahd` |
+**Total: 18 consumer projects**, 113+ MCP tools across ecosystem.
 
 ---
 
 ## Priority 1 — Essential Desktop (needed for daily-driver OS)
 
-### Media Player — Jalwa (SCAFFOLDED)
-- **Jalwa** (Persian: manifestation/display) — `/home/macro/Repos/jalwa`
-- Audio + video playback, playlist management, library browser, smart playlists
-- Built on **tarang** — pure Rust audio (symphonia), C FFI video (dav1d/openh264/libvpx)
-- AI: Content classification, smart playlists, recommendations, transcription (via hoosh), library insights
-- Infrastructure: tarang for decode, PipeWire for output (recipe exists), Wayland for video display (aethersafha)
-- 4 crates (core, playback, ui, ai), 66 tests, 5 MCP tools, CI/CD ready
-- **Next steps**: Full tarang-audio decode pipeline, PipeWire output, SQLite library persistence, desktop UI
-- **Shared with**: Tazama (video), Shruti (audio) — all three use tarang as decode backend
-
 ### PDF / Document Suite
 - Reader, annotator, form filler, digital signatures
 - AI: OCR, summarization, translation, document Q&A, table extraction
-- Infrastructure: Tesseract already in Aequi, poppler/mupdf recipes possible
-- **Need**: Every OS needs a document viewer. Currently no recipe exists
+- Infrastructure: Tesseract already in Aequi, poppler recipe done (`recipes/desktop/poppler.toml`)
+- **Interim**: Zathura (lightweight) and Evince (full-featured) recipes shipping
+- **Need**: AI-native document viewer with OCR/summarization is the differentiator
 - **Effort**: Medium — mupdf bindings exist in Rust
 
 ### Email Client
@@ -65,7 +56,8 @@ These are built, integrated, and have marketplace recipes. Listed for reference 
 - Dual-pane, thumbnail preview, batch rename
 - AI: Smart search (semantic file finding via RAG), duplicate detection, auto-tagging by content, predictive organization ("you usually put invoices in ~/Documents/Finance")
 - Infrastructure: FUSE already in agnos-sys, inotify available
-- **Need**: Every desktop needs one. Currently relying on CLI
+- **Interim**: yazi (TUI, beta) and Thunar (GUI, post-beta) recipes shipping
+- **Need**: AI-native GUI file manager with semantic search is the differentiator
 - **Effort**: Medium — egui + filesystem ops
 
 ### Backup Manager
@@ -91,7 +83,8 @@ These are built, integrated, and have marketplace recipes. Listed for reference 
 - Connection profiles, firewall rule editor, bandwidth monitoring
 - AI: Security recommendations ("this network has no encryption"), auto-VPN triggers
 - Infrastructure: NetworkManager/iwd recipes exist, nftables in kernel
-- **Need**: WiFi management without CLI is essential for non-technical users
+- **Interim**: nm-applet recipe shipping for basic WiFi/VPN management
+- **Need**: AI-native network manager with security recommendations is the differentiator
 - **Effort**: Medium — NetworkManager D-Bus bindings
 
 ### Log Viewer
@@ -229,34 +222,58 @@ Use the existing tool, add a marketplace recipe, optionally wrap with agnoshi in
 
 | Need | Package | Recipe Status | AI Integration |
 |------|---------|---------------|----------------|
-| Web Browser | Firefox ESR, Chromium | ✓ Done (`recipes/browser/`) | Aegis phishing, sandboxed |
-| Text Editor | Helix, Neovim | Not started | Agnoshi "edit file" intent exists |
-| Terminal | Foot (beta), Kitty (post-beta) | Not started | Foot is Wayland-native, minimal. Kitty needs Go 1.26+ (GPU-accelerated, richer features) |
-| File Manager | yazi (beta), Thunar (post-beta) | Not started | yazi is Rust TUI, zero GUI deps. Thunar deferred (4 Xfce libs). AI-native GUI file manager is Priority 1 long-term |
-| PDF Viewer | Zathura, Evince | Not started | Lightweight, solves 80% of PDF need |
-| Archive Manager | File-roller, Xarchiver | Not started | Basic utility |
-| Media Player | mpv (via tarang) | Not started | Tarang replaces ffmpeg as media backend; mpv recipe uses tarang for decode pipeline. PipeWire recipes exist |
-| Image Viewer | imv, feh, Eye of GNOME | Not started | Selah handles screenshots |
-| Disk Utility | GParted, GNOME Disks | Not started | Partition management |
-| Bluetooth Manager | Blueman | Not started | BlueZ recipe exists |
-| Network Manager | nm-applet, iwgtk | Not started | WiFi/VPN GUI |
-| System Settings | Custom needed | Not started | AGNOS-specific config UI |
-| Notification Daemon | mako, dunst | Not started | Wayland-native |
-| Clipboard Manager | wl-clipboard, cliphist | Not started | Wayland-native |
-| Keyring / Secrets | GNOME Keyring, KeePassXC | Not started | Integrates with agnos-common secrets |
-| Firewall GUI | Gufw equivalent | Not started | Wraps nftables |
-| Printing | CUPS + system-config-printer | Not started | cups.toml recipe exists |
-| Fonts | fontconfig + font packages | Partial | Noto, Liberation in recipes |
+| Web Browser | Firefox ESR, Chromium (+6 more) | ✓ Done (`recipes/browser/`, 8 total) | Aegis phishing, sandboxed |
+| Text Editor | Helix, Neovim | ✓ Done | Helix (beta), Neovim (post-beta). Agnoshi "edit file" intent exists |
+| Terminal | Foot, Kitty | ✓ Done | Foot Wayland-native (beta), Kitty GPU-accelerated (post-beta) |
+| File Manager | yazi, Thunar | ✓ Done | yazi TUI (beta), Thunar GUI (post-beta, xfce-libs bundled). AI-native GUI long-term |
+| PDF Viewer | Zathura, Evince | ✓ Done | Zathura lightweight (beta), Evince full-featured (post-beta, poppler dep) |
+| Archive Manager | File-roller, Xarchiver | ✓ Done | File-roller (GTK4/GNOME), Xarchiver (lightweight GTK3) |
+| Media Player | mpv (via tarang) | ✓ Done | Tarang decode backend, PipeWire output. Jalwa is AI-native player |
+| Image Viewer | imv, feh | ✓ Done | imv Wayland-native, feh X11/Xwayland. Selah for screenshots |
+| Disk Utility | GParted, GNOME Disks | ✓ Done | GParted partition editor, GNOME Disks for SMART/benchmarks |
+| Bluetooth Manager | Blueman | ✓ Done | GTK3 frontend for BlueZ daemon |
+| Network Manager | nm-applet | ✓ Done | GTK3 frontend for NetworkManager daemon |
+| System Settings | Vidhana | ✓ Done | AI-native settings app, 5 MCP tools, NL control, egui GUI, port 8099 |
+| Notification Daemon | mako, dunst | ✓ Done | mako Wayland-native (beta), dunst X11+Wayland |
+| Clipboard Manager | wl-clipboard, cliphist | ✓ Done | wl-clipboard (copy/paste), cliphist (history) |
+| Keyring / Secrets | KeePassXC | ✓ Done | Offline-first, Secret Service integration with agnos-common |
+| Firewall GUI | firewall-config (firewalld) | ✓ Done | nftables backend, zone-based management, argonaut service |
+| Printing | CUPS + system-config-printer | ✓ Done | CUPS daemon + GTK printer config GUI |
+| Fonts | fontconfig + font packages | ✓ Done | Noto, Liberation in recipes |
 | Wallpaper / Themes | Custom for aethersafha | Not started | Compositor integration |
+
+**18 of 19 packaged** — only Wallpaper/Themes remaining.
 
 **Build AI-native (the long-term roadmap above):**
 Only when the AI integration is the *primary value proposition* and can't be achieved by wrapping an existing tool.
 
 **Hybrid approach:**
 Some items benefit from both — ship the package now, build AI-native later. For example:
-- Ship Zathura now → build AI-native PDF suite later (Priority 1)
-- Ship nm-applet now → build AI network manager later (Priority 2)
-- Ship Thunar now → build AI file manager later (Priority 1)
+- Zathura + Evince shipping → build AI-native PDF suite later (Priority 1)
+- nm-applet shipping → build AI network manager later (Priority 2)
+- yazi + Thunar shipping → build AI file manager later (Priority 1)
+
+**Bazaar (community recipes):**
+Additional packages beyond the core set can be contributed via Bazaar — the `ark` community repository (`recipes/base/bazaar.toml`). Priority 2-6 AI-native apps and niche desktop utilities are ideal candidates for community-contributed bazaar recipes rather than first-party development.
+
+---
+
+## Recipe Inventory
+
+| Category | Count | Location |
+|----------|-------|----------|
+| Base system | 113 | `recipes/base/` |
+| Desktop | 92 | `recipes/desktop/` |
+| AI infrastructure | 25 | `recipes/ai/` |
+| Browser | 8 | `recipes/browser/` |
+| Network | 9 | `recipes/network/` |
+| Marketplace | 22 | `recipes/marketplace/` |
+| Python | 4 | `recipes/python/` |
+| Database | 3 | `recipes/database/` |
+| Edge | 31 | `recipes/edge/` |
+| **Total** | **307** | |
+
+Build order: `recipes/build-order.txt` — 199 packages in dependency order.
 
 ---
 
@@ -268,3 +285,4 @@ Some items benefit from both — ship the package now, build AI-native later. Fo
 - Priority 1 items should be addressed before beta (Q4 2026)
 - Priority 2-3 items strengthen the daily-driver story
 - Priority 4-6 items are post-v1.0 or community-contributed
+- Bazaar community repo (`ark bazaar`) handles long-tail packages beyond first-party scope

@@ -1,0 +1,68 @@
+# Xfce Libraries — Foundation libraries for Thunar
+# Bundles libxfce4util, xfconf, exo, libxfce4ui — the four Xfce libs
+# needed by Thunar. Built as a single recipe to minimize overhead.
+#
+# BLFS
+
+[package]
+name = "xfce-libs"
+version = "4.20.0"
+description = "Xfce foundation libraries (libxfce4util, xfconf, exo, libxfce4ui)"
+license = "GPL-2.0-or-later"
+groups = ["desktop", "xfce"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://archive.xfce.org/src/xfce/libxfce4util/4.20/libxfce4util-4.20.0.tar.bz2"
+sha256 = ""
+patches = []
+# Additional source tarballs fetched in pre_build
+
+[depends]
+runtime = ["glibc", "glib", "gtk3", "dbus", "libice", "libsm", "libx11", "startup-notification"]
+build = ["gcc", "make", "pkgconf", "intltool", "gobject-introspection", "vala"]
+optional = []
+
+[build]
+pre_build = """
+# Fetch remaining Xfce library tarballs
+cd ..
+for pkg in xfconf-4.20.0 exo-4.20.0 libxfce4ui-4.20.0; do
+    lib=$(echo $pkg | sed 's/-[0-9].*//')
+    ver=$(echo $pkg | sed 's/[^-]*-//')
+    curl -sLO "https://archive.xfce.org/src/xfce/$lib/4.20/$pkg.tar.bz2"
+    tar xf "$pkg.tar.bz2"
+done
+"""
+configure = """
+# Build libxfce4util first (base dependency)
+./configure --prefix=/usr --disable-debug && make -j$(nproc) && make install
+
+# Build xfconf
+cd ../xfconf-4.20.0
+./configure --prefix=/usr --disable-debug && make -j$(nproc) && make install
+
+# Build exo
+cd ../exo-4.20.0
+./configure --prefix=/usr --disable-debug && make -j$(nproc) && make install
+
+# Build libxfce4ui
+cd ../libxfce4ui-4.20.0
+./configure --prefix=/usr --disable-debug --enable-gladeui2=no && make -j$(nproc) && make install
+"""
+make = "true"
+check = ""
+install = """
+# Collect installed files from all four libraries
+for pkg in . ../xfconf-4.20.0 ../exo-4.20.0 ../libxfce4ui-4.20.0; do
+    cd $pkg
+    make DESTDIR=$PKG install
+done
+"""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

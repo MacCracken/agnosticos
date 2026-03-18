@@ -209,6 +209,15 @@ desktop/wlroots
 desktop/xwayland
 desktop/gstreamer
 desktop/gtk4
+desktop/gtk3
+desktop/libadwaita
+desktop/poppler
+desktop/imlib2
+desktop/qt5-base
+desktop/gtkmm3
+desktop/parted
+desktop/xfce-libs
+desktop/wl-clipboard
 
 # =========================================================================
 # TIER 8: Desktop — Applications
@@ -217,12 +226,24 @@ desktop/foot
 desktop/kitty
 desktop/fuzzel
 desktop/mako
+desktop/dunst
 desktop/cliphist
 desktop/imv
+desktop/feh
 desktop/yazi
+desktop/thunar
 desktop/helix
+desktop/neovim
 desktop/mpv
 desktop/zathura
+desktop/evince
+desktop/file-roller
+desktop/xarchiver
+desktop/gparted
+desktop/gnome-disk-utility
+desktop/keepassxc
+desktop/firewall-config
+desktop/system-config-printer
 desktop/greetd
 desktop/tuigreet
 
@@ -230,6 +251,8 @@ desktop/tuigreet
 # TIER 9: Hardware support
 # =========================================================================
 desktop/bluez
+desktop/blueman
+desktop/network-manager-applet
 desktop/bolt
 desktop/cups
 desktop/libatasmart

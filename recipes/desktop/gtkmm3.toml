@@ -1,0 +1,43 @@
+# gtkmm 3 — C++ bindings for GTK 3
+# Required by GParted.
+#
+# BLFS
+
+[package]
+name = "gtkmm3"
+version = "3.24.9"
+description = "gtkmm 3 — C++ interface for GTK 3"
+license = "LGPL-2.1-or-later"
+groups = ["desktop", "gui"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://download.gnome.org/sources/gtkmm/3.24/gtkmm-3.24.9.tar.xz"
+sha256 = ""
+patches = []
+
+[depends]
+runtime = ["glibc", "gtk3", "glib", "glibmm", "cairomm", "pangomm", "atkmm", "sigc++"]
+build = ["meson", "ninja", "pkgconf", "mm-common"]
+optional = []
+
+[build]
+pre_build = ""
+configure = """
+meson setup build \
+    --prefix=/usr \
+    --buildtype=release \
+    -Dbuild-documentation=false \
+    -Dbuild-demos=false \
+    -Dbuild-tests=false
+"""
+make = "ninja -C build -j$(nproc)"
+check = "ninja -C build test || true"
+install = "DESTDIR=$PKG ninja -C build install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

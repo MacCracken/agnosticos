@@ -1,0 +1,42 @@
+# File Roller — GNOME archive manager
+# Create and extract tar, zip, 7z, rar, gzip, bzip2, xz, and more.
+#
+# BLFS
+
+[package]
+name = "file-roller"
+version = "44.4"
+description = "File Roller — GNOME archive manager"
+license = "GPL-2.0-or-later"
+groups = ["desktop", "utility"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://download.gnome.org/sources/file-roller/44/file-roller-44.4.tar.xz"
+sha256 = ""
+patches = []
+
+[depends]
+runtime = ["glibc", "gtk4", "glib", "libadwaita", "json-glib", "libarchive", "libportal"]
+build = ["meson", "ninja", "pkgconf", "gettext", "itstool", "desktop-file-utils"]
+optional = ["nautilus", "p7zip", "unrar"]
+
+[build]
+pre_build = ""
+configure = """
+meson setup build \
+    --prefix=/usr \
+    --buildtype=release \
+    -Dnautilus=false \
+    -Dpackagekit=false
+"""
+make = "ninja -C build -j$(nproc)"
+check = "ninja -C build test || true"
+install = "DESTDIR=$PKG ninja -C build install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

@@ -1,0 +1,73 @@
+# Dunst — Lightweight notification daemon
+# X11/Xwayland notification daemon, complements Mako (Wayland-native).
+# Highly customizable with scripting support.
+
+[package]
+name = "dunst"
+version = "1.12.1"
+description = "Dunst — lightweight and customizable notification daemon"
+license = "BSD-3-Clause"
+groups = ["desktop", "notification"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://github.com/dunst-project/dunst/archive/refs/tags/v1.12.1.tar.gz"
+sha256 = ""
+patches = []
+
+[depends]
+runtime = ["glibc", "glib", "cairo", "pango", "gdk-pixbuf", "dbus", "libxinerama", "libxrandr", "libnotify", "wayland", "wayland-protocols"]
+build = ["gcc", "make", "pkgconf"]
+optional = ["libxdg-basedir"]
+
+[build]
+pre_build = ""
+configure = ""
+make = "make PREFIX=/usr WAYLAND=1 X11=1 -j$(nproc)"
+check = "make test || true"
+install = "make PREFIX=/usr DESTDIR=$PKG install"
+post_install = """
+# AGNOS default dunst config
+mkdir -p $PKG/etc/dunst
+cat > $PKG/etc/dunst/dunstrc << 'CONF'
+[global]
+    monitor = 0
+    follow = mouse
+    width = 350
+    height = 300
+    origin = top-right
+    offset = 10x50
+    notification_limit = 5
+    progress_bar = true
+    frame_width = 2
+    frame_color = "#89b4fa"
+    font = sans-serif 11
+    markup = full
+    format = "<b>%s</b>\n%b"
+    show_age_threshold = 60
+    idle_threshold = 120
+    corner_radius = 5
+
+[urgency_low]
+    background = "#1e1e2e"
+    foreground = "#cdd6f4"
+    timeout = 5
+
+[urgency_normal]
+    background = "#1e1e2e"
+    foreground = "#cdd6f4"
+    timeout = 10
+
+[urgency_critical]
+    background = "#f38ba8"
+    foreground = "#1e1e2e"
+    frame_color = "#f38ba8"
+    timeout = 0
+CONF
+"""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

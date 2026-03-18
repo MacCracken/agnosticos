@@ -526,7 +526,7 @@ EOF
         cp "$CONFIG_DIR/systemd/system/"*.target "$rootfs/etc/systemd/system/" 2>/dev/null || true
 
         local units_to_enable
-        units_to_enable="$(profile_enable_units)"
+        units_to_enable="$(profile_enable_units | tr '\n' ' ')"
         local default_target
         default_target="$(profile_default_target)"
 

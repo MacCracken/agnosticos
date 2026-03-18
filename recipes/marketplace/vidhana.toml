@@ -1,0 +1,102 @@
+# Vidhana — AGNOS system settings manager
+# AI-native settings application with NL control, egui GUI, REST API, MCP tools.
+# Sanskrit: विधान (regulation, constitution, arrangement)
+#
+# Status: Released — 2026.3.18 (linux amd64 + arm64).
+# Source: https://github.com/MacCracken/vidhana
+
+[package]
+name = "vidhana"
+version = "2026.3.18"
+description = "Vidhana — AGNOS system settings manager"
+license = "GPL-3.0"
+groups = ["system", "settings"]
+release = 1
+arch = "x86_64"
+
+[source]
+github_release = "MacCracken/vidhana"
+release_asset = "vidhana-{version}-linux-{arch}.tar.gz"
+
+[depends]
+runtime = [
+    "glibc",
+]
+build = [
+    "rust",
+    "gcc",
+    "make",
+]
+
+[marketplace]
+category = "system"
+runtime = "native-binary"
+publisher = "AGNOS"
+tags = ["settings", "system", "configuration", "display", "network", "privacy", "power", "accessibility", "ai"]
+min_agnos_version = "2026.3.18"
+
+[marketplace.sandbox]
+seccomp_mode = "basic"
+network_access = true
+data_dir = "~/.local/share/vidhana/"
+
+[[marketplace.sandbox.landlock]]
+path = "~/.local/share/vidhana/"
+access = "rw"
+
+[[marketplace.sandbox.landlock]]
+path = "/tmp/vidhana/"
+access = "rw"
+
+[[marketplace.sandbox.landlock]]
+path = "/etc/agnos/"
+access = "ro"
+
+[marketplace.sandbox.network]
+allowed = ["127.0.0.1:8090", "127.0.0.1:8088", "127.0.0.1:8099"]
+
+[marketplace.services]
+ports = [8099]
+depends_on = ["daimon", "hoosh"]
+
+[build]
+make = "cargo build --release --workspace"
+check = "cargo test --workspace"
+install = """
+mkdir -p $PKG/usr/local/bin
+cp target/release/vidhana $PKG/usr/local/bin/vidhana
+
+mkdir -p $PKG/etc/agnos/services
+cat > $PKG/etc/agnos/services/vidhana.toml << 'SVC'
+[service]
+name = "vidhana"
+description = "Vidhana system settings"
+exec = "/usr/local/bin/vidhana --headless"
+type = "simple"
+
+[service.depends]
+after = ["daimon"]
+boot_mode = ["desktop"]
+
+[service.restart]
+policy = "on-failure"
+delay_seconds = 3
+SVC
+
+mkdir -p $PKG/usr/share/applications
+cat > $PKG/usr/share/applications/vidhana.desktop << 'DESKTOP'
+[Desktop Entry]
+Name=System Settings
+Comment=AGNOS system settings — display, audio, network, privacy, power
+Exec=vidhana --gui
+Icon=preferences-system
+Type=Application
+Categories=Settings;System;
+Keywords=settings;preferences;display;network;audio;privacy;
+DESKTOP
+"""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

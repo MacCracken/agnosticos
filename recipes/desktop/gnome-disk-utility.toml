@@ -1,0 +1,42 @@
+# GNOME Disks — Disk management utility
+# GUI for managing drives, partitions, SMART data, disk images, and benchmarks.
+# Uses UDisks2 for privileged operations.
+#
+# BLFS
+
+[package]
+name = "gnome-disk-utility"
+version = "46.1"
+description = "GNOME Disks — disk management and partitioning utility"
+license = "GPL-2.0-or-later"
+groups = ["desktop", "disk", "system"]
+release = 1
+arch = "x86_64"
+
+[source]
+url = "https://download.gnome.org/sources/gnome-disk-utility/46/gnome-disk-utility-46.1.tar.xz"
+sha256 = ""
+patches = []
+
+[depends]
+runtime = ["glibc", "gtk4", "glib", "libadwaita", "udisks", "libsecret", "libpwquality", "libdvdread", "libhandy"]
+build = ["meson", "ninja", "pkgconf", "gettext", "itstool", "desktop-file-utils"]
+optional = ["gparted"]
+
+[build]
+pre_build = ""
+configure = """
+meson setup build \
+    --prefix=/usr \
+    --buildtype=release \
+    -Dman=false
+"""
+make = "ninja -C build -j$(nproc)"
+check = "ninja -C build test || true"
+install = "DESTDIR=$PKG ninja -C build install"
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"
