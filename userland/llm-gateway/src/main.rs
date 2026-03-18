@@ -421,10 +421,30 @@ impl LlmGateway {
 
     /// Run inference with the LLM, retrying with fallback providers on failure.
     /// Enforces per-agent rate limits before processing.
+    /// When `local_only` is true, only local providers (Ollama, llama.cpp, LocalAI,
+    /// LM Studio, Synapse) are considered — cloud providers are excluded for privacy.
     pub async fn infer(
         &self,
         mut request: InferenceRequest,
         agent_id: Option<AgentId>,
+    ) -> Result<InferenceResponse> {
+        self.infer_inner(request, agent_id, false).await
+    }
+
+    /// Privacy-aware inference — restricts to local providers only.
+    pub async fn infer_local_only(
+        &self,
+        request: InferenceRequest,
+        agent_id: Option<AgentId>,
+    ) -> Result<InferenceResponse> {
+        self.infer_inner(request, agent_id, true).await
+    }
+
+    async fn infer_inner(
+        &self,
+        mut request: InferenceRequest,
+        agent_id: Option<AgentId>,
+        local_only: bool,
     ) -> Result<InferenceResponse> {
         // Enforce parameter bounds before any processing
         request.validate();
@@ -455,7 +475,7 @@ impl LlmGateway {
         }
 
         // Collect ordered list of (provider_type, provider) to try
-        let candidates = self.select_providers_ordered(&request).await?;
+        let candidates = self.select_providers_ordered(&request, local_only).await?;
 
         // Try up to 3 candidates (initial + 2 retries)
         let max_attempts = candidates.len().min(3);
@@ -544,7 +564,7 @@ impl LlmGateway {
 
     /// Select the best provider for a request (returns first healthy match)
     async fn select_provider(&self, request: &InferenceRequest) -> Result<Arc<dyn LlmProvider>> {
-        let candidates = self.select_providers_ordered(request).await?;
+        let candidates = self.select_providers_ordered(request, false).await?;
         candidates
             .into_iter()
             .next()
@@ -566,6 +586,7 @@ impl LlmGateway {
     async fn select_providers_ordered(
         &self,
         request: &InferenceRequest,
+        local_only: bool,
     ) -> Result<Vec<(ProviderType, Arc<dyn LlmProvider>)>> {
         // Snapshot all state under locks, then release immediately
         let (provider_snapshot, health_snapshot, model_loaded, model_size) = {
@@ -599,6 +620,24 @@ impl LlmGateway {
             && model_size
                 .map(|sz| sz <= self.accelerator_registry.total_gpu_memory())
                 .unwrap_or(false);
+
+        // When local_only is set (privacy routing), restrict to local providers.
+        let provider_snapshot: Vec<_> = if local_only {
+            debug!("Privacy mode: restricting to local providers only");
+            provider_snapshot
+                .into_iter()
+                .filter(|(pt, _)| local_provider_types.contains(pt))
+                .collect()
+        } else {
+            provider_snapshot
+        };
+
+        if local_only && provider_snapshot.is_empty() {
+            return Err(anyhow::anyhow!(
+                "Privacy mode: no local providers available for model '{}'",
+                request.model
+            ));
+        }
 
         let mut healthy: Vec<(ProviderType, Arc<dyn LlmProvider>)> = Vec::new();
         let mut unhealthy: Vec<(ProviderType, Arc<dyn LlmProvider>)> = Vec::new();
@@ -2622,7 +2661,10 @@ mod tests {
         }
 
         let request = agnos_common::InferenceRequest::default();
-        let candidates = gateway.select_providers_ordered(&request).await.unwrap();
+        let candidates = gateway
+            .select_providers_ordered(&request, false)
+            .await
+            .unwrap();
 
         // LlamaCpp (healthy) should come before Ollama (unhealthy)
         assert_eq!(candidates.len(), 2);
@@ -2671,7 +2713,10 @@ mod tests {
         }
 
         let request = agnos_common::InferenceRequest::default();
-        let candidates = gateway.select_providers_ordered(&request).await.unwrap();
+        let candidates = gateway
+            .select_providers_ordered(&request, false)
+            .await
+            .unwrap();
         // Should still include the unhealthy provider as last resort
         assert_eq!(candidates.len(), 1);
         assert_eq!(candidates[0].0, ProviderType::Ollama);
@@ -3337,7 +3382,10 @@ mod tests {
             model: "local-model".to_string(),
             ..Default::default()
         };
-        let candidates = gateway.select_providers_ordered(&request).await.unwrap();
+        let candidates = gateway
+            .select_providers_ordered(&request, false)
+            .await
+            .unwrap();
         // Ollama should be first since model is loaded
         assert_eq!(candidates[0].0, ProviderType::Ollama);
     }
@@ -3450,7 +3498,10 @@ mod tests {
             model: "".to_string(),
             ..Default::default()
         };
-        let candidates = gateway.select_providers_ordered(&request).await.unwrap();
+        let candidates = gateway
+            .select_providers_ordered(&request, false)
+            .await
+            .unwrap();
         assert_eq!(candidates.len(), 1);
     }
 

@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `select_providers_ordered()` now prioritizes local GPU providers (Ollama, llama.cpp, LocalAI, LM Studio) when model fits in VRAM
   - `suggest_quantization(model_params)` auto-selects FP16/Int8/Int4 based on available GPU VRAM
   - `total_gpu_memory()`, `has_gpu()` helpers on `AcceleratorRegistry`
+  - Privacy routing: `x-privacy-local: true` header restricts inference to local providers only. `infer_local_only()` API method
 - **Agnostic crew GPU requirements**: `agnostic_run_crew` MCP tool accepts `gpu_required` and `min_gpu_memory_mb`. Agnoshi `agnostic run crew <title> --gpu` flag. Fields passed through to Agnostic `POST /api/v1/crews`
 
 ### Changed — Module Refactoring

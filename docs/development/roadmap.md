@@ -290,7 +290,7 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 |---|------|--------|-------|
 | 1 | GPU-aware model placement | **Done** | `AcceleratorRegistry::detect_available()` at startup. `select_providers_ordered()` prioritizes local GPU providers when model fits in VRAM |
 | 2 | VRAM budget per model | **Done** | `ModelInfo.size_bytes` checked against `total_gpu_memory()`. Model only routed to GPU if it fits |
-| 3 | Privacy-aware GPU routing | Partial | Local GPU providers prioritized over cloud when model fits. Full privacy header (`x-privacy-local`) not yet enforced |
+| 3 | Privacy-aware GPU routing | **Done** | `x-privacy-local: true` header restricts to local providers only (Ollama, llama.cpp, LocalAI, LM Studio, Synapse). `infer_local_only()` API. Errors clearly if no local provider available |
 | 4 | Quantization auto-select | **Done** | `suggest_quantization(model_params)` selects FP16/Int8/Int4 based on best GPU VRAM. `estimate_memory()` with 20% overhead |
 
 ### G3 — Edge Fleet GPU Routing

@@ -214,6 +214,13 @@ async fn chat_completions(
         .and_then(|h| h.to_str().ok())
         .map(|s| s.to_string());
 
+    // Privacy routing: when set, only local providers are considered.
+    let local_only = headers
+        .get("x-privacy-local")
+        .and_then(|h| h.to_str().ok())
+        .map(|s| s == "1" || s.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+
     info!(
         request_id = %request_id,
         personality_id = personality_id.as_deref().unwrap_or("-"),
@@ -320,8 +327,13 @@ async fn chat_completions(
         .await;
     }
 
-    // Non-streaming inference
-    match state.gateway.infer(request, agent_id).await {
+    // Non-streaming inference (privacy-aware routing)
+    let result = if local_only {
+        state.gateway.infer_local_only(request, agent_id).await
+    } else {
+        state.gateway.infer(request, agent_id).await
+    };
+    match result {
         Ok(response) => {
             let now = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
