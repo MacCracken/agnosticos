@@ -293,7 +293,7 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 | 15 | Rahd | 5 rahd_* | — | Yes | Not started | Calendar |
 | 16 | Tarang | 8 tarang_* | 8 | Yes | Not started | Media framework (73 tests) |
 | 17 | Jalwa | 8 jalwa_* | 8 | Yes | Not started | Media player (110+ tests), built on tarang. Priority 1 in os_long_term |
-| 18 | Vidhana | 5 vidhana_* | 5 | Yes | Not started | System settings (76+ tests), egui GUI, NL control, port 8099 |
+| 18 | Vidhana | 5 vidhana_* | 5 | Yes (v1 2026.3.18) | Not started | System settings (76+ tests), egui GUI, NL control, port 8099 |
 
 ---
 
@@ -335,7 +335,7 @@ All 10 large modules (>2000 lines) have been split into focused module directori
 | R6 | Medium | Synapse | Test panics → assert! | 18+ `panic!()` in CLI tests, 9 in non-test code |
 | R7 | Medium | Synapse | RLHF placeholder | `synapse-train/src/methods/rlhf.rs` — CLI args only, no training logic |
 
-*Reviewed 2026-03-18. Deferred until Synapse's current dev cycle stabilizes.*
+*Reviewed 2026-03-18. Synapse `2026.3.18-2` released with integration repairs. Recipe update pending.*
 
 ### Active — ESP32 Edge/IoT
 
