@@ -658,7 +658,10 @@ impl LlmGateway {
         let mut healthy: Vec<(ProviderType, Arc<dyn LlmProvider>)> = Vec::new();
         let mut unhealthy: Vec<(ProviderType, Arc<dyn LlmProvider>)> = Vec::new();
 
-        let mut classify = |pt: ProviderType, p: Arc<dyn LlmProvider>| {
+        let classify = |healthy: &mut Vec<_>,
+                        unhealthy: &mut Vec<_>,
+                        pt: ProviderType,
+                        p: Arc<dyn LlmProvider>| {
             if *health_snapshot.get(&pt).unwrap_or(&true) {
                 healthy.push((pt, p));
             } else {
@@ -671,7 +674,7 @@ impl LlmGateway {
             for (pt, provider) in &provider_snapshot {
                 if local_provider_types.contains(pt) {
                     debug!(provider = ?pt, "GPU-aware: prioritizing local GPU provider");
-                    classify(*pt, provider.clone());
+                    classify(&mut healthy, &mut unhealthy, *pt, provider.clone());
                 }
             }
         }
@@ -680,13 +683,10 @@ impl LlmGateway {
         if model_loaded && !model_fits_on_gpu {
             for (pt, provider) in &provider_snapshot {
                 if local_provider_types.contains(pt) {
-                    classify(*pt, provider.clone());
+                    classify(&mut healthy, &mut unhealthy, *pt, provider.clone());
                 }
             }
         }
-
-        // Drop the mutable classify closure so we can read healthy/unhealthy.
-        drop(classify);
 
         // Track which providers were already added in Priority 1/2
         let already_added: std::collections::HashSet<ProviderType> = healthy

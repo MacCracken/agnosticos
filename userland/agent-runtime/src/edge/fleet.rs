@@ -106,6 +106,7 @@ impl EdgeFleetManager {
 
     /// Process a heartbeat from an edge node, including optional GPU telemetry
     /// and the list of models currently loaded on the node (G3.2).
+    #[allow(clippy::too_many_arguments)]
     pub fn heartbeat(
         &mut self,
         node_id: &str,

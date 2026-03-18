@@ -12,7 +12,7 @@ use tracing::{debug, warn};
 use uuid::Uuid;
 
 /// Status of a single Agnostic crew.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CrewRunStatus {
     Idle,
@@ -20,13 +20,8 @@ pub enum CrewRunStatus {
     Paused,
     Completed,
     Failed,
+    #[default]
     Unknown,
-}
-
-impl Default for CrewRunStatus {
-    fn default() -> Self {
-        Self::Unknown
-    }
 }
 
 impl From<&str> for CrewRunStatus {

@@ -464,7 +464,7 @@ impl AcceleratorRegistry {
             QuantizationLevel::Int4,
         ] {
             if Self::estimate_memory(model_params, quant) <= gpu_mem {
-                return quant.clone();
+                return *quant;
             }
         }
 
