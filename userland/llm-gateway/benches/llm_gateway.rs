@@ -1,7 +1,6 @@
 use agnos_common::{FinishReason, InferenceRequest, InferenceResponse, TokenUsage};
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use std::collections::HashMap;
-use std::hash::{Hash, Hasher};
 
 fn benchmark_cache_key_generation(c: &mut Criterion) {
     let request = InferenceRequest {
