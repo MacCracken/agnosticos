@@ -1,12 +1,15 @@
 #!/bin/bash
 # build-installer.sh — Build AGNOS x86_64 bootable installer ISO
 #
-# Creates a bootable live ISO with Debian Trixie base + AGNOS userland.
+# Creates a bootable live ISO from an AGNOS base rootfs + AGNOS userland.
 # Supports three installation profiles: minimal, server, desktop.
 # Works on bare metal, QEMU, VirtualBox, VMware.
 #
-# Requirements: debootstrap, squashfs-tools, grub, libisoburn (xorriso), mtools
-# Must be run as root (or with sudo) for debootstrap.
+# The AGNOS base rootfs is REQUIRED. Provide it via --base-rootfs or let
+# the script download it from the base-rootfs-latest GitHub release.
+#
+# Requirements: squashfs-tools, grub, libisoburn (xorriso), mtools
+# Must be run as root (or with sudo) for chroot.
 
 set -euo pipefail
 
@@ -21,14 +24,13 @@ USERLAND_DIR="$REPO_DIR/userland"
 ISO_NAME="agnos"
 ISO_VERSION="$(cat "${REPO_DIR}/VERSION" 2>/dev/null || echo 'dev')"
 ARCH="x86_64"
-DEBIAN_ARCH="amd64"
-DEBIAN_SUITE="trixie"
-DEBIAN_MIRROR="http://deb.debian.org/debian"
 PROFILE="desktop"
 SKIP_BUILD=0
-SKIP_DEBOOTSTRAP=0
 BASE_ROOTFS=""
 SY_EDGE_BINARY=""
+
+# GitHub release URL for AGNOS base rootfs (Tier 1 build artifact)
+BASE_ROOTFS_RELEASE_URL="https://github.com/MacCracken/agnosticos/releases/download/base-rootfs-latest/agnos-base-rootfs-x86_64.tar.zst"
 
 # Colors
 RED='\033[0;31m'
@@ -65,6 +67,10 @@ Usage: $0 [options]
 
 Build AGNOS x86_64 bootable installer ISO.
 
+Requires an AGNOS base rootfs (built by Tier 1 selfhost-build). If not provided
+via --base-rootfs, the script will attempt to download it from the
+base-rootfs-latest GitHub release.
+
 Profiles:
     minimal     Headless base system: systemd, SSH, AGNOS core (daimon, hoosh, agnoshi)
     desktop     (default) Full system with Wayland compositor, Mesa, PipeWire, fonts.
@@ -75,16 +81,14 @@ Options:
     -n, --name NAME         ISO name prefix (default: agnos)
     -v, --version VERSION   AGNOS version (default: from VERSION file)
     -o, --output DIR        Output directory (default: output/)
-    -m, --mirror URL        Debian mirror (default: $DEBIAN_MIRROR)
+    --base-rootfs PATH      AGNOS base rootfs (accepts .tar, .tar.zst, or .tar.gz)
+                            If not provided, downloaded from GitHub releases automatically.
     --sy-edge-binary PATH   Include SecureYeoman edge binary (minimal profile only)
     --skip-build            Skip cargo build (use existing binaries)
-    --skip-debootstrap      Skip debootstrap (use existing rootfs)
-    --base-rootfs PATH      Use AGNOS base rootfs instead of Debian debootstrap
-                            (accepts .tar, .tar.zst, or .tar.gz)
     -h, --help              Show this help message
 
 Examples:
-    sudo $0                              # Desktop installer (default, includes server mode)
+    sudo $0                              # Desktop installer (downloads base rootfs)
     sudo $0 --profile minimal            # Headless minimal
     sudo $0 --skip-build                 # Rebuild ISO without recompiling
     sudo $0 --base-rootfs /path/to/agnos-base-rootfs.tar.zst
@@ -103,11 +107,9 @@ parse_args() {
             -n|--name)          ISO_NAME="$2"; shift 2 ;;
             -v|--version)       ISO_VERSION="$2"; shift 2 ;;
             -o|--output)        OUTPUT_DIR="$2"; shift 2 ;;
-            -m|--mirror)        DEBIAN_MIRROR="$2"; shift 2 ;;
+            --base-rootfs)      BASE_ROOTFS="$2"; shift 2 ;;
             --sy-edge-binary)   SY_EDGE_BINARY="$2"; shift 2 ;;
             --skip-build)       SKIP_BUILD=1; shift ;;
-            --skip-debootstrap) SKIP_DEBOOTSTRAP=1; shift ;;
-            --base-rootfs)      BASE_ROOTFS="$2"; shift 2 ;;
             # Legacy compat
             --edge)             PROFILE="minimal"; shift ;;
             -h|--help)          usage; exit 0 ;;
@@ -126,33 +128,6 @@ parse_args() {
 # ---------------------------------------------------------------------------
 # Profile definitions
 # ---------------------------------------------------------------------------
-
-# Debian packages to install after debootstrap, per profile
-profile_debian_packages() {
-    # Base packages included by debootstrap --include:
-    #   systemd, systemd-sysv, dbus, udev, iproute2, iputils-ping, kmod,
-    #   procps, openssh-server, sudo, vim-tiny, linux-image-amd64
-
-    case "$PROFILE" in
-        minimal)
-            # Nothing extra — debootstrap base is sufficient
-            echo ""
-            ;;
-        desktop)
-            # Full system: networking + Wayland/graphics/audio stack
-            echo "wireguard-tools ca-certificates curl \
-                  wayland-protocols libwayland-server0 \
-                  mesa-vulkan-drivers libgl1-mesa-dri libgbm1 libdrm2 libegl1 \
-                  libinput10 libinput-tools \
-                  pipewire wireplumber pipewire-pulse pipewire-alsa \
-                  xwayland \
-                  libxkbcommon0 \
-                  fonts-noto-core fonts-noto-mono \
-                  dbus-user-session \
-                  foot"
-            ;;
-    esac
-}
 
 # AGNOS binaries to install, per profile
 # Returns lines of "source_name:installed_name"
@@ -208,7 +183,7 @@ check_requirements() {
     log_step "Checking requirements..."
 
     local missing=()
-    for cmd in debootstrap mksquashfs grub-mkrescue xorriso; do
+    for cmd in mksquashfs grub-mkrescue xorriso; do
         if ! command -v "$cmd" &>/dev/null; then
             missing+=("$cmd")
         fi
@@ -216,12 +191,12 @@ check_requirements() {
 
     if [[ ${#missing[@]} -gt 0 ]]; then
         log_error "Missing required tools: ${missing[*]}"
-        log_info "Install with: sudo pacman -S squashfs-tools grub libisoburn mtools debootstrap debian-archive-keyring"
+        log_info "Install with: sudo pacman -S squashfs-tools grub libisoburn mtools"
         exit 1
     fi
 
     if [[ $EUID -ne 0 ]]; then
-        log_error "This script must be run as root (needed for debootstrap and chroot)"
+        log_error "This script must be run as root (needed for chroot)"
         log_info "Run with: sudo $0 $*"
         exit 1
     fi
@@ -271,70 +246,61 @@ build_userland() {
     log_info "  -> Userland build complete"
 }
 
+resolve_base_rootfs() {
+    # If --base-rootfs was provided, validate it
+    if [[ -n "$BASE_ROOTFS" ]]; then
+        if [[ ! -f "$BASE_ROOTFS" ]]; then
+            log_error "Base rootfs not found: $BASE_ROOTFS"
+            exit 1
+        fi
+        return
+    fi
+
+    # Try to download from GitHub releases
+    local cached="$WORK_DIR/agnos-base-rootfs-x86_64.tar.zst"
+    if [[ -f "$cached" ]]; then
+        log_info "Using cached base rootfs: $cached"
+        BASE_ROOTFS="$cached"
+        return
+    fi
+
+    log_step "Downloading AGNOS base rootfs from GitHub releases..."
+    mkdir -p "$WORK_DIR"
+    if curl -fSL -o "$cached" "$BASE_ROOTFS_RELEASE_URL" 2>/dev/null; then
+        log_info "  -> Downloaded base rootfs to $cached"
+        BASE_ROOTFS="$cached"
+    else
+        log_error "No AGNOS base rootfs available."
+        log_error ""
+        log_error "The AGNOS base rootfs is required to build an installer ISO."
+        log_error "It is built by the Tier 1 selfhost-build CI pipeline."
+        log_error ""
+        log_error "Options:"
+        log_error "  1. Provide a local rootfs:  sudo $0 --base-rootfs /path/to/agnos-base-rootfs.tar.zst"
+        log_error "  2. Build it yourself:        Run the selfhost-build workflow to create base-rootfs-latest"
+        log_error "  3. Download manually from:   $BASE_ROOTFS_RELEASE_URL"
+        exit 1
+    fi
+}
+
 create_rootfs() {
     local rootfs="$WORK_DIR/rootfs"
 
-    # --- Bootstrap base system ---
-    if [[ -n "$BASE_ROOTFS" ]] && [[ -f "$BASE_ROOTFS" ]]; then
-        log_step "Using AGNOS base rootfs: $BASE_ROOTFS"
-        rm -rf "$rootfs"
-        mkdir -p "$rootfs"
+    # --- Extract AGNOS base rootfs ---
+    log_step "Extracting AGNOS base rootfs: $BASE_ROOTFS"
+    rm -rf "$rootfs"
+    mkdir -p "$rootfs"
 
-        case "$BASE_ROOTFS" in
-            *.tar.zst) zstd -d "$BASE_ROOTFS" --stdout | tar xf - -C "$rootfs" ;;
-            *.tar.gz)  tar xzf "$BASE_ROOTFS" -C "$rootfs" ;;
-            *.tar)     tar xf "$BASE_ROOTFS" -C "$rootfs" ;;
-            *)         log_error "Unknown rootfs format: $BASE_ROOTFS"; exit 1 ;;
-        esac
+    case "$BASE_ROOTFS" in
+        *.tar.zst) zstd -d "$BASE_ROOTFS" --stdout | tar xf - -C "$rootfs" ;;
+        *.tar.gz)  tar xzf "$BASE_ROOTFS" -C "$rootfs" ;;
+        *.tar)     tar xf "$BASE_ROOTFS" -C "$rootfs" ;;
+        *)         log_error "Unknown rootfs format: $BASE_ROOTFS (expected .tar, .tar.zst, or .tar.gz)"; exit 1 ;;
+    esac
 
-        mkdir -p "$rootfs"/{proc,sys,dev,tmp,run,var/log,boot}
-        log_info "  -> AGNOS base rootfs extracted"
-
-    elif [[ $SKIP_DEBOOTSTRAP -eq 1 ]] && [[ -d "$rootfs/bin" ]]; then
-        log_info "Skipping debootstrap (--skip-debootstrap)"
-    else
-        log_step "Bootstrapping Debian $DEBIAN_SUITE base system..."
-
-        rm -rf "$rootfs"
-
-        debootstrap --variant=minbase --arch="$DEBIAN_ARCH" \
-            --include=systemd,systemd-sysv,dbus,udev,iproute2,iputils-ping,kmod,procps,openssh-server,sudo,vim-tiny,linux-image-amd64 \
-            "$DEBIAN_SUITE" "$rootfs" "$DEBIAN_MIRROR"
-
-        # Install live-boot for squashfs-based live booting
-        chroot "$rootfs" /usr/bin/env PATH=/usr/sbin:/usr/bin:/sbin:/bin /bin/bash -c "
-            apt-get update
-            apt-get install -y --no-install-recommends live-boot
-            apt-get clean
-            rm -rf /var/lib/apt/lists/*
-        "
-
-        # Rebuild initramfs with live-boot support
-        chroot "$rootfs" /usr/bin/env PATH=/usr/sbin:/usr/bin:/sbin:/bin /bin/bash -c "
-            update-initramfs -u
-        "
-
-        log_info "  -> Base system bootstrapped with live-boot"
-    fi
-
-    # --- Install profile-specific packages ---
-    # Only needed for Debian-based builds; AGNOS base rootfs includes everything
-    if [[ -z "$BASE_ROOTFS" ]]; then
-        local extra_pkgs
-        extra_pkgs="$(profile_debian_packages)"
-        if [[ -n "$extra_pkgs" ]]; then
-            log_step "Installing $PROFILE profile packages (Debian)..."
-            chroot "$rootfs" /usr/bin/env PATH=/usr/sbin:/usr/bin:/sbin:/bin /bin/bash -c "
-                apt-get update
-                apt-get install -y --no-install-recommends $extra_pkgs
-                apt-get clean
-                rm -rf /var/lib/apt/lists/*
-            "
-            log_info "  -> Profile packages installed"
-        fi
-    else
-        log_info "  -> Using AGNOS base rootfs (packages built from source, no apt)"
-    fi
+    mkdir -p "$rootfs"/{proc,sys,dev,tmp,run,var/log,boot}
+    log_info "  -> AGNOS base rootfs extracted"
+    log_info "  -> Packages built from source (no apt/dpkg)"
 
     # --- Configure rootfs ---
     log_step "Configuring AGNOS rootfs..."
@@ -351,7 +317,6 @@ EOF
 NAME="AGNOS"
 VERSION="$ISO_VERSION"
 ID=agnos
-ID_LIKE=debian
 VERSION_ID="$ISO_VERSION"
 PRETTY_NAME="AGNOS $ISO_VERSION — $PROFILE"
 HOME_URL="https://github.com/agnos/agnos"
@@ -621,8 +586,6 @@ EOF
 
     # --- Cleanup ---
     chroot "$rootfs" /usr/bin/env PATH=/usr/sbin:/usr/bin:/sbin:/bin /bin/bash -c "
-        apt-get clean
-        rm -rf /var/lib/apt/lists/*
         rm -rf /tmp/*
     "
 
@@ -658,7 +621,7 @@ setup_kernel() {
     local initrd=$(find "$rootfs/boot" -name 'initrd.img-*' -type f | head -1)
 
     if [[ -z "$vmlinuz" ]]; then
-        log_error "No kernel found in rootfs. debootstrap may have failed."
+        log_error "No kernel found in rootfs. The base rootfs may be incomplete."
         exit 1
     fi
 
@@ -802,13 +765,13 @@ main() {
     log_info "  Profile:  $profile_label"
     log_info "  Version:  $ISO_VERSION"
     log_info "  Arch:     $ARCH"
-    log_info "  Base:     Debian $DEBIAN_SUITE"
     log_info "  Output:   $OUTPUT_DIR/"
     log_info "=========================================="
     echo ""
 
     check_requirements
     setup_directories
+    resolve_base_rootfs
     build_userland
     create_rootfs
     setup_kernel

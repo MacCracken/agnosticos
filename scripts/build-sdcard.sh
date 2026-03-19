@@ -1,17 +1,19 @@
 #!/bin/bash
 # build-sdcard.sh — Build AGNOS aarch64 SD card image for Raspberry Pi 4/5
 #
-# Creates a bootable SD card image with Debian Trixie arm64 base + AGNOS userland.
+# Creates a bootable SD card image from an AGNOS base rootfs + AGNOS userland.
 # Supports three profiles: minimal, server, desktop.
+#
+# The AGNOS base rootfs is REQUIRED. Provide it via --base-rootfs or let
+# the script download it from the base-rootfs-latest GitHub release.
 #
 # Output: agnos-<profile>-<version>-aarch64.img (flash to microSD with dd)
 #
 # Requirements:
-#   debootstrap, squashfs-tools, dosfstools (mkfs.vfat), parted,
-#   e2fsprogs (mkfs.ext4), qemu-user-static (for arm64 chroot on x86_64 host),
-#   debian-archive-keyring
+#   dosfstools (mkfs.vfat), parted, e2fsprogs (mkfs.ext4),
+#   qemu-user-static (for arm64 chroot on x86_64 host)
 #
-# Must be run as root (or with sudo) for debootstrap, losetup, mount.
+# Must be run as root (or with sudo) for losetup, mount.
 
 set -euo pipefail
 
@@ -31,13 +33,13 @@ RPI_FIRMWARE_DIR=""
 IMG_NAME="agnos"
 IMG_VERSION="$(cat "${REPO_DIR}/VERSION" 2>/dev/null || echo 'dev')"
 ARCH="aarch64"
-DEBIAN_ARCH="arm64"
-DEBIAN_SUITE="trixie"
-DEBIAN_MIRROR="http://deb.debian.org/debian"
 PROFILE="desktop"
 SKIP_BUILD=0
-SKIP_DEBOOTSTRAP=0
+BASE_ROOTFS=""
 SY_EDGE_BINARY=""
+
+# GitHub release URL for AGNOS base rootfs (Tier 1 build artifact)
+BASE_ROOTFS_RELEASE_URL="https://github.com/MacCracken/agnosticos/releases/download/base-rootfs-latest/agnos-base-rootfs-aarch64.tar.zst"
 
 # Image sizing — set per profile
 IMG_SIZE_MB=2047
@@ -80,6 +82,10 @@ Usage: $0 [options]
 
 Build AGNOS aarch64 SD card image for Raspberry Pi 4/5.
 
+Requires an AGNOS base rootfs (built by Tier 1 selfhost-build). If not provided
+via --base-rootfs, the script will attempt to download it from the
+base-rootfs-latest GitHub release.
+
 Profiles:
     minimal     Headless: systemd, SSH, AGNOS core, SY edge agent (~1GB)
     desktop     (default) Full system with Wayland, Mesa, PipeWire, self-hosting (~3GB)
@@ -90,10 +96,10 @@ Options:
     -v, --version VERSION   AGNOS version (default: from VERSION file)
     -o, --output DIR        Output directory (default: output/)
     -s, --size MB           Image size in MB (default: auto per profile)
-    -m, --mirror URL        Debian mirror
+    --base-rootfs PATH      AGNOS base rootfs (accepts .tar, .tar.zst, or .tar.gz)
+                            If not provided, downloaded from GitHub releases automatically.
     --sy-edge-binary PATH   Include SecureYeoman edge binary (minimal profile)
     --skip-build            Skip cross-compilation (use existing binaries)
-    --skip-debootstrap      Skip debootstrap (use existing rootfs)
     -h, --help              Show this help message
 
 Output (version 2026.3.17 example):
@@ -114,10 +120,9 @@ parse_args() {
             -v|--version)       IMG_VERSION="$2"; shift 2 ;;
             -o|--output)        OUTPUT_DIR="$2"; shift 2 ;;
             -s|--size)          IMG_SIZE_MB="$2"; shift 2 ;;
-            -m|--mirror)        DEBIAN_MIRROR="$2"; shift 2 ;;
+            --base-rootfs)      BASE_ROOTFS="$2"; shift 2 ;;
             --sy-edge-binary)   SY_EDGE_BINARY="$2"; shift 2 ;;
             --skip-build)       SKIP_BUILD=1; shift ;;
-            --skip-debootstrap) SKIP_DEBOOTSTRAP=1; shift ;;
             # Legacy compat
             --edge)             PROFILE="minimal"; shift ;;
             -h|--help)          usage; exit 0 ;;
@@ -144,29 +149,6 @@ parse_args() {
 # ---------------------------------------------------------------------------
 # Profile definitions
 # ---------------------------------------------------------------------------
-
-profile_debian_packages() {
-    case "$PROFILE" in
-        minimal) echo "ca-certificates,curl" ;;
-        desktop) echo "ca-certificates,curl,wireguard-tools" ;;
-    esac
-}
-
-profile_extra_apt_packages() {
-    # Packages installed via apt after debootstrap (space-separated)
-    case "$PROFILE" in
-        minimal) echo "" ;;
-        desktop)
-            echo "wayland-protocols libwayland-server0 \
-                  mesa-vulkan-drivers libgl1-mesa-dri libgbm1 libdrm2 libegl1 \
-                  libinput10 libinput-tools \
-                  pipewire wireplumber pipewire-pulse pipewire-alsa \
-                  xwayland libxkbcommon0 \
-                  fonts-noto-core fonts-noto-mono \
-                  dbus-user-session foot"
-            ;;
-    esac
-}
 
 profile_binaries() {
     echo "agent_runtime:agent-runtime"
@@ -291,7 +273,7 @@ check_requirements() {
     log_step "Checking requirements..."
 
     local missing=()
-    for cmd in debootstrap parted mkfs.vfat mkfs.ext4 losetup curl; do
+    for cmd in parted mkfs.vfat mkfs.ext4 losetup curl; do
         if ! command -v "$cmd" &>/dev/null; then
             missing+=("$cmd")
         fi
@@ -307,12 +289,12 @@ check_requirements() {
 
     if [[ ${#missing[@]} -gt 0 ]]; then
         log_error "Missing required tools: ${missing[*]}"
-        log_info "Install with: sudo pacman -S dosfstools parted e2fsprogs qemu-user-static qemu-user-static-binfmt debootstrap debian-archive-keyring"
+        log_info "Install with: sudo pacman -S dosfstools parted e2fsprogs qemu-user-static qemu-user-static-binfmt"
         exit 1
     fi
 
     if [[ $EUID -ne 0 ]]; then
-        log_error "This script must be run as root (needed for debootstrap, losetup, mount)"
+        log_error "This script must be run as root (needed for losetup, mount)"
         log_info "Run with: sudo $0 $*"
         exit 1
     fi
@@ -384,38 +366,62 @@ run_chroot() {
     fi
 }
 
+resolve_base_rootfs() {
+    # If --base-rootfs was provided, validate it
+    if [[ -n "$BASE_ROOTFS" ]]; then
+        if [[ ! -f "$BASE_ROOTFS" ]]; then
+            log_error "Base rootfs not found: $BASE_ROOTFS"
+            exit 1
+        fi
+        return
+    fi
+
+    # Try to download from GitHub releases
+    local cached="$WORK_DIR/agnos-base-rootfs-aarch64.tar.zst"
+    if [[ -f "$cached" ]]; then
+        log_info "Using cached base rootfs: $cached"
+        BASE_ROOTFS="$cached"
+        return
+    fi
+
+    log_step "Downloading AGNOS base rootfs from GitHub releases..."
+    mkdir -p "$WORK_DIR"
+    if curl -fSL -o "$cached" "$BASE_ROOTFS_RELEASE_URL" 2>/dev/null; then
+        log_info "  -> Downloaded base rootfs to $cached"
+        BASE_ROOTFS="$cached"
+    else
+        log_error "No AGNOS base rootfs available."
+        log_error ""
+        log_error "The AGNOS base rootfs is required to build an SD card image."
+        log_error "It is built by the Tier 1 selfhost-build CI pipeline."
+        log_error ""
+        log_error "Options:"
+        log_error "  1. Provide a local rootfs:  sudo $0 --base-rootfs /path/to/agnos-base-rootfs-aarch64.tar.zst"
+        log_error "  2. Build it yourself:        Run the selfhost-build workflow to create base-rootfs-latest"
+        log_error "  3. Download manually from:   $BASE_ROOTFS_RELEASE_URL"
+        exit 1
+    fi
+}
+
 create_rootfs() {
     ROOTFS="$WORK_DIR/rootfs"
     local rootfs="$ROOTFS"
 
-    if [[ $SKIP_DEBOOTSTRAP -eq 1 ]] && [[ -d "$rootfs/bin" ]]; then
-        log_info "Skipping debootstrap (--skip-debootstrap)"
-    else
-        log_step "Bootstrapping Debian $DEBIAN_SUITE arm64 base system..."
+    # --- Extract AGNOS base rootfs ---
+    log_step "Extracting AGNOS base rootfs: $BASE_ROOTFS"
+    rm -rf "$rootfs"
+    mkdir -p "$rootfs"
 
-        rm -rf "$rootfs"
+    case "$BASE_ROOTFS" in
+        *.tar.zst) zstd -d "$BASE_ROOTFS" --stdout | tar xf - -C "$rootfs" ;;
+        *.tar.gz)  tar xzf "$BASE_ROOTFS" -C "$rootfs" ;;
+        *.tar)     tar xf "$BASE_ROOTFS" -C "$rootfs" ;;
+        *)         log_error "Unknown rootfs format: $BASE_ROOTFS (expected .tar, .tar.zst, or .tar.gz)"; exit 1 ;;
+    esac
 
-        local base_pkgs="systemd,systemd-sysv,dbus,udev,iproute2,iputils-ping,kmod,procps,openssh-server,sudo,passwd,vim-tiny"
-        local extra_csv
-        extra_csv="$(profile_debian_packages)"
-        if [[ -n "$extra_csv" ]]; then
-            base_pkgs="${base_pkgs},${extra_csv}"
-        fi
-
-        if [[ "$(uname -m)" != "aarch64" ]]; then
-            debootstrap --foreign --variant=minbase --arch="$DEBIAN_ARCH" \
-                --include="$base_pkgs" \
-                "$DEBIAN_SUITE" "$rootfs" "$DEBIAN_MIRROR"
-            cp /usr/bin/qemu-aarch64-static "$rootfs/usr/bin/"
-            chroot "$rootfs" /usr/bin/qemu-aarch64-static /bin/bash -c "/debootstrap/debootstrap --second-stage"
-        else
-            debootstrap --variant=minbase --arch="$DEBIAN_ARCH" \
-                --include="$base_pkgs" \
-                "$DEBIAN_SUITE" "$rootfs" "$DEBIAN_MIRROR"
-        fi
-
-        log_info "  -> Base system bootstrapped"
-    fi
+    mkdir -p "$rootfs"/{proc,sys,dev,tmp,run,var/log,boot}
+    log_info "  -> AGNOS base rootfs extracted"
+    log_info "  -> Packages built from source (no apt/dpkg)"
 
     # Mount pseudo-filesystems for chroot
     mount -t proc proc "$rootfs/proc" 2>/dev/null || true
@@ -434,30 +440,6 @@ create_rootfs() {
 
     log_step "Configuring AGNOS rootfs ($PROFILE profile)..."
 
-    # --- Install kernel ---
-    log_step "Installing aarch64 kernel..."
-    run_chroot "
-        apt-get update
-        apt-get install -y --no-install-recommends linux-image-arm64
-        apt-get install -y --no-install-recommends firmware-brcm80211 2>/dev/null || true
-        apt-get clean
-        rm -rf /var/lib/apt/lists/*
-    "
-
-    # --- Profile-specific extra apt packages ---
-    local extra_apt
-    extra_apt="$(profile_extra_apt_packages)"
-    if [[ -n "$extra_apt" ]]; then
-        log_step "Installing $PROFILE profile packages..."
-        run_chroot "
-            apt-get update
-            apt-get install -y --no-install-recommends $extra_apt
-            apt-get clean
-            rm -rf /var/lib/apt/lists/*
-        "
-        log_info "  -> Profile packages installed"
-    fi
-
     # --- Hostname & identity ---
     echo "agnos" > "$rootfs/etc/hostname"
     cat > "$rootfs/etc/hosts" << 'EOF'
@@ -470,7 +452,6 @@ EOF
 NAME="AGNOS"
 VERSION="$IMG_VERSION"
 ID=agnos
-ID_LIKE=debian
 VERSION_ID="$IMG_VERSION"
 PRETTY_NAME="AGNOS $IMG_VERSION — $PROFILE [aarch64]"
 HOME_URL="https://github.com/agnos/agnos"
@@ -733,8 +714,7 @@ EOF
 
     # --- Cleanup ---
     run_chroot "
-        apt-get clean
-        rm -rf /var/lib/apt/lists/* /tmp/*
+        rm -rf /tmp/*
     "
 
     log_info "  -> Rootfs configured ($PROFILE profile)"
@@ -811,7 +791,7 @@ create_image() {
         log_info "  -> initrd: $(du -h "$initrd" | cut -f1)"
     fi
 
-    # Copy Debian DTBs (may supplement firmware DTBs for newer kernels)
+    # Copy kernel DTBs (may supplement firmware DTBs for newer kernels)
     if [[ -n "$kver" ]] && [[ -d "$rootfs/usr/lib/linux-image-${kver}" ]]; then
         cp -r "$rootfs/usr/lib/linux-image-${kver}/broadcom" "$WORK_DIR/mnt_boot/" 2>/dev/null || true
         if [[ -d "$rootfs/usr/lib/linux-image-${kver}/overlays" ]]; then
@@ -912,7 +892,6 @@ main() {
     log_info "  Profile:    $profile_label"
     log_info "  Version:    $IMG_VERSION"
     log_info "  Arch:       $ARCH"
-    log_info "  Base:       Debian $DEBIAN_SUITE $DEBIAN_ARCH"
     log_info "  Image size: ${IMG_SIZE_MB} MB"
     log_info "  Output:     $OUTPUT_DIR/"
     log_info "============================================="
@@ -920,6 +899,7 @@ main() {
 
     check_requirements
     setup_directories
+    resolve_base_rootfs
     download_rpi_firmware
     build_userland
     create_rootfs

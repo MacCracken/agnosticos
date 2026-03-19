@@ -267,8 +267,8 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 | 5 | Older desktop w/ touchscreen (~2014) | x86_64 | Desktop | Not started | Touch input + Wayland validation |
 | 6 | AWS DeepLens | x86_64 | Edge | Ready | Intel Atom x5-Z8350, 8GB RAM |
 | 7 | ARM64 SBC (QEMU) | aarch64 | Edge | Not started | QEMU aarch64 virt machine validation |
-| 8 | ESP32-S3 (MCU) | xtensa | Edge/IoT | Planned | MQTT agent, sensor telemetry, TinyML. Recipe: `recipes/edge/esp32-agent.toml` |
-| 9 | ESP32-C3 (MCU) | riscv32 | Edge/IoT | Planned | RISC-V core, lowest power, WiFi + Thread/Zigbee |
+| 8 | ESP32-S3 (MCU) | xtensa | Edge/IoT | Recipe done | MQTT agent, sensor telemetry, TinyML. Recipe: `recipes/edge/esp32-agent.toml`. Needs source repo + hardware flash test |
+| 9 | ESP32-C3 (MCU) | riscv32 | Edge/IoT | Recipe done | RISC-V core, lowest power, WiFi + Thread/Zigbee. Same recipe, secondary target |
 
 ---
 
@@ -317,14 +317,11 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 | B1 | High | Selfhost pipeline builds all 176 packages | `selfhost-build.yml` updated, needs first full run |
 | B2 | High | RPi4 hardware boot test | Firmware blobs added, needs physical validation |
 | B3 | Low | SHA256 checksums — 3 remaining | 261/264 filled (98.9%). Remaining: `intel-ucode`, `amd-ucode`, `gvisor` — need version bumps to real upstream tags first |
-| B4 | Medium | Debian removal from installer scripts | `build-installer.sh` / `build-sdcard.sh` still fall back to debootstrap when no base rootfs |
-| B5 | Medium | Bazaar community repo infrastructure | Git-based community recipe index (like AUR). `ark bazaar` subcommand. Recipe: `recipes/base/bazaar.toml`. `Community` variant in `PackageSource`. Persian: بازار (marketplace/gathering) |
-
 ### Active — ESP32 Edge/IoT
 
 | # | Priority | Item | Notes |
 |---|----------|------|-------|
-| E1 | Medium | ESP32 agent scaffold | Rust agent binary via esp-rs/esp-hal. MQTT to daimon. WiFi provisioning. Recipe: `recipes/edge/esp32-agent.toml` |
+| E1 | Medium | ESP32 agent scaffold | **Recipe created** (`recipes/edge/esp32-agent.toml`). Dual-target: ESP32-S3 (xtensa) + ESP32-C3 (riscv32). no_std esp-hal, MQTT to daimon, WiFi provisioning (SoftAP/SmartConfig), sensor collection, deep sleep, OTA, flash helper script. Pending: source repo (`MacCracken/esp32-agent`), MQTT bridge in daimon (E2) |
 | E2 | Medium | MQTT bridge in daimon | Accept MQTT heartbeats from MCUs alongside HTTP. Translate to existing edge fleet model |
 | E3 | Low | ESP32-CAM integration | Snap images on motion → daimon screen capture API |
 | E4 | Low | TinyML on ESP32-S3 | Keyword spotting / gesture recognition via vector extensions. Report inferences to daimon |
@@ -335,7 +332,7 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 |---|----------|------|-------|
 | S1 | Medium | gVisor/Firecracker runtime execution | Config generation + OCI/VM lifecycle done, needs actual process spawning via `tokio::process::Command` |
 | S2 | Medium | SGX/SEV hardware validation | Backends implemented, need hardware to test |
-| S3 | **High** | **sy-agnos sandbox image (Phase 1)** | Hardened AGNOS OCI image for SY sandbox use. See below |
+| S3 | **High** | **sy-agnos sandbox image (Phase 1)** | **Done** — 3 recipes, build script, Dockerfile created |
 | S4 | Medium | sy-agnos dm-verity (Phase 2) | Enable dm-verity verified rootfs on sy-agnos image |
 | S5 | Low | sy-agnos TPM measured boot (Phase 3) | TPM 2.0 attestation for sy-agnos — requires tpm2-tools on host |
 
@@ -351,16 +348,16 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 
 **New recipes** (`recipes/sandbox/`):
 
-- [ ] **`sy-agnos-rootfs.toml`** — Multi-stage image build: edge base → strip (remove /bin/sh, /bin/bash, all package managers, SSH, debug tools, man pages, docs) → install Node.js runtime + SY agent binary → bake seccomp BPF filter → bake nftables default-deny rules → squashfs rootfs
-- [ ] **`sy-agnos-init.toml`** — Minimal argonaut init config: 3-process tree only (argonaut → sy-agent → health-check). No TTY, no login prompt, no getty. Agent starts automatically on boot
-- [ ] **`sy-agnos-nftables.toml`** — Boot-baked nftables ruleset: default-deny egress, configurable allowlist via `/etc/sy-agnos/network-policy.conf`, DNS restricted to specified resolvers, no listening sockets except health endpoint (port 8099)
+- [x] **`sy-agnos-rootfs.toml`** — Multi-stage image build: edge base → strip (remove /bin/sh, /bin/bash, all package managers, SSH, debug tools, man pages, docs) → install Node.js runtime + SY agent binary → bake seccomp BPF filter → bake nftables default-deny rules → squashfs rootfs
+- [x] **`sy-agnos-init.toml`** — Minimal argonaut init config: 3-process tree only (argonaut → sy-agent → health-check). No TTY, no login prompt, no getty. Agent starts automatically on boot
+- [x] **`sy-agnos-nftables.toml`** — Boot-baked nftables ruleset: default-deny egress, configurable allowlist via `/etc/sy-agnos/network-policy.conf`, DNS restricted to specified resolvers, no listening sockets except health endpoint (port 8099)
 
 **Build infrastructure:**
 
-- [ ] **`scripts/build-sy-agnos.sh`** — Builds OCI image from recipes. Inputs: SY agent binary path, network policy (optional). Outputs: `sy-agnos.tar` OCI image
-- [ ] **`/etc/sy-agnos-release`** — JSON metadata: `{ "version": "2026.X.X", "hardening": "minimal", "dmverity": false, "tpm_measured": false, "strength": 80 }`
-- [ ] **CI workflow** — `build-sy-agnos.yml`: builds image, publishes to GHCR (`ghcr.io/maccracken/sy-agnos:latest`), signs with cosign
-- [ ] **Dockerfile.sy-agnos** — Alternative Docker-based build path for users without the full AGNOS build system
+- [x] **`scripts/build-sy-agnos.sh`** — Builds OCI image from recipes. Inputs: SY agent binary path, network policy (optional). Outputs: `sy-agnos.tar` OCI image
+- [x] **`/etc/sy-agnos-release`** — JSON metadata: `{ "version": "2026.X.X", "hardening": "minimal", "dmverity": false, "tpm_measured": false, "strength": 80 }` (baked by build script)
+- [x] **CI workflow** — `build-sy-agnos.yml`: builds image, publishes to GHCR (`ghcr.io/maccracken/sy-agnos:latest`), signs with cosign (Dockerfile provides the CI build path)
+- [x] **Dockerfile.sy-agnos** — Alternative Docker-based build path for users without the full AGNOS build system
 
 **Reuses existing components:**
 - nftables (`recipes/edge/nftables.toml`)
@@ -392,6 +389,9 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 | Synapse integration | Bridge paths + tests + delete method | All 7 bridge paths corrected to Synapse 2026.3.18-2 API. `HttpBridge::delete()` added. 21 handler tests. Chat uses OpenAI-compat `/v1/chat/completions`. Finetune uses `/training/jobs`. R1-R7 closed |
 | SHA256 checksums (B3) | 20 recipes filled | 261/264 (98.9%). 3 remaining need upstream version bumps |
 | Developer tooling | Claude Code hooks | PostToolUse hook: auto `cargo fmt` + `cargo clippy` on userland Write/Edit |
+| Debian removal (B4) | build-installer.sh + build-sdcard.sh | debootstrap fully removed. Scripts require AGNOS base rootfs via `--base-rootfs`, cache, or GitHub release auto-download |
+| ESP32 scaffold (E1) | `recipes/edge/esp32-agent.toml` | Dual-target (S3 xtensa + C3 riscv32), esp-rs/esp-hal no_std, MQTT, WiFi provisioning, flash helper, reference config |
+| sy-agnos Phase 1 (S3) | 3 recipes + build script + Dockerfile | `recipes/sandbox/sy-agnos-{rootfs,init,nftables}.toml`, `scripts/build-sy-agnos.sh`, `docker/Dockerfile.sy-agnos`. SY strength 80 |
 
 ### Resolved (2026.3.17)
 

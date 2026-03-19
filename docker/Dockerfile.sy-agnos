@@ -1,0 +1,221 @@
+# Dockerfile.sy-agnos — Docker-based build path for sy-agnos sandbox image
+#
+# Alternative to build-sy-agnos.sh for users without the full AGNOS build
+# system. Produces the same hardened, minimal OCI image.
+#
+# Usage:
+#   docker build -f docker/Dockerfile.sy-agnos \
+#     -t ghcr.io/maccracken/sy-agnos:latest .
+#
+#   # With SY agent binary:
+#   docker build -f docker/Dockerfile.sy-agnos \
+#     --build-arg SY_AGENT_BINARY=dist/sy-agent \
+#     -t sy-agnos:latest .
+#
+# Multi-stage build:
+#   1. base    — Alpine with Node.js, stripped to minimum
+#   2. harden  — Remove shells, debug tools, SSH, package managers
+#   3. runtime — Final image with seccomp profile + nftables rules baked in
+
+# ---------------------------------------------------------------------------
+# Stage 1: Base — minimal Alpine + Node.js
+# ---------------------------------------------------------------------------
+FROM node:22-alpine3.21 AS base
+
+# Remove npm/yarn/corepack immediately — not needed in sandbox
+RUN rm -rf /usr/local/lib/node_modules /usr/local/bin/npm /usr/local/bin/npx \
+    /usr/local/bin/yarn /usr/local/bin/yarnpkg /usr/local/bin/corepack
+
+# Create sy-agent user (no shell, no home dir)
+RUN addgroup -g 1000 -S sy-agent && \
+    adduser -u 1000 -G sy-agent -S -D -H -s /sbin/nologin sy-agent
+
+# Create required directories
+RUN mkdir -p \
+    /opt/sy-agent/bin \
+    /opt/sy-agent/lib \
+    /var/lib/sy-agent \
+    /var/log/sy-agent \
+    /etc/sy-agnos \
+    /etc/seccomp \
+    /etc/nftables \
+    && chown -R sy-agent:sy-agent /var/lib/sy-agent /var/log/sy-agent
+
+# ---------------------------------------------------------------------------
+# Stage 2: Harden — strip everything dangerous
+# ---------------------------------------------------------------------------
+FROM base AS harden
+
+# Remove ALL shells
+RUN rm -f /bin/sh /bin/ash /bin/bash /usr/bin/sh /usr/bin/bash \
+    /sbin/sh /usr/sbin/sh 2>/dev/null; true
+
+# Remove package managers
+RUN rm -f /sbin/apk /usr/bin/apk /usr/sbin/apk 2>/dev/null; true
+RUN rm -rf /var/cache/apk /lib/apk /etc/apk 2>/dev/null; true
+
+# Remove SSH
+RUN rm -f /usr/bin/ssh* /usr/sbin/sshd /usr/bin/scp /usr/bin/sftp 2>/dev/null; true
+RUN rm -rf /etc/ssh 2>/dev/null; true
+
+# Remove debug/introspection tools
+RUN rm -f /usr/bin/wget /usr/bin/curl /usr/bin/nc /usr/bin/ncat 2>/dev/null; true
+RUN rm -f /usr/bin/vi /usr/bin/less /usr/bin/more 2>/dev/null; true
+RUN rm -f /usr/bin/find /usr/bin/grep /usr/bin/awk /usr/bin/sed 2>/dev/null; true
+RUN rm -f /usr/bin/strace /usr/bin/gdb /usr/bin/ltrace 2>/dev/null; true
+RUN rm -f /usr/bin/ps /usr/bin/top /bin/ps 2>/dev/null; true
+
+# Remove compiler toolchain
+RUN rm -f /usr/bin/gcc /usr/bin/g++ /usr/bin/cc /usr/bin/make 2>/dev/null; true
+RUN rm -rf /usr/lib/gcc /usr/include 2>/dev/null; true
+
+# Remove documentation
+RUN rm -rf /usr/share/man /usr/share/doc /usr/share/info /usr/share/locale 2>/dev/null; true
+
+# Remove cron
+RUN rm -f /usr/bin/crontab /usr/sbin/cron /usr/bin/at 2>/dev/null; true
+
+# Remove Python/Perl/Ruby if present
+RUN rm -f /usr/bin/python* /usr/bin/perl* /usr/bin/ruby* 2>/dev/null; true
+
+# ---------------------------------------------------------------------------
+# Stage 3: Runtime — final hardened image
+# ---------------------------------------------------------------------------
+FROM scratch AS runtime
+
+# Copy the hardened filesystem
+COPY --from=harden / /
+
+# Re-create /bin/sh temporarily for COPY/RUN — will be removed at end
+# (Docker needs a shell for certain operations)
+
+# Bake seccomp BPF profile
+COPY <<'SECCOMP' /etc/seccomp/sy-agent.json
+{
+    "defaultAction": "SCMP_ACT_ERRNO",
+    "defaultErrnoRet": 1,
+    "architectures": ["SCMP_ARCH_X86_64", "SCMP_ARCH_AARCH64"],
+    "syscalls": [
+        {
+            "names": [
+                "read", "write", "close", "fstat", "lseek",
+                "mmap", "mprotect", "munmap", "brk",
+                "rt_sigaction", "rt_sigprocmask", "rt_sigreturn",
+                "ioctl", "pread64", "pwrite64",
+                "readv", "writev",
+                "pipe", "pipe2",
+                "select", "poll", "ppoll",
+                "epoll_create1", "epoll_ctl", "epoll_wait", "epoll_pwait",
+                "dup", "dup2", "dup3",
+                "socket", "connect", "sendto", "recvfrom",
+                "sendmsg", "recvmsg",
+                "bind", "listen", "accept", "accept4",
+                "getsockname", "getpeername", "getsockopt", "setsockopt",
+                "clock_gettime", "clock_getres", "clock_nanosleep",
+                "nanosleep",
+                "getpid", "getppid", "getuid", "geteuid",
+                "getgid", "getegid", "gettid",
+                "openat", "newfstatat", "statx",
+                "futex", "set_robust_list", "get_robust_list",
+                "sigaltstack",
+                "getrandom",
+                "memfd_create",
+                "exit", "exit_group",
+                "tgkill",
+                "fcntl",
+                "getcwd",
+                "getdents64",
+                "sched_getaffinity", "sched_yield",
+                "mremap",
+                "prctl"
+            ],
+            "action": "SCMP_ACT_ALLOW"
+        },
+        {
+            "names": [
+                "execve", "execveat",
+                "fork", "vfork", "clone3",
+                "ptrace",
+                "mount", "umount2", "pivot_root",
+                "chroot",
+                "reboot",
+                "init_module", "finit_module", "delete_module",
+                "kexec_load", "kexec_file_load",
+                "setns", "unshare",
+                "personality"
+            ],
+            "action": "SCMP_ACT_KILL_PROCESS"
+        }
+    ]
+}
+SECCOMP
+
+# Bake nftables default-deny rules
+COPY <<'NFT' /etc/nftables/sy-agnos.nft
+#!/usr/sbin/nft -f
+flush ruleset
+table inet sy_agnos_filter {
+    set dns_resolvers { type ipv4_addr; flags interval; }
+    set egress_allowlist { type ipv4_addr . inet_service; flags interval; }
+    set egress_hosts { type ipv4_addr; flags interval; }
+    chain input {
+        type filter hook input priority 0; policy drop;
+        ct state established,related accept
+        iif lo accept
+        tcp dport 8099 accept
+    }
+    chain forward { type filter hook forward priority 0; policy drop; }
+    chain output {
+        type filter hook output priority 0; policy drop;
+        oif lo accept
+        ct state established,related accept
+        ip daddr @dns_resolvers udp dport 53 accept
+        ip daddr @dns_resolvers tcp dport 853 accept
+        ip daddr . tcp dport @egress_allowlist accept
+        ip daddr @egress_hosts tcp dport 443 accept
+    }
+}
+NFT
+
+# Write default network policy (deny-all)
+COPY <<'POLICY' /etc/sy-agnos/network-policy.conf
+DNS_RESOLVERS=""
+EGRESS_HOSTS=""
+EGRESS_RULES=""
+POLICY
+
+# Write release metadata
+ARG AGNOS_VERSION=dev
+COPY <<EOF /etc/sy-agnos-release
+{
+    "version": "${AGNOS_VERSION}",
+    "hardening": "minimal",
+    "dmverity": false,
+    "tpm_measured": false,
+    "strength": 80,
+    "features": ["immutable-rootfs", "seccomp-bpf", "nftables-deny", "no-shell", "no-ssh"]
+}
+EOF
+
+# Copy SY agent binary (optional -- use build arg or mount at runtime)
+ARG SY_AGENT_BINARY=""
+COPY ${SY_AGENT_BINARY:-/dev/null} /opt/sy-agent/bin/sy-agent
+
+# OCI annotations
+LABEL org.opencontainers.image.title="sy-agnos"
+LABEL org.opencontainers.image.description="AGNOS sy-agnos sandbox for SecureYeoman — hardened, no shell, default-deny"
+LABEL org.opencontainers.image.source="https://github.com/maccracken/agnosticos"
+LABEL org.opencontainers.image.licenses="GPL-3.0"
+LABEL org.opencontainers.image.vendor="AGNOS Project"
+LABEL org.opencontainers.image.version="${AGNOS_VERSION}"
+LABEL com.secureyeoman.sandbox.strength="80"
+
+# Only port 8099 (health check) -- no other listening sockets
+EXPOSE 8099
+
+# Run as non-root sy-agent user
+USER sy-agent
+
+# Entrypoint: the SY agent (no shell wrapper -- there IS no shell)
+ENTRYPOINT ["/opt/sy-agent/bin/sy-agent"]
+CMD ["--config", "/etc/sy-agnos/agent.toml"]

@@ -52,9 +52,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **python_runtime test race condition** — `test_resolve_version_env` and `test_resolve_version_file` used process-global `AGNOS_PYTHON_VERSION` env var, causing intermittent CI failures when parallel tests raced on set/remove. Replaced with direct `PythonVersion::parse()` and `find_version_file()` calls — no env var manipulation
 - **build-iso.yml permission denied** — All 6 `sudo` build jobs now `chown` output directory back to runner user before compress/upload steps. Fixed aarch64 edge, aarch64 minimal, aarch64 sdcard, x86_64 edge, x86_64 installer, x86_64 minimal
 
+### Added — Infrastructure
+
+- **Debian removal (B4)** — `build-installer.sh` and `build-sdcard.sh` no longer fall back to debootstrap. Require AGNOS base rootfs via `--base-rootfs`, local cache, or auto-download from GitHub releases. All Debian-specific code removed (packages, mirrors, keyrings)
+- **ESP32 agent scaffold (E1)** — `recipes/edge/esp32-agent.toml`: dual-target (ESP32-S3 xtensa + ESP32-C3 riscv32), esp-rs/esp-hal no_std Rust, MQTT telemetry to daimon, WiFi provisioning (SoftAP/SmartConfig), sensor collection, deep sleep, OTA, flash helper script, reference config
+- **sy-agnos sandbox Phase 1 (S3)** — Hardened OCI image for SecureYeoman sandbox (SY strength 80):
+  - `recipes/sandbox/sy-agnos-rootfs.toml` — strip shells/debug/SSH, install Node.js + agent, bake seccomp BPF, squashfs
+  - `recipes/sandbox/sy-agnos-init.toml` — 3-process argonaut init (init → sy-agent → health-check), no TTY/login
+  - `recipes/sandbox/sy-agnos-nftables.toml` — default-deny egress, configurable allowlist, health-only listener (8099)
+  - `scripts/build-sy-agnos.sh` — 9-stage OCI image builder
+  - `docker/Dockerfile.sy-agnos` — Docker-based alternative build path
+
 ### Removed
 
 - `os_long_term.md` — content migrated to `docs/applications/` (released) and `docs/development/applications/roadmap.md` (planned). References in roadmap.md updated
+- Debian debootstrap fallback from build scripts (B4)
 
 ## [2026.3.17] - 2026-03-18
 

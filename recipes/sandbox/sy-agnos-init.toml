@@ -1,0 +1,226 @@
+# sy-agnos-init — Minimal argonaut init config for sy-agnos sandbox
+#
+# 3-process tree only:
+#   argonaut (PID 1) --> sy-agent --> health-check
+#
+# No TTY, no login prompt, no getty, no SSH daemon.
+# Agent starts automatically on boot. Health check runs periodically
+# on port 8099 so the SY orchestrator can verify liveness.
+#
+# See: docs/development/roadmap.md (sy-agnos Phase 1)
+
+[package]
+name = "sy-agnos-init"
+version = "2026.3.18"
+description = "Minimal argonaut init configuration for sy-agnos sandbox"
+license = "GPL-3.0"
+groups = ["sandbox", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+local = true
+build_dir = "build/sy-agnos"
+
+[depends]
+runtime = ["sy-agnos-rootfs"]
+build = []
+
+[build]
+strip = true
+install_docs = false
+pre_build = ""
+configure = ""
+
+make = """
+# Create argonaut init configuration for sy-agnos
+# This is a minimal 3-process tree with zero interactive services.
+
+mkdir -p $PKG/etc/argonaut
+mkdir -p $PKG/sbin
+
+# Argonaut init configuration -- sy-agnos profile
+cat > $PKG/etc/argonaut/init.toml << 'ARGONAUT'
+# sy-agnos argonaut init configuration
+# Minimal 3-process tree: argonaut -> sy-agent -> health-check
+# No TTY, no login, no getty, no interactive services.
+
+[init]
+hostname = "sy-agnos"
+mode = "sandbox"
+# No console -- headless operation only
+console = false
+# No TTY allocation
+tty_count = 0
+# No login prompt
+login = false
+# Read-only rootfs
+readonly_rootfs = true
+
+[init.mounts]
+# Virtual filesystems only -- rootfs is immutable squashfs
+proc = { type = "proc", target = "/proc", options = "nosuid,nodev,noexec" }
+sys = { type = "sysfs", target = "/sys", options = "nosuid,nodev,noexec" }
+dev = { type = "devtmpfs", target = "/dev", options = "nosuid" }
+tmp = { type = "tmpfs", target = "/tmp", options = "nosuid,nodev,noexec,size=64M" }
+run = { type = "tmpfs", target = "/run", options = "nosuid,nodev,size=32M" }
+var_log = { type = "tmpfs", target = "/var/log", options = "nosuid,nodev,noexec,size=16M" }
+var_lib_sy = { type = "tmpfs", target = "/var/lib/sy-agent", options = "nosuid,nodev,size=128M" }
+
+[init.environment]
+AGNOS_EDGE_MODE = "1"
+AGNOS_READONLY_ROOTFS = "1"
+AGNOS_LOG_FORMAT = "json"
+RUST_LOG = "info"
+NODE_ENV = "production"
+# Disable core dumps
+RLIMIT_CORE = "0"
+
+# Service 1: sy-agent (the SecureYeoman agent process)
+[[services]]
+name = "sy-agent"
+command = "/opt/sy-agent/bin/sy-agent"
+args = ["--config", "/etc/sy-agnos/agent.toml"]
+user = "sy-agent"
+group = "sy-agent"
+restart = "always"
+restart_delay_secs = 3
+# Apply baked seccomp filter
+seccomp_profile = "/etc/seccomp/sy-agent.json"
+# Agent must be healthy within 30 seconds
+startup_timeout_secs = 30
+# Kill if unresponsive for 60 seconds
+watchdog_secs = 60
+# Resource limits
+max_memory_mb = 512
+max_open_files = 1024
+# No new privileges after start
+no_new_privileges = true
+
+# Service 2: health-check (lightweight HTTP health endpoint on port 8099)
+[[services]]
+name = "health-check"
+command = "/opt/sy-agent/bin/health-check"
+args = ["--port", "8099", "--check-pid-of", "sy-agent"]
+user = "sy-agent"
+group = "sy-agent"
+restart = "always"
+restart_delay_secs = 5
+# Health check is non-critical -- don't restart agent if it fails
+critical = false
+# Minimal resources
+max_memory_mb = 16
+max_open_files = 64
+no_new_privileges = true
+ARGONAUT
+
+# Create the minimal init script (PID 1) that loads argonaut config
+cat > $PKG/sbin/init << 'INITSCRIPT'
+#!/bin/sh
+# sy-agnos init -- minimal PID 1
+# Mounts virtual filesystems, loads nftables, then execs argonaut.
+set -e
+
+# Mount virtual filesystems
+mount -t proc     none /proc     2>/dev/null || true
+mount -t sysfs    none /sys      2>/dev/null || true
+mount -t devtmpfs none /dev      2>/dev/null || true
+mount -t tmpfs    none /tmp      2>/dev/null || true
+mount -t tmpfs    none /run      2>/dev/null || true
+mount -t tmpfs    none /var/log  2>/dev/null || true
+mount -t tmpfs -o size=128M none /var/lib/sy-agent 2>/dev/null || true
+
+# Create runtime directories
+mkdir -p /run/agnos/agents
+mkdir -p /var/log/agnos
+mkdir -p /var/log/sy-agent
+
+# Set hostname
+hostname sy-agnos
+
+# Load nftables firewall rules (baked at build time)
+if [ -f /etc/nftables/sy-agnos.nft ] && command -v nft >/dev/null 2>&1; then
+    nft -f /etc/nftables/sy-agnos.nft
+    echo "sy-agnos: nftables rules loaded"
+fi
+
+# Load network policy allowlist if present
+if [ -f /etc/sy-agnos/network-policy.conf ]; then
+    . /etc/sy-agnos/network-policy.conf
+fi
+
+# Start health-check in background
+/opt/sy-agent/bin/health-check --port 8099 --check-pid-of sy-agent &
+
+# Exec the SY agent as PID 1's child (argonaut-style supervision)
+echo "sy-agnos: starting sy-agent"
+exec /opt/sy-agent/bin/sy-agent --config /etc/sy-agnos/agent.toml
+INITSCRIPT
+chmod 755 $PKG/sbin/init
+
+# Create health-check script
+mkdir -p $PKG/opt/sy-agent/bin
+cat > $PKG/opt/sy-agent/bin/health-check << 'HEALTHCHECK'
+#!/bin/sh
+# sy-agnos health check -- minimal HTTP responder on port 8099
+# Reports whether sy-agent process is alive.
+
+PORT="${1:-8099}"
+CHECK_PID_OF="${3:-sy-agent}"
+
+# Parse args
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --port) PORT="$2"; shift 2 ;;
+        --check-pid-of) CHECK_PID_OF="$2"; shift 2 ;;
+        *) shift ;;
+    esac
+done
+
+# Simple health check loop using /dev/tcp or socat if available
+while true; do
+    # Check if the agent process is alive
+    if pgrep -x "$CHECK_PID_OF" >/dev/null 2>&1; then
+        STATUS="healthy"
+        CODE="200"
+    else
+        STATUS="unhealthy"
+        CODE="503"
+    fi
+
+    # Respond to TCP connections on the health port
+    # Uses a FIFO + netcat pattern for minimal deps
+    FIFO="/tmp/health-fifo-$$"
+    rm -f "$FIFO"
+    mkfifo "$FIFO" 2>/dev/null || true
+
+    RESPONSE="HTTP/1.1 $CODE OK\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{\"status\":\"$STATUS\",\"sandbox\":\"sy-agnos\",\"strength\":80}"
+
+    if command -v nc >/dev/null 2>&1; then
+        echo -e "$RESPONSE" | nc -l -p "$PORT" -q 1 2>/dev/null || true
+    else
+        # Fallback: just sleep and let external probes check /proc
+        sleep 10
+    fi
+
+    rm -f "$FIFO"
+done
+HEALTHCHECK
+chmod 755 $PKG/opt/sy-agent/bin/health-check
+
+# Create sy-agent system user entry (for passwd/group files)
+mkdir -p $PKG/etc
+cat > $PKG/etc/sy-agnos-users << 'USERS'
+# Additional users for sy-agnos (appended to passwd/group during image build)
+# sy-agent:x:1000:1000:SY Agent:/var/lib/sy-agent:/usr/sbin/nologin
+USERS
+"""
+
+check = ""
+install = ""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-Os -pipe"
+ldflags = "-Wl,--as-needed"

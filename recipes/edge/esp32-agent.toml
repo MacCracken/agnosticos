@@ -1,72 +1,247 @@
-# esp32-agent — AGNOS edge agent for ESP32 microcontrollers
+# esp32-agent — AGNOS edge agent for ESP32-S3 and ESP32-C3 microcontrollers
 #
-# Lightweight agent binary for ESP32-series MCUs (ESP32, ESP32-S3, ESP32-C3).
+# Lightweight no_std Rust agent binary built with esp-rs/esp-hal.
 # Communicates with daimon via MQTT over WiFi. Reports sensor telemetry,
-# receives commands, and can run simple inference on ESP32-S3 (with PSRAM).
+# heartbeats, and WiFi provisioning status. Receives commands from the
+# fleet management API.
 #
-# Status: Planned — 2026.3.18. Architecture design phase.
-# Target: ESP-IDF 5.x + Rust (esp-rs/esp-hal)
-#
-# Hardware support:
-#   ESP32     — WiFi + BT, 520KB SRAM, no AI acceleration
-#   ESP32-S3  — WiFi + BT, 512KB SRAM + 8MB PSRAM, vector extensions (for TinyML)
-#   ESP32-C3  — WiFi + BT, 400KB SRAM, RISC-V core, lowest power
-#   ESP32-C6  — WiFi 6 + BT 5.3 + Thread/Zigbee, 512KB SRAM
+# Architecture:
+#   ESP32-S3  — xtensa (Tensilica LX7), WiFi + BT 5, 512KB SRAM + 8MB PSRAM,
+#               vector extensions for TinyML (keyword spotting, gesture recognition)
+#   ESP32-C3  — riscv32imc (single-core RISC-V), WiFi + BT 5, 400KB SRAM,
+#               lowest power, Thread/Zigbee via 802.15.4 radio
 #
 # Communication:
-#   - MQTT to daimon (lightweight, NAT-friendly, works behind firewalls)
-#   - mDNS discovery on local network
-#   - OTA updates via HTTPS from ark build server
+#   - MQTT 3.1.1 to daimon (lightweight, NAT-friendly, works behind firewalls)
+#   - Topic schema: agnos/{node_id}/telemetry, agnos/{node_id}/heartbeat,
+#                   agnos/{node_id}/command (subscribe), agnos/{node_id}/ota
+#   - mDNS discovery for broker on local network
+#   - OTA firmware updates via HTTPS pull from ark build server
 #
 # Capabilities reported in heartbeat:
-#   - arch: "xtensa" (ESP32/S3) or "riscv32" (C3/C6)
+#   - arch: "xtensa" (ESP32-S3) or "riscv32" (ESP32-C3)
 #   - has_gpu: false (ESP32-S3 vector extensions reported as tag "vector-ext")
-#   - memory_mb: 0.5–8 (depending on PSRAM)
-#   - sensors: temperature, humidity, motion, camera (ESP32-CAM)
-#   - tags: ["esp32", "mqtt", "sensor", "battery"] etc.
+#   - memory_mb: 0.5 (SRAM) or 8.5 (SRAM + PSRAM on S3)
+#   - sensors: [temperature, humidity, motion, light, camera] (ESP32-CAM)
+#   - tags: ["esp32", "mqtt", "sensor", "battery", "no_std"]
 #
 # Use cases:
-#   - Environmental monitoring (temp/humidity → daimon telemetry)
+#   - Environmental monitoring (temp/humidity/pressure via I2C/SPI sensors)
 #   - Motion detection (PIR → daimon anomaly alerts)
 #   - Camera snapshots (ESP32-CAM → daimon screen capture API)
-#   - Smart home control (relay/LED → daimon agent commands)
+#   - Smart home control (relay/LED/servo → daimon agent commands)
 #   - TinyML inference (ESP32-S3 → keyword spotting, gesture recognition)
+#   - Energy harvesting / battery-powered remote nodes
+#
+# Cross-compilation (from AGNOS host or CI):
+#   ESP32-S3: cargo build --release --target xtensa-esp32s3-none-elf
+#   ESP32-C3: cargo build --release --target riscv32imc-unknown-none-elf
+#
+# Flashing:
+#   espflash flash --monitor target/xtensa-esp32s3-none-elf/release/esp32-agent
+#   espflash flash --monitor target/riscv32imc-unknown-none-elf/release/esp32-agent
+#
+# Source: https://github.com/MacCracken/esp32-agent (planned)
+# Phase 14 — Edge OS Profile / IoT Extension
 
 [package]
 name = "esp32-agent"
 version = "2026.3.18"
-description = "AGNOS edge agent for ESP32 microcontrollers — MQTT-based sensor telemetry and control"
+description = "AGNOS edge agent for ESP32-S3 and ESP32-C3 — MQTT telemetry, WiFi provisioning, sensor data collection"
 license = "GPL-3.0"
 groups = ["edge", "iot", "microcontroller"]
 release = 1
+# Primary target is xtensa (ESP32-S3); riscv32 (ESP32-C3) built separately
 arch = "xtensa"
 
 [source]
 local = true
 build_dir = "."
-# Cross-compiled from host via esp-rs toolchain
-# No GitHub release yet — built from source
+# Cross-compiled from host via esp-rs toolchain — no GitHub release yet
+# Future: github_release = "MacCracken/esp32-agent"
+# Future: release_asset = "esp32-agent-esp32s3.bin"
 
 [depends]
+# no_std bare-metal binary — zero OS-level runtime dependencies
+# The binary runs directly on the MCU, not on Linux
 runtime = []
 build = [
-    "rust",
-    "esp-idf",
+    "rust",           # Host Rust toolchain (nightly for xtensa)
+    # esp-rs toolchain components (installed via espup):
+    #   - xtensa-esp32s3-none-elf target (ESP32-S3)
+    #   - riscv32imc-unknown-none-elf target (ESP32-C3, stable Rust)
+    #   - espflash (cargo install espflash)
+    #   - ldproxy (cargo install ldproxy)
 ]
 
 [build]
-# Requires esp-rs toolchain: rustup target add xtensa-esp32s3-espidf
-configure = "source $IDF_PATH/export.sh"
-make = "cargo build --release --target xtensa-esp32s3-espidf"
+strip = false
+install_docs = false
+
+pre_build = """
+# Install esp-rs toolchain if not present
+# espup handles both xtensa (custom LLVM fork) and riscv32 (upstream stable)
+if ! command -v espup >/dev/null 2>&1; then
+    cargo install espup
+    espup install
+fi
+
+# Install espflash for firmware flashing
+if ! command -v espflash >/dev/null 2>&1; then
+    cargo install espflash
+fi
+
+# For ESP32-S3 (xtensa): requires nightly + xtensa LLVM
+# For ESP32-C3 (riscv32): works with stable Rust
+export ESP_IDF_VERSION=none
+"""
+
+configure = ""
+
+# Build for ESP32-S3 (xtensa) by default; ESP32-C3 built with --target override
+make = """
+# ESP32-S3 build (xtensa, primary target)
+cargo build --release \
+    --target xtensa-esp32s3-none-elf \
+    --no-default-features \
+    --features esp32s3,wifi,mqtt,sensors,heartbeat,provisioning
+
+# ESP32-C3 build (riscv32, secondary target)
+cargo build --release \
+    --target riscv32imc-unknown-none-elf \
+    --no-default-features \
+    --features esp32c3,wifi,mqtt,sensors,heartbeat,provisioning
+"""
+
 check = ""
 
 install = """
-mkdir -p $PKG/usr/lib/agnos/esp32
-cp target/xtensa-esp32s3-espidf/release/esp32-agent $PKG/usr/lib/agnos/esp32/
-# Also provide the .bin for flashing
-cp target/xtensa-esp32s3-espidf/release/esp32-agent.bin $PKG/usr/lib/agnos/esp32/ 2>/dev/null || true
+# Install firmware binaries for both targets
+mkdir -p $PKG/usr/lib/agnos/esp32/s3
+mkdir -p $PKG/usr/lib/agnos/esp32/c3
+
+# ESP32-S3 (xtensa) firmware
+cp target/xtensa-esp32s3-none-elf/release/esp32-agent \
+    $PKG/usr/lib/agnos/esp32/s3/esp32-agent.elf
+# Generate flashable binary if objcopy available
+if command -v xtensa-esp32s3-elf-objcopy >/dev/null 2>&1; then
+    xtensa-esp32s3-elf-objcopy -O binary \
+        target/xtensa-esp32s3-none-elf/release/esp32-agent \
+        $PKG/usr/lib/agnos/esp32/s3/esp32-agent.bin
+fi
+
+# ESP32-C3 (riscv32) firmware
+cp target/riscv32imc-unknown-none-elf/release/esp32-agent \
+    $PKG/usr/lib/agnos/esp32/c3/esp32-agent.elf
+if command -v riscv32-esp-elf-objcopy >/dev/null 2>&1; then
+    riscv32-esp-elf-objcopy -O binary \
+        target/riscv32imc-unknown-none-elf/release/esp32-agent \
+        $PKG/usr/lib/agnos/esp32/c3/esp32-agent.bin
+fi
+
+# Install default configuration (baked into firmware at compile time,
+# but also kept as reference for provisioning tools)
+mkdir -p $PKG/etc/agnos/esp32
+cat > $PKG/etc/agnos/esp32/config.toml << 'CONF'
+[agent]
+mode = "edge"
+node_type = "mcu"
+# Set via WiFi provisioning or compile-time env
+node_id = ""
+
+[wifi]
+# Provisioning mode: "smartconfig" (phone app), "softap" (captive portal),
+# or "hardcoded" (compile-time SSID/password for dev)
+provisioning = "softap"
+# Only used when provisioning = "hardcoded"
+ssid = ""
+password = ""
+
+[mqtt]
+# Broker address — typically daimon host running mosquitto or embedded broker
+# Discovered via mDNS (_agnos-mqtt._tcp) or set manually
+broker = ""
+port = 1883
+# Topic prefix: agnos/{node_id}/
+# Published topics: telemetry, heartbeat, status
+# Subscribed topics: command, ota, config
+keepalive_secs = 30
+qos = 1
+
+[heartbeat]
+interval_secs = 30
+# Fields: arch, memory_kb, uptime_secs, wifi_rssi, battery_pct, sensors[]
+
+[telemetry]
+interval_secs = 60
+# Sensor readings batched and published as JSON to agnos/{node_id}/telemetry
+
+[sensors]
+# I2C bus for common sensors (BME280, BH1750, MPU6050)
+i2c_sda = 21
+i2c_scl = 22
+# Enabled sensor types (auto-detected on I2C scan)
+enabled = ["temperature", "humidity", "pressure", "light"]
+
+[ota]
+# HTTPS endpoint for firmware updates (ark build server)
+url = ""
+check_interval_secs = 3600
+verify_signature = true
+
+[power]
+# Deep sleep between telemetry reports (battery-powered nodes)
+deep_sleep = false
+sleep_duration_secs = 300
+# Wake on: timer, gpio (motion sensor), uart
+wake_sources = ["timer"]
+CONF
+
+# Install flash helper script
+mkdir -p $PKG/usr/bin
+cat > $PKG/usr/bin/agnos-esp32-flash << 'FLASHSCRIPT'
+#!/bin/sh
+# Flash AGNOS ESP32 agent firmware
+# Usage: agnos-esp32-flash [--target s3|c3] [--port /dev/ttyUSB0] [--monitor]
+
+TARGET="s3"
+PORT="/dev/ttyUSB0"
+MONITOR=""
+FIRMWARE_DIR="/usr/lib/agnos/esp32"
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --target)  TARGET="$2"; shift 2;;
+        --port)    PORT="$2"; shift 2;;
+        --monitor) MONITOR="--monitor"; shift;;
+        -h|--help)
+            echo "Usage: agnos-esp32-flash [--target s3|c3] [--port /dev/ttyUSB0] [--monitor]"
+            exit 0;;
+        *) echo "Unknown option: $1"; exit 1;;
+    esac
+done
+
+FIRMWARE="$FIRMWARE_DIR/$TARGET/esp32-agent.elf"
+if [ ! -f "$FIRMWARE" ]; then
+    echo "Error: firmware not found at $FIRMWARE"
+    echo "Available targets:"
+    ls -1 "$FIRMWARE_DIR"/*/esp32-agent.elf 2>/dev/null
+    exit 1
+fi
+
+echo "Flashing ESP32 ($TARGET) via $PORT..."
+espflash flash $MONITOR --port "$PORT" "$FIRMWARE"
+FLASHSCRIPT
+chmod 755 $PKG/usr/bin/agnos-esp32-flash
 """
 
+post_install = ""
+
 [security]
-# MCU binary — standard hardening flags don't apply to bare-metal
+# MCU bare-metal binary — standard Linux hardening flags do not apply.
+# Security is handled at the firmware level:
+#   - Secure Boot v2 (ESP32-S3/C3 hardware feature)
+#   - Flash encryption (AES-256-XTS)
+#   - MQTT TLS (mbedtls, compiled into firmware)
+#   - OTA signature verification (ed25519)
 hardening = []

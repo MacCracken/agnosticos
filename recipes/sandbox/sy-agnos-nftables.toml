@@ -1,0 +1,199 @@
+# sy-agnos-nftables — Boot-baked nftables ruleset for sy-agnos sandbox
+#
+# Default-deny egress with configurable allowlist:
+#   - All inbound traffic dropped except health endpoint (port 8099)
+#   - All outbound traffic dropped by default
+#   - DNS restricted to specified resolvers only (default: none)
+#   - Allowlisted hosts/ports configured via /etc/sy-agnos/network-policy.conf
+#   - No listening sockets except health check (8099)
+#
+# The network policy file is baked at image build time by build-sy-agnos.sh.
+# At runtime, the ruleset is immutable (read-only rootfs).
+#
+# See: docs/development/roadmap.md (sy-agnos Phase 1)
+
+[package]
+name = "sy-agnos-nftables"
+version = "2026.3.18"
+description = "Boot-baked nftables default-deny firewall for sy-agnos sandbox"
+license = "GPL-3.0"
+groups = ["sandbox", "tier1"]
+release = 1
+arch = "x86_64"
+
+[source]
+local = true
+build_dir = "build/sy-agnos"
+
+[depends]
+runtime = ["nftables"]
+build = []
+
+[build]
+strip = true
+install_docs = false
+pre_build = ""
+configure = ""
+
+make = """
+mkdir -p $PKG/etc/nftables
+mkdir -p $PKG/etc/sy-agnos
+
+# Main nftables ruleset -- default-deny everything, allowlist only
+cat > $PKG/etc/nftables/sy-agnos.nft << 'NFT'
+#!/usr/sbin/nft -f
+#
+# sy-agnos firewall -- default-deny with minimal allowlist
+# Loaded at boot by /sbin/init before any agent process starts.
+#
+flush ruleset
+
+table inet sy_agnos_filter {
+
+    # --- Sets for configurable allowlists ---
+
+    # Allowed DNS resolvers (populated from network-policy.conf at build time)
+    set dns_resolvers {
+        type ipv4_addr
+        flags interval
+        # Empty by default -- no DNS unless explicitly configured
+    }
+
+    # Allowed egress destinations (populated from network-policy.conf at build time)
+    set egress_allowlist {
+        type ipv4_addr . inet_service
+        flags interval
+        # Empty by default -- no outbound unless explicitly configured
+    }
+
+    # Allowed egress destination IPs (port-agnostic, for HTTPS to API hosts)
+    set egress_hosts {
+        type ipv4_addr
+        flags interval
+        # Empty by default
+    }
+
+    # --- Input chain: drop everything except health endpoint ---
+    chain input {
+        type filter hook input priority 0; policy drop;
+
+        # Allow established/related connections (responses to allowed outbound)
+        ct state established,related accept
+
+        # Allow loopback
+        iif lo accept
+
+        # Health check endpoint -- port 8099 TCP only
+        tcp dport 8099 accept
+
+        # Drop everything else silently (no ICMP unreachable)
+    }
+
+    # --- Forward chain: no forwarding ever ---
+    chain forward {
+        type filter hook forward priority 0; policy drop;
+    }
+
+    # --- Output chain: default-deny with allowlist ---
+    chain output {
+        type filter hook output priority 0; policy drop;
+
+        # Allow loopback
+        oif lo accept
+
+        # Allow established/related (responses to allowed inbound on 8099)
+        ct state established,related accept
+
+        # Allow DNS to configured resolvers only (UDP 53)
+        ip daddr @dns_resolvers udp dport 53 accept
+
+        # Allow DNS over TLS to configured resolvers (TCP 853)
+        ip daddr @dns_resolvers tcp dport 853 accept
+
+        # Allow traffic to explicitly allowlisted host:port pairs
+        ip daddr . tcp dport @egress_allowlist accept
+
+        # Allow HTTPS (443) to allowlisted hosts
+        ip daddr @egress_hosts tcp dport 443 accept
+
+        # Drop everything else -- agent cannot reach arbitrary internet
+    }
+}
+NFT
+
+# Default network policy configuration file
+# This is the template -- build-sy-agnos.sh populates it with user-provided policy.
+cat > $PKG/etc/sy-agnos/network-policy.conf << 'POLICY'
+# sy-agnos Network Policy Configuration
+#
+# This file is read at boot to configure nftables egress allowlist.
+# It is baked into the image at build time and is immutable at runtime.
+#
+# Format: shell variables sourced by /sbin/init
+#
+# DNS_RESOLVERS: Space-separated list of DNS server IPs
+# Example: DNS_RESOLVERS="1.1.1.1 8.8.8.8"
+DNS_RESOLVERS=""
+
+# EGRESS_HOSTS: Space-separated list of allowed destination IPs (HTTPS/443)
+# Example: EGRESS_HOSTS="api.secureyeoman.com 10.0.0.1"
+EGRESS_HOSTS=""
+
+# EGRESS_RULES: Space-separated list of "IP:PORT" pairs for non-443 traffic
+# Example: EGRESS_RULES="10.0.0.5:8090 10.0.0.5:8088"
+EGRESS_RULES=""
+POLICY
+
+# Generate nft include file that reads network-policy.conf and populates sets
+# This script runs at boot after sourcing network-policy.conf
+cat > $PKG/etc/nftables/sy-agnos-policy-loader.sh << 'LOADER'
+#!/bin/sh
+# Load network policy into nftables sets at boot time
+# Called by /sbin/init after loading /etc/sy-agnos/network-policy.conf
+
+POLICY_FILE="/etc/sy-agnos/network-policy.conf"
+
+if [ ! -f "$POLICY_FILE" ]; then
+    echo "sy-agnos: no network policy file -- default-deny all egress"
+    exit 0
+fi
+
+. "$POLICY_FILE"
+
+# Add DNS resolvers
+if [ -n "$DNS_RESOLVERS" ]; then
+    for resolver in $DNS_RESOLVERS; do
+        nft add element inet sy_agnos_filter dns_resolvers "{ $resolver }" 2>/dev/null || true
+    done
+    echo "sy-agnos: DNS resolvers configured: $DNS_RESOLVERS"
+fi
+
+# Add egress host allowlist (HTTPS/443)
+if [ -n "$EGRESS_HOSTS" ]; then
+    for host in $EGRESS_HOSTS; do
+        nft add element inet sy_agnos_filter egress_hosts "{ $host }" 2>/dev/null || true
+    done
+    echo "sy-agnos: egress hosts configured: $EGRESS_HOSTS"
+fi
+
+# Add specific IP:port egress rules
+if [ -n "$EGRESS_RULES" ]; then
+    for rule in $EGRESS_RULES; do
+        IP="${rule%%:*}"
+        PORT="${rule##*:}"
+        nft add element inet sy_agnos_filter egress_allowlist "{ $IP . $PORT }" 2>/dev/null || true
+    done
+    echo "sy-agnos: egress rules configured: $EGRESS_RULES"
+fi
+LOADER
+chmod 755 $PKG/etc/nftables/sy-agnos-policy-loader.sh
+"""
+
+check = ""
+install = ""
+post_install = ""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-Os -pipe"
+ldflags = "-Wl,--as-needed"
