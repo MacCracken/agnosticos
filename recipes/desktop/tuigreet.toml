@@ -7,7 +7,7 @@ groups = ["desktop", "session"]
 
 [source]
 url = "https://github.com/apognu/tuigreet/archive/refs/tags/0.9.1.tar.gz"
-sha256 = ""
+sha256 = "14fd1fadeb84040eb31901da2b53a48aa55b0fdaccb36d96fa52ce2d2113667f"
 patches = []
 
 [depends]

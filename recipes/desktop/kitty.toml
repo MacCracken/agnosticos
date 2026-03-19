@@ -7,7 +7,7 @@ groups = ["desktop"]
 
 [source]
 url = "https://github.com/kovidgoyal/kitty/archive/refs/tags/v0.46.1.tar.gz"
-sha256 = ""
+sha256 = "18e60ecfbbb224b241057ccce0680e39d0a641bf0ba96b0318295e2ea78a14fa"
 patches = []
 
 [depends]

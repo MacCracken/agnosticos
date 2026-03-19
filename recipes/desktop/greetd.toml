@@ -7,7 +7,7 @@ groups = ["desktop", "session"]
 
 [source]
 url = "https://git.sr.ht/~kennylevinsen/greetd/archive/0.10.3.tar.gz"
-sha256 = ""
+sha256 = "ee5cb70e0add4ca9c9fe57e47581ab0002d44c07743fb5492469f3b570db640b"
 patches = []
 
 [depends]

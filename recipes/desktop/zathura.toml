@@ -7,7 +7,7 @@ groups = ["desktop"]
 
 [source]
 url = "https://pwmt.org/projects/zathura/download/zathura-0.5.14.tar.xz"
-sha256 = ""
+sha256 = "647aca4d494315905d236504576e35b7568a4d702e56aa4590295a9f6a7259bd"
 patches = []
 
 [depends]

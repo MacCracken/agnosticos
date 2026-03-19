@@ -7,7 +7,7 @@ groups = ["desktop", "multimedia"]
 
 [source]
 url = "https://gstreamer.freedesktop.org/src/gst-plugins-base/gst-plugins-base-1.26.0.tar.xz"
-sha256 = ""
+sha256 = "e23189fbed2ec486690382d1055c19eeaf5aae3e95e2576fc4c884d96a90e69e"
 patches = []
 
 [depends]

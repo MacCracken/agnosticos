@@ -7,7 +7,7 @@ groups = ["desktop"]
 
 [source]
 url = "https://codeberg.org/dnkl/fuzzel/releases/download/1.14.1/fuzzel-1.14.1.tar.gz"
-sha256 = ""
+sha256 = "a3af48d00d5cb7cb5526ab86bd632c62dbea5901693fdd746a2e7bb5bd64cf04"
 patches = []
 
 [depends]

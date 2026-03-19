@@ -7,7 +7,7 @@ groups = ["desktop"]
 
 [source]
 url = "https://github.com/sentriz/cliphist/archive/refs/tags/v0.7.0.tar.gz"
-sha256 = ""
+sha256 = "8d7dc7b4495e5812b5613274c250ba5d3900933d78888ce7921c01247f191cc8"
 patches = []
 
 [depends]

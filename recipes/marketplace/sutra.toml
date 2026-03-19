@@ -1,0 +1,83 @@
+# Sutra — AI-native infrastructure orchestrator for AGNOS marketplace
+# Declarative YAML playbooks for fleet management, package deployment,
+# and service orchestration. Dry-run by default, IaC user ownership.
+# Built in Rust; integrates with daimon, ark, argonaut, hoosh.
+#
+# Status: Scaffolded — 2026.3.18 (5 crates, 36 tests, 6 MCP tools).
+# Source: https://github.com/MacCracken/sutra
+
+[package]
+name = "sutra"
+version = "2026.3.18"
+description = "Sutra — AI-native infrastructure orchestrator"
+license = "GPL-3.0"
+groups = ["system", "infrastructure"]
+release = 1
+arch = "x86_64"
+
+[source]
+github_release = "MacCracken/sutra"
+release_asset = "sutra-{version}-linux-{arch}.tar.gz"
+
+[depends]
+runtime = [
+    "glibc",
+    "openssl",
+]
+build = [
+    "rust",
+    "gcc",
+    "openssl-dev",
+]
+
+[marketplace]
+category = "infrastructure"
+runtime = "native-binary"
+publisher = "AGNOS"
+tags = ["orchestration", "infrastructure", "iac", "fleet", "deployment", "automation", "ai"]
+min_agnos_version = "2026.3.18"
+
+[marketplace.sandbox]
+seccomp_mode = "basic"
+network_access = true
+data_dir = "~/.sutra/"
+
+[[marketplace.sandbox.landlock]]
+path = "~/.sutra/"
+access = "rw"
+
+[[marketplace.sandbox.landlock]]
+path = "/tmp/sutra/"
+access = "rw"
+
+[[marketplace.sandbox.landlock]]
+path = "/etc/agnos/"
+access = "ro"
+
+# IPC with daimon
+[[marketplace.sandbox.landlock]]
+path = "/run/agnos/"
+access = "rw"
+
+[marketplace.sandbox.network]
+allowed = ["127.0.0.1:8090", "127.0.0.1:8088"]
+
+[marketplace.services]
+ports = []
+depends_on = ["daimon"]
+
+[build]
+make = "cargo build --release --workspace"
+check = "cargo test --workspace"
+install = """
+mkdir -p $PKG/usr/local/bin
+cp target/release/sutra $PKG/usr/local/bin/sutra
+
+mkdir -p $PKG/etc/sutra
+mkdir -p $PKG/usr/share/sutra/playbooks
+"""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

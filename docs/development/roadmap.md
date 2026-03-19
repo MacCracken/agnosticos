@@ -320,7 +320,7 @@ All 10 large modules (>2000 lines) have been split into focused module directori
 |---|----------|------|-------|
 | B1 | High | Selfhost pipeline builds all 176 packages | `selfhost-build.yml` updated, needs first full run |
 | B2 | High | RPi4 hardware boot test | Firmware blobs added, needs physical validation |
-| B3 | Medium | SHA256 checksums for all recipes | Most recipes have empty `sha256 = ""` — fill from upstream |
+| B3 | Low | SHA256 checksums — 3 remaining | 261/264 filled (98.9%). Remaining: `intel-ucode`, `amd-ucode`, `gvisor` — need version bumps to real upstream tags first |
 | B4 | Medium | Debian removal from installer scripts | `build-installer.sh` / `build-sdcard.sh` still fall back to debootstrap when no base rootfs |
 | B5 | Medium | Bazaar community repo infrastructure | Git-based community recipe index (like AUR). `ark bazaar` subcommand. Recipe: `recipes/base/bazaar.toml`. `Community` variant in `PackageSource`. Persian: بازار (marketplace/gathering) |
 
@@ -336,7 +336,7 @@ All 10 large modules (>2000 lines) have been split into focused module directori
 | R6 | Medium | Synapse | Test panics → assert! | 18+ `panic!()` in CLI tests, 9 in non-test code |
 | R7 | Medium | Synapse | RLHF placeholder | `synapse-train/src/methods/rlhf.rs` — CLI args only, no training logic |
 
-*Reviewed 2026-03-18. Synapse `2026.3.18-2` released with integration repairs. Recipe update pending.*
+*Reviewed 2026-03-18. Synapse `2026.3.18-2` released with integration repairs. Recipe updated.*
 
 ### Active — ESP32 Edge/IoT
 
@@ -398,6 +398,16 @@ All 10 large modules (>2000 lines) have been split into focused module directori
 - [ ] **TPM 2.0 boot measurement** — Extend PCRs at each boot stage using tpm2-tools (already in `recipes/edge/tpm2-tools.toml`)
 - [ ] **Attestation endpoint** — `/v1/attestation` returns signed boot measurements (PCR values + event log). SY verifies before dispatching tasks
 - [ ] **Update `/etc/sy-agnos-release`** — `"tpm_measured": true, "strength": 88`
+
+### Resolved (2026.3.18)
+
+| Category | Items | Summary |
+|----------|-------|---------|
+| Documentation | First-party standards, app docs, roadmap split | `docs/development/applications/first-party-standards.md`, 18 individual app docs in `docs/applications/`, third-party docs, app development roadmap. `os_long_term.md` deleted — content migrated |
+| Sutra | Infrastructure orchestrator scaffolded | 5 crates, 36 tests, 6 MCP tools, YAML canonical, marketplace recipe. Named subsystem #20 |
+| CI/CD fixes | build-iso.yml permissions, python_runtime race | `sudo chown` after all 6 build jobs. Test no longer uses process-global env vars |
+| Recipe updates | 4 consumer projects | PhotisNadi `2026.3.18`, Aequi `2026.3.18`, Synapse `2026.3.18-2`, Vidhana v1 `2026.3.18` |
+| Developer tooling | Claude Code hooks | PostToolUse hook: auto `cargo fmt` + `cargo clippy` on userland Write/Edit |
 
 ### Resolved (2026.3.17)
 

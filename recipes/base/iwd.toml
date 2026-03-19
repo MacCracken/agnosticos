@@ -7,7 +7,7 @@ groups = ["base", "network", "tier1"]
 
 [source]
 url = "https://www.kernel.org/pub/linux/network/wireless/iwd-3.5.tar.xz"
-sha256 = ""
+sha256 = "19f128d924b206f5fcaac34b41f4a001f6e21caa356179321ebe01849790e134"
 patches = []
 
 [depends]
