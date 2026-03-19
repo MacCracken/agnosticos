@@ -9,7 +9,7 @@
 name = "rasa"
 version = "2026.3.18"
 description = "Rasa — AI-Native Image Editor & Design Tool"
-license = "GPL-3.0"
+license = "AGPL-3.0"
 groups = ["creative", "graphics"]
 release = 1
 arch = "x86_64"

@@ -10,7 +10,7 @@
 name = "synapse"
 version = "2026.3.18-2"
 description = "Synapse — LLM management and training tool"
-license = "MIT"
+license = "GPL-3.0"
 groups = ["server", "ai", "llm", "rust"]
 release = 1
 arch = "x86_64"

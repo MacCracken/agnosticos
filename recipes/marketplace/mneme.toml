@@ -9,7 +9,7 @@
 name = "mneme"
 version = "2026.3.18"
 description = "Mneme — AI-Native Knowledge Base & Notes"
-license = "GPL-3.0"
+license = "AGPL-3.0"
 groups = ["productivity", "knowledge"]
 release = 1
 arch = "x86_64"

@@ -9,7 +9,7 @@
 name = "abaco"
 version = "2026.3.18"
 description = "Abaco — AI-native calculator & unit converter for AGNOS"
-license = "GPL-3.0"
+license = "AGPL-3.0"
 groups = ["desktop", "tools"]
 release = 1
 arch = "x86_64"

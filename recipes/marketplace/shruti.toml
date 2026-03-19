@@ -2,14 +2,14 @@
 # Multi-track recording, mixing, DSP, and AI-assisted production.
 # Cargo workspace: 6 crates (engine, dsp, session, plugin, ui, ai).
 #
-# Status: Released — 2026.3.14-1 (linux amd64 + arm64, macOS, Windows).
+# Status: Released — 2026.3.18 (linux + macOS arm64).
 # Source: https://github.com/MacCracken/shruti
 
 [package]
 name = "shruti"
-version = "2026.3.14"
+version = "2026.3.18"
 description = "Shruti — Rust-native Digital Audio Workstation"
-license = "GPL-3.0"
+license = "AGPL-3.0"
 groups = ["creative", "audio"]
 release = 1
 arch = "x86_64"
@@ -25,6 +25,7 @@ runtime = [
     "pipewire",
     "pipewire-jack",
     "sqlite",
+    "tarang",
 ]
 build = [
     "rust",
@@ -69,7 +70,7 @@ protocols = ["core", "xdg-shell"]
 
 [marketplace.services]
 ports = []
-depends_on = []
+depends_on = ["tarang"]
 
 [build]
 pre_build = ""

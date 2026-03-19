@@ -7,7 +7,7 @@
 
 [package]
 name = "tarang"
-version = "2026.3.16"
+version = "2026.3.18"
 description = "Tarang — AI-native Rust media framework"
 license = "GPL-3.0"
 groups = ["server", "media", "rust"]
@@ -35,7 +35,7 @@ category = "media-framework"
 runtime = "native-binary"
 publisher = "Tarang"
 tags = ["media", "audio", "video", "codec", "decoding", "rust", "symphonia", "ai"]
-min_agnos_version = "2026.3.16"
+min_agnos_version = "2026.3.18"
 
 [marketplace.sandbox]
 seccomp_mode = "desktop"

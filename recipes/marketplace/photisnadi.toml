@@ -9,7 +9,7 @@
 name = "photisnadi"
 version = "2026.3.18-1"
 description = "Photis Nadi — Kanban task management with daily rituals"
-license = "MIT"
+license = "AGPL-3.0"
 groups = ["desktop", "productivity"]
 release = 1
 arch = "x86_64"

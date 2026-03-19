@@ -9,7 +9,7 @@
 name = "bullshift"
 version = "2026.3.11"
 description = "BullShift — High-performance cross-platform trading platform"
-license = "MIT"
+license = "AGPL-3.0"
 groups = ["server", "finance", "rust"]
 release = 1
 arch = "x86_64"
