@@ -70,7 +70,7 @@ async fn test_tools_manifest_endpoint() {
         .await
         .unwrap();
     let manifest: McpToolManifest = serde_json::from_slice(&body).unwrap();
-    assert_eq!(manifest.tools.len(), 144);
+    assert_eq!(manifest.tools.len(), 151);
 }
 
 #[tokio::test]
@@ -395,7 +395,7 @@ async fn test_mcp_result_serialization() {
 #[tokio::test]
 async fn test_manifest_contains_all_tools() {
     let manifest = build_tool_manifest();
-    assert_eq!(manifest.tools.len(), 144);
+    assert_eq!(manifest.tools.len(), 151);
     let names: Vec<&str> = manifest.tools.iter().map(|t| t.name.as_str()).collect();
     for expected in &[
         "agnos_health",
@@ -500,6 +500,13 @@ async fn test_manifest_contains_all_tools() {
         "bullshift_history",
         "yeoman_logs",
         "yeoman_workflows",
+        "yeoman_register_tools",
+        "yeoman_tool_execute",
+        "yeoman_brain_query",
+        "yeoman_brain_sync",
+        "yeoman_token_budget",
+        "yeoman_events",
+        "yeoman_swarm",
         "delta_branches",
         "delta_review",
         "aequi_invoices",

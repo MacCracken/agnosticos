@@ -313,7 +313,7 @@ jobs:
     - name: Generate coverage report
       run: |
         cargo install cargo-tarpaulin --locked
-        cargo tarpaulin --workspace --out Xml --fail-under 65 || true
+        cargo tarpaulin --workspace --jobs 4 --timeout 300 --out Xml --fail-under 65 || true
       working-directory: userland
 
     - name: Upload coverage to Codecov

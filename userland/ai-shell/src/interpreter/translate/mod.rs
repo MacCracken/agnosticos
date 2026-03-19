@@ -196,7 +196,14 @@ impl Interpreter {
             | Intent::YeomanIntegrations { .. }
             | Intent::YeomanStatus
             | Intent::YeomanLogs { .. }
-            | Intent::YeomanWorkflows { .. } => yeoman::translate_yeoman(intent),
+            | Intent::YeomanWorkflows { .. }
+            | Intent::YeomanRegisterTools { .. }
+            | Intent::YeomanToolExecute { .. }
+            | Intent::YeomanBrainQuery { .. }
+            | Intent::YeomanBrainSync { .. }
+            | Intent::YeomanTokenBudget { .. }
+            | Intent::YeomanEvents { .. }
+            | Intent::YeomanSwarm { .. } => yeoman::translate_yeoman(intent),
 
             // Phylax threat detection
             Intent::PhylaxScan { .. }

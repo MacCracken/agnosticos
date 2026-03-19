@@ -3,7 +3,7 @@
 # and service orchestration. Dry-run by default, IaC user ownership.
 # Built in Rust; integrates with daimon, ark, argonaut, hoosh.
 #
-# Status: Scaffolded — 2026.3.18 (5 crates, 36 tests, 6 MCP tools).
+# Status: Released — 2026.3.18 (5 crates, 70 tests, 6 MCP tools, 6 core modules).
 # Source: https://github.com/MacCracken/sutra
 
 [package]

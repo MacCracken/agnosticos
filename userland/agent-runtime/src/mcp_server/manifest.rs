@@ -841,7 +841,7 @@ pub fn build_tool_manifest() -> McpToolManifest {
             }),
             vec!["action"]
         ),
-        // ----- SecureYeoman AI platform tools (7) -----
+        // ----- SecureYeoman AI platform tools (7 base + 7 bridge = 14) -----
         tool!(
             "yeoman_agents",
             "Manage AI agents in SecureYeoman (list, deploy, stop, status)",
@@ -913,6 +913,78 @@ pub fn build_tool_manifest() -> McpToolManifest {
                 "action": {"type": "string", "description": "Action: list, create, run, stop, status, delete"},
                 "name": {"type": "string", "description": "Workflow name"},
                 "workflow_id": {"type": "string", "description": "Workflow ID (for run/stop/status/delete)"}
+            }),
+            vec!["action"]
+        ),
+        // ----- SecureYeoman Deep Integration Bridge (7 tools) -----
+        tool!(
+            "yeoman_register_tools",
+            "Fetch SecureYeoman MCP tool catalog and register into daimon registry",
+            json!({
+                "filter": {"type": "string", "description": "Optional name filter for tools"},
+                "dry_run": {"type": "boolean", "description": "If true, list tools without registering"}
+            }),
+            vec![]
+        ),
+        tool!(
+            "yeoman_tool_execute",
+            "Execute a SecureYeoman tool by name via bridge",
+            json!({
+                "tool_name": {"type": "string", "description": "Name of the SY tool to execute"},
+                "tool_args": {"type": "object", "description": "Tool arguments as JSON object"}
+            }),
+            vec!["tool_name"]
+        ),
+        tool!(
+            "yeoman_brain_query",
+            "Query SecureYeoman knowledge brain for matching entries",
+            json!({
+                "query": {"type": "string", "description": "Knowledge query string"},
+                "limit": {"type": "string", "description": "Max results to return"},
+                "category": {"type": "string", "description": "Category filter"}
+            }),
+            vec!["query"]
+        ),
+        tool!(
+            "yeoman_brain_sync",
+            "Bidirectional knowledge sync between SecureYeoman brain and AGNOS RAG",
+            json!({
+                "action": {"type": "string", "description": "Direction: to_agnos, from_agnos"},
+                "category": {"type": "string", "description": "Category filter"},
+                "limit": {"type": "string", "description": "Max entries to sync"},
+                "query": {"type": "string", "description": "Query text (for from_agnos)"}
+            }),
+            vec!["action"]
+        ),
+        tool!(
+            "yeoman_token_budget",
+            "Query/manage SecureYeoman agent token budgets via hoosh",
+            json!({
+                "action": {"type": "string", "description": "Action: list, check, reserve, release"},
+                "pool_name": {"type": "string", "description": "Token pool name"},
+                "agent_id": {"type": "string", "description": "Agent identifier"},
+                "amount": {"type": "integer", "description": "Token amount (for check/reserve)"},
+                "reservation_id": {"type": "string", "description": "Reservation ID (for release)"}
+            }),
+            vec!["action"]
+        ),
+        tool!(
+            "yeoman_events",
+            "Subscribe/query SecureYeoman event stream and alerts",
+            json!({
+                "action": {"type": "string", "description": "Action: recent, subscribe, alerts"},
+                "limit": {"type": "string", "description": "Max events to return"},
+                "event_type": {"type": "string", "description": "Event type filter"}
+            }),
+            vec!["action"]
+        ),
+        tool!(
+            "yeoman_swarm",
+            "Query SecureYeoman swarm topology — agents, teams, relationships",
+            json!({
+                "action": {"type": "string", "description": "View: topology, teams, relationships"},
+                "team_id": {"type": "string", "description": "Team ID filter"},
+                "agent_id": {"type": "string", "description": "Agent ID filter"}
             }),
             vec!["action"]
         ),

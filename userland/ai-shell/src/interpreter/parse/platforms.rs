@@ -322,6 +322,84 @@ pub(super) fn parse_platforms(
         }
     }
 
+    if interp
+        .try_captures("yeoman_register_tools", input_lower)
+        .is_some()
+    {
+        return Some(Intent::YeomanRegisterTools {
+            action: "register".to_string(),
+        });
+    }
+
+    if let Some(caps) = interp.try_captures("yeoman_tool_execute", input_lower) {
+        let tool_name = caps.get(1).map_or("", |m| m.as_str()).trim().to_string();
+        let args = caps
+            .get(2)
+            .map(|m| m.as_str().trim().to_string())
+            .filter(|s| !s.is_empty());
+        if !tool_name.is_empty() {
+            return Some(Intent::YeomanToolExecute { tool_name, args });
+        }
+    }
+
+    if let Some(caps) = interp.try_captures("yeoman_brain_query", input_lower) {
+        let query = caps.get(1).map_or("", |m| m.as_str()).trim().to_string();
+        if !query.is_empty() {
+            return Some(Intent::YeomanBrainQuery { query, limit: None });
+        }
+    }
+
+    if let Some(caps) = interp.try_captures("yeoman_brain_sync", input_lower) {
+        let action = caps.get(1).map_or("", |m| m.as_str()).trim().to_string();
+        if !action.is_empty() {
+            return Some(Intent::YeomanBrainSync {
+                action,
+                topic: None,
+            });
+        }
+    }
+
+    if let Some(caps) = interp.try_captures("yeoman_token_budget", input_lower) {
+        let action = caps.get(1).map_or("", |m| m.as_str()).trim().to_string();
+        let pool = caps
+            .get(2)
+            .map(|m| m.as_str().trim().to_string())
+            .filter(|s| !s.is_empty());
+        if !action.is_empty() {
+            return Some(Intent::YeomanTokenBudget {
+                action,
+                pool,
+                amount: None,
+            });
+        }
+    }
+
+    if let Some(caps) = interp.try_captures("yeoman_events", input_lower) {
+        let action = caps.get(1).map_or("", |m| m.as_str()).trim().to_string();
+        let limit = caps
+            .get(2)
+            .map(|m| m.as_str().trim().to_string())
+            .filter(|s| !s.is_empty());
+        if !action.is_empty() {
+            return Some(Intent::YeomanEvents { action, limit });
+        }
+    }
+
+    if let Some(caps) = interp.try_captures("yeoman_swarm", input_lower) {
+        let action = caps.get(1).map_or("", |m| m.as_str()).trim().to_string();
+        let extra = caps
+            .get(2)
+            .map(|m| m.as_str().trim().to_string())
+            .filter(|s| !s.is_empty());
+        if !action.is_empty() {
+            return Some(Intent::YeomanSwarm {
+                action,
+                swarm_id: extra.clone(),
+                capability: extra,
+            });
+        }
+    }
+
     // --- Delta code hosting intents ---
     if let Some(caps) = interp.try_captures("delta_create_repo", input_lower) {
         let name = caps.get(2).map_or("", |m| m.as_str()).trim().to_string();

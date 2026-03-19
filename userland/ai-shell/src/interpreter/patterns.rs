@@ -425,6 +425,35 @@ pub(crate) static PATTERNS: Lazy<HashMap<String, Regex>> = Lazy::new(|| {
         "yeoman_workflows",
         r"(?i)^(?:yeoman|secureyeoman)\s+(workflow|workflows)\s+(list|create|run|stop|status|delete)(\s+(.+))?$",
     );
+    // SecureYeoman bridge tools
+    r(
+        "yeoman_register_tools",
+        r"(?i)^(?:yeoman|secureyeoman)\s+(?:register|bridge|sync)\s+tools$",
+    );
+    r(
+        "yeoman_tool_execute",
+        r"(?i)^(?:yeoman|secureyeoman)\s+(?:run|exec|execute|call)\s+tool\s+(\S+)(.*)$",
+    );
+    r(
+        "yeoman_brain_query",
+        r"(?i)^(?:yeoman|secureyeoman)\s+(?:brain|knowledge|know)\s+(?:query|search|find)\s+(.+)$",
+    );
+    r(
+        "yeoman_brain_sync",
+        r"(?i)^(?:yeoman|secureyeoman)\s+(?:brain|knowledge)\s+sync\s+(to_agnos|from_agnos)$",
+    );
+    r(
+        "yeoman_token_budget",
+        r"(?i)^(?:yeoman|secureyeoman)\s+(?:token|tokens|budget)\s+(list|check|reserve|release)(.*)$",
+    );
+    r(
+        "yeoman_events",
+        r"(?i)^(?:yeoman|secureyeoman)\s+(?:events?|alerts?)\s+(recent|alerts|list)(.*)$",
+    );
+    r(
+        "yeoman_swarm",
+        r"(?i)^(?:yeoman|secureyeoman)\s+(?:swarm|swarms|team|teams)\s+(list|topology|handoff)(.*)$",
+    );
     // Agnostic crew management
     r(
         "agnostic_run_crew",

@@ -13,7 +13,7 @@ name = "agnostic"
 version = "2026.3.17-2"
 description = "Agnostic — Multi-domain AI agent platform with crew orchestration"
 license = "MIT"
-groups = ["server", "qa", "ai-agents", "python"]
+groups = ["server", "agent-automation", "ai-agents", "python"]
 release = 2
 arch = "x86_64"
 
@@ -47,7 +47,7 @@ build = [
 category = "developer-tools"
 runtime = "python-container"
 publisher = "Agnostic"
-tags = ["qa", "testing", "ai-agents", "crewai", "security-compliance", "performance", "crew-orchestration", "multi-domain"]
+tags = ["agent-automation", "ai-agents", "crewai", "crew-orchestration", "multi-domain", "security-compliance", "performance", "devops"]
 min_agnos_version = "2026.3.17"
 
 [marketplace.sandbox]
@@ -119,9 +119,9 @@ cp .env.example $PKG/etc/agnostic/env.defaults
 mkdir -p $PKG/usr/share/applications
 cat > $PKG/usr/share/applications/agnostic.desktop << 'EOF'
 [Desktop Entry]
-Name=Agnostic QA
-Comment=AI-driven multi-agent QA platform
-GenericName=QA Testing
+Name=Agnostic
+Comment=AI-driven multi-agent automation platform
+GenericName=Agent Automation
 Exec=xdg-open http://localhost:8000
 Icon=agnostic
 Terminal=false

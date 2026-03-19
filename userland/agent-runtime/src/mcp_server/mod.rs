@@ -46,6 +46,7 @@ use handlers::synapse::*;
 use handlers::tarang::*;
 use handlers::tazama::*;
 use handlers::yeoman::*;
+use handlers::yeoman_bridge::*;
 use helpers::error_result;
 
 // ---------------------------------------------------------------------------
@@ -295,6 +296,13 @@ async fn dispatch_tool_call(
         "yeoman_status" => handle_yeoman_status(&call.arguments).await,
         "yeoman_logs" => handle_yeoman_logs(&call.arguments).await,
         "yeoman_workflows" => handle_yeoman_workflows(&call.arguments).await,
+        "yeoman_register_tools" => handle_yeoman_register_tools(&call.arguments).await,
+        "yeoman_tool_execute" => handle_yeoman_tool_execute(&call.arguments).await,
+        "yeoman_brain_query" => handle_yeoman_brain_query(&call.arguments).await,
+        "yeoman_brain_sync" => handle_yeoman_brain_sync(&call.arguments).await,
+        "yeoman_token_budget" => handle_yeoman_token_budget(&call.arguments).await,
+        "yeoman_events" => handle_yeoman_events(&call.arguments).await,
+        "yeoman_swarm" => handle_yeoman_swarm(&call.arguments).await,
         "delta_branches" => handle_delta_branches(&call.arguments).await,
         "delta_review" => handle_delta_review(&call.arguments).await,
         "aequi_invoices" => handle_aequi_invoices(&call.arguments).await,

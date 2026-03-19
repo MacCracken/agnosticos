@@ -1,6 +1,6 @@
-# AGNOSTIC
+# Agnostic
 
-> **AGNOSTIC** — AI-native QA automation platform powered by CrewAI
+> **Agnostic** — AI-native agent automation platform powered by CrewAI
 
 | Field | Value |
 |-------|-------|
@@ -17,15 +17,15 @@
 
 ## Why First-Party
 
-AI-native QA automation requires deep integration with the daimon agent lifecycle — crew-based test generation, execution, and reporting all need OS-level sandboxing and orchestration. No existing QA framework combines multi-agent crews with local LLM inference and AGNOS trust verification. AGNOSTIC demonstrates the Python container runtime for marketplace apps.
+AI-native agent automation requires deep integration with the daimon agent lifecycle — multi-domain crew orchestration (quality, security, performance, data-engineering, devops, design, software-engineering) needs OS-level sandboxing and orchestration. No existing agent framework combines multi-agent crews with local LLM inference, AGNOS trust verification, and A2A delegation. Agnostic demonstrates the Python container runtime for marketplace apps.
 
 ## What It Does
 
-- Multi-agent QA crews that generate, execute, and evaluate test suites
-- Automatic test case generation from natural-language specifications
-- Coverage analysis and gap detection via LLM reasoning
-- Integration testing against daimon-managed agents
-- Structured reporting with confidence scores and actionable suggestions
+- Multi-domain agent crews with 7 domain presets (quality, security, performance, data-engineering, devops, design, software-engineering)
+- Crew orchestration with automatic task delegation and A2A handoff
+- NL-driven crew creation and execution via agnoshi
+- GPU-aware crew placement with VRAM budgets
+- Structured reporting with confidence scores, dashboards, and HUD widgets
 
 ## AGNOS Integration
 
@@ -33,7 +33,7 @@ AI-native QA automation requires deep integration with the daimon agent lifecycl
 - **Hoosh**: LLM inference for test generation, coverage analysis, and result interpretation
 - **MCP Tools**: `agnostic_generate`, `agnostic_run`, `agnostic_report`, `agnostic_coverage`, `agnostic_analyze`
 - **Agnoshi Intents**: `agnostic test`, `agnostic generate`, `agnostic coverage`, `agnostic report`, `agnostic analyze`
-- **Marketplace**: Category: development/testing. Sandboxed Python container with limited filesystem access
+- **Marketplace**: Category: agent-automation. Sandboxed Python container with limited filesystem access
 
 ## Architecture
 

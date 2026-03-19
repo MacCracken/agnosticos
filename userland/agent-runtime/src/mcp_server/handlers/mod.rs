@@ -16,3 +16,4 @@ pub(crate) mod synapse;
 pub(crate) mod tarang;
 pub(crate) mod tazama;
 pub(crate) mod yeoman;
+pub(crate) mod yeoman_bridge;

@@ -276,15 +276,15 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 
 | # | App | MCP Tools | Intents | Release | Bundle Test | Notes |
 |---|-----|-----------|---------|---------|-------------|-------|
-| 1 | SecureYeoman | 7 yeoman_* | 7 | Yes | Not started | Flagship |
-| 2 | Photis Nadi | 8 photis_* | 8 | Yes (2026.3.18) | Not started | Flutter |
+| 1 | SecureYeoman | 14 yeoman_* | 14 | Yes | Not started | Flagship (7 core + 7 bridge: tools, brain, tokens, events, swarm) |
+| 2 | Photis Nadi | 8 photis_* | 8 | Yes (2026.3.18) | Not started | Flutter → native binary migration planned |
 | 3 | BullShift | 7 bullshift_* | 7 | Yes | Not started | Trading |
-| 4 | AGNOSTIC | 23 agnostic_* | 14 | Yes | Not started | Python |
+| 4 | Agnostic | 23 agnostic_* | 14 | Yes | Not started | Agent automation (Python/CrewAI) → native binary migration planned |
 | 5 | Delta | 7 delta_* | 7 | Yes | Not started | Code hosting |
 | 6 | Aequi | 7 aequi_* | 7 | Yes (2026.3.18) | Not started | Accounting |
 | 7 | Synapse | 7 synapse_* | 7 | Yes | Not started | LLM management |
 | 8 | Shruti | 7 shruti_* | 7 | Yes | Not started | DAW |
-| 9 | Tazama | 7 tazama_* | 7 | Yes | Not started | Video editor |
+| 9 | Tazama | 7 tazama_* | 7 | Yes (2026.3.18-1) | Not started | Video editor |
 | 10 | Rasa | 9 rasa_* | 9 | Yes | Not started | Image editor |
 | 11 | Mneme | 7 mneme_* | 7 | Yes | Not started | Knowledge base |
 | 12 | Nazar | 5 nazar_* | — | Yes | Not started | System monitor |

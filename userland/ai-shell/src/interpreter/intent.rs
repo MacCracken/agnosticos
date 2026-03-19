@@ -551,6 +551,40 @@ pub enum Intent {
         action: String,
         name: Option<String>,
     },
+    /// Register SecureYeoman MCP tool catalog into AGNOS
+    YeomanRegisterTools { action: String },
+    /// Execute a SecureYeoman tool by name via bridge
+    YeomanToolExecute {
+        tool_name: String,
+        args: Option<String>,
+    },
+    /// Query SecureYeoman knowledge brain
+    YeomanBrainQuery {
+        query: String,
+        limit: Option<String>,
+    },
+    /// Sync knowledge between SecureYeoman and AGNOS RAG
+    YeomanBrainSync {
+        action: String,
+        topic: Option<String>,
+    },
+    /// Manage SecureYeoman agent token budgets via hoosh
+    YeomanTokenBudget {
+        action: String,
+        pool: Option<String>,
+        amount: Option<String>,
+    },
+    /// Query SecureYeoman event stream
+    YeomanEvents {
+        action: String,
+        limit: Option<String>,
+    },
+    /// Query SecureYeoman swarm topology
+    YeomanSwarm {
+        action: String,
+        swarm_id: Option<String>,
+        capability: Option<String>,
+    },
     /// Scan a file or path for threats via phylax
     PhylaxScan {
         /// Target path to scan
