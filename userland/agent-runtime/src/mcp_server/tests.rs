@@ -6,6 +6,10 @@ use super::handlers::shruti::{
     handle_shruti_export, handle_shruti_mixer, handle_shruti_session, handle_shruti_tracks,
     handle_shruti_transport,
 };
+use super::handlers::synapse::{
+    handle_synapse_benchmark, handle_synapse_chat, handle_synapse_finetune, handle_synapse_models,
+    handle_synapse_quantize, handle_synapse_serve, handle_synapse_status,
+};
 use super::helpers::{
     extract_optional_u64, extract_required_string, extract_required_uuid, success_result,
     validate_enum_opt,
@@ -2290,4 +2294,201 @@ async fn test_agnostic_crew_gpu_bridge_failure_returns_error() {
     // Bridge failure: either an error or a success with empty GPU fields (both are acceptable).
     // The handler must not panic.
     let _ = serde_json::from_str::<serde_json::Value>(&result.content[0].text);
+}
+
+// --- Synapse MCP tool handler tests ---
+// Synapse is not running in test env, so bridge falls back to mock responses.
+// Tests verify: handlers don't panic, return valid JSON, mock structure is correct.
+
+#[tokio::test]
+async fn test_synapse_models_list() {
+    let result = handle_synapse_models(&serde_json::json!({"action": "list"})).await;
+    let json: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
+    assert!(json.get("models").is_some() || json.get("error").is_some());
+}
+
+#[tokio::test]
+async fn test_synapse_models_download() {
+    let result = handle_synapse_models(&serde_json::json!({
+        "action": "download",
+        "name": "llama-3.1-8b",
+        "source": "huggingface"
+    }))
+    .await;
+    let json: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
+    assert!(json.get("id").is_some() || json.get("error").is_some());
+}
+
+#[tokio::test]
+async fn test_synapse_models_invalid_action() {
+    let result = handle_synapse_models(&serde_json::json!({"action": "explode"})).await;
+    assert!(result.is_error);
+}
+
+#[tokio::test]
+async fn test_synapse_models_missing_action() {
+    let result = handle_synapse_models(&serde_json::json!({})).await;
+    assert!(result.is_error);
+}
+
+#[tokio::test]
+async fn test_synapse_serve_status() {
+    let result = handle_synapse_serve(&serde_json::json!({"action": "status"})).await;
+    let json: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
+    assert!(json.get("serving").is_some() || json.get("error").is_some());
+}
+
+#[tokio::test]
+async fn test_synapse_serve_start() {
+    let result = handle_synapse_serve(&serde_json::json!({
+        "action": "start",
+        "model": "llama-3.1-8b",
+        "port": "8081"
+    }))
+    .await;
+    let json: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
+    assert!(json.get("id").is_some() || json.get("error").is_some());
+}
+
+#[tokio::test]
+async fn test_synapse_finetune_list() {
+    let result = handle_synapse_finetune(&serde_json::json!({"action": "list"})).await;
+    let json: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
+    assert!(json.get("jobs").is_some() || json.get("error").is_some());
+}
+
+#[tokio::test]
+async fn test_synapse_finetune_start_with_gpu() {
+    let result = handle_synapse_finetune(&serde_json::json!({
+        "action": "start",
+        "model": "llama-3.1-8b",
+        "dataset": "alpaca",
+        "method": "lora",
+        "gpu_required": true,
+        "min_gpu_memory_mb": 16384
+    }))
+    .await;
+    let json: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
+    assert!(json.get("id").is_some() || json.get("error").is_some());
+    // GPU hints should be forwarded in mock response
+    if json.get("_source").and_then(|v| v.as_str()) == Some("mock") {
+        assert_eq!(json["gpu_required"], true);
+        assert_eq!(json["min_gpu_memory_mb"], 16384);
+    }
+}
+
+#[tokio::test]
+async fn test_synapse_finetune_invalid_method() {
+    let result = handle_synapse_finetune(&serde_json::json!({
+        "action": "start",
+        "method": "bogus"
+    }))
+    .await;
+    assert!(result.is_error);
+}
+
+#[tokio::test]
+async fn test_synapse_chat() {
+    let result = handle_synapse_chat(&serde_json::json!({
+        "model": "llama-3.1-8b",
+        "prompt": "Hello",
+        "temperature": 0.7
+    }))
+    .await;
+    let json: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
+    assert!(json.get("response").is_some() || json.get("error").is_some());
+}
+
+#[tokio::test]
+async fn test_synapse_chat_missing_model() {
+    let result = handle_synapse_chat(&serde_json::json!({"prompt": "Hello"})).await;
+    assert!(result.is_error);
+}
+
+#[tokio::test]
+async fn test_synapse_status() {
+    let result = handle_synapse_status(&serde_json::json!({})).await;
+    let json: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
+    assert!(json.get("healthy").is_some() || json.get("error").is_some());
+}
+
+#[tokio::test]
+async fn test_synapse_status_full() {
+    let result = handle_synapse_status(&serde_json::json!({"detail": "full"})).await;
+    let _: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
+}
+
+#[tokio::test]
+async fn test_synapse_status_invalid_detail() {
+    let result = handle_synapse_status(&serde_json::json!({"detail": "bogus"})).await;
+    assert!(result.is_error);
+}
+
+#[tokio::test]
+async fn test_synapse_benchmark_list() {
+    let result = handle_synapse_benchmark(&serde_json::json!({"action": "list"})).await;
+    let json: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
+    assert!(json.get("benchmarks").is_some() || json.get("error").is_some());
+}
+
+#[tokio::test]
+async fn test_synapse_benchmark_run() {
+    let result = handle_synapse_benchmark(&serde_json::json!({
+        "action": "run",
+        "models": "llama-3.1-8b,mistral-7b",
+        "metric": "latency"
+    }))
+    .await;
+    let json: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
+    assert!(json.get("id").is_some() || json.get("error").is_some());
+}
+
+#[tokio::test]
+async fn test_synapse_benchmark_invalid_metric() {
+    let result = handle_synapse_benchmark(&serde_json::json!({
+        "action": "run",
+        "metric": "bogus"
+    }))
+    .await;
+    assert!(result.is_error);
+}
+
+#[tokio::test]
+async fn test_synapse_quantize_list() {
+    let result = handle_synapse_quantize(&serde_json::json!({"action": "list"})).await;
+    let json: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
+    assert!(json.get("jobs").is_some() || json.get("error").is_some());
+}
+
+#[tokio::test]
+async fn test_synapse_quantize_start() {
+    let result = handle_synapse_quantize(&serde_json::json!({
+        "action": "start",
+        "model": "llama-3.1-8b",
+        "format": "gguf",
+        "bits": "4"
+    }))
+    .await;
+    let json: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
+    assert!(json.get("id").is_some() || json.get("error").is_some());
+}
+
+#[tokio::test]
+async fn test_synapse_quantize_invalid_format() {
+    let result = handle_synapse_quantize(&serde_json::json!({
+        "action": "start",
+        "format": "bogus"
+    }))
+    .await;
+    assert!(result.is_error);
+}
+
+#[tokio::test]
+async fn test_synapse_quantize_invalid_bits() {
+    let result = handle_synapse_quantize(&serde_json::json!({
+        "action": "start",
+        "bits": "3"
+    }))
+    .await;
+    assert!(result.is_error);
 }

@@ -137,4 +137,22 @@ impl HttpBridge {
         }
         resp.json().await.map_err(|e| e.to_string())
     }
+
+    pub async fn delete(&self, path: &str) -> Result<serde_json::Value, String> {
+        let client = &self.client;
+        let url = format!("{}{}", self.base_url, path);
+        let mut req = client.delete(&url);
+        if let Some(ref key) = self.api_key {
+            req = req.header("Authorization", format!("Bearer {}", key));
+        }
+        let resp = req.send().await.map_err(|e| e.to_string())?;
+        if !resp.status().is_success() {
+            return Err(format!(
+                "{} API error: {}",
+                self.service_name,
+                resp.status()
+            ));
+        }
+        resp.json().await.map_err(|e| e.to_string())
+    }
 }

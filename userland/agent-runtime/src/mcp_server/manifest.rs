@@ -688,7 +688,7 @@ pub fn build_tool_manifest() -> McpToolManifest {
             }),
             vec!["action"]
         ),
-        // ----- Synapse LLM management tools (5) -----
+        // ----- Synapse LLM management tools (7) -----
         tool!(
             "synapse_models",
             "Manage LLM models in Synapse (download, delete, list, info)",

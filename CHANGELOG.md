@@ -25,6 +25,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Aequi: `2026.3.11` → `2026.3.18`
 - Synapse: `2026.3.18-1` → `2026.3.18-2` (integration repairs)
 - Vidhana: v1 `2026.3.18` confirmed
+- Sutra: marketplace recipe created (`recipes/marketplace/sutra.toml`)
+- VERSION + workspace Cargo.toml: `2026.3.17` → `2026.3.18`
+
+### Changed — SHA256 Checksums (B3)
+
+- Filled SHA256 checksums for 20 recipes (6 base + 17 desktop) from verified upstream sources
+- Coverage: 241/264 → 261/264 (98.9%). Remaining 3 (`intel-ucode`, `amd-ucode`, `gvisor`) need upstream version corrections
+
+### Fixed — Synapse Bridge Paths
+
+- **All 7 Synapse MCP bridge paths were wrong** — every handler pointed to nonexistent `/api/v1/*` paths
+- `synapse_models`: `/api/v1/models` → `/models`, `/models/{id}` (GET/DELETE), `/marketplace/pull` (download)
+- `synapse_serve`: `/api/v1/serve` → `/system/status`, `/models`, `/bridge/connect`
+- `synapse_finetune`: `/api/v1/finetune` → `/training/jobs` (POST/GET), `/training/jobs/{id}/cancel`
+- `synapse_chat`: `/api/v1/chat` → `/v1/chat/completions` (OpenAI-compatible, `messages` format)
+- `synapse_status`: `/api/v1/status` → `/system/status` + `/system/gpu/telemetry` (full detail)
+- `synapse_benchmark`: `/api/v1/benchmark` → `/eval/runs`
+- `synapse_quantize`: `/api/v1/quantize` → `/training/jobs` with `type: "quantize"`
+- Added `HttpBridge::delete()` method for model deletion
+- Added 21 handler tests (happy path + validation errors for all 7 tools)
+- Fixed manifest comment: "5 tools" → "7 tools"
 
 ### Fixed
 

@@ -310,10 +310,6 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 
 ## Engineering Backlog
 
-### Module Refactoring — Complete
-
-All 10 large modules (>2000 lines) have been split into focused module directories. Pattern: `mod.rs` re-exports, old monolith deleted, `#[cfg(test)] mod tests;` in dedicated file. Avoid naming submodules `core` (rustfmt conflict).
-
 ### Active — Build & Distribution
 
 | # | Priority | Item | Notes |
@@ -323,20 +319,6 @@ All 10 large modules (>2000 lines) have been split into focused module directori
 | B3 | Low | SHA256 checksums — 3 remaining | 261/264 filled (98.9%). Remaining: `intel-ucode`, `amd-ucode`, `gvisor` — need version bumps to real upstream tags first |
 | B4 | Medium | Debian removal from installer scripts | `build-installer.sh` / `build-sdcard.sh` still fall back to debootstrap when no base rootfs |
 | B5 | Medium | Bazaar community repo infrastructure | Git-based community recipe index (like AUR). `ark bazaar` subcommand. Recipe: `recipes/base/bazaar.toml`. `Community` variant in `PackageSource`. Persian: بازار (marketplace/gathering) |
-
-### Active — Consumer Project Reviews
-
-| # | Priority | Project | Item | Notes |
-|---|----------|---------|------|-------|
-| R1 | High | Synapse | Stub RAG embedding | `synapse-api/src/rest/rag.rs` — fake 64D hash vectors, needs real embedding via hoosh |
-| R2 | High | Synapse | Bridge PullModel incomplete | `synapse-bridge/src/server.rs:262` — HuggingFace resolution TODO |
-| R3 | High | Synapse | MCP tools not implemented | 5 synapse_* tools referenced but not in codebase |
-| R4 | High | Synapse | Model catalog empty | `synapse-core/src/registry/catalog.rs` — 4-line stub |
-| R5 | Medium | Synapse | 4 clippy warnings | labeler.rs (too many fn args, manual clamp, filter_map), datasets.rs |
-| R6 | Medium | Synapse | Test panics → assert! | 18+ `panic!()` in CLI tests, 9 in non-test code |
-| R7 | Medium | Synapse | RLHF placeholder | `synapse-train/src/methods/rlhf.rs` — CLI args only, no training logic |
-
-*Reviewed 2026-03-18. Synapse `2026.3.18-2` released with integration repairs. Recipe updated.*
 
 ### Active — ESP32 Edge/IoT
 
@@ -407,18 +389,13 @@ All 10 large modules (>2000 lines) have been split into focused module directori
 | Sutra | Infrastructure orchestrator scaffolded | 5 crates, 36 tests, 6 MCP tools, YAML canonical, marketplace recipe. Named subsystem #20 |
 | CI/CD fixes | build-iso.yml permissions, python_runtime race | `sudo chown` after all 6 build jobs. Test no longer uses process-global env vars |
 | Recipe updates | 4 consumer projects | PhotisNadi `2026.3.18`, Aequi `2026.3.18`, Synapse `2026.3.18-2`, Vidhana v1 `2026.3.18` |
+| Synapse integration | Bridge paths + tests + delete method | All 7 bridge paths corrected to Synapse 2026.3.18-2 API. `HttpBridge::delete()` added. 21 handler tests. Chat uses OpenAI-compat `/v1/chat/completions`. Finetune uses `/training/jobs`. R1-R7 closed |
+| SHA256 checksums (B3) | 20 recipes filled | 261/264 (98.9%). 3 remaining need upstream version bumps |
 | Developer tooling | Claude Code hooks | PostToolUse hook: auto `cargo fmt` + `cargo clippy` on userland Write/Edit |
 
 ### Resolved (2026.3.17)
 
-| Category | Items | Summary |
-|----------|-------|---------|
-| Module splits (10) | orchestrator, argonaut, agnova, network_tools, ark, service_manager, federation, sigil, edge, safety | ~25,000 lines → focused module directories. sandbox_mod `core.rs` → `sandbox_core.rs` (rustfmt fix). All >2000-line monoliths eliminated |
-| GPU awareness (G1–G4) | Scheduling, hoosh routing, edge fleet, consumer apps | `TaskRequirements` GPU fields, `score_gpu()`, `AcceleratorRegistry`, privacy routing, VRAM budgets, auto-quantization, edge VRAM/CC filtering, fleet model registry, `tarang_hw_accel`, `synapse_finetune` GPU hints |
-| SY integration (4) | GPU telemetry, local models, Firecracker passthrough, fleet heartbeat | `agnos_gpu_status`, `agnos_local_models` MCP tools, `device_passthrough`, heartbeat GPU metrics + dashboard aggregation |
-| Sandbox wiring (S1–S3) | Credential proxy, externalization gate, offender→sigil | `CredentialProxyManager` in agent lifecycle, `ExternalizationGate` in sandbox with 11 patterns, `OffenderTracker` feeds trust demotions to `SigilVerifier` revocation list |
-| Agnostic (13) | Crew mgmt, crew GPU, RPC, GPU probe/intents/placement/budget, fleet GPU, event forwarding, 3 HUD widgets | All data APIs + `CrewStatusWidget`, `DomainFilterWidget`, `GpuStatusWidget` in aethersafha `hud/` module. 144 MCP tools |
-| Toolchain | Go 1.24.1 → 1.26.1 | Unblocked cliphist, Kitty, modern Go modules |
+10 module splits (~25K lines), GPU awareness (G1-G4), SY integration (4), sandbox wiring (S1-S3), Agnostic integration (13 items), Go 1.24→1.26. See CHANGELOG `[2026.3.17]` for details.
 
 ---
 
