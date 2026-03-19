@@ -5,9 +5,13 @@
 //! feed into the existing [`EdgeFleetManager`] registry.
 //!
 //! Topic schema (from `recipes/edge/esp32-agent.toml`):
-//!   - `agnos/{node_id}/heartbeat` — periodic liveness + capabilities
-//!   - `agnos/{node_id}/telemetry` — sensor readings batch
-//!   - `agnos/{node_id}/status`    — lifecycle events (boot, sleep, ota)
+//!   - `agnos/{node_id}/heartbeat`        — periodic liveness + capabilities
+//!   - `agnos/{node_id}/telemetry`        — sensor readings batch
+//!   - `agnos/{node_id}/status`           — lifecycle events (boot, sleep, ota)
+//!   - `agnos/{node_id}/inference/result` — TinyML inference results (E4)
+//!   - `agnos/{node_id}/inference/status` — TinyML model load state (E4)
+//!   - `agnos/{node_id}/camera/frame`     — JPEG frame as base64 (ESP32-CAM, E3)
+//!   - `agnos/{node_id}/camera/motion`    — motion detection event (ESP32-CAM, E3)
 //!
 //! The bridge auto-registers unknown nodes on first heartbeat and updates
 //! existing nodes on subsequent messages. Reconnection is handled by
@@ -137,6 +141,153 @@ pub enum McuStatusEvent {
     Error,
 }
 
+/// TinyML inference result published by an ESP32-S3 agent to
+/// `agnos/{node_id}/inference/result`.
+///
+/// Sent each time the on-device model produces a classification above the
+/// configured confidence threshold. The ESP32-S3 vector extensions (Xtensa
+/// HiFi DSP) accelerate int8 quantized inference ~3-5x over scalar.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct McuInferenceResult {
+    /// Name of the loaded TinyML model (e.g. "kws_micro_speech").
+    pub model_name: String,
+    /// Predicted label (e.g. "yes", "no", "wave", "anomaly_high").
+    pub label: String,
+    /// Confidence score in 0.0-1.0 range.
+    pub confidence: f64,
+    /// Inference latency on the MCU in milliseconds.
+    pub latency_ms: u32,
+    /// Input modality: "audio" (I2S mic / KWS), "imu" (MPU6050 / gesture),
+    /// "image" (ESP32-CAM / visual classification).
+    pub input_type: McuInferenceInputType,
+    /// Optional timestamp (seconds since boot, or epoch if NTP synced).
+    #[serde(default)]
+    pub timestamp_secs: Option<u64>,
+}
+
+/// TinyML inference status published by an ESP32-S3 agent to
+/// `agnos/{node_id}/inference/status`.
+///
+/// Sent periodically (configurable) or on model load/unload events.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct McuInferenceStatus {
+    /// Whether a model is currently loaded and ready for inference.
+    pub model_loaded: bool,
+    /// Name of the loaded model (empty if none loaded).
+    pub model_name: String,
+    /// Memory consumed by the model + arena in bytes.
+    pub memory_used_bytes: u64,
+    /// Total number of inferences since last boot.
+    pub inference_count: u64,
+    /// Model type: "kws", "gesture", or "anomaly".
+    #[serde(default)]
+    pub model_type: Option<String>,
+    /// Average inference latency in milliseconds (rolling window).
+    #[serde(default)]
+    pub avg_latency_ms: Option<u32>,
+}
+
+/// Input modality for TinyML inference on the MCU.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum McuInferenceInputType {
+    /// Audio input from I2S microphone (keyword spotting).
+    Audio,
+    /// IMU / accelerometer input (gesture recognition).
+    Imu,
+    /// Camera image input (visual classification).
+    Image,
+}
+
+/// Camera frame payload published by an ESP32-CAM agent to
+/// `agnos/{node_id}/camera/frame`.
+///
+/// Contains a JPEG-encoded image as base64 string. Frames are captured either
+/// on a timed interval or triggered by motion detection. The bridge stores
+/// each frame as a capture event in the fleet node's history.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct McuCameraFrame {
+    /// Base64-encoded JPEG image data.
+    pub data_base64: String,
+    /// Image width in pixels.
+    pub width: u32,
+    /// Image height in pixels.
+    pub height: u32,
+    /// JPEG quality setting used (1-63).
+    pub jpeg_quality: u8,
+    /// What triggered this capture: "motion", "interval", or "manual".
+    #[serde(default = "default_camera_trigger")]
+    pub trigger: String,
+    /// Optional timestamp (seconds since boot, or epoch if NTP synced).
+    #[serde(default)]
+    pub timestamp_secs: Option<u64>,
+}
+
+fn default_camera_trigger() -> String {
+    "manual".to_string()
+}
+
+/// Motion detection event published by an ESP32-CAM agent to
+/// `agnos/{node_id}/camera/motion`.
+///
+/// Sent when the on-device frame-differencing algorithm or an external PIR
+/// sensor detects motion. May optionally include a snapshot frame if the
+/// camera captured one at the time of detection.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct McuMotionEvent {
+    /// Whether motion was detected (always true when published, but included
+    /// for schema completeness and potential "motion_cleared" events).
+    pub detected: bool,
+    /// Motion intensity as a percentage (0.0-100.0). Higher values indicate
+    /// more pixels changed between frames.
+    #[serde(default)]
+    pub intensity: Option<f64>,
+    /// Detection source: "frame_diff" (software), "pir" (GPIO sensor), or "both".
+    #[serde(default = "default_motion_source")]
+    pub source: String,
+    /// Optional base64-encoded JPEG snapshot taken at the moment of detection.
+    /// Only included if the ESP32-CAM is configured to attach a frame to
+    /// motion events (increases payload size).
+    #[serde(default)]
+    pub snapshot_base64: Option<String>,
+    /// Snapshot dimensions (only present if snapshot_base64 is set).
+    #[serde(default)]
+    pub snapshot_width: Option<u32>,
+    #[serde(default)]
+    pub snapshot_height: Option<u32>,
+    /// Optional timestamp (seconds since boot, or epoch if NTP synced).
+    #[serde(default)]
+    pub timestamp_secs: Option<u64>,
+}
+
+fn default_motion_source() -> String {
+    "frame_diff".to_string()
+}
+
+/// A stored camera capture event, created when a frame or motion snapshot
+/// is received from an ESP32-CAM node via MQTT.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CameraCaptureEvent {
+    /// Unique ID for this capture event.
+    pub id: String,
+    /// MCU node_id that produced this capture.
+    pub mcu_node_id: String,
+    /// Fleet registry node_id (if registered).
+    pub fleet_id: Option<String>,
+    /// Base64-encoded JPEG image data.
+    pub data_base64: String,
+    /// Image width in pixels.
+    pub width: u32,
+    /// Image height in pixels.
+    pub height: u32,
+    /// What triggered this capture.
+    pub trigger: String,
+    /// When this event was received by the bridge.
+    pub received_at: chrono::DateTime<Utc>,
+    /// Motion intensity (only for motion-triggered captures).
+    pub motion_intensity: Option<f64>,
+}
+
 // ---------------------------------------------------------------------------
 // Bridge
 // ---------------------------------------------------------------------------
@@ -153,7 +304,15 @@ pub struct MqttBridge {
     /// MCU nodes use short identifiers (e.g. MAC-derived), while the fleet
     /// registry assigns UUIDs on registration.
     node_id_map: Arc<Mutex<std::collections::HashMap<String, String>>>,
+    /// Camera capture events received from ESP32-CAM nodes. Stored in a
+    /// ring buffer (newest entries replace oldest when capacity is reached).
+    /// Each entry contains the base64-encoded JPEG and metadata.
+    camera_captures: Arc<Mutex<Vec<CameraCaptureEvent>>>,
 }
+
+/// Maximum number of camera capture events retained in memory.
+/// Older events are discarded when this limit is reached.
+const MAX_CAMERA_CAPTURES: usize = 200;
 
 impl MqttBridge {
     /// Create a new MQTT bridge.
@@ -162,6 +321,7 @@ impl MqttBridge {
             config,
             fleet,
             node_id_map: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            camera_captures: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
@@ -223,6 +383,32 @@ impl MqttBridge {
             .await
             .map_err(|e| MqttBridgeError::SubscribeError(e.to_string()))?;
 
+        // TinyML inference topics (E4)
+        let inference_result_topic = format!("{}/+/inference/result", self.config.topic_prefix);
+        let inference_status_topic = format!("{}/+/inference/status", self.config.topic_prefix);
+
+        client
+            .subscribe(&inference_result_topic, rumqttc::QoS::AtLeastOnce)
+            .await
+            .map_err(|e| MqttBridgeError::SubscribeError(e.to_string()))?;
+        client
+            .subscribe(&inference_status_topic, rumqttc::QoS::AtLeastOnce)
+            .await
+            .map_err(|e| MqttBridgeError::SubscribeError(e.to_string()))?;
+
+        // ESP32-CAM camera topics (E3)
+        let camera_frame_topic = format!("{}/+/camera/frame", self.config.topic_prefix);
+        let camera_motion_topic = format!("{}/+/camera/motion", self.config.topic_prefix);
+
+        client
+            .subscribe(&camera_frame_topic, rumqttc::QoS::AtLeastOnce)
+            .await
+            .map_err(|e| MqttBridgeError::SubscribeError(e.to_string()))?;
+        client
+            .subscribe(&camera_motion_topic, rumqttc::QoS::AtLeastOnce)
+            .await
+            .map_err(|e| MqttBridgeError::SubscribeError(e.to_string()))?;
+
         info!(
             broker = %self.config.broker_host,
             port = %self.config.broker_port,
@@ -278,6 +464,18 @@ impl MqttBridge {
             "heartbeat" => self.handle_heartbeat(mcu_node_id, &publish.payload),
             "telemetry" => self.handle_telemetry(mcu_node_id, &publish.payload),
             "status" => self.handle_status(mcu_node_id, &publish.payload),
+            "inference/result" => {
+                self.handle_inference_result(mcu_node_id, &publish.payload);
+            }
+            "inference/status" => {
+                self.handle_inference_status(mcu_node_id, &publish.payload);
+            }
+            "camera/frame" => {
+                self.handle_camera_frame(mcu_node_id, &publish.payload);
+            }
+            "camera/motion" => {
+                self.handle_camera_motion(mcu_node_id, &publish.payload);
+            }
             other => {
                 debug!(topic = %topic, msg_type = %other, "Ignoring unknown message type");
             }
@@ -542,6 +740,287 @@ impl MqttBridge {
         }
     }
 
+    /// Process a TinyML inference result from an ESP32-S3 node.
+    ///
+    /// Logs the result and updates the fleet node's tags with the "tinyml"
+    /// marker so the dashboard can identify inference-capable nodes. High-
+    /// confidence results are logged at info level for aggregation by the
+    /// daimon metrics pipeline.
+    fn handle_inference_result(&self, mcu_node_id: &str, payload: &[u8]) {
+        let result: McuInferenceResult = match serde_json::from_slice(payload) {
+            Ok(r) => r,
+            Err(e) => {
+                warn!(
+                    node = %mcu_node_id,
+                    error = %e,
+                    "Failed to parse MCU inference result JSON"
+                );
+                return;
+            }
+        };
+
+        let id_map = match self.node_id_map.lock() {
+            Ok(m) => m,
+            Err(_) => return,
+        };
+
+        let fleet_id = id_map
+            .get(mcu_node_id)
+            .map(|s| s.as_str())
+            .unwrap_or("unregistered");
+
+        info!(
+            mcu_id = %mcu_node_id,
+            fleet_id = %fleet_id,
+            model = %result.model_name,
+            label = %result.label,
+            confidence = %result.confidence,
+            latency_ms = %result.latency_ms,
+            input_type = ?result.input_type,
+            "MCU TinyML inference result"
+        );
+
+        // Tag the fleet node as tinyml-capable if registered
+        if fleet_id != "unregistered" {
+            let fleet_id_owned = fleet_id.to_string();
+            drop(id_map);
+
+            if let Ok(mut fleet) = self.fleet.lock() {
+                if let Some(node) = fleet.nodes.get_mut(&fleet_id_owned) {
+                    if !node.capabilities.tags.contains(&"tinyml".to_string()) {
+                        node.capabilities.tags.push("tinyml".into());
+                    }
+                    // Add the specific model type tag (e.g. "tinyml:kws")
+                    let model_tag = format!("tinyml:{}", result.model_name);
+                    if !node.capabilities.tags.contains(&model_tag) {
+                        node.capabilities.tags.push(model_tag);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Process a TinyML inference status report from an ESP32-S3 node.
+    ///
+    /// Tracks model load state, memory usage, and inference throughput.
+    /// Forwarded to daimon metrics for dashboard display.
+    fn handle_inference_status(&self, mcu_node_id: &str, payload: &[u8]) {
+        let status: McuInferenceStatus = match serde_json::from_slice(payload) {
+            Ok(s) => s,
+            Err(e) => {
+                warn!(
+                    node = %mcu_node_id,
+                    error = %e,
+                    "Failed to parse MCU inference status JSON"
+                );
+                return;
+            }
+        };
+
+        let id_map = match self.node_id_map.lock() {
+            Ok(m) => m,
+            Err(_) => return,
+        };
+
+        let fleet_id = id_map
+            .get(mcu_node_id)
+            .map(|s| s.as_str())
+            .unwrap_or("unregistered");
+
+        if status.model_loaded {
+            info!(
+                mcu_id = %mcu_node_id,
+                fleet_id = %fleet_id,
+                model = %status.model_name,
+                model_type = ?status.model_type,
+                memory_bytes = %status.memory_used_bytes,
+                inferences = %status.inference_count,
+                avg_latency_ms = ?status.avg_latency_ms,
+                "MCU TinyML model status: loaded"
+            );
+        } else {
+            debug!(
+                mcu_id = %mcu_node_id,
+                fleet_id = %fleet_id,
+                "MCU TinyML model status: no model loaded"
+            );
+        }
+    }
+
+    /// Process a camera frame from an ESP32-CAM node.
+    ///
+    /// Stores the JPEG frame as a [`CameraCaptureEvent`] in the bridge's
+    /// in-memory capture buffer. The frame can later be forwarded to daimon's
+    /// screen capture API (POST /v1/screen/capture) or queried directly.
+    ///
+    /// Frames larger than 1 MB (base64) are rejected to prevent memory abuse
+    /// from rogue publishers.
+    fn handle_camera_frame(&self, mcu_node_id: &str, payload: &[u8]) {
+        let frame: McuCameraFrame = match serde_json::from_slice(payload) {
+            Ok(f) => f,
+            Err(e) => {
+                warn!(
+                    node = %mcu_node_id,
+                    error = %e,
+                    "Failed to parse MCU camera frame JSON"
+                );
+                return;
+            }
+        };
+
+        // Reject oversized frames (1 MB base64 ~ 750 KB raw JPEG)
+        if frame.data_base64.len() > 1_048_576 {
+            warn!(
+                node = %mcu_node_id,
+                size = frame.data_base64.len(),
+                "Camera frame too large, rejecting (max 1 MB base64)"
+            );
+            return;
+        }
+
+        let id_map = match self.node_id_map.lock() {
+            Ok(m) => m,
+            Err(_) => return,
+        };
+
+        let fleet_id = id_map.get(mcu_node_id).cloned();
+        let fleet_id_str = fleet_id.as_deref().unwrap_or("unregistered");
+
+        info!(
+            mcu_id = %mcu_node_id,
+            fleet_id = %fleet_id_str,
+            width = frame.width,
+            height = frame.height,
+            quality = frame.jpeg_quality,
+            trigger = %frame.trigger,
+            data_size = frame.data_base64.len(),
+            "ESP32-CAM frame received"
+        );
+
+        // Tag the fleet node as camera-capable if registered
+        if let Some(ref fid) = fleet_id {
+            let fid = fid.clone();
+            drop(id_map);
+
+            if let Ok(mut fleet) = self.fleet.lock() {
+                if let Some(node) = fleet.nodes.get_mut(&fid) {
+                    if !node.capabilities.tags.contains(&"camera".to_string()) {
+                        node.capabilities.tags.push("camera".into());
+                    }
+                }
+            }
+        } else {
+            drop(id_map);
+        }
+
+        // Store as capture event
+        let event = CameraCaptureEvent {
+            id: uuid::Uuid::new_v4().to_string(),
+            mcu_node_id: mcu_node_id.to_string(),
+            fleet_id: fleet_id.clone(),
+            data_base64: frame.data_base64,
+            width: frame.width,
+            height: frame.height,
+            trigger: frame.trigger,
+            received_at: Utc::now(),
+            motion_intensity: None,
+        };
+
+        if let Ok(mut captures) = self.camera_captures.lock() {
+            if captures.len() >= MAX_CAMERA_CAPTURES {
+                captures.remove(0);
+            }
+            captures.push(event);
+        }
+    }
+
+    /// Process a motion detection event from an ESP32-CAM node.
+    ///
+    /// Logs the motion event and, if a snapshot is attached, stores it as a
+    /// capture event. Motion events without snapshots are still logged for
+    /// the daimon anomaly pipeline to pick up.
+    fn handle_camera_motion(&self, mcu_node_id: &str, payload: &[u8]) {
+        let motion: McuMotionEvent = match serde_json::from_slice(payload) {
+            Ok(m) => m,
+            Err(e) => {
+                warn!(
+                    node = %mcu_node_id,
+                    error = %e,
+                    "Failed to parse MCU motion event JSON"
+                );
+                return;
+            }
+        };
+
+        let id_map = match self.node_id_map.lock() {
+            Ok(m) => m,
+            Err(_) => return,
+        };
+
+        let fleet_id = id_map.get(mcu_node_id).cloned();
+        let fleet_id_str = fleet_id.as_deref().unwrap_or("unregistered");
+
+        info!(
+            mcu_id = %mcu_node_id,
+            fleet_id = %fleet_id_str,
+            detected = motion.detected,
+            intensity = ?motion.intensity,
+            source = %motion.source,
+            has_snapshot = motion.snapshot_base64.is_some(),
+            "ESP32-CAM motion event"
+        );
+
+        // Tag the fleet node as motion-capable
+        if let Some(ref fid) = fleet_id {
+            let fid = fid.clone();
+            drop(id_map);
+
+            if let Ok(mut fleet) = self.fleet.lock() {
+                if let Some(node) = fleet.nodes.get_mut(&fid) {
+                    for tag in ["camera", "motion_detect"] {
+                        if !node.capabilities.tags.contains(&tag.to_string()) {
+                            node.capabilities.tags.push(tag.into());
+                        }
+                    }
+                }
+            }
+        } else {
+            drop(id_map);
+        }
+
+        // If a snapshot is attached, store it as a capture event
+        if let Some(snapshot_data) = motion.snapshot_base64 {
+            // Reject oversized snapshots
+            if snapshot_data.len() > 1_048_576 {
+                warn!(
+                    node = %mcu_node_id,
+                    size = snapshot_data.len(),
+                    "Motion snapshot too large, skipping storage"
+                );
+                return;
+            }
+
+            let event = CameraCaptureEvent {
+                id: uuid::Uuid::new_v4().to_string(),
+                mcu_node_id: mcu_node_id.to_string(),
+                fleet_id: fleet_id.clone(),
+                data_base64: snapshot_data,
+                width: motion.snapshot_width.unwrap_or(0),
+                height: motion.snapshot_height.unwrap_or(0),
+                trigger: "motion".to_string(),
+                received_at: Utc::now(),
+                motion_intensity: motion.intensity,
+            };
+
+            if let Ok(mut captures) = self.camera_captures.lock() {
+                if captures.len() >= MAX_CAMERA_CAPTURES {
+                    captures.remove(0);
+                }
+                captures.push(event);
+            }
+        }
+    }
+
     /// Get the fleet node ID for a given MCU node_id, if registered.
     pub fn get_fleet_id(&self, mcu_node_id: &str) -> Option<String> {
         self.node_id_map
@@ -553,6 +1032,27 @@ impl MqttBridge {
     /// Number of MCU nodes currently tracked by the bridge.
     pub fn tracked_node_count(&self) -> usize {
         self.node_id_map.lock().map(|m| m.len()).unwrap_or(0)
+    }
+
+    /// Get all stored camera capture events.
+    pub fn camera_captures(&self) -> Vec<CameraCaptureEvent> {
+        self.camera_captures
+            .lock()
+            .map(|c| c.clone())
+            .unwrap_or_default()
+    }
+
+    /// Get camera captures for a specific MCU node.
+    pub fn camera_captures_for_node(&self, mcu_node_id: &str) -> Vec<CameraCaptureEvent> {
+        self.camera_captures
+            .lock()
+            .map(|c| {
+                c.iter()
+                    .filter(|e| e.mcu_node_id == mcu_node_id)
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 }
 
@@ -948,5 +1448,556 @@ mod tests {
         // Verify each has a unique fleet ID
         let ids: std::collections::HashSet<_> = fleet.nodes.keys().collect();
         assert_eq!(ids.len(), 3);
+    }
+
+    // -----------------------------------------------------------------------
+    // TinyML inference tests (E4)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_inference_result_parsed_and_tags_fleet_node() {
+        let bridge = make_bridge();
+
+        // Register via heartbeat first
+        let hb = make_heartbeat_payload("xtensa", 8704, Some(-40));
+        bridge.handle_publish(&make_publish("agnos/s3-ml/heartbeat", hb));
+        let fleet_id = bridge.get_fleet_id("s3-ml").unwrap();
+
+        // Send inference result
+        let result = serde_json::json!({
+            "model_name": "kws_micro_speech",
+            "label": "yes",
+            "confidence": 0.92,
+            "latency_ms": 18,
+            "input_type": "audio",
+            "timestamp_secs": 1710720000
+        });
+        let publish = make_publish(
+            "agnos/s3-ml/inference/result",
+            serde_json::to_vec(&result).unwrap(),
+        );
+        bridge.handle_publish(&publish);
+
+        // Fleet node should be tagged with "tinyml" and "tinyml:kws_micro_speech"
+        let fleet = bridge.fleet.lock().unwrap();
+        let node = &fleet.nodes[&fleet_id];
+        assert!(node.capabilities.tags.contains(&"tinyml".to_string()));
+        assert!(node
+            .capabilities
+            .tags
+            .contains(&"tinyml:kws_micro_speech".to_string()));
+    }
+
+    #[test]
+    fn test_inference_result_no_duplicate_tags() {
+        let bridge = make_bridge();
+
+        // Register
+        let hb = make_heartbeat_payload("xtensa", 8704, Some(-45));
+        bridge.handle_publish(&make_publish("agnos/s3-dup/heartbeat", hb));
+        let fleet_id = bridge.get_fleet_id("s3-dup").unwrap();
+
+        // Send same inference result twice
+        let result = serde_json::json!({
+            "model_name": "gesture_wave",
+            "label": "wave",
+            "confidence": 0.85,
+            "latency_ms": 22,
+            "input_type": "imu"
+        });
+        let payload = serde_json::to_vec(&result).unwrap();
+        bridge.handle_publish(&make_publish(
+            "agnos/s3-dup/inference/result",
+            payload.clone(),
+        ));
+        bridge.handle_publish(&make_publish("agnos/s3-dup/inference/result", payload));
+
+        // Tags should not be duplicated
+        let fleet = bridge.fleet.lock().unwrap();
+        let tags = &fleet.nodes[&fleet_id].capabilities.tags;
+        let tinyml_count = tags.iter().filter(|t| *t == "tinyml").count();
+        assert_eq!(tinyml_count, 1);
+    }
+
+    #[test]
+    fn test_inference_result_from_unregistered_node_does_not_panic() {
+        let bridge = make_bridge();
+
+        // No heartbeat — node is unregistered
+        let result = serde_json::json!({
+            "model_name": "anomaly_sensor",
+            "label": "anomaly_high",
+            "confidence": 0.78,
+            "latency_ms": 12,
+            "input_type": "imu"
+        });
+        let publish = make_publish(
+            "agnos/unknown-ml/inference/result",
+            serde_json::to_vec(&result).unwrap(),
+        );
+
+        // Should not panic
+        bridge.handle_publish(&publish);
+    }
+
+    #[test]
+    fn test_inference_status_parsed() {
+        let bridge = make_bridge();
+
+        // Register via heartbeat
+        let hb = make_heartbeat_payload("xtensa", 8704, Some(-38));
+        bridge.handle_publish(&make_publish("agnos/s3-status/heartbeat", hb));
+
+        // Send inference status (model loaded)
+        let status = serde_json::json!({
+            "model_loaded": true,
+            "model_name": "kws_micro_speech",
+            "memory_used_bytes": 98304,
+            "inference_count": 1500,
+            "model_type": "kws",
+            "avg_latency_ms": 19
+        });
+        let publish = make_publish(
+            "agnos/s3-status/inference/status",
+            serde_json::to_vec(&status).unwrap(),
+        );
+
+        // Should not panic
+        bridge.handle_publish(&publish);
+    }
+
+    #[test]
+    fn test_inference_status_no_model_loaded() {
+        let bridge = make_bridge();
+
+        let hb = make_heartbeat_payload("xtensa", 512, None);
+        bridge.handle_publish(&make_publish("agnos/s3-noml/heartbeat", hb));
+
+        // Send status with no model loaded
+        let status = serde_json::json!({
+            "model_loaded": false,
+            "model_name": "",
+            "memory_used_bytes": 0,
+            "inference_count": 0
+        });
+        let publish = make_publish(
+            "agnos/s3-noml/inference/status",
+            serde_json::to_vec(&status).unwrap(),
+        );
+        bridge.handle_publish(&publish);
+    }
+
+    #[test]
+    fn test_inference_malformed_json_does_not_panic() {
+        let bridge = make_bridge();
+
+        // Malformed inference result
+        let publish = make_publish("agnos/bad-ml/inference/result", b"not json".to_vec());
+        bridge.handle_publish(&publish);
+
+        // Malformed inference status
+        let publish2 = make_publish("agnos/bad-ml/inference/status", b"{}".to_vec());
+        bridge.handle_publish(&publish2);
+    }
+
+    #[test]
+    fn test_inference_result_all_input_types() {
+        let bridge = make_bridge();
+
+        let hb = make_heartbeat_payload("xtensa", 8704, Some(-35));
+        bridge.handle_publish(&make_publish("agnos/s3-inputs/heartbeat", hb));
+
+        for (input, label) in [("audio", "yes"), ("imu", "wave"), ("image", "person")] {
+            let result = serde_json::json!({
+                "model_name": format!("model_{}", input),
+                "label": label,
+                "confidence": 0.9,
+                "latency_ms": 15,
+                "input_type": input
+            });
+            let publish = make_publish(
+                "agnos/s3-inputs/inference/result",
+                serde_json::to_vec(&result).unwrap(),
+            );
+            bridge.handle_publish(&publish);
+        }
+
+        // All three model tags should be present
+        let fleet = bridge.fleet.lock().unwrap();
+        let fleet_id = bridge.get_fleet_id("s3-inputs").unwrap();
+        let tags = &fleet.nodes[&fleet_id].capabilities.tags;
+        assert!(tags.contains(&"tinyml:model_audio".to_string()));
+        assert!(tags.contains(&"tinyml:model_imu".to_string()));
+        assert!(tags.contains(&"tinyml:model_image".to_string()));
+    }
+
+    #[test]
+    fn test_inference_result_deserialization() {
+        let json = serde_json::json!({
+            "model_name": "kws_micro_speech",
+            "label": "yes",
+            "confidence": 0.95,
+            "latency_ms": 16,
+            "input_type": "audio",
+            "timestamp_secs": 1710720000
+        });
+        let result: McuInferenceResult = serde_json::from_value(json).unwrap();
+        assert_eq!(result.model_name, "kws_micro_speech");
+        assert_eq!(result.label, "yes");
+        assert!((result.confidence - 0.95).abs() < f64::EPSILON);
+        assert_eq!(result.latency_ms, 16);
+        assert_eq!(result.input_type, McuInferenceInputType::Audio);
+        assert_eq!(result.timestamp_secs, Some(1710720000));
+    }
+
+    #[test]
+    fn test_inference_status_deserialization() {
+        let json = serde_json::json!({
+            "model_loaded": true,
+            "model_name": "gesture_wave",
+            "memory_used_bytes": 65536,
+            "inference_count": 42,
+            "model_type": "gesture",
+            "avg_latency_ms": 21
+        });
+        let status: McuInferenceStatus = serde_json::from_value(json).unwrap();
+        assert!(status.model_loaded);
+        assert_eq!(status.model_name, "gesture_wave");
+        assert_eq!(status.memory_used_bytes, 65536);
+        assert_eq!(status.inference_count, 42);
+        assert_eq!(status.model_type.as_deref(), Some("gesture"));
+        assert_eq!(status.avg_latency_ms, Some(21));
+    }
+
+    #[test]
+    fn test_inference_input_type_deserialization() {
+        for (s, expected) in [
+            ("\"audio\"", McuInferenceInputType::Audio),
+            ("\"imu\"", McuInferenceInputType::Imu),
+            ("\"image\"", McuInferenceInputType::Image),
+        ] {
+            let parsed: McuInferenceInputType = serde_json::from_str(s).unwrap();
+            assert_eq!(parsed, expected);
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // ESP32-CAM camera tests (E3)
+    // -----------------------------------------------------------------------
+
+    fn make_camera_frame_payload(width: u32, height: u32, trigger: &str) -> Vec<u8> {
+        let frame = serde_json::json!({
+            "data_base64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ",
+            "width": width,
+            "height": height,
+            "jpeg_quality": 20,
+            "trigger": trigger,
+            "timestamp_secs": 1710720000
+        });
+        serde_json::to_vec(&frame).unwrap()
+    }
+
+    fn make_motion_event_payload(intensity: f64, source: &str, with_snapshot: bool) -> Vec<u8> {
+        let mut event = serde_json::json!({
+            "detected": true,
+            "intensity": intensity,
+            "source": source,
+            "timestamp_secs": 1710720000
+        });
+        if with_snapshot {
+            event["snapshot_base64"] = serde_json::Value::String("iVBORw0KGgoAAAANSUhEUg==".into());
+            event["snapshot_width"] = serde_json::json!(640);
+            event["snapshot_height"] = serde_json::json!(480);
+        }
+        serde_json::to_vec(&event).unwrap()
+    }
+
+    #[test]
+    fn test_camera_frame_stored_as_capture_event() {
+        let bridge = make_bridge();
+
+        // Register via heartbeat
+        let hb = make_heartbeat_payload("xtensa", 8704, Some(-40));
+        bridge.handle_publish(&make_publish("agnos/cam-01/heartbeat", hb));
+        let fleet_id = bridge.get_fleet_id("cam-01").unwrap();
+
+        // Send camera frame
+        let payload = make_camera_frame_payload(640, 480, "motion");
+        bridge.handle_publish(&make_publish("agnos/cam-01/camera/frame", payload));
+
+        // Capture should be stored
+        let captures = bridge.camera_captures();
+        assert_eq!(captures.len(), 1);
+        assert_eq!(captures[0].mcu_node_id, "cam-01");
+        assert_eq!(captures[0].fleet_id, Some(fleet_id.clone()));
+        assert_eq!(captures[0].width, 640);
+        assert_eq!(captures[0].height, 480);
+        assert_eq!(captures[0].trigger, "motion");
+        assert!(!captures[0].data_base64.is_empty());
+
+        // Fleet node should be tagged with "camera"
+        let fleet = bridge.fleet.lock().unwrap();
+        let node = &fleet.nodes[&fleet_id];
+        assert!(node.capabilities.tags.contains(&"camera".to_string()));
+    }
+
+    #[test]
+    fn test_camera_frame_from_unregistered_node() {
+        let bridge = make_bridge();
+
+        // No heartbeat — node is unregistered
+        let payload = make_camera_frame_payload(320, 240, "interval");
+        bridge.handle_publish(&make_publish("agnos/cam-unreg/camera/frame", payload));
+
+        // Capture should still be stored (fleet_id = None)
+        let captures = bridge.camera_captures();
+        assert_eq!(captures.len(), 1);
+        assert_eq!(captures[0].mcu_node_id, "cam-unreg");
+        assert!(captures[0].fleet_id.is_none());
+    }
+
+    #[test]
+    fn test_camera_frame_oversized_rejected() {
+        let bridge = make_bridge();
+
+        // Create a frame with > 1 MB base64 data
+        let large_data = "A".repeat(1_100_000);
+        let frame = serde_json::json!({
+            "data_base64": large_data,
+            "width": 1280,
+            "height": 1024,
+            "jpeg_quality": 63,
+            "trigger": "manual"
+        });
+        let payload = serde_json::to_vec(&frame).unwrap();
+        bridge.handle_publish(&make_publish("agnos/cam-big/camera/frame", payload));
+
+        // Should be rejected — no capture stored
+        let captures = bridge.camera_captures();
+        assert_eq!(captures.len(), 0);
+    }
+
+    #[test]
+    fn test_camera_motion_event_logged() {
+        let bridge = make_bridge();
+
+        // Register via heartbeat
+        let hb = make_heartbeat_payload("xtensa", 8704, Some(-45));
+        bridge.handle_publish(&make_publish("agnos/cam-motion/heartbeat", hb));
+        let fleet_id = bridge.get_fleet_id("cam-motion").unwrap();
+
+        // Send motion event without snapshot
+        let payload = make_motion_event_payload(72.5, "frame_diff", false);
+        bridge.handle_publish(&make_publish("agnos/cam-motion/camera/motion", payload));
+
+        // No capture stored (no snapshot attached)
+        let captures = bridge.camera_captures();
+        assert_eq!(captures.len(), 0);
+
+        // Fleet node should be tagged with "camera" and "motion_detect"
+        let fleet = bridge.fleet.lock().unwrap();
+        let node = &fleet.nodes[&fleet_id];
+        assert!(node.capabilities.tags.contains(&"camera".to_string()));
+        assert!(node
+            .capabilities
+            .tags
+            .contains(&"motion_detect".to_string()));
+    }
+
+    #[test]
+    fn test_camera_motion_with_snapshot_stores_capture() {
+        let bridge = make_bridge();
+
+        // Register via heartbeat
+        let hb = make_heartbeat_payload("xtensa", 8704, Some(-42));
+        bridge.handle_publish(&make_publish("agnos/cam-snap/heartbeat", hb));
+
+        // Send motion event with snapshot
+        let payload = make_motion_event_payload(85.0, "pir", true);
+        bridge.handle_publish(&make_publish("agnos/cam-snap/camera/motion", payload));
+
+        // Capture should be stored from snapshot
+        let captures = bridge.camera_captures();
+        assert_eq!(captures.len(), 1);
+        assert_eq!(captures[0].trigger, "motion");
+        assert_eq!(captures[0].width, 640);
+        assert_eq!(captures[0].height, 480);
+        assert!((captures[0].motion_intensity.unwrap() - 85.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_camera_captures_per_node_filter() {
+        let bridge = make_bridge();
+
+        // Send frames from two different nodes
+        let payload1 = make_camera_frame_payload(640, 480, "motion");
+        let payload2 = make_camera_frame_payload(320, 240, "interval");
+        bridge.handle_publish(&make_publish("agnos/cam-a/camera/frame", payload1));
+        bridge.handle_publish(&make_publish("agnos/cam-b/camera/frame", payload2));
+
+        // Total captures = 2
+        assert_eq!(bridge.camera_captures().len(), 2);
+
+        // Per-node filter
+        let a_captures = bridge.camera_captures_for_node("cam-a");
+        assert_eq!(a_captures.len(), 1);
+        assert_eq!(a_captures[0].width, 640);
+
+        let b_captures = bridge.camera_captures_for_node("cam-b");
+        assert_eq!(b_captures.len(), 1);
+        assert_eq!(b_captures[0].width, 320);
+    }
+
+    #[test]
+    fn test_camera_captures_ring_buffer() {
+        let bridge = make_bridge();
+
+        // Fill past the MAX_CAMERA_CAPTURES limit
+        for i in 0..(MAX_CAMERA_CAPTURES + 10) {
+            let frame = serde_json::json!({
+                "data_base64": format!("frame_{}", i),
+                "width": 160,
+                "height": 120,
+                "jpeg_quality": 10,
+                "trigger": "interval"
+            });
+            let payload = serde_json::to_vec(&frame).unwrap();
+            bridge.handle_publish(&make_publish(
+                &format!("agnos/cam-ring/camera/frame"),
+                payload,
+            ));
+        }
+
+        let captures = bridge.camera_captures();
+        assert_eq!(captures.len(), MAX_CAMERA_CAPTURES);
+
+        // Oldest frames should have been evicted; newest should be present
+        let last = &captures[captures.len() - 1];
+        assert_eq!(
+            last.data_base64,
+            format!("frame_{}", MAX_CAMERA_CAPTURES + 9)
+        );
+    }
+
+    #[test]
+    fn test_camera_frame_malformed_json_does_not_panic() {
+        let bridge = make_bridge();
+
+        // Invalid JSON
+        bridge.handle_publish(&make_publish(
+            "agnos/cam-bad/camera/frame",
+            b"not json".to_vec(),
+        ));
+
+        // Valid JSON but wrong schema
+        bridge.handle_publish(&make_publish(
+            "agnos/cam-bad/camera/frame",
+            serde_json::to_vec(&serde_json::json!({"foo": "bar"})).unwrap(),
+        ));
+
+        // Empty payload
+        bridge.handle_publish(&make_publish("agnos/cam-bad/camera/frame", vec![]));
+
+        assert_eq!(bridge.camera_captures().len(), 0);
+    }
+
+    #[test]
+    fn test_camera_motion_malformed_json_does_not_panic() {
+        let bridge = make_bridge();
+
+        bridge.handle_publish(&make_publish(
+            "agnos/cam-bad/camera/motion",
+            b"not json".to_vec(),
+        ));
+
+        bridge.handle_publish(&make_publish(
+            "agnos/cam-bad/camera/motion",
+            serde_json::to_vec(&serde_json::json!({"wrong": true})).unwrap(),
+        ));
+
+        assert_eq!(bridge.camera_captures().len(), 0);
+    }
+
+    #[test]
+    fn test_camera_frame_deserialization() {
+        let json = serde_json::json!({
+            "data_base64": "dGVzdA==",
+            "width": 800,
+            "height": 600,
+            "jpeg_quality": 35,
+            "trigger": "manual",
+            "timestamp_secs": 1710720000
+        });
+        let frame: McuCameraFrame = serde_json::from_value(json).unwrap();
+        assert_eq!(frame.data_base64, "dGVzdA==");
+        assert_eq!(frame.width, 800);
+        assert_eq!(frame.height, 600);
+        assert_eq!(frame.jpeg_quality, 35);
+        assert_eq!(frame.trigger, "manual");
+        assert_eq!(frame.timestamp_secs, Some(1710720000));
+    }
+
+    #[test]
+    fn test_camera_frame_default_trigger() {
+        let json = serde_json::json!({
+            "data_base64": "dGVzdA==",
+            "width": 640,
+            "height": 480,
+            "jpeg_quality": 20
+        });
+        let frame: McuCameraFrame = serde_json::from_value(json).unwrap();
+        assert_eq!(frame.trigger, "manual");
+    }
+
+    #[test]
+    fn test_motion_event_deserialization() {
+        let json = serde_json::json!({
+            "detected": true,
+            "intensity": 45.5,
+            "source": "both",
+            "snapshot_base64": "c25hcA==",
+            "snapshot_width": 320,
+            "snapshot_height": 240,
+            "timestamp_secs": 1710720000
+        });
+        let event: McuMotionEvent = serde_json::from_value(json).unwrap();
+        assert!(event.detected);
+        assert!((event.intensity.unwrap() - 45.5).abs() < f64::EPSILON);
+        assert_eq!(event.source, "both");
+        assert_eq!(event.snapshot_base64.as_deref(), Some("c25hcA=="));
+        assert_eq!(event.snapshot_width, Some(320));
+        assert_eq!(event.snapshot_height, Some(240));
+    }
+
+    #[test]
+    fn test_motion_event_default_source() {
+        let json = serde_json::json!({
+            "detected": true
+        });
+        let event: McuMotionEvent = serde_json::from_value(json).unwrap();
+        assert_eq!(event.source, "frame_diff");
+        assert!(event.snapshot_base64.is_none());
+        assert!(event.intensity.is_none());
+    }
+
+    #[test]
+    fn test_camera_no_duplicate_tags() {
+        let bridge = make_bridge();
+
+        // Register via heartbeat
+        let hb = make_heartbeat_payload("xtensa", 8704, Some(-40));
+        bridge.handle_publish(&make_publish("agnos/cam-dup/heartbeat", hb));
+        let fleet_id = bridge.get_fleet_id("cam-dup").unwrap();
+
+        // Send two frames — "camera" tag should not be duplicated
+        for _ in 0..2 {
+            let payload = make_camera_frame_payload(640, 480, "interval");
+            bridge.handle_publish(&make_publish("agnos/cam-dup/camera/frame", payload));
+        }
+
+        let fleet = bridge.fleet.lock().unwrap();
+        let tags = &fleet.nodes[&fleet_id].capabilities.tags;
+        let camera_count = tags.iter().filter(|t| *t == "camera").count();
+        assert_eq!(camera_count, 1);
     }
 }

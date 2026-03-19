@@ -66,6 +66,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **gVisor/Firecracker runtime execution (S1)** — `run_task()` async methods on both `GVisorBackend` and `FirecrackerBackend`. `tokio::process::Command` spawning, timeout enforcement with kill, OCI bundle lifecycle (gVisor `runsc run`/`kill`/`delete`), config-file startup (Firecracker `--config-file`). `HttpBridge::delete()` added. 47 backend tests passing
 - **MQTT bridge for ESP32 (E2)** — `edge/mqtt_bridge.rs`: `MqttBridge` with `rumqttc` client, subscribes to `agnos/+/heartbeat` and `agnos/+/telemetry`, translates to `EdgeNode` heartbeats in fleet registry. Auto-reconnect, TLS support, configurable broker
 - **SHA256 checksums complete (B3)** — All 264 recipes now have verified SHA256 checksums (100%). Version bumps: intel-ucode `20250311`→`20260227`, amd-ucode `20250311`→`20260309` (URL fixed to CDN mirror), gVisor `20250310.0`→`latest` (rolling GCS release)
+- **sy-agnos TPM Phase 3 (S5)** — Measured boot: PCR 8/9/10 extension for kernel/rootfs/agent via `tpm2_pcrextend`. Event log at `/var/log/agnos/tpm-event-log.json`. New `/v1/attestation` GET endpoint (12 tests) returns PCR values + event log + HMAC signature. SY strength 88. Graceful skip without TPM. All 3 sy-agnos phases complete
+- **ESP32-CAM integration (E3)** — Camera MQTT topics (`agnos/+/camera/frame`, `agnos/+/camera/motion`). `McuCameraFrame` + `McuMotionEvent` payloads. Ring buffer capture storage (200 max), >1MB rejection, motion snapshot support. Recipe `[camera]` config section. 13 new tests
+- **TinyML inference (E4)** — Inference MQTT topics (`agnos/+/inference/result`, `agnos/+/inference/status`). `McuInferenceResult` (KWS/gesture/anomaly) + `McuInferenceStatus` payloads. Auto-tags fleet nodes with `tinyml:{model}`. Recipe `[tinyml]` config with ESP32-S3 vector extension support. 10 new tests. 37 total mqtt_bridge tests
 
 ### Removed
 

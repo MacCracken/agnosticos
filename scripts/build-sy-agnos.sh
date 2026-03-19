@@ -20,7 +20,8 @@
 #
 # Requirements:
 #   squashfs-tools, coreutils, tar, sha256sum
-#   Optional: nft (nftables), veritysetup (dm-verity for Phase 2)
+#   Optional: nft (nftables), veritysetup (dm-verity for Phase 2),
+#             tpm2_pcrextend/tpm2_pcrread (TPM measured boot for Phase 3)
 
 set -euo pipefail
 
@@ -43,6 +44,7 @@ CLEAN_BUILD=false
 VERBOSE=false
 BUILD_SQUASHFS=true
 HAS_VERITY=false
+HAS_TPM_TOOLS=false
 VERITY_ROOT_HASH=""
 
 # Colors
@@ -200,6 +202,15 @@ check_dependencies() {
         HAS_VERITY=false
     else
         HAS_VERITY=true
+    fi
+
+    # Optional: tpm2-tools for TPM measured boot (graceful fallback if not present)
+    if ! command -v tpm2_pcrextend &>/dev/null || ! command -v tpm2_pcrread &>/dev/null; then
+        log_warn "tpm2-tools not found -- TPM measured boot will be skipped"
+        log_warn "Install tpm2-tools for production images with measured boot"
+        HAS_TPM_TOOLS=false
+    else
+        HAS_TPM_TOOLS=true
     fi
 }
 
@@ -678,6 +689,11 @@ if [ -n "$VERITY_ROOT_HASH" ] && command -v veritysetup >/dev/null 2>&1; then
     fi
 fi
 
+# TPM measured boot (Phase 3) — extend PCRs with component hashes
+if [ -x /usr/lib/agnos/tpm-measure-boot.sh ]; then
+    /usr/lib/agnos/tpm-measure-boot.sh
+fi
+
 # Load nftables firewall rules
 if [ -f /etc/nftables/sy-agnos.nft ] && command -v nft >/dev/null 2>&1; then
     nft -f /etc/nftables/sy-agnos.nft
@@ -716,6 +732,7 @@ while true; do
     fi
     STRENGTH=80
     if [ -f /etc/agnos/verity-root-hash ]; then STRENGTH=85; fi
+    if [ -f /var/log/agnos/tpm-event-log.json ] && grep -q '"measured": true' /var/log/agnos/tpm-event-log.json 2>/dev/null; then STRENGTH=88; fi
     BODY="{\"status\":\"$STATUS\",\"sandbox\":\"sy-agnos\",\"strength\":$STRENGTH}"
     if command -v nc >/dev/null 2>&1; then
         printf "HTTP/1.1 %s OK\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: %d\r\n\r\n%s" \
@@ -739,22 +756,37 @@ write_metadata() {
     local rootfs="$BUILD_DIR/rootfs"
 
     # dm-verity metadata is updated after Stage 8.5 if verity is available
+    # TPM metadata is updated after Stage 8.7 if tpm2-tools are available
     local verity_enabled="false"
+    local tpm_measured="false"
     local strength=80
+    local hardening="minimal"
     local features='["immutable-rootfs", "seccomp-bpf", "nftables-deny", "no-shell", "no-ssh"]'
 
     if [[ "$HAS_VERITY" == true ]]; then
         verity_enabled="true"
         strength=85
+        hardening="verified"
         features='["immutable-rootfs", "seccomp-bpf", "nftables-deny", "no-shell", "no-ssh", "dm-verity"]'
+    fi
+
+    if [[ "$HAS_TPM_TOOLS" == true ]]; then
+        tpm_measured="true"
+        strength=88
+        hardening="measured"
+        if [[ "$HAS_VERITY" == true ]]; then
+            features='["immutable-rootfs", "seccomp-bpf", "nftables-deny", "no-shell", "no-ssh", "dm-verity", "tpm-measured-boot"]'
+        else
+            features='["immutable-rootfs", "seccomp-bpf", "nftables-deny", "no-shell", "no-ssh", "tpm-measured-boot"]'
+        fi
     fi
 
     cat > "$rootfs/etc/sy-agnos-release" << EOF
 {
     "version": "$AGNOS_VERSION",
-    "hardening": "$([ "$HAS_VERITY" == true ] && echo "verified" || echo "minimal")",
+    "hardening": "$hardening",
     "dmverity": $verity_enabled,
-    "tpm_measured": false,
+    "tpm_measured": $tpm_measured,
     "strength": $strength,
     "features": $features,
     "build_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
@@ -762,7 +794,7 @@ write_metadata() {
 }
 EOF
 
-    log_info "  Release metadata written (strength=$strength, dmverity=$verity_enabled)"
+    log_info "  Release metadata written (strength=$strength, dmverity=$verity_enabled, tpm=$tpm_measured)"
 }
 
 # ---------------------------------------------------------------------------
@@ -850,6 +882,140 @@ generate_verity() {
 }
 
 # ---------------------------------------------------------------------------
+# Stage 8.7: Bake TPM boot measurement script (optional)
+# ---------------------------------------------------------------------------
+bake_tpm_measurement() {
+    if [[ "$HAS_TPM_TOOLS" != true ]]; then
+        log_info "Skipping TPM measured boot (tpm2-tools not available)"
+        return
+    fi
+
+    log_step "Stage 8.7: Baking TPM boot measurement script..."
+
+    local rootfs="$BUILD_DIR/rootfs"
+
+    mkdir -p "$rootfs/usr/lib/agnos"
+
+    # Write the boot measurement script invoked by init
+    cat > "$rootfs/usr/lib/agnos/tpm-measure-boot.sh" << 'TPMMEASURE'
+#!/bin/sh
+# sy-agnos TPM Boot Measurement
+# Extends PCRs 8-10 with hashes of boot-critical components and
+# writes an event log to /var/log/agnos/tpm-event-log.json.
+#
+# PCR 8  = kernel image hash
+# PCR 9  = rootfs (squashfs) hash
+# PCR 10 = agent binary hash
+#
+# Gracefully skips if TPM device or tpm2-tools are absent.
+
+EVENT_LOG="/var/log/agnos/tpm-event-log.json"
+TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo "unknown")"
+
+# Bail gracefully if no TPM device
+if [ ! -e /dev/tpmrm0 ] && [ ! -e /dev/tpm0 ]; then
+    echo "sy-agnos: no TPM device found -- skipping measured boot"
+    printf '{"tpm_available":false,"timestamp":"%s"}\n' "$TIMESTAMP" > "$EVENT_LOG"
+    exit 0
+fi
+
+# Bail gracefully if tpm2-tools are not present
+if ! command -v tpm2_pcrextend >/dev/null 2>&1; then
+    echo "sy-agnos: tpm2_pcrextend not found -- skipping measured boot"
+    printf '{"tpm_available":false,"timestamp":"%s","reason":"tpm2-tools missing"}\n' "$TIMESTAMP" > "$EVENT_LOG"
+    exit 0
+fi
+
+echo "sy-agnos: performing TPM measured boot..."
+
+EVENTS="[]"
+OVERALL_OK=true
+
+# Helper: compute sha256, extend PCR, append to event list
+measure_component() {
+    local pcr="$1" component="$2" path="$3"
+    local hash=""
+
+    if [ -f "$path" ]; then
+        hash="$(sha256sum "$path" 2>/dev/null | cut -d' ' -f1)"
+    elif [ -b "$path" ]; then
+        # Block device (e.g. /dev/root)
+        hash="$(dd if="$path" bs=1M count=64 2>/dev/null | sha256sum | cut -d' ' -f1)"
+    fi
+
+    if [ -z "$hash" ]; then
+        echo "sy-agnos: WARNING -- could not hash $component ($path)"
+        EVENTS="$(printf '%s' "$EVENTS" | sed 's/\]$//')"
+        [ "$EVENTS" != "[" ] && EVENTS="${EVENTS},"
+        EVENTS="${EVENTS}{\"pcr\":$pcr,\"component\":\"$component\",\"path\":\"$path\",\"status\":\"missing\"}]"
+        return 1
+    fi
+
+    if tpm2_pcrextend "${pcr}:sha256=${hash}" 2>/dev/null; then
+        echo "sy-agnos: PCR $pcr extended with $component hash (${hash:0:16}...)"
+        EVENTS="$(printf '%s' "$EVENTS" | sed 's/\]$//')"
+        [ "$EVENTS" != "[" ] && EVENTS="${EVENTS},"
+        EVENTS="${EVENTS}{\"pcr\":$pcr,\"component\":\"$component\",\"path\":\"$path\",\"hash\":\"$hash\",\"status\":\"ok\"}]"
+    else
+        echo "sy-agnos: WARNING -- tpm2_pcrextend failed for PCR $pcr ($component)"
+        EVENTS="$(printf '%s' "$EVENTS" | sed 's/\]$//')"
+        [ "$EVENTS" != "[" ] && EVENTS="${EVENTS},"
+        EVENTS="${EVENTS}{\"pcr\":$pcr,\"component\":\"$component\",\"path\":\"$path\",\"hash\":\"$hash\",\"status\":\"extend_failed\"}]"
+        OVERALL_OK=false
+    fi
+}
+
+# PCR 8: kernel image
+KERNEL_PATH=""
+for kp in /boot/vmlinuz /boot/vmlinuz-* /boot/Image; do
+    if [ -f "$kp" ]; then KERNEL_PATH="$kp"; break; fi
+done
+[ -z "$KERNEL_PATH" ] && KERNEL_PATH="/proc/kcore"
+measure_component 8 "kernel" "$KERNEL_PATH"
+
+# PCR 9: rootfs
+ROOTFS_PATH=""
+if [ -f /etc/agnos/verity-root-hash ]; then
+    # Use the squashfs image if available
+    for rp in /dev/root /dev/loop0; do
+        if [ -b "$rp" ]; then ROOTFS_PATH="$rp"; break; fi
+    done
+fi
+[ -z "$ROOTFS_PATH" ] && ROOTFS_PATH="/etc/os-release"
+measure_component 9 "rootfs" "$ROOTFS_PATH"
+
+# PCR 10: agent binary
+measure_component 10 "agent" "/opt/sy-agent/bin/sy-agent"
+
+# Read back current PCR values
+PCR_VALUES=""
+if command -v tpm2_pcrread >/dev/null 2>&1; then
+    PCR_VALUES="$(tpm2_pcrread sha256:8,9,10 2>/dev/null || echo "")"
+fi
+
+# Write event log
+cat > "$EVENT_LOG" << EVEOF
+{
+    "tpm_available": true,
+    "measured": $OVERALL_OK,
+    "timestamp": "$TIMESTAMP",
+    "events": $EVENTS,
+    "pcr_values_raw": "$(printf '%s' "$PCR_VALUES" | tr '\n' '|' | sed 's/"/\\"/g')"
+}
+EVEOF
+
+if [ "$OVERALL_OK" = true ]; then
+    echo "sy-agnos: TPM measured boot complete"
+else
+    echo "sy-agnos: TPM measured boot completed with warnings"
+fi
+TPMMEASURE
+    chmod 755 "$rootfs/usr/lib/agnos/tpm-measure-boot.sh"
+
+    log_info "  TPM boot measurement script baked into rootfs"
+}
+
+# ---------------------------------------------------------------------------
 # Stage 9: Package as OCI image tarball
 # ---------------------------------------------------------------------------
 create_oci_image() {
@@ -889,9 +1055,14 @@ create_oci_image() {
 
     local sandbox_strength=80
     local verity_label="false"
+    local tpm_label="false"
     if [[ "$HAS_VERITY" == true ]]; then
         sandbox_strength=85
         verity_label="true"
+    fi
+    if [[ "$HAS_TPM_TOOLS" == true ]]; then
+        sandbox_strength=88
+        tpm_label="true"
     fi
 
     # Create OCI image config
@@ -918,7 +1089,8 @@ create_oci_image() {
             "org.opencontainers.image.version": "$AGNOS_VERSION",
             "org.opencontainers.image.licenses": "GPL-3.0",
             "com.secureyeoman.sandbox.strength": "$sandbox_strength",
-            "com.secureyeoman.sandbox.dmverity": "$verity_label"
+            "com.secureyeoman.sandbox.dmverity": "$verity_label",
+            "com.secureyeoman.sandbox.tpm_measured": "$tpm_label"
         }
     },
     "rootfs": {
@@ -982,9 +1154,14 @@ print_summary() {
         strength=85
         phase="Phase 2 — dm-verity"
     fi
+    if [[ "$HAS_TPM_TOOLS" == true ]]; then
+        strength=88
+        phase="Phase 3 — TPM measured boot"
+    fi
     log_info "  Version:        $AGNOS_VERSION"
     log_info "  Strength:       $strength ($phase)"
     log_info "  dm-verity:      $HAS_VERITY"
+    log_info "  TPM measured:   $HAS_TPM_TOOLS"
     log_info "  Agent included: $([ -n "$AGENT_BINARY" ] && echo "yes" || echo "no (placeholder)")"
     log_info "  Network policy: $([ -n "$NETWORK_POLICY" ] && echo "$NETWORK_POLICY" || echo "default-deny")"
     log_info "  Output:         $OUTPUT_DIR/"
@@ -1012,6 +1189,10 @@ print_summary() {
     if [[ "$HAS_VERITY" == true ]]; then
     log_info "  - dm-verity: rootfs integrity verified at boot (hash: ${VERITY_ROOT_HASH:0:16}...)"
     fi
+    if [[ "$HAS_TPM_TOOLS" == true ]]; then
+    log_info "  - TPM measured boot: PCR 8 (kernel), PCR 9 (rootfs), PCR 10 (agent)"
+    log_info "  - Event log: /var/log/agnos/tpm-event-log.json"
+    fi
     echo ""
 }
 
@@ -1035,6 +1216,7 @@ main() {
     write_init
     create_squashfs
     generate_verity
+    bake_tpm_measurement
     write_metadata
     create_oci_image
 

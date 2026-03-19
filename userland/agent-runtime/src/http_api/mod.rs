@@ -66,6 +66,7 @@ pub fn build_router(state: ApiState) -> Router {
     use handlers::agents::*;
     use handlers::anomaly::*;
     use handlers::ark::*;
+    use handlers::attestation::*;
     use handlers::audit::*;
     use handlers::dashboard::*;
     use handlers::database::*;
@@ -90,6 +91,8 @@ pub fn build_router(state: ApiState) -> Router {
         .route("/v1/health", get(health_handler))
         .route("/v1/metrics", get(metrics_handler))
         .route("/v1/metrics/prometheus", get(prometheus_metrics_handler))
+        // TPM attestation (sy-agnos Phase 3 measured boot)
+        .route("/v1/attestation", get(attestation_handler))
         .route("/v1/agents/register", post(register_agent_handler))
         .route("/v1/agents/:id/heartbeat", post(heartbeat_handler))
         .route("/v1/agents", get(list_agents_handler))

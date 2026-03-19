@@ -6,7 +6,7 @@
 > **Build order**: 178 packages in `recipes/build-order.txt` (base + desktop, dependency-ordered)
 > **Phases 10–14 complete** | **Phase 15A**: Core scanning done (phylax) | **Audit**: 16 rounds
 > **MCP Tools**: 144 built-in + external registration
-> **Consumer Projects**: 19 released (including Vidhana v1, Sutra scaffolded)
+> **Consumer Projects**: 19 released (including Vidhana v1, Sutra v1)
 > **Sandbox**: 7 backends (Native, gVisor, Firecracker, WASM, SGX, SEV, Noop) + credential proxy + externalization gate
 
 ---
@@ -294,7 +294,7 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 | 16 | Tarang | 8 tarang_* | 8 | Yes | Not started | Media framework (73 tests) |
 | 17 | Jalwa | 8 jalwa_* | 8 | Yes | Not started | Media player (110+ tests), built on tarang |
 | 18 | Vidhana | 5 vidhana_* | 5 | Yes (v1 2026.3.18) | Not started | System settings (76+ tests), egui GUI, NL control, port 8099 |
-| 19 | Sutra | 6 sutra_* | 5 | Scaffolded | Not started | Infrastructure orchestrator (36 tests), YAML playbooks, IaC |
+| 19 | Sutra | 6 sutra_* | 6 | v1 | Not started | Infrastructure orchestrator (70 tests), 6 core modules, SSH transport, Tera templating, parallel execution, JSON output, MCP handlers, sutra-community (5 modules) |
 
 ---
 
@@ -323,8 +323,8 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 |---|----------|------|-------|
 | E1 | Medium | ESP32 agent scaffold | **Recipe created** (`recipes/edge/esp32-agent.toml`). Dual-target: ESP32-S3 (xtensa) + ESP32-C3 (riscv32). no_std esp-hal, MQTT to daimon, WiFi provisioning (SoftAP/SmartConfig), sensor collection, deep sleep, OTA, flash helper script. MQTT bridge done (E2). Pending: source repo (`MacCracken/esp32-agent`) |
 | E2 | Medium | MQTT bridge in daimon | **DONE**. `agent-runtime/src/edge/mqtt_bridge.rs` — rumqttc subscriber on `agnos/+/{heartbeat,telemetry,status}`, auto-registers MCU nodes into fleet, translates ESP32 heartbeats/OTA/sleep lifecycle to EdgeNode model, WiFi RSSI → network_quality, 14 tests |
-| E3 | Low | ESP32-CAM integration | Snap images on motion → daimon screen capture API |
-| E4 | Low | TinyML on ESP32-S3 | Keyword spotting / gesture recognition via vector extensions. Report inferences to daimon |
+| E3 | **Done** | ESP32-CAM integration | **DONE**. Recipe `[camera]` config section (resolution, JPEG quality, motion sensitivity, PIR GPIO, cooldown). MQTT bridge subscribes to `agnos/+/camera/{frame,motion}`, stores `CameraCaptureEvent` in ring buffer (200 cap), tags fleet nodes `camera`/`motion_detect`. Payload types: `McuCameraFrame` (base64 JPEG, trigger, dimensions), `McuMotionEvent` (intensity, source, optional snapshot). Oversized frames >1MB rejected. 13 tests. Pending: firmware-side camera driver in esp32-agent source repo |
+| E4 | Low | TinyML on ESP32-S3 | **Daimon side done**. MQTT bridge handles `agnos/+/inference/{result,status}` topics. `McuInferenceResult` (model_name, label, confidence, latency_ms, input_type) + `McuInferenceStatus` (model_loaded, memory_used_bytes, inference_count). Fleet nodes auto-tagged `tinyml` + `tinyml:{model_name}`. ESP32-S3 recipe has `[tinyml]` config section (model_path, model_type: kws/gesture/anomaly, SIMD acceleration, confidence threshold). 10 tests. Pending: firmware-side TFLite Micro integration in esp32-agent source repo |
 
 ### Active — Sandbox & Security
 
@@ -334,7 +334,19 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 | S2 | Medium | SGX/SEV hardware validation | Backends implemented, need hardware to test |
 | S3 | **High** | **sy-agnos sandbox image (Phase 1)** | **Done** — 3 recipes, build script, Dockerfile created |
 | S4 | **Done** | sy-agnos dm-verity (Phase 2) | **Done** — veritysetup format in build-sy-agnos.sh, hash tree in OCI image, boot verification, strength 85, graceful skip if no veritysetup |
-| S5 | Low | sy-agnos TPM measured boot (Phase 3) | TPM 2.0 attestation for sy-agnos — requires tpm2-tools on host |
+| S5 | **Done** | sy-agnos TPM measured boot (Phase 3) | **Done** — tpm2_pcrextend in boot script (PCR 8/9/10), `/v1/attestation` endpoint, event log, strength 88, graceful skip if no tpm2-tools |
+
+### Active — Sutra Integration
+
+Sutra (infrastructure orchestrator) needs daimon to expose a remote execution API so playbooks can orchestrate fleet nodes via `transport = "daimon"`.
+
+| # | Priority | Item | Notes |
+|---|----------|------|-------|
+| T1 | Medium | Daimon remote exec API | `POST /v1/agents/{id}/exec` — execute a shell command on a fleet node via its daimon agent. Request: `{ "command": "..." }`. Response: `{ "exit_code": 0, "stdout": "...", "stderr": "..." }`. Sutra's `ExecutorKind::Daimon` calls this. Auth: API key or mTLS |
+| T2 | Medium | Daimon file transfer API | `PUT /v1/agents/{id}/files/{path}` — write file to remote node. `GET /v1/agents/{id}/files/{path}` — read file from remote node. Used by sutra file module over daimon transport |
+| T3 | Low | Daimon playbook audit ingestion | `POST /v1/audit/runs` — accept sutra RunRecord JSON for centralized audit trail. Sutra already writes local JSONL; this enables fleet-wide audit in daimon |
+| T4 | Low | Hoosh playbook generation tuning | Tune hoosh system prompt for generating valid TOML playbooks from NL. Sutra's `sutra nl` and MCP `sutra_translate` already call `POST /v1/chat/completions` — needs playbook-aware few-shot examples |
+| T5 | Low | sutra-community module loading | Marketplace recipe for `sutra-community` pack (`recipes/marketplace/sutra-community.toml`). Installs community modules (nftables, sysctl, aegis, daimon, edge) as an ark package |
 
 ---
 
@@ -372,18 +384,18 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 - [x] **Tamper detection** — Init script verifies rootfs via `veritysetup verify` at boot. Refuses to start agent (exit 78 EX_CONFIG) on verification failure. Standalone `verify-rootfs.sh` script baked into rootfs
 - [x] **Update `/etc/sy-agnos-release`** — `"dmverity": true, "strength": 85, "hardening": "verified"` when verity is enabled. Features list includes `"dm-verity"`. OCI labels updated
 
-### Phase 3 — Measured Boot + TPM (SY strength 88)
+### Phase 3 — Measured Boot + TPM (SY strength 88) — DONE
 
-- [ ] **TPM 2.0 boot measurement** — Extend PCRs at each boot stage using tpm2-tools (already in `recipes/edge/tpm2-tools.toml`)
-- [ ] **Attestation endpoint** — `/v1/attestation` returns signed boot measurements (PCR values + event log). SY verifies before dispatching tasks
-- [ ] **Update `/etc/sy-agnos-release`** — `"tpm_measured": true, "strength": 88`
+- [x] **TPM 2.0 boot measurement** — Boot script (`/usr/lib/agnos/tpm-measure-boot.sh`) extends PCR 8 (kernel hash), PCR 9 (rootfs hash), PCR 10 (agent binary hash) via `tpm2_pcrextend`. Event log written to `/var/log/agnos/tpm-event-log.json`. Graceful skip if no TPM device or tpm2-tools
+- [x] **Attestation endpoint** — `GET /v1/attestation` returns PCR values (via `tpm2_pcrread`), boot event log, sy-agnos-release metadata, and HMAC-SHA256 signature over measurements (keyed by machine-id). Returns `{"tpm_available": false}` when TPM absent. Handler: `agent-runtime/src/http_api/handlers/attestation.rs` (12 tests)
+- [x] **Update `/etc/sy-agnos-release`** — `"tpm_measured": true, "strength": 88, "hardening": "measured"` when tpm2-tools available. Features list includes `"tpm-measured-boot"`. OCI labels include `com.secureyeoman.sandbox.tpm_measured`
 
 ### Resolved (2026.3.18)
 
 | Category | Items | Summary |
 |----------|-------|---------|
 | Documentation | First-party standards, app docs, roadmap split | `docs/development/applications/first-party-standards.md`, 18 individual app docs in `docs/applications/`, third-party docs, app development roadmap. `os_long_term.md` deleted — content migrated |
-| Sutra | Infrastructure orchestrator scaffolded | 5 crates, 36 tests, 6 MCP tools, YAML canonical, marketplace recipe. Named subsystem #20 |
+| Sutra | Infrastructure orchestrator v1 | 5 crates, 70 tests, 6 MCP tools (with handlers), 6 core modules (ark, argonaut, file, shell, user, verify), SSH transport, Tera templating, parallel execution (-j), JSON output, variables/facts, error recovery (on_error), task dependencies (depends_on), sutra-community repo (5 modules: nftables, sysctl, aegis, daimon, edge). Named subsystem #20 |
 | CI/CD fixes | build-iso.yml permissions, python_runtime race | `sudo chown` after all 6 build jobs. Test no longer uses process-global env vars |
 | Recipe updates | 4 consumer projects | PhotisNadi `2026.3.18`, Aequi `2026.3.18`, Synapse `2026.3.18-2`, Vidhana v1 `2026.3.18` |
 | Synapse integration | Bridge paths + tests + delete method | All 7 bridge paths corrected to Synapse 2026.3.18-2 API. `HttpBridge::delete()` added. 21 handler tests. Chat uses OpenAI-compat `/v1/chat/completions`. Finetune uses `/training/jobs`. R1-R7 closed |
@@ -395,6 +407,7 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 | sy-agnos Phase 2 (S4) | dm-verity in build-sy-agnos.sh | `veritysetup format` after squashfs, hash tree in OCI image, boot verification (exit 78 on failure), `verify-rootfs.sh` script, strength 85, graceful skip |
 | gVisor/Firecracker exec (S1) | `run_task()` on both backends | `tokio::process::Command` spawning, timeout + kill, OCI bundle lifecycle (gVisor), config-file startup (Firecracker), 47 tests passing |
 | SHA256 complete (B3) | All 264 recipes | intel-ucode `20250311`→`20260227`, amd-ucode `20250311`→`20260309` (CDN URL fix), gVisor `20250310.0`→`latest`. 100% coverage |
+| sy-agnos Phase 3 (S5) | TPM measured boot + attestation | Boot measurement script (PCR 8/9/10 via tpm2_pcrextend), `/v1/attestation` endpoint with HMAC signature, event log, strength 88, graceful skip |
 
 ### Resolved (2026.3.17)
 

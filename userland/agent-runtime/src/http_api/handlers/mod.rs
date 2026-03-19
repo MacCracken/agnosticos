@@ -1,6 +1,7 @@
 pub mod agents;
 pub mod anomaly;
 pub mod ark;
+pub mod attestation;
 pub mod audit;
 pub mod dashboard;
 pub mod database;

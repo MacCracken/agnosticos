@@ -14,7 +14,9 @@
 # Communication:
 #   - MQTT 3.1.1 to daimon (lightweight, NAT-friendly, works behind firewalls)
 #   - Topic schema: agnos/{node_id}/telemetry, agnos/{node_id}/heartbeat,
-#                   agnos/{node_id}/command (subscribe), agnos/{node_id}/ota
+#                   agnos/{node_id}/command (subscribe), agnos/{node_id}/ota,
+#                   agnos/{node_id}/inference/result, agnos/{node_id}/inference/status,
+#                   agnos/{node_id}/camera/frame, agnos/{node_id}/camera/motion
 #   - mDNS discovery for broker on local network
 #   - OTA firmware updates via HTTPS pull from ark build server
 #
@@ -30,7 +32,7 @@
 #   - Motion detection (PIR → daimon anomaly alerts)
 #   - Camera snapshots (ESP32-CAM → daimon screen capture API)
 #   - Smart home control (relay/LED/servo → daimon agent commands)
-#   - TinyML inference (ESP32-S3 → keyword spotting, gesture recognition)
+#   - TinyML inference (ESP32-S3 → keyword spotting, gesture recognition, anomaly detection)
 #   - Energy harvesting / battery-powered remote nodes
 #
 # Cross-compilation (from AGNOS host or CI):
@@ -104,7 +106,7 @@ make = """
 cargo build --release \
     --target xtensa-esp32s3-none-elf \
     --no-default-features \
-    --features esp32s3,wifi,mqtt,sensors,heartbeat,provisioning
+    --features esp32s3,wifi,mqtt,sensors,heartbeat,provisioning,tinyml,camera
 
 # ESP32-C3 build (riscv32, secondary target)
 cargo build --release \
@@ -183,6 +185,31 @@ i2c_scl = 22
 # Enabled sensor types (auto-detected on I2C scan)
 enabled = ["temperature", "humidity", "pressure", "light"]
 
+[tinyml]
+# TinyML inference configuration (ESP32-S3 only — requires vector extensions)
+# Model types: "kws" (keyword spotting), "gesture" (gesture recognition),
+#              "anomaly" (anomaly detection on sensor data)
+enabled = false
+# Path to TinyFLite model on device flash (SPIFFS/LittleFS partition)
+model_path = "/models/model.tflite"
+# Supported model types (ESP32-S3 vector-extension accelerated)
+model_type = "kws"
+# Input source: "audio" (I2S mic for KWS), "imu" (MPU6050 for gesture),
+#               "image" (ESP32-CAM for visual classification)
+input_type = "audio"
+# Inference interval in milliseconds (0 = continuous / streaming)
+inference_interval_ms = 0
+# Minimum confidence threshold to report a result (0.0-1.0)
+confidence_threshold = 0.6
+# ESP32-S3 SIMD acceleration: uses Xtensa HiFi DSP / vectored MAC instructions
+# for int8 quantized model inference. ~3-5x speedup over scalar on S3.
+use_vector_extensions = true
+# MQTT topics for inference reporting:
+#   agnos/{node_id}/inference/result  — classification results (label + confidence)
+#   agnos/{node_id}/inference/status  — model load state, memory, inference count
+# Report inference status interval in seconds (0 = only on change)
+status_report_interval_secs = 60
+
 [ota]
 # HTTPS endpoint for firmware updates (ark build server)
 url = ""
@@ -195,6 +222,37 @@ deep_sleep = false
 sleep_duration_secs = 300
 # Wake on: timer, gpio (motion sensor), uart
 wake_sources = ["timer"]
+
+[camera]
+# ESP32-CAM module configuration (OV2640 or OV5640 sensor)
+# Only applies to ESP32-S3 boards with camera interface (e.g. ESP32-CAM,
+# ESP32-S3-EYE, XIAO ESP32S3 Sense). Ignored on boards without camera.
+enabled = false
+# Resolution: "QQVGA" (160x120), "QVGA" (320x240), "VGA" (640x480),
+#             "SVGA" (800x600), "XGA" (1024x768), "SXGA" (1280x1024)
+# Lower resolutions reduce memory usage and MQTT payload size.
+resolution = "VGA"
+# JPEG compression quality: 1 (worst, smallest) to 63 (best, largest).
+# Recommended: 10-20 for motion alerts, 30-40 for general capture.
+jpeg_quality = 20
+# Frame capture interval in seconds (continuous mode).
+# 0 = capture only on motion trigger (default).
+capture_interval_secs = 0
+# Motion detection via frame-differencing (ESP32-S3 only, uses PSRAM).
+# Compares consecutive frames and triggers if pixel delta exceeds threshold.
+motion_detection = true
+# Motion sensitivity: 1 (very sensitive, slight changes trigger) to 100
+# (very insensitive, large movement required). Default 30.
+motion_sensitivity = 30
+# Minimum interval in seconds between motion-triggered captures.
+# Prevents flooding the MQTT broker during sustained motion.
+motion_cooldown_secs = 5
+# MQTT topics (relative to agnos/{node_id}/):
+#   camera/frame  — JPEG frame as base64 payload (published on capture)
+#   camera/motion — motion event JSON (published on detection)
+# GPIO pin for external PIR sensor (optional, complements frame-diff).
+# Set to -1 to disable PIR and use only frame-differencing.
+pir_gpio = -1
 CONF
 
 # Install flash helper script
