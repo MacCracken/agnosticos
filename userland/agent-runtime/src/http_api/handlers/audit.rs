@@ -3,7 +3,7 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::Json;
 use serde::{Deserialize, Serialize};
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::http_api::state::ApiState;
 use crate::http_api::MAX_AUDIT_BUFFER;
@@ -39,6 +39,12 @@ pub struct AuditForwardRequest {
 /// Maximum number of audit events returned in a single list request.
 const AUDIT_LIST_MAX_LIMIT: usize = 1000;
 
+/// Maximum number of events accepted in a single forward request.
+const MAX_FORWARD_EVENTS: usize = 1000;
+
+/// Maximum allowed length for run_id and playbook strings.
+const MAX_STRING_FIELD_LEN: usize = 256;
+
 #[derive(Debug, Deserialize)]
 pub struct AuditQueryParams {
     #[serde(default)]
@@ -72,6 +78,18 @@ pub async fn forward_audit_handler(
     Json(req): Json<AuditForwardRequest>,
 ) -> impl IntoResponse {
     let count = req.events.len();
+
+    // Reject requests with too many events to prevent memory abuse
+    if count > MAX_FORWARD_EVENTS {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": format!("Too many events: {} exceeds maximum of {}", count, MAX_FORWARD_EVENTS),
+                "code": 400
+            })),
+        );
+    }
+
     info!(
         "Received {} audit events from source={} correlation_id={:?}",
         count, req.source, req.correlation_id
@@ -85,12 +103,14 @@ pub async fn forward_audit_handler(
             event.action, event.agent, event.outcome
         );
 
+        // Use server-side timestamp for the audit chain to prevent
+        // attacker-controlled timestamps from corrupting chain ordering.
+        let chain_timestamp = chrono::Utc::now();
+
         // Also append to the cryptographic audit chain
         let chain_event = agnos_common::audit::AuditEvent {
             sequence: 0, // overwritten by AuditChain::append
-            timestamp: chrono::DateTime::parse_from_rfc3339(&event.timestamp)
-                .map(|dt| dt.with_timezone(&chrono::Utc))
-                .unwrap_or_else(|_| chrono::Utc::now()),
+            timestamp: chain_timestamp,
             event_type: agnos_common::audit::AuditEventType::ExternalAudit,
             agent_id: None,
             user_id: agnos_common::UserId::new(),
@@ -213,6 +233,23 @@ pub async fn audit_runs_handler(
             Json(serde_json::json!({"error": "playbook name is required"})),
         );
     }
+    // Reject oversized run_id and playbook strings
+    if record.run_id.len() > MAX_STRING_FIELD_LEN {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": format!("run_id too long: {} chars exceeds {} limit", record.run_id.len(), MAX_STRING_FIELD_LEN)
+            })),
+        );
+    }
+    if record.playbook.len() > MAX_STRING_FIELD_LEN {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": format!("playbook too long: {} chars exceeds {} limit", record.playbook.len(), MAX_STRING_FIELD_LEN)
+            })),
+        );
+    }
 
     let run_id = record.run_id.clone();
     let task_count = record.tasks.len();
@@ -223,6 +260,19 @@ pub async fn audit_runs_handler(
     );
 
     // Build an audit event from the run record
+    let record_details = match serde_json::to_value(&record) {
+        Ok(v) => v,
+        Err(e) => {
+            warn!("Failed to serialize run record: {}", e);
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "error": format!("Failed to serialize run record: {}", e),
+                    "code": 400
+                })),
+            );
+        }
+    };
     let audit_event = AuditEvent {
         timestamp: record
             .finished_at
@@ -233,7 +283,7 @@ pub async fn audit_runs_handler(
             if record.success { "success" } else { "failure" }
         ),
         agent: record.node_id.clone(),
-        details: serde_json::to_value(&record).unwrap_or_default(),
+        details: record_details,
         outcome: if record.success {
             "success".to_string()
         } else {
@@ -263,7 +313,7 @@ pub async fn audit_runs_handler(
         } else {
             agnos_common::audit::AuditResult::Failure
         },
-        details: serde_json::to_value(&record.tasks).unwrap_or_default(),
+        details: serde_json::to_value(&record.tasks).unwrap_or(serde_json::json!([])),
     };
     chain.append(chain_event);
 

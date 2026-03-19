@@ -1,6 +1,8 @@
 //! Tests for the sigil module.
 
 #[cfg(test)]
+#[allow(clippy::module_inception)]
+#[allow(clippy::field_reassign_with_default)]
 mod tests {
     use std::collections::HashMap;
     use std::io::Write as IoWrite;

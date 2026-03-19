@@ -1,6 +1,7 @@
 //! Tests for the federation module.
 
 #[cfg(test)]
+#[allow(clippy::module_inception)]
 mod tests {
     use std::collections::HashMap;
     use std::net::SocketAddr;

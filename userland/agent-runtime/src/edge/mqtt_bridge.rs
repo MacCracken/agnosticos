@@ -308,11 +308,19 @@ pub struct MqttBridge {
     /// ring buffer (newest entries replace oldest when capacity is reached).
     /// Each entry contains the base64-encoded JPEG and metadata.
     camera_captures: Arc<Mutex<Vec<CameraCaptureEvent>>>,
+    /// Total bytes of base64 camera data currently stored. Tracked to enforce
+    /// the MAX_CAMERA_TOTAL_BYTES memory cap.
+    camera_total_bytes: Arc<Mutex<usize>>,
 }
 
 /// Maximum number of camera capture events retained in memory.
 /// Older events are discarded when this limit is reached.
-const MAX_CAMERA_CAPTURES: usize = 200;
+/// Lowered from 200 to 50 to cap total memory (~50 * 1MB = ~50MB worst case).
+const MAX_CAMERA_CAPTURES: usize = 50;
+
+/// Maximum total bytes of base64 camera data held in the ring buffer.
+/// Rejects new frames once this cap is reached (protects against memory exhaustion).
+const MAX_CAMERA_TOTAL_BYTES: usize = 100 * 1024 * 1024; // 100 MB
 
 impl MqttBridge {
     /// Create a new MQTT bridge.
@@ -322,6 +330,7 @@ impl MqttBridge {
             fleet,
             node_id_map: Arc::new(Mutex::new(std::collections::HashMap::new())),
             camera_captures: Arc::new(Mutex::new(Vec::new())),
+            camera_total_bytes: Arc::new(Mutex::new(0)),
         }
     }
 
@@ -363,7 +372,7 @@ impl MqttBridge {
             }
         }
 
-        let (client, mut eventloop) = rumqttc::AsyncClient::new(mqtt_options, 64);
+        let (client, mut eventloop) = rumqttc::AsyncClient::new(mqtt_options, 1024);
 
         // Subscribe to MCU topics using wildcard
         let heartbeat_topic = format!("{}/+/heartbeat", self.config.topic_prefix);
@@ -454,9 +463,15 @@ impl MqttBridge {
         let mcu_node_id = parts[0];
         let message_type = parts[1];
 
-        // Validate node_id length to prevent abuse
-        if mcu_node_id.is_empty() || mcu_node_id.len() > 64 {
-            warn!(topic = %topic, "Ignoring message with invalid node_id length");
+        // Validate node_id: alphanumeric, hyphen, underscore only; max 64 chars.
+        // Rejects null bytes, newlines, and other control/special characters.
+        if mcu_node_id.is_empty()
+            || mcu_node_id.len() > 64
+            || !mcu_node_id
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        {
+            warn!(topic = %topic, "Ignoring message with invalid node_id (must be alphanumeric/hyphen/underscore, 1-64 chars)");
             return;
         }
 
@@ -483,6 +498,10 @@ impl MqttBridge {
     }
 
     /// Process an MCU heartbeat: auto-register if new, update if existing.
+    ///
+    /// Holds both the fleet and node_id_map locks through the check+insert to
+    /// prevent a race condition where two concurrent heartbeats for the same
+    /// new node could both pass the existence check and double-register.
     fn handle_heartbeat(&self, mcu_node_id: &str, payload: &[u8]) {
         let heartbeat: McuHeartbeat = match serde_json::from_slice(payload) {
             Ok(hb) => hb,
@@ -496,18 +515,20 @@ impl MqttBridge {
             }
         };
 
-        let mut fleet = match self.fleet.lock() {
-            Ok(f) => f,
-            Err(e) => {
-                error!(error = %e, "Fleet lock poisoned");
-                return;
-            }
-        };
-
+        // Acquire both locks together and hold them through check+insert
+        // to eliminate the TOCTOU race on node registration.
         let mut id_map = match self.node_id_map.lock() {
             Ok(m) => m,
             Err(e) => {
                 error!(error = %e, "Node ID map lock poisoned");
+                return;
+            }
+        };
+
+        let mut fleet = match self.fleet.lock() {
+            Ok(f) => f,
+            Err(e) => {
+                error!(error = %e, "Fleet lock poisoned");
                 return;
             }
         };
@@ -927,9 +948,29 @@ impl MqttBridge {
         };
 
         if let Ok(mut captures) = self.camera_captures.lock() {
-            if captures.len() >= MAX_CAMERA_CAPTURES {
-                captures.remove(0);
+            let frame_bytes = event.data_base64.len();
+            let mut total = self
+                .camera_total_bytes
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+
+            // Reject if total memory cap would be exceeded
+            if *total + frame_bytes > MAX_CAMERA_TOTAL_BYTES {
+                warn!(
+                    node = %mcu_node_id,
+                    total_bytes = *total,
+                    frame_bytes = frame_bytes,
+                    "Camera capture rejected: total memory cap exceeded ({} MB)",
+                    MAX_CAMERA_TOTAL_BYTES / (1024 * 1024)
+                );
+                return;
             }
+
+            if captures.len() >= MAX_CAMERA_CAPTURES {
+                let evicted = captures.remove(0);
+                *total = total.saturating_sub(evicted.data_base64.len());
+            }
+            *total += frame_bytes;
             captures.push(event);
         }
     }
@@ -1013,9 +1054,29 @@ impl MqttBridge {
             };
 
             if let Ok(mut captures) = self.camera_captures.lock() {
-                if captures.len() >= MAX_CAMERA_CAPTURES {
-                    captures.remove(0);
+                let frame_bytes = event.data_base64.len();
+                let mut total = self
+                    .camera_total_bytes
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner());
+
+                // Reject if total memory cap would be exceeded
+                if *total + frame_bytes > MAX_CAMERA_TOTAL_BYTES {
+                    warn!(
+                        node = %mcu_node_id,
+                        total_bytes = *total,
+                        frame_bytes = frame_bytes,
+                        "Motion snapshot rejected: total memory cap exceeded ({} MB)",
+                        MAX_CAMERA_TOTAL_BYTES / (1024 * 1024)
+                    );
+                    return;
                 }
+
+                if captures.len() >= MAX_CAMERA_CAPTURES {
+                    let evicted = captures.remove(0);
+                    *total = total.saturating_sub(evicted.data_base64.len());
+                }
+                *total += frame_bytes;
                 captures.push(event);
             }
         }
@@ -1862,10 +1923,7 @@ mod tests {
                 "trigger": "interval"
             });
             let payload = serde_json::to_vec(&frame).unwrap();
-            bridge.handle_publish(&make_publish(
-                &format!("agnos/cam-ring/camera/frame"),
-                payload,
-            ));
+            bridge.handle_publish(&make_publish("agnos/cam-ring/camera/frame", payload));
         }
 
         let captures = bridge.camera_captures();

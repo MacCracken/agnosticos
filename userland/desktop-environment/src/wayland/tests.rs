@@ -618,7 +618,7 @@ fn test_bridge_destroy_surface() {
 
     bridge.destroy_surface(sid);
     assert_eq!(bridge.surface_count(), 0);
-    assert!(bridge.toplevels.get(&sid).is_none());
+    assert!(!bridge.toplevels.contains_key(&sid));
 }
 
 #[test]

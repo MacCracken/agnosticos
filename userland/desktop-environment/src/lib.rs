@@ -1,7 +1,7 @@
 // Desktop environment library: many public types define the API surface for the
 // Wayland compositor and are not yet exercised by the binary. These will be
 // consumed by desktop integration, plugins, and tests as the compositor matures.
-#![allow(dead_code, unused_mut)]
+#![allow(dead_code, unused_mut, clippy::unnecessary_get_then_check)]
 
 pub mod accessibility;
 mod ai_features;

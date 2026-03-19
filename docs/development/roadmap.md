@@ -277,7 +277,7 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 | # | App | MCP Tools | Intents | Release | Bundle Test | Notes |
 |---|-----|-----------|---------|---------|-------------|-------|
 | 1 | SecureYeoman | 14 yeoman_* | 14 | Yes | Not started | Flagship (7 core + 7 bridge: tools, brain, tokens, events, swarm) |
-| 2 | Photis Nadi | 8 photis_* | 8 | Yes (2026.3.18) | Not started | Flutter → native binary migration planned |
+| 2 | Photis Nadi | 8 photis_* | 8 | Yes (2026.3.18-1) | Not started | Native binary (migrated from Flutter) |
 | 3 | BullShift | 7 bullshift_* | 7 | Yes | Not started | Trading |
 | 4 | Agnostic | 23 agnostic_* | 14 | Yes | Not started | Agent automation (Python/CrewAI) → native binary migration planned |
 | 5 | Delta | 7 delta_* | 7 | Yes | Not started | Code hosting |
@@ -347,6 +347,21 @@ Sutra (infrastructure orchestrator) needs daimon to expose a remote execution AP
 | T3 | **Done** | Daimon playbook audit ingestion | `POST /v1/audit/runs` — accepts sutra RunRecord JSON (run_id, playbook, tasks, success). Validates structure, appends to audit buffer + cryptographic chain. 5 tests |
 | T4 | **Done** | Hoosh playbook generation tuning | `x-sutra-playbook: true` header on `/v1/chat/completions` injects playbook-aware system prompt with 3 few-shot TOML examples (deploy, harden, setup). Module reference included |
 | T5 | **Done** | sutra-community marketplace recipe | `recipes/marketplace/sutra-community.toml` — installs community modules (nftables, sysctl, aegis, daimon, edge) as ark package. Source: `MacCracken/sutra-community` |
+
+### Blocked — AgnosAI Integration
+
+**AgnosAI** — Rust-native agent orchestration engine (`/home/macro/Repos/agnosai`). Replaces Python/CrewAI with compiled Rust: real concurrency (tokio), <50MB binary, <2s boot, task DAGs with priority + preemption, native fleet distribution, sandboxed tool execution (WASM/seccomp/Landlock/OCI). 9 crates. Will be open-sourced as a CrewAI competitor.
+
+**Blocked on**: AgnosAI v1 release + Agnostic integration testing.
+
+| # | Priority | Item | Notes |
+|---|----------|------|-------|
+| A1 | High | AgnosAI marketplace recipe | `recipes/marketplace/agnosai.toml` — native-binary, `MacCracken/agnosai` |
+| A2 | High | AgnosAI MCP tools in daimon | Replace/extend `agnostic_*` tools with native AgnosAI bridge (crew management, task dispatch, fleet coordination) |
+| A3 | High | AgnosAI agnoshi intents | NL crew control via agnoshi → AgnosAI MCP tools |
+| A4 | Medium | Agnostic native binary migration | Agnostic swaps Python/CrewAI for AgnosAI engine. Recipe runtime: `python-container` → `native-binary` |
+| A5 | Medium | AgnosAI ↔ hoosh integration | AgnosAI's `agnosai-llm` crate routes through hoosh for unified token budgeting, provider selection, and cost tracking |
+| A6 | Low | AgnosAI fleet ↔ daimon edge | AgnosAI's `agnosai-fleet` coordinates with daimon edge module for distributed crew execution across AGNOS nodes |
 
 ---
 

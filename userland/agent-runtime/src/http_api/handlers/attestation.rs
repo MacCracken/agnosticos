@@ -210,12 +210,17 @@ fn read_pcr_from_sysfs() -> Option<Vec<PcrValue>> {
     }
 }
 
-/// Compute HMAC-SHA256 over concatenated PCR values using machine-id as key.
+/// Compute HMAC-SHA256 over concatenated PCR values using a host-unique key.
 ///
-/// This provides tamper evidence — SY can verify the signature to ensure
-/// the attestation response wasn't forged by a compromised user-space.
+/// The key is derived from `/etc/machine-id` combined with the dm-verity root
+/// hash from `/etc/agnos/verity-root-hash` (if available). This makes the key
+/// unique per host AND per verified root filesystem, preventing forgery across
+/// different installations.
+///
+/// Long-term fix: seal the HMAC key into the TPM (TPM2_Seal) so it cannot be
+/// extracted by user-space at all. This is planned for post-beta.
 fn compute_attestation_signature(pcr_values: &[PcrValue]) -> Option<String> {
-    // Use machine-id as HMAC key (unique per host, stable across reboots)
+    // Use machine-id as base HMAC key (unique per host, stable across reboots)
     let machine_id = std::fs::read_to_string("/etc/machine-id")
         .ok()
         .map(|s| s.trim().to_string())
@@ -225,59 +230,38 @@ fn compute_attestation_signature(pcr_values: &[PcrValue]) -> Option<String> {
         return None;
     }
 
+    // Append the dm-verity root hash if available, making the key
+    // machine-specific + image-specific (not just /etc/machine-id which is
+    // world-readable and predictable).
+    let verity_hash = std::fs::read_to_string("/etc/agnos/verity-root-hash")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default();
+
+    let key_material = if verity_hash.is_empty() {
+        machine_id
+    } else {
+        format!("{}:{}", machine_id, verity_hash)
+    };
+
     // Concatenate all PCR values as the message
     let message: String = pcr_values.iter().map(|p| p.value.as_str()).collect();
 
-    // HMAC-SHA256 using ring-style manual computation
-    // (We use a simple HMAC construction since we already depend on sha2 via other crates)
-    Some(hmac_sha256_hex(machine_id.as_bytes(), message.as_bytes()))
+    Some(hmac_sha256_hex(key_material.as_bytes(), message.as_bytes()))
 }
 
-/// Simple HMAC-SHA256 implementation using the sha2 crate pattern.
-/// Falls back to a hash-based construction if sha2 is not available.
+/// Compute HMAC-SHA256 using the `hmac` and `sha2` crates.
 fn hmac_sha256_hex(key: &[u8], message: &[u8]) -> String {
-    use std::io::Write;
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
 
-    // HMAC: H((K' XOR opad) || H((K' XOR ipad) || message))
-    let block_size = 64;
-    let mut padded_key = vec![0u8; block_size];
-    if key.len() > block_size {
-        // Hash key if longer than block size — use sha256sum as fallback
-        let hash = simple_sha256(key);
-        padded_key[..hash.len().min(block_size)]
-            .copy_from_slice(&hash[..hash.len().min(block_size)]);
-    } else {
-        padded_key[..key.len()].copy_from_slice(key);
-    }
+    type HmacSha256 = Hmac<Sha256>;
 
-    let mut ipad = vec![0x36u8; block_size];
-    let mut opad = vec![0x5cu8; block_size];
-    for i in 0..block_size {
-        ipad[i] ^= padded_key[i];
-        opad[i] ^= padded_key[i];
-    }
-
-    // Inner hash: H(ipad || message)
-    let mut inner_input = Vec::with_capacity(block_size + message.len());
-    inner_input.write_all(&ipad).unwrap();
-    inner_input.write_all(message).unwrap();
-    let inner_hash = simple_sha256(&inner_input);
-
-    // Outer hash: H(opad || inner_hash)
-    let mut outer_input = Vec::with_capacity(block_size + inner_hash.len());
-    outer_input.write_all(&opad).unwrap();
-    outer_input.write_all(&inner_hash).unwrap();
-    let outer_hash = simple_sha256(&outer_input);
-
-    outer_hash.iter().map(|b| format!("{:02x}", b)).collect()
-}
-
-/// Compute SHA-256 hash using the sha2 crate (already a dependency).
-fn simple_sha256(data: &[u8]) -> Vec<u8> {
-    use sha2::{Digest, Sha256};
-    let mut hasher = Sha256::new();
-    hasher.update(data);
-    hasher.finalize().to_vec()
+    let mut mac = HmacSha256::new_from_slice(key).expect("HMAC can take key of any size");
+    mac.update(message);
+    let result = mac.finalize();
+    let bytes = result.into_bytes();
+    bytes.iter().map(|b| format!("{:02x}", b)).collect()
 }
 
 // ---------------------------------------------------------------------------

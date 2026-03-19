@@ -1,58 +1,44 @@
 # Photis Nadi — Productivity app for AGNOS marketplace
 # Cross-platform Kanban task management + daily rituals app.
-# Built with Flutter; CI releases on GitHub.
+# Migrated from Flutter to native Rust binary (2026.3.18-1).
 #
-# Status: Released — Photis Nadi 2026.3.18 (linux amd64 + arm64).
-# Release asset: photisnadi-*-linux-x64.tar.gz (~20 MB)
+# Status: Released — Photis Nadi 2026.3.18-1 (native binary, linux amd64 + arm64).
+# Source: https://github.com/MacCracken/PhotisNadi
 
 [package]
 name = "photisnadi"
-version = "2026.3.18"
+version = "2026.3.18-1"
 description = "Photis Nadi — Kanban task management with daily rituals"
 license = "MIT"
-groups = ["desktop", "productivity", "flutter"]
+groups = ["desktop", "productivity"]
 release = 1
 arch = "x86_64"
 
 [source]
-# Flutter app built by GitHub Actions CI.
-# Release: https://github.com/MacCracken/PhotisNadi/releases
-# Asset: photisnadi-YYYYMMDD-linux-x64.tar.gz
-local = true
-build_dir = "build/linux/x64/release/bundle"
 github_release = "MacCracken/PhotisNadi"
-release_asset = "photisnadi-*-linux-x64.tar.gz"
+release_asset = "photisnadi-{version}-linux-{arch}.tar.gz"
 
 [depends]
 runtime = [
     "glibc",
-    "gtk3",
-    "mesa",
-    "libdrm",
-    "wayland",
-    "wayland-protocols",
-    "fontconfig",
-    "freetype2",
-    "harfbuzz",
+    "openssl",
     "sqlite",
 ]
 build = [
-    "flutter",
-    "clang",
-    "cmake",
-    "ninja",
-    "pkg-config",
+    "rust",
+    "gcc",
+    "openssl-dev",
 ]
 
 [marketplace]
 category = "productivity"
-runtime = "flutter"
+runtime = "native-binary"
 publisher = "Photis Nadi"
-tags = ["kanban", "productivity", "rituals", "task-management", "flutter"]
+tags = ["kanban", "productivity", "rituals", "task-management"]
 min_agnos_version = "2026.3.18"
 
 [marketplace.sandbox]
-seccomp_mode = "desktop"
+seccomp_mode = "basic"
 network_access = true
 allowed_hosts = ["*.supabase.co", "*.supabase.in"]
 data_dir = "~/.local/share/photisnadi/"
@@ -62,41 +48,27 @@ path = "~/.local/share/photisnadi/"
 access = "rw"
 
 [[marketplace.sandbox.landlock]]
-path = "/tmp"
+path = "/tmp/photisnadi/"
 access = "rw"
 
 [[marketplace.sandbox.landlock]]
-path = "/usr/share/fonts"
-access = "ro"
+path = "/run/agnos/"
+access = "rw"
 
-[[marketplace.sandbox.landlock]]
-path = "/run/user/"
-access = "ro"
+[marketplace.sandbox.network]
+allowed = ["127.0.0.1:8090", "127.0.0.1:8088"]
 
-[marketplace.wayland]
-requirements = ["core", "xdg-shell"]
+[marketplace.services]
+ports = []
+depends_on = ["daimon"]
 
 [build]
-pre_build = ""
-configure = ""
-make = "flutter build linux --release"
-check = "flutter test"
-
-[security]
-hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
-
+make = "cargo build --release --workspace"
+check = "cargo test --workspace"
 install = """
-# Pack Flutter frontend as .agnos-agent bundle
-agpkg pack-flutter --build-dir build/linux/x64/release/bundle \
-  --name photisnadi --version $VERSION --publisher "Photis Nadi" \
-  --description "Kanban task management with daily rituals" \
-  --category productivity --network --output $PKG/
+mkdir -p $PKG/usr/local/bin
+cp target/release/photisnadi $PKG/usr/local/bin/photisnadi
 
-# Install REST API server (Dart native AOT binary)
-mkdir -p $PKG/usr/lib/photisnadi/bin
-dart compile exe bin/server.dart -o $PKG/usr/lib/photisnadi/bin/photisnadi-api
-
-# Desktop entry for aethersafha
 mkdir -p $PKG/usr/share/applications
 cat > $PKG/usr/share/applications/photisnadi.desktop << 'EOF'
 [Desktop Entry]
@@ -112,3 +84,8 @@ StartupNotify=true
 StartupWMClass=photisnadi
 EOF
 """
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

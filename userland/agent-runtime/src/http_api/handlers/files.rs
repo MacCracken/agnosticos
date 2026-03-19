@@ -16,6 +16,9 @@ use axum::response::IntoResponse;
 use axum::Json;
 use tracing::info;
 
+#[cfg(unix)]
+use std::os::unix::fs::OpenOptionsExt;
+
 use crate::http_api::state::ApiState;
 
 /// Base directory for agent data files.
@@ -27,6 +30,31 @@ const MAX_FILE_SIZE: usize = 10 * 1024 * 1024;
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/// Validate that an agent ID is safe for use in filesystem paths.
+///
+/// Rejects agent IDs containing `..`, `/`, null bytes, or characters other
+/// than alphanumeric and `-`. This prevents path traversal via the agent_id
+/// component itself.
+#[allow(clippy::result_large_err)]
+fn validate_agent_id(id: &str) -> Result<(), axum::response::Response> {
+    if id.is_empty()
+        || id.contains("..")
+        || id.contains('/')
+        || id.contains('\0')
+        || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": "Invalid agent_id: must be alphanumeric and hyphens only",
+                "code": 400
+            })),
+        )
+            .into_response());
+    }
+    Ok(())
+}
 
 /// Validate that an agent ID exists in the registry.
 async fn require_registered_agent(state: &ApiState, id: &str) -> Option<axum::response::Response> {
@@ -54,6 +82,7 @@ async fn require_registered_agent(state: &ApiState, id: &str) -> Option<axum::re
 /// - Paths containing null bytes
 ///
 /// Returns the sanitised path on success, or an error response.
+#[allow(clippy::result_large_err)]
 fn validate_file_path(path: &str) -> Result<std::path::PathBuf, axum::response::Response> {
     // Reject empty
     if path.is_empty() {
@@ -155,6 +184,11 @@ pub async fn file_put_handler(
     Path((id, file_path)): Path<(String, String)>,
     body: Bytes,
 ) -> impl IntoResponse {
+    // Validate agent_id is safe for filesystem paths
+    if let Err(resp) = validate_agent_id(&id) {
+        return resp;
+    }
+
     // Validate agent exists
     if let Some(err) = require_registered_agent(&state, &id).await {
         return err;
@@ -194,15 +228,6 @@ pub async fn file_put_handler(
             .into_response();
     }
 
-    // Reject if target is a symlink (no symlink following)
-    if full_path.is_symlink() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "Symlinks are not allowed", "code": 400})),
-        )
-            .into_response();
-    }
-
     // Create parent directories
     if let Some(parent) = full_path.parent() {
         if let Err(e) = tokio::fs::create_dir_all(parent).await {
@@ -217,10 +242,27 @@ pub async fn file_put_handler(
         }
     }
 
-    // Write file
+    // Write file using O_NOFOLLOW to atomically prevent symlink following
+    // (eliminates TOCTOU race between symlink check and open).
     let size = body.len();
-    match tokio::fs::write(&full_path, &body).await {
-        Ok(()) => {
+    let write_result = {
+        let path = full_path.clone();
+        let data = body.to_vec();
+        tokio::task::spawn_blocking(move || -> std::io::Result<()> {
+            use std::io::Write;
+            let mut opts = std::fs::OpenOptions::new();
+            opts.write(true).create(true).truncate(true);
+            #[cfg(unix)]
+            opts.custom_flags(libc::O_NOFOLLOW);
+            let mut file = opts.open(&path)?;
+            file.write_all(&data)?;
+            Ok(())
+        })
+        .await
+    };
+
+    match write_result {
+        Ok(Ok(())) => {
             info!(
                 agent_id = %id,
                 path = %file_path,
@@ -250,6 +292,19 @@ pub async fn file_put_handler(
             )
                 .into_response()
         }
+        Ok(Err(e)) if e.raw_os_error() == Some(libc::ELOOP) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "Symlinks are not allowed", "code": 400})),
+        )
+            .into_response(),
+        Ok(Err(e)) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({
+                "error": format!("Failed to write file: {}", e),
+                "code": 500
+            })),
+        )
+            .into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({
@@ -266,6 +321,11 @@ pub async fn file_get_handler(
     State(state): State<ApiState>,
     Path((id, file_path)): Path<(String, String)>,
 ) -> impl IntoResponse {
+    // Validate agent_id is safe for filesystem paths
+    if let Err(resp) = validate_agent_id(&id) {
+        return resp;
+    }
+
     // Validate agent exists
     if let Some(err) = require_registered_agent(&state, &id).await {
         return err;
@@ -289,18 +349,27 @@ pub async fn file_get_handler(
             .into_response();
     }
 
-    // Reject if target is a symlink (no symlink following)
-    if full_path.is_symlink() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "Symlinks are not allowed", "code": 400})),
-        )
-            .into_response();
-    }
+    // Read file using O_NOFOLLOW to atomically prevent symlink following
+    // (eliminates TOCTOU race between symlink check and open).
+    let content_type = guess_content_type(&rel_path);
+    let read_result = {
+        let path = full_path.clone();
+        tokio::task::spawn_blocking(move || -> std::io::Result<Vec<u8>> {
+            use std::io::Read;
+            let mut opts = std::fs::OpenOptions::new();
+            opts.read(true);
+            #[cfg(unix)]
+            opts.custom_flags(libc::O_NOFOLLOW);
+            let mut file = opts.open(&path)?;
+            let mut data = Vec::new();
+            file.read_to_end(&mut data)?;
+            Ok(data)
+        })
+        .await
+    };
 
-    // Read file
-    match tokio::fs::read(&full_path).await {
-        Ok(data) => {
+    match read_result {
+        Ok(Ok(data)) => {
             info!(
                 agent_id = %id,
                 path = %file_path,
@@ -320,14 +389,26 @@ pub async fn file_get_handler(
             };
             state.push_audit_event(audit_event).await;
 
-            let content_type = guess_content_type(&rel_path);
             (StatusCode::OK, [(header::CONTENT_TYPE, content_type)], data).into_response()
         }
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => (
+        Ok(Err(e)) if e.raw_os_error() == Some(libc::ELOOP) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "Symlinks are not allowed", "code": 400})),
+        )
+            .into_response(),
+        Ok(Err(e)) if e.kind() == std::io::ErrorKind::NotFound => (
             StatusCode::NOT_FOUND,
             Json(serde_json::json!({
                 "error": format!("File not found: {}", file_path),
                 "code": 404
+            })),
+        )
+            .into_response(),
+        Ok(Err(e)) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({
+                "error": format!("Failed to read file: {}", e),
+                "code": 500
             })),
         )
             .into_response(),

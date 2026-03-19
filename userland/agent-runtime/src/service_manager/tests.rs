@@ -1,6 +1,7 @@
 //! Tests for the service manager.
 
 #[cfg(test)]
+#[allow(clippy::module_inception)]
 mod tests {
     use std::collections::HashMap;
     use std::time::Duration;

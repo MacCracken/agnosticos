@@ -203,14 +203,16 @@ fn bench_parse_only_pipeline(c: &mut Criterion) {
 // ---------------------------------------------------------------------------
 
 fn bench_prompt_render_full(c: &mut Criterion) {
-    let mut config = PromptConfig::default();
-    config.show_ai_mode = true;
-    config.show_directory = true;
-    config.show_git_status = true;
-    config.show_execution_time = true;
-    config.show_exit_status = true;
-    config.show_context = true;
-    config.execution_time_threshold = 0; // always show exec time
+    let config = PromptConfig {
+        show_ai_mode: true,
+        show_directory: true,
+        show_git_status: true,
+        show_execution_time: true,
+        show_exit_status: true,
+        show_context: true,
+        execution_time_threshold: 0,
+        ..Default::default()
+    };
     let renderer = PromptRenderer::new(config);
     let ctx = make_prompt_context();
 
@@ -222,13 +224,15 @@ fn bench_prompt_render_full(c: &mut Criterion) {
 }
 
 fn bench_prompt_render_minimal(c: &mut Criterion) {
-    let mut config = PromptConfig::default();
-    config.show_ai_mode = false;
-    config.show_directory = true;
-    config.show_git_status = false;
-    config.show_execution_time = false;
-    config.show_exit_status = false;
-    config.show_context = false;
+    let config = PromptConfig {
+        show_ai_mode: false,
+        show_directory: true,
+        show_git_status: false,
+        show_execution_time: false,
+        show_exit_status: false,
+        show_context: false,
+        ..Default::default()
+    };
     let renderer = PromptRenderer::new(config);
     let ctx = make_prompt_context();
 
@@ -252,9 +256,11 @@ fn bench_prompt_render_right(c: &mut Criterion) {
 }
 
 fn bench_prompt_render_repeated(c: &mut Criterion) {
-    let mut config = PromptConfig::default();
-    config.show_context = true;
-    config.execution_time_threshold = 0;
+    let config = PromptConfig {
+        show_context: true,
+        execution_time_threshold: 0,
+        ..Default::default()
+    };
     let renderer = PromptRenderer::new(config);
 
     let mut group = c.benchmark_group("system/prompt_render_repeated");
@@ -264,7 +270,7 @@ fn bench_prompt_render_repeated(c: &mut Criterion) {
             b.iter(|| {
                 for i in 0..n {
                     let mut ctx = make_prompt_context();
-                    ctx.last_exit_code = (i % 2);
+                    ctx.last_exit_code = i % 2;
                     ctx.cmd_duration_ms = (i as u64) * 100;
                     black_box(renderer.render(&ctx));
                 }

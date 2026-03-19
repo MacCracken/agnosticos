@@ -29,9 +29,12 @@ const DEFAULT_TIMEOUT_SECS: u64 = 30;
 /// Maximum allowed timeout in seconds.
 const MAX_TIMEOUT_SECS: u64 = 300;
 
+/// Maximum output size in bytes (1 MB). Output beyond this is truncated.
+const MAX_OUTPUT_BYTES: usize = 1_048_576;
+
 /// Shell metacharacters that are rejected to prevent injection.
 const SHELL_METACHARACTERS: &[char] = &[
-    ';', '&', '|', '`', '$', '(', ')', '{', '}', '<', '>', '\n', '\r', '\\', '!', '#',
+    ';', '&', '|', '`', '$', '(', ')', '{', '}', '<', '>', '\\', '!', '#',
 ];
 
 // ---------------------------------------------------------------------------
@@ -68,6 +71,13 @@ fn validate_command(command: &str) -> Result<(), String> {
     }
     if command.len() > 4096 {
         return Err("Command too long (max 4096 bytes)".to_string());
+    }
+    // Check for actual newline/carriage-return bytes — these can bypass
+    // metachar validation when embedded in JSON strings.
+    if command.contains('\n') || command.contains('\r') {
+        return Err(
+            "Command contains disallowed shell metacharacter: newline/carriage-return".to_string(),
+        );
     }
     for ch in SHELL_METACHARACTERS {
         if command.contains(*ch) {
@@ -165,8 +175,18 @@ pub async fn exec_handler(
     match output_result {
         Ok(Ok(output)) => {
             let exit_code = output.status.code().unwrap_or(-1);
-            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            let mut stdout = String::from_utf8_lossy(&output.stdout).to_string();
+            let mut stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+            // Truncate output to MAX_OUTPUT_BYTES to prevent unbounded memory use
+            if stdout.len() > MAX_OUTPUT_BYTES {
+                stdout.truncate(MAX_OUTPUT_BYTES);
+                stdout.push_str("\n[truncated: output exceeded 1 MB limit]");
+            }
+            if stderr.len() > MAX_OUTPUT_BYTES {
+                stderr.truncate(MAX_OUTPUT_BYTES);
+                stderr.push_str("\n[truncated: output exceeded 1 MB limit]");
+            }
 
             let outcome = if exit_code == 0 { "success" } else { "failure" };
 
@@ -540,5 +560,8 @@ mod tests {
         assert!(validate_command("echo $(whoami)").is_err());
         assert!(validate_command("cat < /etc/passwd").is_err());
         assert!(validate_command("echo > /tmp/x").is_err());
+        // Actual newline/carriage-return chars must be rejected
+        assert!(validate_command("echo hello\nrm -rf /").is_err());
+        assert!(validate_command("echo hello\rrm -rf /").is_err());
     }
 }

@@ -1,5 +1,6 @@
 #[cfg(test)]
 #[allow(clippy::field_reassign_with_default)]
+#[allow(clippy::module_inception)]
 mod tests {
     use crate::interpreter::*;
     use crate::security::PermissionLevel;

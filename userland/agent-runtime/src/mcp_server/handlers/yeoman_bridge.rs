@@ -69,6 +69,7 @@ pub(crate) async fn handle_yeoman_register_tools(args: &serde_json::Value) -> Mc
                 "tools": [],
                 "message": "SecureYeoman not reachable — no tools registered",
                 "_source": "mock",
+                "_warning": "service_unavailable",
             }));
         }
     };
@@ -173,6 +174,7 @@ pub(crate) async fn handle_yeoman_tool_execute(args: &serde_json::Value) -> McpT
                 "result": null,
                 "error": format!("SecureYeoman not reachable: {}", e),
                 "_source": "mock",
+                "_warning": "service_unavailable",
             }))
         }
     }
@@ -212,6 +214,7 @@ pub(crate) async fn handle_yeoman_brain_query(args: &serde_json::Value) -> McpTo
                 "query": query,
                 "message": "SecureYeoman not reachable",
                 "_source": "mock",
+                "_warning": "service_unavailable",
             }))
         }
     }
@@ -260,6 +263,7 @@ pub(crate) async fn handle_yeoman_brain_sync(args: &serde_json::Value) -> McpToo
                         "direction": "to_agnos",
                         "error": format!("SecureYeoman not reachable: {}", e),
                         "_source": "mock",
+                        "_warning": "service_unavailable",
                     }));
                 }
             };
@@ -329,6 +333,7 @@ pub(crate) async fn handle_yeoman_brain_sync(args: &serde_json::Value) -> McpToo
                         "direction": "from_agnos",
                         "error": format!("Daimon RAG not reachable: {}", e),
                         "_source": "mock",
+                        "_warning": "service_unavailable",
                     }))
                 }
             }
@@ -375,6 +380,7 @@ pub(crate) async fn handle_yeoman_token_budget(args: &serde_json::Value) -> McpT
                     "pools": [],
                     "total": 0,
                     "_source": "mock",
+                    "_warning": "service_unavailable",
                 }))
             }
         },
@@ -395,6 +401,7 @@ pub(crate) async fn handle_yeoman_token_budget(args: &serde_json::Value) -> McpT
                         "allowed": true,
                         "remaining": 100000,
                         "_source": "mock",
+                        "_warning": "service_unavailable",
                     }))
                 }
             }
@@ -417,6 +424,7 @@ pub(crate) async fn handle_yeoman_token_budget(args: &serde_json::Value) -> McpT
                         "amount": amount.unwrap_or(1000),
                         "status": "reserved",
                         "_source": "mock",
+                        "_warning": "service_unavailable",
                     }))
                 }
             }
@@ -438,6 +446,7 @@ pub(crate) async fn handle_yeoman_token_budget(args: &serde_json::Value) -> McpT
                         "released": true,
                         "status": "ok",
                         "_source": "mock",
+                        "_warning": "service_unavailable",
                     }))
                 }
             }
@@ -487,6 +496,7 @@ pub(crate) async fn handle_yeoman_events(args: &serde_json::Value) -> McpToolRes
                         "events": [],
                         "total": 0,
                         "_source": "mock",
+                        "_warning": "service_unavailable",
                     }))
                 }
             }
@@ -524,6 +534,7 @@ pub(crate) async fn handle_yeoman_events(args: &serde_json::Value) -> McpToolRes
                         "alerts": [],
                         "total": 0,
                         "_source": "mock",
+                        "_warning": "service_unavailable",
                     }))
                 }
             }
@@ -576,6 +587,7 @@ pub(crate) async fn handle_yeoman_swarm(args: &serde_json::Value) -> McpToolResu
                 "total_agents": 0,
                 "total_teams": 0,
                 "_source": "mock",
+                "_warning": "service_unavailable",
             }))
         }
     }
@@ -595,6 +607,7 @@ mod tests {
         let result = handle_yeoman_register_tools(&serde_json::json!({})).await;
         let json: serde_json::Value = serde_json::from_str(&result.content[0].text).unwrap();
         assert_eq!(json["_source"], "mock");
+        assert_eq!(json["_warning"], "service_unavailable");
         assert_eq!(json["registered"], 0);
     }
 

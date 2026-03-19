@@ -5,9 +5,9 @@
 | Field | Value |
 |-------|-------|
 | Status | Released |
-| Version | Latest GitHub release |
+| Version | 2026.3.18-1 |
 | Repository | `MacCracken/PhotisNadi` |
-| Runtime | flutter (~20MB) |
+| Runtime | native-binary (migrated from Flutter in 2026.3.18-1) |
 | Recipe | `recipes/marketplace/photisnadi.toml` |
 | MCP Tools | 8 `photis_*` |
 | Agnoshi Intents | 8 |

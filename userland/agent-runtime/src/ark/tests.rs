@@ -1,6 +1,7 @@
 //! Tests for the ark package manager.
 
 #[cfg(test)]
+#[allow(clippy::module_inception)]
 mod tests {
     use super::super::*;
     use tempfile::TempDir;
