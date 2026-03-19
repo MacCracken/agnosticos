@@ -277,11 +277,11 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 | # | App | MCP Tools | Intents | Release | Bundle Test | Notes |
 |---|-----|-----------|---------|---------|-------------|-------|
 | 1 | SecureYeoman | 7 yeoman_* | 7 | Yes | Not started | Flagship |
-| 2 | Photis Nadi | 8 photis_* | 8 | Yes | Not started | Flutter |
+| 2 | Photis Nadi | 8 photis_* | 8 | Yes (2026.3.18) | Not started | Flutter |
 | 3 | BullShift | 7 bullshift_* | 7 | Yes | Not started | Trading |
 | 4 | AGNOSTIC | 23 agnostic_* | 14 | Yes | Not started | Python |
 | 5 | Delta | 7 delta_* | 7 | Yes | Not started | Code hosting |
-| 6 | Aequi | 7 aequi_* | 7 | Yes | Not started | Accounting |
+| 6 | Aequi | 7 aequi_* | 7 | Yes (2026.3.18) | Not started | Accounting |
 | 7 | Synapse | 7 synapse_* | 7 | Yes | Not started | LLM management |
 | 8 | Shruti | 7 shruti_* | 7 | Yes | Not started | DAW |
 | 9 | Tazama | 7 tazama_* | 7 | Yes | Not started | Video editor |

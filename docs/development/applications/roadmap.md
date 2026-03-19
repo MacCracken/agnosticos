@@ -87,6 +87,22 @@
 
 ## Priority 2 — Strong Utility (significant daily value)
 
+### Sutra — Infrastructure Orchestrator
+
+| Field | Value |
+|-------|-------|
+| Status | Planned |
+| Priority | 2 — critical for fleet + self-hosting |
+| Spec | [sutra.md](sutra.md) |
+
+**Why first-party**: No Rust orchestrator exists. AI-native NL/Markdown→TOML playbooks with dry-run-by-default. Deep integration with daimon fleet, ark, argonaut. User owns TOML as IaC source of truth — AI assists, never auto-applies.
+
+**Scope**: Declarative TOML playbooks, 11 modules (ark, argonaut, aegis, file, daimon, edge, shell, user, nftables, sysctl, verify), SSH + daimon transport, static/dynamic inventory, rollback.
+
+**Effort**: Medium-High — core engine is straightforward, module breadth takes time
+
+---
+
 ### Disk Analyzer
 
 | Field | Value |
