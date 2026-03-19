@@ -316,13 +316,13 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 |---|----------|------|-------|
 | B1 | High | Selfhost pipeline builds all 176 packages | `selfhost-build.yml` updated, needs first full run |
 | B2 | High | RPi4 hardware boot test | Firmware blobs added, needs physical validation |
-| B3 | Low | SHA256 checksums — 3 remaining | 261/264 filled (98.9%). Remaining: `intel-ucode`, `amd-ucode`, `gvisor` — need version bumps to real upstream tags first |
+| B3 | **Done** | SHA256 checksums — all 264 filled | 100%. intel-ucode `20260227`, amd-ucode `20260309`, gVisor `latest` — all verified from upstream |
 ### Active — ESP32 Edge/IoT
 
 | # | Priority | Item | Notes |
 |---|----------|------|-------|
-| E1 | Medium | ESP32 agent scaffold | **Recipe created** (`recipes/edge/esp32-agent.toml`). Dual-target: ESP32-S3 (xtensa) + ESP32-C3 (riscv32). no_std esp-hal, MQTT to daimon, WiFi provisioning (SoftAP/SmartConfig), sensor collection, deep sleep, OTA, flash helper script. Pending: source repo (`MacCracken/esp32-agent`), MQTT bridge in daimon (E2) |
-| E2 | Medium | MQTT bridge in daimon | Accept MQTT heartbeats from MCUs alongside HTTP. Translate to existing edge fleet model |
+| E1 | Medium | ESP32 agent scaffold | **Recipe created** (`recipes/edge/esp32-agent.toml`). Dual-target: ESP32-S3 (xtensa) + ESP32-C3 (riscv32). no_std esp-hal, MQTT to daimon, WiFi provisioning (SoftAP/SmartConfig), sensor collection, deep sleep, OTA, flash helper script. MQTT bridge done (E2). Pending: source repo (`MacCracken/esp32-agent`) |
+| E2 | Medium | MQTT bridge in daimon | **DONE**. `agent-runtime/src/edge/mqtt_bridge.rs` — rumqttc subscriber on `agnos/+/{heartbeat,telemetry,status}`, auto-registers MCU nodes into fleet, translates ESP32 heartbeats/OTA/sleep lifecycle to EdgeNode model, WiFi RSSI → network_quality, 14 tests |
 | E3 | Low | ESP32-CAM integration | Snap images on motion → daimon screen capture API |
 | E4 | Low | TinyML on ESP32-S3 | Keyword spotting / gesture recognition via vector extensions. Report inferences to daimon |
 
@@ -333,7 +333,7 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 | S1 | **Done** | gVisor/Firecracker runtime execution | `run_task()` async methods with `tokio::process::Command`, timeout enforcement, kill-on-timeout, full BackendResult |
 | S2 | Medium | SGX/SEV hardware validation | Backends implemented, need hardware to test |
 | S3 | **High** | **sy-agnos sandbox image (Phase 1)** | **Done** — 3 recipes, build script, Dockerfile created |
-| S4 | Medium | sy-agnos dm-verity (Phase 2) | Enable dm-verity verified rootfs on sy-agnos image |
+| S4 | **Done** | sy-agnos dm-verity (Phase 2) | **Done** — veritysetup format in build-sy-agnos.sh, hash tree in OCI image, boot verification, strength 85, graceful skip if no veritysetup |
 | S5 | Low | sy-agnos TPM measured boot (Phase 3) | TPM 2.0 attestation for sy-agnos — requires tpm2-tools on host |
 
 ---
@@ -366,11 +366,11 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 - argonaut init (`agent-runtime/src/argonaut.rs`)
 - read_only_rootfs (edge profile pattern)
 
-### Phase 2 — dm-verity (SY strength 85)
+### Phase 2 — dm-verity (SY strength 85) — DONE
 
-- [ ] **dm-verity rootfs** — Enable `agnos-sys/src/dmverity.rs` on sy-agnos image build. Hash tree generated at build time, verified at boot
-- [ ] **Tamper detection** — If rootfs verification fails, refuse to start agent process (exit code 78 — EX_CONFIG)
-- [ ] **Update `/etc/sy-agnos-release`** — `"dmverity": true, "strength": 85`
+- [x] **dm-verity rootfs** — `build-sy-agnos.sh` runs `veritysetup format` after squashfs creation, generates hash tree, saves root hash. Hash tree included as OCI layer. Graceful skip if `veritysetup` not installed
+- [x] **Tamper detection** — Init script verifies rootfs via `veritysetup verify` at boot. Refuses to start agent (exit 78 EX_CONFIG) on verification failure. Standalone `verify-rootfs.sh` script baked into rootfs
+- [x] **Update `/etc/sy-agnos-release`** — `"dmverity": true, "strength": 85, "hardening": "verified"` when verity is enabled. Features list includes `"dm-verity"`. OCI labels updated
 
 ### Phase 3 — Measured Boot + TPM (SY strength 88)
 
@@ -392,7 +392,9 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 | Debian removal (B4) | build-installer.sh + build-sdcard.sh | debootstrap fully removed. Scripts require AGNOS base rootfs via `--base-rootfs`, cache, or GitHub release auto-download |
 | ESP32 scaffold (E1) | `recipes/edge/esp32-agent.toml` | Dual-target (S3 xtensa + C3 riscv32), esp-rs/esp-hal no_std, MQTT, WiFi provisioning, flash helper, reference config |
 | sy-agnos Phase 1 (S3) | 3 recipes + build script + Dockerfile | `recipes/sandbox/sy-agnos-{rootfs,init,nftables}.toml`, `scripts/build-sy-agnos.sh`, `docker/Dockerfile.sy-agnos`. SY strength 80 |
+| sy-agnos Phase 2 (S4) | dm-verity in build-sy-agnos.sh | `veritysetup format` after squashfs, hash tree in OCI image, boot verification (exit 78 on failure), `verify-rootfs.sh` script, strength 85, graceful skip |
 | gVisor/Firecracker exec (S1) | `run_task()` on both backends | `tokio::process::Command` spawning, timeout + kill, OCI bundle lifecycle (gVisor), config-file startup (Firecracker), 47 tests passing |
+| SHA256 complete (B3) | All 264 recipes | intel-ucode `20250311`→`20260227`, amd-ucode `20250311`→`20260309` (CDN URL fix), gVisor `20250310.0`→`latest`. 100% coverage |
 
 ### Resolved (2026.3.17)
 

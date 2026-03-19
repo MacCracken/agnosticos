@@ -1,13 +1,13 @@
 [package]
 name = "intel-ucode"
-version = "20250311"
+version = "20260227"
 description = "Intel CPU microcode updates"
 license = "Intel"
 groups = ["base", "kernel", "tier1"]
 
 [source]
-url = "https://github.com/intel/Intel-Linux-Processor-Microcode-Data-Files/archive/microcode-20250311.tar.gz"
-sha256 = ""
+url = "https://github.com/intel/Intel-Linux-Processor-Microcode-Data-Files/archive/microcode-20260227.tar.gz"
+sha256 = "fcac5a08d7559a2ce4ad3b1ce5d59619c8adb364b9c51988fedd94220392bb37"
 patches = []
 
 [depends]

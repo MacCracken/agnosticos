@@ -660,6 +660,24 @@ mkdir -p /var/log/sy-agent
 # Set hostname
 hostname sy-agnos
 
+# Verify dm-verity rootfs integrity if root hash is present
+VERITY_ROOT_HASH=""
+if [ -f /etc/agnos/verity-root-hash ]; then
+    VERITY_ROOT_HASH="$(cat /etc/agnos/verity-root-hash)"
+fi
+if [ -n "$VERITY_ROOT_HASH" ] && command -v veritysetup >/dev/null 2>&1; then
+    echo "sy-agnos: verifying rootfs integrity (dm-verity)..."
+    if [ -f /etc/agnos/rootfs.hashtree ]; then
+        veritysetup verify /dev/root /etc/agnos/rootfs.hashtree "$VERITY_ROOT_HASH" 2>/dev/null
+        if [ $? -ne 0 ]; then
+            echo "sy-agnos: FATAL -- rootfs dm-verity verification FAILED"
+            echo "sy-agnos: refusing to start agent (exit 78 EX_CONFIG)"
+            exit 78
+        fi
+        echo "sy-agnos: rootfs integrity verified"
+    fi
+fi
+
 # Load nftables firewall rules
 if [ -f /etc/nftables/sy-agnos.nft ] && command -v nft >/dev/null 2>&1; then
     nft -f /etc/nftables/sy-agnos.nft
@@ -696,7 +714,9 @@ while true; do
     else
         STATUS="unhealthy"; CODE="503"
     fi
-    BODY="{\"status\":\"$STATUS\",\"sandbox\":\"sy-agnos\",\"strength\":80}"
+    STRENGTH=80
+    if [ -f /etc/agnos/verity-root-hash ]; then STRENGTH=85; fi
+    BODY="{\"status\":\"$STATUS\",\"sandbox\":\"sy-agnos\",\"strength\":$STRENGTH}"
     if command -v nc >/dev/null 2>&1; then
         printf "HTTP/1.1 %s OK\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: %d\r\n\r\n%s" \
             "$CODE" "${#BODY}" "$BODY" | nc -l -p "$PORT" -q 1 2>/dev/null || true
@@ -774,6 +794,62 @@ create_squashfs() {
 }
 
 # ---------------------------------------------------------------------------
+# Stage 8.5: Generate dm-verity hash tree (optional)
+# ---------------------------------------------------------------------------
+generate_verity() {
+    if [[ "$BUILD_SQUASHFS" != true ]]; then
+        return
+    fi
+
+    if [[ "$HAS_VERITY" != true ]]; then
+        log_info "Skipping dm-verity (veritysetup not available)"
+        return
+    fi
+
+    log_step "Stage 8.5: Generating dm-verity hash tree..."
+
+    local squashfs_out="$BUILD_DIR/staging/sy-agnos-rootfs.squashfs"
+
+    if [[ ! -f "$squashfs_out" ]]; then
+        log_warn "Squashfs not found -- skipping dm-verity"
+        HAS_VERITY=false
+        return
+    fi
+
+    veritysetup format "$squashfs_out" "$squashfs_out.hashtree" \
+        > "$BUILD_DIR/staging/verity-info.txt" 2>&1 || {
+        log_warn "veritysetup format failed -- continuing without dm-verity"
+        HAS_VERITY=false
+        return
+    }
+
+    # Extract root hash
+    VERITY_ROOT_HASH="$(grep 'Root hash:' "$BUILD_DIR/staging/verity-info.txt" | awk '{print $NF}')"
+
+    if [[ -z "$VERITY_ROOT_HASH" ]]; then
+        log_warn "Could not extract verity root hash -- continuing without dm-verity"
+        HAS_VERITY=false
+        return
+    fi
+
+    log_info "  dm-verity root hash: $VERITY_ROOT_HASH"
+
+    # Save root hash for fleet management / verification
+    echo "$VERITY_ROOT_HASH" > "$BUILD_DIR/staging/verity-root-hash.txt"
+
+    # Also save the root hash into the rootfs so the init script can verify at boot
+    mkdir -p "$BUILD_DIR/rootfs/etc/agnos"
+    echo "$VERITY_ROOT_HASH" > "$BUILD_DIR/rootfs/etc/agnos/verity-root-hash"
+
+    # Copy hash tree to output alongside squashfs
+    cp "$squashfs_out.hashtree" "$OUTPUT_DIR/sy-agnos-rootfs.squashfs.hashtree"
+    cp "$BUILD_DIR/staging/verity-root-hash.txt" "$OUTPUT_DIR/sy-agnos-verity-root-hash.txt"
+
+    log_info "  Hash tree: $(du -h "$squashfs_out.hashtree" | cut -f1)"
+    log_info "  dm-verity artifacts saved to $OUTPUT_DIR/"
+}
+
+# ---------------------------------------------------------------------------
 # Stage 9: Package as OCI image tarball
 # ---------------------------------------------------------------------------
 create_oci_image() {
@@ -787,10 +863,36 @@ create_oci_image() {
     # Create rootfs layer tarball
     (cd "$BUILD_DIR/rootfs" && tar cf "$rootfs_tar" .)
 
+    # Include verity hash tree as a separate layer if available
+    local verity_tar=""
+    if [[ "$HAS_VERITY" == true ]] && [[ -f "$BUILD_DIR/staging/sy-agnos-rootfs.squashfs.hashtree" ]]; then
+        verity_tar="$oci_dir/verity.tar"
+        local verity_staging="$BUILD_DIR/staging/verity-layer"
+        mkdir -p "$verity_staging/etc/agnos"
+        cp "$BUILD_DIR/staging/sy-agnos-rootfs.squashfs.hashtree" "$verity_staging/etc/agnos/rootfs.hashtree"
+        cp "$BUILD_DIR/staging/verity-root-hash.txt" "$verity_staging/etc/agnos/verity-root-hash"
+        (cd "$verity_staging" && tar cf "$verity_tar" .)
+    fi
+
     local rootfs_sha256
     rootfs_sha256="$(sha256sum "$rootfs_tar" | cut -d' ' -f1)"
     local rootfs_size
     rootfs_size="$(stat -c%s "$rootfs_tar")"
+
+    local verity_sha256="" verity_size=""
+    local verity_diff_id=""
+    if [[ -n "$verity_tar" ]] && [[ -f "$verity_tar" ]]; then
+        verity_sha256="$(sha256sum "$verity_tar" | cut -d' ' -f1)"
+        verity_size="$(stat -c%s "$verity_tar")"
+        verity_diff_id=", \"sha256:$verity_sha256\""
+    fi
+
+    local sandbox_strength=80
+    local verity_label="false"
+    if [[ "$HAS_VERITY" == true ]]; then
+        sandbox_strength=85
+        verity_label="true"
+    fi
 
     # Create OCI image config
     cat > "$oci_dir/config.json" << EOF
@@ -815,12 +917,13 @@ create_oci_image() {
             "org.opencontainers.image.source": "https://github.com/maccracken/agnosticos",
             "org.opencontainers.image.version": "$AGNOS_VERSION",
             "org.opencontainers.image.licenses": "GPL-3.0",
-            "com.secureyeoman.sandbox.strength": "80"
+            "com.secureyeoman.sandbox.strength": "$sandbox_strength",
+            "com.secureyeoman.sandbox.dmverity": "$verity_label"
         }
     },
     "rootfs": {
         "type": "layers",
-        "diff_ids": ["sha256:$rootfs_sha256"]
+        "diff_ids": ["sha256:$rootfs_sha256"$verity_diff_id]
     }
 }
 EOF
@@ -834,18 +937,28 @@ EOF
     cp "$rootfs_tar" "$oci_dir/$rootfs_sha256.tar"
     cp "$oci_dir/config.json" "$oci_dir/$config_sha256.json"
 
+    # Build layers list for manifest
+    local layers_json="\"$rootfs_sha256.tar\""
+    local tar_files=("$rootfs_sha256.tar")
+
+    if [[ -n "$verity_sha256" ]]; then
+        cp "$verity_tar" "$oci_dir/$verity_sha256.tar"
+        layers_json="$layers_json, \"$verity_sha256.tar\""
+        tar_files+=("$verity_sha256.tar")
+    fi
+
     # Create OCI manifest
     cat > "$oci_dir/manifest.json" << EOF
 [{
     "Config": "$config_sha256.json",
     "RepoTags": ["sy-agnos:$AGNOS_VERSION", "sy-agnos:latest"],
-    "Layers": ["$rootfs_sha256.tar"]
+    "Layers": [$layers_json]
 }]
 EOF
 
     # Package as Docker-compatible image tarball
     local oci_out="$OUTPUT_DIR/sy-agnos.tar"
-    (cd "$oci_dir" && tar cf "$oci_out" manifest.json "$config_sha256.json" "$rootfs_sha256.tar")
+    (cd "$oci_dir" && tar cf "$oci_out" manifest.json "$config_sha256.json" "${tar_files[@]}")
 
     # Checksum
     sha256sum "$oci_out" > "$oci_out.sha256"
@@ -863,8 +976,15 @@ print_summary() {
     log_info "=========================================="
     log_info "  sy-agnos Sandbox Image Build Complete"
     log_info "=========================================="
+    local strength=80
+    local phase="Phase 1 — minimal"
+    if [[ "$HAS_VERITY" == true ]]; then
+        strength=85
+        phase="Phase 2 — dm-verity"
+    fi
     log_info "  Version:        $AGNOS_VERSION"
-    log_info "  Strength:       80 (Phase 1 — minimal)"
+    log_info "  Strength:       $strength ($phase)"
+    log_info "  dm-verity:      $HAS_VERITY"
     log_info "  Agent included: $([ -n "$AGENT_BINARY" ] && echo "yes" || echo "no (placeholder)")"
     log_info "  Network policy: $([ -n "$NETWORK_POLICY" ] && echo "$NETWORK_POLICY" || echo "default-deny")"
     log_info "  Output:         $OUTPUT_DIR/"
@@ -873,6 +993,9 @@ print_summary() {
     log_info "  $OUTPUT_DIR/sy-agnos.tar               OCI image (docker load)"
     [[ "$BUILD_SQUASHFS" == true ]] && \
     log_info "  $OUTPUT_DIR/sy-agnos-rootfs.squashfs    Standalone squashfs"
+    [[ "$HAS_VERITY" == true ]] && \
+    log_info "  $OUTPUT_DIR/sy-agnos-rootfs.squashfs.hashtree  dm-verity hash tree" && \
+    log_info "  $OUTPUT_DIR/sy-agnos-verity-root-hash.txt      Root hash"
     echo ""
     log_info "Load into Docker/Podman:"
     log_info "  docker load -i $OUTPUT_DIR/sy-agnos.tar"
@@ -886,6 +1009,9 @@ print_summary() {
     log_info "  - No debug tools (gdb, strace, tcpdump, etc.)"
     log_info "  - Seccomp BPF: allowlist-only syscalls, KILL on execve/fork/ptrace"
     log_info "  - nftables: default-deny egress, health only on 8099"
+    if [[ "$HAS_VERITY" == true ]]; then
+    log_info "  - dm-verity: rootfs integrity verified at boot (hash: ${VERITY_ROOT_HASH:0:16}...)"
+    fi
     echo ""
 }
 
@@ -907,8 +1033,9 @@ main() {
     bake_seccomp
     bake_nftables
     write_init
-    write_metadata
     create_squashfs
+    generate_verity
+    write_metadata
     create_oci_image
 
     print_summary

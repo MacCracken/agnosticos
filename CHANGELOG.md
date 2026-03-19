@@ -62,6 +62,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `recipes/sandbox/sy-agnos-nftables.toml` — default-deny egress, configurable allowlist, health-only listener (8099)
   - `scripts/build-sy-agnos.sh` — 9-stage OCI image builder
   - `docker/Dockerfile.sy-agnos` — Docker-based alternative build path
+- **sy-agnos dm-verity Phase 2 (S4)** — `veritysetup format` in `build-sy-agnos.sh`, hash tree in OCI image, boot-time verification (exit 78 on failure), `verify-rootfs.sh` script, SY strength 85. Graceful skip if veritysetup not installed
+- **gVisor/Firecracker runtime execution (S1)** — `run_task()` async methods on both `GVisorBackend` and `FirecrackerBackend`. `tokio::process::Command` spawning, timeout enforcement with kill, OCI bundle lifecycle (gVisor `runsc run`/`kill`/`delete`), config-file startup (Firecracker `--config-file`). `HttpBridge::delete()` added. 47 backend tests passing
+- **MQTT bridge for ESP32 (E2)** — `edge/mqtt_bridge.rs`: `MqttBridge` with `rumqttc` client, subscribes to `agnos/+/heartbeat` and `agnos/+/telemetry`, translates to `EdgeNode` heartbeats in fleet registry. Auto-reconnect, TLS support, configurable broker
+- **SHA256 checksums complete (B3)** — All 264 recipes now have verified SHA256 checksums (100%). Version bumps: intel-ucode `20250311`→`20260227`, amd-ucode `20250311`→`20260309` (URL fixed to CDN mirror), gVisor `20250310.0`→`latest` (rolling GCS release)
 
 ### Removed
 

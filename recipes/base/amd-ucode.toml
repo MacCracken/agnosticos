@@ -1,13 +1,13 @@
 [package]
 name = "amd-ucode"
-version = "20250311"
+version = "20260309"
 description = "AMD CPU microcode updates (from linux-firmware)"
 license = "Proprietary"
 groups = ["base", "kernel", "tier1"]
 
 [source]
-url = "https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/snapshot/linux-firmware-20250311.tar.gz"
-sha256 = ""
+url = "https://cdn.kernel.org/pub/linux/kernel/firmware/linux-firmware-20260309.tar.gz"
+sha256 = "28fb1b57fa9531edbd001a2462068267f10622e613abd40f952344b3f1fc5a16"
 patches = []
 
 [depends]

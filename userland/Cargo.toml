@@ -50,6 +50,7 @@ agnos-sys = { path = "agnos-sys" }
 desktop_environment = { path = "desktop-environment" }
 
 base64 = "0.22"
+rumqttc = "0.24"
 
 [profile.release]
 opt-level = 3

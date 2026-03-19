@@ -6,7 +6,7 @@
 
 [package]
 name = "gvisor"
-version = "20250310.0"
+version = "latest"
 description = "gVisor — userspace application kernel for sandboxed containers"
 license = "Apache-2.0"
 groups = ["base", "security", "tier1"]
@@ -14,8 +14,10 @@ release = 1
 arch = "x86_64"
 
 [source]
-url = "https://storage.googleapis.com/gvisor/releases/release/20250310.0/x86_64/runsc"
-sha256 = ""
+# gVisor uses rolling releases on GCS — no fixed version tags.
+# SHA256 will change with each release; re-verify on upgrade.
+url = "https://storage.googleapis.com/gvisor/releases/release/latest/x86_64/runsc"
+sha256 = "979cb2446f9a60e4ad894dd28f858652f9b9c12a4cc73824b90c0050adaeb5ad"
 patches = []
 
 [depends]

@@ -19,6 +19,7 @@
 //! - Certificate pinning for parent-only trust (Phase 14D)
 
 pub mod fleet;
+pub mod mqtt_bridge;
 pub mod ota;
 pub mod routing;
 pub mod telemetry;

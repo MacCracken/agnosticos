@@ -33,6 +33,7 @@ build_dir = "build/sy-agnos"
 # Minimal runtime deps from edge base recipes
 runtime = ["glibc", "openssl", "ca-certificates", "nftables", "libseccomp"]
 build = ["squashfs-tools", "coreutils"]
+optional = ["cryptsetup"]  # Provides veritysetup for dm-verity (Phase 2)
 
 [build]
 strip = true
@@ -167,6 +168,8 @@ cat > $ROOTFS/etc/seccomp/sy-agent.json << 'SECCOMP'
 SECCOMP
 
 # Stage 5: Write sy-agnos release metadata
+# Metadata is provisional here — build-sy-agnos.sh rewrites it after dm-verity
+# generation with the actual verity status and strength score.
 cat > $ROOTFS/etc/sy-agnos-release << 'RELEASE'
 {
     "version": "2026.3.18",
@@ -177,6 +180,51 @@ cat > $ROOTFS/etc/sy-agnos-release << 'RELEASE'
     "features": ["immutable-rootfs", "seccomp-bpf", "nftables-deny", "no-shell", "no-ssh"]
 }
 RELEASE
+
+# Stage 6: Prepare dm-verity boot config directory
+# The verity root hash is written by build-sy-agnos.sh after squashfs creation.
+# Here we create the directory structure and the boot verification script.
+mkdir -p $ROOTFS/etc/agnos
+cat > $ROOTFS/etc/agnos/verify-rootfs.sh << 'VERIFYBOOT'
+#!/bin/sh
+# sy-agnos dm-verity boot verification
+# Called by init to verify rootfs integrity before starting the agent.
+# Exit 78 (EX_CONFIG) if verification fails.
+HASH_FILE="/etc/agnos/verity-root-hash"
+HASHTREE="/etc/agnos/rootfs.hashtree"
+
+if [ ! -f "$HASH_FILE" ]; then
+    echo "sy-agnos: no verity root hash found -- skipping verification"
+    exit 0
+fi
+
+ROOT_HASH="$(cat "$HASH_FILE")"
+if [ -z "$ROOT_HASH" ]; then
+    echo "sy-agnos: verity root hash is empty -- skipping verification"
+    exit 0
+fi
+
+if ! command -v veritysetup >/dev/null 2>&1; then
+    echo "sy-agnos: veritysetup not available -- skipping dm-verity verification"
+    exit 0
+fi
+
+if [ ! -f "$HASHTREE" ]; then
+    echo "sy-agnos: hash tree not found at $HASHTREE -- skipping verification"
+    exit 0
+fi
+
+echo "sy-agnos: verifying rootfs integrity..."
+veritysetup verify /dev/root "$HASHTREE" "$ROOT_HASH" 2>/dev/null
+if [ $? -ne 0 ]; then
+    echo "sy-agnos: FATAL -- rootfs dm-verity verification FAILED"
+    exit 78
+fi
+
+echo "sy-agnos: rootfs integrity verified (dm-verity)"
+exit 0
+VERIFYBOOT
+chmod 755 $ROOTFS/etc/agnos/verify-rootfs.sh
 
 echo "sy-agnos rootfs: hardening complete"
 """
@@ -193,6 +241,23 @@ mksquashfs $ROOTFS $PKG/sy-agnos-rootfs.squashfs \
     2>/dev/null
 
 echo "sy-agnos rootfs squashfs created: $(du -h $PKG/sy-agnos-rootfs.squashfs | cut -f1)"
+
+# Generate dm-verity hash tree if veritysetup is available
+if command -v veritysetup >/dev/null 2>&1; then
+    echo "sy-agnos: generating dm-verity hash tree..."
+    veritysetup format $PKG/sy-agnos-rootfs.squashfs $PKG/sy-agnos-rootfs.squashfs.hashtree \
+        > $PKG/verity-info.txt 2>&1 || true
+    if [ -f $PKG/verity-info.txt ]; then
+        VERITY_HASH=$(grep 'Root hash:' $PKG/verity-info.txt | awk '{print $NF}')
+        if [ -n "$VERITY_HASH" ]; then
+            echo "$VERITY_HASH" > $PKG/verity-root-hash.txt
+            echo "sy-agnos: dm-verity root hash: $VERITY_HASH"
+            echo "sy-agnos: hash tree: $(du -h $PKG/sy-agnos-rootfs.squashfs.hashtree | cut -f1)"
+        fi
+    fi
+else
+    echo "sy-agnos: veritysetup not found -- skipping dm-verity (install cryptsetup for production)"
+fi
 """
 
 post_install = ""
