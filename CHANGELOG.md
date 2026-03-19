@@ -70,6 +70,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **ESP32-CAM integration (E3)** — Camera MQTT topics (`agnos/+/camera/frame`, `agnos/+/camera/motion`). `McuCameraFrame` + `McuMotionEvent` payloads. Ring buffer capture storage (200 max), >1MB rejection, motion snapshot support. Recipe `[camera]` config section. 13 new tests
 - **TinyML inference (E4)** — Inference MQTT topics (`agnos/+/inference/result`, `agnos/+/inference/status`). `McuInferenceResult` (KWS/gesture/anomaly) + `McuInferenceStatus` payloads. Auto-tags fleet nodes with `tinyml:{model}`. Recipe `[tinyml]` config with ESP32-S3 vector extension support. 10 new tests. 37 total mqtt_bridge tests
 
+### Added — Sutra Integration (T1-T5)
+
+- **Remote exec API (T1)** — `POST /v1/agents/:id/exec`: execute shell commands on fleet nodes via daimon. Shell metacharacter injection prevention, timeout enforcement (max 300s), audit trail. 10 tests
+- **File transfer API (T2)** — `PUT/GET /v1/agents/:id/files/*path`: read/write files in agent data directory. Path traversal protection, symlink rejection, 10MB limit, audit logging. 13 tests
+- **Playbook audit ingestion (T3)** — `POST /v1/audit/runs`: accept sutra RunRecord JSON for centralized audit trail. Appends to cryptographic audit chain. 5 tests
+- **Hoosh playbook tuning (T4)** — `x-sutra-playbook: true` header activates playbook-aware system prompt with module reference + 3 few-shot TOML examples
+- **sutra-community recipe (T5)** — `recipes/marketplace/sutra-community.toml`: installs 5 community modules (nftables, sysctl, aegis, daimon, edge) as ark package
+
 ### Removed
 
 - `os_long_term.md` — content migrated to `docs/applications/` (released) and `docs/development/applications/roadmap.md` (planned). References in roadmap.md updated

@@ -186,6 +186,136 @@ struct ErrorDetail {
 }
 
 // ============================================================================
+// Sutra Playbook System Prompt (T4)
+// ============================================================================
+
+/// System prompt for sutra playbook generation mode. Activated when the
+/// `x-sutra-playbook: true` header is sent with a chat completion request.
+/// Provides format instructions and few-shot TOML examples so the LLM
+/// generates valid sutra playbooks from natural language descriptions.
+const SUTRA_PLAYBOOK_SYSTEM_PROMPT: &str = r#"You are a sutra playbook generator for AGNOS, an AI-native operating system. Generate valid TOML playbooks that sutra can execute.
+
+A sutra playbook has this structure:
+- `[playbook]` section with `name` and `description`
+- `[[target]]` sections specifying which nodes to run on (fields: role, arch, node_id, tag, capability, all)
+- `[[task]]` sections specifying what to do (fields: module, action, plus module-specific keys)
+
+Available modules and their actions:
+- ark: install, remove, upgrade, pin, list (keys: package, version)
+- argonaut: enable, disable, start, stop, restart, status (keys: service)
+- aegis: enforce, audit, quarantine (keys: policy, level)
+- file: template, copy, absent, permissions, line_in_file (keys: path, src, dest, mode, owner, content, line)
+- daimon: register, deregister, report, mcp_call (keys: agent, status, tool, args)
+- edge: target, heartbeat, update, decommission (keys: node_id, version)
+- shell: run (keys: command, creates, removes)
+- user: present, absent, groups (keys: name, groups, shell)
+- nftables: rule, chain, policy (keys: chain, rule, policy, table)
+- sysctl: set (keys: key, value)
+- verify: port_listening, file_exists, service_running, http_ok (keys: port, path, service, url, timeout_secs)
+
+Example 1 — Deploy a package to edge nodes:
+
+```toml
+[playbook]
+name = "Deploy tarang to edge fleet"
+description = "Install and enable tarang media framework on all aarch64 edge nodes"
+
+[[target]]
+role = "edge"
+arch = "aarch64"
+
+[[task]]
+module = "ark"
+action = "install"
+package = "tarang"
+version = "2026.3.18"
+
+[[task]]
+module = "argonaut"
+action = "enable"
+service = "tarang"
+
+[[task]]
+module = "verify"
+action = "port_listening"
+port = 8070
+timeout_secs = 10
+```
+
+Example 2 — Harden a desktop node:
+
+```toml
+[playbook]
+name = "Harden desktop"
+description = "Apply security hardening to desktop workstations"
+
+[[target]]
+role = "desktop"
+
+[[task]]
+module = "sysctl"
+action = "set"
+key = "net.ipv4.ip_forward"
+value = "0"
+
+[[task]]
+module = "nftables"
+action = "policy"
+table = "filter"
+chain = "input"
+policy = "drop"
+
+[[task]]
+module = "aegis"
+action = "enforce"
+policy = "cis-level2"
+```
+
+Example 3 — Set up a new service with user and file:
+
+```toml
+[playbook]
+name = "Setup monitoring agent"
+description = "Create user, deploy config, and start nazar monitoring"
+
+[[target]]
+all = true
+
+[[task]]
+module = "user"
+action = "present"
+name = "nazar"
+groups = ["monitoring"]
+shell = "/usr/sbin/nologin"
+
+[[task]]
+module = "file"
+action = "template"
+src = "nazar.conf.tera"
+dest = "/etc/nazar/config.toml"
+mode = "0644"
+owner = "nazar"
+
+[[task]]
+module = "ark"
+action = "install"
+package = "nazar"
+
+[[task]]
+module = "argonaut"
+action = "enable"
+service = "nazar"
+
+[[task]]
+module = "verify"
+action = "http_ok"
+url = "http://localhost:8095/v1/health"
+timeout_secs = 15
+```
+
+Output ONLY the TOML playbook. Do not include explanatory text before or after. Do not wrap in markdown code fences unless the user asks."#;
+
+// ============================================================================
 // API Handlers
 // ============================================================================
 
@@ -294,13 +424,26 @@ async fn chat_completions(
         .and_then(|s| s.parse::<uuid::Uuid>().ok())
         .map(agnos_common::AgentId);
 
+    // Sutra playbook generation mode (T4): when the x-sutra-playbook header
+    // is set, prepend a playbook-aware system prompt with few-shot TOML examples
+    // so the LLM produces valid sutra playbooks from natural language.
+    let sutra_playbook_mode = headers
+        .get("x-sutra-playbook")
+        .and_then(|h| h.to_str().ok())
+        .map(|s| s == "1" || s.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+
     // Build prompt from messages
-    let prompt = payload
-        .messages
-        .iter()
-        .map(|m| format!("{}: {}", m.role, m.content))
-        .collect::<Vec<_>>()
-        .join("\n");
+    let mut prompt_parts: Vec<String> = Vec::new();
+
+    if sutra_playbook_mode {
+        prompt_parts.push(format!("system: {}", SUTRA_PLAYBOOK_SYSTEM_PROMPT));
+    }
+
+    for m in &payload.messages {
+        prompt_parts.push(format!("{}: {}", m.role, m.content));
+    }
+    let prompt = prompt_parts.join("\n");
 
     // Create inference request with validated parameters
     let mut request = agnos_common::InferenceRequest {

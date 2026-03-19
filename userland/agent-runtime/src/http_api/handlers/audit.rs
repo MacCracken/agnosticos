@@ -159,6 +159,129 @@ pub async fn audit_chain_handler(
     }))
 }
 
+// ---------------------------------------------------------------------------
+// Sutra playbook run record ingestion (T3)
+// ---------------------------------------------------------------------------
+
+/// A single task result from a sutra playbook run.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SutraTaskResult {
+    pub module: String,
+    pub action: String,
+    #[serde(default)]
+    pub changed: bool,
+    #[serde(default)]
+    pub ok: bool,
+    #[serde(default)]
+    pub message: Option<String>,
+    #[serde(default)]
+    pub duration_ms: Option<u64>,
+}
+
+/// A sutra RunRecord — the result of executing a playbook.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SutraRunRecord {
+    pub run_id: String,
+    pub playbook: String,
+    #[serde(default)]
+    pub started_at: Option<String>,
+    #[serde(default)]
+    pub finished_at: Option<String>,
+    #[serde(default)]
+    pub node_id: Option<String>,
+    #[serde(default)]
+    pub success: bool,
+    #[serde(default)]
+    pub tasks: Vec<SutraTaskResult>,
+}
+
+/// `POST /v1/audit/runs` — accept a sutra RunRecord for centralized audit.
+pub async fn audit_runs_handler(
+    State(state): State<ApiState>,
+    Json(record): Json<SutraRunRecord>,
+) -> impl IntoResponse {
+    // Validate required fields
+    if record.run_id.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "run_id is required"})),
+        );
+    }
+    if record.playbook.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "playbook name is required"})),
+        );
+    }
+
+    let run_id = record.run_id.clone();
+    let task_count = record.tasks.len();
+
+    info!(
+        "Sutra audit: run_id={} playbook={} node={:?} success={} tasks={}",
+        record.run_id, record.playbook, record.node_id, record.success, task_count
+    );
+
+    // Build an audit event from the run record
+    let audit_event = AuditEvent {
+        timestamp: record
+            .finished_at
+            .clone()
+            .unwrap_or_else(|| chrono::Utc::now().to_rfc3339()),
+        action: format!(
+            "sutra.playbook.{}",
+            if record.success { "success" } else { "failure" }
+        ),
+        agent: record.node_id.clone(),
+        details: serde_json::to_value(&record).unwrap_or_default(),
+        outcome: if record.success {
+            "success".to_string()
+        } else {
+            "failure".to_string()
+        },
+    };
+
+    // Append to the audit buffer and cryptographic chain
+    let mut buffer = state.audit_buffer.write().await;
+    let mut chain = state.audit_chain.write().await;
+
+    let chain_event = agnos_common::audit::AuditEvent {
+        sequence: 0,
+        timestamp: record
+            .finished_at
+            .as_deref()
+            .and_then(|t| chrono::DateTime::parse_from_rfc3339(t).ok())
+            .map(|dt| dt.with_timezone(&chrono::Utc))
+            .unwrap_or_else(chrono::Utc::now),
+        event_type: agnos_common::audit::AuditEventType::ExternalAudit,
+        agent_id: None,
+        user_id: agnos_common::UserId::new(),
+        action: format!("sutra.run.{}", record.playbook),
+        resource: record.node_id.unwrap_or_default(),
+        result: if record.success {
+            agnos_common::audit::AuditResult::Success
+        } else {
+            agnos_common::audit::AuditResult::Failure
+        },
+        details: serde_json::to_value(&record.tasks).unwrap_or_default(),
+    };
+    chain.append(chain_event);
+
+    if buffer.len() >= MAX_AUDIT_BUFFER {
+        buffer.pop_front();
+    }
+    buffer.push_back(audit_event);
+
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "accepted": true,
+            "run_id": run_id,
+            "tasks_recorded": task_count,
+        })),
+    )
+}
+
 pub async fn audit_chain_verify_handler(State(state): State<ApiState>) -> impl IntoResponse {
     let chain = state.audit_chain.read().await;
     match chain.verify() {

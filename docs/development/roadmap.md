@@ -342,11 +342,11 @@ Sutra (infrastructure orchestrator) needs daimon to expose a remote execution AP
 
 | # | Priority | Item | Notes |
 |---|----------|------|-------|
-| T1 | Medium | Daimon remote exec API | `POST /v1/agents/{id}/exec` — execute a shell command on a fleet node via its daimon agent. Request: `{ "command": "..." }`. Response: `{ "exit_code": 0, "stdout": "...", "stderr": "..." }`. Sutra's `ExecutorKind::Daimon` calls this. Auth: API key or mTLS |
-| T2 | Medium | Daimon file transfer API | `PUT /v1/agents/{id}/files/{path}` — write file to remote node. `GET /v1/agents/{id}/files/{path}` — read file from remote node. Used by sutra file module over daimon transport |
-| T3 | Low | Daimon playbook audit ingestion | `POST /v1/audit/runs` — accept sutra RunRecord JSON for centralized audit trail. Sutra already writes local JSONL; this enables fleet-wide audit in daimon |
-| T4 | Low | Hoosh playbook generation tuning | Tune hoosh system prompt for generating valid TOML playbooks from NL. Sutra's `sutra nl` and MCP `sutra_translate` already call `POST /v1/chat/completions` — needs playbook-aware few-shot examples |
-| T5 | Low | sutra-community module loading | Marketplace recipe for `sutra-community` pack (`recipes/marketplace/sutra-community.toml`). Installs community modules (nftables, sysctl, aegis, daimon, edge) as an ark package |
+| T1 | **Done** | Daimon remote exec API | `POST /v1/agents/{id}/exec` — execute a shell command on a fleet node via its daimon agent. Request: `{ "command": "...", "timeout_secs": 30 }`. Response: `{ "exit_code": 0, "stdout": "...", "stderr": "...", "duration_ms": 42 }`. Shell metacharacter injection prevention, timeout enforcement (default 30s, max 300s), full audit trail. 10 tests |
+| T2 | **Done** | Daimon file transfer API | `PUT /v1/agents/{id}/files/*path` — write file to agent data dir. `GET /v1/agents/{id}/files/*path` — read file from agent data dir. Scoped to `/var/lib/agnos/agents/{id}/`, strict path traversal protection (no `..`, no absolute, no symlinks), 10 MB size limit, audit logging. 13 tests |
+| T3 | **Done** | Daimon playbook audit ingestion | `POST /v1/audit/runs` — accepts sutra RunRecord JSON (run_id, playbook, tasks, success). Validates structure, appends to audit buffer + cryptographic chain. 5 tests |
+| T4 | **Done** | Hoosh playbook generation tuning | `x-sutra-playbook: true` header on `/v1/chat/completions` injects playbook-aware system prompt with 3 few-shot TOML examples (deploy, harden, setup). Module reference included |
+| T5 | **Done** | sutra-community marketplace recipe | `recipes/marketplace/sutra-community.toml` — installs community modules (nftables, sysctl, aegis, daimon, edge) as ark package. Source: `MacCracken/sutra-community` |
 
 ---
 

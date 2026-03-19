@@ -1,0 +1,67 @@
+# sutra-community — Community module pack for sutra orchestrator
+# Installs extended modules (nftables, sysctl, aegis, daimon, edge) that
+# are maintained in the community repo, separate from sutra core.
+#
+# Status: v1 — 2026.3.18 (5 modules: nftables, sysctl, aegis, daimon, edge)
+# Source: https://github.com/MacCracken/sutra-community
+
+[package]
+name = "sutra-community"
+version = "2026.3.18"
+description = "Sutra community modules — nftables, sysctl, aegis, daimon, edge"
+license = "GPL-3.0"
+groups = ["system", "infrastructure"]
+release = 1
+arch = "x86_64"
+
+[source]
+github_release = "MacCracken/sutra-community"
+release_asset = "sutra-community-{version}-linux-{arch}.tar.gz"
+
+[depends]
+runtime = [
+    "sutra",
+    "glibc",
+]
+build = [
+    "rust",
+]
+
+[marketplace]
+category = "infrastructure"
+runtime = "native-binary"
+publisher = "AGNOS"
+tags = ["sutra", "modules", "orchestration", "community", "nftables", "sysctl", "aegis", "fleet"]
+min_agnos_version = "2026.3.18"
+
+[marketplace.sandbox]
+seccomp_mode = "basic"
+network_access = false
+data_dir = "~/.sutra/modules/"
+
+[[marketplace.sandbox.landlock]]
+path = "~/.sutra/modules/"
+access = "rw"
+
+[[marketplace.sandbox.landlock]]
+path = "/usr/lib/sutra/modules/"
+access = "ro"
+
+[build]
+make = "cargo build --release --workspace"
+check = "cargo test --workspace"
+install = """
+# Install community modules into sutra's module directory
+mkdir -p $PKG/usr/lib/sutra/modules
+for mod in nftables sysctl aegis daimon edge; do
+    cp target/release/libsutra_${mod}.so $PKG/usr/lib/sutra/modules/ 2>/dev/null || true
+    cp target/release/sutra-${mod}.toml $PKG/usr/lib/sutra/modules/ 2>/dev/null || true
+done
+
+# Module metadata
+mkdir -p $PKG/usr/share/sutra/community
+cp README.md $PKG/usr/share/sutra/community/ 2>/dev/null || true
+"""
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]

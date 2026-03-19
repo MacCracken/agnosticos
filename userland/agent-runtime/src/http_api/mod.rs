@@ -25,9 +25,11 @@ pub use types::*;
 // Re-export handler-specific public types that were public in the original module
 pub use handlers::anomaly::BehaviorSampleRequest;
 pub use handlers::audit::{
-    AuditChainQueryParams, AuditEvent, AuditForwardRequest, AuditQueryParams,
+    AuditChainQueryParams, AuditEvent, AuditForwardRequest, AuditQueryParams, SutraRunRecord,
+    SutraTaskResult,
 };
 pub use handlers::dashboard::{DashboardSyncRequest, StoredDashboardSnapshot};
+pub use handlers::exec::{ExecRequest, ExecResponse};
 pub use handlers::handshake::BatchRegisterRequest;
 pub use handlers::marketplace::{
     MarketplaceInstallRequest, MarketplaceSearchQuery, RemoteInstallRequest, RemoteSearchQuery,
@@ -71,6 +73,8 @@ pub fn build_router(state: ApiState) -> Router {
     use handlers::dashboard::*;
     use handlers::database::*;
     use handlers::edge;
+    use handlers::exec::*;
+    use handlers::files::*;
     use handlers::handshake::*;
     use handlers::marketplace::*;
     use handlers::memory::*;
@@ -95,6 +99,11 @@ pub fn build_router(state: ApiState) -> Router {
         .route("/v1/attestation", get(attestation_handler))
         .route("/v1/agents/register", post(register_agent_handler))
         .route("/v1/agents/:id/heartbeat", post(heartbeat_handler))
+        // Remote execution for sutra orchestration (T1)
+        .route("/v1/agents/:id/exec", post(exec_handler))
+        // File transfer for sutra orchestration (T2)
+        .route("/v1/agents/:id/files/*path", put(file_put_handler))
+        .route("/v1/agents/:id/files/*path", get(file_get_handler))
         .route("/v1/agents", get(list_agents_handler))
         .route("/v1/agents/:id", get(get_agent_handler))
         .route("/v1/agents/:id", delete(deregister_agent_handler))
@@ -109,6 +118,8 @@ pub fn build_router(state: ApiState) -> Router {
         .route("/v1/audit", get(list_audit_handler))
         .route("/v1/audit/chain", get(audit_chain_handler))
         .route("/v1/audit/chain/verify", get(audit_chain_verify_handler))
+        // Sutra playbook run audit ingestion (T3)
+        .route("/v1/audit/runs", post(audit_runs_handler))
         // Reasoning trace routes
         .route("/v1/agents/:id/reasoning", post(submit_reasoning_handler))
         .route("/v1/agents/:id/reasoning", get(list_reasoning_handler))

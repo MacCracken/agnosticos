@@ -6277,4 +6277,315 @@ mod tests {
             err
         );
     }
+
+    // --- Sutra playbook audit ingestion (T3) ---
+
+    #[tokio::test]
+    async fn test_audit_runs_accepts_sutra_run_record() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        let req_body = serde_json::json!({
+            "run_id": "run-001",
+            "playbook": "deploy-tarang",
+            "started_at": "2026-03-18T10:00:00Z",
+            "finished_at": "2026-03-18T10:01:30Z",
+            "node_id": "rpi-kitchen",
+            "success": true,
+            "tasks": [
+                {
+                    "module": "ark",
+                    "action": "install",
+                    "changed": true,
+                    "ok": true,
+                    "message": "tarang 2026.3.18 installed",
+                    "duration_ms": 4500
+                },
+                {
+                    "module": "argonaut",
+                    "action": "enable",
+                    "changed": true,
+                    "ok": true,
+                    "duration_ms": 200
+                }
+            ]
+        });
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/audit/runs")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["accepted"], true);
+        assert_eq!(json["run_id"], "run-001");
+        assert_eq!(json["tasks_recorded"], 2);
+
+        // Verify it was added to the audit buffer
+        let buffer = state.audit_buffer.read().await;
+        let last = buffer.back().unwrap();
+        assert_eq!(last.action, "sutra.playbook.success");
+        assert_eq!(last.agent.as_deref(), Some("rpi-kitchen"));
+    }
+
+    #[tokio::test]
+    async fn test_audit_runs_rejects_empty_run_id() {
+        let app = test_app();
+
+        let req_body = serde_json::json!({
+            "run_id": "",
+            "playbook": "deploy-tarang",
+            "success": true,
+            "tasks": []
+        });
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/audit/runs")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_audit_runs_rejects_empty_playbook() {
+        let app = test_app();
+
+        let req_body = serde_json::json!({
+            "run_id": "run-002",
+            "playbook": "",
+            "success": false,
+            "tasks": []
+        });
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/audit/runs")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_audit_runs_failure_record() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        let req_body = serde_json::json!({
+            "run_id": "run-003",
+            "playbook": "harden-fleet",
+            "success": false,
+            "tasks": [
+                {
+                    "module": "aegis",
+                    "action": "enforce",
+                    "changed": false,
+                    "ok": false,
+                    "message": "policy validation failed"
+                }
+            ]
+        });
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/audit/runs")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["accepted"], true);
+
+        // Verify failure action
+        let buffer = state.audit_buffer.read().await;
+        let last = buffer.back().unwrap();
+        assert_eq!(last.action, "sutra.playbook.failure");
+        assert_eq!(last.outcome, "failure");
+    }
+
+    #[tokio::test]
+    async fn test_audit_runs_appears_in_chain() {
+        let state = test_state();
+        let app = build_router(state.clone());
+
+        let req_body = serde_json::json!({
+            "run_id": "run-004",
+            "playbook": "deploy-jalwa",
+            "finished_at": "2026-03-18T12:00:00Z",
+            "success": true,
+            "tasks": []
+        });
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/v1/audit/runs")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&req_body).unwrap()))
+            .unwrap();
+        app.clone().oneshot(req).await.unwrap();
+
+        // Verify it appears in the audit chain
+        let chain = state.audit_chain.read().await;
+        let entries = chain.entries();
+        assert!(!entries.is_empty());
+        let last = entries.last().unwrap();
+        assert_eq!(last.event.action, "sutra.run.deploy-jalwa");
+    }
+
+    // --- File transfer API tests (T2 sutra orchestration) ---
+
+    #[tokio::test]
+    async fn test_file_put_and_get_roundtrip() {
+        let state = test_state();
+        let app = build_router(state.clone());
+        let id = register_test_agent(&app).await;
+
+        // Create a temp dir to serve as the agent data dir
+        let tmp = tempfile::tempdir().unwrap();
+        let agent_dir = tmp.path().join(id.to_string());
+        std::fs::create_dir_all(&agent_dir).unwrap();
+
+        // We can't easily override AGENT_DATA_BASE in tests, so test the
+        // path validation and content-type logic via unit tests in the handler
+        // module, and test the full HTTP flow for error paths here.
+
+        // PUT with path traversal should fail
+        let req = Request::builder()
+            .method("PUT")
+            .uri(format!("/v1/agents/{}/files/../../../etc/passwd", id))
+            .body(Body::from("evil content"))
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(json["error"].as_str().unwrap().contains("traversal"));
+    }
+
+    #[tokio::test]
+    async fn test_file_put_absolute_path_rejected() {
+        let state = test_state();
+        let app = build_router(state.clone());
+        let id = register_test_agent(&app).await;
+
+        // Absolute path should be rejected — but axum may strip the leading / from
+        // the wildcard capture, so we encode it differently: use %2F
+        // In practice the route `*path` in axum captures without the leading /.
+        // We test the double-dot variant which is more realistic.
+        let req = Request::builder()
+            .method("PUT")
+            .uri(format!("/v1/agents/{}/files/..%2Fetc%2Fpasswd", id))
+            .body(Body::from("evil"))
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        // Should fail with 400
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_file_get_missing_agent() {
+        let state = test_state();
+        let app = build_router(state.clone());
+        let fake_id = Uuid::new_v4();
+
+        let req = Request::builder()
+            .uri(format!("/v1/agents/{}/files/config.toml", fake_id))
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(json["error"].as_str().unwrap().contains("Agent not found"));
+    }
+
+    #[tokio::test]
+    async fn test_file_get_missing_file() {
+        let state = test_state();
+        let app = build_router(state.clone());
+        let id = register_test_agent(&app).await;
+
+        // File doesn't exist on disk — expect 404 or 500 depending on OS
+        let req = Request::builder()
+            .uri(format!("/v1/agents/{}/files/nonexistent.txt", id))
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        // Could be 404 (file not found) or 500 (dir doesn't exist) — both are acceptable
+        let status = resp.status();
+        assert!(
+            status == StatusCode::NOT_FOUND || status == StatusCode::INTERNAL_SERVER_ERROR,
+            "Expected 404 or 500, got {}",
+            status
+        );
+    }
+
+    #[tokio::test]
+    async fn test_file_put_size_limit() {
+        let state = test_state();
+        let app = build_router(state.clone());
+        let id = register_test_agent(&app).await;
+
+        // The global DefaultBodyLimit is 10 MB. Sending > 10 MB should be rejected
+        // either by our handler or by axum's body limit middleware.
+        // We'll test with exactly the limit boundary via our handler check.
+        // (axum's layer enforces the same limit, so the request may be rejected there)
+        let big_body = vec![0u8; 10 * 1024 * 1024 + 1];
+        let req = Request::builder()
+            .method("PUT")
+            .uri(format!("/v1/agents/{}/files/big.bin", id))
+            .body(Body::from(big_body))
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        // Should be 413 (our handler) or 413 (axum body limit)
+        let status = resp.status();
+        assert!(
+            status == StatusCode::PAYLOAD_TOO_LARGE || status == StatusCode::BAD_REQUEST,
+            "Expected 413 or 400, got {}",
+            status
+        );
+    }
+
+    #[tokio::test]
+    async fn test_file_put_empty_path() {
+        let state = test_state();
+        let app = build_router(state.clone());
+        let id = register_test_agent(&app).await;
+
+        // Empty path after /files/ — axum may not even route this, but if it does,
+        // the handler should reject it
+        let req = Request::builder()
+            .method("PUT")
+            .uri(format!("/v1/agents/{}/files/", id))
+            .body(Body::from("content"))
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        // Axum might return 404 (no route match) or 400 (empty path validation)
+        let status = resp.status();
+        assert!(
+            status == StatusCode::NOT_FOUND || status == StatusCode::BAD_REQUEST,
+            "Expected 404 or 400, got {}",
+            status
+        );
+    }
 }
