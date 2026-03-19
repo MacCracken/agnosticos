@@ -6,7 +6,7 @@
 > **Build order**: 178 packages in `recipes/build-order.txt` (base + desktop, dependency-ordered)
 > **Phases 10–14 complete** | **Phase 15A**: Core scanning done (phylax) | **Audit**: 16 rounds
 > **MCP Tools**: 144 built-in + external registration
-> **Consumer Projects**: 18 released (including Vidhana system settings)
+> **Consumer Projects**: 19 released (including Vidhana v1, Sutra scaffolded)
 > **Sandbox**: 7 backends (Native, gVisor, Firecracker, WASM, SGX, SEV, Noop) + credential proxy + externalization gate
 
 ---
@@ -292,8 +292,9 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 | 14 | Abaco | 5 abaco_* | — | Yes | Not started | Calculator |
 | 15 | Rahd | 5 rahd_* | — | Yes | Not started | Calendar |
 | 16 | Tarang | 8 tarang_* | 8 | Yes | Not started | Media framework (73 tests) |
-| 17 | Jalwa | 8 jalwa_* | 8 | Yes | Not started | Media player (110+ tests), built on tarang. Priority 1 in os_long_term |
+| 17 | Jalwa | 8 jalwa_* | 8 | Yes | Not started | Media player (110+ tests), built on tarang |
 | 18 | Vidhana | 5 vidhana_* | 5 | Yes (v1 2026.3.18) | Not started | System settings (76+ tests), egui GUI, NL control, port 8099 |
+| 19 | Sutra | 6 sutra_* | 5 | Scaffolded | Not started | Infrastructure orchestrator (36 tests), YAML playbooks, IaC |
 
 ---
 
@@ -446,7 +447,7 @@ All 10 large modules (>2000 lines) have been split into focused module directori
 
 ## Key Performance Indicators (KPIs)
 
-### Current Status (as of 2026-03-16)
+### Current Status (as of 2026-03-18)
 
 | Metric | Target | Current | Status |
 |--------|--------|---------|--------|
@@ -466,7 +467,7 @@ All 10 large modules (>2000 lines) have been split into focused module directori
 | Marketplace Recipes | 11 | 22 | Complete (18 released) |
 | Bazaar Community | — | 90 | Seed recipes across 8 categories |
 | MCP Tools | — | 144 | Complete (14 agnos + 5 aequi + 24 agnostic + 7 delta + 8 photis + 5 edge + 7 shruti + 9 tarang + 8 jalwa + 9 rasa + 7 mneme + 7 synapse + 7 bullshift + 7 yeoman + 5 phylax + others) |
-| Consumer Apps | 6 | 18 | 18 released (incl. Vidhana) |
+| Consumer Apps | 6 | 19 | 19 released (incl. Vidhana v1, Sutra scaffolded) |
 | Recipe Validation Errors | 0 | 0 | Complete |
 | Security Audit Rounds | 15 | 16 | Complete |
 | Self-Hosting | Yes | Pending | Phase 13A — THE blocker |
@@ -498,7 +499,7 @@ All 10 large modules (>2000 lines) have been split into focused module directori
 
 ---
 
-## Named Subsystems (19)
+## Named Subsystems (20)
 
 | Name | Role | Component |
 |------|------|-----------|
@@ -519,6 +520,7 @@ All 10 large modules (>2000 lines) have been split into focused module directori
 | **agnova** | OS installer | `agnova.rs` |
 | **phylax** | Threat detection engine | `phylax.rs` |
 | **bazaar** | Community package repository (Persian: marketplace/gathering) | `recipes/base/bazaar.toml` |
+| **sutra** | Infrastructure orchestrator (Sanskrit: thread/rule/formula) | `MacCracken/sutra` |
 | **vansh** | Voice AI shell (planned) | TBD |
 | **AGNOS** | The OS itself | — |
 

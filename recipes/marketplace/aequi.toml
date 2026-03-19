@@ -2,12 +2,12 @@
 # Local-first double-entry bookkeeping, receipt OCR, tax estimates,
 # bank import, and Schedule C preview. Built with Rust/Tauri v2.
 #
-# Status: Alpha — Phases 1-4 complete (Core, Import, OCR, Tax Engine).
+# Status: Released — Aequi 2026.3.18 (Phases 1-8 complete).
 # Source: https://github.com/anomalyco/aequi
 
 [package]
 name = "aequi"
-version = "2026.3.11"
+version = "2026.3.18"
 description = "Aequi — Local-first self-employed accounting platform"
 license = "MIT OR AGPL-3.0"
 groups = ["desktop", "finance", "rust"]
@@ -45,7 +45,7 @@ category = "finance"
 runtime = "native-binary"
 publisher = "Aequi"
 tags = ["accounting", "finance", "tax", "bookkeeping", "invoicing", "self-employed", "receipt-ocr"]
-min_agnos_version = "2026.3.11"
+min_agnos_version = "2026.3.18"
 
 [marketplace.sandbox]
 seccomp_mode = "desktop"

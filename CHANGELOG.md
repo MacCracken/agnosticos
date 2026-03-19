@@ -5,6 +5,36 @@ All notable changes to AGNOS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2026.3.18] - 2026-03-18
+
+### Added — Documentation Restructure
+
+- **First-party application standards** — `docs/development/applications/first-party-standards.md`: scaffolding, versioning (CalVer), CI/CD, MCP integration, daimon integration tiers, testing conventions, naming conventions, release checklist
+- **Application development roadmap** — `docs/development/applications/roadmap.md`: future apps (Priority 1-6) extracted from os_long_term.md
+- **18 individual app docs** — `docs/applications/*.md`: ADR-style docs for all released consumer projects (jalwa, tarang, shruti, rasa, tazama, mneme, synapse, bullshift, delta, aequi, agnostic, secureyeoman, photisnadi, nazar, selah, abaco, rahd, vidhana)
+- **Third-party package docs** — `docs/applications/thirdparty/README.md`: packaged software strategy (OS vs Bazaar)
+- **Sutra** (Sanskrit: सूत्र — thread, rule, formula) — AI-native infrastructure orchestrator. Spec: `docs/development/applications/sutra.md`. Scaffolded at `/home/macro/Repos/sutra` with 5 crates, 36 tests, 6 MCP tools, YAML canonical format with TOML/Markdown/NL input, dry-run-by-default, IaC user ownership
+
+### Added — Claude Code Hooks
+
+- PostToolUse hook: auto-runs `cargo fmt --all` + `cargo clippy -D warnings` on Write/Edit to userland Rust files (conditional via `jq` stdin parsing)
+
+### Changed — Recipe Updates
+
+- PhotisNadi: `2026.3.11` → `2026.3.18`
+- Aequi: `2026.3.11` → `2026.3.18`
+- Synapse: `2026.3.18-1` → `2026.3.18-2` (integration repairs)
+- Vidhana: v1 `2026.3.18` confirmed
+
+### Fixed
+
+- **python_runtime test race condition** — `test_resolve_version_env` and `test_resolve_version_file` used process-global `AGNOS_PYTHON_VERSION` env var, causing intermittent CI failures when parallel tests raced on set/remove. Replaced with direct `PythonVersion::parse()` and `find_version_file()` calls — no env var manipulation
+- **build-iso.yml permission denied** — All 6 `sudo` build jobs now `chown` output directory back to runner user before compress/upload steps. Fixed aarch64 edge, aarch64 minimal, aarch64 sdcard, x86_64 edge, x86_64 installer, x86_64 minimal
+
+### Removed
+
+- `os_long_term.md` — content migrated to `docs/applications/` (released) and `docs/development/applications/roadmap.md` (planned). References in roadmap.md updated
+
 ## [2026.3.17] - 2026-03-18
 
 ### Added — GPU Awareness (G1–G4)
