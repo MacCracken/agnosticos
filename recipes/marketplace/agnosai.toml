@@ -1,0 +1,155 @@
+# AgnosAI — Rust-native AI agent orchestration engine for AGNOS marketplace
+# Multi-agent crew execution, LLM routing (15 providers via hoosh), GPU-aware
+# scheduling, WASM/OCI/process sandboxing, adaptive learning, MCP + A2A + SSE.
+# Built in Rust; replaces CrewAI as the core engine for Agnostic platform.
+#
+# Status: Released — first tag 2026.3.18 (amd64 + arm64 with SHA256 checksums).
+# 9 crates: core, orchestrator, llm, fleet, sandbox, tools, learning, definitions, server.
+
+[package]
+name = "agnosai"
+version = "2026.3.18"
+description = "AgnosAI — Rust-native AI agent orchestration engine"
+license = "Apache-2.0"
+groups = ["server", "ai", "agent-automation", "rust"]
+release = 1
+arch = "x86_64"
+
+[source]
+# Rust binary built by GitHub Actions CI.
+# Release: https://github.com/MacCracken/agnosai/releases
+# Asset format: agnosai-server-YYYY.M.DD-linux-{amd64,arm64}.tar.gz
+github_release = "MacCracken/agnosai"
+release_asset = "agnosai-server-*-linux-amd64.tar.gz"
+
+[depends]
+runtime = [
+    "glibc",
+    "openssl",
+    "sqlite",
+    "zlib",
+]
+build = [
+    "rust",
+    "openssl-dev",
+    "zlib-dev",
+    "protobuf",
+]
+
+[marketplace]
+category = "ai-platform"
+runtime = "native-binary"
+publisher = "AgnosAI"
+tags = ["agent-orchestration", "ai-agents", "crew-execution", "llm-routing", "mcp", "a2a", "gpu-scheduling", "wasm-sandbox", "rust"]
+min_agnos_version = "2026.3.18"
+
+[marketplace.sandbox]
+seccomp_mode = "desktop"
+network_access = true
+allowed_hosts = [
+    "localhost",
+    "127.0.0.1",
+    # LLM providers (routed via hoosh, but direct access for fleet federation)
+    "api.anthropic.com",
+    "api.openai.com",
+    "api.groq.com",
+    "api.deepseek.com",
+    "api.mistral.ai",
+    "openrouter.ai",
+    # Ollama / LM Studio local
+    "localhost:11434",
+    "localhost:1234",
+    # HuggingFace (model definitions/presets)
+    "huggingface.co", "*.huggingface.co",
+]
+data_dir = "~/.agnosai/"
+
+[[marketplace.sandbox.landlock]]
+path = "~/.agnosai/"
+access = "rw"
+
+[[marketplace.sandbox.landlock]]
+path = "/tmp"
+access = "rw"
+
+# GPU device access for GPU-aware fleet scheduling
+[[marketplace.sandbox.landlock]]
+path = "/dev/dri"
+access = "rw"
+
+# CUDA/ROCm libraries
+[[marketplace.sandbox.landlock]]
+path = "/usr/lib/cuda"
+access = "ro"
+
+[[marketplace.sandbox.landlock]]
+path = "/opt/rocm"
+access = "ro"
+
+# IPC with AGNOS agent runtime (daimon) and LLM gateway (hoosh)
+[[marketplace.sandbox.landlock]]
+path = "/run/agnos/"
+access = "rw"
+
+[marketplace.services]
+# AgnosAI REST/gRPC API + SSE
+ports = [8091]
+depends_on = ["llm-gateway"]
+
+[build]
+pre_build = ""
+configure = ""
+make = "cargo build --release"
+check = "cargo test --workspace"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+# Install the server binary
+mkdir -p $PKG/usr/lib/agnosai/bin
+cp target/release/agnosai-server $PKG/usr/lib/agnosai/bin/agnosai-server
+chmod +x $PKG/usr/lib/agnosai/bin/agnosai-server
+
+# Symlink into PATH
+mkdir -p $PKG/usr/bin
+ln -sf /usr/lib/agnosai/bin/agnosai-server $PKG/usr/bin/agnosai-server
+
+# Default config directory
+mkdir -p $PKG/etc/agnosai
+
+# Desktop entry for aethersafha
+mkdir -p $PKG/usr/share/applications
+cat > $PKG/usr/share/applications/agnosai.desktop << 'EOF'
+[Desktop Entry]
+Name=AgnosAI
+Comment=AI agent orchestration engine
+GenericName=Agent Orchestrator
+Exec=agnosai-server
+Icon=agnosai
+Terminal=false
+Type=Application
+Categories=Development;ArtificialIntelligence;
+StartupNotify=true
+StartupWMClass=agnosai
+EOF
+
+# Systemd service unit
+mkdir -p $PKG/usr/lib/systemd/user
+cat > $PKG/usr/lib/systemd/user/agnosai.service << 'EOF'
+[Unit]
+Description=AgnosAI Agent Orchestration Service
+After=network.target agnos-llm-gateway.service
+Wants=agnos-llm-gateway.service
+
+[Service]
+Type=simple
+ExecStart=/usr/lib/agnosai/bin/agnosai-server
+Environment=AGNOSAI_DATA_DIR=%h/.agnosai
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+EOF
+"""

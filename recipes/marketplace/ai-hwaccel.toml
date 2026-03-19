@@ -1,0 +1,62 @@
+# ai-hwaccel — Universal AI hardware accelerator detection and workload planning
+# Detects 13 accelerator families (CUDA, ROCm, Metal, Vulkan, TPU, Gaudi,
+# Inferentia/Trainium, Qualcomm AI 100, Intel oneAPI/NPU, AMD XDNA, Apple ANE)
+# via sysfs, /dev, and CLI tools. Provides quantisation suggestion, sharding
+# plans, and training memory estimation. Pure Rust library crate — no binary.
+#
+# Status: Published — v0.19.3 on crates.io + GitHub.
+# Used by: AGNOS (hoosh, daimon), Synapse, Agnostic, AgnosAI, consumer apps.
+
+[package]
+name = "ai-hwaccel"
+version = "0.19.3"
+description = "ai-hwaccel — Universal AI hardware accelerator detection and workload planning"
+license = "AGPL-3.0"
+groups = ["library", "ai", "hardware", "rust"]
+release = 1
+arch = "any"
+
+[source]
+# Rust library crate — consumed as a Cargo dependency.
+# crates.io: https://crates.io/crates/ai-hwaccel
+# GitHub: https://github.com/MacCracken/ai-hwaccel/releases
+crates_io = "ai-hwaccel"
+github_release = "MacCracken/ai-hwaccel"
+release_asset = "source"
+
+[depends]
+runtime = []
+build = [
+    "rust",
+]
+
+[marketplace]
+category = "library"
+runtime = "rust-crate"
+publisher = "AGNOS"
+tags = ["gpu", "tpu", "npu", "cuda", "rocm", "metal", "vulkan", "gaudi", "inferentia", "trainium", "hardware-detection", "accelerator", "quantization", "sharding", "rust"]
+min_agnos_version = "2026.3.19"
+
+[marketplace.sandbox]
+# Library crate — no runtime sandbox needed.
+seccomp_mode = "basic"
+network_access = false
+
+[build]
+pre_build = ""
+configure = ""
+make = "cargo build --release"
+check = "cargo test"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+# Library crate — consumers add to Cargo.toml:
+#   ai-hwaccel = "0.19.3"
+# Install source for offline/air-gapped builds.
+mkdir -p $PKG/usr/lib/ai-hwaccel
+cp -r src $PKG/usr/lib/ai-hwaccel/
+cp Cargo.toml $PKG/usr/lib/ai-hwaccel/
+cp VERSION $PKG/usr/lib/ai-hwaccel/
+"""
