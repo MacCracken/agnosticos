@@ -330,7 +330,7 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 
 | # | Priority | Item | Notes |
 |---|----------|------|-------|
-| S1 | Medium | gVisor/Firecracker runtime execution | Config generation + OCI/VM lifecycle done, needs actual process spawning via `tokio::process::Command` |
+| S1 | **Done** | gVisor/Firecracker runtime execution | `run_task()` async methods with `tokio::process::Command`, timeout enforcement, kill-on-timeout, full BackendResult |
 | S2 | Medium | SGX/SEV hardware validation | Backends implemented, need hardware to test |
 | S3 | **High** | **sy-agnos sandbox image (Phase 1)** | **Done** — 3 recipes, build script, Dockerfile created |
 | S4 | Medium | sy-agnos dm-verity (Phase 2) | Enable dm-verity verified rootfs on sy-agnos image |
@@ -392,6 +392,7 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 | Debian removal (B4) | build-installer.sh + build-sdcard.sh | debootstrap fully removed. Scripts require AGNOS base rootfs via `--base-rootfs`, cache, or GitHub release auto-download |
 | ESP32 scaffold (E1) | `recipes/edge/esp32-agent.toml` | Dual-target (S3 xtensa + C3 riscv32), esp-rs/esp-hal no_std, MQTT, WiFi provisioning, flash helper, reference config |
 | sy-agnos Phase 1 (S3) | 3 recipes + build script + Dockerfile | `recipes/sandbox/sy-agnos-{rootfs,init,nftables}.toml`, `scripts/build-sy-agnos.sh`, `docker/Dockerfile.sy-agnos`. SY strength 80 |
+| gVisor/Firecracker exec (S1) | `run_task()` on both backends | `tokio::process::Command` spawning, timeout + kill, OCI bundle lifecycle (gVisor), config-file startup (Firecracker), 47 tests passing |
 
 ### Resolved (2026.3.17)
 

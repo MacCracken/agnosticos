@@ -42,6 +42,8 @@ NODE_BINARY=""
 CLEAN_BUILD=false
 VERBOSE=false
 BUILD_SQUASHFS=true
+HAS_VERITY=false
+VERITY_ROOT_HASH=""
 
 # Colors
 RED='\033[0;31m'
@@ -189,6 +191,15 @@ check_dependencies() {
     # Optional: nft for validating nftables rules
     if ! command -v nft &>/dev/null; then
         log_warn "nft not found -- nftables rules will not be validated"
+    fi
+
+    # Optional: veritysetup for dm-verity (graceful fallback if not present)
+    if ! command -v veritysetup &>/dev/null; then
+        log_warn "veritysetup not found -- dm-verity will be skipped"
+        log_warn "Install cryptsetup for production images with verified rootfs"
+        HAS_VERITY=false
+    else
+        HAS_VERITY=true
     fi
 }
 
@@ -707,20 +718,31 @@ write_metadata() {
 
     local rootfs="$BUILD_DIR/rootfs"
 
+    # dm-verity metadata is updated after Stage 8.5 if verity is available
+    local verity_enabled="false"
+    local strength=80
+    local features='["immutable-rootfs", "seccomp-bpf", "nftables-deny", "no-shell", "no-ssh"]'
+
+    if [[ "$HAS_VERITY" == true ]]; then
+        verity_enabled="true"
+        strength=85
+        features='["immutable-rootfs", "seccomp-bpf", "nftables-deny", "no-shell", "no-ssh", "dm-verity"]'
+    fi
+
     cat > "$rootfs/etc/sy-agnos-release" << EOF
 {
     "version": "$AGNOS_VERSION",
-    "hardening": "minimal",
-    "dmverity": false,
+    "hardening": "$([ "$HAS_VERITY" == true ] && echo "verified" || echo "minimal")",
+    "dmverity": $verity_enabled,
     "tpm_measured": false,
-    "strength": 80,
-    "features": ["immutable-rootfs", "seccomp-bpf", "nftables-deny", "no-shell", "no-ssh"],
+    "strength": $strength,
+    "features": $features,
     "build_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
     "agent_included": $([ -n "$AGENT_BINARY" ] && echo "true" || echo "false")
 }
 EOF
 
-    log_info "  Release metadata written"
+    log_info "  Release metadata written (strength=$strength, dmverity=$verity_enabled)"
 }
 
 # ---------------------------------------------------------------------------

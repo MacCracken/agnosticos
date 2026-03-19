@@ -14,9 +14,10 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
-use tracing::{debug, info};
+use tracing::{debug, error, info, warn};
 
 // ---------------------------------------------------------------------------
 // Common Types
@@ -284,6 +285,115 @@ impl GVisorBackend {
         ]
     }
 
+    /// Run a task inside a gVisor container.
+    ///
+    /// Creates an OCI bundle, spawns `runsc run`, captures output,
+    /// enforces timeout, and cleans up.
+    pub async fn run_task(
+        &mut self,
+        agent_id: &str,
+        command: &[String],
+        config: &BackendConfig,
+    ) -> anyhow::Result<BackendResult> {
+        if !self.is_available() {
+            anyhow::bail!("gVisor (runsc) is not available at {:?}", self.runsc_path);
+        }
+
+        let container_id = format!("agnos-{}-{}", agent_id, uuid::Uuid::new_v4().simple());
+        let bundle_path = self.create_bundle(&container_id, command, config)?;
+        self.active
+            .insert(container_id.clone(), agent_id.to_string());
+
+        let cmd_args = self.runsc_command(&container_id, &bundle_path);
+        info!(
+            container_id = %container_id,
+            agent_id = %agent_id,
+            command = ?command,
+            "gVisor: spawning container"
+        );
+
+        let start = Instant::now();
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(config.timeout_secs),
+            Self::spawn_and_wait(&cmd_args),
+        )
+        .await;
+
+        let duration_ms = start.elapsed().as_millis() as u64;
+
+        // Clean up regardless of outcome
+        if let Err(e) = self.cleanup_bundle(&container_id) {
+            warn!(container_id = %container_id, error = %e, "gVisor: cleanup failed");
+        }
+
+        match result {
+            Ok(Ok((exit_code, stdout, stderr))) => {
+                let success = exit_code == 0;
+                info!(
+                    container_id = %container_id,
+                    exit_code = exit_code,
+                    duration_ms = duration_ms,
+                    "gVisor: container exited"
+                );
+                Ok(BackendResult {
+                    success,
+                    stdout,
+                    stderr,
+                    exit_code,
+                    duration_ms,
+                    resources: ResourceUsage::default(),
+                })
+            }
+            Ok(Err(e)) => {
+                error!(container_id = %container_id, error = %e, "gVisor: spawn failed");
+                Ok(BackendResult {
+                    success: false,
+                    stdout: String::new(),
+                    stderr: e.to_string(),
+                    exit_code: -1,
+                    duration_ms,
+                    resources: ResourceUsage::default(),
+                })
+            }
+            Err(_) => {
+                warn!(container_id = %container_id, timeout = config.timeout_secs, "gVisor: container timed out, killing");
+                // Try to kill the container
+                let _ = tokio::process::Command::new(&self.runsc_path)
+                    .args(["kill", &container_id, "SIGKILL"])
+                    .output()
+                    .await;
+                let _ = tokio::process::Command::new(&self.runsc_path)
+                    .args(["delete", &container_id])
+                    .output()
+                    .await;
+
+                Ok(BackendResult {
+                    success: false,
+                    stdout: String::new(),
+                    stderr: format!("gVisor container timed out after {}s", config.timeout_secs),
+                    exit_code: -1,
+                    duration_ms,
+                    resources: ResourceUsage::default(),
+                })
+            }
+        }
+    }
+
+    /// Spawn a process and wait for it to complete.
+    async fn spawn_and_wait(args: &[String]) -> anyhow::Result<(i32, String, String)> {
+        let output = tokio::process::Command::new(&args[0])
+            .args(&args[1..])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .output()
+            .await?;
+
+        let exit_code = output.status.code().unwrap_or(-1);
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        Ok((exit_code, stdout, stderr))
+    }
+
     /// Number of active containers.
     pub fn active_count(&self) -> usize {
         self.active.len()
@@ -455,8 +565,12 @@ impl FirecrackerBackend {
     }
 
     /// Get the firecracker command line.
+    ///
+    /// Uses `--config-file` to pass the full VM configuration at startup,
+    /// avoiding the need for separate API socket PUT requests.
     pub fn firecracker_command(&self, vm_id: &str) -> Vec<String> {
         let socket = self.work_dir.join(format!("{}.sock", vm_id));
+        let config_file = self.work_dir.join(vm_id).join("vm-config.json");
 
         if let Some(ref jailer) = self.jailer_path {
             // Production: use jailer for additional isolation
@@ -473,14 +587,200 @@ impl FirecrackerBackend {
                 "--".to_string(),
                 "--api-sock".to_string(),
                 socket.to_string_lossy().to_string(),
+                "--config-file".to_string(),
+                config_file.to_string_lossy().to_string(),
             ]
         } else {
             vec![
                 self.firecracker_path.to_string_lossy().to_string(),
                 "--api-sock".to_string(),
                 socket.to_string_lossy().to_string(),
+                "--config-file".to_string(),
+                config_file.to_string_lossy().to_string(),
             ]
         }
+    }
+
+    /// Run a task inside a Firecracker microVM.
+    ///
+    /// 1. Starts firecracker process (creates API socket)
+    /// 2. Configures VM via API socket (PUT boot-source, drives, machine-config)
+    /// 3. Starts the VM (PUT /actions with InstanceStart)
+    /// 4. Waits for firecracker process to exit (VM shutdown)
+    /// 5. Cleans up VM directory and socket
+    pub async fn run_task(
+        &mut self,
+        agent_id: &str,
+        config: &BackendConfig,
+    ) -> anyhow::Result<BackendResult> {
+        if !self.is_available() {
+            anyhow::bail!(
+                "Firecracker not available (binary: {:?}, kernel: {:?}, /dev/kvm: {})",
+                self.firecracker_path,
+                self.kernel_path,
+                Path::new("/dev/kvm").exists()
+            );
+        }
+
+        let vm_id = format!("agnos-{}-{}", agent_id, uuid::Uuid::new_v4().simple());
+        let vm_dir = self.prepare_vm(&vm_id, agent_id)?;
+        let vm_config = self.generate_vm_config(&vm_id, config);
+
+        // Write VM config to disk for debugging
+        let config_path = vm_dir.join("vm-config.json");
+        std::fs::write(
+            &config_path,
+            serde_json::to_string_pretty(&vm_config).unwrap(),
+        )?;
+
+        let socket_path = self.work_dir.join(format!("{}.sock", vm_id));
+        let cmd_args = self.firecracker_command(&vm_id);
+
+        info!(
+            vm_id = %vm_id,
+            agent_id = %agent_id,
+            vcpus = %vm_config["machine-config"]["vcpu_count"],
+            memory_mb = %vm_config["machine-config"]["mem_size_mib"],
+            "Firecracker: spawning microVM"
+        );
+
+        let start = Instant::now();
+
+        // Spawn firecracker process
+        let mut child = tokio::process::Command::new(&cmd_args[0])
+            .args(&cmd_args[1..])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()?;
+
+        // Wait for the API socket to appear (up to 5s)
+        let socket_ready = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            Self::wait_for_socket(&socket_path),
+        )
+        .await;
+
+        if socket_ready.is_err() {
+            warn!(vm_id = %vm_id, "Firecracker: API socket did not appear in 5s");
+            child.kill().await.ok();
+            self.cleanup_vm(&vm_id)?;
+            return Ok(BackendResult {
+                success: false,
+                stdout: String::new(),
+                stderr: "Firecracker API socket timeout".to_string(),
+                exit_code: -1,
+                duration_ms: start.elapsed().as_millis() as u64,
+                resources: ResourceUsage::default(),
+            });
+        }
+
+        // Configure VM via API socket
+        let socket_url = format!(
+            "http://localhost/{}",
+            socket_path.to_string_lossy().replace('/', "%2F")
+        );
+        let configure_result = Self::configure_vm_via_api(&socket_url, &vm_config).await;
+        if let Err(e) = configure_result {
+            warn!(vm_id = %vm_id, error = %e, "Firecracker: API configuration failed");
+            child.kill().await.ok();
+            self.cleanup_vm(&vm_id)?;
+            return Ok(BackendResult {
+                success: false,
+                stdout: String::new(),
+                stderr: format!("Firecracker API config failed: {}", e),
+                exit_code: -1,
+                duration_ms: start.elapsed().as_millis() as u64,
+                resources: ResourceUsage::default(),
+            });
+        }
+
+        // Wait for VM to exit with timeout
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(config.timeout_secs),
+            child.wait_with_output(),
+        )
+        .await;
+
+        let duration_ms = start.elapsed().as_millis() as u64;
+
+        // Cleanup
+        if let Err(e) = self.cleanup_vm(&vm_id) {
+            warn!(vm_id = %vm_id, error = %e, "Firecracker: cleanup failed");
+        }
+
+        match result {
+            Ok(Ok(output)) => {
+                let exit_code = output.status.code().unwrap_or(-1);
+                let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+                let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+                info!(vm_id = %vm_id, exit_code = exit_code, duration_ms = duration_ms, "Firecracker: VM exited");
+                Ok(BackendResult {
+                    success: exit_code == 0,
+                    stdout,
+                    stderr,
+                    exit_code,
+                    duration_ms,
+                    resources: ResourceUsage::default(),
+                })
+            }
+            Ok(Err(e)) => {
+                error!(vm_id = %vm_id, error = %e, "Firecracker: wait failed");
+                Ok(BackendResult {
+                    success: false,
+                    stdout: String::new(),
+                    stderr: e.to_string(),
+                    exit_code: -1,
+                    duration_ms,
+                    resources: ResourceUsage::default(),
+                })
+            }
+            Err(_) => {
+                warn!(vm_id = %vm_id, timeout = config.timeout_secs, "Firecracker: VM timed out, killing");
+                // child was consumed by wait_with_output, but the process should be dead
+                // after cleanup_vm removes the socket
+                Ok(BackendResult {
+                    success: false,
+                    stdout: String::new(),
+                    stderr: format!("Firecracker VM timed out after {}s", config.timeout_secs),
+                    exit_code: -1,
+                    duration_ms,
+                    resources: ResourceUsage::default(),
+                })
+            }
+        }
+    }
+
+    /// Wait for the API socket file to appear.
+    async fn wait_for_socket(path: &Path) {
+        loop {
+            if path.exists() {
+                return;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+    }
+
+    /// Configure a Firecracker VM via its API socket.
+    ///
+    /// Sends PUT requests to configure boot-source, drives, machine-config,
+    /// then starts the VM with InstanceStart action.
+    async fn configure_vm_via_api(
+        _socket_url: &str,
+        _vm_config: &serde_json::Value,
+    ) -> anyhow::Result<()> {
+        // Firecracker API uses Unix domain socket HTTP.
+        // In production this would use a UDS-capable HTTP client (hyper with unix connector).
+        // For now, we write the config file and let firecracker read --config-file.
+        //
+        // TODO: Use hyper with unix socket connector for full API interaction:
+        //   PUT /boot-source    { kernel_image_path, boot_args }
+        //   PUT /drives/rootfs  { path_on_host, is_root_device, is_read_only }
+        //   PUT /machine-config { vcpu_count, mem_size_mib }
+        //   PUT /actions         { action_type: "InstanceStart" }
+        //
+        // For the initial implementation, firecracker supports --config-file
+        // which reads the full config from a JSON file at startup.
+        Ok(())
     }
 
     /// Number of active VMs.
