@@ -65,7 +65,7 @@ impl Orchestrator {
 
             // Proactive pruning — ensures results map stays bounded even
             // when no new results arrive (e.g., long-running tasks).
-            if tick_count % Self::PRUNE_INTERVAL_TICKS == 0 {
+            if tick_count.is_multiple_of(Self::PRUNE_INTERVAL_TICKS) {
                 let mut state = orchestrator.state.write().await;
                 Self::prune_results(&mut state.results);
             }

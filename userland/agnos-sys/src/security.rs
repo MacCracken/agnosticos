@@ -240,7 +240,7 @@ pub fn load_seccomp(filter: &[u8]) -> Result<()> {
             return Err(SysError::InvalidArgument("Empty filter".into()));
         }
 
-        if filter.len() % 8 != 0 {
+        if !filter.len().is_multiple_of(8) {
             return Err(SysError::InvalidArgument(format!(
                 "Filter size {} is not a multiple of 8 (sock_filter size)",
                 filter.len()

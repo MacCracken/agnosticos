@@ -57,7 +57,7 @@ impl CronField {
                 if *step == 0 {
                     return true;
                 }
-                value % step == 0
+                value.is_multiple_of(*step)
             }
         }
     }

@@ -149,7 +149,7 @@ impl ServiceManager {
         let mut loaded = Vec::new();
         while let Some(entry) = entries.next_entry().await? {
             let path = entry.path();
-            if path.extension().map_or(true, |e| e != "toml") {
+            if path.extension().is_none_or(|e| e != "toml") {
                 continue;
             }
 

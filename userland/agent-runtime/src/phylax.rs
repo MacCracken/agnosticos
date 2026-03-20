@@ -178,7 +178,7 @@ impl YaraRule {
     /// Convert a hex string (e.g. "4d5a") to bytes.
     fn hex_to_bytes(hex: &str) -> Option<Vec<u8>> {
         let clean: String = hex.chars().filter(|c| !c.is_whitespace()).collect();
-        if clean.len() % 2 != 0 {
+        if !clean.len().is_multiple_of(2) {
             return None;
         }
         (0..clean.len())

@@ -221,7 +221,7 @@ impl EdgeFleetManager {
     pub fn list_nodes(&self, status_filter: Option<EdgeNodeStatus>) -> Vec<&EdgeNode> {
         self.nodes
             .values()
-            .filter(|n| status_filter.map_or(true, |s| n.status == s))
+            .filter(|n| status_filter.is_none_or(|s| n.status == s))
             .collect()
     }
 
