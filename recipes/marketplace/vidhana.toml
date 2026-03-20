@@ -16,7 +16,7 @@ arch = "x86_64"
 
 [source]
 github_release = "MacCracken/vidhana"
-release_asset = "vidhana-{version}-linux-{arch}.tar.gz"
+release_asset = "vidhana-*-linux-amd64.tar.gz"
 
 [depends]
 runtime = [

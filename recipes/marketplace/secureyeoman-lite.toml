@@ -20,9 +20,9 @@ arch = "x86_64"
 [source]
 # Bun-compiled standalone binary from GitHub Actions CI.
 # Release: https://github.com/MacCracken/SecureYeoman/releases
-# Asset: secureyeoman-lite-linux-x64
+# Asset: secureyeoman-YYYYMMDD-agent-linux-x64 (lite = standalone agent binary)
 github_release = "MacCracken/SecureYeoman"
-release_asset = "secureyeoman-lite-linux-x64"
+release_asset = "secureyeoman-*-agent-linux-x64"
 
 [depends]
 runtime = [

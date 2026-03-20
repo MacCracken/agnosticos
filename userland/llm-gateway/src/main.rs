@@ -23,7 +23,7 @@ mod http;
 mod providers;
 pub mod rate_limiter;
 
-use crate::acceleration::AcceleratorRegistry;
+use crate::acceleration::{AcceleratorRegistry, AcceleratorRegistryExt};
 use crate::accounting::{BudgetManager, TokenAccounting};
 use crate::cache::ResponseCache;
 use crate::http::start_http_server;

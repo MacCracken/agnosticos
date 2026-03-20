@@ -7,7 +7,7 @@ pub mod mcp_proxy;
 pub mod providers;
 pub mod rate_limiter;
 
-pub use acceleration::AcceleratorRegistry;
+pub use acceleration::{AcceleratorRegistry, AcceleratorRegistryExt};
 
 // Re-export key types from main.rs that live in the binary.
 // The gateway struct itself lives in main.rs; for benchmarks we use

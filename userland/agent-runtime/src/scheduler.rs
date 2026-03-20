@@ -14,6 +14,8 @@ use serde::{Deserialize, Serialize};
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
+use ai_hwaccel::AcceleratorRequirement;
+
 // ---------------------------------------------------------------------------
 // ResourceReq
 // ---------------------------------------------------------------------------
@@ -25,8 +27,8 @@ pub struct ResourceReq {
     pub cpu_cores: f64,
     /// Required memory in megabytes.
     pub memory_mb: u64,
-    /// Whether a GPU is required.
-    pub gpu: bool,
+    /// Hardware accelerator requirement.
+    pub accelerator: AcceleratorRequirement,
     /// Whether network access is required.
     pub network: bool,
     /// Required disk space in megabytes.
@@ -38,7 +40,7 @@ impl Default for ResourceReq {
         Self {
             cpu_cores: 1.0,
             memory_mb: 256,
-            gpu: false,
+            accelerator: AcceleratorRequirement::default(),
             network: false,
             disk_mb: 0,
         }
@@ -202,6 +204,8 @@ pub struct NodeCapacity {
     pub total_disk_mb: u64,
     pub available_disk_mb: u64,
     pub gpu_available: bool,
+    pub tpu_available: bool,
+    pub tpu_chip_count: u32,
     pub running_tasks: usize,
 }
 
@@ -223,15 +227,32 @@ impl NodeCapacity {
             total_disk_mb,
             available_disk_mb: total_disk_mb,
             gpu_available,
+            tpu_available: false,
+            tpu_chip_count: 0,
             running_tasks: 0,
         }
+    }
+
+    /// Configure TPU availability for this node.
+    pub fn with_tpu(mut self, chip_count: u32) -> Self {
+        self.tpu_available = chip_count > 0;
+        self.tpu_chip_count = chip_count;
+        self
     }
 
     /// Returns `true` if this node can fit the given resource requirements.
     pub fn can_fit(&self, req: &ResourceReq) -> bool {
         self.available_cpu >= req.cpu_cores
             && self.available_memory_mb >= req.memory_mb
-            && (!req.gpu || self.gpu_available)
+            && match &req.accelerator {
+                AcceleratorRequirement::None => true,
+                AcceleratorRequirement::Gpu => self.gpu_available,
+                AcceleratorRequirement::Tpu { min_chips } => {
+                    self.tpu_available && self.tpu_chip_count >= *min_chips
+                }
+                AcceleratorRequirement::GpuOrTpu => self.gpu_available || self.tpu_available,
+                _ => true, // Gaudi, AwsNeuron, AnyAccelerator — accept if any accelerator present
+            }
             && self.available_disk_mb >= req.disk_mb
     }
 
@@ -738,6 +759,18 @@ impl fmt::Display for TrainingMethod {
     }
 }
 
+impl TrainingMethod {
+    /// Returns the preferred accelerator requirement for this training method.
+    pub fn preferred_accelerator(&self) -> AcceleratorRequirement {
+        match self {
+            Self::LoRA | Self::QLoRA => AcceleratorRequirement::Gpu,
+            Self::FullFineTune | Self::DPO | Self::RLHF | Self::Distillation => {
+                AcceleratorRequirement::GpuOrTpu
+            }
+        }
+    }
+}
+
 impl TrainingJobTemplate {
     /// Create a scheduled task from this training job template.
     /// Training jobs get High priority and require GPU resources.
@@ -751,7 +784,7 @@ impl TrainingJobTemplate {
                 cpu_cores: 2.0,
                 memory_mb: 4096,
                 disk_mb: 10_000,
-                gpu: true,
+                accelerator: self.method.preferred_accelerator(),
                 network: false,
             },
         );
@@ -797,7 +830,10 @@ mod training_tests {
         assert!(task.name.contains("lora"));
         assert!(task.name.contains("meta-llama/Llama-2-7b"));
         assert_eq!(task.priority, 6);
-        assert!(task.resource_requirements.gpu);
+        assert_ne!(
+            task.resource_requirements.accelerator,
+            AcceleratorRequirement::None
+        );
         assert!(task.deadline.is_some());
     }
 
@@ -817,7 +853,7 @@ mod training_tests {
     }
 
     #[test]
-    fn training_job_requires_gpu() {
+    fn training_job_requires_accelerator() {
         let job = TrainingJobTemplate {
             model_id: "m".into(),
             method: TrainingMethod::FullFineTune,
@@ -827,7 +863,10 @@ mod training_tests {
             checkpoint_interval_secs: 0,
         };
         let task = job.to_scheduled_task("a");
-        assert!(task.resource_requirements.gpu);
+        assert_eq!(
+            task.resource_requirements.accelerator,
+            AcceleratorRequirement::GpuOrTpu
+        );
         assert!(task.resource_requirements.memory_mb >= 4096);
     }
 }
@@ -1071,7 +1110,7 @@ mod tests {
     fn test_node_can_fit_gpu_requirement() {
         let node = NodeCapacity::new("n1", 4.0, 8192, 10240, false);
         let req = ResourceReq {
-            gpu: true,
+            accelerator: AcceleratorRequirement::Gpu,
             ..make_req(1.0, 256)
         };
         assert!(!node.can_fit(&req));
@@ -1100,6 +1139,8 @@ mod tests {
             total_disk_mb: 0,
             available_disk_mb: 0,
             gpu_available: false,
+            tpu_available: false,
+            tpu_chip_count: 0,
             running_tasks: 0,
         };
         assert_eq!(node.utilization(), 0.0);
@@ -1410,5 +1451,29 @@ mod tests {
         cron.add_entry(entry).unwrap();
         let tasks = cron.check_due();
         assert_eq!(tasks.len(), 1);
+    }
+
+    #[test]
+    fn test_node_can_fit_tpu_requirement() {
+        let node = NodeCapacity::new("n1", 4.0, 8192, 10240, false).with_tpu(4);
+        let req = ResourceReq {
+            cpu_cores: 1.0,
+            memory_mb: 256,
+            accelerator: AcceleratorRequirement::Tpu { min_chips: 2 },
+            ..Default::default()
+        };
+        assert!(node.can_fit(&req));
+    }
+
+    #[test]
+    fn test_node_gpu_or_tpu_satisfied_by_tpu() {
+        let node = NodeCapacity::new("n1", 4.0, 8192, 10240, false).with_tpu(2);
+        let req = ResourceReq {
+            cpu_cores: 1.0,
+            memory_mb: 256,
+            accelerator: AcceleratorRequirement::GpuOrTpu,
+            ..Default::default()
+        };
+        assert!(node.can_fit(&req));
     }
 }

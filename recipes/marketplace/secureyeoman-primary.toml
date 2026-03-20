@@ -25,7 +25,7 @@ arch = "x86_64"
 # Release: https://github.com/MacCracken/SecureYeoman/releases
 # Asset: secureyeoman-linux-x64 — same binary as main release; role set via env
 github_release = "MacCracken/SecureYeoman"
-release_asset = "secureyeoman-linux-x64"
+release_asset = "secureyeoman-????????-linux-x64"
 
 [depends]
 runtime = [

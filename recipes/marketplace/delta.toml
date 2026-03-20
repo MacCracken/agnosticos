@@ -18,7 +18,7 @@ arch = "x86_64"
 local = true
 build_dir = "target/release"
 github_release = "MacCracken/delta"
-release_asset = "delta-{version}-linux-{arch}.tar.gz"
+release_asset = "delta-*-linux-amd64.tar.gz"
 
 [depends]
 runtime = [

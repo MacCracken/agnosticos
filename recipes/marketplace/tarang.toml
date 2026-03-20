@@ -3,20 +3,22 @@
 # (thin FFI: dav1d, openh264, libvpx), AI content analysis.
 # Replaces ffmpeg as the media pipeline — Rust-owned orchestration, C only for codec math.
 #
-# Status: Scaffolded — 73 tests, 5 MCP tools, 5 crates.
+# Status: Published — v0.19.3 on crates.io + GitHub.
 
 [package]
 name = "tarang"
-version = "2026.3.18"
+version = "0.19.3"
 description = "Tarang — AI-native Rust media framework"
-license = "GPL-3.0"
-groups = ["server", "media", "rust"]
+license = "AGPL-3.0"
+groups = ["server", "media", "library", "rust"]
 release = 1
-arch = "x86_64"
+arch = "any"
 
 [source]
-github_release = "MacCracken/tarang"
-release_asset = "tarang-*-linux-amd64.tar.gz"
+# crates.io: https://crates.io/crates/tarang
+# Consumers add: tarang = "0.19.3" to Cargo.toml
+crates_io = "tarang"
+release_asset = "source"
 
 [depends]
 runtime = [
@@ -32,7 +34,7 @@ build = [
 
 [marketplace]
 category = "media-framework"
-runtime = "native-binary"
+runtime = "rust-crate"
 publisher = "Tarang"
 tags = ["media", "audio", "video", "codec", "decoding", "rust", "symphonia", "ai"]
 min_agnos_version = "2026.3.18"

@@ -16,7 +16,7 @@ arch = "x86_64"
 
 [source]
 github_release = "MacCracken/nazar"
-release_asset = "nazar-x86_64-unknown-linux-gnu"
+release_asset = "nazar-*-linux-amd64.tar.gz"
 
 [depends]
 runtime = [

@@ -16,7 +16,7 @@ arch = "x86_64"
 
 [source]
 github_release = "MacCracken/shruti"
-release_asset = "shruti-linux-amd64.tar.gz"
+release_asset = "shruti-*-linux.tar.gz"
 
 [depends]
 runtime = [

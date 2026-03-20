@@ -1,8 +1,9 @@
 # sutra-community — Community module pack for sutra orchestrator
 # Installs extended modules (nftables, sysctl, aegis, daimon, edge) that
 # are maintained in the community repo, separate from sutra core.
+# These are TOML playbook modules and shell handlers, not compiled binaries.
 #
-# Status: v1 — 2026.3.18 (5 modules: nftables, sysctl, aegis, daimon, edge)
+# Status: v2026.3.18 — 5 modules: nftables, sysctl, aegis, daimon, edge
 # Source: https://github.com/MacCracken/sutra-community
 
 [package]
@@ -10,26 +11,24 @@ name = "sutra-community"
 version = "2026.3.18"
 description = "Sutra community modules — nftables, sysctl, aegis, daimon, edge"
 license = "GPL-3.0"
-groups = ["system", "infrastructure"]
+groups = ["system", "infrastructure", "modules"]
 release = 1
-arch = "x86_64"
+arch = "any"
 
 [source]
+# Source-only — TOML module definitions and shell handlers.
+# No compiled binary. CI needs release asset step to bundle modules.
 github_release = "MacCracken/sutra-community"
-release_asset = "sutra-community-{version}-linux-{arch}.tar.gz"
+release_asset = "source"
 
 [depends]
 runtime = [
     "sutra",
-    "glibc",
-]
-build = [
-    "rust",
 ]
 
 [marketplace]
 category = "infrastructure"
-runtime = "native-binary"
+runtime = "sutra-modules"
 publisher = "AGNOS"
 tags = ["sutra", "modules", "orchestration", "community", "nftables", "sysctl", "aegis", "fleet"]
 min_agnos_version = "2026.3.18"
@@ -48,20 +47,20 @@ path = "/usr/lib/sutra/modules/"
 access = "ro"
 
 [build]
-make = "cargo build --release --workspace"
-check = "cargo test --workspace"
+make = ""
+check = ""
 install = """
 # Install community modules into sutra's module directory
-mkdir -p $PKG/usr/lib/sutra/modules
+mkdir -p $PKG/usr/lib/sutra/modules/community
 for mod in nftables sysctl aegis daimon edge; do
-    cp target/release/libsutra_${mod}.so $PKG/usr/lib/sutra/modules/ 2>/dev/null || true
-    cp target/release/sutra-${mod}.toml $PKG/usr/lib/sutra/modules/ 2>/dev/null || true
+    if [ -d "modules/${mod}" ]; then
+        cp -r "modules/${mod}" $PKG/usr/lib/sutra/modules/community/
+    fi
 done
 
-# Module metadata
 mkdir -p $PKG/usr/share/sutra/community
 cp README.md $PKG/usr/share/sutra/community/ 2>/dev/null || true
 """
 
 [security]
-hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+hardening = []

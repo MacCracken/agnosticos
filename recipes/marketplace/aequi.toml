@@ -17,7 +17,7 @@ arch = "x86_64"
 [source]
 local = true
 build_dir = "target/release"
-github_release = "anomalyco/aequi"
+github_release = "MacCracken/aequi"
 release_asset = "aequi-*-linux-amd64.tar.gz"
 
 [depends]

@@ -13,6 +13,8 @@ use serde::{Deserialize, Serialize};
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
+use ai_hwaccel::{estimate_training_memory as hwaccel_estimate, TrainingTarget};
+
 // ---------------------------------------------------------------------------
 // ExampleSource
 // ---------------------------------------------------------------------------
@@ -461,7 +463,28 @@ pub struct VramEstimate {
 ///
 /// `model_params_millions` is the number of model parameters in millions
 /// (e.g. 7000 for a 7B model). Each parameter is assumed to be 2 bytes (fp16).
-pub fn estimate_vram(config: &FineTuneConfig, model_params_millions: u64) -> VramEstimate {
+pub fn estimate_vram(
+    config: &FineTuneConfig,
+    model_params_millions: u64,
+    target: Option<TrainingTarget>,
+) -> VramEstimate {
+    // Delegate to ai-hwaccel for TPU/Gaudi-specific estimation
+    if let Some(t @ (TrainingTarget::Tpu | TrainingTarget::Gaudi)) = target {
+        let method = match &config.method {
+            FineTuneMethod::FullFineTune => ai_hwaccel::TrainingMethod::FullFineTune,
+            FineTuneMethod::LoRA { .. } => ai_hwaccel::TrainingMethod::LoRA,
+            FineTuneMethod::QLoRA { bits, .. } => ai_hwaccel::TrainingMethod::QLoRA { bits: *bits },
+            FineTuneMethod::Prefix { .. } => ai_hwaccel::TrainingMethod::LoRA, // closest match
+        };
+        let est = hwaccel_estimate(model_params_millions, method, t);
+        return VramEstimate {
+            model_vram_gb: est.model_gb,
+            optimizer_vram_gb: est.optimizer_gb,
+            activation_vram_gb: est.activation_gb,
+            total_gb: est.total_gb,
+        };
+    }
+
     // Base model size in GB (fp16 = 2 bytes per param)
     let base_gb = (model_params_millions as f64 * 1_000_000.0 * 2.0) / 1_073_741_824.0;
 
@@ -1613,8 +1636,8 @@ mod tests {
     #[test]
     fn vram_full_finetune() {
         let config = FineTuneConfig::new("base", "ds", FineTuneMethod::FullFineTune, "out");
-        let est = estimate_vram(&config, 7000); // 7B params
-                                                // Base model ~13 GB fp16, total ~4x = ~52 GB
+        let est = estimate_vram(&config, 7000, None); // 7B params
+                                                      // Base model ~13 GB fp16, total ~4x = ~52 GB
         assert!(est.total_gb > 40.0);
         assert!(est.model_vram_gb > 10.0);
         assert!(est.optimizer_vram_gb > est.model_vram_gb); // 2x model
@@ -1631,7 +1654,7 @@ mod tests {
             },
             "out",
         );
-        let est = estimate_vram(&config, 7000);
+        let est = estimate_vram(&config, 7000, None);
         // LoRA ~1.2x base = ~15.6 GB
         assert!(est.total_gb < 20.0);
         assert!(est.total_gb > 10.0);
@@ -1649,7 +1672,7 @@ mod tests {
             },
             "out",
         );
-        let est = estimate_vram(&config, 7000);
+        let est = estimate_vram(&config, 7000, None);
         // QLoRA 4-bit should be significantly less than LoRA
         let lora_config = FineTuneConfig::new(
             "base",
@@ -1660,7 +1683,7 @@ mod tests {
             },
             "out",
         );
-        let lora_est = estimate_vram(&lora_config, 7000);
+        let lora_est = estimate_vram(&lora_config, 7000, None);
         assert!(est.total_gb < lora_est.total_gb);
     }
 
@@ -1686,8 +1709,8 @@ mod tests {
             },
             "o",
         );
-        let est_4 = estimate_vram(&config_4, 7000);
-        let est_8 = estimate_vram(&config_8, 7000);
+        let est_4 = estimate_vram(&config_4, 7000, None);
+        let est_8 = estimate_vram(&config_8, 7000, None);
         assert!(est_8.model_vram_gb > est_4.model_vram_gb);
     }
 
@@ -1695,7 +1718,7 @@ mod tests {
     fn vram_prefix() {
         let config =
             FineTuneConfig::new("b", "d", FineTuneMethod::Prefix { prefix_length: 20 }, "o");
-        let est = estimate_vram(&config, 7000);
+        let est = estimate_vram(&config, 7000, None);
         // Prefix ~1.1x base
         assert!(est.total_gb > 13.0);
         assert!(est.total_gb < 20.0);
@@ -1771,5 +1794,25 @@ mod tests {
         // Duplicate content is fine — each has unique ID
         assert_eq!(ds.examples.len(), 2);
         assert_ne!(ds.examples[0].example_id, ds.examples[1].example_id);
+    }
+
+    #[test]
+    fn vram_tpu_full_finetune() {
+        let config = FineTuneConfig::new("base", "ds", FineTuneMethod::FullFineTune, "out");
+        let est = estimate_vram(&config, 7000, Some(TrainingTarget::Tpu));
+        assert!(est.total_gb > 30.0);
+        assert!(
+            est.optimizer_vram_gb < {
+                let gpu_est = estimate_vram(&config, 7000, None);
+                gpu_est.optimizer_vram_gb
+            }
+        );
+    }
+
+    #[test]
+    fn vram_gaudi_full_finetune() {
+        let config = FineTuneConfig::new("base", "ds", FineTuneMethod::FullFineTune, "out");
+        let est = estimate_vram(&config, 7000, Some(TrainingTarget::Gaudi));
+        assert!(est.total_gb > 30.0);
     }
 }

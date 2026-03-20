@@ -58,6 +58,7 @@ version = "2026.3.18"
 dependencies = [
  "agnos-common",
  "agnos-sys",
+ "ai-hwaccel",
  "anyhow",
  "async-trait",
  "axum",
@@ -184,6 +185,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ddd31a130427c27518df266943a5308ed92d4b226cc639f5a8f1002816174301"
 dependencies = [
  "memchr",
+]
+
+[[package]]
+name = "ai-hwaccel"
+version = "0.19.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2869310c2cb642fa12e90821175672e5969f14234ebad897a5880f2f84d6309b"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -2141,6 +2154,7 @@ version = "2026.3.18"
 dependencies = [
  "agnos-common",
  "agnos-sys",
+ "ai-hwaccel",
  "anyhow",
  "async-stream",
  "async-trait",
