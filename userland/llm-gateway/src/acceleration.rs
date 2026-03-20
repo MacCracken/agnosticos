@@ -166,9 +166,12 @@ mod tests {
     #[test]
     fn suggest_quantization_works() {
         let reg = AcceleratorRegistry::new();
-        let quant = reg.suggest_quantization(7_000_000_000);
-        // CPU-only should suggest FP16
+        // Small model: 1B params — fits in FP16 on any machine with 4+ GB RAM
+        let quant = reg.suggest_quantization(1_000_000_000);
         assert_eq!(quant, QuantizationLevel::Float16);
+        // Large model: may suggest Int8/Int4 depending on available RAM
+        let quant_large = reg.suggest_quantization(70_000_000_000);
+        assert_ne!(quant_large, QuantizationLevel::None);
     }
 
     #[test]

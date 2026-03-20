@@ -10,7 +10,7 @@
 
 [package]
 name = "secureyeoman-sqlite"
-version = "2026.3.18"
+version = "2026.3.19"
 description = "SecureYeoman SQLite — Lightweight single-user AI agent platform"
 license = "AGPL-3.0-only"
 groups = ["server", "ai", "agents"]
