@@ -53,12 +53,15 @@ jobs:
       - name: Check for published toolchain
         id: published
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          REPO="${{ github.repository }}"
           if [[ "${{ inputs.force_rebuild }}" == "true" ]]; then
             echo "cached=false" >> "$GITHUB_OUTPUT"
             echo "Force rebuild requested"
-          elif gh release view toolchain-latest --json assets -q '.assets[].name' 2>/dev/null | grep -q 'agnos-toolchain-x86_64.tar.zst'; then
+          elif curl -fsSL -H "Authorization: token ${GITHUB_TOKEN}" \
+            "https://api.github.com/repos/${REPO}/releases/tags/toolchain-latest" 2>/dev/null \
+            | grep -q 'agnos-toolchain-x86_64.tar.zst'; then
             echo "cached=true" >> "$GITHUB_OUTPUT"
             echo "Published toolchain found — will download instead of rebuilding"
           else
@@ -69,10 +72,16 @@ jobs:
       - name: Download published toolchain
         if: steps.published.outputs.cached == 'true'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          REPO="${{ github.repository }}"
           mkdir -p output
-          gh release download toolchain-latest -p 'agnos-toolchain-x86_64.tar.zst' -D output/
+          # Get the asset download URL
+          ASSET_URL=$(curl -fsSL -H "Authorization: token ${GITHUB_TOKEN}" \
+            "https://api.github.com/repos/${REPO}/releases/tags/toolchain-latest" \
+            | grep -oP '"browser_download_url":\s*"\K[^"]*agnos-toolchain-x86_64\.tar\.zst(?=")')
+          curl -fSL -H "Authorization: token ${GITHUB_TOKEN}" \
+            -o output/agnos-toolchain-x86_64.tar.zst "$ASSET_URL"
           zstd -d output/agnos-toolchain-x86_64.tar.zst -o output/agnos-toolchain-x86_64.tar
           sudo rm -rf "$LFS"
           sudo mkdir -p "$LFS"
@@ -250,8 +259,13 @@ jobs:
 
       - name: Publish base rootfs as release asset
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          REPO="${{ github.repository }}"
+          API="https://api.github.com/repos/${REPO}"
+          AUTH=(-H "Authorization: token ${GITHUB_TOKEN}")
+          TAG="base-rootfs-latest"
+
           # Compress for storage
           zstd -T0 -15 output/agnos-base-rootfs-x86_64.tar \
             -o output/agnos-base-rootfs-x86_64.tar.zst
@@ -260,35 +274,53 @@ jobs:
 
           VERSION=$(cat VERSION)
 
-          # Create/update persistent release for base rootfs
-          gh release delete "base-rootfs-latest" --yes 2>/dev/null || true
-          git tag -d "base-rootfs-latest" 2>/dev/null || true
-          git push origin ":refs/tags/base-rootfs-latest" 2>/dev/null || true
+          # Delete existing release if present
+          RELEASE_ID=$(curl -fsSL "${AUTH[@]}" "${API}/releases/tags/${TAG}" 2>/dev/null \
+            | grep -oP '"id":\s*\K\d+' | head -1) || true
+          if [ -n "$RELEASE_ID" ]; then
+            curl -fsSL "${AUTH[@]}" -X DELETE "${API}/releases/${RELEASE_ID}" || true
+          fi
 
-          gh release create "base-rootfs-latest" \
-            --title "AGNOS Base Rootfs (Latest)" \
-            --notes "$(cat <<EOF
+          # Delete existing tag
+          git tag -d "${TAG}" 2>/dev/null || true
+          git push origin ":refs/tags/${TAG}" 2>/dev/null || true
+
+          # Create release
+          NOTES=$(cat <<'NOTES_EOF'
           AGNOS base system rootfs built from source via LFS recipes.
 
-          - Toolchain: GCC ${GCC_VER:-15.2.0}, Binutils ${BINUTILS_VER:-2.45}, Glibc ${GLIBC_VER:-2.42}
+          - Toolchain: GCC 15.2.0, Binutils 2.45, Glibc 2.42
           - Base recipes: 109 packages
-          - Built from AGNOS version: ${VERSION}
+          - Built from AGNOS version: VERSION_PLACEHOLDER
 
           **This is consumed by the release workflow** — it pulls this rootfs
           and overlays freshly compiled userland binaries to produce the ISO.
           No debootstrap, no Debian dependency.
+          NOTES_EOF
+          )
+          NOTES="${NOTES//VERSION_PLACEHOLDER/$VERSION}"
 
-          To use manually:
-          \`\`\`bash
-          curl -fSL -o base-rootfs.tar.zst \\
-            https://github.com/MacCracken/agnosticos/releases/download/base-rootfs-latest/agnos-base-rootfs-x86_64.tar.zst
-          mkdir -p /tmp/agnos-rootfs
-          zstd -d base-rootfs.tar.zst | tar xf - -C /tmp/agnos-rootfs
-          \`\`\`
-          EOF
-          )" \
-            output/agnos-base-rootfs-x86_64.tar.zst \
-            output/agnos-base-rootfs-x86_64.tar.zst.sha256
+          RELEASE_RESPONSE=$(curl -fsSL "${AUTH[@]}" \
+            -X POST "${API}/releases" \
+            -d "$(jq -n \
+              --arg tag "$TAG" \
+              --arg name "AGNOS Base Rootfs (Latest)" \
+              --arg body "$NOTES" \
+              '{tag_name: $tag, name: $name, body: $body}')")
+
+          UPLOAD_URL=$(echo "$RELEASE_RESPONSE" | grep -oP '"upload_url":\s*"\K[^{]*')
+
+          # Upload assets
+          for asset in output/agnos-base-rootfs-x86_64.tar.zst output/agnos-base-rootfs-x86_64.tar.zst.sha256; do
+            FILENAME=$(basename "$asset")
+            CONTENT_TYPE="application/octet-stream"
+            [[ "$FILENAME" == *.sha256 ]] && CONTENT_TYPE="text/plain"
+            curl -fsSL "${AUTH[@]}" \
+              -H "Content-Type: ${CONTENT_TYPE}" \
+              --data-binary "@${asset}" \
+              "${UPLOAD_URL}?name=${FILENAME}"
+            echo "Uploaded: ${FILENAME}"
+          done
 
   # -----------------------------------------------------------------------
   # Stage 3: Build userland + create ISO (validates full pipeline)

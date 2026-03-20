@@ -1,6 +1,6 @@
 # First-Party Application Standards
 
-> **Status**: Active | **Last Updated**: 2026-03-18
+> **Status**: Active | **Last Updated**: 2026-03-20
 >
 > Standards, conventions, and workflows for all AGNOS first-party consumer applications.
 > These are non-negotiable for interoperability with daimon, agnoshi, mela, and the marketplace infrastructure.

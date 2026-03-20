@@ -1,0 +1,57 @@
+# Ranga — Core image processing library for the AGNOS creative suite
+# Color spaces, blend modes, pixel buffers, filters, histograms, GPU compute.
+# Eliminates duplicate implementations across rasa, tazama, and aethersafta.
+#
+# Name: Ranga (Sanskrit: रंग — color, hue)
+# CLI: library-only (no binary)
+# Lib: ranga = "0.20.3" in Cargo.toml
+#
+# Status: Published — v0.20.3 on crates.io + GitHub.
+
+[package]
+name = "ranga"
+version = "0.20.3"
+description = "Ranga — Core image processing library (color, blend, pixel, filter)"
+license = "AGPL-3.0"
+groups = ["library", "graphics", "rust"]
+release = 1
+arch = "any"
+
+[source]
+crates_io = "ranga"
+github_release = "MacCracken/ranga"
+release_asset = "source"
+
+[depends]
+runtime = []
+build = [
+    "rust",
+]
+
+[marketplace]
+category = "library"
+runtime = "rust-crate"
+publisher = "AGNOS"
+tags = ["image", "color", "blend", "filter", "pixel", "gpu", "simd", "graphics", "compositing", "rust"]
+min_agnos_version = "2026.3.20"
+
+[marketplace.sandbox]
+seccomp_mode = "basic"
+network_access = false
+
+[build]
+make = "cargo build --release"
+check = "cargo test"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+# Library crate — consumers add to Cargo.toml:
+#   ranga = "0.20.3"
+# Install source for offline/air-gapped Cargo builds.
+mkdir -p $PKG/usr/lib/ranga
+cp -r src $PKG/usr/lib/ranga/
+cp Cargo.toml $PKG/usr/lib/ranga/
+cp VERSION $PKG/usr/lib/ranga/
+"""

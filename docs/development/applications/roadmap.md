@@ -387,6 +387,31 @@ Published to crates.io, used by AGNOS, Synapse, AgnosAI, SecureYeoman, and consu
 | [tarang](https://github.com/MacCracken/tarang) | 0.20.3 | AI-native media framework — 18-33x faster than GStreamer. Audio/video decode, encode, mux, fingerprint, analysis | jalwa, tazama, shruti, aethersafta |
 | [aethersafta](https://github.com/MacCracken/aethersafta) | 0.20.3 | Real-time media compositing — scene graph, multi-source capture, HW encoding, streaming output | aethersafha, streaming app, tazama, SY, selah |
 | [hoosh](https://github.com/MacCracken/hoosh) | 0.20.3 | AI inference gateway — 14 LLM providers, OpenAI-compatible API, token budgets, whisper STT, caching | daimon, tarang, aethersafta, agnoshi, AgnosAI, all consumer apps |
+| [ranga](https://github.com/MacCracken/ranga) | 0.20.3 | Core image processing — color spaces, blend modes, pixel buffers, filters, GPU compute | rasa, tazama, aethersafta, streaming app |
+| [nada](https://github.com/MacCracken/nada) | 0.20.3 | Core audio engine — buffers, DSP, mixing, resampling, analysis, clock, PipeWire capture | shruti, jalwa, aethersafta, tarang, hoosh, streaming app |
+
+### Ranga — Shared Image Processing Core (NEW)
+
+| Field | Value |
+|-------|-------|
+| Status | **Scaffolding** |
+| Priority | Infrastructure — enables dedup across rasa, tazama, aethersafta |
+| Repository | `MacCracken/ranga` |
+
+**Why**: Rasa, tazama, and aethersafta all implement overlapping image processing: color space conversions (BT.601 in 3 different implementations), alpha blending (Porter-Duff in 2 implementations), pixel buffer types (3 incompatible types), and color correction (histogram analysis duplicated). Extracting a shared crate eliminates ~2000 lines of duplicate code and ensures consistent behavior.
+
+**What gets extracted**:
+- Color math: sRGB↔linear, HSL, BT.601/709 YUV↔RGB, ICC profiles (from rasa-core)
+- Blend modes: 12 Porter-Duff modes (from rasa-engine)
+- Pixel buffers: unified RGBA/RGB/YUV buffer type with format conversion (replaces 3 types)
+- CPU filters: brightness, contrast, saturation, levels, curves (from rasa-engine)
+- GPU compute: wgpu abstraction for portable Vulkan/Metal shaders (from rasa-gpu)
+- SIMD: SSE2/AVX2/NEON alpha blending (from aethersafta)
+
+**Consumers after extraction**:
+- **rasa** → drops rasa-core color math, uses `ranga::color`, `ranga::blend`, `ranga::filter`
+- **tazama** → drops manual BT.601, uses `ranga::convert`, `ranga::color_correct`
+- **aethersafta** → drops custom alpha blend + color conversion, uses `ranga::blend`, `ranga::convert`
 
 ---
 

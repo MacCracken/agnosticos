@@ -498,6 +498,18 @@ Sutra (infrastructure orchestrator) needs daimon to expose a remote execution AP
 - [ ] 6 months of beta testing with no critical bugs
 - [ ] Commercial support available
 
+### v2.0 Vision — 2028+
+
+**The Rust Kernel Release.**
+
+- [ ] Phase 20A-C complete — agnostic-kernel boots, runs agents, IPC works
+- [ ] Phase 20D-E complete — drivers, Linux compat layer, existing userland runs
+- [ ] Phase 20F-G complete — real hardware, self-hosting
+- [ ] Dual-kernel support: users choose Linux or agnostic-kernel at install
+- [ ] Agent IPC < 100ns (10x faster than Linux)
+- [ ] Zero-seccomp sandboxing (capability model replaces syscall filtering)
+- [ ] GPU/TPU-aware kernel scheduler (ai-hwaccel in ring 0)
+
 ---
 
 ## Key Performance Indicators (KPIs)
@@ -581,6 +593,100 @@ Sutra (infrastructure orchestrator) needs daimon to expose a remote execution AP
 
 ---
 
+## Phase 20 — AGNOS Kernel (Post-v1.0, Exploratory)
+
+**Codename**: agnostic-kernel — a Rust-native microkernel purpose-built for AI agent workloads.
+
+### Motivation
+
+AGNOS currently runs on Linux 6.6 LTS. Linux is proven, stable, and battle-tested — and it's the right choice through v1.0. But the AGNOS userland has demonstrated what happens when you own every layer in Rust:
+
+- **AgnosAI**: 227,000x faster fleet messaging than Python/CrewAI
+- **tarang**: 18-33x faster media operations than GStreamer
+- **aethersafta**: 10x compositor speedup from SIMD, 30fps 1080p software-only pipeline
+- **daimon**: nanosecond-scale agent orchestration, sub-microsecond IPC
+- **ai-hwaccel**: 14µs full hardware detection, 44ns placement decisions
+
+Linux's process model, syscall interface, and scheduler were designed for general-purpose computing. Agents are modelled as processes. Sandboxing is bolted on (Landlock, seccomp, namespaces). IPC goes through the kernel even when both endpoints are AGNOS agents. The abstraction mismatch costs performance and complexity.
+
+A Rust kernel could make agents a **first-class kernel primitive** — not processes pretending to be agents.
+
+### Architecture Vision
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  agnostic-kernel (Rust microkernel)                           │
+├──────────────────────────────────────────────────────────────┤
+│  Agent Scheduler        │  Agent objects as kernel primitives │
+│  ├─ Priority + DAG      │  ├─ Built-in sandbox (no seccomp)  │
+│  ├─ GPU/TPU-aware       │  ├─ Native IPC (zero-copy, typed)  │
+│  └─ Preemption          │  ├─ Resource quotas (CPU/mem/GPU)  │
+│                         │  └─ Cryptographic audit at sched    │
+├─────────────────────────┼─────────────────────────────────────┤
+│  Memory                 │  Hardware Abstraction               │
+│  ├─ Per-agent heaps     │  ├─ ai-hwaccel in-kernel            │
+│  ├─ Zero-copy IPC       │  ├─ GPU/TPU dispatch from sched     │
+│  └─ Capability-based    │  └─ IOMMU agent isolation           │
+├─────────────────────────┴─────────────────────────────────────┤
+│  Driver model: Rust async drivers in userspace (like Fuchsia) │
+│  Linux compat: personality layer for existing apps            │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### Phased Approach
+
+| Phase | Milestone | Scope |
+|-------|-----------|-------|
+| **20A** | Research & proof-of-concept | Minimal Rust kernel that boots on QEMU, prints to serial, runs one agent. Study Redox, Theseus, Tock, Fuchsia |
+| **20B** | Agent primitives | Agent as kernel object (create, destroy, suspend, resume). Per-agent memory regions. Capability-based security model |
+| **20C** | IPC & scheduling | Zero-copy typed IPC between agents. Priority scheduler with DAG awareness. GPU/TPU resource integration via ai-hwaccel |
+| **20D** | Driver framework | Async Rust drivers in userspace. VIRTIO for QEMU. Basic NVMe, NIC, GPU passthrough |
+| **20E** | Userland compatibility | Run existing AGNOS userland (daimon, hoosh, agnoshi) on the new kernel. Linux syscall compatibility layer for third-party apps |
+| **20F** | Hardware bring-up | Boot on real x86_64 + aarch64 hardware. UEFI, ACPI, interrupt routing, multi-core |
+| **20G** | Self-hosting | agnostic-kernel builds agnostic-kernel. Full dogfooding |
+
+### Prior Art
+
+| Project | Language | Key insight for AGNOS |
+|---------|----------|----------------------|
+| **Redox OS** | Rust | Microkernel in Rust is viable. Scheme-based URLs for IPC. 10+ years of development |
+| **Theseus** | Rust | Live kernel evolution — swap components without reboot. Cell-based isolation |
+| **Tock** | Rust | Embedded Rust kernel. Capability-based, grant regions for untrusted apps |
+| **Fuchsia** | C++/Rust | Zircon microkernel. Capability objects. Userspace drivers. Component model |
+| **seL4** | C (verified) | Formally verified microkernel. Capability-based security proof |
+
+### Branch Strategy
+
+All kernel work lives on a dedicated branch — never touches `main`:
+
+```
+main              → Linux 6.6 LTS (beta → v1.0 → v1.x production)
+agnostic-kernel   → Phase 20 R&D (parallel track, no merge until 20E)
+```
+
+Merge criteria: Phase 20E passes — existing AGNOS userland (daimon, hoosh, agnoshi, aethersafha) runs on agnostic-kernel with equivalent or better performance. Until then, two worlds, one repo, zero risk to shipping.
+
+### Non-Blockers
+
+This does NOT block any AGNOS release:
+- **Beta (Q4 2026)**: Linux 6.6 LTS
+- **v1.0 (Q2 2027)**: Linux 6.6 LTS
+- **v1.x**: Linux kernel, production-hardened
+- **v2.0+**: agnostic-kernel option alongside Linux
+
+The kernel is a parallel research track. AGNOS ships on Linux until the Rust kernel is proven on real hardware with real workloads.
+
+### Success Criteria (Phase 20A exit gate)
+
+- [ ] Boots on QEMU x86_64 to a Rust `main()`
+- [ ] Creates and destroys an "agent" kernel object
+- [ ] Two agents communicate via zero-copy IPC
+- [ ] Measured IPC latency < 100ns (vs Linux ~1µs for pipe/socket)
+- [ ] Agent isolation: one agent crash doesn't take down the kernel
+- [ ] The proof-of-concept is < 10,000 lines of Rust
+
+---
+
 ## Contributing
 
 ### Priority Contribution Areas
@@ -612,4 +718,4 @@ See [CONTRIBUTING.md](/CONTRIBUTING.md) for:
 
 ---
 
-*Last Updated: 2026-03-18 | Next Review: 2026-03-24*
+*Last Updated: 2026-03-20 | Next Review: 2026-03-27*
