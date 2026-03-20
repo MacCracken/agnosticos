@@ -2,12 +2,12 @@
 # Non-linear video editing with deep AI integration.
 # Cargo workspace: Rust + GPU compute (Vulkan).
 #
-# Status: Released — 2026.3.18-2 (latest tarang improvements, linux + macos-arm64).
+# Status: Released — 2026.3.19 (tarang 0.20.3, GStreamer dropped, linux + macos + windows + SBOM).
 # Source: https://github.com/MacCracken/tazama
 
 [package]
 name = "tazama"
-version = "2026.3.18-2"
+version = "2026.3.19"
 description = "Tazama — AI-Native Video Editor"
 license = "AGPL-3.0"
 groups = ["creative", "video"]

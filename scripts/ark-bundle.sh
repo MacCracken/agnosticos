@@ -201,6 +201,8 @@ download_release_asset() {
             ;;
         *)
             cp "${download_dir}/${asset_name}" "${_project_dir}/dist/"
+            # Raw binary (no archive extension) — mark executable
+            chmod +x "${_project_dir}/dist/${asset_name}"
             ;;
     esac
 
@@ -249,6 +251,14 @@ bundle_recipe() {
     local github_release release_asset
     github_release=$(parse_section_field "$recipe" "source" "github_release")
     release_asset=$(parse_section_field "$recipe" "source" "release_asset")
+
+    # Skip source-only crates (crates.io, sutra-modules, etc.)
+    local crates_io
+    crates_io=$(parse_section_field "$recipe" "source" "crates_io")
+    if [ "$release_asset" = "source" ] || { [ -n "$crates_io" ] && [ -z "$github_release" ]; }; then
+        log "Skipping: ${pkg_name} (source-only / crates.io)"
+        return 0
+    fi
 
     if [ -z "$github_release" ]; then
         err "${pkg_name}: missing github_release in [source] section"

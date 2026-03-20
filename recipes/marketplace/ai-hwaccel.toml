@@ -2,7 +2,10 @@
 # Detects 13 accelerator families (CUDA, ROCm, Metal, Vulkan, TPU, Gaudi,
 # Inferentia/Trainium, Qualcomm AI 100, Intel oneAPI/NPU, AMD XDNA, Apple ANE)
 # via sysfs, /dev, and CLI tools. Provides quantisation suggestion, sharding
-# plans, and training memory estimation. Pure Rust library crate — no binary.
+# plans, and training memory estimation. Rust library crate + CLI binary.
+#
+# CLI: ai-hwaccel --table, --pretty, --summary, --watch <secs>, --family gpu
+# Lib: ai-hwaccel = "0.19.3" in Cargo.toml
 #
 # Status: Published — v0.19.3 on crates.io + GitHub.
 # Used by: AGNOS (hoosh, daimon), Synapse, Agnostic, AgnosAI, consumer apps.
@@ -12,35 +15,52 @@ name = "ai-hwaccel"
 version = "0.19.3"
 description = "ai-hwaccel — Universal AI hardware accelerator detection and workload planning"
 license = "AGPL-3.0"
-groups = ["library", "ai", "hardware", "rust"]
+groups = ["tool", "library", "ai", "hardware", "rust"]
 release = 1
-arch = "any"
+arch = "x86_64"
 
 [source]
-# Rust library crate — consumed as a Cargo dependency.
 # crates.io: https://crates.io/crates/ai-hwaccel
 # GitHub: https://github.com/MacCracken/ai-hwaccel/releases
 crates_io = "ai-hwaccel"
 github_release = "MacCracken/ai-hwaccel"
-release_asset = "source"
+release_asset = "ai-hwaccel-*-linux-amd64.tar.gz"
 
 [depends]
-runtime = []
+runtime = [
+    "glibc",
+]
 build = [
     "rust",
 ]
 
 [marketplace]
-category = "library"
-runtime = "rust-crate"
+category = "system-tools"
+runtime = "native-binary"
 publisher = "AGNOS"
 tags = ["gpu", "tpu", "npu", "cuda", "rocm", "metal", "vulkan", "gaudi", "inferentia", "trainium", "hardware-detection", "accelerator", "quantization", "sharding", "rust"]
 min_agnos_version = "2026.3.19"
 
 [marketplace.sandbox]
-# Library crate — no runtime sandbox needed.
 seccomp_mode = "basic"
 network_access = false
+
+# Read-only access to device nodes and sysfs for hardware detection
+[[marketplace.sandbox.landlock]]
+path = "/sys/class/"
+access = "ro"
+
+[[marketplace.sandbox.landlock]]
+path = "/dev/"
+access = "ro"
+
+[[marketplace.sandbox.landlock]]
+path = "/proc/meminfo"
+access = "ro"
+
+[[marketplace.sandbox.landlock]]
+path = "/proc/cpuinfo"
+access = "ro"
 
 [build]
 pre_build = ""
@@ -52,9 +72,12 @@ check = "cargo test"
 hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
 
 install = """
-# Library crate — consumers add to Cargo.toml:
-#   ai-hwaccel = "0.19.3"
-# Install source for offline/air-gapped builds.
+# Install the CLI binary
+mkdir -p $PKG/usr/bin
+cp target/release/ai-hwaccel $PKG/usr/bin/ai-hwaccel
+chmod +x $PKG/usr/bin/ai-hwaccel
+
+# Install source for offline/air-gapped Cargo builds
 mkdir -p $PKG/usr/lib/ai-hwaccel
 cp -r src $PKG/usr/lib/ai-hwaccel/
 cp Cargo.toml $PKG/usr/lib/ai-hwaccel/

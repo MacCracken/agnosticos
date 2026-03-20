@@ -170,6 +170,25 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 | 3 | Hot-reload config | Not started | Watch config file, apply changes without restart |
 | 4 | Plugin API for bars/widgets | Not started | External status bars (waybar) can integrate via IPC protocol |
 
+### 16F — Aethersafha Media Ingestion & Compositing
+
+Upgrades to `ScreenCaptureManager` and `ScreenRecordingManager` to support real-time compositing, multi-source capture, and encoding — enabling aethersafha to serve as the capture/compositing backend for streaming (OBS-style), screen recording, and video conferencing workloads.
+
+**Extracted as**: [**aethersafta**](https://github.com/MacCracken/aethersafta) — standalone crates.io crate (`aethersafta = "0.20"`). Repo scaffolded with scene graph, source/encode/output traits, timing, CLI, CI/CD, architecture docs, and v0.5–v1.0 roadmap. Consumers: aethersafha, streaming app, tazama, video conferencing, SecureYeoman (sandbox session recording + security overlay annotations).
+
+| # | Item | Status | Notes |
+|---|------|--------|-------|
+| 1 | Multi-source capture | Not started | Capture multiple surfaces simultaneously (windows, monitors, cameras). Current `ScreenCaptureManager` does single-surface snapshots |
+| 2 | Camera device ingestion | Not started | V4L2 camera capture (webcam, capture cards) as compositor surfaces. Expose via `/v1/screen/sources` API |
+| 3 | Real-time compositing layer | Not started | Scene graph with z-ordered layers (screen, camera, overlay, text). Alpha blending, positioning, scaling. Frame-accurate mixing at output framerate |
+| 4 | PipeWire audio capture | Not started | Per-source audio capture alongside video. Mix multiple audio streams (mic, desktop, app). Pairs with shruti DSP for noise suppression |
+| 5 | Hardware-accelerated encoding | Not started | Integrate ai-hwaccel for GPU-aware encode path selection (NVENC, VA-API, QSV, AMF). Route through tarang for container muxing |
+| 6 | Streaming output (RTMP/SRT) | Not started | Network output from composited frames + mixed audio. RTMP for Twitch/YouTube, SRT for low-latency. Tarang handles muxing |
+| 7 | Recording output | Not started | Extend `ScreenRecordingManager` to record composited scenes (not just raw frames). Tarang encodes to MP4/MKV/WebM |
+| 8 | Overlay rendering | Not started | Text overlays, image watermarks, animated transitions. Rendered in compositor before encoding |
+| 9 | Source switching API | Not started | Scene presets with instant/animated transitions. IPC commands for external control (stream deck, agnoshi "switch to camera scene") |
+| 10 | Latency budget tracking | Not started | Per-frame timing: capture → composite → encode → output. Alert when total pipeline exceeds target (e.g. 33ms for 30fps). Nazar integration |
+
 ---
 
 ## Bazaar — Community Package Repository
@@ -404,6 +423,24 @@ Sutra (infrastructure orchestrator) needs daimon to expose a remote execution AP
 - [x] **TPM 2.0 boot measurement** — Boot script (`/usr/lib/agnos/tpm-measure-boot.sh`) extends PCR 8 (kernel hash), PCR 9 (rootfs hash), PCR 10 (agent binary hash) via `tpm2_pcrextend`. Event log written to `/var/log/agnos/tpm-event-log.json`. Graceful skip if no TPM device or tpm2-tools
 - [x] **Attestation endpoint** — `GET /v1/attestation` returns PCR values (via `tpm2_pcrread`), boot event log, sy-agnos-release metadata, and HMAC-SHA256 signature over measurements (keyed by machine-id). Returns `{"tpm_available": false}` when TPM absent. Handler: `agent-runtime/src/http_api/handlers/attestation.rs` (12 tests)
 - [x] **Update `/etc/sy-agnos-release`** — `"tpm_measured": true, "strength": 88, "hardening": "measured"` when tpm2-tools available. Features list includes `"tpm-measured-boot"`. OCI labels include `com.secureyeoman.sandbox.tpm_measured`
+
+### Resolved (2026.3.20)
+
+| Category | Items | Summary |
+|----------|-------|---------|
+| Shared crates | 4 new crates extracted | `ai-hwaccel` (hardware detection, crates.io), `tarang` (media framework, crates.io), `aethersafta` (compositing engine, scaffolded), `hoosh` (inference gateway, scaffolded) |
+| ai-hwaccel integration | hoosh + daimon wired | `acceleration.rs` replaced with ai-hwaccel re-exports (549 tests). `scheduler.rs` `gpu: bool` → `AcceleratorRequirement` + TPU/Gaudi support. `finetune.rs` TPU/Gaudi memory estimation via ai-hwaccel |
+| ark-bundle fixes | 23/23 bundles passing | Fixed 14 broken asset patterns, added raw binary handling (SY), source-only skip. All marketplace recipes validated against GitHub releases |
+| Recipe updates | 10 recipes created/updated | `agnosai.toml` (new), `ai-hwaccel.toml` (new), `aequi.toml` (org fix), `jalwa` → 2026.3.19, `synapse` → 2026.3.19, `shruti` → 2026.3.19, `tazama` → 2026.3.19 (GStreamer dropped), `tarang` (crates.io + binary), `sutra-community` (runtime fix), `aethersafta` → 0.20.4 |
+| Roadmap | Phase 16F + streaming app | Aethersafha media ingestion (10 items), live streaming/broadcast studio (Priority 3), shared crates section in app roadmap |
+| Release CI | tarang + ai-hwaccel pipelines | Multi-arch binary packaging (amd64 + arm64) + crates.io publish + GitHub release with SHA256 |
+
+### Pending (2026.3.20)
+
+| # | Item | Status | Notes |
+|---|------|--------|-------|
+| 1 | Bump ai-hwaccel to 0.20.3 in hoosh + daimon | Pending | Currently pinned to 0.19.x; update after ai-hwaccel 0.20.3 release |
+| 2 | Workspace compile + full test run | Pending | After ai-hwaccel dep bump lands |
 
 ### Resolved (2026.3.18)
 

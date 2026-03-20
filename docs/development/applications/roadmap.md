@@ -227,6 +227,32 @@
 
 ---
 
+### Live Streaming / Broadcast Studio
+
+| Field | Value |
+|-------|-------|
+| Status | Planned |
+| Priority | 3 |
+
+**Why first-party**: AI scene switching (auto-cut on silence, speaker detection), real-time chat moderation via hoosh, stream health monitoring via nazar, overlay generation, highlight clipping. No existing streaming tool has LLM-powered production assistance or OS-level media pipeline integration.
+
+**Scope**:
+- Scene management, transitions, overlays, multi-source mixing
+- RTMP/SRT/WHIP output (Twitch, YouTube, custom)
+- Media pipeline: tarang for encoding/muxing (18-33x faster than GStreamer pipeline setup)
+- Compositing: **aethersafta** crate — scene graph, multi-source capture, hardware-accelerated encoding
+- Audio: PipeWire capture via aethersafta, per-source mixing, noise suppression
+- AI: Auto scene switching (voice activity, face detection), chat moderation, highlight detection, real-time transcription/captioning via hoosh, stream analytics
+- Hardware acceleration: ai-hwaccel for GPU/NPU-aware encoding (NVENC, VA-API, QSV)
+
+**Infrastructure**: [aethersafta](https://github.com/MacCracken/aethersafta) (compositing engine, crates.io), [tarang](https://crates.io/crates/tarang) (encoding), [ai-hwaccel](https://crates.io/crates/ai-hwaccel) (hardware detection), hoosh (AI), nazar (monitoring), PipeWire (audio)
+
+**Prerequisites**: aethersafta v0.8.0+ (RTMP/SRT output). The compositing engine is a standalone crate (`aethersafta`) extracted from aethersafha (AGNOS Phase 16F). This app builds the production UI on top.
+
+**Effort**: Medium-High — aethersafta delivers the compositing backend. Primary remaining work is the production UI (scene management, preview/program monitors, stream controls, chat integration).
+
+---
+
 ## Priority 4 — Creative & Specialized
 
 ### 3D Modeler / CAD
@@ -350,6 +376,20 @@ Visual fine-tuning and dataset management. GUI on existing Synapse/finetune APIs
 
 ---
 
+## Shared Crates (Ecosystem Infrastructure)
+
+Standalone crates extracted from AGNOS that the entire ecosystem depends on.
+Published to crates.io, used by AGNOS, Synapse, AgnosAI, SecureYeoman, and consumer apps.
+
+| Crate | Version | Description | Consumers |
+|-------|---------|-------------|-----------|
+| [ai-hwaccel](https://github.com/MacCracken/ai-hwaccel) | 0.20.3 | Universal AI hardware accelerator detection (13 families), quantisation, sharding, training memory estimation | hoosh, daimon, Synapse, AgnosAI, tazama |
+| [tarang](https://github.com/MacCracken/tarang) | 0.20.3 | AI-native media framework — 18-33x faster than GStreamer. Audio/video decode, encode, mux, fingerprint, analysis | jalwa, tazama, shruti, aethersafta |
+| [aethersafta](https://github.com/MacCracken/aethersafta) | 0.20.3 | Real-time media compositing — scene graph, multi-source capture, HW encoding, streaming output | aethersafha, streaming app, tazama, SY, selah |
+| [hoosh](https://github.com/MacCracken/hoosh) | 0.20.3 | AI inference gateway — 14 LLM providers, OpenAI-compatible API, token budgets, whisper STT, caching | daimon, tarang, aethersafta, agnoshi, AgnosAI, all consumer apps |
+
+---
+
 ## Implementation Notes
 
 - All apps follow [First-Party Standards](first-party-standards.md)
@@ -360,4 +400,4 @@ Visual fine-tuning and dataset management. GUI on existing Synapse/finetune APIs
 
 ---
 
-*Last Updated: 2026-03-18*
+*Last Updated: 2026-03-20*

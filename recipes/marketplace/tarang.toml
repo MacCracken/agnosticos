@@ -2,6 +2,10 @@
 # Container parsing, audio decoding (pure Rust via symphonia), video decoding
 # (thin FFI: dav1d, openh264, libvpx), AI content analysis.
 # Replaces ffmpeg as the media pipeline — Rust-owned orchestration, C only for codec math.
+# Rust library crate + CLI binary (probe, analyze, transcode, fingerprint).
+#
+# CLI: tarang probe <file>, tarang analyze <file>, tarang codecs
+# Lib: tarang = "0.19.3" in Cargo.toml
 #
 # Status: Published — v0.19.3 on crates.io + GitHub.
 
@@ -10,15 +14,16 @@ name = "tarang"
 version = "0.19.3"
 description = "Tarang — AI-native Rust media framework"
 license = "AGPL-3.0"
-groups = ["server", "media", "library", "rust"]
+groups = ["tool", "library", "media", "rust"]
 release = 1
-arch = "any"
+arch = "x86_64"
 
 [source]
 # crates.io: https://crates.io/crates/tarang
-# Consumers add: tarang = "0.19.3" to Cargo.toml
+# GitHub: https://github.com/MacCracken/tarang/releases
 crates_io = "tarang"
-release_asset = "source"
+github_release = "MacCracken/tarang"
+release_asset = "tarang-*-linux-amd64.tar.gz"
 
 [depends]
 runtime = [
@@ -34,10 +39,10 @@ build = [
 
 [marketplace]
 category = "media-framework"
-runtime = "rust-crate"
+runtime = "native-binary"
 publisher = "Tarang"
-tags = ["media", "audio", "video", "codec", "decoding", "rust", "symphonia", "ai"]
-min_agnos_version = "2026.3.18"
+tags = ["media", "audio", "video", "codec", "decoding", "rust", "symphonia", "ai", "fingerprint", "transcode"]
+min_agnos_version = "2026.3.19"
 
 [marketplace.sandbox]
 seccomp_mode = "desktop"
@@ -67,13 +72,18 @@ check = "cargo test"
 hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
 
 install = """
-mkdir -p $PKG/usr/lib/tarang/bin
-cp target/release/tarang $PKG/usr/lib/tarang/bin/tarang
-chmod +x $PKG/usr/lib/tarang/bin/tarang
-
+# Install the CLI binary
 mkdir -p $PKG/usr/bin
-ln -sf /usr/lib/tarang/bin/tarang $PKG/usr/bin/tarang
+cp target/release/tarang $PKG/usr/bin/tarang
+chmod +x $PKG/usr/bin/tarang
 
+# Install source for offline/air-gapped Cargo builds
+mkdir -p $PKG/usr/lib/tarang
+cp -r src $PKG/usr/lib/tarang/
+cp Cargo.toml $PKG/usr/lib/tarang/
+cp VERSION $PKG/usr/lib/tarang/
+
+# Desktop entry for file association
 mkdir -p $PKG/usr/share/applications
 cat > $PKG/usr/share/applications/tarang.desktop << 'EOF'
 [Desktop Entry]

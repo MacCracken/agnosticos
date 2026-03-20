@@ -4,11 +4,11 @@
 # library management, transcription routing via hoosh.
 #
 # Name: Jalwa (Persian: manifestation/display)
-# Status: Released — 2026.3.18 (linux amd64 + arm64).
+# Status: Released — 2026.3.19 (linux amd64 + arm64). Now uses tarang crate.
 
 [package]
 name = "jalwa"
-version = "2026.3.18"
+version = "2026.3.19"
 description = "Jalwa — AI-native media player"
 license = "AGPL-3.0"
 groups = ["desktop", "media", "rust"]
