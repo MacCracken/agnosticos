@@ -101,19 +101,70 @@ jobs:
         run: |
           mkdir -p "$LFS/sources"
           cd "$LFS/sources"
-          urls=(
-            "https://ftpmirror.gnu.org/binutils/binutils-2.45.tar.xz"
-            "https://ftpmirror.gnu.org/gcc/gcc-15.2.0/gcc-15.2.0.tar.xz"
-            "https://ftpmirror.gnu.org/glibc/glibc-2.42.tar.xz"
-            "https://ftpmirror.gnu.org/gmp/gmp-6.3.0.tar.xz"
-            "https://ftpmirror.gnu.org/mpfr/mpfr-4.2.2.tar.xz"
-            "https://ftpmirror.gnu.org/mpc/mpc-1.3.1.tar.gz"
-            "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.6.72.tar.xz"
-          )
-          for url in "${urls[@]}"; do
-            file=$(basename "$url")
-            [[ -f "$file" ]] || curl -fSL -o "$file" "$url"
-          done
+
+          # Download helper: try multiple mirrors with timeout
+          download() {
+            local file="$1"; shift
+            [[ -f "$file" ]] && { echo "  Cached: $file"; return 0; }
+            for url in "$@"; do
+              echo "  Trying: $url"
+              if curl -fSL --connect-timeout 30 --max-time 300 -o "$file" "$url" 2>/dev/null; then
+                echo "  OK: $file"
+                return 0
+              fi
+            done
+            echo "  FAILED: $file (all mirrors exhausted)"
+            return 1
+          }
+
+          # GNU mirrors (ordered by reliability)
+          G1="https://mirrors.kernel.org/gnu"
+          G2="https://mirror.us-midwest-1.nexcess.net/gnu"
+          G3="https://ftpmirror.gnu.org"
+          G4="https://ftp.gnu.org/gnu"
+
+          download binutils-2.45.tar.xz \
+            "$G1/binutils/binutils-2.45.tar.xz" \
+            "$G2/binutils/binutils-2.45.tar.xz" \
+            "$G3/binutils/binutils-2.45.tar.xz" \
+            "$G4/binutils/binutils-2.45.tar.xz"
+
+          download gcc-15.2.0.tar.xz \
+            "$G1/gcc/gcc-15.2.0/gcc-15.2.0.tar.xz" \
+            "$G2/gcc/gcc-15.2.0/gcc-15.2.0.tar.xz" \
+            "$G3/gcc/gcc-15.2.0/gcc-15.2.0.tar.xz" \
+            "$G4/gcc/gcc-15.2.0/gcc-15.2.0.tar.xz"
+
+          download glibc-2.42.tar.xz \
+            "$G1/glibc/glibc-2.42.tar.xz" \
+            "$G2/glibc/glibc-2.42.tar.xz" \
+            "$G3/glibc/glibc-2.42.tar.xz" \
+            "$G4/glibc/glibc-2.42.tar.xz"
+
+          download gmp-6.3.0.tar.xz \
+            "$G1/gmp/gmp-6.3.0.tar.xz" \
+            "$G2/gmp/gmp-6.3.0.tar.xz" \
+            "$G3/gmp/gmp-6.3.0.tar.xz" \
+            "$G4/gmp/gmp-6.3.0.tar.xz"
+
+          download mpfr-4.2.2.tar.xz \
+            "$G1/mpfr/mpfr-4.2.2.tar.xz" \
+            "$G2/mpfr/mpfr-4.2.2.tar.xz" \
+            "$G3/mpfr/mpfr-4.2.2.tar.xz" \
+            "$G4/mpfr/mpfr-4.2.2.tar.xz"
+
+          download mpc-1.3.1.tar.gz \
+            "$G1/mpc/mpc-1.3.1.tar.gz" \
+            "$G2/mpc/mpc-1.3.1.tar.gz" \
+            "$G3/mpc/mpc-1.3.1.tar.gz" \
+            "$G4/mpc/mpc-1.3.1.tar.gz"
+
+          download linux-6.6.72.tar.xz \
+            "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.6.72.tar.xz" \
+            "https://mirrors.edge.kernel.org/pub/linux/kernel/v6.x/linux-6.6.72.tar.xz"
+
+          echo "  All source tarballs ready"
+          ls -lh *.tar.*
 
       - name: Bootstrap cross-toolchain
         if: steps.published.outputs.cached != 'true'
