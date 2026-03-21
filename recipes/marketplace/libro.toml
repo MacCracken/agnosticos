@@ -1,0 +1,47 @@
+# Libro — Cryptographic audit chain (SHA-256 hash-linked, tamper-proof)
+#
+# Lib: libro = "0.21.3" in Cargo.toml
+# Status: Scaffolded — v0.21.3.
+
+[package]
+name = "libro"
+version = "0.21.3"
+description = "Libro — Cryptographic audit chain (SHA-256 hash-linked, tamper-proof)"
+license = "AGPL-3.0"
+groups = ["library", "rust"]
+release = 1
+arch = "any"
+
+[source]
+crates_io = "libro"
+github_release = "MacCracken/libro"
+release_asset = "source"
+
+[depends]
+runtime = []
+build = ["rust"]
+
+[marketplace]
+category = "library"
+runtime = "rust-crate"
+publisher = "AGNOS"
+tags = ["audit", "logging", "cryptographic", "chain", "tamper-proof", "rust"]
+min_agnos_version = "2026.3.21"
+
+[marketplace.sandbox]
+seccomp_mode = "basic"
+network_access = false
+
+[build]
+make = "cargo build --release"
+check = "cargo test"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+mkdir -p $PKG/usr/lib/libro
+cp -r src $PKG/usr/lib/libro/
+cp Cargo.toml $PKG/usr/lib/libro/
+cp VERSION $PKG/usr/lib/libro/
+"""

@@ -423,6 +423,7 @@ Ideas for additional extractions as the ecosystem matures. Not yet scaffolded.
 |----------------------|--------|---------------|-------------|
 | **sluice** | Queue multiplexing, distributed state, fleet messaging | daimon (pubsub, IPC, fleet relay), AgnosAI (fleet placement, task queue) | daimon, AgnosAI, hoosh (request routing), sutra (parallel execution), aethersafta (frame pipeline), streaming app |
 | **nein** (German: nine / "no") | Rust-native firewall (neintables) | daimon (nftables rules), aegis (network policy), sutra (nftables module) | AGNOS network stack, edge fleet, sy-agnos sandbox |
+| **stiva** (Romanian: stack) | Rust-native container runtime | Docker/Podman dependency | kavach (isolation) + nein (networking) + ark (images) + libro (audit) |
 
 #### Sluice — Distributed Queue & Multiplex Engine
 
@@ -494,6 +495,108 @@ Three implementations, three strengths: SY solved auth + discovery, daimon solve
 
 **When**: v1.0 timeframe. SY's sandbox is production-ready and the patterns are proven. Extraction makes sense when daimon and AgnosAI need the same capability.
 
+#### Stiva — Rust-Native Container Runtime
+
+| Field | Value |
+|-------|-------|
+| Status | Planned |
+| Priority | Infrastructure — post-v1.0 |
+| Spec | [stiva.md](stiva.md) |
+
+**Problem**: AGNOS depends on Docker/Podman (100MB+ daemon) for container workloads — sy-agnos sandbox images, edge deployment, development containers. The container runtime is the one major system component that isn't Rust-native.
+
+**What it would own**:
+- OCI image format — pull, unpack, layer management (replace `docker pull`)
+- Container lifecycle — create, start, exec, stop, remove (replace `docker run`)
+- Namespace/cgroup isolation — direct kernel API, no shim process
+- Image building — Dockerfile-compatible or native TOML format
+- Registry client — pull/push from OCI registries (GHCR, Docker Hub)
+- Network — bridge/host/none modes via nein (Rust firewall)
+- Storage — overlayfs layer management, snapshotting
+
+**What already exists in the ecosystem**:
+- **kavach** (v0.25.3) — 9 sandbox backends (Process, gVisor, Firecracker, WASM, OCI, SGX, SEV, SyAgnos, Noop) with strength scoring, seccomp/Landlock/namespace isolation, externalization gate
+- **argonaut** — process lifecycle, service management, init sequencing
+- **ark** — package format with signing and verification (`.ark`, `.agnos-agent`)
+- **nein** (planned) — Rust-native firewall for container network policy
+- **majra** — container IPC, event bus, health monitoring
+
+**Architecture**: stiva becomes a thin orchestration layer over kavach (isolation), nein (networking), and ark (image format). The actual container = kavach sandbox + nein network namespace + ark image layers.
+
+```
+stiva (container runtime)
+  ├── kavach  (isolation: namespaces, cgroups, seccomp, landlock, caps)
+  ├── nein    (networking: bridge, port mapping, DNS)
+  ├── ark     (images: layers, registry, signing)
+  └── libro   (audit: container lifecycle events)
+```
+
+**Why not just keep Docker**: Docker works. But a 100MB Go daemon managing containers that run Rust binaries is the same abstraction mismatch as GStreamer managing media pipelines. stiva would be <5MB, start in milliseconds, and speak the same types as every other AGNOS component.
+
+**Security uplift for sy-agnos**: When stiva replaces docker/podman as the sy-agnos container runtime, the sandbox strength score increases from 80–88 to **92–95**. The gains come from eliminating trust boundaries that docker/podman introduce:
+
+| Feature | Docker/Podman | Stiva | Strength Boost |
+|---------|--------------|-------|---------------|
+| Runtime attestation | None — trust the daemon binary | Signed binary hash verified at launch | +3 |
+| Image verification | Registry trust (MITM-able) | ark-signed squashfs, reject unsigned images | +2 |
+| Seccomp enforcement | Runtime-applied, overridable via config | Baked into runtime binary, no override API | +2 |
+| Escape hatches | `--privileged`, `--cap-add`, etc. | No privilege escalation flags exist | +2 |
+| Daemon attack surface | dockerd: ~50MB Go daemon, root, REST API | Daemonless single binary, <5MB | +2 |
+| Syscall surface | containerd → runc shim chain (3 processes) | Direct clone() → exec, no shims | +1 |
+
+Docker/podman are general-purpose: they're designed for developer ergonomics, not adversarial isolation. `runc` has had repeated CVEs (Leaky Vessels, CVE-2024-21626). Stiva eliminates this entire class of vulnerabilities by:
+1. No configuration overrides — the runtime enforces kavach policy, period
+2. No daemon — no long-running root process to attack
+3. Image = signed squashfs — no layer unpacking, no registry trust, no manifest poisoning
+4. Runtime itself is attested — signed hash verified before first container launches
+
+These layers are **composable**, not mutually exclusive. The strongest possible configuration stacks all of them:
+
+```
+Firecracker (KVM microVM)        — hardware isolation boundary
+  └── jailer (cgroup, seccomp, chroot) — privilege reduction
+      └── stiva (attested runtime)     — no daemon, signed binary, no overrides
+          └── sy-agnos (OS sandbox)    — immutable rootfs, baked seccomp/nftables
+              └── TPM measured boot    — hardware-attested integrity chain
+```
+
+**Strength scoring for composed configurations:**
+```
+Firecracker alone                           = 90
+Firecracker + jailer                        = 93
+sy-agnos tpm_measured + stiva               = 95
+Firecracker + jailer + stiva + sy-agnos TPM = 98  (near-theoretical max)
+```
+
+The top configuration achieves defense-in-depth from hardware (KVM + TPM) through runtime (jailer + stiva) to OS (sy-agnos), with no general-purpose layer where attackers can find configuration mistakes or known CVEs. Every layer is purpose-built, attested, and policy-enforced by kavach.
+
+**Kavach integration**: kavach's SyAgnos backend already detects docker/podman and will detect stiva as a first-class runtime when available. The `SyAgnosTier` enum maps to strength scores, and stiva adds a runtime attestation modifier on top:
+```
+sy-agnos minimal + docker  = 80
+sy-agnos minimal + stiva   = 92  (+12: runtime attestation, image signing, no overrides, no daemon)
+sy-agnos dmverity + stiva  = 94
+sy-agnos tpm_measured + stiva = 95
+```
+
+**Why this matters for AGI**:
+
+The infrastructure AGI runs on cannot be the infrastructure built for web apps. Fifty years of software engineering taught us what to stop accepting:
+
+| Era | What we accepted | What AGNOS does instead |
+|-----|-----------------|------------------------|
+| 1970s | C memory unsafety | Rust ownership — entire classes of CVEs eliminated at compile time |
+| 1990s | Shell out to CLI tools | Direct API calls — tarang 33x over GStreamer, ai-hwaccel replaces vulkaninfo |
+| 2000s | 100MB runtime daemons | <5MB purpose-built binaries — stiva replaces Docker |
+| 2010s | "Secure by configuration" | Secure by construction — kavach has no override flags |
+| 2015s | Python for everything | Rust for everything — 227,000x fleet messaging over CrewAI |
+| 2020s | Trust the container runtime | Attest the container runtime — libro audit chain + TPM measured boot |
+
+AGI agents need infrastructure where the orchestration overhead is zero, the security is provable, the audit trail is tamper-proof, and the entire stack is attested from hardware to application. That's not Docker + Python + Redis. That's stiva + kavach + majra + hoosh + libro — purpose-built, composed, verified.
+
+stiva isn't just a Docker replacement. It's the runtime layer that makes trustworthy autonomous agent execution possible. An AGI system that can't prove its own integrity can't be trusted with autonomous action. stiva + kavach + libro + TPM gives you that proof.
+
+**When**: Post-v1.0. Docker/Podman serve through v1.0. stiva becomes interesting when the agnostic-kernel (Phase 20) makes containers a first-class kernel primitive instead of a userspace hack.
+
 ---
 
 ## Implementation Notes
@@ -506,4 +609,4 @@ Three implementations, three strengths: SY solved auth + discovery, daimon solve
 
 ---
 
-*Last Updated: 2026-03-20*
+*Last Updated: 2026-03-21*

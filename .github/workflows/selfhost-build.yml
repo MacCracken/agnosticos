@@ -428,6 +428,29 @@ jobs:
           mkdir -p "$LFS/etc/agnos"
           cp -r config/* "$LFS/etc/agnos/" 2>/dev/null || true
 
+          # Install kernel — use host kernel as bootstrap until AGNOS kernel recipe builds
+          mkdir -p "$LFS/boot"
+          HOST_VMLINUZ=$(find /boot -name 'vmlinuz-*' -type f | sort -V | tail -1)
+          HOST_INITRD=$(find /boot -name 'initrd*' -o -name 'initramfs*' -type f | sort -V | tail -1)
+          if [[ -n "$HOST_VMLINUZ" ]]; then
+            cp "$HOST_VMLINUZ" "$LFS/boot/"
+            echo "Installed kernel: $(basename "$HOST_VMLINUZ")"
+          else
+            echo "WARN: No host kernel found — ISO will not be bootable"
+          fi
+          if [[ -n "$HOST_INITRD" ]]; then
+            cp "$HOST_INITRD" "$LFS/boot/"
+            echo "Installed initrd: $(basename "$HOST_INITRD")"
+          fi
+
+          # Install kernel modules if available
+          KVER=$(basename "${HOST_VMLINUZ:-}" | sed 's/vmlinuz-//')
+          if [[ -n "$KVER" ]] && [[ -d "/lib/modules/$KVER" ]]; then
+            mkdir -p "$LFS/lib/modules"
+            cp -r "/lib/modules/$KVER" "$LFS/lib/modules/"
+            echo "Installed modules: $KVER"
+          fi
+
       - name: Archive complete rootfs (base + desktop + userland)
         run: |
           mkdir -p output

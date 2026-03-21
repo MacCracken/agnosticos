@@ -11,6 +11,10 @@
 
 **AGNOS** is a Linux-based operating system built from the ground up for AI agents and human-AI collaboration. Security-first, Rust-native, self-hosting. AI agents are first-class citizens — sandboxed, auditable, and controllable.
 
+> *AGI doesn't run on infrastructure built for web apps. It runs on infrastructure built for AGI.*
+>
+> *A system that can't prove its own integrity can't be trusted with autonomous action.*
+
 ---
 
 ## Architecture

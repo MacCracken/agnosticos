@@ -1,0 +1,47 @@
+# Bote — MCP core service (JSON-RPC 2.0, tool registry, dispatch)
+#
+# Lib: bote = "0.21.3" in Cargo.toml
+# Status: Scaffolded — v0.21.3.
+
+[package]
+name = "bote"
+version = "0.21.3"
+description = "Bote — MCP core service (JSON-RPC 2.0, tool registry, dispatch)"
+license = "AGPL-3.0"
+groups = ["library", "rust"]
+release = 1
+arch = "any"
+
+[source]
+crates_io = "bote"
+github_release = "MacCracken/bote"
+release_asset = "source"
+
+[depends]
+runtime = []
+build = ["rust"]
+
+[marketplace]
+category = "library"
+runtime = "rust-crate"
+publisher = "AGNOS"
+tags = ["mcp", "json-rpc", "tools", "protocol", "agent", "rust"]
+min_agnos_version = "2026.3.21"
+
+[marketplace.sandbox]
+seccomp_mode = "basic"
+network_access = false
+
+[build]
+make = "cargo build --release"
+check = "cargo test"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+mkdir -p $PKG/usr/lib/bote
+cp -r src $PKG/usr/lib/bote/
+cp Cargo.toml $PKG/usr/lib/bote/
+cp VERSION $PKG/usr/lib/bote/
+"""

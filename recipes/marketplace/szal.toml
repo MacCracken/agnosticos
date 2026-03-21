@@ -1,0 +1,47 @@
+# Szál — Workflow engine (step/flow/DAG/rollback)
+#
+# Lib: szal = "0.21.3" in Cargo.toml
+# Status: Scaffolded — v0.21.3.
+
+[package]
+name = "szal"
+version = "0.21.3"
+description = "Szál — Workflow engine (step/flow/DAG/rollback)"
+license = "AGPL-3.0"
+groups = ["library", "rust"]
+release = 1
+arch = "any"
+
+[source]
+crates_io = "szal"
+github_release = "MacCracken/szal"
+release_asset = "source"
+
+[depends]
+runtime = []
+build = ["rust"]
+
+[marketplace]
+category = "library"
+runtime = "rust-crate"
+publisher = "AGNOS"
+tags = ["workflow", "pipeline", "dag", "orchestration", "rust"]
+min_agnos_version = "2026.3.21"
+
+[marketplace.sandbox]
+seccomp_mode = "basic"
+network_access = false
+
+[build]
+make = "cargo build --release"
+check = "cargo test"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+mkdir -p $PKG/usr/lib/szal
+cp -r src $PKG/usr/lib/szal/
+cp Cargo.toml $PKG/usr/lib/szal/
+cp VERSION $PKG/usr/lib/szal/
+"""
