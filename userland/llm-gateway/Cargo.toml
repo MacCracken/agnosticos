@@ -34,7 +34,7 @@ tower = { workspace = true }
 tower-http = { workspace = true }
 url = "2"
 async-stream = "0.3"
-ai-hwaccel = "0.19.3"
+ai-hwaccel = "0.20"
 
 [lib]
 name = "llm_gateway"

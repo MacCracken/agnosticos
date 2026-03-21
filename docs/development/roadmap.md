@@ -321,6 +321,33 @@ Upgrades to `ScreenCaptureManager` and `ScreenRecordingManager` to support real-
 
 *Cross-project integration items for the AGNOS ecosystem.*
 
+### SecureYeoman Shared Crate Adoption
+
+SY currently bundles its own implementations for media, inference, hardware detection, and agent networking. As the shared crate ecosystem matures, SY adopts them — reducing SY's codebase while improving capability.
+
+| # | Priority | Item | SY replaces | With crate | Status |
+|---|----------|------|-------------|------------|--------|
+| SY1 | High | Hardware detection | Internal GPU detection | `ai-hwaccel` | Ready — ai-hwaccel 0.20.3 published |
+| SY2 | High | Inference gateway | Internal LLM routing | `hoosh` (client) | Ready — hoosh 0.20.4 published |
+| SY3 | Medium | Sandbox session recording | Custom screen capture | `aethersafta` | Pending — aethersafta 0.20.3 publishes tomorrow |
+| SY4 | Medium | Media processing in tasks | Internal ffmpeg shelling | `tarang` | Ready — tarang 0.20.3 published |
+| SY5 | Medium | Image processing in tools | Internal sharp/jimp | `ranga` (via WASM or FFI) | Planned — ranga is Rust-native, needs WASM or FFI bridge for SY's Bun runtime |
+| SY6 | Low | Audio in agent workflows | None (not supported) | `nada` | Planned — enables audio analysis in SY agent tasks |
+| SY7 | Low | Agent-to-agent protocol | Custom A2A implementation | `sluice` (future) | Planned — SY's A2A patterns feed into sluice design, then SY adopts sluice |
+
+### SecureYeoman → Ecosystem Handoff
+
+Patterns SY has proven that should flow back into shared crates:
+
+| Pattern | Current home | Target crate | What SY proved |
+|---------|-------------|--------------|----------------|
+| A2A authenticated handshake | SY agent protocol | sluice | Mutual auth, capability exchange, trust scoring between agents |
+| A2A tool delegation | SY MCP bridge | sluice | Remote tool invocation with sandboxed execution and result streaming |
+| A2A event streaming | SY SSE bus | sluice | Real-time event fan-out across nodes with backpressure |
+| Sandbox strength scoring | SY sandbox framework | daimon/aegis | Quantitative security scoring (0-100) for execution environments |
+| MCP tool discovery | SY 279-tool registry | daimon mela | Dynamic tool registration, capability querying, version negotiation |
+| Agent observability | SY dashboard | nazar | Real-time agent metrics, task timeline, resource usage visualization |
+
 ### Agnostic Integration — Complete
 
 *All 13 items resolved. Data APIs + aethersafha HUD widgets all implemented.*

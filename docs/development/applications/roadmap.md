@@ -386,7 +386,7 @@ Published to crates.io, used by AGNOS, Synapse, AgnosAI, SecureYeoman, and consu
 | [ai-hwaccel](https://github.com/MacCracken/ai-hwaccel) | 0.20.3 | Universal AI hardware accelerator detection (13 families), quantisation, sharding, training memory estimation | hoosh, daimon, Synapse, AgnosAI, tazama |
 | [tarang](https://github.com/MacCracken/tarang) | 0.20.3 | AI-native media framework — 18-33x faster than GStreamer. Audio/video decode, encode, mux, fingerprint, analysis | jalwa, tazama, shruti, aethersafta |
 | [aethersafta](https://github.com/MacCracken/aethersafta) | 0.20.3 | Real-time media compositing — scene graph, multi-source capture, HW encoding, streaming output | aethersafha, streaming app, tazama, SY, selah |
-| [hoosh](https://github.com/MacCracken/hoosh) | 0.20.3 | AI inference gateway — 14 LLM providers, OpenAI-compatible API, token budgets, whisper STT, caching | daimon, tarang, aethersafta, agnoshi, AgnosAI, all consumer apps |
+| [hoosh](https://github.com/MacCracken/hoosh) | 0.20.4 | AI inference gateway — 14 LLM providers, OpenAI-compatible API, token budgets, whisper STT, caching | daimon, tarang, aethersafta, agnoshi, AgnosAI, all consumer apps |
 | [ranga](https://github.com/MacCracken/ranga) | 0.20.3 | Core image processing — color spaces, blend modes, pixel buffers, filters, GPU compute | rasa, tazama, aethersafta, streaming app |
 | [nada](https://github.com/MacCracken/nada) | 0.20.3 | Core audio engine — buffers, DSP, mixing, resampling, analysis, clock, PipeWire capture | shruti, jalwa, aethersafta, tarang, hoosh, streaming app |
 
@@ -412,6 +412,58 @@ Published to crates.io, used by AGNOS, Synapse, AgnosAI, SecureYeoman, and consu
 - **rasa** → drops rasa-core color math, uses `ranga::color`, `ranga::blend`, `ranga::filter`
 - **tazama** → drops manual BT.601, uses `ranga::convert`, `ranga::color_correct`
 - **aethersafta** → drops custom alpha blend + color conversion, uses `ranga::blend`, `ranga::convert`
+
+### Future Shared Crates (Planned)
+
+Ideas for additional extractions as the ecosystem matures. Not yet scaffolded.
+
+| Crate (working name) | Domain | Extracts from | Would serve |
+|----------------------|--------|---------------|-------------|
+| **sluice** | Queue multiplexing, distributed state, fleet messaging | daimon (pubsub, IPC, fleet relay), AgnosAI (fleet placement, task queue) | daimon, AgnosAI, hoosh (request routing), sutra (parallel execution), aethersafta (frame pipeline), streaming app |
+| **nein** (German: nine / "no") | Rust-native firewall (neintables) | daimon (nftables rules), aegis (network policy), sutra (nftables module) | AGNOS network stack, edge fleet, sy-agnos sandbox |
+
+#### Sluice — Distributed Queue & Multiplex Engine
+
+**Problem**: Multiple projects implement overlapping queue/messaging patterns:
+- **daimon**: PubSub broker (topic matching, subscriber fan-out), fleet relay (dedup, broadcast), agent IPC (Unix sockets, message routing)
+- **AgnosAI**: Task queue (priority, DAG scheduling), fleet placement (node ranking, affinity), crew coordination (message passing)
+- **hoosh**: Request routing (provider selection, round-robin, failover), response streaming (SSE fan-out)
+- **sutra**: Parallel task execution, result collection, dependency resolution
+
+**What it would own**:
+- Lock-free MPMC queue (multi-producer, multi-consumer) with priority support
+- Topic-based pub/sub with wildcard matching (MQTT-style `+` and `#`)
+- Multiplexed connection pool with health checking and failover
+- Distributed state primitives (CRDTs or similar for fleet consensus)
+- Backpressure and flow control for streaming pipelines
+- Message deduplication (bloom filter or seen-set)
+
+**Prior art in the ecosystem**:
+- **SecureYeoman A2A network** — battle-tested agent-to-agent protocol: authenticated handshakes, capability discovery, tool delegation, event streaming. Proven at scale with 279 MCP tools across multi-node deployments. Sluice absorbs the protocol patterns.
+- **daimon pubsub** — MQTT-style topic matching (`+`/`#` wildcards), subscriber fan-out, fleet relay with dedup. Proven in edge fleet management. Sluice absorbs the routing engine.
+- **AgnosAI fleet** — 220ns message overhead, priority DAG scheduling, GPU-aware placement. Proven in benchmarks. Sluice absorbs the raw speed.
+
+Three implementations, three strengths: SY solved auth + discovery, daimon solved topic routing, AgnosAI solved raw speed. Sluice unifies all three.
+
+**Why not just use Redis/NATS/ZeroMQ**: Same reason we built tarang instead of using GStreamer — Rust-native, zero-copy, no external process, no serialization boundary. A shared crate makes 220ns messaging available to everyone without each project reinventing the queue.
+
+**When**: Post-v1.0. Current implementations work. Extraction makes sense once we have 3+ consumers hitting the same patterns.
+
+#### Nein — Rust-Native Firewall (neintables)
+
+**Problem**: AGNOS currently shells out to `nftables` for all network policy — daimon's CORS rules, aegis network isolation, sy-agnos sandbox default-deny, edge fleet policy, sutra's nftables module. Every call spawns a process, parses text output, and hopes the nftables syntax hasn't changed.
+
+**What it would own**:
+- Rust-native netfilter interface (nfnetlink sockets, no `nft` CLI dependency)
+- Declarative rule builder API: `Nein::chain("input").match_tcp(8090).accept()`
+- Atomic rule replacement (transaction-based, like nftables but without the CLI)
+- Per-agent network policy (integrated with daimon sandbox profiles)
+- CIDR/IP set matching, rate limiting, connection tracking
+- Audit integration — all rule changes logged to cryptographic chain
+
+**Why not just keep nftables**: nftables works. But shelling out to `nft` from Rust for every policy change is the same antipattern as shelling out to `vulkaninfo` — process spawn, text parsing, no type safety. A Rust-native firewall speaks nfnetlink directly, same as `nft` does internally, but without the CLI overhead.
+
+**When**: Post-v1.0. nftables serves well through v1.0. Nein becomes interesting when agent-level network policy needs to change at microsecond scale (agent spawn → firewall rule in the same syscall, not a subprocess).
 
 ---
 

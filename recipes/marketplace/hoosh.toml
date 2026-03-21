@@ -1,0 +1,129 @@
+# Hoosh — AI inference gateway for the AGNOS ecosystem
+# Multi-provider LLM routing (14 backends), OpenAI-compatible API, token budgets,
+# response caching, speech-to-text (whisper), hardware-aware model placement.
+# Rust library crate + CLI binary (serve, models, infer, health, info).
+#
+# Name: Hoosh (Persian: هوش — intelligence)
+# CLI: hoosh serve --port 8088
+# Lib: hoosh = "0.20.4" in Cargo.toml
+#
+# Status: Published — v0.20.4 on crates.io + GitHub.
+
+[package]
+name = "hoosh"
+version = "0.20.4"
+description = "Hoosh — AI inference gateway (14 LLM providers, OpenAI-compatible, token budgets)"
+license = "AGPL-3.0"
+groups = ["tool", "library", "ai", "rust"]
+release = 1
+arch = "x86_64"
+
+[source]
+crates_io = "hoosh"
+github_release = "MacCracken/hoosh"
+release_asset = "hoosh-*-linux-amd64.tar.gz"
+
+[depends]
+runtime = [
+    "glibc",
+    "openssl",
+]
+build = [
+    "rust",
+    "openssl-dev",
+]
+
+[marketplace]
+category = "ai-platform"
+runtime = "native-binary"
+publisher = "AGNOS"
+tags = ["llm", "inference", "ai", "gateway", "openai", "ollama", "whisper", "token-budget", "caching", "rust"]
+min_agnos_version = "2026.3.20"
+
+[marketplace.sandbox]
+seccomp_mode = "desktop"
+network_access = true
+allowed_hosts = [
+    "localhost",
+    "127.0.0.1",
+    # Local backends
+    "localhost:11434",  # Ollama
+    "localhost:8080",   # llama.cpp
+    "localhost:1234",   # LM Studio
+    # Remote APIs
+    "api.openai.com",
+    "api.anthropic.com",
+    "api.groq.com",
+    "api.deepseek.com",
+    "api.mistral.ai",
+    "openrouter.ai",
+    "generativelanguage.googleapis.com",
+]
+data_dir = "~/.hoosh/"
+
+[[marketplace.sandbox.landlock]]
+path = "~/.hoosh/"
+access = "rw"
+
+[[marketplace.sandbox.landlock]]
+path = "/tmp"
+access = "rw"
+
+# IPC with daimon
+[[marketplace.sandbox.landlock]]
+path = "/run/agnos/"
+access = "rw"
+
+# GPU device access for hardware detection
+[[marketplace.sandbox.landlock]]
+path = "/dev/dri"
+access = "ro"
+
+# Sysfs for ai-hwaccel probing
+[[marketplace.sandbox.landlock]]
+path = "/sys/class/"
+access = "ro"
+
+[marketplace.services]
+ports = [8088]
+
+[build]
+make = "cargo build --release"
+check = "cargo test"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+# Install the server binary
+mkdir -p $PKG/usr/bin
+cp target/release/hoosh $PKG/usr/bin/hoosh
+chmod +x $PKG/usr/bin/hoosh
+
+# Install source for offline Cargo builds
+mkdir -p $PKG/usr/lib/hoosh
+cp -r src $PKG/usr/lib/hoosh/
+cp Cargo.toml $PKG/usr/lib/hoosh/
+cp VERSION $PKG/usr/lib/hoosh/
+
+# Default config directory
+mkdir -p $PKG/etc/hoosh
+
+# Systemd service
+mkdir -p $PKG/usr/lib/systemd/user
+cat > $PKG/usr/lib/systemd/user/hoosh.service << 'EOF'
+[Unit]
+Description=Hoosh AI Inference Gateway
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/hoosh serve --port 8088
+Environment=HOOSH_DATA_DIR=%h/.hoosh
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+EOF
+"""

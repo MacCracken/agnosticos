@@ -21,8 +21,7 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 if [[ ! -d "${LFS}/usr/bin" ]]; then
-    echo "ERROR: ${LFS} does not look like an AGNOS rootfs (missing /usr/bin)"
-    exit 1
+    mkdir -p "${LFS}/usr/bin"
 fi
 
 # ---------------------------------------------------------------------------
@@ -56,6 +55,46 @@ mount_vfs dev
 mount_vfs proc
 mount_vfs sys
 mount_vfs run
+
+# ---------------------------------------------------------------------------
+# Bootstrap essentials — ensure /usr/bin/env and /bin/bash exist in chroot
+# ---------------------------------------------------------------------------
+
+# /usr/bin/env is needed by countless scripts (#!/usr/bin/env bash)
+# Copy from host if coreutils hasn't been built yet
+if [[ ! -f "${LFS}/usr/bin/env" ]]; then
+    echo "  Bootstrapping /usr/bin/env from host (coreutils not yet built)..."
+    cp /usr/bin/env "${LFS}/usr/bin/env"
+    chmod +x "${LFS}/usr/bin/env"
+fi
+
+# Find the best available bash and ensure /bin/bash exists
+if [[ -x "${LFS}/bin/bash" ]]; then
+    CHROOT_BASH="/bin/bash"
+elif [[ -x "${LFS}/usr/bin/bash" ]]; then
+    CHROOT_BASH="/usr/bin/bash"
+    mkdir -p "${LFS}/bin"
+    ln -sf /usr/bin/bash "${LFS}/bin/bash" 2>/dev/null || true
+elif [[ -x "${LFS}/tools/bin/bash" ]]; then
+    CHROOT_BASH="/tools/bin/bash"
+    mkdir -p "${LFS}/bin" "${LFS}/usr/bin"
+    ln -sf /tools/bin/bash "${LFS}/bin/bash" 2>/dev/null || true
+    ln -sf /tools/bin/bash "${LFS}/usr/bin/bash" 2>/dev/null || true
+else
+    # Last resort: copy bash from host
+    echo "  Bootstrapping /bin/bash from host (no bash found in chroot)..."
+    mkdir -p "${LFS}/bin"
+    cp /bin/bash "${LFS}/bin/bash"
+    chmod +x "${LFS}/bin/bash"
+    CHROOT_BASH="/bin/bash"
+fi
+
+echo "  Chroot bash: ${CHROOT_BASH}"
+
+# Also ensure /bin/sh exists (many build scripts need it)
+if [[ ! -f "${LFS}/bin/sh" ]]; then
+    ln -sf bash "${LFS}/bin/sh" 2>/dev/null || true
+fi
 
 # ---------------------------------------------------------------------------
 # Enter chroot
