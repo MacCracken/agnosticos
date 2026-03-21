@@ -383,12 +383,13 @@ Published to crates.io, used by AGNOS, Irfan, AgnosAI, SecureYeoman, and consume
 
 | Crate | Version | Description | Consumers |
 |-------|---------|-------------|-----------|
-| [ai-hwaccel](https://github.com/MacCracken/ai-hwaccel) | 0.20.3 | Universal AI hardware accelerator detection (13 families), quantisation, sharding, training memory estimation | hoosh, daimon, Irfan, AgnosAI, tazama |
+| [ai-hwaccel](https://github.com/MacCracken/ai-hwaccel) | 0.21.3 | Universal AI hardware accelerator detection (13 families), quantisation, sharding, training memory estimation | hoosh, daimon, Irfan, AgnosAI, tazama |
 | [tarang](https://github.com/MacCracken/tarang) | 0.20.3 | AI-native media framework — 18-33x faster than GStreamer. Audio/video decode, encode, mux, fingerprint, analysis | jalwa, tazama, shruti, aethersafta |
 | [aethersafta](https://github.com/MacCracken/aethersafta) | 0.20.3 | Real-time media compositing — scene graph, multi-source capture, HW encoding, streaming output | aethersafha, streaming app, tazama, SY, selah |
-| [hoosh](https://github.com/MacCracken/hoosh) | 0.20.4 | AI inference gateway — 14 LLM providers, OpenAI-compatible API, token budgets, whisper STT, caching | daimon, tarang, aethersafta, agnoshi, AgnosAI, all consumer apps |
+| [hoosh](https://github.com/MacCracken/hoosh) | 0.21.3 | AI inference gateway — 14 LLM providers, OpenAI-compatible API, token budgets, whisper STT, caching | daimon, tarang, aethersafta, agnoshi, AgnosAI, all consumer apps |
 | [ranga](https://github.com/MacCracken/ranga) | 0.20.5 | Core image processing — color spaces, blend modes, pixel buffers, filters, GPU compute | rasa, tazama, aethersafta, streaming app |
 | [dhvani](https://github.com/MacCracken/dhvani) | 0.20.4 | Core audio engine — buffers, DSP, mixing, resampling, analysis, synthesis, MIDI, clock, PipeWire capture | shruti, jalwa, aethersafta, tarang, hoosh, streaming app |
+| [majra](https://github.com/MacCracken/majra) | 0.21.3 | Distributed queue & multiplex engine — lock-free MPMC, pub/sub, connection pooling, backpressure | daimon, AgnosAI, hoosh, sutra, aethersafta, streaming app |
 
 ### Ranga — Shared Image Processing Core (NEW)
 

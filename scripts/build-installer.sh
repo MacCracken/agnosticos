@@ -417,23 +417,66 @@ VARIANT="$PROFILE"
 VARIANT_ID="$PROFILE"
 EOF
 
-    # Users
-    run_in_chroot "$rootfs" "
-        groupadd -f agnos
-        useradd -r -g agnos -d /var/lib/agnos -s /usr/sbin/nologin agnos 2>/dev/null || true
-        groupadd -f agnos-llm
-        useradd -r -g agnos-llm -d /var/lib/agnos/models -s /usr/sbin/nologin agnos-llm 2>/dev/null || true
+    # Users — direct file manipulation (shadow utils may not be installed yet)
+    log_info "  Creating users and groups..."
 
-        useradd -m -G sudo -s /bin/bash user 2>/dev/null || true
-        echo 'user:agnos' | chpasswd
-        echo 'root:agnos' | chpasswd
-    "
+    # Ensure base files exist
+    touch "$rootfs/etc/passwd" "$rootfs/etc/group" "$rootfs/etc/shadow"
+    chmod 640 "$rootfs/etc/shadow"
 
-    # Desktop profile: add user to video/audio/input groups
+    # Helper: add group if not present
+    add_group() {
+        local name="$1" gid="$2"
+        grep -q "^${name}:" "$rootfs/etc/group" 2>/dev/null || \
+            echo "${name}:x:${gid}:" >> "$rootfs/etc/group"
+    }
+
+    # Helper: add user if not present
+    add_user() {
+        local name="$1" uid="$2" gid="$3" home="$4" shell="$5"
+        grep -q "^${name}:" "$rootfs/etc/passwd" 2>/dev/null || \
+            echo "${name}:x:${uid}:${gid}::${home}:${shell}" >> "$rootfs/etc/passwd"
+        grep -q "^${name}:" "$rootfs/etc/shadow" 2>/dev/null || \
+            echo "${name}:!:19800:0:99999:7:::" >> "$rootfs/etc/shadow"
+    }
+
+    # System groups
+    add_group root 0
+    add_group agnos 900
+    add_group agnos-llm 901
+    add_group sudo 27
+    add_group video 44
+    add_group audio 29
+    add_group input 104
+    add_group render 105
+
+    # System users
+    add_user root 0 0 /root /bin/bash
+    add_user agnos 900 900 /var/lib/agnos /usr/sbin/nologin
+    add_user agnos-llm 901 901 /var/lib/agnos/models /usr/sbin/nologin
+
+    # Regular user with password 'agnos' (openssl hash or plain for now)
+    if ! grep -q "^user:" "$rootfs/etc/passwd" 2>/dev/null; then
+        add_user user 1000 1000 /home/user /bin/bash
+        add_group user 1000
+        mkdir -p "$rootfs/home/user"
+        # Set password: 'agnos' — use Python if available, otherwise plain marker
+        local pw_hash
+        pw_hash=$(python3 -c "import crypt; print(crypt.crypt('agnos', crypt.mksalt(crypt.METHOD_SHA512)))" 2>/dev/null) || \
+        pw_hash=$(openssl passwd -6 agnos 2>/dev/null) || \
+        pw_hash='$6$placeholder$placeholder'
+        sed -i "s|^user:!:|user:${pw_hash}:|" "$rootfs/etc/shadow"
+        sed -i "s|^root:!:|root:${pw_hash}:|" "$rootfs/etc/shadow"
+    fi
+
+    # Desktop profile: add user to extra groups
     if [[ "$PROFILE" == "desktop" ]]; then
-        run_in_chroot "$rootfs" "
-            usermod -aG video,audio,input,render user 2>/dev/null || true
-        "
+        for grp in video audio input render sudo; do
+            sed -i "s|^${grp}:x:\([0-9]*\):$|${grp}:x:\1:user|" "$rootfs/etc/group"
+            sed -i "s|^${grp}:x:\([0-9]*\):\(.*\)$|${grp}:x:\1:\2,user|" "$rootfs/etc/group"
+        done
+        # Clean up double-add (user,user → user)
+        sed -i 's/,user,user/,user/g; s/user,user/user/g' "$rootfs/etc/group"
     fi
 
     # AGNOS directories

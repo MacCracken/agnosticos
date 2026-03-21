@@ -5,13 +5,13 @@
 #
 # Name: Hoosh (Persian: هوش — intelligence)
 # CLI: hoosh serve --port 8088
-# Lib: hoosh = "0.20.4" in Cargo.toml
+# Lib: hoosh = "0.21.3" in Cargo.toml
 #
-# Status: Published — v0.20.4 on crates.io + GitHub.
+# Status: Published — v0.21.3 on crates.io + GitHub.
 
 [package]
 name = "hoosh"
-version = "0.20.4"
+version = "0.21.3"
 description = "Hoosh — AI inference gateway (14 LLM providers, OpenAI-compatible, token budgets)"
 license = "AGPL-3.0"
 groups = ["tool", "library", "ai", "rust"]

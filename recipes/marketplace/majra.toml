@@ -1,0 +1,56 @@
+# Majra — Distributed queue and multiplex engine for the AGNOS ecosystem
+# Lock-free MPMC queues, topic-based pub/sub, connection pooling, backpressure,
+# message dedup. Unifies patterns from daimon, AgnosAI, and SecureYeoman A2A.
+#
+# Name: Majra (Arabic/Persian: مجرا — channel, conduit, waterway)
+# Lib: majra = "0.21.3" in Cargo.toml
+#
+# Status: Published — v0.21.3 on crates.io.
+
+[package]
+name = "majra"
+version = "0.21.3"
+description = "Majra — Distributed queue and multiplex engine"
+license = "AGPL-3.0"
+groups = ["library", "networking", "concurrency", "rust"]
+release = 1
+arch = "any"
+
+[source]
+crates_io = "majra"
+github_release = "MacCracken/majra"
+release_asset = "source"
+
+[depends]
+runtime = []
+build = [
+    "rust",
+]
+
+[marketplace]
+category = "library"
+runtime = "rust-crate"
+publisher = "AGNOS"
+tags = ["queue", "pubsub", "multiplex", "concurrency", "lock-free", "messaging", "fleet", "a2a", "rust"]
+min_agnos_version = "2026.3.21"
+
+[marketplace.sandbox]
+seccomp_mode = "basic"
+network_access = false
+
+[build]
+make = "cargo build --release"
+check = "cargo test"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+# Library crate — consumers add to Cargo.toml:
+#   majra = "0.21.3"
+# Install source for offline/air-gapped Cargo builds.
+mkdir -p $PKG/usr/lib/majra
+cp -r src $PKG/usr/lib/majra/
+cp Cargo.toml $PKG/usr/lib/majra/
+cp VERSION $PKG/usr/lib/majra/
+"""
