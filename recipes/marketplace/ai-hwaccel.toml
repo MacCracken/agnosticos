@@ -5,14 +5,14 @@
 # plans, and training memory estimation. Rust library crate + CLI binary.
 #
 # CLI: ai-hwaccel --table, --pretty, --summary, --watch <secs>, --family gpu
-# Lib: ai-hwaccel = "0.19.3" in Cargo.toml
+# Lib: ai-hwaccel = "0.20.3" in Cargo.toml
 #
-# Status: Published — v0.19.3 on crates.io + GitHub.
+# Status: Published — v0.20.3 on crates.io + GitHub.
 # Used by: AGNOS (hoosh, daimon), Synapse, Agnostic, AgnosAI, consumer apps.
 
 [package]
 name = "ai-hwaccel"
-version = "0.19.3"
+version = "0.20.3"
 description = "ai-hwaccel — Universal AI hardware accelerator detection and workload planning"
 license = "AGPL-3.0"
 groups = ["tool", "library", "ai", "hardware", "rust"]

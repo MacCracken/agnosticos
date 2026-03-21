@@ -302,6 +302,31 @@ create_rootfs() {
     log_info "  -> AGNOS base rootfs extracted"
     log_info "  -> Packages built from source (no apt/dpkg)"
 
+    # --- Bootstrap chroot essentials ---
+    # Ensure /usr/bin/env and /bin/bash exist before any chroot calls.
+    # Early in the LFS build, coreutils may not be installed yet.
+    if [[ ! -f "$rootfs/usr/bin/env" ]]; then
+        log_info "  Bootstrapping /usr/bin/env from host..."
+        mkdir -p "$rootfs/usr/bin"
+        cp /usr/bin/env "$rootfs/usr/bin/env"
+        chmod +x "$rootfs/usr/bin/env"
+    fi
+    if [[ ! -f "$rootfs/bin/bash" ]]; then
+        if [[ -x "$rootfs/tools/bin/bash" ]]; then
+            log_info "  Symlinking /bin/bash -> /tools/bin/bash..."
+            mkdir -p "$rootfs/bin"
+            ln -sf /tools/bin/bash "$rootfs/bin/bash"
+        elif [[ -x /bin/bash ]]; then
+            log_info "  Bootstrapping /bin/bash from host..."
+            mkdir -p "$rootfs/bin"
+            cp /bin/bash "$rootfs/bin/bash"
+            chmod +x "$rootfs/bin/bash"
+        fi
+    fi
+    if [[ ! -f "$rootfs/bin/sh" ]]; then
+        ln -sf bash "$rootfs/bin/sh" 2>/dev/null || true
+    fi
+
     # --- Configure rootfs ---
     log_step "Configuring AGNOS rootfs..."
 
