@@ -317,41 +317,55 @@ create_rootfs() {
     chmod +x "$rootfs/usr/bin/env"
     [[ -f "$rootfs/bin/sh" ]] || ln -sf bash "$rootfs/bin/sh"
 
-    # Copy ALL shared library deps for bash + env + coreutils essentials
-    # Use ldd to discover the full dependency tree
-    for bin in /bin/bash /usr/bin/env; do
-        ldd "$bin" 2>/dev/null | grep -oP '(?<=> )/\S+' | while IFS= read -r lib; do
-            local_name=$(basename "$lib")
-            # Copy to /usr/lib/ (primary) and ensure /lib64/ has the linker
-            if [[ "$local_name" == ld-linux* ]]; then
-                cp -f "$lib" "$rootfs/lib64/$local_name" 2>/dev/null || true
-            else
-                cp -f "$lib" "$rootfs/usr/lib/$local_name" 2>/dev/null || true
-            fi
-        done
+    # Copy ALL shared library deps for bash + env
+    # Collect libs into an array first (avoids pipe subshell issues)
+    LIBS=()
+    while IFS= read -r line; do
+        # Match lines like: libfoo.so.6 => /usr/lib/libfoo.so.6 (0x...)
+        # and lines like:   /lib64/ld-linux-x86-64.so.2 => /usr/lib64/... (0x...)
+        lib=$(echo "$line" | sed -n 's/.*=> \(\/[^ ]*\).*/\1/p')
+        [[ -z "$lib" ]] && lib=$(echo "$line" | sed -n 's/[[:space:]]*\(\/[^ ]*\).*/\1/p')
+        [[ -n "$lib" && -f "$lib" ]] && LIBS+=("$lib")
+    done < <(ldd /bin/bash 2>/dev/null; ldd /usr/bin/env 2>/dev/null)
+
+    log_info "  Copying ${#LIBS[@]} shared libraries into chroot..."
+    for lib in "${LIBS[@]}"; do
+        local_name=$(basename "$lib")
+        if [[ "$local_name" == ld-linux* ]]; then
+            cp -f "$lib" "$rootfs/lib64/$local_name"
+            log_info "    $local_name -> /lib64/"
+        else
+            cp -f "$lib" "$rootfs/usr/lib/$local_name"
+        fi
     done
 
-    # Ensure /lib64/ld-linux exists (some systems have it at different paths)
+    # Ensure /lib64/ld-linux exists (belt and suspenders)
     if [[ ! -f "$rootfs/lib64/ld-linux-x86-64.so.2" ]]; then
         for ld in /lib64/ld-linux-x86-64.so.2 /usr/lib64/ld-linux-x86-64.so.2 /lib/ld-linux-x86-64.so.2; do
             if [[ -f "$ld" ]]; then
                 cp -f "$ld" "$rootfs/lib64/ld-linux-x86-64.so.2"
+                log_info "    ld-linux fallback: $ld"
                 break
             fi
         done
     fi
 
-    # Ensure /lib -> /usr/lib symlink for library search path
+    # Ensure /lib -> /usr/lib symlink
     if [[ ! -e "$rootfs/lib" ]]; then
         ln -sf usr/lib "$rootfs/lib"
     fi
 
+    # List what we copied for debugging
+    log_info "  /lib64/:"
+    ls "$rootfs/lib64/" 2>/dev/null | head -5 || true
+    log_info "  /usr/lib/ (shared libs):"
+    ls "$rootfs/usr/lib/"*.so* 2>/dev/null | head -10 || true
+
     # Verify it works
-    if chroot "$rootfs" /bin/bash -c "echo chroot-ok" 2>/dev/null | grep -q "chroot-ok"; then
+    if chroot "$rootfs" /bin/bash -c "echo chroot-ok" 2>&1 | grep -q "chroot-ok"; then
         log_info "  chroot verified OK"
     else
-        log_warn "  chroot bash test failed — dumping lib state:"
-        ls -la "$rootfs/lib64/" "$rootfs/usr/lib/" 2>/dev/null | head -20
+        log_warn "  chroot bash test FAILED — error output:"
         chroot "$rootfs" /bin/bash -c "echo test" 2>&1 || true
     fi
 
