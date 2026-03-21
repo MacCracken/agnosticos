@@ -303,63 +303,57 @@ create_rootfs() {
     log_info "  -> Packages built from source (no apt/dpkg)"
 
     # --- Bootstrap chroot essentials ---
-    # Dynamically-linked host binaries (env, bash) won't work inside the chroot
-    # unless the dynamic linker + libc are also present. Copy the minimal set.
+    # The rootfs may have a toolchain-built bash that depends on /tools/lib/.
+    # Instead of trying to fix library paths, use the host's binaries which
+    # are self-consistent. Force-overwrite to ensure host bash + env + all deps.
     log_info "  Bootstrapping chroot essentials from host..."
 
-    # Dynamic linker — required for any dynamically-linked binary
+    mkdir -p "$rootfs"/{bin,usr/bin,usr/lib,lib64}
+
+    # Always use host bash + env (overwrite any toolchain versions)
+    cp -f /bin/bash "$rootfs/bin/bash"
+    chmod +x "$rootfs/bin/bash"
+    cp -f /usr/bin/env "$rootfs/usr/bin/env"
+    chmod +x "$rootfs/usr/bin/env"
+    [[ -f "$rootfs/bin/sh" ]] || ln -sf bash "$rootfs/bin/sh"
+
+    # Copy ALL shared library deps for bash + env + coreutils essentials
+    # Use ldd to discover the full dependency tree
+    for bin in /bin/bash /usr/bin/env; do
+        ldd "$bin" 2>/dev/null | grep -oP '(?<=> )/\S+' | while IFS= read -r lib; do
+            local_name=$(basename "$lib")
+            # Copy to /usr/lib/ (primary) and ensure /lib64/ has the linker
+            if [[ "$local_name" == ld-linux* ]]; then
+                cp -f "$lib" "$rootfs/lib64/$local_name" 2>/dev/null || true
+            else
+                cp -f "$lib" "$rootfs/usr/lib/$local_name" 2>/dev/null || true
+            fi
+        done
+    done
+
+    # Ensure /lib64/ld-linux exists (some systems have it at different paths)
     if [[ ! -f "$rootfs/lib64/ld-linux-x86-64.so.2" ]]; then
-        mkdir -p "$rootfs/lib64"
-        cp /lib64/ld-linux-x86-64.so.2 "$rootfs/lib64/" 2>/dev/null || \
-        cp /usr/lib64/ld-linux-x86-64.so.2 "$rootfs/lib64/" 2>/dev/null || true
-    fi
-
-    # libc — required by env, bash, and most binaries
-    if [[ ! -f "$rootfs/usr/lib/libc.so.6" ]] && [[ ! -f "$rootfs/lib/libc.so.6" ]]; then
-        mkdir -p "$rootfs/usr/lib"
-        cp /usr/lib/libc.so.6 "$rootfs/usr/lib/" 2>/dev/null || \
-        cp /lib/x86_64-linux-gnu/libc.so.6 "$rootfs/usr/lib/" 2>/dev/null || true
-        # Some systems need lib -> usr/lib symlink
-        if [[ ! -e "$rootfs/lib" ]]; then
-            ln -sf usr/lib "$rootfs/lib" 2>/dev/null || true
-        fi
-    fi
-
-    # /usr/bin/env + its deps
-    if [[ ! -f "$rootfs/usr/bin/env" ]]; then
-        mkdir -p "$rootfs/usr/bin"
-        cp /usr/bin/env "$rootfs/usr/bin/env"
-        chmod +x "$rootfs/usr/bin/env"
-        ldd /usr/bin/env 2>/dev/null | grep -oP '/\S+' | while read -r lib; do
-            [[ -f "$lib" ]] && cp -n "$lib" "$rootfs/usr/lib/" 2>/dev/null || true
+        for ld in /lib64/ld-linux-x86-64.so.2 /usr/lib64/ld-linux-x86-64.so.2 /lib/ld-linux-x86-64.so.2; do
+            if [[ -f "$ld" ]]; then
+                cp -f "$ld" "$rootfs/lib64/ld-linux-x86-64.so.2"
+                break
+            fi
         done
     fi
 
-    # /bin/bash
-    if [[ ! -f "$rootfs/bin/bash" ]]; then
-        if [[ -x "$rootfs/tools/bin/bash" ]]; then
-            mkdir -p "$rootfs/bin"
-            ln -sf /tools/bin/bash "$rootfs/bin/bash"
-        else
-            mkdir -p "$rootfs/bin"
-            cp /bin/bash "$rootfs/bin/bash"
-            chmod +x "$rootfs/bin/bash"
-        fi
+    # Ensure /lib -> /usr/lib symlink for library search path
+    if [[ ! -e "$rootfs/lib" ]]; then
+        ln -sf usr/lib "$rootfs/lib"
     fi
 
-    # Always ensure bash's shared library deps are present
-    # (bash may exist from a previous run but libs might be missing)
-    mkdir -p "$rootfs/usr/lib"
-    for lib in $(ldd /bin/bash 2>/dev/null | grep -oP '/\S+'); do
-        if [[ -f "$lib" ]] && [[ ! -f "$rootfs/usr/lib/$(basename "$lib")" ]]; then
-            cp "$lib" "$rootfs/usr/lib/" 2>/dev/null || true
-        fi
-    done
-    for lib in $(ldd /usr/bin/env 2>/dev/null | grep -oP '/\S+'); do
-        if [[ -f "$lib" ]] && [[ ! -f "$rootfs/usr/lib/$(basename "$lib")" ]]; then
-            cp "$lib" "$rootfs/usr/lib/" 2>/dev/null || true
-        fi
-    done
+    # Verify it works
+    if chroot "$rootfs" /bin/bash -c "echo chroot-ok" 2>/dev/null | grep -q "chroot-ok"; then
+        log_info "  chroot verified OK"
+    else
+        log_warn "  chroot bash test failed — dumping lib state:"
+        ls -la "$rootfs/lib64/" "$rootfs/usr/lib/" 2>/dev/null | head -20
+        chroot "$rootfs" /bin/bash -c "echo test" 2>&1 || true
+    fi
 
     # /bin/sh
     if [[ ! -f "$rootfs/bin/sh" ]]; then
