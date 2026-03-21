@@ -1,24 +1,24 @@
-# Nada — Core audio engine for the AGNOS creative suite
+# Dhvani — Core audio engine for the AGNOS creative suite
 # Buffers, DSP, resampling, mixing, analysis, transport clock, PipeWire capture.
 # Eliminates duplicate audio implementations across shruti, jalwa, and aethersafta.
 #
-# Name: Nada (Sanskrit: नाद — primordial sound)
-# Lib: nada = "0.20.3" in Cargo.toml
+# Name: Dhvani (Sanskrit: ध्वनि — sound, tone, resonance)
+# Lib: dhvani = "0.20.4" in Cargo.toml
 #
-# Status: Scaffolded — v0.20.3.
+# Status: Published — v0.20.4 on crates.io.
 
 [package]
-name = "nada"
-version = "0.20.3"
-description = "Nada — Core audio engine (buffers, DSP, mixing, analysis, clock)"
+name = "dhvani"
+version = "0.20.4"
+description = "Dhvani — Core audio engine (buffers, DSP, mixing, analysis, clock)"
 license = "AGPL-3.0"
 groups = ["library", "audio", "rust"]
 release = 1
 arch = "any"
 
 [source]
-crates_io = "nada"
-github_release = "MacCracken/nada"
+crates_io = "dhvani"
+github_release = "MacCracken/dhvani"
 release_asset = "source"
 
 [depends]
@@ -31,7 +31,7 @@ build = [
 category = "library"
 runtime = "rust-crate"
 publisher = "AGNOS"
-tags = ["audio", "dsp", "mixing", "resampling", "analysis", "pipewire", "clock", "rust"]
+tags = ["audio", "dsp", "mixing", "resampling", "analysis", "pipewire", "clock", "synthesis", "midi", "rust"]
 min_agnos_version = "2026.3.20"
 
 [marketplace.sandbox]
@@ -47,10 +47,10 @@ hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
 
 install = """
 # Library crate — consumers add to Cargo.toml:
-#   nada = "0.20.3"
+#   dhvani = "0.20.4"
 # Install source for offline/air-gapped Cargo builds.
-mkdir -p $PKG/usr/lib/nada
-cp -r src $PKG/usr/lib/nada/
-cp Cargo.toml $PKG/usr/lib/nada/
-cp VERSION $PKG/usr/lib/nada/
+mkdir -p $PKG/usr/lib/dhvani
+cp -r src $PKG/usr/lib/dhvani/
+cp Cargo.toml $PKG/usr/lib/dhvani/
+cp VERSION $PKG/usr/lib/dhvani/
 """

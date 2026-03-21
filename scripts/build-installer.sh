@@ -303,28 +303,79 @@ create_rootfs() {
     log_info "  -> Packages built from source (no apt/dpkg)"
 
     # --- Bootstrap chroot essentials ---
-    # Ensure /usr/bin/env and /bin/bash exist before any chroot calls.
-    # Early in the LFS build, coreutils may not be installed yet.
+    # Dynamically-linked host binaries (env, bash) won't work inside the chroot
+    # unless the dynamic linker + libc are also present. Copy the minimal set.
+    log_info "  Bootstrapping chroot essentials from host..."
+
+    # Dynamic linker — required for any dynamically-linked binary
+    if [[ ! -f "$rootfs/lib64/ld-linux-x86-64.so.2" ]]; then
+        mkdir -p "$rootfs/lib64"
+        cp /lib64/ld-linux-x86-64.so.2 "$rootfs/lib64/" 2>/dev/null || \
+        cp /usr/lib64/ld-linux-x86-64.so.2 "$rootfs/lib64/" 2>/dev/null || true
+    fi
+
+    # libc — required by env, bash, and most binaries
+    if [[ ! -f "$rootfs/usr/lib/libc.so.6" ]] && [[ ! -f "$rootfs/lib/libc.so.6" ]]; then
+        mkdir -p "$rootfs/usr/lib"
+        cp /usr/lib/libc.so.6 "$rootfs/usr/lib/" 2>/dev/null || \
+        cp /lib/x86_64-linux-gnu/libc.so.6 "$rootfs/usr/lib/" 2>/dev/null || true
+        # Some systems need lib -> usr/lib symlink
+        if [[ ! -e "$rootfs/lib" ]]; then
+            ln -sf usr/lib "$rootfs/lib" 2>/dev/null || true
+        fi
+    fi
+
+    # /usr/bin/env
     if [[ ! -f "$rootfs/usr/bin/env" ]]; then
-        log_info "  Bootstrapping /usr/bin/env from host..."
         mkdir -p "$rootfs/usr/bin"
         cp /usr/bin/env "$rootfs/usr/bin/env"
         chmod +x "$rootfs/usr/bin/env"
     fi
+
+    # /bin/bash
     if [[ ! -f "$rootfs/bin/bash" ]]; then
         if [[ -x "$rootfs/tools/bin/bash" ]]; then
-            log_info "  Symlinking /bin/bash -> /tools/bin/bash..."
             mkdir -p "$rootfs/bin"
             ln -sf /tools/bin/bash "$rootfs/bin/bash"
-        elif [[ -x /bin/bash ]]; then
-            log_info "  Bootstrapping /bin/bash from host..."
+        else
             mkdir -p "$rootfs/bin"
             cp /bin/bash "$rootfs/bin/bash"
             chmod +x "$rootfs/bin/bash"
+            # bash needs additional libs (libtinfo/libdl/libreadline)
+            for lib in libtinfo.so.6 libdl.so.2 libreadline.so.8; do
+                for search in /usr/lib /lib /lib/x86_64-linux-gnu /usr/lib/x86_64-linux-gnu; do
+                    if [[ -f "${search}/${lib}" ]]; then
+                        cp "${search}/${lib}" "$rootfs/usr/lib/" 2>/dev/null || true
+                        break
+                    fi
+                done
+            done
         fi
     fi
+
+    # /bin/sh
     if [[ ! -f "$rootfs/bin/sh" ]]; then
         ln -sf bash "$rootfs/bin/sh" 2>/dev/null || true
+    fi
+
+    # Verify the chroot works and define helper
+    if chroot "$rootfs" /usr/bin/env true 2>/dev/null; then
+        log_info "  chroot verified OK (env + bash working)"
+        run_in_chroot() {
+            chroot "$1" /usr/bin/env -i \
+                PATH=/usr/sbin:/usr/bin:/sbin:/bin:/tools/bin \
+                HOME=/root LC_ALL=POSIX \
+                /bin/bash -c "$2"
+        }
+    else
+        log_warn "  /usr/bin/env not functional in chroot — using direct bash"
+        run_in_chroot() {
+            chroot "$1" /bin/bash -c "
+                export PATH=/usr/sbin:/usr/bin:/sbin:/bin:/tools/bin
+                export HOME=/root LC_ALL=POSIX
+                $2
+            "
+        }
     fi
 
     # --- Configure rootfs ---
@@ -351,7 +402,7 @@ VARIANT_ID="$PROFILE"
 EOF
 
     # Users
-    chroot "$rootfs" /usr/bin/env PATH=/usr/sbin:/usr/bin:/sbin:/bin /bin/bash -c "
+    run_in_chroot "$rootfs" "
         groupadd -f agnos
         useradd -r -g agnos -d /var/lib/agnos -s /usr/sbin/nologin agnos 2>/dev/null || true
         groupadd -f agnos-llm
@@ -364,7 +415,7 @@ EOF
 
     # Desktop profile: add user to video/audio/input groups
     if [[ "$PROFILE" == "desktop" ]]; then
-        chroot "$rootfs" /usr/bin/env PATH=/usr/sbin:/usr/bin:/sbin:/bin /bin/bash -c "
+        run_in_chroot "$rootfs" "
             usermod -aG video,audio,input,render user 2>/dev/null || true
         "
     fi
@@ -409,13 +460,13 @@ EOF
         # Enable profile-specific units
         local units_to_enable
         units_to_enable="$(profile_enable_units | tr '\n' ' ')"
-        chroot "$rootfs" /usr/bin/env PATH=/usr/sbin:/usr/bin:/sbin:/bin /bin/bash -c \
+        run_in_chroot "$rootfs" \
             "for unit in $units_to_enable; do systemctl enable \"\$unit\" 2>/dev/null || true; done"
 
         # Set default target
         local default_target
         default_target="$(profile_default_target)"
-        chroot "$rootfs" /usr/bin/env PATH=/usr/sbin:/usr/bin:/sbin:/bin /bin/bash -c "
+        run_in_chroot "$rootfs" "
             systemctl set-default '$default_target' 2>/dev/null || true
         "
 
@@ -458,7 +509,7 @@ Name=en* eth*
 DHCP=yes
 EOF
 
-    chroot "$rootfs" /usr/bin/env PATH=/usr/sbin:/usr/bin:/sbin:/bin /bin/bash -c "
+    run_in_chroot "$rootfs" "
         systemctl enable systemd-networkd 2>/dev/null || true
         systemctl enable systemd-resolved 2>/dev/null || true
         systemctl enable ssh 2>/dev/null || true
@@ -482,7 +533,7 @@ EOF
 d /run/user/1000 0700 user user -
 EOF
         # Enable PipeWire user services
-        chroot "$rootfs" /usr/bin/env PATH=/usr/sbin:/usr/bin:/sbin:/bin /bin/bash -c "
+        run_in_chroot "$rootfs" "
             mkdir -p /home/user/.config/systemd/user/default.target.wants 2>/dev/null || true
             # PipeWire socket activation handled by package defaults
         "
@@ -538,7 +589,7 @@ WantedBy=multi-user.target
 SYUNIT
 
         mkdir -p "$rootfs/var/lib/secureyeoman-edge"
-        chroot "$rootfs" /usr/bin/env PATH=/usr/sbin:/usr/bin:/sbin:/bin /bin/bash -c "
+        run_in_chroot "$rootfs" "
             systemctl enable secureyeoman-edge.service 2>/dev/null || true
         "
     fi
@@ -603,14 +654,14 @@ Default credentials: user/agnos  root/agnos
 EOF
 
     # --- Permissions ---
-    chroot "$rootfs" /usr/bin/env PATH=/usr/sbin:/usr/bin:/sbin:/bin /bin/bash -c "
+    run_in_chroot "$rootfs" "
         chown -R agnos:agnos /var/lib/agnos/agents 2>/dev/null || true
         chown -R agnos-llm:agnos-llm /var/lib/agnos/models 2>/dev/null || true
         chmod 750 /var/log/agnos
     "
 
     # --- Cleanup ---
-    chroot "$rootfs" /usr/bin/env PATH=/usr/sbin:/usr/bin:/sbin:/bin /bin/bash -c "
+    run_in_chroot "$rootfs" "
         rm -rf /tmp/*
     "
 

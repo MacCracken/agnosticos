@@ -1,15 +1,16 @@
-# Synapse — LLM management and training tool for AGNOS marketplace
+# Irfan — LLM management and training tool for AGNOS marketplace
 # Download, run, and fine-tune language models via CLI, REST/gRPC API,
 # or desktop app. Supports llama.cpp, Candle, Ollama, vLLM, ONNX,
 # TensorRT backends. LoRA/QLoRA/full fine-tuning, DPO, RLHF, distillation.
 # Built in Rust; OpenAI-compatible API for drop-in replacement.
 #
-# Status: Released — first tag 2026.3.10 (amd64 + arm64 with SHA256 checksums).
+# Name: Irfan (Persian/Arabic: عرفان — deep knowledge, gnosis)
+# Status: Released — 2026.3.19 (amd64 + arm64).
 
 [package]
-name = "synapse"
+name = "irfan"
 version = "2026.3.19"
-description = "Synapse — LLM management and training tool"
+description = "Irfan — LLM management and training tool"
 license = "GPL-3.0"
 groups = ["server", "ai", "llm", "rust"]
 release = 1
@@ -17,10 +18,9 @@ arch = "x86_64"
 
 [source]
 # Rust binary built by GitHub Actions CI.
-# Release: https://github.com/MacCracken/synapse/releases
-# Asset format: synapse-YYYYMMDD-linux-{amd64,arm64}.tar.gz
-github_release = "MacCracken/synapse"
-release_asset = "synapse-*-linux-amd64.tar.gz"
+# Release: https://github.com/MacCracken/irfan/releases
+github_release = "MacCracken/irfan"
+release_asset = "irfan-*-linux-amd64.tar.gz"
 
 [depends]
 runtime = [
@@ -39,9 +39,9 @@ build = [
 [marketplace]
 category = "ai-platform"
 runtime = "native-binary"
-publisher = "Synapse"
+publisher = "Irfan"
 tags = ["llm", "ai", "training", "fine-tuning", "inference", "model-management", "rust", "openai-compatible"]
-min_agnos_version = "2026.3.14"
+min_agnos_version = "2026.3.19"
 
 [marketplace.sandbox]
 seccomp_mode = "desktop"
@@ -63,10 +63,10 @@ allowed_hosts = [
     "api.mistral.ai",
     "openrouter.ai",
 ]
-data_dir = "~/.synapse/"
+data_dir = "~/.irfan/"
 
 [[marketplace.sandbox.landlock]]
-path = "~/.synapse/"
+path = "~/.irfan/"
 access = "rw"
 
 [[marketplace.sandbox.landlock]]
@@ -93,7 +93,7 @@ path = "/run/agnos/"
 access = "rw"
 
 [marketplace.services]
-# Synapse REST API + gRPC
+# Irfan REST API + gRPC
 ports = [8080]
 depends_on = ["llm-gateway"]
 
@@ -108,45 +108,45 @@ hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
 
 install = """
 # Install the single binary
-mkdir -p $PKG/usr/lib/synapse/bin
-cp target/release/synapse $PKG/usr/lib/synapse/bin/synapse
-chmod +x $PKG/usr/lib/synapse/bin/synapse
+mkdir -p $PKG/usr/lib/irfan/bin
+cp target/release/irfan $PKG/usr/lib/irfan/bin/irfan
+chmod +x $PKG/usr/lib/irfan/bin/irfan
 
 # Symlink into PATH
 mkdir -p $PKG/usr/bin
-ln -sf /usr/lib/synapse/bin/synapse $PKG/usr/bin/synapse
+ln -sf /usr/lib/irfan/bin/irfan $PKG/usr/bin/irfan
 
 # Default config directory
-mkdir -p $PKG/etc/synapse
+mkdir -p $PKG/etc/irfan
 
 # Desktop entry for aethersafha
 mkdir -p $PKG/usr/share/applications
-cat > $PKG/usr/share/applications/synapse.desktop << 'EOF'
+cat > $PKG/usr/share/applications/irfan.desktop << 'EOF'
 [Desktop Entry]
-Name=Synapse
+Name=Irfan
 Comment=LLM management and training tool
 GenericName=LLM Manager
-Exec=synapse serve
-Icon=synapse
+Exec=irfan serve
+Icon=irfan
 Terminal=false
 Type=Application
 Categories=Development;ArtificialIntelligence;
 StartupNotify=true
-StartupWMClass=synapse
+StartupWMClass=irfan
 EOF
 
 # Systemd service unit
 mkdir -p $PKG/usr/lib/systemd/user
-cat > $PKG/usr/lib/systemd/user/synapse.service << 'EOF'
+cat > $PKG/usr/lib/systemd/user/irfan.service << 'EOF'
 [Unit]
-Description=Synapse LLM Management Service
+Description=Irfan LLM Management Service
 After=network.target agnos-llm-gateway.service
 Wants=agnos-llm-gateway.service
 
 [Service]
 Type=simple
-ExecStart=/usr/lib/synapse/bin/synapse serve
-Environment=SYNAPSE_DATA_DIR=%h/.synapse
+ExecStart=/usr/lib/irfan/bin/irfan serve
+Environment=IRFAN_DATA_DIR=%h/.irfan
 Restart=on-failure
 RestartSec=5
 

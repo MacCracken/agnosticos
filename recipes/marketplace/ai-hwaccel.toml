@@ -8,7 +8,7 @@
 # Lib: ai-hwaccel = "0.20.3" in Cargo.toml
 #
 # Status: Published — v0.20.3 on crates.io + GitHub.
-# Used by: AGNOS (hoosh, daimon), Synapse, Agnostic, AgnosAI, consumer apps.
+# Used by: AGNOS (hoosh, daimon), Irfan, Agnostic, AgnosAI, consumer apps.
 
 [package]
 name = "ai-hwaccel"

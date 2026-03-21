@@ -301,7 +301,7 @@ Upgrades to `ScreenCaptureManager` and `ScreenRecordingManager` to support real-
 | 4 | Agnostic | 23 agnostic_* | 14 | Yes | Not started | Agent automation (Python/CrewAI) → native binary migration planned |
 | 5 | Delta | 7 delta_* | 7 | Yes | Not started | Code hosting |
 | 6 | Aequi | 7 aequi_* | 7 | Yes (2026.3.18) | Not started | Accounting |
-| 7 | Synapse | 7 synapse_* | 7 | Yes | Not started | LLM management |
+| 7 | Irfan | 7 irfan_* | 7 | Yes | Not started | LLM management (formerly Synapse) |
 | 8 | Shruti | 7 shruti_* | 7 | Yes | Not started | DAW |
 | 9 | Tazama | 7 tazama_* | 7 | Yes (2026.3.18-1) | Not started | Video editor |
 | 10 | Rasa | 9 rasa_* | 9 | Yes | Not started | Image editor |
@@ -332,7 +332,7 @@ SY currently bundles its own implementations for media, inference, hardware dete
 | SY3 | Medium | Sandbox session recording | Custom screen capture | `aethersafta` | Pending — aethersafta 0.20.3 publishes tomorrow |
 | SY4 | Medium | Media processing in tasks | Internal ffmpeg shelling | `tarang` | Ready — tarang 0.20.3 published |
 | SY5 | Medium | Image processing in tools | Internal sharp/jimp | `ranga` (via WASM or FFI) | Planned — ranga is Rust-native, needs WASM or FFI bridge for SY's Bun runtime |
-| SY6 | Low | Audio in agent workflows | None (not supported) | `nada` | Planned — enables audio analysis in SY agent tasks |
+| SY6 | Low | Audio in agent workflows | None (not supported) | `dhvani` | Planned — enables audio analysis in SY agent tasks |
 | SY7 | Low | Agent-to-agent protocol | Custom A2A implementation | `sluice` (future) | Planned — SY's A2A patterns feed into sluice design, then SY adopts sluice |
 
 ### SecureYeoman → Ecosystem Handoff
@@ -560,7 +560,7 @@ Sutra (infrastructure orchestrator) needs daimon to expose a remote execution AP
 | Edge Recipes | ~30 | 31 | Complete |
 | Marketplace Recipes | 11 | 22 | Complete (18 released) |
 | Bazaar Community | — | 90 | Seed recipes across 8 categories |
-| MCP Tools | — | 144 | Complete (14 agnos + 5 aequi + 24 agnostic + 7 delta + 8 photis + 5 edge + 7 shruti + 9 tarang + 8 jalwa + 9 rasa + 7 mneme + 7 synapse + 7 bullshift + 7 yeoman + 5 phylax + others) |
+| MCP Tools | — | 144 | Complete (14 agnos + 5 aequi + 24 agnostic + 7 delta + 8 photis + 5 edge + 7 shruti + 9 tarang + 8 jalwa + 9 rasa + 7 mneme + 7 irfan + 7 bullshift + 7 yeoman + 5 phylax + others) |
 | Consumer Apps | 6 | 19 | 19 released (incl. Vidhana v1, Sutra scaffolded) |
 | Recipe Validation Errors | 0 | 0 | Complete |
 | Security Audit Rounds | 15 | 16 | Complete |

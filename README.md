@@ -73,7 +73,7 @@ All ship as `.agnos-agent` marketplace bundles via `ark-bundle.sh`:
 | **SecureYeoman** | Sovereign AI agent platform (flagship) | 14 yeoman_* |
 | **AgnosAI** | Rust-native agent orchestration engine | — |
 | **Agnostic** | Multi-domain AI agent platform (Python/CrewAI) | 23 agnostic_* |
-| **Synapse** | LLM management and training | 7 synapse_* |
+| **Irfan** | LLM management and training | 7 irfan_* |
 | **Delta** | Code hosting (git, PRs, CI/CD, artifact registry) | 7 delta_* |
 | **Aequi** | Self-employed accounting (Tauri v2) | 7 aequi_* |
 | **BullShift** | Trading platform | 7 bullshift_* |

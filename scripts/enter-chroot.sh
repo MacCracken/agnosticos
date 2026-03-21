@@ -20,8 +20,8 @@ if [[ $EUID -ne 0 ]]; then
     exit 1
 fi
 
-if [[ ! -d "${LFS}/usr/bin" ]]; then
-    mkdir -p "${LFS}/usr/bin"
+if [[ ! -d "${LFS}/usr" ]]; then
+    mkdir -p "${LFS}/usr/bin" "${LFS}/bin" "${LFS}/lib64" "${LFS}/usr/lib"
 fi
 
 # ---------------------------------------------------------------------------
@@ -41,7 +41,6 @@ mount_vfs() {
         sys)    mount -vt sysfs sysfs "${LFS}/sys" ;;
         run)
             mount -vt tmpfs tmpfs "${LFS}/run"
-            # Preserve resolv.conf for network access during builds
             if [[ -f /etc/resolv.conf ]]; then
                 mkdir -p "${LFS}/etc"
                 cp /etc/resolv.conf "${LFS}/etc/resolv.conf" 2>/dev/null || true
@@ -57,43 +56,67 @@ mount_vfs sys
 mount_vfs run
 
 # ---------------------------------------------------------------------------
-# Bootstrap essentials — ensure /usr/bin/env and /bin/bash exist in chroot
+# Bootstrap essentials — dynamic linker + libc + env + bash
 # ---------------------------------------------------------------------------
 
-# /usr/bin/env is needed by countless scripts (#!/usr/bin/env bash)
-# Copy from host if coreutils hasn't been built yet
+echo "==> Bootstrapping chroot essentials..."
+
+# Dynamic linker
+if [[ ! -f "${LFS}/lib64/ld-linux-x86-64.so.2" ]]; then
+    mkdir -p "${LFS}/lib64"
+    cp /lib64/ld-linux-x86-64.so.2 "${LFS}/lib64/" 2>/dev/null || \
+    cp /usr/lib64/ld-linux-x86-64.so.2 "${LFS}/lib64/" 2>/dev/null || true
+fi
+
+# libc
+if [[ ! -f "${LFS}/usr/lib/libc.so.6" ]] && [[ ! -f "${LFS}/lib/libc.so.6" ]]; then
+    mkdir -p "${LFS}/usr/lib"
+    cp /usr/lib/libc.so.6 "${LFS}/usr/lib/" 2>/dev/null || \
+    cp /lib/x86_64-linux-gnu/libc.so.6 "${LFS}/usr/lib/" 2>/dev/null || true
+    [[ -e "${LFS}/lib" ]] || ln -sf usr/lib "${LFS}/lib" 2>/dev/null || true
+fi
+
+# /usr/bin/env
 if [[ ! -f "${LFS}/usr/bin/env" ]]; then
-    echo "  Bootstrapping /usr/bin/env from host (coreutils not yet built)..."
+    mkdir -p "${LFS}/usr/bin"
     cp /usr/bin/env "${LFS}/usr/bin/env"
     chmod +x "${LFS}/usr/bin/env"
 fi
 
-# Find the best available bash and ensure /bin/bash exists
-if [[ -x "${LFS}/bin/bash" ]]; then
-    CHROOT_BASH="/bin/bash"
-elif [[ -x "${LFS}/usr/bin/bash" ]]; then
-    CHROOT_BASH="/usr/bin/bash"
-    mkdir -p "${LFS}/bin"
-    ln -sf /usr/bin/bash "${LFS}/bin/bash" 2>/dev/null || true
-elif [[ -x "${LFS}/tools/bin/bash" ]]; then
-    CHROOT_BASH="/tools/bin/bash"
-    mkdir -p "${LFS}/bin" "${LFS}/usr/bin"
-    ln -sf /tools/bin/bash "${LFS}/bin/bash" 2>/dev/null || true
-    ln -sf /tools/bin/bash "${LFS}/usr/bin/bash" 2>/dev/null || true
-else
-    # Last resort: copy bash from host
-    echo "  Bootstrapping /bin/bash from host (no bash found in chroot)..."
-    mkdir -p "${LFS}/bin"
-    cp /bin/bash "${LFS}/bin/bash"
-    chmod +x "${LFS}/bin/bash"
-    CHROOT_BASH="/bin/bash"
+# /bin/bash — prefer toolchain, fall back to host
+if [[ ! -f "${LFS}/bin/bash" ]]; then
+    if [[ -x "${LFS}/tools/bin/bash" ]]; then
+        mkdir -p "${LFS}/bin"
+        ln -sf /tools/bin/bash "${LFS}/bin/bash"
+    else
+        mkdir -p "${LFS}/bin"
+        cp /bin/bash "${LFS}/bin/bash"
+        chmod +x "${LFS}/bin/bash"
+        # Copy bash's library deps
+        for lib in libtinfo.so.6 libdl.so.2 libreadline.so.8; do
+            for search in /usr/lib /lib /lib/x86_64-linux-gnu /usr/lib/x86_64-linux-gnu; do
+                if [[ -f "${search}/${lib}" ]]; then
+                    cp "${search}/${lib}" "${LFS}/usr/lib/" 2>/dev/null || true
+                    break
+                fi
+            done
+        done
+    fi
 fi
 
-echo "  Chroot bash: ${CHROOT_BASH}"
+# /bin/sh
+[[ -f "${LFS}/bin/sh" ]] || ln -sf bash "${LFS}/bin/sh" 2>/dev/null || true
 
-# Also ensure /bin/sh exists (many build scripts need it)
-if [[ ! -f "${LFS}/bin/sh" ]]; then
-    ln -sf bash "${LFS}/bin/sh" 2>/dev/null || true
+# ---------------------------------------------------------------------------
+# Determine chroot entry method
+# ---------------------------------------------------------------------------
+
+ENV_WORKS=0
+if chroot "${LFS}" /usr/bin/env true 2>/dev/null; then
+    ENV_WORKS=1
+    echo "  chroot verified: /usr/bin/env works"
+else
+    echo "  /usr/bin/env not functional — using direct bash entry"
 fi
 
 # ---------------------------------------------------------------------------
@@ -101,29 +124,34 @@ fi
 # ---------------------------------------------------------------------------
 
 CHROOT_CMD="${1:-}"
+CHROOT_ENV="export HOME=/root TERM=${TERM} PATH=/usr/bin:/usr/sbin:/bin:/sbin:/tools/bin MAKEFLAGS=-j$(nproc) LC_ALL=POSIX"
 
 if [[ -n "$CHROOT_CMD" ]]; then
     echo "==> Entering chroot (non-interactive): $CHROOT_CMD"
-    chroot "${LFS}" /usr/bin/env -i \
-        HOME=/root \
-        TERM="$TERM" \
-        PS1='(agnos chroot) \u:\w\$ ' \
-        PATH=/usr/bin:/usr/sbin:/bin:/sbin:/tools/bin \
-        MAKEFLAGS="-j$(nproc)" \
-        LC_ALL=POSIX \
-        /bin/bash -c "$CHROOT_CMD"
+    if [[ "$ENV_WORKS" == "1" ]]; then
+        chroot "${LFS}" /usr/bin/env -i \
+            HOME=/root TERM="$TERM" \
+            PS1='(agnos chroot) \u:\w\$ ' \
+            PATH=/usr/bin:/usr/sbin:/bin:/sbin:/tools/bin \
+            MAKEFLAGS="-j$(nproc)" LC_ALL=POSIX \
+            /bin/bash -c "$CHROOT_CMD"
+    else
+        chroot "${LFS}" /bin/bash -c "${CHROOT_ENV}; $CHROOT_CMD"
+    fi
 else
     echo "==> Entering chroot (interactive)..."
     echo "    Type 'exit' to leave the chroot."
     echo ""
-    chroot "${LFS}" /usr/bin/env -i \
-        HOME=/root \
-        TERM="$TERM" \
-        PS1='(agnos chroot) \u:\w\$ ' \
-        PATH=/usr/bin:/usr/sbin:/bin:/sbin:/tools/bin \
-        MAKEFLAGS="-j$(nproc)" \
-        LC_ALL=POSIX \
-        /bin/bash --login
+    if [[ "$ENV_WORKS" == "1" ]]; then
+        chroot "${LFS}" /usr/bin/env -i \
+            HOME=/root TERM="$TERM" \
+            PS1='(agnos chroot) \u:\w\$ ' \
+            PATH=/usr/bin:/usr/sbin:/bin:/sbin:/tools/bin \
+            MAKEFLAGS="-j$(nproc)" LC_ALL=POSIX \
+            /bin/bash --login
+    else
+        chroot "${LFS}" /bin/bash -c "${CHROOT_ENV}; exec /bin/bash --login"
+    fi
 fi
 
 # ---------------------------------------------------------------------------
