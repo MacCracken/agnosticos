@@ -519,15 +519,18 @@ EOF
         # Enable profile-specific units
         local units_to_enable
         units_to_enable="$(profile_enable_units | tr '\n' ' ')"
-        run_in_chroot "$rootfs" \
-            "for unit in $units_to_enable; do systemctl enable \"\$unit\" 2>/dev/null || true; done"
+        # Enable systemd units (host-side symlink creation — no systemctl in chroot)
+        local wants_dir="$rootfs/etc/systemd/system/multi-user.target.wants"
+        mkdir -p "$wants_dir"
+        for unit in $units_to_enable; do
+            local unit_file="/usr/lib/systemd/system/$unit"
+            ln -sf "$unit_file" "$wants_dir/$unit" 2>/dev/null || true
+        done
 
         # Set default target
         local default_target
         default_target="$(profile_default_target)"
-        run_in_chroot "$rootfs" "
-            systemctl set-default '$default_target' 2>/dev/null || true
-        "
+        ln -sf "/usr/lib/systemd/system/${default_target}" "$rootfs/etc/systemd/system/default.target" 2>/dev/null || true
 
         log_info "  -> Systemd units installed (default target: $default_target)"
     fi
@@ -568,14 +571,15 @@ Name=en* eth*
 DHCP=yes
 EOF
 
-    run_in_chroot "$rootfs" "
-        systemctl enable systemd-networkd 2>/dev/null || true
-        systemctl enable systemd-resolved 2>/dev/null || true
-        systemctl enable ssh 2>/dev/null || true
-        systemctl disable sshd-unix-local.socket 2>/dev/null || true
-        systemctl disable sshd-vsock.socket 2>/dev/null || true
-        systemctl enable serial-getty@ttyS0.service 2>/dev/null || true
-    "
+    # Enable network services (host-side symlinks)
+    local net_wants="$rootfs/etc/systemd/system/multi-user.target.wants"
+    mkdir -p "$net_wants"
+    for svc in systemd-networkd.service systemd-resolved.service ssh.service serial-getty@ttyS0.service; do
+        ln -sf "/usr/lib/systemd/system/$svc" "$net_wants/$svc" 2>/dev/null || true
+    done
+    # Disable unwanted sockets (remove symlinks if present)
+    rm -f "$net_wants/sshd-unix-local.socket" "$net_wants/sshd-vsock.socket" 2>/dev/null || true
+    # (Remaining network config below was originally part of the chroot block)
 
     # --- SSH config ---
     mkdir -p "$rootfs/etc/ssh/sshd_config.d"
@@ -591,11 +595,9 @@ EOF
         cat > "$rootfs/etc/tmpfiles.d/agnos-xdg.conf" << 'EOF'
 d /run/user/1000 0700 user user -
 EOF
-        # Enable PipeWire user services
-        run_in_chroot "$rootfs" "
-            mkdir -p /home/user/.config/systemd/user/default.target.wants 2>/dev/null || true
-            # PipeWire socket activation handled by package defaults
-        "
+        # Enable PipeWire user services (host-side)
+        mkdir -p "$rootfs/home/user/.config/systemd/user/default.target.wants" 2>/dev/null || true
+        # PipeWire socket activation handled by package defaults
         log_info "  -> Desktop environment configured"
     fi
 
@@ -648,9 +650,10 @@ WantedBy=multi-user.target
 SYUNIT
 
         mkdir -p "$rootfs/var/lib/secureyeoman-edge"
-        run_in_chroot "$rootfs" "
-            systemctl enable secureyeoman-edge.service 2>/dev/null || true
-        "
+        # Enable SY edge service (host-side symlink)
+        local sy_wants="$rootfs/etc/systemd/system/multi-user.target.wants"
+        mkdir -p "$sy_wants"
+        ln -sf "/usr/lib/systemd/system/secureyeoman-edge.service" "$sy_wants/secureyeoman-edge.service" 2>/dev/null || true
     fi
 
     # --- Self-hosting source tree (server and desktop profiles) ---
@@ -712,17 +715,13 @@ Default credentials: user/agnos  root/agnos
 
 EOF
 
-    # --- Permissions ---
-    run_in_chroot "$rootfs" "
-        chown -R agnos:agnos /var/lib/agnos/agents 2>/dev/null || true
-        chown -R agnos-llm:agnos-llm /var/lib/agnos/models 2>/dev/null || true
-        chmod 750 /var/log/agnos
-    "
+    # --- Permissions (host-side — coreutils may not be in chroot) ---
+    chown -R 900:900 "$rootfs/var/lib/agnos/agents" 2>/dev/null || true  # agnos:agnos = 900:900
+    chown -R 901:901 "$rootfs/var/lib/agnos/models" 2>/dev/null || true  # agnos-llm:agnos-llm = 901:901
+    chmod 750 "$rootfs/var/log/agnos" 2>/dev/null || true
 
-    # --- Cleanup ---
-    run_in_chroot "$rootfs" "
-        rm -rf /tmp/*
-    "
+    # --- Cleanup (host-side) ---
+    rm -rf "$rootfs/tmp/"* 2>/dev/null || true
 
     log_info "  -> Rootfs configured ($PROFILE profile)"
 }

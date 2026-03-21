@@ -387,9 +387,10 @@ Published to crates.io, used by AGNOS, Irfan, AgnosAI, SecureYeoman, and consume
 | [tarang](https://github.com/MacCracken/tarang) | 0.20.3 | AI-native media framework — 18-33x faster than GStreamer. Audio/video decode, encode, mux, fingerprint, analysis | jalwa, tazama, shruti, aethersafta |
 | [aethersafta](https://github.com/MacCracken/aethersafta) | 0.20.3 | Real-time media compositing — scene graph, multi-source capture, HW encoding, streaming output | aethersafha, streaming app, tazama, SY, selah |
 | [hoosh](https://github.com/MacCracken/hoosh) | 0.21.3 | AI inference gateway — 14 LLM providers, OpenAI-compatible API, token budgets, whisper STT, caching | daimon, tarang, aethersafta, agnoshi, AgnosAI, all consumer apps |
-| [ranga](https://github.com/MacCracken/ranga) | 0.20.5 | Core image processing — color spaces, blend modes, pixel buffers, filters, GPU compute | rasa, tazama, aethersafta, streaming app |
+| [ranga](https://github.com/MacCracken/ranga) | 0.21.4 | Core image processing — color spaces, blend modes, pixel buffers, filters, GPU compute | rasa, tazama, aethersafta, streaming app |
 | [dhvani](https://github.com/MacCracken/dhvani) | 0.20.4 | Core audio engine — buffers, DSP, mixing, resampling, analysis, synthesis, MIDI, clock, PipeWire capture | shruti, jalwa, aethersafta, tarang, hoosh, streaming app |
 | [majra](https://github.com/MacCracken/majra) | 0.21.3 | Distributed queue & multiplex engine — lock-free MPMC, pub/sub, connection pooling, backpressure | daimon, AgnosAI, hoosh, sutra, aethersafta, streaming app |
+| **kavach** | **planned** | **Sandbox execution framework — backend abstraction, strength scoring, policy engine, credential proxy, audit hooks** | **SY, daimon, AgnosAI, aethersafta** |
 
 ### Ranga — Shared Image Processing Core (NEW)
 
@@ -465,6 +466,33 @@ Three implementations, three strengths: SY solved auth + discovery, daimon solve
 **Why not just keep nftables**: nftables works. But shelling out to `nft` from Rust for every policy change is the same antipattern as shelling out to `vulkaninfo` — process spawn, text parsing, no type safety. A Rust-native firewall speaks nfnetlink directly, same as `nft` does internally, but without the CLI overhead.
 
 **When**: Post-v1.0. nftables serves well through v1.0. Nein becomes interesting when agent-level network policy needs to change at microsecond scale (agent spawn → firewall rule in the same syscall, not a subprocess).
+
+#### Kavach — Sandbox Execution Framework
+
+**Problem**: SY and daimon both implement sandbox execution with overlapping concerns — backend selection (gVisor, Firecracker, WASM, OCI, process isolation), security policy enforcement (seccomp profiles, Landlock rules, network allowlists), and execution lifecycle management. SY has the most mature implementation with quantitative strength scoring (0-100), credential proxying, and 7 backend integrations.
+
+**What it would own**:
+- Sandbox backend trait — unified interface over gVisor, Firecracker, WASM, process isolation, OCI, SGX, SEV
+- Strength scoring — quantitative security rating (0-100) per execution environment
+- Policy engine — seccomp profiles, Landlock rules, network allowlists, resource limits per agent
+- Credential proxy — secrets injection without exposing credentials to sandboxed processes
+- Lifecycle management — create, start, checkpoint, migrate, destroy with audit hooks
+- Externalization gate — control which data/files can leave the sandbox
+
+**What SY proved**:
+- Strength scoring scale: Native (50) → gVisor (70) → sy-agnos (80-88) → Firecracker (90)
+- Credential proxy pattern: agent requests secret by name, kavach injects via environment/pipe, secret never touches agent filesystem
+- Externalization gate: sandbox output must pass content policy check before leaving isolation
+- Per-agent sandbox profiles: different security posture per agent role (admin vs worker vs untrusted)
+
+**Consumers after extraction**:
+- **SecureYeoman** → drops internal sandbox framework, adopts kavach. SY becomes a kavach consumer, not an implementor
+- **daimon** → replaces 7 internal sandbox backends with kavach's unified trait
+- **AgnosAI** → gets sandboxed crew execution (WASM/OCI agents) for free
+- **aethersafta** → sandboxed plugin execution for compositor extensions
+- **sutra** → sandboxed remote command execution on fleet nodes
+
+**When**: v1.0 timeframe. SY's sandbox is production-ready and the patterns are proven. Extraction makes sense when daimon and AgnosAI need the same capability.
 
 ---
 

@@ -13,23 +13,33 @@
 
 ```
 {project}/
-├── VERSION                          # CalVer single source of truth
+├── VERSION                          # Single source of truth (CalVer or SemVer)
 ├── Cargo.toml                       # Workspace root, resolver = "2"
-├── README.md
-├── CHANGELOG.md
+├── rust-toolchain.toml              # channel = "stable", components = ["rustfmt", "clippy"]
+├── Makefile                         # check/fmt/clippy/test/audit/deny/build/doc/clean
+├── README.md                        # Comprehensive: architecture, quick start, API, roadmap
+├── CHANGELOG.md                     # Keep a Changelog format
+├── deny.toml                        # cargo-deny license + advisory config
+├── scripts/
+│   └── version-bump.sh              # Updates VERSION + Cargo.toml + Cargo.lock
+├── docs/
+│   ├── architecture/overview.md     # System diagram, module structure, consumers
+│   └── development/roadmap.md       # Versioned milestones through v1.0
 ├── src/
-│   ├── main.rs                      # CLI entrypoint
+│   ├── main.rs                      # CLI entrypoint (if binary)
+│   ├── lib.rs                       # Library root with doc examples
 │   └── mcp.rs                       # MCP server (stdio JSON-RPC 2.0)
-├── crates/
+├── crates/                          # (multi-crate projects only)
 │   ├── {project}-core/src/lib.rs    # Domain logic, no IO
 │   ├── {project}-ai/src/
 │   │   ├── lib.rs
 │   │   └── daimon.rs                # Daimon + hoosh integration
 │   ├── {project}-mcp/src/lib.rs     # MCP tool definitions (if separate crate)
 │   └── ...                          # Domain-specific crates
+├── benches/                         # Criterion benchmarks
 ├── .github/workflows/
-│   ├── ci.yml                       # fmt + clippy + audit + test + build
-│   └── release.yml                  # Tag-triggered multi-arch release
+│   ├── ci.yml                       # fmt + clippy + deny + audit + test + msrv + coverage
+│   └── release.yml                  # CI gate → build → publish → release
 └── LICENSE
 ```
 
@@ -66,7 +76,37 @@ reqwest = { version = "0.12", features = ["json"] }
 
 ---
 
+## Shared Crate Dependencies
+
+First-party apps should use ecosystem shared crates instead of reimplementing common functionality.
+Published on crates.io under AGPL-3.0.
+
+| Need | Use | NOT |
+|------|-----|-----|
+| Hardware detection | `ai-hwaccel` | Internal GPU probing |
+| Media decode/encode | `tarang` | ffmpeg shelling, custom demuxers |
+| Image processing | `ranga` | Manual color conversion, blend modes |
+| Audio DSP/mixing | `dhvani` | Internal buffer types, custom DSP |
+| LLM inference | `hoosh` (client) | Direct provider API calls |
+| Queue/pubsub | `majra` | Custom channel implementations |
+| Sandboxing | `kavach` | Internal sandbox backends |
+| Compositing | `aethersafta` | Custom frame blending |
+
+### When to extract a shared crate
+
+Extract when **3+ projects** implement the same pattern. Until then, keep it in-project.
+Signs it's time to extract:
+- You're copying a module between repos
+- Two projects have different implementations of the same algorithm
+- A bug fix in one project should automatically benefit another
+
+---
+
 ## Versioning
+
+### CalVer (consumer apps)
+
+Consumer applications (jalwa, tazama, shruti, etc.) that ship as AGNOS marketplace binaries use CalVer:
 
 ### CalVer Format
 
@@ -85,6 +125,18 @@ YYYY.M.D[-N]
 - CI reads it: `VERSION=$(cat VERSION | tr -d '[:space:]')`
 - Git tags match exactly: `git tag $VERSION`
 - Marketplace recipes pull version from release tag, not from the recipe file
+
+### SemVer (shared crates on crates.io)
+
+Shared crates published to crates.io use SemVer with a `0.D.M` pre-1.0 scheme:
+
+```
+0.D.M     (pre-1.0: day.month from CalVer)
+M.N.P     (post-1.0: standard SemVer)
+```
+
+- `0.21.3` = March 21st, pre-1.0
+- `1.0.0` = stable API, real SemVer from here
 
 ### DO
 
@@ -114,15 +166,23 @@ jobs:
   check:
     # cargo fmt --all -- --check
     # cargo clippy --workspace --all-targets -- -D warnings
+    # cargo check --workspace
 
   security:
     # cargo audit
+    # cargo deny check (EmbarkStudios/cargo-deny-action@v2)
 
   test:
+    # Multi-OS: ubuntu-latest + macos-latest
     # cargo test --workspace
+    # cargo test --doc
 
-  build:
-    # cargo build --release --workspace
+  msrv:
+    # Verify minimum supported Rust version (1.89)
+    # cargo check + cargo test with pinned toolchain
+
+  coverage:
+    # cargo-llvm-cov → lcov.info → codecov upload
 ```
 
 ### release.yml — Tag Push Only
@@ -133,17 +193,29 @@ on:
     tags: ['*']
 
 jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml    # CI gate — must pass first
+
   build:
+    needs: [ci]
     strategy:
       matrix:
         include:
-          - target: x86_64-unknown-linux-gnu
-            arch: amd64
-          - target: aarch64-unknown-linux-gnu
-            arch: arm64
+          - target: x86_64-unknown-linux-gnu    (linux-amd64)
+          - target: aarch64-unknown-linux-gnu   (linux-arm64, cross)
+          - target: aarch64-apple-darwin        (macos-arm64)
+          - target: x86_64-pc-windows-msvc      (windows-amd64, optional)
     steps:
-      # Build, tar, sha256sum
-      # Artifact: {project}-{version}-linux-{arch}.tar.gz + .sha256
+      # Build, tar/zip, sha256sum
+      # Artifact: {project}-{version}-{platform}.tar.gz + .sha256
+
+  publish:                               # crates.io (shared crates only)
+    needs: [ci, build]                   # IMPORTANT: publish AFTER build succeeds
+    # cargo publish
+
+  release:
+    needs: [ci, build, publish]
+    # softprops/action-gh-release@v2 with artifacts + SHA256
 ```
 
 ### DO
@@ -484,9 +556,9 @@ hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
 | Agnoshi intents | Match MCP tool names | `jalwa_play` pattern |
 | Binary name | Project name, lowercase | `jalwa`, `tarang` |
 | Config dir | `~/.{project}/` or `~/.local/share/{project}/` | `~/.jalwa/` |
-| Systemd unit | `{project}.service` | `synapse.service` |
+| Systemd unit | `{project}.service` | `irfan.service` |
 | Desktop entry | `{project}.desktop` | `vidhana.desktop` |
 
 ---
 
-*Last Updated: 2026-03-18*
+*Last Updated: 2026-03-21*

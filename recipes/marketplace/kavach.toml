@@ -1,0 +1,56 @@
+# Kavach — Sandbox execution framework for the AGNOS ecosystem
+# Backend abstraction (8 backends), strength scoring (0-100), policy engine,
+# credential proxy, lifecycle FSM. Extracted from SecureYeoman.
+#
+# Name: Kavach (Sanskrit: कवच — armor, shield)
+# Lib: kavach = "0.21.3" in Cargo.toml
+#
+# Status: Scaffolded — v0.21.3.
+
+[package]
+name = "kavach"
+version = "0.21.3"
+description = "Kavach — Sandbox execution framework (8 backends, strength scoring, policy engine)"
+license = "AGPL-3.0"
+groups = ["library", "security", "sandbox", "rust"]
+release = 1
+arch = "any"
+
+[source]
+crates_io = "kavach"
+github_release = "MacCracken/kavach"
+release_asset = "source"
+
+[depends]
+runtime = []
+build = [
+    "rust",
+]
+
+[marketplace]
+category = "library"
+runtime = "rust-crate"
+publisher = "AGNOS"
+tags = ["sandbox", "security", "isolation", "gvisor", "firecracker", "wasm", "sgx", "sev", "rust"]
+min_agnos_version = "2026.3.21"
+
+[marketplace.sandbox]
+seccomp_mode = "basic"
+network_access = false
+
+[build]
+make = "cargo build --release"
+check = "cargo test"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+# Library crate — consumers add to Cargo.toml:
+#   kavach = "0.21.3"
+# Install source for offline/air-gapped Cargo builds.
+mkdir -p $PKG/usr/lib/kavach
+cp -r src $PKG/usr/lib/kavach/
+cp Cargo.toml $PKG/usr/lib/kavach/
+cp VERSION $PKG/usr/lib/kavach/
+"""

@@ -4,13 +4,13 @@
 #
 # Name: Ranga (Sanskrit: रंग — color, hue)
 # CLI: library-only (no binary)
-# Lib: ranga = "0.20.5" in Cargo.toml
+# Lib: ranga = "0.21.4" in Cargo.toml
 #
-# Status: Published — v0.20.5 on crates.io + GitHub.
+# Status: Published — v0.21.4 on crates.io + GitHub.
 
 [package]
 name = "ranga"
-version = "0.20.5"
+version = "0.21.4"
 description = "Ranga — Core image processing library (color, blend, pixel, filter)"
 license = "AGPL-3.0"
 groups = ["library", "graphics", "rust"]
@@ -48,7 +48,7 @@ hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
 
 install = """
 # Library crate — consumers add to Cargo.toml:
-#   ranga = "0.20.5"
+#   ranga = "0.21.4"
 # Install source for offline/air-gapped Cargo builds.
 mkdir -p $PKG/usr/lib/ranga
 cp -r src $PKG/usr/lib/ranga/
