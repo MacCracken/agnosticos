@@ -2,12 +2,12 @@
 # Multi-track recording, mixing, DSP, and AI-assisted production.
 # Cargo workspace: 6 crates (engine, dsp, session, plugin, ui, ai).
 #
-# Status: Released — 2026.3.19 (linux + macOS arm64). Now uses tarang crate.
+# Status: Released — 2026.3.20 (linux + macOS arm64). Now uses tarang + dhvani crates.
 # Source: https://github.com/MacCracken/shruti
 
 [package]
 name = "shruti"
-version = "2026.3.19"
+version = "2026.3.20"
 description = "Shruti — Rust-native Digital Audio Workstation"
 license = "AGPL-3.0"
 groups = ["creative", "audio"]

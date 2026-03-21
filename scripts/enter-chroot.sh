@@ -76,11 +76,14 @@ if [[ ! -f "${LFS}/usr/lib/libc.so.6" ]] && [[ ! -f "${LFS}/lib/libc.so.6" ]]; t
     [[ -e "${LFS}/lib" ]] || ln -sf usr/lib "${LFS}/lib" 2>/dev/null || true
 fi
 
-# /usr/bin/env
+# /usr/bin/env + its deps
 if [[ ! -f "${LFS}/usr/bin/env" ]]; then
-    mkdir -p "${LFS}/usr/bin"
+    mkdir -p "${LFS}/usr/bin" "${LFS}/usr/lib"
     cp /usr/bin/env "${LFS}/usr/bin/env"
     chmod +x "${LFS}/usr/bin/env"
+    ldd /usr/bin/env 2>/dev/null | grep -oP '/\S+' | while read -r lib; do
+        [[ -f "$lib" ]] && cp -n "$lib" "${LFS}/usr/lib/" 2>/dev/null || true
+    done
 fi
 
 # /bin/bash — prefer toolchain, fall back to host
@@ -92,14 +95,10 @@ if [[ ! -f "${LFS}/bin/bash" ]]; then
         mkdir -p "${LFS}/bin"
         cp /bin/bash "${LFS}/bin/bash"
         chmod +x "${LFS}/bin/bash"
-        # Copy bash's library deps
-        for lib in libtinfo.so.6 libdl.so.2 libreadline.so.8; do
-            for search in /usr/lib /lib /lib/x86_64-linux-gnu /usr/lib/x86_64-linux-gnu; do
-                if [[ -f "${search}/${lib}" ]]; then
-                    cp "${search}/${lib}" "${LFS}/usr/lib/" 2>/dev/null || true
-                    break
-                fi
-            done
+        # Copy all of bash's shared library deps
+        mkdir -p "${LFS}/usr/lib"
+        ldd /bin/bash 2>/dev/null | grep -oP '/\S+' | while read -r lib; do
+            [[ -f "$lib" ]] && cp -n "$lib" "${LFS}/usr/lib/" 2>/dev/null || true
         done
     fi
 fi

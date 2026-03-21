@@ -325,11 +325,14 @@ create_rootfs() {
         fi
     fi
 
-    # /usr/bin/env
+    # /usr/bin/env + its deps
     if [[ ! -f "$rootfs/usr/bin/env" ]]; then
         mkdir -p "$rootfs/usr/bin"
         cp /usr/bin/env "$rootfs/usr/bin/env"
         chmod +x "$rootfs/usr/bin/env"
+        ldd /usr/bin/env 2>/dev/null | grep -oP '/\S+' | while read -r lib; do
+            [[ -f "$lib" ]] && cp -n "$lib" "$rootfs/usr/lib/" 2>/dev/null || true
+        done
     fi
 
     # /bin/bash
@@ -341,14 +344,10 @@ create_rootfs() {
             mkdir -p "$rootfs/bin"
             cp /bin/bash "$rootfs/bin/bash"
             chmod +x "$rootfs/bin/bash"
-            # bash needs additional libs (libtinfo/libdl/libreadline)
-            for lib in libtinfo.so.6 libdl.so.2 libreadline.so.8; do
-                for search in /usr/lib /lib /lib/x86_64-linux-gnu /usr/lib/x86_64-linux-gnu; do
-                    if [[ -f "${search}/${lib}" ]]; then
-                        cp "${search}/${lib}" "$rootfs/usr/lib/" 2>/dev/null || true
-                        break
-                    fi
-                done
+            # Copy all of bash's shared library deps
+            mkdir -p "$rootfs/usr/lib"
+            ldd /bin/bash 2>/dev/null | grep -oP '/\S+' | while read -r lib; do
+                [[ -f "$lib" ]] && cp -n "$lib" "$rootfs/usr/lib/" 2>/dev/null || true
             done
         fi
     fi
