@@ -95,16 +95,24 @@ if [[ ! -f "${LFS}/bin/bash" ]]; then
         mkdir -p "${LFS}/bin"
         cp /bin/bash "${LFS}/bin/bash"
         chmod +x "${LFS}/bin/bash"
-        # Copy all of bash's shared library deps
-        mkdir -p "${LFS}/usr/lib"
-        ldd /bin/bash 2>/dev/null | grep -oP '/\S+' | while read -r lib; do
-            [[ -f "$lib" ]] && cp -n "$lib" "${LFS}/usr/lib/" 2>/dev/null || true
-        done
     fi
 fi
 
 # /bin/sh
 [[ -f "${LFS}/bin/sh" ]] || ln -sf bash "${LFS}/bin/sh" 2>/dev/null || true
+
+# Always ensure bash + env shared library deps are present
+mkdir -p "${LFS}/usr/lib"
+for lib in $(ldd /bin/bash 2>/dev/null | grep -oP '/\S+'); do
+    if [[ -f "$lib" ]] && [[ ! -f "${LFS}/usr/lib/$(basename "$lib")" ]]; then
+        cp "$lib" "${LFS}/usr/lib/" 2>/dev/null || true
+    fi
+done
+for lib in $(ldd /usr/bin/env 2>/dev/null | grep -oP '/\S+'); do
+    if [[ -f "$lib" ]] && [[ ! -f "${LFS}/usr/lib/$(basename "$lib")" ]]; then
+        cp "$lib" "${LFS}/usr/lib/" 2>/dev/null || true
+    fi
+done
 
 # ---------------------------------------------------------------------------
 # Determine chroot entry method

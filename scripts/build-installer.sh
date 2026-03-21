@@ -344,13 +344,22 @@ create_rootfs() {
             mkdir -p "$rootfs/bin"
             cp /bin/bash "$rootfs/bin/bash"
             chmod +x "$rootfs/bin/bash"
-            # Copy all of bash's shared library deps
-            mkdir -p "$rootfs/usr/lib"
-            ldd /bin/bash 2>/dev/null | grep -oP '/\S+' | while read -r lib; do
-                [[ -f "$lib" ]] && cp -n "$lib" "$rootfs/usr/lib/" 2>/dev/null || true
-            done
         fi
     fi
+
+    # Always ensure bash's shared library deps are present
+    # (bash may exist from a previous run but libs might be missing)
+    mkdir -p "$rootfs/usr/lib"
+    for lib in $(ldd /bin/bash 2>/dev/null | grep -oP '/\S+'); do
+        if [[ -f "$lib" ]] && [[ ! -f "$rootfs/usr/lib/$(basename "$lib")" ]]; then
+            cp "$lib" "$rootfs/usr/lib/" 2>/dev/null || true
+        fi
+    done
+    for lib in $(ldd /usr/bin/env 2>/dev/null | grep -oP '/\S+'); do
+        if [[ -f "$lib" ]] && [[ ! -f "$rootfs/usr/lib/$(basename "$lib")" ]]; then
+            cp "$lib" "$rootfs/usr/lib/" 2>/dev/null || true
+        fi
+    done
 
     # /bin/sh
     if [[ ! -f "$rootfs/bin/sh" ]]; then
