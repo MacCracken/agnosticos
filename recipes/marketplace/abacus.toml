@@ -1,0 +1,62 @@
+[package]
+name = "abacus"
+version = "2026.3.22"
+description = "Abacus — Desktop calculator and unit converter"
+license = "GPL-3.0"
+groups = ["application", "desktop", "math", "rust"]
+release = 1
+arch = "x86_64"
+
+[source]
+github_release = "MacCracken/abacus"
+release_asset = "abacus-*-linux-amd64.tar.gz"
+
+[depends]
+runtime = ["glibc"]
+build = ["rust"]
+
+[marketplace]
+category = "desktop-utility"
+runtime = "native-binary"
+publisher = "AGNOS"
+tags = ["calculator", "math", "units", "conversion", "gui", "desktop", "ai", "rust"]
+min_agnos_version = "2026.3.22"
+
+[marketplace.sandbox]
+seccomp_mode = "desktop"
+network_access = false
+data_dir = "~/.abacus/"
+
+[[marketplace.sandbox.landlock]]
+path = "~/.abacus/"
+access = "rw"
+
+[[marketplace.sandbox.landlock]]
+path = "/run/agnos/"
+access = "rw"
+
+[build]
+make = "cargo build --release"
+check = "cargo test"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+mkdir -p $PKG/usr/bin
+cp target/release/abacus $PKG/usr/bin/abacus
+chmod +x $PKG/usr/bin/abacus
+
+mkdir -p $PKG/usr/share/applications
+cat > $PKG/usr/share/applications/abacus.desktop << 'EOF'
+[Desktop Entry]
+Name=Abacus
+Comment=Calculator and Unit Converter
+GenericName=Calculator
+Exec=abacus
+Icon=abacus
+Terminal=false
+Type=Application
+Categories=Utility;Calculator;
+EOF
+"""
