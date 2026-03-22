@@ -752,7 +752,8 @@ setup_kernel() {
     local rootfs="$WORK_DIR/rootfs"
 
     local vmlinuz=$(find "$rootfs/boot" -name 'vmlinuz-*' -type f | head -1)
-    local initrd=$(find "$rootfs/boot" -name 'initrd.img-*' -type f | head -1)
+    # Try multiple initrd naming conventions
+    local initrd=$(find "$rootfs/boot" \( -name 'initrd.img-*' -o -name 'initramfs-*' -o -name 'initrd-*' \) -type f | head -1)
 
     if [[ -z "$vmlinuz" ]]; then
         log_error "No kernel found in rootfs. The base rootfs may be incomplete."
@@ -760,12 +761,31 @@ setup_kernel() {
     fi
 
     cp "$vmlinuz" "$WORK_DIR/iso/boot/vmlinuz"
-    cp "$initrd" "$WORK_DIR/iso/boot/initrd.img"
+
+    if [[ -n "$initrd" ]]; then
+        cp "$initrd" "$WORK_DIR/iso/boot/initrd.img"
+    else
+        # Generate a minimal initrd if none exists
+        log_warn "No initrd found — generating minimal initramfs"
+        local kver=$(basename "$vmlinuz" | sed 's/vmlinuz-//')
+        if command -v dracut &>/dev/null; then
+            dracut --force --kver "$kver" "$WORK_DIR/iso/boot/initrd.img" 2>/dev/null || true
+        elif command -v mkinitramfs &>/dev/null; then
+            mkinitramfs -o "$WORK_DIR/iso/boot/initrd.img" "$kver" 2>/dev/null || true
+        fi
+        # If still no initrd, create a stub so the ISO at least builds
+        if [[ ! -f "$WORK_DIR/iso/boot/initrd.img" ]]; then
+            log_warn "Could not generate initrd — creating empty stub (boot may fail without it)"
+            echo -n | cpio -o -H newc | gzip > "$WORK_DIR/iso/boot/initrd.img"
+        fi
+    fi
 
     local kver=$(basename "$vmlinuz" | sed 's/vmlinuz-//')
     log_info "  -> Kernel: $kver"
     log_info "  -> vmlinuz: $(du -h "$vmlinuz" | cut -f1)"
-    log_info "  -> initrd: $(du -h "$initrd" | cut -f1)"
+    if [[ -n "$initrd" ]]; then
+        log_info "  -> initrd: $(du -h "$WORK_DIR/iso/boot/initrd.img" | cut -f1)"
+    fi
 }
 
 create_grub_config() {

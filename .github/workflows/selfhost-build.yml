@@ -436,7 +436,7 @@ jobs:
           # Install kernel — use host kernel as bootstrap until AGNOS kernel recipe builds
           mkdir -p "$LFS/boot"
           HOST_VMLINUZ=$(find /boot -name 'vmlinuz-*' -type f | sort -V | tail -1)
-          HOST_INITRD=$(find /boot -name 'initrd*' -o -name 'initramfs*' -type f | sort -V | tail -1)
+          HOST_INITRD=$(find /boot \( -name 'initrd*' -o -name 'initramfs*' \) -type f | sort -V | tail -1)
           if [[ -n "$HOST_VMLINUZ" ]]; then
             cp "$HOST_VMLINUZ" "$LFS/boot/"
             echo "Installed kernel: $(basename "$HOST_VMLINUZ")"

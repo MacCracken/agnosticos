@@ -91,15 +91,38 @@
 
 | Field | Value |
 |-------|-------|
-| Status | Planned |
+| Status | Released |
+| Version | `2026.3.18` |
 | Priority | 2 — critical for fleet + self-hosting |
 | Spec | [sutra.md](sutra.md) |
 
-**Why first-party**: No Rust orchestrator exists. AI-native NL/Markdown→TOML playbooks with dry-run-by-default. Deep integration with daimon fleet, ark, argonaut. User owns TOML as IaC source of truth — AI assists, never auto-applies.
+**Released**. 5 crates, 70 tests, 6 MCP tools, 6 core modules. [sutra-community](https://github.com/MacCracken/sutra-community) has 5 additional modules.
 
-**Scope**: Declarative TOML playbooks, 11 modules (ark, argonaut, aegis, file, daimon, edge, shell, user, nftables, sysctl, verify), SSH + daimon transport, static/dynamic inventory, rollback.
+---
 
-**Effort**: Medium-High — core engine is straightforward, module breadth takes time
+### Murti — Core Model Runtime
+
+| Field | Value |
+|-------|-------|
+| Status | Scaffolded |
+| Version | `0.1.0` |
+| Priority | 2 — foundational for hoosh + Irfan, Ollama replacement |
+| Spec | [murti.md](murti.md) |
+
+**Why first-party**: Extracts model lifecycle from Irfan into shared crate. Enables hoosh as full Ollama replacement. See spec for architecture.
+
+---
+
+### Tanur — Desktop LLM Studio
+
+| Field | Value |
+|-------|-------|
+| Status | Scaffolded |
+| Version | `0.1.0` |
+| Priority | 2 — desktop experience for Irfan, LM Studio replacement |
+| Spec | [tanur.md](tanur.md) |
+
+**Why first-party**: Native GUI client for Irfan. Connects over Unix socket. Supersedes `ifran-desktop` Tauri crate. See spec for full panel mapping.
 
 ---
 
@@ -383,16 +406,22 @@ Published to crates.io, used by AGNOS, Irfan, AgnosAI, SecureYeoman, and consume
 
 | Crate | Version | Description | Consumers |
 |-------|---------|-------------|-----------|
-| [ai-hwaccel](https://github.com/MacCracken/ai-hwaccel) | 0.21.3 | Universal AI hardware accelerator detection (13 families), quantisation, sharding, training memory estimation | hoosh, daimon, Irfan, AgnosAI, tazama |
+| [ai-hwaccel](https://github.com/MacCracken/ai-hwaccel) | 0.21.3 | Universal AI hardware accelerator detection (13 families), quantisation, sharding, training memory estimation | hoosh, daimon, Irfan, AgnosAI, murti, tazama |
 | [tarang](https://github.com/MacCracken/tarang) | 0.20.3 | AI-native media framework — 18-33x faster than GStreamer. Audio/video decode, encode, mux, fingerprint, analysis | jalwa, tazama, shruti, aethersafta |
 | [aethersafta](https://github.com/MacCracken/aethersafta) | 0.20.3 | Real-time media compositing — scene graph, multi-source capture, HW encoding, streaming output | aethersafha, streaming app, tazama, SY, selah |
-| [hoosh](https://github.com/MacCracken/hoosh) | 0.21.3 | AI inference gateway — 14 LLM providers, OpenAI-compatible API, token budgets, whisper STT, caching | daimon, tarang, aethersafta, agnoshi, AgnosAI, all consumer apps |
+| [hoosh](https://github.com/MacCracken/hoosh) | 0.21.3 | AI inference gateway — 15 LLM providers, OpenAI-compatible API, token budgets, caching. Uses murti for local inference | daimon, tarang, aethersafta, agnoshi, AgnosAI, all consumer apps |
 | [ranga](https://github.com/MacCracken/ranga) | 0.21.4 | Core image processing — color spaces, blend modes, pixel buffers, filters, GPU compute | rasa, tazama, aethersafta, streaming app |
 | [dhvani](https://github.com/MacCracken/dhvani) | 0.20.4 | Core audio engine — buffers, DSP, mixing, resampling, analysis, synthesis, MIDI, clock, PipeWire capture | shruti, jalwa, aethersafta, tarang, hoosh, streaming app |
-| [majra](https://github.com/MacCracken/majra) | 0.21.3 | Distributed queue & multiplex engine — lock-free MPMC, pub/sub, connection pooling, backpressure | daimon, AgnosAI, hoosh, sutra, aethersafta, streaming app |
-| **kavach** | **planned** | **Sandbox execution framework — backend abstraction, strength scoring, policy engine, credential proxy, audit hooks** | **SY, daimon, AgnosAI, aethersafta** |
+| [majra](https://github.com/MacCracken/majra) | 0.21.3 | Distributed queue & multiplex engine — pub/sub, priority queues, DAG scheduling, heartbeat FSM, relay, IPC, rate limiting | daimon, AgnosAI, hoosh, sutra, stiva, aethersafta, streaming app |
+| [kavach](https://github.com/MacCracken/kavach) | 0.21.3 | Sandbox execution framework — 8 backends (process, gVisor, Firecracker, WASM, OCI, SGX, SEV, SY-AGNOS), strength scoring, policy engine, credential proxy | SY, daimon, stiva, AgnosAI, aethersafta |
+| [libro](https://github.com/MacCracken/libro) | 0.21.3 | Cryptographic audit chain — tamper-proof SHA-256 hash-linked event logging, severity levels, agent tracking | daimon, aegis, stiva, sigil, ark |
+| [bote](https://github.com/MacCracken/bote) | 0.21.3 | MCP core service — JSON-RPC 2.0, tool registry, schema validation, dispatch. Eliminates 23 duplicate MCP implementations | all consumer apps with MCP tools |
+| [szál](https://github.com/MacCracken/szal) | 0.21.3 | Workflow engine — step/flow execution with branching, retry, rollback, parallel stages | daimon, AgnosAI, sutra |
+| **murti** | **0.1.0** | **Core model runtime — registry, store, pull, 15 inference backends, GPU allocation. Extracted from Irfan** | **hoosh, Irfan** |
+| **stiva** | **0.1.0** | **OCI container runtime — image management, container lifecycle, overlay FS. Builds on kavach + majra** | **daimon, sutra** |
+| **nein** | **0.1.0** | **Programmatic nftables firewall — rule builder, NAT, network policies, container networking** | **stiva, daimon, aegis, sutra** |
 
-### Ranga — Shared Image Processing Core (NEW)
+### Ranga — Shared Image Processing Core
 
 | Field | Value |
 |-------|-------|
@@ -415,92 +444,26 @@ Published to crates.io, used by AGNOS, Irfan, AgnosAI, SecureYeoman, and consume
 - **tazama** → drops manual BT.601, uses `ranga::convert`, `ranga::color_correct`
 - **aethersafta** → drops custom alpha blend + color conversion, uses `ranga::blend`, `ranga::convert`
 
-### Future Shared Crates (Planned)
+### Recently Completed / Scaffolded Crates
 
-Ideas for additional extractions as the ecosystem matures. Not yet scaffolded.
+The following crates were previously listed as "future" but are now done or actively scaffolded:
 
-| Crate (working name) | Domain | Extracts from | Would serve |
-|----------------------|--------|---------------|-------------|
-| **sluice** | Queue multiplexing, distributed state, fleet messaging | daimon (pubsub, IPC, fleet relay), AgnosAI (fleet placement, task queue) | daimon, AgnosAI, hoosh (request routing), sutra (parallel execution), aethersafta (frame pipeline), streaming app |
-| **nein** (German: nine / "no") | Rust-native firewall (neintables) | daimon (nftables rules), aegis (network policy), sutra (nftables module) | AGNOS network stack, edge fleet, sy-agnos sandbox |
-| **stiva** (Romanian: stack) | Rust-native container runtime | Docker/Podman dependency | kavach (isolation) + nein (networking) + ark (images) + libro (audit) |
+| Crate | Status | Notes |
+|-------|--------|-------|
+| **majra** | Released (0.21.3) | Replaced planned "sluice" crate. Pub/sub, priority queues, DAG scheduling, heartbeat FSM, relay, IPC, rate limiting, SQLite persistence. Benchmarked, proptested |
+| **kavach** | Released (0.21.3) | 8 sandbox backends, strength scoring (0-100), policy engine, credential proxy, lifecycle management, externalization gate |
+| **nein** | Scaffolded (0.1.0) | nftables rule builder, NAT, network policies, container bridge builders. 24 tests. [README](https://github.com/MacCracken/nein) |
+| **stiva** | Scaffolded (0.1.0) | OCI container runtime. Builds on kavach + majra. 17 tests. [README](https://github.com/MacCracken/stiva) |
+| **murti** | Scaffolded (0.1.0) | Core model runtime, extracted from Irfan. 21 tests. [Spec](murti.md) |
 
-#### Sluice — Distributed Queue & Multiplex Engine
-
-**Problem**: Multiple projects implement overlapping queue/messaging patterns:
-- **daimon**: PubSub broker (topic matching, subscriber fan-out), fleet relay (dedup, broadcast), agent IPC (Unix sockets, message routing)
-- **AgnosAI**: Task queue (priority, DAG scheduling), fleet placement (node ranking, affinity), crew coordination (message passing)
-- **hoosh**: Request routing (provider selection, round-robin, failover), response streaming (SSE fan-out)
-- **sutra**: Parallel task execution, result collection, dependency resolution
-
-**What it would own**:
-- Lock-free MPMC queue (multi-producer, multi-consumer) with priority support
-- Topic-based pub/sub with wildcard matching (MQTT-style `+` and `#`)
-- Multiplexed connection pool with health checking and failover
-- Distributed state primitives (CRDTs or similar for fleet consensus)
-- Backpressure and flow control for streaming pipelines
-- Message deduplication (bloom filter or seen-set)
-
-**Prior art in the ecosystem**:
-- **SecureYeoman A2A network** — battle-tested agent-to-agent protocol: authenticated handshakes, capability discovery, tool delegation, event streaming. Proven at scale with 279 MCP tools across multi-node deployments. Sluice absorbs the protocol patterns.
-- **daimon pubsub** — MQTT-style topic matching (`+`/`#` wildcards), subscriber fan-out, fleet relay with dedup. Proven in edge fleet management. Sluice absorbs the routing engine.
-- **AgnosAI fleet** — 220ns message overhead, priority DAG scheduling, GPU-aware placement. Proven in benchmarks. Sluice absorbs the raw speed.
-
-Three implementations, three strengths: SY solved auth + discovery, daimon solved topic routing, AgnosAI solved raw speed. Sluice unifies all three.
-
-**Why not just use Redis/NATS/ZeroMQ**: Same reason we built tarang instead of using GStreamer — Rust-native, zero-copy, no external process, no serialization boundary. A shared crate makes 220ns messaging available to everyone without each project reinventing the queue.
-
-**When**: Post-v1.0. Current implementations work. Extraction makes sense once we have 3+ consumers hitting the same patterns.
-
-#### Nein — Rust-Native Firewall (neintables)
-
-**Problem**: AGNOS currently shells out to `nftables` for all network policy — daimon's CORS rules, aegis network isolation, sy-agnos sandbox default-deny, edge fleet policy, sutra's nftables module. Every call spawns a process, parses text output, and hopes the nftables syntax hasn't changed.
-
-**What it would own**:
-- Rust-native netfilter interface (nfnetlink sockets, no `nft` CLI dependency)
-- Declarative rule builder API: `Nein::chain("input").match_tcp(8090).accept()`
-- Atomic rule replacement (transaction-based, like nftables but without the CLI)
-- Per-agent network policy (integrated with daimon sandbox profiles)
-- CIDR/IP set matching, rate limiting, connection tracking
-- Audit integration — all rule changes logged to cryptographic chain
-
-**Why not just keep nftables**: nftables works. But shelling out to `nft` from Rust for every policy change is the same antipattern as shelling out to `vulkaninfo` — process spawn, text parsing, no type safety. A Rust-native firewall speaks nfnetlink directly, same as `nft` does internally, but without the CLI overhead.
-
-**When**: Post-v1.0. nftables serves well through v1.0. Nein becomes interesting when agent-level network policy needs to change at microsecond scale (agent spawn → firewall rule in the same syscall, not a subprocess).
-
-#### Kavach — Sandbox Execution Framework
-
-**Problem**: SY and daimon both implement sandbox execution with overlapping concerns — backend selection (gVisor, Firecracker, WASM, OCI, process isolation), security policy enforcement (seccomp profiles, Landlock rules, network allowlists), and execution lifecycle management. SY has the most mature implementation with quantitative strength scoring (0-100), credential proxying, and 7 backend integrations.
-
-**What it would own**:
-- Sandbox backend trait — unified interface over gVisor, Firecracker, WASM, process isolation, OCI, SGX, SEV
-- Strength scoring — quantitative security rating (0-100) per execution environment
-- Policy engine — seccomp profiles, Landlock rules, network allowlists, resource limits per agent
-- Credential proxy — secrets injection without exposing credentials to sandboxed processes
-- Lifecycle management — create, start, checkpoint, migrate, destroy with audit hooks
-- Externalization gate — control which data/files can leave the sandbox
-
-**What SY proved**:
-- Strength scoring scale: Native (50) → gVisor (70) → sy-agnos (80-88) → Firecracker (90)
-- Credential proxy pattern: agent requests secret by name, kavach injects via environment/pipe, secret never touches agent filesystem
-- Externalization gate: sandbox output must pass content policy check before leaving isolation
-- Per-agent sandbox profiles: different security posture per agent role (admin vs worker vs untrusted)
-
-**Consumers after extraction**:
-- **SecureYeoman** → drops internal sandbox framework, adopts kavach. SY becomes a kavach consumer, not an implementor
-- **daimon** → replaces 7 internal sandbox backends with kavach's unified trait
-- **AgnosAI** → gets sandboxed crew execution (WASM/OCI agents) for free
-- **aethersafta** → sandboxed plugin execution for compositor extensions
-- **sutra** → sandboxed remote command execution on fleet nodes
-
-**When**: v1.0 timeframe. SY's sandbox is production-ready and the patterns are proven. Extraction makes sense when daimon and AgnosAI need the same capability.
+See [k8s-roadmap.md](../k8s-roadmap.md) for how stiva + nein + majra + kavach compose into a k8s-equivalent orchestration platform.
 
 #### Stiva — Rust-Native Container Runtime
 
 | Field | Value |
 |-------|-------|
-| Status | Planned |
-| Priority | Infrastructure — post-v1.0 |
+| Status | Scaffolded (0.1.0) |
+| Priority | Infrastructure — accelerated to pre-v1.0 |
 | Spec | [stiva.md](stiva.md) |
 
 **Problem**: AGNOS depends on Docker/Podman (100MB+ daemon) for container workloads — sy-agnos sandbox images, edge deployment, development containers. The container runtime is the one major system component that isn't Rust-native.
@@ -515,10 +478,10 @@ Three implementations, three strengths: SY solved auth + discovery, daimon solve
 - Storage — overlayfs layer management, snapshotting
 
 **What already exists in the ecosystem**:
-- **kavach** (v0.25.3) — 9 sandbox backends (Process, gVisor, Firecracker, WASM, OCI, SGX, SEV, SyAgnos, Noop) with strength scoring, seccomp/Landlock/namespace isolation, externalization gate
+- **kavach** (v0.21.3) — 8 sandbox backends (Process, gVisor, Firecracker, WASM, OCI, SGX, SEV, SyAgnos) with strength scoring, seccomp/Landlock/namespace isolation, externalization gate
 - **argonaut** — process lifecycle, service management, init sequencing
 - **ark** — package format with signing and verification (`.ark`, `.agnos-agent`)
-- **nein** (planned) — Rust-native firewall for container network policy
+- **nein** (0.1.0) — nftables firewall for container network policy (24 tests)
 - **majra** — container IPC, event bus, health monitoring
 
 **Architecture**: stiva becomes a thin orchestration layer over kavach (isolation), nein (networking), and ark (image format). The actual container = kavach sandbox + nein network namespace + ark image layers.
@@ -595,7 +558,7 @@ AGI agents need infrastructure where the orchestration overhead is zero, the sec
 
 stiva isn't just a Docker replacement. It's the runtime layer that makes trustworthy autonomous agent execution possible. An AGI system that can't prove its own integrity can't be trusted with autonomous action. stiva + kavach + libro + TPM gives you that proof.
 
-**When**: Post-v1.0. Docker/Podman serve through v1.0. stiva becomes interesting when the agnostic-kernel (Phase 20) makes containers a first-class kernel primitive instead of a userspace hack.
+**Timeline**: Scaffolded 2026-03-21. Phase 1 (image pull) targeted for v1.0. Full container execution post-v1.0.
 
 ---
 
@@ -609,4 +572,4 @@ stiva isn't just a Docker replacement. It's the runtime layer that makes trustwo
 
 ---
 
-*Last Updated: 2026-03-21*
+*Last Updated: 2026-03-22*

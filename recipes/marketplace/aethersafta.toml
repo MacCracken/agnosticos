@@ -1,0 +1,56 @@
+# Aethersafta — Real-time media compositing engine for AGNOS
+# Scene graph, multi-source capture, hardware-accelerated encoding, streaming output.
+# Powers the AGNOS desktop compositor (aethersafha) and future streaming apps.
+#
+# Name: Aethersafta (Greek aether + Arabic safha — ethereal surface)
+# Lib: aethersafta = "0.21.3" in Cargo.toml
+#
+# Status: Published — v0.21.3 on crates.io.
+
+[package]
+name = "aethersafta"
+version = "0.21.3"
+description = "Aethersafta — Real-time media compositing engine"
+license = "AGPL-3.0"
+groups = ["library", "media", "compositor", "rust"]
+release = 1
+arch = "any"
+
+[source]
+crates_io = "aethersafta"
+github_release = "MacCracken/aethersafta"
+release_asset = "source"
+
+[depends]
+runtime = []
+build = [
+    "rust",
+]
+
+[marketplace]
+category = "library"
+runtime = "rust-crate"
+publisher = "AGNOS"
+tags = ["compositor", "media", "scene-graph", "capture", "encoding", "streaming", "wayland", "rust"]
+min_agnos_version = "2026.3.21"
+
+[marketplace.sandbox]
+seccomp_mode = "basic"
+network_access = false
+
+[build]
+make = "cargo build --release"
+check = "cargo test"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+# Library crate — consumers add to Cargo.toml:
+#   aethersafta = "0.21.3"
+# Install source for offline/air-gapped Cargo builds.
+mkdir -p $PKG/usr/lib/aethersafta
+cp -r src $PKG/usr/lib/aethersafta/
+cp Cargo.toml $PKG/usr/lib/aethersafta/
+cp VERSION $PKG/usr/lib/aethersafta/
+"""

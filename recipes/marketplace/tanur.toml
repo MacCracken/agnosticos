@@ -1,0 +1,83 @@
+# Tanur — Desktop LLM studio for AGNOS
+# Native GUI for model management, training, and inference.
+# Connects to Irfan over Unix socket. LM Studio replacement.
+#
+# Name: Tanur (Persian/Arabic: تنور — forge, kiln)
+# Binary: tanur
+#
+# Status: Scaffolded — v0.1.0.
+
+[package]
+name = "tanur"
+version = "0.1.0"
+description = "Tanur — Desktop LLM studio"
+license = "GPL-3.0"
+groups = ["application", "desktop", "ai", "rust"]
+release = 1
+arch = "x86_64"
+
+[source]
+github_release = "MacCracken/tanur"
+release_asset = "tanur-*-linux-amd64.tar.gz"
+
+[depends]
+runtime = [
+    "glibc",
+    "openssl",
+]
+build = [
+    "rust",
+    "openssl-dev",
+]
+
+[marketplace]
+category = "desktop-ai"
+runtime = "native-binary"
+publisher = "AGNOS"
+tags = ["llm", "gui", "desktop", "training", "inference", "model", "studio", "rust"]
+min_agnos_version = "2026.3.21"
+
+[marketplace.sandbox]
+seccomp_mode = "desktop"
+network_access = false
+data_dir = "~/.tanur/"
+
+[[marketplace.sandbox.landlock]]
+path = "~/.tanur/"
+access = "rw"
+
+# IPC with Irfan
+[[marketplace.sandbox.landlock]]
+path = "/run/agnos/irfan.sock"
+access = "rw"
+
+# Fallback TCP to Irfan
+[[marketplace.sandbox.landlock]]
+path = "/run/agnos/"
+access = "rw"
+
+[build]
+make = "cargo build --release"
+check = "cargo test"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+mkdir -p $PKG/usr/bin
+cp target/release/tanur $PKG/usr/bin/tanur
+chmod +x $PKG/usr/bin/tanur
+
+mkdir -p $PKG/usr/share/applications
+cat > $PKG/usr/share/applications/tanur.desktop << 'EOF'
+[Desktop Entry]
+Name=Tanur
+Comment=Desktop LLM Studio
+GenericName=LLM Studio
+Exec=tanur
+Icon=tanur
+Terminal=false
+Type=Application
+Categories=Science;ArtificialIntelligence;
+EOF
+"""

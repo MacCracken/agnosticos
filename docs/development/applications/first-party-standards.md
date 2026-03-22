@@ -45,9 +45,12 @@
 
 ### Crate Naming
 
-- Use **hyphens** in crate names: `{project}-core`, `{project}-ai`
+- Prefer **clean single-word names** without hyphens: `chitrsys`, `dhvani`, `tarang`, `kavach`
+- Exceptions: `ai-hwaccel` (hyphen is intentional — AI-focused hardware acceleration)
+- Hyphens only for workspace sub-crates: `{project}-core`, `{project}-ai`
+- Hyphenated sub-crate names will be consolidated to clean names prior to v1
 - Never mix hyphens and underscores in the same workspace
-- Minimum crates: `-core` and `-ai` (with `daimon.rs`)
+- Minimum crates: `-core` and `-ai` (with `daimon.rs`) for workspace projects
 - Typical count: 5-8 crates per project
 - Keep crate count proportional to actual domain boundaries — don't over-split
 
@@ -85,6 +88,7 @@ Published on crates.io under AGPL-3.0.
 |------|-----|-----|
 | Hardware detection | `ai-hwaccel` | Internal GPU probing |
 | Media decode/encode | `tarang` | ffmpeg shelling, custom demuxers |
+| Video codec bindings | `chitrsys` | `env-libvpx-sys`, vendored FFI |
 | Image processing | `ranga` | Manual color conversion, blend modes |
 | Audio DSP/mixing | `dhvani` | Internal buffer types, custom DSP |
 | LLM inference | `hoosh` (client) | Direct provider API calls |

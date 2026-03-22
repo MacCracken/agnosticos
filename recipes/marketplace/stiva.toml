@@ -1,0 +1,59 @@
+# Stiva — OCI-compatible container runtime for AGNOS
+# Image management, container lifecycle, overlay FS, networking, compose.
+# Builds on kavach (sandbox) and majra (queue/heartbeat).
+#
+# Name: Stiva (Romanian: stivă — stack, pile)
+# Lib: stiva = "0.1.0" in Cargo.toml
+#
+# Status: Scaffolded — v0.1.0.
+
+[package]
+name = "stiva"
+version = "0.1.0"
+description = "Stiva — OCI container runtime"
+license = "GPL-3.0"
+groups = ["library", "container", "oci", "rust"]
+release = 1
+arch = "x86_64"
+
+[source]
+github_release = "MacCracken/stiva"
+release_asset = "source"
+
+[depends]
+runtime = [
+    "glibc",
+    "kavach",
+    "majra",
+]
+build = [
+    "rust",
+]
+
+[marketplace]
+category = "library"
+runtime = "rust-crate"
+publisher = "AGNOS"
+tags = ["container", "oci", "docker", "runtime", "isolation", "compose", "rust"]
+min_agnos_version = "2026.3.21"
+
+[marketplace.sandbox]
+seccomp_mode = "desktop"
+network_access = true
+
+[build]
+make = "cargo build --release"
+check = "cargo test"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+# Library crate — consumers add to Cargo.toml:
+#   stiva = "0.1.0"
+# Install source for offline/air-gapped Cargo builds.
+mkdir -p $PKG/usr/lib/stiva
+cp -r src $PKG/usr/lib/stiva/
+cp Cargo.toml $PKG/usr/lib/stiva/
+cp VERSION $PKG/usr/lib/stiva/
+"""
