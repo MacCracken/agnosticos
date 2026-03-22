@@ -292,12 +292,17 @@ jobs:
       - name: Archive base rootfs (without userland)
         run: |
           mkdir -p output
+          DIRS="usr/ etc/ var/"
+          for d in tools/ lib/ lib64/; do
+            [[ -e "$LFS/$d" ]] && DIRS="$DIRS $d"
+          done
+          echo "Base rootfs directories: $DIRS"
           tar cf output/agnos-base-rootfs-x86_64.tar \
             -C "$LFS" \
             --exclude='sources' \
             --exclude='tmp' \
             --exclude='usr/src' \
-            usr/ etc/ var/ tools/
+            $DIRS
           ls -lh output/agnos-base-rootfs-x86_64.tar
 
       - name: Upload base rootfs artifact
@@ -454,17 +459,31 @@ jobs:
       - name: Archive complete rootfs (base + desktop + userland)
         run: |
           mkdir -p output
+          # Build tar argument list from directories that actually exist
+          DIRS="usr/ etc/ var/"
+          for d in tools/ boot/ lib/ lib64/; do
+            [[ -d "$LFS/$d" ]] && DIRS="$DIRS $d"
+          done
+          echo "Archiving directories: $DIRS"
+          # Verify kernel is present before archiving
+          if ls "$LFS"/boot/vmlinuz-* 1>/dev/null 2>&1; then
+            echo "Kernel found: $(ls "$LFS"/boot/vmlinuz-*)"
+          else
+            echo "WARNING: No kernel found in $LFS/boot/ — ISO will not be bootable"
+          fi
           tar cf output/agnos-complete-rootfs-x86_64.tar \
             -C "$LFS" \
             --exclude='sources' \
             --exclude='tmp' \
-            usr/ etc/ var/ tools/ boot/ lib/ 2>/dev/null || \
-          tar cf output/agnos-complete-rootfs-x86_64.tar \
-            -C "$LFS" \
-            --exclude='sources' \
-            --exclude='tmp' \
-            usr/ etc/ var/ tools/
+            $DIRS
           ls -lh output/agnos-complete-rootfs-x86_64.tar
+          # Verify boot/ made it into the archive
+          if tar tf output/agnos-complete-rootfs-x86_64.tar | grep -q '^boot/vmlinuz'; then
+            echo "OK: kernel present in archive"
+          else
+            echo "ERROR: kernel NOT in archive — build-installer.sh will fail"
+            exit 1
+          fi
 
       - name: Create ISO from AGNOS rootfs (no Debian)
         run: |
