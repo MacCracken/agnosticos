@@ -1,0 +1,50 @@
+# Impetus — Physics engine for AGNOS
+# 2D/3D rigid body simulation, collision detection, constraints, spatial queries.
+# Wraps rapier with deterministic stepping, serializable state, unit-aware quantities.
+#
+# Name: Impetus (Latin: driving force)
+# Lib: impetus = "0.1.0" in Cargo.toml
+#
+# Status: Scaffolded — v0.1.0.
+
+[package]
+name = "impetus"
+version = "0.1.0"
+description = "Impetus — Physics engine"
+license = "GPL-3.0"
+groups = ["library", "simulation", "physics", "rust"]
+release = 1
+arch = "any"
+
+[source]
+github_release = "MacCracken/impetus"
+release_asset = "source"
+
+[depends]
+runtime = []
+build = ["rust"]
+
+[marketplace]
+category = "library"
+runtime = "rust-crate"
+publisher = "AGNOS"
+tags = ["physics", "simulation", "collision", "rigid-body", "game", "rapier", "deterministic", "rust"]
+min_agnos_version = "2026.3.22"
+
+[marketplace.sandbox]
+seccomp_mode = "basic"
+network_access = false
+
+[build]
+make = "cargo build --release"
+check = "cargo test"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+mkdir -p $PKG/usr/lib/impetus
+cp -r src $PKG/usr/lib/impetus/
+cp Cargo.toml $PKG/usr/lib/impetus/
+cp VERSION $PKG/usr/lib/impetus/
+"""

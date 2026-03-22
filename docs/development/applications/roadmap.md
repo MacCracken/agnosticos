@@ -373,16 +373,19 @@ Visual management for edge fleet beyond Nazar's system focus.
 
 ---
 
-### Game Engine / Runtime
+### Joshua — Game Engine & Simulation Core
 
 | Field | Value |
 |-------|-------|
 | Status | Planned |
-| Priority | 6 |
+| Priority | 4 |
+| Spec | [joshua.md](joshua.md) |
 
-2D/3D game runtime with AI NPCs.
+**Why first-party**: AI-native game engine where NPCs are daimon agents with LLM brains. Headless simulation mode for AI training — agents prove themselves in virtual environments before real deployment. Composes dhvani (audio), ranga (image), tarang (video), majra (networking), kavach (scripting sandbox), t-ron (NPC security).
 
-**Effort**: Very High
+**Scope**: ECS core, wgpu rendering, rapier physics, LLM-powered NPCs, deterministic replay, headless simulation at unlimited speed, TOML scene format, visual editor (egui), multiplayer via majra.
+
+**Effort**: Very High — but built on existing crates, not from scratch
 
 ---
 
