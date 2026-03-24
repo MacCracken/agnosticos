@@ -1,0 +1,50 @@
+# Muharrir — Shared editor framework for AGNOS
+# egui patterns, panels, inspectors, theming for desktop tools.
+# Consumed by salai (game editor), tanur (LLM studio), nazar (system monitor).
+#
+# Name: Muharrir (Arabic: editor/writer)
+# Lib: muharrir = "0.1.0" in Cargo.toml
+#
+# Status: Scaffolding.
+
+[package]
+name = "muharrir"
+version = "0.1.0"
+description = "Muharrir — Shared editor framework"
+license = "GPL-3.0"
+groups = ["library", "editor", "gui", "rust"]
+release = 1
+arch = "any"
+
+[source]
+github_release = "MacCracken/muharrir"
+release_asset = "source"
+
+[depends]
+runtime = ["glibc"]
+build = ["rust"]
+
+[marketplace]
+category = "library"
+runtime = "rust-crate"
+publisher = "AGNOS"
+tags = ["editor", "gui", "egui", "framework", "panels", "inspector", "rust"]
+min_agnos_version = "2026.3.23"
+
+[marketplace.sandbox]
+seccomp_mode = "basic"
+network_access = false
+
+[build]
+make = "cargo build --release"
+check = "cargo test --all-features"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+mkdir -p $PKG/usr/lib/muharrir
+cp -r src $PKG/usr/lib/muharrir/
+cp Cargo.toml $PKG/usr/lib/muharrir/
+cp VERSION $PKG/usr/lib/muharrir/
+"""

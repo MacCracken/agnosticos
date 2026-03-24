@@ -4,9 +4,9 @@
 
 | Field | Value |
 |-------|-------|
-| Status | Planned |
+| Status | Released (2026.3.18) |
 | Priority | 2 — strong utility, critical for fleet + self-hosting |
-| Repository | `MacCracken/sutra` (planned) |
+| Repository | `MacCracken/sutra` |
 | Runtime | native-binary |
 | Domain | Infrastructure orchestration / configuration management |
 

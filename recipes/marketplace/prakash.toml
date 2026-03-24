@@ -1,0 +1,50 @@
+# Prakash — Optics and light simulation for AGNOS
+# Ray optics, wave optics, spectral math, lens geometry, PBR primitives.
+# Physics of light: how it travels, bends, reflects, interferes, diffracts.
+#
+# Name: Prakash (Sanskrit: light, illumination, to make visible)
+# Lib: prakash = "0.1.0" in Cargo.toml
+#
+# Status: Scaffolded — v0.1.0.
+
+[package]
+name = "prakash"
+version = "0.23.3"
+description = "Prakash — Optics and light simulation"
+license = "GPL-3.0"
+groups = ["library", "physics", "optics", "rust"]
+release = 1
+arch = "any"
+
+[source]
+github_release = "MacCracken/prakash"
+release_asset = "source"
+
+[depends]
+runtime = []
+build = ["rust"]
+
+[marketplace]
+category = "library"
+runtime = "rust-crate"
+publisher = "AGNOS"
+tags = ["optics", "light", "ray-tracing", "pbr", "physics", "spectral", "fresnel", "rust"]
+min_agnos_version = "2026.3.22"
+
+[marketplace.sandbox]
+seccomp_mode = "basic"
+network_access = false
+
+[build]
+make = "cargo build --release"
+check = "cargo test --all-features"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+mkdir -p $PKG/usr/lib/prakash
+cp -r src $PKG/usr/lib/prakash/
+cp Cargo.toml $PKG/usr/lib/prakash/
+cp VERSION $PKG/usr/lib/prakash/
+"""

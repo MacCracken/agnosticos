@@ -1,0 +1,49 @@
+# Raasta — Navigation and pathfinding for AGNOS
+# A*, nav meshes, flow fields, steering behaviors.
+#
+# Name: Raasta (Hindi/Urdu: path, way, road)
+# Lib: raasta = "0.1.0" in Cargo.toml
+#
+# Status: Scaffolded — v0.1.0.
+
+[package]
+name = "raasta"
+version = "0.1.0"
+description = "Raasta — Navigation and pathfinding"
+license = "GPL-3.0"
+groups = ["library", "game", "ai", "rust"]
+release = 1
+arch = "any"
+
+[source]
+github_release = "MacCracken/raasta"
+release_asset = "source"
+
+[depends]
+runtime = []
+build = ["rust"]
+
+[marketplace]
+category = "library"
+runtime = "rust-crate"
+publisher = "AGNOS"
+tags = ["pathfinding", "navigation", "astar", "navmesh", "steering", "game", "rust"]
+min_agnos_version = "2026.3.23"
+
+[marketplace.sandbox]
+seccomp_mode = "basic"
+network_access = false
+
+[build]
+make = "cargo build --release"
+check = "cargo test --all-features"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+mkdir -p $PKG/usr/lib/raasta
+cp -r src $PKG/usr/lib/raasta/
+cp Cargo.toml $PKG/usr/lib/raasta/
+cp VERSION $PKG/usr/lib/raasta/
+"""

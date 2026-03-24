@@ -4,8 +4,8 @@
 
 | Field | Value |
 |-------|-------|
-| Status | Planned |
-| Priority | 4 — shared physics for Joshua, simulation, desktop effects |
+| Status | Scaffolded (0.1.0) |
+| Priority | 4 — shared physics for kiran, joshua, simulation, desktop effects |
 | Crate | `impetus` (crates.io, available) |
 | Repository | `MacCracken/impetus` |
 | Runtime | library crate |
@@ -15,16 +15,20 @@
 
 ## Why First-Party
 
-Every physics-enabled application in AGNOS — Joshua (game engine), aethersafha (desktop effects), simulation workloads — needs the same primitives: rigid bodies, collision detection, constraints, raycasting. Wrapping rapier directly in each consumer duplicates configuration, tuning, and integration work.
+Every physics-enabled application in AGNOS — kiran (game engine), joshua (simulation), aethersafha (desktop effects) — needs the same primitives: rigid bodies, collision detection, constraints, raycasting. Wrapping rapier directly in each consumer duplicates configuration, tuning, and integration work.
 
 Impetus is the thin, opinionated layer over rapier that provides:
 - Consistent API across 2D and 3D
 - AGNOS-specific defaults (deterministic stepping, fixed timestep)
-- Integration points for ECS (joshua-core), scene graph (aethersafta), and simulation (joshua-sim)
+- Integration points for ECS (kiran), scene graph (aethersafta), and simulation (joshua-sim)
 - Serializable world state (TOML/JSON for scene files, libro for replay)
 - Headless mode (no rendering dependency — pure simulation)
 
 Impetus does NOT replace rapier. It wraps it the same way ranga wraps image primitives and dhvani wraps audio primitives — a shared, tested, versioned interface that all AGNOS consumers depend on instead of each rolling their own rapier integration.
+
+## Math Layer
+
+Impetus depends on **glam** for vector/matrix/quaternion types (same as rapier and wgpu). For higher math needs (calculus, numerical solvers, spatial geometry algorithms), impetus will depend on **hisab** (planned) once available. Basic math and unit conversions come from **abaco**.
 
 ## Design Principles
 
@@ -39,13 +43,17 @@ Impetus does NOT replace rapier. It wraps it the same way ranga wraps image prim
 ### Where Impetus Sits
 
 ```
-Joshua (game engine)
-  ├── agnosai       — NPC agent orchestration
+Kiran (game engine)
   ├── aethersafta   — rendering, scene graph
   ├── impetus       — physics (THIS CRATE)
   ├── ranga         — textures, image processing
   ├── dhvani        — spatial audio
-  ├── tarang        — video, asset pipeline
+  └── ...
+
+Joshua (game manager + simulation)
+  ├── kiran         — game engine (ECS, loop, rendering, audio, input)
+  ├── impetus       — physics (THIS CRATE)
+  ├── agnosai       — NPC agent orchestration
   ├── majra         — multiplayer
   └── ...
 

@@ -1,0 +1,70 @@
+# Salai — Game editor for kiran
+# egui-based visual editor: entity inspector, scene hierarchy, viewport with gizmos.
+#
+# Name: Salai (from Gian Giacomo Caprotti da Oreno "Salaì" — Leonardo da Vinci's apprentice/assistant)
+# Bin: salai
+#
+# Status: Scaffolded — v0.1.0.
+
+[package]
+name = "salai"
+version = "0.1.0"
+description = "Salai — Game editor for kiran"
+license = "GPL-3.0"
+groups = ["application", "game-editor", "rust"]
+release = 1
+arch = "x86_64"
+
+[source]
+github_release = "MacCracken/salai"
+release_asset = "salai-*-linux-amd64.tar.gz"
+
+[depends]
+runtime = ["glibc"]
+build = ["rust"]
+
+[marketplace]
+category = "development"
+runtime = "native-binary"
+publisher = "AGNOS"
+tags = ["editor", "game", "egui", "kiran", "scene", "inspector", "rust"]
+min_agnos_version = "2026.3.22"
+
+[marketplace.sandbox]
+seccomp_mode = "desktop"
+network_access = false
+data_dir = "~/.salai/"
+
+[[marketplace.sandbox.landlock]]
+path = "~/.salai/"
+access = "rw"
+
+[[marketplace.sandbox.landlock]]
+path = "/run/agnos/"
+access = "rw"
+
+[build]
+make = "cargo build --release"
+check = "cargo test"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+mkdir -p $PKG/usr/bin
+cp target/release/salai $PKG/usr/bin/salai
+chmod +x $PKG/usr/bin/salai
+
+mkdir -p $PKG/usr/share/applications
+cat > $PKG/usr/share/applications/salai.desktop << 'EOF'
+[Desktop Entry]
+Name=Salai
+Comment=Game Editor for Kiran
+GenericName=Game Editor
+Exec=salai
+Icon=salai
+Terminal=false
+Type=Application
+Categories=Development;IDE;
+EOF
+"""

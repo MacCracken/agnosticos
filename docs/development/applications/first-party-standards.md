@@ -1,9 +1,11 @@
 # First-Party Application Standards
 
-> **Status**: Active | **Last Updated**: 2026-03-20
+> **Status**: Active | **Last Updated**: 2026-03-22
 >
 > Standards, conventions, and workflows for all AGNOS first-party consumer applications.
 > These are non-negotiable for interoperability with daimon, agnoshi, mela, and the marketplace infrastructure.
+>
+> **Reference implementations**: [libro](https://github.com/MacCracken/libro) (gold standard), [hisab](https://github.com/MacCracken/hisab) (benchmark practices).
 
 ---
 
@@ -14,95 +16,104 @@
 ```
 {project}/
 ├── VERSION                          # Single source of truth (CalVer or SemVer)
-├── Cargo.toml                       # Workspace root, resolver = "2"
+├── Cargo.toml                       # Flat crate or workspace root
 ├── rust-toolchain.toml              # channel = "stable", components = ["rustfmt", "clippy"]
-├── Makefile                         # check/fmt/clippy/test/audit/deny/build/doc/clean
-├── README.md                        # Comprehensive: architecture, quick start, API, roadmap
+├── Makefile                         # check/fmt/clippy/test/audit/deny/bench/coverage/build/doc/clean
+├── README.md                        # Architecture, quick start, feature flags, usage examples
 ├── CHANGELOG.md                     # Keep a Changelog format
+├── CONTRIBUTING.md                  # Contribution guidelines
+├── CODE_OF_CONDUCT.md               # Code of conduct
+├── SECURITY.md                      # Security policy and reporting
+├── LICENSE                          # GPL-3.0 or AGPL-3.0
 ├── deny.toml                        # cargo-deny license + advisory config
+├── codecov.yml                      # Coverage reporting config
 ├── scripts/
-│   └── version-bump.sh              # Updates VERSION + Cargo.toml + Cargo.lock
+│   ├── version-bump.sh              # Updates VERSION + Cargo.toml + Cargo.lock
+│   └── bench-history.sh             # Runs criterion, outputs CSV + MD (see Benchmarking)
 ├── docs/
 │   ├── architecture/overview.md     # System diagram, module structure, consumers
 │   └── development/roadmap.md       # Versioned milestones through v1.0
 ├── src/
 │   ├── main.rs                      # CLI entrypoint (if binary)
 │   ├── lib.rs                       # Library root with doc examples
-│   └── mcp.rs                       # MCP server (stdio JSON-RPC 2.0)
-├── crates/                          # (multi-crate projects only)
-│   ├── {project}-core/src/lib.rs    # Domain logic, no IO
-│   ├── {project}-ai/src/
-│   │   ├── lib.rs
-│   │   └── daimon.rs                # Daimon + hoosh integration
-│   ├── {project}-mcp/src/lib.rs     # MCP tool definitions (if separate crate)
-│   └── ...                          # Domain-specific crates
-├── benches/                         # Criterion benchmarks
+│   └── {modules}.rs                 # Feature-gated domain modules
+├── tests/
+│   └── integration.rs               # Cross-module integration tests
+├── examples/
+│   └── basic.rs                     # At least one runnable example
+├── benches/
+│   └── benchmarks.rs                # Criterion benchmarks (required for shared crates)
 ├── .github/workflows/
 │   ├── ci.yml                       # fmt + clippy + deny + audit + test + msrv + coverage
-│   └── release.yml                  # CI gate → build → publish → release
-└── LICENSE
+│   └── release.yml                  # CI gate → build → version verify → publish → release
+└── .gitignore
+```
+
+### Flat vs Workspace
+
+**Prefer flat crates** (single `Cargo.toml`, modules under `src/`, feature-gated):
+- Shared library crates: abaco, hisab, yukti, dhvani, ai-hwaccel, libro, kavach, majra, etc.
+- Single compilation unit — optimizer sees through everything
+- Feature flags control what gets compiled
+
+**Use workspaces** only when the project has genuinely independent binaries or crates with different dependency trees:
+- Consumer apps with separate `-core`, `-ai`, `-mcp` crates: kiran, phylax, joshua
+- Projects with both a library and a binary that shouldn't share all deps
+
+### Cargo.toml Metadata (Required)
+
+```toml
+[package]
+name = "{project}"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.89"
+license = "GPL-3.0"                  # or "AGPL-3.0-only"
+description = "{Project} — one-line description"
+homepage = "https://github.com/MacCracken/{project}"
+repository = "https://github.com/MacCracken/{project}"
+readme = "README.md"
+documentation = "https://docs.rs/{project}"
+keywords = ["keyword1", "keyword2"]  # max 5, lowercase
+categories = ["category"]           # from crates.io categories list
+exclude = [".claude/", ".github/", "docs/", "scripts/"]
 ```
 
 ### Crate Naming
 
-- Prefer **clean single-word names** without hyphens: `chitrsys`, `dhvani`, `tarang`, `kavach`
-- Exceptions: `ai-hwaccel` (hyphen is intentional — AI-focused hardware acceleration)
+- Prefer **clean single-word names**: `hisab`, `dhvani`, `tarang`, `kavach`, `yukti`, `libro`
 - Hyphens only for workspace sub-crates: `{project}-core`, `{project}-ai`
-- Hyphenated sub-crate names will be consolidated to clean names prior to v1
 - Never mix hyphens and underscores in the same workspace
-- Minimum crates: `-core` and `-ai` (with `daimon.rs`) for workspace projects
-- Typical count: 5-8 crates per project
-- Keep crate count proportional to actual domain boundaries — don't over-split
+- For workspace projects: minimum crates are `-core` and `-ai` (with `daimon.rs`)
 
-### Workspace Cargo.toml
+### Own the Stack
 
-```toml
-[workspace]
-resolver = "2"
-members = ["crates/*"]
-
-[workspace.package]
-edition = "2024"
-license = "GPL-3.0"          # Or MIT — match project
-
-[workspace.dependencies]
-# Centralize ALL shared deps here. Crates use { workspace = true }.
-tokio = { version = "1", features = ["full"] }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-anyhow = "1"
-thiserror = "2"
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-reqwest = { version = "0.12", features = ["json"] }
-```
-
----
-
-## Shared Crate Dependencies
-
-First-party apps should use ecosystem shared crates instead of reimplementing common functionality.
-Published on crates.io under AGPL-3.0.
+When an AGNOS crate wraps an external library, **depend on the AGNOS crate, not the external one**:
 
 | Need | Use | NOT |
 |------|-----|-----|
+| Vectors, matrices, transforms | `hisab` (wraps glam) | `glam` directly |
+| Physics simulation | `impetus` (wraps rapier, uses hisab) | `rapier` + `glam` |
+| Expression evaluation | `abaco` | Custom parser |
+| DSP math | `abaco::dsp` | Inline `powf`/`log10` |
 | Hardware detection | `ai-hwaccel` | Internal GPU probing |
-| Media decode/encode | `tarang` | ffmpeg shelling, custom demuxers |
-| Video codec bindings | `chitrsys` | `env-libvpx-sys`, vendored FFI |
-| Image processing | `ranga` | Manual color conversion, blend modes |
-| Audio DSP/mixing | `dhvani` | Internal buffer types, custom DSP |
+| Media decode/encode | `tarang` | ffmpeg shelling |
+| Rendering (wgpu, shaders, PBR) | `soorat` | Custom draw calls, inline shaders |
+| Optics / light physics | `prakash` | Inline Fresnel, hardcoded color temp |
+| Image processing | `ranga` | Manual color conversion |
+| Audio pipeline | `dhvani` (uses abaco::dsp) | Internal DSP reimplementation |
+| Device abstraction | `yukti` | Direct udev/sysfs |
 | LLM inference | `hoosh` (client) | Direct provider API calls |
 | Queue/pubsub | `majra` | Custom channel implementations |
 | Sandboxing | `kavach` | Internal sandbox backends |
-| Compositing | `aethersafta` | Custom frame blending |
+| Audit logging | `libro` | Custom hash chains |
+| MCP protocol | `bote` | Custom JSON-RPC |
+| Threat detection | `phylax` | Inline YARA/entropy |
+| MCP security | `t-ron` | Per-app authorization |
+| Emotion/personality | `bhava` (planned) | Per-app mood systems |
+| Navigation/pathfinding | `raasta` | Custom A*, inline pathfinding |
 
-### When to extract a shared crate
-
-Extract when **3+ projects** implement the same pattern. Until then, keep it in-project.
-Signs it's time to extract:
-- You're copying a module between repos
-- Two projects have different implementations of the same algorithm
-- A bug fix in one project should automatically benefit another
+Only one crate should directly depend on each external library. Extract when **3+ projects** implement the same pattern.
 
 ---
 
@@ -110,50 +121,27 @@ Signs it's time to extract:
 
 ### CalVer (consumer apps)
 
-Consumer applications (jalwa, tazama, shruti, etc.) that ship as AGNOS marketplace binaries use CalVer:
-
-### CalVer Format
-
 ```
 YYYY.M.D[-N]
 ```
 
 - `YYYY.M.D` — date of release (no zero-padding on month/day)
 - `-N` — patch number within the same day (optional, starts at `-1`)
-- Examples: `2026.3.18`, `2026.3.18-1`, `2026.3.18-2`
-
-### VERSION File
-
-- **Single source of truth**: `VERSION` file at project root
-- Contains one line, no trailing newline
-- CI reads it: `VERSION=$(cat VERSION | tr -d '[:space:]')`
-- Git tags match exactly: `git tag $VERSION`
-- Marketplace recipes pull version from release tag, not from the recipe file
 
 ### SemVer (shared crates on crates.io)
-
-Shared crates published to crates.io use SemVer with a `0.D.M` pre-1.0 scheme:
 
 ```
 0.D.M     (pre-1.0: day.month from CalVer)
 M.N.P     (post-1.0: standard SemVer)
 ```
 
-- `0.21.3` = March 21st, pre-1.0
-- `1.0.0` = stable API, real SemVer from here
+### VERSION File
 
-### DO
-
-- Update `VERSION` before tagging
-- Update `CHANGELOG.md` before tagging
-- Tag, then let CI build and release
-- Use `-N` suffix for same-day patches
-
-### DON'T
-
-- Hardcode versions in `Cargo.toml` `[package]` — use `version.workspace = true` or read from VERSION
-- Create tags without updating CHANGELOG
-- Push tags before CI passes on the branch
+- **Single source of truth**: `VERSION` file at project root
+- Contains one line, no trailing newline
+- CI reads it: `VERSION=$(cat VERSION | tr -d '[:space:]')`
+- Release workflow verifies VERSION matches tag
+- Git tags match exactly: `git tag $VERSION`
 
 ---
 
@@ -165,77 +153,128 @@ M.N.P     (post-1.0: standard SemVer)
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
 
 jobs:
-  check:
-    # cargo fmt --all -- --check
-    # cargo clippy --workspace --all-targets -- -D warnings
-    # cargo check --workspace
-
-  security:
-    # cargo audit
-    # cargo deny check (EmbarkStudios/cargo-deny-action@v2)
-
-  test:
-    # Multi-OS: ubuntu-latest + macos-latest
-    # cargo test --workspace
-    # cargo test --doc
-
-  msrv:
-    # Verify minimum supported Rust version (1.89)
-    # cargo check + cargo test with pinned toolchain
-
-  coverage:
-    # cargo-llvm-cov → lcov.info → codecov upload
+  check:           # cargo fmt --check, cargo clippy -D warnings, cargo check
+  security:        # cargo audit
+  deny:            # EmbarkStudios/cargo-deny-action@v2
+  test:            # Multi-OS: ubuntu-latest + macos-latest
+                   # cargo test --all-features
+                   # cargo test --doc
+  msrv:            # Verify MSRV 1.89: cargo check + cargo test
+  coverage:        # cargo-llvm-cov → lcov.info → codecov/codecov-action@v4
 ```
 
 ### release.yml — Tag Push Only
 
 ```yaml
-on:
-  push:
-    tags: ['*']
-
 jobs:
-  ci:
-    uses: ./.github/workflows/ci.yml    # CI gate — must pass first
-
-  build:
-    needs: [ci]
-    strategy:
-      matrix:
-        include:
-          - target: x86_64-unknown-linux-gnu    (linux-amd64)
-          - target: aarch64-unknown-linux-gnu   (linux-arm64, cross)
-          - target: aarch64-apple-darwin        (macos-arm64)
-          - target: x86_64-pc-windows-msvc      (windows-amd64, optional)
-    steps:
-      # Build, tar/zip, sha256sum
-      # Artifact: {project}-{version}-{platform}.tar.gz + .sha256
-
-  publish:                               # crates.io (shared crates only)
-    needs: [ci, build]                   # IMPORTANT: publish AFTER build succeeds
-    # cargo publish
-
-  release:
-    needs: [ci, build, publish]
-    # softprops/action-gh-release@v2 with artifacts + SHA256
+  ci:              # uses: ./.github/workflows/ci.yml (CI gate)
+  build:           # Multi-platform matrix:
+                   #   x86_64-unknown-linux-gnu (linux-amd64)
+                   #   aarch64-unknown-linux-gnu (linux-arm64, cross)
+                   #   aarch64-apple-darwin (macos-arm64)
+  publish:         # AFTER build succeeds
+                   # Verify VERSION matches tag
+                   # cargo publish (CARGO_REGISTRY_TOKEN)
+  release:         # AFTER publish
+                   # softprops/action-gh-release@v2
+                   # generate_release_notes: true
 ```
 
-### DO
+Reference: [libro ci.yml](https://github.com/MacCracken/libro/blob/main/.github/workflows/ci.yml), [libro release.yml](https://github.com/MacCracken/libro/blob/main/.github/workflows/release.yml).
 
-- Always run fmt + clippy + test before release builds
-- Build both amd64 and arm64 in matrix
-- Generate SHA256 checksums for every artifact
-- Use `cancel-in-progress` to avoid wasted runner time
-- Install system deps explicitly (libpipewire-dev, libdbus-1-dev, etc.)
+---
 
-### DON'T
+## Benchmarking
 
-- Skip clippy warnings with `--allow`
-- Use `cargo test` without `--workspace`
-- Publish releases without arm64 builds
-- Use `gh` CLI in CI scripts — use `curl` to GitHub API instead
+### Required for Shared Crates
+
+Every shared crate must have criterion benchmarks with CSV history tracking.
+
+### Benchmark Script (`scripts/bench-history.sh`)
+
+Dual output:
+1. **CSV history** (appended each run) — for trend tracking and regression detection
+2. **Markdown table** (overwritten) — latest run stats for quick display
+
+The script must:
+- Run `cargo bench`, capture output
+- Parse criterion's `time: [low mid high]` format (handle both single-line and wrapped names)
+- Normalize all units to nanoseconds
+- Append to CSV with timestamp, commit, branch
+- Generate markdown with human-readable units
+
+### 3-Point Trend (hisab pattern — recommended)
+
+For mature crates, generate a 3-point trend table: **baseline → optimized → current** with delta percentages. This catches regressions and proves optimization holds across commits.
+
+```markdown
+| Benchmark | Baseline (`abc123`) | Optimized (`def456`) | Current (`789abc`) |
+|-----------|---------------------|---------------------|--------------------|
+| `transform3d_apply_point` | 13.7 ns | 5.9 ns **-57%** | 5.9 ns **-57%** |
+```
+
+Reference: [hisab bench-history.sh](https://github.com/MacCracken/hisab/blob/main/scripts/bench-history.sh).
+
+### Batch Benchmarks
+
+Include batch/throughput benchmarks alongside single-call latency:
+- `ray_sphere×100` — what a broadphase actually does
+- `dsp_batch_4096` — a real audio buffer
+- `parse_100_expressions` — real workload
+
+### Makefile Target
+
+```makefile
+bench:
+	./scripts/bench-history.sh
+```
+
+---
+
+## Makefile
+
+Standard targets (all projects must have these):
+
+```makefile
+.PHONY: check fmt clippy test audit deny bench coverage build doc clean
+
+check: fmt clippy test audit      # Run all CI checks locally
+
+fmt:
+	cargo fmt --all -- --check
+
+clippy:
+	cargo clippy --all-features --all-targets -- -D warnings
+
+test:
+	cargo test --all-features
+
+audit:
+	cargo audit
+
+deny:
+	cargo deny check
+
+bench:
+	./scripts/bench-history.sh
+
+coverage:
+	cargo llvm-cov --all-features --html --output-dir coverage/
+
+build:
+	cargo build --release --all-features
+
+doc:
+	RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --all-features
+
+clean:
+	cargo clean
+```
 
 ---
 
@@ -253,41 +292,20 @@ jobs:
 - 5-8 tools per project (minimum 5)
 - Every tool must have a JSON schema for inputs
 
-### MCP Server Implementation
-
-```rust
-// JSON-RPC 2.0 on stdio
-// Required methods: initialize, tools/list, tools/call
-// Shared state: Arc<Mutex<AppState>>
-```
-
 ### Required Tests
 
 - `test_tool_list()` — verifies all tools appear
 - One test per tool — happy path
 - One test per tool — error/invalid input path
 
-### DO
-
-- Return structured JSON from every tool
-- Include `description` field in tool schema
-- Keep tools focused — one action per tool
-- Test MCP tools inline in the MCP module
-
-### DON'T
-
-- Create tools that require multi-step interaction
-- Return raw strings when structured data is available
-- Skip error responses — always return JSON-RPC error objects
-- Exceed 10 tools without good reason — keep the surface small
-
 ---
 
 ## Daimon Integration
 
-### Required: `crates/{project}-ai/src/daimon.rs`
+### Required: AI module with `daimon.rs`
 
-Every first-party app must integrate with daimon (port 8090) and optionally hoosh (port 8088).
+For flat crates: `src/ai.rs` with `daimon.rs` logic, feature-gated behind `ai`.
+For workspaces: `crates/{project}-ai/src/daimon.rs`.
 
 ```rust
 pub struct DaimonConfig {
@@ -311,44 +329,152 @@ pub struct DaimonClient { /* reqwest::Client, 30s timeout */ }
 | **3 — Knowledge** | `ingest_rag()`, `query_rag()` | Apps with documents/text |
 | **4 — Inference** | LLM calls via hoosh | Apps with AI features |
 
+---
+
+## Testing
+
+### Conventions
+
+- **Unit tests**: inline in the same file: `#[cfg(test)] mod tests { }`
+- **Integration tests**: `tests/integration.rs` for cross-module behavior
+- **Examples**: at least one in `examples/` — runnable with `cargo run --example`
+- **Doc tests**: `cargo test --doc` must pass
+- Minimum **100 tests** across all modules for a releasable project
+- Target: **80%+ code coverage** (cargo-llvm-cov)
+- Benchmarks: **required** for shared crates, optional for consumer apps
+
 ### DO
 
-- Register with daimon on startup, deregister on shutdown
-- Use reqwest with 30s timeout and optional Bearer token auth
-- Gracefully degrade if daimon is unavailable (app still works standalone)
+- Test domain logic extensively
+- Test MCP tools with mock state (happy + error paths)
+- Test daimon client with mock HTTP responses
+- Test all error variants and Display impls
+- Test serde roundtrips for all public types
+- Use `#[ignore]` for tests requiring external services
 
 ### DON'T
 
-- Hard-fail if daimon is down — the app must function without it
-- Skip agent registration — mela and agnoshi depend on it
-- Talk to LLM providers directly — always route through hoosh
+- Use process-global state (env vars) in parallel tests — they race
+- `unwrap()` or `panic!()` in library code
+- Write tests that depend on network access without `#[ignore]`
 
 ---
 
-## Agnoshi Intents
+## Error Handling
 
-### Pattern Format
+| Context | Crate | Pattern |
+|---------|-------|---------|
+| Library crates | `thiserror` | `#[derive(Error)]` enum per module, `#[non_exhaustive]` |
+| Application / CLI | `anyhow` | `anyhow::Result`, `.context("msg")` |
+| MCP tools | JSON-RPC error | `{ "code": -32000, "message": "..." }` |
 
-Intents live in `userland/ai-shell/src/interpreter/patterns.rs` in the AGNOS repo:
+---
+
+## Logging & Audit Tracing
+
+### Structured Logging (Required)
+
+Every crate must use `tracing` for structured, auditable log output. This feeds into libro's audit chain and AGNOS's observability infrastructure.
+
+**Dependency**: `tracing = "0.1"` (always, not optional).
+
+### What to Log
+
+| Level | When | Example |
+|-------|------|---------|
+| `error!` | Operation failed, caller must handle | `error!(path = %path, "file not found")` |
+| `warn!` | Degraded behavior, operation succeeded with concerns | `warn!(error = %e, "chain verification failed")` |
+| `info!` | Lifecycle events, state transitions, audit-worthy actions | `info!(entries = count, "store opened")` |
+| `debug!` | Detailed operation internals, useful for debugging | `debug!(rule = name, "YARA rule compiled")` |
+| `trace!` | Per-call hot-path tracing (high volume, perf-sensitive) | `trace!(target = %path, "scanning file")` |
+
+### Structured Fields
+
+Always use structured key-value pairs, not string interpolation:
 
 ```rust
-r("{project}_{action}", r"(?i)^(?:{project}\s+)?{action}\s+(.+)$");
+// DO — structured, machine-parseable, audit-friendly
+info!(agent_id = %id, action = "register", status = "success");
+warn!(device = %path, fs_type = %fs, "unsupported filesystem");
+error!(rule = name, target = %file, "scan failed");
+
+// DON'T — unstructured, unparseable
+info!("Agent {} registered successfully", id);
 ```
 
-- Minimum 5 intents per project
-- Match project MCP tools 1:1 where possible
-- Case-insensitive, allow project name prefix to be optional
+### Logging Init Module (Feature-Gated)
 
-### DO
+Library crates should provide an optional `logging` feature with a convenience init:
 
-- Test intent patterns with representative user input
-- Support both `"{project} {action} {args}"` and `"{action} {args}"` forms
-- Keep patterns simple — complex NL parsing goes through hoosh
+```rust
+// src/logging.rs (only compiled with `logging` feature)
 
-### DON'T
+/// Initialise {project} logging with the `{PROJECT}_LOG` environment variable.
+/// Falls back to `info` if not set. Safe to call multiple times.
+pub fn init() {
+    init_with_level("info");
+}
 
-- Create intents without corresponding MCP tools
-- Use overly greedy patterns that steal other projects' intents
+pub fn init_with_level(default_level: &str) {
+    use tracing_subscriber::EnvFilter;
+    use tracing_subscriber::fmt;
+    use tracing_subscriber::prelude::*;
+
+    let filter = EnvFilter::try_from_env("{PROJECT}_LOG")
+        .unwrap_or_else(|_| EnvFilter::new(default_level));
+
+    let _ = tracing_subscriber::registry()
+        .with(fmt::layer().with_target(true).with_thread_ids(true))
+        .with(filter)
+        .try_init();
+}
+```
+
+**Env var convention**: `{PROJECT}_LOG` in SCREAMING_SNAKE_CASE. Examples: `GANIT_LOG`, `PHYLAX_LOG`, `BHAVA_LOG`.
+
+Supports per-module filtering: `GANIT_LOG=hisab::num=debug,hisab::geo=trace`.
+
+### Cargo.toml
+
+```toml
+[dependencies]
+tracing = "0.1"                              # Always required
+tracing-subscriber = { version = "0.3",      # Optional — for logging init
+    features = ["env-filter", "fmt"],
+    optional = true }
+
+[features]
+logging = ["dep:tracing-subscriber"]
+```
+
+### Audit-Critical Events
+
+These events MUST be logged at `info!` level or higher — they feed the audit trail:
+
+- Agent registration/deregistration
+- Device mount/unmount/eject
+- Security scan results (findings, severity)
+- MCP tool calls (via t-ron)
+- Personality changes, mood stimuli above threshold
+- File operations (create, delete, permission change)
+- Configuration changes
+
+Reference: [hisab logging.rs](https://github.com/MacCracken/hisab/blob/main/src/logging.rs), [libro chain.rs](https://github.com/MacCracken/libro/blob/main/src/chain.rs).
+
+---
+
+## Naming Conventions
+
+| Thing | Convention | Example |
+|-------|-----------|---------|
+| Project name | Multilingual (Arabic, Persian, Hebrew, Sanskrit, Greek, Japanese, etc.) | jalwa, tarang, mneme, hisab, yukti |
+| Crate names | `{project}-{subsystem}`, hyphens (workspaces only) | `kiran-core`, `phylax-ai` |
+| MCP tools | `{project}_{verb}`, underscores | `jalwa_play`, `rasa_export` |
+| Agnoshi intents | Match MCP tool names | `jalwa_play` pattern |
+| Binary name | Project name, lowercase | `jalwa`, `tarang` |
+| Config dir | `~/.{project}/` or `~/.local/share/{project}/` | `~/.jalwa/` |
+| Systemd unit | `{project}.service` | `phylax.service` |
+| Desktop entry | `{project}.desktop` | `abacus.desktop` |
 
 ---
 
@@ -359,7 +485,7 @@ r("{project}_{action}", r"(?i)^(?:{project}\s+)?{action}\s+(.+)$");
 ```toml
 [package]
 name = "{project}"
-version = "YYYY.M.D"        # Updated by ark-bundle.sh from release tag
+version = "YYYY.M.D"
 description = "{Project} — one-line description"
 license = "GPL-3.0"
 groups = ["{domain}"]
@@ -369,89 +495,28 @@ github_release = "MacCracken/{project}"
 release_asset = "{project}-*-linux-amd64.tar.gz"
 
 [depends]
-runtime = ["glibc"]          # Minimal — only what's actually linked
+runtime = ["glibc"]
 build = ["rust"]
 
 [marketplace]
 category = "{category}"
-runtime = "native-binary"    # or "flutter", "python-container"
+runtime = "native-binary"
 publisher = "AGNOS"
 tags = [...]
-min_agnos_version = "2026.3.18"
+min_agnos_version = "2026.3.22"
 
 [marketplace.sandbox]
-seccomp_mode = "basic"       # or "desktop" for GUI apps
+seccomp_mode = "basic"
 network_access = true/false
 data_dir = "~/.{project}/"
 
 [build]
-make = "cargo build --release --workspace"
-check = "cargo test --workspace"
+make = "cargo build --release"
+check = "cargo test"
 
 [security]
 hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
 ```
-
-### Sandbox Rules
-
-- Landlock: grant `rw` to app data dir and `/tmp/{project}/`
-- Landlock: grant `ro` to config dirs the app reads
-- Landlock: grant `rw` to `/run/agnos/` for IPC with daimon
-- Network: whitelist only `localhost` ports the app needs (8090, 8088, own port)
-- GPU: add `/dev/dri` (rw) and CUDA/ROCm paths (ro) only if needed
-
-### DO
-
-- Keep runtime deps minimal — most Rust binaries only need `glibc` and maybe `openssl`
-- Include a `.desktop` entry for GUI apps
-- Include a systemd user service for daemon apps
-- Set `min_agnos_version` to the version that has the APIs you need
-
-### DON'T
-
-- List build-only deps in runtime
-- Grant broader Landlock access than needed
-- Skip the `[security]` hardening section
-
----
-
-## Changelog
-
-### Format: Keep a Changelog
-
-```markdown
-# Changelog
-
-## [YYYY.M.D[-N]] - YYYY-MM-DD
-
-### Added
-- New features
-
-### Changed
-- Modifications to existing features
-
-### Fixed
-- Bug fixes
-
-### Security
-- Security fixes with file:line references and severity
-
-### Breaking Changes
-- API or behavior changes that require user action
-```
-
-### DO
-
-- List security fixes with severity (HIGH/MEDIUM/LOW) and file locations
-- Include test count updates
-- Note dependency additions/removals
-- Group changes by crate when relevant
-
-### DON'T
-
-- Use `Unreleased` section — update changelog at release time, not continuously
-- Skip security fixes — these are critical for audit trail
-- Omit the date — every release entry needs `YYYY-MM-DD`
 
 ---
 
@@ -460,36 +525,153 @@ hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
 ### New Project Lifecycle
 
 ```
-1. Scaffold       → Workspace + crates + VERSION + README + CHANGELOG
-2. Core logic     → {project}-core crate, domain types, no IO
-3. AI integration → {project}-ai crate, daimon.rs, hoosh calls
-4. MCP server     → 5+ tools, JSON-RPC on stdio, full test coverage
-5. CLI            → src/main.rs, subcommands, config loading
-6. CI/CD          → ci.yml + release.yml, fmt/clippy/test/build
-7. First release  → VERSION, CHANGELOG, git tag, CI builds artifacts
-8. AGNOS integration:
-   a. Marketplace recipe    → recipes/marketplace/{project}.toml
-   b. Agnoshi intents       → ai-shell/src/interpreter/patterns.rs
-   c. MCP tool registration → agent-runtime MCP tool list
-   d. Roadmap entry         → docs/applications/{project}.md
-   e. Bundle test           → ark-bundle.sh {recipe}
+1. Scaffold       → Cargo.toml + VERSION + README + CHANGELOG + CONTRIBUTING +
+                     CODE_OF_CONDUCT + SECURITY + LICENSE + deny.toml + codecov.yml +
+                     Makefile + rust-toolchain.toml + .gitignore +
+                     scripts/{version-bump,bench-history}.sh +
+                     .github/workflows/{ci,release}.yml
+2. Core logic     → src/lib.rs + domain modules, feature-gated
+3. Tests          → inline tests + tests/integration.rs + examples/basic.rs
+4. Benchmarks     → benches/benchmarks.rs + scripts/bench-history.sh
+5. AI integration → src/ai.rs + daimon.rs (feature-gated)
+6. MCP server     → 5+ tools, JSON-RPC on stdio (if applicable)
+7. CLI            → src/main.rs, subcommands (if binary)
+8. Docs           → docs/architecture/overview.md + docs/development/roadmap.md
+9. First release  → VERSION, CHANGELOG, git tag, CI builds + publishes
+10. AGNOS integration:
+    a. Marketplace recipe    → recipes/marketplace/{project}.toml
+    b. Agnoshi intents       → ai-shell/src/interpreter/patterns.rs
+    c. MCP tool registration → agent-runtime MCP tool list
+    d. Application doc       → docs/applications/{project}.md
+    e. Bundle test           → ark-bundle.sh {recipe}
 ```
+
+### P(-1): Scaffold Hardening
+
+Before any new feature work begins, every scaffolded project must go through a hardening phase. The scaffold gets you compiling — P(-1) makes it production-grade.
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                  P(-1): SCAFFOLD HARDENING                   │
+│                                                              │
+│  1. TEST + BENCHMARK SWEEP                                   │
+│     Comprehensive test coverage of existing scaffold code    │
+│     Criterion benchmarks for all hot paths                   │
+│                                                              │
+│  2. CLEANLINESS CHECK                                        │
+│     cargo fmt --all -- --check                               │
+│     cargo clippy --all-features --all-targets -- -D warnings │
+│     cargo audit                                              │
+│     cargo deny check                                         │
+│                                                              │
+│  3. GET BASELINE                                             │
+│     ./scripts/bench-history.sh                               │
+│     First CSV entry — this is the starting line              │
+│                                                              │
+│  4. INITIAL REFACTOR + AUDIT                                 │
+│     Code review: performance, memory, security, edge cases   │
+│     Apply standard patterns: #[inline], Cow, Vec arena,      │
+│     write! over format!, #[non_exhaustive], #[must_use]      │
+│                                                              │
+│  5. CLEANLINESS CHECK                                        │
+│     cargo fmt / clippy / audit / deny — must be clean        │
+│                                                              │
+│  6. ADDITIONAL TESTS + BENCHMARKS                            │
+│     From audit observations: edge cases, error paths,        │
+│     regression tests, new benchmark targets                  │
+│                                                              │
+│  7. POST-AUDIT BENCHMARKS                                    │
+│     ./scripts/bench-history.sh                               │
+│     Compare against step 3 — prove the wins                  │
+│                                                              │
+│  8. IF AUDIT HEAVY → return to step 4                        │
+│     Keep drilling until clean                                │
+│                                                              │
+│  Exit: Crate is audit-clean, clippy-clean, fmt-clean,        │
+│  security-clean, with baseline benchmarks.                   │
+│  Enter the Development Loop.                                 │
+│                                                              │
+└──────────────────────────────────────────────────────────────┘
+```
+
+**Why P(-1) exists:** A scaffold is a skeleton — it compiles and has basic tests, but it hasn't been audited, optimized, or stress-tested. Building features on an unaudited foundation means every feature inherits the scaffold's shortcuts. P(-1) pays the debt before it compounds.
+
+### Development Loop
+
+The continuous improvement cycle for every crate. Each pass makes the crate measurably better.
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                    DEVELOPMENT LOOP                          │
+│                                                              │
+│  1. WORK PHASE                                               │
+│     New features, roadmap items, bug fixes                   │
+│                                                              │
+│  2. CLEANLINESS CHECK                                        │
+│     cargo fmt --all -- --check                               │
+│     cargo clippy --all-features --all-targets -- -D warnings │
+│     cargo audit                                              │
+│     cargo deny check                                         │
+│                                                              │
+│  3. TEST + BENCHMARK ADDITIONS                               │
+│     Comprehensive coverage for new code                      │
+│     New benchmarks for new hot paths                         │
+│                                                              │
+│  4. RUN BENCHMARKS                                           │
+│     ./scripts/bench-history.sh                               │
+│     Baseline captured in CSV                                 │
+│                                                              │
+│  5. AUDIT PHASE                                              │
+│     Review: performance, optimizations, memory, security,    │
+│     throughput, correctness, edge cases                      │
+│                                                              │
+│  6. CLEANLINESS CHECK                                        │
+│     cargo fmt / clippy / audit / deny — must be clean        │
+│                                                              │
+│  7. TEST + BENCHMARK DEEPER ADDITIONS                        │
+│     From audit observations: edge cases, error paths,        │
+│     regression tests, new benchmark targets                  │
+│                                                              │
+│  8. RUN BENCHMARKS                                           │
+│     ./scripts/bench-history.sh                               │
+│     Compare against step 4 baseline — prove the wins         │
+│                                                              │
+│  9. IF AUDIT TOO HEAVY → return to step 5                    │
+│     Keep drilling until clean                                │
+│                                                              │
+│ 10. DOCUMENTATION PHASE                                      │
+│     Update CHANGELOG with changes                            │
+│     Remove completed roadmap items                           │
+│     Add/update ADRs, guides, docs as needed                  │
+│                                                              │
+│ 11. RETURN TO STEP 1                                         │
+│     Next work phase begins                                   │
+│                                                              │
+└──────────────────────────────────────────────────────────────┘
+```
+
+**Key principles:**
+- Never skip benchmarks. Numbers don't lie.
+- Audit after every work phase, not just before release.
+- The CSV history is the proof. 3-point trends catch regressions.
+- If the audit reveals deep issues, loop steps 4-7 until clean.
+- Documentation is the *last* step — document what *is*, not what *might be*.
 
 ### Release Checklist
 
 ```
-[ ] All tests pass (cargo test --workspace)
-[ ] No clippy warnings (cargo clippy --workspace --all-targets -- -D warnings)
+[ ] All tests pass (cargo test --all-features)
+[ ] No clippy warnings (cargo clippy --all-features --all-targets -- -D warnings)
 [ ] No fmt issues (cargo fmt --all -- --check)
-[ ] cargo audit clean (no known vulnerabilities)
+[ ] cargo audit clean
+[ ] cargo deny check clean
+[ ] Benchmarks run (./scripts/bench-history.sh)
 [ ] VERSION file updated
-[ ] CHANGELOG.md updated with all changes
+[ ] CHANGELOG.md updated
 [ ] Git tag matches VERSION
 [ ] CI passes on tag push
 [ ] Both amd64 + arm64 artifacts published
-[ ] SHA256 checksums published
-[ ] AGNOS marketplace recipe version updated (after release)
-[ ] AGNOS roadmap updated
+[ ] AGNOS marketplace recipe updated (after release)
 ```
 
 ### DON'T
@@ -498,71 +680,9 @@ hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
 - Release without arm64 builds
 - Skip the changelog — it's the audit trail
 - Amend tags — create a new `-N` patch version instead
-- Use `gh` CLI anywhere — `curl` to GitHub API only
+- **NEVER** use `gh` CLI — `curl` to GitHub API only
+- Skip benchmarks — if you can't measure it, you can't claim it
 
 ---
 
-## Error Handling
-
-| Context | Crate | Pattern |
-|---------|-------|---------|
-| Library crates | `thiserror` | `#[derive(Error)]` enum per module |
-| Application / CLI | `anyhow` | `anyhow::Result`, `.context("msg")` |
-| MCP tools | JSON-RPC error | `{ "code": -32000, "message": "..." }` |
-
-### DO
-
-- Use `thiserror` in `-core` and `-ai` crates
-- Use `anyhow` in `main.rs` and CLI code
-- Return meaningful error messages in MCP responses
-
-### DON'T
-
-- `unwrap()` or `panic!()` in library code
-- Use `panic!()` in tests to signal expected failures — use `assert!` macros
-- Swallow errors silently — log at minimum
-
----
-
-## Testing
-
-### Conventions
-
-- Tests live **inline** in the same file: `#[cfg(test)] mod tests { }`
-- Minimum **100 tests** across all crates for a releasable project
-- MCP module: test every tool (happy + error path)
-- Target: **80%+ code coverage** (tarpaulin)
-- No separate `tests/` directory unless testing cross-crate integration
-- Benchmarks (optional): `benches/{name}_bench.rs` via criterion
-
-### DO
-
-- Test domain logic in `-core` extensively
-- Test MCP tools with mock state
-- Test daimon client with mock HTTP responses
-- Use `#[ignore]` for tests requiring external services, not `#[cfg(feature)]`
-
-### DON'T
-
-- Use process-global state (env vars) in parallel tests — they race
-- Mock the database when integration tests are feasible
-- Write tests that depend on network access without `#[ignore]`
-
----
-
-## Naming Conventions
-
-| Thing | Convention | Example |
-|-------|-----------|---------|
-| Project name | Multilingual (Arabic, Persian, Hebrew, Sanskrit, Greek, Japanese, etc.) | jalwa, tarang, mneme |
-| Crate names | `{project}-{subsystem}`, hyphens | `jalwa-core`, `tarang-ai` |
-| MCP tools | `{project}_{verb}`, underscores | `jalwa_play`, `rasa_export` |
-| Agnoshi intents | Match MCP tool names | `jalwa_play` pattern |
-| Binary name | Project name, lowercase | `jalwa`, `tarang` |
-| Config dir | `~/.{project}/` or `~/.local/share/{project}/` | `~/.jalwa/` |
-| Systemd unit | `{project}.service` | `irfan.service` |
-| Desktop entry | `{project}.desktop` | `vidhana.desktop` |
-
----
-
-*Last Updated: 2026-03-21*
+*Last Updated: 2026-03-23*

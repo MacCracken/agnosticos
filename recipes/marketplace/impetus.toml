@@ -9,7 +9,7 @@
 
 [package]
 name = "impetus"
-version = "0.1.0"
+version = "0.23.3"
 description = "Impetus — Physics engine"
 license = "GPL-3.0"
 groups = ["library", "simulation", "physics", "rust"]

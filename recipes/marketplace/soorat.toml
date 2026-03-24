@@ -1,0 +1,50 @@
+# Soorat — GPU rendering engine for AGNOS
+# wgpu-based rendering: sprites, meshes, shaders, PBR pipeline, window management.
+# Integrates prakash for physically-based optics math.
+#
+# Name: Soorat (Arabic/Urdu: image/form, Farsi: face)
+# Lib: soorat = "0.1.0" in Cargo.toml
+#
+# Status: Scaffolded — v0.1.0.
+
+[package]
+name = "soorat"
+version = "0.1.0"
+description = "Soorat — GPU rendering engine"
+license = "GPL-3.0"
+groups = ["library", "rendering", "gpu", "rust"]
+release = 1
+arch = "x86_64"
+
+[source]
+github_release = "MacCracken/soorat"
+release_asset = "source"
+
+[depends]
+runtime = ["glibc"]
+build = ["rust"]
+
+[marketplace]
+category = "library"
+runtime = "rust-crate"
+publisher = "AGNOS"
+tags = ["rendering", "wgpu", "gpu", "sprites", "shaders", "pbr", "vulkan", "rust"]
+min_agnos_version = "2026.3.22"
+
+[marketplace.sandbox]
+seccomp_mode = "desktop"
+network_access = false
+
+[build]
+make = "cargo build --release"
+check = "cargo test --all-features"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+mkdir -p $PKG/usr/lib/soorat
+cp -r src $PKG/usr/lib/soorat/
+cp Cargo.toml $PKG/usr/lib/soorat/
+cp VERSION $PKG/usr/lib/soorat/
+"""

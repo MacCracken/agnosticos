@@ -1,15 +1,16 @@
-# Joshua — Game Engine & Simulation Core
+# Joshua — Game Manager & Simulation Core
 
-> **Joshua** (WarGames: "Shall we play a game?") — AI-native game engine and simulation runtime for AGNOS
+> **Joshua** (WarGames: "Shall we play a game?") — AI-native game manager and simulation runtime for AGNOS
 
 | Field | Value |
 |-------|-------|
 | Status | Planned |
-| Priority | 4 — creative tool + simulation infrastructure |
+| Priority | 4 — simulation infrastructure + AI game management |
 | Crate | `joshua` (crates.io, available) |
 | Repository | `MacCracken/joshua` |
 | Runtime | library crate + binary (editor/runner) |
-| Domain | Game engine / simulation / AI agents in virtual environments |
+| Domain | Game management / simulation / AI agents in virtual environments |
+| Engine | Builds on **kiran** (game engine) + **impetus** (physics) |
 
 ---
 
@@ -17,15 +18,16 @@
 
 No game engine treats AI agents as first-class citizens. Unity and Unreal bolt on ML as a plugin. Godot has no LLM integration. Bevy is Rust-native but has no agent runtime, no LLM-powered NPCs, no simulation mode for training AI in virtual environments.
 
-AGNOS already has the pieces: hoosh for LLM inference, daimon for agent orchestration, murti for model serving, tarang for media, ranga for image processing, dhvani for audio, ai-hwaccel for GPU detection. Joshua composes these into a game engine where:
+AGNOS already has the pieces: kiran for the game engine core (ECS, game loop, rendering, audio, input), impetus for physics, hoosh for LLM inference, daimon for agent orchestration, murti for model serving. Joshua sits on top as the **game manager and simulation runtime** where:
 
 - NPCs are daimon agents with LLM brains (via hoosh)
 - Game worlds are simulation environments for training/testing AI behavior
-- Physics, rendering, and audio use existing AGNOS crates
+- Engine core (ECS, rendering, audio, input) is provided by **kiran**
+- Physics is provided by **impetus**
 - Multiplayer uses majra pub/sub for networking
 - Game logic is sandboxed via kavach
 
-Joshua isn't just a game engine — it's a **simulation runtime**. Train AI agents in virtual environments, test autonomous behavior before deploying to the real world, and ship games as a side effect.
+Joshua isn't a game engine — that's kiran. Joshua is the **game manager and simulation runtime**. Train AI agents in virtual environments, test autonomous behavior before deploying to the real world, and ship games as a side effect.
 
 ## Design Principles
 
@@ -39,22 +41,25 @@ Joshua isn't just a game engine — it's a **simulation runtime**. Train AI agen
 
 ### The Stack
 
-Joshua is a thin orchestration layer over existing AGNOS crates. It owns only ECS, game loop, input, scene format, and simulation runner. Everything else is a dependency.
+Joshua is the game manager and simulation layer on top of kiran (game engine) and impetus (physics). It owns simulation, AI NPCs, the editor, and multiplayer — not the engine core.
 
 ```
-Joshua (this crate — thin orchestration)
-  ├── joshua-core     — ECS, game loop, time, events, deterministic replay
-  ├── joshua-input    — Keyboard, mouse, gamepad, touch
+Joshua (game manager + simulation)
   ├── joshua-sim      — Headless simulation mode, batch training, metrics
+  ├── joshua-npc      — AI NPC system (perception, memory, reasoning, action)
   ├── joshua-editor   — Visual editor (egui)
   │
-  │   Everything below is an existing AGNOS shared crate:
+  │   Engine layer (kiran owns these):
   │
-  ├── agnosai         — NPC agent orchestration (crews, tasks, tools)
-  ├── aethersafta     — rendering, scene graph, compositing (wgpu)
+  ├── kiran           — ECS, game loop, scene format, rendering, audio, input
+  │     ├── aethersafta — rendering, scene graph, compositing (wgpu)
+  │     ├── dhvani      — spatial audio, mixing, synthesis
+  │     └── ranga       — texture/image processing, GPU compute
+  │
+  │   Shared crates:
+  │
   ├── impetus         — 2D/3D physics (rapier wrapper)
-  ├── dhvani          — spatial audio, mixing, synthesis
-  ├── ranga           — texture/image processing, GPU compute
+  ├── agnosai         — NPC agent orchestration (crews, tasks, tools)
   ├── tarang          — video recording, asset transcoding
   ├── majra           — multiplayer networking, event pub/sub
   ├── kavach          — WASM script sandboxing
@@ -65,17 +70,18 @@ Joshua (this crate — thin orchestration)
 ### AGNOS Integration
 
 ```
-Joshua (game loop + ECS + scenes)
+Joshua (game manager + simulation)
+  │
+  ├── kiran      — game engine (ECS, game loop, scenes, rendering, audio, input)
+  │     ├── aethersafta — rendering pipeline
+  │     │     └── ranga — texture processing, GPU shaders
+  │     └── dhvani     — spatial audio, music, SFX
   │
   ├── agnosai    — NPCs are crews/agents with tasks and tools
   │     └── hoosh (socket) — LLM reasoning for NPC decisions
   │           └── murti — local model for fast NPC inference
   │
-  ├── aethersafta — rendering pipeline
-  │     └── ranga — texture processing, GPU shaders
-  │
   ├── impetus    — physics simulation
-  ├── dhvani     — spatial audio, music, SFX
   ├── tarang     — video recording, cutscene export
   ├── majra      — multiplayer networking
   ├── kavach     — sandboxed game scripts (WASM)
@@ -150,20 +156,19 @@ Use cases:
 
 ## Crate Structure
 
-Joshua is thin — only 4 internal crates. Everything else is an existing AGNOS shared crate.
+Joshua is thin — only 3 internal crates. Engine core (ECS, game loop, input) lives in kiran. Everything else is an existing AGNOS shared crate.
 
 ```
 joshua/
 ├── Cargo.toml           # Workspace root
 ├── crates/
-│   ├── joshua-core/     # ECS, game loop, time, events, deterministic replay
-│   ├── joshua-input/    # Input handling (keyboard, mouse, gamepad)
 │   ├── joshua-sim/      # Headless simulation, batch training, metrics
+│   ├── joshua-npc/      # AI NPC system (perception, memory, reasoning, action)
 │   └── joshua-editor/   # Visual editor (egui)
 ├── src/
 │   └── main.rs          # CLI: joshua run/edit/sim/export
 └── examples/
-    ├── hello_world.rs   # Spinning cube
+    ├── hello_world.rs   # Spinning cube (uses kiran)
     ├── npc_chat.rs      # LLM-powered NPC conversation
     ├── maze_sim.rs      # Headless agent training
     └── multiplayer.rs   # Networked game via majra
@@ -187,15 +192,20 @@ joshua/
 | `t-ron` | NPC tool call security | No security layer |
 | `ai-hwaccel` | GPU detection | Custom hardware detection |
 
+### Engine Dependency
+
+| Crate | Purpose |
+|-------|---------|
+| `kiran` | Game engine core — ECS, game loop, scene format, rendering, audio, input |
+
 ### External Crates
 
 | Crate | Purpose |
 |-------|---------|
-| `winit` | Window management |
 | `egui` | Editor UI |
 | `glam` | Math (vectors, matrices, quaternions) |
 
-NPC inference goes through hoosh socket — not a direct dependency. NPCs are agnosai agents registered with daimon.
+NPC inference goes through hoosh socket — not a direct dependency. NPCs are agnosai agents registered with daimon. Window management and rendering are kiran's responsibility.
 
 ## Scene Format
 
@@ -238,17 +248,11 @@ intensity = 2.0
 
 ## Roadmap
 
-### Phase 1 — Core Engine (joshua-core + joshua-input)
-- [ ] ECS (entity-component-system) with archetypal storage
-- [ ] Scene loading from TOML
-- [ ] Time management (fixed timestep, variable render)
-- [ ] Event system (pub/sub within engine)
-- [ ] Deterministic replay (seed + input log)
-- [ ] aethersafta rendering integration (2D sprites, basic 3D)
+### Phase 1 — Simulation Core (joshua-sim + joshua-npc)
+- [ ] kiran integration (ECS, game loop, scenes, rendering, audio, input)
 - [ ] impetus physics integration (2D, deterministic stepping)
-- [ ] dhvani spatial audio integration
-- [ ] Input handling (keyboard, mouse)
-- [ ] CLI: `joshua run scene.toml`
+- [ ] Deterministic replay (seed + input log)
+- [ ] CLI: `joshua run scene.toml` (delegates to kiran engine)
 - [ ] Tests: 80+
 
 ### Phase 2 — AI NPCs (agnosai integration)
@@ -257,7 +261,7 @@ intensity = 2.0
 - [ ] LLM reasoning via hoosh socket (agnosai tool calls)
 - [ ] NPC memory (short-term ring buffer + daimon RAG for long-term)
 - [ ] Behavior trees (fallback when LLM is slow)
-- [ ] Pathfinding (A* on nav mesh via impetus raycasting)
+- [ ] Pathfinding (A* on nav mesh via raasta — grid, navmesh, flow fields, steering)
 - [ ] NPC actions as agnosai tools (move, speak, interact, emote)
 - [ ] t-ron integration (audit NPC tool calls)
 
@@ -337,4 +341,4 @@ This is the long game: build the abstraction right on classical hardware today s
 
 ---
 
-*Last Updated: 2026-03-22*
+*Last Updated: 2026-03-22 (kiran separation)*

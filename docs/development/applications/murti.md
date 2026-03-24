@@ -4,7 +4,7 @@
 
 | Field | Value |
 |-------|-------|
-| Status | Planned |
+| Status | Scaffolded (0.1.0) |
 | Priority | 1 — foundational crate for hoosh + Irfan, Ollama replacement |
 | Crate | `murti` (crates.io, available) |
 | Repository | `MacCracken/murti` |

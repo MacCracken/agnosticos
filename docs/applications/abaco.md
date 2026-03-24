@@ -1,45 +1,39 @@
 # Abaco
 
-> **Abaco** (Italian/Spanish: abacus) — AI-native calculator and unit converter
+> **Abaco** (Italian/Spanish: abacus) — Basic math and unit conversion library crate
 
 | Field | Value |
 |-------|-------|
 | Status | Released |
-| Version | Latest GitHub release |
+| Version | `0.1.0` |
 | Repository | `MacCracken/abaco` |
-| Runtime | native-binary (Rust) |
+| Runtime | library crate (Rust) |
 | Recipe | `recipes/marketplace/abaco.toml` |
-| MCP Tools | 5 `abaco_*` |
-| Agnoshi Intents | 5 |
 | Port | N/A |
 
 ---
 
 ## Why First-Party
 
-Abaco demonstrates the AI-native approach at its simplest: a calculator that understands natural language. Users say "what's 15% tip on $47.50" or "convert 72kg to pounds" and get instant results. By integrating with hoosh, it can explain complex math step-by-step. No existing calculator combines NL parsing with a proper expression evaluator and 60+ unit conversions in a single lightweight tool.
+Abaco provides the foundational math layer for the AGNOS ecosystem: expression parsing, evaluation, and unit conversions. Any app that needs to evaluate mathematical expressions or convert between units depends on abaco rather than reimplementing these primitives. The desktop calculator app (abacus) is the primary consumer.
 
 ## What It Does
 
-- Natural-language math parsing via hoosh ("split $127.50 four ways plus 20% tip")
-- Full expression evaluator with variables, functions, and operator precedence
+- Full expression parser with operator precedence, variables, and functions
 - 60+ unit conversions across length, weight, temperature, volume, speed, data, and currency
-- Step-by-step explanation mode for complex calculations
-- History and variable persistence across sessions
+- AI-assisted NL math parsing support (via hoosh integration in the ai crate)
+- Step-by-step explanation mode for complex expressions
 
-## AGNOS Integration
+## Consumers
 
-- **Daimon**: Registers as a lightweight agent; uses memory store for calculation history
-- **Hoosh**: LLM inference for NL math parsing, ambiguity resolution, and step-by-step explanations
-- **MCP Tools**: `abaco_calculate`, `abaco_convert`, `abaco_explain`, `abaco_history`, `abaco_define`
-- **Agnoshi Intents**: `abaco calc`, `abaco convert`, `abaco explain`, `abaco history`, `abaco define`
-- **Marketplace**: Category: utilities/calculator. Minimal sandbox — no filesystem or network beyond localhost
+- **Abacus** — Desktop calculator GUI (primary consumer)
+- Any AGNOS app needing expression evaluation or unit conversion
 
 ## Architecture
 
-- **Crates**: core, eval (expression parser/evaluator), units (conversion engine), ai (NL parsing)
+- **Crates**: core, eval (expression parser/evaluator), units (conversion engine), ai (NL parsing via hoosh)
 - **Dependencies**: serde, tokio, reqwest (hoosh client)
 
 ## Roadmap
 
-Stable — 61 tests passing. Future considerations: graphing mode, symbolic algebra, financial calculator presets.
+Stable — 61 tests passing. Future considerations: symbolic algebra, financial functions, integration with hisab (higher math crate) for advanced operations.

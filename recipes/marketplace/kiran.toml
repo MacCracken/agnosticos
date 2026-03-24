@@ -1,0 +1,58 @@
+# Kiran — AI-native game engine for AGNOS
+# ECS architecture, game loop, scene management, rendering, audio, input.
+# Composes aethersafta (rendering), dhvani (audio), ranga (image processing).
+#
+# Name: Kiran (Sanskrit: ray of light)
+# Bin: kiran
+#
+# Status: Scaffolded — v0.1.0.
+
+[package]
+name = "kiran"
+version = "0.23.3"
+description = "Kiran — AI-native game engine"
+license = "GPL-3.0"
+groups = ["application", "game-engine", "rust"]
+release = 1
+arch = "x86_64"
+
+[source]
+github_release = "MacCracken/kiran"
+release_asset = "kiran-*-linux-amd64.tar.gz"
+
+[depends]
+runtime = ["glibc"]
+build = ["rust"]
+
+[marketplace]
+category = "development"
+runtime = "native-binary"
+publisher = "AGNOS"
+tags = ["game-engine", "ecs", "rendering", "simulation", "wgpu", "rust"]
+min_agnos_version = "2026.3.22"
+
+[marketplace.sandbox]
+seccomp_mode = "desktop"
+network_access = false
+data_dir = "~/.kiran/"
+
+[[marketplace.sandbox.landlock]]
+path = "~/.kiran/"
+access = "rw"
+
+[[marketplace.sandbox.landlock]]
+path = "/run/agnos/"
+access = "rw"
+
+[build]
+make = "cargo build --release --workspace"
+check = "cargo test --workspace"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+mkdir -p $PKG/usr/bin
+cp target/release/kiran $PKG/usr/bin/kiran
+chmod +x $PKG/usr/bin/kiran
+"""

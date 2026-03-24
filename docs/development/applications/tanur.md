@@ -4,7 +4,7 @@
 
 | Field | Value |
 |-------|-------|
-| Status | Planned |
+| Status | Scaffolded (0.1.0) |
 | Priority | 2 — desktop experience for Irfan, LM Studio replacement |
 | Repository | `MacCracken/tanur` |
 | Runtime | native-binary (egui or iced) |

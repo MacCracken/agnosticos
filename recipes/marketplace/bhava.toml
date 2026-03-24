@@ -1,0 +1,50 @@
+# Bhava — Emotion and personality engine for AGNOS
+# Trait spectrums, mood vectors, archetypes, sentiment analysis.
+# Extracted from SecureYeoman's soul/brain architecture.
+#
+# Name: Bhava (Sanskrit: emotion, feeling, state of being)
+# Lib: bhava = "0.1.0" in Cargo.toml
+#
+# Status: Scaffolded — v0.1.0.
+
+[package]
+name = "bhava"
+version = "0.23.3"
+description = "Bhava — Emotion and personality engine"
+license = "GPL-3.0"
+groups = ["library", "ai", "rust"]
+release = 1
+arch = "any"
+
+[source]
+github_release = "MacCracken/bhava"
+release_asset = "source"
+
+[depends]
+runtime = []
+build = ["rust"]
+
+[marketplace]
+category = "library"
+runtime = "rust-crate"
+publisher = "AGNOS"
+tags = ["emotion", "personality", "ai", "npc", "agent", "mood", "sentiment", "rust"]
+min_agnos_version = "2026.3.22"
+
+[marketplace.sandbox]
+seccomp_mode = "basic"
+network_access = false
+
+[build]
+make = "cargo build --release"
+check = "cargo test --all-features"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+mkdir -p $PKG/usr/lib/bhava
+cp -r src $PKG/usr/lib/bhava/
+cp Cargo.toml $PKG/usr/lib/bhava/
+cp VERSION $PKG/usr/lib/bhava/
+"""

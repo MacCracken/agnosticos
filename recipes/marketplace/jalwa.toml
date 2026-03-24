@@ -8,7 +8,7 @@
 
 [package]
 name = "jalwa"
-version = "2026.3.20"
+version = "2026.3.22"
 description = "Jalwa — AI-native media player"
 license = "AGPL-3.0"
 groups = ["desktop", "media", "rust"]
