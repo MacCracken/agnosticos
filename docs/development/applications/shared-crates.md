@@ -28,7 +28,8 @@
 | **nein** | **0.1.0** | **Programmatic nftables firewall — rule builder, NAT, network policies, container networking** | **stiva, daimon, aegis, sutra** |
 | **impetus** | **0.1.0** | **Physics engine — native rigid bodies, collision, constraints, spatial hash broadphase, particles** | **kiran, joshua, aethersafha** |
 | [abaco](https://github.com/MacCracken/abaco) | 0.22.4 | Basic math + DSP — expression parser, unit conversion, dB/amplitude, MIDI, panning, filters | abacus, dhvani, hisab |
-| **hisab** | **0.22.3** | **Higher math — linear algebra, calculus, geometry, numerical methods, spatial structures (BVH, k-d tree, octree, GJK/EPA)** | **impetus, kiran, joshua, aethersafha** |
+| **hisab** | **0.24.3** | **Higher math — linear algebra, calculus, geometry, numerical methods, spatial structures (BVH, k-d tree, octree, GJK/EPA)** | **impetus, kiran, joshua, aethersafha, selah** |
+| [selah](https://github.com/MacCracken/selah) | 0.24.3 | Screenshot capture, annotation, PII redaction — daimon API client, annotation canvas, MCP server | taswir, aethersafta, kiran (planned) |
 | **bhava** | **0.2.0** | **Emotion/personality engine — 11 trait spectrums, PAD mood vectors, archetypes, sentiment, presets** | **SY, joshua, agnosai** |
 | **yukti** | **0.22.3** | **Device abstraction — USB, optical, block devices, udev hotplug, mount/eject** | **jalwa, file manager, aethersafha, argonaut** |
 | **phylax** | **0.22.3** | **Threat detection — YARA rules, entropy analysis, magic bytes, binary classification** | **daimon, aegis, t-ron** |
