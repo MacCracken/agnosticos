@@ -1,0 +1,49 @@
+# Ushma — Thermodynamics engine for AGNOS
+# Heat transfer, entropy, thermodynamic cycles, material properties.
+#
+# Name: Ushma (Sanskrit: heat)
+# Lib: ushma = "0.24" in Cargo.toml
+#
+# Status: v0.24.3. Real thermodynamics, Otto/Diesel/Brayton cycles sub-70ns.
+
+[package]
+name = "ushma"
+version = "0.24.3"
+description = "Ushma — Thermodynamics engine"
+license = "GPL-3.0"
+groups = ["library", "science", "rust"]
+release = 1
+arch = "any"
+
+[source]
+github_release = "MacCracken/ushma"
+release_asset = "source"
+
+[depends]
+runtime = []
+build = ["rust"]
+
+[marketplace]
+category = "library"
+runtime = "rust-crate"
+publisher = "AGNOS"
+tags = ["thermodynamics", "heat-transfer", "entropy", "physics", "science", "rust"]
+min_agnos_version = "2026.3.24"
+
+[marketplace.sandbox]
+seccomp_mode = "basic"
+network_access = false
+
+[build]
+make = "cargo build --release"
+check = "cargo test --all-features"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+mkdir -p $PKG/usr/lib/ushma
+cp -r src $PKG/usr/lib/ushma/
+cp Cargo.toml $PKG/usr/lib/ushma/
+cp VERSION $PKG/usr/lib/ushma/
+"""

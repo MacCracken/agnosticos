@@ -7,7 +7,7 @@
 
 [package]
 name = "selah"
-version = "2026.3.17"
+version = "0.24.3"
 description = "Selah — AI-native screenshot & annotation tool for AGNOS"
 license = "GPL-3.0"
 groups = ["desktop", "tools"]

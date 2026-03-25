@@ -9,7 +9,7 @@
 
 [package]
 name = "yukti"
-version = "0.22.3"
+version = "0.25.3"
 description = "Yukti — Device abstraction layer"
 license = "GPL-3.0"
 groups = ["library", "hardware", "rust"]

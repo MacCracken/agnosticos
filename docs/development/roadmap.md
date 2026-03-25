@@ -4,7 +4,7 @@
 > **Userland complete** — 11000+ tests (3900+ agent-runtime, 1554 ai-shell), ~84% coverage, 0 warnings
 > **Recipes**: 113 base + 71 desktop + 25 AI + 9 network + 8 browser + 22 marketplace + 4 python + 3 database + 31 edge = 286 OS (+ 90 bazaar community)
 > **Build order**: 178 packages in `recipes/build-order.txt` (base + desktop, dependency-ordered)
-> **Phases 10–14 complete** | **Phase 15A**: Core scanning done (phylax) | **Audit**: 16 rounds
+> **Phases 10–14 complete** | **Phase 15A**: Core scanning done (phylax) | **Phase 17**: Local inference optimization (planned) | **Audit**: 16 rounds
 > **MCP Tools**: 144 built-in + external registration
 > **Consumer Projects**: 19 released (including Vidhana v1, Sutra v1)
 > **Sandbox**: 7 backends (Native, gVisor, Firecracker, WASM, SGX, SEV, Noop) + credential proxy + externalization gate
@@ -288,6 +288,7 @@ Upgrades to `ScreenCaptureManager` and `ScreenRecordingManager` to support real-
 | 7 | ARM64 SBC (QEMU) | aarch64 | Edge | Not started | QEMU aarch64 virt machine validation |
 | 8 | ESP32-S3 (MCU) | xtensa | Edge/IoT | Recipe done | MQTT agent, sensor telemetry, TinyML. Recipe: `recipes/edge/esp32-agent.toml`. Needs source repo + hardware flash test |
 | 9 | ESP32-C3 (MCU) | riscv32 | Edge/IoT | Recipe done | RISC-V core, lowest power, WiFi + Thread/Zigbee. Same recipe, secondary target |
+| 10 | Tiiny AI Pocket Lab | aarch64/riscv64? | Edge+AI | Not started | Pocket AI inference appliance. ~16-32GB LPDDR5X, custom SoC (possibly ARM or RISC-V with NPU). Runs 120B int4 @ 20 tok/s stock. Target: boot AGNOS Edge, run hoosh+murti, join fleet. See Phase 17D |
 
 ---
 
@@ -617,6 +618,222 @@ Sutra (infrastructure orchestrator) needs daimon to expose a remote execution AP
 | **sutra** | Infrastructure orchestrator (Sanskrit: thread/rule/formula) | `MacCracken/sutra` |
 | **vansh** | Voice AI shell (planned) | TBD |
 | **AGNOS** | The OS itself | — |
+
+---
+
+## Phase 17 — Local Inference Optimization (Post-Beta)
+
+**Goal**: Make hoosh + murti competitive with — or better than — PowerInfer-class engines on consumer hardware. AGNOS owns the full stack from kernel to inference; a proprietary inference appliance (Tiiny AI Pocket Lab) shouldn't beat us on hardware we control.
+
+**Key insight from PowerInfer**: LLM neurons follow a power-law activation distribution. ~10% of neurons ("hot") are activated on every input; ~90% ("cold") are input-dependent and rarely needed. Splitting hot→GPU, cold→CPU eliminates most GPU↔CPU data transfer and lets 40B–175B models run on a single consumer GPU.
+
+**Limitation to watch**: PowerInfer only works with ReLU/ReGLU activation functions — not the SwiGLU/GELU used by most frontier models (LLaMA-3, Mistral, Qwen, GPT-4). Their TurboSparse research converts models to high-sparsity ReLU variants for ~$100K. As sparsification matures and more models adopt ReLU variants, the technique becomes broadly applicable.
+
+**Why AGNOS can do better**: A commodity inference appliance runs a generic Linux + llama.cpp fork. AGNOS controls the kernel (scheduler, memory, I/O), the init system (argonaut), the sandbox (agnosys), the GPU allocator (ai-hwaccel), the model runtime (murti), and the inference gateway (hoosh). We can co-design across all layers:
+
+- **Kernel-level VRAM management** — agnosys can pin GPU memory, prevent OOM-killer interference, and provide huge-page-backed model buffers via custom sysctl profiles
+- **NUMA-aware neuron placement** — ai-hwaccel already detects topology; murti can place hot neurons on GPU-local NUMA nodes to minimize PCIe latency for cold neuron CPU fallback
+- **Zero-copy IPC** — daimon's Unix socket IPC + shared memory regions mean inference results reach agents without serialization overhead
+- **Sandboxed inference isolation** — agnosys Landlock + seccomp per-model process means we can run untrusted community models safely, something PowerInfer can't offer
+- **Integrated scheduling** — argonaut + scheduler can co-schedule inference with agent workloads, yielding GPU time intelligently rather than fighting for it
+
+### 17A — Activation Sparsity Engine (murti)
+
+| # | Item | Status | Notes |
+|---|------|--------|-------|
+| 1 | Neuron activation profiler | Not started | Profile models offline to identify hot/cold neuron sets per layer. Output: activation stats TOML alongside GGUF weights. Inspired by PowerInfer's profiling step |
+| 2 | Sparse FFN operator (CPU) | Not started | Skip inactive neurons in feed-forward layers on CPU. AVX2/NEON SIMD for sparse matrix ops. Only compute neurons predicted to activate |
+| 3 | Sparse FFN operator (GPU) | Not started | CUDA/ROCm kernels that skip cold neurons. Hot neurons preloaded in persistent GPU memory |
+| 4 | Adaptive neuron predictor | Not started | Lightweight predictor (bundled in model config) that predicts which neurons activate for a given input. Accuracy target: >95% to avoid quality loss |
+| 5 | GPU-CPU hybrid scheduler | Not started | Split FFN layers: hot neurons → GPU, cold neurons → CPU. Dense layers (attention) stay fully on GPU. `--vram-budget` flag for memory cap |
+| 6 | PowerInfer GGUF compatibility | Not started | Read PowerInfer-format GGUF files (predictor weights + activation stats embedded). Import path for existing PowerInfer models |
+
+### 17B — Advanced Inference Techniques (murti + hoosh)
+
+| # | Item | Status | Notes |
+|---|------|--------|-------|
+| 1 | Speculative decoding | Not started | Draft model (small/fast) generates candidates, verify model (large/accurate) accepts/rejects in parallel. 2-3x throughput for autoregressive generation. Already planned in murti Phase 3 |
+| 2 | Prefix caching | Not started | Cache KV states for common system prompts across agents. Hoosh routes identical prefixes to cached slots. Massive win for fleet workloads where many agents share prompts |
+| 3 | Continuous batching | Not started | Dynamically batch inference requests across agents. Hoosh's rate limiter already knows request timing — extend to batch formation |
+| 4 | LoRA adapter hot-swap | Not started | Switch adapters without reloading base model weights. Already planned in murti Phase 3 |
+| 5 | Model-aware OOM prevention | Not started | agnosys + murti coordinate: query available VRAM before loading, graceful degradation (quantize down, shed layers to CPU) instead of crash |
+| 6 | TurboSparse model conversion | Not started | Watch upstream maturity. When TurboSparse-style SwiGLU→ReLU conversion stabilizes, integrate as `murti quantize --sparsify` command. Unlocks sparsity for LLaMA-3/Mistral/Qwen |
+
+### 17C — Kernel & System Co-optimization
+
+| # | Item | Status | Notes |
+|---|------|--------|-------|
+| 1 | Huge-page model buffers | Not started | agnosys provides 2MB/1GB huge-page allocation for model weight tensors. Reduces TLB misses during inference |
+| 2 | GPU memory pinning | Not started | agnosys prevents hot neuron GPU memory from being reclaimed. Persistent allocation survives model idle periods |
+| 3 | NUMA-aware placement | Not started | ai-hwaccel topology detection → murti places CPU-side cold neurons on GPU-local NUMA node. Minimizes PCIe round-trips |
+| 4 | Inference-priority scheduling | Not started | argonaut cgroup profiles for inference processes: elevated CPU priority, memory reservation, I/O bandwidth guarantee |
+| 5 | Thermal-aware throttling | Not started | ai-hwaccel monitors GPU/CPU thermals. When approaching limits, hoosh shifts load to cloud providers before performance degrades. Smooth handoff, no stutter |
+| 6 | Edge inference profiles | Not started | Constrained-device profiles (Raspberry Pi, Pocket Lab-class hardware): aggressive quantization + full CPU sparsity + memory-mapped weights. Daimon edge fleet distributes optimal profile per device class |
+
+### 17D — Pocket AI Appliance Porting (Tiiny AI Pocket Lab)
+
+**Goal**: Acquire a Tiiny AI Pocket Lab (or similar pocket inference appliance), reverse-engineer its boot process, flash AGNOS Edge, and demonstrate that full-stack AGNOS outperforms the stock generic-Linux + PowerInfer setup on identical hardware.
+
+**Why this matters**: If a $300-500 pocket device can run 120B int4 at 20 tok/s on stock firmware, AGNOS should match or beat that — and add agent fleet participation, security, multi-model management, and cloud overflow that the stock OS can't provide. This is the proof point for Phase 17.
+
+#### Reconnaissance (before purchase)
+
+| # | Item | Status | Notes |
+|---|------|--------|-------|
+| 1 | Confirm SoC identity | Not started | ARM or RISC-V? Custom NPU? Check FCC filings, CES teardowns, Tiiny AI developer docs. Determines kernel config + ai-hwaccel backend needed |
+| 2 | Identify boot chain | Not started | U-Boot? Custom bootloader? Locked/signed? Determines flash strategy (dd, fastboot, JTAG, UART) |
+| 3 | Check for developer/root access | Not started | SSH? Serial console? Does the stock OS expose a shell? Some appliances ship with adb or UART pads |
+| 4 | NPU driver availability | Not started | Open-source drivers? Vendor SDK? Binary blobs only? This is the biggest risk — if the NPU needs proprietary firmware with no docs, we're limited to CPU inference |
+| 5 | RAM/storage confirmation | Not started | 16GB or 32GB LPDDR5X? eMMC or UFS? Determines which models fit and whether we need swap/zram |
+
+#### Bring-up (after hardware in hand)
+
+| # | Item | Status | Notes |
+|---|------|--------|-------|
+| 1 | Serial console access | Not started | Find UART pads, attach serial adapter, capture boot log. Identify kernel version, rootfs layout, partition table |
+| 2 | Dump stock firmware | Not started | Full backup before flashing anything. dd the eMMC/UFS. Preserve PowerInfer binaries for benchmarking |
+| 3 | Stock baseline benchmarks | Not started | Run their inference stack: measure tok/s, latency (p50/p99), power draw, thermal throttle point. Multiple models (7B, 13B, 70B, 120B). This is the number to beat |
+| 4 | Cross-compile AGNOS Edge | Not started | Adapt `build-edge.sh` for the device's SoC. Kernel config for the specific ARM/RISC-V chip. dm-verity rootfs |
+| 5 | First boot AGNOS | Not started | Flash to eMMC/SD, boot to argonaut, verify daimon + hoosh start, network connectivity works |
+| 6 | ai-hwaccel NPU backend | Not started | If custom NPU: implement `AcceleratorType::CustomNpu` in ai-hwaccel. VRAM/memory queries, layer offload. Feature-gated behind `pocket-lab` |
+| 7 | murti on-device inference | Not started | Load model via murti, run inference through hoosh API. Start with CPU-only, then enable NPU if driver available |
+
+#### Benchmarks (AGNOS vs stock)
+
+| # | Metric | Stock Baseline | AGNOS Target | Notes |
+|---|--------|---------------|--------------|-------|
+| 1 | Boot to inference-ready | TBD | < 5s | argonaut minimal boot vs their init system |
+| 2 | tok/s (120B int4) | ~20 tok/s (claimed) | ≥ 20 tok/s | Match with murti sparsity. Beat with system co-optimization (17C) |
+| 3 | tok/s (7B int4) | TBD | Target: 100+ tok/s | Small model should fly on this hardware |
+| 4 | Memory overhead (idle) | TBD | < 200MB | argonaut + daimon + hoosh. Stock probably runs systemd + bloat |
+| 5 | Multi-model switching | Not possible (stock) | < 2s | murti ModelPool LRU — load second model without killing first |
+| 6 | Fleet join time | N/A (stock has no fleet) | < 1s | daimon edge node registration + heartbeat |
+| 7 | Power draw (inference) | TBD | ≤ stock | Same workload, equal or less power. Sparsity skipping = less compute = less watts |
+| 8 | Thermal throttle headroom | TBD | > stock | Thermal-aware throttling (17C-5) should keep temps lower by proactively shedding to cloud |
+
+#### AGNOS Advantages on This Hardware
+
+Things the stock firmware **cannot do** that AGNOS provides out of the box:
+
+| Capability | Stock | AGNOS Edge |
+|-----------|-------|------------|
+| Run untrusted community models safely | No sandbox | aegis + agnosys Landlock/seccomp per-model |
+| Cloud overflow when local saturates | No | hoosh routes to 15 cloud providers |
+| Participate in desktop inference fleet | No | daimon edge fleet node, swarm scheduling |
+| Remote model deployment | Manual | sutra playbook: `sutra apply deploy-model.yaml --target pocket-lab` |
+| Multi-model serving | One model at a time | murti ModelPool with LRU eviction by RAM budget |
+| Secure API access | Open | nein firewall + Bearer auth + mTLS |
+| OTA updates | Unknown | ark + daimon system_update module |
+| Monitoring | None | nazar agent, `/v1/metrics/prometheus` |
+| Natural language control | None | agnoshi: "switch to codellama on the pocket lab" |
+
+### Maturity Watch List
+
+Track these upstream projects — adopt techniques as they stabilize:
+
+| Project | What to Watch | When to Act |
+|---------|--------------|-------------|
+| [PowerInfer](https://github.com/Tiiny-AI/PowerInfer) | ReLU-only limitation; TurboSparse SwiGLU→ReLU conversion; SmallThinker models | When TurboSparse covers top-5 open models (LLaMA-3, Mistral, Qwen, Gemma, Phi) |
+| [TurboSparse](https://arxiv.org/abs/2406.05955) | Sparsification quality vs original model; cost reduction below $100K | When conversion is automated and quality gap < 2% on MMLU/HumanEval |
+| [vLLM](https://github.com/vllm-project/vllm) | Continuous batching, PagedAttention, prefix caching | Already mature — integrate via murti vLLM backend |
+| [llama.cpp](https://github.com/ggerganov/llama.cpp) | Speculative decoding, flash attention, CUDA graph | Track as murti's default backend; upstream improvements land for free |
+| [Candle](https://github.com/huggingface/candle) | Pure Rust GGUF runtime maturity | When it matches llama.cpp throughput within 20% — murti Candle backend |
+| [MLX](https://github.com/ml-explore/mlx) | Apple Silicon optimization | Relevant for macOS AGNOS builds; murti Metal backend |
+| [Tiiny AI Pocket Lab](https://github.com/Tiiny-AI) | SDK/developer docs, FCC teardowns, NPU driver availability, hacking community | When dev access confirmed — triggers 17D bring-up |
+
+---
+
+## Phase 18 — Immersive Communication (Post-Beta)
+
+**Goal**: Video conferencing that transcends flat screens — connect to virtual spaces, spatial audio, avatar presence. Not a Zoom clone; a portal into shared environments where AGNOS agents and humans coexist.
+
+**Design philosophy**: The LLM thinks, the crates do everything else. Hoosh decides what to say. Dhvani speaks it. Goonj makes the room sound right. Soorat renders the space. Bhava drives the avatar's expression. The LLM never touches audio encoding, 3D rendering, or spatial math — it just *decides*.
+
+### 18A — Core Video Conferencing
+
+| # | Item | Status | Notes |
+|---|------|--------|-------|
+| 1 | Peer-to-peer encrypted A/V | Not started | nein (networking) + pqc (post-quantum encryption) + tarang (encode/decode). WebRTC-compatible signaling, SRT/QUIC transport |
+| 2 | Spatial audio mixing | Not started | dhvani (audio engine) + goonj (room acoustics). Each participant has a position; audio is spatialized based on virtual seating |
+| 3 | Screen sharing as texture | Not started | aethersafta captures screen → tarang encodes → transmitted as video stream → rendered as floating panel or wall texture in virtual space |
+| 4 | Camera feed compositing | Not started | aethersafta (V4L2 camera capture) → tarang (encode) → soorat (renders as billboard or avatar face texture) |
+| 5 | Voice activity detection | Not started | dhvani analysis (onset detection, energy threshold) → UI highlights active speaker |
+| 6 | Meeting recording | Not started | dhvani (audio) + tarang (mux to MP4/MKV) + aethersafta (composited scene recording) |
+
+### 18B — Virtual World Integration
+
+| # | Item | Status | Notes |
+|---|------|--------|-------|
+| 1 | Virtual meeting rooms | Not started | soorat renders 3D environment. Preset rooms: conference, amphitheater, cafe, outdoor. Custom rooms from mesh import |
+| 2 | Avatar system | Not started | Minimal avatar (head + hands). Driven by camera pose estimation (future) or manual controls. Bhava mood → facial expression |
+| 3 | Room acoustics from geometry | Not started | goonj computes impulse response from virtual room mesh → dhvani applies convolution reverb to all voice streams. Cathedral sounds like a cathedral |
+| 4 | Avatar navigation | Not started | raasta pathfinding in virtual space. Walk to whiteboard, sit at table, stand at podium |
+| 5 | Physics interaction | Not started | impetus for avatar collision, object manipulation (pick up virtual pen, draw on whiteboard) |
+| 6 | Agent participants | Not started | Daimon agents join as participants. Speak through dhvani voice synth (personality-shaped by bhava). Render as avatars in-world. Human and AI in the same virtual room |
+
+### 18C — AI Meeting Intelligence
+
+| # | Item | Status | Notes |
+|---|------|--------|-------|
+| 1 | Real-time transcription | Not started | dhvani audio capture → hoosh (Whisper STT) → live captions in virtual space |
+| 2 | Meeting summarization | Not started | hoosh processes transcript → action items, decisions, key points |
+| 3 | Translation | Not started | hoosh translates → dhvani voice synth speaks translated audio with original speaker's prosody (bhava preserves emotional tone) |
+| 4 | Smart muting | Not started | dhvani analysis detects typing, coughing, background noise → auto-mute with visual indicator |
+
+**Consumers**: All AGNOS users. Every consumer project can embed virtual meetings. SY agents participate as first-class meeting attendees.
+
+---
+
+## Phase 19 — Computational Architecture Optimization (Post-Beta)
+
+**Design philosophy**: Remove all quantitative work from the LLM. The superbrain doesn't calculate — it *decides*. Every deterministic operation (math, physics, crypto, audio, rendering, memory recall) runs in specialized crates at nanosecond speed. The LLM handles only reasoning, intent, and judgment.
+
+### 19A — Core-Affinity Neural Network Scheduling
+
+**Insight**: Instead of fleet/multi-VM distribution for neural network inference, bifurcate CPU cores so each core or core pair handles specific network nodes. Weights stay hot in L1/L2 cache. No cross-socket NUMA penalties. No network hops.
+
+| # | Item | Status | Notes |
+|---|------|--------|-------|
+| 1 | Core topology mapping | Not started | agnosys + ai-hwaccel: enumerate cores, cache sizes (L1/L2/L3), NUMA nodes, P-core vs E-core. Build topology graph |
+| 2 | Layer-to-core assignment | Not started | murti: given model architecture, assign layers/heads to cores based on cache size and data locality. Attention heads on P-cores (compute-heavy), FFN cold neurons on E-cores (memory-heavy) |
+| 3 | Core pinning API | Not started | agnosys: `pin_thread_to_core(thread, core_id)`. Argonaut cgroup integration for inference process core isolation |
+| 4 | Cache-aware weight placement | Not started | murti: ensure layer weights fit in assigned core's L2. If weights exceed L2, split across adjacent cores sharing L3. Never cross NUMA boundary |
+| 5 | CoreAffinityPlan | Not started | murti type: `{ layer_assignments: Vec<(LayerId, CoreSet)>, hot_neuron_cores: CoreSet, cold_neuron_cores: CoreSet, attention_cores: CoreSet }`. Computed at model load time, static during inference |
+| 6 | Benchmark: pinned vs unpinned | Not started | Prove cache hit rate improvement and tok/s gain from core affinity. Expect 10-30% improvement on CPU-bound inference |
+
+### 19B — ASIC / Hardware Cryptographic Acceleration
+
+**Insight**: At fleet scale (10K+ nodes, 1M+ agents), cryptographic operations (SHA-256 hash chains, signature verification, PQC lattice ops) become the bottleneck. SHA-256 ASICs (repurposed Bitcoin mining hardware) and AES-NI instructions can offload this at wire speed.
+
+| # | Item | Status | Notes |
+|---|------|--------|-------|
+| 1 | CryptoAsic accelerator type | Not started | ai-hwaccel: `AcceleratorType::CryptoAsic { hash_rate: u64 }`. Detect USB ASIC miners, FPGA cards, AES-NI CPU instructions |
+| 2 | libro ASIC offload | Not started | libro: route hash chain operations to detected ASIC when available. Fallback to CPU SHA-256. Transparent to callers |
+| 3 | sigil ASIC offload | Not started | sigil: route signature verification to hardware. Ed25519 on CPU, SHA-256 chain verification on ASIC |
+| 4 | pqc hardware acceleration | Not started | pqc: lattice-based operations (Kyber, Dilithium) are matrix-heavy. Route to GPU compute or FPGA when available |
+| 5 | Audit chain at scale benchmark | Not started | Target: 1 billion hashes/sec on commodity ASIC vs ~50M/sec on CPU. 20x throughput for fleet audit chains |
+| 6 | USB ASIC integration | Not started | agnosys udev rules for USB ASIC miner detection. Auto-register as crypto accelerator. argonaut service for ASIC management |
+
+### 19C — LLM Cognitive Offloading Architecture
+
+**Principle**: The LLM is the reasoning engine. Everything else is offloaded to deterministic, auditable, benchmarked crates. The LLM never computes what a crate can compute faster and more reliably.
+
+| Operation | Before (LLM does it) | After (Crate does it) | Speedup |
+|-----------|----------------------|----------------------|---------|
+| Math/physics | LLM approximates | hisab/bijli/pravash/ushma exact | ~∞ (deterministic vs probabilistic) |
+| Audio synthesis | Neural TTS (ElevenLabs, OpenAI) | dhvani formant synthesis | No network latency, no vendor, sub-ms |
+| Voice personality | Prompt engineering for "speak softly" | bhava mood → dhvani prosody params | Deterministic, real-time modulation |
+| Room acoustics | "Add reverb" (guess) | goonj computes from geometry | Physically accurate, not approximated |
+| Navigation | LLM describes path | raasta A*/HPA*/navmesh | Optimal, benchmarked, deterministic |
+| Cryptography | N/A (LLM can't) | libro/sigil/pqc + ASIC | Hardware-accelerated, auditable |
+| Memory recall | Re-read context window | Audit chain + vector store + actr | Persistent, searchable, no hallucination |
+| Scheduling | LLM suggests times | argonaut + scheduler + circadian | System-aware, resource-aware |
+| Weather effects | LLM describes weather | badal computes from atmospheric model | Physically simulated, feeds bhava |
+| Material properties | LLM guesses Young's modulus | dravya lookup with real data | Exact, engineering-grade |
+
+**The result**: The LLM's context window is freed from computational tasks. It spends tokens on *thinking* — reasoning about what to do, understanding user intent, making creative decisions. Everything else flows through the crate stack at speeds the LLM can never match.
+
+This is why AGNOS builds every crate. Each one removes a quantitative burden from the superbrain, leaving it to do what only it can do: *understand and decide*.
 
 ---
 

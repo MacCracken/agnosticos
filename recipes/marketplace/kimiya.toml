@@ -1,0 +1,49 @@
+# Kimiya — Chemistry engine for AGNOS
+# Elements, molecules, reactions, kinetics, gas laws, thermochemistry.
+#
+# Name: Kimiya (Arabic: alchemy — root of "chemistry")
+# Lib: kimiya = "0.24" in Cargo.toml
+#
+# Status: v0.24.3. 36 elements, electrochemistry, thermochemical data.
+
+[package]
+name = "kimiya"
+version = "0.24.3"
+description = "Kimiya — Chemistry engine"
+license = "GPL-3.0"
+groups = ["library", "science", "rust"]
+release = 1
+arch = "any"
+
+[source]
+github_release = "MacCracken/kimiya"
+release_asset = "source"
+
+[depends]
+runtime = []
+build = ["rust"]
+
+[marketplace]
+category = "library"
+runtime = "rust-crate"
+publisher = "AGNOS"
+tags = ["chemistry", "elements", "reactions", "molecular", "science", "rust"]
+min_agnos_version = "2026.3.24"
+
+[marketplace.sandbox]
+seccomp_mode = "basic"
+network_access = false
+
+[build]
+make = "cargo build --release"
+check = "cargo test --all-features"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+mkdir -p $PKG/usr/lib/kimiya
+cp -r src $PKG/usr/lib/kimiya/
+cp Cargo.toml $PKG/usr/lib/kimiya/
+cp VERSION $PKG/usr/lib/kimiya/
+"""

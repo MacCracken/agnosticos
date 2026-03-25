@@ -7,7 +7,7 @@
 
 [package]
 name = "shruti"
-version = "2026.3.20"
+version = "2026.3.21"
 description = "Shruti — Rust-native Digital Audio Workstation"
 license = "AGPL-3.0"
 groups = ["creative", "audio"]

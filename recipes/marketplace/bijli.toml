@@ -1,0 +1,49 @@
+# Bijli — Electromagnetism engine for AGNOS
+# Maxwell's equations, Lorentz force, FDTD, EM wave propagation.
+#
+# Name: Bijli (Hindi/Urdu: lightning/electricity)
+# Lib: bijli = "0.24" in Cargo.toml
+#
+# Status: v0.24.3. Real EM physics, FDTD solver, sub-2ns field computation.
+
+[package]
+name = "bijli"
+version = "0.24.3"
+description = "Bijli — Electromagnetism engine"
+license = "GPL-3.0"
+groups = ["library", "science", "rust"]
+release = 1
+arch = "any"
+
+[source]
+github_release = "MacCracken/bijli"
+release_asset = "source"
+
+[depends]
+runtime = []
+build = ["rust"]
+
+[marketplace]
+category = "library"
+runtime = "rust-crate"
+publisher = "AGNOS"
+tags = ["electromagnetism", "maxwell", "fdtd", "physics", "science", "rust"]
+min_agnos_version = "2026.3.24"
+
+[marketplace.sandbox]
+seccomp_mode = "basic"
+network_access = false
+
+[build]
+make = "cargo build --release"
+check = "cargo test --all-features"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+mkdir -p $PKG/usr/lib/bijli
+cp -r src $PKG/usr/lib/bijli/
+cp Cargo.toml $PKG/usr/lib/bijli/
+cp VERSION $PKG/usr/lib/bijli/
+"""

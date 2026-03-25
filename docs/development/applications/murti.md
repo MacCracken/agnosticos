@@ -444,12 +444,35 @@ Hoosh uses `murti = { features = ["llama-cpp"] }` (lightweight). Irfan uses `mur
 - [ ] MCP tools: `murti_pull`, `murti_list`, `murti_status`, `murti_recommend`
 - [ ] Agnoshi intents: "pull llama3", "what models are loaded", "recommend a model for code"
 
-### Phase 3 — Beyond
+### Phase 3 — Advanced Inference (see also: Roadmap Phase 17)
 - [ ] Candle backend (pure Rust GGUF runtime — no llama.cpp dependency)
 - [ ] Speculative decoding (draft + verify model pairs)
 - [ ] LoRA adapter hot-swap (switch adapters without reloading base model)
 - [ ] Safetensors → GGUF on-pull conversion
 
+### Phase 4 — Activation Sparsity (PowerInfer-inspired, Roadmap Phase 17A)
+
+Exploit neuron activation locality to run large models (40B–175B) on consumer GPUs. Inspired by [PowerInfer](https://github.com/Tiiny-AI/PowerInfer) but integrated across the AGNOS stack (agnosys, ai-hwaccel, hoosh).
+
+- [ ] Neuron activation profiler — offline analysis to identify hot/cold neuron sets per layer
+- [ ] Sparse FFN operators — CPU (AVX2/NEON) and GPU (CUDA/ROCm) kernels that skip inactive neurons
+- [ ] Adaptive neuron predictor — lightweight model bundled alongside weights, predicts per-input activation
+- [ ] GPU-CPU hybrid split — hot neurons persistent on GPU, cold neurons computed on CPU on-demand
+- [ ] PowerInfer GGUF import — read PowerInfer-format models with embedded predictor weights
+- [ ] TurboSparse conversion — `murti quantize --sparsify` for SwiGLU→ReLU model conversion (watching upstream maturity)
+
+**Limitation**: Currently only viable for ReLU-family activation models. TurboSparse extends this to SwiGLU models but is not yet production-quality for all architectures. Track progress in Roadmap Phase 17 Maturity Watch List.
+
+**Why murti can outperform PowerInfer**: PowerInfer runs on generic Linux with a llama.cpp fork. Murti coordinates with agnosys (huge-page buffers, GPU memory pinning), ai-hwaccel (NUMA-aware placement, thermal monitoring), and hoosh (cloud fallback when local inference saturates). Full-stack co-optimization is not possible in a standalone engine.
+
+### Phase 5 — System Co-optimization (Roadmap Phase 17C)
+- [ ] Huge-page model buffers via agnosys (2MB/1GB pages, reduced TLB misses)
+- [ ] GPU memory pinning (persistent hot neuron allocation survives idle)
+- [ ] NUMA-aware cold neuron placement (GPU-local NUMA node for CPU fallback)
+- [ ] Inference-priority cgroup profiles via argonaut
+- [ ] Thermal-aware load shedding to cloud via hoosh
+- [ ] Edge-optimized profiles for constrained devices (RPi, Pocket Lab-class)
+
 ---
 
-*Last Updated: 2026-03-21*
+*Last Updated: 2026-03-24*

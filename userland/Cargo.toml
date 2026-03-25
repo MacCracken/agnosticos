@@ -47,6 +47,7 @@ tower-http = { version = "0.5", features = ["cors", "limit"] }
 # AGNOS internal dependencies
 agnos-common = { path = "agnos-common" }
 agnos-sys = { path = "agnos-sys" }
+agnosys = { path = "../../agnosys", features = ["full"] }
 desktop_environment = { path = "desktop-environment" }
 
 base64 = "0.22"

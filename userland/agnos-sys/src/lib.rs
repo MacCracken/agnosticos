@@ -1,7 +1,14 @@
 //! AGNOS System Interface
 //!
 //! Provides safe Rust bindings to AGNOS-specific kernel syscalls and features.
+//!
+//! **Migration note**: This crate is a thin wrapper that re-exports `agnosys`.
+//! New code should depend on `agnosys` directly. Existing `agnos_sys::*` imports
+//! continue to work — the old modules are preserved alongside agnosys re-exports.
+//!
+//! Gradual migration: `use agnos_sys::security` → `use agnosys::security`
 
+// === Legacy modules (existing implementations, kept for backward compatibility) ===
 pub mod agent;
 pub mod audit;
 pub mod bootloader;
@@ -21,6 +28,12 @@ pub mod syscall;
 pub mod tpm;
 pub mod udev;
 pub mod update;
+
+// === agnosys re-exports (new implementations, use these for new code) ===
+// Access via `agnos_sys::v2::*` during migration, then switch to `agnosys::*` directly.
+pub mod v2 {
+    pub use agnosys::*;
+}
 
 pub use agent::{Agent, AgentContext, AgentRuntime};
 pub use error::{Result, SysError};

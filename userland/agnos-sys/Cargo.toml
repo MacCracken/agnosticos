@@ -9,6 +9,10 @@ rust-version.workspace = true
 description = "AGNOS kernel syscall bindings and low-level system interface"
 
 [dependencies]
+# New: agnosys provides the actual implementations
+agnosys = { workspace = true }
+
+# Legacy deps — kept for existing consumer compatibility during migration
 agnos-common = { workspace = true }
 anyhow = { workspace = true }
 async-trait = { workspace = true }

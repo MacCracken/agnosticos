@@ -8,7 +8,7 @@
 
 [package]
 name = "agnosai"
-version = "0.20.3"
+version = "0.25.3"
 description = "AgnosAI — Rust-native AI agent orchestration engine"
 license = "Apache-2.0"
 groups = ["server", "ai", "agent-automation", "rust"]

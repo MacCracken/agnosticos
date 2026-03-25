@@ -332,6 +332,18 @@ No murti dependency. No ai-hwaccel dependency. Tanur is a pure client.
 - [ ] MCP tools + agnoshi intents
 - [ ] Remove `ifran-desktop` from Irfan workspace
 
+### Phase 4 — Inference Optimization UX (ties to Roadmap Phase 17)
+
+When murti gains activation sparsity and advanced inference (Phase 17), Tanur surfaces these capabilities to the user:
+
+- [ ] GPU-CPU split visualization — real-time view of hot/cold neuron placement across GPU and CPU. Shows VRAM usage, neuron activation heatmap, and PCIe transfer rates
+- [ ] Sparsity profiling UI — trigger offline neuron profiling for a model, show progress, display per-layer activation distribution (power-law curve)
+- [ ] Inference strategy selector — user picks: full precision, quantized, sparse (GPU-CPU hybrid), or auto. Tanur shows estimated tok/s and VRAM for each
+- [ ] Speculative decoding config — pair a draft model with a verify model, show accept/reject ratio in real-time during chat
+- [ ] Thermal & performance dashboard — GPU/CPU temps, throttle state, cloud fallback indicator. "Your RTX 4090 is at 83°C — hoosh shifted 20% of requests to cloud"
+- [ ] LoRA hot-swap picker — browse loaded adapters, switch mid-conversation without model reload latency
+- [ ] Edge fleet inference map — which models run on which edge devices, their quantization/sparsity profiles, per-device tok/s. Drag-and-drop model deployment to fleet nodes
+
 ---
 
-*Last Updated: 2026-03-21*
+*Last Updated: 2026-03-24*
