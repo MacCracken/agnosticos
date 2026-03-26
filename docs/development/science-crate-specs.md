@@ -186,6 +186,8 @@
 - `noise.rs` — white_noise (uniform → gaussian via Box-Muller), pink_noise (Voss-McCartney algorithm), brown_noise (integrated white). Noise density: pink = -3dB/octave, brown = -6dB/octave
 - `tuning.rs` — equal_temperament_freq(note, a4_hz=440.0) = a4 * 2^((note-69)/12). midi_to_freq, freq_to_midi. Cent calculations. Custom tuning tables (just intonation, Pythagorean, meantone)
 
+**Optional dep**: goonj (acoustics feature — room modes, RT60, propagation constants, speed of sound. naad uses goonj's physics instead of reimplementing acoustic math)
+
 **Key tests**: sine at 440Hz produces correct period (sample_rate/440 samples), ADSR sustain level holds steady, biquad LP at cutoff = -3dB, PolyBLEP saw has no aliasing above Nyquist, equal temperament A4=440 C4≈261.63 E4≈329.63, pink noise slope ≈ -3dB/octave over 4+ octaves
 **Consumers**: dhvani (synthesis engine, instrument voices, effects chain), svara (formant/vocal synthesis foundation)
 

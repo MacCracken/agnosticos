@@ -69,7 +69,8 @@
 | [murti](https://github.com/MacCracken/murti) | Scaffolded | Core model runtime — registry, store, pull, inference backends |
 | [kana](https://github.com/MacCracken/kana) | Scaffolded | Quantum mechanics — state vectors, operators, entanglement, circuits |
 | [salai](https://github.com/MacCracken/salai) | Scaffolded | Game editor — egui visual editor for kiran |
-| [jantu](https://github.com/MacCracken/jantu) | In progress | Ethology/creature behavior — instinct, survival, social dynamics, swarm |
+| [naad](https://github.com/MacCracken/naad) | Scaffolded | Audio synthesis primitives — oscillators, filters, envelopes, modulation, wavetables, effects |
+| [svara](https://github.com/MacCracken/svara) | Scaffolded | Formant & vocal synthesis — glottal source, vocal tract, phonemes, prosody |
 
 ## Scaffolded (newly created)
 
@@ -103,7 +104,9 @@ Built on hisab for math, each owning a specific domain of physical simulation:
 | [tara](https://github.com/MacCracken/tara) | Sanskrit: तारा (star) | Stellar astrophysics — classification, evolution, nucleosynthesis | Scaffolded |
 | [falak](https://github.com/MacCracken/falak) | Arabic/Persian: فلک (sky) | Orbital mechanics — Keplerian orbits, transfers, perturbations | Scaffolded |
 | [jyotish](https://github.com/MacCracken/jyotish) | Sanskrit: ज्योतिष (light) | Astronomical computation — planetary positions, calendar systems | Scaffolded |
-| [jantu](https://github.com/MacCracken/jantu) | Sanskrit: जन्तु (creature) | Ethology/creature behavior — instinct, survival, swarm intelligence | In progress |
+| [jantu](https://github.com/MacCracken/jantu) | Sanskrit: जन्तु (creature) | Ethology/creature behavior — instinct, survival, swarm intelligence | **1.0.0** |
+| [naad](https://github.com/MacCracken/naad) | Sanskrit: नाद (primordial sound) | Audio synthesis — oscillators, filters, envelopes, wavetables, effects | Scaffolded |
+| [svara](https://github.com/MacCracken/svara) | Sanskrit: स्वर (voice/tone) | Formant & vocal synthesis — glottal source, vocal tract, phonemes, prosody | Scaffolded |
 
 ---
 

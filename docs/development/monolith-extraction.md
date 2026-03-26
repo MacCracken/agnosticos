@@ -84,8 +84,8 @@ Extract the foundational type crates that everything else depends on. These have
 
 | Extract | From | Becomes | Status |
 |---------|------|---------|--------|
-| **agnostik** | agnos-common/ | `agnostik` crate (crates.io) | Scaffolding (this repo) |
-| **agnosys** | agnos-sys/ | `agnosys` crate (crates.io) | **0.5.0 released** — leaned out (`agent`/`llm` features removed → agnosai/hoosh), 22 feature-gated modules, no openssl-sys |
+| **agnostik** | agnos-common/ | `agnostik` crate (internal, path dep) | Planning — [roadmap to 1.0.0](agnostik-roadmap.md) |
+| **agnosys** | agnos-sys/ | `agnosys` crate (internal, path dep) | **0.5.0 released** — leaned out (`agent`/`llm` features removed → agnosai/hoosh), 22 feature-gated modules, no openssl-sys |
 | **sigil** | agent-runtime/src/sigil.rs | `sigil` crate (crates.io) | Not started |
 
 **Migration note (agnosys 0.5.0)**: The `agent` and `llm` features were removed. Consumer code that used `agnosys::agent::*` types should migrate to `agnosai`. Consumer code that used `agnosys::llm::*` types should migrate to `hoosh`. The `full` feature continues to work — it now enables all 22 system-level modules without pulling in `reqwest` or `openssl-sys`, which fixes aarch64 cross-compilation.
@@ -123,9 +123,9 @@ The big extraction — daimon and hoosh become standalone binaries with their ow
 
 | Extract | From | Becomes | Status |
 |---------|------|---------|--------|
-| **daimon** | agent-runtime/ | `daimon` binary (ark package) | **0.5.0 released** — leaned out and hardened |
+| **daimon** | agent-runtime/ | `daimon` binary (internal, ark package) | **0.5.0 released** — leaned out and hardened |
 | **hoosh** | llm-gateway/ | `hoosh` binary (ark package) | Not started |
-| **agnoshi** | ai-shell/ | `agnoshi` binary (ark package) | Not started |
+| **agnoshi** | ai-shell/ | `agnoshi` binary (internal, ark package) | Not started |
 | **aethersafha** | desktop-environment/ | `aethersafha` binary (ark package) | Not started |
 
 **Migration note (daimon 0.5.0)**: Hardened release alongside agnosys 0.5.0. Dependency tree leaned out — no more transitive openssl-sys. Available on GitHub (`MacCracken/agnosticos`).
@@ -187,6 +187,40 @@ Separately running services (not in daimon process):
 
 ---
 
+## Internal vs Public Boundary
+
+Not everything extracted becomes a public crate. The question is: **"Would someone outside AGNOS use this?"**
+
+### Internal (path dep, shipped via ark)
+
+OS plumbing — runtime services and kernel bindings that only make sense as part of the AGNOS distribution:
+
+| Crate | Why Internal |
+|-------|-------------|
+| **agnosys** | Kernel bindings (Landlock, seccomp, LUKS, TPM, IMA) — OS-specific |
+| **agnostik** | OS-level shared types (sandbox configs, security policies, agent manifests) |
+| **daimon** | Agent runtime service — the OS runtime |
+| **agnoshi** | AI shell — the OS shell interface |
+
+These ship as `.ark` packages via ark. Path dependencies for build-time consumption.
+
+### Public (crates.io)
+
+Domain libraries — reusable by anyone, not tied to the OS:
+
+| Crate | Why Public |
+|-------|-----------|
+| **hoosh** | LLM inference gateway — LLM access is not an OS concern |
+| **agnosai** | Agent orchestration types — agent primitives are domain-generic |
+| **kavach** | Sandboxing library — generic enough for any Rust project |
+| **libro** | Audit chain — generic cryptographic logging |
+| **bhava** | Emotion/personality engine — no OS dependency |
+| **hisab**, **prakash**, etc. | Pure domain math/science — no OS dependency |
+
+The OS provides the **runtime** (daimon). The **domain primitives** (agnosai, hoosh) are generic libraries that happen to be consumed by the OS. Same distinction as Linux shipping systemd (internal) while gstreamer (media) is a standalone project.
+
+---
+
 ## Guiding Principles
 
 1. **Extract libraries before services** — types and pure logic first, daemons last
@@ -194,6 +228,7 @@ Separately running services (not in daimon process):
 3. **No flag day** — each extraction is independently releasable. The monolith shrinks incrementally
 4. **Crate before binary** — extract the library crate first (types, logic), then the binary later. Argonaut-the-crate before argonaut-the-service
 5. **ark recipes drive the boundary** — if it has its own ark recipe and can be `ark upgrade`-d independently, it's properly extracted
+6. **Internal vs public** — OS plumbing stays internal (path dep, ark package). Domain libraries go to crates.io. Ask: "Would someone outside AGNOS use this?"
 
 ## Priority
 
