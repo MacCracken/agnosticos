@@ -60,7 +60,6 @@ jobs:
       with:
         targets: ${{ matrix.target }}
         cache-prefix: release-${{ matrix.target }}
-        install-cross: ${{ matrix.cross }}
         install-build-essential: ${{ !matrix.cross }}
 
     - name: Build (native)
@@ -68,14 +67,21 @@ jobs:
       run: cargo build --profile ${{ matrix.profile }} --workspace --target ${{ matrix.target }}
       working-directory: userland
 
+    - name: Install cross-compilation toolchain
+      if: matrix.cross
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y gcc-aarch64-linux-gnu pkg-config
+
     - name: Build (cross)
       if: matrix.cross
       run: |
+        export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
         ARGS="--profile ${{ matrix.profile }} --workspace --target ${{ matrix.target }}"
         if [ "${{ matrix.no_default_features }}" = "true" ]; then
           ARGS="$ARGS --no-default-features"
         fi
-        cross build $ARGS
+        cargo build $ARGS
       working-directory: userland
 
     - name: Package

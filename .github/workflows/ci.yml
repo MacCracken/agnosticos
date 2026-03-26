@@ -282,7 +282,6 @@ jobs:
       with:
         targets: ${{ matrix.target }}
         cache-prefix: build-${{ matrix.target }}
-        install-cross: ${{ matrix.cross }}
         install-build-essential: ${{ !matrix.cross }}
 
     - name: Build userland (native)
@@ -290,9 +289,17 @@ jobs:
       run: cargo build --workspace --target ${{ matrix.target }}
       working-directory: userland
 
+    - name: Install cross-compilation toolchain
+      if: matrix.cross
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y gcc-aarch64-linux-gnu pkg-config
+
     - name: Build userland (cross)
       if: matrix.cross
-      run: cross build --workspace --target ${{ matrix.target }}
+      run: |
+        export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
+        cargo build --workspace --target ${{ matrix.target }}
       working-directory: userland
 
   # Coverage — runs after stage 1 passes (skip on release — tests already ran)
