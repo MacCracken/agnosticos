@@ -4,7 +4,7 @@
 
 | Field | Value |
 |-------|-------|
-| Status | Scaffolded (0.1.0) |
+| Status | Published (1.1.0) |
 | Priority | 4 — shared physics for kiran, joshua, simulation, desktop effects |
 | Crate | `impetus` (crates.io, available) |
 | Repository | `MacCracken/impetus` |

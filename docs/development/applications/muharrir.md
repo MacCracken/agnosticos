@@ -4,7 +4,7 @@
 
 | Field | Value |
 |-------|-------|
-| Status | Scaffolded (0.1.0) |
+| Status | Published (0.23.5) |
 | Priority | 3 — shared editor infrastructure for salai, rasa, tazama, shruti |
 | Crate | `muharrir` (crates.io, available) |
 | Repository | `MacCracken/muharrir` |

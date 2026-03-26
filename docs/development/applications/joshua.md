@@ -4,7 +4,7 @@
 
 | Field | Value |
 |-------|-------|
-| Status | Planned |
+| Status | Scaffolded (0.1.0) |
 | Priority | 4 — simulation infrastructure + AI game management |
 | Crate | `joshua` (crates.io, available) |
 | Repository | `MacCracken/joshua` |

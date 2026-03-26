@@ -4,7 +4,7 @@
 
 | Field | Value |
 |-------|-------|
-| Status | Scaffolded (0.1.0) |
+| Status | Published (0.22.4) |
 | Priority | 2 — secures all MCP tool traffic across the ecosystem |
 | Crate | `t-ron` (crates.io, available) |
 | Repository | `MacCracken/t-ron` |

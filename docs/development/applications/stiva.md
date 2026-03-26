@@ -1,6 +1,6 @@
 # Stiva — Rust-Native Container Runtime
 
-> **Status**: Scaffolded (0.1.0) | **Name**: stiva (Romanian: "stack")
+> **Status**: Published (1.0.0) | **Name**: stiva (Romanian: "stack")
 >
 > **Dependencies**: kavach (isolation), nein (networking), ark (images), libro (audit)
 
