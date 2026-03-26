@@ -51,7 +51,7 @@ agnosys = { path = "../../agnosys", features = ["full"] }
 desktop_environment = { path = "desktop-environment" }
 
 base64 = "0.22"
-rumqttc = "0.24"
+rumqttc = "0.25"
 
 [profile.release]
 opt-level = 3
