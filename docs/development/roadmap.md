@@ -1,12 +1,13 @@
 # AGNOS Development Roadmap
 
-> **Status**: Pre-Beta | **Last Updated**: 2026-03-18
+> **Status**: Pre-Beta | **Last Updated**: 2026-03-25
 > **Userland complete** — 11000+ tests (3900+ agent-runtime, 1554 ai-shell), ~84% coverage, 0 warnings
-> **Recipes**: 113 base + 71 desktop + 25 AI + 9 network + 8 browser + 22 marketplace + 4 python + 3 database + 31 edge = 286 OS (+ 90 bazaar community)
+> **Recipes**: 116 base + 71 desktop + 25 AI + 9 network + 8 browser + 59 marketplace + 4 python + 3 database + 31 edge + 3 sandbox = 330 OS (+ 90 bazaar community)
 > **Build order**: 178 packages in `recipes/build-order.txt` (base + desktop, dependency-ordered)
-> **Phases 10–14 complete** | **Phase 15A**: Core scanning done (phylax) | **Phase 17**: Local inference optimization (planned) | **Audit**: 16 rounds
-> **MCP Tools**: 144 built-in + external registration
-> **Consumer Projects**: 19 released (including Vidhana v1, Sutra v1)
+> **Phases 10–14 complete** | **Phase 15A**: Core scanning done (phylax) | **Phase 16A**: Desktop essentials done | **Phase 17**: Local inference optimization (planned) | **Audit**: 16 rounds
+> **MCP Tools**: 151 built-in + external registration
+> **Consumer Projects**: 19+ released (including Vidhana v1, Sutra v1, Abacus)
+> **Shared Crates**: 14 published on crates.io, 7 at v1.0 stable, 10+ scaffolded
 > **Sandbox**: 7 backends (Native, gVisor, Firecracker, WASM, SGX, SEV, Noop) + credential proxy + externalization gate
 
 ---
@@ -69,6 +70,8 @@ Phase 13A (self-hosting) ──→ Phase 16 (desktop recipes) ──→ Phase 13
 | **13E** | **CI, WebView, containers, Python** — browser-ark CI, marketplace-publish CI, Docker base images, Python runtime |
 | **14** | **Edge OS Profile** — Edge boot mode, fleet management, 29 edge recipes, Docker container (35.5 MB) |
 | **15A** | **Phylax core** — YARA engine (65 tests), entropy analysis, magic bytes, 5 API endpoints, 5 MCP tools, 5 agnoshi intents |
+| **16A** | **Desktop essentials** — 10 packaged tools: foot, helix, yazi, fuzzel, mako, zathura, imv, mpv, cliphist + ark CLI |
+| **16C** | **System configuration** — Vidhana v1 (system settings), display/audio panels. nm-applet/blueman/firewall in bazaar |
 
 ---
 
@@ -76,18 +79,9 @@ Phase 13A (self-hosting) ──→ Phase 16 (desktop recipes) ──→ Phase 13
 
 **This is the single most important remaining work.** Without it, AGNOS is a Debian overlay.
 
-### Infrastructure (Done)
+### Infrastructure (COMPLETE)
 
-| # | Item | Status | Notes |
-|---|------|--------|-------|
-| 1 | Bootstrap toolchain script | **Done** | `scripts/bootstrap-toolchain.sh` — LFS Ch. 5-6 cross-compiler (binutils, GCC, glibc, libstdc++) |
-| 2 | Chroot enter script | **Done** | `scripts/enter-chroot.sh` — mounts /proc /sys /dev, interactive or command mode |
-| 3 | Package build engine | **Done** | `scripts/ark-build.sh` — cross-compilation, signing, hardening, deterministic builds |
-| 4 | Selfhost validator (shell) | **Done** | `scripts/selfhost-validate.sh` — 4-phase validation (toolchain, kernel, userland, packages) |
-| 5 | Selfhost validator (Rust) | **Done** | `agent-runtime/src/selfhost.rs` — 38 tests, programmatic validation |
-| 6 | Base recipes | **Done** | 109 recipes in `recipes/base/` (GCC 15.2, Rust 1.89, Linux 6.6.72, glibc 2.42) |
-| 7 | Source tree in ISO | **Done** | `build-iso.sh` bundles `/usr/src/agnos` with recipes, scripts, userland source, kernel |
-| 8 | Multi-stage build script | **Done** | `scripts/build-selfhosting-iso.sh` — 5-stage pipeline (download → bootstrap → chroot build → userland → ISO) |
+All 8 infra items done: bootstrap-toolchain.sh, enter-chroot.sh, ark-build.sh, selfhost-validate.sh (+ Rust module, 38 tests), 116 base recipes, source tree in ISO, build-selfhosting-iso.sh.
 
 ### Validation (Remaining — requires real hardware/QEMU execution)
 
@@ -110,22 +104,9 @@ Phase 13A (self-hosting) ──→ Phase 16 (desktop recipes) ──→ Phase 13
 
 **Strategy**: Package existing open-source tools via takumi recipes to provide a complete desktop experience *now*. AI-native replacements come later (see `docs/development/applications/roadmap.md`).
 
-### 16A — Essential Desktop Packages (ship-with-ISO)
+### 16A — Essential Desktop Packages (COMPLETE)
 
-These must be in the ISO image for AGNOS to function as a daily-driver desktop.
-
-| # | Need | Package | Recipe | Status | Notes |
-|---|------|---------|--------|--------|-------|
-| 1 | File Manager | yazi | `recipes/desktop/yazi.toml` | **Done** | Modern Rust TUI file manager, async, rich previews, zero GUI deps. Thunar deferred (heavy Xfce dep chain) |
-| 2 | Terminal Emulator | Foot | `recipes/desktop/foot.toml` | **Done** | Wayland-native, fast, minimal deps. Kitty deferred to post-beta (needs Go 1.26+) |
-| 3 | Text Editor | Helix | `recipes/desktop/helix.toml` | **Done** | Modern, Rust-native, default config included |
-| 4 | PDF Viewer | Zathura | `recipes/desktop/zathura.toml` | **Done** | Lightweight, plugin-based (PDF/DJVU/PS) |
-| 5 | Image Viewer | imv | `recipes/desktop/imv.toml` | **Done** | Wayland-native, fast, HEIF/SVG/WebP support |
-| 6 | Media Player | mpv | `recipes/desktop/mpv.toml` | **Done** | PipeWire audio, Vulkan GPU-next, Wayland, VA-API hwdec |
-| 7 | Notification Daemon | mako | `recipes/desktop/mako.toml` | **Done** | Wayland-native, lightweight, systemd user service + default config |
-| 8 | Clipboard Manager | cliphist | `recipes/desktop/cliphist.toml` | **Done** | Go-based, wl-clipboard + systemd user service |
-| 9 | App Launcher | fuzzel | `recipes/desktop/fuzzel.toml` | **Done** | Wayland-native dmenu/rofi alternative |
-| 10 | Archive Manager | ark CLI | — | **Done** | Already supported via `ark extract`/`ark compress` in daimon + libarchive in base. No GUI recipe needed |
+All 10 ship-with-ISO packages done: yazi (file manager), foot (terminal), helix (editor), zathura (PDF), imv (images), mpv (media), mako (notifications), cliphist (clipboard), fuzzel (launcher), ark CLI (archives).
 
 ### 16B — Input & Hardware Detection
 
@@ -137,16 +118,9 @@ These must be in the ISO image for AGNOS to function as a daily-driver desktop.
 | 4 | HiDPI / scaling | Wayland fractional scaling | Not started | Auto-detect display DPI, set appropriate scale factor |
 | 5 | Stylus / pen input | libinput tablet support | Not started | Pressure sensitivity, palm rejection |
 
-### 16C — System Configuration
+### 16C — System Configuration (COMPLETE)
 
-| # | Need | Approach | Status | Notes |
-|---|------|----------|--------|-------|
-| 1 | System Settings UI | **Vidhana** | **Done** | AI-native, 6 crates, 76+ tests, 5 MCP tools, NL control, egui GUI, port 8099. `/home/macro/Repos/vidhana` |
-| 2 | Network Manager GUI | nm-applet | **Bazaar** | Recipe in bazaar community repo (`ark bazaar install network-manager-applet`) |
-| 3 | Bluetooth Manager | blueman | **Bazaar** | Recipe in bazaar (`ark bazaar install blueman`). BlueZ daemon in OS |
-| 4 | Display Settings | Vidhana display panel | **Done** | Brightness, theme, scaling, night light, refresh rate — integrated in Vidhana |
-| 5 | Sound Settings | Vidhana audio panel | **Done** | Volume, mute, device selection — integrated in Vidhana. pavucontrol available via bazaar |
-| 6 | Firewall GUI | firewall-config | **Bazaar** | Recipe in bazaar (`ark bazaar install firewall-config`). nftables daemon in OS |
+Vidhana v1 covers settings UI, display, and audio panels. Network/Bluetooth/firewall GUIs available via bazaar (`ark bazaar install nm-applet`, `blueman`, `firewall-config`).
 
 ### 16D — Desktop Polish
 
@@ -225,17 +199,14 @@ Upgrades to `ScreenCaptureManager` and `ScreenRecordingManager` to support real-
 
 **Subsystem**: **phylax** (Greek: guardian/watchman) — `agent-runtime/src/phylax.rs`
 
-### 15A — Core Scanning Engine
+### 15A — Core Scanning Engine (5/7 COMPLETE)
+
+Done: YARA engine (65 tests), file content inspection, 5 scan API endpoints, 5 MCP tools, 5 agnoshi intents.
 
 | # | Item | Status | Notes |
 |---|------|--------|-------|
-| 1 | YARA-compatible rule engine | **Done** | Native Rust parser for hex patterns; no libyara dependency. 5 built-in rules, 65 tests |
-| 2 | File content inspection | **Done** | Magic bytes (ELF, PE, shebang), embedded payloads, polyglot detection, entropy analysis |
 | 3 | Signature database (`.phylax-db`) | Not started | Signed, versioned threat definitions distributed via ark |
 | 4 | On-access scanning (fanotify) | Not started | Real-time filesystem monitoring via `agnos-sys` fanotify bindings |
-| 5 | Scan API endpoints | **Done** | `/v1/scan/file`, `/v1/scan/bytes`, `/v1/scan/status`, `/v1/scan/history`, `/v1/scan/rules` |
-| 6 | MCP tools | **Done** | `phylax_scan`, `phylax_status`, `phylax_rules`, `phylax_findings`, `phylax_quarantine` (122 total) |
-| 7 | agnoshi intents | **Done** | "scan /path for threats", "show threat findings", "scanner status", "list rules", "scan history" |
 
 ### 15B — AI-Powered Analysis
 
@@ -349,13 +320,15 @@ Patterns SY has proven that should flow back into shared crates:
 | MCP tool discovery | SY 279-tool registry | daimon mela | Dynamic tool registration, capability querying, version negotiation |
 | Agent observability | SY dashboard | nazar | Real-time agent metrics, task timeline, resource usage visualization |
 
-### Agnostic Integration — Complete
+### Agnostic Integration — COMPLETE
 
-*All 13 items resolved. Data APIs + aethersafha HUD widgets all implemented.*
+*All 13 items resolved. See CHANGELOG `[2026.3.17]`.*
 
 ---
 
 ## Engineering Backlog
+
+*Completed items archived in [sprint-history.md](sprint-history.md).*
 
 ### Active — Build & Distribution
 
@@ -363,37 +336,20 @@ Patterns SY has proven that should flow back into shared crates:
 |---|----------|------|-------|
 | B1 | High | Selfhost pipeline builds all 176 packages | `selfhost-build.yml` updated, needs first full run |
 | B2 | High | RPi4 hardware boot test | Firmware blobs added, needs physical validation |
-| B3 | **Done** | SHA256 checksums — all 264 filled | 100%. intel-ucode `20260227`, amd-ucode `20260309`, gVisor `latest` — all verified from upstream |
+
 ### Active — ESP32 Edge/IoT
 
 | # | Priority | Item | Notes |
 |---|----------|------|-------|
-| E1 | Medium | ESP32 agent scaffold | **Recipe created** (`recipes/edge/esp32-agent.toml`). Dual-target: ESP32-S3 (xtensa) + ESP32-C3 (riscv32). no_std esp-hal, MQTT to daimon, WiFi provisioning (SoftAP/SmartConfig), sensor collection, deep sleep, OTA, flash helper script. MQTT bridge done (E2). Pending: source repo (`MacCracken/esp32-agent`) |
-| E2 | Medium | MQTT bridge in daimon | **DONE**. `agent-runtime/src/edge/mqtt_bridge.rs` — rumqttc subscriber on `agnos/+/{heartbeat,telemetry,status}`, auto-registers MCU nodes into fleet, translates ESP32 heartbeats/OTA/sleep lifecycle to EdgeNode model, WiFi RSSI → network_quality, 14 tests |
-| E3 | **Done** | ESP32-CAM integration | **DONE**. Recipe `[camera]` config section (resolution, JPEG quality, motion sensitivity, PIR GPIO, cooldown). MQTT bridge subscribes to `agnos/+/camera/{frame,motion}`, stores `CameraCaptureEvent` in ring buffer (200 cap), tags fleet nodes `camera`/`motion_detect`. Payload types: `McuCameraFrame` (base64 JPEG, trigger, dimensions), `McuMotionEvent` (intensity, source, optional snapshot). Oversized frames >1MB rejected. 13 tests. Pending: firmware-side camera driver in esp32-agent source repo |
-| E4 | Low | TinyML on ESP32-S3 | **Daimon side done**. MQTT bridge handles `agnos/+/inference/{result,status}` topics. `McuInferenceResult` (model_name, label, confidence, latency_ms, input_type) + `McuInferenceStatus` (model_loaded, memory_used_bytes, inference_count). Fleet nodes auto-tagged `tinyml` + `tinyml:{model_name}`. ESP32-S3 recipe has `[tinyml]` config section (model_path, model_type: kws/gesture/anomaly, SIMD acceleration, confidence threshold). 10 tests. Pending: firmware-side TFLite Micro integration in esp32-agent source repo |
+| E1 | Medium | ESP32 agent source repo | Recipe created (`recipes/edge/esp32-agent.toml`), MQTT bridge done (E2). Pending: source repo (`MacCracken/esp32-agent`) + firmware code |
 
 ### Active — Sandbox & Security
 
 | # | Priority | Item | Notes |
 |---|----------|------|-------|
-| S1 | **Done** | gVisor/Firecracker runtime execution | `run_task()` async methods with `tokio::process::Command`, timeout enforcement, kill-on-timeout, full BackendResult |
 | S2 | Medium | SGX/SEV hardware validation | Backends implemented, need hardware to test |
-| S3 | **High** | **sy-agnos sandbox image (Phase 1)** | **Done** — 3 recipes, build script, Dockerfile created |
-| S4 | **Done** | sy-agnos dm-verity (Phase 2) | **Done** — veritysetup format in build-sy-agnos.sh, hash tree in OCI image, boot verification, strength 85, graceful skip if no veritysetup |
-| S5 | **Done** | sy-agnos TPM measured boot (Phase 3) | **Done** — tpm2_pcrextend in boot script (PCR 8/9/10), `/v1/attestation` endpoint, event log, strength 88, graceful skip if no tpm2-tools |
 
-### Active — Sutra Integration
-
-Sutra (infrastructure orchestrator) needs daimon to expose a remote execution API so playbooks can orchestrate fleet nodes via `transport = "daimon"`.
-
-| # | Priority | Item | Notes |
-|---|----------|------|-------|
-| T1 | **Done** | Daimon remote exec API | `POST /v1/agents/{id}/exec` — execute a shell command on a fleet node via its daimon agent. Request: `{ "command": "...", "timeout_secs": 30 }`. Response: `{ "exit_code": 0, "stdout": "...", "stderr": "...", "duration_ms": 42 }`. Shell metacharacter injection prevention, timeout enforcement (default 30s, max 300s), full audit trail. 10 tests |
-| T2 | **Done** | Daimon file transfer API | `PUT /v1/agents/{id}/files/*path` — write file to agent data dir. `GET /v1/agents/{id}/files/*path` — read file from agent data dir. Scoped to `/var/lib/agnos/agents/{id}/`, strict path traversal protection (no `..`, no absolute, no symlinks), 10 MB size limit, audit logging. 13 tests |
-| T3 | **Done** | Daimon playbook audit ingestion | `POST /v1/audit/runs` — accepts sutra RunRecord JSON (run_id, playbook, tasks, success). Validates structure, appends to audit buffer + cryptographic chain. 5 tests |
-| T4 | **Done** | Hoosh playbook generation tuning | `x-sutra-playbook: true` header on `/v1/chat/completions` injects playbook-aware system prompt with 3 few-shot TOML examples (deploy, harden, setup). Module reference included |
-| T5 | **Done** | sutra-community marketplace recipe | `recipes/marketplace/sutra-community.toml` — installs community modules (nftables, sysctl, aegis, daimon, edge) as ark package. Source: `MacCracken/sutra-community` |
+*Completed backlog items archived in [sprint-history.md](sprint-history.md).*
 
 ### Blocked — AgnosAI Integration
 
@@ -412,86 +368,13 @@ Sutra (infrastructure orchestrator) needs daimon to expose a remote execution AP
 
 ---
 
-## sy-agnos — OS-Level Sandbox for SecureYeoman
+## sy-agnos — OS-Level Sandbox for SecureYeoman (COMPLETE)
 
-**Priority**: High — Cross-project. See [SY ADR 044](https://github.com/MacCracken/secureyeoman/blob/main/docs/adr/044-sy-agnos-sandbox.md).
+All 3 phases complete. SY strength 88. See [SY ADR 044](https://github.com/MacCracken/secureyeoman/blob/main/docs/adr/044-sy-agnos-sandbox.md) and CHANGELOG entries `[2026.3.18]` for details.
 
-**Goal**: Build a purpose-built, hardened AGNOS image (`sy-agnos`) that SecureYeoman launches as an execution sandbox. The OS IS the sandbox — immutable rootfs, no shell, baked seccomp, OS-level nftables. Scores 80-88 on SY's sandbox strength scale (between Firecracker 90 and gVisor 70). AGNOS owns the image build; SY owns the driver.
-
-### Phase 1 — sy-agnos Minimal (SY strength 80)
-
-**New recipes** (`recipes/sandbox/`):
-
-- [x] **`sy-agnos-rootfs.toml`** — Multi-stage image build: edge base → strip (remove /bin/sh, /bin/bash, all package managers, SSH, debug tools, man pages, docs) → install Node.js runtime + SY agent binary → bake seccomp BPF filter → bake nftables default-deny rules → squashfs rootfs
-- [x] **`sy-agnos-init.toml`** — Minimal argonaut init config: 3-process tree only (argonaut → sy-agent → health-check). No TTY, no login prompt, no getty. Agent starts automatically on boot
-- [x] **`sy-agnos-nftables.toml`** — Boot-baked nftables ruleset: default-deny egress, configurable allowlist via `/etc/sy-agnos/network-policy.conf`, DNS restricted to specified resolvers, no listening sockets except health endpoint (port 8099)
-
-**Build infrastructure:**
-
-- [x] **`scripts/build-sy-agnos.sh`** — Builds OCI image from recipes. Inputs: SY agent binary path, network policy (optional). Outputs: `sy-agnos.tar` OCI image
-- [x] **`/etc/sy-agnos-release`** — JSON metadata: `{ "version": "2026.X.X", "hardening": "minimal", "dmverity": false, "tpm_measured": false, "strength": 80 }` (baked by build script)
-- [x] **CI workflow** — `build-sy-agnos.yml`: builds image, publishes to GHCR (`ghcr.io/maccracken/sy-agnos:latest`), signs with cosign (Dockerfile provides the CI build path)
-- [x] **Dockerfile.sy-agnos** — Alternative Docker-based build path for users without the full AGNOS build system
-
-**Reuses existing components:**
-- nftables (`recipes/edge/nftables.toml`)
-- libseccomp (`recipes/base/libseccomp.toml`)
-- glibc, openssl, ca-certificates (base recipes)
-- argonaut init (`agent-runtime/src/argonaut.rs`)
-- read_only_rootfs (edge profile pattern)
-
-### Phase 2 — dm-verity (SY strength 85) — DONE
-
-- [x] **dm-verity rootfs** — `build-sy-agnos.sh` runs `veritysetup format` after squashfs creation, generates hash tree, saves root hash. Hash tree included as OCI layer. Graceful skip if `veritysetup` not installed
-- [x] **Tamper detection** — Init script verifies rootfs via `veritysetup verify` at boot. Refuses to start agent (exit 78 EX_CONFIG) on verification failure. Standalone `verify-rootfs.sh` script baked into rootfs
-- [x] **Update `/etc/sy-agnos-release`** — `"dmverity": true, "strength": 85, "hardening": "verified"` when verity is enabled. Features list includes `"dm-verity"`. OCI labels updated
-
-### Phase 3 — Measured Boot + TPM (SY strength 88) — DONE
-
-- [x] **TPM 2.0 boot measurement** — Boot script (`/usr/lib/agnos/tpm-measure-boot.sh`) extends PCR 8 (kernel hash), PCR 9 (rootfs hash), PCR 10 (agent binary hash) via `tpm2_pcrextend`. Event log written to `/var/log/agnos/tpm-event-log.json`. Graceful skip if no TPM device or tpm2-tools
-- [x] **Attestation endpoint** — `GET /v1/attestation` returns PCR values (via `tpm2_pcrread`), boot event log, sy-agnos-release metadata, and HMAC-SHA256 signature over measurements (keyed by machine-id). Returns `{"tpm_available": false}` when TPM absent. Handler: `agent-runtime/src/http_api/handlers/attestation.rs` (12 tests)
-- [x] **Update `/etc/sy-agnos-release`** — `"tpm_measured": true, "strength": 88, "hardening": "measured"` when tpm2-tools available. Features list includes `"tpm-measured-boot"`. OCI labels include `com.secureyeoman.sandbox.tpm_measured`
-
-### Resolved (2026.3.20)
-
-| Category | Items | Summary |
-|----------|-------|---------|
-| Shared crates | 4 new crates extracted | `ai-hwaccel` (hardware detection, crates.io), `tarang` (media framework, crates.io), `aethersafta` (compositing engine, scaffolded), `hoosh` (inference gateway, scaffolded) |
-| ai-hwaccel integration | hoosh + daimon wired | `acceleration.rs` replaced with ai-hwaccel re-exports (549 tests). `scheduler.rs` `gpu: bool` → `AcceleratorRequirement` + TPU/Gaudi support. `finetune.rs` TPU/Gaudi memory estimation via ai-hwaccel |
-| ark-bundle fixes | 23/23 bundles passing | Fixed 14 broken asset patterns, added raw binary handling (SY), source-only skip. All marketplace recipes validated against GitHub releases |
-| Recipe updates | 10 recipes created/updated | `agnosai.toml` (new), `ai-hwaccel.toml` (new), `aequi.toml` (org fix), `jalwa` → 2026.3.19, `synapse` → 2026.3.19, `shruti` → 2026.3.19, `tazama` → 2026.3.19 (GStreamer dropped), `tarang` (crates.io + binary), `sutra-community` (runtime fix), `aethersafta` → 0.20.4 |
-| Roadmap | Phase 16F + streaming app | Aethersafha media ingestion (10 items), live streaming/broadcast studio (Priority 3), shared crates section in app roadmap |
-| Release CI | tarang + ai-hwaccel pipelines | Multi-arch binary packaging (amd64 + arm64) + crates.io publish + GitHub release with SHA256 |
-
-### Pending (2026.3.20)
-
-| # | Item | Status | Notes |
-|---|------|--------|-------|
-| 1 | Bump ai-hwaccel to 0.20.3 in hoosh + daimon | Pending | Currently pinned to 0.19.x; update after ai-hwaccel 0.20.3 release |
-| 2 | Workspace compile + full test run | Pending | After ai-hwaccel dep bump lands |
-
-### Resolved (2026.3.18)
-
-| Category | Items | Summary |
-|----------|-------|---------|
-| Documentation | First-party standards, app docs, roadmap split | `docs/development/applications/first-party-standards.md`, 18 individual app docs in `docs/applications/`, third-party docs, app development roadmap. `os_long_term.md` deleted — content migrated |
-| Sutra | Infrastructure orchestrator v1 | 5 crates, 70 tests, 6 MCP tools (with handlers), 6 core modules (ark, argonaut, file, shell, user, verify), SSH transport, Tera templating, parallel execution (-j), JSON output, variables/facts, error recovery (on_error), task dependencies (depends_on), sutra-community repo (5 modules: nftables, sysctl, aegis, daimon, edge). Named subsystem #20 |
-| CI/CD fixes | build-iso.yml permissions, python_runtime race | `sudo chown` after all 6 build jobs. Test no longer uses process-global env vars |
-| Recipe updates | 4 consumer projects | PhotisNadi `2026.3.18`, Aequi `2026.3.18`, Synapse `2026.3.18-2`, Vidhana v1 `2026.3.18` |
-| Synapse integration | Bridge paths + tests + delete method | All 7 bridge paths corrected to Synapse 2026.3.18-2 API. `HttpBridge::delete()` added. 21 handler tests. Chat uses OpenAI-compat `/v1/chat/completions`. Finetune uses `/training/jobs`. R1-R7 closed |
-| SHA256 checksums (B3) | 20 recipes filled | 261/264 (98.9%). 3 remaining need upstream version bumps |
-| Developer tooling | Claude Code hooks | PostToolUse hook: auto `cargo fmt` + `cargo clippy` on userland Write/Edit |
-| Debian removal (B4) | build-installer.sh + build-sdcard.sh | debootstrap fully removed. Scripts require AGNOS base rootfs via `--base-rootfs`, cache, or GitHub release auto-download |
-| ESP32 scaffold (E1) | `recipes/edge/esp32-agent.toml` | Dual-target (S3 xtensa + C3 riscv32), esp-rs/esp-hal no_std, MQTT, WiFi provisioning, flash helper, reference config |
-| sy-agnos Phase 1 (S3) | 3 recipes + build script + Dockerfile | `recipes/sandbox/sy-agnos-{rootfs,init,nftables}.toml`, `scripts/build-sy-agnos.sh`, `docker/Dockerfile.sy-agnos`. SY strength 80 |
-| sy-agnos Phase 2 (S4) | dm-verity in build-sy-agnos.sh | `veritysetup format` after squashfs, hash tree in OCI image, boot verification (exit 78 on failure), `verify-rootfs.sh` script, strength 85, graceful skip |
-| gVisor/Firecracker exec (S1) | `run_task()` on both backends | `tokio::process::Command` spawning, timeout + kill, OCI bundle lifecycle (gVisor), config-file startup (Firecracker), 47 tests passing |
-| SHA256 complete (B3) | All 264 recipes | intel-ucode `20250311`→`20260227`, amd-ucode `20250311`→`20260309` (CDN URL fix), gVisor `20250310.0`→`latest`. 100% coverage |
-| sy-agnos Phase 3 (S5) | TPM measured boot + attestation | Boot measurement script (PCR 8/9/10 via tpm2_pcrextend), `/v1/attestation` endpoint with HMAC signature, event log, strength 88, graceful skip |
-
-### Resolved (2026.3.17)
-
-10 module splits (~25K lines), GPU awareness (G1-G4), SY integration (4), sandbox wiring (S1-S3), Agnostic integration (13 items), Go 1.24→1.26. See CHANGELOG `[2026.3.17]` for details.
+- **Phase 1** — Immutable rootfs, baked seccomp + nftables (strength 80). 3 recipes + build script + Dockerfile
+- **Phase 2** — dm-verity tamper detection (strength 85)
+- **Phase 3** — TPM measured boot + `/v1/attestation` endpoint (strength 88)
 
 ---
 
@@ -499,14 +382,14 @@ Sutra (infrastructure orchestrator) needs daimon to expose a remote execution AP
 
 ### Beta Release — Q4 2026
 
-**Critical path**: 13A → 16A → 13C → Beta
+**Critical path**: 13A → 16B-E (polish) → 13C → Beta
 
 **Criteria:**
 - [x] Phase 10 complete — 108 base system recipes, self-hosting toolchain
 - [x] Phase 11 complete — 88 desktop, networking & AI/ML recipes
 - [x] Phase 12 complete — Argonaut init, ark package manager, agnova installer
 - [x] Phase 13B complete — GPU drivers, WiFi, Bluetooth, Thunderbolt, printing
-- [x] Phase 13D complete — 17 consumer apps integrated
+- [x] Phase 13D complete — 19+ consumer apps integrated
 - [x] Phase 15A partial — Phylax core scanning engine
 - [x] AGNOS boots from ISO on bare metal (UEFI) and QEMU
 - [ ] **Self-hosting: can rebuild itself from source (13A)** ← PRIMARY BLOCKER
@@ -542,13 +425,13 @@ Sutra (infrastructure orchestrator) needs daimon to expose a remote execution AP
 
 ## Key Performance Indicators (KPIs)
 
-### Current Status (as of 2026-03-18)
+### Current Status (as of 2026-03-25)
 
 | Metric | Target | Current | Status |
 |--------|--------|---------|--------|
 | Code Coverage | >80% | ~84.3% | Met |
 | Test Pass Rate | 100% | 100% | Met |
-| Total Tests | 400+ | 10900+ | Met |
+| Total Tests | 400+ | 11000+ | Met |
 | Agent Spawn Time | <500ms | ~300ms | Met |
 | Shell Response Time | <100ms | ~50ms | Met |
 | Memory Overhead | <2GB | ~1.2GB | Met |
@@ -556,13 +439,14 @@ Sutra (infrastructure orchestrator) needs daimon to expose a remote execution AP
 | CIS Compliance | >80% | ~85% | Met |
 | Stub Implementations | 0 | 0 | Met |
 | Compiler Warnings | 0 | 0 | Met |
-| Base System Recipes | ~108 | 113 | Complete |
+| Base System Recipes | ~108 | 116 | Complete |
 | Desktop Recipes | ~62 | 71 | Complete (lean OS, optional in bazaar) |
 | Edge Recipes | ~30 | 31 | Complete |
-| Marketplace Recipes | 11 | 22 | Complete (18 released) |
+| Marketplace Recipes | 11 | 59 | Complete (19+ released + shared crate recipes) |
 | Bazaar Community | — | 90 | Seed recipes across 8 categories |
-| MCP Tools | — | 144 | Complete (14 agnos + 5 aequi + 24 agnostic + 7 delta + 8 photis + 5 edge + 7 shruti + 9 tarang + 8 jalwa + 9 rasa + 7 mneme + 7 irfan + 7 bullshift + 7 yeoman + 5 phylax + others) |
-| Consumer Apps | 6 | 19 | 19 released (incl. Vidhana v1, Sutra scaffolded) |
+| MCP Tools | — | 151 | Complete (14 agnos + 5 aequi + 24 agnostic + 7 delta + 8 photis + 5 edge + 7 shruti + 9 tarang + 8 jalwa + 9 rasa + 7 mneme + 7 irfan + 7 bullshift + 7 yeoman + 5 phylax + others) |
+| Consumer Apps | 6 | 19+ | 19+ released (incl. Vidhana v1, Sutra v1, Abacus) |
+| Shared Crates | — | 14 on crates.io | 7 at v1.0 stable, 10+ scaffolded |
 | Recipe Validation Errors | 0 | 0 | Complete |
 | Security Audit Rounds | 15 | 16 | Complete |
 | Self-Hosting | Yes | Pending | Phase 13A — THE blocker |
@@ -599,7 +483,7 @@ Sutra (infrastructure orchestrator) needs daimon to expose a remote execution AP
 | Name | Role | Component |
 |------|------|-----------|
 | **hoosh** | LLM inference gateway (port 8088, 15 providers) | `llm-gateway/` |
-| **daimon** | Agent orchestrator (port 8090, 144 MCP tools) | `agent-runtime/` |
+| **daimon** | Agent orchestrator (port 8090, 151 MCP tools) | `agent-runtime/` |
 | **agnosys** | Kernel interface | `agnos-sys/` |
 | **agnostik** | Shared types library | `agnos-common/` |
 | **shakti** | Privilege escalation | `agnos-sudo/` |
@@ -1004,10 +888,10 @@ The kernel is a parallel research track. AGNOS ships on Linux until the Rust ker
 ### Priority Contribution Areas
 
 1. **Self-hosting on-target (Phase 13A)** — Build AGNOS on AGNOS — THE beta blocker
-2. **Desktop recipes (Phase 16A)** — Package Thunar, Foot, Zathura, mpv, mako, etc.
-3. **SHA256 verification** — Fill in real checksums for all recipes
-4. **Documentation (Phase 13C)** — Video tutorials, support portal
-5. **Community testing** — Beta tester enrollment + bug tracker setup
+2. **Desktop polish (Phase 16B-E)** — Touch input, HiDPI, compositor config, themes/icons
+3. **Documentation (Phase 13C)** — Video tutorials, support portal
+4. **Community testing** — Beta tester enrollment + bug tracker setup
+5. **Hardware testing (Phase 13F)** — RPi4, Intel NUC, older hardware validation
 
 ### Getting Started
 
@@ -1024,10 +908,11 @@ See [CONTRIBUTING.md](/CONTRIBUTING.md) for:
 - **Repository**: https://github.com/MacCracken/agnosticos
 - **Documentation**: https://docs.agnos.org (planned)
 - **Changelog**: [CHANGELOG.md](/CHANGELOG.md)
+- **Sprint history**: [docs/development/sprint-history.md](/docs/development/sprint-history.md)
 - **Long-term app roadmap**: [docs/development/applications/roadmap.md](/docs/development/applications/roadmap.md)
 - **LFS Reference**: https://www.linuxfromscratch.org/lfs/view/stable/
 - **BLFS Reference**: https://www.linuxfromscratch.org/blfs/view/stable/
 
 ---
 
-*Last Updated: 2026-03-20 | Next Review: 2026-03-27*
+*Last Updated: 2026-03-25 | Next Review: 2026-04-01*

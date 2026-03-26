@@ -1,0 +1,37 @@
+[package]
+name = "libplacebo"
+version = "7.349.0"
+description = "Reusable library for GPU-accelerated video/image rendering primitives"
+license = "LGPL-2.1"
+groups = ["desktop"]
+
+[source]
+url = "https://code.videolan.org/videolan/libplacebo/-/archive/v7.349.0/libplacebo-v7.349.0.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["vulkan-loader", "lcms2", "libdrm"]
+build = ["meson", "ninja", "vulkan-headers", "glslang", "python"]
+optional = []
+
+[build]
+pre_build = ""
+configure = """
+meson setup build \
+    --prefix=/usr \
+    --buildtype=release \
+    -Dvulkan=enabled \
+    -Dglslang=enabled \
+    -Dlcms=enabled \
+    -Dd3d11=disabled \
+    -Ddemos=false
+"""
+make = "ninja -C build -j$(nproc)"
+check = "ninja -C build test || true"
+install = "DESTDIR=$PKG ninja -C build install"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

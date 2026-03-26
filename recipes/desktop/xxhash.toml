@@ -1,0 +1,28 @@
+[package]
+name = "xxhash"
+version = "0.8.3"
+description = "Extremely fast non-cryptographic hash algorithm"
+license = "BSD-2-Clause"
+groups = ["desktop"]
+
+[source]
+url = "https://github.com/Cyan4973/xxHash/archive/refs/tags/v0.8.3.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = []
+build = []
+optional = []
+
+[build]
+pre_build = ""
+configure = ""
+make = "make PREFIX=/usr -j$(nproc)"
+check = "make check || true"
+install = "make PREFIX=/usr DESTDIR=$PKG install"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

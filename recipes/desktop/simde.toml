@@ -1,0 +1,32 @@
+[package]
+name = "simde"
+version = "0.8.2"
+description = "Portable SIMD wrapper headers (SSE/AVX/NEON)"
+license = "MIT"
+groups = ["desktop"]
+
+[source]
+url = "https://github.com/simd-everywhere/simde/archive/refs/tags/v0.8.2.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = []
+build = ["meson", "ninja"]
+optional = []
+
+[build]
+pre_build = ""
+configure = """
+meson setup build \
+    --prefix=/usr \
+    --buildtype=release
+"""
+make = "ninja -C build -j$(nproc)"
+check = ""
+install = "DESTDIR=$PKG ninja -C build install"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

@@ -12,7 +12,7 @@ patches = []
 
 [depends]
 runtime = ["wayland", "wayland-protocols", "libxkbcommon", "pango", "cairo", "icu", "libpng", "libjpeg-turbo", "librsvg", "libtiff", "libheif"]
-build = ["meson", "ninja", "wayland-dev", "wayland-protocols-dev", "libxkbcommon-dev", "pango-dev", "cairo-dev", "icu-dev", "libpng-dev", "libjpeg-turbo-dev", "librsvg-dev", "libtiff-dev", "libheif-dev", "cmocka"]
+build = ["meson", "ninja", "wayland", "wayland-protocols", "libxkbcommon", "pango", "cairo", "icu", "libpng", "libjpeg-turbo", "librsvg", "libtiff", "libheif"]
 optional = []
 
 [build]

@@ -1,0 +1,33 @@
+[package]
+name = "atk"
+version = "2.38.0"
+description = "GNOME Accessibility Toolkit interface definitions"
+license = "LGPL-2.0"
+groups = ["desktop"]
+
+[source]
+url = "https://download.gnome.org/sources/atk/2.38/atk-2.38.0.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glib"]
+build = ["meson", "ninja", "gobject-introspection"]
+optional = []
+
+[build]
+pre_build = ""
+configure = """
+meson setup build \
+    --prefix=/usr \
+    --buildtype=release \
+    -Dintrospection=true
+"""
+make = "ninja -C build -j$(nproc)"
+check = ""
+install = "DESTDIR=$PKG ninja -C build install"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

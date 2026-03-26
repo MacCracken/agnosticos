@@ -19,7 +19,7 @@ patches = []
 
 [depends]
 runtime = ["glibc", "libdrm", "wayland", "wayland-protocols", "libxkbcommon", "vulkan-headers", "zlib", "zstd", "llvm"]
-build = ["gcc", "make", "pkgconf", "meson", "ninja", "python3", "bison", "flex"]
+build = ["gcc", "make", "pkgconf", "meson", "ninja", "python", "bison", "flex"]
 
 [build]
 pre_build = ""

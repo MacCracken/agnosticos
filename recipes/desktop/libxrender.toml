@@ -1,0 +1,28 @@
+[package]
+name = "libxrender"
+version = "0.9.12"
+description = "X Rendering Extension client library"
+license = "MIT"
+groups = ["desktop"]
+
+[source]
+url = "https://www.x.org/releases/individual/lib/libXrender-0.9.12.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["libx11", "xorgproto"]
+build = ["autoconf", "automake", "libtool"]
+optional = []
+
+[build]
+pre_build = ""
+configure = "./configure --prefix=/usr --sysconfdir=/etc"
+make = "make -j$(nproc)"
+check = ""
+install = "make DESTDIR=$PKG install"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

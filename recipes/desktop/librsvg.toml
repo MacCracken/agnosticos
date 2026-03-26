@@ -1,0 +1,36 @@
+[package]
+name = "librsvg"
+version = "2.59.2"
+description = "SVG rendering library written in Rust"
+license = "LGPL-2.1"
+groups = ["desktop"]
+
+[source]
+url = "https://download.gnome.org/sources/librsvg/2.59/librsvg-2.59.2.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["glib", "cairo", "pango", "gdk-pixbuf", "libxml2"]
+build = ["meson", "ninja", "rust", "python", "gobject-introspection"]
+optional = []
+
+[build]
+pre_build = ""
+configure = """
+meson setup build \
+    --prefix=/usr \
+    --buildtype=release \
+    -Dintrospection=enabled \
+    -Dpixbuf-loader=enabled \
+    -Dvala=disabled \
+    -Ddocs=disabled
+"""
+make = "ninja -C build -j$(nproc)"
+check = "ninja -C build test || true"
+install = "DESTDIR=$PKG ninja -C build install"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

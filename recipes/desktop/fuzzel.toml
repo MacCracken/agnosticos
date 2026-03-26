@@ -12,7 +12,7 @@ patches = []
 
 [depends]
 runtime = ["wayland", "wayland-protocols", "fcft", "tllist", "cairo", "pango", "libxkbcommon", "pixman"]
-build = ["meson", "ninja", "wayland-dev", "wayland-protocols-dev", "fcft-dev", "tllist-dev", "cairo-dev", "pango-dev", "libxkbcommon-dev", "pixman-dev", "scdoc"]
+build = ["meson", "ninja", "wayland", "wayland-protocols", "fcft", "tllist", "cairo", "pango", "libxkbcommon", "pixman", "scdoc"]
 optional = []
 
 [build]

@@ -5,6 +5,65 @@ All notable changes to AGNOS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2026.3.22] - 2026-03-25
+
+### Added — Shared Crate Ecosystem Expansion
+
+- **37 new marketplace recipes** for shared crates and consumer projects — total marketplace recipes now 59. New recipes include: `agnosai.toml`, `ai-hwaccel.toml`, `aethersafta.toml`, `bhava.toml`, `bijli.toml`, `bote.toml`, `dhvani.toml`, `goonj.toml`, `hisab.toml`, `hoosh.toml`, `impetus.toml`, `kavach.toml`, `kimiya.toml`, `kiran.toml`, `libro.toml`, `majra.toml`, `muharrir.toml`, `murti.toml`, `nein.toml`, `pavan.toml`, `phylax.toml`, `prakash.toml`, `pravash.toml`, `raasta.toml`, `ranga.toml`, `salai.toml`, `soorat.toml`, `stiva.toml`, `szal.toml`, `t-ron.toml`, `tanur.toml`, `ushma.toml`, `yukti.toml`, `agnosys.toml`, `abacus.toml`
+- **Abacus** — desktop calculator app recipe (`recipes/marketplace/abacus.toml`), built on abaco crate
+- **Synapse → Irfan rename** — `recipes/marketplace/synapse.toml` renamed to `irfan.toml`, reflecting the subsystem rename
+
+### Added — Documentation
+
+- **`docs/AGNOS.md`** — Project overview document
+- **`docs/applications/abacus.md`** — Abacus desktop calculator app doc
+- **`docs/applications/sutra.md`** — Sutra infrastructure orchestrator app doc
+- **`docs/development/applications/impetus.md`** — Impetus physics engine spec
+- **`docs/development/applications/joshua.md`** — Joshua game manager spec
+- **`docs/development/applications/muharrir.md`** — Muharrir text editor spec
+- **`docs/development/applications/murti.md`** — Murti core model runtime spec
+- **`docs/development/applications/stiva.md`** — Stiva container runtime spec
+- **`docs/development/applications/t-ron.md`** — T-ron MCP security monitor spec
+- **`docs/development/applications/tanur.md`** — Tanur desktop LLM studio spec
+- **`docs/development/applications/shared-crates.md`** — Shared crate registry and version table
+- **`docs/development/k8s-roadmap.md`** — Kubernetes-equivalent orchestration roadmap
+- **`docs/development/monolith-extraction.md`** — Monolith extraction plan (agnosys)
+- **`docs/development/network-evolution.md`** — Network evolution (TCP → QUIC → AAP)
+- **`docs/development/science-crate-specs.md`** — Science crate specifications
+
+### Changed — Build & Infrastructure
+
+- **Rust MSRV**: Upgraded to 1.89 across workspace, Dockerfiles, CI
+- **selfhost-build.yml**: Major restructure — improved stage orchestration, workspace cleanup, self-hosted runner fixes
+- **build-installer.sh**: Multiple fixes for ISO build pipeline (mirror handling, chroot entry, userland build)
+- **Dockerfile + Dockerfile.edge**: Rust version bump
+- **llm-gateway `acceleration.rs`**: Refactored (1128 line reduction) — replaced with ai-hwaccel re-exports
+- **First-party standards**: Expanded with shared crate integration guidelines, version tracking, crate registry format
+
+### Changed — Recipe Updates
+
+- Consumer app recipes version bumps: Jalwa, Shruti, Selah, PhotisNadi, Aequi, SecureYeoman variants
+- Shared crate recipes: ai-hwaccel, ranga, kavach version updates
+- All marketplace recipes now use `github_release` source format consistently
+
+### Fixed — Build Pipeline
+
+- **selfhost-build.yml**: Self-hosted runner cleanup (`sudo rm -rf`), `git safe.directory` config, stage reuse improvements
+- **build-installer.sh**: Multiple ISO build fixes — mirror selection, chroot mounting, userland compilation, boot configuration (10+ iterative fixes across 2026-03-20 to 2026-03-21)
+- **Linting errors**: Fixed clippy warnings in `fleet.rs`, `trust.rs`, `scheduling.rs`, `phylax.rs`, `pqc.rs`, `health.rs`, `service_manager/mod.rs`, `security.rs`
+- **LLM gateway tests**: Fixed benchmark and test compilation after acceleration refactor
+
+### Fixed — Recipe Corrections
+
+- Fixed asset patterns and source URLs across 12+ consumer app recipes
+- `sutra-community.toml`: Runtime type correction
+- `abaco.toml`: Version and source alignment
+
+### Removed
+
+- `recipes/marketplace/synapse.toml` — renamed to `irfan.toml`
+- `recipes/marketplace/nada.toml` — obsolete (dhvani is the replacement)
+
 ## [2026.3.18] - 2026-03-18
 
 ### Added — Documentation Restructure

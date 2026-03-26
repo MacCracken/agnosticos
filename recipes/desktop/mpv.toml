@@ -12,7 +12,7 @@ patches = []
 
 [depends]
 runtime = ["ffmpeg", "libplacebo", "libass", "wayland", "wayland-protocols", "pipewire", "mesa", "alsa-lib", "libxkbcommon", "lua", "vulkan-loader", "libva"]
-build = ["meson", "ninja", "ffmpeg-dev", "libplacebo-dev", "libass-dev", "wayland-dev", "wayland-protocols-dev", "pipewire-dev", "mesa-dev", "alsa-lib-dev", "libxkbcommon-dev", "lua-dev", "vulkan-headers", "libva-dev", "python-docutils"]
+build = ["meson", "ninja", "ffmpeg", "libplacebo", "libass", "wayland", "wayland-protocols", "pipewire", "mesa", "alsa-lib", "libxkbcommon", "lua", "vulkan-headers", "libva"]
 optional = ["yt-dlp", "vapoursynth"]
 
 [build]

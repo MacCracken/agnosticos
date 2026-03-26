@@ -1,0 +1,35 @@
+[package]
+name = "sqlite"
+version = "3.49.1"
+description = "Self-contained, serverless, zero-configuration SQL database engine"
+license = "Public Domain"
+groups = ["desktop"]
+
+[source]
+url = "https://www.sqlite.org/2025/sqlite-autoconf-3490100.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["readline", "zlib"]
+build = []
+optional = []
+
+[build]
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --enable-fts5 \
+    --enable-json1 \
+    --enable-session \
+    CFLAGS="$CFLAGS -DSQLITE_ENABLE_FTS3=1 -DSQLITE_ENABLE_FTS4=1 -DSQLITE_ENABLE_COLUMN_METADATA=1 -DSQLITE_ENABLE_UNLOCK_NOTIFY=1 -DSQLITE_SECURE_DELETE=1"
+"""
+make = "make -j$(nproc)"
+check = "make check || true"
+install = "make DESTDIR=$PKG install"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

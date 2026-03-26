@@ -1,0 +1,32 @@
+[package]
+name = "libspectre"
+version = "0.2.12"
+description = "Small library for rendering PostScript documents"
+license = "GPL-2.0"
+groups = ["desktop"]
+
+[source]
+url = "https://libspectre.freedesktop.org/releases/libspectre-0.2.12.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = []
+build = ["meson", "ninja"]
+optional = ["ghostscript"]
+
+[build]
+pre_build = ""
+configure = """
+meson setup build \
+    --prefix=/usr \
+    --buildtype=release
+"""
+make = "ninja -C build -j$(nproc)"
+check = ""
+install = "DESTDIR=$PKG ninja -C build install"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

@@ -325,9 +325,9 @@
 
 | Field | Value |
 |-------|-------|
-| Status | Planned |
+| Status | In Development (v0.4) |
 | Priority | 4 |
-| Spec | [kiran.md](kiran.md) (planned) |
+| Spec | [kiran.md](kiran.md) |
 
 **Why first-party**: AI-native game engine core. ECS architecture, game loop, scene management, rendering (aethersafta/wgpu), audio (dhvani), input handling. Thin orchestration layer over existing AGNOS shared crates. Does NOT own physics (impetus), simulation (joshua), or AI NPCs (joshua).
 
@@ -450,4 +450,4 @@ See **[k8s-roadmap.md](../k8s-roadmap.md)** for how stiva + nein + majra + kavac
 
 ---
 
-*Last Updated: 2026-03-24*
+*Last Updated: 2026-03-25*

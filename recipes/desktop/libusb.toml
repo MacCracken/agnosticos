@@ -1,0 +1,32 @@
+[package]
+name = "libusb"
+version = "1.0.27"
+description = "Cross-platform library for USB device access from userspace"
+license = "LGPL-2.1"
+groups = ["desktop"]
+
+[source]
+url = "https://github.com/libusb/libusb/releases/download/v1.0.27/libusb-1.0.27.tar.bz2"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["eudev"]
+build = ["autoconf", "automake", "libtool"]
+optional = []
+
+[build]
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --enable-udev
+"""
+make = "make -j$(nproc)"
+check = ""
+install = "make DESTDIR=$PKG install"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

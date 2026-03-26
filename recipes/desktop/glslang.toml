@@ -1,0 +1,34 @@
+[package]
+name = "glslang"
+version = "15.2.0"
+description = "Khronos GLSL/HLSL to SPIR-V shader compiler"
+license = "Apache-2.0"
+groups = ["desktop"]
+
+[source]
+url = "https://github.com/KhronosGroup/glslang/archive/refs/tags/15.2.0.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = []
+build = ["cmake", "ninja", "python"]
+optional = []
+
+[build]
+pre_build = ""
+configure = """
+cmake -B build -G Ninja \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DBUILD_SHARED_LIBS=ON \
+    -DENABLE_OPT=OFF
+"""
+make = "ninja -C build -j$(nproc)"
+check = ""
+install = "DESTDIR=$PKG ninja -C build install"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

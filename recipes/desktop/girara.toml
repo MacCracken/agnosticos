@@ -1,0 +1,33 @@
+[package]
+name = "girara"
+version = "0.4.5"
+description = "GTK3 user interface library for the zathura document viewer"
+license = "Zlib"
+groups = ["desktop"]
+
+[source]
+url = "https://pwmt.org/projects/girara/download/girara-0.4.5.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["gtk3", "glib", "json-glib", "pango"]
+build = ["meson", "ninja", "gettext", "scdoc"]
+optional = []
+
+[build]
+pre_build = ""
+configure = """
+meson setup build \
+    --prefix=/usr \
+    --buildtype=release \
+    -Ddocs=enabled
+"""
+make = "ninja -C build -j$(nproc)"
+check = "ninja -C build test || true"
+install = "DESTDIR=$PKG ninja -C build install"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

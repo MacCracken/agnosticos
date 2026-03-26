@@ -12,7 +12,7 @@ patches = []
 
 [depends]
 runtime = ["wayland", "wayland-protocols", "fcft", "tllist", "pixman", "fontconfig", "freetype", "libxkbcommon", "utf8proc"]
-build = ["meson", "ninja", "wayland-dev", "wayland-protocols-dev", "fcft-dev", "tllist-dev", "pixman-dev", "fontconfig-dev", "freetype-dev", "libxkbcommon-dev", "utf8proc-dev", "scdoc"]
+build = ["meson", "ninja", "wayland", "wayland-protocols", "fcft", "tllist", "pixman", "fontconfig", "freetype", "libxkbcommon", "utf8proc", "scdoc"]
 optional = []
 
 [build]

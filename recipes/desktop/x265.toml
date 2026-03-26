@@ -1,0 +1,34 @@
+[package]
+name = "x265"
+version = "4.1"
+description = "H.265/HEVC video encoder"
+license = "GPL-2.0"
+groups = ["desktop"]
+
+[source]
+url = "https://bitbucket.org/multicoreware/x265_git/downloads/x265_4.1.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = []
+build = ["cmake", "ninja"]
+optional = []
+
+[build]
+pre_build = ""
+configure = """
+cmake -B build -G Ninja \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DENABLE_SHARED=ON \
+    source
+"""
+make = "ninja -C build -j$(nproc)"
+check = ""
+install = "DESTDIR=$PKG ninja -C build install"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

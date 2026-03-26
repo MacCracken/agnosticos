@@ -1,0 +1,28 @@
+[package]
+name = "scdoc"
+version = "1.9.7"
+description = "Simple man page generator written in C99"
+license = "MIT"
+groups = ["desktop"]
+
+[source]
+url = "https://git.sr.ht/~sircmpwn/scdoc/archive/1.9.7.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = []
+build = []
+optional = []
+
+[build]
+pre_build = ""
+configure = ""
+make = "make PREFIX=/usr -j$(nproc)"
+check = "make check || true"
+install = "make PREFIX=/usr DESTDIR=$PKG install"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

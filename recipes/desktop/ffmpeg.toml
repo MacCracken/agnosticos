@@ -1,0 +1,48 @@
+[package]
+name = "ffmpeg"
+version = "7.1.1"
+description = "Complete cross-platform multimedia framework"
+license = "LGPL-2.1"
+groups = ["desktop"]
+
+[source]
+url = "https://ffmpeg.org/releases/ffmpeg-7.1.1.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["alsa-lib", "freetype", "fribidi", "harfbuzz", "fontconfig", "libass", "libva", "libdrm", "libplacebo", "vulkan-loader", "pipewire", "x265", "libde265", "zlib", "xz", "libvorbis", "libogg"]
+build = ["meson", "ninja"]
+optional = []
+
+[build]
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --enable-gpl \
+    --enable-shared \
+    --disable-static \
+    --enable-libass \
+    --enable-libfreetype \
+    --enable-libfribidi \
+    --enable-libfontconfig \
+    --enable-libharfbuzz \
+    --enable-libplacebo \
+    --enable-libvorbis \
+    --enable-libx265 \
+    --enable-vaapi \
+    --enable-vulkan \
+    --enable-libdrm \
+    --enable-pthreads \
+    --disable-debug \
+    --disable-doc
+"""
+make = "make -j$(nproc)"
+check = ""
+install = "make DESTDIR=$PKG install"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

@@ -1,0 +1,35 @@
+[package]
+name = "libxml2"
+version = "2.13.6"
+description = "XML parsing library for GNOME"
+license = "MIT"
+groups = ["desktop"]
+
+[source]
+url = "https://download.gnome.org/sources/libxml2/2.13/libxml2-2.13.6.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["zlib", "xz", "icu"]
+build = ["cmake", "ninja", "python"]
+optional = []
+
+[build]
+pre_build = ""
+configure = """
+cmake -B build -G Ninja \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DBUILD_SHARED_LIBS=ON \
+    -DLIBXML2_WITH_PYTHON=OFF \
+    -DLIBXML2_WITH_ICU=ON
+"""
+make = "ninja -C build -j$(nproc)"
+check = "ninja -C build test || true"
+install = "DESTDIR=$PKG ninja -C build install"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

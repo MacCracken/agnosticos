@@ -18,7 +18,7 @@ sha256 = "b11b900bf88ef68fe688c107226bb453ef26faf461ae2dcf9690b00009d660a6"
 patches = []
 
 [depends]
-runtime = ["glibc", "libevdev", "mtdev", "libudev"]
+runtime = ["glibc", "libevdev", "mtdev", "eudev"]
 build = ["gcc", "make", "pkgconf", "meson", "ninja", "libevdev", "mtdev"]
 
 [build]

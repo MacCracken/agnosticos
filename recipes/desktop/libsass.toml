@@ -1,0 +1,28 @@
+[package]
+name = "libsass"
+version = "3.6.6"
+description = "C/C++ implementation of the Sass CSS preprocessor"
+license = "MIT"
+groups = ["desktop"]
+
+[source]
+url = "https://github.com/sass/libsass/archive/refs/tags/3.6.6.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = []
+build = ["autoconf", "automake", "libtool"]
+optional = []
+
+[build]
+pre_build = "autoreconf -fvi"
+configure = "./configure --prefix=/usr --disable-static"
+make = "make -j$(nproc)"
+check = ""
+install = "make DESTDIR=$PKG install"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

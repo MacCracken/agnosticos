@@ -1,0 +1,32 @@
+[package]
+name = "xorgproto"
+version = "2024.1"
+description = "X.Org protocol header files"
+license = "MIT"
+groups = ["desktop"]
+
+[source]
+url = "https://xorg.freedesktop.org/archive/individual/proto/xorgproto-2024.1.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = []
+build = ["meson", "ninja"]
+optional = []
+
+[build]
+pre_build = ""
+configure = """
+meson setup build \
+    --prefix=/usr \
+    --buildtype=release
+"""
+make = "ninja -C build -j$(nproc)"
+check = ""
+install = "DESTDIR=$PKG ninja -C build install"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

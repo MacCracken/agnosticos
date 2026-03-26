@@ -1,0 +1,28 @@
+[package]
+name = "sassc"
+version = "3.6.2"
+description = "Sass CSS preprocessor C implementation"
+license = "MIT"
+groups = ["desktop"]
+
+[source]
+url = "https://github.com/sass/sassc/archive/refs/tags/3.6.2.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["libsass"]
+build = ["autoconf", "automake", "libtool"]
+optional = []
+
+[build]
+pre_build = "autoreconf -fvi"
+configure = "./configure --prefix=/usr"
+make = "make -j$(nproc)"
+check = ""
+install = "make DESTDIR=$PKG install"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

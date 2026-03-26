@@ -19,9 +19,9 @@ sha256 = "1cf374c3146f3f685d9257701bf0c2866c61d6c202c14d1f5c01a1f3a089028a"
 patches = []
 
 [depends]
-runtime = ["glibc", "fontconfig", "freetype", "cairo", "libjpeg-turbo", "libpng", "libtiff", "zlib", "nss", "openjpeg", "lcms2", "boost"]
+runtime = ["glibc", "fontconfig", "freetype", "cairo", "libjpeg-turbo", "libpng", "libtiff", "zlib", "lcms2"]
 build = ["cmake", "gcc", "make", "pkgconf", "gobject-introspection"]
-optional = ["glib", "qt5-base", "qt6-base"]
+optional = ["glib", "nss", "openjpeg", "boost"]
 
 [build]
 pre_build = ""

@@ -11,9 +11,9 @@ sha256 = "18e60ecfbbb224b241057ccce0680e39d0a641bf0ba96b0318295e2ea78a14fa"
 patches = []
 
 [depends]
-runtime = ["python", "harfbuzz", "zlib", "libpng", "lcms2", "xxhash", "openssl", "pixman", "cairo", "freetype", "fontconfig", "libcanberra", "wayland", "wayland-protocols", "libxkbcommon", "dbus", "mesa"]
-build = ["go", "gcc", "python-dev", "harfbuzz-dev", "zlib-dev", "libpng-dev", "lcms2-dev", "xxhash-dev", "openssl-dev", "pixman-dev", "cairo-dev", "freetype-dev", "fontconfig-dev", "wayland-dev", "wayland-protocols-dev", "libxkbcommon-dev", "dbus-dev", "mesa-dev", "simde", "pkg-config"]
-optional = ["imagemagick", "libsystemd"]
+runtime = ["python", "harfbuzz", "zlib", "libpng", "lcms2", "xxhash", "openssl", "pixman", "cairo", "freetype", "fontconfig", "wayland", "wayland-protocols", "libxkbcommon", "dbus", "mesa"]
+build = ["go", "gcc", "python", "harfbuzz", "zlib", "libpng", "lcms2", "xxhash", "openssl", "pixman", "cairo", "freetype", "fontconfig", "wayland", "wayland-protocols", "libxkbcommon", "dbus", "mesa", "simde"]
+optional = ["imagemagick", "libcanberra"]
 
 [build]
 pre_build = ""

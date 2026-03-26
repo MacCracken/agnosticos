@@ -1,0 +1,32 @@
+[package]
+name = "djvulibre"
+version = "3.5.28"
+description = "DjVu document format library and utilities"
+license = "GPL-2.0"
+groups = ["desktop"]
+
+[source]
+url = "https://downloads.sourceforge.net/djvu/djvulibre-3.5.28.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["libtiff", "libjpeg-turbo"]
+build = ["autoconf", "automake", "libtool"]
+optional = []
+
+[build]
+pre_build = ""
+configure = """
+./configure \
+    --prefix=/usr \
+    --disable-static
+"""
+make = "make -j$(nproc)"
+check = ""
+install = "make DESTDIR=$PKG install"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

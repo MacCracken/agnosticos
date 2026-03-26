@@ -1,0 +1,32 @@
+[package]
+name = "libass"
+version = "0.17.3"
+description = "Portable subtitle renderer for ASS/SSA subtitle format"
+license = "ISC"
+groups = ["desktop"]
+
+[source]
+url = "https://github.com/libass/libass/releases/download/0.17.3/libass-0.17.3.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["freetype", "fribidi", "harfbuzz", "fontconfig"]
+build = ["meson", "ninja"]
+optional = []
+
+[build]
+pre_build = ""
+configure = """
+meson setup build \
+    --prefix=/usr \
+    --buildtype=release
+"""
+make = "ninja -C build -j$(nproc)"
+check = ""
+install = "DESTDIR=$PKG ninja -C build install"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

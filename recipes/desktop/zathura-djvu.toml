@@ -1,0 +1,32 @@
+[package]
+name = "zathura-djvu"
+version = "0.2.11"
+description = "DjVu document support plugin for zathura"
+license = "Zlib"
+groups = ["desktop"]
+
+[source]
+url = "https://pwmt.org/projects/zathura-djvu/download/zathura-djvu-0.2.11.tar.xz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = ["zathura", "girara", "djvulibre"]
+build = ["meson", "ninja"]
+optional = []
+
+[build]
+pre_build = ""
+configure = """
+meson setup build \
+    --prefix=/usr \
+    --buildtype=release
+"""
+make = "ninja -C build -j$(nproc)"
+check = ""
+install = "DESTDIR=$PKG ninja -C build install"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"

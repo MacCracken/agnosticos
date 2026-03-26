@@ -1,0 +1,33 @@
+[package]
+name = "libde265"
+version = "1.0.15"
+description = "Open h.265 video codec implementation"
+license = "LGPL-3.0"
+groups = ["desktop"]
+
+[source]
+url = "https://github.com/nicoring/libde265/releases/download/v1.0.15/libde265-1.0.15.tar.gz"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+patches = []
+
+[depends]
+runtime = []
+build = ["cmake", "ninja"]
+optional = []
+
+[build]
+pre_build = ""
+configure = """
+cmake -B build -G Ninja \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DBUILD_SHARED_LIBS=ON
+"""
+make = "ninja -C build -j$(nproc)"
+check = ""
+install = "DESTDIR=$PKG ninja -C build install"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+cflags = "-O2 -pipe"
+ldflags = "-Wl,--as-needed"
