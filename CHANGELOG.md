@@ -5,6 +5,24 @@ All notable changes to AGNOS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2026.3.26] - 2026-03-26
+
+### Changed — Core Crate 0.5.0 Migration
+
+- **agnosys 0.5.0** — Removed `agent` and `llm` feature modules. These types now live in their proper homes: `agnosai` (agent types) and `hoosh` (LLM types). The `full` feature no longer pulls in `reqwest`, eliminating `openssl-sys` from the dependency tree and **fixing aarch64 cross-compilation** that had been failing in CI
+- **daimon 0.5.0** — Leaned out and hardened. Available on GitHub (`MacCracken/agnosticos`)
+- **Workspace `Cargo.toml`** — `agnosys = { features = ["full"] }` continues to work; the `full` feature now covers 22 system modules without any network/HTTP dependencies
+
+### Added — Synthesis Crate Specifications
+
+- **naad** (Sanskrit: primordial sound) — Audio synthesis primitives crate spec in `science-crate-specs.md`. Oscillators (PolyBLEP anti-aliased), filters (Audio EQ Cookbook biquads), ADSR envelopes, wavetable synthesis, FM/ring modulation, delay/chorus/flanger/phaser/distortion effects, noise generators (white/pink/brown), tuning systems. Scaffolded at `/home/macro/Repos/naad` (12 tests passing)
+- **svara** (Sanskrit: voice/tone) — Formant and vocal synthesis crate spec in `science-crate-specs.md`. Rosenberg glottal pulse model, Peterson & Barney formant presets (F1-F5), vocal tract with nasal coupling, IPA phoneme set, prosody contours, voice profiles (male/female/child). Depends on naad. Scaffolded at `/home/macro/Repos/svara` (17 tests passing)
+- Updated "Own the Stack" table in `first-party-standards.md` with naad and svara entries
+
+### Fixed — CI/CD
+
+- **aarch64 cross-compilation** — Root cause: `openssl-sys` was pulled in transitively via agnosys `agent`/`llm` features → `reqwest` → `native-tls`. Fixed upstream in agnosys 0.5.0 by removing those features entirely. No CI workflow changes needed
+
 ## [2026.3.22] - 2026-03-25
 
 ### Added — Shared Crate Ecosystem Expansion

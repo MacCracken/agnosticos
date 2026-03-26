@@ -1,6 +1,6 @@
 # Monolith Extraction Roadmap
 
-> **Status**: Architectural Note | **Last Updated**: 2026-03-22
+> **Status**: In Progress | **Last Updated**: 2026-03-26
 >
 > Plan for extracting AGNOS core subsystems from the monolithic userland workspace
 > into independently buildable, updatable binaries with their own ark packages.
@@ -78,15 +78,17 @@ These are *service binaries* or *subsystem modules* that remain inside the userl
 
 Already completed. kavach, majra, libro, bote, szal, agnosai, ai-hwaccel published to crates.io.
 
-### Phase 1 — Types Foundation
+### Phase 1 — Types Foundation (in progress)
 
 Extract the foundational type crates that everything else depends on. These have no service lifecycle — they're pure libraries.
 
-| Extract | From | Becomes | Consumers |
-|---------|------|---------|-----------|
-| **agnostik** | agnos-common/ | `agnostik` crate (crates.io) | Every subsystem, every consumer app |
-| **agnosys** | agnos-sys/ | `agnosys` crate (crates.io) | daimon, aegis, argonaut, stiva, kavach |
-| **sigil** | agent-runtime/src/sigil.rs | `sigil` crate (crates.io) | ark, stiva, aegis, daimon |
+| Extract | From | Becomes | Status |
+|---------|------|---------|--------|
+| **agnostik** | agnos-common/ | `agnostik` crate (crates.io) | Scaffolding (this repo) |
+| **agnosys** | agnos-sys/ | `agnosys` crate (crates.io) | **0.5.0 released** — leaned out (`agent`/`llm` features removed → agnosai/hoosh), 22 feature-gated modules, no openssl-sys |
+| **sigil** | agent-runtime/src/sigil.rs | `sigil` crate (crates.io) | Not started |
+
+**Migration note (agnosys 0.5.0)**: The `agent` and `llm` features were removed. Consumer code that used `agnosys::agent::*` types should migrate to `agnosai`. Consumer code that used `agnosys::llm::*` types should migrate to `hoosh`. The `full` feature continues to work — it now enables all 22 system-level modules without pulling in `reqwest` or `openssl-sys`, which fixes aarch64 cross-compilation.
 
 **Why first**: These are leaf dependencies. Nothing downstream breaks. Consumer apps currently can't use AGNOS types without depending on the entire workspace — this fixes that.
 
@@ -115,16 +117,18 @@ Extract the subsystems that could run as independent daemons:
 
 **Why**: argonaut's service management logic is needed by stiva (container lifecycle) and sutra (service state modules). Today sutra shells out or uses daimon's API. With argonaut as a crate, sutra can call `argonaut::service::enable("tarang")` directly on the local machine without a daimon round-trip.
 
-### Phase 4 — Core Services
+### Phase 4 — Core Services (started)
 
 The big extraction — daimon and hoosh become standalone binaries with their own repos, ark recipes, and independent release cycles:
 
-| Extract | From | Becomes | Update Path |
-|---------|------|---------|-------------|
-| **daimon** | agent-runtime/ | `daimon` binary (ark package) | `ark upgrade daimon` or `sutra apply` |
-| **hoosh** | llm-gateway/ | `hoosh` binary (ark package) | `ark upgrade hoosh` or `sutra apply` |
-| **agnoshi** | ai-shell/ | `agnoshi` binary (ark package) | `ark upgrade agnoshi` |
-| **aethersafha** | desktop-environment/ | `aethersafha` binary (ark package) | `ark upgrade aethersafha` |
+| Extract | From | Becomes | Status |
+|---------|------|---------|--------|
+| **daimon** | agent-runtime/ | `daimon` binary (ark package) | **0.5.0 released** — leaned out and hardened |
+| **hoosh** | llm-gateway/ | `hoosh` binary (ark package) | Not started |
+| **agnoshi** | ai-shell/ | `agnoshi` binary (ark package) | Not started |
+| **aethersafha** | desktop-environment/ | `aethersafha` binary (ark package) | Not started |
+
+**Migration note (daimon 0.5.0)**: Hardened release alongside agnosys 0.5.0. Dependency tree leaned out — no more transitive openssl-sys. Available on GitHub (`MacCracken/agnosticos`).
 
 **What remains in the monolith**: Nothing. The `userland/` workspace becomes a meta-package that depends on the extracted crates — or disappears entirely, replaced by individual repos.
 
@@ -199,4 +203,4 @@ Separately running services (not in daimon process):
 
 ---
 
-*Last Updated: 2026-03-22*
+*Last Updated: 2026-03-26*
