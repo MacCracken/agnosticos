@@ -29,10 +29,11 @@
 | [badal](https://github.com/MacCracken/badal) | 1.0.0 | Weather/atmospheric modeling — weather simulation, atmospheric dynamics | kiran, joshua, pavan |
 | [khanij](https://github.com/MacCracken/khanij) | 1.0.0 | Geology/mineralogy — crystal structures, rock cycles, soil, mineral properties, geochemistry | kiran, joshua |
 
-## Registry — Published on crates.io (20 crates)
+## Registry — Published on crates.io (21 pre-1.0 crates)
 
 | Crate | Version | Description | Key Consumers |
 |-------|---------|-------------|---------------|
+| [kiran](https://github.com/MacCracken/kiran) | 0.26.3 | Game engine — ECS, system scheduling, scene hierarchy, audio, physics, scripting | joshua, salai |
 | [ai-hwaccel](https://github.com/MacCracken/ai-hwaccel) | 0.23.3 | Universal AI hardware accelerator detection, capability querying, workload planning | hoosh, daimon, kiran |
 | [tarang](https://github.com/MacCracken/tarang) | 0.21.3 | AI-native media framework — container parsing, audio/video decode, encode, mux, fingerprint | jalwa, tazama, shruti, aethersafta |
 | [ranga](https://github.com/MacCracken/ranga) | 0.24.3 | Core image processing — color spaces, blend modes, pixel buffers, filters, GPU compute | rasa, tazama, aethersafta |
@@ -65,7 +66,6 @@
 
 | Crate | Status | Description |
 |-------|--------|-------------|
-| [kiran](https://github.com/MacCracken/kiran) | In development (v0.4) | Game engine — ECS, system scheduling, scene hierarchy, audio, physics, scripting |
 | [murti](https://github.com/MacCracken/murti) | Scaffolded | Core model runtime — registry, store, pull, inference backends |
 | [kana](https://github.com/MacCracken/kana) | Scaffolded | Quantum mechanics — state vectors, operators, entanglement, circuits |
 | [salai](https://github.com/MacCracken/salai) | Scaffolded | Game editor — egui visual editor for kiran |
