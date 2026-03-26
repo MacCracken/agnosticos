@@ -35,6 +35,13 @@ outputs:
 runs:
   using: 'composite'
   steps:
+    - name: Clone agnosys (sibling dependency)
+      shell: bash
+      run: |
+        if [ ! -d "../agnosys" ]; then
+          git clone --depth 1 https://github.com/MacCracken/agnosys.git ../agnosys
+        fi
+
     - name: Read project version
       id: version
       shell: bash

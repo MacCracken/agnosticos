@@ -402,6 +402,12 @@ jobs:
           name: agnos-base-rootfs-x86_64
           path: output/
 
+      - name: Clone agnosys (sibling dependency)
+        run: |
+          if [ ! -d "../agnosys" ]; then
+            git clone --depth 1 https://github.com/MacCracken/agnosys.git ../agnosys
+          fi
+
       - name: Build userland
         run: |
           cd userland

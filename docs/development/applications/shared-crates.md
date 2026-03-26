@@ -1,135 +1,109 @@
 # Shared Crates — Ecosystem Infrastructure
 
-> **Status**: Active | **Last Updated**: 2026-03-24
+> **Status**: Active | **Last Updated**: 2026-03-25
 >
 > Standalone crates extracted from AGNOS that the entire ecosystem depends on.
-> Published to crates.io, used by AGNOS, Irfan, AgnosAI, SecureYeoman, and consumer apps.
+> Published to crates.io or distributed via GitHub Releases.
 > See [First-Party Standards](first-party-standards.md) for versioning and publishing conventions.
+> App documentation for each crate is in [docs/applications/](../../applications/).
 
 ---
 
-## Registry
+## Registry — 1.0+ Stable (17 crates)
 
-| Crate | Version | Description | Consumers |
-|-------|---------|-------------|-----------|
-| [ai-hwaccel](https://github.com/MacCracken/ai-hwaccel) | 0.21.3 | Universal AI hardware accelerator detection (13 families), quantisation, sharding, training memory estimation | hoosh, daimon, Irfan, AgnosAI, murti, tazama |
-| [tarang](https://github.com/MacCracken/tarang) | 0.20.3 | AI-native media framework — 18-33x faster than GStreamer. Audio/video decode, encode, mux, fingerprint, analysis | jalwa, tazama, shruti, aethersafta |
-| [aethersafta](https://github.com/MacCracken/aethersafta) | 0.20.3 | Real-time media compositing — scene graph, multi-source capture, HW encoding, streaming output | aethersafha, streaming app, tazama, SY, selah |
-| [hoosh](https://github.com/MacCracken/hoosh) | 0.21.3 | AI inference gateway — 15 LLM providers, OpenAI-compatible API, token budgets, caching. Uses murti for local inference | daimon, tarang, aethersafta, agnoshi, AgnosAI, all consumer apps |
-| [ranga](https://github.com/MacCracken/ranga) | 0.21.4 | Core image processing — color spaces, blend modes, pixel buffers, filters, GPU compute | rasa, tazama, aethersafta, streaming app |
-| [dhvani](https://github.com/MacCracken/dhvani) | 0.20.4 | Core audio engine — buffers, DSP, mixing, resampling, analysis, synthesis, MIDI, clock, PipeWire capture | shruti, jalwa, aethersafta, tarang, hoosh, streaming app |
-| [majra](https://github.com/MacCracken/majra) | 0.21.3 | Distributed queue & multiplex engine — pub/sub, priority queues, DAG scheduling, heartbeat FSM, relay, IPC, rate limiting | daimon, AgnosAI, hoosh, sutra, stiva, aethersafta, streaming app |
-| [kavach](https://github.com/MacCracken/kavach) | 0.23.3 | Sandbox execution framework — 8 backends (process, gVisor, Firecracker, WASM, OCI, SGX, SEV, SY-AGNOS), strength scoring, policy engine, credential proxy | SY, daimon, stiva, AgnosAI, kiran |
-| [libro](https://github.com/MacCracken/libro) | 0.21.3 | Cryptographic audit chain — tamper-proof SHA-256 hash-linked event logging, severity levels, agent tracking | daimon, aegis, stiva, sigil, ark |
-| [bote](https://github.com/MacCracken/bote) | 0.21.3 | MCP core service — JSON-RPC 2.0, tool registry, schema validation, dispatch. Eliminates 23 duplicate MCP implementations | all consumer apps with MCP tools |
-| [szal](https://github.com/MacCracken/szal) | 0.21.3 | Workflow engine — step/flow execution with branching, retry, rollback, parallel stages | daimon, AgnosAI, sutra |
-| **murti** | **0.1.0** | **Core model runtime — registry, store, pull, 15 inference backends, GPU allocation. Extracted from Irfan** | **hoosh, Irfan** |
-| **stiva** | **0.1.0** | **OCI container runtime — image management, container lifecycle, overlay FS. Builds on kavach + majra** | **daimon, sutra** |
-| **nein** | **0.1.0** | **Programmatic nftables firewall — rule builder, NAT, network policies, container networking** | **stiva, daimon, aegis, sutra** |
-| **impetus** | **1.0.0** | **Physics engine — native rigid bodies, collision, constraints, spatial hash broadphase, particles** | **kiran, joshua, aethersafha, pavan** |
-| [abaco](https://github.com/MacCracken/abaco) | 0.22.4 | Basic math + DSP — expression parser, unit conversion, dB/amplitude, MIDI, panning, filters | abacus, dhvani, hisab |
-| **hisab** | **1.1.0** | **Higher math — linear algebra, calculus, geometry, numerical methods, spatial structures (BVH, k-d tree, octree, GJK/EPA), ODE solvers, FFT** | **all science crates, impetus, kiran, joshua, soorat, raasta** |
-| [selah](https://github.com/MacCracken/selah) | 0.24.3 | Screenshot capture, annotation, PII redaction — daimon API client, annotation canvas, MCP server | taswir, aethersafta, kiran (planned) |
-| **bhava** | **1.0.0** | **Emotion/personality engine — 30 modules: 15-trait personalities, PAD mood vectors, archetypes, sentiment, energy, circadian, flow, EQ, cultural display rules, ACT-R, preference learning. Foundation: jantu (creature instincts)** | **SY, joshua, agnosai, hoosh, kiran** |
-| **yukti** | **0.22.3** | **Device abstraction — USB, optical, block devices, udev hotplug, mount/eject** | **jalwa, file manager, aethersafha, argonaut** |
-| **phylax** | **0.22.3** | **Threat detection — YARA rules, entropy analysis, magic bytes, binary classification** | **daimon, aegis, t-ron** |
-| **soorat** | **0.24.3** | **GPU rendering engine — wgpu, 2D sprites, 3D PBR, shadows, animation, post-processing, terrain, fluids, compute particles. 273 tests** | **kiran, salai, joshua, aethersafha** |
-| **salai** | **0.1.0** | **Game editor — egui-based visual editor for kiran. Inspector, hierarchy, viewport, gizmos** | **kiran (consumer)** |
-| **muharrir** | **0.1.0** | **Shared editor primitives — undo/redo (libro), expression eval (abaco), hierarchy trees, property inspector, hardware detection (ai-hwaccel)** | **salai, rasa, tazama, shruti** |
-| **prakash** | **1.0.0** | **Optics/light simulation — ray optics, wave optics, spectral math, lens geometry, PBR math, atmosphere** | **soorat, kiran, ranga, bijli** |
-| **raasta** | **0.24.3** | **Navigation/pathfinding — 5 algorithms (A*, JPS, Theta*, HPA*, flow fields), 9 steering behaviors, RVO/ORCA, navmesh, crowd sim** | **kiran, joshua** |
-| **kana** | **0.1.0** | **Quantum mechanics — state vectors, Hilbert spaces, operators, entanglement, circuits** | **joshua, kiran** |
-| **bijli** | **0.24.3** | **Electromagnetism — fields, Maxwell, FDTD, Fresnel, scattering, Gaussian beams** | **kiran, joshua, prakash, soorat** |
-| **ushma** | **1.0.0** | **Thermodynamics — heat transfer, entropy, Otto/Diesel/Brayton cycles, thermal materials** | **kiran, joshua, kimiya, badal** |
-| **[pravash](https://github.com/MacCracken/pravash)** | **1.0.0** | **Fluid dynamics — SPH, Euler/Navier-Stokes, shallow water, coupling** | **kiran, joshua, soorat** |
+| Crate | Version | Description | Key Consumers |
+|-------|---------|-------------|---------------|
+| [hisab](https://github.com/MacCracken/hisab) | 1.1.0 | Higher math — linear algebra, calculus, geometry, spatial structures (BVH, k-d tree, octree, GJK/EPA), ODE solvers, FFT | all science crates, impetus, kiran, soorat, raasta |
+| [bhava](https://github.com/MacCracken/bhava) | 1.1.0 | Emotion/personality — 15-trait personalities, PAD mood vectors, archetypes, sentiment, circadian, EQ, micro-expressions | SY, joshua, agnosai, kiran |
+| [prakash](https://github.com/MacCracken/prakash) | 1.1.0 | Optics/light — ray optics, wave optics, spectral math, lens geometry, PBR, atmospheric scattering | soorat, kiran, tara |
+| [impetus](https://github.com/MacCracken/impetus) | 1.1.0 | Physics — 2D/3D rigid bodies, collision detection, constraints, spatial queries | kiran, joshua, pavan |
+| [ushma](https://github.com/MacCracken/ushma) | 1.1.0 | Thermodynamics — heat transfer, entropy, equations of state, thermal properties, cycles | kimiya, kiran, badal |
+| [pravash](https://github.com/MacCracken/pravash) | 1.1.0 | Fluid dynamics — SPH, Euler/Navier-Stokes, shallow water, buoyancy, drag, vortex | pavan, badal, kiran |
+| [kimiya](https://github.com/MacCracken/kimiya) | 1.0.0 | Chemistry — elements, molecules, reactions, kinetics, thermochemistry | khanij, tara |
+| [kavach](https://github.com/MacCracken/kavach) | 1.0.1 | Sandbox execution — 8 backends, strength scoring, policy engine, credential proxy | daimon, stiva, SY, kiran |
+| [stiva](https://github.com/MacCracken/stiva) | 1.0.0 | OCI container runtime — image management, container lifecycle, orchestration | daimon, sutra |
+| [bijli](https://github.com/MacCracken/bijli) | 1.0.0 | Electromagnetism — fields, Maxwell's equations, charge dynamics, EM waves | prakash, kiran |
+| [goonj](https://github.com/MacCracken/goonj) | 1.0.0 | Acoustics — sound propagation, room simulation, impulse response generation | dhvani, kiran, joshua |
+| [pavan](https://github.com/MacCracken/pavan) | 1.0.0 | Aerodynamics — atmosphere, airfoils, panel methods, VLM, compressible flow | kiran, joshua |
+| [dravya](https://github.com/MacCracken/dravya) | 1.0.0 | Material science — stress, strain, elasticity, fatigue, fracture, composites | impetus, kiran |
+| [badal](https://github.com/MacCracken/badal) | 1.0.0 | Weather/atmospheric modeling — weather simulation, atmospheric dynamics | kiran, joshua, pavan |
+| [khanij](https://github.com/MacCracken/khanij) | 1.0.0 | Geology/mineralogy — crystal structures, rock cycles, soil, mineral properties, geochemistry | kiran, joshua |
 
-### Physics & Simulation Crates
+## Registry — Published on crates.io (20 crates)
+
+| Crate | Version | Description | Key Consumers |
+|-------|---------|-------------|---------------|
+| [ai-hwaccel](https://github.com/MacCracken/ai-hwaccel) | 0.23.3 | Universal AI hardware accelerator detection, capability querying, workload planning | hoosh, daimon, kiran |
+| [tarang](https://github.com/MacCracken/tarang) | 0.21.3 | AI-native media framework — container parsing, audio/video decode, encode, mux, fingerprint | jalwa, tazama, shruti, aethersafta |
+| [ranga](https://github.com/MacCracken/ranga) | 0.24.3 | Core image processing — color spaces, blend modes, pixel buffers, filters, GPU compute | rasa, tazama, aethersafta |
+| [dhvani](https://github.com/MacCracken/dhvani) | 0.22.4 | Core audio engine — buffers, DSP, resampling, mixing, analysis, capture | shruti, jalwa, kiran, goonj |
+| [hoosh](https://github.com/MacCracken/hoosh) | 0.25.3 | AI inference gateway — 15 LLM providers, local model serving, token budget management (port 8088) | daimon, all consumer apps |
+| [aethersafta](https://github.com/MacCracken/aethersafta) | 0.25.3 | Real-time media compositing — scene graph, multi-source capture, HW encoding | aethersafha, tazama, SY |
+| [majra](https://github.com/MacCracken/majra) | 0.22.3 | Distributed queue & multiplex — pub/sub, priority queues, heartbeat, relay, IPC | daimon, stiva, AgnosAI, sutra |
+| [agnosai](https://github.com/MacCracken/agnosai) | 0.25.3 | Provider-agnostic AI orchestration — crews, task DAGs, tool execution | agnostic, daimon, joshua |
+| [libro](https://github.com/MacCracken/libro) | 0.25.3 | Cryptographic audit chain — tamper-proof hash-linked event logging | daimon, aegis, stiva |
+| [bote](https://github.com/MacCracken/bote) | 0.22.3 | MCP core service — JSON-RPC 2.0, tool registry, dispatch | daimon, all MCP tool providers |
+| [nein](https://github.com/MacCracken/nein) | 0.24.3 | Programmatic nftables firewall — network policy, NAT, port mapping | stiva, daimon, aegis |
+| [szal](https://github.com/MacCracken/szal) | 0.23.4 | Workflow engine — step/flow execution, branching, retry, rollback, parallel stages | daimon, sutra |
+| [muharrir](https://github.com/MacCracken/muharrir) | 0.23.5 | Shared editor primitives — text buffer, undo/redo, syntax highlighting | rasa, tazama, shruti, salai |
+| [yukti](https://github.com/MacCracken/yukti) | 0.25.3 | Device abstraction — USB, optical, block devices, udev hotplug, mount/eject | daimon, aethersafha, jalwa |
+| [phylax](https://github.com/MacCracken/phylax) | 0.22.3 | Threat detection — YARA rules, entropy analysis, magic bytes, ML classification | daimon, aegis |
+| [selah](https://github.com/MacCracken/selah) | 0.24.3 | Screenshot capture, annotation, PII redaction | taswir, aethersafta |
+| [raasta](https://github.com/MacCracken/raasta) | 0.26.3 | Navigation/pathfinding — A*, JPS, HPA*, navmesh, crowd simulation | kiran, joshua |
+| [soorat](https://github.com/MacCracken/soorat) | 0.24.3 | GPU rendering — wgpu, 2D/3D PBR, shadows, animation, post-processing | kiran, joshua |
+| [t-ron](https://github.com/MacCracken/t-ron) | 0.22.4 | MCP security monitor — tool call auditing, rate limiting, injection detection | daimon, bote |
+| [abaco](https://github.com/MacCracken/abaco) | 0.22.4 | Math engine — expression evaluation, unit conversion, numeric types | abacus, dhvani |
+
+## GitHub Release Only (internal to AGNOS)
+
+| Crate | Version | Description |
+|-------|---------|-------------|
+| [agnostik](https://github.com/MacCracken/agnostik) | 2026.3.26 | Shared types, error handling, and domain primitives for AGNOS |
+| [agnosys](https://github.com/MacCracken/agnosys) | 0.25.4 | Kernel interface — safe Rust bindings for Linux syscalls, Landlock, seccomp, udev, TPM |
+
+## Not Yet Published
+
+| Crate | Status | Description |
+|-------|--------|-------------|
+| [kiran](https://github.com/MacCracken/kiran) | In development (v0.4) | Game engine — ECS, system scheduling, scene hierarchy, audio, physics, scripting |
+| [murti](https://github.com/MacCracken/murti) | Scaffolded | Core model runtime — registry, store, pull, inference backends |
+| [kana](https://github.com/MacCracken/kana) | Scaffolded | Quantum mechanics — state vectors, operators, entanglement, circuits |
+| [salai](https://github.com/MacCracken/salai) | Scaffolded | Game editor — egui visual editor for kiran |
+| [jantu](https://github.com/MacCracken/jantu) | In progress | Ethology/creature behavior — instinct, survival, social dynamics, swarm |
+
+## Scaffolded (newly created)
+
+| Crate | Description |
+|-------|-------------|
+| [tara](https://github.com/MacCracken/tara) | Stellar astrophysics — star classification, evolution, nucleosynthesis, spectral analysis |
+| [falak](https://github.com/MacCracken/falak) | Orbital mechanics — Keplerian orbits, perturbations, transfers, celestial mechanics |
+| [jyotish](https://github.com/MacCracken/jyotish) | Astronomical computation — planetary positions, calendar systems, celestial events |
+| [joshua](https://github.com/MacCracken/joshua) | Game manager — AI NPCs, headless simulation, deterministic replay |
+| [daimon](https://github.com/MacCracken/daimon) | Agent orchestrator — HTTP API, supervisor, IPC, scheduler, federation (port 8090) |
+
+---
+
+## Science Stack
 
 Built on hisab for math, each owning a specific domain of physical simulation:
 
-| Crate | Name Origin | Domain | Foundation | Status |
-|-------|-------------|--------|------------|--------|
-| **[prakash](https://github.com/MacCracken/prakash)** | Sanskrit: प्रकाश (light) | Optics — ray tracing, wave optics, spectral math, PBR | hisab (geo, calc), ranga (rendering) | **Published (0.23.3)** |
-| **[kana](https://github.com/MacCracken/kana)** | Sanskrit: कण (particle) | Quantum mechanics — state vectors, Hilbert spaces, operators, entanglement, circuits | hisab (num: complex linear algebra, tensor products) | **Scaffolded (0.1.0)** |
-| **[bijli](https://github.com/MacCracken/bijli)** | Hindi: बिजली (electricity) | Electromagnetism — fields, Maxwell, FDTD, Fresnel, scattering, Gaussian beams | hisab, impetus | **0.24.3** |
-| **[pravash](https://github.com/MacCracken/pravash)** | Sanskrit: प्रवाह (flow) | Fluid dynamics — SPH, Euler/Navier-Stokes, shallow water, coupling | hisab (DVec3, ODE) | **1.0.0** |
-| **[ushma](https://github.com/MacCracken/ushma)** | Sanskrit: ऊष्मा (heat) | Thermodynamics — heat transfer, entropy, equations of state, thermal materials | hisab (calc: ODE/PDE), impetus (body contacts) | **1.0.0** |
-| **[goonj](https://github.com/MacCracken/goonj)** | Hindi: गूँज (echo) | Acoustics — room simulation, ray tracing, impulse responses, diffraction | hisab (geo: BVH, Vec3) | **0.2.0** |
-| **[pavan](https://github.com/MacCracken/pavan)** | Sanskrit: पवन (wind) | Aerodynamics — ISA atmosphere, airfoils, lift/drag, boundary layers | hisab (calc) | **0.1.0** |
-| **[dravya](https://github.com/MacCracken/dravya)** | Sanskrit: द्रव्य (substance) | Material science — stress/strain tensors, elasticity, yield, beams, fatigue | hisab (num: linear algebra) | **0.1.0** |
-| **[kimiya](https://github.com/MacCracken/kimiya)** | Arabic: كيمياء (alchemy) | Chemistry — 36 elements, molecules, reactions, kinetics, gas laws, thermochemistry | hisab (calc: Newton-Raphson, ODE) | **1.0.0** |
-| **[badal](https://github.com/MacCracken/badal)** | Hindi: बादल (cloud) | Weather/atmospheric — ISA model, moisture, clouds, wind, stability | hisab, ushma (thermo), pravash (fluids) | **0.1.0** |
-
-### Earth & Natural Science Crates
-
-| Crate | Name Origin | Domain | Foundation | Status |
-|-------|-------------|--------|------------|--------|
-| **[khanij](https://github.com/MacCracken/khanij)** | Sanskrit: खनिज (mineral) | Geology/mineralogy — crystal structures, Mohs hardness, rock cycle, soil, ore deposits, erosion | hisab, kimiya (composition), dravya (properties) | **Planned** |
-| **[jantu](https://github.com/MacCracken/jantu)** | Sanskrit: जन्तु (creature) | Ethology/creature behavior — instinct, survival, social behavior, swarm intelligence, pack dynamics | hisab, bhava (foundation layer), raasta (flocking/navigation) | **Planned** |
-
-### Celestial Science Crates (bhava v2/v3 prerequisites)
-
-| Crate | Name Origin | Domain | Foundation | Status |
-|-------|-------------|--------|------------|--------|
-| **[falak](https://github.com/MacCracken/falak)** | Arabic/Persian: فلک (celestial sphere) | Orbital mechanics — N-body, Keplerian orbits, transfers, tidal forces | hisab (calc: RK4, ODE) | **Planned** |
-| **[jyotish](https://github.com/MacCracken/jyotish)** | Sanskrit: ज्योतिष (light/astrology) | Computational astrology — zodiac, planets, houses, aspects, nakshatras | hisab (trig), falak (positions) | **Planned** |
-| **[tara](https://github.com/MacCracken/tara)** | Sanskrit: तारा (star) | Stellar catalog — fixed stars, coordinate transforms, precession, constellations, galactic structure | hisab (rotation matrices) | **Planned** |
-
-Each is its own flat crate. impetus stays focused on rigid bodies, colliders, constraints, and particles at the classical macro scale. The domain crates share hisab's math but solve fundamentally different equations (PDEs on grids vs ODEs per body).
-
----
-
-## Status Summary
-
-| Crate | Status | Notes |
-|-------|--------|-------|
-| **majra** | Released (0.21.3) | Replaced planned "sluice" crate. Pub/sub, priority queues, DAG scheduling, heartbeat FSM, relay, IPC, rate limiting, SQLite persistence. Benchmarked, proptested |
-| **kavach** | Released (0.23.3) | 8 sandbox backends, strength scoring (0-100), policy engine, credential proxy, lifecycle management, externalization gate. WASM feature fixed. |
-| **nein** | Scaffolded (0.1.0) | nftables rule builder, NAT, network policies, container bridge builders. 24 tests. [README](https://github.com/MacCracken/nein) |
-| **stiva** | Scaffolded (0.1.0) | OCI container runtime. Builds on kavach + majra. 17 tests. [Spec](stiva.md) |
-| **murti** | Scaffolded (0.1.0) | Core model runtime, extracted from Irfan. 21 tests. [Spec](murti.md) |
-| **impetus** | **1.0.0** | Physics engine — rigid bodies, collision, constraints, particles |
-| **abaco** | Scaffolded (0.1.0) | Basic math + unit conversion library. 61 tests |
-| **t-ron** | Scaffolded (0.1.0) | MCP security monitor, bote middleware. [Spec](t-ron.md) |
-| **soorat** | **0.24.3** | GPU rendering — 2D/3D PBR, shadows, animation, post-processing, terrain, fluids. 273 tests |
-| **salai** | Scaffolded (0.1.0) | Game editor for kiran — egui, inspector, hierarchy, viewport. 25 tests |
-| **raasta** | **0.24.3** | Navigation — 5 pathfinding algorithms, 9 steering behaviors, RVO/ORCA, navmesh, crowd sim. 242 tests |
-| **kana** | Scaffolded (0.1.0) | Quantum mechanics — state vectors, operators, entanglement, circuits. Builds on hisab |
-| **bijli** | **0.24.3** | Electromagnetism — Maxwell, FDTD, Fresnel, scattering. Builds on hisab + impetus |
-| **ushma** | **1.0.0** | Thermodynamics — heat transfer, entropy, cycles (Otto/Diesel/Brayton). 203 tests |
-| **kimiya** | **1.0.0** | Chemistry — 36 elements, electrochemistry, thermochemical data. 263 tests |
-| **pravash** | **1.0.0** | Fluid dynamics — SPH, Navier-Stokes, shallow water, coupling. 185+ tests |
-| **goonj** | **0.2.0** | Acoustics — room simulation, ray tracing, impulse responses, BVH. 181 tests |
-| **pavan** | 0.1.0 | Aerodynamics — ISA atmosphere, NACA airfoils, lift/drag, boundary layers. 57 tests |
-| **dravya** | 0.1.0 | Material science — stress/strain tensors, elasticity, yield, beams, fatigue. 43 tests |
-| **badal** | 0.1.0 | Weather/atmospheric — ISA model, moisture, clouds, wind, stability. 59 tests |
-
-See [k8s-roadmap.md](../k8s-roadmap.md) for how stiva + nein + majra + kavach compose into a k8s-equivalent orchestration platform.
-
----
-
-## Ranga — Shared Image Processing Core
-
-| Field | Value |
-|-------|-------|
-| Status | **Scaffolding** |
-| Priority | Infrastructure — enables dedup across rasa, tazama, aethersafta |
-| Repository | `MacCracken/ranga` |
-
-**Why**: Rasa, tazama, and aethersafta all implement overlapping image processing: color space conversions (BT.601 in 3 different implementations), alpha blending (Porter-Duff in 2 implementations), pixel buffer types (3 incompatible types), and color correction (histogram analysis duplicated). Extracting a shared crate eliminates ~2000 lines of duplicate code and ensures consistent behavior.
-
-**What gets extracted**:
-- Color math: sRGB<>linear, HSL, BT.601/709 YUV<>RGB, ICC profiles (from rasa-core)
-- Blend modes: 12 Porter-Duff modes (from rasa-engine)
-- Pixel buffers: unified RGBA/RGB/YUV buffer type with format conversion (replaces 3 types)
-- CPU filters: brightness, contrast, saturation, levels, curves (from rasa-engine)
-- GPU compute: wgpu abstraction for portable Vulkan/Metal shaders (from rasa-gpu)
-- SIMD: SSE2/AVX2/NEON alpha blending (from aethersafta)
-
-**Consumers after extraction**:
-- **rasa** -> drops rasa-core color math, uses `ranga::color`, `ranga::blend`, `ranga::filter`
-- **tazama** -> drops manual BT.601, uses `ranga::convert`, `ranga::color_correct`
-- **aethersafta** -> drops custom alpha blend + color conversion, uses `ranga::blend`, `ranga::convert`
+| Crate | Etymology | Domain | Status |
+|-------|-----------|--------|--------|
+| [prakash](https://github.com/MacCracken/prakash) | Sanskrit: प्रकाश (light) | Optics — ray tracing, wave optics, spectral math, PBR | **1.1.0** |
+| [bijli](https://github.com/MacCracken/bijli) | Hindi: बिजली (electricity) | Electromagnetism — fields, Maxwell, FDTD, Fresnel, scattering | **1.0.0** |
+| [ushma](https://github.com/MacCracken/ushma) | Sanskrit: ऊष्मा (heat) | Thermodynamics — heat transfer, entropy, equations of state | **1.1.0** |
+| [pravash](https://github.com/MacCracken/pravash) | Sanskrit: प्रवाह (flow) | Fluid dynamics — SPH, Navier-Stokes, shallow water | **1.1.0** |
+| [kimiya](https://github.com/MacCracken/kimiya) | Arabic: كيمياء (alchemy) | Chemistry — elements, reactions, kinetics, thermochemistry | **1.0.0** |
+| [goonj](https://github.com/MacCracken/goonj) | Hindi: गूँज (echo) | Acoustics — room simulation, impulse responses, diffraction | **1.0.0** |
+| [pavan](https://github.com/MacCracken/pavan) | Sanskrit: पवन (wind) | Aerodynamics — atmosphere, airfoils, panel methods, compressible flow | **1.0.0** |
+| [dravya](https://github.com/MacCracken/dravya) | Sanskrit: द्रव्य (substance) | Material science — stress/strain, elasticity, fatigue, composites | **1.0.0** |
+| [badal](https://github.com/MacCracken/badal) | Hindi: बादल (cloud) | Weather/atmospheric — weather simulation, atmospheric dynamics | **1.0.0** |
+| [khanij](https://github.com/MacCracken/khanij) | Hindi/Sanskrit: खनिज (mineral) | Geology/mineralogy — crystals, rocks, soil, geochemistry | **1.0.0** |
+| [kana](https://github.com/MacCracken/kana) | Sanskrit: कण (particle) | Quantum mechanics — state vectors, operators, entanglement | Scaffolded |
+| [tara](https://github.com/MacCracken/tara) | Sanskrit: तारा (star) | Stellar astrophysics — classification, evolution, nucleosynthesis | Scaffolded |
+| [falak](https://github.com/MacCracken/falak) | Arabic/Persian: فلک (sky) | Orbital mechanics — Keplerian orbits, transfers, perturbations | Scaffolded |
+| [jyotish](https://github.com/MacCracken/jyotish) | Sanskrit: ज्योतिष (light) | Astronomical computation — planetary positions, calendar systems | Scaffolded |
+| [jantu](https://github.com/MacCracken/jantu) | Sanskrit: जन्तु (creature) | Ethology/creature behavior — instinct, survival, swarm intelligence | In progress |
 
 ---
 
@@ -144,4 +118,10 @@ Signs it's time to extract:
 
 ---
 
-*Last Updated: 2026-03-24*
+See [k8s-roadmap.md](../k8s-roadmap.md) for how stiva + nein + majra + kavach compose into a k8s-equivalent orchestration platform.
+
+See [monolith-extraction.md](../monolith-extraction.md) for the plan to extract daimon, hoosh, agnoshi, and aethersafha from the monolithic userland workspace.
+
+---
+
+*Last Updated: 2026-03-25*
