@@ -426,11 +426,13 @@ Visual fine-tuning and dataset management. GUI on existing Irfan/finetune APIs.
 
 See **[shared-crates.md](shared-crates.md)** for the full ecosystem crate registry, version table, extraction status, and ranga details.
 
-Published: hisab (0.24.3), abaco (0.22.4), **bhava (1.0.0)**, yukti (0.22.3), phylax (0.22.3), prakash (0.24.3), impetus (0.23.3), ai-hwaccel (0.23.3), kavach (0.23.3), dhvani (0.22.4), t-ron (0.22.3), kiran (0.23.3), pravash (0.24.3), **selah (0.24.3)**.
-Released apps: **taswir** (2026.3.24) — screenshot annotation GUI/CLI, built on selah.
-Scaffolded: murti (0.1.0), stiva (0.1.0), nein (0.1.0), raasta (0.1.0), soorat (0.1.0), salai (0.1.0), agnosys (0.1.0), muharrir (scaffolding), kana (0.1.0), bijli (0.1.0), ushma (0.1.0).
+**1.0 stable** (7): hisab (1.1.0), bhava (1.0.0), prakash (1.0.0), ushma (1.0.0), impetus (1.0.0), pravash (1.0.0), kimiya (1.0.0).
+**Published**: abaco (0.22.4), yukti (0.25.3), phylax (0.22.3), ai-hwaccel (0.23.3), kavach (0.23.3), dhvani (0.22.4), t-ron (0.22.3), kiran (0.23.3), selah (0.24.3), bijli (0.24.3), raasta (0.24.3), soorat (0.24.3), agnosai (0.25.3), goonj (0.2.0).
+**Released apps**: taswir (2026.3.24).
+**Scaffolded**: murti (0.1.0), stiva (0.1.0), nein (0.1.0), salai (0.1.0), agnosys (0.25.4), muharrir (0.1.0), kana (0.1.0), pavan (0.1.0), dravya (0.1.0), badal (0.1.0).
+**Planned**: falak (orbital), jyotish (astrology), tara (stellar), jantu (creature behavior), khanij (mineralogy).
 
-Physics & simulation crates: prakash (optics), kana (quantum), bijli (electromagnetism), ushma (thermodynamics), pravash (fluid dynamics). See [shared-crates.md](shared-crates.md).
+Science stack: prakash (optics), kana (quantum), bijli (EM), ushma (thermo), pravash (fluids), kimiya (chemistry), goonj (acoustics), pavan (aero), dravya (materials), badal (weather). Planned: falak, khanij, jantu. See [shared-crates.md](shared-crates.md).
 
 See **[stiva.md](stiva.md)** for the full container runtime design, security analysis, and composable isolation architecture.
 

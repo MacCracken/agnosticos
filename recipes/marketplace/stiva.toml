@@ -9,7 +9,7 @@
 
 [package]
 name = "stiva"
-version = "0.1.0"
+version = "1.0.0"
 description = "Stiva — OCI container runtime"
 license = "GPL-3.0"
 groups = ["library", "container", "oci", "rust"]

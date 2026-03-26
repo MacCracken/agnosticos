@@ -1,0 +1,47 @@
+# Pavan — Aerodynamics engine for AGNOS
+# ISA atmosphere, NACA airfoils, lift/drag, boundary layers, wind profiles.
+#
+# Name: Pavan (Sanskrit: wind, breeze)
+# Status: v1.0.0 stable.
+
+[package]
+name = "pavan"
+version = "1.0.0"
+description = "Pavan — Aerodynamics engine"
+license = "GPL-3.0"
+groups = ["library", "science", "rust"]
+release = 1
+arch = "any"
+
+[source]
+github_release = "MacCracken/pavan"
+release_asset = "source"
+
+[depends]
+runtime = []
+build = ["rust"]
+
+[marketplace]
+category = "library"
+runtime = "rust-crate"
+publisher = "AGNOS"
+tags = ["aerodynamics", "airfoil", "lift", "drag", "wind", "atmosphere", "rust"]
+min_agnos_version = "2026.3.25"
+
+[marketplace.sandbox]
+seccomp_mode = "basic"
+network_access = false
+
+[build]
+make = "cargo build --release"
+check = "cargo test --all-features"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+mkdir -p $PKG/usr/lib/pavan
+cp -r src $PKG/usr/lib/pavan/
+cp Cargo.toml $PKG/usr/lib/pavan/
+cp VERSION $PKG/usr/lib/pavan/
+"""

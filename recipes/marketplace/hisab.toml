@@ -9,7 +9,7 @@
 
 [package]
 name = "hisab"
-version = "1.2.0"
+version = "1.1.0"
 description = "Hisab — Higher mathematics library"
 license = "GPL-3.0"
 groups = ["library", "math", "rust"]

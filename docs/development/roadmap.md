@@ -837,6 +837,74 @@ This is why AGNOS builds every crate. Each one removes a quantitative burden fro
 
 ---
 
+## AGNOS Foundation — Non-Profit Organization
+
+**Goal**: Establish a non-profit organization (NPO) to steward AGNOS, its science crate ecosystem, and ongoing research. Not a commercial venture — a research foundation funded by donations, grants, and community support.
+
+**Why NPO, not commercial**:
+- AGNOS is GPL-3.0. The code belongs to the community.
+- The science crates (hisab, prakash, bijli, pravash, ushma, kimiya, goonj, pavan, dravya, badal, bhava, raasta, impetus) are computational infrastructure that benefits everyone — researchers, educators, game developers, engineers.
+- Consumer projects (SY, Agnostic) have their own commercial paths (AGPL + commercial dual-license). The OS and science stack stay open.
+- Donations align incentives: the community funds what the community uses. No venture capital, no exit pressure, no enshittification.
+
+### Structure
+
+| Element | Details |
+|---------|---------|
+| **Legal entity** | 501(c)(3) non-profit (US) or equivalent |
+| **Name** | AGNOS Foundation (or "Agnostikos Foundation") |
+| **Mission** | Advance open-source AI-native operating systems and computational science libraries |
+| **Scope** | AGNOS OS, all shared crates, science stack, community infrastructure (bazaar), documentation, education |
+| **Funding** | Donations (GitHub Sponsors, Open Collective, direct), grants (NSF, DARPA, private research foundations), corporate sponsorships |
+| **Governance** | Small board (founder + 2-4 community members). Technical decisions by maintainers. Financial transparency (public reports) |
+
+### Revenue Streams (all non-commercial)
+
+| Source | Description |
+|--------|-------------|
+| **GitHub Sponsors** | Individual and corporate monthly sponsorships |
+| **Open Collective** | Transparent donation platform with expense tracking |
+| **Research grants** | NSF, DARPA, EU Horizon — the science crates qualify as computational research infrastructure |
+| **Academic partnerships** | Universities using AGNOS crates in coursework/research → institutional support |
+| **Conference talks** | Speaking fees donated back to foundation |
+| **Bounties** | Community-funded bounties for specific features/crates |
+
+### What the Foundation Funds
+
+| Area | Examples |
+|------|---------|
+| **Infrastructure** | CI/CD runners, crates.io publishing, documentation hosting |
+| **Research** | External research step (P(-1) step 5) — fund domain experts to review science crate accuracy |
+| **Hardware** | Test hardware (Pocket Lab, Raspberry Pi fleet, GPU test rigs) for Phase 13F/17D |
+| **Community** | Documentation, video tutorials, conference attendance, beta testing programs |
+| **Maintainer support** | Stipends for active maintainers (optional — founder not taking any) |
+
+### What Stays Commercial (separate from foundation)
+
+| Project | Model |
+|---------|-------|
+| **SecureYeoman** | AGPL-3.0 + commercial license (existing) |
+| **Agnostic** | AGPL-3.0 + commercial license |
+| **Consumer apps** (BullShift, Delta, Aequi, etc.) | Individual project licensing |
+
+The foundation owns the commons. Commercial projects build on top. Clean separation.
+
+### Timeline
+
+| # | Item | Status |
+|---|------|--------|
+| 1 | Choose legal structure (501c3 vs fiscal sponsor) | Not started |
+| 2 | File incorporation papers | Not started |
+| 3 | Set up GitHub Sponsors + Open Collective | Not started |
+| 4 | Write mission statement and bylaws | Not started |
+| 5 | Recruit initial board members (2-4 community members) | Not started |
+| 6 | Apply for research grants (NSF, private foundations) | Not started |
+| 7 | Public announcement with donation page | Not started |
+
+**Priority**: After beta. The code speaks first. The organization formalizes what the code already proved.
+
+---
+
 ## Phase 20 — AGNOS Kernel (Post-v1.0, Exploratory)
 
 **Codename**: agnostic-kernel — a Rust-native microkernel purpose-built for AI agent workloads.
