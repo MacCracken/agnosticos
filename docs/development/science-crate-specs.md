@@ -167,3 +167,45 @@
 
 **Key tests**: coordinate roundtrips, Sirius ecliptic lon ≈ 104°, 72yr precession ≈ 1°, Pogson 5 mag = 100x
 **Consumers**: jyotish (fixed star positions), bhava v2/v3 (star archetypes, galactic scales), joshua (star maps), soorat (star rendering)
+
+---
+
+## 9. naad (Sanskrit: primordial sound/vibration) — Synthesis
+
+**Domain**: Oscillators, filters, envelopes, modulation, wavetables, effects, signal generation
+
+**Modules**:
+- `error.rs` — NaadError: InvalidFrequency, InvalidSampleRate, InvalidParameter, BufferOverflow, ComputationError
+- `oscillator.rs` — Waveform enum (Sine, Saw, Square, Triangle, Pulse, Noise/White/Pink/Brown). Oscillator { frequency, phase, sample_rate }. Band-limited variants (PolyBLEP for saw/square to avoid aliasing). phase_increment = freq/sample_rate, next_sample(), fill_buffer(&mut [f32])
+- `wavetable.rs` — Wavetable { samples: Vec<f32> }, WavetableOscillator with linear/cubic interpolation. from_harmonics() constructor. Morphing between tables (crossfade position 0.0–1.0)
+- `envelope.rs` — ADSR { attack, decay, sustain, release } (times in seconds, sustain 0.0–1.0). EnvelopeState enum (Idle/Attack/Decay/Sustain/Release). gate_on(), gate_off(), next_value(). Linear + exponential curves. Multi-stage envelope (arbitrary number of segments)
+- `filter.rs` — FilterType enum (LowPass, HighPass, BandPass, Notch, AllPass, LowShelf, HighShelf, Peak). BiquadFilter from Audio EQ Cookbook (Robert Bristow-Johnson). coefficients from frequency + Q + gain. process_sample(). Resonance (Q 0.1–30.0). StateVariableFilter (simultaneous LP/HP/BP/Notch outputs)
+- `modulation.rs` — LFO (low-frequency oscillator, reuses Oscillator with sub-20Hz range). ModMatrix { sources, destinations, amounts }. FM synthesis: carrier + modulator with index. Ring modulation. AM synthesis
+- `delay.rs` — DelayLine { buffer, write_pos, delay_samples }. Fractional delay (linear interpolation). Comb filter (feedforward + feedback). Allpass delay
+- `effects.rs` — Chorus (multi-tap modulated delay), Flanger (short modulated delay with feedback), Phaser (cascade of allpass filters), Distortion (soft clip tanh, hard clip, wavefold). WetDry mix 0.0–1.0
+- `noise.rs` — white_noise (uniform → gaussian via Box-Muller), pink_noise (Voss-McCartney algorithm), brown_noise (integrated white). Noise density: pink = -3dB/octave, brown = -6dB/octave
+- `tuning.rs` — equal_temperament_freq(note, a4_hz=440.0) = a4 * 2^((note-69)/12). midi_to_freq, freq_to_midi. Cent calculations. Custom tuning tables (just intonation, Pythagorean, meantone)
+
+**Key tests**: sine at 440Hz produces correct period (sample_rate/440 samples), ADSR sustain level holds steady, biquad LP at cutoff = -3dB, PolyBLEP saw has no aliasing above Nyquist, equal temperament A4=440 C4≈261.63 E4≈329.63, pink noise slope ≈ -3dB/octave over 4+ octaves
+**Consumers**: dhvani (synthesis engine, instrument voices, effects chain), svara (formant/vocal synthesis foundation)
+
+---
+
+## 10. svara (Sanskrit: voice/tone/musical note) — Formant & Vocal Synthesis
+
+**Domain**: Vocal tract modeling, formant synthesis, phoneme generation, prosody, speech production
+
+**Depends on**: naad (oscillators for glottal source, filters for vocal tract resonances, envelopes for articulation)
+
+**Modules**:
+- `error.rs` — SvaraError: InvalidFormant, InvalidPhoneme, InvalidPitch, InvalidDuration, ArticulationFailed, ComputationError
+- `glottal.rs` — GlottalSource using naad oscillators. Rosenberg glottal pulse model. LF model (Liljencrants-Fant): open phase + return phase + closed phase. Parameters: fundamental frequency (f0), open quotient (0.4–0.7), speed quotient, spectral tilt. Jitter (f0 perturbation ±1–2%) and shimmer (amplitude perturbation) for naturalness. Breathiness control (mix glottal pulse with naad noise)
+- `formant.rs` — Formant { frequency, bandwidth, amplitude }. FormantFilter (cascade of naad BiquadFilters tuned to formant frequencies). VowelTarget with F1–F5 values. Presets from Peterson & Barney (1952): /a/ F1=730 F2=1090 F3=2440, /i/ F1=270 F2=2290 F3=3010, /u/ F1=300 F2=870 F3=2240, /e/ F1=530 F2=1840 F3=2480, /o/ F1=570 F2=840 F3=2410. Formant transitions (interpolate between targets over time)
+- `tract.rs` — VocalTract { formants: Vec<Formant>, nasal_coupling, lip_radiation }. Kelly-Lochbaum tube model (area function → reflection coefficients). Tract sections (pharynx, oral, nasal). Lip radiation filter (first-order high-shelf via naad). Nasal coupling with anti-formant (nasal zero). synthesize(glottal_source, duration) → Vec<f32>
+- `phoneme.rs` — Phoneme enum (IPA subset: 24 consonants + 15 vowels + diphthongs, covers English + major world languages). PhonemeClass enum (Plosive, Fricative, Nasal, Approximant, Vowel, Diphthong). Articulation parameters per phoneme: voicing, place, manner, formant targets, duration range. Consonant synthesis: fricatives (filtered naad noise), plosives (burst + aspiration), nasals (nasal tract coupling), approximants (formant glide)
+- `prosody.rs` — ProsodyContour { f0_points, duration_points, amplitude_points }. Intonation patterns: declarative (falling), interrogative (rising), continuation (rise-fall). Stress markers (primary, secondary, unstressed) → f0 boost + duration stretch + amplitude increase. Speaking rate (phonemes/sec, default ~12). Pause insertion at phrase boundaries
+- `voice.rs` — VoiceProfile { base_f0, f0_range, formant_scale, breathiness, vibrato_rate, vibrato_depth, jitter, shimmer }. Presets: male (f0=120Hz, formant_scale=1.0), female (f0=220Hz, formant_scale=1.17), child (f0=300Hz, formant_scale=1.3). Vibrato via naad LFO modulating f0 (rate ~5Hz, depth ~±5%)
+- `sequence.rs` — PhonemeSequence (ordered list of Phoneme + duration + prosody). Coarticulation: formant targets blend across phoneme boundaries (50ms transition windows). DiPhone { left, right, transition }. render_sequence(voice, phonemes, prosody) → Vec<f32>. Timing: each phoneme gets base duration modified by speaking rate and stress
+
+**Key tests**: male /a/ F1 peak within 5% of 730Hz (spectral analysis of output), glottal pulse period at 120Hz = 8.33ms, vowel formant transitions smooth (no clicks at boundaries), female voice F1 values scale by ~1.17x, jitter/shimmer produce non-periodic but stable output, phoneme sequence roundtrip (known input → expected spectral shape)
+**Consumers**: dhvani (text-to-speech pipeline, agent voice output, personality-shaped speech via bhava prosody parameters)

@@ -101,7 +101,9 @@ When an AGNOS crate wraps an external library, **depend on the AGNOS crate, not 
 | Rendering (wgpu, shaders, PBR) | `soorat` | Custom draw calls, inline shaders |
 | Optics / light physics | `prakash` | Inline Fresnel, hardcoded color temp |
 | Image processing | `ranga` | Manual color conversion |
-| Audio pipeline | `dhvani` (uses abaco::dsp) | Internal DSP reimplementation |
+| Synthesis (oscillators, filters, envelopes) | `naad` | Inline oscillators, custom DSP primitives |
+| Formant / vocal synthesis | `svara` (uses naad) | Inline vocal tract, custom phoneme tables |
+| Audio pipeline | `dhvani` (uses naad, svara, abaco::dsp) | Internal DSP reimplementation |
 | Device abstraction | `yukti` | Direct udev/sysfs |
 | LLM inference | `hoosh` (client) | Direct provider API calls |
 | Queue/pubsub | `majra` | Custom channel implementations |
