@@ -7,7 +7,7 @@ groups = ["desktop"]
 
 [source]
 url = "https://pwmt.org/projects/girara/download/girara-0.4.5.tar.xz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "6b7f7993f82796854d5036572b879ffaaf7e0b619d12abdb318ce14757bdda91"
 patches = []
 
 [depends]

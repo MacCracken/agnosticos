@@ -7,7 +7,7 @@ groups = ["desktop"]
 
 [source]
 url = "https://www.sqlite.org/2025/sqlite-autoconf-3490100.tar.gz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "106642d8ccb36c5f7323b64e4152e9b719f7c0215acf5bfeac3d5e7f97b59254"
 patches = []
 
 [depends]

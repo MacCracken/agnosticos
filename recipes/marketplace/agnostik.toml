@@ -1,0 +1,50 @@
+# Agnostik — shared types and domain primitives for AGNOS
+# Core type vocabulary: agent identity, sandbox config, security policies,
+# telemetry, LLM types, audit chains, and error handling.
+#
+# Name: Agnostik (agnostic — OS-agnostic shared types)
+# Lib: agnostik = "2026.3.26" in Cargo.toml
+#
+# Status: Released — v2026.3.26.
+
+[package]
+name = "agnostik"
+version = "2026.3.26"
+description = "Agnostik — shared types and domain primitives for AGNOS"
+license = "GPL-3.0"
+groups = ["library", "types", "rust"]
+release = 1
+arch = "any"
+
+[source]
+github_release = "MacCracken/agnostik"
+release_asset = "source"
+
+[depends]
+runtime = ["glibc"]
+build = ["rust"]
+
+[marketplace]
+category = "library"
+runtime = "rust-crate"
+publisher = "AGNOS"
+tags = ["types", "agent", "sandbox", "security", "telemetry", "audit", "llm", "rust"]
+min_agnos_version = "2026.3.22"
+
+[marketplace.sandbox]
+seccomp_mode = "basic"
+network_access = false
+
+[build]
+make = "cargo build --release --all-features"
+check = "cargo test --all-features"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+mkdir -p $PKG/usr/lib/agnostik
+cp -r src $PKG/usr/lib/agnostik/
+cp Cargo.toml $PKG/usr/lib/agnostik/
+cp VERSION $PKG/usr/lib/agnostik/
+"""

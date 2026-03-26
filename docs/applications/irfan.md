@@ -1,6 +1,6 @@
-# Synapse
+# Irfan
 
-> **Synapse** (Greek: connection) — LLM management and training tool
+> **Irfan** (Persian: deep knowledge) — LLM management and training tool (formerly Synapse)
 
 | Field | Value |
 |-------|-------|

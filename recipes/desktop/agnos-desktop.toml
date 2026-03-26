@@ -9,7 +9,7 @@
 
 [package]
 name = "agnos-desktop"
-version = "2026.3.14"
+version = "2026.3.25"
 description = "AGNOS Desktop Environment (aethersafha compositor + full desktop stack)"
 license = "GPL-3.0"
 groups = ["desktop", "meta"]
@@ -21,9 +21,20 @@ arch = "x86_64"
 local = true
 
 [depends]
-# Core desktop — Wayland, compositor, rendering
 runtime = [
-    # Wayland
+    # X11 protocol (for XWayland, GTK3, libva)
+    "xorgproto",
+    "xcb-proto",
+    "libxau",
+    "libxdmcp",
+    "libxcb",
+    "libx11",
+    "libxext",
+    "libxrender",
+    "libxfixes",
+    "libxrandr",
+    "libxi",
+    # Wayland + compositor
     "wayland",
     "wayland-protocols",
     "wlroots",
@@ -43,34 +54,94 @@ runtime = [
     "freetype",
     "gdk-pixbuf",
     "graphene",
+    "librsvg",
+    "libxml2",
+    "icu",
     # Input
     "libinput",
     "libevdev",
     "mtdev",
     # Toolkit
     "glib",
+    "pcre2",
+    "gtk3",
     "gtk4",
+    "atk",
     "gobject-introspection",
+    "json-glib",
+    "libsass",
+    "sassc",
     # Audio
     "alsa-lib",
     "alsa-utils",
     "pipewire",
     "wireplumber",
-    # Media
+    # Media codecs
+    "ffmpeg",
+    "libass",
+    "libva",
+    "libplacebo",
+    "glslang",
+    "lcms2",
+    "libde265",
+    "x265",
+    "libheif",
+    "libogg",
+    "libvorbis",
+    "flac",
+    "libsndfile",
     "gstreamer",
     "gst-plugins-base",
     "gst-plugins-good",
     # Fonts
     "noto-fonts",
+    "libjpeg-turbo",
+    "libtiff",
     # Session
     "elogind",
+    "polkit",
     "dbus",
-    # Misc
-    "fribidi",
+    "libnotify",
+    # Document support
+    "poppler",
+    "sqlite",
+    "girara",
+    "djvulibre",
+    "libspectre",
+    # Terminal/shell deps
+    "scdoc",
+    "tllist",
+    "fcft",
+    "utf8proc",
+    "wl-clipboard",
+    "xxhash",
+    "simde",
+    "libusb",
+    # System
     "duktape",
-    "flac",
+    "lua",
+    "upower",
+    "udisks",
+    "libatasmart",
     "libblockdev",
+    "eudev",
+    # Desktop applications
+    "foot",
+    "fuzzel",
+    "mako",
+    "cliphist",
+    "imv",
+    "yazi",
+    "helix",
+    "mpv",
+    "zathura",
+    "zathura-pdf-poppler",
+    "zathura-djvu",
+    "zathura-ps",
+    "greetd",
+    "tuigreet",
 ]
+build = []
 
 [build]
 # Meta-package — nothing to build

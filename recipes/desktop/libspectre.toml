@@ -7,7 +7,7 @@ groups = ["desktop"]
 
 [source]
 url = "https://libspectre.freedesktop.org/releases/libspectre-0.2.12.tar.gz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "55a7517cd3572bd2565df0cf450944a04d5273b279ebb369a895391957f0f960"
 patches = []
 
 [depends]

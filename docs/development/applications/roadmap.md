@@ -426,13 +426,14 @@ Visual fine-tuning and dataset management. GUI on existing Irfan/finetune APIs.
 
 See **[shared-crates.md](shared-crates.md)** for the full ecosystem crate registry, version table, extraction status, and ranga details.
 
-**1.0 stable** (7): hisab (1.1.0), bhava (1.0.0), prakash (1.0.0), ushma (1.0.0), impetus (1.0.0), pravash (1.0.0), kimiya (1.0.0).
-**Published**: abaco (0.22.4), yukti (0.25.3), phylax (0.22.3), ai-hwaccel (0.23.3), kavach (0.23.3), dhvani (0.22.4), t-ron (0.22.3), kiran (0.23.3), selah (0.24.3), bijli (0.24.3), raasta (0.24.3), soorat (0.24.3), agnosai (0.25.3), goonj (0.2.0).
-**Released apps**: taswir (2026.3.24).
-**Scaffolded**: murti (0.1.0), stiva (0.1.0), nein (0.1.0), salai (0.1.0), agnosys (0.25.4), muharrir (0.1.0), kana (0.1.0), pavan (0.1.0), dravya (0.1.0), badal (0.1.0).
-**Planned**: falak (orbital), jyotish (astrology), tara (stellar), jantu (creature behavior), khanij (mineralogy).
+**1.0+ stable** (17): hisab (1.1.0), bhava (1.1.0), prakash (1.1.0), impetus (1.1.0), ushma (1.1.0), pravash (1.1.0), kimiya (1.0.0), kavach (1.0.1), stiva (1.0.0), bijli (1.0.0), goonj (1.0.0), pavan (1.0.0), dravya (1.0.0), badal (1.0.0), khanij (1.0.0).
+**Published on crates.io** (20): abaco (0.22.4), yukti (0.25.3), phylax (0.22.3), ai-hwaccel (0.23.3), dhvani (0.22.4), t-ron (0.22.4), selah (0.24.3), raasta (0.26.3), soorat (0.24.3), agnosai (0.25.3), nein (0.24.3), ranga (0.24.3), tarang (0.21.3), hoosh (0.25.3), aethersafta (0.25.3), majra (0.22.3), libro (0.25.3), bote (0.22.3), szal (0.23.4), muharrir (0.23.5).
+**GitHub release only**: agnostik (2026.3.26), agnosys (0.25.4).
+**Not yet published**: kiran, murti, kana, salai.
+**In progress**: jantu (creature behavior).
+**Scaffolded**: tara (stellar), falak (orbital), jyotish (astrology), joshua (game manager), daimon (agent orchestrator).
 
-Science stack: prakash (optics), kana (quantum), bijli (EM), ushma (thermo), pravash (fluids), kimiya (chemistry), goonj (acoustics), pavan (aero), dravya (materials), badal (weather). Planned: falak, khanij, jantu. See [shared-crates.md](shared-crates.md).
+Science stack: prakash (optics), kana (quantum), bijli (EM), ushma (thermo), pravash (fluids), kimiya (chemistry), goonj (acoustics), pavan (aero), dravya (materials), badal (weather), khanij (geology). Scaffolded: tara (stellar), falak (orbital), jyotish (astrology). See [shared-crates.md](shared-crates.md).
 
 See **[stiva.md](stiva.md)** for the full container runtime design, security analysis, and composable isolation architecture.
 

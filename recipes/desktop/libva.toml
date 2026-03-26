@@ -7,7 +7,7 @@ groups = ["desktop"]
 
 [source]
 url = "https://github.com/intel/libva/releases/download/2.22.0/libva-2.22.0.tar.bz2"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "e3da2250654c8d52b3f59f8cb3f3d8e7fb1a2ee64378dbc400fbc5663de7edb8"
 patches = []
 
 [depends]

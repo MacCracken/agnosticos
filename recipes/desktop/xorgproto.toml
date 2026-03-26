@@ -7,7 +7,7 @@ groups = ["desktop"]
 
 [source]
 url = "https://xorg.freedesktop.org/archive/individual/proto/xorgproto-2024.1.tar.xz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "372225fd40815b8423547f5d890c5debc72e88b91088fbfb13158c20495ccb59"
 patches = []
 
 [depends]

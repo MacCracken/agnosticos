@@ -7,7 +7,7 @@ groups = ["desktop"]
 
 [source]
 url = "https://git.sr.ht/~sircmpwn/scdoc/archive/1.9.7.tar.gz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "155709f1838b19dbc85c9c8dc4dee9f4c340e6a3974c96bd77bdccc928b8a07d"
 patches = []
 
 [depends]

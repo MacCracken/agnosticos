@@ -7,7 +7,7 @@ groups = ["desktop"]
 
 [source]
 url = "https://codeberg.org/dnkl/fcft/archive/3.3.3.tar.gz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "c0d8d485b45b1af829f73101d6588f404a32bf3c7543236b1a4707d44be81b60"
 patches = []
 
 [depends]

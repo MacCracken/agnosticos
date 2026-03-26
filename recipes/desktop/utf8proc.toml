@@ -7,7 +7,7 @@ groups = ["desktop"]
 
 [source]
 url = "https://github.com/JuliaStrings/utf8proc/releases/download/v2.11.3/utf8proc-2.11.3.tar.gz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+sha256 = "415189fd2c85cd6ee5ff26af500fa387de9ada1e3e316e93f7338551481d557d"
 patches = []
 
 [depends]
