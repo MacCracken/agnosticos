@@ -267,10 +267,9 @@ jobs:
         include:
           - target: x86_64-unknown-linux-gnu
             name: linux-amd64
-            cross: false
           - target: aarch64-unknown-linux-gnu
             name: linux-arm64
-            cross: true
+            aarch64: true
 
     steps:
     - uses: actions/checkout@v4
@@ -282,23 +281,19 @@ jobs:
       with:
         targets: ${{ matrix.target }}
         cache-prefix: build-${{ matrix.target }}
-        install-build-essential: ${{ !matrix.cross }}
+        install-build-essential: ${{ !matrix.aarch64 }}
 
-    - name: Build userland (native)
-      if: ${{ !matrix.cross }}
-      run: cargo build --workspace --target ${{ matrix.target }}
-      working-directory: userland
-
-    - name: Install cross-compilation toolchain
-      if: matrix.cross
+    - name: Install aarch64 cross-compiler
+      if: matrix.aarch64
       run: |
         sudo apt-get update
         sudo apt-get install -y gcc-aarch64-linux-gnu pkg-config
 
-    - name: Build userland (cross)
-      if: matrix.cross
+    - name: Build userland
       run: |
-        export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
+        if [ "${{ matrix.aarch64 }}" = "true" ]; then
+          export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
+        fi
         cargo build --workspace --target ${{ matrix.target }}
       working-directory: userland
 

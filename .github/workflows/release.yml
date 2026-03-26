@@ -40,15 +40,14 @@ jobs:
         include:
           - target: x86_64-unknown-linux-gnu
             name: linux-amd64
-            cross: false
             profile: release
           - target: aarch64-unknown-linux-gnu
             name: linux-arm64
-            cross: true
+            aarch64: true
             profile: release
           - target: aarch64-unknown-linux-gnu
             name: linux-arm64-edge
-            cross: true
+            aarch64: true
             profile: release-edge
             no_default_features: true
 
@@ -60,23 +59,19 @@ jobs:
       with:
         targets: ${{ matrix.target }}
         cache-prefix: release-${{ matrix.target }}
-        install-build-essential: ${{ !matrix.cross }}
+        install-build-essential: ${{ !matrix.aarch64 }}
 
-    - name: Build (native)
-      if: ${{ !matrix.cross }}
-      run: cargo build --profile ${{ matrix.profile }} --workspace --target ${{ matrix.target }}
-      working-directory: userland
-
-    - name: Install cross-compilation toolchain
-      if: matrix.cross
+    - name: Install aarch64 cross-compiler
+      if: matrix.aarch64
       run: |
         sudo apt-get update
         sudo apt-get install -y gcc-aarch64-linux-gnu pkg-config
 
-    - name: Build (cross)
-      if: matrix.cross
+    - name: Build
       run: |
-        export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
+        if [ "${{ matrix.aarch64 }}" = "true" ]; then
+          export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
+        fi
         ARGS="--profile ${{ matrix.profile }} --workspace --target ${{ matrix.target }}"
         if [ "${{ matrix.no_default_features }}" = "true" ]; then
           ARGS="$ARGS --no-default-features"
