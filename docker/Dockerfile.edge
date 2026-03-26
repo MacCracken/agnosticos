@@ -17,9 +17,12 @@
 # ---------------------------------------------------------------------------
 FROM rust:1.89-alpine3.21 AS builder
 
-RUN apk add --no-cache musl-dev openssl-dev openssl-libs-static pkgconf perl make
+RUN apk add --no-cache musl-dev openssl-dev openssl-libs-static pkgconf perl make git
 
 WORKDIR /build
+
+# Clone sibling dependency (agnosys)
+RUN git clone --depth 1 https://github.com/MacCracken/agnosys.git /agnosys
 
 # Copy the entire userland workspace (workspace Cargo.toml references all members)
 COPY userland/ ./

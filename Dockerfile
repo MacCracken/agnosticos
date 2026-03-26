@@ -14,8 +14,11 @@ WORKDIR /build
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    pkg-config \
+    pkg-config git \
     && rm -rf /var/lib/apt/lists/*
+
+# Clone sibling dependency (agnosys)
+RUN git clone --depth 1 https://github.com/MacCracken/agnosys.git /agnosys
 
 # Copy workspace manifests first for layer caching
 COPY userland/Cargo.toml userland/Cargo.toml
