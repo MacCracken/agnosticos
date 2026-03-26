@@ -18,7 +18,7 @@ patches = []
 
 [depends]
 runtime = ["glibc", "zlib", "zstd"]
-build = ["gcc", "make", "cmake", "python3"]
+build = ["gcc", "make", "cmake", "python"]
 
 [build]
 pre_build = ""

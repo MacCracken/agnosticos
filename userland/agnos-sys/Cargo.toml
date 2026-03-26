@@ -6,7 +6,8 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "AGNOS kernel syscall bindings and low-level system interface"
+publish = false
+description = "AGNOS kernel syscall bindings and low-level system interface — published externally as agnosys"
 
 [dependencies]
 # New: agnosys provides the actual implementations

@@ -60,6 +60,9 @@ base/autoconf
 base/automake
 base/gperf
 base/libxcrypt
+base/gmp
+base/mpfr
+base/mpc
 
 # =========================================================================
 # TIER 1c: System libraries and utilities
@@ -67,9 +70,9 @@ base/libxcrypt
 base/libpng
 base/freetype
 base/libpipeline
+base/groff
 base/man-db
 base/libunistring
-base/libffi
 base/json-c
 base/libmnl
 base/libnftnl
@@ -78,10 +81,10 @@ base/e2fsprogs
 base/dosfstools
 base/kmod
 base/eudev
+base/elfutils
 base/procps-ng
 base/psmisc
 base/kbd
-base/shadow
 base/iproute2
 base/inetutils
 base/cpio
@@ -103,6 +106,7 @@ base/npth
 base/gnupg
 base/libseccomp
 base/linux-pam
+base/shadow
 base/audit
 base/libargon2
 base/libaio
@@ -118,10 +122,10 @@ base/sudo
 base/sysvinit
 base/sysklogd
 base/nftables
-base/groff
 base/dbus
 base/libarchive
 base/dracut
+base/linux-api-headers
 base/linux
 base/grub
 base/linux-firmware
@@ -141,23 +145,84 @@ base/llvm
 base/rust
 
 # =========================================================================
-# TIER 3: Desktop — Wayland/graphics foundation
+# TIER 3a: Desktop — Core libs (needed by everything downstream)
+# =========================================================================
+desktop/pcre2
+desktop/glib
+desktop/gobject-introspection
+desktop/icu
+desktop/sqlite
+
+# =========================================================================
+# TIER 3b: Desktop — X11 protocol foundation (needed by mesa, gtk3, libva)
+# =========================================================================
+desktop/xorgproto
+desktop/xcb-proto
+desktop/libxau
+desktop/libxdmcp
+desktop/libxcb
+desktop/libx11
+desktop/libxext
+desktop/libxrender
+desktop/libxfixes
+desktop/libxrandr
+desktop/libxi
+
+# =========================================================================
+# TIER 3c: Desktop — Wayland/graphics foundation
 # =========================================================================
 desktop/wayland
 desktop/wayland-protocols
 desktop/libdrm
 desktop/vulkan-headers
 desktop/vulkan-loader
-desktop/libepoxy
 desktop/libevdev
 desktop/mtdev
 desktop/libinput
 desktop/libxkbcommon
 desktop/pixman
 desktop/mesa
+desktop/libepoxy
 
 # =========================================================================
-# TIER 4: Desktop — Audio stack
+# TIER 4: Desktop — Text/font rendering
+# =========================================================================
+desktop/fontconfig
+desktop/harfbuzz
+desktop/fribidi
+desktop/libjpeg-turbo
+desktop/libtiff
+desktop/noto-fonts
+
+# =========================================================================
+# TIER 4b: Desktop — Drawing and image
+# =========================================================================
+desktop/cairo
+desktop/pango
+desktop/json-glib
+desktop/atk
+desktop/gdk-pixbuf
+desktop/graphene
+desktop/libxml2
+desktop/librsvg
+desktop/lcms2
+
+# =========================================================================
+# TIER 4c: Desktop — Codec and media libraries
+# =========================================================================
+desktop/libde265
+desktop/x265
+desktop/libass
+desktop/libva
+desktop/glslang
+desktop/libplacebo
+desktop/libheif
+desktop/libusb
+desktop/xxhash
+desktop/simde
+
+# =========================================================================
+# TIER 5: Desktop — Audio stack
 # =========================================================================
 desktop/alsa-lib
 desktop/alsa-utils
@@ -166,51 +231,50 @@ desktop/libvorbis
 desktop/flac
 desktop/libsndfile
 desktop/pipewire
-desktop/wireplumber
-desktop/gst-plugins-base
-desktop/gst-plugins-good
-
-# =========================================================================
-# TIER 5: Desktop — Text/font rendering
-# =========================================================================
-desktop/fontconfig
-desktop/harfbuzz
-desktop/fribidi
-desktop/pango
-desktop/noto-fonts
-desktop/libjpeg-turbo
-desktop/libtiff
-
-# =========================================================================
-# TIER 6: Desktop — Toolkit and session
-# =========================================================================
-desktop/glib
-desktop/gobject-introspection
-desktop/json-glib
-desktop/gdk-pixbuf
-desktop/graphene
-desktop/cairo
-desktop/libnotify
-desktop/elogind
-desktop/polkit
-desktop/dbus
-desktop/upower
-desktop/udisks
-desktop/linux-pam
 desktop/lua
-desktop/duktape
-desktop/pcre2
-desktop/eudev
+desktop/wireplumber
 
 # =========================================================================
-# TIER 7: Desktop — Compositor and higher-level
+# TIER 5b: Desktop — Session and system services
 # =========================================================================
-desktop/wlroots
-desktop/xwayland
-desktop/gstreamer
+desktop/duktape
+desktop/polkit
+desktop/elogind
+desktop/dbus
+desktop/linux-pam
+desktop/eudev
+desktop/libnotify
+desktop/upower
+desktop/libatasmart
+desktop/libblockdev
+desktop/udisks
+desktop/libsass
+desktop/sassc
+
+# =========================================================================
+# TIER 6: Desktop — Toolkit and compositor
+# =========================================================================
 desktop/gtk4
 desktop/gtk3
+desktop/gstreamer
+desktop/gst-plugins-base
+desktop/gst-plugins-good
+desktop/xwayland
+desktop/wlroots
 desktop/poppler
+desktop/ffmpeg
+desktop/wl-clipboard
+
+# =========================================================================
+# TIER 7: Desktop — Terminal and document viewer dependencies
+# =========================================================================
+desktop/scdoc
+desktop/tllist
+desktop/fcft
+desktop/utf8proc
+desktop/girara
+desktop/djvulibre
+desktop/libspectre
 
 # =========================================================================
 # TIER 8: Desktop — Applications
@@ -225,6 +289,9 @@ desktop/yazi
 desktop/helix
 desktop/mpv
 desktop/zathura
+desktop/zathura-pdf-poppler
+desktop/zathura-djvu
+desktop/zathura-ps
 desktop/greetd
 desktop/tuigreet
 
@@ -234,6 +301,9 @@ desktop/tuigreet
 desktop/bluez
 desktop/bolt
 desktop/cups
-desktop/libatasmart
-desktop/libblockdev
 desktop/nvidia-driver
+
+# =========================================================================
+# TIER 10: Desktop meta-package
+# =========================================================================
+desktop/agnos-desktop

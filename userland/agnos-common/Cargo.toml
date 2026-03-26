@@ -6,7 +6,8 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "Common types and utilities for AGNOS"
+publish = false
+description = "Common types and utilities for AGNOS — published externally as agnostik"
 
 [dependencies]
 serde = { workspace = true }
