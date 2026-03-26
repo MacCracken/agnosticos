@@ -18,10 +18,6 @@ inputs:
     description: 'Cache key prefix (e.g. "test", "bench") to separate caches per job'
     required: false
     default: 'build'
-  install-cross:
-    description: 'Install the cross tool for cross-compilation'
-    required: false
-    default: 'false'
   install-build-essential:
     description: 'Install build-essential (for native compilation)'
     required: false
@@ -63,12 +59,6 @@ runs:
         toolchain: ${{ inputs.toolchain }}
         targets: ${{ inputs.targets }}
         components: ${{ inputs.components }}
-
-    - name: Install cross
-      if: inputs.install-cross == 'true'
-      uses: taiki-e/install-action@v2
-      with:
-        tool: cross
 
     - name: Cache Cargo artifacts
       uses: actions/cache@v4
