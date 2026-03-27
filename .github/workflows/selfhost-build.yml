@@ -443,9 +443,11 @@ jobs:
           echo "=== Building Linux kernel from source ==="
           mkdir -p "$LFS/boot"
 
-          KERNEL_SRC="$LFS/sources/linux-6.6.72.tar.xz"
-          if [[ ! -f "$KERNEL_SRC" ]]; then
-            # Fallback: download if not in sources cache
+          KERNEL_SRC="/tmp/linux-6.6.72.tar.xz"
+          # Check sources cache first, then download
+          if [[ -f "$LFS/sources/linux-6.6.72.tar.xz" ]]; then
+            cp "$LFS/sources/linux-6.6.72.tar.xz" "$KERNEL_SRC"
+          else
             curl -fSL -o "$KERNEL_SRC" \
               "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.6.72.tar.xz"
           fi
