@@ -1,6 +1,6 @@
 # Shared Crates — Ecosystem Infrastructure
 
-> **Status**: Active | **Last Updated**: 2026-03-25
+> **Status**: Active | **Last Updated**: 2026-03-27
 >
 > Standalone crates extracted from AGNOS that the entire ecosystem depends on.
 > Published to crates.io or distributed via GitHub Releases.
@@ -70,7 +70,8 @@
 | [kana](https://github.com/MacCracken/kana) | Scaffolded | Quantum mechanics — state vectors, operators, entanglement, circuits |
 | [salai](https://github.com/MacCracken/salai) | Scaffolded | Game editor — egui visual editor for kiran |
 | [naad](https://github.com/MacCracken/naad) | Scaffolded | Audio synthesis primitives — oscillators, filters, envelopes, modulation, wavetables, effects |
-| [svara](https://github.com/MacCracken/svara) | Scaffolded | Formant & vocal synthesis — glottal source, vocal tract, phonemes, prosody |
+| [svara](https://github.com/MacCracken/svara) | v1.0-ready | Formant & vocal synthesis — glottal source (Rosenberg/LF), vocal tract, 48 phonemes, prosody, coarticulation, spectral analysis |
+| [prani](https://github.com/MacCracken/prani) | Planned | Creature/animal vocal synthesis — non-human voice models, call patterns, species-specific vocal tracts (depends on svara) |
 
 ## Scaffolded (newly created)
 
@@ -106,7 +107,8 @@ Built on hisab for math, each owning a specific domain of physical simulation:
 | [jyotish](https://github.com/MacCracken/jyotish) | Sanskrit: ज्योतिष (light) | Astronomical computation — planetary positions, calendar systems | Scaffolded |
 | [jantu](https://github.com/MacCracken/jantu) | Sanskrit: जन्तु (creature) | Ethology/creature behavior — instinct, survival, swarm intelligence | **1.0.0** |
 | [naad](https://github.com/MacCracken/naad) | Sanskrit: नाद (primordial sound) | Audio synthesis — oscillators, filters, envelopes, wavetables, effects | Scaffolded |
-| [svara](https://github.com/MacCracken/svara) | Sanskrit: स्वर (voice/tone) | Formant & vocal synthesis — glottal source, vocal tract, phonemes, prosody | Scaffolded |
+| [svara](https://github.com/MacCracken/svara) | Sanskrit: स्वर (voice/tone) | Formant & vocal synthesis — glottal source (Rosenberg/LF), vocal tract, 48 phonemes, prosody | v1.0-ready |
+| [prani](https://github.com/MacCracken/prani) | Sanskrit: प्राणी (living being) | Creature vocal synthesis — non-human voice models, call patterns, species vocal tracts | Planned |
 
 ---
 
@@ -127,4 +129,4 @@ See [monolith-extraction.md](../monolith-extraction.md) for the plan to extract 
 
 ---
 
-*Last Updated: 2026-03-25*
+*Last Updated: 2026-03-27*

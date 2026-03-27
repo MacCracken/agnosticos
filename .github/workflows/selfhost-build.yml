@@ -440,9 +440,20 @@ jobs:
           cp -r config/* "$LFS/etc/agnos/" 2>/dev/null || true
 
           # Build kernel from source using AGNOS defconfig
-          echo "=== Installing kernel build dependencies ==="
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq bc flex bison libelf-dev libssl-dev 2>/dev/null || true
+          echo "=== Checking kernel build dependencies ==="
+          MISSING=""
+          for tool in bc flex bison make gcc; do
+            if ! command -v "$tool" &>/dev/null; then
+              MISSING="$MISSING $tool"
+            fi
+          done
+          if [[ -n "$MISSING" ]]; then
+            echo "ERROR: Missing kernel build tools:$MISSING"
+            echo "The self-hosted runner must have base system packages installed."
+            echo "Ensure bc, flex, bison are built and installed from recipes/base/."
+            exit 1
+          fi
+          echo "  bc: $(which bc), flex: $(which flex), bison: $(which bison)"
           echo "=== Building Linux kernel from source ==="
           mkdir -p "$LFS/boot"
 
