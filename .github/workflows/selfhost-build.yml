@@ -440,6 +440,9 @@ jobs:
           cp -r config/* "$LFS/etc/agnos/" 2>/dev/null || true
 
           # Build kernel from source using AGNOS defconfig
+          echo "=== Installing kernel build dependencies ==="
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq bc flex bison libelf-dev libssl-dev 2>/dev/null || true
           echo "=== Building Linux kernel from source ==="
           mkdir -p "$LFS/boot"
 
