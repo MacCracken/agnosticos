@@ -1,6 +1,6 @@
 # Shared Crates — Ecosystem Infrastructure
 
-> **Status**: Active | **Last Updated**: 2026-03-28
+> **Status**: Active | **Last Updated**: 2026-03-28 (versions verified against crates.io)
 >
 > Standalone crates extracted from AGNOS that the entire ecosystem depends on.
 > Published to crates.io or distributed via GitHub Releases.
@@ -9,12 +9,12 @@
 
 ---
 
-## Registry — 1.0+ Stable (21 crates)
+## Registry — 1.0+ Stable (25 crates)
 
 | Crate | Version | Description | Key Consumers |
 |-------|---------|-------------|---------------|
-| [hisab](https://github.com/MacCracken/hisab) | 1.2.0 | Higher math — linear algebra, calculus, geometry, spatial structures (BVH, k-d tree, octree, GJK/EPA), ODE solvers, FFT, compensated summation | all science crates, impetus, kiran, soorat, raasta, svara, prani |
-| [bhava](https://github.com/MacCracken/bhava) | 1.1.0 | Emotion/personality — 15-trait personalities, PAD mood vectors, archetypes, sentiment, circadian, EQ, micro-expressions | SY, joshua, agnosai, kiran |
+| [hisab](https://github.com/MacCracken/hisab) | 1.3.0 | Higher math — linear algebra, calculus, geometry, spatial structures (BVH, k-d tree, octree, GJK/EPA), ODE solvers, FFT, compensated summation | all science crates, impetus, kiran, soorat, raasta, svara, prani |
+| [bhava](https://github.com/MacCracken/bhava) | 1.2.0 | Emotion/personality — 15-trait personalities, PAD mood vectors, archetypes, sentiment, circadian, EQ, micro-expressions | SY, joshua, agnosai, kiran |
 | [prakash](https://github.com/MacCracken/prakash) | 1.1.0 | Optics/light — ray optics, wave optics, spectral math, lens geometry, PBR, atmospheric scattering | soorat, kiran, tara |
 | [impetus](https://github.com/MacCracken/impetus) | 1.1.0 | Physics — 2D/3D rigid bodies, collision detection, constraints, spatial queries | kiran, joshua, pavan |
 | [ushma](https://github.com/MacCracken/ushma) | 1.1.0 | Thermodynamics — heat transfer, entropy, equations of state, thermal properties, cycles | kimiya, kiran, badal |
@@ -32,24 +32,25 @@
 | [nidhi](https://github.com/MacCracken/nidhi) | 1.0.0 | Sample playback engine — polyphonic sampler, SFZ/SF2 import, zones, time-stretching | dhvani, shruti |
 | [shabdakosh](https://github.com/MacCracken/shabdakosh) | 1.0.0 | Pronunciation dictionary — ARPABET/IPA mapping, CMUdict 5K entries, user overlays | shabda, dhvani, vansh |
 | [svara](https://github.com/MacCracken/svara) | 1.0.0 | Formant & vocal synthesis — glottal source (Rosenberg/LF), SOA formant bank, 48 phonemes, coarticulation, spectral analysis | dhvani, vansh, prani, shabda |
+| [ai-hwaccel](https://github.com/MacCracken/ai-hwaccel) | 1.0.0 | Universal AI hardware accelerator detection, capability querying, workload planning | hoosh, daimon, kiran |
+| [hoosh](https://github.com/MacCracken/hoosh) | 1.0.0 | AI inference gateway — 15 LLM providers, local model serving, token budget management (port 8088) | daimon, all consumer apps |
+| [agnosai](https://github.com/MacCracken/agnosai) | 1.0.0 | Provider-agnostic AI orchestration — crews, task DAGs, tool execution | agnostic, daimon, joshua |
+| [szal](https://github.com/MacCracken/szal) | 1.0.1 | Workflow engine — step/flow execution, branching, retry, rollback, parallel stages | daimon, sutra |
+| [majra](https://github.com/MacCracken/majra) | 1.0.1 | Distributed queue & multiplex — pub/sub, priority queues, heartbeat, relay, IPC | daimon, stiva, AgnosAI, sutra |
+| [abaco](https://github.com/MacCracken/abaco) | 1.1.0 | Math engine — expression evaluation, unit conversion, numeric types | abacus, dhvani |
 
-## Registry — Published on crates.io (21 pre-1.0 crates)
+## Registry — Published on crates.io (pre-1.0 crates)
 
 | Crate | Version | Description | Key Consumers |
 |-------|---------|-------------|---------------|
 | [kiran](https://github.com/MacCracken/kiran) | 0.26.3 | Game engine — ECS, system scheduling, scene hierarchy, audio, physics, scripting | joshua, salai |
-| [ai-hwaccel](https://github.com/MacCracken/ai-hwaccel) | 0.23.3 | Universal AI hardware accelerator detection, capability querying, workload planning | hoosh, daimon, kiran |
+| [bote](https://github.com/MacCracken/bote) | 0.50.0 | MCP core service — JSON-RPC 2.0, tool registry, dispatch | daimon, all MCP tool providers |
 | [tarang](https://github.com/MacCracken/tarang) | 0.21.3 | AI-native media framework — container parsing, audio/video decode, encode, mux, fingerprint | jalwa, tazama, shruti, aethersafta |
 | [ranga](https://github.com/MacCracken/ranga) | 0.24.3 | Core image processing — color spaces, blend modes, pixel buffers, filters, GPU compute | rasa, tazama, aethersafta |
 | [dhvani](https://github.com/MacCracken/dhvani) | 0.22.4 | Core audio engine — buffers, DSP, resampling, mixing, analysis, capture | shruti, jalwa, kiran, goonj |
-| [hoosh](https://github.com/MacCracken/hoosh) | 0.25.3 | AI inference gateway — 15 LLM providers, local model serving, token budget management (port 8088) | daimon, all consumer apps |
 | [aethersafta](https://github.com/MacCracken/aethersafta) | 0.25.3 | Real-time media compositing — scene graph, multi-source capture, HW encoding | aethersafha, tazama, SY |
-| [majra](https://github.com/MacCracken/majra) | 0.22.3 | Distributed queue & multiplex — pub/sub, priority queues, heartbeat, relay, IPC | daimon, stiva, AgnosAI, sutra |
-| [agnosai](https://github.com/MacCracken/agnosai) | 0.25.3 | Provider-agnostic AI orchestration — crews, task DAGs, tool execution | agnostic, daimon, joshua |
 | [libro](https://github.com/MacCracken/libro) | 0.25.3 | Cryptographic audit chain — tamper-proof hash-linked event logging | daimon, aegis, stiva |
-| [bote](https://github.com/MacCracken/bote) | 0.22.3 | MCP core service — JSON-RPC 2.0, tool registry, dispatch | daimon, all MCP tool providers |
 | [nein](https://github.com/MacCracken/nein) | 0.24.3 | Programmatic nftables firewall — network policy, NAT, port mapping | stiva, daimon, aegis |
-| [szal](https://github.com/MacCracken/szal) | 0.23.4 | Workflow engine — step/flow execution, branching, retry, rollback, parallel stages | daimon, sutra |
 | [muharrir](https://github.com/MacCracken/muharrir) | 0.23.5 | Shared editor primitives — text buffer, undo/redo, syntax highlighting | rasa, tazama, shruti, salai |
 | [yukti](https://github.com/MacCracken/yukti) | 0.25.3 | Device abstraction — USB, optical, block devices, udev hotplug, mount/eject | daimon, aethersafha, jalwa |
 | [phylax](https://github.com/MacCracken/phylax) | 0.22.3 | Threat detection — YARA rules, entropy analysis, magic bytes, ML classification | daimon, aegis |
@@ -57,7 +58,6 @@
 | [raasta](https://github.com/MacCracken/raasta) | 0.26.3 | Navigation/pathfinding — A*, JPS, HPA*, navmesh, crowd simulation | kiran, joshua |
 | [soorat](https://github.com/MacCracken/soorat) | 0.24.3 | GPU rendering — wgpu, 2D/3D PBR, shadows, animation, post-processing | kiran, joshua |
 | [t-ron](https://github.com/MacCracken/t-ron) | 0.22.4 | MCP security monitor — tool call auditing, rate limiting, injection detection | daimon, bote |
-| [abaco](https://github.com/MacCracken/abaco) | 0.22.4 | Math engine — expression evaluation, unit conversion, numeric types | abacus, dhvani |
 
 ## GitHub Release Only (internal to AGNOS)
 
@@ -79,6 +79,8 @@
 | [ghurni](https://github.com/MacCracken/ghurni) | Scaffolded | Mechanical sound synthesis — engines, gears, motors, turbines, clocks, RPM-driven harmonics |
 | [pramana](https://github.com/MacCracken/pramana) | Scaffolded | Statistics & probability — distributions, Bayesian, hypothesis testing, Monte Carlo, Markov chains |
 | [sankhya](https://github.com/MacCracken/sankhya) | Scaffolded | Ancient mathematical systems — Mayan, Babylonian, Egyptian, Vedic, Chinese, Greek |
+| [tanmatra](https://github.com/MacCracken/tanmatra) | Scaffolded | Atomic/subatomic — Standard Model particles, nuclear structure, decay chains, spectral lines |
+| [shravan](https://github.com/MacCracken/shravan) | Scaffolded | Audio codecs — WAV, FLAC, PCM conversion, resampling |
 
 ## Scaffolded (newly created)
 
@@ -124,6 +126,7 @@ Built on hisab for math, each owning a specific domain of physical simulation:
 | nada-brahma | Sanskrit: नाद ब्रह्म (universe is sound) | Cosmic sonification — stellar oscillations, orbital harmonics, celestial event mapping | Planned |
 | [pramana](https://github.com/MacCracken/pramana) | Sanskrit: प्रमाण (proof/evidence) | Statistics & probability — distributions, Bayesian, hypothesis testing, Monte Carlo, Markov | Scaffolded |
 | [sankhya](https://github.com/MacCracken/sankhya) | Sanskrit: सांख्य (enumeration) | Ancient mathematical systems — Mayan, Babylonian, Egyptian, Vedic, Chinese, Greek | Scaffolded |
+| [tanmatra](https://github.com/MacCracken/tanmatra) | Sanskrit: तन्मात्र (subtle element) | Atomic/subatomic physics — Standard Model, nuclear structure, decay, spectral lines | Scaffolded |
 
 ---
 

@@ -211,3 +211,45 @@
 
 **Key tests**: male /a/ F1 peak within 5% of 730Hz (spectral analysis of output), glottal pulse period at 120Hz = 8.33ms, vowel formant transitions smooth (no clicks at boundaries), female voice F1 values scale by ~1.17x, jitter/shimmer produce non-periodic but stable output, phoneme sequence roundtrip (known input → expected spectral shape)
 **Consumers**: dhvani (text-to-speech pipeline, agent voice output, personality-shaped speech via bhava prosody parameters)
+
+---
+
+## 11. shravan (Sanskrit: श्रवण — hearing) — Audio Codecs
+
+**Domain**: Audio format decoding and encoding — WAV, FLAC, Opus, Vorbis, MP3, AAC, ALAC, AIFF, PCM conversions
+
+**Modules**:
+- `error.rs` — ShravanError: UnsupportedFormat, InvalidHeader, DecodeError, EncodeError, IoError, EndOfStream. thiserror, #[non_exhaustive]
+- `format.rs` — AudioFormat enum (Wav, Flac, Opus, Vorbis, Mp3, Aac, Alac, Aiff, RawPcm). #[non_exhaustive]. FormatInfo { format, sample_rate, channels, bit_depth, duration_secs, total_samples }. detect_format(header: &[u8]) -> Result<AudioFormat> — magic byte detection
+- `pcm.rs` — PcmFormat enum (I16, I24, I32, F32, F64). Sample trait for conversion between formats. interleave/deinterleave. Bit depth conversion with dithering (TPDF). SampleBuffer<T> for typed audio buffers
+- `wav.rs` — WavDecoder: parse RIFF/WAVE header, read PCM/IEEE float data chunks, support 8/16/24/32-bit int and 32/64-bit float. WavEncoder: write valid RIFF/WAVE with correct chunk sizes. Handles BWF (Broadcast Wave) extension chunks
+- `flac.rs` — FlacDecoder: parse STREAMINFO metadata block, frame headers, subframe decoding (constant, verbatim, fixed, LPC). Residual coding (Rice/Rice2). FlacEncoder: LPC analysis, residual coding, frame assembly. Lossless verification via MD5
+- `opus.rs` — OpusDecoder: parse Ogg container, decode SILK/CELT/Hybrid frames. OpusEncoder: CELT mode encoding for music, bitrate control. Uses MDCT (from hisab FFT). Handles sample rate 48kHz native, resampling for others
+- `vorbis.rs` — VorbisDecoder: parse Ogg container, codebook decode, floor/residue decode, MDCT inverse. VorbisEncoder: psychoacoustic model (simplified), codebook generation, floor/residue encoding. Window functions (Vorbis window)
+- `mp3.rs` — Mp3Decoder: parse MPEG-1/2 Layer III frames, Huffman decode, IMDCT, synthesis filterbank, joint stereo. Decode only — no encoder (patent-encumbered legacy). ID3v1/ID3v2 tag reading
+- `aac.rs` — AacDecoder: parse ADTS frames, spectral decode, TNS, PNS, IMDCT, synthesis filterbank. LC profile minimum. AacEncoder: psychoacoustic model, quantization, Huffman coding. ADTS framing
+- `alac.rs` — AlacDecoder: parse Apple Lossless frames, adaptive FIR prediction, entropy decoding. AlacEncoder: prediction, entropy coding. Lossless. Container-agnostic (works with MP4 or raw)
+- `resample.rs` — Resampler for sample rate conversion. Windowed sinc interpolation (Lanczos kernel). quality_factor controls filter length. resample(input, from_rate, to_rate, quality) -> Vec<f32>
+- `codec.rs` — Unified codec trait: `trait AudioDecoder { fn info(&self) -> FormatInfo; fn decode_frame(&mut self) -> Result<SampleBuffer<f32>>; }`. `trait AudioEncoder { fn encode_frame(&mut self, samples: &[f32]) -> Result<Vec<u8>>; fn finalize(&mut self) -> Result<Vec<u8>>; }`. open_decoder(data: &[u8]) -> Result<Box<dyn AudioDecoder>> auto-detects format
+- `tag.rs` — AudioMetadata { title, artist, album, track, year, genre, comment, cover_art }. Read from ID3v2 (MP3), Vorbis comments (FLAC/Ogg), iTunes metadata (AAC/ALAC). Write support for Vorbis comments
+
+**Key tests**: WAV roundtrip (encode → decode → bit-exact), FLAC lossless roundtrip (MD5 match), Opus encode/decode at 128kbps (PESQ > 4.0 or SNR > 30dB), MP3 decode of reference file matches known samples within tolerance, format detection from magic bytes (all formats), resample 44100→48000→44100 roundtrip within 0.1% error, PCM bit depth conversion I16→F32→I16 lossless
+**Consumers**: dhvani (audio pipeline codec layer), nidhi (sample file loading — WAV, FLAC, SF2/SFZ decode), jalwa (media playback), tarang (audio track codec delegation), shruti (project file audio import/export)
+
+---
+
+## 12. tanmatra (Sanskrit: तन्मात्र — subtle element) — Atomic & Subatomic Physics
+
+**Domain**: Nuclear structure, radioactive decay, particle physics (Standard Model), atomic structure (electron shells, spectral lines), nuclear reactions
+
+**Modules**:
+- `error.rs` — TanmatraError: InvalidElement, InvalidIsotope, InvalidParticle, DecayFailed, InvalidEnergy, ComputationError. thiserror, #[non_exhaustive]
+- `particle.rs` — Standard Model particles. Quark enum (Up, Down, Charm, Strange, Top, Bottom) with charge (+2/3 or -1/3), mass_mev, color_charge. Lepton enum (Electron, Muon, Tau, ElectronNeutrino, MuonNeutrino, TauNeutrino) with charge, mass_mev. Boson enum (Photon, Gluon, WPlus, WMinus, Z, Higgs) with mass_mev, spin. FundamentalConstants: ELECTRON_MASS=0.511 MeV, PROTON_MASS=938.272 MeV, NEUTRON_MASS=939.565 MeV, ALPHA=1/137.036 (fine structure), HBAR=6.582e-16 eV·s. All values from CODATA 2022
+- `nucleus.rs` — Nucleus { atomic_number: u16 (Z), mass_number: u16 (A), neutrons: u16 (N=A-Z) }. Binding energy via semi-empirical mass formula (Bethe-Weizsäcker): B = a_v*A - a_s*A^(2/3) - a_c*Z(Z-1)/A^(1/3) - a_a*(A-2Z)²/4A + δ(A,Z). Coefficients: a_v=15.67, a_s=17.23, a_c=0.714, a_a=93.15 MeV. mass_defect(Z, A) = Z*m_p + N*m_n - M (actual mass). binding_energy_per_nucleon(Z, A). is_stable(Z, A) -> bool (check against known stable nuclides). nuclear_radius(A) = r_0 * A^(1/3) where r_0=1.2 fm. Presets for common isotopes: H-1, He-4, C-12, Fe-56, U-235, U-238
+- `decay.rs` — DecayMode enum (Alpha, BetaMinus, BetaPlus, Gamma, ElectronCapture, Fission, ProtonEmission, NeutronEmission). #[non_exhaustive]. RadioactiveIsotope { nucleus, half_life_seconds: f64, decay_modes: Vec<(DecayMode, f64)> (branching ratios sum to 1.0) }. decay_constant(half_life) = ln(2)/t_half. activity(N_0, lambda, t) = lambda * N_0 * e^(-lambda*t) in Becquerels. remaining_atoms(N_0, lambda, t) = N_0 * e^(-lambda*t). alpha_decay(Z, A) -> (Z-2, A-4) + He-4. beta_minus_decay(Z, A) -> (Z+1, A) + e- + antineutrino. decay_chain(isotope, time_steps) -> Vec<(Nucleus, f64)> — Bateman equations for sequential decay. Known isotopes: C-14 (t½=5730y), U-235 (t½=7.04e8y), U-238 (t½=4.47e9y), Ra-226 (t½=1600y), Co-60 (t½=5.27y), I-131 (t½=8.02d), Po-210 (t½=138d)
+- `atomic.rs` — ElectronShell { n: u8, l: u8, ml: i8, ms: f32 }. Quantum numbers validation (n≥1, 0≤l<n, -l≤ml≤l, ms=±0.5). max_electrons_in_shell(n) = 2n². electron_configuration(Z) -> Vec<(u8, u8, u8)> (n, l, count) via Aufbau principle with Madelung rule exceptions (Cr, Cu, etc.). ionization_energy(Z) in eV for first 36 elements (real NIST data). ElectronOrbital enum (S, P, D, F). spectral_line(Z, n_upper, n_lower) -> f64 in nm — Rydberg formula: 1/λ = R_∞ * Z² * (1/n_lower² - 1/n_upper²) where R_∞=1.097e7 m⁻¹. Hydrogen Balmer series: H-alpha=656.3nm, H-beta=486.1nm, H-gamma=434.0nm
+- `reaction.rs` — NuclearReaction { reactants: Vec<Nucleus>, products: Vec<Nucleus>, q_value_mev: f64 }. q_value(reactants, products) = (Σm_reactants - Σm_products) * c². is_exothermic(q) = q > 0. Fusion: deuterium_tritium() -> He-4 + n + 17.6 MeV. Fission: u235_fission() -> approximate products + ~200 MeV + 2.5n. cross_section basics: CrossSection { energy_mev: f64, barn: f64 } (1 barn = 1e-24 cm²)
+- `interaction.rs` — Four fundamental forces as data: Strong { range_fm: 1.0, relative_strength: 1.0, mediator: Gluon }, Electromagnetic { range: infinite, relative_strength: 1/137, mediator: Photon }, Weak { range_fm: 0.001, relative_strength: 1e-6, mediator: WZ }, Gravity { range: infinite, relative_strength: 6e-39, mediator: Graviton(theoretical) }. coulomb_barrier(Z1, Z2, r) = k*Z1*Z2*e²/r
+
+**Key tests**: Fe-56 has highest binding energy per nucleon (~8.8 MeV), H Balmer H-alpha = 656.3nm, C-14 half life = 5730 years, alpha decay of U-238 → Th-234 + He-4, electron configuration of Fe (Z=26) = [Ar]3d⁶4s², mass defect of He-4 ≈ 0.0304 amu, DT fusion Q-value ≈ 17.6 MeV, proton mass ≈ 938.272 MeV, fine structure constant ≈ 1/137
+**Consumers**: kimiya (nuclear chemistry, radiochemistry), kana (particle state vectors), prakash (spectral line generation), kiran/joshua (nuclear simulation, radiation effects), bhava v3.0 (universal constants as consciousness substrate)

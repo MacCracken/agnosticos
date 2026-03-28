@@ -68,7 +68,7 @@ name = "{project}"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.89"
-license = "GPL-3.0"                  # or "AGPL-3.0-only"
+license = "GPL-3.0-only"              # or "AGPL-3.0-only"
 description = "{Project} — one-line description"
 homepage = "https://github.com/MacCracken/{project}"
 repository = "https://github.com/MacCracken/{project}"
@@ -77,6 +77,60 @@ documentation = "https://docs.rs/{project}"
 keywords = ["keyword1", "keyword2"]  # max 5, lowercase
 categories = ["category"]           # from crates.io categories list
 exclude = [".claude/", ".github/", "docs/", "scripts/"]
+```
+
+### Dependency Pattern (no-std friendly)
+
+Prefer `default-features = false` on core deps so the crate can support no-std consumers:
+
+```toml
+[dependencies]
+serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
+thiserror = { version = "2", default-features = false }
+tracing = { version = "0.1", default-features = false, optional = true }
+
+[features]
+default = ["std"]
+std = ["serde/std", "thiserror/std"]
+full = ["std", "logging"]
+logging = ["dep:tracing"]
+```
+
+### deny.toml (Required)
+
+```toml
+[graph]
+all-features = true
+
+[advisories]
+version = 2
+
+[licenses]
+version = 2
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "GPL-3.0-only",
+    "ISC",
+    "OpenSSL",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "Zlib",
+]
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+highlight = "all"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
 ```
 
 ### Crate Naming
@@ -115,6 +169,8 @@ When an AGNOS crate wraps an external library, **depend on the AGNOS crate, not 
 | Emotion/personality | `bhava` | Per-app mood systems |
 | Statistics/probability | `pramana` | Inline stats, custom distributions |
 | Ancient math systems | `sankhya` | Inline calendar math, custom number systems |
+| Atomic/subatomic physics | `tanmatra` | Inline nuclear formulas, hardcoded particle data |
+| Audio codecs | `shravan` | Inline WAV/FLAC parsers, custom codec implementations |
 | Navigation/pathfinding | `raasta` | Custom A*, inline pathfinding |
 
 Only one crate should directly depend on each external library. Extract when **3+ projects** implement the same pattern.
@@ -257,6 +313,7 @@ clippy:
 
 test:
 	cargo test --all-features
+	cargo test --no-default-features
 
 audit:
 	cargo audit
@@ -660,6 +717,9 @@ The continuous improvement cycle for every crate. Each pass makes the crate meas
 - The CSV history is the proof. 3-point trends catch regressions.
 - If the audit reveals deep issues, loop steps 4-7 until clean.
 - Documentation is the *last* step — document what *is*, not what *might be*.
+- `Cow` over clone — borrow when you can, only allocate when you must.
+- `write!` over `format!` — avoid temporary string allocations on hot paths.
+- `#[inline]` on hot-path sample/per-frame processing functions.
 
 ### Release Checklist
 

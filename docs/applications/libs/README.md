@@ -60,6 +60,13 @@
 | [pavan](pavan.md) | Aerodynamics | — |
 | [pravash](pravash.md) | Fluid dynamics (CFD) | — |
 | [ushma](ushma.md) | Thermodynamics | — |
+| [tanmatra](tanmatra.md) | Atomic/subatomic physics (Standard Model, decay, spectral lines) | Scaffolded |
+
+## Audio
+
+| Crate | Domain | Docs |
+|-------|--------|------|
+| [shravan](shravan.md) | Audio codecs (WAV, FLAC, PCM, resampling) | Scaffolded |
 
 ## AI & Behavior
 
