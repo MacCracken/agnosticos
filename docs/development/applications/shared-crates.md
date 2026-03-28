@@ -75,6 +75,8 @@
 | [shabda](https://github.com/MacCracken/shabda) | Scaffolded | Grapheme-to-phoneme (G2P) — text to phoneme sequences, pronunciation dictionary, English rules |
 | [garjan](https://github.com/MacCracken/garjan) | Scaffolded | Environmental sound synthesis — thunder, rain, wind, fire, impacts, water, ambient textures |
 | [ghurni](https://github.com/MacCracken/ghurni) | Scaffolded | Mechanical sound synthesis — engines, gears, motors, turbines, clocks, RPM-driven harmonics |
+| [pramana](https://github.com/MacCracken/pramana) | Scaffolded | Statistics & probability — distributions, Bayesian, hypothesis testing, Monte Carlo, Markov chains |
+| [sankhya](https://github.com/MacCracken/sankhya) | Scaffolded | Ancient mathematical systems — Mayan, Babylonian, Egyptian, Vedic, Chinese, Greek |
 
 ## Scaffolded (newly created)
 
@@ -116,6 +118,8 @@ Built on hisab for math, each owning a specific domain of physical simulation:
 | [garjan](https://github.com/MacCracken/garjan) | Sanskrit: गर्जन (roar/thunder) | Environmental sound synthesis — weather, impacts, water, fire, ambient textures | Scaffolded |
 | [ghurni](https://github.com/MacCracken/ghurni) | Sanskrit: घूर्णि (rotation/spinning) | Mechanical sound synthesis — engines, gears, motors, turbines, clocks | Scaffolded |
 | nada-brahma | Sanskrit: नाद ब्रह्म (universe is sound) | Cosmic sonification — stellar oscillations, orbital harmonics, celestial event mapping | Planned |
+| [pramana](https://github.com/MacCracken/pramana) | Sanskrit: प्रमाण (proof/evidence) | Statistics & probability — distributions, Bayesian, hypothesis testing, Monte Carlo, Markov | Scaffolded |
+| [sankhya](https://github.com/MacCracken/sankhya) | Sanskrit: सांख्य (enumeration) | Ancient mathematical systems — Mayan, Babylonian, Egyptian, Vedic, Chinese, Greek | Scaffolded |
 
 ---
 

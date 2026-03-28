@@ -112,7 +112,9 @@ When an AGNOS crate wraps an external library, **depend on the AGNOS crate, not 
 | MCP protocol | `bote` | Custom JSON-RPC |
 | Threat detection | `phylax` | Inline YARA/entropy |
 | MCP security | `t-ron` | Per-app authorization |
-| Emotion/personality | `bhava` (planned) | Per-app mood systems |
+| Emotion/personality | `bhava` | Per-app mood systems |
+| Statistics/probability | `pramana` | Inline stats, custom distributions |
+| Ancient math systems | `sankhya` | Inline calendar math, custom number systems |
 | Navigation/pathfinding | `raasta` | Custom A*, inline pathfinding |
 
 Only one crate should directly depend on each external library. Extract when **3+ projects** implement the same pattern.

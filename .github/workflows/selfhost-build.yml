@@ -488,8 +488,11 @@ jobs:
           cp "$GITHUB_WORKSPACE/kernel/config/agnos_defconfig" .config
           make olddefconfig
           # GCC 15+ defaults to C23 where bool/false/true are keywords,
-          # conflicting with Linux 6.6's own typedefs. Force C11.
-          make -j"$(nproc)" KCFLAGS="-std=gnu11" bzImage modules
+          # conflicting with Linux 6.6's own typedefs. Patch the top-level
+          # Makefile to force gnu11 for both main and realmode builds.
+          sed -i 's/^KBUILD_CFLAGS   := -Wall/KBUILD_CFLAGS   := -std=gnu11 -Wall/' Makefile
+          sed -i '/^REALMODE_CFLAGS.*:= -m16/s/$/ -std=gnu11/' arch/x86/Makefile
+          make -j"$(nproc)" bzImage modules
 
           # Install kernel and modules
           KVER=$(make -s kernelrelease)

@@ -41,6 +41,8 @@
 |-------|--------|------|
 | [abaco](abaco.md) | Basic math, unit conversion | — |
 | [hisab](hisab.md) | Linear algebra, geometry, spatial | [crates.io](https://crates.io/crates/hisab) |
+| [pramana](pramana.md) | Statistics, probability, Bayesian inference | Scaffolded |
+| [sankhya](sankhya.md) | Ancient math (Mayan, Babylonian, Egyptian, Vedic, Chinese, Greek) | Scaffolded |
 | [impetus](impetus.md) | Physics engine (Rapier wrapper) | — |
 | [prakash](prakash.md) | Optics & light simulation | [crates.io](https://crates.io/crates/prakash) |
 | [raasta](raasta.md) | Navigation & pathfinding | — |
