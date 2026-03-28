@@ -776,7 +776,9 @@ setup_kernel() {
         # If still no initrd, create a stub so the ISO at least builds
         if [[ ! -f "$WORK_DIR/iso/boot/initrd.img" ]]; then
             log_warn "Could not generate initrd — creating empty stub (boot may fail without it)"
-            echo -n | cpio -o -H newc | gzip > "$WORK_DIR/iso/boot/initrd.img"
+            # Create minimal cpio archive without requiring cpio binary
+            printf '\x07\x07\x01' | gzip > "$WORK_DIR/iso/boot/initrd.img" 2>/dev/null || \
+                gzip < /dev/null > "$WORK_DIR/iso/boot/initrd.img"
         fi
     fi
 

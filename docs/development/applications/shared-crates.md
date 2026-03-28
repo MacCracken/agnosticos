@@ -1,6 +1,6 @@
 # Shared Crates — Ecosystem Infrastructure
 
-> **Status**: Active | **Last Updated**: 2026-03-27
+> **Status**: Active | **Last Updated**: 2026-03-28
 >
 > Standalone crates extracted from AGNOS that the entire ecosystem depends on.
 > Published to crates.io or distributed via GitHub Releases.
@@ -9,7 +9,7 @@
 
 ---
 
-## Registry — 1.0+ Stable (19 crates)
+## Registry — 1.0+ Stable (21 crates)
 
 | Crate | Version | Description | Key Consumers |
 |-------|---------|-------------|---------------|
@@ -28,7 +28,9 @@
 | [dravya](https://github.com/MacCracken/dravya) | 1.0.0 | Material science — stress, strain, elasticity, fatigue, fracture, composites | impetus, kiran |
 | [badal](https://github.com/MacCracken/badal) | 1.0.0 | Weather/atmospheric modeling — weather simulation, atmospheric dynamics | kiran, joshua, pavan |
 | [khanij](https://github.com/MacCracken/khanij) | 1.0.0 | Geology/mineralogy — crystal structures, rock cycles, soil, mineral properties, geochemistry | kiran, joshua |
-| [naad](https://github.com/MacCracken/naad) | 1.0.0 | Audio synthesis — oscillators, filters, envelopes, modulation, wavetables, effects | svara, dhvani, kiran |
+| [naad](https://github.com/MacCracken/naad) | 1.0.0 | Audio synthesis — oscillators, filters, envelopes, modulation, wavetables, effects | svara, nidhi, dhvani, kiran |
+| [nidhi](https://github.com/MacCracken/nidhi) | 1.0.0 | Sample playback engine — polyphonic sampler, SFZ/SF2 import, zones, time-stretching | dhvani, shruti |
+| [shabdakosh](https://github.com/MacCracken/shabdakosh) | 1.0.0 | Pronunciation dictionary — ARPABET/IPA mapping, CMUdict 5K entries, user overlays | shabda, dhvani, vansh |
 | [svara](https://github.com/MacCracken/svara) | 1.0.0 | Formant & vocal synthesis — glottal source (Rosenberg/LF), SOA formant bank, 48 phonemes, coarticulation, spectral analysis | dhvani, vansh, prani, shabda |
 
 ## Registry — Published on crates.io (21 pre-1.0 crates)
@@ -112,6 +114,8 @@ Built on hisab for math, each owning a specific domain of physical simulation:
 | [jyotish](https://github.com/MacCracken/jyotish) | Sanskrit: ज्योतिष (light) | Astronomical computation — planetary positions, calendar systems | Scaffolded |
 | [jantu](https://github.com/MacCracken/jantu) | Sanskrit: जन्तु (creature) | Ethology/creature behavior — instinct, survival, swarm intelligence | **1.0.0** |
 | [naad](https://github.com/MacCracken/naad) | Sanskrit: नाद (primordial sound) | Audio synthesis — oscillators, filters, envelopes, wavetables, effects | **1.0.0** |
+| [nidhi](https://github.com/MacCracken/nidhi) | Sanskrit: निधि (treasure) | Sample playback — polyphonic sampler, SFZ/SF2, zones, time-stretching | **1.0.0** |
+| [shabdakosh](https://github.com/MacCracken/shabdakosh) | Sanskrit: शब्दकोश (dictionary) | Pronunciation dictionary — ARPABET/IPA, CMUdict, user overlays | **1.0.0** |
 | [svara](https://github.com/MacCracken/svara) | Sanskrit: स्वर (voice/tone) | Formant & vocal synthesis — glottal source (Rosenberg/LF), SOA formant bank, 48 phonemes, ~1000x RT | **1.0.0** |
 | [shabda](https://github.com/MacCracken/shabda) | Sanskrit: शब्द (word/sound) | Grapheme-to-phoneme — text to phoneme sequences, dictionary + rules, prosody mapping | Scaffolded |
 | [prani](https://github.com/MacCracken/prani) | Sanskrit: प्राणी (living being) | Creature vocal synthesis — 13 species, dual syrinx, subharmonics, ~700x RT | v1.0-ready |
@@ -140,4 +144,4 @@ See [monolith-extraction.md](../monolith-extraction.md) for the plan to extract 
 
 ---
 
-*Last Updated: 2026-03-27*
+*Last Updated: 2026-03-28*
