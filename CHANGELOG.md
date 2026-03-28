@@ -5,7 +5,7 @@ All notable changes to AGNOS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2026.3.26] - 2026-03-26
+## [2026.3.28] - 2026-03-28
 
 ### Changed — Core Crate 0.5.0 Migration
 
