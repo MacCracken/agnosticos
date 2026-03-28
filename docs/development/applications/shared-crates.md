@@ -9,11 +9,11 @@
 
 ---
 
-## Registry — 1.0+ Stable (17 crates)
+## Registry — 1.0+ Stable (19 crates)
 
 | Crate | Version | Description | Key Consumers |
 |-------|---------|-------------|---------------|
-| [hisab](https://github.com/MacCracken/hisab) | 1.1.0 | Higher math — linear algebra, calculus, geometry, spatial structures (BVH, k-d tree, octree, GJK/EPA), ODE solvers, FFT | all science crates, impetus, kiran, soorat, raasta |
+| [hisab](https://github.com/MacCracken/hisab) | 1.2.0 | Higher math — linear algebra, calculus, geometry, spatial structures (BVH, k-d tree, octree, GJK/EPA), ODE solvers, FFT, compensated summation | all science crates, impetus, kiran, soorat, raasta, svara, prani |
 | [bhava](https://github.com/MacCracken/bhava) | 1.1.0 | Emotion/personality — 15-trait personalities, PAD mood vectors, archetypes, sentiment, circadian, EQ, micro-expressions | SY, joshua, agnosai, kiran |
 | [prakash](https://github.com/MacCracken/prakash) | 1.1.0 | Optics/light — ray optics, wave optics, spectral math, lens geometry, PBR, atmospheric scattering | soorat, kiran, tara |
 | [impetus](https://github.com/MacCracken/impetus) | 1.1.0 | Physics — 2D/3D rigid bodies, collision detection, constraints, spatial queries | kiran, joshua, pavan |
@@ -28,6 +28,8 @@
 | [dravya](https://github.com/MacCracken/dravya) | 1.0.0 | Material science — stress, strain, elasticity, fatigue, fracture, composites | impetus, kiran |
 | [badal](https://github.com/MacCracken/badal) | 1.0.0 | Weather/atmospheric modeling — weather simulation, atmospheric dynamics | kiran, joshua, pavan |
 | [khanij](https://github.com/MacCracken/khanij) | 1.0.0 | Geology/mineralogy — crystal structures, rock cycles, soil, mineral properties, geochemistry | kiran, joshua |
+| [naad](https://github.com/MacCracken/naad) | 1.0.0 | Audio synthesis — oscillators, filters, envelopes, modulation, wavetables, effects | svara, dhvani, kiran |
+| [svara](https://github.com/MacCracken/svara) | 1.0.0 | Formant & vocal synthesis — glottal source (Rosenberg/LF), SOA formant bank, 48 phonemes, coarticulation, spectral analysis | dhvani, vansh, prani, shabda |
 
 ## Registry — Published on crates.io (21 pre-1.0 crates)
 
@@ -69,9 +71,10 @@
 | [murti](https://github.com/MacCracken/murti) | Scaffolded | Core model runtime — registry, store, pull, inference backends |
 | [kana](https://github.com/MacCracken/kana) | Scaffolded | Quantum mechanics — state vectors, operators, entanglement, circuits |
 | [salai](https://github.com/MacCracken/salai) | Scaffolded | Game editor — egui visual editor for kiran |
-| [naad](https://github.com/MacCracken/naad) | Scaffolded | Audio synthesis primitives — oscillators, filters, envelopes, modulation, wavetables, effects |
-| [svara](https://github.com/MacCracken/svara) | v1.0-ready | Formant & vocal synthesis — glottal source (Rosenberg/LF), vocal tract, 48 phonemes, prosody, coarticulation, spectral analysis |
-| [prani](https://github.com/MacCracken/prani) | Planned | Creature/animal vocal synthesis — non-human voice models, call patterns, species-specific vocal tracts (depends on svara) |
+| [prani](https://github.com/MacCracken/prani) | v1.0-ready | Creature vocal synthesis — 13 species, dual syrinx, subharmonics, dragon fire-breath, pitch contours |
+| [shabda](https://github.com/MacCracken/shabda) | Scaffolded | Grapheme-to-phoneme (G2P) — text to phoneme sequences, pronunciation dictionary, English rules |
+| [garjan](https://github.com/MacCracken/garjan) | Scaffolded | Environmental sound synthesis — thunder, rain, wind, fire, impacts, water, ambient textures |
+| [ghurni](https://github.com/MacCracken/ghurni) | Scaffolded | Mechanical sound synthesis — engines, gears, motors, turbines, clocks, RPM-driven harmonics |
 
 ## Scaffolded (newly created)
 
@@ -106,9 +109,13 @@ Built on hisab for math, each owning a specific domain of physical simulation:
 | [falak](https://github.com/MacCracken/falak) | Arabic/Persian: فلک (sky) | Orbital mechanics — Keplerian orbits, transfers, perturbations | Scaffolded |
 | [jyotish](https://github.com/MacCracken/jyotish) | Sanskrit: ज्योतिष (light) | Astronomical computation — planetary positions, calendar systems | Scaffolded |
 | [jantu](https://github.com/MacCracken/jantu) | Sanskrit: जन्तु (creature) | Ethology/creature behavior — instinct, survival, swarm intelligence | **1.0.0** |
-| [naad](https://github.com/MacCracken/naad) | Sanskrit: नाद (primordial sound) | Audio synthesis — oscillators, filters, envelopes, wavetables, effects | Scaffolded |
-| [svara](https://github.com/MacCracken/svara) | Sanskrit: स्वर (voice/tone) | Formant & vocal synthesis — glottal source (Rosenberg/LF), vocal tract, 48 phonemes, prosody | v1.0-ready |
-| [prani](https://github.com/MacCracken/prani) | Sanskrit: प्राणी (living being) | Creature vocal synthesis — non-human voice models, call patterns, species vocal tracts | Planned |
+| [naad](https://github.com/MacCracken/naad) | Sanskrit: नाद (primordial sound) | Audio synthesis — oscillators, filters, envelopes, wavetables, effects | **1.0.0** |
+| [svara](https://github.com/MacCracken/svara) | Sanskrit: स्वर (voice/tone) | Formant & vocal synthesis — glottal source (Rosenberg/LF), SOA formant bank, 48 phonemes, ~1000x RT | **1.0.0** |
+| [shabda](https://github.com/MacCracken/shabda) | Sanskrit: शब्द (word/sound) | Grapheme-to-phoneme — text to phoneme sequences, dictionary + rules, prosody mapping | Scaffolded |
+| [prani](https://github.com/MacCracken/prani) | Sanskrit: प्राणी (living being) | Creature vocal synthesis — 13 species, dual syrinx, subharmonics, ~700x RT | v1.0-ready |
+| [garjan](https://github.com/MacCracken/garjan) | Sanskrit: गर्जन (roar/thunder) | Environmental sound synthesis — weather, impacts, water, fire, ambient textures | Scaffolded |
+| [ghurni](https://github.com/MacCracken/ghurni) | Sanskrit: घूर्णि (rotation/spinning) | Mechanical sound synthesis — engines, gears, motors, turbines, clocks | Scaffolded |
+| nada-brahma | Sanskrit: नाद ब्रह्म (universe is sound) | Cosmic sonification — stellar oscillations, orbital harmonics, celestial event mapping | Planned |
 
 ---
 

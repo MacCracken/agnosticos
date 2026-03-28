@@ -487,7 +487,9 @@ jobs:
           # Copy AGNOS defconfig and build
           cp "$GITHUB_WORKSPACE/kernel/config/agnos_defconfig" .config
           make olddefconfig
-          make -j"$(nproc)" bzImage modules
+          # GCC 15+ defaults to C23 where bool/false/true are keywords,
+          # conflicting with Linux 6.6's own typedefs. Force C11.
+          make -j"$(nproc)" KCFLAGS="-std=gnu11" bzImage modules
 
           # Install kernel and modules
           KVER=$(make -s kernelrelease)
