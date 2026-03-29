@@ -569,3 +569,219 @@ jobs:
           name: agnos-selfhost-iso-x86_64-sha256
           path: output/agnos-*.iso.sha256
           retention-days: 14
+
+  # -----------------------------------------------------------------------
+  # Stage 4: Build aarch64 base system (native on RPi4)
+  # Runs independently of x86_64 stages — only needs the RPi4 runner.
+  # Produces: agnos-base-rootfs-aarch64.tar published to base-rootfs-latest
+  # -----------------------------------------------------------------------
+  build-base-aarch64:
+    name: Build aarch64 Base System
+    runs-on: [self-hosted, linux, arm64]
+    timeout-minutes: 360
+    steps:
+      - name: Clean workspace
+        run: sudo rm -rf "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/output" "$LFS"
+
+      - name: Configure git for runner
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - uses: actions/checkout@v4
+
+      - name: Prepare build directory
+        run: |
+          sudo mkdir -p "$LFS"
+          sudo chown "$(id -u):$(id -g)" "$LFS"
+          mkdir -p "$LFS"/{sources,etc,var/log,tmp,run,proc,sys,dev,boot}
+          mkdir -p "$LFS/usr/src/agnos"
+
+      - name: Download source tarballs
+        run: |
+          mkdir -p "$LFS/sources"
+          cd "$LFS/sources"
+
+          download() {
+            local file="$1"; shift
+            [[ -f "$file" ]] && { echo "  Cached: $file"; return 0; }
+            for url in "$@"; do
+              echo "  Trying: $url"
+              if curl -fSL --connect-timeout 30 --max-time 300 -o "$file" "$url" 2>/dev/null; then
+                echo "  OK: $file"
+                return 0
+              fi
+            done
+            echo "  FAILED: $file"
+            return 1
+          }
+
+          download linux-6.6.72.tar.xz \
+            "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.6.72.tar.xz" \
+            "https://mirrors.edge.kernel.org/pub/linux/kernel/v6.x/linux-6.6.72.tar.xz"
+
+          # Download source tarballs referenced in recipes
+          for recipe in recipes/base/*.toml; do
+            url=$(grep '^url\s*=' "$recipe" | head -1 | sed 's/.*=\s*"\(.*\)"/\1/')
+            if [[ -n "$url" && "$url" != *"local"* ]]; then
+              file=$(basename "$url")
+              [[ -f "$file" ]] || curl -fSL -o "$file" "$url" 2>/dev/null || echo "WARN: $file"
+            fi
+          done
+          echo "Source cache: $(du -sh "$LFS/sources" | cut -f1)"
+
+      - name: Build packages from recipes
+        run: |
+          cp -r recipes "$LFS/usr/src/agnos/recipes"
+          cp -r scripts "$LFS/usr/src/agnos/scripts"
+          cp -r kernel  "$LFS/usr/src/agnos/kernel"
+          cp VERSION     "$LFS/usr/src/agnos/VERSION"
+          install -m 755 scripts/ark-build.sh "$LFS/usr/bin/ark-build"
+
+          [[ -f "$LFS/etc/passwd" ]] || echo 'root:x:0:0:root:/root:/bin/bash' > "$LFS/etc/passwd"
+          [[ -f "$LFS/etc/group" ]]  || echo 'root:x:0:' > "$LFS/etc/group"
+
+          BUILT=0
+          FAILED=0
+          while IFS= read -r line; do
+            [[ -z "$line" || "$line" == \#* ]] && continue
+            recipe="/usr/src/agnos/recipes/${line}.toml"
+            pkg=$(basename "$line")
+            echo ""
+            echo "========== Building: $pkg =========="
+            if LFS="$LFS" bash scripts/enter-chroot.sh \
+              "ARK_CACHE_DIR=/sources ark-build $recipe 2>&1"; then
+              BUILT=$((BUILT + 1))
+            else
+              FAILED=$((FAILED + 1))
+              echo "FAIL: $pkg (continuing)"
+            fi
+          done < recipes/build-order.txt
+
+          echo ""
+          echo "=========================================="
+          echo "  aarch64 Build Summary"
+          echo "  Built:   $BUILT"
+          echo "  Failed:  $FAILED"
+          echo "=========================================="
+
+      - name: Build aarch64 kernel
+        run: |
+          echo "=== Building aarch64 kernel ==="
+          KERNEL_SRC="/tmp/linux-6.6.72.tar.xz"
+          if [[ -f "$LFS/sources/linux-6.6.72.tar.xz" ]]; then
+            cp "$LFS/sources/linux-6.6.72.tar.xz" "$KERNEL_SRC"
+          else
+            curl -fSL -o "$KERNEL_SRC" \
+              "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.6.72.tar.xz"
+          fi
+
+          tar xf "$KERNEL_SRC" -C /tmp
+          cd /tmp/linux-6.6.72
+
+          # Apply patches
+          PATCH_DIR="$GITHUB_WORKSPACE/kernel/patches"
+          if [[ -d "$PATCH_DIR" ]]; then
+            for pdir in "$PATCH_DIR"/*/; do
+              for patch in "$pdir"/*.patch "$pdir"/*.diff; do
+                [[ -f "$patch" ]] && patch -p1 < "$patch" || true
+              done
+            done
+          fi
+
+          # Use RPi4 config if available, otherwise defconfig
+          if [[ -f "$GITHUB_WORKSPACE/kernel/config/edge-rpi4.config" ]]; then
+            cp "$GITHUB_WORKSPACE/kernel/config/edge-rpi4.config" .config
+          else
+            cp "$GITHUB_WORKSPACE/kernel/config/agnos_defconfig" .config
+          fi
+          make olddefconfig
+
+          # aarch64 uses Image not bzImage
+          make -j$(nproc) Image modules dtbs 2>&1 || make -j$(nproc) Image modules 2>&1
+
+          KVER=$(make -s kernelrelease)
+          cp arch/arm64/boot/Image "$LFS/boot/vmlinuz-${KVER}"
+          make modules_install INSTALL_MOD_PATH="$LFS"
+
+          # Copy DTBs for RPi4/5
+          mkdir -p "$LFS/boot/dtbs"
+          cp arch/arm64/boot/dts/broadcom/bcm2711*.dtb "$LFS/boot/dtbs/" 2>/dev/null || true
+          cp arch/arm64/boot/dts/broadcom/bcm2712*.dtb "$LFS/boot/dtbs/" 2>/dev/null || true
+
+          cd "$GITHUB_WORKSPACE"
+          rm -rf /tmp/linux-6.6.72
+          echo "aarch64 kernel: $KVER"
+
+      - name: Archive aarch64 base rootfs
+        run: |
+          mkdir -p output
+          DIRS="usr/ etc/ var/"
+          for d in boot/ lib/; do
+            [[ -e "$LFS/$d" ]] && DIRS="$DIRS $d"
+          done
+          if ls "$LFS"/boot/vmlinuz-* 1>/dev/null 2>&1; then
+            echo "Kernel found: $(ls "$LFS"/boot/vmlinuz-*)"
+          else
+            echo "ERROR: No kernel in aarch64 rootfs"
+            exit 1
+          fi
+          tar cf output/agnos-base-rootfs-aarch64.tar \
+            -C "$LFS" \
+            --exclude='sources' \
+            --exclude='tmp' \
+            --exclude='usr/src' \
+            $DIRS
+          ls -lh output/agnos-base-rootfs-aarch64.tar
+
+      - name: Upload aarch64 base rootfs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agnos-base-rootfs-aarch64
+          path: output/agnos-base-rootfs-aarch64.tar
+          retention-days: 90
+          compression-level: 0
+
+      - name: Publish aarch64 rootfs to base-rootfs-latest
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          REPO="${{ github.repository }}"
+          API="https://api.github.com/repos/${REPO}"
+          AUTH=(-H "Authorization: token ${GITHUB_TOKEN}")
+          TAG="base-rootfs-latest"
+
+          # Compress
+          zstd -T0 -15 output/agnos-base-rootfs-aarch64.tar \
+            -o output/agnos-base-rootfs-aarch64.tar.zst
+          sha256sum output/agnos-base-rootfs-aarch64.tar.zst \
+            > output/agnos-base-rootfs-aarch64.tar.zst.sha256
+
+          # Get existing release upload URL (don't delete — x86_64 assets are there)
+          UPLOAD_URL=$(curl -fsSL "${AUTH[@]}" "${API}/releases/tags/${TAG}" \
+            | grep -oP '"upload_url":\s*"\K[^{]*') || true
+
+          if [[ -z "$UPLOAD_URL" ]]; then
+            echo "WARN: base-rootfs-latest release not found — creating"
+            RELEASE_RESPONSE=$(curl -fsSL "${AUTH[@]}" \
+              -X POST "${API}/releases" \
+              -d "$(jq -n --arg tag "$TAG" --arg name "AGNOS Base Rootfs (Latest)" \
+                '{tag_name: $tag, name: $name, body: "Base rootfs for x86_64 and aarch64"}')")
+            UPLOAD_URL=$(echo "$RELEASE_RESPONSE" | grep -oP '"upload_url":\s*"\K[^{]*')
+          fi
+
+          # Delete old aarch64 assets if present
+          for old_asset in $(curl -fsSL "${AUTH[@]}" "${API}/releases/tags/${TAG}" \
+            | grep -oP '"id":\s*\K\d+(?=.*"name":\s*"agnos-base-rootfs-aarch64)' || true); do
+            curl -fsSL "${AUTH[@]}" -X DELETE "${API}/releases/assets/${old_asset}" || true
+          done
+
+          # Upload aarch64 assets
+          for asset in output/agnos-base-rootfs-aarch64.tar.zst output/agnos-base-rootfs-aarch64.tar.zst.sha256; do
+            FILENAME=$(basename "$asset")
+            CONTENT_TYPE="application/octet-stream"
+            [[ "$FILENAME" == *.sha256 ]] && CONTENT_TYPE="text/plain"
+            curl -fsSL "${AUTH[@]}" \
+              -H "Content-Type: ${CONTENT_TYPE}" \
+              --data-binary "@${asset}" \
+              "${UPLOAD_URL}?name=${FILENAME}"
+            echo "Uploaded: ${FILENAME}"
+          done
