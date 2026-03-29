@@ -289,14 +289,83 @@ jobs:
           echo "  Failed:  $FAILED"
           echo "=========================================="
 
-      - name: Archive base rootfs (without userland)
+      - name: Build kernel into base rootfs
+        run: |
+          echo "=== Checking kernel build dependencies ==="
+          MISSING=""
+          for tool in bc flex bison make gcc; do
+            if ! command -v "$tool" &>/dev/null; then
+              MISSING="$MISSING $tool"
+            fi
+          done
+          if [[ -n "$MISSING" ]]; then
+            echo "ERROR: Missing kernel build tools:$MISSING"
+            exit 1
+          fi
+          echo "=== Building Linux kernel from source ==="
+          mkdir -p "$LFS/boot"
+
+          KERNEL_SRC="/tmp/linux-6.6.72.tar.xz"
+          if [[ -f "$LFS/sources/linux-6.6.72.tar.xz" ]]; then
+            cp "$LFS/sources/linux-6.6.72.tar.xz" "$KERNEL_SRC"
+          else
+            curl -fSL -o "$KERNEL_SRC" \
+              "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.6.72.tar.xz"
+          fi
+
+          tar xf "$KERNEL_SRC" -C /tmp
+          cd /tmp/linux-6.6.72
+
+          # Apply AGNOS kernel patches
+          PATCH_DIR="$GITHUB_WORKSPACE/kernel/patches"
+          if [[ -d "$PATCH_DIR" ]]; then
+            for pdir in "$PATCH_DIR"/*/; do
+              for patch in "$pdir"/*.patch "$pdir"/*.diff; do
+                if [[ -f "$patch" ]]; then
+                  echo "Applying patch: $(basename "$patch")"
+                  patch -p1 < "$patch" || echo "WARN: patch $(basename "$patch") did not apply cleanly"
+                fi
+              done
+            done
+          fi
+
+          # GCC 15+ needs gnu11 wrapper
+          mkdir -p /tmp/gcc-wrap
+          cat > /tmp/gcc-wrap/gcc <<'WRAPPER'
+          #!/bin/bash
+          exec /usr/bin/gcc -std=gnu11 "$@"
+          WRAPPER
+          chmod +x /tmp/gcc-wrap/gcc
+          export PATH="/tmp/gcc-wrap:$PATH"
+
+          cp "$GITHUB_WORKSPACE/kernel/config/agnos_defconfig" .config
+          make olddefconfig
+          make -j"$(nproc)" bzImage modules
+
+          KVER=$(make -s kernelrelease)
+          cp arch/x86/boot/bzImage "$LFS/boot/vmlinuz-${KVER}"
+          make modules_install INSTALL_MOD_PATH="$LFS"
+          echo "Installed kernel: vmlinuz-${KVER}"
+
+          cd "$GITHUB_WORKSPACE"
+          rm -rf /tmp/linux-6.6.72 /tmp/gcc-wrap
+          echo "Kernel build complete: $KVER"
+
+      - name: Archive base rootfs (with kernel, without userland)
         run: |
           mkdir -p output
           DIRS="usr/ etc/ var/"
-          for d in tools/ lib/ lib64/; do
+          for d in tools/ boot/ lib/ lib64/; do
             [[ -e "$LFS/$d" ]] && DIRS="$DIRS $d"
           done
           echo "Base rootfs directories: $DIRS"
+          # Verify kernel is in the base rootfs
+          if ls "$LFS"/boot/vmlinuz-* 1>/dev/null 2>&1; then
+            echo "Kernel found: $(ls "$LFS"/boot/vmlinuz-*)"
+          else
+            echo "ERROR: No kernel in base rootfs"
+            exit 1
+          fi
           tar cf output/agnos-base-rootfs-x86_64.tar \
             -C "$LFS" \
             --exclude='sources' \
@@ -439,86 +508,9 @@ jobs:
           mkdir -p "$LFS/etc/agnos"
           cp -r config/* "$LFS/etc/agnos/" 2>/dev/null || true
 
-          # Build kernel from source using AGNOS defconfig
-          echo "=== Checking kernel build dependencies ==="
-          MISSING=""
-          for tool in bc flex bison make gcc; do
-            if ! command -v "$tool" &>/dev/null; then
-              MISSING="$MISSING $tool"
-            fi
-          done
-          if [[ -n "$MISSING" ]]; then
-            echo "ERROR: Missing kernel build tools:$MISSING"
-            echo "The self-hosted runner must have base system packages installed."
-            echo "Ensure bc, flex, bison are built and installed from recipes/base/."
-            exit 1
-          fi
-          echo "  bc: $(which bc), flex: $(which flex), bison: $(which bison)"
-          echo "=== Building Linux kernel from source ==="
-          mkdir -p "$LFS/boot"
-
-          KERNEL_SRC="/tmp/linux-6.6.72.tar.xz"
-          # Check sources cache first, then download
-          if [[ -f "$LFS/sources/linux-6.6.72.tar.xz" ]]; then
-            cp "$LFS/sources/linux-6.6.72.tar.xz" "$KERNEL_SRC"
-          else
-            curl -fSL -o "$KERNEL_SRC" \
-              "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.6.72.tar.xz"
-          fi
-
-          KBUILD="/tmp/linux-build"
-          mkdir -p "$KBUILD"
-          tar xf "$KERNEL_SRC" -C /tmp
-          cd /tmp/linux-6.6.72
-
-          # Apply AGNOS kernel patches
-          PATCH_DIR="$GITHUB_WORKSPACE/kernel/patches"
-          if [[ -d "$PATCH_DIR" ]]; then
-            for pdir in "$PATCH_DIR"/*/; do
-              for patch in "$pdir"/*.patch "$pdir"/*.diff; do
-                if [[ -f "$patch" ]]; then
-                  echo "Applying patch: $(basename "$patch")"
-                  patch -p1 < "$patch" || echo "WARN: patch $(basename "$patch") did not apply cleanly"
-                fi
-              done
-            done
-          fi
-
-          # Copy AGNOS defconfig and build
-          cp "$GITHUB_WORKSPACE/kernel/config/agnos_defconfig" .config
-          make olddefconfig
-          # GCC 15+ defaults to C23 where bool/false/true are keywords,
-          # conflicting with Linux 6.6's own typedefs. Every sub-Makefile
-          # (realmode, boot/compressed, etc.) has its own CFLAGS, so sed
-          # patching is insufficient. Use a gcc wrapper that injects -std=gnu11.
-          mkdir -p /tmp/gcc-wrap
-          cat > /tmp/gcc-wrap/gcc <<'WRAPPER'
-          #!/bin/bash
-          exec /usr/bin/gcc -std=gnu11 "$@"
-          WRAPPER
-          chmod +x /tmp/gcc-wrap/gcc
-          export PATH="/tmp/gcc-wrap:$PATH"
-          make -j"$(nproc)" bzImage modules
-
-          # Install kernel and modules
-          KVER=$(make -s kernelrelease)
-          cp arch/x86/boot/bzImage "$LFS/boot/vmlinuz-${KVER}"
-          make modules_install INSTALL_MOD_PATH="$LFS"
-          echo "Installed kernel: vmlinuz-${KVER}"
-          echo "Installed modules: $(ls "$LFS/lib/modules/" 2>/dev/null)"
-
-          # Generate initramfs
-          if command -v dracut &>/dev/null; then
-            dracut --force --kver "$KVER" \
-              --add "base rootfs-block" \
-              --install "mount umount" \
-              "$LFS/boot/initrd.img-${KVER}" 2>/dev/null || true
-          fi
-
-          # Cleanup build tree
-          cd "$GITHUB_WORKSPACE"
-          rm -rf /tmp/linux-6.6.72 "$KBUILD"
-          echo "Kernel build complete: $KVER"
+          # Kernel is already in the base rootfs (built in base-system stage)
+          echo "Kernel check:"
+          ls -la "$LFS/boot/vmlinuz-"* 2>/dev/null || echo "WARNING: No kernel in base rootfs"
 
       - name: Archive complete rootfs (base + desktop + userland)
         run: |
