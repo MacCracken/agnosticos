@@ -256,6 +256,66 @@
 
 ---
 
+## 13. bodh (Sanskrit: बोध — awareness, understanding) — Psychology
+
+**Domain**: Cognition, perception, learning, decision-making, psychometrics, psychophysics
+
+**Modules**:
+- `error.rs` — BodhError: InvalidParameter, ModelFailed, MeasurementError, ComputationError. thiserror, #[non_exhaustive]
+- `psychometrics.rs` — BigFive measurement (not simulation — that's bhava). ItemResponse { score: f32, confidence: f32 }. cronbachs_alpha(items: &[Vec<f32>]) -> f64 — internal consistency reliability. factor_analysis basics. Likert scale utilities. test_reliability, split_half_reliability
+- `cognition.rs` — WorkingMemory { phonological_loop_capacity: usize, visuospatial_capacity: usize, central_executive_load: f32 }. DualProcess { system1_speed_ms: f64, system2_speed_ms: f64 }. cognitive_load(tasks) -> f64. attention_bottleneck(stimuli, capacity) -> filtered stimuli
+- `psychophysics.rs` — weber_fechner(stimulus_intensity: f64, reference: f64, k: f64) -> f64 — perceived difference. stevens_power_law(stimulus: f64, k: f64, exponent: f64) -> f64 — sensation magnitude ψ = k·S^n. fitts_law(distance: f64, width: f64) -> f64 — movement time. hicks_law(choices: usize, b: f64) -> f64 — decision time RT = a + b·log₂(n)
+- `learning.rs` — ebbinghaus_forgetting(strength: f64, time: f64, stability: f64) -> f64 — R = e^(-t/S). spaced_repetition_interval(repetition: u32, ease: f64) -> f64. LearningCurve { trials: Vec<f64> }. classical_conditioning, operant_conditioning schedule types (fixed_ratio, variable_ratio, fixed_interval, variable_interval)
+- `decision.rs` — prospect_theory_value(outcome: f64, reference: f64, alpha: f64, beta: f64, lambda: f64) -> f64 — Kahneman/Tversky value function. expected_utility(outcomes: &[(f64, f64)]) -> f64. anchoring_bias(anchor: f64, true_value: f64, adjustment_factor: f64) -> f64. bounded_rationality satisficing model
+- `perception.rs` — SignalDetection { hit_rate: f64, false_alarm_rate: f64 }. d_prime(hits, false_alarms) -> f64 — sensitivity measure. gestalt_grouping principles as enum (Proximity, Similarity, Closure, Continuity, CommonFate). color_perception (links to prakash spectral)
+- `development.rs` — PiagetStage enum (Sensorimotor, Preoperational, ConcreteOperational, FormalOperational). cognitive_development_model. erikson_stages (8 psychosocial stages)
+
+**Key tests**: Weber-Fechner with k=1 and ΔI/I=0.1 gives correct JND, Fitts' Law with D=256 W=4 gives ~7 bits ID, Ebbinghaus curve at t=0 gives R=1.0, prospect theory is concave for gains and convex for losses, d' of 0 means chance performance, Hick's Law with 8 choices gives RT ≈ a+3b
+**Consumers**: bhava (psychometric validation of personality measurements), kiran/joshua (NPC cognition, player modeling), agnosai (decision-making models for agents)
+**Depends on**: hisab (math), pramana (statistics)
+
+---
+
+## 14. sangha (Sanskrit: सङ्घ — community, assembly) — Sociology
+
+**Domain**: Social networks, game theory, group dynamics, population models, opinion dynamics, collective behavior
+
+**Modules**:
+- `error.rs` — SanghaError: InvalidNetwork, InvalidPopulation, SimulationFailed, ComputationError. thiserror, #[non_exhaustive]
+- `network.rs` — SocialNetwork (adjacency list, weighted edges). watts_strogatz(n, k, beta) -> SocialNetwork — small-world model. barabasi_albert(n, m) -> SocialNetwork — scale-free model. erdos_renyi(n, p) -> SocialNetwork — random graph. clustering_coefficient, average_path_length, degree_distribution. dunbar_layers: [5, 15, 50, 150] (intimates → acquaintances). homophily_index(network, attribute) -> f64
+- `game_theory.rs` — PayoffMatrix, Strategy, NashEquilibrium. prisoners_dilemma() -> PayoffMatrix. find_nash_equilibria(matrix) -> Vec<NashEquilibrium>. iterated_prisoners_dilemma(strategies, rounds) -> scores. evolutionary_stable_strategy(population, payoffs) -> Option<Strategy>. tit_for_tat, always_cooperate, always_defect, pavlov strategies
+- `opinion.rs` — voter_model(network, opinions, steps) -> Vec<Opinion> — binary opinion dynamics. deffuant_model(agents, threshold, mu) -> convergence — bounded confidence. opinion_polarization detection. consensus_time estimation. echo_chamber_index(network, opinions) -> f64
+- `group.rs` — Group { members: Vec<AgentId>, cohesion: f64 }. tuckman_stage enum (Forming, Storming, Norming, Performing, Adjourning). social_loafing(group_size: usize, individual_effort: f64) -> f64 — Ringelmann effect. groupthink_risk(cohesion, insulation, leader_bias) -> f64. collective_intelligence_factor(diversity, independence, decentralization) -> f64
+- `population.rs` — logistic_growth(n: f64, r: f64, k: f64) -> f64 — dN/dt = rN(1-N/K). sir_model(s, i, r, beta, gamma, dt) -> (S, I, R) — epidemiological. r_naught(beta, gamma) -> f64 — basic reproduction number. herd_immunity_threshold(r0) -> f64 — 1 - 1/R₀. demographic_transition stages
+- `influence.rs` — conformity_threshold(individual_conviction: f64, group_pressure: f64, group_size: usize) -> bool — Asch-inspired. milgram_obedience model. social_proof_weight(adopters: usize, population: usize) -> f64. innovation_diffusion(adopters, population, p, q) -> f64 — Bass diffusion model
+- `inequality.rs` — gini_coefficient(incomes: &[f64]) -> f64. lorenz_curve(incomes: &[f64]) -> Vec<(f64, f64)>. pareto_distribution(x_min, alpha) -> samples. mobility_index
+
+**Key tests**: Watts-Strogatz with β=0 gives regular lattice (clustering~0.5), β=1 gives random (short paths), Gini of equal distribution = 0, herd immunity for R₀=3 is 0.667, prisoner's dilemma has (Defect,Defect) as Nash equilibrium, logistic growth at K/2 gives maximum growth rate, SIR with R₀<1 gives declining epidemic
+**Consumers**: kiran/joshua (NPC social behavior, faction dynamics), agnosai (multi-agent coordination), bhava (social context for emotion), bodh (group decision-making)
+**Depends on**: hisab (graph types, math), pramana (statistics, distributions)
+
+---
+
+## 15. jivanu (Hindi: जीवाणु — microbe, bacterium) — Microbiology
+
+**Domain**: Microbial growth, metabolism, genetics, epidemiology, biofilm, antibiotic resistance
+
+**Modules**:
+- `error.rs` — JivanuError: InvalidConcentration, InvalidRate, SimulationFailed, ComputationError. thiserror, #[non_exhaustive]
+- `growth.rs` — exponential_growth(n0: f64, rate: f64, time: f64) -> f64 — N = N₀·e^(rt). logistic_growth(n0, rate, capacity, time) -> f64. doubling_time(rate) -> f64 — t_d = ln(2)/r. monod_kinetics(s: f64, mu_max: f64, k_s: f64) -> f64 — μ = μ_max·S/(K_s+S). GrowthPhase enum (Lag, Exponential, Stationary, Death). growth_curve(params) -> Vec<(f64, f64)>. batch_culture, chemostat_steady_state(dilution_rate, substrate_feed)
+- `metabolism.rs` — michaelis_menten(substrate: f64, v_max: f64, k_m: f64) -> f64 — v = V_max·[S]/(K_m+[S]). lineweaver_burk(v, s) -> (slope, intercept) — double reciprocal. MetabolicPathway { reactions: Vec<Reaction>, atp_yield: f64 }. glycolysis_atp() -> 2, oxidative_phosphorylation_atp() -> ~34. fermentation types (alcoholic, lactic). enzyme_inhibition (competitive, uncompetitive, noncompetitive) with Ki
+- `genetics.rs` — mutation_rate(mutations: u64, bases: u64, generations: u64) -> f64. horizontal_gene_transfer { conjugation, transduction, transformation }. selection_coefficient(fitness_mutant: f64, fitness_wildtype: f64) -> f64. hardy_weinberg(p: f64) -> (f64, f64, f64) — (p², 2pq, q²). GeneticCode — codon table, translate(rna: &str) -> protein. gc_content(dna: &str) -> f64
+- `epidemiology.rs` — sir_step(s, i, r, beta, gamma, dt) -> (S, I, R). seir_step with exposed compartment. r_naught(beta, gamma) -> f64. herd_immunity_threshold(r0) -> f64. epidemic_peak(r0, s0) -> f64. basic_sir_trajectory(params, duration) -> Vec<(f64, f64, f64)>. case_fatality_rate, attack_rate
+- `biofilm.rs` — BiofilmStage enum (Attachment, Microcolony, Maturation, Dispersal). attachment_rate(surface_energy: f64, flow_rate: f64) -> f64. quorum_sensing(signal_concentration: f64, threshold: f64) -> bool. diffusion_through_matrix(nutrient: f64, thickness: f64, diffusivity: f64) -> f64 — Fick's law application. biofilm_growth_model
+- `resistance.rs` — mic(antibiotic: &str, organism: &str) -> Option<f64> — minimum inhibitory concentration lookup. kill_curve(concentration: f64, mic: f64, time: f64) -> f64 — survival fraction. resistance_transfer_rate(donor_freq: f64, contact_rate: f64, transfer_efficiency: f64) -> f64. AntibioticClass enum (BetaLactam, Aminoglycoside, Fluoroquinolone, Macrolide, Tetracycline, Glycopeptide)
+- `taxonomy.rs` — Domain enum (Bacteria, Archaea, Eukarya). GramStain enum (Positive, Negative). CellShape enum (Coccus, Bacillus, Spirillum, Vibrio, Spirochete). OxygenRequirement enum (Obligate Aerobe, Obligate Anaerobe, Facultative, Microaerophilic). classify basic morphological and metabolic properties
+
+**Key tests**: Monod with S>>K_s gives μ≈μ_max, doubling time at μ=0.693/hr is 1 hour, Michaelis-Menten at [S]=K_m gives v=V_max/2, glycolysis yields 2 ATP, Hardy-Weinberg p=0.6 gives genotype frequencies (0.36, 0.48, 0.16), R₀=2.5 gives herd immunity at 0.6, GC content of "ATGC" is 0.5, exponential growth N₀=100 at t=1 with r=ln(2) gives N=200
+**Consumers**: sangha (epidemiological models feed social dynamics), kimiya (biochemistry overlap), kiran/joshua (ecosystem simulation, disease mechanics), medical/health applications
+**Depends on**: hisab (math, ODE solvers), pramana (statistics), kimiya (chemical reactions, enzyme kinetics)
+
+---
+
 ## GPU Foundation: mabda (Arabic: مبدأ — origin, principle)
 
 **Not a science crate** — mabda is the shared GPU foundation that science crates use for compute acceleration. Extracted from soorat's lower layers to eliminate wgpu version sprawl across the ecosystem.

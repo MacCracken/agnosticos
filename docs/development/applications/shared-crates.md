@@ -83,6 +83,9 @@
 | [vanaspati](https://github.com/MacCracken/vanaspati) | 0.1.0 | Botany — plant growth, photosynthesis, root systems, pollination | kiran, joshua |
 | [sharira](https://github.com/MacCracken/sharira) | 0.1.0 | Physiology — skeletal, muscular, respiratory, cardiovascular systems | kiran, joshua |
 | [vidya](https://github.com/MacCracken/vidya) | 0.1.0 | Programming reference library — multi-language best practices, queryable corpus | agnoshi, hoosh, daimon |
+| [bodh](https://github.com/MacCracken/bodh) | Planned | Psychology — cognition, perception, learning, decision-making, psychometrics | bhava, kiran, agnosai |
+| [sangha](https://github.com/MacCracken/sangha) | Planned | Sociology — social networks, game theory, group dynamics, opinion dynamics | kiran, agnosai, bhava |
+| [jivanu](https://github.com/MacCracken/jivanu) | Planned | Microbiology — growth kinetics, metabolism, genetics, epidemiology, biofilm | sangha, kimiya, kiran |
 
 ## GitHub Release Only (internal to AGNOS)
 

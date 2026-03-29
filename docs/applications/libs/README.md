@@ -90,6 +90,19 @@
 | [ai-hwaccel](ai-hwaccel.md) | GPU/hardware detection | 1.0.0 | [crates.io](https://crates.io/crates/ai-hwaccel) |
 | [bhava](bhava.md) | Emotion & personality engine | 1.2.0 | [crates.io](https://crates.io/crates/bhava) |
 
+## Social & Cognitive Sciences
+
+| Crate | Domain | Version | Docs |
+|-------|--------|---------|------|
+| [bodh](bodh.md) | Psychology — cognition, perception, psychometrics | Planned | — |
+| [sangha](sangha.md) | Sociology — networks, game theory, group dynamics | Planned | — |
+
+## Life Sciences
+
+| Crate | Domain | Version | Docs |
+|-------|--------|---------|------|
+| [jivanu](jivanu.md) | Microbiology — growth, metabolism, genetics, epidemiology | Planned | — |
+
 ## Programming & Education
 
 | Crate | Domain | Version | Docs |
