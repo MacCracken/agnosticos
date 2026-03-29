@@ -593,7 +593,7 @@ jobs:
           sudo mkdir -p "$LFS"
           sudo chown "$(id -u):$(id -g)" "$LFS"
           mkdir -p "$LFS"/{sources,etc,var/log,tmp,run,proc,sys,dev,boot}
-          mkdir -p "$LFS/usr/src/agnos"
+          mkdir -p "$LFS/usr/"{src/agnos,bin,lib}
 
       - name: Download source tarballs
         run: |
