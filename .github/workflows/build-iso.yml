@@ -185,13 +185,10 @@ jobs:
   # =========================================================================
   # aarch64 SD Card Image (Desktop/Server unified)
   # Output: agnos-YYYYMMDD-aarch64.img
-  # DISABLED: Requires aarch64 base rootfs from arm64 selfhost runner (RPi4)
-  # Re-enable when aarch64 selfhost-build is available.
   # =========================================================================
   build-aarch64-sdcard:
-    if: false  # Disabled until aarch64 base rootfs is available
     name: Build aarch64 SD Card Image
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 45
 
     steps:
@@ -255,12 +252,10 @@ jobs:
   # =========================================================================
   # aarch64 Minimal SD Card Image
   # Output: agnos-YYYYMMDD-minimal-aarch64.img
-  # DISABLED: Requires aarch64 base rootfs from arm64 selfhost runner (RPi4)
   # =========================================================================
   build-aarch64-minimal:
-    if: false  # Disabled until aarch64 base rootfs is available
     name: Build aarch64 Minimal SD Card Image
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 30
 
     steps:
@@ -335,10 +330,8 @@ jobs:
   # =========================================================================
   # x86_64 Edge ISO (dm-verity, LFS-style)
   # Output: agnos-YYYYMMDD-edge-x86_64.iso
-  # DISABLED: Edge builds need dedicated testing
   # =========================================================================
   build-x86_64-edge:
-    if: false  # Disabled until edge profile is validated
     name: Build x86_64 Edge ISO
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -371,12 +364,10 @@ jobs:
   # =========================================================================
   # aarch64 Edge SD Card Image (dm-verity, RPi firmware included)
   # Output: agnos-YYYYMMDD-edge-aarch64.img
-  # DISABLED: Requires aarch64 base rootfs from arm64 selfhost runner (RPi4)
   # =========================================================================
   build-aarch64-edge:
-    if: false  # Disabled until aarch64 base rootfs is available
     name: Build aarch64 Edge SD Card Image
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 20
 
     steps:
