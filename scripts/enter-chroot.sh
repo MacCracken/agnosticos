@@ -61,18 +61,46 @@ mount_vfs run
 
 echo "==> Bootstrapping chroot essentials..."
 
-# Dynamic linker
-if [[ ! -f "${LFS}/lib64/ld-linux-x86-64.so.2" ]]; then
-    mkdir -p "${LFS}/lib64"
-    cp /lib64/ld-linux-x86-64.so.2 "${LFS}/lib64/" 2>/dev/null || \
-    cp /usr/lib64/ld-linux-x86-64.so.2 "${LFS}/lib64/" 2>/dev/null || true
+# Dynamic linker (architecture-aware)
+ARCH=$(uname -m)
+if [[ "$ARCH" == "x86_64" ]]; then
+    LDSO="ld-linux-x86-64.so.2"
+    LDSO_DIR="lib64"
+    HOST_LIB_DIRS=("/lib64" "/usr/lib64" "/lib/x86_64-linux-gnu" "/usr/lib/x86_64-linux-gnu")
+elif [[ "$ARCH" == "aarch64" ]]; then
+    LDSO="ld-linux-aarch64.so.1"
+    LDSO_DIR="lib"
+    HOST_LIB_DIRS=("/lib" "/usr/lib" "/lib/aarch64-linux-gnu" "/usr/lib/aarch64-linux-gnu")
+else
+    echo "ERROR: Unsupported architecture: $ARCH"
+    exit 1
+fi
+
+if [[ ! -f "${LFS}/${LDSO_DIR}/${LDSO}" ]]; then
+    mkdir -p "${LFS}/${LDSO_DIR}"
+    for dir in "${HOST_LIB_DIRS[@]}"; do
+        if [[ -f "${dir}/${LDSO}" ]]; then
+            cp "${dir}/${LDSO}" "${LFS}/${LDSO_DIR}/"
+            echo "  Copied dynamic linker: ${dir}/${LDSO}"
+            break
+        fi
+    done
+    # aarch64 also needs lib64 symlink for some binaries
+    if [[ "$ARCH" == "aarch64" ]] && [[ ! -e "${LFS}/lib64" ]]; then
+        ln -sf lib "${LFS}/lib64" 2>/dev/null || true
+    fi
 fi
 
 # libc
 if [[ ! -f "${LFS}/usr/lib/libc.so.6" ]] && [[ ! -f "${LFS}/lib/libc.so.6" ]]; then
     mkdir -p "${LFS}/usr/lib"
-    cp /usr/lib/libc.so.6 "${LFS}/usr/lib/" 2>/dev/null || \
-    cp /lib/x86_64-linux-gnu/libc.so.6 "${LFS}/usr/lib/" 2>/dev/null || true
+    for dir in "${HOST_LIB_DIRS[@]}"; do
+        if [[ -f "${dir}/libc.so.6" ]]; then
+            cp "${dir}/libc.so.6" "${LFS}/usr/lib/"
+            echo "  Copied libc from: ${dir}/libc.so.6"
+            break
+        fi
+    done
     [[ -e "${LFS}/lib" ]] || ln -sf usr/lib "${LFS}/lib" 2>/dev/null || true
 fi
 

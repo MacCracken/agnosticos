@@ -51,7 +51,7 @@ jobs:
 
     steps:
     - name: Clean workspace (root-owned leftovers)
-      run: sudo rm -rf "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/output"
+      run: rm -rf "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/output"
 
     - uses: actions/checkout@v4
 
@@ -133,7 +133,7 @@ jobs:
 
     steps:
     - name: Clean workspace (root-owned leftovers)
-      run: sudo rm -rf "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/output"
+      run: rm -rf "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/output"
 
     - uses: actions/checkout@v4
 
@@ -198,8 +198,8 @@ jobs:
     timeout-minutes: 45
 
     steps:
-    - name: Clean workspace (root-owned leftovers)
-      run: sudo rm -rf "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/output"
+    - name: Clean workspace
+      run: rm -rf "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/output"
 
     - name: Configure git for runner
       run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
@@ -228,7 +228,6 @@ jobs:
         if ls artifacts/*.tar.gz 1>/dev/null 2>&1; then
           tar xzf artifacts/*.tar.gz -C "$EXTRACT_DIR"
         else
-          # download-artifact v4 extracts files directly — no tarball wrapper
           cp artifacts/* "$EXTRACT_DIR/" 2>/dev/null || true
         fi
         for bin in agent_runtime llm_gateway agnsh agnos_sudo desktop_environment ai_shell; do
@@ -245,7 +244,6 @@ jobs:
 
     - name: Compress aarch64 image
       run: |
-        sudo chown -R "$(id -u):$(id -g)" output/
         cd output
         for img in agnos-*-aarch64.img; do
           [ -f "$img" ] || continue
@@ -272,7 +270,7 @@ jobs:
 
     steps:
     - name: Clean workspace (root-owned leftovers)
-      run: sudo rm -rf "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/output"
+      run: rm -rf "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/output"
 
     - name: Configure git for runner
       run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
@@ -390,7 +388,7 @@ jobs:
 
     steps:
     - name: Clean workspace (root-owned leftovers)
-      run: sudo rm -rf "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/output"
+      run: rm -rf "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/output"
 
     - name: Configure git for runner
       run: git config --global --add safe.directory "$GITHUB_WORKSPACE"

@@ -50,7 +50,7 @@ jobs:
     timeout-minutes: 120
     steps:
       - name: Clean workspace (root-owned leftovers)
-        run: sudo rm -rf "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/output"
+        run: rm -rf "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/output"
 
       - name: Configure git for runner
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
@@ -90,18 +90,16 @@ jobs:
           curl -fSL -H "Authorization: token ${GITHUB_TOKEN}" \
             -o output/agnos-toolchain-x86_64.tar.zst "$ASSET_URL"
           zstd -d output/agnos-toolchain-x86_64.tar.zst -o output/agnos-toolchain-x86_64.tar
-          sudo rm -rf "$LFS"
-          sudo mkdir -p "$LFS"
-          sudo chown "$(id -u):$(id -g)" "$LFS"
+          rm -rf "$LFS"
+          mkdir -p "$LFS"
           tar xf output/agnos-toolchain-x86_64.tar -C "$LFS"
           echo "Toolchain restored from published release"
 
       - name: Prepare build directory
         if: steps.published.outputs.cached != 'true'
         run: |
-          sudo rm -rf "$LFS"
-          sudo mkdir -p "$LFS"
-          sudo chown "$(id -u):$(id -g)" "$LFS"
+          rm -rf "$LFS"
+          mkdir -p "$LFS"
 
       - name: Download source tarballs
         if: steps.published.outputs.cached != 'true'
@@ -212,7 +210,7 @@ jobs:
     timeout-minutes: 240
     steps:
       - name: Clean workspace (root-owned leftovers)
-        run: sudo rm -rf "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/output"
+        run: rm -rf "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/output"
 
       - name: Configure git for runner
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
@@ -227,9 +225,8 @@ jobs:
 
       - name: Restore toolchain
         run: |
-          sudo rm -rf "$LFS"
-          sudo mkdir -p "$LFS"
-          sudo chown "$(id -u):$(id -g)" "$LFS"
+          rm -rf "$LFS"
+          mkdir -p "$LFS"
           tar xf output/agnos-toolchain-x86_64.tar -C "$LFS"
           "$LFS/tools/bin/x86_64-agnos-linux-gnu-gcc" --version
 
@@ -465,7 +462,7 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Clean workspace (root-owned leftovers)
-        run: sudo rm -rf "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/output"
+        run: rm -rf "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/output"
 
       - name: Configure git for runner
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
@@ -491,9 +488,8 @@ jobs:
 
       - name: Assemble rootfs with userland
         run: |
-          sudo rm -rf "$LFS"
-          sudo mkdir -p "$LFS"
-          sudo chown "$(id -u):$(id -g)" "$LFS"
+          rm -rf "$LFS"
+          mkdir -p "$LFS"
 
           # Restore base rootfs
           tar xf output/agnos-base-rootfs-x86_64.tar -C "$LFS"
@@ -557,7 +553,7 @@ jobs:
               cp "$LFS/usr/bin/$bin" userland/target/release/
             fi
           done
-          sudo bash scripts/build-installer.sh \
+          bash scripts/build-installer.sh \
             --profile desktop \
             --skip-build \
             --base-rootfs output/agnos-complete-rootfs-x86_64.tar
@@ -588,7 +584,7 @@ jobs:
     timeout-minutes: 360
     steps:
       - name: Clean workspace
-        run: sudo rm -rf "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/output" "$LFS"
+        run: rm -rf "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/output" "$LFS"
 
       - name: Configure git for runner
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
@@ -597,8 +593,6 @@ jobs:
 
       - name: Prepare build directory
         run: |
-          sudo mkdir -p "$LFS"
-          sudo chown "$(id -u):$(id -g)" "$LFS"
           mkdir -p "$LFS"/{sources,etc,var/log,tmp,run,proc,sys,dev,boot}
           mkdir -p "$LFS/usr/"{src/agnos,bin,lib}
 
@@ -634,6 +628,64 @@ jobs:
             fi
           done
           echo "Source cache: $(du -sh "$LFS/sources" | cut -f1)"
+
+      - name: Bootstrap host tools into chroot
+        run: |
+          echo "=== Bootstrapping native aarch64 build tools into chroot ==="
+          # On aarch64, we build natively (no cross-compiler). Copy the host's
+          # build toolchain into the chroot so ark-build can find gcc, make, etc.
+
+          mkdir -p "$LFS/usr/bin" "$LFS/usr/lib" "$LFS/usr/include" "$LFS/usr/libexec"
+
+          # Essential build tools from host
+          TOOLS=(gcc g++ cc make ar ranlib strip ld as nm objcopy objdump
+                 install patch sed awk grep find xargs sort uniq head tail
+                 wc tr cut tee cat cp mv rm ln mkdir rmdir chmod chown
+                 tar xz gzip bzip2 cmp diff file touch date uname id
+                 readlink dirname basename expr test true false printf)
+
+          for tool in "${TOOLS[@]}"; do
+            src=$(command -v "$tool" 2>/dev/null) || continue
+            # Resolve symlinks to get the actual binary
+            src=$(readlink -f "$src")
+            dest="$LFS/usr/bin/$(basename "$tool")"
+            if [[ ! -f "$dest" ]]; then
+              cp "$src" "$dest" 2>/dev/null || true
+              chmod +x "$dest" 2>/dev/null || true
+            fi
+          done
+
+          # Copy shared library dependencies for all copied tools
+          for bin in "$LFS"/usr/bin/*; do
+            [[ -f "$bin" ]] || continue
+            ldd "$bin" 2>/dev/null | grep -oP '/\S+' | while read -r lib; do
+              libname=$(basename "$lib")
+              if [[ -f "$lib" ]] && [[ ! -f "$LFS/usr/lib/$libname" ]]; then
+                cp "$lib" "$LFS/usr/lib/" 2>/dev/null || true
+              fi
+            done
+          done
+
+          # GCC needs its internal specs, headers, and libexec helpers
+          GCC_VER=$(gcc -dumpversion 2>/dev/null)
+          if [[ -n "$GCC_VER" ]]; then
+            # Copy gcc internal directories
+            for dir in /usr/lib/gcc /usr/libexec/gcc; do
+              if [[ -d "$dir" ]]; then
+                mkdir -p "$LFS$dir"
+                cp -r "$dir"/* "$LFS$dir/" 2>/dev/null || true
+              fi
+            done
+            # Copy system headers
+            if [[ -d /usr/include ]]; then
+              cp -r /usr/include/* "$LFS/usr/include/" 2>/dev/null || true
+            fi
+          fi
+
+          # Symlinks that some build systems expect
+          [[ -f "$LFS/usr/bin/cc" ]] || ln -sf gcc "$LFS/usr/bin/cc" 2>/dev/null || true
+
+          echo "Build tools bootstrapped: $(ls "$LFS/usr/bin/" | wc -l) binaries"
 
       - name: Build packages from recipes
         run: |
@@ -806,7 +858,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Clean workspace
-        run: sudo rm -rf "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/output" "$LFS"
+        run: rm -rf "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/output" "$LFS"
 
       - name: Configure git for runner
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
@@ -824,9 +876,8 @@ jobs:
           LFS: /tmp/agnos-validate
         run: |
           echo "=== Validating aarch64 base rootfs ==="
-          sudo rm -rf "$LFS"
-          sudo mkdir -p "$LFS"
-          sudo chown "$(id -u):$(id -g)" "$LFS"
+          rm -rf "$LFS"
+          mkdir -p "$LFS"
           tar xf output/agnos-base-rootfs-aarch64.tar -C "$LFS"
 
           PASS=0
@@ -885,4 +936,4 @@ jobs:
             exit 1
           fi
 
-          sudo rm -rf "$LFS"
+          rm -rf "$LFS"
