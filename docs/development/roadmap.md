@@ -7,7 +7,7 @@
 > **Phases 10–14 complete** | **Phase 15A**: Core scanning done (phylax) | **Phase 16A**: Desktop essentials done | **Phase 17**: Local inference optimization (planned) | **Audit**: 16 rounds
 > **MCP Tools**: 151 built-in + external registration
 > **Consumer Projects**: 19+ released (including Vidhana v1, Sutra v1, Abacus)
-> **Shared Crates**: 14 published on crates.io, 7 at v1.0 stable, 10+ scaffolded
+> **Shared Crates**: 63 library crates — 34 at v1.0+ stable, 29 pre-1.0
 > **Sandbox**: 7 backends (Native, gVisor, Firecracker, WASM, SGX, SEV, Noop) + credential proxy + externalization gate
 
 ---
@@ -446,7 +446,7 @@ All 3 phases complete. SY strength 88. See [SY ADR 044](https://github.com/MacCr
 | Bazaar Community | — | 90 | Seed recipes across 8 categories |
 | MCP Tools | — | 151 | Complete (14 agnos + 5 aequi + 24 agnostic + 7 delta + 8 photis + 5 edge + 7 shruti + 9 tarang + 8 jalwa + 9 rasa + 7 mneme + 7 irfan + 7 bullshift + 7 yeoman + 5 phylax + others) |
 | Consumer Apps | 6 | 19+ | 19+ released (incl. Vidhana v1, Sutra v1, Abacus) |
-| Shared Crates | — | 14 on crates.io | 7 at v1.0 stable, 10+ scaffolded |
+| Shared Crates | — | 63 library crates | 34 at v1.0+ stable, 29 pre-1.0 |
 | Recipe Validation Errors | 0 | 0 | Complete |
 | Security Audit Rounds | 15 | 16 | Complete |
 | Self-Hosting | Yes | Pending | Phase 13A — THE blocker |
@@ -478,7 +478,7 @@ All 3 phases complete. SY strength 88. See [SY ADR 044](https://github.com/MacCr
 
 ---
 
-## Named Subsystems (20)
+## Named Subsystems (21)
 
 | Name | Role | Component |
 |------|------|-----------|
@@ -489,6 +489,7 @@ All 3 phases complete. SY strength 88. See [SY ADR 044](https://github.com/MacCr
 | **shakti** | Privilege escalation | `agnos-sudo/` |
 | **agnoshi** | AI shell (`agnsh`, 61+ intents) | `ai-shell/` |
 | **aethersafha** | Desktop compositor | `desktop-environment/` |
+| **mabda** | GPU foundation (Arabic: origin/principle) — device, buffers, compute, textures | `MacCracken/mabda` |
 | **ark** | Unified package manager | `ark.rs`, `/v1/ark/*` |
 | **nous** | Package resolver daemon | `nous.rs` |
 | **takumi** | Package build system | `takumi.rs` |

@@ -253,3 +253,64 @@
 
 **Key tests**: Fe-56 has highest binding energy per nucleon (~8.8 MeV), H Balmer H-alpha = 656.3nm, C-14 half life = 5730 years, alpha decay of U-238 → Th-234 + He-4, electron configuration of Fe (Z=26) = [Ar]3d⁶4s², mass defect of He-4 ≈ 0.0304 amu, DT fusion Q-value ≈ 17.6 MeV, proton mass ≈ 938.272 MeV, fine structure constant ≈ 1/137
 **Consumers**: kimiya (nuclear chemistry, radiochemistry), kana (particle state vectors), prakash (spectral line generation), kiran/joshua (nuclear simulation, radiation effects), bhava v3.0 (universal constants as consciousness substrate)
+
+---
+
+## GPU Foundation: mabda (Arabic: مبدأ — origin, principle)
+
+**Not a science crate** — mabda is the shared GPU foundation that science crates use for compute acceleration. Extracted from soorat's lower layers to eliminate wgpu version sprawl across the ecosystem.
+
+**Modules**:
+- `context.rs` — GpuContext: instance, adapter, device, queue lifecycle. Headless (compute) or surface-compatible (rendering) init paths
+- `buffer.rs` — create_storage_buffer, create_uniform_buffer, create_staging_buffer, read_buffer, read_buffer_typed. Typed GPU readback via bytemuck
+- `compute.rs` — ComputePipeline: WGSL shader + bind group layout + dispatch. with_layout() for custom bindings. workgroups_1d/2d helpers
+- `texture.rs` — Texture (GPU texture + view + sampler), TextureCache (keyed cache with bind groups). from_rgba, from_bytes, from_color
+- `render_target.rs` — RenderTarget: offscreen framebuffer with read_pixels readback
+- `profiler.rs` — FrameProfiler (EMA CPU timing), GpuTimestamps (wgpu timestamp queries for per-pass GPU timing)
+- `capabilities.rs` — GpuCapabilities: adapter info, limits, feature detection. WebGPU compatibility constants
+- `color.rs` — Color: RGBA f32, conversions (u8, hex, array, wgpu), lerp, luminance
+- `error.rs` — GpuError: AdapterNotFound, DeviceRequest, Shader, Pipeline, Buffer, Readback, Texture
+
+**Features**: `graphics` (textures, render targets), `compute` (pipelines, buffers), `image` (PNG/JPEG loading), `full`
+**Status**: Scaffolded (0.1.0). 43 tests, 5 benchmarks, all clean. wgpu 29, MSRV 1.89
+**Consumers**: soorat (rendering), rasa (image compute), ranga (GPU pixel ops), bijli (FDTD compute), aethersafta (compositing via soorat), kiran (via soorat)
+**Replaces**: per-project wgpu device init, buffer management, and compute dispatch (soorat gpu.rs, rasa-gpu GpuDevice, bijli WgpuBackend init)
+
+---
+
+## Research Applications
+
+The science crate stack enables computational physics research beyond AGNOS application development. These are future exploration areas that become feasible once the individual crates are mature and cross-crate data flow works without direct dependency pinning.
+
+### Lightning Energy Capture Simulation
+
+**Problem**: Lightning delivers ~1-5 GJ in ~30μs (terawatts instantaneous power). No existing materials can absorb that power density. Staged absorption designs (plasma channel → magnetic field compression → sacrificial supercapacitor banks) need multi-physics simulation to explore.
+
+**Science crates involved**:
+- **bijli** (EM) — FDTD simulation of the plasma channel, EM field propagation, current waveform through capture apparatus
+- **hisab** (math) — numerical PDE solvers for heat equation, parametric sweep infrastructure
+- **mabda** (GPU) — compute acceleration for FDTD and thermal sweeps. Bijli's ComputeBackend trait + mabda's GpuContext
+- **impetus** (physics) — mechanical stress modeling on capture hardware under thermal shock
+- **dravya** (materials) — material property tables: thermal conductivity, breakdown voltage, phase transitions under extreme conditions
+- **prakash** (optics) — spectral characterization of plasma channel thermal radiation
+
+**Missing capability**: Magnetohydrodynamics (MHD) — coupled conductive fluid + EM field simulation. Would require a new module in bijli or a dedicated crate. Plasma at ~30,000K behaves as conductive fluid governed by both Navier-Stokes and Maxwell's equations simultaneously.
+
+**Architecture**: Cross-crate data flow via shared grid/field types (hisab vectors, field arrays). No direct dependencies between physics domains. Each crate reads/writes common formats. An orchestration layer handles the simulation pipeline:
+
+```
+bijli (EM field)  ──→  shared grid types  ←── thermal solver (heat equation)
+                            ↑
+                    impetus (mechanical stress)
+                            ↑
+                    dravya (material properties)
+```
+
+**Prerequisites**: Optional dependency decoupling complete, shared field/grid types in agnostik or hisab, GPU compute via mabda stable, MHD module exists.
+
+### Other Potential Research Domains
+
+- **Fusion reactor design** — bijli EM confinement + thermal + plasma stability (tokamak/stellarator geometry via hisab spatial types)
+- **Atmospheric modeling** — pavan aerodynamics + badal weather + falak orbital mechanics for satellite observation planning
+- **Seismic simulation** — wave propagation (bijli-style FDTD adapted for elastic waves) through geological material models (dravya)
+- **Acoustic room design** — goonj room simulation + impetus structural vibration + dravya material absorption properties

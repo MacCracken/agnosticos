@@ -172,6 +172,7 @@ When an AGNOS crate wraps an external library, **depend on the AGNOS crate, not 
 | Atomic/subatomic physics | `tanmatra` | Inline nuclear formulas, hardcoded particle data |
 | Audio codecs | `shravan` | Inline WAV/FLAC parsers, custom codec implementations |
 | Navigation/pathfinding | `raasta` | Custom A*, inline pathfinding |
+| Programming references | `vidya` | Hardcoded examples, inline tutorials |
 
 Only one crate should directly depend on each external library. Extract when **3+ projects** implement the same pattern.
 
