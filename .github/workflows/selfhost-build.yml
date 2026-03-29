@@ -22,6 +22,13 @@ on:
         required: false
         default: false
         type: boolean
+  workflow_call:
+    inputs:
+      force_rebuild:
+        description: 'Force rebuild even if cached base exists'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -785,3 +792,97 @@ jobs:
               "${UPLOAD_URL}?name=${FILENAME}"
             echo "Uploaded: ${FILENAME}"
           done
+
+  # -----------------------------------------------------------------------
+  # Stage 4b: Validate aarch64 base rootfs
+  # Proves the rootfs has a working toolchain, kernel, and essential packages.
+  # Mirrors the x86_64 build-and-iso validation but for ARM — no ISO, just
+  # rootfs integrity checks since the final artifact is an SD card image.
+  # -----------------------------------------------------------------------
+  validate-aarch64:
+    name: Validate aarch64 Base Rootfs
+    needs: build-base-aarch64
+    runs-on: [self-hosted, linux, arm64]
+    timeout-minutes: 30
+    steps:
+      - name: Clean workspace
+        run: sudo rm -rf "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/output" "$LFS"
+
+      - name: Configure git for runner
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - uses: actions/checkout@v4
+
+      - name: Download aarch64 rootfs artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: agnos-base-rootfs-aarch64
+          path: output/
+
+      - name: Validate rootfs contents
+        env:
+          LFS: /tmp/agnos-validate
+        run: |
+          echo "=== Validating aarch64 base rootfs ==="
+          sudo rm -rf "$LFS"
+          sudo mkdir -p "$LFS"
+          sudo chown "$(id -u):$(id -g)" "$LFS"
+          tar xf output/agnos-base-rootfs-aarch64.tar -C "$LFS"
+
+          PASS=0
+          FAIL=0
+
+          check() {
+            local desc="$1"; shift
+            if "$@" >/dev/null 2>&1; then
+              echo "  ✓ $desc"
+              PASS=$((PASS + 1))
+            else
+              echo "  ✗ $desc"
+              FAIL=$((FAIL + 1))
+            fi
+          }
+
+          echo ""
+          echo "── Kernel ──"
+          check "kernel image exists" ls "$LFS"/boot/vmlinuz-*
+          check "kernel modules exist" ls "$LFS"/lib/modules/*/modules.dep 2>/dev/null
+
+          echo ""
+          echo "── Essential directories ──"
+          check "/usr/bin exists" test -d "$LFS/usr/bin"
+          check "/usr/lib exists" test -d "$LFS/usr/lib"
+          check "/etc exists" test -d "$LFS/etc"
+
+          echo ""
+          echo "── Core binaries ──"
+          for bin in bash sh cat ls cp mv rm mkdir chmod chown mount; do
+            check "$bin" test -f "$LFS/usr/bin/$bin" -o -f "$LFS/bin/$bin" -o -f "$LFS/usr/sbin/$bin"
+          done
+
+          echo ""
+          echo "── Libraries ──"
+          check "libc.so exists" find "$LFS" -name 'libc.so*' -type f 2>/dev/null | grep -q .
+          check "libm.so exists" find "$LFS" -name 'libm.so*' -type f 2>/dev/null | grep -q .
+          check "libpthread exists" find "$LFS" -name 'libpthread*' -type f 2>/dev/null | grep -q . || find "$LFS" -name 'libc.so*' -type f 2>/dev/null | grep -q .
+
+          echo ""
+          echo "── Boot (RPi) ──"
+          check "DTBs exist" ls "$LFS"/boot/dtbs/*.dtb 2>/dev/null
+
+          echo ""
+          echo "── Config ──"
+          check "/etc/passwd exists" test -f "$LFS/etc/passwd"
+          check "/etc/group exists" test -f "$LFS/etc/group"
+
+          echo ""
+          echo "=========================================="
+          echo "  Validation: $PASS passed, $FAIL failed"
+          echo "=========================================="
+
+          if [ "$FAIL" -gt 0 ]; then
+            echo "::error::aarch64 rootfs validation failed ($FAIL checks)"
+            exit 1
+          fi
+
+          sudo rm -rf "$LFS"

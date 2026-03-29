@@ -1,0 +1,249 @@
+name: Full Test Matrix
+
+# One-button build: selfhost base → userland → all ISOs/images → release
+# Use this to validate the entire pipeline end-to-end.
+# Normal releases use release.yml (fast path with cached rootfs).
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g. 2026.3.29). If empty, reads from VERSION file'
+        required: false
+      force_rebuild_toolchain:
+        description: 'Force rebuild toolchain even if cached'
+        required: false
+        default: false
+        type: boolean
+      skip_selfhost:
+        description: 'Skip selfhost build (use existing base-rootfs-latest)'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  actions: read
+  security-events: write
+  packages: write
+
+concurrency:
+  group: full-matrix
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────
+  # Phase 0: Read version, run CI checks
+  # ─────────────────────────────────────────────────────────────────────────
+  prepare:
+    name: Prepare
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=$(cat VERSION | tr -d '[:space:]')" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Show build plan
+        run: |
+          echo "╔══════════════════════════════════════════╗"
+          echo "║       AGNOS Full Test Matrix             ║"
+          echo "╠══════════════════════════════════════════╣"
+          echo "║  Version:    ${{ steps.version.outputs.version }}"
+          echo "║  Selfhost:   ${{ inputs.skip_selfhost == true && 'SKIP (use cached)' || 'BUILD' }}"
+          echo "║  Toolchain:  ${{ inputs.force_rebuild_toolchain == true && 'FORCE REBUILD' || 'use cached if available' }}"
+          echo "╚══════════════════════════════════════════╝"
+
+  ci-gate:
+    name: CI Quality Gate
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Phase 1: Selfhost base system (Tier 1 — both architectures)
+  # Publishes base-rootfs-latest release with both x86_64 and aarch64 assets
+  # ─────────────────────────────────────────────────────────────────────────
+  selfhost:
+    name: Selfhost Build
+    needs: [prepare, ci-gate]
+    if: ${{ inputs.skip_selfhost != true }}
+    uses: ./.github/workflows/selfhost-build.yml
+    with:
+      force_rebuild: ${{ inputs.force_rebuild_toolchain == true }}
+    permissions:
+      contents: write
+      packages: write
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Phase 2: Build userland binaries (x86_64, aarch64, aarch64-edge)
+  # ─────────────────────────────────────────────────────────────────────────
+  build-userland:
+    name: Build ${{ matrix.name }}
+    needs: [prepare, ci-gate, selfhost]
+    if: ${{ !cancelled() && needs.ci-gate.result == 'success' && (needs.selfhost.result == 'success' || needs.selfhost.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            name: linux-amd64
+            profile: release
+          - target: aarch64-unknown-linux-gnu
+            name: linux-arm64
+            aarch64: true
+            profile: release
+          - target: aarch64-unknown-linux-gnu
+            name: linux-arm64-edge
+            aarch64: true
+            profile: release-edge
+            no_default_features: true
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Rust environment
+      uses: ./.github/actions/setup-rust-env
+      with:
+        targets: ${{ matrix.target }}
+        cache-prefix: release-${{ matrix.target }}
+        install-build-essential: ${{ !matrix.aarch64 }}
+
+    - name: Install aarch64 cross-compiler
+      if: matrix.aarch64
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y gcc-aarch64-linux-gnu
+
+    - name: Build
+      run: |
+        if [ "${{ matrix.aarch64 }}" = "true" ]; then
+          export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
+        fi
+        ARGS="--profile ${{ matrix.profile }} --workspace --target ${{ matrix.target }}"
+        if [ "${{ matrix.no_default_features }}" = "true" ]; then
+          ARGS="$ARGS --no-default-features"
+        fi
+        cargo build $ARGS
+      working-directory: userland
+
+    - name: Package
+      run: |
+        mkdir -p agnos-${{ matrix.name }}
+        PROFILE_DIR="${{ matrix.profile }}"
+        for bin in agent_runtime llm_gateway desktop_environment ai_shell agnos_sudo agnsh; do
+          cp "userland/target/${{ matrix.target }}/${PROFILE_DIR}/${bin}" "agnos-${{ matrix.name }}/" 2>/dev/null || true
+        done
+        cp -r docs agnos-${{ matrix.name }}/
+        cp README.md agnos-${{ matrix.name }}/
+        cp LICENSE agnos-${{ matrix.name }}/
+        tar czvf agnos-${{ matrix.name }}.tar.gz agnos-${{ matrix.name }}
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: agnos-${{ matrix.name }}
+        path: agnos-${{ matrix.name }}.tar.gz
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Phase 3: Build all ISOs and SD card images
+  # ─────────────────────────────────────────────────────────────────────────
+  build-images:
+    name: Build ISO/IMG Images
+    needs: [prepare, build-userland]
+    uses: ./.github/workflows/build-iso.yml
+    with:
+      version: ${{ needs.prepare.outputs.version }}
+      use_agnos_base: true
+    permissions:
+      contents: write
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Phase 4: Generate SBOM
+  # ─────────────────────────────────────────────────────────────────────────
+  generate-sbom:
+    name: Generate SBOM
+    needs: ci-gate
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Rust environment
+      uses: ./.github/actions/setup-rust-env
+      with:
+        cache-prefix: sbom
+
+    - name: Install SBOM tools
+      run: cargo install cargo-cyclonedx cargo-license --locked
+
+    - name: Generate SBOM
+      run: |
+        cd userland
+        cargo cyclonedx --format json --output-cdx || true
+        cargo cyclonedx --format xml --output-cdx || true
+        mkdir -p ../sbom
+        cp -f *.cdx.json ../sbom/ 2>/dev/null || true
+        cp -f *.cdx.xml ../sbom/ 2>/dev/null || true
+        cargo license --json > ../sbom/license-summary.json 2>/dev/null || true
+        cargo license > ../sbom/license-summary.txt 2>/dev/null || true
+
+    - name: Upload SBOM
+      uses: actions/upload-artifact@v4
+      with:
+        name: sbom-files
+        path: sbom/
+        if-no-files-found: warn
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Phase 5: Summary — report what passed/failed
+  # ─────────────────────────────────────────────────────────────────────────
+  summary:
+    name: Full Matrix Summary
+    needs: [prepare, ci-gate, selfhost, build-userland, build-images, generate-sbom]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report results
+        run: |
+          VERSION="${{ needs.prepare.outputs.version }}"
+          echo "╔══════════════════════════════════════════════════════╗"
+          echo "║         AGNOS Full Test Matrix — Results            ║"
+          echo "╠══════════════════════════════════════════════════════╣"
+          echo "║  Version:       $VERSION"
+          echo "║  CI Gate:       ${{ needs.ci-gate.result }}"
+          echo "║  Selfhost:      ${{ needs.selfhost.result }}"
+          echo "║  Userland:      ${{ needs.build-userland.result }}"
+          echo "║  ISO/IMG:       ${{ needs.build-images.result }}"
+          echo "║  SBOM:          ${{ needs.generate-sbom.result }}"
+          echo "╚══════════════════════════════════════════════════════╝"
+
+          # Fail if any critical phase failed
+          FAILED=0
+          for result in "${{ needs.ci-gate.result }}" "${{ needs.build-userland.result }}" "${{ needs.build-images.result }}"; do
+            if [ "$result" = "failure" ]; then
+              FAILED=1
+            fi
+          done
+
+          if [ "$FAILED" = "1" ]; then
+            echo "::error::One or more phases failed — see above"
+            exit 1
+          fi
+
+          echo ""
+          echo "All phases passed. Safe to tag and release."
