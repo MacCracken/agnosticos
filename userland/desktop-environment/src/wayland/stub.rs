@@ -26,6 +26,11 @@ mod wayland_stub {
             })
         }
 
+        /// Access the protocol bridge (for testing/inspection).
+        pub fn bridge(&self) -> &ProtocolBridge {
+            &self.bridge
+        }
+
         /// Stub: returns a fake socket name.
         pub fn listen(&mut self) -> Result<String, Box<dyn std::error::Error>> {
             let name = "wayland-stub-0".to_string();
