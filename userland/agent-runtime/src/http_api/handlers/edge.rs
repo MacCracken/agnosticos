@@ -287,7 +287,7 @@ pub async fn edge_register_node_handler(
     }
 }
 
-/// `GET /v1/edge/nodes/:id`
+/// `GET /v1/edge/nodes/{id}`
 ///
 /// Get details for a single edge node.
 pub async fn edge_get_node_handler(
@@ -309,7 +309,7 @@ pub async fn edge_get_node_handler(
     }
 }
 
-/// `POST /v1/edge/nodes/:id/heartbeat`
+/// `POST /v1/edge/nodes/{id}/heartbeat`
 ///
 /// Process a heartbeat from an edge node.
 pub async fn edge_heartbeat_handler(
@@ -339,7 +339,7 @@ pub async fn edge_heartbeat_handler(
     }
 }
 
-/// `POST /v1/edge/nodes/:id/decommission`
+/// `POST /v1/edge/nodes/{id}/decommission`
 ///
 /// Decommission an edge node (mark for removal from fleet).
 pub async fn edge_decommission_handler(
@@ -376,7 +376,7 @@ pub async fn edge_stats_handler(State(state): State<ApiState>) -> impl IntoRespo
     Json(serde_json::json!(stats))
 }
 
-/// `POST /v1/edge/nodes/:id/update`
+/// `POST /v1/edge/nodes/{id}/update`
 ///
 /// Start an OTA update on an edge node. The node must be online and idle.
 pub async fn edge_start_update_handler(
@@ -413,7 +413,7 @@ pub async fn edge_start_update_handler(
     }
 }
 
-/// `POST /v1/edge/nodes/:id/update/complete`
+/// `POST /v1/edge/nodes/{id}/update/complete`
 ///
 /// Mark an OTA update as complete. The node returns to online status.
 pub async fn edge_complete_update_handler(
@@ -780,16 +780,16 @@ mod tests {
         Router::new()
             .route("/v1/edge/nodes", get(edge_list_nodes_handler))
             .route("/v1/edge/nodes", post(edge_register_node_handler))
-            .route("/v1/edge/nodes/:id", get(edge_get_node_handler))
-            .route("/v1/edge/nodes/:id/heartbeat", post(edge_heartbeat_handler))
+            .route("/v1/edge/nodes/{id}", get(edge_get_node_handler))
+            .route("/v1/edge/nodes/{id}/heartbeat", post(edge_heartbeat_handler))
             .route(
-                "/v1/edge/nodes/:id/decommission",
+                "/v1/edge/nodes/{id}/decommission",
                 post(edge_decommission_handler),
             )
             .route("/v1/edge/stats", get(edge_stats_handler))
-            .route("/v1/edge/nodes/:id/update", post(edge_start_update_handler))
+            .route("/v1/edge/nodes/{id}/update", post(edge_start_update_handler))
             .route(
-                "/v1/edge/nodes/:id/update/complete",
+                "/v1/edge/nodes/{id}/update/complete",
                 post(edge_complete_update_handler),
             )
             .route("/v1/edge/route", post(edge_route_task_handler))
@@ -1803,7 +1803,7 @@ mod tests {
         let state = test_state();
         Router::new()
             .route("/v1/edge/nodes", post(edge_register_node_handler))
-            .route("/v1/edge/nodes/:id/heartbeat", post(edge_heartbeat_handler))
+            .route("/v1/edge/nodes/{id}/heartbeat", post(edge_heartbeat_handler))
             .route("/v1/edge/route", post(edge_route_task_handler))
             .route("/v1/edge/models", get(edge_fleet_models_handler))
             .with_state(state)

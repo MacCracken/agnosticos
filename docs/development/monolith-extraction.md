@@ -1,6 +1,6 @@
 # Monolith Extraction Roadmap
 
-> **Status**: In Progress | **Last Updated**: 2026-03-26
+> **Status**: In Progress | **Last Updated**: 2026-03-29
 >
 > Plan for extracting AGNOS core subsystems from the monolithic userland workspace
 > into independently buildable, updatable binaries with their own ark packages.
@@ -116,6 +116,30 @@ Extract the subsystems that could run as independent daemons:
 | **agnova** | agent-runtime/src/agnova.rs | `agnova` binary | Installer (runs once) |
 
 **Why**: argonaut's service management logic is needed by stiva (container lifecycle) and sutra (service state modules). Today sutra shells out or uses daimon's API. With argonaut as a crate, sutra can call `argonaut::service::enable("tarang")` directly on the local machine without a daimon round-trip.
+
+### Phase 3.5 — Crypto Boundary (AGNOS ↔ SY)
+
+Resolve the PQC/crypto ownership split before extracting further:
+
+| Item | Current Location | Decision Needed |
+|------|-----------------|-----------------|
+| **pqc.rs** | agent-runtime/src/pqc.rs | Extract to shared crate or keep in daimon? |
+| **sy-crypto** | SecureYeoman (external) | SY-side agent crypto — overlaps with pqc.rs |
+
+**Current state**: `pqc.rs` implements hybrid classical + PQC (ML-KEM/ML-DSA) with
+SHA-256 simulated primitives. Production interfaces are correct — swapping to real
+`ml-kem`/`ml-dsa` crates is mechanical. SY has `sy-crypto` covering similar ground
+from the agent side.
+
+**Decisions needed**:
+- [ ] **Ownership split**: AGNOS pqc = OS-level trust (key exchange, hybrid combiners, cert verification) vs SY sy-crypto = agent-side session crypto
+- [ ] **Shared primitives**: Move common PQC types/traits into agnostik so both sides share one definition
+- [ ] **Channel encryption**: Who owns the agent↔daimon channel encryption and key rotation?
+- [ ] **Real crate swap**: Replace SHA-256 simulation with actual `ml-kem` + `ml-dsa` crates
+- [ ] **Migration path**: Define the classical → hybrid → PQC-only transition timeline
+
+**Why now**: Extracting sigil, aegis, or kavach without settling the crypto boundary
+means we'd have to refactor crypto ownership later — better to draw the line first.
 
 ### Phase 4 — Core Services (started)
 

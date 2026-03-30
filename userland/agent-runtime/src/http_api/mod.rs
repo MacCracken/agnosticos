@@ -98,22 +98,22 @@ pub fn build_router(state: ApiState) -> Router {
         // TPM attestation (sy-agnos Phase 3 measured boot)
         .route("/v1/attestation", get(attestation_handler))
         .route("/v1/agents/register", post(register_agent_handler))
-        .route("/v1/agents/:id/heartbeat", post(heartbeat_handler))
+        .route("/v1/agents/{id}/heartbeat", post(heartbeat_handler))
         // Remote execution for sutra orchestration (T1)
-        .route("/v1/agents/:id/exec", post(exec_handler))
+        .route("/v1/agents/{id}/exec", post(exec_handler))
         // File transfer for sutra orchestration (T2)
-        .route("/v1/agents/:id/files/*path", put(file_put_handler))
-        .route("/v1/agents/:id/files/*path", get(file_get_handler))
+        .route("/v1/agents/{id}/files/{*path}", put(file_put_handler))
+        .route("/v1/agents/{id}/files/{*path}", get(file_get_handler))
         .route("/v1/agents", get(list_agents_handler))
-        .route("/v1/agents/:id", get(get_agent_handler))
-        .route("/v1/agents/:id", delete(deregister_agent_handler))
+        .route("/v1/agents/{id}", get(get_agent_handler))
+        .route("/v1/agents/{id}", delete(deregister_agent_handler))
         .route(
             "/v1/agents/deregister/batch",
             post(batch_deregister_handler),
         )
         .route("/v1/webhooks", post(register_webhook_handler))
         .route("/v1/webhooks", get(list_webhooks_handler))
-        .route("/v1/webhooks/:id", delete(delete_webhook_handler))
+        .route("/v1/webhooks/{id}", delete(delete_webhook_handler))
         .route("/v1/audit/forward", post(forward_audit_handler))
         .route("/v1/audit", get(list_audit_handler))
         .route("/v1/audit/chain", get(audit_chain_handler))
@@ -121,29 +121,29 @@ pub fn build_router(state: ApiState) -> Router {
         // Sutra playbook run audit ingestion (T3)
         .route("/v1/audit/runs", post(audit_runs_handler))
         // Reasoning trace routes
-        .route("/v1/agents/:id/reasoning", post(submit_reasoning_handler))
-        .route("/v1/agents/:id/reasoning", get(list_reasoning_handler))
+        .route("/v1/agents/{id}/reasoning", post(submit_reasoning_handler))
+        .route("/v1/agents/{id}/reasoning", get(list_reasoning_handler))
         // Dashboard sync routes
         .route("/v1/dashboard/sync", post(dashboard_sync_handler))
         .route("/v1/dashboard/latest", get(dashboard_latest_handler))
         .route("/v1/health/consumers", get(consumer_health_handler))
         // Environment profile routes
         .route("/v1/profiles", get(list_profiles_handler))
-        .route("/v1/profiles/:name", get(get_profile_handler))
-        .route("/v1/profiles/:name", put(upsert_profile_handler))
+        .route("/v1/profiles/{name}", get(get_profile_handler))
+        .route("/v1/profiles/{name}", put(upsert_profile_handler))
         // Vector search routes
         .route("/v1/vectors/search", post(vector_search_handler))
         .route("/v1/vectors/insert", post(vector_insert_handler))
         .route("/v1/vectors/collections", get(vector_collections_handler))
         .route("/v1/vectors/collections", post(create_collection_handler))
         .route(
-            "/v1/vectors/collections/:name",
+            "/v1/vectors/collections/{name}",
             delete(delete_collection_handler),
         )
-        .route("/v1/agents/:id/memory", get(memory_list_handler))
-        .route("/v1/agents/:id/memory/:key", get(memory_get_handler))
-        .route("/v1/agents/:id/memory/:key", put(memory_set_handler))
-        .route("/v1/agents/:id/memory/:key", delete(memory_delete_handler))
+        .route("/v1/agents/{id}/memory", get(memory_list_handler))
+        .route("/v1/agents/{id}/memory/{key}", get(memory_get_handler))
+        .route("/v1/agents/{id}/memory/{key}", put(memory_set_handler))
+        .route("/v1/agents/{id}/memory/{key}", delete(memory_delete_handler))
         .route("/v1/traces", post(submit_trace_handler))
         .route("/v1/traces", get(list_traces_handler))
         .route("/v1/traces/spans", get(list_spans_handler))
@@ -158,7 +158,7 @@ pub fn build_router(state: ApiState) -> Router {
             post(crate::mcp_server::mcp_tool_call_handler),
         )
         .route(
-            "/v1/mcp/tools/:name",
+            "/v1/mcp/tools/{name}",
             delete(crate::mcp_server::mcp_deregister_tool_handler),
         )
         .route(
@@ -178,15 +178,15 @@ pub fn build_router(state: ApiState) -> Router {
             get(list_custom_profiles_handler),
         )
         .route(
-            "/v1/sandbox/profiles/custom/:name",
+            "/v1/sandbox/profiles/custom/{name}",
             get(get_custom_profile_handler),
         )
         .route(
-            "/v1/sandbox/profiles/custom/:name",
+            "/v1/sandbox/profiles/custom/{name}",
             put(upsert_custom_profile_handler),
         )
         .route(
-            "/v1/sandbox/profiles/custom/:name",
+            "/v1/sandbox/profiles/custom/{name}",
             delete(delete_custom_profile_handler),
         )
         // Sandbox enforcement API (OS-level delegation for SY, Agnostic, etc.)
@@ -199,18 +199,18 @@ pub fn build_router(state: ApiState) -> Router {
         )
         // Agent-to-agent RPC routes
         .route("/v1/rpc/methods", get(rpc_list_methods_handler))
-        .route("/v1/rpc/methods/:agent_id", get(rpc_agent_methods_handler))
+        .route("/v1/rpc/methods/{agent_id}", get(rpc_agent_methods_handler))
         .route("/v1/rpc/register", post(rpc_register_handler))
         .route("/v1/rpc/call", post(rpc_call_handler))
         // Behavior anomaly detection routes
         .route("/v1/anomaly/sample", post(anomaly_submit_handler))
         .route("/v1/anomaly/alerts", get(anomaly_alerts_handler))
         .route(
-            "/v1/anomaly/baseline/:agent_id",
+            "/v1/anomaly/baseline/{agent_id}",
             get(anomaly_baseline_handler),
         )
         .route(
-            "/v1/anomaly/alerts/:agent_id",
+            "/v1/anomaly/alerts/{agent_id}",
             delete(anomaly_clear_handler),
         )
         // RAG pipeline routes
@@ -225,7 +225,7 @@ pub fn build_router(state: ApiState) -> Router {
         .route("/v1/ark/install", post(ark_install_handler))
         .route("/v1/ark/remove", post(ark_remove_handler))
         .route("/v1/ark/search", get(ark_search_handler))
-        .route("/v1/ark/info/:package", get(ark_info_handler))
+        .route("/v1/ark/info/{package}", get(ark_info_handler))
         .route("/v1/ark/update", post(ark_update_handler))
         .route("/v1/ark/upgrade", post(ark_upgrade_handler))
         .route("/v1/ark/status", get(ark_status_handler))
@@ -251,9 +251,9 @@ pub fn build_router(state: ApiState) -> Router {
         )
         .route("/v1/marketplace/search", get(marketplace_search_handler))
         .route("/v1/marketplace/install", post(marketplace_install_handler))
-        .route("/v1/marketplace/:name", get(marketplace_info_handler))
+        .route("/v1/marketplace/{name}", get(marketplace_info_handler))
         .route(
-            "/v1/marketplace/:name",
+            "/v1/marketplace/{name}",
             delete(marketplace_uninstall_handler),
         )
         // Remote marketplace routes
@@ -266,16 +266,16 @@ pub fn build_router(state: ApiState) -> Router {
             post(marketplace_remote_install_handler),
         )
         .route(
-            "/v1/marketplace/remote/:name",
+            "/v1/marketplace/remote/{name}",
             get(marketplace_remote_info_handler),
         )
         // Database provisioning routes
-        .route("/v1/agents/:id/database", post(database_provision_handler))
+        .route("/v1/agents/{id}/database", post(database_provision_handler))
         .route(
-            "/v1/agents/:id/database",
+            "/v1/agents/{id}/database",
             delete(database_deprovision_handler),
         )
-        .route("/v1/agents/:id/database", get(database_get_handler))
+        .route("/v1/agents/{id}/database", get(database_get_handler))
         .route("/v1/database/stats", get(database_stats_handler))
         // Handshake routes (service discovery, batch registration, events, sandbox listing)
         .route("/v1/discover", get(service_discovery_handler))
@@ -297,22 +297,22 @@ pub fn build_router(state: ApiState) -> Router {
         // Edge fleet management routes (Phase 14E)
         .route("/v1/edge/nodes", get(edge::edge_list_nodes_handler))
         .route("/v1/edge/nodes", post(edge::edge_register_node_handler))
-        .route("/v1/edge/nodes/:id", get(edge::edge_get_node_handler))
+        .route("/v1/edge/nodes/{id}", get(edge::edge_get_node_handler))
         .route(
-            "/v1/edge/nodes/:id/heartbeat",
+            "/v1/edge/nodes/{id}/heartbeat",
             post(edge::edge_heartbeat_handler),
         )
         .route(
-            "/v1/edge/nodes/:id/decommission",
+            "/v1/edge/nodes/{id}/decommission",
             post(edge::edge_decommission_handler),
         )
         .route("/v1/edge/stats", get(edge::edge_stats_handler))
         .route(
-            "/v1/edge/nodes/:id/update",
+            "/v1/edge/nodes/{id}/update",
             post(edge::edge_start_update_handler),
         )
         .route(
-            "/v1/edge/nodes/:id/update/complete",
+            "/v1/edge/nodes/{id}/update/complete",
             post(edge::edge_complete_update_handler),
         )
         .route("/v1/edge/route", post(edge::edge_route_task_handler))
@@ -340,34 +340,34 @@ pub fn build_router(state: ApiState) -> Router {
             get(screen_list_permissions_handler),
         )
         .route(
-            "/v1/screen/permissions/:agent_id",
+            "/v1/screen/permissions/{agent_id}",
             delete(screen_revoke_permission_handler),
         )
         .route("/v1/screen/history", get(screen_history_handler))
         .route("/v1/screen/recording/start", post(recording_start_handler))
         .route(
-            "/v1/screen/recording/:id/frame",
+            "/v1/screen/recording/{id}/frame",
             post(recording_frame_handler),
         )
         .route(
-            "/v1/screen/recording/:id/pause",
+            "/v1/screen/recording/{id}/pause",
             post(recording_pause_handler),
         )
         .route(
-            "/v1/screen/recording/:id/resume",
+            "/v1/screen/recording/{id}/resume",
             post(recording_resume_handler),
         )
         .route(
-            "/v1/screen/recording/:id/stop",
+            "/v1/screen/recording/{id}/stop",
             post(recording_stop_handler),
         )
-        .route("/v1/screen/recording/:id", get(recording_get_handler))
+        .route("/v1/screen/recording/{id}", get(recording_get_handler))
         .route(
-            "/v1/screen/recording/:id/frames",
+            "/v1/screen/recording/{id}/frames",
             get(recording_frames_handler),
         )
         .route(
-            "/v1/screen/recording/:id/latest",
+            "/v1/screen/recording/{id}/latest",
             get(recording_latest_handler),
         )
         .route("/v1/screen/recordings", get(recording_list_handler));

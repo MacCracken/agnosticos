@@ -65,7 +65,7 @@ pub async fn start_http_server(
         .route("/v1/tokens/report", post(tokens_report))
         .route("/v1/tokens/release", post(tokens_release))
         .route("/v1/tokens/pools", get(tokens_pools))
-        .route("/v1/tokens/pools/:pool_name", get(tokens_pool_detail))
+        .route("/v1/tokens/pools/{pool_name}", get(tokens_pool_detail))
         .layer(body_limit)
         .layer(cors)
         .with_state(state);
@@ -1100,7 +1100,7 @@ async fn tokens_pools(State(state): State<AppState>, headers: HeaderMap) -> impl
     )
 }
 
-/// GET /v1/tokens/pools/:pool_name — detailed view of a single budget pool.
+/// GET /v1/tokens/pools/{pool_name} — detailed view of a single budget pool.
 async fn tokens_pool_detail(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -3344,7 +3344,7 @@ mod tests {
             api_key: None,
         };
         let app = Router::new()
-            .route("/v1/tokens/pools/:pool_name", get(tokens_pool_detail))
+            .route("/v1/tokens/pools/{pool_name}", get(tokens_pool_detail))
             .with_state(state);
 
         let req = Request::builder()
@@ -3382,7 +3382,7 @@ mod tests {
             api_key: None,
         };
         let app = Router::new()
-            .route("/v1/tokens/pools/:pool_name", get(tokens_pool_detail))
+            .route("/v1/tokens/pools/{pool_name}", get(tokens_pool_detail))
             .with_state(state);
 
         let req = Request::builder()

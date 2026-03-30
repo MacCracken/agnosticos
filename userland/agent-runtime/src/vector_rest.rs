@@ -507,13 +507,13 @@ pub fn vector_api_endpoints() -> Vec<VectorEndpoint> {
         },
         VectorEndpoint {
             method: "GET".to_string(),
-            path: "/v1/vectors/collections/:name".to_string(),
+            path: "/v1/vectors/collections/{name}".to_string(),
             description: "Get collection info".to_string(),
             auth_scope: "vectors:read".to_string(),
         },
         VectorEndpoint {
             method: "DELETE".to_string(),
-            path: "/v1/vectors/collections/:name".to_string(),
+            path: "/v1/vectors/collections/{name}".to_string(),
             description: "Delete a collection".to_string(),
             auth_scope: "vectors:write".to_string(),
         },
