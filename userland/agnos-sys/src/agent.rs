@@ -356,7 +356,7 @@ pub mod helpers {
         hasher.update(timestamp.as_bytes());
         hasher.update(event_type.as_bytes());
         hasher.update(details.to_string().as_bytes());
-        let hash = format!("{:x}", hasher.finalize());
+        let hash = hex::encode(hasher.finalize());
 
         let entry = serde_json::json!({
             "timestamp": timestamp,
@@ -651,14 +651,14 @@ pub mod helpers {
             hasher1.update(b"2026-01-01T00:00:00Z");
             hasher1.update(b"test");
             hasher1.update(b"{}");
-            let hash1 = format!("{:x}", hasher1.finalize());
+            let hash1 = hex::encode(hasher1.finalize());
 
             let mut hasher2 = Sha256::new();
             hasher2.update(b"genesis");
             hasher2.update(b"2026-01-01T00:00:00Z");
             hasher2.update(b"test");
             hasher2.update(b"{}");
-            let hash2 = format!("{:x}", hasher2.finalize());
+            let hash2 = hex::encode(hasher2.finalize());
 
             assert_eq!(hash1, hash2);
             assert_eq!(hash1.len(), 64); // SHA-256 hex = 64 chars
@@ -669,12 +669,12 @@ pub mod helpers {
             let mut hasher1 = Sha256::new();
             hasher1.update(b"genesis");
             hasher1.update(b"event_a");
-            let hash1 = format!("{:x}", hasher1.finalize());
+            let hash1 = hex::encode(hasher1.finalize());
 
             let mut hasher2 = Sha256::new();
             hasher2.update(b"genesis");
             hasher2.update(b"event_b");
-            let hash2 = format!("{:x}", hasher2.finalize());
+            let hash2 = hex::encode(hasher2.finalize());
 
             assert_ne!(hash1, hash2);
         }
