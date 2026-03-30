@@ -36,6 +36,7 @@ permissions:
 
 env:
   LFS: /tmp/agnos-selfhost
+  LINUX_VER: "6.6.130"
   CARGO_TERM_COLOR: always
 
 jobs:
@@ -164,9 +165,9 @@ jobs:
             "$G3/mpc/mpc-1.3.1.tar.gz" \
             "$G4/mpc/mpc-1.3.1.tar.gz"
 
-          download linux-6.6.130.tar.xz \
-            "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.6.130.tar.xz" \
-            "https://mirrors.edge.kernel.org/pub/linux/kernel/v6.x/linux-6.6.130.tar.xz"
+          download "linux-${LINUX_VER}.tar.xz" \
+            "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-${LINUX_VER}.tar.xz" \
+            "https://mirrors.edge.kernel.org/pub/linux/kernel/v6.x/linux-${LINUX_VER}.tar.xz"
 
           echo "  All source tarballs ready"
           ls -lh *.tar.*
@@ -310,18 +311,18 @@ jobs:
           mkdir -p "$LFS/boot"
 
           # Clean leftover root-owned kernel build artifacts
-          sudo rm -rf /tmp/linux-6.6.130 /tmp/linux-6.6.130.tar.xz /tmp/gcc-wrap
+          sudo rm -rf "/tmp/linux-${LINUX_VER}" "/tmp/linux-${LINUX_VER}.tar.xz" /tmp/gcc-wrap
 
-          KERNEL_SRC="/tmp/linux-6.6.130.tar.xz"
-          if [[ -f "$LFS/sources/linux-6.6.130.tar.xz" ]]; then
-            cp "$LFS/sources/linux-6.6.130.tar.xz" "$KERNEL_SRC"
+          KERNEL_SRC="/tmp/linux-${LINUX_VER}.tar.xz"
+          if [[ -f "$LFS/sources/linux-${LINUX_VER}.tar.xz" ]]; then
+            cp "$LFS/sources/linux-${LINUX_VER}.tar.xz" "$KERNEL_SRC"
           else
             curl -fSL -o "$KERNEL_SRC" \
-              "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.6.130.tar.xz"
+              "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-${LINUX_VER}.tar.xz"
           fi
 
           tar xf "$KERNEL_SRC" -C /tmp
-          cd /tmp/linux-6.6.130
+          cd "/tmp/linux-${LINUX_VER}"
 
           # Apply AGNOS kernel patches
           PATCH_DIR="$GITHUB_WORKSPACE/kernel/patches"
@@ -355,7 +356,7 @@ jobs:
           echo "Installed kernel: vmlinuz-${KVER}"
 
           cd "$GITHUB_WORKSPACE"
-          rm -rf /tmp/linux-6.6.130 /tmp/gcc-wrap
+          rm -rf "/tmp/linux-${LINUX_VER}" /tmp/gcc-wrap
           echo "Kernel build complete: $KVER"
 
       - name: Archive base rootfs (with kernel, without userland)
@@ -618,9 +619,9 @@ jobs:
             return 1
           }
 
-          download linux-6.6.130.tar.xz \
-            "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.6.130.tar.xz" \
-            "https://mirrors.edge.kernel.org/pub/linux/kernel/v6.x/linux-6.6.130.tar.xz"
+          download "linux-${LINUX_VER}.tar.xz" \
+            "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-${LINUX_VER}.tar.xz" \
+            "https://mirrors.edge.kernel.org/pub/linux/kernel/v6.x/linux-${LINUX_VER}.tar.xz"
 
           # Download source tarballs referenced in recipes
           for recipe in recipes/base/*.toml; do
@@ -734,18 +735,18 @@ jobs:
       - name: Build aarch64 kernel
         run: |
           echo "=== Building aarch64 kernel ==="
-          sudo rm -rf /tmp/linux-6.6.130 /tmp/linux-6.6.130.tar.xz
+          sudo rm -rf "/tmp/linux-${LINUX_VER}" "/tmp/linux-${LINUX_VER}.tar.xz"
 
-          KERNEL_SRC="/tmp/linux-6.6.130.tar.xz"
-          if [[ -f "$LFS/sources/linux-6.6.130.tar.xz" ]]; then
-            cp "$LFS/sources/linux-6.6.130.tar.xz" "$KERNEL_SRC"
+          KERNEL_SRC="/tmp/linux-${LINUX_VER}.tar.xz"
+          if [[ -f "$LFS/sources/linux-${LINUX_VER}.tar.xz" ]]; then
+            cp "$LFS/sources/linux-${LINUX_VER}.tar.xz" "$KERNEL_SRC"
           else
             curl -fSL -o "$KERNEL_SRC" \
-              "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.6.130.tar.xz"
+              "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-${LINUX_VER}.tar.xz"
           fi
 
           tar xf "$KERNEL_SRC" -C /tmp
-          cd /tmp/linux-6.6.130
+          cd "/tmp/linux-${LINUX_VER}"
 
           # Apply patches
           PATCH_DIR="$GITHUB_WORKSPACE/kernel/patches"
@@ -778,7 +779,7 @@ jobs:
           cp arch/arm64/boot/dts/broadcom/bcm2712*.dtb "$LFS/boot/dtbs/" 2>/dev/null || true
 
           cd "$GITHUB_WORKSPACE"
-          rm -rf /tmp/linux-6.6.130
+          rm -rf "/tmp/linux-${LINUX_VER}"
           echo "aarch64 kernel: $KVER"
 
       - name: Archive aarch64 base rootfs
