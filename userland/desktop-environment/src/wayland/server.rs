@@ -17,7 +17,6 @@ mod wayland_live {
 
     use super::super::protocol::ProtocolAction;
     use super::super::protocol::ProtocolBridge;
-    use super::super::types::*;
 
     /// Per-surface user data stored on `wl_surface` resources.
     #[derive(Debug)]
@@ -93,6 +92,11 @@ mod wayland_live {
             })
         }
 
+        /// Access the protocol bridge (for testing/inspection).
+        pub fn bridge(&self) -> &ProtocolBridge {
+            &self.inner.bridge
+        }
+
         /// Start listening on a Wayland socket.
         pub fn listen(&mut self) -> Result<String, Box<dyn std::error::Error>> {
             let socket = ListeningSocket::bind_auto("wayland", 0..33)?;
@@ -134,10 +138,10 @@ mod wayland_live {
     impl GlobalDispatch<wl_compositor::WlCompositor, ()> for WaylandInner {
         fn bind(
             _state: &mut Self,
+            _dhandle: &DisplayHandle,
             _client: &Client,
             resource: New<wl_compositor::WlCompositor>,
             _global_data: &(),
-            _dhandle: &DisplayHandle,
             data_init: &mut DataInit<'_, Self>,
         ) {
             data_init.init(resource, ());
@@ -147,10 +151,10 @@ mod wayland_live {
     impl GlobalDispatch<wl_shm::WlShm, ()> for WaylandInner {
         fn bind(
             _state: &mut Self,
+            _dhandle: &DisplayHandle,
             _client: &Client,
             resource: New<wl_shm::WlShm>,
             _global_data: &(),
-            _dhandle: &DisplayHandle,
             data_init: &mut DataInit<'_, Self>,
         ) {
             let shm = data_init.init(resource, ());
@@ -162,10 +166,10 @@ mod wayland_live {
     impl GlobalDispatch<wl_seat::WlSeat, ()> for WaylandInner {
         fn bind(
             state: &mut Self,
+            _dhandle: &DisplayHandle,
             _client: &Client,
             resource: New<wl_seat::WlSeat>,
             _global_data: &(),
-            _dhandle: &DisplayHandle,
             data_init: &mut DataInit<'_, Self>,
         ) {
             let seat = data_init.init(resource, ());
@@ -177,10 +181,10 @@ mod wayland_live {
     impl GlobalDispatch<wl_output::WlOutput, ()> for WaylandInner {
         fn bind(
             state: &mut Self,
+            _dhandle: &DisplayHandle,
             _client: &Client,
             resource: New<wl_output::WlOutput>,
             _global_data: &(),
-            _dhandle: &DisplayHandle,
             data_init: &mut DataInit<'_, Self>,
         ) {
             let output = data_init.init(resource, ());
@@ -210,10 +214,10 @@ mod wayland_live {
     impl GlobalDispatch<xdg_wm_base::XdgWmBase, ()> for WaylandInner {
         fn bind(
             _state: &mut Self,
+            _dhandle: &DisplayHandle,
             _client: &Client,
             resource: New<xdg_wm_base::XdgWmBase>,
             _global_data: &(),
-            _dhandle: &DisplayHandle,
             data_init: &mut DataInit<'_, Self>,
         ) {
             data_init.init(resource, ());
@@ -318,11 +322,8 @@ mod wayland_live {
             _dhandle: &DisplayHandle,
             data_init: &mut DataInit<'_, Self>,
         ) {
-            match request {
-                wl_shm::Request::CreatePool { id, fd: _, size: _ } => {
-                    data_init.init(id, ());
-                }
-                _ => {}
+            if let wl_shm::Request::CreatePool { id, fd: _, size: _ } = request {
+                data_init.init(id, ());
             }
         }
     }
@@ -365,10 +366,7 @@ mod wayland_live {
             _dhandle: &DisplayHandle,
             _data_init: &mut DataInit<'_, Self>,
         ) {
-            match request {
-                wl_buffer::Request::Destroy => {}
-                _ => {}
-            }
+            if let wl_buffer::Request::Destroy = request {}
         }
     }
 
@@ -412,10 +410,7 @@ mod wayland_live {
             _dhandle: &DisplayHandle,
             _data_init: &mut DataInit<'_, Self>,
         ) {
-            match request {
-                wl_output::Request::Release => {}
-                _ => {}
-            }
+            if let wl_output::Request::Release = request {}
         }
     }
 

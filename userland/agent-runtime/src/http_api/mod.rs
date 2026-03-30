@@ -143,7 +143,10 @@ pub fn build_router(state: ApiState) -> Router {
         .route("/v1/agents/{id}/memory", get(memory_list_handler))
         .route("/v1/agents/{id}/memory/{key}", get(memory_get_handler))
         .route("/v1/agents/{id}/memory/{key}", put(memory_set_handler))
-        .route("/v1/agents/{id}/memory/{key}", delete(memory_delete_handler))
+        .route(
+            "/v1/agents/{id}/memory/{key}",
+            delete(memory_delete_handler),
+        )
         .route("/v1/traces", post(submit_trace_handler))
         .route("/v1/traces", get(list_traces_handler))
         .route("/v1/traces/spans", get(list_spans_handler))

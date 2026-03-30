@@ -75,6 +75,43 @@ Phase 13A (self-hosting) ──→ Phase 16 (desktop recipes) ──→ Phase 13
 
 ---
 
+## P0 — Pre-Release Blockers for 2026.3.30
+
+Must be resolved before tagging 2026.3.30:
+
+### Browser sha256 Verification
+- [ ] **Firefox ESR 140.9.0** — download tarball, compute sha256, replace `"VERIFY"` in `recipes/browser/firefox.toml`
+- [ ] **Chromium 146.0.7680.169** — download tarball, compute sha256, replace `"VERIFY"` in `recipes/browser/chromium.toml`
+
+### Skipped Recipe Versions (404 on fetch — verify correct latest)
+- [ ] **pango** — reported 1.57.2, staying at 1.56.1
+- [ ] **libxkbcommon** — reported 1.13.1, staying at 1.11.0
+- [ ] **gtk3** — reported 3.24.52, staying at 3.24.43
+- [ ] **fontconfig** — reported 2.17.1, staying at 2.16.0
+- [ ] **NetworkManager** — reported 1.56.0, staying at 1.51.4
+- [ ] **binutils** — reported 2.46, staying at 2.45
+- [ ] **gettext** — reported 1.0, staying at 0.26
+- [ ] **grub** — reported 2.14, staying at 2.12
+
+### Deferred Major Jumps (evaluate compatibility)
+- [ ] **nvidia-cuda-toolkit** 12.8.1 → 13.2.0
+- [ ] **rocm** 6.4.0 → 7.2.1
+- [ ] **nvidia-driver** 570.133.07 → 595.58.03
+- [ ] **ffmpeg** 7.1.1 → 8.1
+
+### Edge Recipes Sync (intentionally conservative or needs update?)
+- [ ] **edge/openssl** 3.4.1 → base is 3.5.5
+- [ ] **edge/glibc** 2.40 → base is 2.42
+- [ ] **edge/bash** 5.2.37 → base is 5.3
+- [ ] **edge/iproute2** 6.12.0 → base is 6.19.0
+
+### Shared Crate & Docs Audit
+- [ ] `cargo search` all published crates — verify public versions match docs
+- [ ] Update `docs/applications/` and `docs/development/applications/` with current state
+- [ ] Cross-check marketplace recipes against actual GitHub release tags
+
+---
+
 ## Phase 13A — Self-Hosting Validation (BETA BLOCKER)
 
 **This is the single most important remaining work.** Without it, AGNOS is a Debian overlay.
@@ -881,43 +918,6 @@ The kernel is a parallel research track. AGNOS ships on Linux until the Rust ker
 - [ ] Measured IPC latency < 100ns (vs Linux ~1µs for pipe/socket)
 - [ ] Agent isolation: one agent crash doesn't take down the kernel
 - [ ] The proof-of-concept is < 10,000 lines of Rust
-
----
-
-## Version Sweep — Remaining Items (2026-03-29)
-
-Completed sweep updated ~106 recipes + 13 Rust workspace crates. The following items
-need manual attention before the next build:
-
-### Browser sha256 Verification
-- [ ] **Firefox ESR 140.9.0** — sha256 set to `"VERIFY"` (tarball too large for automated download)
-- [ ] **Chromium 146.0.7680.169** — sha256 set to `"VERIFY"` (tarball too large for automated download)
-
-### Skipped — Version Not Found Upstream
-These versions were reported by web search but returned 404 when fetched.
-Verify correct latest version manually:
-- [ ] **pango** — reported 1.57.2, current stays 1.56.1
-- [ ] **libxkbcommon** — reported 1.13.1, current stays 1.11.0
-- [ ] **gtk3** — reported 3.24.52, current stays 3.24.43
-- [ ] **fontconfig** — reported 2.17.1, current stays 2.16.0
-- [ ] **NetworkManager** — reported 1.56.0, current stays 1.51.4
-- [ ] **binutils** — reported 2.46, current stays 2.45
-- [ ] **gettext** — reported 1.0, current stays 0.26
-- [ ] **grub** — reported 2.14, current stays 2.12
-
-### Major Jumps Deferred — Need Compatibility Evaluation
-- [ ] **nvidia-cuda-toolkit** 12.8.1 → 13.2.0 (major version)
-- [ ] **rocm** 6.4.0 → 7.2.1 (major version)
-- [ ] **nvidia-driver** 570.133.07 → 595.58.03 (new driver branch)
-- [ ] **ffmpeg** 7.1.1 → 8.1 (major version)
-
-### Edge Recipes — Behind Base
-Some edge recipes pin older versions than base for stability. Evaluate whether
-to sync or keep intentionally conservative:
-- [ ] **edge/openssl** 3.4.1 — base now 3.5.5
-- [ ] **edge/glibc** 2.40 — base now 2.42
-- [ ] **edge/bash** 5.2.37 — base now 5.3
-- [ ] **edge/iproute2** 6.12.0 — base now 6.19.0
 
 ---
 

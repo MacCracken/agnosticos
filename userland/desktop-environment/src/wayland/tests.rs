@@ -477,9 +477,9 @@ fn test_wayland_state_stub_new() {
     let state = WaylandState::new(comp);
     assert!(state.is_ok());
     let state = state.unwrap();
-    assert!(state.bridge.surface_map.is_empty());
-    assert!(state.bridge.clients.is_empty());
-    assert_eq!(state.bridge.serial.current(), 0);
+    assert!(state.bridge().surface_map.is_empty());
+    assert!(state.bridge().clients.is_empty());
+    assert_eq!(state.bridge().serial.current(), 0);
 }
 
 #[cfg(not(feature = "wayland"))]

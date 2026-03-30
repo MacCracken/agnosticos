@@ -781,13 +781,19 @@ mod tests {
             .route("/v1/edge/nodes", get(edge_list_nodes_handler))
             .route("/v1/edge/nodes", post(edge_register_node_handler))
             .route("/v1/edge/nodes/{id}", get(edge_get_node_handler))
-            .route("/v1/edge/nodes/{id}/heartbeat", post(edge_heartbeat_handler))
+            .route(
+                "/v1/edge/nodes/{id}/heartbeat",
+                post(edge_heartbeat_handler),
+            )
             .route(
                 "/v1/edge/nodes/{id}/decommission",
                 post(edge_decommission_handler),
             )
             .route("/v1/edge/stats", get(edge_stats_handler))
-            .route("/v1/edge/nodes/{id}/update", post(edge_start_update_handler))
+            .route(
+                "/v1/edge/nodes/{id}/update",
+                post(edge_start_update_handler),
+            )
             .route(
                 "/v1/edge/nodes/{id}/update/complete",
                 post(edge_complete_update_handler),
@@ -1803,7 +1809,10 @@ mod tests {
         let state = test_state();
         Router::new()
             .route("/v1/edge/nodes", post(edge_register_node_handler))
-            .route("/v1/edge/nodes/{id}/heartbeat", post(edge_heartbeat_handler))
+            .route(
+                "/v1/edge/nodes/{id}/heartbeat",
+                post(edge_heartbeat_handler),
+            )
             .route("/v1/edge/route", post(edge_route_task_handler))
             .route("/v1/edge/models", get(edge_fleet_models_handler))
             .with_state(state)
