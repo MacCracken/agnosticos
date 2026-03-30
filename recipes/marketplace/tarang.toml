@@ -11,7 +11,7 @@
 
 [package]
 name = "tarang"
-version = "0.20.3"
+version = "0.21.3"
 description = "Tarang — AI-native Rust media framework"
 license = "AGPL-3.0"
 groups = ["tool", "library", "media", "rust"]

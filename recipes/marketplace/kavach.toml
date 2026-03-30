@@ -9,7 +9,7 @@
 
 [package]
 name = "kavach"
-version = "0.23.3"
+version = "1.0.1"
 description = "Kavach — Sandbox execution framework (8 backends, strength scoring, policy engine)"
 license = "AGPL-3.0"
 groups = ["library", "security", "sandbox", "rust"]

@@ -5,7 +5,7 @@
 
 [package]
 name = "szal"
-version = "0.21.3"
+version = "1.0.1"
 description = "Szál — Workflow engine (step/flow/DAG/rollback)"
 license = "AGPL-3.0"
 groups = ["library", "rust"]

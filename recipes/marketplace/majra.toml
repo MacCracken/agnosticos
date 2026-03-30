@@ -9,7 +9,7 @@
 
 [package]
 name = "majra"
-version = "0.21.3"
+version = "1.0.3"
 description = "Majra — Distributed queue and multiplex engine"
 license = "AGPL-3.0"
 groups = ["library", "networking", "concurrency", "rust"]

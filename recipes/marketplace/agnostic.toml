@@ -10,7 +10,7 @@
 
 [package]
 name = "agnostic"
-version = "2026.3.17-2"
+version = "2026.3.18"
 description = "Agnostic — Multi-domain AI agent platform with crew orchestration"
 license = "GPL-3.0"
 groups = ["server", "agent-automation", "ai-agents", "python"]

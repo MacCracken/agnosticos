@@ -7,7 +7,7 @@
 
 [package]
 name = "bullshift"
-version = "2026.3.11"
+version = "2026.3.10-1"
 description = "BullShift — High-performance cross-platform trading platform"
 license = "AGPL-3.0"
 groups = ["server", "finance", "rust"]

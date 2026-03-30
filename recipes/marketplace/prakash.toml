@@ -9,7 +9,7 @@
 
 [package]
 name = "prakash"
-version = "1.1.0"
+version = "1.2.0"
 description = "Prakash — Optics and light simulation"
 license = "GPL-3.0"
 groups = ["library", "physics", "optics", "rust"]

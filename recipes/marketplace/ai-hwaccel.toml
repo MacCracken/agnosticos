@@ -12,7 +12,7 @@
 
 [package]
 name = "ai-hwaccel"
-version = "0.23.3"
+version = "1.0.0"
 description = "ai-hwaccel — Universal AI hardware accelerator detection and workload planning"
 license = "AGPL-3.0"
 groups = ["tool", "library", "ai", "hardware", "rust"]

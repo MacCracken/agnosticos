@@ -1,16 +1,17 @@
-# Irfan — LLM management and training tool for AGNOS marketplace
-# Download, run, and fine-tune language models via CLI, REST/gRPC API,
-# or desktop app. Supports llama.cpp, Candle, Ollama, vLLM, ONNX,
-# TensorRT backends. LoRA/QLoRA/full fine-tuning, DPO, RLHF, distillation.
+# Ifran — LLM inference, training, and fleet management engine
+# Download, run, and fine-tune language models via CLI or REST/gRPC API.
+# Supports llama.cpp, Candle, Ollama, vLLM, ONNX, TensorRT backends.
+# LoRA/QLoRA/full fine-tuning, DPO, RLHF, distillation.
 # Built in Rust; OpenAI-compatible API for drop-in replacement.
 #
-# Name: Irfan (Persian/Arabic: عرفان — deep knowledge, gnosis)
-# Status: Released — 2026.3.19 (amd64 + arm64).
+# Name: Ifran (Persian/Arabic: عرفان — deep knowledge, gnosis)
+# Desktop GUI: tanur (separate project)
+# Status: Released — 1.1.1 on crates.io (amd64 + arm64).
 
 [package]
-name = "irfan"
-version = "2026.3.19"
-description = "Irfan — LLM management and training tool"
+name = "ifran"
+version = "1.1.1"
+description = "Ifran — LLM inference, training, and fleet management engine"
 license = "GPL-3.0"
 groups = ["server", "ai", "llm", "rust"]
 release = 1
@@ -18,9 +19,9 @@ arch = "x86_64"
 
 [source]
 # Rust binary built by GitHub Actions CI.
-# Release: https://github.com/MacCracken/irfan/releases
-github_release = "MacCracken/irfan"
-release_asset = "irfan-*-linux-amd64.tar.gz"
+# Release: https://github.com/MacCracken/ifran/releases
+github_release = "MacCracken/ifran"
+release_asset = "ifran-*-linux-amd64.tar.gz"
 
 [depends]
 runtime = [
@@ -39,9 +40,9 @@ build = [
 [marketplace]
 category = "ai-platform"
 runtime = "native-binary"
-publisher = "Irfan"
+publisher = "AGNOS"
 tags = ["llm", "ai", "training", "fine-tuning", "inference", "model-management", "rust", "openai-compatible"]
-min_agnos_version = "2026.3.19"
+min_agnos_version = "2026.3.24"
 
 [marketplace.sandbox]
 seccomp_mode = "desktop"
@@ -63,10 +64,10 @@ allowed_hosts = [
     "api.mistral.ai",
     "openrouter.ai",
 ]
-data_dir = "~/.irfan/"
+data_dir = "~/.ifran/"
 
 [[marketplace.sandbox.landlock]]
-path = "~/.irfan/"
+path = "~/.ifran/"
 access = "rw"
 
 [[marketplace.sandbox.landlock]]
@@ -93,7 +94,7 @@ path = "/run/agnos/"
 access = "rw"
 
 [marketplace.services]
-# Irfan REST API + gRPC
+# Ifran REST API + gRPC
 ports = [8080]
 depends_on = ["llm-gateway"]
 
@@ -108,45 +109,29 @@ hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
 
 install = """
 # Install the single binary
-mkdir -p $PKG/usr/lib/irfan/bin
-cp target/release/irfan $PKG/usr/lib/irfan/bin/irfan
-chmod +x $PKG/usr/lib/irfan/bin/irfan
+mkdir -p $PKG/usr/lib/ifran/bin
+cp target/release/ifran $PKG/usr/lib/ifran/bin/ifran
+chmod +x $PKG/usr/lib/ifran/bin/ifran
 
 # Symlink into PATH
 mkdir -p $PKG/usr/bin
-ln -sf /usr/lib/irfan/bin/irfan $PKG/usr/bin/irfan
+ln -sf /usr/lib/ifran/bin/ifran $PKG/usr/bin/ifran
 
 # Default config directory
-mkdir -p $PKG/etc/irfan
-
-# Desktop entry for aethersafha
-mkdir -p $PKG/usr/share/applications
-cat > $PKG/usr/share/applications/irfan.desktop << 'EOF'
-[Desktop Entry]
-Name=Irfan
-Comment=LLM management and training tool
-GenericName=LLM Manager
-Exec=irfan serve
-Icon=irfan
-Terminal=false
-Type=Application
-Categories=Development;ArtificialIntelligence;
-StartupNotify=true
-StartupWMClass=irfan
-EOF
+mkdir -p $PKG/etc/ifran
 
 # Systemd service unit
 mkdir -p $PKG/usr/lib/systemd/user
-cat > $PKG/usr/lib/systemd/user/irfan.service << 'EOF'
+cat > $PKG/usr/lib/systemd/user/ifran.service << 'EOF'
 [Unit]
-Description=Irfan LLM Management Service
+Description=Ifran LLM Management Service
 After=network.target agnos-llm-gateway.service
 Wants=agnos-llm-gateway.service
 
 [Service]
 Type=simple
-ExecStart=/usr/lib/irfan/bin/irfan serve
-Environment=IRFAN_DATA_DIR=%h/.irfan
+ExecStart=/usr/lib/ifran/bin/ifran serve
+Environment=IFRAN_DATA_DIR=%h/.ifran
 Restart=on-failure
 RestartSec=5
 

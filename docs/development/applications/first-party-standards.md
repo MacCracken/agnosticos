@@ -24,7 +24,7 @@
 ├── CONTRIBUTING.md                  # Contribution guidelines
 ├── CODE_OF_CONDUCT.md               # Code of conduct
 ├── SECURITY.md                      # Security policy and reporting
-├── LICENSE                          # GPL-3.0 or AGPL-3.0
+├── LICENSE                          # GPL-3.0-only (libs) or AGPL-3.0-only (desktop GUI)
 ├── deny.toml                        # cargo-deny license + advisory config
 ├── codecov.yml                      # Coverage reporting config
 ├── scripts/
@@ -49,6 +49,52 @@
 └── .gitignore
 ```
 
+### .gitignore (Required)
+
+Every project must have a `.gitignore` **before the first commit**. Missing this causes `target/`, build artifacts, and large generated content to flood the repo.
+
+```gitignore
+# Build
+/target/
+**/*.rs.bk
+
+# Cargo
+Cargo.lock
+!Cargo.lock
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Coverage / profiling
+/coverage/
+*.profraw
+*.profdata
+lcov.info
+tarpaulin-report.*
+
+# Claude Code
+.claude/
+
+# Benchmarks (CSV history is tracked, raw criterion output is not)
+/target/criterion/
+
+# Environment / secrets
+.env
+.env.*
+*.pem
+*.key
+```
+
+**Cargo.lock**: Track it for binaries (`!Cargo.lock` override), exclude for libraries. If your project is a library crate published to crates.io, remove the `!Cargo.lock` line.
+
 ### Flat vs Workspace
 
 **Prefer flat crates** (single `Cargo.toml`, modules under `src/`, feature-gated):
@@ -68,7 +114,7 @@ name = "{project}"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.89"
-license = "GPL-3.0-only"              # or "AGPL-3.0-only"
+license = "GPL-3.0-only"              # or "AGPL-3.0-only" for desktop GUI apps
 description = "{Project} — one-line description"
 homepage = "https://github.com/MacCracken/{project}"
 repository = "https://github.com/MacCracken/{project}"
@@ -197,6 +243,30 @@ YYYY.M.D[-N]
 ```
 0.D.M     (pre-1.0: day.month from CalVer)
 M.N.P     (post-1.0: standard SemVer)
+```
+
+### Licensing
+
+All AGNOS projects use one of two licenses. **No exceptions.**
+
+| License | SPDX Identifier | Use For |
+|---------|-----------------|---------|
+| GNU GPL v3 | `GPL-3.0-only` | All library crates (crates.io), CLI tools, daemons, kernel modules |
+| GNU AGPL v3 | `AGPL-3.0-only` | Desktop GUI applications only |
+
+**Why AGPL for desktop apps?** AGPL's network clause ensures that modified versions of user-facing apps remain open — even if served remotely. Library crates don't need this since they're compiled into the consumer, where GPL already covers distribution.
+
+**Rules:**
+- Always use the `-only` suffix — `GPL-3.0-only`, not `GPL-3.0` or `GPL-3.0+`
+- The `license` field in Cargo.toml must match the LICENSE file in the repo root
+- Dual licensing (e.g., `MIT OR AGPL-3.0`) is not permitted for first-party projects
+- Consumer apps that are desktop GUIs (aequi, jalwa, rasa, shruti, mneme, etc.) use `AGPL-3.0-only`
+- Everything else uses `GPL-3.0-only`
+
+**Cargo.toml:**
+```toml
+license = "GPL-3.0-only"              # library crates, CLIs, daemons
+license = "AGPL-3.0-only"             # desktop GUI applications
 ```
 
 ### VERSION File
@@ -753,4 +823,4 @@ The continuous improvement cycle for every crate. Each pass makes the crate meas
 
 ---
 
-*Last Updated: 2026-03-23*
+*Last Updated: 2026-03-30*

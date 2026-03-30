@@ -5,7 +5,7 @@
 
 [package]
 name = "bote"
-version = "0.21.3"
+version = "0.50.0"
 description = "Bote — MCP core service (JSON-RPC 2.0, tool registry, dispatch)"
 license = "AGPL-3.0"
 groups = ["library", "rust"]

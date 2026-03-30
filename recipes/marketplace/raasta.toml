@@ -8,7 +8,7 @@
 
 [package]
 name = "raasta"
-version = "0.24.3"
+version = "1.0.0"
 description = "Raasta — Navigation and pathfinding"
 license = "GPL-3.0"
 groups = ["library", "game", "ai", "rust"]

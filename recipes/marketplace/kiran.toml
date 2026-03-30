@@ -9,7 +9,7 @@
 
 [package]
 name = "kiran"
-version = "0.23.3"
+version = "0.26.3"
 description = "Kiran — AI-native game engine"
 license = "GPL-3.0"
 groups = ["application", "game-engine", "rust"]

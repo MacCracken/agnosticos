@@ -7,7 +7,7 @@
 
 [package]
 name = "abaco"
-version = "0.22.4"
+version = "1.1.0"
 description = "Abaco — AI-native calculator & unit converter for AGNOS"
 license = "AGPL-3.0"
 groups = ["desktop", "tools"]

@@ -10,7 +10,7 @@
 
 [package]
 name = "secureyeoman-lite"
-version = "2026.3.19"
+version = "2026.3.28"
 description = "SecureYeoman Lite — Lightweight standalone AI agent"
 license = "AGPL-3.0-only"
 groups = ["agent", "ai"]

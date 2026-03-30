@@ -9,7 +9,7 @@
 
 [package]
 name = "soorat"
-version = "0.24.3"
+version = "1.0.0"
 description = "Soorat — GPU rendering engine"
 license = "GPL-3.0"
 groups = ["library", "rendering", "gpu", "rust"]
