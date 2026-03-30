@@ -4,7 +4,7 @@
 
 [package]
 name = "gobject-introspection"
-version = "1.84.0"
+version = "1.86.0"
 description = "gobject-introspection — GObject introspection for language bindings"
 license = "LGPL-2.0"
 groups = ["desktop", "libs"]
@@ -12,8 +12,8 @@ release = 1
 arch = "x86_64"
 
 [source]
-url = "https://download.gnome.org/sources/gobject-introspection/1.84/gobject-introspection-1.84.0.tar.xz"
-sha256 = "945b57da7ec262e5c266b89e091d14be800cc424277d82a02872b7d794a84779"
+url = "https://download.gnome.org/sources/gobject-introspection/1.86/gobject-introspection-1.86.0.tar.xz"
+sha256 = "920d1a3fcedeadc32acff95c2e203b319039dd4b4a08dd1a2dfd283d19c0b9ae"
 patches = []
 
 [depends]

@@ -6,7 +6,7 @@
 
 [package]
 name = "libseccomp"
-version = "2.5.5"
+version = "2.6.0"
 description = "Libseccomp — seccomp BPF filter helper library"
 license = "LGPL-2.1"
 groups = ["base", "security", "tier1"]
@@ -14,8 +14,8 @@ release = 1
 arch = "x86_64"
 
 [source]
-url = "https://github.com/seccomp/libseccomp/releases/download/v2.5.5/libseccomp-2.5.5.tar.gz"
-sha256 = "248a2c8a4d9b9858aa6baf52712c34afefcf9c9e94b76dce02c1c9aa25fb3375"
+url = "https://github.com/seccomp/libseccomp/releases/download/v2.6.0/libseccomp-2.6.0.tar.gz"
+sha256 = "83b6085232d1588c379dc9b9cae47bb37407cf262e6e74993c61ba72d2a784dc"
 patches = []
 
 [depends]

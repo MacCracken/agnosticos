@@ -1,13 +1,13 @@
 [package]
 name = "libplacebo"
-version = "7.349.0"
+version = "7.360.1"
 description = "Reusable library for GPU-accelerated video/image rendering primitives"
 license = "LGPL-2.1"
 groups = ["desktop"]
 
 [source]
-url = "https://code.videolan.org/videolan/libplacebo/-/archive/v7.349.0/libplacebo-v7.349.0.tar.gz"
-sha256 = "79120e685a1836344b51b13b6a5661622486a84e4d4a35f6c8d01679a20fbc86"
+url = "https://code.videolan.org/videolan/libplacebo/-/archive/v7.360.1/libplacebo-v7.360.1.tar.gz"
+sha256 = "14c0a99f4b01557ec9826ce6b1d52f6de21be274ba03fd5aab7307f18766dc39"
 patches = []
 
 [depends]

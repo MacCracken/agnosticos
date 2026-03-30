@@ -5,7 +5,7 @@
 
 [package]
 name = "iproute2"
-version = "6.16.0"
+version = "6.19.0"
 description = "Iproute2 — network configuration utilities"
 license = "GPL-2.0"
 groups = ["base", "core", "tier1"]
@@ -13,8 +13,8 @@ release = 1
 arch = "x86_64"
 
 [source]
-url = "https://www.kernel.org/pub/linux/utils/net/iproute2/iproute2-6.16.0.tar.xz"
-sha256 = "5900ccc15f9ac3bf7b7eae81deb5937123df35e99347a7f11a22818482f0a8d0"
+url = "https://www.kernel.org/pub/linux/utils/net/iproute2/iproute2-6.19.0.tar.xz"
+sha256 = "9332213d35480b647086a70c302de8568de83455a98774d35de216c4ce191006"
 patches = []
 
 [depends]

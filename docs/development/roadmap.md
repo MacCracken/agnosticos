@@ -1,6 +1,6 @@
 # AGNOS Development Roadmap
 
-> **Status**: Pre-Beta | **Last Updated**: 2026-03-25
+> **Status**: Pre-Beta | **Last Updated**: 2026-03-29
 > **Userland complete** — 11000+ tests (3900+ agent-runtime, 1554 ai-shell), ~84% coverage, 0 warnings
 > **Recipes**: 116 base + 71 desktop + 25 AI + 9 network + 8 browser + 59 marketplace + 4 python + 3 database + 31 edge + 3 sandbox = 330 OS (+ 90 bazaar community)
 > **Build order**: 178 packages in `recipes/build-order.txt` (base + desktop, dependency-ordered)
@@ -884,6 +884,43 @@ The kernel is a parallel research track. AGNOS ships on Linux until the Rust ker
 
 ---
 
+## Version Sweep — Remaining Items (2026-03-29)
+
+Completed sweep updated ~106 recipes + 13 Rust workspace crates. The following items
+need manual attention before the next build:
+
+### Browser sha256 Verification
+- [ ] **Firefox ESR 140.9.0** — sha256 set to `"VERIFY"` (tarball too large for automated download)
+- [ ] **Chromium 146.0.7680.169** — sha256 set to `"VERIFY"` (tarball too large for automated download)
+
+### Skipped — Version Not Found Upstream
+These versions were reported by web search but returned 404 when fetched.
+Verify correct latest version manually:
+- [ ] **pango** — reported 1.57.2, current stays 1.56.1
+- [ ] **libxkbcommon** — reported 1.13.1, current stays 1.11.0
+- [ ] **gtk3** — reported 3.24.52, current stays 3.24.43
+- [ ] **fontconfig** — reported 2.17.1, current stays 2.16.0
+- [ ] **NetworkManager** — reported 1.56.0, current stays 1.51.4
+- [ ] **binutils** — reported 2.46, current stays 2.45
+- [ ] **gettext** — reported 1.0, current stays 0.26
+- [ ] **grub** — reported 2.14, current stays 2.12
+
+### Major Jumps Deferred — Need Compatibility Evaluation
+- [ ] **nvidia-cuda-toolkit** 12.8.1 → 13.2.0 (major version)
+- [ ] **rocm** 6.4.0 → 7.2.1 (major version)
+- [ ] **nvidia-driver** 570.133.07 → 595.58.03 (new driver branch)
+- [ ] **ffmpeg** 7.1.1 → 8.1 (major version)
+
+### Edge Recipes — Behind Base
+Some edge recipes pin older versions than base for stability. Evaluate whether
+to sync or keep intentionally conservative:
+- [ ] **edge/openssl** 3.4.1 — base now 3.5.5
+- [ ] **edge/glibc** 2.40 — base now 2.42
+- [ ] **edge/bash** 5.2.37 — base now 5.3
+- [ ] **edge/iproute2** 6.12.0 — base now 6.19.0
+
+---
+
 ## Contributing
 
 ### Priority Contribution Areas
@@ -916,4 +953,4 @@ See [CONTRIBUTING.md](/CONTRIBUTING.md) for:
 
 ---
 
-*Last Updated: 2026-03-25 | Next Review: 2026-04-01*
+*Last Updated: 2026-03-29 | Next Review: 2026-04-05*

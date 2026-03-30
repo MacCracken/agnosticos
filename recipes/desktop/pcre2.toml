@@ -4,7 +4,7 @@
 
 [package]
 name = "pcre2"
-version = "10.45"
+version = "10.47"
 description = "pcre2 — Perl Compatible Regular Expressions library"
 license = "BSD-3-Clause"
 groups = ["desktop", "libs"]
@@ -12,8 +12,8 @@ release = 1
 arch = "x86_64"
 
 [source]
-url = "https://github.com/PCRE2Project/pcre2/releases/download/pcre2-10.45/pcre2-10.45.tar.bz2"
-sha256 = "21547f3516120c75597e5b30a992e27a592a31950b5140e7b8bfde3f192033c4"
+url = "https://github.com/PCRE2Project/pcre2/releases/download/pcre2-10.47/pcre2-10.47.tar.bz2"
+sha256 = "47fe8c99461250d42f89e6e8fdaeba9da057855d06eb7fc08d9ca03fd08d7bc7"
 patches = []
 
 [depends]

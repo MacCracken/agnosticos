@@ -4,7 +4,7 @@
 
 [package]
 name = "llama-cpp"
-version = "b5300"
+version = "b8579"
 description = "llama-cpp — High-performance LLM inference engine in C/C++"
 license = "MIT"
 groups = ["ai", "ml", "llm"]
@@ -12,8 +12,8 @@ release = 1
 arch = "x86_64"
 
 [source]
-url = "https://github.com/ggml-org/llama.cpp/archive/refs/tags/b5300.tar.gz"
-sha256 = "aa5cf6381d1da516d06e8e88065dcccfa195ab6f8364087db25d0f2596ac338a"
+url = "https://github.com/ggml-org/llama.cpp/archive/refs/tags/b8579.tar.gz"
+sha256 = "a1be752ae72328183978d5a29d5c1ba227613f2d085fbf6aea3db6c926310e57"
 patches = []
 
 [depends]

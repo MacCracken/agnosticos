@@ -5,7 +5,7 @@
 
 [package]
 name = "cryptsetup"
-version = "2.8.1"
+version = "2.8.4"
 description = "Cryptsetup — LUKS disk encryption utilities"
 license = "GPL-2.0"
 groups = ["base", "security", "tier1"]
@@ -13,8 +13,8 @@ release = 1
 arch = "x86_64"
 
 [source]
-url = "https://www.kernel.org/pub/linux/utils/cryptsetup/v2.8/cryptsetup-2.8.1.tar.xz"
-sha256 = "2c3379eb76597dcab50911449b013e2697c4bffcc716dbbf0d9b0e8fbbb46fb4"
+url = "https://www.kernel.org/pub/linux/utils/cryptsetup/v2.8/cryptsetup-2.8.4.tar.xz"
+sha256 = "443e46f8964c9acc780f455afbb8e23aa0e8ed7ec504cfc59e04f406fa1e8a83"
 patches = []
 
 [depends]

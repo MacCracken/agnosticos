@@ -3,7 +3,7 @@
 
 [package]
 name = "librewolf"
-version = "148.0.2-2"
+version = "149.0-1"
 description = "LibreWolf — Privacy-hardened Firefox fork"
 license = "MPL-2.0"
 groups = ["desktop", "browser", "internet"]
@@ -11,8 +11,8 @@ release = 1
 arch = "x86_64"
 
 [source]
-url = "https://codeberg.org/api/packages/librewolf/generic/librewolf-source/148.0.2-2/librewolf-148.0.2-2.source.tar.gz"
-sha256 = "659e320b09ab5a71a05c3183e0f0592ea79d707f377fb8c301233e299183876c"
+url = "https://codeberg.org/api/packages/librewolf/generic/librewolf-source/149.0-1/librewolf-149.0-1.source.tar.gz"
+sha256 = "0b42a9ebac6a33e5f3e378e85a052d77aa10752e5aed6f6beb24574076b4382e"
 patches = ["agnos-defaults.patch", "wayland-primary.patch"]
 
 [depends]

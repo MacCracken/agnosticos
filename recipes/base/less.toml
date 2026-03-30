@@ -5,7 +5,7 @@
 
 [package]
 name = "less"
-version = "679"
+version = "692"
 description = "Less — terminal pager"
 license = "GPL-3.0"
 groups = ["base", "core", "tier1"]
@@ -13,8 +13,8 @@ release = 1
 arch = "x86_64"
 
 [source]
-url = "https://www.greenwoodsoftware.com/less/less-679.tar.gz"
-sha256 = "9b68820c34fa8a0af6b0e01b74f0298bcdd40a0489c61649b47058908a153d78"
+url = "https://www.greenwoodsoftware.com/less/less-692.tar.gz"
+sha256 = "61300f603798ecf1d7786570789f0ff3f5a1acf075a6fb9f756837d166e37d14"
 patches = []
 
 [depends]

@@ -4,7 +4,7 @@
 
 [package]
 name = "openblas"
-version = "0.3.29"
+version = "0.3.32"
 description = "openblas — Optimized BLAS library for high-performance linear algebra"
 license = "BSD-3-Clause"
 groups = ["ai", "ml", "math"]
@@ -12,8 +12,8 @@ release = 1
 arch = "x86_64"
 
 [source]
-url = "https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.29/OpenBLAS-0.3.29.tar.gz"
-sha256 = "38240eee1b29e2bde47ebb5d61160207dc68668a54cac62c076bb5032013b1eb"
+url = "https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.32/OpenBLAS-0.3.32.tar.gz"
+sha256 = "f8a1138e01fddca9e4c29f9684fd570ba39dedc9ca76055e1425d5d4b1a4a766"
 patches = []
 
 [depends]

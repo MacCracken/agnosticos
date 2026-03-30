@@ -84,7 +84,7 @@ jobs:
           - GCC 15.2.0 (x86_64-agnos-linux-gnu)
           - Binutils 2.45
           - Glibc 2.42
-          - Linux headers 6.6.72
+          - Linux headers 6.6.130
 
           ## Usage
 

@@ -1,13 +1,13 @@
 [package]
 name = "libxml2"
-version = "2.13.6"
+version = "2.15.2"
 description = "XML parsing library for GNOME"
 license = "MIT"
 groups = ["desktop"]
 
 [source]
-url = "https://download.gnome.org/sources/libxml2/2.13/libxml2-2.13.6.tar.xz"
-sha256 = "f453480307524968f7a04ec65e64f2a83a825973bcd260a2e7691be82ae70c96"
+url = "https://download.gnome.org/sources/libxml2/2.15/libxml2-2.15.2.tar.xz"
+sha256 = "c8b9bc81f8b590c33af8cc6c336dbff2f53409973588a351c95f1c621b13d09d"
 patches = []
 
 [depends]

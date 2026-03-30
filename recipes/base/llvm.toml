@@ -4,7 +4,7 @@
 
 [package]
 name = "llvm"
-version = "19.1.7"
+version = "22.1.2"
 description = "llvm — LLVM compiler infrastructure and Clang C/C++ compiler"
 license = "Apache-2.0"
 groups = ["base", "toolchain"]
@@ -12,8 +12,8 @@ release = 1
 arch = "x86_64"
 
 [source]
-url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-19.1.7/llvm-project-19.1.7.src.tar.xz"
-sha256 = "82401fea7b79d0078043f7598b835284d6650a75b93e64b6f761ea7b63097501"
+url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-22.1.2/llvm-project-22.1.2.src.tar.xz"
+sha256 = "62f2f13ff25b1bb28ea507888e858212d19aafb65e8e72b4a65ee0629ec4ae0c"
 patches = []
 
 [depends]

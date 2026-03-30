@@ -4,7 +4,7 @@
 
 [package]
 name = "nccl"
-version = "2.25.1"
+version = "2.29.7"
 description = "nccl — NVIDIA Collective Communications Library for multi-GPU and multi-node communication"
 license = "BSD-3-Clause"
 groups = ["ai", "ml", "gpu", "nvidia"]
@@ -12,8 +12,8 @@ release = 1
 arch = "x86_64"
 
 [source]
-url = "https://github.com/NVIDIA/nccl/archive/refs/tags/v2.25.1-1.tar.gz"
-sha256 = "7b154ad1f8ccafa795ed6696507d402b1b4ccac944c5fceb7f4e29b19a39cc47"
+url = "https://github.com/NVIDIA/nccl/archive/refs/tags/v2.29.7-1.tar.gz"
+sha256 = "e67239212c395bfdb398a7519491840d06fdf6b599c299f97c7ed0109777bba1"
 patches = []
 
 [depends]

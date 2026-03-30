@@ -5,7 +5,7 @@
 
 [package]
 name = "harfbuzz"
-version = "10.4.0"
+version = "13.2.1"
 description = "HarfBuzz — OpenType text shaping engine"
 license = "MIT"
 groups = ["desktop", "graphics"]
@@ -13,8 +13,8 @@ release = 1
 arch = "x86_64"
 
 [source]
-url = "https://github.com/harfbuzz/harfbuzz/releases/download/10.4.0/harfbuzz-10.4.0.tar.xz"
-sha256 = "480b6d25014169300669aa1fc39fb356c142d5028324ea52b3a27648b9beaad8"
+url = "https://github.com/harfbuzz/harfbuzz/releases/download/13.2.1/harfbuzz-13.2.1.tar.xz"
+sha256 = "6695da3eb7e1be0aa3092fe4d81433a33b47f4519259c759d729e3a9a55c1429"
 patches = []
 
 [depends]

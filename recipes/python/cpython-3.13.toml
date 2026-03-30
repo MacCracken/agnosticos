@@ -4,7 +4,7 @@
 
 [package]
 name = "python3.13"
-version = "3.13.2"
+version = "3.13.12"
 description = "CPython 3.13 — Python interpreter"
 license = "PSF-2.0"
 groups = ["system", "runtime", "python"]
@@ -12,8 +12,8 @@ release = 1
 arch = "x86_64"
 
 [source]
-url = "https://www.python.org/ftp/python/3.13.2/Python-3.13.2.tar.xz"
-sha256 = "d984bcc57cd67caab26f7def42e523b1c015bbc5dc07836cf4f0b63fa159eb56"
+url = "https://www.python.org/ftp/python/3.13.12/Python-3.13.12.tar.xz"
+sha256 = "2a84cd31dd8d8ea8aaff75de66fc1b4b0127dd5799aa50a64ae9a313885b4593"
 patches = []
 
 [depends]

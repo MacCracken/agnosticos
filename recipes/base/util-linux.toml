@@ -5,7 +5,7 @@
 
 [package]
 name = "util-linux"
-version = "2.41.1"
+version = "2.42"
 description = "Util-linux — essential system utilities"
 license = "GPL-2.0"
 groups = ["base", "core", "tier1"]
@@ -13,8 +13,8 @@ release = 1
 arch = "x86_64"
 
 [source]
-url = "https://www.kernel.org/pub/linux/utils/util-linux/v2.41/util-linux-2.41.1.tar.xz"
-sha256 = "be9ad9a276f4305ab7dd2f5225c8be1ff54352f565ff4dede9628c1aaa7dec57"
+url = "https://www.kernel.org/pub/linux/utils/util-linux/v2.42/util-linux-2.42.tar.xz"
+sha256 = "38bef8cb64da496d6b9f6fc74514c4f785015a7fbd235468f5dde039a77a2fbd"
 patches = []
 
 [depends]

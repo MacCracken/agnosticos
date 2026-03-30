@@ -14,7 +14,7 @@ impl AgnovaInstaller {
     pub(crate) fn kernel_version(&self) -> &str {
         // Future: read from config.kernel_version once the field exists.
         // For now use the version from the LFS kernel recipe.
-        "6.6.72-agnos"
+        "6.6.130-agnos"
     }
 
     /// Detect whether the *running* system booted via UEFI by probing

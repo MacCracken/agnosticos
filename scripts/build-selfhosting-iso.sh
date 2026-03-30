@@ -40,7 +40,7 @@ GLIBC_URL="https://ftp.gnu.org/gnu/glibc/glibc-2.42.tar.xz"
 GMP_URL="https://ftp.gnu.org/gnu/gmp/gmp-6.3.0.tar.xz"
 MPFR_URL="https://ftp.gnu.org/gnu/mpfr/mpfr-4.2.2.tar.xz"
 MPC_URL="https://ftp.gnu.org/gnu/mpc/mpc-1.3.1.tar.gz"
-LINUX_URL="https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.6.72.tar.xz"
+LINUX_URL="https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.6.130.tar.xz"
 
 # Colors
 RED='\033[0;31m'

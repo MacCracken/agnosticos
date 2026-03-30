@@ -4,7 +4,7 @@
 
 [package]
 name = "wireplumber"
-version = "0.5.8"
+version = "0.5.14"
 description = "wireplumber — Policy-driven session and policy manager for PipeWire"
 license = "MIT"
 groups = ["desktop", "audio"]
@@ -12,8 +12,8 @@ release = 1
 arch = "x86_64"
 
 [source]
-url = "https://gitlab.freedesktop.org/pipewire/wireplumber/-/archive/0.5.8/wireplumber-0.5.8.tar.gz"
-sha256 = "234667497c6b1dd2457e7f4566567fad6cde31e4cb8990c7d0f149cb45a3894a"
+url = "https://gitlab.freedesktop.org/pipewire/wireplumber/-/archive/0.5.14/wireplumber-0.5.14.tar.gz"
+sha256 = "e91f04cd8cec75d72b8a2aaa7e90b1ba0a5e2094b7a882fc3a29a484a48a87e9"
 patches = []
 
 [depends]

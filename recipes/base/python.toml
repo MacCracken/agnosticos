@@ -5,7 +5,7 @@
 
 [package]
 name = "python"
-version = "3.13.7"
+version = "3.13.12"
 description = "Python — programming language interpreter"
 license = "PSF-2.0"
 groups = ["base", "build", "tier1"]
@@ -13,8 +13,8 @@ release = 1
 arch = "x86_64"
 
 [source]
-url = "https://www.python.org/ftp/python/3.13.7/Python-3.13.7.tar.xz"
-sha256 = "5462f9099dfd30e238def83c71d91897d8caa5ff6ebc7a50f14d4802cdaaa79a"
+url = "https://www.python.org/ftp/python/3.13.12/Python-3.13.12.tar.xz"
+sha256 = "2a84cd31dd8d8ea8aaff75de66fc1b4b0127dd5799aa50a64ae9a313885b4593"
 patches = []
 
 [depends]

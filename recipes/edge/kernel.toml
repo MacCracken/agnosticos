@@ -7,7 +7,7 @@
 
 [package]
 name = "kernel-edge"
-version = "6.6.80"
+version = "6.6.130"
 description = "Linux 6.6 LTS kernel — edge defconfig, minimal modules"
 license = "GPL-2.0"
 groups = ["edge", "tier1"]
@@ -15,8 +15,8 @@ release = 1
 arch = "x86_64"
 
 [source]
-url = "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.6.80.tar.xz"
-sha256 = "6cf911d01324f45c9dd2f44cf06f55bda0ecf383bc498f132a0c549768531327"
+url = "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.6.130.tar.xz"
+sha256 = "2460aa67b9494cff6f9fc2b235470867d2005469d40f29da452e8ee82940248d"
 patches = []
 
 [depends]
@@ -67,16 +67,16 @@ check = ""
 install = """
 make INSTALL_MOD_PATH=$PKG modules_install
 mkdir -p $PKG/boot
-cp -v arch/x86/boot/bzImage $PKG/boot/vmlinuz-6.6.80-edge
-cp -v System.map $PKG/boot/System.map-6.6.80-edge
-cp -v .config $PKG/boot/config-6.6.80-edge
+cp -v arch/x86/boot/bzImage $PKG/boot/vmlinuz-6.6.130-edge
+cp -v System.map $PKG/boot/System.map-6.6.130-edge
+cp -v .config $PKG/boot/config-6.6.130-edge
 
 # Strip modules
 find $PKG/lib/modules -name '*.ko' -exec strip --strip-debug {} \;
 # Remove build/source symlinks (save space)
 rm -rf $PKG/lib/modules/*/build $PKG/lib/modules/*/source
 """
-post_install = "depmod -a 6.6.80-edge"
+post_install = "depmod -a 6.6.130-edge"
 
 [security]
 hardening = ["stackprotector", "fortify"]

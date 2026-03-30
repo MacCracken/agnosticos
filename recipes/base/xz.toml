@@ -5,7 +5,7 @@
 
 [package]
 name = "xz"
-version = "5.8.1"
+version = "5.8.2"
 description = "XZ Utils — LZMA compression"
 license = "LGPL-2.1"
 groups = ["base", "core", "tier1"]
@@ -13,8 +13,8 @@ release = 1
 arch = "x86_64"
 
 [source]
-url = "https://github.com/tukaani-project/xz/releases/download/v5.8.1/xz-5.8.1.tar.xz"
-sha256 = "0b54f79df85912504de0b14aec7971e3f964491af1812d83447005807513cd9e"
+url = "https://github.com/tukaani-project/xz/releases/download/v5.8.2/xz-5.8.2.tar.xz"
+sha256 = "890966ec3f5d5cc151077879e157c0593500a522f413ac50ba26d22a9a145214"
 patches = []
 
 [depends]
@@ -27,7 +27,7 @@ configure = """
 ./configure \
     --prefix=/usr \
     --disable-static \
-    --docdir=/usr/share/doc/xz-5.8.1
+    --docdir=/usr/share/doc/xz-5.8.2
 """
 make = "make -j$(nproc)"
 check = "make check || true"

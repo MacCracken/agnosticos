@@ -1,13 +1,13 @@
 [package]
 name = "librsvg"
-version = "2.59.2"
+version = "2.62.0"
 description = "SVG rendering library written in Rust"
 license = "LGPL-2.1"
 groups = ["desktop"]
 
 [source]
-url = "https://download.gnome.org/sources/librsvg/2.59/librsvg-2.59.2.tar.xz"
-sha256 = "ecd293fb0cc338c170171bbc7bcfbea6725d041c95f31385dc935409933e4597"
+url = "https://download.gnome.org/sources/librsvg/2.62/librsvg-2.62.0.tar.xz"
+sha256 = "4278ddc1195ab82f4fd834ac1f5aa75ac1685f3cc5484bb0eaebe03a790b8d82"
 patches = []
 
 [depends]

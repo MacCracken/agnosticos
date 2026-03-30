@@ -5,7 +5,7 @@
 
 [package]
 name = "meson"
-version = "1.8.3"
+version = "1.10.2"
 description = "Meson — high-level build system"
 license = "Apache-2.0"
 groups = ["base", "build", "tier1"]
@@ -13,8 +13,8 @@ release = 1
 arch = "x86_64"
 
 [source]
-url = "https://github.com/mesonbuild/meson/releases/download/1.8.3/meson-1.8.3.tar.gz"
-sha256 = "f118aa910fc0a137cc2dd0122232dbf82153d9a12fb5b0f5bb64896f6a157abf"
+url = "https://github.com/mesonbuild/meson/releases/download/1.10.2/meson-1.10.2.tar.gz"
+sha256 = "7890287d911dd4ee1ebd0efb61ed0321bfcd87c725df923a837cf90c6508f96b"
 patches = []
 
 [depends]

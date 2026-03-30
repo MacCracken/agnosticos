@@ -4,7 +4,7 @@
 
 [package]
 name = "ollama"
-version = "0.6.2"
+version = "0.18.3"
 description = "ollama — Local LLM runner and model manager"
 license = "MIT"
 groups = ["ai", "ml", "llm"]
@@ -12,8 +12,8 @@ release = 1
 arch = "x86_64"
 
 [source]
-url = "https://github.com/ollama/ollama/archive/refs/tags/v0.6.2.tar.gz"
-sha256 = "9a7e4315d8889f2f0cc2d5274685d5b79e59f21ec8a6400ce96bb578d99f35a9"
+url = "https://github.com/ollama/ollama/archive/refs/tags/v0.18.3.tar.gz"
+sha256 = "fba7e078d74f04663761394e3b86552f8187ee72babbaa51b4936687a9503812"
 patches = []
 
 [depends]

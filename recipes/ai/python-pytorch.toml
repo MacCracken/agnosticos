@@ -4,7 +4,7 @@
 
 [package]
 name = "python-pytorch"
-version = "2.6.0"
+version = "2.11.0"
 description = "python-pytorch — PyTorch deep learning framework for Python"
 license = "BSD-3-Clause"
 groups = ["ai", "ml", "python", "gpu"]
@@ -12,8 +12,8 @@ release = 1
 arch = "x86_64"
 
 [source]
-url = "https://github.com/pytorch/pytorch/releases/download/v2.6.0/pytorch-v2.6.0.tar.gz"
-sha256 = "3005690eb7b083c443a38c7657938af63902f524ad87a6c83f1aca38c77e3b57"
+url = "https://github.com/pytorch/pytorch/releases/download/v2.11.0/pytorch-v2.11.0.tar.gz"
+sha256 = "ab3fde9e7e382f45ac942be6ea2c2ef362c5ccd6f55ed6d5f35e6ea81d3ab88e"
 patches = []
 
 [depends]

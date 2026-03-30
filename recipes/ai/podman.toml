@@ -4,7 +4,7 @@
 
 [package]
 name = "podman"
-version = "5.5.2"
+version = "5.8.1"
 description = "podman — Rootless OCI-compliant container engine"
 license = "Apache-2.0"
 groups = ["containers"]
@@ -12,8 +12,8 @@ release = 1
 arch = "x86_64"
 
 [source]
-url = "https://github.com/containers/podman/archive/refs/tags/v5.5.2.tar.gz"
-sha256 = "a2dbd8280cd92d4741f32f5a99d385d7fc6f0dd36bc9cc90a7273767e26d43d9"
+url = "https://github.com/containers/podman/archive/refs/tags/v5.8.1.tar.gz"
+sha256 = "b9540ecb19cfcbcfc40e1b81d39930f688c537d8fd6f11ae56be41f2bf9e97a4"
 patches = []
 
 [depends]

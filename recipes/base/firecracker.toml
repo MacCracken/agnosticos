@@ -6,7 +6,7 @@
 
 [package]
 name = "firecracker"
-version = "1.12.0"
+version = "1.15.0"
 description = "Firecracker — lightweight microVMs for serverless/sandbox workloads"
 license = "Apache-2.0"
 groups = ["base", "security", "tier1"]
@@ -14,8 +14,8 @@ release = 1
 arch = "x86_64"
 
 [source]
-url = "https://github.com/firecracker-microvm/firecracker/releases/download/v1.12.0/firecracker-v1.12.0-x86_64.tgz"
-sha256 = "392b5f7e4bf12871d1e8377a60ed3b384a46bc2f7d3771caf202aa7a63e32676"
+url = "https://github.com/firecracker-microvm/firecracker/releases/download/v1.15.0/firecracker-v1.15.0-x86_64.tgz"
+sha256 = "00cadf7f21e709e939dc0c8d16e2d2ce7b975a62bec6c50f74b421cc8ab3cab4"
 patches = []
 
 [depends]

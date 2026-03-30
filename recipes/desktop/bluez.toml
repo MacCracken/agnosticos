@@ -6,7 +6,7 @@
 
 [package]
 name = "bluez"
-version = "5.82"
+version = "5.86"
 description = "BlueZ — Linux Bluetooth protocol stack"
 license = "GPL-2.0-or-later"
 groups = ["desktop", "bluetooth", "hardware"]
@@ -14,8 +14,8 @@ release = 1
 arch = "x86_64"
 
 [source]
-url = "https://www.kernel.org/pub/linux/bluetooth/bluez-5.82.tar.xz"
-sha256 = "0739fa608a837967ee6d5572b43fb89946a938d1c6c26127158aaefd743a790b"
+url = "https://www.kernel.org/pub/linux/bluetooth/bluez-5.86.tar.xz"
+sha256 = "99f144540c6070591e4c53bcb977eb42664c62b7b36cb35a29cf72ded339621d"
 patches = []
 
 [depends]

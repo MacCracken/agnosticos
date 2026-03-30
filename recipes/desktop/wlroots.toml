@@ -5,7 +5,7 @@
 
 [package]
 name = "wlroots"
-version = "0.18.2"
+version = "0.20.0"
 description = "wlroots — Modular Wayland compositor library"
 license = "MIT"
 groups = ["desktop", "graphics"]
@@ -13,8 +13,8 @@ release = 1
 arch = "x86_64"
 
 [source]
-url = "https://gitlab.freedesktop.org/wlroots/wlroots/-/releases/0.18.2/downloads/wlroots-0.18.2.tar.gz"
-sha256 = "cf776c169169f279808d9eabc6583f484338dcd454c966a285ff178c88c105d4"
+url = "https://gitlab.freedesktop.org/wlroots/wlroots/-/archive/0.20.0/wlroots-0.20.0.tar.gz"
+sha256 = "e2d024916ed3bd011e058e78007655469e8c624fc338a28da610b087793b887b"
 patches = []
 
 [depends]

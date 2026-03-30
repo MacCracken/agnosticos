@@ -1189,7 +1189,7 @@ fn grub_cfg_uses_kernel_version() {
         cfg.contains("initramfs-"),
         "should reference initramfs by version"
     );
-    // Should NOT have bare "6.6.72" hardcoded without the installer method
+    // Should NOT have bare "6.6.130" hardcoded without the installer method
     assert!(cfg.contains(installer.kernel_version()));
 }
 

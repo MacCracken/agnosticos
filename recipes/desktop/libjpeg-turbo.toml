@@ -4,7 +4,7 @@
 
 [package]
 name = "libjpeg-turbo"
-version = "3.1.0"
+version = "3.1.4.1"
 description = "libjpeg-turbo — JPEG image codec with SIMD acceleration"
 license = "BSD-3-Clause"
 groups = ["desktop", "graphics"]
@@ -12,8 +12,8 @@ release = 1
 arch = "x86_64"
 
 [source]
-url = "https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/3.1.0/libjpeg-turbo-3.1.0.tar.gz"
-sha256 = "9564c72b1dfd1d6fe6274c5f95a8d989b59854575d4bbee44ade7bc17aa9bc93"
+url = "https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/3.1.4.1/libjpeg-turbo-3.1.4.1.tar.gz"
+sha256 = "ecae8008e2cc9ade2f2c1bb9d5e6d4fb73e7c433866a056bd82980741571a022"
 patches = []
 
 [depends]

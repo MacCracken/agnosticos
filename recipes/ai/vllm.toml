@@ -4,7 +4,7 @@
 
 [package]
 name = "vllm"
-version = "0.8.3"
+version = "0.18.0"
 description = "vllm — High-throughput LLM serving engine with PagedAttention"
 license = "Apache-2.0"
 groups = ["ai", "ml", "llm", "serving"]
@@ -12,8 +12,8 @@ release = 1
 arch = "x86_64"
 
 [source]
-url = "https://github.com/vllm-project/vllm/archive/refs/tags/v0.8.3.tar.gz"
-sha256 = "99078eb047a302bcf553aa3c84230631cd4b1288927c326a8be9c714b08faffb"
+url = "https://github.com/vllm-project/vllm/archive/refs/tags/v0.18.0.tar.gz"
+sha256 = "eb44d6b172c1f14d98c21d0ce925b9b230dc17e7dd2b2225a6345ef7c7918d99"
 patches = []
 
 [depends]

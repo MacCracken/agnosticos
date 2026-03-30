@@ -5,7 +5,7 @@
 
 [package]
 name = "pixman"
-version = "0.44.2"
+version = "0.46.4"
 description = "pixman — Pixel manipulation library"
 license = "MIT"
 groups = ["desktop", "graphics"]
@@ -13,8 +13,8 @@ release = 1
 arch = "x86_64"
 
 [source]
-url = "https://cairographics.org/releases/pixman-0.44.2.tar.gz"
-sha256 = "6349061ce1a338ab6952b92194d1b0377472244208d47ff25bef86fc71973466"
+url = "https://cairographics.org/releases/pixman-0.46.4.tar.gz"
+sha256 = "d09c44ebc3bd5bee7021c79f922fe8fb2fb57f7320f55e97ff9914d2346a591c"
 patches = []
 
 [depends]

@@ -5,7 +5,7 @@
 
 [package]
 name = "cmake"
-version = "4.1.0"
+version = "4.3.1"
 description = "CMake — cross-platform build system"
 license = "BSD-3-Clause"
 groups = ["base", "build", "tier1"]
@@ -13,8 +13,8 @@ release = 1
 arch = "x86_64"
 
 [source]
-url = "https://cmake.org/files/v4.1/cmake-4.1.0.tar.gz"
-sha256 = "81ee8170028865581a8e10eaf055afb620fa4baa0beb6387241241a975033508"
+url = "https://cmake.org/files/v4.3/cmake-4.3.1.tar.gz"
+sha256 = "0798f4be7a1a406a419ac32db90c2956936fecbf50db3057d7af47d69a2d7edb"
 patches = []
 
 [depends]

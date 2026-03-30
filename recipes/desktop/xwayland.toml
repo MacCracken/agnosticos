@@ -5,7 +5,7 @@
 
 [package]
 name = "xwayland"
-version = "24.1.6"
+version = "24.1.9"
 description = "XWayland — X11 compatibility layer for Wayland"
 license = "MIT"
 groups = ["desktop", "graphics", "xcompat"]
@@ -13,8 +13,8 @@ release = 1
 arch = "x86_64"
 
 [source]
-url = "https://xorg.freedesktop.org/archive/individual/xserver/xwayland-24.1.6.tar.xz"
-sha256 = "737e612ca36bbdf415a911644eb7592cf9389846847b47fa46dc705bd754d2d7"
+url = "https://xorg.freedesktop.org/archive/individual/xserver/xwayland-24.1.9.tar.xz"
+sha256 = "f297af27a84508db9b80d1cbbcc69c3801da38eb64c72f3b5b50f582459afdd0"
 patches = []
 
 [depends]

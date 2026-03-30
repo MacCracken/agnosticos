@@ -5,7 +5,7 @@
 
 [package]
 name = "procps-ng"
-version = "4.0.5"
+version = "4.0.6"
 description = "Procps-ng — process monitoring utilities"
 license = "GPL-2.0"
 groups = ["base", "core", "tier1"]
@@ -13,8 +13,8 @@ release = 1
 arch = "x86_64"
 
 [source]
-url = "https://sourceforge.net/projects/procps-ng/files/Production/procps-ng-4.0.5.tar.xz"
-sha256 = "c2e6d193cc78f84cd6ddb72aaf6d5c6a9162f0470e5992092057f5ff518562fa"
+url = "https://sourceforge.net/projects/procps-ng/files/Production/procps-ng-4.0.6.tar.xz"
+sha256 = "67bea6fbc3a42a535a0230c9e891e5ddfb4d9d39422d46565a2990d1ace15216"
 patches = []
 
 [depends]

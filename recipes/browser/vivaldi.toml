@@ -3,7 +3,7 @@
 
 [package]
 name = "vivaldi"
-version = "7.2.3621.63"
+version = "7.9.3970.45"
 description = "Vivaldi — Highly customizable Chromium-based browser"
 license = "Vivaldi-EULA"
 groups = ["desktop", "browser", "internet"]
@@ -11,8 +11,8 @@ release = 1
 arch = "x86_64"
 
 [source]
-url = "https://downloads.vivaldi.com/stable/vivaldi-stable_7.2.3621.63-1_amd64.deb"
-sha256 = "bae4956d1e1de9b7f9c6e50c3eecccf95b18a0937867a6d2d7a6b16d55381044"
+url = "https://downloads.vivaldi.com/stable/vivaldi-stable_7.9.3970.45-1_amd64.deb"
+sha256 = "5a8484bd3906ff52d02bf23218e3eff2157ca58fb280e34413f60e87a43c52fd"
 patches = []
 
 [depends]
@@ -48,7 +48,7 @@ build = []
 [build]
 pre_build = """
 # Vivaldi distributes pre-built binaries — extract from .deb
-ar x vivaldi-stable_7.2.3621.63-1_amd64.deb
+ar x vivaldi-stable_7.9.3970.45-1_amd64.deb
 tar xf data.tar.xz
 """
 configure = ""

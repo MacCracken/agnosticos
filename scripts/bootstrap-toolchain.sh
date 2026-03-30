@@ -45,7 +45,7 @@ GLIBC_VER="2.42"
 GMP_VER="6.3.0"
 MPFR_VER="4.2.2"
 MPC_VER="1.3.1"
-LINUX_VER="6.6.72"
+LINUX_VER="6.6.130"
 
 SRC="${LFS}/sources"
 

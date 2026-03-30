@@ -4,7 +4,7 @@
 
 [package]
 name = "python-numpy"
-version = "2.2.4"
+version = "2.4.4"
 description = "python-numpy — Fundamental package for numerical computing with Python"
 license = "BSD-3-Clause"
 groups = ["ai", "ml", "python"]
@@ -12,8 +12,8 @@ release = 1
 arch = "x86_64"
 
 [source]
-url = "https://github.com/numpy/numpy/releases/download/v2.2.4/numpy-2.2.4.tar.gz"
-sha256 = "9ba03692a45d3eef66559efe1d1096c4b9b75c0986b5dff5530c378fb8331d4f"
+url = "https://github.com/numpy/numpy/releases/download/v2.4.4/numpy-2.4.4.tar.gz"
+sha256 = "2d390634c5182175533585cc89f3608a4682ccb173cc9bb940b2881c8d6f8fa0"
 patches = []
 
 [depends]

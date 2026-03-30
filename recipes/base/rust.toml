@@ -5,7 +5,7 @@
 
 [package]
 name = "rust"
-version = "1.89.0"
+version = "1.94.1"
 description = "Rust — systems programming language"
 license = "MIT"
 groups = ["base", "build", "tier0"]
@@ -13,8 +13,8 @@ release = 1
 arch = "x86_64"
 
 [source]
-url = "https://static.rust-lang.org/dist/rustc-1.89.0-src.tar.xz"
-sha256 = "0b9d55610d8270e06c44f459d1e2b7918a5e673809c592abed9b9c600e33d95a"
+url = "https://static.rust-lang.org/dist/rustc-1.94.1-src.tar.xz"
+sha256 = "174fce10ce012317ca995810296d8af199318838180b03d68a853e0f02d4b571"
 patches = []
 
 [depends]
@@ -39,11 +39,11 @@ tools = ["cargo", "clippy", "rustfmt", "rust-analyzer"]
 
 [install]
 prefix = "/usr"
-docdir = "share/doc/rust-1.89.0"
+docdir = "share/doc/rust-1.94.1"
 
 [rust]
 channel = "stable"
-description = "AGNOS Rust 1.89.0"
+description = "AGNOS Rust 1.94.1"
 rpath = false
 
 [target.x86_64-unknown-linux-gnu]
