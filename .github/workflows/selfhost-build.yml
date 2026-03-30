@@ -309,6 +309,9 @@ jobs:
           echo "=== Building Linux kernel from source ==="
           mkdir -p "$LFS/boot"
 
+          # Clean leftover root-owned kernel build artifacts
+          sudo rm -rf /tmp/linux-6.6.72 /tmp/linux-6.6.72.tar.xz /tmp/gcc-wrap
+
           KERNEL_SRC="/tmp/linux-6.6.72.tar.xz"
           if [[ -f "$LFS/sources/linux-6.6.72.tar.xz" ]]; then
             cp "$LFS/sources/linux-6.6.72.tar.xz" "$KERNEL_SRC"
@@ -642,7 +645,8 @@ jobs:
                  install patch sed awk grep find xargs sort uniq head tail
                  wc tr cut tee cat cp mv rm ln mkdir rmdir chmod chown
                  tar xz gzip bzip2 cmp diff file touch date uname id
-                 readlink dirname basename expr test true false printf)
+                 readlink dirname basename expr test true false printf
+                 bash sh ls mount umount env)
 
           for tool in "${TOOLS[@]}"; do
             src=$(command -v "$tool" 2>/dev/null) || continue
@@ -685,6 +689,11 @@ jobs:
           # Symlinks that some build systems expect
           [[ -f "$LFS/usr/bin/cc" ]] || ln -sf gcc "$LFS/usr/bin/cc" 2>/dev/null || true
 
+          # LFS-style merged-usr symlinks
+          for link in bin sbin lib; do
+            [[ -e "$LFS/$link" ]] || ln -sf "usr/$link" "$LFS/$link" 2>/dev/null || true
+          done
+
           echo "Build tools bootstrapped: $(ls "$LFS/usr/bin/" | wc -l) binaries"
 
       - name: Build packages from recipes
@@ -725,6 +734,8 @@ jobs:
       - name: Build aarch64 kernel
         run: |
           echo "=== Building aarch64 kernel ==="
+          sudo rm -rf /tmp/linux-6.6.72 /tmp/linux-6.6.72.tar.xz
+
           KERNEL_SRC="/tmp/linux-6.6.72.tar.xz"
           if [[ -f "$LFS/sources/linux-6.6.72.tar.xz" ]]; then
             cp "$LFS/sources/linux-6.6.72.tar.xz" "$KERNEL_SRC"
