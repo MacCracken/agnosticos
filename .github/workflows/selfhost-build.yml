@@ -90,7 +90,7 @@ jobs:
           curl -fSL -H "Authorization: token ${GITHUB_TOKEN}" \
             -o output/agnos-toolchain-x86_64.tar.zst "$ASSET_URL"
           zstd -d output/agnos-toolchain-x86_64.tar.zst -o output/agnos-toolchain-x86_64.tar
-          rm -rf "$LFS"
+          sudo rm -rf "$LFS"
           mkdir -p "$LFS"
           tar xf output/agnos-toolchain-x86_64.tar -C "$LFS"
           echo "Toolchain restored from published release"
@@ -98,7 +98,7 @@ jobs:
       - name: Prepare build directory
         if: steps.published.outputs.cached != 'true'
         run: |
-          rm -rf "$LFS"
+          sudo rm -rf "$LFS"
           mkdir -p "$LFS"
 
       - name: Download source tarballs
@@ -225,7 +225,7 @@ jobs:
 
       - name: Restore toolchain
         run: |
-          rm -rf "$LFS"
+          sudo rm -rf "$LFS"
           mkdir -p "$LFS"
           tar xf output/agnos-toolchain-x86_64.tar -C "$LFS"
           "$LFS/tools/bin/x86_64-agnos-linux-gnu-gcc" --version
@@ -488,7 +488,7 @@ jobs:
 
       - name: Assemble rootfs with userland
         run: |
-          rm -rf "$LFS"
+          sudo rm -rf "$LFS"
           mkdir -p "$LFS"
 
           # Restore base rootfs
@@ -828,9 +828,10 @@ jobs:
           fi
 
           # Delete old aarch64 assets if present
-          for old_asset in $(curl -fsSL "${AUTH[@]}" "${API}/releases/tags/${TAG}" \
-            | grep -oP '"id":\s*\K\d+(?=.*"name":\s*"agnos-base-rootfs-aarch64)' || true); do
-            curl -fsSL "${AUTH[@]}" -X DELETE "${API}/releases/assets/${old_asset}" || true
+          RELEASE_JSON=$(curl -fsSL "${AUTH[@]}" "${API}/releases/tags/${TAG}" 2>/dev/null || echo '{}')
+          for old_asset_id in $(echo "$RELEASE_JSON" | jq -r '.assets[]? | select(.name | startswith("agnos-base-rootfs-aarch64")) | .id' 2>/dev/null || true); do
+            echo "Deleting old asset: $old_asset_id"
+            curl -fsSL "${AUTH[@]}" -X DELETE "${API}/releases/assets/${old_asset_id}" || true
           done
 
           # Upload aarch64 assets
@@ -876,7 +877,7 @@ jobs:
           LFS: /tmp/agnos-validate
         run: |
           echo "=== Validating aarch64 base rootfs ==="
-          rm -rf "$LFS"
+          sudo rm -rf "$LFS"
           mkdir -p "$LFS"
           tar xf output/agnos-base-rootfs-aarch64.tar -C "$LFS"
 

@@ -103,8 +103,9 @@
 |-------|--------|---------|------|
 | [jivanu](jivanu.md) | Microbiology — growth, metabolism, genetics, epidemiology | Planned | — |
 
-## Programming & Education
+## Knowledge & Education
 
 | Crate | Domain | Version | Docs |
 |-------|--------|---------|------|
-| [vidya](vidya.md) | Programming reference library — multi-language best practices | Planned | — |
+| [jnana](jnana.md) | Unified knowledge system — 1-10GB offline human knowledge | 0.1.0 | — |
+| [vidya](vidya.md) | Programming reference library — multi-language best practices | 0.1.0 | — |
