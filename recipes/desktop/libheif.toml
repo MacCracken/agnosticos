@@ -1,13 +1,13 @@
 [package]
 name = "libheif"
-version = "1.19.7"
+version = "1.21.2"
 description = "HEIF and AVIF file format decoder and encoder library"
 license = "LGPL-3.0"
 groups = ["desktop"]
 
 [source]
-url = "https://github.com/strukturag/libheif/releases/download/v1.19.7/libheif-1.19.7.tar.gz"
-sha256 = "161c042d2102665fcee3ded851c78a0eb5f2d4bfe39fba48ba6e588fd6e964f3"
+url = "https://github.com/strukturag/libheif/releases/download/v1.21.2/libheif-1.21.2.tar.gz"
+sha256 = "75f530b7154bc93e7ecf846edfc0416bf5f490612de8c45983c36385aa742b42"
 patches = []
 
 [depends]

@@ -5,7 +5,7 @@
 
 [package]
 name = "libpng"
-version = "1.6.44"
+version = "1.6.56"
 description = "libpng — PNG reference library"
 license = "Libpng"
 groups = ["base", "core", "tier1"]
@@ -13,8 +13,8 @@ release = 1
 arch = "x86_64"
 
 [source]
-url = "https://download.sourceforge.net/libpng/libpng-1.6.44.tar.xz"
-sha256 = "60c4da1d5b7f0aa8d158da48e8f8afa9773c1c8baa5d21974df61f1886b8ce8e"
+url = "https://download.sourceforge.net/libpng/libpng-1.6.56.tar.xz"
+sha256 = "f7d8bf1601b7804f583a254ab343a6549ca6cf27d255c302c47af2d9d36a6f18"
 patches = []
 
 [depends]

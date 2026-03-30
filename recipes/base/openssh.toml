@@ -5,7 +5,7 @@
 
 [package]
 name = "openssh"
-version = "10.0p1"
+version = "10.2p1"
 description = "OpenSSH — secure shell client and server"
 license = "BSD-2-Clause"
 groups = ["base", "security", "tier1"]
@@ -13,8 +13,8 @@ release = 1
 arch = "x86_64"
 
 [source]
-url = "https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-10.0p1.tar.gz"
-sha256 = "021a2e709a0edf4250b1256bd5a9e500411a90dddabea830ed59cef90eb9d85c"
+url = "https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-10.2p1.tar.gz"
+sha256 = "ccc42c0419937959263fa1dbd16dafc18c56b984c03562d2937ce56a60f798b2"
 patches = []
 
 [depends]

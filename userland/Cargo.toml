@@ -20,29 +20,29 @@ repository = "https://github.com/agnos/agnos"
 rust-version = "1.89"
 
 [workspace.dependencies]
-tokio = { version = "1.35", features = ["full"] }
+tokio = { version = "1.50", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-uuid = { version = "1.6", features = ["v4", "serde"] }
-thiserror = "1.0"
+uuid = { version = "1.23", features = ["v4", "serde"] }
+thiserror = "2.0"
 anyhow = "1.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
-clap = { version = "4.4", features = ["derive"] }
-config = "0.13"
-tonic = "0.10"
-prost = "0.12"
+clap = { version = "4.6", features = ["derive"] }
+config = "0.15"
+tonic = "0.14"
+prost = "0.14"
 futures = "0.3"
 async-trait = "0.1"
 libc = "0.2"
 parking_lot = "0.12"
-dashmap = "5.5"
+dashmap = "6.1"
 chrono = { version = "0.4", features = ["serde"] }
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls", "query"] }
-sha2 = "0.10"
-axum = "0.7"
-tower = { version = "0.4", features = ["util"] }
-tower-http = { version = "0.5", features = ["cors", "limit"] }
+sha2 = "0.11"
+axum = "0.8"
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.6", features = ["cors", "limit"] }
 
 # AGNOS internal dependencies
 agnos-common = { path = "agnos-common" }

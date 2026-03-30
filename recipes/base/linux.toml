@@ -6,7 +6,7 @@
 
 [package]
 name = "linux"
-version = "6.6.72"
+version = "6.6.130"
 description = "Linux kernel — AGNOS LTS build"
 license = "GPL-2.0"
 groups = ["base", "kernel", "tier0"]
@@ -14,8 +14,8 @@ release = 1
 arch = "x86_64"
 
 [source]
-url = "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.6.72.tar.xz"
-sha256 = "feb9e514930d5968daa0b8b5486d3295d1fb2b34accf876207641884d4baef39"
+url = "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.6.130.tar.xz"
+sha256 = "2460aa67b9494cff6f9fc2b235470867d2005469d40f29da452e8ee82940248d"
 patches = []
 
 [depends]
@@ -46,20 +46,20 @@ mkdir -p $PKG/boot
 mkdir -p $PKG/usr/lib/modules
 
 # Install the kernel image
-install -vm755 arch/x86/boot/bzImage $PKG/boot/vmlinuz-6.6.72-agnos
+install -vm755 arch/x86/boot/bzImage $PKG/boot/vmlinuz-6.6.130-agnos
 
 # Install modules
 make INSTALL_MOD_PATH=$PKG/usr modules_install
 
 # Install System.map
-install -vm644 System.map $PKG/boot/System.map-6.6.72-agnos
+install -vm644 System.map $PKG/boot/System.map-6.6.130-agnos
 
 # Install kernel config for reference
-install -vm644 .config $PKG/boot/config-6.6.72-agnos
+install -vm644 .config $PKG/boot/config-6.6.130-agnos
 
 # Remove build/source symlinks (they point to the build host)
-rm -fv $PKG/usr/lib/modules/6.6.72-agnos/build
-rm -fv $PKG/usr/lib/modules/6.6.72-agnos/source
+rm -fv $PKG/usr/lib/modules/6.6.130-agnos/build
+rm -fv $PKG/usr/lib/modules/6.6.130-agnos/source
 """
 post_install = ""
 

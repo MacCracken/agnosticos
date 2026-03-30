@@ -5,7 +5,7 @@
 
 [package]
 name = "expat"
-version = "2.7.1"
+version = "2.7.5"
 description = "Expat — stream-oriented XML parser library"
 license = "MIT"
 groups = ["base", "core", "tier1"]
@@ -13,8 +13,8 @@ release = 1
 arch = "x86_64"
 
 [source]
-url = "https://github.com/libexpat/libexpat/releases/download/R_2_7_1/expat-2.7.1.tar.xz"
-sha256 = "354552544b8f99012e5062f7d570ec77f14b412a3ff5c7d8d0dae62c0d217c30"
+url = "https://github.com/libexpat/libexpat/releases/download/R_2_7_5/expat-2.7.5.tar.xz"
+sha256 = "1032dfef4ff17f70464827daa28369b20f6584d108bc36f17ab1676e1edd2f91"
 patches = []
 
 [depends]

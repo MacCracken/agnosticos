@@ -4,7 +4,7 @@
 
 [package]
 name = "pgvector"
-version = "0.8.0"
+version = "0.8.2"
 description = "pgvector — Vector similarity search for PostgreSQL"
 license = "PostgreSQL"
 groups = ["system", "database", "extension"]
@@ -12,8 +12,8 @@ release = 1
 arch = "x86_64"
 
 [source]
-url = "https://github.com/pgvector/pgvector/archive/refs/tags/v0.8.0.tar.gz"
-sha256 = "867a2c328d4928a5a9d6f052cd3bc78c7d60228a9b914ad32aa3db88e9de27b0"
+url = "https://github.com/pgvector/pgvector/archive/refs/tags/v0.8.2.tar.gz"
+sha256 = "69f4019389af05dc1c9548deb8628e62878e6e207c03907f2b8af2016472cdaa"
 patches = []
 
 [depends]

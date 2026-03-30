@@ -5,7 +5,7 @@
 
 [package]
 name = "gnutls"
-version = "3.8.10"
+version = "3.8.12"
 description = "GnuTLS — Transport Layer Security library"
 license = "LGPL-2.1"
 groups = ["base", "security", "tier1"]
@@ -13,8 +13,8 @@ release = 1
 arch = "x86_64"
 
 [source]
-url = "https://www.gnupg.org/ftp/gcrypt/gnutls/v3.8/gnutls-3.8.10.tar.xz"
-sha256 = "db7fab7cce791e7727ebbef2334301c821d79a550ec55c9ef096b610b03eb6b7"
+url = "https://www.gnupg.org/ftp/gcrypt/gnutls/v3.8/gnutls-3.8.12.tar.xz"
+sha256 = "a7b341421bfd459acf7a374ca4af3b9e06608dcd7bd792b2bf470bea012b8e51"
 patches = []
 
 [depends]
