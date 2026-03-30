@@ -29,7 +29,7 @@ Full documentation for each crate: [docs/applications/libs/{crate}.md](../../app
 | goonj | 1.1.1 | Acoustics |
 | hisab | 1.3.0 | Higher math |
 | hoosh | 1.1.0 | LLM gateway |
-| ifran | 1.1.1 | LLM inference/training |
+| ifran | 1.2.0 | LLM inference/training |
 | impetus | 1.3.0 | Physics |
 | jantu | 1.1.0 | Ethology/behavior |
 | kavach | 1.0.1 | Sandbox execution |

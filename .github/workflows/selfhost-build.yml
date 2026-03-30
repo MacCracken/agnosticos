@@ -571,7 +571,7 @@ jobs:
               cp "$LFS/usr/bin/$bin" userland/target/release/
             fi
           done
-          bash scripts/build-installer.sh \
+          sudo bash scripts/build-installer.sh \
             --profile desktop \
             --skip-build \
             --base-rootfs output/agnos-complete-rootfs-x86_64.tar

@@ -10,22 +10,22 @@
 
 ---
 
-## Priority 1 — Essential Desktop (needed for daily-driver OS)
+## Priority 0 — Active Development
 
-### PDF / Document Suite
+### Sahifa + Scriba — PDF / Document Suite
 
 | Field | Value |
 |-------|-------|
-| Status | **P0 — Next up** |
-| Priority | 0 — ship before beta, real user requirements pending |
+| Status | **P0 — Design complete, ready to scaffold** |
+| Engine | **sahifa** (صحيفة — page/document) — PDF engine, GPL-3.0-only |
+| GUI | **scriba** (Latin: scribe) — desktop app, AGPL-3.0-only |
+| Spec | [pdf-suite.md](pdf-suite.md) |
 
-**Why first-party**: AI-native document viewer with OCR, summarization, translation, document Q&A, and table extraction.
+7 feature areas from real Acrobat Pro user: editing, AI assistant, conversion, security/redaction, e-signatures/forms, scan/OCR, document comparison.
 
-**Scope**: Reader, annotator, form filler, digital signatures. AI via hoosh. Infrastructure: poppler recipe done, mupdf Rust bindings exist.
+---
 
-**Next step**: Get real-world usage requirements (one-sheet from primary user) before scaffolding. Design around actual workflows, not assumed features.
-
-**Interim**: Zathura (lightweight) and Evince (full-featured, bazaar) shipping now.
+## Priority 1 — Essential Desktop (needed for daily-driver OS)
 
 ---
 
