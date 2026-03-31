@@ -971,7 +971,7 @@ when cycles allow, but must exist before the paper draft.
 |-------|--------|-------------|------------|
 | **TBD** | Neuroscience | 0–1 | Neural correlates of consciousness, default mode network, meditation neuroscience. The paper references contemplative neuroscience (Section 2, 7) but has no computational model. Bridges to bodh (cognition) and sharira (body). |
 | **TBD** | Genetics / Genomics | 0 | Genome → personality mapping. jantu bridge references "5-axis behavioral genome → 7 trait seeds" but no crate models the genomics. Bridges to jivanu (microbiology) and jantu (behavior). |
-| **TBD** | Cosmology | 6–7 | Galactic structure, cosmic expansion, CMB. Scales 6–7 are designed but need real physics — not placeholders. Bridges to tara (stellar) and falak (orbital). |
+| ~~**hisab-mimamsa**~~ | ~~Cosmology + GR + QFT~~ | ~~0–7~~ | ~~**SCAFFOLDED** — 0.1.0, 33 tests, relativity + cosmology modules live. QFT + unified planned for v0.2-0.3.~~ |
 | **TBD** | Chronobiology | 0–3 | Circadian rhythms, seasonal affect, body clock → mood. Sits between sharira (body), jyotish (celestial cycles), and bodh (cognition). Melatonin, cortisol, ultradian rhythms. |
 | **TBD** | Ecology / Ecosystems | 2–3 | Environmental pressure on entities. vanaspati covers botany but not ecosystem dynamics — predator/prey balance, carrying capacity, niche competition, climate feedback loops. |
 

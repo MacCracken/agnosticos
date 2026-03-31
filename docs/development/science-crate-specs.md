@@ -368,6 +368,27 @@ bijli (EM field)  ──→  shared grid types  ←── thermal solver (heat e
 
 **Prerequisites**: Optional dependency decoupling complete, shared field/grid types in agnostik or hisab, GPU compute via mabda stable, MHD module exists.
 
+## 16. hisab-mimamsa (Sanskrit: मीमांसा — critical inquiry) — Theoretical Physics
+
+**Domain**: General relativity, quantum field theory, cosmology, unified field models
+
+**Modules**:
+- `relativity/lorentz.rs` — Special relativity: Lorentz factor, four-vectors, boosts, time dilation, length contraction, velocity addition, relativistic Doppler, kinetic/rest energy, momentum
+- `relativity/metric.rs` — Spacetime metrics: Schwarzschild radius, gravitational time dilation, redshift, ISCO, photon sphere, orbital velocity. Metric types: Minkowski, Schwarzschild, Kerr, FLRW, Reissner-Nordström
+- `relativity/geodesic.rs` — Geodesics: effective potential, light deflection (Eddington), Shapiro delay, geodesic classification
+- `relativity/black_hole.rs` — Black hole thermodynamics: Hawking temperature (T=ℏc³/8πGMk_B), Bekenstein-Hawking entropy (S=k_B·A/4l_P²), evaporation time, surface gravity
+- `relativity/lensing.rs` — Gravitational lensing: Einstein ring radius, point-lens magnification, critical surface density
+- `cosmology/friedmann.rs` — Friedmann equations: H(z), critical density, deceleration parameter, age of universe. Planck 2018 ΛCDM parameters (H₀=67.4, Ω_m=0.315, Ω_Λ=0.685)
+- `cosmology/expansion.rs` — Cosmic expansion: comoving/luminosity/angular diameter distances, lookback time, Hubble distance, scale factor, CMB temperature T(z)=T₀(1+z)
+- `quantum_field/` — QFT: propagators, vacuum energy, running coupling constants (planned v0.2.0)
+- `unified/` — GR+QFT bridge: holographic principle, fixed point convergence, scale invariance (planned v0.3.0)
+
+**Key tests**: electron rest energy ≈ 0.511 MeV, Sun r_s ≈ 2953 m, solar light deflection ≈ 1.75 arcsec, age of universe ≈ 13.8 Gyr, CMB T₀ = 2.7255 K, Hawking T inversely proportional to mass, Lorentz boost preserves interval
+**Consumers**: bhava v2-v3 (Scale 3-7 bridges), tara (stellar physics), falak (orbital), kana (quantum), kiran/joshua (cosmological simulation), the paper
+**Core dep**: hisab (math foundation — linear algebra, calculus, ODE solvers)
+
+---
+
 ### Other Potential Research Domains
 
 - **Fusion reactor design** — bijli EM confinement + thermal + plasma stability (tokamak/stellarator geometry via hisab spatial types)

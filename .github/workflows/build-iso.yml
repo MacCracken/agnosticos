@@ -214,6 +214,18 @@ jobs:
           qemu-user-static binfmt-support \
           debian-archive-keyring curl
 
+    - name: Download aarch64 base rootfs
+      run: |
+        mkdir -p artifacts
+        REPO="${{ github.repository }}"
+        # Try downloading from base-rootfs-latest release
+        ROOTFS_URL="https://github.com/${REPO}/releases/download/base-rootfs-latest/agnos-base-rootfs-aarch64.tar.zst"
+        if curl -fSL -o artifacts/agnos-base-rootfs-aarch64.tar.zst "$ROOTFS_URL" 2>/dev/null; then
+          echo "Downloaded aarch64 base rootfs from release"
+        else
+          echo "::warning::aarch64 base rootfs not found at $ROOTFS_URL — build-sdcard.sh will attempt its own download"
+        fi
+
     - name: Download aarch64 binaries
       uses: actions/download-artifact@v4
       with:
@@ -240,6 +252,9 @@ jobs:
         VERSION="${{ inputs.version || '' }}"
         ARGS="--profile desktop --skip-build"
         [ -n "$VERSION" ] && ARGS="$ARGS --version $VERSION"
+        if [ -f artifacts/agnos-base-rootfs-aarch64.tar.zst ]; then
+          ARGS="$ARGS --base-rootfs artifacts/agnos-base-rootfs-aarch64.tar.zst"
+        fi
         sudo ./scripts/build-sdcard.sh $ARGS
 
     - name: Compress aarch64 image
@@ -285,6 +300,17 @@ jobs:
           qemu-user-static binfmt-support \
           debian-archive-keyring curl
 
+    - name: Download aarch64 base rootfs
+      run: |
+        mkdir -p artifacts
+        REPO="${{ github.repository }}"
+        ROOTFS_URL="https://github.com/${REPO}/releases/download/base-rootfs-latest/agnos-base-rootfs-aarch64.tar.zst"
+        if curl -fSL -o artifacts/agnos-base-rootfs-aarch64.tar.zst "$ROOTFS_URL" 2>/dev/null; then
+          echo "Downloaded aarch64 base rootfs from release"
+        else
+          echo "::warning::aarch64 base rootfs not found — build-sdcard.sh will attempt its own download"
+        fi
+
     - name: Download aarch64 edge binaries
       uses: actions/download-artifact@v4
       with:
@@ -323,6 +349,9 @@ jobs:
         ARGS="--profile minimal --skip-build"
         [ -n "$VERSION" ] && ARGS="$ARGS --version $VERSION"
         [ -f /tmp/secureyeoman-edge-linux-arm64 ] && ARGS="$ARGS --sy-edge-binary /tmp/secureyeoman-edge-linux-arm64"
+        if [ -f artifacts/agnos-base-rootfs-aarch64.tar.zst ]; then
+          ARGS="$ARGS --base-rootfs artifacts/agnos-base-rootfs-aarch64.tar.zst"
+        fi
         sudo ./scripts/build-sdcard.sh $ARGS
 
     - name: Compress minimal aarch64 image
