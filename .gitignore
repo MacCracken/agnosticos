@@ -245,6 +245,8 @@ m4/
 *.zip
 *.7z
 *.rar
+*.zst
+*.tar.zst
 
 # Debug symbols
 *.dSYM/
