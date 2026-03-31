@@ -27,7 +27,7 @@ Full documentation for each crate: [docs/applications/libs/{crate}.md](../../app
 | garjan | 1.1.0 | Environmental sound |
 | ghurni | 1.0.0 | Mechanical sound |
 | goonj | 1.1.1 | Acoustics |
-| hisab | 1.3.0 | Higher math |
+| hisab | 1.4.0 | Higher math |
 | hoosh | 1.1.0 | LLM gateway |
 | ifran | 1.2.0 | LLM inference/training |
 | impetus | 1.3.0 | Physics |
@@ -116,7 +116,9 @@ Need `cargo publish` before consumers outside AGNOS can depend on them.
 | falak | 0.2.0 | Orbital mechanics |
 | jivanu | 0.1.0 | Microbiology |
 | jyotish | 0.1.0 | Astronomical computation |
+| hisab-mimamsa | 0.1.0 | Theoretical physics (GR, cosmology, QFT) |
 | kana | 0.1.0 | Quantum mechanics |
+| lipi | 0.1.0 | Multilingual language engine (phonemes, scripts, grammar) |
 | phylax | 0.5.0 | Threat detection (crates.io stale at 0.22.3) |
 | sangha | 0.1.0 | Sociology |
 | sankhya | 0.1.0 | Ancient mathematical systems |

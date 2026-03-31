@@ -210,21 +210,44 @@ jobs:
     runs-on: [self-hosted, linux, x64]
     timeout-minutes: 240
     steps:
+      - name: Check if x86_64 rootfs already cached
+        id: cached
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [[ "${{ inputs.force_rebuild }}" == "true" ]]; then
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "Force rebuild requested"
+          elif curl -fsSL -H "Authorization: token ${GITHUB_TOKEN}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/base-rootfs-latest" 2>/dev/null \
+            | grep -q 'agnos-base-rootfs-x86_64.tar.zst'; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "x86_64 base rootfs already published — skipping build"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "No cached x86_64 rootfs — building from source"
+          fi
+
       - name: Clean workspace (root-owned leftovers)
+        if: steps.cached.outputs.skip != 'true'
         run: sudo rm -rf "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/output"
 
       - name: Configure git for runner
+        if: steps.cached.outputs.skip != 'true'
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - uses: actions/checkout@v4
+        if: steps.cached.outputs.skip != 'true'
 
       - name: Download toolchain artifact
+        if: steps.cached.outputs.skip != 'true'
         uses: actions/download-artifact@v4
         with:
           name: agnos-toolchain-x86_64
           path: output/
 
       - name: Restore toolchain
+        if: steps.cached.outputs.skip != 'true'
         run: |
           sudo rm -rf "$LFS"
           mkdir -p "$LFS"
@@ -232,6 +255,7 @@ jobs:
           "$LFS/tools/bin/x86_64-agnos-linux-gnu-gcc" --version
 
       - name: Download source tarballs
+        if: steps.cached.outputs.skip != 'true'
         run: |
           # Pre-download all source tarballs referenced in recipes
           mkdir -p "$LFS/sources"
@@ -248,6 +272,7 @@ jobs:
           echo "Source cache: $(du -sh "$LFS/sources" | cut -f1)"
 
       - name: Build all packages from recipes
+        if: steps.cached.outputs.skip != 'true'
         run: |
           # Copy recipes and scripts into chroot
           mkdir -p "$LFS/usr/src/agnos"
@@ -295,6 +320,7 @@ jobs:
           echo "=========================================="
 
       - name: Build kernel into base rootfs
+        if: steps.cached.outputs.skip != 'true'
         run: |
           echo "=== Checking kernel build dependencies ==="
           MISSING=""
@@ -360,6 +386,7 @@ jobs:
           echo "Kernel build complete: $KVER"
 
       - name: Archive base rootfs (with kernel, without userland)
+        if: steps.cached.outputs.skip != 'true'
         run: |
           mkdir -p output
           DIRS="usr/ etc/ var/"
@@ -383,6 +410,7 @@ jobs:
           ls -lh output/agnos-base-rootfs-x86_64.tar
 
       - name: Upload base rootfs artifact
+        if: steps.cached.outputs.skip != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: agnos-base-rootfs-x86_64
@@ -391,6 +419,7 @@ jobs:
           compression-level: 0
 
       - name: Publish base rootfs as release asset
+        if: steps.cached.outputs.skip != 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -601,20 +630,43 @@ jobs:
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 360
     steps:
+      - name: Check if aarch64 rootfs already cached
+        id: cached
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [[ "${{ inputs.force_rebuild }}" == "true" ]]; then
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "Force rebuild requested"
+          elif curl -fsSL -H "Authorization: token ${GITHUB_TOKEN}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/base-rootfs-latest" 2>/dev/null \
+            | grep -q 'agnos-base-rootfs-aarch64.tar.zst'; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "aarch64 base rootfs already published — skipping 6-hour build"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "No cached aarch64 rootfs — building from source"
+          fi
+
       - name: Clean workspace
+        if: steps.cached.outputs.skip != 'true'
         run: sudo rm -rf "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/output" "$LFS"
 
       - name: Configure git for runner
+        if: steps.cached.outputs.skip != 'true'
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - uses: actions/checkout@v4
+        if: steps.cached.outputs.skip != 'true'
 
       - name: Prepare build directory
+        if: steps.cached.outputs.skip != 'true'
         run: |
           mkdir -p "$LFS"/{sources,etc,var/log,tmp,run,proc,sys,dev,boot}
           mkdir -p "$LFS/usr/"{src/agnos,bin,lib}
 
       - name: Download source tarballs
+        if: steps.cached.outputs.skip != 'true'
         run: |
           mkdir -p "$LFS/sources"
           cd "$LFS/sources"
@@ -648,6 +700,7 @@ jobs:
           echo "Source cache: $(du -sh "$LFS/sources" | cut -f1)"
 
       - name: Bootstrap host tools into chroot
+        if: steps.cached.outputs.skip != 'true'
         run: |
           echo "=== Bootstrapping native aarch64 build tools into chroot ==="
           # On aarch64, we build natively (no cross-compiler). Copy the host's
@@ -712,6 +765,7 @@ jobs:
           echo "Build tools bootstrapped: $(ls "$LFS/usr/bin/" | wc -l) binaries"
 
       - name: Build packages from recipes
+        if: steps.cached.outputs.skip != 'true'
         run: |
           cp -r recipes "$LFS/usr/src/agnos/recipes"
           cp -r scripts "$LFS/usr/src/agnos/scripts"
@@ -747,6 +801,7 @@ jobs:
           echo "=========================================="
 
       - name: Build aarch64 kernel
+        if: steps.cached.outputs.skip != 'true'
         run: |
           echo "=== Building aarch64 kernel ==="
           sudo rm -rf "/tmp/linux-${LINUX_VER}" "/tmp/linux-${LINUX_VER}.tar.xz"
@@ -797,6 +852,7 @@ jobs:
           echo "aarch64 kernel: $KVER"
 
       - name: Archive aarch64 base rootfs
+        if: steps.cached.outputs.skip != 'true'
         run: |
           mkdir -p output
           DIRS="usr/ etc/ var/"
@@ -818,6 +874,7 @@ jobs:
           ls -lh output/agnos-base-rootfs-aarch64.tar
 
       - name: Upload aarch64 base rootfs artifact
+        if: steps.cached.outputs.skip != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: agnos-base-rootfs-aarch64
@@ -826,6 +883,7 @@ jobs:
           compression-level: 0
 
       - name: Publish aarch64 rootfs to base-rootfs-latest
+        if: steps.cached.outputs.skip != 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

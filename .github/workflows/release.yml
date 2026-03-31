@@ -136,11 +136,22 @@ jobs:
         path: sbom/
         if-no-files-found: warn
 
-  # Build bootable ISO/IMG from release binaries
-  # Uses AGNOS base rootfs if published, falls back to Debian debootstrap
+  # Build base rootfs (x86_64 + aarch64) on self-hosted runners.
+  # Publishes to base-rootfs-latest release. Skips if already cached.
+  selfhost-build:
+    name: Self-Hosting Build (Base Rootfs)
+    needs: ci-gate
+    uses: ./.github/workflows/selfhost-build.yml
+    with:
+      force_rebuild: false
+    permissions:
+      contents: write
+      packages: write
+
+  # Build bootable ISO/IMG from release binaries + base rootfs
   build-iso:
     name: Build ISO Images
-    needs: build-release
+    needs: [build-release, selfhost-build]
     uses: ./.github/workflows/build-iso.yml
     with:
       version: ${{ github.ref_name }}
