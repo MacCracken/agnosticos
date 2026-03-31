@@ -113,6 +113,7 @@ Need `cargo publish` before consumers outside AGNOS can depend on them.
 | Crate | Version | Description |
 |-------|---------|-------------|
 | bodh | 0.1.0 | Psychology engine |
+| brahmanda | 0.1.0 | Galactic structure / large-scale cosmology |
 | falak | 0.2.0 | Orbital mechanics |
 | jivanu | 0.1.0 | Microbiology |
 | jyotish | 0.1.0 | Astronomical computation |
