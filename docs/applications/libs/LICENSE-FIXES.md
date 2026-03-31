@@ -76,4 +76,19 @@ tazama¹, taswir, vidhana
 
 ---
 
-*34 repos need a fix. Delete this file when done.*
+## Remove `publish = false` (blocks crates.io publish)
+
+- [ ] bodh — science crate, will publish at v1
+- [ ] falak — science crate, will publish at v1
+- [ ] jivanu — science crate, will publish at v1
+- [ ] joshua — game manager, will publish
+- [ ] jyotish — science crate, will publish at v1
+- [ ] mneme — needs coring (engine/GUI split), then publish engine
+- [ ] sangha — science crate, will publish at v1
+- [ ] tara — science crate, will publish at v1
+
+**Intentionally `publish = false` (no action):** agnostik, agnosys, daimon
+
+---
+
+*42 items total. Delete this file when done.*

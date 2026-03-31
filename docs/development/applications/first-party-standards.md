@@ -269,6 +269,8 @@ license = "GPL-3.0-only"              # library crates, CLIs, daemons
 license = "AGPL-3.0-only"             # desktop GUI applications
 ```
 
+**`publish = false`**: Only set this for intentionally internal crates (agnostik, agnosys, daimon). All library crates and science crates will publish to crates.io — do not scaffold with `publish = false`.
+
 ### VERSION File
 
 - **Single source of truth**: `VERSION` file at project root

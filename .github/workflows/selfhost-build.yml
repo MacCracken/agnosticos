@@ -51,7 +51,7 @@ jobs:
     timeout-minutes: 120
     steps:
       - name: Clean workspace (root-owned leftovers)
-        run: rm -rf "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/output"
+        run: sudo rm -rf "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/output"
 
       - name: Configure git for runner
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
@@ -211,7 +211,7 @@ jobs:
     timeout-minutes: 240
     steps:
       - name: Clean workspace (root-owned leftovers)
-        run: rm -rf "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/output"
+        run: sudo rm -rf "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/output"
 
       - name: Configure git for runner
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
@@ -466,7 +466,7 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Clean workspace (root-owned leftovers)
-        run: rm -rf "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/output"
+        run: sudo rm -rf "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/output"
 
       - name: Configure git for runner
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
@@ -602,7 +602,7 @@ jobs:
     timeout-minutes: 360
     steps:
       - name: Clean workspace
-        run: rm -rf "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/output" "$LFS"
+        run: sudo rm -rf "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/output" "$LFS"
 
       - name: Configure git for runner
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
@@ -885,7 +885,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Clean workspace
-        run: rm -rf "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/output" "$LFS"
+        run: sudo rm -rf "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/output" "$LFS"
 
       - name: Configure git for runner
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"

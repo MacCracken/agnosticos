@@ -941,6 +941,49 @@ See [CONTRIBUTING.md](/CONTRIBUTING.md) for:
 
 ---
 
+## Research & Publication
+
+### Unified Consciousness Model Paper
+
+> *A Unified Computational Framework for Multi-Scale Personality and Consciousness Modeling: From Immune Response to Cosmic Phase*
+
+The bhava personality engine + AGNOS science crate ecosystem demonstrates a single computational framework that models consciousness from cytokine-induced sickness behavior through individual psychology, social dynamics, body state, celestial influence, and cosmic phase — using a unified type system where the fixed point at zero (Unity) is a provable mathematical property.
+
+**Status**: [Paper outline complete](paper-unified-consciousness-model.md)
+
+**Dependency chain**:
+1. ✅ bhava v1.0–v1.4: 37 modules, 5 bridge crates (jantu, bodh, sangha, sharira, jivanu), 63 bridge functions, 1117 tests
+2. bhava v2.0: Zodiac manifestation engine (jyotish bridge, planetary → personality)
+3. bhava v3.0: Cosmic scales 3–7, breath phase, fixed point realization
+4. Paper draft: full mathematical specification, proofs, benchmark data
+5. Formal verification: Lean4/Coq proof of fixed point theorem
+6. Submission: arXiv preprint → Nature Computational Science / PNAS
+
+**Key insight**: "As above, so below; as within, so without" is not metaphysics — it's a provable property of multi-scale modular systems where every module's identity element converges to the same fixed point.
+
+### Missing Science Crates — P1 Scaffold (required for paper completeness)
+
+These crates fill gaps in the paper's scale hierarchy. Each needs scaffolding to at least
+0.1.0 with core types and bhava bridge functions. OS work takes priority — these scaffold
+when cycles allow, but must exist before the paper draft.
+
+| Crate | Domain | Paper Scale | Why Needed |
+|-------|--------|-------------|------------|
+| **TBD** | Neuroscience | 0–1 | Neural correlates of consciousness, default mode network, meditation neuroscience. The paper references contemplative neuroscience (Section 2, 7) but has no computational model. Bridges to bodh (cognition) and sharira (body). |
+| **TBD** | Genetics / Genomics | 0 | Genome → personality mapping. jantu bridge references "5-axis behavioral genome → 7 trait seeds" but no crate models the genomics. Bridges to jivanu (microbiology) and jantu (behavior). |
+| **TBD** | Cosmology | 6–7 | Galactic structure, cosmic expansion, CMB. Scales 6–7 are designed but need real physics — not placeholders. Bridges to tara (stellar) and falak (orbital). |
+| **TBD** | Chronobiology | 0–3 | Circadian rhythms, seasonal affect, body clock → mood. Sits between sharira (body), jyotish (celestial cycles), and bodh (cognition). Melatonin, cortisol, ultradian rhythms. |
+| **TBD** | Ecology / Ecosystems | 2–3 | Environmental pressure on entities. vanaspati covers botany but not ecosystem dynamics — predator/prey balance, carrying capacity, niche competition, climate feedback loops. |
+
+**Sequencing**: OS priorities (ISO build, agnostik hardening, extraction) come first. These
+scaffold in parallel when there's bandwidth. bodh and sangha hitting 1.0 tonight
+demonstrates the pattern — P(-1) harden, bridge to bhava, publish.
+
+**Naming**: Follow AGNOS convention (multilingual, single-word). Names TBD — will be chosen
+at scaffold time.
+
+---
+
 ## Resources
 
 - **Repository**: https://github.com/MacCracken/agnosticos
