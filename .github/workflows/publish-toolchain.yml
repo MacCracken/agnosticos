@@ -65,66 +65,70 @@ jobs:
 
       - name: Create/update toolchain release
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION=$(cat VERSION)
+          REPO="${{ github.repository }}"
+          API="https://api.github.com/repos/${REPO}"
+          AUTH=(-H "Authorization: token ${GITHUB_TOKEN}")
+
+          # Helper: delete release by tag, upload assets to a new release
+          publish_toolchain_release() {
+            local TAG="$1" TITLE="$2" NOTES="$3"
+            shift 3
+
+            # Delete existing release if present
+            local OLD_ID
+            OLD_ID=$(curl -fsSL "${AUTH[@]}" "${API}/releases/tags/${TAG}" 2>/dev/null \
+              | jq -r '.id // empty' 2>/dev/null) || true
+            if [[ -n "$OLD_ID" ]]; then
+              curl -fsSL "${AUTH[@]}" -X DELETE "${API}/releases/${OLD_ID}" || true
+            fi
+
+            # Delete existing tag
+            git tag -d "${TAG}" 2>/dev/null || true
+            git push origin ":refs/tags/${TAG}" 2>/dev/null || true
+
+            # Create release
+            local RESPONSE
+            RESPONSE=$(curl -fsSL "${AUTH[@]}" \
+              -X POST "${API}/releases" \
+              -d "$(jq -n \
+                --arg tag "$TAG" \
+                --arg name "$TITLE" \
+                --arg body "$NOTES" \
+                '{tag_name: $tag, name: $name, body: $body}')")
+
+            local UPLOAD_URL
+            UPLOAD_URL=$(echo "$RESPONSE" | jq -r '.upload_url' | sed 's/{.*}//')
+            if [[ -z "$UPLOAD_URL" || "$UPLOAD_URL" == "null" ]]; then
+              echo "ERROR: Failed to create release ${TAG}"
+              return 1
+            fi
+
+            # Upload assets
+            for asset in "$@"; do
+              local FILENAME CT
+              FILENAME=$(basename "$asset")
+              CT="application/octet-stream"
+              [[ "$FILENAME" == *.sha256 ]] && CT="text/plain"
+              curl -fsSL "${AUTH[@]}" \
+                -H "Content-Type: ${CT}" \
+                --data-binary "@${asset}" \
+                "${UPLOAD_URL}?name=${FILENAME}"
+              echo "Uploaded: ${FILENAME}"
+            done
+          }
+
           TAG="toolchain-${VERSION}"
+          NOTES="Cross-toolchain for AGNOS ${VERSION}: GCC 15.2.0, Binutils 2.45, Glibc 2.42, Linux headers 6.6.130"
 
-          # Delete existing release if present
-          gh release delete "$TAG" --yes 2>/dev/null || true
-          git tag -d "$TAG" 2>/dev/null || true
-          git push origin ":refs/tags/$TAG" 2>/dev/null || true
-
-          # Create new release
-          gh release create "$TAG" \
-            --title "AGNOS Toolchain ${VERSION}" \
-            --notes "$(cat <<EOF
-          Cross-toolchain for AGNOS ${VERSION}
-
-          - GCC 15.2.0 (x86_64-agnos-linux-gnu)
-          - Binutils 2.45
-          - Glibc 2.42
-          - Linux headers 6.6.130
-
-          ## Usage
-
-          \`\`\`bash
-          # Download
-          curl -fSL -o agnos-toolchain.tar.zst \\
-            https://github.com/MacCracken/agnosticos/releases/download/${TAG}/agnos-toolchain-x86_64.tar.zst
-
-          # Extract to target
-          mkdir -p /tmp/agnos-build
-          zstd -d agnos-toolchain.tar.zst -o - | tar xf - -C /tmp/agnos-build
-
-          # Use the cross-compiler
-          export PATH="/tmp/agnos-build/tools/bin:\$PATH"
-          x86_64-agnos-linux-gnu-gcc --version
-          \`\`\`
-
-          ## For CI
-
-          Add to your workflow:
-          \`\`\`yaml
-          - name: Download AGNOS toolchain
-            run: |
-              curl -fSL -o toolchain.tar.zst \\
-                https://github.com/MacCracken/agnosticos/releases/download/toolchain-latest/agnos-toolchain-x86_64.tar.zst
-              zstd -d toolchain.tar.zst | tar xf - -C /tmp/agnos-sysroot
-          \`\`\`
-          EOF
-          )" \
+          publish_toolchain_release "$TAG" "AGNOS Toolchain ${VERSION}" "$NOTES" \
             output/agnos-toolchain-x86_64.tar.zst \
             output/agnos-toolchain-x86_64.tar.zst.sha256
 
-          # Also tag as "toolchain-latest" for stable URL
-          gh release delete "toolchain-latest" --yes 2>/dev/null || true
-          git tag -d "toolchain-latest" 2>/dev/null || true
-          git push origin ":refs/tags/toolchain-latest" 2>/dev/null || true
-
-          gh release create "toolchain-latest" \
-            --title "AGNOS Toolchain (Latest)" \
-            --notes "Latest AGNOS cross-toolchain. Version: ${VERSION}" \
+          publish_toolchain_release "toolchain-latest" "AGNOS Toolchain (Latest)" \
+            "Latest AGNOS cross-toolchain. Version: ${VERSION}" \
             output/agnos-toolchain-x86_64.tar.zst \
             output/agnos-toolchain-x86_64.tar.zst.sha256
 

@@ -436,43 +436,45 @@ jobs:
 
           VERSION=$(cat VERSION)
 
-          # Delete existing release if present
-          RELEASE_ID=$(curl -fsSL "${AUTH[@]}" "${API}/releases/tags/${TAG}" 2>/dev/null \
-            | grep -oP '"id":\s*\K\d+' | head -1) || true
-          if [ -n "$RELEASE_ID" ]; then
-            curl -fsSL "${AUTH[@]}" -X DELETE "${API}/releases/${RELEASE_ID}" || true
+          # Get or create the release (don't delete the whole release — aarch64
+          # assets may already be there from the parallel aarch64 job)
+          RELEASE_JSON=$(curl -fsSL "${AUTH[@]}" "${API}/releases/tags/${TAG}" 2>/dev/null || echo '{}')
+          RELEASE_ID=$(echo "$RELEASE_JSON" | jq -r '.id // empty' 2>/dev/null) || true
+
+          if [[ -n "$RELEASE_ID" ]]; then
+            echo "Existing release found (id=$RELEASE_ID) — replacing x86_64 assets only"
+            UPLOAD_URL=$(echo "$RELEASE_JSON" | jq -r '.upload_url' | sed 's/{.*}//')
+
+            # Delete only x86_64 assets (leave aarch64 alone)
+            for old_id in $(echo "$RELEASE_JSON" | jq -r '.assets[]? | select(.name | startswith("agnos-base-rootfs-x86_64")) | .id' 2>/dev/null || true); do
+              echo "Deleting old x86_64 asset: $old_id"
+              curl -fsSL "${AUTH[@]}" -X DELETE "${API}/releases/assets/${old_id}" || true
+            done
+          else
+            echo "No existing release — creating base-rootfs-latest"
+            # Need tag first
+            git tag -d "${TAG}" 2>/dev/null || true
+            git push origin ":refs/tags/${TAG}" 2>/dev/null || true
+
+            NOTES="AGNOS base system rootfs (x86_64 + aarch64). Version: ${VERSION}. Consumed by release workflow."
+
+            RELEASE_RESPONSE=$(curl -fsSL "${AUTH[@]}" \
+              -X POST "${API}/releases" \
+              -d "$(jq -n \
+                --arg tag "$TAG" \
+                --arg name "AGNOS Base Rootfs (Latest)" \
+                --arg body "$NOTES" \
+                '{tag_name: $tag, name: $name, body: $body}')")
+
+            UPLOAD_URL=$(echo "$RELEASE_RESPONSE" | jq -r '.upload_url' | sed 's/{.*}//')
           fi
 
-          # Delete existing tag
-          git tag -d "${TAG}" 2>/dev/null || true
-          git push origin ":refs/tags/${TAG}" 2>/dev/null || true
+          if [[ -z "$UPLOAD_URL" || "$UPLOAD_URL" == "null" ]]; then
+            echo "ERROR: Could not get upload URL for release"
+            exit 1
+          fi
 
-          # Create release
-          NOTES=$(cat <<'NOTES_EOF'
-          AGNOS base system rootfs built from source via LFS recipes.
-
-          - Toolchain: GCC 15.2.0, Binutils 2.45, Glibc 2.42
-          - Base recipes: 109 packages
-          - Built from AGNOS version: VERSION_PLACEHOLDER
-
-          **This is consumed by the release workflow** — it pulls this rootfs
-          and overlays freshly compiled userland binaries to produce the ISO.
-          No debootstrap, no Debian dependency.
-          NOTES_EOF
-          )
-          NOTES="${NOTES//VERSION_PLACEHOLDER/$VERSION}"
-
-          RELEASE_RESPONSE=$(curl -fsSL "${AUTH[@]}" \
-            -X POST "${API}/releases" \
-            -d "$(jq -n \
-              --arg tag "$TAG" \
-              --arg name "AGNOS Base Rootfs (Latest)" \
-              --arg body "$NOTES" \
-              '{tag_name: $tag, name: $name, body: $body}')")
-
-          UPLOAD_URL=$(echo "$RELEASE_RESPONSE" | grep -oP '"upload_url":\s*"\K[^{]*')
-
-          # Upload assets
+          # Upload x86_64 assets
           for asset in output/agnos-base-rootfs-x86_64.tar.zst output/agnos-base-rootfs-x86_64.tar.zst.sha256; do
             FILENAME=$(basename "$asset")
             CONTENT_TYPE="application/octet-stream"
@@ -502,11 +504,60 @@ jobs:
 
       - uses: actions/checkout@v4
 
-      - name: Download base rootfs artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: agnos-base-rootfs-x86_64
-          path: output/
+      - name: Download base rootfs (try artifact, fall back to release)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p output
+
+          # Method 1: Try workflow artifact (available when build-base ran in this workflow)
+          # download-artifact only works within the same workflow run, so we use
+          # the GitHub API to check if the artifact exists in this run.
+          ARTIFACT_FOUND=false
+          RUN_ID="${{ github.run_id }}"
+          REPO="${{ github.repository }}"
+          API="https://api.github.com/repos/${REPO}"
+
+          ARTIFACT_URL=$(curl -fsSL \
+            -H "Authorization: token ${GITHUB_TOKEN}" \
+            "${API}/actions/runs/${RUN_ID}/artifacts" 2>/dev/null \
+            | jq -r '.artifacts[]? | select(.name == "agnos-base-rootfs-x86_64") | .archive_download_url' 2>/dev/null \
+            | head -1) || true
+
+          if [[ -n "$ARTIFACT_URL" && "$ARTIFACT_URL" != "null" ]]; then
+            echo "Downloading base rootfs from workflow artifact..."
+            if curl -fSL -H "Authorization: token ${GITHUB_TOKEN}" \
+              -o /tmp/artifact.zip "$ARTIFACT_URL" 2>/dev/null; then
+              cd output && unzip -o /tmp/artifact.zip && cd ..
+              rm -f /tmp/artifact.zip
+              ARTIFACT_FOUND=true
+              echo "OK: Got rootfs from workflow artifact"
+            fi
+          fi
+
+          # Method 2: Fall back to published release asset
+          if [[ "$ARTIFACT_FOUND" != "true" ]]; then
+            echo "No workflow artifact — downloading from base-rootfs-latest release..."
+            ASSET_URL=$(curl -fsSL \
+              -H "Authorization: token ${GITHUB_TOKEN}" \
+              "${API}/releases/tags/base-rootfs-latest" 2>/dev/null \
+              | jq -r '.assets[]? | select(.name == "agnos-base-rootfs-x86_64.tar.zst") | .browser_download_url' 2>/dev/null \
+              | head -1) || true
+
+            if [[ -n "$ASSET_URL" && "$ASSET_URL" != "null" ]]; then
+              curl -fSL -H "Authorization: token ${GITHUB_TOKEN}" \
+                -o output/agnos-base-rootfs-x86_64.tar.zst "$ASSET_URL"
+              zstd -d output/agnos-base-rootfs-x86_64.tar.zst -o output/agnos-base-rootfs-x86_64.tar
+              rm -f output/agnos-base-rootfs-x86_64.tar.zst
+              echo "OK: Got rootfs from release asset"
+            else
+              echo "ERROR: No base rootfs available (no artifact, no release)"
+              echo "Run selfhost-build with force_rebuild=true first."
+              exit 1
+            fi
+          fi
+
+          ls -lh output/agnos-base-rootfs-x86_64.tar
 
       - name: Clone agnosys (sibling dependency)
         run: |

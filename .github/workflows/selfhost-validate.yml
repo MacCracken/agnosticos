@@ -1,4 +1,4 @@
-name: Self-Hosting Validation
+name: Self-Hosting QEMU Boot Test
 
 # Boots the AGNOS ISO in QEMU and runs selfhost-validate.
 # Proves AGNOS can rebuild itself from source.
@@ -41,7 +41,7 @@ jobs:
       - name: Download ISO artifact
         uses: actions/download-artifact@v4
         with:
-          name: agnos-iso-x86_64
+          name: agnos-selfhost-iso-x86_64
           path: output/
           run-id: ${{ github.event.workflow_run.id }}
         continue-on-error: true

@@ -80,9 +80,19 @@ jobs:
     - name: Try downloading AGNOS base rootfs
       id: agnos-base
       if: inputs.use_agnos_base
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        if curl -fSL -o /tmp/agnos-base-rootfs-x86_64.tar.zst \
-          "https://github.com/MacCracken/agnosticos/releases/download/base-rootfs-latest/agnos-base-rootfs-x86_64.tar.zst" 2>/dev/null; then
+        REPO="${{ github.repository }}"
+        API="https://api.github.com/repos/${REPO}"
+        ASSET_URL=$(curl -fsSL \
+          -H "Authorization: token ${GITHUB_TOKEN}" \
+          "${API}/releases/tags/base-rootfs-latest" 2>/dev/null \
+          | jq -r '.assets[]? | select(.name == "agnos-base-rootfs-x86_64.tar.zst") | .browser_download_url' 2>/dev/null \
+          | head -1) || true
+        if [[ -n "$ASSET_URL" && "$ASSET_URL" != "null" ]]; then
+          curl -fSL -H "Authorization: token ${GITHUB_TOKEN}" \
+            -o /tmp/agnos-base-rootfs-x86_64.tar.zst "$ASSET_URL"
           echo "available=true" >> "$GITHUB_OUTPUT"
         else
           echo "available=false" >> "$GITHUB_OUTPUT"
@@ -215,15 +225,23 @@ jobs:
           debian-archive-keyring curl
 
     - name: Download aarch64 base rootfs
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         mkdir -p artifacts
         REPO="${{ github.repository }}"
-        # Try downloading from base-rootfs-latest release
-        ROOTFS_URL="https://github.com/${REPO}/releases/download/base-rootfs-latest/agnos-base-rootfs-aarch64.tar.zst"
-        if curl -fSL -o artifacts/agnos-base-rootfs-aarch64.tar.zst "$ROOTFS_URL" 2>/dev/null; then
+        API="https://api.github.com/repos/${REPO}"
+        ASSET_URL=$(curl -fsSL \
+          -H "Authorization: token ${GITHUB_TOKEN}" \
+          "${API}/releases/tags/base-rootfs-latest" 2>/dev/null \
+          | jq -r '.assets[]? | select(.name == "agnos-base-rootfs-aarch64.tar.zst") | .browser_download_url' 2>/dev/null \
+          | head -1) || true
+        if [[ -n "$ASSET_URL" && "$ASSET_URL" != "null" ]]; then
+          curl -fSL -H "Authorization: token ${GITHUB_TOKEN}" \
+            -o artifacts/agnos-base-rootfs-aarch64.tar.zst "$ASSET_URL"
           echo "Downloaded aarch64 base rootfs from release"
         else
-          echo "::warning::aarch64 base rootfs not found at $ROOTFS_URL — build-sdcard.sh will attempt its own download"
+          echo "::warning::aarch64 base rootfs not found — build-sdcard.sh will attempt its own download"
         fi
 
     - name: Download aarch64 binaries
