@@ -316,10 +316,18 @@ jobs:
   publish:         # AFTER build succeeds
                    # Verify VERSION matches tag
                    # cargo publish (CARGO_REGISTRY_TOKEN)
-  release:         # AFTER publish
+  benchmark:       # AFTER build, BEFORE release
+                   # Run ./scripts/bench-history.sh
+                   # Upload bench-history.csv + BENCHMARKS.md as artifacts
+  release:         # AFTER publish + benchmark
                    # softprops/action-gh-release@v2
                    # generate_release_notes: true
+                   # Attach bench-history.csv + BENCHMARKS.md as release assets
 ```
+
+**Release benchmark artifacts**: Every tagged release should run `bench-history.sh` and attach `bench-history.csv` + `BENCHMARKS.md` as release assets. Every version gets a permanent, reproducible performance snapshot.
+
+**CI vs local sample counts**: CI/release benchmarks use reduced samples (10) for smoke testing — catches regressions without blocking the pipeline. Local development uses full samples (100) for accurate measurement. Configure via `bench-history.sh` argument or `BENCH_SAMPLES` env var. CI should never take more than ~3 minutes on benchmarks.
 
 Reference: [libro ci.yml](https://github.com/MacCracken/libro/blob/main/.github/workflows/ci.yml), [libro release.yml](https://github.com/MacCracken/libro/blob/main/.github/workflows/release.yml).
 

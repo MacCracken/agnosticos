@@ -51,7 +51,7 @@ jobs:
 
     steps:
     - name: Clean workspace (root-owned leftovers)
-      run: rm -rf "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/output"
+      run: sudo rm -rf "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/output"
 
     - uses: actions/checkout@v4
 
@@ -133,7 +133,7 @@ jobs:
 
     steps:
     - name: Clean workspace (root-owned leftovers)
-      run: rm -rf "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/output"
+      run: sudo rm -rf "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/output"
 
     - uses: actions/checkout@v4
 
@@ -199,7 +199,7 @@ jobs:
 
     steps:
     - name: Clean workspace
-      run: rm -rf "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/output"
+      run: sudo rm -rf "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/output"
 
     - name: Configure git for runner
       run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
@@ -270,7 +270,7 @@ jobs:
 
     steps:
     - name: Clean workspace (root-owned leftovers)
-      run: rm -rf "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/output"
+      run: sudo rm -rf "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/output"
 
     - name: Configure git for runner
       run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
@@ -388,7 +388,7 @@ jobs:
 
     steps:
     - name: Clean workspace (root-owned leftovers)
-      run: rm -rf "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/output"
+      run: sudo rm -rf "$GITHUB_WORKSPACE/build" "$GITHUB_WORKSPACE/output"
 
     - name: Configure git for runner
       run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
