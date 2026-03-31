@@ -220,8 +220,7 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y --no-install-recommends \
-          debootstrap dosfstools parted e2fsprogs \
-          qemu-user-static binfmt-support \
+          dosfstools parted e2fsprogs \
           debian-archive-keyring curl
 
     - name: Download aarch64 base rootfs
@@ -314,8 +313,7 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y --no-install-recommends \
-          debootstrap dosfstools parted e2fsprogs \
-          qemu-user-static binfmt-support \
+          dosfstools parted e2fsprogs \
           debian-archive-keyring curl
 
     - name: Download aarch64 base rootfs

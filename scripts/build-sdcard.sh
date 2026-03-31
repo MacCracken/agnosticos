@@ -11,7 +11,7 @@
 #
 # Requirements:
 #   dosfstools (mkfs.vfat), parted, e2fsprogs (mkfs.ext4),
-#   qemu-user-static (for arm64 chroot on x86_64 host)
+#   (No chroot or qemu-user-static needed — all operations are host-side)
 #
 # Must be run as root (or with sudo) for losetup, mount.
 
@@ -279,17 +279,9 @@ check_requirements() {
         fi
     done
 
-    if [[ "$(uname -m)" != "aarch64" ]]; then
-        if ! command -v qemu-aarch64-static &>/dev/null && \
-           [[ ! -f /usr/bin/qemu-aarch64-static ]] && \
-           [[ ! -f /proc/sys/fs/binfmt_misc/qemu-aarch64 ]]; then
-            missing+=("qemu-user-static")
-        fi
-    fi
-
     if [[ ${#missing[@]} -gt 0 ]]; then
         log_error "Missing required tools: ${missing[*]}"
-        log_info "Install with: sudo pacman -S dosfstools parted e2fsprogs qemu-user-static qemu-user-static-binfmt"
+        log_info "Install with: sudo pacman -S dosfstools parted e2fsprogs"
         exit 1
     fi
 
@@ -356,16 +348,6 @@ build_userland() {
     log_info "  -> Userland cross-compilation complete"
 }
 
-# Helper for chroot — handles both native aarch64 and foreign (x86 host)
-run_chroot() {
-    local rootfs="$ROOTFS"
-    if [[ "$(uname -m)" != "aarch64" ]]; then
-        chroot "$rootfs" /usr/bin/qemu-aarch64-static /bin/bash -c "$1"
-    else
-        chroot "$rootfs" /bin/bash -c "$1"
-    fi
-}
-
 resolve_base_rootfs() {
     # If --base-rootfs was provided, validate it
     if [[ -n "$BASE_ROOTFS" ]]; then
@@ -423,21 +405,6 @@ create_rootfs() {
     log_info "  -> AGNOS base rootfs extracted"
     log_info "  -> Packages built from source (no apt/dpkg)"
 
-    # Mount pseudo-filesystems for chroot
-    mount -t proc proc "$rootfs/proc" 2>/dev/null || true
-    mount -t sysfs sysfs "$rootfs/sys" 2>/dev/null || true
-    mount -t devpts devpts "$rootfs/dev/pts" -o ptmxmode=0666,newinstance 2>/dev/null || true
-
-    cleanup_chroot() {
-        local r="${ROOTFS:-}"
-        if [[ -n "$r" ]]; then
-            umount "$r/dev/pts" 2>/dev/null || true
-            umount "$r/sys" 2>/dev/null || true
-            umount "$r/proc" 2>/dev/null || true
-        fi
-    }
-    trap 'cleanup_chroot' EXIT
-
     log_step "Configuring AGNOS rootfs ($PROFILE profile)..."
 
     # --- Hostname & identity ---
@@ -460,19 +427,63 @@ VARIANT="$PROFILE"
 VARIANT_ID="$PROFILE"
 EOF
 
-    # --- Users ---
-    run_chroot "
-        groupadd -f agnos
-        useradd -r -g agnos -d /var/lib/agnos -s /usr/sbin/nologin agnos 2>/dev/null || true
-        groupadd -f agnos-llm
-        useradd -r -g agnos-llm -d /var/lib/agnos/models -s /usr/sbin/nologin agnos-llm 2>/dev/null || true
-        useradd -m -G sudo -s /bin/bash user 2>/dev/null || true
-        echo 'user:agnos' | chpasswd
-        echo 'root:agnos' | chpasswd
-    "
+    # --- Users — direct file manipulation (no chroot needed) ---
+    log_info "  Creating users and groups..."
 
+    touch "$rootfs/etc/passwd" "$rootfs/etc/group" "$rootfs/etc/shadow"
+    chmod 640 "$rootfs/etc/shadow"
+
+    # Helper: add group if not present
+    add_group() {
+        local name="$1" gid="$2"
+        grep -q "^${name}:" "$rootfs/etc/group" 2>/dev/null || \
+            echo "${name}:x:${gid}:" >> "$rootfs/etc/group"
+    }
+
+    # Helper: add user if not present
+    add_user() {
+        local name="$1" uid="$2" gid="$3" home="$4" shell="$5"
+        grep -q "^${name}:" "$rootfs/etc/passwd" 2>/dev/null || \
+            echo "${name}:x:${uid}:${gid}::${home}:${shell}" >> "$rootfs/etc/passwd"
+        grep -q "^${name}:" "$rootfs/etc/shadow" 2>/dev/null || \
+            echo "${name}:!:19800:0:99999:7:::" >> "$rootfs/etc/shadow"
+    }
+
+    # System groups
+    add_group root 0
+    add_group agnos 900
+    add_group agnos-llm 901
+    add_group sudo 27
+    add_group video 44
+    add_group audio 29
+    add_group input 104
+    add_group render 105
+
+    # System users
+    add_user root 0 0 /root /bin/bash
+    add_user agnos 900 900 /var/lib/agnos /usr/sbin/nologin
+    add_user agnos-llm 901 901 /var/lib/agnos/models /usr/sbin/nologin
+
+    # Regular user with password 'agnos'
+    if ! grep -q "^user:" "$rootfs/etc/passwd" 2>/dev/null; then
+        add_user user 1000 1000 /home/user /bin/bash
+        add_group user 1000
+        mkdir -p "$rootfs/home/user"
+        local pw_hash
+        pw_hash=$(python3 -c "import crypt; print(crypt.crypt('agnos', crypt.mksalt(crypt.METHOD_SHA512)))" 2>/dev/null) || \
+        pw_hash=$(openssl passwd -6 agnos 2>/dev/null) || \
+        pw_hash='$6$placeholder$placeholder'
+        sed -i "s|^user:!:|user:${pw_hash}:|" "$rootfs/etc/shadow"
+        sed -i "s|^root:!:|root:${pw_hash}:|" "$rootfs/etc/shadow"
+    fi
+
+    # Desktop profile: add user to extra groups
     if [[ "$PROFILE" == "desktop" ]]; then
-        run_chroot "usermod -aG video,audio,input,render user 2>/dev/null || true"
+        for grp in video audio input render sudo; do
+            sed -i "s|^${grp}:x:\([0-9]*\):$|${grp}:x:\1:user|" "$rootfs/etc/group"
+            sed -i "s|^${grp}:x:\([0-9]*\):\(.*\)$|${grp}:x:\1:\2,user|" "$rootfs/etc/group"
+        done
+        sed -i 's/,user,user/,user/g; s/user,user/user/g' "$rootfs/etc/group"
     fi
 
     # --- AGNOS directories ---
@@ -511,12 +522,17 @@ EOF
         local default_target
         default_target="$(profile_default_target)"
 
-        run_chroot "
-            for unit in $units_to_enable; do
-                systemctl enable \"\$unit\" 2>/dev/null || true
-            done
-            systemctl set-default '$default_target' 2>/dev/null || true
-        "
+        # Enable systemd units (host-side symlink creation — no chroot needed)
+        local wants_dir="$rootfs/etc/systemd/system/multi-user.target.wants"
+        mkdir -p "$wants_dir"
+        for unit in $units_to_enable; do
+            local unit_file="/usr/lib/systemd/system/$unit"
+            ln -sf "$unit_file" "$wants_dir/$unit" 2>/dev/null || true
+        done
+
+        # Set default target
+        ln -sf "/usr/lib/systemd/system/${default_target}" "$rootfs/etc/systemd/system/default.target" 2>/dev/null || true
+
         log_info "  -> Systemd units installed (default target: $default_target)"
     fi
 
@@ -554,15 +570,15 @@ Name=en* eth*
 DHCP=yes
 EOF
 
-    run_chroot "
-        systemctl enable systemd-networkd 2>/dev/null || true
-        systemctl enable systemd-resolved 2>/dev/null || true
-        systemctl enable ssh 2>/dev/null || true
-        systemctl disable sshd-unix-local.socket 2>/dev/null || true
-        systemctl disable sshd-vsock.socket 2>/dev/null || true
-        systemctl enable serial-getty@ttyS0.service 2>/dev/null || true
-        systemctl enable serial-getty@ttyAMA0.service 2>/dev/null || true
-    "
+    # Enable network services (host-side symlinks — no chroot needed)
+    local net_wants="$rootfs/etc/systemd/system/multi-user.target.wants"
+    mkdir -p "$net_wants"
+    for svc in systemd-networkd.service systemd-resolved.service ssh.service \
+               serial-getty@ttyS0.service serial-getty@ttyAMA0.service; do
+        ln -sf "/usr/lib/systemd/system/$svc" "$net_wants/$svc" 2>/dev/null || true
+    done
+    # Disable unwanted sockets (remove symlinks if present)
+    rm -f "$net_wants/sshd-unix-local.socket" "$net_wants/sshd-vsock.socket" 2>/dev/null || true
 
     # --- SSH config ---
     mkdir -p "$rootfs/etc/ssh/sshd_config.d"
@@ -630,7 +646,10 @@ WantedBy=multi-user.target
 SYUNIT
 
         mkdir -p "$rootfs/var/lib/secureyeoman-edge"
-        run_chroot "systemctl enable secureyeoman-edge.service 2>/dev/null || true"
+        # Enable SY edge service (host-side symlink)
+        local sy_wants="$rootfs/etc/systemd/system/multi-user.target.wants"
+        mkdir -p "$sy_wants"
+        ln -sf "/usr/lib/systemd/system/secureyeoman-edge.service" "$sy_wants/secureyeoman-edge.service" 2>/dev/null || true
     fi
 
     # --- Self-hosting source tree (server and desktop) ---
@@ -694,28 +713,23 @@ EOF
     # --- Edge rootfs minimization (minimal profile) ---
     if [[ "$PROFILE" == "minimal" ]]; then
         log_step "Minimizing rootfs for minimal deployment..."
-        run_chroot "
-            rm -rf /usr/share/doc/* /usr/share/man/* /usr/share/info/*
-            rm -rf /usr/share/locale/* /usr/share/i18n/*
-            rm -rf /usr/include/* /usr/src/* /usr/games
-            find / -name __pycache__ -type d -exec rm -rf {} + 2>/dev/null || true
-            find / -name '*.pyc' -delete 2>/dev/null || true
-            find /usr/lib -name '*.so*' -exec strip --strip-unneeded {} 2>/dev/null \\; || true
-        "
+        # Rootfs minimization (host-side — no chroot needed)
+        rm -rf "$rootfs/usr/share/doc/"* "$rootfs/usr/share/man/"* "$rootfs/usr/share/info/"*
+        rm -rf "$rootfs/usr/share/locale/"* "$rootfs/usr/share/i18n/"*
+        rm -rf "$rootfs/usr/include/"* "$rootfs/usr/src/"* "$rootfs/usr/games"
+        find "$rootfs" -name __pycache__ -type d -exec rm -rf {} + 2>/dev/null || true
+        find "$rootfs" -name '*.pyc' -delete 2>/dev/null || true
+        find "$rootfs/usr/lib" -name '*.so*' -exec strip --strip-unneeded {} 2>/dev/null \; || true
         log_info "  -> Rootfs minimized"
     fi
 
-    # --- Permissions ---
-    run_chroot "
-        chown -R agnos:agnos /var/lib/agnos/agents 2>/dev/null || true
-        chown -R agnos-llm:agnos-llm /var/lib/agnos/models 2>/dev/null || true
-        chmod 750 /var/log/agnos
-    "
+    # --- Permissions (host-side — use numeric UIDs since user DB is inside rootfs) ---
+    chown -R 900:900 "$rootfs/var/lib/agnos/agents" 2>/dev/null || true    # agnos:agnos
+    chown -R 901:901 "$rootfs/var/lib/agnos/models" 2>/dev/null || true    # agnos-llm:agnos-llm
+    chmod 750 "$rootfs/var/log/agnos" 2>/dev/null || true
 
-    # --- Cleanup ---
-    run_chroot "
-        rm -rf /tmp/*
-    "
+    # --- Cleanup (host-side) ---
+    rm -rf "$rootfs/tmp/"* 2>/dev/null || true
 
     log_info "  -> Rootfs configured ($PROFILE profile)"
 }
@@ -903,12 +917,6 @@ main() {
     download_rpi_firmware
     build_userland
     create_rootfs
-
-    # Cleanup before image creation
-    rm -f "$ROOTFS/usr/bin/qemu-aarch64-static"
-    umount "$ROOTFS/dev/pts" 2>/dev/null || true
-    umount "$ROOTFS/sys" 2>/dev/null || true
-    umount "$ROOTFS/proc" 2>/dev/null || true
 
     create_image
 

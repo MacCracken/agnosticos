@@ -119,10 +119,39 @@ for f in "$WORKFLOWS_DIR"/*.yml; do
 done
 
 # ═══════════════════════════════════════════════════════════════════════
-# Check 5: Release asset downloads use auth
+# Check 5: aarch64 build scripts must not use chroot
+#
+# build-sdcard.sh and build-edge.sh (aarch64 image builders) must use
+# host-side file manipulation (direct writes to $rootfs/etc/passwd,
+# symlinks for systemd, numeric-UID chown). Chroot is fragile in CI
+# (missing /bin/bash, qemu binfmt failures, cross-arch breakage).
+#
+# build-installer.sh is excluded — it builds x86_64 natively and
+# bootstraps host bash into the rootfs before any chroot calls.
+# enter-chroot.sh (Tier 1 LFS package building) is also excluded.
 # ═══════════════════════════════════════════════════════════════════════
 echo ""
-echo "═══ Check 5: Authenticated Release Downloads ═══"
+echo "═══ Check 5: No chroot in aarch64 Image Build Scripts ═══"
+for f in scripts/build-sdcard.sh scripts/build-edge.sh; do
+  fname=$(basename "$f")
+  if [[ ! -f "$f" ]]; then
+    warn "$fname — file not found (skipped)"
+    continue
+  fi
+  # Count actual chroot calls (not comments)
+  chroot_calls=$(grep -cE '^\s*(chroot |run_chroot )' "$f" 2>/dev/null || true)
+  if [[ "$chroot_calls" -gt 0 ]]; then
+    fail "$fname — $chroot_calls chroot call(s) found (use host-side file manipulation instead)"
+  else
+    pass "$fname — no chroot calls"
+  fi
+done
+
+# ═══════════════════════════════════════════════════════════════════════
+# Check 6: Release asset downloads use auth
+# ═══════════════════════════════════════════════════════════════════════
+echo ""
+echo "═══ Check 6: Authenticated Release Downloads ═══"
 for f in "$WORKFLOWS_DIR"/*.yml; do
   fname=$(basename "$f")
   # Only check actual curl/download lines, not comments
