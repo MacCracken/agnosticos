@@ -97,6 +97,7 @@ jobs:
         with:
           name: agnos-iso
           path: build/
+        continue-on-error: true
 
       - name: Run QEMU boot test
         run: |
@@ -314,6 +315,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: results/
+        continue-on-error: true
 
       - name: Generate summary
         run: |
