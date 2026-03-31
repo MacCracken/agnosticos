@@ -273,6 +273,7 @@ jobs:
           ARGS="$ARGS --base-rootfs artifacts/agnos-base-rootfs-aarch64.tar.zst"
         fi
         sudo ./scripts/build-sdcard.sh $ARGS
+        sudo chown -R "$(id -u):$(id -g)" output/
 
     - name: Compress aarch64 image
       run: |
