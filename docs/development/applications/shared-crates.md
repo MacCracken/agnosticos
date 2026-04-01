@@ -2,7 +2,7 @@
 
 > **Status**: Active | **Last Updated**: 2026-03-31
 >
-> **81 crates** — 45 at v1.0+ stable, 25 pre-1.0, 16 unpublished
+> **76 crates** — 55 at v1.0+ stable, 20 pre-1.0, 1 internal
 >
 > v1.0+ crate documentation lives in [docs/applications/libs/](../../applications/libs/).
 > This file tracks **pre-1.0 crates**, **unpublished crates**, and the **stable crate index**.
@@ -10,7 +10,7 @@
 
 ---
 
-## v1.0+ Stable Index (45 crates)
+## v1.0+ Stable Index (55 crates)
 
 Full documentation for each crate: [docs/applications/libs/{crate}.md](../../applications/libs/)
 
@@ -19,24 +19,34 @@ Full documentation for each crate: [docs/applications/libs/{crate}.md](../../app
 | abaco | 1.1.0 | Math engine |
 | agnosai | 1.0.2 | AI orchestration |
 | ai-hwaccel | 1.0.0 | GPU detection |
+| avatara | 1.0.1 | Divine archetype overlay |
 | badal | 1.1.0 | Weather/atmosphere |
 | bhava | 1.7.0 | Emotion/personality |
 | bijli | 1.1.0 | Electromagnetism |
+| bodh | 1.0.0 | Psychology |
+| brahmanda | 1.0.0 | Galactic cosmology |
 | dhvani | 1.0.0 | Audio engine |
 | dravya | 1.2.0 | Material science |
+| falak | 1.0.0 | Orbital mechanics |
 | garjan | 1.1.0 | Environmental sound |
 | ghurni | 1.0.0 | Mechanical sound |
 | goonj | 1.1.1 | Acoustics |
 | hisab | 1.4.0 | Higher math |
+| hisab-mimamsa | 1.0.0 | Theoretical physics |
 | hoosh | 1.1.0 | LLM gateway |
 | ifran | 1.2.0 | LLM inference/training |
 | impetus | 1.3.0 | Physics |
+| itihas | 1.0.1 | World history |
 | jantu | 1.1.0 | Ethology/behavior |
+| jivanu | 1.0.0 | Microbiology |
+| jyotish | 1.0.0 | Astronomical computation |
+| kana | 1.1.0 | Quantum mechanics |
 | kavach | 1.0.1 | Sandbox execution |
 | khanij | 1.1.0 | Geology/mineralogy |
 | kimiya | 1.1.1 | Chemistry |
 | mabda | 1.0.0 | GPU foundation |
 | majra | 1.0.3 | Queue/pub-sub |
+| mastishk | 1.0.0 | Neuroscience |
 | naad | 1.0.0 | Audio synthesis |
 | nidhi | 1.1.0 | Sample playback |
 | pavan | 1.1.0 | Aerodynamics |
@@ -45,6 +55,8 @@ Full documentation for each crate: [docs/applications/libs/{crate}.md](../../app
 | prani | 1.1.0 | Creature vocals |
 | pravash | 1.2.0 | Fluid dynamics |
 | raasta | 1.0.0 | Pathfinding |
+| sangha | 1.0.0 | Sociology |
+| sankhya | 1.0.0 | Ancient math systems |
 | shabda | 1.0.0 | G2P conversion |
 | shabdakosh | 1.0.0 | Pronunciation dict |
 | sharira | 1.0.0 | Physiology |
@@ -54,13 +66,15 @@ Full documentation for each crate: [docs/applications/libs/{crate}.md](../../app
 | svara | 1.1.0 | Vocal synthesis |
 | szal | 1.0.1 | Workflow engine |
 | tanmatra | 1.1.0 | Atomic physics |
+| tara | 1.0.0 | Stellar astrophysics |
 | ushma | 1.3.0 | Thermodynamics |
 | vanaspati | 1.0.0 | Botany |
+| varna | 1.0.0 | Multilingual language engine |
 | vidya | 1.0.0 | Programming reference |
 
 ---
 
-## Pre-1.0 (21 crates)
+## Pre-1.0 (20 crates)
 
 ### Infrastructure & OS
 
@@ -71,7 +85,7 @@ Full documentation for each crate: [docs/applications/libs/{crate}.md](../../app
 | [daimon](https://github.com/MacCracken/daimon) | 0.5.0 | Agent orchestrator — HTTP API, supervisor, IPC (port 8090) | all consumer apps |
 | [libro](https://github.com/MacCracken/libro) | 0.25.3 | Cryptographic audit chain — hash-linked event logging | daimon, aegis, stiva |
 | [nein](https://github.com/MacCracken/nein) | 0.24.3 | Programmatic nftables firewall — policy, NAT, port mapping | stiva, daimon, aegis |
-| [phylax](https://github.com/MacCracken/phylax) | 0.5.0 | Threat detection — YARA, entropy, magic bytes, ML | daimon, aegis |
+| [phylax](https://github.com/MacCracken/phylax) | 0.22.3 | Threat detection — YARA, entropy, magic bytes, ML | daimon, aegis |
 | [t-ron](https://github.com/MacCracken/t-ron) | 0.26.3 | MCP security — tool call auditing, rate limiting, injection detection | daimon, bote |
 | [yukti](https://github.com/MacCracken/yukti) | 0.25.3 | Device abstraction — USB, block devices, udev hotplug | daimon, aethersafha |
 
@@ -100,32 +114,16 @@ Full documentation for each crate: [docs/applications/libs/{crate}.md](../../app
 
 | Crate | Version | Description | Key Consumers |
 |-------|---------|-------------|---------------|
-| [avatara](https://github.com/MacCracken/avatara) | 1.0.1 | Divine archetype overlay — mythological personality templates | bhava, joshua, kiran, agnosai |
-| [bodh](https://github.com/MacCracken/bodh) | 1.0.0 | Psychology — cognition, perception, learning | bhava, kiran, agnosai |
-| [brahmanda](https://github.com/MacCracken/brahmanda) | 1.0.0 | Galactic structure / large-scale cosmology | kiran, jyotish |
-| [falak](https://github.com/MacCracken/falak) | 1.0.0 | Orbital mechanics | jyotish, kiran |
-| [hisab-mimamsa](https://github.com/MacCracken/hisab-mimamsa) | 1.0.0 | Theoretical physics (GR, cosmology, QFT) | kiran, brahmanda |
-| [itihas](https://github.com/MacCracken/itihas) | 0.1.0 | World history — civilizations, eras, events, calendars, figures | sankhya, avatara, kiran, joshua, jnana |
-| [jivanu](https://github.com/MacCracken/jivanu) | 1.0.0 | Microbiology — growth kinetics, metabolism, genetics | sangha, kimiya, kiran |
-| [jyotish](https://github.com/MacCracken/jyotish) | 1.0.0 | Astronomical computation | kiran, falak |
-| [kana](https://github.com/MacCracken/kana) | 1.1.0 | Quantum mechanics | kiran, hisab-mimamsa |
-| [varna](https://github.com/MacCracken/varna) | 1.0.0 | Multilingual language engine — phonemes, scripts, grammar | shabda, shabdakosh, svara, jnana |
-| [mastishk](https://github.com/MacCracken/mastishk) | 1.0.0 | Neuroscience — neurotransmitters, sleep, HPA axis, DMN, chronobiology | bhava, bodh, kiran, joshua |
-| [phylax](https://github.com/MacCracken/phylax) | 0.22.3 | Threat detection | daimon, aegis |
 | [rasayan](https://github.com/MacCracken/rasayan) | 0.4.0 | Biochemistry — enzyme kinetics, metabolism, signal transduction, membrane transport | mastishk, sharira, jivanu, kimiya |
-| [sangha](https://github.com/MacCracken/sangha) | 1.0.0 | Sociology — social networks, game theory, group dynamics | kiran, agnosai, bhava |
-| [sankhya](https://github.com/MacCracken/sankhya) | 1.0.0 | Ancient mathematical systems | varna, itihas, kiran |
-| [tara](https://github.com/MacCracken/tara) | 1.0.0 | Stellar astrophysics | kiran, jyotish, falak |
 
 ---
 
-## Unpublished (1 crate)
+## Unpublished (0 crates)
 
 Need `cargo publish` before consumers outside AGNOS can depend on them.
 
 | Crate | Version | Description |
 |-------|---------|-------------|
-| itihas | 0.1.0 | World history (civilizations, eras, events, calendars, figures) |
 
 ---
 
