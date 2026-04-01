@@ -33,5 +33,5 @@ Avatara maps mythological archetypes to personality. Itihas provides the civiliz
 - **avatara** — civilizational context for mythological archetypes
 - **kiran/joshua** — era-appropriate settings, historical NPC generation
 - **jnana** — knowledge corpus (historical facts as structured data)
-- **lipi** — historical attestation dates for scripts and languages
+- **varna** — historical attestation dates for scripts and languages
 - **vidya** — history of science and technology

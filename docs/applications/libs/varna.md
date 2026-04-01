@@ -1,12 +1,12 @@
-# Lipi
+# Varna
 
-> **Lipi** (Sanskrit: लिपि — script, writing system) — Multilingual language engine
+> **Varna** (Sanskrit: वर्ण — letter, syllable, sound) — Multilingual language engine
 
 | Field | Value |
 |-------|-------|
-| Status | Pre-1.0 |
-| Version | `0.1.0` |
-| Repository | `MacCracken/lipi` |
+| Status | Stable |
+| Version | `1.0.0` |
+| Repository | `MacCracken/varna` |
 | Runtime | library crate (Rust) |
 
 ---
@@ -20,10 +20,10 @@
 
 ## Relationship to Speech Crates
 
-Lipi provides the *structural data* about languages. shabda converts text to phonemes using lipi's inventories. shabdakosh provides pronunciation dictionaries keyed by lipi's IPA system. svara consumes phoneme sequences to produce vocal audio.
+Varna provides the *structural data* about languages. shabda converts text to phonemes using varna's inventories. shabdakosh provides pronunciation dictionaries keyed by varna's IPA system. svara consumes phoneme sequences to produce vocal audio.
 
 ```
-lipi (structure) → shabda (G2P) → shabdakosh (dictionary) → svara (synthesis) → dhvani (audio)
+varna (structure) → shabda (G2P) → shabdakosh (dictionary) → svara (synthesis) → dhvani (audio)
 ```
 
 ## Consumers

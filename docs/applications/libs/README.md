@@ -116,5 +116,5 @@
 | Crate | Domain | Version | Docs |
 |-------|--------|---------|------|
 | [jnana](jnana.md) | Unified knowledge system — 1-10GB offline human knowledge | 0.5.0 | — |
-| [lipi](lipi.md) | Multilingual language engine — phonemes, scripts, grammar, lexicon | 0.1.0 | — |
+| [varna](varna.md) | Multilingual language engine — phonemes, scripts, grammar, lexicon | 1.0.0 | — |
 | [vidya](vidya.md) | Programming reference library — multi-language best practices | 1.0.0 | — |

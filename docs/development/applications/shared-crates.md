@@ -96,43 +96,36 @@ Full documentation for each crate: [docs/applications/libs/{crate}.md](../../app
 | [salai](https://github.com/MacCracken/salai) | 0.1.0 | Game editor — egui visual editor for kiran | kiran |
 | [tanur](https://github.com/MacCracken/tanur) | 0.1.0 | Desktop LLM studio — model management GUI | end user |
 
-### Science (pre-1.0)
+### Science
 
 | Crate | Version | Description | Key Consumers |
 |-------|---------|-------------|---------------|
-| avatara | 0.1.0 | Divine archetype overlay — mythological personality templates | bhava, joshua, kiran, agnosai |
-| [bodh](https://github.com/MacCracken/bodh) | 0.1.0 | Psychology — cognition, perception, learning | bhava, kiran, agnosai |
+| [avatara](https://github.com/MacCracken/avatara) | 1.0.1 | Divine archetype overlay — mythological personality templates | bhava, joshua, kiran, agnosai |
+| [bodh](https://github.com/MacCracken/bodh) | 1.0.0 | Psychology — cognition, perception, learning | bhava, kiran, agnosai |
+| [brahmanda](https://github.com/MacCracken/brahmanda) | 1.0.0 | Galactic structure / large-scale cosmology | kiran, jyotish |
+| [falak](https://github.com/MacCracken/falak) | 1.0.0 | Orbital mechanics | jyotish, kiran |
+| [hisab-mimamsa](https://github.com/MacCracken/hisab-mimamsa) | 1.0.0 | Theoretical physics (GR, cosmology, QFT) | kiran, brahmanda |
 | [itihas](https://github.com/MacCracken/itihas) | 0.1.0 | World history — civilizations, eras, events, calendars, figures | sankhya, avatara, kiran, joshua, jnana |
-| [jivanu](https://github.com/MacCracken/jivanu) | 0.1.0 | Microbiology — growth kinetics, metabolism, genetics | sangha, kimiya, kiran |
-| [lipi](https://github.com/MacCracken/lipi) | 0.1.0 | Multilingual language engine — phonemes, scripts, grammar | shabda, shabdakosh, svara, jnana |
-| [mastishk](https://github.com/MacCracken/mastishk) | 0.1.0 | Neuroscience — neurotransmitters, sleep, HPA axis, DMN, chronobiology | bhava, bodh, kiran, joshua |
-| [rasayan](https://github.com/MacCracken/rasayan) | 0.1.0 | Biochemistry — enzyme kinetics, metabolism, signal transduction, membrane transport | mastishk, sharira, jivanu, kimiya |
-| [sangha](https://github.com/MacCracken/sangha) | 0.1.0 | Sociology — social networks, game theory, group dynamics | kiran, agnosai, bhava |
+| [jivanu](https://github.com/MacCracken/jivanu) | 1.0.0 | Microbiology — growth kinetics, metabolism, genetics | sangha, kimiya, kiran |
+| [jyotish](https://github.com/MacCracken/jyotish) | 1.0.0 | Astronomical computation | kiran, falak |
+| [kana](https://github.com/MacCracken/kana) | 1.1.0 | Quantum mechanics | kiran, hisab-mimamsa |
+| [varna](https://github.com/MacCracken/varna) | 1.0.0 | Multilingual language engine — phonemes, scripts, grammar | shabda, shabdakosh, svara, jnana |
+| [mastishk](https://github.com/MacCracken/mastishk) | 1.0.0 | Neuroscience — neurotransmitters, sleep, HPA axis, DMN, chronobiology | bhava, bodh, kiran, joshua |
+| [phylax](https://github.com/MacCracken/phylax) | 0.22.3 | Threat detection | daimon, aegis |
+| [rasayan](https://github.com/MacCracken/rasayan) | 0.4.0 | Biochemistry — enzyme kinetics, metabolism, signal transduction, membrane transport | mastishk, sharira, jivanu, kimiya |
+| [sangha](https://github.com/MacCracken/sangha) | 1.0.0 | Sociology — social networks, game theory, group dynamics | kiran, agnosai, bhava |
+| [sankhya](https://github.com/MacCracken/sankhya) | 1.0.0 | Ancient mathematical systems | varna, itihas, kiran |
+| [tara](https://github.com/MacCracken/tara) | 1.0.0 | Stellar astrophysics | kiran, jyotish, falak |
 
 ---
 
-## Unpublished (16 crates)
+## Unpublished (1 crate)
 
 Need `cargo publish` before consumers outside AGNOS can depend on them.
 
 | Crate | Version | Description |
 |-------|---------|-------------|
-| avatara | 0.1.0 | Divine archetype overlay (mythological personality templates) |
-| bodh | 0.1.0 | Psychology engine |
 | itihas | 0.1.0 | World history (civilizations, eras, events, calendars, figures) |
-| brahmanda | 0.1.0 | Galactic structure / large-scale cosmology |
-| falak | 0.2.0 | Orbital mechanics |
-| jivanu | 0.1.0 | Microbiology |
-| jyotish | 0.1.0 | Astronomical computation |
-| hisab-mimamsa | 0.1.0 | Theoretical physics (GR, cosmology, QFT) |
-| kana | 0.1.0 | Quantum mechanics |
-| lipi | 0.1.0 | Multilingual language engine (phonemes, scripts, grammar) |
-| mastishk | 0.1.0 | Neuroscience (neurotransmitters, sleep, HPA, DMN, chronobiology) |
-| phylax | 0.5.0 | Threat detection (crates.io stale at 0.22.3) |
-| rasayan | 0.1.0 | Biochemistry (enzyme kinetics, metabolism, signal transduction) |
-| sangha | 0.1.0 | Sociology |
-| sankhya | 0.1.0 | Ancient mathematical systems |
-| tara | 0.2.0 | Stellar astrophysics |
 
 ---
 

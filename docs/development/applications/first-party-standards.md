@@ -224,7 +224,7 @@ When an AGNOS crate wraps an external library, **depend on the AGNOS crate, not 
 | Microbiology | `jivanu` | Inline growth curves, hardcoded kinetics |
 | Neuroscience / neurotransmitters | `mastishk` | Inline serotonin/dopamine models, ad-hoc HPA |
 | Enzyme kinetics / metabolism | `rasayan` | Inline Michaelis-Menten, hardcoded ATP math |
-| Language / phoneme data | `lipi` | Hardcoded IPA tables, custom phoneme inventories |
+| Language / phoneme data | `varna` | Hardcoded IPA tables, custom phoneme inventories |
 | Divine/mythological archetypes | `avatara` | Per-app deity tables, hardcoded archetype mappings |
 | Historical civilizations/eras/events | `itihas` | Hardcoded timelines, inline historical data |
 

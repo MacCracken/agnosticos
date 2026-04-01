@@ -317,7 +317,7 @@ New library crates scaffolded this session — these support future apps and dee
 |-------|--------|---------------|
 | **mastishk** | Neuroscience — neurotransmitters, sleep, HPA, DMN | bhava v1.8, bodh, joshua |
 | **rasayan** | Biochemistry — enzyme kinetics, metabolism, membrane transport | mastishk, sharira, jivanu |
-| **lipi** | Multilingual language — phonemes, scripts, grammar, gematria data (1.3+) | shabda, shabdakosh, sankhya |
+| **varna** _(1.0.0)_ | Multilingual language — phonemes, scripts, grammar, gematria data (1.3+) | shabda, shabdakosh, sankhya |
 | **itihas** | World history — civilizations, eras, events, calendars | sankhya, avatara, joshua |
 | **avatara** | Divine archetypes — mythological personality templates | bhava v2.0, joshua, kiran |
 
