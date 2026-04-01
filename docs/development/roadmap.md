@@ -986,6 +986,18 @@ when cycles allow, but must exist before the paper draft.
 scaffold in parallel when there's bandwidth. bodh and sangha hitting 1.0
 demonstrates the pattern — P(-1) harden, bridge to bhava, publish.
 
+### Future Shared Crates — Demand-Gated
+
+Scaffold when 3+ consumers need shared implementations, or when a P0/P1 app blocks on it. Names TBD.
+
+| Domain | Trigger | Likely Consumers | Priority |
+|--------|---------|------------------|----------|
+| **Geography / GIS** | joshua terrain generation, edge fleet geolocation, raasta map-aware pathfinding | joshua, kiran, raasta, edge fleet, nazar | Medium — most likely next |
+| **Music theory** | shruti or 3rd consumer needs shared scales, keys, chord progressions, rhythm patterns | shruti, naad, jalwa, kiran | Medium — extract from shruti when pattern repeats |
+| **Typography / font metrics** | sahifa (PDF suite) needs font layout, kerning, glyph metrics; aethersafha text rendering | sahifa, aethersafha, scriba | Low — scaffold when sahifa starts |
+| **Nutrition / food science** | NPC simulation depth (macros, calories, dietary→metabolic input) | joshua, kiran, rasayan | Low — rasayan covers the biochemistry mechanics |
+| **Economics / finance** | BullShift split (`bullshift-core`) extracts shared financial models (pricing, risk, portfolio, market data) | bullshift-core, aequi, sutra (billing), marketplace | Low — gate on BullShift split, then evaluate 3-consumer rule |
+
 ---
 
 ## Resources
@@ -1000,4 +1012,4 @@ demonstrates the pattern — P(-1) harden, bridge to bhava, publish.
 
 ---
 
-*Last Updated: 2026-03-29 | Next Review: 2026-04-05*
+*Last Updated: 2026-03-31 | Next Review: 2026-04-07*

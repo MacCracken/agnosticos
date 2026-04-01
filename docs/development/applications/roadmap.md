@@ -1,11 +1,11 @@
 # Application Development Roadmap
 
-> **Status**: Active | **Last Updated**: 2026-03-30
+> **Status**: Active | **Last Updated**: 2026-03-31
 >
 > Future first-party applications planned for the AGNOS ecosystem.
 > All follow the [First-Party Standards](first-party-standards.md).
 > Released applications are documented in [docs/applications/](../../applications/).
-> Shared crates: [shared-crates.md](shared-crates.md) — 45 at v1.0+, 21 pre-1.0.
+> Shared crates: [shared-crates.md](shared-crates.md) — 81 total (45 at v1.0+, 25 pre-1.0, 16 unpublished).
 > Monolith extraction: [monolith-extraction.md](../monolith-extraction.md).
 
 ---
@@ -309,6 +309,23 @@ Visual fine-tuning and dataset management. GUI on ifran/finetune APIs.
 
 ---
 
+## Recent Shared Crate Additions (2026-03-31)
+
+New library crates scaffolded this session — these support future apps and deepen the science/culture stack:
+
+| Crate | Domain | Key Consumers |
+|-------|--------|---------------|
+| **mastishk** | Neuroscience — neurotransmitters, sleep, HPA, DMN | bhava v1.8, bodh, joshua |
+| **rasayan** | Biochemistry — enzyme kinetics, metabolism, membrane transport | mastishk, sharira, jivanu |
+| **lipi** | Multilingual language — phonemes, scripts, grammar, gematria data (1.3+) | shabda, shabdakosh, sankhya |
+| **itihas** | World history — civilizations, eras, events, calendars | sankhya, avatara, joshua |
+| **avatara** | Divine archetypes — mythological personality templates | bhava v2.0, joshua, kiran |
+
+Planned (demand-gated, see [main roadmap](../roadmap.md)):
+- Geography/GIS, Music theory, Typography/fonts, Nutrition, Economics/finance
+
+---
+
 ## Notes
 
 Released applications are documented in [docs/applications/](../../applications/).
@@ -318,9 +335,9 @@ Library crates are documented in [docs/applications/libs/](../../applications/li
 - Priority 1 items before beta
 - Priority 2-3 strengthen daily-driver story
 - Priority 4-6 are post-v1.0 or community-contributed
-- Shared crate registry: [shared-crates.md](shared-crates.md)
+- Shared crate registry: [shared-crates.md](shared-crates.md) — 81 crates
 - Orchestration platform: [k8s-roadmap.md](../k8s-roadmap.md)
 
 ---
 
-*Last Updated: 2026-03-30*
+*Last Updated: 2026-03-31*

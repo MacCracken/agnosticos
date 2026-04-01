@@ -105,6 +105,12 @@
 | [jivanu](jivanu.md) | Microbiology — growth, metabolism, genetics, epidemiology | 1.0.0 | — |
 | [rasayan](rasayan.md) | Biochemistry — enzyme kinetics, metabolism, signal transduction | 0.1.0 | — |
 
+## History & Culture
+
+| Crate | Domain | Version | Docs |
+|-------|--------|---------|------|
+| [itihas](itihas.md) | World history — civilizations, eras, events, calendars, figures | 0.1.0 | — |
+
 ## Language & Knowledge
 
 | Crate | Domain | Version | Docs |

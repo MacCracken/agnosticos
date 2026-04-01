@@ -2,7 +2,7 @@
 
 > **Status**: Active | **Last Updated**: 2026-03-31
 >
-> **80 crates** — 45 at v1.0+ stable, 24 pre-1.0, 15 unpublished
+> **81 crates** — 45 at v1.0+ stable, 25 pre-1.0, 16 unpublished
 >
 > v1.0+ crate documentation lives in [docs/applications/libs/](../../applications/libs/).
 > This file tracks **pre-1.0 crates**, **unpublished crates**, and the **stable crate index**.
@@ -102,6 +102,7 @@ Full documentation for each crate: [docs/applications/libs/{crate}.md](../../app
 |-------|---------|-------------|---------------|
 | avatara | 0.1.0 | Divine archetype overlay — mythological personality templates | bhava, joshua, kiran, agnosai |
 | [bodh](https://github.com/MacCracken/bodh) | 0.1.0 | Psychology — cognition, perception, learning | bhava, kiran, agnosai |
+| [itihas](https://github.com/MacCracken/itihas) | 0.1.0 | World history — civilizations, eras, events, calendars, figures | sankhya, avatara, kiran, joshua, jnana |
 | [jivanu](https://github.com/MacCracken/jivanu) | 0.1.0 | Microbiology — growth kinetics, metabolism, genetics | sangha, kimiya, kiran |
 | [lipi](https://github.com/MacCracken/lipi) | 0.1.0 | Multilingual language engine — phonemes, scripts, grammar | shabda, shabdakosh, svara, jnana |
 | [mastishk](https://github.com/MacCracken/mastishk) | 0.1.0 | Neuroscience — neurotransmitters, sleep, HPA axis, DMN, chronobiology | bhava, bodh, kiran, joshua |
@@ -110,7 +111,7 @@ Full documentation for each crate: [docs/applications/libs/{crate}.md](../../app
 
 ---
 
-## Unpublished (15 crates)
+## Unpublished (16 crates)
 
 Need `cargo publish` before consumers outside AGNOS can depend on them.
 
@@ -118,6 +119,7 @@ Need `cargo publish` before consumers outside AGNOS can depend on them.
 |-------|---------|-------------|
 | avatara | 0.1.0 | Divine archetype overlay (mythological personality templates) |
 | bodh | 0.1.0 | Psychology engine |
+| itihas | 0.1.0 | World history (civilizations, eras, events, calendars, figures) |
 | brahmanda | 0.1.0 | Galactic structure / large-scale cosmology |
 | falak | 0.2.0 | Orbital mechanics |
 | jivanu | 0.1.0 | Microbiology |
