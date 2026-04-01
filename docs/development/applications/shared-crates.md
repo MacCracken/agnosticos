@@ -2,7 +2,7 @@
 
 > **Status**: Active | **Last Updated**: 2026-03-31
 >
-> **79 crates** — 45 at v1.0+ stable, 23 pre-1.0, 14 unpublished
+> **80 crates** — 45 at v1.0+ stable, 24 pre-1.0, 15 unpublished
 >
 > v1.0+ crate documentation lives in [docs/applications/libs/](../../applications/libs/).
 > This file tracks **pre-1.0 crates**, **unpublished crates**, and the **stable crate index**.
@@ -100,6 +100,7 @@ Full documentation for each crate: [docs/applications/libs/{crate}.md](../../app
 
 | Crate | Version | Description | Key Consumers |
 |-------|---------|-------------|---------------|
+| avatara | 0.1.0 | Divine archetype overlay — mythological personality templates | bhava, joshua, kiran, agnosai |
 | [bodh](https://github.com/MacCracken/bodh) | 0.1.0 | Psychology — cognition, perception, learning | bhava, kiran, agnosai |
 | [jivanu](https://github.com/MacCracken/jivanu) | 0.1.0 | Microbiology — growth kinetics, metabolism, genetics | sangha, kimiya, kiran |
 | [lipi](https://github.com/MacCracken/lipi) | 0.1.0 | Multilingual language engine — phonemes, scripts, grammar | shabda, shabdakosh, svara, jnana |
@@ -109,12 +110,13 @@ Full documentation for each crate: [docs/applications/libs/{crate}.md](../../app
 
 ---
 
-## Unpublished (14 crates)
+## Unpublished (15 crates)
 
 Need `cargo publish` before consumers outside AGNOS can depend on them.
 
 | Crate | Version | Description |
 |-------|---------|-------------|
+| avatara | 0.1.0 | Divine archetype overlay (mythological personality templates) |
 | bodh | 0.1.0 | Psychology engine |
 | brahmanda | 0.1.0 | Galactic structure / large-scale cosmology |
 | falak | 0.2.0 | Orbital mechanics |

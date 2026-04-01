@@ -225,6 +225,7 @@ When an AGNOS crate wraps an external library, **depend on the AGNOS crate, not 
 | Neuroscience / neurotransmitters | `mastishk` | Inline serotonin/dopamine models, ad-hoc HPA |
 | Enzyme kinetics / metabolism | `rasayan` | Inline Michaelis-Menten, hardcoded ATP math |
 | Language / phoneme data | `lipi` | Hardcoded IPA tables, custom phoneme inventories |
+| Divine/mythological archetypes | `avatara` | Per-app deity tables, hardcoded archetype mappings |
 
 Only one crate should directly depend on each external library. Extract when **3+ projects** implement the same pattern.
 

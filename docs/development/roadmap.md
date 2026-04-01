@@ -976,6 +976,12 @@ when cycles allow, but must exist before the paper draft.
 | ~~**TBD**~~ | ~~Chronobiology~~ | ~~0–3~~ | **RESOLVED** — absorbed into mastishk (`chronobiology` module: melatonin, cortisol CAR, SCN pacemaker, core body temperature). bhava already owns behavioral circadian/rhythm. |
 | ~~**TBD**~~ | ~~Ecology / Ecosystems~~ | ~~2–3~~ | **RESOLVED** — vanaspati already has comprehensive `ecosystem` module (Lotka-Volterra, Shannon diversity, NPP) plus 22 ecology-focused modules. |
 
+### Personality & Archetype Crates — bhava ecosystem
+
+| Crate | Domain | Status |
+|-------|--------|--------|
+| **avatara** | Divine archetype overlay — mythological personality templates for bhava's zodiac manifestation engine. Maps deity archetypes across Hindu, Greek, Norse, Egyptian, Shinto, Celtic pantheons to bhava trait profiles. Post-v2.0 scope. | **Scaffolding in progress** — bhava agent building with full context of zodiac/consciousness model. |
+
 **Sequencing**: OS priorities (ISO build, agnostik hardening, extraction) come first. These
 scaffold in parallel when there's bandwidth. bodh and sangha hitting 1.0
 demonstrates the pattern — P(-1) harden, bridge to bhava, publish.

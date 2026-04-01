@@ -64,12 +64,18 @@ An AGI system that cannot prove its own integrity cannot be trusted with autonom
 | **2026-03-20** | Self-hosted runner repaired. ISO build pipeline work continues |
 | **2026-03-21** | Build improvements. stiva, nein, t-ron, impetus scaffolded. Multiple ISO build iterations |
 | **2026-03-22** | **First successful ISO build** (early morning, after ~9 days of iteration). Abacus desktop calculator released. 266 commits, 298 recipes, 10,800+ tests, ~84.3% coverage |
+| **2026-03-24** | Science stack push: 9 crates reach v1.0 in one session (impetus, hisab, bhava, bodh, sangha, and others). Agnosys integration ready for consumers |
+| **2026-03-25** | Massive session: process refinement, SY migration planning, NPO groundwork |
+| **2026-03-28** | AgnosAI benchmarks (4/5 wins vs CrewAI, 2000-4500x faster cached). Release `2026.3.29` |
+| **2026-03-31** | **First fully clean release** (`2026.3.31`). All 17 artifacts built successfully — x86_64 ISO (desktop + minimal + edge), aarch64 SD card images (desktop + minimal + edge), userland tarballs, multi-arch Docker container. First release with zero build failures across all architectures. 80 shared crates (45 at v1.0+). 3 new science crates scaffolded (mastishk, rasayan, lipi). 336 commits, 19 tagged releases |
 
 ### Development Pace
 
-AGNOS went from initial commit to first bootable ISO in **39 days** (2026-02-11 to 2026-03-22). The project accumulated 266 commits across 17 tagged releases, achieving 10,800+ passing tests and ~84.3% code coverage. 13 shared crates were published to crates.io. 18+ consumer applications were developed in parallel.
+AGNOS went from initial commit to first bootable ISO in **39 days** (2026-02-11 to 2026-03-22), and from first ISO to first fully clean multi-architecture release in **48 days** (2026-02-11 to 2026-03-31).
 
-The ISO build itself required approximately 9 days of iteration (2026-03-13 to 2026-03-22) to resolve cross-compilation, package dependency ordering, and bootloader integration challenges across x86_64 and aarch64 architectures.
+The project accumulated **336 commits** across **19 tagged releases**, achieving 10,800+ passing tests and ~84.3% code coverage. The shared crate ecosystem grew to **80 crates** (45 at v1.0+ stable), with 18+ consumer applications developed in parallel.
+
+The ISO build itself required approximately 9 days of iteration (2026-03-13 to 2026-03-22) to resolve cross-compilation, package dependency ordering, and bootloader integration challenges. The CI pipeline required another 9 days (2026-03-22 to 2026-03-31) to achieve fully automated, zero-failure builds across x86_64 ISOs, aarch64 SD card images, edge profiles, and multi-arch Docker containers.
 
 ---
 
