@@ -94,21 +94,21 @@
 
 | Crate | Domain | Version | Docs |
 |-------|--------|---------|------|
-| [bodh](bodh.md) | Psychology — cognition, perception, psychometrics | 0.1.0 | — |
+| [bodh](bodh.md) | Psychology — cognition, perception, psychometrics | 1.0.0 | — |
 | [mastishk](mastishk.md) | Neuroscience — neurotransmitters, sleep, HPA, DMN, chronobiology | 0.1.0 | — |
-| [sangha](sangha.md) | Sociology — networks, game theory, group dynamics | 0.1.0 | — |
+| [sangha](sangha.md) | Sociology — networks, game theory, group dynamics | 1.0.0 | — |
 
 ## Life Sciences
 
 | Crate | Domain | Version | Docs |
 |-------|--------|---------|------|
-| [jivanu](jivanu.md) | Microbiology — growth, metabolism, genetics, epidemiology | 0.1.0 | — |
+| [jivanu](jivanu.md) | Microbiology — growth, metabolism, genetics, epidemiology | 1.0.0 | — |
 | [rasayan](rasayan.md) | Biochemistry — enzyme kinetics, metabolism, signal transduction | 0.1.0 | — |
 
 ## Language & Knowledge
 
 | Crate | Domain | Version | Docs |
 |-------|--------|---------|------|
-| [jnana](jnana.md) | Unified knowledge system — 1-10GB offline human knowledge | 0.1.0 | — |
+| [jnana](jnana.md) | Unified knowledge system — 1-10GB offline human knowledge | 0.5.0 | — |
 | [lipi](lipi.md) | Multilingual language engine — phonemes, scripts, grammar, lexicon | 0.1.0 | — |
 | [vidya](vidya.md) | Programming reference library — multi-language best practices | 1.0.0 | — |
