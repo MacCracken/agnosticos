@@ -9,7 +9,7 @@
 
 [package]
 name = "bhava"
-version = "1.2.0"
+version = "1.7.0"
 description = "Bhava — Emotion and personality engine"
 license = "GPL-3.0"
 groups = ["library", "ai", "rust"]

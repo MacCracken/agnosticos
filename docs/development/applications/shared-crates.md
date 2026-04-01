@@ -1,8 +1,8 @@
 # Shared Crates — Registry & Status
 
-> **Status**: Active | **Last Updated**: 2026-03-30
+> **Status**: Active | **Last Updated**: 2026-03-31
 >
-> **75 crates** — 45 at v1.0+ stable, 21 pre-1.0, 9 unpublished
+> **79 crates** — 45 at v1.0+ stable, 23 pre-1.0, 14 unpublished
 >
 > v1.0+ crate documentation lives in [docs/applications/libs/](../../applications/libs/).
 > This file tracks **pre-1.0 crates**, **unpublished crates**, and the **stable crate index**.
@@ -20,7 +20,7 @@ Full documentation for each crate: [docs/applications/libs/{crate}.md](../../app
 | agnosai | 1.0.2 | AI orchestration |
 | ai-hwaccel | 1.0.0 | GPU detection |
 | badal | 1.1.0 | Weather/atmosphere |
-| bhava | 1.2.0 | Emotion/personality |
+| bhava | 1.7.0 | Emotion/personality |
 | bijli | 1.1.0 | Electromagnetism |
 | dhvani | 1.0.0 | Audio engine |
 | dravya | 1.2.0 | Material science |
@@ -102,11 +102,14 @@ Full documentation for each crate: [docs/applications/libs/{crate}.md](../../app
 |-------|---------|-------------|---------------|
 | [bodh](https://github.com/MacCracken/bodh) | 0.1.0 | Psychology — cognition, perception, learning | bhava, kiran, agnosai |
 | [jivanu](https://github.com/MacCracken/jivanu) | 0.1.0 | Microbiology — growth kinetics, metabolism, genetics | sangha, kimiya, kiran |
+| [lipi](https://github.com/MacCracken/lipi) | 0.1.0 | Multilingual language engine — phonemes, scripts, grammar | shabda, shabdakosh, svara, jnana |
+| [mastishk](https://github.com/MacCracken/mastishk) | 0.1.0 | Neuroscience — neurotransmitters, sleep, HPA axis, DMN, chronobiology | bhava, bodh, kiran, joshua |
+| [rasayan](https://github.com/MacCracken/rasayan) | 0.1.0 | Biochemistry — enzyme kinetics, metabolism, signal transduction, membrane transport | mastishk, sharira, jivanu, kimiya |
 | [sangha](https://github.com/MacCracken/sangha) | 0.1.0 | Sociology — social networks, game theory, group dynamics | kiran, agnosai, bhava |
 
 ---
 
-## Unpublished (9 crates)
+## Unpublished (14 crates)
 
 Need `cargo publish` before consumers outside AGNOS can depend on them.
 
@@ -120,7 +123,9 @@ Need `cargo publish` before consumers outside AGNOS can depend on them.
 | hisab-mimamsa | 0.1.0 | Theoretical physics (GR, cosmology, QFT) |
 | kana | 0.1.0 | Quantum mechanics |
 | lipi | 0.1.0 | Multilingual language engine (phonemes, scripts, grammar) |
+| mastishk | 0.1.0 | Neuroscience (neurotransmitters, sleep, HPA, DMN, chronobiology) |
 | phylax | 0.5.0 | Threat detection (crates.io stale at 0.22.3) |
+| rasayan | 0.1.0 | Biochemistry (enzyme kinetics, metabolism, signal transduction) |
 | sangha | 0.1.0 | Sociology |
 | sankhya | 0.1.0 | Ancient mathematical systems |
 | tara | 0.2.0 | Stellar astrophysics |
@@ -149,4 +154,4 @@ See [k8s-roadmap.md](../k8s-roadmap.md) for stiva + nein + majra + kavach orches
 
 ---
 
-*Last Updated: 2026-03-30*
+*Last Updated: 2026-03-31*

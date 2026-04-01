@@ -967,20 +967,18 @@ These crates fill gaps in the paper's scale hierarchy. Each needs scaffolding to
 0.1.0 with core types and bhava bridge functions. OS work takes priority — these scaffold
 when cycles allow, but must exist before the paper draft.
 
-| Crate | Domain | Paper Scale | Why Needed |
-|-------|--------|-------------|------------|
-| **TBD** | Neuroscience | 0–1 | Neural correlates of consciousness, default mode network, meditation neuroscience. The paper references contemplative neuroscience (Section 2, 7) but has no computational model. Bridges to bodh (cognition) and sharira (body). |
-| **TBD** | Genetics / Genomics | 0 | Genome → personality mapping. jantu bridge references "5-axis behavioral genome → 7 trait seeds" but no crate models the genomics. Bridges to jivanu (microbiology) and jantu (behavior). |
+| Crate | Domain | Paper Scale | Status |
+|-------|--------|-------------|--------|
+| ~~**TBD**~~ **mastishk** | Neuroscience | 0–1 | **SCAFFOLDED** — 0.1.0, 42 tests. 6 modules: neurotransmitter, circuit, sleep, hpa, dmn, chronobiology. Bridges to bodh (cognition), sharira (body), rasayan (biochemistry). Unblocks bhava v1.8. |
+| ~~**TBD**~~ | ~~Genetics / Genomics~~ | ~~0~~ | **RESOLVED** — jantu extension. jantu already has `genetics` module for behavioral traits; jivanu has microbial genetics. No separate crate needed. |
 | ~~**hisab-mimamsa**~~ | ~~Cosmology + GR + QFT~~ | ~~0–7~~ | ~~**SCAFFOLDED** — 0.1.0, 33 tests, relativity + cosmology modules live. QFT + unified planned for v0.2-0.3.~~ |
-| **TBD** | Chronobiology | 0–3 | Circadian rhythms, seasonal affect, body clock → mood. Sits between sharira (body), jyotish (celestial cycles), and bodh (cognition). Melatonin, cortisol, ultradian rhythms. |
-| **TBD** | Ecology / Ecosystems | 2–3 | Environmental pressure on entities. vanaspati covers botany but not ecosystem dynamics — predator/prey balance, carrying capacity, niche competition, climate feedback loops. |
+| ~~**TBD**~~ **rasayan** | Biochemistry | 0–1 | **SCAFFOLDED** — 0.1.0, 48 tests. 6 modules: enzyme, metabolism, signal, protein, membrane, energy. Complements mastishk (neurotransmitter synthesis depends on metabolic precursors). |
+| ~~**TBD**~~ | ~~Chronobiology~~ | ~~0–3~~ | **RESOLVED** — absorbed into mastishk (`chronobiology` module: melatonin, cortisol CAR, SCN pacemaker, core body temperature). bhava already owns behavioral circadian/rhythm. |
+| ~~**TBD**~~ | ~~Ecology / Ecosystems~~ | ~~2–3~~ | **RESOLVED** — vanaspati already has comprehensive `ecosystem` module (Lotka-Volterra, Shannon diversity, NPP) plus 22 ecology-focused modules. |
 
 **Sequencing**: OS priorities (ISO build, agnostik hardening, extraction) come first. These
-scaffold in parallel when there's bandwidth. bodh and sangha hitting 1.0 tonight
+scaffold in parallel when there's bandwidth. bodh and sangha hitting 1.0
 demonstrates the pattern — P(-1) harden, bridge to bhava, publish.
-
-**Naming**: Follow AGNOS convention (multilingual, single-word). Names TBD — will be chosen
-at scaffold time.
 
 ---
 

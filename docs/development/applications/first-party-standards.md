@@ -222,6 +222,9 @@ When an AGNOS crate wraps an external library, **depend on the AGNOS crate, not 
 | Psychology/cognition | `bodh` | Inline cognitive models, ad-hoc psychometrics |
 | Social dynamics | `sangha` | Custom network graphs, inline game theory |
 | Microbiology | `jivanu` | Inline growth curves, hardcoded kinetics |
+| Neuroscience / neurotransmitters | `mastishk` | Inline serotonin/dopamine models, ad-hoc HPA |
+| Enzyme kinetics / metabolism | `rasayan` | Inline Michaelis-Menten, hardcoded ATP math |
+| Language / phoneme data | `lipi` | Hardcoded IPA tables, custom phoneme inventories |
 
 Only one crate should directly depend on each external library. Extract when **3+ projects** implement the same pattern.
 
