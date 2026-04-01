@@ -1,11 +1,11 @@
 # Application Development Roadmap
 
-> **Status**: Active | **Last Updated**: 2026-03-31
+> **Status**: Active | **Last Updated**: 2026-04-01
 >
 > Future first-party applications planned for the AGNOS ecosystem.
 > All follow the [First-Party Standards](first-party-standards.md).
 > Released applications are documented in [docs/applications/](../../applications/).
-> Shared crates: [shared-crates.md](shared-crates.md) — 81 total (45 at v1.0+, 25 pre-1.0, 16 unpublished).
+> Shared crates: [shared-crates.md](shared-crates.md) — 76 total (55 at v1.0+, 20 pre-1.0, 1 internal).
 > Monolith extraction: [monolith-extraction.md](../monolith-extraction.md).
 
 ---
@@ -309,17 +309,69 @@ Visual fine-tuning and dataset management. GUI on ifran/finetune APIs.
 
 ---
 
+## Monolith Extraction Progress (2026-04-01)
+
+### Completed Extractions
+
+| Crate | From | Status | Notes |
+|-------|------|--------|-------|
+| **aethersafha** | desktop-environment/ | Standalone repo | 785 tests, AGPL-3.0-only |
+| **agnoshi** | ai-shell/ | Standalone repo | 736 tests, GPL-3.0-only |
+| **sigil** | agent-runtime/sigil/ | Standalone repo | 88 tests, absorbed integrity.rs + trust.rs |
+
+### Completed Absorptions
+
+| Target | Absorbed | Lines | Effect |
+|--------|----------|-------|--------|
+| **bote** | MCP hosting types | ~350 | New `host` module (feature-gated) |
+| **kavach** 2.0.0 | sandbox_mod/ | ~6,200 | New runtime/, backends, seccomp modules |
+| **t-ron** | safety/ | ~2,095 | New `safety` module (injection, circuit breaker, policy engine) |
+| **daimon** | — | — | Updated to use bote::host re-exports |
+
+### Already Standalone (prior work)
+
+hoosh (1.1.0), kavach (2.0.0), majra, libro, bote, szal, agnosai, ai-hwaccel, agnosys, phylax, t-ron
+
+### Crypto/Trust Architecture Decision
+
+**Sigil owns all AGNOS crypto and trust.** The planned `pqc.rs` extraction becomes a `pqc` feature on sigil rather than a separate crate. Sigil is the single crypto boundary:
+
+- **Current**: Ed25519 signing, SHA-256 integrity, publisher keyring, revocation lists
+- **Future `pqc` feature**: ML-KEM (key exchange), ML-DSA (signatures), hybrid classical+PQC, channel encryption
+- **Boundary**: AGNOS sigil = OS-level trust. SY sy-crypto = agent-side session crypto. Shared primitives via agnostik types.
+
+This eliminates the Phase 3.5 "crypto boundary" blocker — the boundary is sigil.
+
+### Remaining Extractions
+
+| Phase | Module | Lines | Status |
+|-------|--------|-------|--------|
+| 2 | ark + nous | 4,233 | Not started |
+| 2 | takumi | 1,676 | Not started |
+| 3 | argonaut | 3,959 | Not started |
+| 3 | aegis | 1,699 | Not started |
+| 3 | agnova | 3,656 | Not started |
+| — | mela (marketplace) | 6,208 | Not started |
+| — | edge (fleet) | 4,605 | Not started |
+| — | scheduler | 1,479 | Not started |
+
+### Blocked
+
+- kavach `sandbox_core.rs` — needs agnosys to export firewall types (netns::FirewallRule, TrafficDirection, etc.)
+
+---
+
 ## Recent Shared Crate Additions (2026-03-31)
 
-New library crates scaffolded this session — these support future apps and deepen the science/culture stack:
+New library crates scaffolded — these support future apps and deepen the science/culture stack:
 
 | Crate | Domain | Key Consumers |
 |-------|--------|---------------|
-| **mastishk** | Neuroscience — neurotransmitters, sleep, HPA, DMN | bhava v1.8, bodh, joshua |
+| **mastishk** | Neuroscience — neurotransmitters, sleep, HPA, DMN | bhava v2.0, bodh, joshua |
 | **rasayan** | Biochemistry — enzyme kinetics, metabolism, membrane transport | mastishk, sharira, jivanu |
-| **varna** _(1.0.0)_ | Multilingual language — phonemes, scripts, grammar, gematria data (1.3+) | shabda, shabdakosh, sankhya |
-| **itihas** | World history — civilizations, eras, events, calendars | sankhya, avatara, joshua |
-| **avatara** | Divine archetypes — mythological personality templates | bhava v2.0, joshua, kiran |
+| **varna** _(1.0.0)_ | Multilingual language — phonemes, scripts, grammar | shabda, shabdakosh, sankhya |
+| **itihas** _(1.0.1)_ | World history — civilizations, eras, events, calendars | sankhya, avatara, joshua |
+| **avatara** _(1.0.1)_ | Divine archetypes — mythological personality templates | bhava v2.0, joshua, kiran |
 
 Planned (demand-gated, see [main roadmap](../roadmap.md)):
 - Geography/GIS, Music theory, Typography/fonts, Nutrition, Economics/finance
@@ -335,9 +387,9 @@ Library crates are documented in [docs/applications/libs/](../../applications/li
 - Priority 1 items before beta
 - Priority 2-3 strengthen daily-driver story
 - Priority 4-6 are post-v1.0 or community-contributed
-- Shared crate registry: [shared-crates.md](shared-crates.md) — 81 crates
+- Shared crate registry: [shared-crates.md](shared-crates.md) — 76 crates (55 stable)
 - Orchestration platform: [k8s-roadmap.md](../k8s-roadmap.md)
 
 ---
 
-*Last Updated: 2026-03-31*
+*Last Updated: 2026-04-01*
