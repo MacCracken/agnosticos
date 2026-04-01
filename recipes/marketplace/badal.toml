@@ -1,0 +1,49 @@
+# Badal — Weather & atmosphere engine for AGNOS
+# Atmospheric modeling, weather simulation, climate data.
+#
+# Name: Badal (Hindi/Urdu: cloud)
+# Lib: badal = "1.1.0" in Cargo.toml
+#
+# Status: Released — v1.1.0.
+
+[package]
+name = "badal"
+version = "1.1.0"
+description = "Badal — weather & atmosphere engine"
+license = "GPL-3.0"
+groups = ["library", "science", "rust"]
+release = 1
+arch = "any"
+
+[source]
+github_release = "MacCracken/badal"
+release_asset = "source"
+
+[depends]
+runtime = []
+build = ["rust"]
+
+[marketplace]
+category = "library"
+runtime = "rust-crate"
+publisher = "AGNOS"
+tags = ["weather", "atmosphere", "climate", "simulation", "science", "rust"]
+min_agnos_version = "2026.3.24"
+
+[marketplace.sandbox]
+seccomp_mode = "basic"
+network_access = false
+
+[build]
+make = "cargo build --release"
+check = "cargo test --all-features"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+mkdir -p $PKG/usr/lib/badal
+cp -r src $PKG/usr/lib/badal/
+cp Cargo.toml $PKG/usr/lib/badal/
+cp VERSION $PKG/usr/lib/badal/
+"""

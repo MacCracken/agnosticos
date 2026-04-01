@@ -1,0 +1,49 @@
+# Itihas — World history engine for AGNOS
+# Civilizations, eras, events, historical figures, calendar metadata.
+#
+# Name: Itihas (Sanskrit: history/thus it was)
+# Lib: itihas = "1.0.1" in Cargo.toml
+#
+# Status: Released — v1.0.1.
+
+[package]
+name = "itihas"
+version = "1.0.1"
+description = "Itihas — world history engine"
+license = "GPL-3.0"
+groups = ["library", "science", "rust"]
+release = 1
+arch = "any"
+
+[source]
+github_release = "MacCracken/itihas"
+release_asset = "source"
+
+[depends]
+runtime = []
+build = ["rust"]
+
+[marketplace]
+category = "library"
+runtime = "rust-crate"
+publisher = "AGNOS"
+tags = ["history", "civilization", "calendar", "events", "science", "rust"]
+min_agnos_version = "2026.3.24"
+
+[marketplace.sandbox]
+seccomp_mode = "basic"
+network_access = false
+
+[build]
+make = "cargo build --release"
+check = "cargo test --all-features"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+mkdir -p $PKG/usr/lib/itihas
+cp -r src $PKG/usr/lib/itihas/
+cp Cargo.toml $PKG/usr/lib/itihas/
+cp VERSION $PKG/usr/lib/itihas/
+"""

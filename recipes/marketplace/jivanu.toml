@@ -1,0 +1,49 @@
+# Jivanu — Microbiology engine for AGNOS
+# Growth kinetics, metabolism, microbial genetics.
+#
+# Name: Jivanu (Hindi: microbe/germ)
+# Lib: jivanu = "1.0.0" in Cargo.toml
+#
+# Status: Released — v1.0.0.
+
+[package]
+name = "jivanu"
+version = "1.0.0"
+description = "Jivanu — microbiology engine"
+license = "GPL-3.0"
+groups = ["library", "science", "rust"]
+release = 1
+arch = "any"
+
+[source]
+github_release = "MacCracken/jivanu"
+release_asset = "source"
+
+[depends]
+runtime = []
+build = ["rust"]
+
+[marketplace]
+category = "library"
+runtime = "rust-crate"
+publisher = "AGNOS"
+tags = ["microbiology", "metabolism", "genetics", "growth", "science", "rust"]
+min_agnos_version = "2026.3.24"
+
+[marketplace.sandbox]
+seccomp_mode = "basic"
+network_access = false
+
+[build]
+make = "cargo build --release"
+check = "cargo test --all-features"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+mkdir -p $PKG/usr/lib/jivanu
+cp -r src $PKG/usr/lib/jivanu/
+cp Cargo.toml $PKG/usr/lib/jivanu/
+cp VERSION $PKG/usr/lib/jivanu/
+"""

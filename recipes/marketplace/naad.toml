@@ -1,0 +1,49 @@
+# Naad — Audio synthesis engine for AGNOS
+# Core audio synthesis primitives, oscillators, filters.
+#
+# Name: Naad (Sanskrit: primordial sound)
+# Lib: naad = "1.0.0" in Cargo.toml
+#
+# Status: Released — v1.0.0.
+
+[package]
+name = "naad"
+version = "1.0.0"
+description = "Naad — audio synthesis engine"
+license = "GPL-3.0"
+groups = ["library", "media", "rust"]
+release = 1
+arch = "any"
+
+[source]
+github_release = "MacCracken/naad"
+release_asset = "source"
+
+[depends]
+runtime = []
+build = ["rust"]
+
+[marketplace]
+category = "library"
+runtime = "rust-crate"
+publisher = "AGNOS"
+tags = ["audio", "synthesis", "oscillator", "sound", "media", "rust"]
+min_agnos_version = "2026.3.24"
+
+[marketplace.sandbox]
+seccomp_mode = "basic"
+network_access = false
+
+[build]
+make = "cargo build --release"
+check = "cargo test --all-features"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+mkdir -p $PKG/usr/lib/naad
+cp -r src $PKG/usr/lib/naad/
+cp Cargo.toml $PKG/usr/lib/naad/
+cp VERSION $PKG/usr/lib/naad/
+"""

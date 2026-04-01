@@ -1,0 +1,49 @@
+# Svara — Vocal synthesis engine for AGNOS
+# Voice generation, formant synthesis, vocal modeling.
+#
+# Name: Svara (Sanskrit: musical note/tone)
+# Lib: svara = "1.1.0" in Cargo.toml
+#
+# Status: Released — v1.1.0.
+
+[package]
+name = "svara"
+version = "1.1.0"
+description = "Svara — vocal synthesis engine"
+license = "GPL-3.0"
+groups = ["library", "media", "rust"]
+release = 1
+arch = "any"
+
+[source]
+github_release = "MacCracken/svara"
+release_asset = "source"
+
+[depends]
+runtime = []
+build = ["rust"]
+
+[marketplace]
+category = "library"
+runtime = "rust-crate"
+publisher = "AGNOS"
+tags = ["vocal", "synthesis", "voice", "formant", "speech", "rust"]
+min_agnos_version = "2026.3.24"
+
+[marketplace.sandbox]
+seccomp_mode = "basic"
+network_access = false
+
+[build]
+make = "cargo build --release"
+check = "cargo test --all-features"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+mkdir -p $PKG/usr/lib/svara
+cp -r src $PKG/usr/lib/svara/
+cp Cargo.toml $PKG/usr/lib/svara/
+cp VERSION $PKG/usr/lib/svara/
+"""

@@ -1,0 +1,49 @@
+# Hisab-Mimamsa — Theoretical physics engine for AGNOS
+# General relativity, cosmology, quantum field theory.
+#
+# Name: Hisab-Mimamsa (Arabic+Sanskrit: mathematical inquiry)
+# Lib: hisab-mimamsa = "1.0.0" in Cargo.toml
+#
+# Status: Released — v1.0.0.
+
+[package]
+name = "hisab-mimamsa"
+version = "1.0.0"
+description = "Hisab-Mimamsa — theoretical physics engine"
+license = "GPL-3.0"
+groups = ["library", "science", "rust"]
+release = 1
+arch = "any"
+
+[source]
+github_release = "MacCracken/hisab-mimamsa"
+release_asset = "source"
+
+[depends]
+runtime = []
+build = ["rust"]
+
+[marketplace]
+category = "library"
+runtime = "rust-crate"
+publisher = "AGNOS"
+tags = ["physics", "relativity", "cosmology", "qft", "theoretical", "science", "rust"]
+min_agnos_version = "2026.3.24"
+
+[marketplace.sandbox]
+seccomp_mode = "basic"
+network_access = false
+
+[build]
+make = "cargo build --release"
+check = "cargo test --all-features"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+mkdir -p $PKG/usr/lib/hisab-mimamsa
+cp -r src $PKG/usr/lib/hisab-mimamsa/
+cp Cargo.toml $PKG/usr/lib/hisab-mimamsa/
+cp VERSION $PKG/usr/lib/hisab-mimamsa/
+"""

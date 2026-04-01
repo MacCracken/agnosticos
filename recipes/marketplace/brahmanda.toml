@@ -1,0 +1,49 @@
+# Brahmanda — Galactic cosmology engine for AGNOS
+# Large-scale galactic structure, cosmological models.
+#
+# Name: Brahmanda (Sanskrit: cosmic egg/universe)
+# Lib: brahmanda = "1.0.0" in Cargo.toml
+#
+# Status: Released — v1.0.0.
+
+[package]
+name = "brahmanda"
+version = "1.0.0"
+description = "Brahmanda — galactic cosmology engine"
+license = "GPL-3.0"
+groups = ["library", "science", "rust"]
+release = 1
+arch = "any"
+
+[source]
+github_release = "MacCracken/brahmanda"
+release_asset = "source"
+
+[depends]
+runtime = []
+build = ["rust"]
+
+[marketplace]
+category = "library"
+runtime = "rust-crate"
+publisher = "AGNOS"
+tags = ["cosmology", "galaxy", "astrophysics", "science", "rust"]
+min_agnos_version = "2026.3.24"
+
+[marketplace.sandbox]
+seccomp_mode = "basic"
+network_access = false
+
+[build]
+make = "cargo build --release"
+check = "cargo test --all-features"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+mkdir -p $PKG/usr/lib/brahmanda
+cp -r src $PKG/usr/lib/brahmanda/
+cp Cargo.toml $PKG/usr/lib/brahmanda/
+cp VERSION $PKG/usr/lib/brahmanda/
+"""

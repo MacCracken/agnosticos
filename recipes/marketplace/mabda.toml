@@ -1,0 +1,49 @@
+# Mabda — GPU foundation crate for AGNOS
+# Shared GPU abstractions extracted from soorat.
+#
+# Name: Mabda (Arabic: origin/foundation)
+# Lib: mabda = "1.0.0" in Cargo.toml
+#
+# Status: Released — v1.0.0.
+
+[package]
+name = "mabda"
+version = "1.0.0"
+description = "Mabda — GPU foundation crate"
+license = "GPL-3.0"
+groups = ["library", "graphics", "rust"]
+release = 1
+arch = "any"
+
+[source]
+github_release = "MacCracken/mabda"
+release_asset = "source"
+
+[depends]
+runtime = []
+build = ["rust"]
+
+[marketplace]
+category = "library"
+runtime = "rust-crate"
+publisher = "AGNOS"
+tags = ["gpu", "wgpu", "graphics", "foundation", "rust"]
+min_agnos_version = "2026.3.24"
+
+[marketplace.sandbox]
+seccomp_mode = "basic"
+network_access = false
+
+[build]
+make = "cargo build --release"
+check = "cargo test --all-features"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+mkdir -p $PKG/usr/lib/mabda
+cp -r src $PKG/usr/lib/mabda/
+cp Cargo.toml $PKG/usr/lib/mabda/
+cp VERSION $PKG/usr/lib/mabda/
+"""

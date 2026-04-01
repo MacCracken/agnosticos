@@ -1,0 +1,49 @@
+# Ifran — LLM inference & training engine for AGNOS
+# Model inference, fine-tuning, training pipelines.
+#
+# Name: Ifran (Arabic: knowledge/wisdom) — renamed from Irfan
+# Lib: ifran = "1.2.0" in Cargo.toml
+#
+# Status: Released — v1.2.0.
+
+[package]
+name = "ifran"
+version = "1.2.0"
+description = "Ifran — LLM inference & training engine"
+license = "GPL-3.0"
+groups = ["library", "ai", "rust"]
+release = 1
+arch = "any"
+
+[source]
+github_release = "MacCracken/ifran"
+release_asset = "source"
+
+[depends]
+runtime = []
+build = ["rust"]
+
+[marketplace]
+category = "library"
+runtime = "rust-crate"
+publisher = "AGNOS"
+tags = ["llm", "inference", "training", "ai", "ml", "rust"]
+min_agnos_version = "2026.3.24"
+
+[marketplace.sandbox]
+seccomp_mode = "basic"
+network_access = false
+
+[build]
+make = "cargo build --release"
+check = "cargo test --all-features"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+mkdir -p $PKG/usr/lib/ifran
+cp -r src $PKG/usr/lib/ifran/
+cp Cargo.toml $PKG/usr/lib/ifran/
+cp VERSION $PKG/usr/lib/ifran/
+"""

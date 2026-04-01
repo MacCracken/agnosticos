@@ -1,0 +1,49 @@
+# Sharira — Physiology engine for AGNOS
+# Body systems, organ models, physiological processes.
+#
+# Name: Sharira (Sanskrit: body)
+# Lib: sharira = "1.0.0" in Cargo.toml
+#
+# Status: Released — v1.0.0.
+
+[package]
+name = "sharira"
+version = "1.0.0"
+description = "Sharira — physiology engine"
+license = "GPL-3.0"
+groups = ["library", "science", "rust"]
+release = 1
+arch = "any"
+
+[source]
+github_release = "MacCracken/sharira"
+release_asset = "source"
+
+[depends]
+runtime = []
+build = ["rust"]
+
+[marketplace]
+category = "library"
+runtime = "rust-crate"
+publisher = "AGNOS"
+tags = ["physiology", "body", "organ", "health", "science", "rust"]
+min_agnos_version = "2026.3.24"
+
+[marketplace.sandbox]
+seccomp_mode = "basic"
+network_access = false
+
+[build]
+make = "cargo build --release"
+check = "cargo test --all-features"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+mkdir -p $PKG/usr/lib/sharira
+cp -r src $PKG/usr/lib/sharira/
+cp Cargo.toml $PKG/usr/lib/sharira/
+cp VERSION $PKG/usr/lib/sharira/
+"""

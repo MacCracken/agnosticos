@@ -1,0 +1,49 @@
+# Sangha — Sociology engine for AGNOS
+# Social networks, game theory, group dynamics.
+#
+# Name: Sangha (Sanskrit: community/assembly)
+# Lib: sangha = "1.0.0" in Cargo.toml
+#
+# Status: Released — v1.0.0.
+
+[package]
+name = "sangha"
+version = "1.0.0"
+description = "Sangha — sociology engine"
+license = "GPL-3.0"
+groups = ["library", "science", "rust"]
+release = 1
+arch = "any"
+
+[source]
+github_release = "MacCracken/sangha"
+release_asset = "source"
+
+[depends]
+runtime = []
+build = ["rust"]
+
+[marketplace]
+category = "library"
+runtime = "rust-crate"
+publisher = "AGNOS"
+tags = ["sociology", "social-network", "game-theory", "group-dynamics", "science", "rust"]
+min_agnos_version = "2026.3.24"
+
+[marketplace.sandbox]
+seccomp_mode = "basic"
+network_access = false
+
+[build]
+make = "cargo build --release"
+check = "cargo test --all-features"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+mkdir -p $PKG/usr/lib/sangha
+cp -r src $PKG/usr/lib/sangha/
+cp Cargo.toml $PKG/usr/lib/sangha/
+cp VERSION $PKG/usr/lib/sangha/
+"""

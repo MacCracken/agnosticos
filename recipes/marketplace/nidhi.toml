@@ -1,0 +1,49 @@
+# Nidhi — Sample playback engine for AGNOS
+# Audio sample loading, playback, looping, layering.
+#
+# Name: Nidhi (Sanskrit: treasure/repository)
+# Lib: nidhi = "1.1.0" in Cargo.toml
+#
+# Status: Released — v1.1.0.
+
+[package]
+name = "nidhi"
+version = "1.1.0"
+description = "Nidhi — sample playback engine"
+license = "GPL-3.0"
+groups = ["library", "media", "rust"]
+release = 1
+arch = "any"
+
+[source]
+github_release = "MacCracken/nidhi"
+release_asset = "source"
+
+[depends]
+runtime = []
+build = ["rust"]
+
+[marketplace]
+category = "library"
+runtime = "rust-crate"
+publisher = "AGNOS"
+tags = ["audio", "sample", "playback", "sound", "media", "rust"]
+min_agnos_version = "2026.3.24"
+
+[marketplace.sandbox]
+seccomp_mode = "basic"
+network_access = false
+
+[build]
+make = "cargo build --release"
+check = "cargo test --all-features"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+mkdir -p $PKG/usr/lib/nidhi
+cp -r src $PKG/usr/lib/nidhi/
+cp Cargo.toml $PKG/usr/lib/nidhi/
+cp VERSION $PKG/usr/lib/nidhi/
+"""

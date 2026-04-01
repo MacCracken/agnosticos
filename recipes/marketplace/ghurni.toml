@@ -1,0 +1,49 @@
+# Ghurni — Mechanical sound engine for AGNOS
+# Mechanical, industrial, and machine audio synthesis.
+#
+# Name: Ghurni (Bengali: whirl/rotation)
+# Lib: ghurni = "1.0.0" in Cargo.toml
+#
+# Status: Released — v1.0.0.
+
+[package]
+name = "ghurni"
+version = "1.0.0"
+description = "Ghurni — mechanical sound engine"
+license = "GPL-3.0"
+groups = ["library", "media", "rust"]
+release = 1
+arch = "any"
+
+[source]
+github_release = "MacCracken/ghurni"
+release_asset = "source"
+
+[depends]
+runtime = []
+build = ["rust"]
+
+[marketplace]
+category = "library"
+runtime = "rust-crate"
+publisher = "AGNOS"
+tags = ["sound", "mechanical", "machine", "audio", "synthesis", "rust"]
+min_agnos_version = "2026.3.24"
+
+[marketplace.sandbox]
+seccomp_mode = "basic"
+network_access = false
+
+[build]
+make = "cargo build --release"
+check = "cargo test --all-features"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+mkdir -p $PKG/usr/lib/ghurni
+cp -r src $PKG/usr/lib/ghurni/
+cp Cargo.toml $PKG/usr/lib/ghurni/
+cp VERSION $PKG/usr/lib/ghurni/
+"""
