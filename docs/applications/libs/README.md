@@ -88,24 +88,27 @@
 | Crate | Domain | Version | Docs |
 |-------|--------|---------|------|
 | [ai-hwaccel](ai-hwaccel.md) | GPU/hardware detection | 1.0.0 | [crates.io](https://crates.io/crates/ai-hwaccel) |
-| [bhava](bhava.md) | Emotion & personality engine | 1.2.0 | [crates.io](https://crates.io/crates/bhava) |
+| [bhava](bhava.md) | Emotion & personality engine | 1.7.0 | [crates.io](https://crates.io/crates/bhava) |
 
 ## Social & Cognitive Sciences
 
 | Crate | Domain | Version | Docs |
 |-------|--------|---------|------|
-| [bodh](bodh.md) | Psychology — cognition, perception, psychometrics | Planned | — |
-| [sangha](sangha.md) | Sociology — networks, game theory, group dynamics | Planned | — |
+| [bodh](bodh.md) | Psychology — cognition, perception, psychometrics | 0.1.0 | — |
+| [mastishk](mastishk.md) | Neuroscience — neurotransmitters, sleep, HPA, DMN, chronobiology | 0.1.0 | — |
+| [sangha](sangha.md) | Sociology — networks, game theory, group dynamics | 0.1.0 | — |
 
 ## Life Sciences
 
 | Crate | Domain | Version | Docs |
 |-------|--------|---------|------|
-| [jivanu](jivanu.md) | Microbiology — growth, metabolism, genetics, epidemiology | Planned | — |
+| [jivanu](jivanu.md) | Microbiology — growth, metabolism, genetics, epidemiology | 0.1.0 | — |
+| [rasayan](rasayan.md) | Biochemistry — enzyme kinetics, metabolism, signal transduction | 0.1.0 | — |
 
-## Knowledge & Education
+## Language & Knowledge
 
 | Crate | Domain | Version | Docs |
 |-------|--------|---------|------|
 | [jnana](jnana.md) | Unified knowledge system — 1-10GB offline human knowledge | 0.1.0 | — |
-| [vidya](vidya.md) | Programming reference library — multi-language best practices | 0.1.0 | — |
+| [lipi](lipi.md) | Multilingual language engine — phonemes, scripts, grammar, lexicon | 0.1.0 | — |
+| [vidya](vidya.md) | Programming reference library — multi-language best practices | 1.0.0 | — |

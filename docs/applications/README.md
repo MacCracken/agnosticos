@@ -20,7 +20,6 @@ Desktop, CLI, and service applications built on the AGNOS stack.
 | [Irfan](irfan.md) | Local LLM management/training | |
 | [Jalwa](jalwa.md) | Media player | Built on tarang |
 | [Mneme](mneme.md) | Knowledge base | |
-| [Muharrir](muharrir.md) | Text editor | |
 | [Nazar](nazar.md) | System monitor | Port 8095 |
 | [PhotisNadi](photisnadi.md) | Productivity app | |
 | [Rahd](rahd.md) | Calendar & contacts | |
