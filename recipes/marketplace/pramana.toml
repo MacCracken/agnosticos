@@ -8,7 +8,7 @@
 
 [package]
 name = "pramana"
-version = "1.1.0"
+version = "1.2.0"
 description = "Pramana — statistics engine"
 license = "GPL-3.0"
 groups = ["library", "science", "rust"]

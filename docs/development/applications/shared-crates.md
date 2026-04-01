@@ -21,7 +21,7 @@ Full documentation for each crate: [docs/applications/libs/{crate}.md](../../app
 | ai-hwaccel | 1.0.0 | GPU detection |
 | avatara | 1.0.1 | Divine archetype overlay |
 | badal | 1.1.0 | Weather/atmosphere |
-| bhava | 1.7.0 | Emotion/personality |
+| bhava | 2.0.0 | Emotion/personality |
 | bijli | 1.1.0 | Electromagnetism |
 | bodh | 1.0.0 | Psychology |
 | brahmanda | 1.0.0 | Galactic cosmology |
@@ -51,21 +51,21 @@ Full documentation for each crate: [docs/applications/libs/{crate}.md](../../app
 | nidhi | 1.1.0 | Sample playback |
 | pavan | 1.1.0 | Aerodynamics |
 | prakash | 1.2.0 | Optics/light |
-| pramana | 1.1.0 | Statistics |
+| pramana | 1.2.0 | Statistics |
 | prani | 1.1.0 | Creature vocals |
 | pravash | 1.2.0 | Fluid dynamics |
 | raasta | 1.0.0 | Pathfinding |
 | sangha | 1.0.0 | Sociology |
 | sankhya | 1.0.0 | Ancient math systems |
-| shabda | 1.0.0 | G2P conversion |
-| shabdakosh | 1.0.0 | Pronunciation dict |
+| shabda | 1.1.0 | G2P conversion |
+| shabdakosh | 1.1.0 | Pronunciation dict |
 | sharira | 1.0.0 | Physiology |
 | shravan | 1.0.1 | Audio codecs |
 | soorat | 1.0.0 | GPU rendering |
 | stiva | 1.0.0 | Container runtime |
-| svara | 1.1.0 | Vocal synthesis |
+| svara | 1.1.1 | Vocal synthesis |
 | szal | 1.0.1 | Workflow engine |
-| tanmatra | 1.1.0 | Atomic physics |
+| tanmatra | 1.2.1 | Atomic physics |
 | tara | 1.0.0 | Stellar astrophysics |
 | ushma | 1.3.0 | Thermodynamics |
 | vanaspati | 1.0.0 | Botany |

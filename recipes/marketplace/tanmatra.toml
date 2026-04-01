@@ -8,7 +8,7 @@
 
 [package]
 name = "tanmatra"
-version = "1.1.0"
+version = "1.2.1"
 description = "Tanmatra — atomic physics engine"
 license = "GPL-3.0"
 groups = ["library", "science", "rust"]
