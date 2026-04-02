@@ -1,8 +1,8 @@
 # Shared Crates — Registry & Status
 
-> **Status**: Active | **Last Updated**: 2026-03-31
+> **Status**: Active | **Last Updated**: 2026-04-01
 >
-> **76 crates** — 55 at v1.0+ stable, 20 pre-1.0, 1 internal
+> **77 crates** — 56 at v1.0+ stable (11 OS, 25 science, 10 media, 5 lang/nav, 5 physics), 20 pre-1.0, 1 internal
 >
 > v1.0+ crate documentation lives in [docs/applications/libs/](../../applications/libs/).
 > This file tracks **pre-1.0 crates**, **unpublished crates**, and the **stable crate index**.
@@ -10,67 +10,90 @@
 
 ---
 
-## v1.0+ Stable Index (55 crates)
+## v1.0+ Stable Index (56 crates)
 
 Full documentation for each crate: [docs/applications/libs/{crate}.md](../../applications/libs/)
+
+### OS & Infrastructure (11 crates)
+
+| Crate | Version | Domain |
+|-------|---------|--------|
+| agnosai | 1.0.2 | AI orchestration |
+| ai-hwaccel | 1.0.0 | GPU detection |
+| hoosh | 1.1.0 | LLM gateway |
+| ifran | 1.2.0 | LLM inference/training |
+| kavach | 1.0.1 | Sandbox execution |
+| majra | 1.0.3 | Queue/pub-sub |
+| sigil | 1.0.0 | Trust verification |
+| stiva | 1.0.0 | Container runtime |
+| szal | 1.0.1 | Workflow engine |
+| mabda | 1.0.0 | GPU foundation |
+| soorat | 1.0.0 | GPU rendering |
+
+### Science & Knowledge (25 crates)
 
 | Crate | Version | Domain |
 |-------|---------|--------|
 | abaco | 1.1.0 | Math engine |
-| agnosai | 1.0.2 | AI orchestration |
-| ai-hwaccel | 1.0.0 | GPU detection |
 | avatara | 1.0.1 | Divine archetype overlay |
 | badal | 1.1.0 | Weather/atmosphere |
 | bhava | 2.0.0 | Emotion/personality |
 | bijli | 1.1.0 | Electromagnetism |
 | bodh | 1.0.0 | Psychology |
 | brahmanda | 1.0.0 | Galactic cosmology |
-| dhvani | 1.0.0 | Audio engine |
 | dravya | 1.2.0 | Material science |
 | falak | 1.0.0 | Orbital mechanics |
-| garjan | 1.1.0 | Environmental sound |
-| ghurni | 1.0.0 | Mechanical sound |
-| goonj | 1.1.1 | Acoustics |
 | hisab | 1.4.0 | Higher math |
 | hisab-mimamsa | 1.0.0 | Theoretical physics |
-| hoosh | 1.1.0 | LLM gateway |
-| ifran | 1.2.0 | LLM inference/training |
 | impetus | 1.3.0 | Physics |
 | itihas | 1.0.1 | World history |
 | jantu | 1.1.0 | Ethology/behavior |
 | jivanu | 1.0.0 | Microbiology |
 | jyotish | 1.0.0 | Astronomical computation |
 | kana | 1.1.0 | Quantum mechanics |
-| kavach | 1.0.1 | Sandbox execution |
 | khanij | 1.1.0 | Geology/mineralogy |
 | kimiya | 1.1.1 | Chemistry |
-| mabda | 1.0.0 | GPU foundation |
-| majra | 1.0.3 | Queue/pub-sub |
 | mastishk | 1.0.0 | Neuroscience |
-| naad | 1.0.0 | Audio synthesis |
-| nidhi | 1.1.0 | Sample playback |
-| pavan | 1.1.0 | Aerodynamics |
-| prakash | 1.2.0 | Optics/light |
 | pramana | 1.2.0 | Statistics |
-| prani | 1.1.0 | Creature vocals |
-| pravash | 1.2.0 | Fluid dynamics |
-| raasta | 1.0.0 | Pathfinding |
 | sangha | 1.0.0 | Sociology |
 | sankhya | 1.0.0 | Ancient math systems |
-| shabda | 1.1.0 | G2P conversion |
-| shabdakosh | 1.1.0 | Pronunciation dict |
 | sharira | 1.0.0 | Physiology |
-| shravan | 1.0.1 | Audio codecs |
-| soorat | 1.0.0 | GPU rendering |
-| stiva | 1.0.0 | Container runtime |
-| svara | 1.1.1 | Vocal synthesis |
-| szal | 1.0.1 | Workflow engine |
-| tanmatra | 1.2.1 | Atomic physics |
-| tara | 1.0.0 | Stellar astrophysics |
-| ushma | 1.3.0 | Thermodynamics |
 | vanaspati | 1.0.0 | Botany |
+
+### Media & Audio (10 crates)
+
+| Crate | Version | Domain |
+|-------|---------|--------|
+| dhvani | 1.0.0 | Audio engine |
+| garjan | 1.1.0 | Environmental sound |
+| ghurni | 1.0.0 | Mechanical sound |
+| goonj | 1.1.1 | Acoustics |
+| naad | 1.0.0 | Audio synthesis |
+| nidhi | 1.1.0 | Sample playback |
+| prani | 1.1.0 | Creature vocals |
+| shravan | 1.0.1 | Audio codecs |
+| svara | 1.1.1 | Vocal synthesis |
+| shabda | 1.1.0 | G2P conversion |
+
+### Language, Navigation & Reference (5 crates)
+
+| Crate | Version | Domain |
+|-------|---------|--------|
+| raasta | 1.0.0 | Pathfinding |
+| shabdakosh | 1.1.0 | Pronunciation dict |
 | varna | 1.0.0 | Multilingual language engine |
 | vidya | 1.0.0 | Programming reference |
+| tara | 1.0.0 | Stellar astrophysics |
+
+### Physics & Engineering (5 crates)
+
+| Crate | Version | Domain |
+|-------|---------|--------|
+| pavan | 1.1.0 | Aerodynamics |
+| prakash | 1.2.0 | Optics/light |
+| pravash | 1.2.0 | Fluid dynamics |
+| tanmatra | 1.2.1 | Atomic physics |
+| ushma | 1.3.0 | Thermodynamics |
 
 ---
 
@@ -81,7 +104,7 @@ Full documentation for each crate: [docs/applications/libs/{crate}.md](../../app
 | Crate | Version | Description | Key Consumers |
 |-------|---------|-------------|---------------|
 | [agnosys](https://github.com/MacCracken/agnosys) | 0.29.3 | Kernel interface — Landlock, seccomp, syscall bindings | daimon, aethersafha |
-| [bote](https://github.com/MacCracken/bote) | 0.50.0 | MCP core — JSON-RPC 2.0, tool registry, dispatch | daimon, all MCP providers |
+| [bote](https://github.com/MacCracken/bote) | 0.90.0 | MCP core — JSON-RPC 2.0, tool registry, host, dispatch | daimon, all MCP providers |
 | [daimon](https://github.com/MacCracken/daimon) | 0.5.0 | Agent orchestrator — HTTP API, supervisor, IPC (port 8090) | all consumer apps |
 | [libro](https://github.com/MacCracken/libro) | 0.25.3 | Cryptographic audit chain — hash-linked event logging | daimon, aegis, stiva |
 | [nein](https://github.com/MacCracken/nein) | 0.24.3 | Programmatic nftables firewall — policy, NAT, port mapping | stiva, daimon, aegis |

@@ -2,10 +2,6 @@
 members = [
     "agnos-common",
     "agnos-sys",
-    "agent-runtime",
-    "ai-shell",
-    "llm-gateway",
-    "desktop-environment",
     "agnos-sudo",
     "examples",
 ]
@@ -48,8 +44,6 @@ tower-http = { version = "0.6", features = ["cors", "limit"] }
 agnos-common = { path = "agnos-common" }
 agnos-sys = { path = "agnos-sys" }
 agnosys = { path = "../../agnosys", features = ["full"] }
-desktop_environment = { path = "desktop-environment" }
-
 base64 = "0.22"
 rumqttc = "0.25"
 
