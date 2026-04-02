@@ -50,63 +50,26 @@ Phase 13A (self-hosting) ──→ Phase 16 (desktop recipes) ──→ Phase 13
 
 ---
 
-## Completed Phases (Summary)
-
-| Phase | Key Deliverables |
-|-------|------------------|
-| 0-4 | Foundation through Desktop |
-| 5-5.6 | Production hardening, all stubs eliminated |
-| 6-6.8 | Hardware acceleration, swarm, networking tools, RAG, RPC, OpenTelemetry |
-| 7 | Federation, migration, scheduling, ratings |
-| 8A-8M | Distribution, PQC, AI safety, formal verification, RL |
-| 9-9.5 | Cloud services, human-AI collaboration, OIDC, delegation, vector REST, marketplace |
-| **10** | **LFS base system** — 108 recipes (cross-toolchain, core utils, system libs, security, init, build tools, kernel) |
-| **11** | **Desktop & networking stack** — 88 recipes (graphics, audio, networking, desktop libs, AI/ML infra) |
-| **12** | **System integration** — argonaut init (117 tests), ark package manager (49 tests), agnova installer (91 tests), CI/CD |
-| **13B** | **Hardware support** — NVIDIA (proprietary + nouveau), AMD, Intel, WiFi, Bluetooth, Thunderbolt, printing |
-| **13D** | **Consumer app integration** — 11 apps with MCP tools + agnoshi intents |
-| **13E** | **CI, WebView, containers, Python** — browser-ark CI, marketplace-publish CI, Docker base images, Python runtime |
-| **14** | **Edge OS Profile** — Edge boot mode, fleet management, 29 edge recipes, Docker container (35.5 MB) |
-| **15A** | **Phylax core** — YARA engine (65 tests), entropy analysis, magic bytes, 5 API endpoints, 5 MCP tools, 5 agnoshi intents |
-| **16A** | **Desktop essentials** — 10 packaged tools: foot, helix, yazi, fuzzel, mako, zathura, imv, mpv, cliphist + ark CLI |
-| **16C** | **System configuration** — Vidhana v1 (system settings), display/audio panels. nm-applet/blueman/firewall in bazaar |
-
 ---
 
-## P0 — Pre-Release Blockers for 2026.3.30
+## P0 — Active Blockers
 
-Must be resolved before tagging 2026.3.30:
+### Recipe Audit (P0)
+- [ ] Full SHA verification across all 95+ marketplace recipes
+- [ ] Cross-check marketplace recipe versions against crates.io/GitHub release tags
+- [ ] Verify all recipe fields (license -only suffix, tags, build commands, min_agnos_version)
 
-### Browser sha256 Verification
-- [ ] **Firefox ESR 140.9.0** — download tarball, compute sha256, replace `"VERIFY"` in `recipes/browser/firefox.toml`
-- [ ] **Chromium 146.0.7680.169** — download tarball, compute sha256, replace `"VERIFY"` in `recipes/browser/chromium.toml`
-
-### Skipped Recipe Versions (404 on fetch — verify correct latest)
-- [ ] **pango** — reported 1.57.2, staying at 1.56.1
-- [ ] **libxkbcommon** — reported 1.13.1, staying at 1.11.0
-- [ ] **gtk3** — reported 3.24.52, staying at 3.24.43
-- [ ] **fontconfig** — reported 2.17.1, staying at 2.16.0
-- [ ] **NetworkManager** — reported 1.56.0, staying at 1.51.4
-- [ ] **binutils** — reported 2.46, staying at 2.45
-- [ ] **gettext** — reported 1.0, staying at 0.26
-- [ ] **grub** — reported 2.14, staying at 2.12
-
-### Deferred Major Jumps (evaluate compatibility)
+### Recipe Version Bumps (deferred — evaluate compatibility)
 - [ ] **nvidia-cuda-toolkit** 12.8.1 → 13.2.0
 - [ ] **rocm** 6.4.0 → 7.2.1
 - [ ] **nvidia-driver** 570.133.07 → 595.58.03
 - [ ] **ffmpeg** 7.1.1 → 8.1
 
-### Edge Recipes Sync (intentionally conservative or needs update?)
+### Edge Recipes Sync
 - [ ] **edge/openssl** 3.4.1 → base is 3.5.5
 - [ ] **edge/glibc** 2.40 → base is 2.42
 - [ ] **edge/bash** 5.2.37 → base is 5.3
 - [ ] **edge/iproute2** 6.12.0 → base is 6.19.0
-
-### Shared Crate & Docs Audit
-- [ ] `cargo search` all published crates — verify public versions match docs
-- [ ] Update `docs/applications/` and `docs/development/applications/` with current state
-- [ ] Cross-check marketplace recipes against actual GitHub release tags
 
 ---
 
@@ -114,11 +77,7 @@ Must be resolved before tagging 2026.3.30:
 
 **This is the single most important remaining work.** Without it, AGNOS is a Debian overlay.
 
-### Infrastructure (COMPLETE)
-
-All 8 infra items done: bootstrap-toolchain.sh, enter-chroot.sh, ark-build.sh, selfhost-validate.sh (+ Rust module, 38 tests), 116 base recipes, source tree in ISO, build-selfhosting-iso.sh.
-
-### Validation (Remaining — requires real hardware/QEMU execution)
+Infrastructure complete. Validation remaining — requires real hardware/QEMU execution.
 
 | # | Item | Status | Notes |
 |---|------|--------|-------|
@@ -139,10 +98,6 @@ All 8 infra items done: bootstrap-toolchain.sh, enter-chroot.sh, ark-build.sh, s
 
 **Strategy**: Package existing open-source tools via takumi recipes to provide a complete desktop experience *now*. AI-native replacements come later (see `docs/development/applications/roadmap.md`).
 
-### 16A — Essential Desktop Packages (COMPLETE)
-
-All 10 ship-with-ISO packages done: yazi (file manager), foot (terminal), helix (editor), zathura (PDF), imv (images), mpv (media), mako (notifications), cliphist (clipboard), fuzzel (launcher), ark CLI (archives).
-
 ### 16B — Input & Hardware Detection
 
 | # | Need | Approach | Status | Notes |
@@ -152,10 +107,6 @@ All 10 ship-with-ISO packages done: yazi (file manager), foot (terminal), helix 
 | 3 | On-screen keyboard | squeekboard or custom | Not started | Required for tablet/all-in-one without physical keyboard |
 | 4 | HiDPI / scaling | Wayland fractional scaling | Not started | Auto-detect display DPI, set appropriate scale factor |
 | 5 | Stylus / pen input | libinput tablet support | Not started | Pressure sensitivity, palm rejection |
-
-### 16C — System Configuration (COMPLETE)
-
-Vidhana v1 covers settings UI, display, and audio panels. Network/Bluetooth/firewall GUIs available via bazaar (`ark bazaar install nm-applet`, `blueman`, `firewall-config`).
 
 ### 16D — Desktop Polish
 
@@ -234,14 +185,12 @@ Upgrades to `ScreenCaptureManager` and `ScreenRecordingManager` to support real-
 
 **Subsystem**: **phylax** (Greek: guardian/watchman) — standalone crate (`MacCracken/phylax`)
 
-### 15A — Core Scanning Engine (5/7 COMPLETE)
-
-Done: YARA engine (65 tests), file content inspection, 5 scan API endpoints, 5 MCP tools, 5 agnoshi intents.
+### 15A — Core Scanning Engine (remaining)
 
 | # | Item | Status | Notes |
 |---|------|--------|-------|
 | 3 | Signature database (`.phylax-db`) | Not started | Signed, versioned threat definitions distributed via ark |
-| 4 | On-access scanning (fanotify) | Not started | Real-time filesystem monitoring via `agnos-sys` fanotify bindings |
+| 4 | On-access scanning (fanotify) | Not started | Real-time filesystem monitoring via agnosys fanotify bindings |
 
 ### 15B — AI-Powered Analysis
 
@@ -283,44 +232,27 @@ Done: YARA engine (65 tests), file content inspection, 5 scan API endpoints, 5 M
 
 ## Phase 13F — Hardware Testing Matrix
 
-| # | Target | Arch | Profile | Status | Notes |
-|---|--------|------|---------|--------|-------|
-| 1 | QEMU x86_64 | x86_64 | Desktop | Done | Verified 2026-03-13, live boot, all binaries functional |
-| 2 | Raspberry Pi 4 | aarch64 | Full | Ready | Binary ready; `build-iso-aarch64.sh` created; dd to microSD |
-| 3 | Intel NUC (bare metal) | x86_64 | Desktop | Not started | UEFI boot, GPU driver validation |
-| 4 | Older x86_64 (~2014 era) | x86_64 | CLI | Not started | Minimum viable hardware floor test |
-| 5 | Older desktop w/ touchscreen (~2014) | x86_64 | Desktop | Not started | Touch input + Wayland validation |
-| 6 | AWS DeepLens | x86_64 | Edge | Ready | Intel Atom x5-Z8350, 8GB RAM |
-| 7 | ARM64 SBC (QEMU) | aarch64 | Edge | Not started | QEMU aarch64 virt machine validation |
-| 8 | ESP32-S3 (MCU) | xtensa | Edge/IoT | Recipe done | MQTT agent, sensor telemetry, TinyML. Recipe: `recipes/edge/esp32-agent.toml`. Needs source repo + hardware flash test |
-| 9 | ESP32-C3 (MCU) | riscv32 | Edge/IoT | Recipe done | RISC-V core, lowest power, WiFi + Thread/Zigbee. Same recipe, secondary target |
-| 10 | Tiiny AI Pocket Lab | aarch64/riscv64? | Edge+AI | Not started | Pocket AI inference appliance. ~16-32GB LPDDR5X, custom SoC (possibly ARM or RISC-V with NPU). Runs 120B int4 @ 20 tok/s stock. Target: boot AGNOS Edge, run hoosh+murti, join fleet. See Phase 17D |
+| # | Target | Arch | Profile | Status |
+|---|--------|------|---------|--------|
+| 2 | Raspberry Pi 4 | aarch64 | Full | Ready — needs physical validation |
+| 3 | Intel NUC (bare metal) | x86_64 | Desktop | Not started |
+| 4 | Older x86_64 (~2014 era) | x86_64 | CLI | Not started |
+| 5 | Touchscreen desktop | x86_64 | Desktop | Not started |
+| 6 | AWS DeepLens | x86_64 | Edge | Ready |
+| 7 | ARM64 SBC (QEMU) | aarch64 | Edge | Not started |
+| 8 | ESP32-S3 | xtensa | Edge/IoT | Recipe done, needs source repo + flash test |
+| 9 | ESP32-C3 | riscv32 | Edge/IoT | Recipe done, secondary target |
+| 10 | Tiiny AI Pocket Lab | TBD | Edge+AI | Not started — see Phase 17D |
 
 ---
 
-## Phase 13G — Consumer App Validation
+## Phase 13G — Consumer App Bundle Tests
 
-| # | App | MCP Tools | Intents | Release | Bundle Test | Notes |
-|---|-----|-----------|---------|---------|-------------|-------|
-| 1 | SecureYeoman | 14 yeoman_* | 14 | Yes | Not started | Flagship (7 core + 7 bridge: tools, brain, tokens, events, swarm) |
-| 2 | Photis Nadi | 8 photis_* | 8 | Yes (2026.3.18-1) | Not started | Native binary (migrated from Flutter) |
-| 3 | BullShift | 7 bullshift_* | 7 | Yes | Not started | Trading |
-| 4 | Agnostic | 23 agnostic_* | 14 | Yes | Not started | Agent automation (Python/CrewAI) → native binary migration planned |
-| 5 | Delta | 7 delta_* | 7 | Yes | Not started | Code hosting |
-| 6 | Aequi | 7 aequi_* | 7 | Yes (2026.3.18) | Not started | Accounting |
-| 7 | Irfan | 7 irfan_* | 7 | Yes | Not started | LLM management (formerly Synapse) |
-| 8 | Shruti | 7 shruti_* | 7 | Yes | Not started | DAW |
-| 9 | Tazama | 7 tazama_* | 7 | Yes (2026.3.18-1) | Not started | Video editor |
-| 10 | Rasa | 9 rasa_* | 9 | Yes | Not started | Image editor |
-| 11 | Mneme | 7 mneme_* | 7 | Yes | Not started | Knowledge base |
-| 12 | Nazar | 5 nazar_* | — | Yes | Not started | System monitor |
-| 13 | Selah | 5 selah_* | — | Yes (MVP) | Not started | Screenshot, no AI integration yet |
-| 14 | Abaco | 5 abaco_* | — | Yes | Not started | Calculator |
-| 15 | Rahd | 5 rahd_* | — | Yes | Not started | Calendar |
-| 16 | Tarang | 8 tarang_* | 8 | Yes | Not started | Media framework (73 tests) |
-| 17 | Jalwa | 8 jalwa_* | 8 | Yes | Not started | Media player (110+ tests), built on tarang |
-| 18 | Vidhana | 5 vidhana_* | 5 | Yes (v1 2026.3.18) | Not started | System settings (76+ tests), egui GUI, NL control, port 8099 |
-| 19 | Sutra | 6 sutra_* | 6 | v1 | Not started | Infrastructure orchestrator (70 tests), 6 core modules, SSH transport, Tera templating, parallel execution, JSON output, MCP handlers, sutra-community (5 modules) |
+All 19 apps released. Bundle tests (`ark-bundle.sh`) not yet run.
+
+| App | Bundle Test |
+|-----|-------------|
+| SecureYeoman, Photis Nadi, BullShift, Agnostic, Delta, Aequi, Irfan, Shruti, Tazama, Rasa, Mneme, Nazar, Selah, Abaco, Rahd, Tarang, Jalwa, Vidhana, Sutra | Not started |
 
 ---
 
@@ -330,34 +262,21 @@ Done: YARA engine (65 tests), file content inspection, 5 scan API endpoints, 5 M
 
 ### SecureYeoman Shared Crate Adoption
 
-SY currently bundles its own implementations for media, inference, hardware detection, and agent networking. As the shared crate ecosystem matures, SY adopts them — reducing SY's codebase while improving capability.
-
-| # | Priority | Item | SY replaces | With crate | Status |
-|---|----------|------|-------------|------------|--------|
-| SY1 | High | Hardware detection | Internal GPU detection | `ai-hwaccel` | Ready — ai-hwaccel 0.20.3 published |
-| SY2 | High | Inference gateway | Internal LLM routing | `hoosh` (client) | Ready — hoosh 0.20.4 published |
-| SY3 | Medium | Sandbox session recording | Custom screen capture | `aethersafta` | Pending — aethersafta 0.20.3 publishes tomorrow |
-| SY4 | Medium | Media processing in tasks | Internal ffmpeg shelling | `tarang` | Ready — tarang 0.20.3 published |
-| SY5 | Medium | Image processing in tools | Internal sharp/jimp | `ranga` (via WASM or FFI) | Planned — ranga is Rust-native, needs WASM or FFI bridge for SY's Bun runtime |
-| SY6 | Low | Audio in agent workflows | None (not supported) | `dhvani` | Planned — enables audio analysis in SY agent tasks |
-| SY7 | Low | Agent-to-agent protocol | Custom A2A implementation | `sluice` (future) | Planned — SY's A2A patterns feed into sluice design, then SY adopts sluice |
+| # | Item | SY replaces | With crate | Status |
+|---|------|-------------|------------|--------|
+| SY5 | Image processing | Internal sharp/jimp | `ranga` (WASM/FFI bridge) | Planned |
+| SY6 | Audio in agent workflows | None | `dhvani` | Planned |
+| SY7 | Agent-to-agent protocol | Custom A2A | `sluice` (future) | Planned |
 
 ### SecureYeoman → Ecosystem Handoff
 
-Patterns SY has proven that should flow back into shared crates:
+Patterns to extract into shared crates:
 
-| Pattern | Current home | Target crate | What SY proved |
-|---------|-------------|--------------|----------------|
-| A2A authenticated handshake | SY agent protocol | sluice | Mutual auth, capability exchange, trust scoring between agents |
-| A2A tool delegation | SY MCP bridge | sluice | Remote tool invocation with sandboxed execution and result streaming |
-| A2A event streaming | SY SSE bus | sluice | Real-time event fan-out across nodes with backpressure |
-| Sandbox strength scoring | SY sandbox framework | daimon/aegis | Quantitative security scoring (0-100) for execution environments |
-| MCP tool discovery | SY 279-tool registry | daimon mela | Dynamic tool registration, capability querying, version negotiation |
-| Agent observability | SY dashboard | nazar | Real-time agent metrics, task timeline, resource usage visualization |
-
-### Agnostic Integration — COMPLETE
-
-*All 13 items resolved. See CHANGELOG `[2026.3.17]`.*
+| Pattern | Target crate |
+|---------|-------------|
+| A2A authenticated handshake | sluice |
+| A2A tool delegation | sluice |
+| A2A event streaming | sluice |
 
 ---
 
@@ -365,51 +284,30 @@ Patterns SY has proven that should flow back into shared crates:
 
 *Completed items archived in [sprint-history.md](sprint-history.md).*
 
-### Active — Build & Distribution
+### Active
 
 | # | Priority | Item | Notes |
 |---|----------|------|-------|
-| B1 | High | Selfhost pipeline builds all 176 packages | `selfhost-build.yml` updated, needs first full run |
+| B1 | High | Selfhost pipeline first full run | `selfhost-build.yml` ready, needs execution |
 | B2 | High | RPi4 hardware boot test | Firmware blobs added, needs physical validation |
-
-### Active — ESP32 Edge/IoT
-
-| # | Priority | Item | Notes |
-|---|----------|------|-------|
-| E1 | Medium | ESP32 agent source repo | Recipe created (`recipes/edge/esp32-agent.toml`), MQTT bridge done (E2). Pending: source repo (`MacCracken/esp32-agent`) + firmware code |
-
-### Active — Sandbox & Security
-
-| # | Priority | Item | Notes |
-|---|----------|------|-------|
-| S2 | Medium | SGX/SEV hardware validation | Backends implemented, need hardware to test |
-
-*Completed backlog items archived in [sprint-history.md](sprint-history.md).*
+| E1 | Medium | ESP32 agent source repo | Recipe done, MQTT bridge done. Pending: source repo + firmware |
+| S2 | Medium | SGX/SEV hardware validation | kavach backends implemented, need hardware |
+| R1 | P0 | Full recipe audit (95+ recipes) | SHA verification, version sync, field audit |
 
 ### Blocked — AgnosAI Integration
 
-**AgnosAI** — Rust-native agent orchestration engine (`/home/macro/Repos/agnosai`). Replaces Python/CrewAI with compiled Rust: real concurrency (tokio), <50MB binary, <2s boot, task DAGs with priority + preemption, native fleet distribution, sandboxed tool execution (WASM/seccomp/Landlock/OCI). 9 crates. Will be open-sourced as a CrewAI competitor.
+Blocked on AgnosAI v1 release + Agnostic integration testing.
 
-**Blocked on**: AgnosAI v1 release + Agnostic integration testing.
-
-| # | Priority | Item | Notes |
-|---|----------|------|-------|
-| A1 | High | AgnosAI marketplace recipe | `recipes/marketplace/agnosai.toml` — native-binary, `MacCracken/agnosai` |
-| A2 | High | AgnosAI MCP tools in daimon | Replace/extend `agnostic_*` tools with native AgnosAI bridge (crew management, task dispatch, fleet coordination) |
-| A3 | High | AgnosAI agnoshi intents | NL crew control via agnoshi → AgnosAI MCP tools |
-| A4 | Medium | Agnostic native binary migration | Agnostic swaps Python/CrewAI for AgnosAI engine. Recipe runtime: `python-container` → `native-binary` |
-| A5 | Medium | AgnosAI ↔ hoosh integration | AgnosAI's `agnosai-llm` crate routes through hoosh for unified token budgeting, provider selection, and cost tracking |
-| A6 | Low | AgnosAI fleet ↔ daimon edge | AgnosAI's `agnosai-fleet` coordinates with daimon edge module for distributed crew execution across AGNOS nodes |
+| # | Priority | Item |
+|---|----------|------|
+| A1 | High | AgnosAI marketplace recipe |
+| A2 | High | AgnosAI MCP tools in daimon |
+| A3 | High | AgnosAI agnoshi intents |
+| A4 | Medium | Agnostic native binary migration (Python→Rust) |
+| A5 | Medium | AgnosAI ↔ hoosh integration |
+| A6 | Low | AgnosAI fleet ↔ daimon edge |
 
 ---
-
-## sy-agnos — OS-Level Sandbox for SecureYeoman (COMPLETE)
-
-All 3 phases complete. SY strength 88. See [SY ADR 044](https://github.com/MacCracken/secureyeoman/blob/main/docs/adr/044-sy-agnos-sandbox.md) and CHANGELOG entries `[2026.3.18]` for details.
-
-- **Phase 1** — Immutable rootfs, baked seccomp + nftables (strength 80). 3 recipes + build script + Dockerfile
-- **Phase 2** — dm-verity tamper detection (strength 85)
-- **Phase 3** — TPM measured boot + `/v1/attestation` endpoint (strength 88)
 
 ---
 
@@ -419,28 +317,16 @@ All 3 phases complete. SY strength 88. See [SY ADR 044](https://github.com/MacCr
 
 **Critical path**: 13A → 16B-E (polish) → 13C → Beta
 
-**Criteria:**
-- [x] Phase 10 complete — 108 base system recipes, self-hosting toolchain
-- [x] Phase 11 complete — 88 desktop, networking & AI/ML recipes
-- [x] Phase 12 complete — Argonaut init, ark package manager, agnova installer
-- [x] Phase 13B complete — GPU drivers, WiFi, Bluetooth, Thunderbolt, printing
-- [x] Phase 13D complete — 19+ consumer apps integrated
-- [x] Phase 15A partial — Phylax core scanning engine
-- [x] AGNOS boots from ISO on bare metal (UEFI) and QEMU
 - [ ] **Self-hosting: can rebuild itself from source (13A)** ← PRIMARY BLOCKER
-- [x] **Desktop essentials packaged (16A)** — foot, helix, yazi, fuzzel, mako, zathura, imv, mpv, cliphist (9/9 + ark CLI)
 - [ ] Third-party security audit complete
 - [ ] Community testing program active
 
 ### v1.0 Release — Q2 2027
 
-**Criteria:**
 - [ ] Phase 13C complete — Documentation, community
 - [ ] Phase 16 complete — Full desktop experience
 - [ ] All consumer apps published to mela
-- [ ] AI-native desktop replacements for Priority 1 items (see `docs/development/applications/roadmap.md`)
-- [x] Python runtime management
-- [x] Enterprise features: SSO, audit logging, mTLS
+- [ ] AI-native desktop replacements for Priority 1 items
 - [ ] 6 months of beta testing with no critical bugs
 - [ ] Commercial support available
 
@@ -458,70 +344,14 @@ All 3 phases complete. SY strength 88. See [SY ADR 044](https://github.com/MacCr
 
 ---
 
-## Key Performance Indicators (KPIs)
-
-### Current Status (as of 2026-03-25)
+## Open KPIs
 
 | Metric | Target | Current | Status |
 |--------|--------|---------|--------|
-| Code Coverage | >80% | ~84.3% | Met |
-| Test Pass Rate | 100% | 100% | Met |
-| Total Tests | 400+ | 4800+ (standalone repos) | Met |
-| Agent Spawn Time | <500ms | ~300ms | Met |
-| Shell Response Time | <100ms | ~50ms | Met |
-| Memory Overhead | <2GB | ~1.2GB | Met |
 | Boot Time | <10s | N/A | Pending (Phase 13A) |
-| CIS Compliance | >80% | ~85% | Met |
-| Stub Implementations | 0 | 0 | Met |
-| Compiler Warnings | 0 | 0 | Met |
-| Base System Recipes | ~108 | 116 | Complete |
-| Desktop Recipes | ~62 | 71 | Complete (lean OS, optional in bazaar) |
-| Edge Recipes | ~30 | 31 | Complete |
-| Marketplace Recipes | 11 | 95+ | Complete (19+ released + shared crate recipes) |
-| Bazaar Community | — | 90 | Seed recipes across 8 categories |
-| MCP Tools | — | 151 | Complete (14 agnos + 5 aequi + 24 agnostic + 7 delta + 8 photis + 5 edge + 7 shruti + 9 tarang + 8 jalwa + 9 rasa + 7 mneme + 7 irfan + 7 bullshift + 7 yeoman + 5 phylax + others) |
-| Consumer Apps | 6 | 19+ | 19+ released (incl. Vidhana v1, Sutra v1, Abacus) |
-| Shared Crates | — | 77 library crates | 56 at v1.0+ stable, 20 pre-1.0, 1 internal |
-| Recipe Validation Errors | 0 | 0 | Complete |
-| Security Audit Rounds | 15 | 16 | Complete |
 | Self-Hosting | Yes | Pending | Phase 13A — THE blocker |
 
-### By Component (standalone repos)
-
-| Component | Tests | Notes |
-|-----------|-------|-------|
-| agnos-common | 307 | Shared types (workspace member) |
-| agnos-sys | 750+ | Kernel bindings (workspace member) |
-| sigil | 142 | Trust/crypto — 1.0.0 stable |
-| bote | 66 | MCP core — 0.90.0 |
-| t-ron | 195 | MCP security — 0.90.0 |
-| kavach | 121 | Sandbox — 2.0.0 |
-| hoosh | 860+ | LLM gateway — 1.1.0 |
-| agnoshi | 736 | AI shell — 0.1.0 |
-| aethersafha | 785 | Compositor — 0.1.0 |
-| argonaut | 148 | Init system — 0.1.0 |
-| agnova | 104 | Installer — 0.1.0 |
-| mela | 204 | Marketplace — 0.1.0 |
-| seema | 135 | Edge fleet — 0.1.0 |
-| ark | 71 | Package manager — 0.1.0 |
-| nous | 57 | Resolver — 0.1.0 |
-| takumi | 57 | Build system — 0.1.0 |
-| aegis | 55 | Security daemon — 0.1.0 |
-| samay | 53 | Scheduler — 0.1.0 |
-
 ---
-
-## Architecture Decision Records
-
-| # | ADR | Status |
-|---|-----|--------|
-| 001 | Foundation and Architecture | Accepted |
-| 002 | Agent Runtime and Lifecycle | Accepted |
-| 003 | Security and Trust | Accepted |
-| 004 | Distribution, Build, and Installation | Accepted |
-| 005 | Desktop Environment | Accepted |
-| 006 | Observability and Operations | Accepted |
-| 007 | Scale, Collaboration, and Future | Accepted |
 
 ---
 
@@ -976,30 +806,9 @@ The bhava personality engine + AGNOS science crate ecosystem demonstrates a sing
 
 **Key insight**: "As above, so below; as within, so without" is not metaphysics — it's a provable property of multi-scale modular systems where every module's identity element converges to the same fixed point.
 
-### Missing Science Crates — P1 Scaffold (required for paper completeness)
+### Personality & Archetype Crates
 
-These crates fill gaps in the paper's scale hierarchy. Each needs scaffolding to at least
-0.1.0 with core types and bhava bridge functions. OS work takes priority — these scaffold
-when cycles allow, but must exist before the paper draft.
-
-| Crate | Domain | Paper Scale | Status |
-|-------|--------|-------------|--------|
-| ~~**TBD**~~ **mastishk** | Neuroscience | 0–1 | **SCAFFOLDED** — 0.1.0, 42 tests. 6 modules: neurotransmitter, circuit, sleep, hpa, dmn, chronobiology. Bridges to bodh (cognition), sharira (body), rasayan (biochemistry). Unblocks bhava v1.8. |
-| ~~**TBD**~~ | ~~Genetics / Genomics~~ | ~~0~~ | **RESOLVED** — jantu extension. jantu already has `genetics` module for behavioral traits; jivanu has microbial genetics. No separate crate needed. |
-| ~~**hisab-mimamsa**~~ | ~~Cosmology + GR + QFT~~ | ~~0–7~~ | ~~**SCAFFOLDED** — 0.1.0, 33 tests, relativity + cosmology modules live. QFT + unified planned for v0.2-0.3.~~ |
-| ~~**TBD**~~ **rasayan** | Biochemistry | 0–1 | **SCAFFOLDED** — 0.1.0, 48 tests. 6 modules: enzyme, metabolism, signal, protein, membrane, energy. Complements mastishk (neurotransmitter synthesis depends on metabolic precursors). |
-| ~~**TBD**~~ | ~~Chronobiology~~ | ~~0–3~~ | **RESOLVED** — absorbed into mastishk (`chronobiology` module: melatonin, cortisol CAR, SCN pacemaker, core body temperature). bhava already owns behavioral circadian/rhythm. |
-| ~~**TBD**~~ | ~~Ecology / Ecosystems~~ | ~~2–3~~ | **RESOLVED** — vanaspati already has comprehensive `ecosystem` module (Lotka-Volterra, Shannon diversity, NPP) plus 22 ecology-focused modules. |
-
-### Personality & Archetype Crates — bhava ecosystem
-
-| Crate | Domain | Status |
-|-------|--------|--------|
-| **avatara** | Divine archetype overlay — mythological personality templates for bhava's zodiac manifestation engine. Maps deity archetypes across Hindu, Greek, Norse, Egyptian, Shinto, Celtic pantheons to bhava trait profiles. Post-v2.0 scope. | **Scaffolding in progress** — bhava agent building with full context of zodiac/consciousness model. |
-
-**Sequencing**: OS priorities (ISO build, agnostik hardening, extraction) come first. These
-scaffold in parallel when there's bandwidth. bodh and sangha hitting 1.0
-demonstrates the pattern — P(-1) harden, bridge to bhava, publish.
+avatara (1.0.1) — divine archetype overlay. Published. Bridges to bhava for zodiac manifestation engine.
 
 ### Future Shared Crates — Demand-Gated
 
