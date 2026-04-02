@@ -1,0 +1,51 @@
+# Sigil — System-wide trust verification for AGNOS
+# Ed25519 signing, SHA-256/512 integrity, publisher keyring, revocation,
+# key rotation, batch verification, caching, key pinning, trust delegation,
+# cross-signing, CRL distribution, audit logging.
+#
+# Name: Sigil (Latin: seal)
+# Lib: sigil = "1.0.0" in Cargo.toml
+#
+# Status: Released — v1.0.0 stable. Single crypto/trust boundary for AGNOS.
+
+[package]
+name = "sigil"
+version = "1.0.0"
+description = "Sigil — system-wide trust verification (signing, integrity, revocation, delegation)"
+license = "GPL-3.0-only"
+groups = ["library", "security", "crypto", "rust"]
+release = 1
+arch = "any"
+
+[source]
+github_release = "MacCracken/sigil"
+release_asset = "source"
+
+[depends]
+runtime = []
+build = ["rust"]
+
+[marketplace]
+category = "library"
+runtime = "rust-crate"
+publisher = "AGNOS"
+tags = ["trust", "verification", "signing", "integrity", "revocation", "ed25519", "security", "crypto", "rust"]
+min_agnos_version = "2026.3.24"
+
+[marketplace.sandbox]
+seccomp_mode = "basic"
+network_access = false
+
+[build]
+make = "cargo build --release"
+check = "cargo test --all-features"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+mkdir -p $PKG/usr/lib/sigil
+cp -r src $PKG/usr/lib/sigil/
+cp Cargo.toml $PKG/usr/lib/sigil/
+cp VERSION $PKG/usr/lib/sigil/
+"""

@@ -1,19 +1,23 @@
-# Bote — MCP core service (JSON-RPC 2.0, tool registry, dispatch)
+# Bote — MCP core service for AGNOS
+# JSON-RPC 2.0 protocol, tool registry, host registry, schema validation,
+# dispatch, streaming, transport (HTTP/WS/Unix/stdio), audit, events,
+# bridge, discovery, sandbox.
 #
-# Lib: bote = "0.21.3" in Cargo.toml
-# Status: Scaffolded — v0.21.3.
+# Name: Bote (German: messenger)
+# Lib: bote = "0.90.0" in Cargo.toml
+#
+# Status: Released — v0.90.0 (pre-1.0 hardening).
 
 [package]
 name = "bote"
 version = "0.90.0"
-description = "Bote — MCP core service (JSON-RPC 2.0, tool registry, dispatch)"
-license = "AGPL-3.0"
-groups = ["library", "rust"]
+description = "Bote — MCP core service (JSON-RPC 2.0, tool registry, host, dispatch, transport)"
+license = "AGPL-3.0-only"
+groups = ["library", "mcp", "rust"]
 release = 1
 arch = "any"
 
 [source]
-crates_io = "bote"
 github_release = "MacCracken/bote"
 release_asset = "source"
 
@@ -25,8 +29,8 @@ build = ["rust"]
 category = "library"
 runtime = "rust-crate"
 publisher = "AGNOS"
-tags = ["mcp", "json-rpc", "tools", "protocol", "agent", "rust"]
-min_agnos_version = "2026.3.21"
+tags = ["mcp", "json-rpc", "tools", "protocol", "agent", "host", "transport", "streaming", "rust"]
+min_agnos_version = "2026.3.24"
 
 [marketplace.sandbox]
 seccomp_mode = "basic"
@@ -34,7 +38,7 @@ network_access = false
 
 [build]
 make = "cargo build --release"
-check = "cargo test"
+check = "cargo test --all-features"
 
 [security]
 hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]

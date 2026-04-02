@@ -309,53 +309,53 @@ Visual fine-tuning and dataset management. GUI on ifran/finetune APIs.
 
 ---
 
-## Monolith Extraction Progress (2026-04-01)
+## Monolith Extraction — COMPLETE (2026-04-01)
 
-### Completed Extractions
+The monolith is fully dismantled. `userland/agent-runtime/`, `userland/ai-shell/`, `userland/llm-gateway/`, and `userland/desktop-environment/` have been removed from the workspace. All code lives in standalone repos.
 
-| Crate | From | Status | Notes |
-|-------|------|--------|-------|
-| **aethersafha** | desktop-environment/ | Standalone repo | 785 tests, AGPL-3.0-only |
-| **agnoshi** | ai-shell/ | Standalone repo | 736 tests, GPL-3.0-only |
-| **sigil** | agent-runtime/sigil/ | Standalone repo | 88 tests, absorbed integrity.rs + trust.rs |
+### Standalone Repos (extracted this session)
 
-### Completed Absorptions
+| Crate | From | Tests |
+|-------|------|-------|
+| **aethersafha** | desktop-environment/ | 785 |
+| **agnoshi** | ai-shell/ | 736 |
+| **sigil** 1.0.0 | agent-runtime/sigil/ + integrity + trust | 142 |
+| **ark** | agent-runtime/ark/ | 71 |
+| **nous** | agent-runtime/nous.rs | 57 |
+| **takumi** | agent-runtime/takumi.rs | 57 |
+| **argonaut** | agent-runtime/argonaut/ | 148 |
+| **aegis** | agent-runtime/aegis.rs | 55 |
+| **agnova** | agent-runtime/agnova/ | 104 |
+| **mela** | agent-runtime/marketplace/ | 204 |
+| **seema** | agent-runtime/edge/ | 135 |
+| **samay** | agent-runtime/scheduler.rs | 53 |
 
-| Target | Absorbed | Lines | Effect |
-|--------|----------|-------|--------|
-| **bote** | MCP hosting types | ~350 | New `host` module (feature-gated) |
-| **kavach** 2.0.0 | sandbox_mod/ | ~6,200 | New runtime/, backends, seccomp modules |
-| **t-ron** | safety/ | ~2,095 | New `safety` module (injection, circuit breaker, policy engine) |
-| **daimon** | — | — | Updated to use bote::host re-exports |
+### Absorptions (existing crates grew)
+
+| Target | Absorbed | Version |
+|--------|----------|---------|
+| **bote** | MCP hosting types + registry | 0.90.0 |
+| **kavach** | sandbox_mod runtime modules | 2.0.0 |
+| **t-ron** | safety module (injection, circuit breaker, policy) | 0.90.0 |
 
 ### Already Standalone (prior work)
 
-hoosh (1.1.0), kavach (2.0.0), majra, libro, bote, szal, agnosai, ai-hwaccel, agnosys, phylax, t-ron
+hoosh (1.1.0), kavach (2.0.0), majra, libro, bote (0.90.0), szal, agnosai, ai-hwaccel, agnosys, phylax, t-ron, daimon
 
-### Crypto/Trust Architecture Decision
+### Crypto/Trust Architecture
 
-**Sigil owns all AGNOS crypto and trust.** The planned `pqc.rs` extraction becomes a `pqc` feature on sigil rather than a separate crate. Sigil is the single crypto boundary:
+**Sigil owns all AGNOS crypto and trust** (1.0.0 stable). PQC is a post-v1.0 feature on sigil — no separate crate. AGNOS sigil = OS-level trust. SY sy-crypto = agent-side session crypto.
 
-- **Current**: Ed25519 signing, SHA-256 integrity, publisher keyring, revocation lists
-- **Future `pqc` feature**: ML-KEM (key exchange), ML-DSA (signatures), hybrid classical+PQC, channel encryption
-- **Boundary**: AGNOS sigil = OS-level trust. SY sy-crypto = agent-side session crypto. Shared primitives via agnostik types.
+### Remaining workspace members
 
-This eliminates the Phase 3.5 "crypto boundary" blocker — the boundary is sigil.
+| Directory | Crate | Status |
+|-----------|-------|--------|
+| `agnos-common/` | agnostik | Internal path dep, not on crates.io |
+| `agnos-sys/` | agnosys | Internal path dep (standalone repo exists) |
+| `agnos-sudo/` | shakti | Small binary, low priority extraction |
+| `examples/` | — | Workspace examples |
 
-### Remaining Extractions
-
-| Phase | Module | Lines | Status |
-|-------|--------|-------|--------|
-| 2 | ark + nous | 4,233 | Not started |
-| 2 | takumi | 1,676 | Not started |
-| 3 | argonaut | 3,959 | Not started |
-| 3 | aegis | 1,699 | Not started |
-| 3 | agnova | 3,656 | Not started |
-| — | mela (marketplace) | 6,208 | Not started |
-| — | edge (fleet) | 4,605 | Not started |
-| — | scheduler | 1,479 | Not started |
-
-### Blocked
+### Open item
 
 - kavach `sandbox_core.rs` — needs agnosys to export firewall types (netns::FirewallRule, TrafficDirection, etc.)
 
@@ -387,7 +387,7 @@ Library crates are documented in [docs/applications/libs/](../../applications/li
 - Priority 1 items before beta
 - Priority 2-3 strengthen daily-driver story
 - Priority 4-6 are post-v1.0 or community-contributed
-- Shared crate registry: [shared-crates.md](shared-crates.md) — 76 crates (55 stable)
+- Shared crate registry: [shared-crates.md](shared-crates.md) — 77 crates (56 stable)
 - Orchestration platform: [k8s-roadmap.md](../k8s-roadmap.md)
 
 ---

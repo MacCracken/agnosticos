@@ -109,7 +109,7 @@ Full documentation for each crate: [docs/applications/libs/{crate}.md](../../app
 | [libro](https://github.com/MacCracken/libro) | 0.25.3 | Cryptographic audit chain — hash-linked event logging | daimon, aegis, stiva |
 | [nein](https://github.com/MacCracken/nein) | 0.24.3 | Programmatic nftables firewall — policy, NAT, port mapping | stiva, daimon, aegis |
 | [phylax](https://github.com/MacCracken/phylax) | 0.22.3 | Threat detection — YARA, entropy, magic bytes, ML | daimon, aegis |
-| [t-ron](https://github.com/MacCracken/t-ron) | 0.26.3 | MCP security — tool call auditing, rate limiting, injection detection | daimon, bote |
+| [t-ron](https://github.com/MacCracken/t-ron) | 0.90.0 | MCP security — tool call auditing, rate limiting, injection detection | daimon, bote |
 | [yukti](https://github.com/MacCracken/yukti) | 0.25.3 | Device abstraction — USB, block devices, udev hotplug | daimon, aethersafha |
 
 ### Graphics & Media
