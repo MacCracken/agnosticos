@@ -73,7 +73,7 @@ Phase 13A (self-hosting) ──→ Phase 16 (desktop recipes) ──→ Phase 13
 
 ---
 
-## Phase 13A — Self-Hosting Validation (BETA BLOCKER)
+## Phase 13A — OS Independence Validation (BETA BLOCKER)
 
 **This is the single most important remaining work.** Without it, AGNOS is a Debian overlay.
 
@@ -288,7 +288,7 @@ Patterns to extract into shared crates:
 
 | # | Priority | Item | Notes |
 |---|----------|------|-------|
-| B1 | High | Selfhost pipeline first full run | `selfhost-build.yml` ready, needs execution |
+| B1 | High | Self-hosted CI runners on AGNOS | Replace Arch (x86_64) and Ubuntu (aarch64) runner OS with AGNOS itself — AGNOS builds AGNOS |
 | B2 | High | RPi4 hardware boot test | Firmware blobs added, needs physical validation |
 | E1 | Medium | ESP32 agent source repo | Recipe done, MQTT bridge done. Pending: source repo + firmware |
 | S2 | Medium | SGX/SEV hardware validation | kavach backends implemented, need hardware |
@@ -317,7 +317,7 @@ Blocked on AgnosAI v1 release + Agnostic integration testing.
 
 **Critical path**: 13A → 16B-E (polish) → 13C → Beta
 
-- [ ] **Self-hosting: can rebuild itself from source (13A)** ← PRIMARY BLOCKER
+- [ ] **OS Independence: AGNOS rebuilds itself from source without host distro (13A)** ← PRIMARY BLOCKER
 - [ ] Third-party security audit complete
 - [ ] Community testing program active
 
@@ -349,7 +349,7 @@ Blocked on AgnosAI v1 release + Agnostic integration testing.
 | Metric | Target | Current | Status |
 |--------|--------|---------|--------|
 | Boot Time | <10s | N/A | Pending (Phase 13A) |
-| Self-Hosting | Yes | Pending | Phase 13A — THE blocker |
+| OS Independence | Yes | Pending | Phase 13A — rebuild from source without host distro |
 
 ---
 
@@ -770,7 +770,7 @@ The kernel is a parallel research track. AGNOS ships on Linux until the Rust ker
 
 ### Priority Contribution Areas
 
-1. **Self-hosting on-target (Phase 13A)** — Build AGNOS on AGNOS — THE beta blocker
+1. **OS Independence (Phase 13A)** — AGNOS rebuilds itself from source without host distro — THE beta blocker
 2. **Desktop polish (Phase 16B-E)** — Touch input, HiDPI, compositor config, themes/icons
 3. **Documentation (Phase 13C)** — Video tutorials, support portal
 4. **Community testing** — Beta tester enrollment + bug tracker setup
