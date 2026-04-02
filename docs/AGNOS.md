@@ -13,6 +13,7 @@
 | **Initial release** | 2026-02-11 (first commit) |
 | **First ISO build** | 2026-03-22 |
 | **Repository** | `MacCracken/agnosticos` |
+| **Website** | [agnosticos.org](https://agnosticos.org) |
 | **Status** | Pre-Beta |
 
 ---
@@ -68,6 +69,8 @@ An AGI system that cannot prove its own integrity cannot be trusted with autonom
 | **2026-03-25** | Massive session: process refinement, SY migration planning, NPO groundwork |
 | **2026-03-28** | AgnosAI benchmarks (4/5 wins vs CrewAI, 2000-4500x faster cached). Release `2026.3.29` |
 | **2026-03-31** | **First fully clean release** (`2026.3.31`). All 17 artifacts built successfully — x86_64 ISO (desktop + minimal + edge), aarch64 SD card images (desktop + minimal + edge), userland tarballs, multi-arch Docker container. First release with zero build failures across all architectures. 80 shared crates (45 at v1.0+). 3 new science crates scaffolded (mastishk, rasayan, varna). 336 commits, 19 tagged releases |
+| **2026-04-01** | **Monolith dismantled**. agent-runtime, ai-shell, llm-gateway, desktop-environment removed from workspace. 12 standalone repos extracted (aethersafha, agnoshi, sigil, ark, nous, takumi, argonaut, aegis, agnova, mela, seema, samay). 3 crate absorptions (bote←host, kavach←sandbox, t-ron←safety). Named subsystems: edge→seema, scheduler→samay. Crypto boundary resolved: sigil owns all AGNOS trust/crypto |
+| **2026-04-02** | **Sigil 1.0.0** — first trust crate stable. Bote 0.91.0 — MCP 2025-11-25 spec compliance (tool annotations, audio, sessions, OAuth 2.1, streamable HTTP). Libro 0.90.0 — BLAKE3 support. T-ron 0.90.0 — correlation detection. **agnosticos.org** domain registered, coming-soon site deployed. 77 shared crates (56 at v1.0+). 95+ marketplace recipes |
 
 ### Development Pace
 
@@ -118,8 +121,10 @@ AGNOS extracts reusable infrastructure into standalone crates published on crate
 | **hoosh** | LLM inference client (15 providers, token budgets) |
 | **majra** | Distributed queue and multiplex engine |
 | **kavach** | Sandbox execution framework (8 backends, quantitative scoring) |
-| **libro** | Cryptographic audit chain (SHA-256 hash-linked logging) |
-| **bote** | MCP core service (JSON-RPC 2.0, tool registry) |
+| **libro** | Cryptographic audit chain (SHA-256/BLAKE3 hash-linked logging) |
+| **sigil** | Trust verification (Ed25519 signing, integrity, revocation, delegation) |
+| **bote** | MCP core service (JSON-RPC 2.0, tool registry, MCP 2025-11-25 compliant) |
+| **t-ron** | MCP security monitor (auditing, rate limiting, injection detection, correlation) |
 | **szal** | Workflow engine (branching, retry, rollback) |
 | **abaco** | Math library (expression parsing, unit conversion) |
 
@@ -157,7 +162,7 @@ AGNOS provides 151+ built-in MCP (Model Context Protocol) tools enabling AI agen
 - **System packages**: `.ark` format (signed tarballs + metadata), built via takumi recipes
 - **Marketplace apps**: `.agnos-agent` format (manifest.json + sandbox.json + binaries)
 - **Base system**: ~174 packages built from source in dependency order
-- **Recipe count**: 298 total (113 base + 71 desktop + 25 AI + 9 network + 8 browser + 34 marketplace + 4 Python + 3 database + 31 edge) plus 90 in community bazaar
+- **Recipe count**: 362 total (116 base + 71 desktop + 25 AI + 9 network + 8 browser + 95 marketplace + 4 Python + 3 database + 31 edge) plus 90 in community bazaar
 
 ### CI/CD
 
@@ -204,19 +209,16 @@ Examples: **hoosh** (Persian: intelligence), **daimon** (Greek: guiding spirit),
 
 ---
 
-## Technical Statistics (as of 2026-03-22)
+## Technical Statistics (as of 2026-04-02)
 
 | Metric | Value |
 |--------|-------|
-| Total commits | 266 |
-| Tagged releases | 17 |
-| Tests passing | 10,800+ |
-| Code coverage | ~84.3% (tarpaulin) |
-| Compiler warnings | 0 |
-| Shared crates on crates.io | 13 |
+| Shared crates | 77 (56 at v1.0+ stable) |
+| Standalone repos | 23 OS subsystems |
+| Marketplace recipes | 362 OS + 90 community |
+| Consumer applications | 19+ |
 | MCP tools | 151+ built-in |
-| Marketplace recipes | 298 (+90 community) |
-| Consumer applications | 18+ |
+| Compiler warnings | 0 |
 | Kernel | Linux 6.6 LTS |
 | Rust MSRV | 1.89 |
 
@@ -234,4 +236,4 @@ Examples: **hoosh** (Persian: intelligence), **daimon** (Greek: guiding spirit),
 
 ---
 
-*Last Updated: 2026-03-22*
+*Last Updated: 2026-04-02*

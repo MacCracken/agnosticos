@@ -1,19 +1,23 @@
-# Libro — Cryptographic audit chain (SHA-256 hash-linked, tamper-proof)
+# Libro — Cryptographic audit chain for AGNOS
+# Hash-linked tamper-proof event logging with SHA-256 and BLAKE3.
+# Extensible hash algorithm support for future additions.
+# Only local-first audit chain crate on crates.io.
 #
-# Lib: libro = "0.21.3" in Cargo.toml
-# Status: Scaffolded — v0.21.3.
+# Name: Libro (Italian/Spanish: book/record)
+# Lib: libro = "0.90.0" in Cargo.toml
+#
+# Status: Released — v0.90.0 (pre-1.0 hardening).
 
 [package]
 name = "libro"
-version = "0.25.3"
-description = "Libro — Cryptographic audit chain (SHA-256 hash-linked, tamper-proof)"
-license = "AGPL-3.0"
-groups = ["library", "rust"]
+version = "0.90.0"
+description = "Libro — cryptographic audit chain (SHA-256, BLAKE3, extensible hash types)"
+license = "GPL-3.0-only"
+groups = ["library", "security", "audit", "rust"]
 release = 1
 arch = "any"
 
 [source]
-crates_io = "libro"
 github_release = "MacCracken/libro"
 release_asset = "source"
 
@@ -25,8 +29,8 @@ build = ["rust"]
 category = "library"
 runtime = "rust-crate"
 publisher = "AGNOS"
-tags = ["audit", "logging", "cryptographic", "chain", "tamper-proof", "rust"]
-min_agnos_version = "2026.3.21"
+tags = ["audit", "logging", "cryptographic", "chain", "tamper-proof", "sha256", "blake3", "hash", "rust"]
+min_agnos_version = "2026.3.24"
 
 [marketplace.sandbox]
 seccomp_mode = "basic"
@@ -34,7 +38,7 @@ network_access = false
 
 [build]
 make = "cargo build --release"
-check = "cargo test"
+check = "cargo test --all-features"
 
 [security]
 hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]

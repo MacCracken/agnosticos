@@ -5,6 +5,60 @@ All notable changes to AGNOS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2026.4.2] - 2026-04-02
+
+### Changed — Monolith Dismantled
+
+The userland monolith is fully dismantled. `agent-runtime/`, `ai-shell/`, `llm-gateway/`, and `desktop-environment/` have been removed from the workspace. All code lives in standalone repos.
+
+**Workspace now**: agnos-common, agnos-sys, agnos-sudo, examples.
+
+### Added — Standalone Repo Extractions (12 new repos)
+
+- **aethersafha** (0.1.0) — Wayland compositor, extracted from desktop-environment/ (785 tests)
+- **agnoshi** (0.1.0) — AI shell, extracted from ai-shell/ (736 tests)
+- **sigil** (1.0.0) — Trust verification & crypto, extracted from agent-runtime/sigil/ + integrity.rs + trust.rs (142 tests). Single crypto/trust boundary for AGNOS. PQC planned as future feature.
+- **ark** (0.1.0) — Package manager, extracted from agent-runtime/ark/ (71 tests)
+- **nous** (0.1.0) — Package resolver, extracted from agent-runtime/nous.rs (57 tests)
+- **takumi** (0.1.0) — Build system, extracted from agent-runtime/takumi.rs (57 tests)
+- **argonaut** (0.1.0) — Init system, extracted from agent-runtime/argonaut/ (148 tests)
+- **aegis** (0.1.0) — Security daemon, extracted from agent-runtime/aegis.rs (55 tests)
+- **agnova** (0.1.0) — OS installer, extracted from agent-runtime/agnova/ (104 tests)
+- **mela** (0.1.0) — App marketplace, extracted from agent-runtime/marketplace/ (204 tests)
+- **seema** (0.1.0) — Edge fleet management (renamed from "edge"), extracted from agent-runtime/edge/ (135 tests)
+- **samay** (0.1.0) — Task scheduler (renamed from "scheduler"), extracted from agent-runtime/scheduler.rs (53 tests)
+
+### Added — Crate Absorptions
+
+- **bote** (0.90.0 → 0.91.0) — Absorbed MCP hosting types from agent-runtime/mcp_server/. New `host` module with McpHostRegistry, SSRF validation. MCP 2025-11-25 spec compliance: tool annotations, audio content, session management, origin validation, streamable HTTP transport, OAuth 2.1 auth module. 305 tests.
+- **kavach** (1.0.1 → 2.0.0) — Absorbed sandbox_mod/ runtime modules (monitor, credential proxy, egress gate, v2, wasm runtime, backends, seccomp profiles). License fixed to GPL-3.0-only. 121 tests.
+- **t-ron** (0.26.3 → 0.90.0) — Absorbed safety/ module (injection detection, circuit breaker, policy engine). License fixed to GPL-3.0-only. 195 tests.
+- **libro** (0.25.3 → 0.90.0) — Added BLAKE3 hash support, extensible hash algorithm types.
+
+### Added — Infrastructure
+
+- **agnosticos.org** — Domain registered, static coming-soon site deployed via GitHub Pages (repo: agnosticos-org)
+- **34 new marketplace recipes** for all stable v1.0+ crates that were missing them (95+ total marketplace recipes)
+- **sigil marketplace recipe** — new (1.0.0)
+
+### Changed — Shared Crates
+
+- 77 total crates (56 at v1.0+ stable, 20 pre-1.0, 1 internal)
+- Stable index reorganized: OS & Infrastructure (11), Science & Knowledge (25), Media & Audio (10), Language/Nav/Reference (5), Physics & Engineering (5)
+- 6 version bumps synced from crates.io: bhava 2.0.0, pramana 1.2.0, shabda 1.1.0, shabdakosh 1.1.0, svara 1.1.1, tanmatra 1.2.1
+
+### Changed — Documentation
+
+- OS subsystem docs split: `docs/os/` (v1.0+ stable) and `docs/development/os/` (pre-1.0)
+- Development roadmap cleaned: completed items removed, open items only
+- Named subsystems: edge → **seema** (Hindi: boundary), scheduler → **samay** (Hindi: time)
+- Crypto boundary resolved: sigil owns all AGNOS trust/crypto, no separate pqc crate
+- "Self-hosting" renamed to "OS Independence" for clarity vs "Self-hosted CI runners"
+
+### Changed — Dependencies
+
+- Cargo.lock updated (25 compatible dep bumps: ICU 2.2.0, wasm-bindgen 0.2.117, libc 0.2.184, zerovec family)
+
 ## [2026.3.28] - 2026-03-28
 
 ### Changed — Core Crate 0.5.0 Migration
