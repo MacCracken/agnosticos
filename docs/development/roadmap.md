@@ -1,14 +1,12 @@
 # AGNOS Development Roadmap
 
-> **Status**: Pre-Beta | **Last Updated**: 2026-03-29
-> **Userland complete** — 11000+ tests (3900+ agent-runtime, 1554 ai-shell), ~84% coverage, 0 warnings
-> **Recipes**: 116 base + 71 desktop + 25 AI + 9 network + 8 browser + 59 marketplace + 4 python + 3 database + 31 edge + 3 sandbox = 330 OS (+ 90 bazaar community)
+> **Status**: Pre-Beta | **Last Updated**: 2026-04-02
+> **Monolith dismantled** — all subsystems extracted to standalone repos. Workspace: agnos-common, agnos-sys, agnos-sudo, examples.
+> **Recipes**: 116 base + 71 desktop + 25 AI + 9 network + 8 browser + 95 marketplace + 4 python + 3 database + 31 edge = 362 OS (+ 90 bazaar community)
 > **Build order**: 178 packages in `recipes/build-order.txt` (base + desktop, dependency-ordered)
 > **Phases 10–14 complete** | **Phase 15A**: Core scanning done (phylax) | **Phase 16A**: Desktop essentials done | **Phase 17**: Local inference optimization (planned) | **Audit**: 16 rounds
-> **MCP Tools**: 151 built-in + external registration
+> **Shared Crates**: 77 library crates — 56 at v1.0+ stable, 20 pre-1.0, 1 internal. Key milestones: sigil 1.0.0, kavach 2.0.0, bote 0.90.0, t-ron 0.90.0
 > **Consumer Projects**: 19+ released (including Vidhana v1, Sutra v1, Abacus)
-> **Shared Crates**: 63 library crates — 34 at v1.0+ stable, 29 pre-1.0
-> **Sandbox**: 7 backends (Native, gVisor, Firecracker, WASM, SGX, SEV, Noop) + credential proxy + externalization gate
 
 ---
 
@@ -234,7 +232,7 @@ Upgrades to `ScreenCaptureManager` and `ScreenRecordingManager` to support real-
 
 ## Phase 15 — Threat Detection & Scanning
 
-**Subsystem**: **phylax** (Greek: guardian/watchman) — `agent-runtime/src/phylax.rs`
+**Subsystem**: **phylax** (Greek: guardian/watchman) — standalone crate (`MacCracken/phylax`)
 
 ### 15A — Core Scanning Engine (5/7 COMPLETE)
 
@@ -468,7 +466,7 @@ All 3 phases complete. SY strength 88. See [SY ADR 044](https://github.com/MacCr
 |--------|--------|---------|--------|
 | Code Coverage | >80% | ~84.3% | Met |
 | Test Pass Rate | 100% | 100% | Met |
-| Total Tests | 400+ | 11000+ | Met |
+| Total Tests | 400+ | 4800+ (standalone repos) | Met |
 | Agent Spawn Time | <500ms | ~300ms | Met |
 | Shell Response Time | <100ms | ~50ms | Met |
 | Memory Overhead | <2GB | ~1.2GB | Met |
@@ -479,25 +477,37 @@ All 3 phases complete. SY strength 88. See [SY ADR 044](https://github.com/MacCr
 | Base System Recipes | ~108 | 116 | Complete |
 | Desktop Recipes | ~62 | 71 | Complete (lean OS, optional in bazaar) |
 | Edge Recipes | ~30 | 31 | Complete |
-| Marketplace Recipes | 11 | 59 | Complete (19+ released + shared crate recipes) |
+| Marketplace Recipes | 11 | 95+ | Complete (19+ released + shared crate recipes) |
 | Bazaar Community | — | 90 | Seed recipes across 8 categories |
 | MCP Tools | — | 151 | Complete (14 agnos + 5 aequi + 24 agnostic + 7 delta + 8 photis + 5 edge + 7 shruti + 9 tarang + 8 jalwa + 9 rasa + 7 mneme + 7 irfan + 7 bullshift + 7 yeoman + 5 phylax + others) |
 | Consumer Apps | 6 | 19+ | 19+ released (incl. Vidhana v1, Sutra v1, Abacus) |
-| Shared Crates | — | 63 library crates | 34 at v1.0+ stable, 29 pre-1.0 |
+| Shared Crates | — | 77 library crates | 56 at v1.0+ stable, 20 pre-1.0, 1 internal |
 | Recipe Validation Errors | 0 | 0 | Complete |
 | Security Audit Rounds | 15 | 16 | Complete |
 | Self-Hosting | Yes | Pending | Phase 13A — THE blocker |
 
-### By Component
+### By Component (standalone repos)
 
 | Component | Tests | Notes |
 |-----------|-------|-------|
-| agnos-common | 307 | Secrets, telemetry, LLM types, manifest, rate limits, audit chain |
-| agnos-sys | 750+ | 16 modules: audit, mac, netns, dmverity, luks, ima, tpm, secureboot, certpin, bootloader, journald, udev, fuse, pam, update, llm |
-| agent-runtime | 3900+ | Phylax (65), 140 MCP tools, orchestrator (127, GPU-aware scoring), IPC, sandbox, registry, marketplace, federation, migration, scheduler, PQC, safety, finetune, formal_verify, sandbox_v2, rl_optimizer, cloud, collaboration, sigil, aegis, takumi, argonaut, agnova, ark, edge (GPU heartbeat), grpc, service_mesh, oidc, delegation, vector_rest, marketplace_backend, selfhost, webview, python_runtime |
-| llm-gateway | 860 | 15 providers, rate limiting, streaming, cert pinning, hardware acceleration, token budgets |
-| ai-shell | 1554 | 61+ intents (including 5 phylax, 8 tarang, 8 jalwa), approval workflow, dashboard, aliases |
-| desktop-environment | 1692 | Wayland protocol, screen capture, screen recording, plugin host, xwayland, shell integration, theme bridge |
+| agnos-common | 307 | Shared types (workspace member) |
+| agnos-sys | 750+ | Kernel bindings (workspace member) |
+| sigil | 142 | Trust/crypto — 1.0.0 stable |
+| bote | 66 | MCP core — 0.90.0 |
+| t-ron | 195 | MCP security — 0.90.0 |
+| kavach | 121 | Sandbox — 2.0.0 |
+| hoosh | 860+ | LLM gateway — 1.1.0 |
+| agnoshi | 736 | AI shell — 0.1.0 |
+| aethersafha | 785 | Compositor — 0.1.0 |
+| argonaut | 148 | Init system — 0.1.0 |
+| agnova | 104 | Installer — 0.1.0 |
+| mela | 204 | Marketplace — 0.1.0 |
+| seema | 135 | Edge fleet — 0.1.0 |
+| ark | 71 | Package manager — 0.1.0 |
+| nous | 57 | Resolver — 0.1.0 |
+| takumi | 57 | Build system — 0.1.0 |
+| aegis | 55 | Security daemon — 0.1.0 |
+| samay | 53 | Scheduler — 0.1.0 |
 
 ---
 
@@ -515,31 +525,36 @@ All 3 phases complete. SY strength 88. See [SY ADR 044](https://github.com/MacCr
 
 ---
 
-## Named Subsystems (21)
+## Named Subsystems (23)
 
-| Name | Role | Component |
-|------|------|-----------|
-| **hoosh** | LLM inference gateway (port 8088, 15 providers) | `llm-gateway/` |
-| **daimon** | Agent orchestrator (port 8090, 151 MCP tools) | `agent-runtime/` |
-| **agnosys** | Kernel interface | `agnos-sys/` |
-| **agnostik** | Shared types library | `agnos-common/` |
-| **shakti** | Privilege escalation | `agnos-sudo/` |
-| **agnoshi** | AI shell (`agnsh`, 61+ intents) | `ai-shell/` |
-| **aethersafha** | Desktop compositor | `desktop-environment/` |
-| **mabda** | GPU foundation (Arabic: origin/principle) — device, buffers, compute, textures | `MacCracken/mabda` |
-| **ark** | Unified package manager | `ark.rs`, `/v1/ark/*` |
-| **nous** | Package resolver daemon | `nous.rs` |
-| **takumi** | Package build system | `takumi.rs` |
-| **mela** | Agent marketplace | `marketplace/` module |
-| **aegis** | System security daemon | `aegis.rs` |
-| **sigil** | Trust verification | `sigil.rs` |
-| **argonaut** | Init system | `argonaut.rs` |
-| **agnova** | OS installer | `agnova.rs` |
-| **phylax** | Threat detection engine | `phylax.rs` |
-| **bazaar** | Community package repository (Persian: marketplace/gathering) | `recipes/base/bazaar.toml` |
-| **sutra** | Infrastructure orchestrator (Sanskrit: thread/rule/formula) | `MacCracken/sutra` |
-| **vansh** | Voice AI shell (planned) | TBD |
-| **AGNOS** | The OS itself | — |
+All subsystems are standalone repos at `/home/macro/Repos/{name}/` unless noted.
+Per-subsystem docs: [docs/development/os/](os/README.md) | Non-OS libs: [docs/applications/libs/](../applications/libs/)
+
+| Name | Role | Repo | Version |
+|------|------|------|---------|
+| **hoosh** | LLM inference gateway (port 8088) | `MacCracken/hoosh` | 1.1.0 |
+| **daimon** | Agent orchestrator (port 8090) | `MacCracken/daimon` | 0.5.0 |
+| **agnosys** | Kernel interface | `MacCracken/agnosys` | 0.29.3 |
+| **agnostik** | Shared types library | `userland/agnos-common` (internal) | — |
+| **shakti** | Privilege escalation | `userland/agnos-sudo` (internal) | — |
+| **agnoshi** | AI shell (`agnsh`) | `MacCracken/agnoshi` | 0.1.0 |
+| **aethersafha** | Desktop compositor | `MacCracken/aethersafha` | 0.1.0 |
+| **sigil** | Trust verification & crypto | `MacCracken/sigil` | 1.0.0 |
+| **bote** | MCP core (JSON-RPC, host, dispatch) | `MacCracken/bote` | 0.90.0 |
+| **t-ron** | MCP security monitor | `MacCracken/t-ron` | 0.90.0 |
+| **kavach** | Sandbox execution | `MacCracken/kavach` | 2.0.0 |
+| **ark** | Unified package manager | `MacCracken/ark` | 0.1.0 |
+| **nous** | Package resolver | `MacCracken/nous` | 0.1.0 |
+| **takumi** | Package build system | `MacCracken/takumi` | 0.1.0 |
+| **mela** | Agent marketplace | `MacCracken/mela` | 0.1.0 |
+| **aegis** | System security daemon | `MacCracken/aegis` | 0.1.0 |
+| **argonaut** | Init system | `MacCracken/argonaut` | 0.1.0 |
+| **agnova** | OS installer | `MacCracken/agnova` | 0.1.0 |
+| **seema** | Edge fleet management | `MacCracken/seema` | 0.1.0 |
+| **samay** | Task scheduler | `MacCracken/samay` | 0.1.0 |
+| **phylax** | Threat detection engine | `MacCracken/phylax` | 0.22.3 |
+| **bazaar** | Community package repository | `MacCracken/bazaar` | — |
+| **mabda** | GPU foundation | `MacCracken/mabda` | 1.0.0 |
 
 ---
 
@@ -1012,4 +1027,4 @@ Scaffold when 3+ consumers need shared implementations, or when a P0/P1 app bloc
 
 ---
 
-*Last Updated: 2026-03-31 | Next Review: 2026-04-07*
+*Last Updated: 2026-04-02 | Next Review: 2026-04-07*
