@@ -3,15 +3,15 @@
 # Extracted from SecureYeoman's soul/brain architecture.
 #
 # Name: Bhava (Sanskrit: emotion, feeling, state of being)
-# Lib: bhava = "1.0" in Cargo.toml
+# Lib: bhava = "2.0.0" in Cargo.toml
 #
-# Status: v1.0.0 stable release. 31 modules, 785 tests, 105 benchmarks.
+# Status: v2.0.0 stable release. 31 modules, 785 tests, 105 benchmarks.
 
 [package]
 name = "bhava"
 version = "2.0.0"
 description = "Bhava — Emotion and personality engine"
-license = "GPL-3.0"
+license = "GPL-3.0-only"
 groups = ["library", "ai", "rust"]
 release = 1
 arch = "any"
@@ -19,6 +19,7 @@ arch = "any"
 [source]
 github_release = "MacCracken/bhava"
 release_asset = "source"
+sha256 = ""  # TODO: populate from release tarball
 
 [depends]
 runtime = []

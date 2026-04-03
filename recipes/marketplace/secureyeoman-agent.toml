@@ -13,7 +13,7 @@
 name = "secureyeoman-agent"
 version = "2026.3.28"
 description = "SecureYeoman Agent — Standalone headless AI agent worker"
-license = "AGPL-3.0-only"
+license = "GPL-3.0-only"
 groups = ["agent", "ai", "automation"]
 release = 1
 arch = "x86_64"
@@ -24,6 +24,7 @@ arch = "x86_64"
 # Asset: secureyeoman-agent-linux-x64
 github_release = "MacCracken/SecureYeoman"
 release_asset = "secureyeoman-*-agent-linux-x64"
+sha256 = ""  # TODO: populate from release tarball
 
 [depends]
 runtime = [

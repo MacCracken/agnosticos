@@ -10,7 +10,7 @@
 name = "sutra"
 version = "2026.3.18"
 description = "Sutra — AI-native infrastructure orchestrator"
-license = "GPL-3.0"
+license = "GPL-3.0-only"
 groups = ["system", "infrastructure"]
 release = 1
 arch = "x86_64"
@@ -18,6 +18,7 @@ arch = "x86_64"
 [source]
 github_release = "MacCracken/sutra"
 release_asset = "sutra-*-linux-amd64.tar.gz"
+sha256 = ""  # TODO: populate from release tarball
 
 [depends]
 runtime = [

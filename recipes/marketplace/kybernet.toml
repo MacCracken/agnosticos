@@ -4,13 +4,13 @@
 #
 # Name: Kybernet (Greek: κυβερνήτης — helmsman of the Argo)
 # Bin: kybernet (installed as /sbin/init)
-# Lib: kybernet = "0.50.0" in Cargo.toml
+# Lib: kybernet = "0.51.0" in Cargo.toml
 #
-# Status: Released — v0.50.0.
+# Status: Released — v0.51.0.
 
 [package]
 name = "kybernet"
-version = "0.50.0"
+version = "0.51.0"
 description = "Kybernet — PID 1 helmsman for AGNOS (uses argonaut)"
 license = "GPL-3.0-only"
 groups = ["system", "init", "rust"]
@@ -20,6 +20,7 @@ arch = "x86_64"
 [source]
 github_release = "MacCracken/kybernet"
 release_asset = "kybernet-*-linux-amd64.tar.gz"
+sha256 = ""  # TODO: populate from release tarball
 
 [depends]
 runtime = ["glibc", "argonaut"]

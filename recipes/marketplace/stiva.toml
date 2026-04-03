@@ -19,6 +19,7 @@ arch = "x86_64"
 [source]
 github_release = "MacCracken/stiva"
 release_asset = "source"
+sha256 = ""  # TODO: populate from release tarball
 
 [depends]
 runtime = [

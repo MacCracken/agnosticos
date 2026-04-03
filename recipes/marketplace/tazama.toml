@@ -9,7 +9,7 @@
 name = "tazama"
 version = "2026.3.19"
 description = "Tazama — AI-Native Video Editor"
-license = "AGPL-3.0"
+license = "GPL-3.0-only"
 groups = ["creative", "video"]
 release = 1
 arch = "x86_64"
@@ -20,13 +20,11 @@ arch = "x86_64"
 # Asset format: tazama-YYYY.M.DD-linux.tar.gz
 github_release = "MacCracken/tazama"
 release_asset = "tazama-*-linux.tar.gz"
+sha256 = ""  # TODO: populate from release tarball
 
 [depends]
 runtime = [
     "glibc",
-    "gstreamer",
-    "gst-plugins-base",
-    "gst-plugins-good",
     "vulkan-loader",
     "mesa",
     "pipewire",
@@ -37,7 +35,6 @@ build = [
     "gcc",
     "make",
     "pkgconf",
-    "gstreamer",
     "vulkan-headers",
     "mesa",
     "sqlite",

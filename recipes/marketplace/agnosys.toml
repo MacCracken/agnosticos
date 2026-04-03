@@ -3,13 +3,13 @@
 # Feature-gated: consumers pull only the kernel interfaces they need.
 #
 # Name: Agnosys (agnos + sys / agi + nosys — toward knowledge of the system)
-# Lib: agnosys = "0.50.0" in Cargo.toml
+# Lib: agnosys = "0.51.0" in Cargo.toml
 #
-# Status: Released — v0.50.0.
+# Status: Released — v0.51.0.
 
 [package]
 name = "agnosys"
-version = "0.50.0"
+version = "0.51.0"
 description = "Agnosys — AGNOS kernel interface"
 license = "GPL-3.0-only"
 groups = ["library", "system", "kernel", "rust"]
@@ -19,6 +19,7 @@ arch = "any"
 [source]
 github_release = "MacCracken/agnosys"
 release_asset = "source"
+sha256 = ""  # TODO: populate from release tarball
 
 [depends]
 runtime = ["glibc"]

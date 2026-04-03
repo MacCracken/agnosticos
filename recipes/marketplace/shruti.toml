@@ -9,7 +9,7 @@
 name = "shruti"
 version = "2026.3.21"
 description = "Shruti — Rust-native Digital Audio Workstation"
-license = "AGPL-3.0"
+license = "GPL-3.0-only"
 groups = ["creative", "audio"]
 release = 1
 arch = "x86_64"
@@ -17,6 +17,7 @@ arch = "x86_64"
 [source]
 github_release = "MacCracken/shruti"
 release_asset = "shruti-*-linux.tar.gz"
+sha256 = ""  # TODO: populate from release tarball
 
 [depends]
 runtime = [

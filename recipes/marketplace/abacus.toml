@@ -2,7 +2,7 @@
 name = "abacus"
 version = "2026.3.22"
 description = "Abacus — Desktop calculator and unit converter"
-license = "GPL-3.0"
+license = "GPL-3.0-only"
 groups = ["application", "desktop", "math", "rust"]
 release = 1
 arch = "x86_64"
@@ -10,6 +10,7 @@ arch = "x86_64"
 [source]
 github_release = "MacCracken/abacus"
 release_asset = "abacus-*-linux-amd64.tar.gz"
+sha256 = ""  # TODO: populate from release tarball
 
 [depends]
 runtime = ["glibc"]
@@ -38,10 +39,6 @@ access = "rw"
 [build]
 make = "cargo build --release"
 check = "cargo test"
-
-[security]
-hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
-
 install = """
 mkdir -p $PKG/usr/bin
 cp target/release/abacus $PKG/usr/bin/abacus
@@ -60,3 +57,6 @@ Type=Application
 Categories=Utility;Calculator;
 EOF
 """
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]

@@ -9,7 +9,7 @@
 name = "rasa"
 version = "2026.3.18"
 description = "Rasa — AI-Native Image Editor & Design Tool"
-license = "AGPL-3.0"
+license = "GPL-3.0-only"
 groups = ["creative", "graphics"]
 release = 1
 arch = "x86_64"
@@ -17,6 +17,7 @@ arch = "x86_64"
 [source]
 github_release = "MacCracken/rasa"
 release_asset = "rasa-*-linux-amd64.tar.gz"
+sha256 = ""  # TODO: populate from release tarball
 
 [depends]
 runtime = [

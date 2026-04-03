@@ -9,7 +9,7 @@
 name = "rahd"
 version = "2026.3.18-1"
 description = "Rahd — AI-native calendar & contacts for AGNOS"
-license = "GPL-3.0"
+license = "GPL-3.0-only"
 groups = ["desktop", "productivity"]
 release = 1
 arch = "x86_64"
@@ -17,6 +17,7 @@ arch = "x86_64"
 [source]
 github_release = "MacCracken/rahd"
 release_asset = "rahd-*-linux-amd64.tar.gz"
+sha256 = ""  # TODO: populate from release tarball
 
 [depends]
 runtime = [

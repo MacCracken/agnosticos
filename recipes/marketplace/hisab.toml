@@ -1,17 +1,17 @@
-# Ganit — Higher mathematics library for AGNOS
+# Hisab — Higher mathematics library for AGNOS
 # Linear algebra, calculus, geometry, numerical methods, spatial math.
 # Wraps glam with AGNOS conventions. Foundation for impetus, kiran, joshua.
 #
-# Name: Ganit (Sanskrit: mathematics)
-# Lib: hisab = "0.1.0" in Cargo.toml
+# Name: Hisab (Arabic: calculation, mathematics)
+# Lib: hisab = "1.4.0" in Cargo.toml
 #
-# Status: Scaffolded — v0.1.0.
+# Status: Stable — v1.4.0.
 
 [package]
 name = "hisab"
 version = "1.4.0"
 description = "Hisab — Higher mathematics library"
-license = "GPL-3.0"
+license = "GPL-3.0-only"
 groups = ["library", "math", "rust"]
 release = 1
 arch = "any"
@@ -19,6 +19,7 @@ arch = "any"
 [source]
 github_release = "MacCracken/hisab"
 release_asset = "source"
+sha256 = ""  # TODO: populate from release tarball
 
 [depends]
 runtime = []

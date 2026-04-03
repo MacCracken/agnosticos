@@ -15,7 +15,7 @@
 name = "secureyeoman-primary"
 version = "2026.3.28"
 description = "SecureYeoman Primary — Full primary server with multi-node orchestration"
-license = "AGPL-3.0-only"
+license = "GPL-3.0-only"
 groups = ["server", "ai", "agents"]
 release = 1
 arch = "x86_64"
@@ -26,6 +26,7 @@ arch = "x86_64"
 # Asset: secureyeoman-linux-x64 — same binary as main release; role set via env
 github_release = "MacCracken/SecureYeoman"
 release_asset = "secureyeoman-????????-linux-x64"
+sha256 = ""  # TODO: populate from release tarball
 
 [depends]
 runtime = [

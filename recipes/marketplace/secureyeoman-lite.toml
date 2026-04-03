@@ -12,7 +12,7 @@
 name = "secureyeoman-lite"
 version = "2026.3.28"
 description = "SecureYeoman Lite — Lightweight standalone AI agent"
-license = "AGPL-3.0-only"
+license = "GPL-3.0-only"
 groups = ["agent", "ai"]
 release = 1
 arch = "x86_64"
@@ -23,6 +23,7 @@ arch = "x86_64"
 # Asset: secureyeoman-YYYYMMDD-agent-linux-x64 (lite = standalone agent binary)
 github_release = "MacCracken/SecureYeoman"
 release_asset = "secureyeoman-*-agent-linux-x64"
+sha256 = ""  # TODO: populate from release tarball
 
 [depends]
 runtime = [

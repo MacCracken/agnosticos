@@ -3,15 +3,15 @@
 # Powers the AGNOS desktop compositor (aethersafha) and future streaming apps.
 #
 # Name: Aethersafta (Greek aether + Arabic safha — ethereal surface)
-# Lib: aethersafta = "0.21.3" in Cargo.toml
+# Lib: aethersafta = "0.25.3" in Cargo.toml
 #
-# Status: Published — v0.21.3 on crates.io.
+# Status: Published — v0.25.3 on crates.io.
 
 [package]
 name = "aethersafta"
 version = "0.25.3"
 description = "Aethersafta — Real-time media compositing engine"
-license = "AGPL-3.0"
+license = "GPL-3.0-only"
 groups = ["library", "media", "compositor", "rust"]
 release = 1
 arch = "any"
@@ -20,6 +20,7 @@ arch = "any"
 crates_io = "aethersafta"
 github_release = "MacCracken/aethersafta"
 release_asset = "source"
+sha256 = ""  # TODO: populate from release tarball
 
 [depends]
 runtime = []
@@ -47,7 +48,7 @@ hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
 
 install = """
 # Library crate — consumers add to Cargo.toml:
-#   aethersafta = "0.21.3"
+#   aethersafta = "0.25.3"
 # Install source for offline/air-gapped Cargo builds.
 mkdir -p $PKG/usr/lib/aethersafta
 cp -r src $PKG/usr/lib/aethersafta/

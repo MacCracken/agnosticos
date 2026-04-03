@@ -9,7 +9,7 @@
 name = "bullshift"
 version = "2026.3.10-1"
 description = "BullShift — High-performance cross-platform trading platform"
-license = "AGPL-3.0"
+license = "GPL-3.0-only"
 groups = ["server", "finance", "rust"]
 release = 1
 arch = "x86_64"
@@ -22,6 +22,7 @@ local = true
 build_dir = "dist"
 github_release = "MacCracken/BullShift"
 release_asset = "bullshift-linux-amd64.tar.gz"
+sha256 = ""  # TODO: populate from release tarball
 
 [depends]
 runtime = [

@@ -2,13 +2,13 @@
 # Room simulation, ray tracing, impulse responses, diffraction, resonance.
 #
 # Name: Goonj (Hindi/Urdu: echo, resonance)
-# Status: v1.0.0 stable.
+# Status: Stable — v1.1.1.
 
 [package]
 name = "goonj"
 version = "1.1.1"
 description = "Goonj — Acoustics engine"
-license = "GPL-3.0"
+license = "GPL-3.0-only"
 groups = ["library", "science", "rust"]
 release = 1
 arch = "any"
@@ -16,6 +16,7 @@ arch = "any"
 [source]
 github_release = "MacCracken/goonj"
 release_asset = "source"
+sha256 = ""  # TODO: populate from release tarball
 
 [depends]
 runtime = []

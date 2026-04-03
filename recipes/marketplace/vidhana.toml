@@ -9,7 +9,7 @@
 name = "vidhana"
 version = "2026.3.18"
 description = "Vidhana — AGNOS system settings manager"
-license = "GPL-3.0"
+license = "GPL-3.0-only"
 groups = ["system", "settings"]
 release = 1
 arch = "x86_64"
@@ -17,6 +17,7 @@ arch = "x86_64"
 [source]
 github_release = "MacCracken/vidhana"
 release_asset = "vidhana-*-linux-amd64.tar.gz"
+sha256 = ""  # TODO: populate from release tarball
 
 [depends]
 runtime = [

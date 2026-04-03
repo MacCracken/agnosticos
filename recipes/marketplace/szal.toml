@@ -1,13 +1,13 @@
 # Szál — Workflow engine (step/flow/DAG/rollback)
 #
-# Lib: szal = "0.21.3" in Cargo.toml
-# Status: Scaffolded — v0.21.3.
+# Lib: szal = "1.0.1" in Cargo.toml
+# Status: Stable — v1.0.1.
 
 [package]
 name = "szal"
 version = "1.0.1"
 description = "Szál — Workflow engine (step/flow/DAG/rollback)"
-license = "AGPL-3.0"
+license = "GPL-3.0-only"
 groups = ["library", "rust"]
 release = 1
 arch = "any"
@@ -16,6 +16,7 @@ arch = "any"
 crates_io = "szal"
 github_release = "MacCracken/szal"
 release_asset = "source"
+sha256 = ""  # TODO: populate from release tarball
 
 [depends]
 runtime = []

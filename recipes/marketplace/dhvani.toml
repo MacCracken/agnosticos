@@ -3,15 +3,15 @@
 # Eliminates duplicate audio implementations across shruti, jalwa, and aethersafta.
 #
 # Name: Dhvani (Sanskrit: ध्वनि — sound, tone, resonance)
-# Lib: dhvani = "0.20.4" in Cargo.toml
+# Lib: dhvani = "1.0.0" in Cargo.toml
 #
-# Status: Published — v0.20.4 on crates.io.
+# Status: Stable — v1.0.0 on crates.io.
 
 [package]
 name = "dhvani"
 version = "1.0.0"
 description = "Dhvani — Core audio engine (buffers, DSP, mixing, analysis, clock)"
-license = "AGPL-3.0"
+license = "GPL-3.0-only"
 groups = ["library", "audio", "rust"]
 release = 1
 arch = "any"
@@ -20,6 +20,7 @@ arch = "any"
 crates_io = "dhvani"
 github_release = "MacCracken/dhvani"
 release_asset = "source"
+sha256 = ""  # TODO: populate from release tarball
 
 [depends]
 runtime = []
@@ -47,7 +48,7 @@ hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
 
 install = """
 # Library crate — consumers add to Cargo.toml:
-#   dhvani = "0.20.4"
+#   dhvani = "1.0.0"
 # Install source for offline/air-gapped Cargo builds.
 mkdir -p $PKG/usr/lib/dhvani
 cp -r src $PKG/usr/lib/dhvani/

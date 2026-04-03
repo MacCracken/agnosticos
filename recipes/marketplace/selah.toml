@@ -2,14 +2,14 @@
 # Wraps daimon screen capture API, adds annotation, OCR, redaction.
 # Hebrew: סלה — pause/capture a moment.
 #
-# Status: MVP — 2026.3.17 (linux amd64 + arm64). No AI integration yet.
+# Status: Published — v0.29.4 (linux amd64 + arm64).
 # Source: https://github.com/MacCracken/selah
 
 [package]
 name = "selah"
 version = "0.29.4"
 description = "Selah — AI-native screenshot & annotation tool for AGNOS"
-license = "GPL-3.0"
+license = "GPL-3.0-only"
 groups = ["desktop", "tools"]
 release = 1
 arch = "x86_64"
@@ -17,6 +17,7 @@ arch = "x86_64"
 [source]
 github_release = "MacCracken/selah"
 release_asset = "selah-*-linux-amd64.tar.gz"
+sha256 = ""  # TODO: populate from release tarball
 
 [depends]
 runtime = [

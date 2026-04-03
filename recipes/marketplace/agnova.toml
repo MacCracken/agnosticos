@@ -20,6 +20,7 @@ arch = "x86_64"
 [source]
 github_release = "MacCracken/agnova"
 release_asset = "agnova-*-linux-amd64.tar.gz"
+sha256 = ""  # TODO: populate from release tarball
 
 [depends]
 runtime = ["glibc", "parted", "e2fsprogs"]

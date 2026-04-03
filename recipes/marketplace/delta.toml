@@ -9,7 +9,7 @@
 name = "delta"
 version = "2026.3.16"
 description = "Delta — Code hosting platform with CI/CD and artifact registry"
-license = "GPL-3.0"
+license = "GPL-3.0-only"
 groups = ["server", "devtools"]
 release = 1
 arch = "x86_64"
@@ -19,6 +19,7 @@ local = true
 build_dir = "target/release"
 github_release = "MacCracken/delta"
 release_asset = "delta-*-linux-amd64.tar.gz"
+sha256 = ""  # TODO: populate from release tarball
 
 [depends]
 runtime = [

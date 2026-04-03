@@ -3,15 +3,15 @@
 # Consumed by salai (game editor), tanur (LLM studio), nazar (system monitor).
 #
 # Name: Muharrir (Arabic: editor/writer)
-# Lib: muharrir = "0.1.0" in Cargo.toml
+# Lib: muharrir = "0.23.5" in Cargo.toml
 #
-# Status: Scaffolding.
+# Status: Published — v0.23.5.
 
 [package]
 name = "muharrir"
 version = "0.23.5"
 description = "Muharrir — Shared editor framework"
-license = "GPL-3.0"
+license = "GPL-3.0-only"
 groups = ["library", "editor", "gui", "rust"]
 release = 1
 arch = "any"
@@ -19,6 +19,7 @@ arch = "any"
 [source]
 github_release = "MacCracken/muharrir"
 release_asset = "source"
+sha256 = ""  # TODO: populate from release tarball
 
 [depends]
 runtime = ["glibc"]

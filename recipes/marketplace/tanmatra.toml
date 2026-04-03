@@ -2,15 +2,15 @@
 # Atomic structure, electron configuration, spectroscopy.
 #
 # Name: Tanmatra (Sanskrit: subtle element)
-# Lib: tanmatra = "1.1.0" in Cargo.toml
+# Lib: tanmatra = "1.2.1" in Cargo.toml
 #
-# Status: Released — v1.1.0.
+# Status: Released — v1.2.1.
 
 [package]
 name = "tanmatra"
 version = "1.2.1"
 description = "Tanmatra — atomic physics engine"
-license = "GPL-3.0"
+license = "GPL-3.0-only"
 groups = ["library", "science", "rust"]
 release = 1
 arch = "any"
@@ -18,6 +18,7 @@ arch = "any"
 [source]
 github_release = "MacCracken/tanmatra"
 release_asset = "source"
+sha256 = ""  # TODO: populate from release tarball
 
 [depends]
 runtime = []

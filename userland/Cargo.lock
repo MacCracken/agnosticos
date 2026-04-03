@@ -38,8 +38,8 @@ dependencies = [
 
 [[package]]
 name = "agnosys"
-version = "0.50.0"
-source = "git+https://github.com/MacCracken/agnosys.git?tag=0.50.0#f71cd9e50fb07dd1e95092fdfd42b46864705194"
+version = "0.51.0"
+source = "git+https://github.com/MacCracken/agnosys.git?tag=0.51.0#176e7ec45e8b6cd10347a2b8491c42655ff94c1c"
 dependencies = [
  "bitflags",
  "chrono",

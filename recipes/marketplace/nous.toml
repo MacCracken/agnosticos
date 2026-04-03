@@ -18,6 +18,7 @@ arch = "any"
 [source]
 github_release = "MacCracken/nous"
 release_asset = "source"
+sha256 = ""  # TODO: populate from release tarball
 
 [depends]
 runtime = []

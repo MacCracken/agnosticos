@@ -2,15 +2,15 @@
 # G2P rules, phoneme inventories, pronunciation generation.
 #
 # Name: Shabda (Sanskrit: sound/word)
-# Lib: shabda = "1.0.0" in Cargo.toml
+# Lib: shabda = "1.1.0" in Cargo.toml
 #
-# Status: Released — v1.0.0.
+# Status: Released — v1.1.0.
 
 [package]
 name = "shabda"
 version = "1.1.0"
 description = "Shabda — grapheme-to-phoneme conversion"
-license = "GPL-3.0"
+license = "GPL-3.0-only"
 groups = ["library", "media", "rust"]
 release = 1
 arch = "any"
@@ -18,6 +18,7 @@ arch = "any"
 [source]
 github_release = "MacCracken/shabda"
 release_asset = "source"
+sha256 = ""  # TODO: populate from release tarball
 
 [depends]
 runtime = []

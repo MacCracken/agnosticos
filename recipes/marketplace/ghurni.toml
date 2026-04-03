@@ -10,7 +10,7 @@
 name = "ghurni"
 version = "1.0.0"
 description = "Ghurni — mechanical sound engine"
-license = "GPL-3.0"
+license = "GPL-3.0-only"
 groups = ["library", "media", "rust"]
 release = 1
 arch = "any"
@@ -18,6 +18,7 @@ arch = "any"
 [source]
 github_release = "MacCracken/ghurni"
 release_asset = "source"
+sha256 = ""  # TODO: populate from release tarball
 
 [depends]
 runtime = []

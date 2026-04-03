@@ -2,15 +2,15 @@
 # A*, nav meshes, flow fields, steering behaviors.
 #
 # Name: Raasta (Hindi/Urdu: path, way, road)
-# Lib: raasta = "0.1.0" in Cargo.toml
+# Lib: raasta = "1.0.0" in Cargo.toml
 #
-# Status: Scaffolded — v0.1.0.
+# Status: Stable — v1.0.0.
 
 [package]
 name = "raasta"
 version = "1.0.0"
 description = "Raasta — Navigation and pathfinding"
-license = "GPL-3.0"
+license = "GPL-3.0-only"
 groups = ["library", "game", "ai", "rust"]
 release = 1
 arch = "any"
@@ -18,6 +18,7 @@ arch = "any"
 [source]
 github_release = "MacCracken/raasta"
 release_asset = "source"
+sha256 = ""  # TODO: populate from release tarball
 
 [depends]
 runtime = []

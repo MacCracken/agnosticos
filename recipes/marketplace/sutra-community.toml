@@ -10,7 +10,7 @@
 name = "sutra-community"
 version = "2026.3.18"
 description = "Sutra community modules — nftables, sysctl, aegis, daimon, edge"
-license = "GPL-3.0"
+license = "GPL-3.0-only"
 groups = ["system", "infrastructure", "modules"]
 release = 1
 arch = "any"
@@ -20,6 +20,7 @@ arch = "any"
 # No compiled binary. CI needs release asset step to bundle modules.
 github_release = "MacCracken/sutra-community"
 release_asset = "source"
+sha256 = ""  # TODO: populate from release tarball
 
 [depends]
 runtime = [

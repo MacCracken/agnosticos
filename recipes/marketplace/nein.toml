@@ -19,6 +19,7 @@ arch = "any"
 [source]
 github_release = "MacCracken/nein"
 release_asset = "source"
+sha256 = ""  # TODO: populate from release tarball
 
 [depends]
 runtime = ["nftables"]

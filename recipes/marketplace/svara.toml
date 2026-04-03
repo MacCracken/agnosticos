@@ -2,15 +2,15 @@
 # Voice generation, formant synthesis, vocal modeling.
 #
 # Name: Svara (Sanskrit: musical note/tone)
-# Lib: svara = "1.1.0" in Cargo.toml
+# Lib: svara = "1.1.1" in Cargo.toml
 #
-# Status: Released — v1.1.0.
+# Status: Released — v1.1.1.
 
 [package]
 name = "svara"
 version = "1.1.1"
 description = "Svara — vocal synthesis engine"
-license = "GPL-3.0"
+license = "GPL-3.0-only"
 groups = ["library", "media", "rust"]
 release = 1
 arch = "any"
@@ -18,6 +18,7 @@ arch = "any"
 [source]
 github_release = "MacCracken/svara"
 release_asset = "source"
+sha256 = ""  # TODO: populate from release tarball
 
 [depends]
 runtime = []

@@ -4,13 +4,13 @@
 #
 # Name: Daimon (Greek: δαίμων — guiding spirit)
 # Bin: daimon serve --port 8090
-# Lib: daimon = "0.5.0" in Cargo.toml
+# Lib: daimon = "0.6.0" in Cargo.toml
 #
-# Status: Released — v0.5.0.
+# Status: Released — v0.6.0.
 
 [package]
 name = "daimon"
-version = "0.5.0"
+version = "0.6.0"
 description = "Daimon — AGNOS agent orchestrator (HTTP API, supervisor, service registry, port 8090)"
 license = "GPL-3.0-only"
 groups = ["server", "system", "rust"]
@@ -20,6 +20,7 @@ arch = "x86_64"
 [source]
 github_release = "MacCracken/daimon"
 release_asset = "daimon-*-linux-amd64.tar.gz"
+sha256 = ""  # TODO: populate from release tarball
 
 [depends]
 runtime = ["glibc", "openssl"]

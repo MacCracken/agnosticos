@@ -2,13 +2,13 @@
 # ISA atmosphere, NACA airfoils, lift/drag, boundary layers, wind profiles.
 #
 # Name: Pavan (Sanskrit: wind, breeze)
-# Status: v1.0.0 stable.
+# Status: Stable — v1.1.0.
 
 [package]
 name = "pavan"
 version = "1.1.0"
 description = "Pavan — Aerodynamics engine"
-license = "GPL-3.0"
+license = "GPL-3.0-only"
 groups = ["library", "science", "rust"]
 release = 1
 arch = "any"
@@ -16,6 +16,7 @@ arch = "any"
 [source]
 github_release = "MacCracken/pavan"
 release_asset = "source"
+sha256 = ""  # TODO: populate from release tarball
 
 [depends]
 runtime = []

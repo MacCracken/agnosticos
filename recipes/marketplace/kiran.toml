@@ -5,13 +5,13 @@
 # Name: Kiran (Sanskrit: ray of light)
 # Bin: kiran
 #
-# Status: Scaffolded — v0.1.0.
+# Status: Published — v0.26.3.
 
 [package]
 name = "kiran"
 version = "0.26.3"
 description = "Kiran — AI-native game engine"
-license = "GPL-3.0"
+license = "GPL-3.0-only"
 groups = ["application", "game-engine", "rust"]
 release = 1
 arch = "x86_64"
@@ -19,6 +19,7 @@ arch = "x86_64"
 [source]
 github_release = "MacCracken/kiran"
 release_asset = "kiran-*-linux-amd64.tar.gz"
+sha256 = ""  # TODO: populate from release tarball
 
 [depends]
 runtime = ["glibc"]

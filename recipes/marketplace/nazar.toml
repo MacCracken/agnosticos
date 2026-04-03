@@ -9,7 +9,7 @@
 name = "nazar"
 version = "2026.3.18"
 description = "Nazar — AI-native system monitor for AGNOS"
-license = "GPL-3.0"
+license = "GPL-3.0-only"
 groups = ["system", "monitoring"]
 release = 1
 arch = "x86_64"
@@ -17,6 +17,7 @@ arch = "x86_64"
 [source]
 github_release = "MacCracken/nazar"
 release_asset = "nazar-*-linux-amd64.tar.gz"
+sha256 = ""  # TODO: populate from release tarball
 
 [depends]
 runtime = [

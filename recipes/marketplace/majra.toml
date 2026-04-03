@@ -11,7 +11,7 @@
 name = "majra"
 version = "1.0.4"
 description = "Majra — Distributed queue and multiplex engine"
-license = "AGPL-3.0"
+license = "GPL-3.0-only"
 groups = ["library", "networking", "concurrency", "rust"]
 release = 1
 arch = "any"
@@ -20,6 +20,7 @@ arch = "any"
 crates_io = "majra"
 github_release = "MacCracken/majra"
 release_asset = "source"
+sha256 = ""  # TODO: populate from release tarball
 
 [depends]
 runtime = []

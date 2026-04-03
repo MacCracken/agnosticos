@@ -3,15 +3,15 @@
 # Physics of light: how it travels, bends, reflects, interferes, diffracts.
 #
 # Name: Prakash (Sanskrit: light, illumination, to make visible)
-# Lib: prakash = "0.1.0" in Cargo.toml
+# Lib: prakash = "1.2.0" in Cargo.toml
 #
-# Status: Scaffolded — v0.1.0.
+# Status: Stable — v1.2.0.
 
 [package]
 name = "prakash"
 version = "1.2.0"
 description = "Prakash — Optics and light simulation"
-license = "GPL-3.0"
+license = "GPL-3.0-only"
 groups = ["library", "physics", "optics", "rust"]
 release = 1
 arch = "any"
@@ -19,6 +19,7 @@ arch = "any"
 [source]
 github_release = "MacCracken/prakash"
 release_asset = "source"
+sha256 = ""  # TODO: populate from release tarball
 
 [depends]
 runtime = []

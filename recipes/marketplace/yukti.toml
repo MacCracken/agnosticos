@@ -3,15 +3,15 @@
 # Unified device detection, monitoring, mount/eject operations.
 #
 # Name: Yukti (Sanskrit: device, instrument, machine)
-# Lib: yukti = "0.1.0" in Cargo.toml
+# Lib: yukti = "0.25.3" in Cargo.toml
 #
-# Status: Scaffolded — v0.1.0.
+# Status: Published — v0.25.3.
 
 [package]
 name = "yukti"
 version = "0.25.3"
 description = "Yukti — Device abstraction layer"
-license = "GPL-3.0"
+license = "GPL-3.0-only"
 groups = ["library", "hardware", "rust"]
 release = 1
 arch = "any"
@@ -19,6 +19,7 @@ arch = "any"
 [source]
 github_release = "MacCracken/yukti"
 release_asset = "source"
+sha256 = ""  # TODO: populate from release tarball
 
 [depends]
 runtime = []

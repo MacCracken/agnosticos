@@ -5,15 +5,15 @@
 #
 # Name: Hoosh (Persian: هوش — intelligence)
 # CLI: hoosh serve --port 8088
-# Lib: hoosh = "0.21.3" in Cargo.toml
+# Lib: hoosh = "1.2.0" in Cargo.toml
 #
-# Status: Published — v0.21.3 on crates.io + GitHub.
+# Status: Stable — v1.2.0 on crates.io + GitHub.
 
 [package]
 name = "hoosh"
-version = "1.1.0"
+version = "1.2.0"
 description = "Hoosh — AI inference gateway (14 LLM providers, OpenAI-compatible, token budgets)"
-license = "AGPL-3.0"
+license = "GPL-3.0-only"
 groups = ["tool", "library", "ai", "rust"]
 release = 1
 arch = "x86_64"
@@ -22,6 +22,7 @@ arch = "x86_64"
 crates_io = "hoosh"
 github_release = "MacCracken/hoosh"
 release_asset = "hoosh-*-linux-amd64.tar.gz"
+sha256 = ""  # TODO: populate from release tarball
 
 [depends]
 runtime = [

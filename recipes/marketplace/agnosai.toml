@@ -21,6 +21,7 @@ arch = "x86_64"
 # Asset format: agnosai-server-YYYY.M.DD-linux-{amd64,arm64}.tar.gz
 github_release = "MacCracken/agnosai"
 release_asset = "agnosai-server-*-linux-amd64.tar.gz"
+sha256 = ""  # TODO: populate from release tarball
 
 [depends]
 runtime = [

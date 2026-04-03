@@ -11,7 +11,7 @@
 name = "tanur"
 version = "0.1.0"
 description = "Tanur — Desktop LLM studio"
-license = "GPL-3.0"
+license = "GPL-3.0-only"
 groups = ["application", "desktop", "ai", "rust"]
 release = 1
 arch = "x86_64"
@@ -19,6 +19,7 @@ arch = "x86_64"
 [source]
 github_release = "MacCracken/tanur"
 release_asset = "tanur-*-linux-amd64.tar.gz"
+sha256 = ""  # TODO: populate from release tarball
 
 [depends]
 runtime = [

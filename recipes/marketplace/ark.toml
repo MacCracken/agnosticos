@@ -20,6 +20,7 @@ arch = "x86_64"
 [source]
 github_release = "MacCracken/ark"
 release_asset = "ark-*-linux-amd64.tar.gz"
+sha256 = ""  # TODO: populate from release tarball
 
 [depends]
 runtime = ["glibc"]

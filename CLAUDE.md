@@ -1,79 +1,84 @@
-# Agnostik — Claude Code Instructions
+# AGNOS — Claude Code Instructions
 
 ## Project Identity
 
-**Agnostik** (agnostic) — Shared types and domain primitives for AGNOS
+**AGNOS** — AI-Native General Operating System
 
-- **Type**: Flat library crate
-- **License**: GPL-3.0
+- **Type**: Meta-repository (recipes, docs, scripts, kernel configs, CI/CD, examples)
+- **License**: GPL-3.0-only
+- **Version**: CalVer `2026.3.31` (YYYY.M.D, patches as `-N`)
+- **Version file**: `VERSION` at repo root (single source of truth)
 - **MSRV**: 1.89
-- **Version**: SemVer 0.90.0
+- **Status**: Pre-Beta — monolith fully dismantled, all code in standalone repos
 
-## Consumers
+## What This Repo Contains
 
-Every AGNOS component: daimon, hoosh, agnoshi, aegis, argonaut, sigil, ark, kavach, stiva, nein, and all consumer apps.
+All production code has been extracted to standalone repos. This repo is the OS meta-repository:
+
+- **recipes/** — 422 takumi build recipes (base, desktop, AI, edge, marketplace, bazaar)
+- **scripts/** — 33 build/deploy/validation scripts
+- **docs/** — 161 files (roadmap, architecture, specs, security)
+- **kernel/** — Linux kernel configs (6.6, 6.x, 7.0)
+- **docker/** — Dockerfiles for dev/edge/installer
+- **.github/workflows/** — 15 CI/CD GitHub Actions workflows
+- **userland/examples/** — Agent SDK examples (only Cargo workspace member)
+- **Makefile** — Top-level build orchestration
+
+## Standalone Repos
+
+All production code lives in standalone repos under `/home/macro/Repos/{name}/`:
+
+| Subsystem | Version | Role |
+|-----------|---------|------|
+| **agnostik** | 0.90.0 | Shared types, domain primitives (10 feature gates) |
+| **agnosys** | 0.51.0 | Kernel interface (Landlock, seccomp, syscalls) |
+| **daimon** | 0.6.0 | Agent orchestrator, 144 MCP tools |
+| **hoosh** | 1.1.0 | LLM inference gateway, 15 providers |
+| **agnoshi** | 0.1.0 | AI shell |
+| **aethersafha** | 0.1.0 | Wayland compositor |
+| **kybernet** | 0.51.0 | PID 1 binary |
+| **argonaut** | 0.1.0 | Init system library |
+| **sigil** | 1.0.0 | Trust/crypto boundary |
+| **ark** | 0.1.0 | Package manager |
+| **nous** | 0.1.0 | Package resolver |
+| **takumi** | 0.1.0 | Build system |
+| **aegis** | 0.1.0 | Security daemon |
+| **shakti** | 0.1.0 | Privilege escalation |
+| **kavach** | 2.0.0 | Sandbox execution |
+| **bote** | 0.90.0 | MCP core + host registry |
+| **t-ron** | 0.90.0 | MCP security |
+| **phylax** | 0.22.3 | Threat detection |
 
 ## Development Process
 
-### P(-1): Scaffold Hardening (before any new features)
+### Work Loop (continuous)
 
-0. Read roadmap, CHANGELOG, and open issues — know what was intended before auditing what was built
-1. Test + benchmark sweep of existing code
-2. Cleanliness check: `cargo fmt --check`, `cargo clippy --all-features --all-targets -- -D warnings`, `cargo audit`, `cargo deny check`, `RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps`
-3. Get baseline benchmarks (`./scripts/bench-history.sh`)
-4. Internal deep review — gaps, optimizations, security, logging/errors, docs
-5. External research — domain completeness, missing capabilities, best practices, world-class accuracy
-6. Cleanliness check — must be clean after review
-7. Additional tests/benchmarks from findings
-8. Post-review benchmarks — prove the wins
-9. Repeat if heavy
+1. Work phase — recipe updates, doc improvements, script fixes, roadmap items
+2. Validate recipes: `./scripts/ark-validate-recipes.sh`
+3. If touching examples: `cargo fmt --check`, `cargo clippy --all-features --all-targets -- -D warnings` (from `userland/`)
+4. Documentation — update CHANGELOG, roadmap, docs
+5. Version check — VERSION, recipes, and docs all in sync
+6. Return to step 1
 
-### Work Loop / Working Loop (continuous)
+### Recipe Work
 
-1. Work phase — new features, roadmap items, bug fixes
-2. Cleanliness check: `cargo fmt --check`, `cargo clippy --all-features --all-targets -- -D warnings`, `cargo audit`, `cargo deny check`, `RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps`
-3. Test + benchmark additions for new code
-4. Run benchmarks (`./scripts/bench-history.sh`)
-5. Internal review — performance, memory, security, throughput, correctness
-6. Cleanliness check — must be clean after review
-7. Deeper tests/benchmarks from review observations
-8. Run benchmarks again — prove the wins
-9. If review heavy → return to step 5
-10. Documentation — update CHANGELOG, roadmap, docs
-11. Version check — VERSION, Cargo.toml, recipe all in sync
-12. Return to step 1
+- **Every recipe change requires full field audit** — never just bump version
+- Verify: name, version, SHA256, license (`-only` suffix), tags, build commands, `min_agnos_version`, dependencies
+- Cross-check versions against crates.io or upstream release tags
+- Use `./scripts/ark-validate-recipes.sh` after changes
 
 ### Task Sizing
 
 - **Low/Medium effort**: Batch freely — multiple items per work loop cycle
-- **Large effort**: Small bites only — break into sub-tasks, verify each before moving to the next. Never batch large items together
-- **If unsure**: Treat it as large. Smaller bites are always safer than overcommitting
-
-### Refactoring
-
-- Refactor when the code tells you to — duplication, unclear boundaries, performance bottlenecks
-- Never refactor speculatively. Wait for the third instance before extracting an abstraction
-- Refactoring is part of the work loop, not a separate phase. If a review (step 5) reveals structural issues, refactor before moving to step 6
-- Every refactor must pass the same cleanliness + benchmark gates as new code
-
-### Key Principles
-
-- Never skip benchmarks
-- Own the stack — agnostik IS the stack's type vocabulary
-- `#[non_exhaustive]` on ALL public enums (forward compatibility)
-- `#[must_use]` on all pure functions
-- Every type must be Serialize + Deserialize (serde)
-- Feature-gate optional modules — consumers pull only what they need
-- Zero unwrap/panic in library code
-- All types must have serde roundtrip tests
+- **Large effort**: Small bites only — break into sub-tasks, verify each before moving to the next
+- **If unsure**: Treat it as large
 
 ## DO NOT
 
 - **Do not commit or push** — the user handles all git operations
 - **NEVER use `gh` CLI** — use `curl` to GitHub API only
 - Do not add unnecessary dependencies
-- Do not break backward compatibility without a major version bump
-- Do not skip benchmarks before claiming performance improvements
+- Do not skip recipe validation
 
 ## Documentation Structure
 
@@ -84,6 +89,7 @@ Root files (required):
 docs/ (required):
   architecture/overview.md — module map, data flow, consumers
   development/roadmap.md — completed, backlog, future, v1.0 criteria
+  development/applications/shared-crates.md — 77-crate registry
 
 docs/ (when earned):
   adr/ — architectural decision records

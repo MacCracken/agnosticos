@@ -12,7 +12,7 @@
 name = "aethersafha"
 version = "0.1.0"
 description = "Aethersafha — AI-augmented Wayland compositor for AGNOS"
-license = "AGPL-3.0-only"
+license = "GPL-3.0-only"
 groups = ["desktop", "compositor", "rust"]
 release = 1
 arch = "x86_64"
@@ -20,6 +20,7 @@ arch = "x86_64"
 [source]
 github_release = "MacCracken/aethersafha"
 release_asset = "aethersafha-*-linux-amd64.tar.gz"
+sha256 = ""  # TODO: populate from release tarball
 
 [depends]
 runtime = ["glibc", "wayland", "libinput", "mesa"]
