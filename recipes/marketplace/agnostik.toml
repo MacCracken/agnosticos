@@ -3,15 +3,15 @@
 # telemetry, LLM types, audit chains, and error handling.
 #
 # Name: Agnostik (agnostic — OS-agnostic shared types)
-# Lib: agnostik = "2026.3.26" in Cargo.toml
+# Lib: agnostik = "0.90.0" in Cargo.toml
 #
-# Status: Released — v2026.3.26.
+# Status: Released — v0.90.0.
 
 [package]
 name = "agnostik"
-version = "2026.3.26"
+version = "0.90.0"
 description = "Agnostik — shared types and domain primitives for AGNOS"
-license = "GPL-3.0"
+license = "GPL-3.0-only"
 groups = ["library", "types", "rust"]
 release = 1
 arch = "any"

@@ -133,6 +133,20 @@ Aggregates journald + daimon audit + phylax findings + agent logs. Pattern detec
 
 ---
 
+### Dhara — Self-Hosted Media Streaming Server
+
+| Field | Value |
+|-------|-------|
+| Status | Planned |
+| Priority | 2 — Plex/Jellyfin replacement |
+| Spec | [dhara.md](../../applications/dhara.md) |
+
+Self-hosted media server for music, video, and photos. Built on tarang (transcoding), ai-hwaccel (GPU encode), hoosh (NL search, recommendations, auto-tagging). HLS/DASH adaptive streaming, DLNA/UPnP, Subsonic API compatibility. Jalwa as native client. Multi-user with per-user libraries and parental controls.
+
+**Prerequisites**: tarang v1.0+ (transcoding pipeline), ai-hwaccel (hardware encoder detection).
+
+---
+
 ### RSS / Feed Reader
 
 | Field | Value |
@@ -350,14 +364,13 @@ hoosh (1.1.0), kavach (2.0.0), majra, libro, bote (0.90.0), szal, agnosai, ai-hw
 
 | Directory | Crate | Status |
 |-----------|-------|--------|
-| `agnos-common/` | agnostik | Internal path dep, not on crates.io |
-| `agnos-sys/` | agnosys | Internal path dep (standalone repo exists) |
-| `agnos-sudo/` | shakti | Small binary, low priority extraction |
-| `examples/` | — | Workspace examples |
+| `examples/` | — | Workspace examples (depends on agnostik + agnosys via git deps) |
 
-### Open item
+All subsystem code extracted. agnostik (0.90.0), agnosys (0.51.0), and shakti (0.1.0) are standalone repos.
 
-- kavach `sandbox_core.rs` — needs agnosys to export firewall types (netns::FirewallRule, TrafficDirection, etc.)
+### Open items
+
+None — all extraction items resolved.
 
 ---
 

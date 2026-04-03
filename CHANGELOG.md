@@ -5,6 +5,56 @@ All notable changes to AGNOS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2026.4.3] - 2026-04-03
+
+### Added — Cyrius Language
+
+**C.Y.R.I.U.S.** — *Consciousness Yields Righteous Intelligence Unveiling Self*
+
+AGNOS's sovereign systems language. Supersedes the Rust++ vision with a ground-up approach: Assembly → Rust → Rust++ → Cyrius.
+
+- **cyrius-seed** (0.1.0) — Diamond hardened. Zero-dependency assembler written in Rust, compiled by user-built rustc (1.96.0-dev). 5 modules (token, parse, encode, elf, error), 38 x86_64 instructions, 102 tests (83 unit + 19 integration executing real binaries), 9 example programs. Benchmarks: ~13 MB/s sustained pipeline, encoder at 12M ops/sec. No libc, no linker, no external tools.
+- **stage1b** — Runtime codegen compiler. Emits x86_64 instructions that compute, compare, branch, and loop at execution time. Variables with fixup table, if/while with jump patching, all 6 comparison operators, nested control flow. 5051-byte binary, 32 tests. Computes factorial(5)=120, sum(1..10)=55.
+- Bootstrap chain: `rustc 1.96.0-dev → cyrius-seed (102 tests) → stage1a (compile-time) → stage1b (runtime codegen) → generated programs`
+- Roadmap v3.0 section rewritten to reflect Cyrius evolution and phased approach (viyda → Rust++ transitional → Cyrius self-hosting)
+
+### Achieved — Pure AGNOS Desktop Boot (Zero External Dependencies)
+
+- **Boot time: 3.2s** (kernel+init), **~80ms** from argonaut init to event loop
+- **Pure AGNOS** — no busybox, no external libs, no training wheels
+- **7 real binaries**: kybernet (PID 1, 2.2MB), daimon (11MB), hoosh (14MB), aethersafha (1.8MB), agnoshi (8.1MB), ifran (19MB) + argonaut library
+- **21MB initramfs** (down from 23MB after removing busybox/libs), 512MB RAM QEMU VM
+- Wave-parallel startup: Wave 0 (postgres, redis) → Wave 1 (daimon, aethersafha, hoosh, agnoshi, ifran)
+- Clean shutdown after 10s trigger
+- Progression: daimon-only (2.9s/120ms) → all 7 real (3.3s/80ms) → pure AGNOS (3.2s/80ms, 21MB)
+
+### Achieved — Edge Boot Profile
+
+- **Edge boot**: 7.9MB initramfs, 128MB RAM, kybernet + daimon + agnoshi
+- Init → argonaut ready: **99ms**. Total with daimon startup: **1.15s** from init, **3.8s** total
+- Three boot profiles validated:
+
+| Mode | Initramfs | Init → Event Loop | Total (kernel+init) |
+|------|-----------|-------------------|---------------------|
+| Minimal | 2.4MB | 140ms | 2.98s |
+| Desktop (all real) | 21MB | 80ms | 3.28s |
+| Edge | 7.9MB | 99ms (+ 1s daimon) | 3.80s |
+
+### Changed — Recipe Audit
+
+- **8 recipes updated** to match actual Cargo.toml versions: agnostik (0.90.0), agnosys (0.50.0), bote (0.91.0), kavach (2.0.0), stiva (2.0.0), majra (1.0.4), libro (0.92.0), agnosai (1.1.0)
+- **License corrections**: agnostik, agnosys, bote, kavach, agnosai aligned to actual repo licenses
+- **15 missing OS core recipes created**: daimon, agnoshi, aethersafha, ark, nous, takumi, argonaut, kybernet, aegis, agnova, mela, seema, samay, shakti, cyrius-seed
+- **1 dummy SHA256 flagged**: agnos-edge-agent (was all-zeros, cleared with TODO)
+- Stale version comments fixed in kavach, stiva, majra install scripts
+
+### Changed — Roadmap
+
+- v3.0 Vision rewritten: Rust++ → Cyrius Lang with full bootstrap chain and evolution path
+- Boot Time KPI updated from `<10s` target to **achieved at 3.2s** (desktop) / **2.98s** (minimal)
+- Named Subsystems: `rustpp` → `cyrius-seed`
+- Version corrections: agnoshi (0.90.0), bote (0.91.0), kybernet (0.50.0), phylax (0.5.0)
+
 ## [2026.4.2] - 2026-04-02
 
 ### Changed — Monolith Dismantled
@@ -12,6 +62,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The userland monolith is fully dismantled. `agent-runtime/`, `ai-shell/`, `llm-gateway/`, and `desktop-environment/` have been removed from the workspace. All code lives in standalone repos.
 
 **Workspace now**: examples only. All subsystem code extracted.
+
+### Added — kybernet
+
+- **kybernet** (0.1.0) — PID 1 binary for AGNOS (Greek: κυβερνήτης, "helmsman"). The helmsman of the Argo — uses the argonaut library for service management. Handles unsafe kernel interactions (console setup, signal handling, reaping) that argonaut's `forbid(unsafe_code)` cannot. Repo: `MacCracken/kybernet`, scaffolded by argonaut agent.
 
 ### Changed — shakti Extracted
 

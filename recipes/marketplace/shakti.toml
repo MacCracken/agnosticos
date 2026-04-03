@@ -1,0 +1,53 @@
+# Shakti — Privilege escalation tool for AGNOS
+# PAM authentication, audit logging, session management.
+# Replacement for sudo with AGNOS-native integration.
+#
+# Name: Shakti (Sanskrit: शक्ति — power, energy)
+# Bin: shakti
+# Lib: shakti = "0.1.0" in Cargo.toml
+#
+# Status: Released — v0.1.0.
+
+[package]
+name = "shakti"
+version = "0.1.0"
+description = "Shakti — AGNOS privilege escalation tool with PAM authentication and audit logging"
+license = "GPL-3.0-only"
+groups = ["system", "security", "rust"]
+release = 1
+arch = "x86_64"
+
+[source]
+github_release = "MacCracken/shakti"
+release_asset = "shakti-*-linux-amd64.tar.gz"
+
+[depends]
+runtime = ["glibc", "pam"]
+build = ["rust", "pam-dev"]
+
+[marketplace]
+category = "system"
+runtime = "native-binary"
+publisher = "AGNOS"
+tags = ["sudo", "privilege", "escalation", "pam", "security", "audit", "rust"]
+min_agnos_version = "2026.3.22"
+
+[marketplace.sandbox]
+seccomp_mode = "disabled"
+network_access = false
+
+[build]
+make = "cargo build --release"
+check = "cargo test --workspace"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+mkdir -p $PKG/usr/bin
+cp target/release/shakti $PKG/usr/bin/shakti
+chmod +x $PKG/usr/bin/shakti
+chmod u+s $PKG/usr/bin/shakti
+
+mkdir -p $PKG/etc/shakti
+"""

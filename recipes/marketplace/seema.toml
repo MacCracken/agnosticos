@@ -1,0 +1,49 @@
+# Seema — Edge fleet management for AGNOS
+# Device registration, fleet orchestration, OTA updates, telemetry collection.
+#
+# Name: Seema (Hindi: सीमा — boundary, frontier)
+# Lib: seema = "0.1.0" in Cargo.toml
+#
+# Status: Released — v0.1.0.
+
+[package]
+name = "seema"
+version = "0.1.0"
+description = "Seema — edge fleet management for AGNOS"
+license = "GPL-3.0-only"
+groups = ["library", "edge", "fleet", "rust"]
+release = 1
+arch = "any"
+
+[source]
+github_release = "MacCracken/seema"
+release_asset = "source"
+
+[depends]
+runtime = []
+build = ["rust"]
+
+[marketplace]
+category = "library"
+runtime = "rust-crate"
+publisher = "AGNOS"
+tags = ["edge", "fleet", "iot", "ota", "telemetry", "rust"]
+min_agnos_version = "2026.3.22"
+
+[marketplace.sandbox]
+seccomp_mode = "basic"
+network_access = false
+
+[build]
+make = "cargo build --release"
+check = "cargo test --all-features"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+mkdir -p $PKG/usr/lib/seema
+cp -r src $PKG/usr/lib/seema/
+cp Cargo.toml $PKG/usr/lib/seema/
+cp VERSION $PKG/usr/lib/seema/
+"""

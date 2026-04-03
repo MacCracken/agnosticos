@@ -3,15 +3,15 @@
 # Feature-gated: consumers pull only the kernel interfaces they need.
 #
 # Name: Agnosys (agnos + sys / agi + nosys — toward knowledge of the system)
-# Lib: agnosys = "0.1.0" in Cargo.toml
+# Lib: agnosys = "0.50.0" in Cargo.toml
 #
-# Status: Scaffolded — v0.1.0.
+# Status: Released — v0.50.0.
 
 [package]
 name = "agnosys"
-version = "0.29.3"
+version = "0.50.0"
 description = "Agnosys — AGNOS kernel interface"
-license = "GPL-3.0"
+license = "GPL-3.0-only"
 groups = ["library", "system", "kernel", "rust"]
 release = 1
 arch = "any"

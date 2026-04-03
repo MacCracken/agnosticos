@@ -1,0 +1,84 @@
+# Daimon — AGNOS agent orchestrator
+# HTTP API, supervisor, agent lifecycle, service registry, health monitoring.
+# Central nervous system for all AGNOS agents and services.
+#
+# Name: Daimon (Greek: δαίμων — guiding spirit)
+# Bin: daimon serve --port 8090
+# Lib: daimon = "0.5.0" in Cargo.toml
+#
+# Status: Released — v0.5.0.
+
+[package]
+name = "daimon"
+version = "0.5.0"
+description = "Daimon — AGNOS agent orchestrator (HTTP API, supervisor, service registry, port 8090)"
+license = "GPL-3.0-only"
+groups = ["server", "system", "rust"]
+release = 1
+arch = "x86_64"
+
+[source]
+github_release = "MacCracken/daimon"
+release_asset = "daimon-*-linux-amd64.tar.gz"
+
+[depends]
+runtime = ["glibc", "openssl"]
+build = ["rust", "openssl-dev"]
+
+[marketplace]
+category = "system"
+runtime = "native-binary"
+publisher = "AGNOS"
+tags = ["orchestrator", "agent", "supervisor", "api", "service-registry", "rust"]
+min_agnos_version = "2026.3.22"
+
+[marketplace.sandbox]
+seccomp_mode = "desktop"
+network_access = true
+allowed_hosts = ["localhost", "127.0.0.1"]
+data_dir = "~/.daimon/"
+
+[[marketplace.sandbox.landlock]]
+path = "~/.daimon/"
+access = "rw"
+
+[[marketplace.sandbox.landlock]]
+path = "/run/agnos/"
+access = "rw"
+
+[[marketplace.sandbox.landlock]]
+path = "/tmp"
+access = "rw"
+
+[marketplace.services]
+ports = [8090]
+
+[build]
+make = "cargo build --release"
+check = "cargo test --workspace"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+mkdir -p $PKG/usr/bin
+cp target/release/daimon $PKG/usr/bin/daimon
+chmod +x $PKG/usr/bin/daimon
+
+mkdir -p $PKG/etc/daimon
+mkdir -p $PKG/usr/lib/systemd/system
+cat > $PKG/usr/lib/systemd/system/daimon.service << 'EOF'
+[Unit]
+Description=Daimon Agent Orchestrator
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/daimon serve --port 8090
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+"""

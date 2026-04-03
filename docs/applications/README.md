@@ -17,6 +17,7 @@ Desktop, CLI, and service applications built on the AGNOS stack.
 | [Agnostic](agnostic.md) | Python/CrewAI agent platform | |
 | [BullShift](bullshift.md) | Trading platform | |
 | [Delta](delta.md) | Code hosting (git, PRs, CI/CD) | Port 8070 |
+| [Dhara](dhara.md) | Media streaming server | Port 8078, built on tarang |
 | [Irfan](irfan.md) | Local LLM management/training | |
 | [Jalwa](jalwa.md) | Media player | Built on tarang |
 | [Mneme](mneme.md) | Knowledge base | |

@@ -47,6 +47,7 @@ No existing media player has AI-powered music recommendation, library management
 
 ## Roadmap
 
+- **Dhara integration** — connect to [Dhara](dhara.md) as streaming backend for remote library access, transcoded playback, and multi-device sync
 - Streaming radio/podcast support
 - Collaborative playlists via federation
 - Video playback improvements (subtitle rendering, hardware decode)

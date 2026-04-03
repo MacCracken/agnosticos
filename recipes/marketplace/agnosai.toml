@@ -3,14 +3,14 @@
 # scheduling, WASM/OCI/process sandboxing, adaptive learning, MCP + A2A + SSE.
 # Built in Rust; replaces CrewAI as the core engine for Agnostic platform.
 #
-# Status: Published — v0.20.3 on crates.io + GitHub. SemVer for crate consumers.
+# Status: Released — v1.1.0. SemVer for crate consumers.
 # 9 crates: core, orchestrator, llm, fleet, sandbox, tools, learning, definitions, server.
 
 [package]
 name = "agnosai"
-version = "1.0.2"
+version = "1.1.0"
 description = "AgnosAI — Rust-native AI agent orchestration engine"
-license = "Apache-2.0"
+license = "GPL-3.0-only"
 groups = ["server", "ai", "agent-automation", "rust"]
 release = 1
 arch = "x86_64"

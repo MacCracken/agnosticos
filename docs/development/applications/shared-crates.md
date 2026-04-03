@@ -103,9 +103,9 @@ Full documentation for each crate: [docs/applications/libs/{crate}.md](../../app
 
 | Crate | Version | Description | Key Consumers |
 |-------|---------|-------------|---------------|
-| [agnosys](https://github.com/MacCracken/agnosys) | 0.50.0 | Kernel interface — Landlock, seccomp, syscall bindings | daimon, aethersafha, kavach, argonaut |
+| [agnosys](https://github.com/MacCracken/agnosys) | 0.51.0 | Kernel interface — Landlock, seccomp, syscall bindings | daimon, aethersafha, kavach, argonaut |
 | [bote](https://github.com/MacCracken/bote) | 0.90.0 | MCP core — JSON-RPC 2.0, tool registry, host, dispatch | daimon, all MCP providers |
-| [daimon](https://github.com/MacCracken/daimon) | 0.5.0 | Agent orchestrator — HTTP API, supervisor, IPC (port 8090) | all consumer apps |
+| [daimon](https://github.com/MacCracken/daimon) | 0.6.0 | Agent orchestrator — HTTP API, supervisor, IPC (port 8090) | all consumer apps |
 | [libro](https://github.com/MacCracken/libro) | 0.90.0 | Cryptographic audit chain — hash-linked event logging (SHA-256, BLAKE3) | daimon, aegis, stiva, sigil, t-ron |
 | [nein](https://github.com/MacCracken/nein) | 0.90.0 | Programmatic nftables firewall — policy, NAT, port mapping | stiva, daimon, aegis, kavach |
 | [phylax](https://github.com/MacCracken/phylax) | 0.22.3 | Threat detection — YARA, entropy, magic bytes, ML | daimon, aegis |
@@ -147,6 +147,17 @@ Need `cargo publish` before consumers outside AGNOS can depend on them.
 
 | Crate | Version | Description |
 |-------|---------|-------------|
+
+---
+
+## System Binaries
+
+Standalone executables — not library crates, but first-party AGNOS binaries tracked here for completeness.
+
+| Binary | Version | Description | Depends On |
+|--------|---------|-------------|------------|
+| [kybernet](https://github.com/MacCracken/kybernet) | 0.51.0 | PID 1 init binary (extracted from argonaut) | argonaut |
+| [shakti](https://github.com/MacCracken/shakti) | 0.1.0 | Privilege escalation (`sudo` replacement) | agnosys, sigil |
 
 ---
 

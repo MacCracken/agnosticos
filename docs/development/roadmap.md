@@ -1,11 +1,11 @@
 # AGNOS Development Roadmap
 
 > **Status**: Pre-Beta | **Last Updated**: 2026-04-02
-> **Monolith fully dismantled** — all subsystems extracted to standalone repos. Workspace: examples only. agnostik (0.90.0), agnosys (0.50.0), shakti (0.1.0) all standalone.
+> **Monolith fully dismantled** — all subsystems extracted to standalone repos. Workspace: examples only. agnostik (0.90.0), agnosys (0.51.0), shakti (0.1.0) all standalone.
 > **Recipes**: 116 base + 71 desktop + 25 AI + 9 network + 8 browser + 95 marketplace + 4 python + 3 database + 31 edge = 362 OS (+ 90 bazaar community)
 > **Build order**: 178 packages in `recipes/build-order.txt` (base + desktop, dependency-ordered)
 > **Phases 10–14 complete** | **Phase 15A**: Core scanning done (phylax) | **Phase 16A**: Desktop essentials done | **Phase 17**: Local inference optimization (planned) | **Audit**: 16 rounds
-> **Shared Crates**: 77 library crates — 56 at v1.0+ stable, 21 pre-1.0. Key milestones: sigil 1.0.0, kavach 2.0.0, bote 0.90.0, t-ron 0.90.0, agnostik 0.90.0, agnosys 0.50.0
+> **Shared Crates**: 77 library crates — 56 at v1.0+ stable, 21 pre-1.0. Key milestones: sigil 1.0.0, kavach 2.0.0, bote 0.90.0, t-ron 0.90.0, agnostik 0.90.0, agnosys 0.51.0
 > **Consumer Projects**: 19+ released (including Vidhana v1, Sutra v1, Abacus)
 
 ---
@@ -63,7 +63,7 @@ The original monolith (`userland/`) contained agent-runtime, ai-shell, llm-gatew
 | `llm-gateway/` | **hoosh** (`MacCracken/hoosh`) | 1.1.0 | Code moved | 2026-04-01 |
 | `desktop-environment/` | **aethersafha** (`MacCracken/aethersafha`) | 0.1.0 | Code moved | 2026-04-01 |
 | `agnos-common/` | **agnostik** (`MacCracken/agnostik`) | 0.90.0 | Git dep, tag `0.90.0` | 2026-04-02 |
-| `agnos-sys/` | **agnosys** (`MacCracken/agnosys`) | 0.50.0 | Git dep, tag `0.50.0` | 2026-04-02 |
+| `agnos-sys/` | **agnosys** (`MacCracken/agnosys`) | 0.51.0 | Git dep, tag `0.51.0` | 2026-04-02 |
 | `agnos-sudo/` | **shakti** (`MacCracken/shakti`) | 0.1.0 | Standalone repo | 2026-04-03 |
 
 ### Crate Absorptions (code merged into existing repos)
@@ -205,7 +205,7 @@ Upgrades to `ScreenCaptureManager` and `ScreenRecordingManager` to support real-
 | Editors | 3 | neovim, vim, micro |
 | Networking | 4 | wireguard-tools, bandwhich, mtr, tailscale |
 | Security | 3 | keepassxc, age, pass |
-| Media | 4 | ffmpeg, yt-dlp, obs-studio, audacity |
+| Media | 5 | ffmpeg, yt-dlp, obs-studio, audacity, jellyfin |
 | Games | 1 | retroarch |
 
 ---
@@ -382,20 +382,70 @@ Blocked on AgnosAI v1 release + Agnostic integration testing.
 - [ ] Zero-seccomp sandboxing (capability model replaces syscall filtering)
 - [ ] GPU/TPU-aware kernel scheduler (ai-hwaccel in ring 0)
 
+### v3.0 Vision — 2029+
+
+**Cyrius — AGNOS owns the language.**
+
+> **C.Y.R.I.U.S.** — *Consciousness Yields Righteous Intelligence Unveiling Self*
+
+AGNOS will ship its own sovereign systems language: **Cyrius**. Not a Rust fork. Not a superset. A language born from Assembly, educated by Rust, and stripped to what an AI-native OS actually needs. Rust's type system and safety guarantees are correct — its ecosystem governance and toolchain politics are not. AGNOS will not be held hostage by a package registry it doesn't control.
+
+**Why Cyrius exists:**
+- **Registry sovereignty** — no crates.io dependency. Packages distribute through ark. Names belong to the builders, not the squatters
+- **OS-native primitives** — agents, sandboxes, capabilities, IPC as language-level constructs, not library abstractions
+- **Full stack ownership** — language, compiler, stdlib, package manager, build system. No external dependency on any foundation or governance body
+- **Assembly as foundation** — the build process stands on raw metal (viyda), not on abstractions. Assembly is the bedrock, not the escape hatch
+
+**Bootstrap chain (active):**
+- [x] Build rustc from source (1.96.0-dev)
+- [x] cyrius-seed — zero-dependency assembler in Rust, reads `.cyr` assembly, emits raw x86_64 ELF binaries
+- [x] hello.cyr → 199-byte static binary via direct syscalls. No libc, no linker, no external tools.
+
+```
+rustc 1.96.0-dev (we built it)
+  → cyrius-seed (assembler, Rust, zero deps)
+    → hello.cyr → hello (raw x86_64 ELF, 199 bytes) ✓
+```
+
+**Evolution path:**
+1. **Assembly** (viyda) — own the build process at the metal level
+2. **Rust** — learn from it, bootstrap with it, prove the types
+3. **Rust++** — strip Rust to what AGNOS needs, shed external ecosystem dependency
+4. **Cyrius** — sovereign language. The name Rust disappears from the toolchain
+
+**Approach:**
+- [x] Phase 0: Own the compiler — build rustc from source, prove the chain
+- [x] Phase 1: cyrius-seed — **HARDENED**. 5 modules, 38 instructions, 102 tests, 9 examples, ~13 MB/s pipeline
+- [x] Phase 1b: stage1b — **RUNTIME CODEGEN**. Compiler emits x86_64 that computes at runtime. if/while/variables, jump patching, 32 tests
+- [ ] Phase 2: viyda — Assembly foundation library, build process stands on raw metal
+- [ ] Phase 3: Rust++ transitional compiler — rustc with crates.io stripped, ark as native backend
+- [ ] Phase 4: Language extensions — agent types, capability annotations, sandbox-aware borrow checker
+- [ ] Phase 5: Self-hosting — Cyrius compiles Cyrius, runs on AGNOS
+- [ ] Phase 6: Migrate AGNOS codebase from Rust to Cyrius incrementally (full backward compat)
+- [ ] Phase 7: Cyrius stdlib replaces std — OS-aware, agent-aware, zero-alloc where Rust allocates
+
+**Implications for agnostik:**
+- agnostik's types are the first things that must compile under Cyrius — every type shipped today is an implicit contract with the future compiler
+- The cleaner agnostik is now (zero unwrap, zero panic, pure serde), the easier the port
+- Feature gates (agent, security, telemetry, llm) are a preview of Cyrius-native modules
+- ark + cyrius-seed converge into the sovereign build pipeline — no cargo, no crates.io
+
+**Non-goals:** This is not a toy language or a research project. It is a sovereign systems language built from first principles. All existing Rust code compiles unchanged during transition. The migration is invisible to consumers.
+
 ---
 
 ## Open KPIs
 
 | Metric | Target | Current | Status |
 |--------|--------|---------|--------|
-| Boot Time | <10s | N/A | Pending (Phase 13A) |
+| Boot Time | <10s | **3.2s** (kernel+init), **~80ms** init→event loop | **Achieved** — Pure AGNOS, 0 external deps, 7 real binaries, 21MB initramfs, 512MB QEMU VM |
 | OS Independence | Yes | Pending | Phase 13A — rebuild from source without host distro |
 
 ---
 
 ---
 
-## Named Subsystems (23)
+## Named Subsystems (25)
 
 All subsystems are standalone repos at `/home/macro/Repos/{name}/` unless noted.
 Per-subsystem docs: [docs/development/os/](os/README.md) | Non-OS libs: [docs/applications/libs/](../applications/libs/)
@@ -403,14 +453,14 @@ Per-subsystem docs: [docs/development/os/](os/README.md) | Non-OS libs: [docs/ap
 | Name | Role | Repo | Version |
 |------|------|------|---------|
 | **hoosh** | LLM inference gateway (port 8088) | `MacCracken/hoosh` | 1.1.0 |
-| **daimon** | Agent orchestrator (port 8090) | `MacCracken/daimon` | 0.5.0 |
-| **agnosys** | Kernel interface | `MacCracken/agnosys` | 0.50.0 |
+| **daimon** | Agent orchestrator (port 8090) | `MacCracken/daimon` | 0.6.0 |
+| **agnosys** | Kernel interface | `MacCracken/agnosys` | 0.51.0 |
 | **agnostik** | Shared types library | `MacCracken/agnostik` | 0.90.0 |
 | **shakti** | Privilege escalation | `MacCracken/shakti` | 0.1.0 |
-| **agnoshi** | AI shell (`agnsh`) | `MacCracken/agnoshi` | 0.1.0 |
+| **agnoshi** | AI shell (`agnsh`) | `MacCracken/agnoshi` | 0.90.0 |
 | **aethersafha** | Desktop compositor | `MacCracken/aethersafha` | 0.1.0 |
 | **sigil** | Trust verification & crypto | `MacCracken/sigil` | 1.0.0 |
-| **bote** | MCP core (JSON-RPC, host, dispatch) | `MacCracken/bote` | 0.90.0 |
+| **bote** | MCP core (JSON-RPC, host, dispatch) | `MacCracken/bote` | 0.91.0 |
 | **t-ron** | MCP security monitor | `MacCracken/t-ron` | 0.90.0 |
 | **kavach** | Sandbox execution | `MacCracken/kavach` | 2.0.0 |
 | **ark** | Unified package manager | `MacCracken/ark` | 0.1.0 |
@@ -418,13 +468,15 @@ Per-subsystem docs: [docs/development/os/](os/README.md) | Non-OS libs: [docs/ap
 | **takumi** | Package build system | `MacCracken/takumi` | 0.1.0 |
 | **mela** | Agent marketplace | `MacCracken/mela` | 0.1.0 |
 | **aegis** | System security daemon | `MacCracken/aegis` | 0.1.0 |
-| **argonaut** | Init system | `MacCracken/argonaut` | 0.1.0 |
+| **argonaut** | Init system (library) | `MacCracken/argonaut` | 0.90.0 |
+| **kybernet** | PID 1 binary (uses argonaut) | `MacCracken/kybernet` | 0.51.0 |
 | **agnova** | OS installer | `MacCracken/agnova` | 0.1.0 |
 | **seema** | Edge fleet management | `MacCracken/seema` | 0.1.0 |
 | **samay** | Task scheduler | `MacCracken/samay` | 0.1.0 |
-| **phylax** | Threat detection engine | `MacCracken/phylax` | 0.22.3 |
+| **phylax** | Threat detection engine | `MacCracken/phylax` | 0.5.0 |
 | **bazaar** | Community package repository | `MacCracken/bazaar` | — |
 | **mabda** | GPU foundation | `MacCracken/mabda` | 1.0.0 |
+| **cyrius-seed** | Cyrius assembler (`.cyr` → x86_64 ELF, 38 insns, 102 tests) | `MacCracken/cyrius-seed` | 0.1.0 |
 
 ---
 
@@ -509,7 +561,7 @@ Per-subsystem docs: [docs/development/os/](os/README.md) | Non-OS libs: [docs/ap
 
 | # | Metric | Stock Baseline | AGNOS Target | Notes |
 |---|--------|---------------|--------------|-------|
-| 1 | Boot to inference-ready | TBD | < 5s | argonaut minimal boot vs their init system |
+| 1 | Boot to inference-ready | **3.2s** | < 5s | Pure AGNOS: 7 real binaries, 0 external deps, 21MB initramfs. Target beaten. |
 | 2 | tok/s (120B int4) | ~20 tok/s (claimed) | ≥ 20 tok/s | Match with murti sparsity. Beat with system co-optimization (17C) |
 | 3 | tok/s (7B int4) | TBD | Target: 100+ tok/s | Small model should fly on this hardware |
 | 4 | Memory overhead (idle) | TBD | < 200MB | argonaut + daimon + hoosh. Stock probably runs systemd + bloat |

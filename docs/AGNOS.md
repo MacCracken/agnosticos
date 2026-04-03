@@ -180,6 +180,7 @@ AGNOS ships with an ecosystem of 18+ first-party applications, all Rust-native, 
 |-------------|--------|-------------|
 | **SecureYeoman** | AI platform | TypeScript/Bun AI agent platform (flagship) |
 | **Agnostic** | AI automation | Python/CrewAI agent automation, 7 domain presets |
+| **Dhara** | Media streaming | Self-hosted media server (Plex/Jellyfin replacement) |
 | **Jalwa** | Media | AI-native media player, 110+ tests |
 | **Shruti** | Audio | Digital audio workstation |
 | **Tazama** | Video | AI-native video editor |

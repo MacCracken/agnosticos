@@ -1,156 +1,73 @@
 # Agnostik — Roadmap to 1.0.0
 
-> **Status**: Planning | **Last Updated**: 2026-03-26
+> **Status**: Active — 0.90.0 released | **Last Updated**: 2026-04-03
 >
-> Roadmap for hardening agnos-common into a production-grade `agnostik` internal crate.
-> Follows the same pattern as agnosys 0.5.0 — lean out, harden, feature-gate.
-> agnostik stays internal (path dependency) — it contains core OS types (sandbox, security, agent manifest) that do not belong on a public registry.
+> Roadmap for hardening agnostik into a production-grade 1.0.0 release.
+> agnostik is the shared type vocabulary for all AGNOS components.
+> Standalone repo: `MacCracken/agnostik` | Distribution: git dep (not on crates.io due to name collision)
 >
-> **Blocked by this**: t-ron (MCP security monitor) needs agnostik types as a path dependency.
+> **Feature-gated**: agent, security, telemetry, audit, llm, secrets, config, classification, validation, hardware
 
 ---
 
-## Current State
+## Current State (0.90.0)
 
 | Metric | Value |
 |--------|-------|
-| Location | `userland/agnos-common/` |
-| Lines | ~7,800 |
-| Modules | 11 (agent, audit, config, error, llm, secrets, security, telemetry, types, lib core, security_tests) |
-| Tests | 385 passing |
-| Benchmarks | File exists, not populated |
-| Feature gates | None — everything always compiled |
-| `#[non_exhaustive]` | Missing on most enums |
-| `#[must_use]` | Missing on pure functions |
-| Dependencies | 18 (including reqwest, aes-gcm, tokio, rand, sha2, zeroize) |
-| Distribution | Internal (path dep, shipped via ark) |
+| Location | Standalone repo (`MacCracken/agnostik`) |
+| Version | 0.90.0 |
+| Distribution | Git dep (`version` + `git` spec) |
+| Feature gates | 10 (agent, security, telemetry, audit, llm, secrets, config, classification, validation, hardware) |
+| Consumers | Every AGNOS component: daimon, hoosh, agnoshi, aegis, argonaut, sigil, ark, kavach, stiva, nein, and all consumer apps |
+
+### Completed (Phases 0–1)
+
+- [x] Extracted to standalone repo
+- [x] Removed module overlaps with agnosai, hoosh, libro
+- [x] Feature-gated all modules — consumers pull only what they need
+- [x] Leaned out dependency tree
+- [x] Tagged 0.90.0
 
 ---
 
-## Problems to Fix
+## Remaining Work to 1.0.0
 
-### 1. Overlap with extracted crates
+### Hardening (0.90.0 → 1.0.0)
 
-Same issue agnosys had — modules that now belong elsewhere:
-
-| Module | Overlaps With | Action |
-|--------|--------------|--------|
-| `agent.rs` | **agnosai** (agent orchestration types) | Lean out — keep only the primitive types (AgentId, AgentStatus, AgentConfig, SandboxConfig). Move orchestration types to agnosai |
-| `llm.rs` | **hoosh** (LLM types) | Remove — hoosh owns LLM types. agnostik should not have LLM provider types |
-| `audit.rs` | **libro** (audit chain) | Evaluate — keep the AuditEntry/AuditChain primitives if they're genuinely shared, or defer to libro |
-
-### 2. Too many dependencies for a types crate
-
-agnostik is the **type vocabulary** — every crate in the stack depends on it. Heavy deps like `reqwest`, `tokio`, and `aes-gcm` mean every consumer pays that cost even if they only need types.
-
-| Dependency | Why It's There | Action |
-|-----------|---------------|--------|
-| reqwest | Used somewhere in the crate | Remove — a types crate should not make HTTP calls |
-| tokio | Telemetry uses async | Feature-gate behind `async` |
-| aes-gcm | Secrets module encryption | Feature-gate behind `secrets` |
-| rand | AgentId generation | Feature-gate or use uuid's rng |
-| sha2 | Audit chain hashing | Feature-gate behind `audit` |
-| zeroize | Secrets module | Feature-gate behind `secrets` |
-| getrandom | Secrets module | Feature-gate behind `secrets` |
-| subtle | Secrets module | Feature-gate behind `secrets` |
-| once_cell | Config lazy init | Evaluate — may not be needed with LazyLock in std |
-| num_cpus | Config | Evaluate — std::thread::available_parallelism exists |
-| async-trait | Telemetry traits | Feature-gate behind `async` |
-
-Target: **core agnostik with zero optional deps** — just serde, thiserror, uuid, chrono, tracing.
-
-### 3. Missing hardening
-
-| Issue | Fix |
-|-------|-----|
-| No `#[non_exhaustive]` on enums | Add to all public enums |
-| No `#[must_use]` on pure fns | Add to all pure functions |
-| No feature gates | Feature-gate every module except error + core types |
-| No serde roundtrip test discipline | Ensure every public type has a roundtrip test |
-| No benchmarks | Add criterion benchmarks for hot paths (serde, audit chain, telemetry) |
-| Tests in lib.rs | Move to proper `#[cfg(test)] mod tests` per module |
-
----
-
-## Phases
-
-### Phase 0 — Lean Out (0.2.0)
-
-Remove what doesn't belong. Same approach as agnosys 0.5.0.
-
-- [ ] Remove `llm.rs` — hoosh owns these types
-- [ ] Lean `agent.rs` — keep AgentId, AgentStatus, AgentType, AgentConfig, SandboxConfig, ResourceLimits, Permission. Move AgentEvent, AgentInfo, AgentStats to agnosai
-- [ ] Evaluate `audit.rs` — keep if primitives are genuinely shared, otherwise defer to libro
-- [ ] Remove `reqwest` dependency entirely
-- [ ] Remove `once_cell` (use `std::sync::LazyLock`)
-- [ ] Remove `num_cpus` (use `std::thread::available_parallelism`)
-- [ ] Update all re-exports in lib.rs
-
-**Migration notes**: Document what moved where, same as agnosys 0.5.0 did.
-
-### Phase 1 — Feature Gates (0.3.0)
-
-- [ ] Core (always on): error.rs, types.rs, core types from lib.rs (AgentId, UserId, AgentConfig, SandboxConfig, etc.)
-- [ ] `secrets` feature: secrets.rs + aes-gcm, zeroize, getrandom, subtle, rand
-- [ ] `audit` feature: audit.rs + sha2
-- [ ] `security` feature: security.rs
-- [ ] `telemetry` feature: telemetry.rs + tokio, async-trait
-- [ ] `config` feature: config.rs
-- [ ] `full` feature: all of the above
-- [ ] `serde` feature: already implied but make explicit
-
-**Cargo.toml target**:
-```toml
-[features]
-default = ["serde"]
-serde = ["dep:serde", "dep:serde_json", "uuid/serde", "chrono/serde"]
-secrets = ["dep:aes-gcm", "dep:zeroize", "dep:getrandom", "dep:subtle", "dep:rand"]
-audit = ["dep:sha2", "serde"]
-security = ["serde"]
-telemetry = ["dep:tokio", "dep:async-trait", "serde"]
-config = ["serde"]
-full = ["secrets", "audit", "security", "telemetry", "config"]
-```
-
-### Phase 2 — Harden (0.4.0)
-
-- [ ] `#[non_exhaustive]` on all public enums
+- [ ] `#[non_exhaustive]` on ALL public enums
 - [ ] `#[must_use]` on all pure functions
 - [ ] Zero `unwrap()`/`panic!()` in library code
 - [ ] Serde roundtrip tests for every public type
-- [ ] Move inline tests from lib.rs into per-module test blocks
-- [ ] Criterion benchmarks (serde roundtrip, audit chain, id generation)
+- [ ] Criterion benchmarks (serde roundtrip, id generation, hot paths)
 - [ ] `cargo clippy --all-features --all-targets -- -D warnings` clean
 - [ ] `cargo deny check` clean
 - [ ] `cargo audit` clean
+- [ ] CI green on all platforms (x86_64, aarch64)
 
-### Phase 3 — Release (1.0.0)
+### Documentation
 
-- [ ] Rename package to `agnostik` in Cargo.toml
-- [ ] VERSION file: `1.0.0`
 - [ ] CHANGELOG entry with migration guide from agnos-common
-- [ ] Update workspace Cargo.toml path reference
-- [ ] Update all internal consumers (daimon, hoosh, agnoshi, aegis, t-ron, etc.) to use path dep
-- [ ] Stays internal — path dependency only, same as agnosys. Not published to crates.io
+- [ ] Per-module doc comments
+- [ ] Usage examples in doc tests
 
 ---
 
-## Dependency Graph After 1.0.0
+## Dependency Graph
 
 ```
 agnostik (types only, minimal deps)
     ├── serde, uuid, chrono, thiserror, tracing  (always)
-    ├── aes-gcm, zeroize, rand                   (secrets feature)
-    ├── sha2                                      (audit feature)
-    └── tokio, async-trait                        (telemetry feature)
+    ├── feature-gated optional deps per module
+    └── zero heavy deps in default feature set
 
-Internal consumers (path deps):
+Internal consumers (git deps):
     agnosys ──→ agnostik
     daimon  ──→ agnostik
     hoosh   ──→ agnostik
     agnoshi ──→ agnostik
-    t-ron   ──→ agnostik  (currently blocked)
+    t-ron   ──→ agnostik
     kavach  ──→ agnostik
+    sigil   ──→ agnostik
     every consumer app ──→ agnostik (transitively via daimon/hoosh)
 ```
 
@@ -166,8 +83,7 @@ Internal consumers (path deps):
 - [ ] Criterion benchmarks with CSV history
 - [ ] No overlap with agnosai, hoosh, or libro
 - [ ] CI green on all platforms (x86_64, aarch64)
-- [ ] t-ron unblocked and consuming agnostik via path dep
 
 ---
 
-*Last Updated: 2026-03-26*
+*Last Updated: 2026-04-03*

@@ -1,0 +1,50 @@
+# Argonaut — Init system and service manager for AGNOS
+# Wave-parallel service startup, dependency resolution, health monitoring.
+# Library crate used by kybernet (PID 1).
+#
+# Name: Argonaut (Greek: Ἀργοναῦται — sailors of the Argo)
+# Lib: argonaut = "0.90.0" in Cargo.toml
+#
+# Status: Released — v0.90.0.
+
+[package]
+name = "argonaut"
+version = "0.90.0"
+description = "Argonaut — init system and service manager for AGNOS (wave-parallel startup)"
+license = "GPL-3.0-only"
+groups = ["library", "system", "init", "rust"]
+release = 1
+arch = "any"
+
+[source]
+github_release = "MacCracken/argonaut"
+release_asset = "source"
+
+[depends]
+runtime = []
+build = ["rust"]
+
+[marketplace]
+category = "system"
+runtime = "rust-crate"
+publisher = "AGNOS"
+tags = ["init", "service-manager", "boot", "parallel", "wave", "rust"]
+min_agnos_version = "2026.3.22"
+
+[marketplace.sandbox]
+seccomp_mode = "basic"
+network_access = false
+
+[build]
+make = "cargo build --release"
+check = "cargo test --all-features"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+mkdir -p $PKG/usr/lib/argonaut
+cp -r src $PKG/usr/lib/argonaut/
+cp Cargo.toml $PKG/usr/lib/argonaut/
+cp VERSION $PKG/usr/lib/argonaut/
+"""

@@ -4,13 +4,13 @@
 # Only local-first audit chain crate on crates.io.
 #
 # Name: Libro (Italian/Spanish: book/record)
-# Lib: libro = "0.90.0" in Cargo.toml
+# Lib: libro = "0.92.0" in Cargo.toml
 #
-# Status: Released — v0.90.0 (pre-1.0 hardening).
+# Status: Released — v0.92.0 (pre-1.0 hardening).
 
 [package]
 name = "libro"
-version = "0.90.0"
+version = "0.92.0"
 description = "Libro — cryptographic audit chain (SHA-256, BLAKE3, extensible hash types)"
 license = "GPL-3.0-only"
 groups = ["library", "security", "audit", "rust"]

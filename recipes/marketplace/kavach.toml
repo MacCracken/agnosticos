@@ -3,15 +3,15 @@
 # credential proxy, lifecycle FSM. Extracted from SecureYeoman.
 #
 # Name: Kavach (Sanskrit: कवच — armor, shield)
-# Lib: kavach = "0.21.3" in Cargo.toml
+# Lib: kavach = "2.0.0" in Cargo.toml
 #
-# Status: Scaffolded — v0.21.3.
+# Status: Released — v2.0.0.
 
 [package]
 name = "kavach"
-version = "1.0.1"
+version = "2.0.0"
 description = "Kavach — Sandbox execution framework (8 backends, strength scoring, policy engine)"
-license = "AGPL-3.0"
+license = "GPL-3.0-only"
 groups = ["library", "security", "sandbox", "rust"]
 release = 1
 arch = "any"
@@ -47,7 +47,7 @@ hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
 
 install = """
 # Library crate — consumers add to Cargo.toml:
-#   kavach = "0.21.3"
+#   kavach = "2.0.0"
 # Install source for offline/air-gapped Cargo builds.
 mkdir -p $PKG/usr/lib/kavach
 cp -r src $PKG/usr/lib/kavach/

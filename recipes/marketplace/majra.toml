@@ -3,13 +3,13 @@
 # message dedup. Unifies patterns from daimon, AgnosAI, and SecureYeoman A2A.
 #
 # Name: Majra (Arabic/Persian: مجرا — channel, conduit, waterway)
-# Lib: majra = "0.21.3" in Cargo.toml
+# Lib: majra = "1.0.4" in Cargo.toml
 #
-# Status: Published — v0.21.3 on crates.io.
+# Status: Published — v1.0.4 on crates.io.
 
 [package]
 name = "majra"
-version = "1.0.3"
+version = "1.0.4"
 description = "Majra — Distributed queue and multiplex engine"
 license = "AGPL-3.0"
 groups = ["library", "networking", "concurrency", "rust"]
@@ -47,7 +47,7 @@ hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
 
 install = """
 # Library crate — consumers add to Cargo.toml:
-#   majra = "0.21.3"
+#   majra = "1.0.4"
 # Install source for offline/air-gapped Cargo builds.
 mkdir -p $PKG/usr/lib/majra
 cp -r src $PKG/usr/lib/majra/

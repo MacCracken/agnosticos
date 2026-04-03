@@ -1,0 +1,53 @@
+# Kybernet — PID 1 helmsman for AGNOS
+# Console setup, signal handling, zombie reaping, unsafe kernel interactions.
+# Uses argonaut library for service management.
+#
+# Name: Kybernet (Greek: κυβερνήτης — helmsman of the Argo)
+# Bin: kybernet (installed as /sbin/init)
+# Lib: kybernet = "0.50.0" in Cargo.toml
+#
+# Status: Released — v0.50.0.
+
+[package]
+name = "kybernet"
+version = "0.50.0"
+description = "Kybernet — PID 1 helmsman for AGNOS (uses argonaut)"
+license = "GPL-3.0-only"
+groups = ["system", "init", "rust"]
+release = 1
+arch = "x86_64"
+
+[source]
+github_release = "MacCracken/kybernet"
+release_asset = "kybernet-*-linux-amd64.tar.gz"
+
+[depends]
+runtime = ["glibc", "argonaut"]
+build = ["rust"]
+
+[marketplace]
+category = "system"
+runtime = "native-binary"
+publisher = "AGNOS"
+tags = ["init", "pid1", "boot", "helmsman", "rust"]
+min_agnos_version = "2026.3.22"
+
+[marketplace.sandbox]
+seccomp_mode = "disabled"
+network_access = false
+
+[build]
+make = "cargo build --release"
+check = "cargo test --workspace"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+mkdir -p $PKG/sbin
+cp target/release/kybernet $PKG/sbin/init
+chmod +x $PKG/sbin/init
+
+mkdir -p $PKG/usr/bin
+ln -sf /sbin/init $PKG/usr/bin/kybernet
+"""

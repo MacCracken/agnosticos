@@ -3,15 +3,15 @@
 # Builds on kavach (sandbox) and majra (queue/heartbeat).
 #
 # Name: Stiva (Romanian: stivă — stack, pile)
-# Lib: stiva = "0.1.0" in Cargo.toml
+# Lib: stiva = "2.0.0" in Cargo.toml
 #
-# Status: Scaffolded — v0.1.0.
+# Status: Released — v2.0.0.
 
 [package]
 name = "stiva"
-version = "1.0.0"
+version = "2.0.0"
 description = "Stiva — OCI container runtime"
-license = "GPL-3.0"
+license = "GPL-3.0-or-later"
 groups = ["library", "container", "oci", "rust"]
 release = 1
 arch = "x86_64"
@@ -50,7 +50,7 @@ hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
 
 install = """
 # Library crate — consumers add to Cargo.toml:
-#   stiva = "0.1.0"
+#   stiva = "2.0.0"
 # Install source for offline/air-gapped Cargo builds.
 mkdir -p $PKG/usr/lib/stiva
 cp -r src $PKG/usr/lib/stiva/

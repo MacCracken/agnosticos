@@ -1,0 +1,62 @@
+# Agnoshi — AI-native natural language shell for AGNOS
+# Natural language command interpretation, pipeline construction,
+# context-aware completions, LLM-powered assistance.
+#
+# Name: Agnoshi (agnostic + shell)
+# Bin: agnsh
+# Lib: agnoshi = "0.90.0" in Cargo.toml
+#
+# Status: Released — v0.90.0.
+
+[package]
+name = "agnoshi"
+version = "0.90.0"
+description = "Agnoshi — AI-native natural language shell for AGNOS"
+license = "GPL-3.0-only"
+groups = ["tool", "shell", "ai", "rust"]
+release = 1
+arch = "x86_64"
+
+[source]
+github_release = "MacCracken/agnoshi"
+release_asset = "agnoshi-*-linux-amd64.tar.gz"
+
+[depends]
+runtime = ["glibc"]
+build = ["rust"]
+
+[marketplace]
+category = "shell"
+runtime = "native-binary"
+publisher = "AGNOS"
+tags = ["shell", "ai", "natural-language", "cli", "terminal", "rust"]
+min_agnos_version = "2026.3.22"
+
+[marketplace.sandbox]
+seccomp_mode = "desktop"
+network_access = true
+allowed_hosts = ["localhost", "127.0.0.1"]
+data_dir = "~/.agnoshi/"
+
+[[marketplace.sandbox.landlock]]
+path = "~/.agnoshi/"
+access = "rw"
+
+[[marketplace.sandbox.landlock]]
+path = "/run/agnos/"
+access = "rw"
+
+[build]
+make = "cargo build --release"
+check = "cargo test --workspace"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+mkdir -p $PKG/usr/bin
+cp target/release/agnsh $PKG/usr/bin/agnsh
+chmod +x $PKG/usr/bin/agnsh
+
+mkdir -p $PKG/etc/agnoshi
+"""

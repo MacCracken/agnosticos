@@ -1,0 +1,64 @@
+# Aethersafha — AI-augmented Wayland compositor for AGNOS
+# Window management, workspace layout, input handling, screen capture,
+# GPU-accelerated rendering via mabda.
+#
+# Name: Aethersafha (Aether + Safha — ethereal page/surface)
+# Bin: aethersafha
+# Lib: aethersafha = "0.1.0" in Cargo.toml
+#
+# Status: Released — v0.1.0.
+
+[package]
+name = "aethersafha"
+version = "0.1.0"
+description = "Aethersafha — AI-augmented Wayland compositor for AGNOS"
+license = "AGPL-3.0-only"
+groups = ["desktop", "compositor", "rust"]
+release = 1
+arch = "x86_64"
+
+[source]
+github_release = "MacCracken/aethersafha"
+release_asset = "aethersafha-*-linux-amd64.tar.gz"
+
+[depends]
+runtime = ["glibc", "wayland", "libinput", "mesa"]
+build = ["rust", "wayland-dev", "libinput-dev"]
+
+[marketplace]
+category = "desktop"
+runtime = "native-binary"
+publisher = "AGNOS"
+tags = ["compositor", "wayland", "desktop", "window-manager", "gpu", "ai", "rust"]
+min_agnos_version = "2026.3.22"
+
+[marketplace.sandbox]
+seccomp_mode = "desktop"
+network_access = false
+
+[[marketplace.sandbox.landlock]]
+path = "/dev/dri"
+access = "rw"
+
+[[marketplace.sandbox.landlock]]
+path = "/dev/input"
+access = "ro"
+
+[[marketplace.sandbox.landlock]]
+path = "/run/agnos/"
+access = "rw"
+
+[build]
+make = "cargo build --release"
+check = "cargo test --workspace"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+mkdir -p $PKG/usr/bin
+cp target/release/aethersafha $PKG/usr/bin/aethersafha
+chmod +x $PKG/usr/bin/aethersafha
+
+mkdir -p $PKG/etc/aethersafha
+"""

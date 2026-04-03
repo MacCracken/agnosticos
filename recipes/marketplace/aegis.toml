@@ -1,0 +1,69 @@
+# Aegis — Security daemon for AGNOS
+# System security policy enforcement, access control, audit integration.
+#
+# Name: Aegis (Greek: αἰγίς — shield of Zeus)
+# Bin: aegis
+# Lib: aegis = "0.1.0" in Cargo.toml
+#
+# Status: Released — v0.1.0.
+
+[package]
+name = "aegis"
+version = "0.1.0"
+description = "Aegis — security daemon for AGNOS"
+license = "GPL-3.0-only"
+groups = ["system", "security", "rust"]
+release = 1
+arch = "x86_64"
+
+[source]
+github_release = "MacCracken/aegis"
+release_asset = "aegis-*-linux-amd64.tar.gz"
+
+[depends]
+runtime = ["glibc"]
+build = ["rust"]
+
+[marketplace]
+category = "security"
+runtime = "native-binary"
+publisher = "AGNOS"
+tags = ["security", "daemon", "policy", "access-control", "audit", "rust"]
+min_agnos_version = "2026.3.22"
+
+[marketplace.sandbox]
+seccomp_mode = "basic"
+network_access = false
+
+[[marketplace.sandbox.landlock]]
+path = "/run/agnos/"
+access = "rw"
+
+[build]
+make = "cargo build --release"
+check = "cargo test --workspace"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+mkdir -p $PKG/usr/bin
+cp target/release/aegis $PKG/usr/bin/aegis
+chmod +x $PKG/usr/bin/aegis
+
+mkdir -p $PKG/usr/lib/systemd/system
+cat > $PKG/usr/lib/systemd/system/aegis.service << 'EOF'
+[Unit]
+Description=Aegis Security Daemon
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/aegis daemon
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+"""

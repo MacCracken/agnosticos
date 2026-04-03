@@ -1,0 +1,54 @@
+# Cyrius Seed — Cyrius assembler (.cyr → x86_64 ELF)
+# Zero-dependency assembler: tokenizer, parser, x86_64 encoder, ELF64 emitter.
+# 38 instructions, two-pass label resolution, structured errors.
+# First link in the Cyrius bootstrap chain.
+#
+# Name: Cyrius (C.Y.R.I.U.S. — Consciousness Yields Righteous Intelligence Unveiling Self)
+# Bin: cyrius-seed
+#
+# Status: Hardened — v0.1.0. 102 tests, 9 examples, ~13 MB/s pipeline.
+
+[package]
+name = "cyrius-seed"
+version = "0.1.0"
+description = "Cyrius Seed — assembler (.cyr → x86_64 ELF, 38 instructions, zero deps)"
+license = "GPL-3.0-only"
+groups = ["tool", "compiler", "assembler", "rust"]
+release = 1
+arch = "x86_64"
+
+[source]
+github_release = "MacCracken/cyrius-seed"
+release_asset = "cyrius-seed-*-linux-amd64.tar.gz"
+
+[depends]
+runtime = ["glibc"]
+build = ["rust"]
+
+[marketplace]
+category = "development"
+runtime = "native-binary"
+publisher = "AGNOS"
+tags = ["assembler", "compiler", "x86_64", "elf", "cyrius", "bootstrap", "rust"]
+min_agnos_version = "2026.4.3"
+
+[marketplace.sandbox]
+seccomp_mode = "basic"
+network_access = false
+
+[[marketplace.sandbox.landlock]]
+path = "/tmp"
+access = "rw"
+
+[build]
+make = "cargo build --release"
+check = "cargo test --workspace"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+mkdir -p $PKG/usr/bin
+cp target/release/cyrius-seed $PKG/usr/bin/cyrius-seed
+chmod +x $PKG/usr/bin/cyrius-seed
+"""

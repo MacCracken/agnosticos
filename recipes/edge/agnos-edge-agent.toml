@@ -16,7 +16,8 @@ arch = "x86_64"
 
 [source]
 url = "https://github.com/MacCracken/agnosticos/releases/download/v2026.3.11/agnos-edge-agent-2026.3.11.tar.xz"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+# TODO: Replace with actual SHA256 from release asset
+sha256 = ""
 patches = []
 
 [depends]

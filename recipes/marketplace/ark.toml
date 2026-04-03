@@ -1,0 +1,67 @@
+# Ark — Unified package manager CLI for AGNOS
+# System, marketplace, and community package management.
+# Builds on nous (resolver) and takumi (build system).
+#
+# Name: Ark (vessel/container — carries packages)
+# Bin: ark
+# Lib: ark = "0.1.0" in Cargo.toml
+#
+# Status: Released — v0.1.0.
+
+[package]
+name = "ark"
+version = "0.1.0"
+description = "Ark — unified package manager CLI for AGNOS"
+license = "GPL-3.0-only"
+groups = ["tool", "package-management", "rust"]
+release = 1
+arch = "x86_64"
+
+[source]
+github_release = "MacCracken/ark"
+release_asset = "ark-*-linux-amd64.tar.gz"
+
+[depends]
+runtime = ["glibc"]
+build = ["rust"]
+
+[marketplace]
+category = "system-tools"
+runtime = "native-binary"
+publisher = "AGNOS"
+tags = ["package-manager", "cli", "install", "update", "rust"]
+min_agnos_version = "2026.3.22"
+
+[marketplace.sandbox]
+seccomp_mode = "desktop"
+network_access = true
+data_dir = "/var/lib/ark/"
+
+[[marketplace.sandbox.landlock]]
+path = "/var/lib/ark/"
+access = "rw"
+
+[[marketplace.sandbox.landlock]]
+path = "/var/cache/ark/"
+access = "rw"
+
+[[marketplace.sandbox.landlock]]
+path = "/tmp"
+access = "rw"
+
+[build]
+make = "cargo build --release"
+check = "cargo test --workspace"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+mkdir -p $PKG/usr/bin
+cp target/release/ark $PKG/usr/bin/ark
+chmod +x $PKG/usr/bin/ark
+
+mkdir -p $PKG/var/lib/ark
+mkdir -p $PKG/var/cache/ark
+mkdir -p $PKG/etc/ark
+"""

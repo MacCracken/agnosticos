@@ -1,0 +1,50 @@
+# Agnova — OS installer for AGNOS
+# Disk partitioning, filesystem setup, base system installation,
+# bootloader configuration, user setup.
+#
+# Name: Agnova (AGNOS + nova — new beginning)
+# Bin: agnova
+# Lib: agnova = "0.1.0" in Cargo.toml
+#
+# Status: Released — v0.1.0.
+
+[package]
+name = "agnova"
+version = "0.1.0"
+description = "Agnova — OS installer for AGNOS"
+license = "GPL-3.0-only"
+groups = ["system", "installer", "rust"]
+release = 1
+arch = "x86_64"
+
+[source]
+github_release = "MacCracken/agnova"
+release_asset = "agnova-*-linux-amd64.tar.gz"
+
+[depends]
+runtime = ["glibc", "parted", "e2fsprogs"]
+build = ["rust"]
+
+[marketplace]
+category = "system"
+runtime = "native-binary"
+publisher = "AGNOS"
+tags = ["installer", "setup", "disk", "partition", "bootstrap", "rust"]
+min_agnos_version = "2026.3.22"
+
+[marketplace.sandbox]
+seccomp_mode = "disabled"
+network_access = true
+
+[build]
+make = "cargo build --release"
+check = "cargo test --workspace"
+
+[security]
+hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
+
+install = """
+mkdir -p $PKG/usr/bin
+cp target/release/agnova $PKG/usr/bin/agnova
+chmod +x $PKG/usr/bin/agnova
+"""

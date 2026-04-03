@@ -4,7 +4,7 @@ OS-level subsystems not yet at v1.0. Each is a standalone repo.
 
 ## Core Services
 
-- [daimon](daimon.md) — Agent orchestrator (0.5.0)
+- [daimon](daimon.md) — Agent orchestrator (0.6.0)
 - [agnoshi](agnoshi.md) — AI shell (0.1.0)
 - [aethersafha](aethersafha.md) — Wayland compositor (0.1.0)
 

@@ -1,15 +1,16 @@
 # Monolith Extraction Roadmap
 
-> **Status**: In Progress | **Last Updated**: 2026-03-29
+> **Status**: COMPLETE | **Last Updated**: 2026-04-03
 >
-> Plan for extracting AGNOS core subsystems from the monolithic userland workspace
-> into independently buildable, updatable binaries with their own ark packages.
+> All AGNOS core subsystems have been extracted from the monolithic userland workspace
+> into independently buildable, updatable binaries with their own repos and ark packages.
+> The monolith is fully dismantled as of 2026-04-01.
 
 ---
 
-## Problem
+## Problem (solved)
 
-Today, all AGNOS core subsystems live in a single Cargo workspace (`userland/`):
+All AGNOS core subsystems lived in a single Cargo workspace (`userland/`):
 
 ```
 userland/
@@ -22,141 +23,98 @@ userland/
 └── agnos-sudo/        → shakti (privilege escalation)
 ```
 
-This means:
-- **Any change to any subsystem requires rebuilding the entire userland**
-- **Updating daimon requires a full OS update** — no independent package upgrades
-- **agent-runtime is a megacrate** — daimon, argonaut, aegis, sigil, ark, nous, takumi, agnova, edge, federation, scheduler, and 20+ other modules are all compiled into one binary
-- **Consumer projects can't depend on subsystem crates** — sutra can't import argonaut's types, stiva can't import ark's signing logic, without depending on the entire agent-runtime
-
-The shared crate extraction (kavach, majra, libro, bote, etc.) already solved this for *library* crates. This document addresses the remaining *service* binaries.
+This meant:
+- **Any change to any subsystem required rebuilding the entire userland**
+- **Updating daimon required a full OS update** — no independent package upgrades
+- **agent-runtime was a megacrate** — daimon, argonaut, aegis, sigil, ark, nous, takumi, agnova, edge, federation, scheduler, and 20+ other modules all compiled into one binary
+- **Consumer projects couldn't depend on subsystem crates** — sutra can't import argonaut's types, stiva can't import ark's signing logic, without depending on the entire agent-runtime
 
 ---
 
-## Current State
+## Extraction Summary
 
-### Already Extracted (crates.io)
+### Phase 0 — Library Extractions (COMPLETE)
 
-These were the first wave — library crates with no HTTP server or service lifecycle:
+First wave — library crates with no HTTP server or service lifecycle:
 
-| Crate | Extracted From | Status |
-|-------|---------------|--------|
-| kavach | agent-runtime sandbox | Published (0.22.3) |
-| majra | agent-runtime pubsub | Published (0.22.3) |
-| libro | agent-runtime audit | Published (0.22.3) |
-| bote | agent-runtime MCP | Published (0.22.3) |
-| szal | agent-runtime workflow | Published (0.21.3) |
-| agnosai | agent-runtime orchestration | Published (0.21.3) |
-| ai-hwaccel | agent-runtime GPU detection | Published (0.21.3) |
+| Crate | Extracted From | Version |
+|-------|---------------|---------|
+| kavach | agent-runtime sandbox | **2.0.0** (absorbed sandbox_mod) |
+| majra | agent-runtime pubsub | Published |
+| libro | agent-runtime audit | **0.90.0** (BLAKE3 support) |
+| bote | agent-runtime MCP | **0.91.0** (absorbed MCP hosting + registry) |
+| szal | agent-runtime workflow | Published |
+| agnosai | agent-runtime orchestration | Published |
+| ai-hwaccel | agent-runtime GPU detection | Published |
 
-### Still Embedded (monolithic)
+### Phase 1 — Types Foundation (COMPLETE)
 
-These are *service binaries* or *subsystem modules* that remain inside the userland workspace:
+| Crate | From | Version | Notes |
+|-------|------|---------|-------|
+| **agnostik** | agnos-common/ | **0.90.0** | Feature-gated (agent, security, telemetry, audit, llm, secrets, config, classification, validation, hardware). Git dep |
+| **agnosys** | agnos-sys/ | **0.51.0** | 22 feature-gated modules, no openssl-sys. Git dep |
+| **sigil** | agent-runtime/src/sigil.rs + integrity + trust | **1.0.0** | Owns ALL AGNOS crypto and trust. Released 2026-04-02 |
 
-| Subsystem | Current Location | Binary? | Port | Why It Should Extract |
-|-----------|-----------------|---------|------|----------------------|
-| **daimon** | agent-runtime/ | Yes | 8090 | Core service — independent update cycle |
-| **hoosh** | llm-gateway/ | Yes | 8088 | Core service — independent update cycle |
-| **agnoshi** | ai-shell/ | Yes | — | Shell tool — update without OS rebuild |
-| **aethersafha** | desktop-environment/ | Yes | — | Compositor — update without OS rebuild |
-| **argonaut** | agent-runtime/src/argonaut.rs | Module | — | Init/service logic needed by stiva, sutra |
-| **aegis** | agent-runtime/src/aegis.rs | Module | — | Security daemon — could run standalone |
-| **sigil** | agent-runtime/src/sigil.rs | Module | — | Trust verification — library candidate |
-| **ark** | agent-runtime/src/ark.rs | Module | — | Package management — needed by stiva |
-| **nous** | agent-runtime/src/nous.rs | Module | — | Resolver — pairs with ark |
-| **takumi** | agent-runtime/src/takumi.rs | Module | — | Build system — standalone CLI tool |
-| **agnova** | agent-runtime/src/agnova.rs | Module | — | Installer — runs once, standalone |
-| **phylax** | agent-runtime/src/phylax.rs | Module | — | Threat scanner — could run standalone |
-| **agnostik** | agnos-common/ | Library | — | Shared types — already a crate, just not on crates.io |
-| **agnosys** | agnos-sys/ | Library | — | Kernel bindings — already a crate, just not on crates.io |
-| **shakti** | agnos-sudo/ | Yes | — | Small binary — low priority |
+**Migration note (agnosys 0.51.0)**: The `agent` and `llm` features were removed. Consumer code that used `agnosys::agent::*` types should migrate to `agnosai`. Consumer code that used `agnosys::llm::*` types should migrate to `hoosh`. The `full` feature continues to work — it now enables all 22 system-level modules without pulling in `reqwest` or `openssl-sys`, which fixes aarch64 cross-compilation.
+
+### Phase 2 — Package Management (COMPLETE)
+
+| Crate | From | Version | Consumers |
+|-------|------|---------|-----------|
+| **ark** | agent-runtime/src/ark.rs | 0.1.0 | stiva, sutra, takumi, agnova, daimon |
+| **nous** | agent-runtime/src/nous.rs | 0.1.0 | ark, daimon |
+| **takumi** | agent-runtime/src/takumi.rs | 0.1.0 | ark, CI/CD, standalone CLI |
+
+### Phase 3 — Init & Security (COMPLETE)
+
+| Crate | From | Version | Type | Consumers |
+|-------|------|---------|------|-----------|
+| **argonaut** | agent-runtime/src/argonaut.rs | 0.90.0 | Library | stiva, sutra, daimon, kybernet |
+| **kybernet** | Extracted from argonaut | 0.51.0 | Binary (PID 1) | OS boot |
+| **aegis** | agent-runtime/src/aegis.rs | 0.1.0 | Binary | daimon, phylax, OS security |
+| **agnova** | agent-runtime/src/agnova.rs | 0.1.0 | Binary | Installer (runs once) |
+| **mela** | agent-runtime/marketplace/ | 0.1.0 | Service | Agent marketplace |
+| **seema** | agent-runtime/edge/ | 0.1.0 | Service | Edge fleet management |
+| **samay** | agent-runtime/scheduler.rs | 0.1.0 | Service | Task scheduler |
+
+### Phase 3.5 — Crypto Boundary (RESOLVED)
+
+**Decision**: Sigil owns all AGNOS crypto and trust (1.0.0 stable).
+
+| Item | Resolution |
+|------|-----------|
+| **pqc.rs** | Future feature on sigil — no separate crate |
+| **sy-crypto** | SY-side agent session crypto — separate from OS-level trust |
+| **Ownership split** | AGNOS sigil = OS-level trust. SY sy-crypto = agent-side session crypto |
+| **PQC timeline** | Post-v1.0 feature on sigil. Classical → hybrid → PQC-only transition planned |
+
+### Phase 4 — Core Services (COMPLETE)
+
+| Crate | From | Version | Notes |
+|-------|------|---------|-------|
+| **daimon** | agent-runtime/ | 0.6.0 | Standalone binary, leaned out, no transitive openssl-sys |
+| **hoosh** | llm-gateway/ | 1.1.0 | Standalone binary (port 8088) |
+| **agnoshi** | ai-shell/ | 0.90.0 | Standalone binary — 736 tests |
+| **aethersafha** | desktop-environment/ | 0.1.0 | Standalone binary — 785 tests |
+| **shakti** | agnos-sudo/ | 0.1.0 | Standalone binary — privilege escalation |
+
+### Absorptions (existing crates grew)
+
+| Target | Absorbed | New Version |
+|--------|----------|-------------|
+| **bote** | MCP hosting types + registry | 0.91.0 |
+| **kavach** | sandbox_mod runtime modules | 2.0.0 |
+| **t-ron** | safety module (injection, circuit breaker, policy) | 0.90.0 |
 
 ---
 
-## Extraction Phases
+## Current State (2026-04-03)
 
-### Phase 0 — Library Extractions (done)
+**Monolith is fully dismantled.** All userland code lives in standalone repos under `/home/macro/Repos/{name}/`.
 
-Already completed. kavach, majra, libro, bote, szal, agnosai, ai-hwaccel published to crates.io.
+**Remaining in workspace**: `examples/` only (agent SDK examples, depends on agnostik + agnosys via git deps).
 
-### Phase 1 — Types Foundation (in progress)
-
-Extract the foundational type crates that everything else depends on. These have no service lifecycle — they're pure libraries.
-
-| Extract | From | Becomes | Status |
-|---------|------|---------|--------|
-| **agnostik** | agnos-common/ | `agnostik` crate (internal, path dep) | Planning — [roadmap to 1.0.0](agnostik-roadmap.md) |
-| **agnosys** | agnos-sys/ | `agnosys` crate (internal, path dep) | **0.5.0 released** — leaned out (`agent`/`llm` features removed → agnosai/hoosh), 22 feature-gated modules, no openssl-sys |
-| **sigil** | agent-runtime/src/sigil.rs | `sigil` crate (crates.io) | Not started |
-
-**Migration note (agnosys 0.5.0)**: The `agent` and `llm` features were removed. Consumer code that used `agnosys::agent::*` types should migrate to `agnosai`. Consumer code that used `agnosys::llm::*` types should migrate to `hoosh`. The `full` feature continues to work — it now enables all 22 system-level modules without pulling in `reqwest` or `openssl-sys`, which fixes aarch64 cross-compilation.
-
-**Why first**: These are leaf dependencies. Nothing downstream breaks. Consumer apps currently can't use AGNOS types without depending on the entire workspace — this fixes that.
-
-### Phase 2 — Package Management
-
-Extract the package management stack so stiva and sutra can depend on it directly:
-
-| Extract | From | Becomes | Consumers |
-|---------|------|---------|-----------|
-| **ark** | agent-runtime/src/ark.rs | `ark` crate (crates.io) | stiva, sutra, takumi, agnova, daimon |
-| **nous** | agent-runtime/src/nous.rs | `nous` crate (crates.io) | ark, daimon |
-| **takumi** | agent-runtime/src/takumi.rs | `takumi` binary + crate | ark, CI/CD, standalone CLI |
-
-**Why**: stiva needs ark's image signing/verification. sutra needs ark's install/upgrade logic. Today they go through daimon's HTTP API — fine for fleet ops, but local operations shouldn't require a running daimon.
-
-### Phase 3 — Init & Security
-
-Extract the subsystems that could run as independent daemons:
-
-| Extract | From | Becomes | Consumers |
-|---------|------|---------|-----------|
-| **argonaut** | agent-runtime/src/argonaut.rs | `argonaut` binary + crate | stiva, sutra, daimon, OS boot |
-| **aegis** | agent-runtime/src/aegis.rs | `aegis` binary | daimon, phylax, OS security |
-| **phylax** | agent-runtime/src/phylax.rs | `phylax` binary | aegis, daimon, standalone scanning |
-| **agnova** | agent-runtime/src/agnova.rs | `agnova` binary | Installer (runs once) |
-
-**Why**: argonaut's service management logic is needed by stiva (container lifecycle) and sutra (service state modules). Today sutra shells out or uses daimon's API. With argonaut as a crate, sutra can call `argonaut::service::enable("tarang")` directly on the local machine without a daimon round-trip.
-
-### Phase 3.5 — Crypto Boundary (AGNOS ↔ SY)
-
-Resolve the PQC/crypto ownership split before extracting further:
-
-| Item | Current Location | Decision Needed |
-|------|-----------------|-----------------|
-| **pqc.rs** | agent-runtime/src/pqc.rs | Extract to shared crate or keep in daimon? |
-| **sy-crypto** | SecureYeoman (external) | SY-side agent crypto — overlaps with pqc.rs |
-
-**Current state**: `pqc.rs` implements hybrid classical + PQC (ML-KEM/ML-DSA) with
-SHA-256 simulated primitives. Production interfaces are correct — swapping to real
-`ml-kem`/`ml-dsa` crates is mechanical. SY has `sy-crypto` covering similar ground
-from the agent side.
-
-**Decisions needed**:
-- [ ] **Ownership split**: AGNOS pqc = OS-level trust (key exchange, hybrid combiners, cert verification) vs SY sy-crypto = agent-side session crypto
-- [ ] **Shared primitives**: Move common PQC types/traits into agnostik so both sides share one definition
-- [ ] **Channel encryption**: Who owns the agent↔daimon channel encryption and key rotation?
-- [ ] **Real crate swap**: Replace SHA-256 simulation with actual `ml-kem` + `ml-dsa` crates
-- [ ] **Migration path**: Define the classical → hybrid → PQC-only transition timeline
-
-**Why now**: Extracting sigil, aegis, or kavach without settling the crypto boundary
-means we'd have to refactor crypto ownership later — better to draw the line first.
-
-### Phase 4 — Core Services (started)
-
-The big extraction — daimon and hoosh become standalone binaries with their own repos, ark recipes, and independent release cycles:
-
-| Extract | From | Becomes | Status |
-|---------|------|---------|--------|
-| **daimon** | agent-runtime/ | `daimon` binary (internal, ark package) | **0.5.0 released** — leaned out and hardened |
-| **hoosh** | llm-gateway/ | `hoosh` binary (ark package) | Not started |
-| **agnoshi** | ai-shell/ | `agnoshi` binary (internal, ark package) | Not started |
-| **aethersafha** | desktop-environment/ | `aethersafha` binary (ark package) | Not started |
-
-**Migration note (daimon 0.5.0)**: Hardened release alongside agnosys 0.5.0. Dependency tree leaned out — no more transitive openssl-sys. Available on GitHub (`MacCracken/agnosticos`).
-
-**What remains in the monolith**: Nothing. The `userland/` workspace becomes a meta-package that depends on the extracted crates — or disappears entirely, replaced by individual repos.
-
-**Update flow after extraction**:
+**Update flow** (the whole point of the extraction):
 ```
 User or agent runs:  ark upgrade daimon
                          │
@@ -172,9 +130,9 @@ Done.                No OS rebuild. No ISO. No reboot.
 
 ---
 
-## What Daimon Becomes After Extraction
+## What Daimon Became After Extraction
 
-Today `agent-runtime/` is ~50 modules compiled into one binary. After full extraction:
+The agent-runtime megacrate (~50 modules) was broken down into:
 
 ```
 daimon (the binary) owns ONLY:
@@ -200,13 +158,13 @@ daimon DEPENDS ON (as crate deps):
   ├── sigil       — trust verification
   ├── ark         — package operations
   ├── argonaut    — service management
-  └── t-ron       — MCP security (when ready)
+  └── t-ron       — MCP security
 
 Separately running services (not in daimon process):
   ├── hoosh       — LLM gateway (port 8088)
   ├── aegis       — security daemon
   ├── phylax      — threat scanner
-  └── argonaut    — init system (PID 1 or systemd unit)
+  └── kybernet    — PID 1 (uses argonaut)
 ```
 
 ---
@@ -215,7 +173,7 @@ Separately running services (not in daimon process):
 
 Not everything extracted becomes a public crate. The question is: **"Would someone outside AGNOS use this?"**
 
-### Internal (path dep, shipped via ark)
+### Internal (git dep, shipped via ark)
 
 OS plumbing — runtime services and kernel bindings that only make sense as part of the AGNOS distribution:
 
@@ -226,7 +184,7 @@ OS plumbing — runtime services and kernel bindings that only make sense as par
 | **daimon** | Agent runtime service — the OS runtime |
 | **agnoshi** | AI shell — the OS shell interface |
 
-These ship as `.ark` packages via ark. Path dependencies for build-time consumption.
+These ship as `.ark` packages via ark. Git dependencies for build-time consumption.
 
 ### Public (crates.io)
 
@@ -238,6 +196,7 @@ Domain libraries — reusable by anyone, not tied to the OS:
 | **agnosai** | Agent orchestration types — agent primitives are domain-generic |
 | **kavach** | Sandboxing library — generic enough for any Rust project |
 | **libro** | Audit chain — generic cryptographic logging |
+| **sigil** | Trust verification — crypto primitives are domain-generic |
 | **bhava** | Emotion/personality engine — no OS dependency |
 | **hisab**, **prakash**, etc. | Pure domain math/science — no OS dependency |
 
@@ -250,16 +209,12 @@ The OS provides the **runtime** (daimon). The **domain primitives** (agnosai, ho
 1. **Extract libraries before services** — types and pure logic first, daemons last
 2. **API compatibility** — external consumers (sutra, stiva, consumer apps) should not notice the extraction. HTTP API endpoints don't change. MCP tools don't change
 3. **No flag day** — each extraction is independently releasable. The monolith shrinks incrementally
-4. **Crate before binary** — extract the library crate first (types, logic), then the binary later. Argonaut-the-crate before argonaut-the-service
+4. **Crate before binary** — extract the library crate first (types, logic), then the binary later. Argonaut-the-crate before kybernet-the-binary
 5. **ark recipes drive the boundary** — if it has its own ark recipe and can be `ark upgrade`-d independently, it's properly extracted
-6. **Internal vs public** — OS plumbing stays internal (path dep, ark package). Domain libraries go to crates.io. Ask: "Would someone outside AGNOS use this?"
-
-## Priority
-
-- **Phase 1-2**: Pre-v1.0 — enables stiva and sutra to depend on ark/sigil/argonaut directly
-- **Phase 3**: v1.0 — standalone security and init daemons
-- **Phase 4**: Post-v1.0 — full independent update cycles for core services
+6. **Internal vs public** — OS plumbing stays internal (git dep, ark package). Domain libraries go to crates.io. Ask: "Would someone outside AGNOS use this?"
 
 ---
 
-*Last Updated: 2026-03-26*
+---
+
+*Last Updated: 2026-04-03*
