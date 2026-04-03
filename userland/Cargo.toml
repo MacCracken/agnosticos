@@ -1,8 +1,5 @@
 [workspace]
 members = [
-    "agnos-common",
-    "agnos-sys",
-    "agnos-sudo",
     "examples",
 ]
 resolver = "2"
@@ -41,9 +38,8 @@ tower = { version = "0.5", features = ["util"] }
 tower-http = { version = "0.6", features = ["cors", "limit"] }
 
 # AGNOS internal dependencies
-agnos-common = { path = "agnos-common" }
-agnos-sys = { path = "agnos-sys" }
-agnosys = { path = "../../agnosys", features = ["full"] }
+agnostik = { git = "https://github.com/MacCracken/agnostik.git", tag = "0.90.0", features = ["full"] }
+agnosys = { git = "https://github.com/MacCracken/agnosys.git", tag = "0.50.0", features = ["full"] }
 base64 = "0.22"
 rumqttc = "0.25"
 

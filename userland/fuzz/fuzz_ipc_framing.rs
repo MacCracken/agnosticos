@@ -1,12 +1,21 @@
 #![no_main]
 
-use agnos_common::Message;
+use agnostik::MessageType;
 use libfuzzer_sys::fuzz_target;
+
+/// Legacy IPC message (same shape as the old agnos-sys::agent::Message).
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct Message {
+    id: String,
+    source: String,
+    target: String,
+    message_type: MessageType,
+    payload: serde_json::Value,
+    timestamp: chrono::DateTime<chrono::Utc>,
+}
 
 /// Fuzz IPC length-prefixed framing: try to parse arbitrary bytes as
 /// a 4-byte big-endian length header followed by a JSON Message body.
-/// This exercises the same code path as `handle_connection` without
-/// requiring a live socket.
 fuzz_target!(|data: &[u8]| {
     if data.len() < 4 {
         return;

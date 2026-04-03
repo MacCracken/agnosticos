@@ -11,7 +11,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 The userland monolith is fully dismantled. `agent-runtime/`, `ai-shell/`, `llm-gateway/`, and `desktop-environment/` have been removed from the workspace. All code lives in standalone repos.
 
-**Workspace now**: agnos-common, agnos-sys, agnos-sudo, examples.
+**Workspace now**: examples only. All subsystem code extracted.
+
+### Changed — shakti Extracted
+
+- **shakti** (0.1.0) — Extracted `agnos-sudo` to standalone repo (`MacCracken/shakti`). Binary crate, no library deps on agnostik/agnosys. 44 tests, 1522 lines.
+
+### Changed — agnostik Extracted
+
+- **agnostik** (0.90.0) — Extracted `agnos-common` to standalone repo (`MacCracken/agnostik`). Feature-gated modules: agent, security, telemetry, audit, llm, secrets, config, classification, validation, hardware, logging. Consumed via git dep (tag `0.90.0`).
+- Examples and fuzz targets updated to agnostik API
+
+### Changed — agnosys Extracted
+
+- **agnosys** (0.50.0) — Removed `agnos-sys` wrapper from workspace. Standalone repo (`MacCracken/agnosys`) is now the sole kernel interface crate, consumed via git dep (tag `0.50.0`).
+- Legacy Agent SDK (AgentContext, AgentRuntime, Agent trait) moved to `examples/src/agent.rs` — only used by examples in this repo
+- `agnos-sudo` no longer depends on agnos-sys (was unused)
 
 ### Added — Standalone Repo Extractions (12 new repos)
 

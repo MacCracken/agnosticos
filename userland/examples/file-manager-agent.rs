@@ -4,8 +4,8 @@
 
 use anyhow::Result;
 
-use agnos_common::Message;
-use agnos_sys::agent::{Agent, AgentContext};
+use agnos_examples::agent::{Agent, AgentContext, Message};
+use agnostik::{AgentStatus, MessageType};
 
 pub struct FileManagerAgent {
     root_path: std::path::PathBuf,
@@ -35,15 +35,10 @@ impl Agent for FileManagerAgent {
 
         // Main agent loop
         loop {
-            // In a real implementation, this would:
-            // 1. Listen for file operation requests
-            // 2. Execute operations within sandbox constraints
-            // 3. Report results back
-
             tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
             // Check if we should shutdown
-            if ctx.status().await == agnos_common::AgentStatus::Stopping {
+            if ctx.status().await == AgentStatus::Stopping {
                 break;
             }
         }
@@ -55,7 +50,7 @@ impl Agent for FileManagerAgent {
         tracing::debug!("Received message: {:?}", message);
 
         // Handle file operation commands
-        if message.message_type == agnos_common::MessageType::Command {
+        if message.message_type == MessageType::Command {
             // Parse and execute command
         }
 
@@ -69,4 +64,4 @@ impl Agent for FileManagerAgent {
 }
 
 // Entry point
-agnos_sys::agent_main!(FileManagerAgent);
+agnos_examples::agent_main!(FileManagerAgent);

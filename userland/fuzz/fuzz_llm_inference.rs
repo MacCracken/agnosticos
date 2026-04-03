@@ -1,15 +1,13 @@
 #![no_main]
 
-use agnos_common::InferenceRequest;
+use agnostik::InferenceRequest;
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {
     if let Ok(json_str) = std::str::from_utf8(data) {
         // Try to parse as InferenceRequest
-        if let Ok(mut request) = serde_json::from_str::<InferenceRequest>(json_str) {
+        if let Ok(request) = serde_json::from_str::<InferenceRequest>(json_str) {
             validate_request(&request);
-            // Validate must not panic
-            request.validate();
         }
 
         // Try various field combinations
@@ -20,15 +18,14 @@ fuzz_target!(|data: &[u8]| {
 
     // Test with various model names
     test_model_names();
-
-    // Test parameter bounds
-    test_parameter_bounds();
 });
 
 fn validate_request(request: &InferenceRequest) {
-    let _ = request.temperature.clamp(0.0_f32, 2.0_f32);
-    let _ = request.max_tokens.min(100000);
-    let _ = request.top_p.clamp(0.0_f32, 1.0_f32);
+    let _ = request.model.len();
+    let _ = request.prompt.len();
+    if let Some(max) = request.max_tokens {
+        let _ = max.min(100000);
+    }
 }
 
 fn test_builder_patterns(builder: &serde_json::Value) {
@@ -58,16 +55,4 @@ fn test_model_names() {
 
 fn validate_model_name(name: &str) -> bool {
     !name.is_empty() && name.len() < 256 && !name.contains('\0') && !name.contains('\n')
-}
-
-fn test_parameter_bounds() {
-    let temps: &[f32] = &[-1.0, 0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 100.0];
-    for &temp in temps {
-        let _ = temp.clamp(0.0, 2.0);
-    }
-
-    let tokens: &[u32] = &[0, 1, 100, 1000, 10000, 100000];
-    for &tok in tokens {
-        let _ = tok.min(100000);
-    }
 }

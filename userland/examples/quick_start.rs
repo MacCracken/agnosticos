@@ -2,10 +2,9 @@
 //!
 //! This example demonstrates the basic usage of AGNOS APIs.
 
-use agnos_common::llm::{ModelCapability, ModelInfo, Provider};
-use agnos_common::{
-    AgentConfig, AgentId, AgentType, FilesystemRule, FsAccess, InferenceRequest, NetworkAccess,
-    Permission, ResourceLimits, SandboxConfig,
+use agnostik::{
+    AgentConfig, AgentId, AgentType, FilesystemRule, FsAccess, InferenceRequest, LlmProvider,
+    NetworkAccess, Permission, ResourceLimits, SandboxConfig,
 };
 use std::path::PathBuf;
 
@@ -22,18 +21,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             max_cpu_time: 3600 * 1000, // 1 hour
             max_file_descriptors: 100,
             max_processes: 5,
+            ..Default::default()
         },
         sandbox: SandboxConfig {
             filesystem_rules: vec![FilesystemRule {
                 path: PathBuf::from("/tmp"),
                 access: FsAccess::ReadWrite,
+                readonly: false,
+                noexec: false,
+                nosuid: false,
+                nodev: false,
+                propagation: Default::default(),
             }],
             network_access: NetworkAccess::Restricted,
-            seccomp_rules: vec![],
-            isolate_network: true,
-            network_policy: None,
-            mac_profile: None,
-            encrypted_storage: None,
+            ..Default::default()
         },
         permissions: vec![
             Permission::FileRead,
@@ -44,6 +45,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "description": "Example agent",
             "version": "1.0.0"
         }),
+        ..Default::default()
     };
     println!("   Agent name: {}", config.name);
     println!("   Agent type: {:?}", config.agent_type);
@@ -60,37 +62,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 3. LLM Request
     println!("3. Creating LLM Inference Request...");
     let request = InferenceRequest {
-        prompt: "Explain what AGNOS is in one sentence.".to_string(),
         model: "llama2".to_string(),
-        max_tokens: 100,
-        temperature: 0.7,
-        top_p: 0.9,
-        presence_penalty: 0.0,
-        frequency_penalty: 0.0,
+        prompt: "Explain what AGNOS is in one sentence.".to_string(),
+        system: None,
+        messages: vec![],
+        max_tokens: Some(100),
+        sampling: Default::default(),
+        stream: false,
+        tools: vec![],
+        tool_choice: None,
+        response_format: None,
+        logprobs: false,
+        top_logprobs: None,
     };
     println!("   Model: {}", request.model);
     println!("   Prompt: {}", request.prompt);
-    println!("   Max tokens: {}", request.max_tokens);
-    println!("   Temperature: {}", request.temperature);
+    println!("   Max tokens: {:?}", request.max_tokens);
     println!();
 
-    // 4. Model Info
-    println!("4. Creating Model Info...");
-    let model = ModelInfo {
-        id: "llama2-7b".to_string(),
-        name: "Llama 2 7B".to_string(),
-        provider: Provider::Local,
-        capabilities: vec![
-            ModelCapability::TextGeneration,
-            ModelCapability::CodeGeneration,
-        ],
-        max_tokens: 4096,
-        size_bytes: 3_800_000_000,
-        loaded: false,
-    };
-    println!("   Model ID: {}", model.id);
-    println!("   Provider: {:?}", model.provider);
-    println!("   Max tokens: {}", model.max_tokens);
+    // 4. Provider Info
+    println!("4. LLM Providers...");
+    let provider = LlmProvider::Ollama;
+    println!("   Provider: {:?}", provider);
     println!();
 
     // 5. Serialization

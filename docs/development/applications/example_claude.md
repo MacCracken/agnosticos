@@ -1,17 +1,17 @@
-# Agnostik — Claude Code Instructions
+# {Project} — Claude Code Instructions
 
 ## Project Identity
 
-**Agnostik** (agnostic) — Shared types and domain primitives for AGNOS
+**{Project}** ({language}: {meaning}) — {one-line description}
 
-- **Type**: Flat library crate
-- **License**: GPL-3.0
+- **Type**: Flat library crate / Binary / Workspace
+- **License**: GPL-3.0-only
 - **MSRV**: 1.89
-- **Version**: SemVer 0.90.0
+- **Version**: SemVer 0.1.0
 
 ## Consumers
 
-Every AGNOS component: daimon, hoosh, agnoshi, aegis, argonaut, sigil, ark, kavach, stiva, nein, and all consumer apps.
+{List which AGNOS components depend on this crate: daimon, hoosh, agnoshi, etc.}
 
 ## Development Process
 
@@ -59,13 +59,13 @@ Every AGNOS component: daimon, hoosh, agnoshi, aegis, argonaut, sigil, ark, kava
 ### Key Principles
 
 - Never skip benchmarks
-- Own the stack — agnostik IS the stack's type vocabulary
 - `#[non_exhaustive]` on ALL public enums (forward compatibility)
 - `#[must_use]` on all pure functions
 - Every type must be Serialize + Deserialize (serde)
 - Feature-gate optional modules — consumers pull only what they need
 - Zero unwrap/panic in library code
 - All types must have serde roundtrip tests
+- {Add project-specific principles here}
 
 ## DO NOT
 
@@ -74,6 +74,7 @@ Every AGNOS component: daimon, hoosh, agnoshi, aegis, argonaut, sigil, ark, kava
 - Do not add unnecessary dependencies
 - Do not break backward compatibility without a major version bump
 - Do not skip benchmarks before claiming performance improvements
+- {Add project-specific constraints here}
 
 ## Documentation Structure
 

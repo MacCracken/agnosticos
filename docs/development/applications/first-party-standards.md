@@ -1,6 +1,6 @@
 # First-Party Application Standards
 
-> **Status**: Active | **Last Updated**: 2026-03-22
+> **Status**: Active | **Last Updated**: 2026-04-03
 >
 > Standards, conventions, and workflows for all AGNOS first-party consumer applications.
 > These are non-negotiable for interoperability with daimon, agnoshi, mela, and the marketplace infrastructure.
@@ -17,6 +17,7 @@
 {project}/
 ├── VERSION                          # Single source of truth (CalVer or SemVer)
 ├── Cargo.toml                       # Flat crate or workspace root
+├── CLAUDE.md                        # Claude Code project instructions (see CLAUDE.md section)
 ├── rust-toolchain.toml              # channel = "stable", components = ["rustfmt", "clippy"]
 ├── Makefile                         # check/fmt/clippy/test/audit/deny/bench/coverage/build/doc/clean
 ├── README.md                        # Architecture, quick start, feature flags, usage examples
@@ -274,7 +275,7 @@ license = "GPL-3.0-only"              # library crates, CLIs, daemons
 license = "AGPL-3.0-only"             # desktop GUI applications
 ```
 
-**`publish = false`**: Only set this for intentionally internal crates (agnostik, agnosys, daimon). All library crates and science crates will publish to crates.io — do not scaffold with `publish = false`.
+**`publish = false`**: Only set this for OS infrastructure that ships via ark, not crates.io (agnostik, agnosys, daimon, agnoshi, shakti). All library crates and science crates will publish to crates.io — do not scaffold with `publish = false`.
 
 ### VERSION File
 
@@ -283,6 +284,72 @@ license = "AGPL-3.0-only"             # desktop GUI applications
 - CI reads it: `VERSION=$(cat VERSION | tr -d '[:space:]')`
 - Release workflow verifies VERSION matches tag
 - Git tags match exactly: `git tag $VERSION`
+
+### CLAUDE.md (Required)
+
+Every AGNOS project must have a `CLAUDE.md` at the repo root. This file is read by Claude Code at the start of every session and defines the project identity, development process, and constraints. It is **not optional** — it is the primary mechanism for maintaining consistent work quality across the project.
+
+**Required sections:**
+
+```markdown
+# {Project} — Claude Code Instructions
+
+## Project Identity
+
+**{Project}** ({etymology}) — {one-line description}
+
+- **Type**: Flat library crate / Binary / Workspace
+- **License**: GPL-3.0-only / AGPL-3.0-only
+- **MSRV**: 1.89
+- **Version**: {current version}
+
+## Consumers
+
+{Who depends on this crate}
+
+## Development Process
+
+### P(-1): Scaffold Hardening (before any new features)
+{The P(-1) process — see P(-1) section below}
+
+### Work Loop / Working Loop (continuous)
+{The development loop — see Development Loop section below}
+
+### Task Sizing
+{Low/Medium = batch freely, Large = small bites, If unsure = treat as large}
+
+### Refactoring
+{When to refactor, never speculatively, same gates as new code}
+
+### Key Principles
+{Project-specific principles + standard AGNOS principles}
+
+## DO NOT
+{Project-specific constraints + standard AGNOS constraints}
+
+## Documentation Structure
+{Required files and docs/ layout}
+
+## CHANGELOG Format
+{Keep a Changelog, benchmark numbers for perf claims}
+```
+
+**Standard constraints (must appear in every CLAUDE.md):**
+
+- **Do not commit or push** — the user handles all git operations
+- **NEVER use `gh` CLI** — use `curl` to GitHub API only
+- Do not add unnecessary dependencies
+- Do not skip benchmarks before claiming performance improvements
+- `#[non_exhaustive]` on ALL public enums
+- `#[must_use]` on all pure functions
+- Zero unwrap/panic in library code
+- All types must have serde roundtrip tests
+
+**Project-specific additions**: Each project adds its own principles relevant to its domain (e.g., agnostik adds "Own the stack", libro adds "No magic — every operation is auditable").
+
+**Template**: [example_claude.md](example_claude.md) — copy this, fill in the `{placeholders}`, add project-specific principles.
+
+**Reference implementations**: [agnostik CLAUDE.md](https://github.com/MacCracken/agnostik/blob/main/CLAUDE.md), [libro CLAUDE.md](https://github.com/MacCracken/libro/blob/main/CLAUDE.md).
 
 ---
 
@@ -637,7 +704,7 @@ Reference: [hisab logging.rs](https://github.com/MacCracken/hisab/blob/main/src/
 name = "{project}"
 version = "YYYY.M.D"
 description = "{Project} — one-line description"
-license = "GPL-3.0"
+license = "GPL-3.0-only"
 groups = ["{domain}"]
 
 [source]
@@ -653,7 +720,7 @@ category = "{category}"
 runtime = "native-binary"
 publisher = "AGNOS"
 tags = [...]
-min_agnos_version = "2026.3.22"
+min_agnos_version = "2026.3.31"
 
 [marketplace.sandbox]
 seccomp_mode = "basic"
@@ -675,9 +742,9 @@ hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
 ### New Project Lifecycle
 
 ```
-1. Scaffold       → Cargo.toml + VERSION + README + CHANGELOG + CONTRIBUTING +
-                     CODE_OF_CONDUCT + SECURITY + LICENSE + deny.toml + codecov.yml +
-                     Makefile + rust-toolchain.toml + .gitignore +
+1. Scaffold       → Cargo.toml + VERSION + CLAUDE.md + README + CHANGELOG +
+                     CONTRIBUTING + CODE_OF_CONDUCT + SECURITY + LICENSE +
+                     deny.toml + codecov.yml + Makefile + rust-toolchain.toml + .gitignore +
                      scripts/{version-bump,bench-history}.sh +
                      .github/workflows/{ci,release}.yml
 2. Core logic     → src/lib.rs + domain modules, feature-gated
@@ -690,8 +757,8 @@ hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
 9. First release  → VERSION, CHANGELOG, git tag, CI builds + publishes
 10. AGNOS integration:
     a. Marketplace recipe    → recipes/marketplace/{project}.toml
-    b. Agnoshi intents       → ai-shell/src/interpreter/patterns.rs
-    c. MCP tool registration → agent-runtime MCP tool list
+    b. Agnoshi intents       → agnoshi repo: src/interpreter/patterns.rs
+    c. MCP tool registration → daimon repo: MCP tool list
     d. Application doc       → docs/applications/{project}.md
     e. Bundle test           → ark-bundle.sh {recipe}
 ```
@@ -838,4 +905,4 @@ The continuous improvement cycle for every crate. Each pass makes the crate meas
 
 ---
 
-*Last Updated: 2026-03-30*
+*Last Updated: 2026-04-03*

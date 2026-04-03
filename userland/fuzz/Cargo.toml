@@ -7,9 +7,10 @@ publish = false
 [workspace]
 
 [dependencies]
-agnos-common = { path = "../agnos-common" }
-agnos-sys = { path = "../agnos-sys" }
+agnostik = { git = "https://github.com/MacCracken/agnostik.git", tag = "0.90.0", features = ["full"] }
+chrono = { version = "0.4", features = ["serde"] }
 libfuzzer-sys = "0.4"
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 [profile.release]

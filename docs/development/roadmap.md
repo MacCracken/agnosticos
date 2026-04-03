@@ -1,11 +1,11 @@
 # AGNOS Development Roadmap
 
 > **Status**: Pre-Beta | **Last Updated**: 2026-04-02
-> **Monolith dismantled** — all subsystems extracted to standalone repos. Workspace: agnos-common, agnos-sys, agnos-sudo, examples.
+> **Monolith fully dismantled** — all subsystems extracted to standalone repos. Workspace: examples only. agnostik (0.90.0), agnosys (0.50.0), shakti (0.1.0) all standalone.
 > **Recipes**: 116 base + 71 desktop + 25 AI + 9 network + 8 browser + 95 marketplace + 4 python + 3 database + 31 edge = 362 OS (+ 90 bazaar community)
 > **Build order**: 178 packages in `recipes/build-order.txt` (base + desktop, dependency-ordered)
 > **Phases 10–14 complete** | **Phase 15A**: Core scanning done (phylax) | **Phase 16A**: Desktop essentials done | **Phase 17**: Local inference optimization (planned) | **Audit**: 16 rounds
-> **Shared Crates**: 77 library crates — 56 at v1.0+ stable, 20 pre-1.0, 1 internal. Key milestones: sigil 1.0.0, kavach 2.0.0, bote 0.90.0, t-ron 0.90.0
+> **Shared Crates**: 77 library crates — 56 at v1.0+ stable, 21 pre-1.0. Key milestones: sigil 1.0.0, kavach 2.0.0, bote 0.90.0, t-ron 0.90.0, agnostik 0.90.0, agnosys 0.50.0
 > **Consumer Projects**: 19+ released (including Vidhana v1, Sutra v1, Abacus)
 
 ---
@@ -49,6 +49,46 @@ Phase 13A (self-hosting) ──→ Phase 16 (desktop recipes) ──→ Phase 13
 ```
 
 ---
+
+## Monolith Extraction — Migration Status
+
+The original monolith (`userland/`) contained agent-runtime, ai-shell, llm-gateway, desktop-environment, agnos-common, and agnos-sys. All have been extracted.
+
+### Completed Extractions
+
+| Original | Extracted To | Version | Method | Date |
+|----------|-------------|---------|--------|------|
+| `agent-runtime/` | 12 standalone repos (see below) | various | Code moved to new repos | 2026-04-01 |
+| `ai-shell/` | **agnoshi** (`MacCracken/agnoshi`) | 0.1.0 | Code moved | 2026-04-01 |
+| `llm-gateway/` | **hoosh** (`MacCracken/hoosh`) | 1.1.0 | Code moved | 2026-04-01 |
+| `desktop-environment/` | **aethersafha** (`MacCracken/aethersafha`) | 0.1.0 | Code moved | 2026-04-01 |
+| `agnos-common/` | **agnostik** (`MacCracken/agnostik`) | 0.90.0 | Git dep, tag `0.90.0` | 2026-04-02 |
+| `agnos-sys/` | **agnosys** (`MacCracken/agnosys`) | 0.50.0 | Git dep, tag `0.50.0` | 2026-04-02 |
+| `agnos-sudo/` | **shakti** (`MacCracken/shakti`) | 0.1.0 | Standalone repo | 2026-04-03 |
+
+### Crate Absorptions (code merged into existing repos)
+
+| Source Module | Absorbed Into | New Version |
+|--------------|---------------|-------------|
+| `agent-runtime/mcp_server/` | **bote** | 0.91.0 |
+| `agent-runtime/sandbox_mod/` | **kavach** | 2.0.0 |
+| `agent-runtime/safety/` | **t-ron** | 0.90.0 |
+
+### Remaining in Workspace
+
+| Crate | Status | Notes |
+|-------|--------|-------|
+| `examples/` | Agent SDK examples | Depends on agnostik + agnosys via git deps. Consider moving to agnostik repo. |
+
+### Extraction Complete
+
+All userland code has been extracted. The workspace contains only examples.
+
+### Post-Extraction Cleanup
+
+- [ ] Evaluate whether `examples/` should move to agnostik repo or stay here
+- [ ] Clean up workspace `Cargo.toml` — remove unused workspace deps (tonic, prost, axum, tower, etc.)
+- [ ] Decide fate of this repo: repurpose as meta-repo (recipes, docs, scripts, kernel modules) or archive
 
 ---
 
@@ -364,9 +404,9 @@ Per-subsystem docs: [docs/development/os/](os/README.md) | Non-OS libs: [docs/ap
 |------|------|------|---------|
 | **hoosh** | LLM inference gateway (port 8088) | `MacCracken/hoosh` | 1.1.0 |
 | **daimon** | Agent orchestrator (port 8090) | `MacCracken/daimon` | 0.5.0 |
-| **agnosys** | Kernel interface | `MacCracken/agnosys` | 0.29.3 |
-| **agnostik** | Shared types library | `userland/agnos-common` (internal) | — |
-| **shakti** | Privilege escalation | `userland/agnos-sudo` (internal) | — |
+| **agnosys** | Kernel interface | `MacCracken/agnosys` | 0.50.0 |
+| **agnostik** | Shared types library | `MacCracken/agnostik` | 0.90.0 |
+| **shakti** | Privilege escalation | `MacCracken/shakti` | 0.1.0 |
 | **agnoshi** | AI shell (`agnsh`) | `MacCracken/agnoshi` | 0.1.0 |
 | **aethersafha** | Desktop compositor | `MacCracken/aethersafha` | 0.1.0 |
 | **sigil** | Trust verification & crypto | `MacCracken/sigil` | 1.0.0 |
