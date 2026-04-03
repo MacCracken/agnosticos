@@ -1,6 +1,6 @@
 # Shared Crates — Registry & Status
 
-> **Status**: Active | **Last Updated**: 2026-04-01
+> **Status**: Active | **Last Updated**: 2026-04-03
 >
 > **77 crates** — 56 at v1.0+ stable (11 OS, 25 science, 10 media, 5 lang/nav, 5 physics), 20 pre-1.0, 1 internal
 >
@@ -20,12 +20,12 @@ Full documentation for each crate: [docs/applications/libs/{crate}.md](../../app
 |-------|---------|--------|
 | agnosai | 1.0.2 | AI orchestration |
 | ai-hwaccel | 1.0.0 | GPU detection |
-| hoosh | 1.1.0 | LLM gateway |
+| hoosh | 1.2.0 | LLM gateway |
 | ifran | 1.2.0 | LLM inference/training |
-| kavach | 1.0.1 | Sandbox execution |
-| majra | 1.0.3 | Queue/pub-sub |
+| kavach | 2.0.0 | Sandbox execution |
+| majra | 1.0.4 | Queue/pub-sub |
 | sigil | 1.0.0 | Trust verification |
-| stiva | 1.0.0 | Container runtime |
+| stiva | 2.0.0 | Container runtime |
 | szal | 1.0.1 | Workflow engine |
 | mabda | 1.0.0 | GPU foundation |
 | soorat | 1.0.0 | GPU rendering |
@@ -104,9 +104,9 @@ Full documentation for each crate: [docs/applications/libs/{crate}.md](../../app
 | Crate | Version | Description | Key Consumers |
 |-------|---------|-------------|---------------|
 | [agnosys](https://github.com/MacCracken/agnosys) | 0.51.0 | Kernel interface — Landlock, seccomp, syscall bindings | daimon, aethersafha, kavach, argonaut |
-| [bote](https://github.com/MacCracken/bote) | 0.90.0 | MCP core — JSON-RPC 2.0, tool registry, host, dispatch | daimon, all MCP providers |
+| [bote](https://github.com/MacCracken/bote) | 0.92.0 | MCP core — JSON-RPC 2.0, tool registry, host, dispatch | daimon, all MCP providers |
 | [daimon](https://github.com/MacCracken/daimon) | 0.6.0 | Agent orchestrator — HTTP API, supervisor, IPC (port 8090) | all consumer apps |
-| [libro](https://github.com/MacCracken/libro) | 0.90.0 | Cryptographic audit chain — hash-linked event logging (SHA-256, BLAKE3) | daimon, aegis, stiva, sigil, t-ron |
+| [libro](https://github.com/MacCracken/libro) | 0.92.0 | Cryptographic audit chain — hash-linked event logging (SHA-256, BLAKE3) | daimon, aegis, stiva, sigil, t-ron |
 | [nein](https://github.com/MacCracken/nein) | 0.90.0 | Programmatic nftables firewall — policy, NAT, port mapping | stiva, daimon, aegis, kavach |
 | [phylax](https://github.com/MacCracken/phylax) | 0.22.3 | Threat detection — YARA, entropy, magic bytes, ML | daimon, aegis |
 | [t-ron](https://github.com/MacCracken/t-ron) | 0.90.0 | MCP security — tool call auditing, rate limiting, injection detection | daimon, bote |
@@ -165,7 +165,7 @@ Standalone executables — not library crates, but first-party AGNOS binaries tr
 
 | Crate | Version | Description |
 |-------|---------|-------------|
-| [agnostik](https://github.com/MacCracken/agnostik) | 2026.3.26 | Shared types and domain primitives for AGNOS |
+| [agnostik](https://github.com/MacCracken/agnostik) | 0.90.0 | Shared types and domain primitives for AGNOS |
 
 ---
 

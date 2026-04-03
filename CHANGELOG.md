@@ -48,12 +48,37 @@ AGNOS's sovereign systems language. Supersedes the Rust++ vision with a ground-u
 - **1 dummy SHA256 flagged**: agnos-edge-agent (was all-zeros, cleared with TODO)
 - Stale version comments fixed in kavach, stiva, majra install scripts
 
+### Changed — Full Recipe Audit (109 marketplace recipes)
+
+- **License audit**: all 109 marketplace recipes set to `GPL-3.0-only` (stiva: `GPL-3.0-or-later`). ~80 recipes had bare `GPL-3.0`/`AGPL-3.0` without SPDX `-only` suffix — all corrected.
+- **Duplicate deleted**: `irfan.toml` removed (duplicate of `ifran.toml`, both set `name = "ifran"`)
+- **5 version mismatches fixed** against actual standalone repos: agnosys (0.50.0 → 0.51.0), daimon (0.5.0 → 0.6.0), hoosh (1.1.0 → 1.2.0), kybernet (0.50.0 → 0.51.0), bote (0.91.0 → 0.92.0)
+- **29 stale header comments** updated to match current recipe versions (scaffolding-era references like "v0.1.0" corrected)
+- **3 misplaced install blocks** fixed (abacus, aequi, phylax — `install` was under `[security]` instead of `[build]`)
+- **tazama**: removed stale gstreamer runtime/build deps (GStreamer was already dropped)
+- **SHA256 placeholders**: `sha256 = ""` field added to all 109 marketplace recipes (TODO: populate from release tarballs)
+
+### Changed — Edge Recipes Synced with Base
+
+- **openssl** 3.4.1 → 3.5.5 (URL + SHA256 from base recipe)
+- **glibc** 2.40 → 2.42 (URL + SHA256 from base recipe)
+- **bash** 5.2.37 → 5.3 (URL + SHA256 from base recipe)
+- **iproute2** 6.12.0 → 6.19.0 (URL + SHA256 from base recipe)
+
+### Changed — Meta-Repo Cleanup
+
+- **CLAUDE.md** rewritten — was describing agnostik (shared types crate), now correctly describes the AGNOS meta-repo (recipes, docs, scripts, kernel configs, CI/CD)
+- **Workspace Cargo.toml** — removed 14 unused deps (tonic, prost, axum, tower, reqwest, sha2, base64, rumqttc, thiserror, clap, config, futures, libc, parking_lot, dashmap, tower-http). Fixed agnosys git dep tag 0.50.0 → 0.51.0.
+- **shared-crates.md** — version corrections: hoosh 1.2.0, bote 0.92.0, kavach 2.0.0, stiva 2.0.0, majra 1.0.4, libro 0.92.0, agnostik 0.90.0
+
 ### Changed — Roadmap
 
 - v3.0 Vision rewritten: Rust++ → Cyrius Lang with full bootstrap chain and evolution path
 - Boot Time KPI updated from `<10s` target to **achieved at 3.2s** (desktop) / **2.98s** (minimal)
 - Named Subsystems: `rustpp` → `cyrius-seed`
-- Version corrections: agnoshi (0.90.0), bote (0.91.0), kybernet (0.50.0), phylax (0.5.0)
+- Version corrections: agnoshi (0.90.0), bote (0.92.0), kybernet (0.51.0), phylax (0.5.0)
+- P0 recipe audit section updated with completed items
+- Post-extraction cleanup updated: workspace cleaned, repo identity decided (meta-repo)
 
 ## [2026.4.2] - 2026-04-02
 

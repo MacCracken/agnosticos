@@ -1,11 +1,11 @@
 # AGNOS Development Roadmap
 
-> **Status**: Pre-Beta | **Last Updated**: 2026-04-02
+> **Status**: Pre-Beta | **Last Updated**: 2026-04-03
 > **Monolith fully dismantled** — all subsystems extracted to standalone repos. Workspace: examples only. agnostik (0.90.0), agnosys (0.51.0), shakti (0.1.0) all standalone.
-> **Recipes**: 116 base + 71 desktop + 25 AI + 9 network + 8 browser + 95 marketplace + 4 python + 3 database + 31 edge = 362 OS (+ 90 bazaar community)
+> **Recipes**: 116 base + 71 desktop + 25 AI + 9 network + 8 browser + 109 marketplace + 4 python + 3 database + 31 edge = 376 OS (+ 90 bazaar community)
 > **Build order**: 178 packages in `recipes/build-order.txt` (base + desktop, dependency-ordered)
 > **Phases 10–14 complete** | **Phase 15A**: Core scanning done (phylax) | **Phase 16A**: Desktop essentials done | **Phase 17**: Local inference optimization (planned) | **Audit**: 16 rounds
-> **Shared Crates**: 77 library crates — 56 at v1.0+ stable, 21 pre-1.0. Key milestones: sigil 1.0.0, kavach 2.0.0, bote 0.90.0, t-ron 0.90.0, agnostik 0.90.0, agnosys 0.51.0
+> **Shared Crates**: 77 library crates — 56 at v1.0+ stable, 20 pre-1.0. Key milestones: sigil 1.0.0, kavach 2.0.0, bote 0.92.0, t-ron 0.90.0, agnostik 0.90.0, agnosys 0.51.0
 > **Consumer Projects**: 19+ released (including Vidhana v1, Sutra v1, Abacus)
 
 ---
@@ -60,7 +60,7 @@ The original monolith (`userland/`) contained agent-runtime, ai-shell, llm-gatew
 |----------|-------------|---------|--------|------|
 | `agent-runtime/` | 12 standalone repos (see below) | various | Code moved to new repos | 2026-04-01 |
 | `ai-shell/` | **agnoshi** (`MacCracken/agnoshi`) | 0.1.0 | Code moved | 2026-04-01 |
-| `llm-gateway/` | **hoosh** (`MacCracken/hoosh`) | 1.1.0 | Code moved | 2026-04-01 |
+| `llm-gateway/` | **hoosh** (`MacCracken/hoosh`) | 1.2.0 | Code moved | 2026-04-01 |
 | `desktop-environment/` | **aethersafha** (`MacCracken/aethersafha`) | 0.1.0 | Code moved | 2026-04-01 |
 | `agnos-common/` | **agnostik** (`MacCracken/agnostik`) | 0.90.0 | Git dep, tag `0.90.0` | 2026-04-02 |
 | `agnos-sys/` | **agnosys** (`MacCracken/agnosys`) | 0.51.0 | Git dep, tag `0.51.0` | 2026-04-02 |
@@ -70,7 +70,7 @@ The original monolith (`userland/`) contained agent-runtime, ai-shell, llm-gatew
 
 | Source Module | Absorbed Into | New Version |
 |--------------|---------------|-------------|
-| `agent-runtime/mcp_server/` | **bote** | 0.91.0 |
+| `agent-runtime/mcp_server/` | **bote** | 0.92.0 |
 | `agent-runtime/sandbox_mod/` | **kavach** | 2.0.0 |
 | `agent-runtime/safety/` | **t-ron** | 0.90.0 |
 
@@ -87,17 +87,20 @@ All userland code has been extracted. The workspace contains only examples.
 ### Post-Extraction Cleanup
 
 - [ ] Evaluate whether `examples/` should move to agnostik repo or stay here
-- [ ] Clean up workspace `Cargo.toml` — remove unused workspace deps (tonic, prost, axum, tower, etc.)
-- [ ] Decide fate of this repo: repurpose as meta-repo (recipes, docs, scripts, kernel modules) or archive
+- [x] Clean up workspace `Cargo.toml` — removed 14 unused deps (tonic, prost, axum, tower, reqwest, sha2, etc.), fixed agnosys tag 0.50.0 → 0.51.0
+- [x] Repo identity: meta-repo (docs, scripts, kernel configs, CI/CD). CLAUDE.md updated to reflect this.
+- [ ] **Extract `recipes/` to zugot** (`MacCracken/zugot`) — standalone recipe repo. ark consumes zugot as its package database. Name: Hebrew זוּגוֹת (pairs that go into the ark).
 
 ---
 
 ## P0 — Active Blockers
 
 ### Recipe Audit (P0)
-- [ ] Full SHA verification across all 95+ marketplace recipes
-- [ ] Cross-check marketplace recipe versions against crates.io/GitHub release tags
-- [ ] Verify all recipe fields (license -only suffix, tags, build commands, min_agnos_version)
+- [x] License audit — all 109 marketplace recipes set to `GPL-3.0-only` (stiva: `GPL-3.0-or-later`). Duplicate `irfan.toml` deleted.
+- [x] Version sync — 5 recipe versions corrected against actual repos (agnosys 0.51.0, daimon 0.6.0, hoosh 1.2.0, kybernet 0.51.0, bote 0.92.0)
+- [x] Header comments — 29 stale scaffolding-era comments updated to match current versions
+- [x] Structural fixes — 3 misplaced install blocks, tazama stale gstreamer deps removed
+- [ ] SHA256 verification — placeholder fields added to all 109 recipes, need actual hashes from release tarballs
 
 ### Recipe Version Bumps (deferred — evaluate compatibility)
 - [ ] **nvidia-cuda-toolkit** 12.8.1 → 13.2.0
@@ -106,10 +109,10 @@ All userland code has been extracted. The workspace contains only examples.
 - [ ] **ffmpeg** 7.1.1 → 8.1
 
 ### Edge Recipes Sync
-- [ ] **edge/openssl** 3.4.1 → base is 3.5.5
-- [ ] **edge/glibc** 2.40 → base is 2.42
-- [ ] **edge/bash** 5.2.37 → base is 5.3
-- [ ] **edge/iproute2** 6.12.0 → base is 6.19.0
+- [x] **edge/openssl** 3.4.1 → 3.5.5 (synced with base, SHA updated)
+- [x] **edge/glibc** 2.40 → 2.42 (synced with base, SHA updated)
+- [x] **edge/bash** 5.2.37 → 5.3 (synced with base, SHA updated)
+- [x] **edge/iproute2** 6.12.0 → 6.19.0 (synced with base, SHA updated)
 
 ---
 
