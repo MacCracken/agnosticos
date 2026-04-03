@@ -103,11 +103,11 @@ Full documentation for each crate: [docs/applications/libs/{crate}.md](../../app
 
 | Crate | Version | Description | Key Consumers |
 |-------|---------|-------------|---------------|
-| [agnosys](https://github.com/MacCracken/agnosys) | 0.29.3 | Kernel interface — Landlock, seccomp, syscall bindings | daimon, aethersafha |
+| [agnosys](https://github.com/MacCracken/agnosys) | 0.50.0 | Kernel interface — Landlock, seccomp, syscall bindings | daimon, aethersafha, kavach, argonaut |
 | [bote](https://github.com/MacCracken/bote) | 0.90.0 | MCP core — JSON-RPC 2.0, tool registry, host, dispatch | daimon, all MCP providers |
 | [daimon](https://github.com/MacCracken/daimon) | 0.5.0 | Agent orchestrator — HTTP API, supervisor, IPC (port 8090) | all consumer apps |
 | [libro](https://github.com/MacCracken/libro) | 0.90.0 | Cryptographic audit chain — hash-linked event logging (SHA-256, BLAKE3) | daimon, aegis, stiva, sigil, t-ron |
-| [nein](https://github.com/MacCracken/nein) | 0.24.3 | Programmatic nftables firewall — policy, NAT, port mapping | stiva, daimon, aegis |
+| [nein](https://github.com/MacCracken/nein) | 0.90.0 | Programmatic nftables firewall — policy, NAT, port mapping | stiva, daimon, aegis, kavach |
 | [phylax](https://github.com/MacCracken/phylax) | 0.22.3 | Threat detection — YARA, entropy, magic bytes, ML | daimon, aegis |
 | [t-ron](https://github.com/MacCracken/t-ron) | 0.90.0 | MCP security — tool call auditing, rate limiting, injection detection | daimon, bote |
 | [yukti](https://github.com/MacCracken/yukti) | 0.25.3 | Device abstraction — USB, block devices, udev hotplug | daimon, aethersafha |

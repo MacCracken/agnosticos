@@ -1,39 +1,35 @@
 # Nein — Programmatic nftables firewall for AGNOS
-# Type-safe rule builder, NAT, network policies, container networking.
-# Used by stiva (container runtime), daimon (service mesh), aegis (host firewall).
+# Type-safe rule builder, NAT, network policies, container networking,
+# MCP tool integration, inspection engine.
 #
 # Name: Nein (German: no — as in "access denied")
-# Lib: nein = "0.1.0" in Cargo.toml
+# Lib: nein = "0.90.0" in Cargo.toml
 #
-# Status: Scaffolded — v0.1.0.
+# Status: Released — v0.90.0 (pre-1.0 hardening).
 
 [package]
 name = "nein"
-version = "0.24.3"
-description = "Nein — Programmatic nftables firewall"
-license = "GPL-3.0"
+version = "0.90.0"
+description = "Nein — programmatic nftables firewall (policy, NAT, port mapping, MCP, inspection)"
+license = "GPL-3.0-only"
 groups = ["library", "networking", "security", "rust"]
 release = 1
-arch = "x86_64"
+arch = "any"
 
 [source]
 github_release = "MacCracken/nein"
 release_asset = "source"
 
 [depends]
-runtime = [
-    "nftables",
-]
-build = [
-    "rust",
-]
+runtime = ["nftables"]
+build = ["rust"]
 
 [marketplace]
 category = "library"
 runtime = "rust-crate"
 publisher = "AGNOS"
-tags = ["firewall", "nftables", "network", "security", "nat", "policy", "rust"]
-min_agnos_version = "2026.3.21"
+tags = ["firewall", "nftables", "network", "security", "nat", "policy", "mcp", "inspection", "rust"]
+min_agnos_version = "2026.3.24"
 
 [marketplace.sandbox]
 seccomp_mode = "basic"
@@ -41,15 +37,12 @@ network_access = false
 
 [build]
 make = "cargo build --release"
-check = "cargo test"
+check = "cargo test --all-features"
 
 [security]
 hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
 
 install = """
-# Library crate — consumers add to Cargo.toml:
-#   nein = "0.1.0"
-# Install source for offline/air-gapped Cargo builds.
 mkdir -p $PKG/usr/lib/nein
 cp -r src $PKG/usr/lib/nein/
 cp Cargo.toml $PKG/usr/lib/nein/

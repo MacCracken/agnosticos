@@ -11,7 +11,7 @@ resolver = "2"
 version = "2026.3.31"
 authors = ["AGNOS Team <team@agnos.org>"]
 edition = "2021"
-license = "GPL-3.0"
+license = "GPL-3.0-only"
 repository = "https://github.com/agnos/agnos"
 rust-version = "1.89"
 
