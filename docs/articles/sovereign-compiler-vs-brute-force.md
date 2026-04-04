@@ -14,6 +14,8 @@ In early April 2026, two compiler projects were completed using Claude (Anthropi
 
 Both are real engineering achievements. But they represent fundamentally different philosophies about what software should be.
 
+One important difference in motivation: Project A was built as a capability demonstration — a benchmark to stress-test autonomous AI development. Project B was built out of necessity. The AGNOS operating system project hit a wall with Rust's ecosystem governance — a crates.io name collision that blocked publishing a core crate. Rather than fight the system, the developer built a sovereign language. Cyrius exists not because someone wanted to prove AI could build a compiler, but because an operating system needed a toolchain it controlled.
+
 ---
 
 ## The Numbers
@@ -24,7 +26,7 @@ Both are real engineering achievements. But they represent fundamentally differe
 | Agents | 16 parallel | 1 |
 | Sessions | ~2,000 | 1 |
 | Tokens consumed | 2 billion input, 140M output | Standard single session |
-| Cost | ~$20,000 | Standard subscription |
+| Cost | ~$20,000 API | Max $200/month subscription (across 2 sessions — seed on first, compiler on second) |
 | Output size | 100,000 lines Rust | 6,560 lines Cyrius/ASM |
 | Binary size | Not reported (Rust binary) | 43KB |
 | Self-compile time | Not applicable | 9ms |
@@ -118,6 +120,18 @@ But it optimizes for the wrong metric. Lines of code is not the measure. Feature
 The parallel agents approach scales capability. The sovereign approach scales independence.
 
 ---
+
+## $20,000 vs $400
+
+The cost difference deserves its own section because it reveals what each project actually is.
+
+$20,000 in API costs produces a benchmark — a demonstration that autonomous agents can sustain complex work. It proved the point. It will sit in a repository. Nobody will build a production system on it.
+
+~$400 in subscription costs produces a sovereign language — the actual compiler for an actual operating system with 82 library crates, a self-hosting boot chain, and a six-phase migration roadmap. Cyrius will compile AGNOS. It is not a demo. It is infrastructure.
+
+50x cheaper. Self-hosting. Ships. Has a future.
+
+The difference is not budget. The difference is intent. A demo optimizes for impressiveness. A tool optimizes for survival.
 
 ## The Question
 
