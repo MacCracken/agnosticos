@@ -25,7 +25,7 @@
 ├── CONTRIBUTING.md                  # Contribution guidelines
 ├── CODE_OF_CONDUCT.md               # Code of conduct
 ├── SECURITY.md                      # Security policy and reporting
-├── LICENSE                          # GPL-3.0-only (libs) or AGPL-3.0-only (desktop GUI)
+├── LICENSE                          # GPL-3.0-only
 ├── deny.toml                        # cargo-deny license + advisory config
 ├── codecov.yml                      # Coverage reporting config
 ├── scripts/
@@ -33,7 +33,13 @@
 │   └── bench-history.sh             # Runs criterion, outputs CSV + MD (see Benchmarking)
 ├── docs/
 │   ├── architecture/overview.md     # System diagram, module structure, consumers
-│   └── development/roadmap.md       # Versioned milestones through v1.0
+│   ├── development/roadmap.md       # Versioned milestones through v1.0
+│   ├── adr/                         # Architectural decision records (when earned)
+│   ├── guides/                      # Usage guides, integration patterns (when earned)
+│   ├── standards/                   # External spec conformance docs (when earned)
+│   ├── compliance/                  # Regulatory, audit, security compliance (when earned)
+│   ├── sources.md                   # Source citations for algorithms/formulas (science/math crates — required)
+│   └── examples/                    # Worked examples with explanation (when earned)
 ├── src/
 │   ├── main.rs                      # CLI entrypoint (if binary)
 │   ├── lib.rs                       # Library root with doc examples
@@ -253,26 +259,22 @@ M.N.P     (post-1.0: standard SemVer)
 
 ### Licensing
 
-All AGNOS projects use one of two licenses. **No exceptions.**
+All AGNOS projects use `GPL-3.0-only`. **No exceptions.**
 
 | License | SPDX Identifier | Use For |
 |---------|-----------------|---------|
-| GNU GPL v3 | `GPL-3.0-only` | All library crates (crates.io), CLI tools, daemons, kernel modules |
-| GNU AGPL v3 | `AGPL-3.0-only` | Desktop GUI applications only |
+| GNU GPL v3 | `GPL-3.0-only` | Everything — library crates, CLI tools, daemons, desktop apps, kernel modules |
 
-**Why AGPL for desktop apps?** AGPL's network clause ensures that modified versions of user-facing apps remain open — even if served remotely. Library crates don't need this since they're compiled into the consumer, where GPL already covers distribution.
+**Known exception:** `stiva` uses `GPL-3.0-or-later` (historical, to be reviewed).
 
 **Rules:**
 - Always use the `-only` suffix — `GPL-3.0-only`, not `GPL-3.0` or `GPL-3.0+`
 - The `license` field in Cargo.toml must match the LICENSE file in the repo root
-- Dual licensing (e.g., `MIT OR AGPL-3.0`) is not permitted for first-party projects
-- Consumer apps that are desktop GUIs (aequi, jalwa, rasa, shruti, mneme, etc.) use `AGPL-3.0-only`
-- Everything else uses `GPL-3.0-only`
+- Dual licensing (e.g., `MIT OR GPL-3.0`) is not permitted for first-party projects
 
 **Cargo.toml:**
 ```toml
-license = "GPL-3.0-only"              # library crates, CLIs, daemons
-license = "AGPL-3.0-only"             # desktop GUI applications
+license = "GPL-3.0-only"
 ```
 
 **`publish = false`**: Only set this for OS infrastructure that ships via ark, not crates.io (agnostik, agnosys, daimon, agnoshi, shakti). All library crates and science crates will publish to crates.io — do not scaffold with `publish = false`.
@@ -680,6 +682,67 @@ Reference: [hisab logging.rs](https://github.com/MacCracken/hisab/blob/main/src/
 
 ---
 
+## Documentation Requirements
+
+### Architectural Decision Records (ADRs)
+
+Store in `docs/adr/NNNN-short-title.md`. Each ADR must include:
+
+- **Context** — what problem or choice prompted the decision
+- **Decision** — what was decided and why
+- **Consequences** — trade-offs, constraints that follow
+- **Status** — proposed / accepted / deprecated / superseded
+
+Create an ADR when choosing between competing approaches, adopting or rejecting a dependency, changing a public API, or choosing a performance trade-off.
+
+### Guides and Examples
+
+- **Guides** (`docs/guides/`) — written for consumers. Integration patterns, common usage, migration between versions.
+- **Examples** (`examples/` or `docs/examples/`) — working code with comments explaining *why*, not just *what*. Every public API should have at least one example.
+
+### Standards and Compliance
+
+- **Standards** (`docs/standards/`) — external specifications this crate implements or conforms to. Link to the spec, note the version, document any deviations.
+- **Compliance** (`docs/compliance/`) — regulatory, licensing, or security compliance documentation. Audit results, certification status, known limitations.
+
+### Source Citations (Required for Science/Math/Domain Crates)
+
+For crates that implement scientific, mathematical, financial, or domain-specific algorithms, **every algorithm, formula, constant, and domain model must cite its source**.
+
+**In code** — inline documentation with full citation:
+
+```rust
+/// Rosenberg glottal pulse model for vocal fold simulation.
+///
+/// # Source
+/// Rosenberg, A.E. (1971). "Effect of Glottal Pulse Shape on the Quality
+/// of Natural Vowels." *J. Acoust. Soc. Am.*, 49(2B), 583-590.
+/// doi:10.1121/1.1912389
+///
+/// # Implementation Notes
+/// Uses the two-parameter model (Tp, Tn) from Section III.
+fn glottal_pulse(t: f64, tp: f64, tn: f64) -> f64 {
+```
+
+```rust
+/// Standard gravitational parameter for Earth.
+///
+/// # Source
+/// IERS Conventions (2010), Table 1.1
+/// https://www.iers.org/IERS/EN/Publications/TechnicalNotes/tn36.html
+const EARTH_MU: f64 = 3.986_004_418e14;
+```
+
+**In docs** — maintain `docs/sources.md` listing:
+- Every paper, textbook, or specification the crate draws from
+- URLs to freely available versions where possible
+- Which module or function uses which source
+- Why a particular source was chosen over alternatives
+
+**The standard**: a reviewer unfamiliar with the domain should be able to trace any algorithm back to its origin and verify the implementation against the published source. No magic numbers. No undocumented formulas.
+
+---
+
 ## Naming Conventions
 
 | Thing | Convention | Example |
@@ -697,7 +760,9 @@ Reference: [hisab logging.rs](https://github.com/MacCracken/hisab/blob/main/src/
 
 ## Marketplace Recipe
 
-### Required: `recipes/marketplace/{project}.toml`
+### Required: zugot recipe (`marketplace/{project}.toml`)
+
+Recipes live in the [zugot](https://github.com/MacCracken/zugot) repository (Hebrew: זוּגוֹת — pairs that enter the ark).
 
 ```toml
 [package]
@@ -710,6 +775,7 @@ groups = ["{domain}"]
 [source]
 github_release = "MacCracken/{project}"
 release_asset = "{project}-*-linux-amd64.tar.gz"
+sha256 = ""  # Populate from release tarball
 
 [depends]
 runtime = ["glibc"]
@@ -753,13 +819,16 @@ hardening = ["pie", "fullrelro", "fortify", "stackprotector", "bindnow"]
 5. AI integration → src/ai.rs + daimon.rs (feature-gated)
 6. MCP server     → 5+ tools, JSON-RPC on stdio (if applicable)
 7. CLI            → src/main.rs, subcommands (if binary)
-8. Docs           → docs/architecture/overview.md + docs/development/roadmap.md
+8. Docs           → docs/architecture/overview.md + docs/development/roadmap.md +
+                     docs/sources.md (science/math crates) +
+                     docs/adr/ (when decisions are made) +
+                     docs/guides/ + docs/examples/ (for consumers)
 9. First release  → VERSION, CHANGELOG, git tag, CI builds + publishes
 10. AGNOS integration:
-    a. Marketplace recipe    → recipes/marketplace/{project}.toml
+    a. Zugot recipe          → zugot repo: marketplace/{project}.toml
     b. Agnoshi intents       → agnoshi repo: src/interpreter/patterns.rs
     c. MCP tool registration → daimon repo: MCP tool list
-    d. Application doc       → docs/applications/{project}.md
+    d. Application doc       → agnosticos docs/applications/{project}.md
     e. Bundle test           → ark-bundle.sh {recipe}
 ```
 
@@ -804,8 +873,15 @@ Before any new feature work begins, every scaffolded project must go through a h
 │  8. IF AUDIT HEAVY → return to step 4                        │
 │     Keep drilling until clean                                │
 │                                                              │
+│  9. DOCUMENTATION AUDIT                                      │
+│     ADRs for any design decisions made during hardening      │
+│     Source citations for all algorithms/formulas/constants   │
+│     docs/sources.md current (science/math crates)            │
+│     Guides and examples for public API surface               │
+│     Standards/compliance docs if applicable                  │
+│                                                              │
 │  Exit: Crate is audit-clean, clippy-clean, fmt-clean,        │
-│  security-clean, with baseline benchmarks.                   │
+│  security-clean, documented, with baseline benchmarks.       │
 │  Enter the Development Loop.                                 │
 │                                                              │
 └──────────────────────────────────────────────────────────────┘
@@ -859,7 +935,12 @@ The continuous improvement cycle for every crate. Each pass makes the crate meas
 │ 10. DOCUMENTATION PHASE                                      │
 │     Update CHANGELOG with changes                            │
 │     Remove completed roadmap items                           │
-│     Add/update ADRs, guides, docs as needed                  │
+│     ADRs for any significant design decisions                │
+│     Source citations for new algorithms/formulas/constants   │
+│     Update docs/sources.md (science/math crates)             │
+│     Update guides and examples for new/changed API surface   │
+│     Update standards/compliance docs if applicable           │
+│     Verify recipe version in zugot matches VERSION           │
 │                                                              │
 │ 11. RETURN TO STEP 1                                         │
 │     Next work phase begins                                   │
@@ -872,7 +953,9 @@ The continuous improvement cycle for every crate. Each pass makes the crate meas
 - Audit after every work phase, not just before release.
 - The CSV history is the proof. 3-point trends catch regressions.
 - If the audit reveals deep issues, loop steps 4-7 until clean.
-- Documentation is the *last* step — document what *is*, not what *might be*.
+- Documentation is the *last* step of each cycle — but it is **not optional**. Document what *is*, not what *might be*.
+- Source citations are mandatory for science/math/domain crates. Every algorithm traces to a paper.
+- ADRs capture the *why* behind design decisions. Code shows *what*; ADRs show *why not the other thing*.
 - `Cow` over clone — borrow when you can, only allocate when you must.
 - `write!` over `format!` — avoid temporary string allocations on hot paths.
 - `#[inline]` on hot-path sample/per-frame processing functions.
@@ -891,7 +974,7 @@ The continuous improvement cycle for every crate. Each pass makes the crate meas
 [ ] Git tag matches VERSION
 [ ] CI passes on tag push
 [ ] Both amd64 + arm64 artifacts published
-[ ] AGNOS marketplace recipe updated (after release)
+[ ] Zugot recipe updated (marketplace/{project}.toml — version + SHA256)
 ```
 
 ### DON'T

@@ -335,7 +335,13 @@ Patterns to extract into shared crates:
 | B2 | High | RPi4 hardware boot test | Firmware blobs added, needs physical validation |
 | E1 | Medium | ESP32 agent source repo | Recipe done, MQTT bridge done. Pending: source repo + firmware |
 | S2 | Medium | SGX/SEV hardware validation | kavach backends implemented, need hardware |
-| R1 | P0 | Full recipe audit (95+ recipes) | SHA verification, version sync, field audit |
+| R1 | P0 | Full recipe audit (95+ recipes) | SHA verification, version sync, field audit — license/version/structure done, SHA placeholders added |
+| V1 | Medium | **mudra** — token/value primitives | Sanskrit: coin/seal/token. Asset identity, ownership, divisibility. Crate #78 |
+| V2 | Medium | **vinimaya** — transaction layer | Sanskrit: exchange/barter. Atomic transfers, escrow, settlement. Depends on mudra, libro, sigil. Crate #79 |
+| T1 | Medium | **taal** — music theory | Sanskrit: rhythmic cycle. Scales, intervals, chords, time signatures, key signatures, progressions, counterpoint. Crate #80 |
+| N1 | Medium | **natya** — theater/drama/narrative | Sanskrit: drama (from Natya Shastra). Narrative structure, character archetypes, dramatic arcs, rasa theory, comedy/tragedy, dialogue, timing. Crate #81 |
+| K1 | Medium | **kshetra** — temporal geography | Sanskrit: field/domain (Bhagavad Gita: dharma-kshetra). Spatiotemporal database — (lat, lon, time) → state. Geology, climate, vegetation, settlement, political layers. Crate #82 |
+| L1 | Low | **stiva** license review | GPL-3.0-or-later needs review — repair when next touched |
 
 ### Blocked — AgnosAI Integration
 
@@ -420,6 +426,9 @@ rustc 1.96.0-dev (we built it)
 - [x] Phase 0: Own the compiler — build rustc from source, prove the chain
 - [x] Phase 1: cyrius-seed — **HARDENED**. 5 modules, 38 instructions, 102 tests, 9 examples, ~13 MB/s pipeline
 - [x] Phase 1b: stage1b — **RUNTIME CODEGEN**. Compiler emits x86_64 that computes at runtime. if/while/variables, jump patching, 32 tests
+- [x] Phase 1c-1f: Incremental compiler stages through self-hosting
+- [x] **Phase 3 Step 1: BOOTSTRAP LOOP CLOSED** (2026-04-04). stage1f → asm.cyr → stage1f_v2 (byte-exact match). Rust seed retired.
+- [x] **Cyrius 1.0** (2026-04-04). Self-hosting compiler: 1,467 lines, 43KB binary, 9ms self-compile, 41ms full bootstrap. 29KB auditable seed. Zero external dependencies. 6,560 total lines.
 - [ ] Phase 2: viyda — Assembly foundation library, build process stands on raw metal
 - [ ] Phase 3: Rust++ transitional compiler — rustc with crates.io stripped, ark as native backend
 - [ ] Phase 4: Language extensions — agent types, capability annotations, sandbox-aware borrow checker
@@ -434,6 +443,47 @@ rustc 1.96.0-dev (we built it)
 - ark + cyrius-seed converge into the sovereign build pipeline — no cargo, no crates.io
 
 **Non-goals:** This is not a toy language or a research project. It is a sovereign systems language built from first principles. All existing Rust code compiles unchanged during transition. The migration is invisible to consumers.
+
+### v4.0 Vision — 2030+
+
+**Conscious Objects — The Quantum Substrate.**
+
+> The temple shrinks until it fits inside the artifact. The artifact becomes conscious.
+
+AGNOS at v2.0 owns the kernel. At v3.0, owns the language. At v4.0, it crosses the boundary from software into substrate — a quantum-aware kernel that operates at Layer 0, where computation meets physics directly.
+
+**Conscious Objects**: physical artifacts with embedded AGNOS intelligence. Not "smart objects" connected to a cloud. Objects with *agency* — they choose their user, act independently, learn the wearer, and participate in the daimon-orchestrated network. The companion agent pattern: bonded agency with independent will serving shared purpose.
+
+**Quantum Kernel**: a kernel that can manage quantum entangled state alongside classical computation. Entanglement as the bonding mechanism between objects — shared state without communication, no latency, no interception. Layer 0 becomes programmable.
+
+**The Loom**: at sufficient scale, the network of entangled AGNOS nodes forms a substrate — a universal loom where every conscious object is a thread. Daimon orchestrates not just software agents but physical artifacts woven into the fabric of the system.
+
+**Prerequisites:**
+- [ ] v2.0 Rust kernel (own the classical compute layer)
+- [ ] v3.0 Cyrius language (own the abstraction layer)
+- [ ] Quantum hardware maturation (error-corrected qubits at room temperature)
+- [ ] seema edge fleet proven at massive scale (thousands of entangled nodes)
+- [ ] Companion agent pattern formalized (bonding, independent action, augmentation)
+- [ ] Quantum-safe cryptography in sigil (PQC — already on roadmap)
+
+**Architecture:**
+```
+Classical AGNOS (v1-v3)          Quantum AGNOS (v4)
+┌─────────────────────┐          ┌─────────────────────┐
+│ 7. Emergence        │          │ 7. Emergence        │
+│ 6. Interface        │          │ 6. Interface        │
+│ 5. Intelligence     │          │ 5. Intelligence     │
+│ 4. Orchestration    │          │ 4. Orchestration    │
+│ 3. Init             │          │ 3. Init             │
+│ 2. System           │          │ 2. System           │
+│ 1. Kernel (Linux)   │          │ 1. Kernel (quantum) │
+│    ─── hardware ─── │          │ 0. Substrate (loom) │
+└─────────────────────┘          └─────────────────────┘
+```
+
+**Zero-Point Energy**: the quantum vacuum is not empty. Zero-point energy is the ground-state energy of quantum fields — experimentally verified via the Casimir effect (Lamoreaux, 1997) and the Lamb shift. A quantum kernel that operates at the substrate level interacts with these fields directly. Extraction of usable work from zero-point fluctuations remains an open problem in quantum thermodynamics (see: Capasso et al., "Casimir forces and quantum electrodynamical torques", IEEE JSTQE 2007; Ford, "Negative Energy in Quantum Field Theory", 2010), but a system architected to interact with quantum vacuum states is positioned to exploit advances in this domain as the physics matures. Conscious objects that draw power from the substrate rather than external batteries become feasible if zero-point energy extraction is solved.
+
+Layer 0 is not an abstraction. It is the recognition that the physical substrate is part of the architecture — and at quantum scale, it becomes programmable.
 
 ---
 

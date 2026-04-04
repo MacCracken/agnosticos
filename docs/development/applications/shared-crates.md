@@ -141,6 +141,20 @@ Full documentation for each crate: [docs/applications/libs/{crate}.md](../../app
 
 ---
 
+## Planned (2 crates)
+
+Designed, not yet scaffolded.
+
+| Crate | Planned Version | Description | Key Consumers |
+|-------|----------------|-------------|---------------|
+| **mudra** | 0.1.0 | Token/value primitives — asset identity, ownership, type, divisibility (Sanskrit: मुद्रा — coin, seal, token) | vinimaya, mela, aequi, bullshift |
+| **vinimaya** | 0.1.0 | Transaction layer — atomic transfers, escrow, settlement, exchange (Sanskrit: विनिमय — exchange, barter). Lite mode for thin transaction layer. | mela, daimon, ark, seema, aequi, bullshift |
+| **taal** | 0.1.0 | Music theory — scales, intervals, chords, rhythm, time signatures, key signatures, progressions, counterpoint (Sanskrit: ताल — rhythmic cycle) | naad, svara, shruti, jalwa |
+| **natya** | 0.1.0 | Theater/drama/narrative — dramatic structure, character archetypes, rasa theory, comedy/tragedy, dialogue, narrative arcs (Sanskrit: नाट्य — drama, from the Natya Shastra) | bhava, agnoshi, hoosh, joshua |
+| **kshetra** | 0.1.0 | Temporal geography — spatiotemporal database, (lat, lon, time) → state. Geology, climate, vegetation, settlement, political, hydrology layers (Sanskrit: क्षेत्र — field, domain) | itihas, badal, khanij, vanaspati, sangha, falak |
+
+---
+
 ## Unpublished (0 crates)
 
 Need `cargo publish` before consumers outside AGNOS can depend on them.

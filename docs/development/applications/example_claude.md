@@ -8,6 +8,10 @@
 - **License**: GPL-3.0-only
 - **MSRV**: 1.89
 - **Version**: SemVer 0.1.0
+- **Genesis repo**: [agnosticos](https://github.com/MacCracken/agnosticos)
+- **Philosophy**: [AGNOS Philosophy & Intention](https://github.com/MacCracken/agnosticos/blob/main/docs/philosophy.md)
+- **First-party standards**: [First-Party Application Standards](https://github.com/MacCracken/agnosticos/blob/main/docs/development/applications/first-party-standards.md)
+- **Recipe repo**: [zugot](https://github.com/MacCracken/zugot) — takumi build recipes
 
 ## Consumers
 
@@ -26,7 +30,8 @@
 6. Cleanliness check — must be clean after review
 7. Additional tests/benchmarks from findings
 8. Post-review benchmarks — prove the wins
-9. Repeat if heavy
+9. Documentation audit (see [Documentation Standards](#documentation-standards))
+10. Repeat if heavy
 
 ### Work Loop / Working Loop (continuous)
 
@@ -39,8 +44,8 @@
 7. Deeper tests/benchmarks from review observations
 8. Run benchmarks again — prove the wins
 9. If review heavy → return to step 5
-10. Documentation — update CHANGELOG, roadmap, docs
-11. Version check — VERSION, Cargo.toml, recipe all in sync
+10. Documentation — update CHANGELOG, roadmap, docs, ADRs, source citations (see [Documentation Standards](#documentation-standards))
+11. Version check — VERSION, Cargo.toml, recipe (in zugot) all in sync
 12. Return to step 1
 
 ### Task Sizing
@@ -76,20 +81,103 @@
 - Do not skip benchmarks before claiming performance improvements
 - {Add project-specific constraints here}
 
-## Documentation Structure
+## Documentation Standards
+
+Documentation is not a phase — it is part of every step. Every P(-1) audit and every work loop cycle must verify documentation is current.
+
+### Required Structure
 
 ```
 Root files (required):
-  README.md, CHANGELOG.md, CLAUDE.md, CONTRIBUTING.md, SECURITY.md, CODE_OF_CONDUCT.md, LICENSE
+  README.md          — what it is, how to use it, quick start
+  CHANGELOG.md       — every change, every version
+  CLAUDE.md          — this file (Claude Code instructions)
+  CONTRIBUTING.md    — how to contribute
+  SECURITY.md        — vulnerability reporting
+  CODE_OF_CONDUCT.md — community standards
+  LICENSE            — GPL-3.0-only
 
 docs/ (required):
-  architecture/overview.md — module map, data flow, consumers
-  development/roadmap.md — completed, backlog, future, v1.0 criteria
+  architecture/overview.md  — module map, data flow, consumers
+  development/roadmap.md    — completed, backlog, future, v1.0 criteria
 
 docs/ (when earned):
-  adr/ — architectural decision records
-  guides/usage.md — patterns and examples
+  adr/                      — architectural decision records (see below)
+  guides/                   — usage guides, integration patterns
+  examples/                 — worked examples with explanation
+  standards/                — compliance, conformance, spec references
+  compliance/               — regulatory, licensing, security compliance
 ```
+
+### Architectural Decision Records (ADRs)
+
+Record significant design decisions in `docs/adr/` using the format:
+
+```
+docs/adr/
+  NNNN-short-title.md
+```
+
+Each ADR must include:
+- **Context** — what problem or choice prompted the decision
+- **Decision** — what was decided and why
+- **Consequences** — what follows from this decision (trade-offs, constraints)
+- **Status** — proposed / accepted / deprecated / superseded
+
+Create an ADR when:
+- Choosing between competing approaches (algorithms, data structures, protocols)
+- Adopting or rejecting a dependency
+- Changing a public API in a breaking way
+- Choosing a performance trade-off (speed vs memory, latency vs throughput)
+
+### Guides and Examples
+
+- **Guides** (`docs/guides/`) — written for consumers of this crate. How to integrate, common patterns, migration between versions.
+- **Examples** (`examples/` or `docs/examples/`) — working code with comments explaining *why*, not just *what*. Every public API should have at least one example.
+
+### Standards and Compliance
+
+- **Standards** (`docs/standards/`) — reference external specifications this crate implements or conforms to. Link to the spec, note the version, document any deviations.
+- **Compliance** (`docs/compliance/`) — regulatory, licensing, or security compliance documentation. Audit results, certification status, known limitations.
+
+### Source Citations (Required for Science/Math/Domain Crates)
+
+For crates that implement scientific, mathematical, financial, or domain-specific algorithms:
+
+**In code** — every algorithm, formula, constant, or domain model must cite its source:
+
+```rust
+/// Rosenberg glottal pulse model for vocal fold simulation.
+///
+/// # Source
+/// Rosenberg, A.E. (1971). "Effect of Glottal Pulse Shape on the Quality
+/// of Natural Vowels." *Journal of the Acoustical Society of America*,
+/// 49(2B), 583-590. doi:10.1121/1.1912389
+///
+/// # Implementation Notes
+/// Uses the two-parameter model (Tp, Tn) from Section III of the paper.
+/// Open phase ratio defaults to 0.6 per Table I.
+fn glottal_pulse(t: f64, tp: f64, tn: f64) -> f64 {
+```
+
+```rust
+/// Standard gravitational parameter for Earth.
+///
+/// # Source
+/// IERS Conventions (2010), Table 1.1
+/// https://www.iers.org/IERS/EN/Publications/TechnicalNotes/tn36.html
+///
+/// Value: 3.986004418e14 m^3/s^2 (±8e5 m^3/s^2)
+const EARTH_MU: f64 = 3.986_004_418e14;
+```
+
+**In docs** — maintain a `docs/sources.md` or `docs/references.md` that lists:
+- Every paper, textbook, or specification the crate draws from
+- URLs to freely available versions where possible
+- Which module or function uses which source
+- Why a particular source was chosen over alternatives
+
+**The standard**: a reviewer unfamiliar with the domain should be able to trace any algorithm back to its origin and verify the implementation against the published source. No magic numbers. No undocumented formulas. No "trust me, this is how it works."
 
 ## CHANGELOG Format
 

@@ -5,6 +5,58 @@ All notable changes to AGNOS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2026.4.4] - 2026-04-04
+
+### Achieved — Cyrius 1.0 (Self-Hosting Compiler)
+
+- **Cyrius 1.0** — Self-hosting compiler achieved in one day. 1,467 lines, 43KB binary, 9ms self-compile, 41ms full bootstrap. 29KB auditable seed binary — the smallest trusted binary in any self-hosting chain. Zero external dependencies (no C, no Rust, no Python in any path). 6,560 total lines across compiler + assembler + stages. Byte-exact reproducibility verified across all 11 bootstrap artifacts.
+- **Bootstrap loop closed**: seed (Rust) → stage1f → asm.cyr → stage1f_v2 (byte-exact match). The Rust seed can be retired for forward progress.
+- Comparison: Cyrius 1.0 matches c4 in self-hosting capability with a fundamentally different trust model. No other self-hosting compiler bootstraps from a 29KB binary with zero external deps in 41ms.
+- Missing (honest): structs, typed pointers, multi-file compilation, optimization, stdlib, debug info. The sovereignty is achieved; the language features come next.
+
+### Added — New Crates (6)
+
+- **mudra** (0.1.0) — Token/value primitives (Sanskrit: मुद्रा — coin, seal, token). Asset identity, ownership, divisibility. Crate #78.
+- **vinimaya** (0.1.0) — Transaction layer (Sanskrit: विनिमय — exchange, barter). Transfers, escrow, settlement, exchange. Feature-gated: lite (default), escrow, exchange, mint, full. Crate #79.
+- **taal** (0.1.0) — Music theory (Sanskrit: ताल — rhythmic cycle). Scales, intervals, chords, rhythm, time signatures, key signatures. Feature-gated: western, hindustani, carnatic. Crate #80.
+- **natya** (0.1.0) — Theater/drama/narrative (Sanskrit: नाट्य — drama, from the Natya Shastra). Rasa theory (9 emotional essences), dramatic arcs, character archetypes, dialogue. Crate #81.
+- **kshetra** (0.1.0) — Temporal geography (Sanskrit: क्षेत्र — field, domain). Spatiotemporal database: (lat, lon, time) → state. Terrain, hydrology, climate, geology, vegetation, settlement, political, celestial layers. Confidence-tagged data. Crate #82.
+- **zugot** — Recipe repository scaffolded (Hebrew: זוּגוֹת — pairs that enter the ark). Standalone repo for all takumi build recipes, consumed by ark/nous/takumi.
+
+### Changed — Ecosystem CLAUDE.md Standardization
+
+- **28 CLAUDE.md files updated** across all standalone repos to new template format
+- **8 new CLAUDE.md files created** (ark, nous, takumi, aegis, agnova, mela, seema, samay)
+- All repos now include: genesis/philosophy/standards/zugot references, P(-1) documentation audit step, expanded work loop with ADRs/source citations/zugot recipe verification, full documentation structure
+- License corrected to `GPL-3.0-only` across all repos (was `GPL-3.0` or `AGPL-3.0-only` in several)
+
+### Changed — Documentation Standards
+
+- **example_claude.md** — major update: documentation standards section (ADRs, guides, examples, standards, compliance, source citations), zugot references, P(-1) doc audit step
+- **first-party-standards.md** — licensing simplified to `GPL-3.0-only` everywhere, documentation requirements section added (ADRs, source citations for science/math crates), zugot recipe references, expanded P(-1) and development loop
+- **philosophy.md** — added: The Builder (Persian/Scottish heritage), The Star and the Capstone (Sirrus→Cyrius), Layer 0 Substrate architecture
+- **AGNOS.md** — full refresh: corrected versions, Cyrius section, boot profiles, zugot, genesis layer concept, 2026-04-03 timeline entry
+
+### Added — Vision Documents
+
+- **holodeck.md** — Immersive simulation architecture. 12+ existing crates covering NPCs, audio, rendering, physics, security. Key finding: NPC layer is complete (daimon + hoosh + bhava + natya). Software gaps: narrative director, unified physics runtime. Hardware gaps: volumetric display, haptics.
+- **time-machine.md** — Temporal simulation engine. Reconstructs probable pasts and futures from layered data. Primary gap: kshetra (temporal geography engine, now scaffolded). Design principle: honesty over spectacle.
+- **theoretical.md** — Future explorations: spatial transit (portal/teleportation/gate with adoption path), matter-energy teleportation, warp/FTL, digitization. All reduce to "transmit a pattern and reconstruct from it."
+- **cyrius-lang-migration.md** — Six-phase migration roadmap from Rust to Cyrius, following dependency graph bottom-up.
+
+### Changed — Recipe & Infrastructure
+
+- All 109 marketplace recipe licenses fixed to `GPL-3.0-only` (stiva: `GPL-3.0-or-later`)
+- 5 recipe version mismatches corrected (agnosys, daimon, hoosh, kybernet, bote)
+- 29 stale header comments updated, 3 misplaced install blocks fixed, tazama gstreamer deps removed
+- Edge recipes synced (openssl 3.5.5, glibc 2.42, bash 5.3, iproute2 6.19.0)
+- SHA256 placeholders added to all 109 marketplace recipes
+- Workspace Cargo.toml: 14 unused deps removed, agnosys tag fixed
+- CLAUDE.md rewritten for meta-repo/genesis layer identity
+- nous gaps document created for hardening agent
+- ark, nous, takumi READMEs created
+- vidya roadmap created, CLAUDE.md updated
+
 ## [2026.4.3] - 2026-04-03
 
 ### Added — Cyrius Language
