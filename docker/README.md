@@ -43,16 +43,17 @@ the `FROM scratch` container — no VM.
 
 AGNOS installs from the **ISO `.img` / `.iso`** cut by `scripts/src/iso.cyr`
 (gnoboot + agnos kernel + ext4 rootfs — see
-[`../docs/development/iso-stage4-plan.md`](../docs/development/iso-stage4-plan.md)),
-not from a container. `agnova` (the native installer) is the server-stage
+[`../docs/development/iso-stage4-plan.md`](../docs/development/iso-stage4-plan.md); `iso.cyr` is
+planned and not yet written), not from a container. `agnova` (the native installer) is the server-stage
 successor. So there is **no `Dockerfile.installer`** — that role is the ISO.
 
 ## Later (deferred)
 
 - **edge** image — thin / edge deployment.
 - **aarch64** dev image — Pi / Apple-Silicon host, behind the x86 line.
-- **stiva** image — when the OCI runtime ([stiva](https://github.com/MacCracken/stiva))
-  ports from its Rust scaffold; a `stiva`-served container story is post-0.1.0.
+- **stiva** image — the OCI runtime ([stiva](https://github.com/MacCracken/stiva)) is
+  Cyrius-native now (the Rust crate survives only as its `rust-old/` parity oracle); a
+  `stiva`-served container story is still post-0.1.0.
 
 ## What is NOT here — QEMU-in-a-container
 

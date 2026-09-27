@@ -1,25 +1,25 @@
 # AGNOS Installation Guide
 
-> **Last Updated:** 2026-08-05
+> **Last Updated:** 2026-09-27
 >
-> **Status:** AGNOS is **Pre-Beta** — closed beta opens late August 2026 (preceded by a founder solo-dogfood month + the server-stage weak-point sweep, windowed ~July / early-Aug 2026; the sweep's harness is **TBD** and explicitly **not** Docker — the QEMU-in-a-Docker-container design was retired 2026-07-07). Public beta is deferred to post-summer, with GA targeted late fall/early winter 2026. The kernel boots both in QEMU and on real AMD Zen hardware, and the sovereign boot pipeline is active. There is still **no end-user install path**: the distributable image (the **ISO Stage-4 cut**) and `agnova`'s native installer are both open stage-exit work. This guide describes what is buildable and testable **today**, and what is coming.
+> **Status:** AGNOS is **Pre-Beta**. Closed beta was targeted to open late August 2026 (after a founder solo-dogfood month + the server-stage weak-point sweep, windowed ~July / early-Aug 2026; the sweep's harness is **TBD** and explicitly **not** Docker — the QEMU-in-a-Docker-container design was retired 2026-07-07). **That date has passed with no record of the cohort opening**, and its gate, the ISO Stage-4 cut, is not started — current targets live on the [roadmap](../development/roadmap.md). Public beta is deferred to post-summer, with GA targeted late fall/early winter 2026. The kernel boots both in QEMU and on real AMD Zen hardware, and the sovereign boot pipeline is active. There is still **no end-user install path**: the distributable image (the **ISO Stage-4 cut**) and `agnova`'s native installer are both open stage-exit work. This guide describes what is buildable and testable **today**, and what is coming.
 
 ---
 
 ## What Works Today
 
-- **Sovereign boot pipeline** — `scripts/src/boot.cyr` (Cyrius) launches the AGNOS kernel in QEMU. Compiled size drifts every cut; `make status` prints the live figure.
-- **AGNOS kernel** — Cyrius-native, 40+ subsystems, a small sovereign syscall surface (no BSD socket family, no `socket()` over arbitrary domains, no splice, no AF_ALG). Boots on real AMD Zen (the NUC devbox, archaemenid) to the ring-3 userland shell **agnsh**, exec'd from the agnos-fs. ⚠ Iron validation is **per-cut, not blanket** — the current head is an open, unburned cut, and not every released cut has been burned. Per-cut burn status: [`../development/state.md`](../development/state.md).
+- **Sovereign boot pipeline** — `scripts/src/boot.cyr` (Cyrius): ISO component verification plus a QEMU launcher. ⚠ The launcher's direct `-kernel` path predates agnos 1.30.0 and cannot load the current kernel — see [QEMU Boot Test](#qemu-boot-test-kernel). Compiled size drifts every cut; `make status` prints the live figure.
+- **AGNOS kernel** — Cyrius-native, 40+ subsystems, a small sovereign syscall surface (no BSD socket family, no `socket()` over arbitrary domains, no splice, no AF_ALG). Boots on real AMD Zen (the NUC devbox, archaemenid) to the ring-3 userland shell **agnsh**, exec'd from the agnos-fs. ⚠ Iron validation is **per-cut, not blanket** — the head is often an unburned cut, and not every released cut has been burned. Per-cut burn status: [`../development/state.md`](../development/state.md).
 - **Iron boot media** — `scripts/install-media.sh` (the old `install-usb.sh` is now a forwarding shim) provisions a USB stick or an internal disk with gnoboot's ESP + the kernel + an ext4 `agnos-fs` root, and refreshes either without a wipe. Iron-proven on archaemenid — but it is a developer provisioning tool, **not** an end-user installer.
-- **Component verification** — `make iso-check` walks every downstream repo and confirms the artifacts an ISO would need are present and current.
+- **Component verification** — `make iso-check` walks every downstream repo and confirms the build artifacts an ISO would need are present, printing each repo's `VERSION` (it does not compare versions).
 - **Per-subsystem builds** — every subsystem (kybernet, ark, nous, sigil, libro, agnoshi, …) builds standalone from its own repo via `cyrius build`.
 
 ## What is Coming
 
-- **ISO Stage-4 cut** — package the iron-proven boot media as a distributable writable `.img` with a writable ext4 rootfs. Decisions are **LOCKED**; `scripts/src/iso.cyr` is **not started but unblocked**. Plan: [`iso-stage4-plan.md`](../development/iso-stage4-plan.md). The LFS-style Stages 1–3 (source download, cross-toolchain bootstrap, chroot base-system build) are deferred behind it; the read-only `.iso` is a follow-on gated on gnoboot initramfs-load.
+- **ISO Stage-4 cut** — package the iron-proven boot media as a distributable writable `.img` with a writable ext4 rootfs. Decisions are **LOCKED**; `scripts/src/iso.cyr` is **not started but unblocked**. Plan: [`iso-stage4-plan.md`](../development/iso-stage4-plan.md). The LFS-style Stages 1–3 (source download, cross-toolchain bootstrap, chroot base-system build) are deferred behind it; the read-only `.iso` is a follow-on gated on a kernel-side initramfs reader (gnoboot has loaded `\boot\initramfs` into `boot_info` since 0.5.0; the kernel only logs the field so far).
 - **agnova** (installer) — Cyrius-native, past the scaffold stage, but a finished *port* is not a finished *installer*: the native installer capability is still owed to the server stage. Will own disk partitioning, LUKS2, bootloader install, profile selection (Desktop / Server / Minimal). ⛔ Hard prerequisite chain: sovereign ark → agnova → server-stage exit.
 - **takumi** (build system) — the Cyrius port is **done**; what is still coming is its use in ISO assembly, driving recipe builds out of zugot.
-- **Target**: closed beta cut, **late August 2026**. ⚠ It is **not** gated on the Cyrius toolchain — the bare-metal target shipped at Cyrius **v6.2.x**, and the kernel already builds and boots against the current pin. The remaining dependency is agnosticos-side: the ISO Stage-4 cut plus a first non-founder boot session.
+- **Target**: closed beta cut, **late August 2026** — passed with no record of the cut (see Status above). ⚠ It is **not** gated on the Cyrius toolchain — the bare-metal target shipped at Cyrius **v6.2.x**, and the kernel already builds and boots against the current pin. The remaining dependency is agnosticos-side: the ISO Stage-4 cut plus a first non-founder boot session.
 
 ---
 
@@ -33,7 +33,7 @@
 | Boot | UEFI (GPT + FAT ESP) — Legacy BIOS **not supported** | UEFI with Secure Boot |
 | GPU | — (CLI/server) | NVIDIA, AMD, or Intel integrated (for desktop) |
 
-These are **targets for the first bootable image**, not today's support matrix — only x86_64 boots right now; the kernel's aarch64 tree is compile-only, with no boot harness and not gated by CI. Full hardware matrix: [system-requirements.md](system-requirements.md).
+These are **targets for the first bootable image**, not today's support matrix — only x86_64 boots right now; the kernel's aarch64 tree **does not currently compile** (found at agnos 1.56.51, 2026-08-28 — its test probe had been skipping it silently since cyrius v6.1.0) and has no boot harness. Full hardware matrix: [system-requirements.md](system-requirements.md).
 
 ---
 
@@ -75,7 +75,7 @@ The `boot` binary is the Cyrius-native launcher used by every `make boot-*` targ
 make iso-check
 ```
 
-Walks every downstream repo (agnos, kybernet, ark, nous, sigil, libro, …) and verifies the artifacts an ISO would need are present at the expected versions. Current ISO-pipeline entry point — **Stage 0**.
+Walks every downstream repo (agnos, kybernet, ark, nous, sigil, libro, …) and verifies the build artifacts an ISO would need are present, printing each one's `VERSION`. Current ISO-pipeline entry point — **Stage 0**.
 
 ### QEMU Boot Test (Kernel)
 
@@ -83,7 +83,17 @@ Walks every downstream repo (agnos, kybernet, ark, nous, sigil, libro, …) and 
 make boot-test
 ```
 
-Direct-boots the AGNOS kernel in QEMU via `boot.cyr`. No rootfs, no userland — so it reaches the kernel's **recovery-only** in-kernel REPL, not the interactive shell (**agnsh** is a ring-3 binary and needs a rootfs to exec from). Serves as the ongoing smoke test for kernel + boot pipeline health.
+Direct-boots the AGNOS kernel in QEMU via `boot.cyr` (`qemu -kernel`). No rootfs, no userland — so it would reach the kernel's **recovery-only** in-kernel REPL, not the interactive shell (**agnsh** is a ring-3 binary and needs a rootfs to exec from).
+
+⚠ **This path cannot boot the current kernel.** `-kernel` is the pre-1.30.0 multiboot path. Since agnos **1.30.0** the kernel is an ELF64 image entered only through gnoboot's sovereign handoff (`RDI = &boot_info`), and QEMU refuses it outright: `Error loading uncompressed kernel without PVH ELF Note` (checked 2026-09-27 against agnos 1.57.10). Until `boot.cyr` gains a gnoboot + OVMF path, smoke-boot the kernel under QEMU + OVMF through gnoboot — a timed, non-interactive run that asserts gnoboot's hand-off banner:
+
+```sh
+# needs OVMF (edk2-ovmf), parted and mtools; build gnoboot first:
+#   CYRIUS_TARGET_EFI=1 cyrius build src/main.cyr build/BOOTX64.EFI
+cd ../gnoboot && sh tests/ovmf_smoke.sh   # AGNOS_KERNEL defaults to ../agnos/build/agnos
+```
+
+The kernel's own QEMU gates are the agnos repo's smoke battery (`scripts/smoke/`, driven by `scripts/sweep.sh`).
 
 ### Build a Specific Subsystem
 
@@ -124,17 +134,17 @@ The **arch-neutral boot pipeline** (`boot.cyr` arch detection, per-arch branch t
 |---------|-------------|
 | `cyrius: command not found` | Toolchain not on PATH. Check `~/.cyrius/bin/` or install from cyrius release tarball. |
 | `cyrius build` fails with missing stdlib | Running `cycc` directly; always use `cyrius build` (auto-prepends includes). |
+| `make boot-test` fails: `Error loading uncompressed kernel without PVH ELF Note` | Expected since agnos 1.30.0 — `boot.cyr`'s `-kernel` path cannot load the ELF64 kernel. Boot it through gnoboot + OVMF (see [QEMU Boot Test](#qemu-boot-test-kernel)). |
 | `make boot-test` hangs on black screen | QEMU serial not wired; check with `qemu-system-x86_64 --version` ≥ 7.0. |
-| `make iso-check` reports a stale artifact | Sibling repo hasn't been rebuilt. `cd ../<repo> && cyrius build …` then retry. |
+| `make iso-check` reports `MISS … [no build artifact]` | Sibling repo hasn't been built (iso-check checks presence, not freshness). `cd ../<repo> && cyrius build …` then retry. |
 
 ### Kernel in QEMU
 
 ```sh
-# Verbose boot (shows subsystem init order)
-./scripts/build/boot --test --kernel ../agnos/build/agnos --verbose
-
-# Run with serial console forwarded to host
-./scripts/build/boot --test --kernel ../agnos/build/agnos --serial
+# boot.cyr always wires QEMU's serial console to stdio — there is no --serial flag
+# (it exits with "Unknown option"); -v / --verbose is accepted. Its -kernel path
+# cannot load agnos >= 1.30.0, so smoke-boot the kernel through gnoboot + OVMF:
+cd ../gnoboot && sh tests/ovmf_smoke.sh
 ```
 
 ### Getting Help

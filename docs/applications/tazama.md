@@ -8,9 +8,9 @@
 | Version | `2026.3.14` |
 | Repository | `MacCracken/tazama` |
 | Runtime | native-binary (~5.7MB) |
-| Recipe | `zugot/marketplace/tazama.toml` |
+| Recipe | `zugot/marketplace/tazama.cyml` |
 | MCP Tools | 7 `tazama_*` |
-| Agnoshi Intents | 7 |
+| Agnoshi Intents | None (the current agnoshi has no per-app intents) |
 | Port | N/A (desktop app) |
 
 ---
@@ -32,7 +32,7 @@ AI-native video editing with automatic scene detection, intelligent auto-cut, an
 - **Daimon**: Registers as an agent; indexes project assets into RAG; uses vector store for clip similarity search
 - **Hoosh**: LLM-driven edit suggestions, scene classification, content description for accessibility
 - **MCP Tools**: `tazama_import`, `tazama_cut`, `tazama_effect`, `tazama_export`, `tazama_timeline`, `tazama_analyze`, `tazama_generate`
-- **Agnoshi Intents**: `tazama import <file>`, `tazama cut <params>`, `tazama effect <name>`, `tazama export <format>`, `tazama timeline <action>`, `tazama analyze <clip>`, `tazama generate <description>`
+- **Agnoshi Intents** (the Rust era's planned set — not in the current agnoshi): `tazama import <file>`, `tazama cut <params>`, `tazama effect <name>`, `tazama export <format>`, `tazama timeline <action>`, `tazama analyze <clip>`, `tazama generate <description>`
 - **Marketplace**: Video/Creative category; sandbox profile allows GPU access, read-write project directories, PipeWire socket for audio preview
 
 ## Architecture

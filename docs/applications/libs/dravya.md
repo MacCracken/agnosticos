@@ -1,39 +1,10 @@
-# Dravya
+# dravya
 
-> **Dravya** (Sanskrit: substance/matter) — Material science engine
+Material science engine (Sanskrit *dravya* — substance / matter).
 
-| Field | Value |
-|-------|-------|
-| Status | Stable |
-| Version | `1.0.0` |
-| Repository | `MacCracken/dravya` |
-| Runtime | library crate (Rust) |
-| Recipe | `zugot/marketplace/dravya.toml` |
-| crates.io | `dravya` |
+- **Repository**: [github.com/MacCracken/dravya](https://github.com/MacCracken/dravya)
+- **License**: GPL-3.0-only
+- **Status**: Stable — v1.0+
+- **Language**: Rust (Cyrius port pending)
 
----
-
-## What It Does
-
-- Stress and strain analysis: tensors, principal stresses, Mohr's circle
-- Elasticity: linear and nonlinear constitutive models (Hooke, Neo-Hookean, Ogden)
-- Fatigue and fracture: S-N curves, crack propagation, stress intensity factors
-- Composite materials: laminate theory, ply stacking, failure criteria (Tsai-Wu, Hashin)
-- Material property databases for metals, polymers, ceramics, and composites
-
-## Consumers
-
-- **impetus** — material properties for physics simulation
-- **kiran** — structural simulation, destructible environments
-- **joshua** — vehicle and structure damage modeling
-- Engineering and educational applications
-
-## Architecture
-
-- Built on hisab for tensor math and numerical methods
-- Constitutive model trait for pluggable material behaviors
-- Dependencies: hisab, serde
-
-## Roadmap
-
-Stable at 1.0.0. Future: finite element method integration, thermal-mechanical coupling (with ushma), additive manufacturing material models.
+See the [libs registry](../README.md) for the full catalog and dependency context.

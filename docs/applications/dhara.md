@@ -8,7 +8,7 @@
 | Version | — |
 | Repository | `MacCracken/dhara` |
 | Runtime | native-binary |
-| Recipe | `zugot/marketplace/dhara.toml` |
+| Recipe | `zugot/marketplace/dhara.cyml` (planned — not yet in zugot) |
 | MCP Tools | TBD `dhara_*` |
 | Agnoshi Intents | TBD |
 | Port | 8078 |

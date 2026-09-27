@@ -1,7 +1,7 @@
 # AGNOS System Requirements
 
 > Minimum and recommended hardware for running AGNOS across all profiles.
-> Last Updated: 2026-08-05
+> Last Updated: 2026-09-27
 >
 > **Pre-Beta note:** AGNOS is not yet installable as an end-user OS. These figures are the **targets** for the first bootable ISO. For what is buildable and testable today, see [README.md](README.md).
 
@@ -57,7 +57,7 @@ Full sovereign desktop — the aethersafha compositor (⛔ **not** Wayland; it s
 | Network | Internet for setup | Optional after install |
 
 **Supported GPUs**:
-- **NVIDIA**: Proprietary driver 570.x (Kepler and newer, GTX 600+)
+- **NVIDIA**: Proprietary driver — version pinned by zugot's `desktops/nvidia-driver.cyml` (Kepler and newer, GTX 600+)
 - **AMD**: Mesa radeonsi (GCN 1.0 and newer, HD 7000+)
 - **Intel**: Mesa iris/i965 (Broadwell and newer, HD 5500+)
 - **Software rendering**: Mesa swrast (llvmpipe) — functional but slow
@@ -97,7 +97,7 @@ Minimal footprint for embedded devices — fleet management, OTA updates, teleme
 | Architecture | Status | Notes |
 |--------------|--------|-------|
 | x86_64 (AMD64) | Full support | Primary development target; Cyrius self-hosts byte-identical |
-| ARM64 (AArch64) | Toolchain full; kernel compile-only | Cyrius cross-compiler + native Pi self-host byte-identical (v5.3.15+). The AGNOS kernel's aarch64 tree builds but has no boot harness and is not gated |
+| ARM64 (AArch64) | Toolchain full; kernel does not compile | Cyrius cross-compiler + native Pi self-host byte-identical (v5.3.15+). The AGNOS kernel's aarch64 tree does not currently compile (found at agnos 1.56.51, 2026-08-28, when `test.sh`'s silently-skipping aarch64 probe was fixed; `test.sh --all` is red on it) and has no boot harness |
 | Apple Silicon (Mach-O) | Compiler toolchain only | Cyrius self-hosts byte-identically on M-series (v5.3.13); AGNOS kernel targets Linux ABI |
 | Windows PE32+ | Compiler toolchain only | Cyrius native self-host byte-identical on real Windows 11 (v5.5.10) |
 | RISC-V (rv64) | Queued | Cyrius **v6.7.x / v6.8.x** — re-scheduled off the v6.0.x line; not shipped and not imminent (`cyrius/docs/development/roadmap.md`) |
@@ -111,11 +111,11 @@ Minimal footprint for embedded devices — fleet management, OTA updates, teleme
 
 | Feature | Required? | Notes |
 |---------|-----------|-------|
-| UEFI | Required | gnoboot 0.6.1 (sovereign UEFI PE32+ EFI Application) is the default bootloader, on GPT + FAT ESP; it selects the largest RGB/BGR GOP mode the firmware offers rather than inheriting whatever mode was left |
+| UEFI | Required | gnoboot (sovereign UEFI PE32+ EFI Application; version in its `VERSION`) is the default bootloader, on GPT + FAT ESP; since 0.6.1 it selects the largest RGB/BGR GOP mode the firmware offers rather than inheriting whatever mode was left |
 | Legacy BIOS | Not supported | GRUB / multiboot2 path retired; boot is UEFI-only via gnoboot |
-| Secure Boot | Optional | Full MOK enrollment support; recommended for production |
+| Secure Boot | Optional — not yet on the gnoboot path | gnoboot is not Secure-Boot-signed and does not verify the kernel's signature; a signing chain is a post-v1.0 gnoboot direction. (This row used to claim full MOK enrollment support — no current boot component provides it.) |
 | TPM 2.0 | Optional | Enables disk encryption key sealing, measured boot, device attestation |
-| LUKS disk encryption | Optional | LUKS2 via cryptsetup 2.8.1; works with or without TPM |
+| LUKS disk encryption | Optional | LUKS2 via cryptsetup; works with or without TPM |
 | dm-verity | Optional | Verified root filesystem; used by Edge profile |
 | IMA | Optional | Integrity Measurement Architecture for file integrity |
 
@@ -128,14 +128,14 @@ AGNOS uses **two kernels** depending on profile — the AGNOS kernel is primary;
 ### AGNOS Kernel (sovereign, primary)
 
 - **Version**: Cyrius-native, with a small sovereign syscall surface — no BSD `socket` call, no `splice`, no AF_ALG family. (AGNOS *does* have a kernel TCP/UDP/ICMP stack; its `sock_*` / `udp_*` calls are purpose-built and take no address-family argument, so there is no family to select.) Head version, module count and build size drift every cut — see [`../development/state.md`](../development/state.md) rather than a figure quoted here
-- **Iron-validated on AMD**: exec-from-disk, SMP, shell-separation and >256 MB RAM support; HDA analog audio (1.52.x); kernel FP/SIMD (1.53.x); GPU compute on the Cezanne iGPU with no amdgpu and no ROCm (1.54.x); display scanout, the sovereign ATOM BIOS interpreter and ACPI S5 self-poweroff (1.55.x); GPU 3D raster, kernel-side DCN modeset and native-resolution scanout (1.56.0–1.56.38). ⚠️ 1.56.39 is QEMU-only and was never burned, and 1.56.40 is an open cut — neither is iron-validated
+- **Iron-validated on AMD**: exec-from-disk, SMP, shell-separation and >256 MB RAM support; HDA analog audio (1.52.x); kernel FP/SIMD (1.53.x); GPU compute on the Cezanne iGPU with no amdgpu and no ROCm (1.54.x); display scanout, the sovereign ATOM BIOS interpreter and ACPI S5 self-poweroff (1.55.x); GPU 3D raster, kernel-side DCN modeset and native-resolution scanout (1.56.0–1.56.38). ⚠️ 1.56.39 is QEMU-only and was never burned. As of 2026-09-27 the last iron burn is **1.57.1** (2026-09-08); **1.57.2 → 1.57.10 are built and gated but not burned** — per-cut status in [`../development/state.md`](../development/state.md)
 - **Repo**: `MacCracken/agnos`
-- **Multi-arch split** (v1.1.0): `kernel/arch/x86_64/`, `kernel/arch/aarch64/`, `kernel/core/`, `kernel/user/`. ⚠️ Only x86_64 boots — the aarch64 tree is **compile-only, with no boot harness and not gated** by the test suite or CI
-- **Boot**: gnoboot 0.6.1 (sovereign UEFI PE32+ EFI Application) from a GPT + FAT ESP; boots in QEMU via `make boot-test` from the genesis repo
+- **Multi-arch split** (v1.1.0): `kernel/arch/x86_64/`, `kernel/arch/aarch64/`, `kernel/core/`, `kernel/user/`. ⚠️ Only x86_64 boots — the aarch64 tree **does not currently compile** (found at 1.56.51) and has no boot harness
+- **Boot**: gnoboot (sovereign UEFI PE32+ EFI Application) from a GPT + FAT ESP; boots in QEMU through gnoboot + OVMF (`gnoboot/tests/ovmf_smoke.sh`). The genesis repo's `make boot-test` uses QEMU `-kernel`, which cannot load the kernel since agnos 1.30.0
 
 ### Linux Kernel (host bootstrap, transitional)
 
-- **Version**: Linux 6.6 LTS (6.6.80)
+- **Version**: Linux 6.6 LTS — patch level pinned by zugot's `base/linux.cyml`
 - **Role**: used during early ISO builds for broad driver coverage while sovereign stack gaps close
 - **Security**: Landlock, seccomp, AppArmor/SELinux, kernel lockdown LSM
 - **Filesystems**: ext4, btrfs, xfs, vfat, squashfs, overlayfs, FUSE
@@ -149,11 +149,13 @@ AGNOS uses **two kernels** depending on profile — the AGNOS kernel is primary;
 | Peripheral | Package | Notes |
 |------------|---------|-------|
 | WiFi | linux-firmware + kernel drivers | Intel (iwlwifi), Broadcom (brcmfmac), Atheros, Realtek |
-| Bluetooth | BlueZ 5.82 | BLE + mesh; MIDI support |
-| Thunderbolt/USB4 | boltd 0.9.8 | TB3/TB4 authorization and security |
-| Printing | CUPS 2.4.12 | Optional; web admin interface |
+| Bluetooth | BlueZ | BLE + mesh; MIDI support |
+| Thunderbolt/USB4 | boltd | TB3/TB4 authorization and security |
+| Printing | CUPS | Optional; web admin interface |
 | Audio | ALSA + PipeWire | Intel HDA, USB audio |
 | Webcam/V4L2 | Kernel V4L2 | USB and built-in cameras |
+
+Package versions are pinned by the zugot recipes, not here.
 
 ---
 
@@ -185,7 +187,7 @@ The oldest hardware that can run AGNOS, by profile:
 
 Building AGNOS from source requires:
 - **Cyrius toolchain** — version pinned in `scripts/cyrius.cyml` (the `cyrius = "<version>"` field); install from release tarball or build from source (`cyrius` repo)
-- **QEMU** — `qemu-system-x86_64` (≥ 7.0) for `make boot-test`
+- **QEMU** — `qemu-system-x86_64` (≥ 7.0), plus OVMF, parted and mtools, to boot the kernel through gnoboot (`make boot-test`'s `-kernel` path cannot load it since agnos 1.30.0)
 - **GNU Make** — `make boot`, `make iso-check`, `make boot-test`
 
 The Rust / GCC / Python / Docker toolchain was retired during the Cyrius pivot (2026-04-04). Pre-Cyrius scripts live in `scripts/archive-pre-cyrius/` for reference only.

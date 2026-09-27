@@ -8,9 +8,9 @@
 | Version | latest |
 | Repository | `MacCracken/delta` |
 | Runtime | native-binary |
-| Recipe | `zugot/marketplace/delta.toml` |
+| Recipe | `zugot/marketplace/delta.cyml` |
 | MCP Tools | 5 `delta_*` |
-| Agnoshi Intents | 5 |
+| Agnoshi Intents | None (the current agnoshi has no per-app intents) |
 | Port | 8070 |
 
 ---
@@ -32,7 +32,7 @@ Delta replaces the external Git hosting dependency for AGNOS development with a 
 - **Daimon**: Registers as an agent; publishes repository events (push, PR, CI status); uses agent capabilities for automated workflows
 - **Hoosh**: AI code review, commit message suggestions, PR summarization, security vulnerability detection
 - **MCP Tools**: `delta_repo`, `delta_pr`, `delta_ci`, `delta_search`, `delta_review`
-- **Agnoshi Intents**: `delta repo <action>`, `delta pr <action>`, `delta ci <action>`, `delta search <query>`, `delta review <pr>`
+- **Agnoshi Intents** (the Rust era's planned set — not in the current agnoshi): `delta repo <action>`, `delta pr <action>`, `delta ci <action>`, `delta search <query>`, `delta review <pr>`
 - **Marketplace**: Developer/Infrastructure category; sandbox profile allows network (port 8070), read-write repository storage, Git binary access
 
 ## Architecture

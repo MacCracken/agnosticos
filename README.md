@@ -3,11 +3,11 @@
 > **A** **G**eneral **N**etworked **O**perating **S**ystem
 
 [![License](https://img.shields.io/badge/license-GPLv3-blue)](LICENSE)
-[![Kernel](https://img.shields.io/badge/kernel-AGNOS%201.56.40-orange)](https://github.com/MacCracken/agnos)
-[![Language](https://img.shields.io/badge/Cyrius-6.5.7-red)](https://github.com/MacCracken/cyrius)
+[![Kernel](https://img.shields.io/badge/kernel-AGNOS%201.57.10-orange)](https://github.com/MacCracken/agnos)
+[![Language](https://img.shields.io/badge/Cyrius-6.6.6-red)](https://github.com/MacCracken/cyrius)
 ![Status](https://img.shields.io/badge/status-pre--beta-yellow)
 
-**AGNOS** is a sovereign operating system written in **Cyrius** — a systems language with a 29KB seed, zero external dependencies, and a self-hosting compiler. The kernel boots to a typeable shell on real AMD hardware (Boot-to-Shell MVP, 2026-05-15). Since then, validated **on real AMD Zen** unless noted:
+**AGNOS** is a sovereign operating system written in **Cyrius** — a systems language with a 29KB seed, zero external dependencies, and a self-hosting compiler. The kernel boots to a typeable shell on real AMD hardware (Boot-to-Shell MVP, 2026-05-15). Since then, validated **on real AMD Zen** unless noted — the latest iron burn is agnos **1.57.1** (2026-09-08); 1.57.2 → 1.57.10 are built and QEMU-gated but **not burned**:
 
 - **Storage** — NVMe / SATA / USB-MS stack, iron-validated.
 - **Networking** — full TCP/IP + DHCP + DNS + NTP + ICMP over an r8169 NIC, iron-validated.
@@ -21,8 +21,11 @@
 - **GPU compute** — the AMD Cezanne iGPU brought up from nothing (PSP firmware load, GFXHUB, a mapped compute queue, hand-assembled gfx90c shaders) with **no amdgpu and no ROCm**, culminating in f64 matmul on the shader cores **bit-identical to the CPU reference including rounding**, dispatchable from ring 3 (1.54.x) — **iron-validated** on real Zen.
 - **Display + power** — a sovereign DCN 2.1 scanout path (flip, vblank pacing, tear-free double-buffered present), a **sovereign ATOM BIOS interpreter** whose encoder and transmitter runs emit exactly the vendor oracle's write sequences on iron (a *dry* build — no MMIO, no amdgpu: it proves the emission matches the vendor, not a hardware effect; the *wet* transmitter drive — ATOM `#76` `DIG1TransmitterControl` ENABLE via `/bin/modeset --transmitter`, 1.56.13/14 — is a separate run and was never itself oracle-diffed), hardware 2D via CP-DMA, and **AGNOS powering itself off** through a full ACPI S5 sequence (1.55.x) — **iron-validated** on real Zen.
 - **3D raster + native scanout** — a GPU triangle rasteriser (167 hand-authored gfx90c instructions, 20 of 20 cases byte-identical to the CPU reference), barycentric RGBA interpolation, perspective-correct texturing, depth test, and a kernel-side DCN modeset that puts the console at **native 2560x1440** with the scaler bypassed and a hardware pan (1.56.0–1.56.38) — **iron-validated** on real Zen.
-- **Sovereign desktop** — on 2026-08-03 at `cpus online: 4`, the native **aethersafha** compositor hosted **two real client windows** — a present probe and **crab**'s dual-pane file manager — composited on the panel, 278 frames, keys delivered to the client, clean quit — **iron-validated** on real Zen. Not Wayland: the desktop speaks the sovereign **setu** protocol.
-- **Console fonts** — vendored from **kashi** (parallel-agent-developed sibling repo).
+- **Sovereign desktop** — on 2026-08-03 at `cpus online: 4`, the native **aethersafha** compositor hosted **two real client windows** — a present probe and **crab**'s dual-pane file manager — composited on the panel, 278 frames, keys delivered to the client, clean quit — **iron-validated** on real Zen. Since then, also on iron: the clients ride the kernel channel band instead of TCP-on-loopback (2026-08-07), every frame layer is composited on the GPU with no CPU blit (2026-08-08), a USB-mouse pointer and a titlebar drag (2026-08-09), and per-window opacity (2026-08-16). ⚠ Speed is the open problem: **~7–15 fps measured on iron 2026-08-22** ([aethersafha `state.md`](https://github.com/MacCracken/aethersafha/blob/main/docs/development/state.md)). Not Wayland: the desktop speaks the sovereign **setu** protocol.
+- **Processes** — process enumeration (`#99 proclist`, 1.56.47; first ring-3 call on iron 2026-09-03) and `fork` (`#96`, 1.56.54, corrected 1.56.55) with a wait-any `waitpid`. `fork` is QEMU-gated; no iron run of it is on record.
+- **The blocking model** (1.57.6–1.57.9) — every process runs its syscalls on its own kernel stack, and every wait blocks only its caller (keyboard, pipe and channel reads; pipe writes); `kill` ends, stops and continues a child; one-shot memory/CPU caps for a child (`#107`); TCP/UDP ids owned by the process that opened them — **built and QEMU-gated, not burned**.
+- **IOMMU** — VT-d translation turns on for the first time at 1.57.10 — **QEMU-only** (q35 + `intel-iommu`), not burned. The AMD iron target runs with AMD-Vi disabled, so VT-d does not run there.
+- **Console fonts** — vendored from **kashi** (parallel-agent-developed sibling repo). Since 1.57.2 the kernel also embeds a proportional TrueType face (Liberation Sans, via **rekha**) that a client can `open()` at `/fonts/default.ttf` — built and QEMU-gated, not burned.
 
 40+ subsystems ported from Rust to Cyrius. Base kernel-internals are complete — the GPU, display and desktop arcs sit on top of them. No Linux dependency at runtime — the kernel exposes a **small sovereign syscall surface with no BSD socket family, no `socket()` over arbitrary domains, no splice and no AF_ALG** (structurally immune to that CVE class). Live binary sizes, per-repo versions, syscall count, and cycle state track in the ecosystem state ledger.
 
@@ -63,7 +66,7 @@ AGNOS is a general, sovereign OS that stands on its own — kernel, shell, tools
 | **Compiler** | Cyrius | self-hosting from 29KB seed |
 | **PID 1** | kybernet | service supervision, signal/event-loop |
 | **Init** | argonaut | 3 boot modes (Server / Desktop / Minimal) |
-| **Sandbox** | kavach | Landlock + seccomp-bpf |
+| **Sandbox** | kavach | Landlock + seccomp-bpf on Linux targets; on AGNOS both backends report *not supported* |
 | **Crypto** | sigil | Ed25519, trust verification |
 | **Audit** | libro | Hash-chained event log |
 | **MCP** | bote | message pipeline + host registry |
@@ -71,7 +74,7 @@ AGNOS is a general, sovereign OS that stands on its own — kernel, shell, tools
 | **Agents** | daimon | agent orchestrator, MCP tool host |
 | **Shell** | agnoshi | natural-language terminal |
 | **Packages** | ark + nous | package manager + resolver |
-| **Recipes** | zugot | 421 base + 90 bazaar |
+| **Recipes** | zugot | `.cyml` recipes, plus the **bazaar** community overlay — live counts in each repo's README |
 
 > v1.0+ stable libraries: [`docs/applications/libs/README.md`](docs/applications/libs/README.md); v1.0+ binaries & tools: [`docs/applications/binaries.md`](docs/applications/binaries.md).
 
@@ -88,7 +91,7 @@ AGNOS is a general, sovereign OS that stands on its own — kernel, shell, tools
 
 ## Consumer Apps (planned / reference)
 
-The desktop tier itself is live — the native **aethersafha** compositor hosts real client windows on real hardware (2026-08-03). The consumer-app roster below has **not started**; it is the planned marketplace roster, targeted to ship as `.agnos-agent` bundles:
+The desktop tier itself is live — the native **aethersafha** compositor hosts real client windows on real hardware (2026-08-03). The consumer-app roster below is the planned marketplace roster, targeted to ship as `.agnos-agent` bundles — a roadmap, not a status: several already exist as standalone repos (**AgnosAI**, **Irfan** — repo `ifran` — and **Jalwa** as Cyrius ports; **SecureYeoman** in TypeScript), with current status in each repo:
 
 | App | Description |
 |-----|-------------|
@@ -108,7 +111,7 @@ The desktop tier itself is live — the native **aethersafha** compositor hosts 
 
 ## Development Status
 
-**Pre-beta.** Critical path to boot cleared. Closed-beta cohort prep underway.
+**Pre-beta.** Critical path to boot cleared. No closed-beta opening is recorded yet — see the targets below.
 
 | Milestone | Status |
 |-----------|--------|
@@ -122,19 +125,23 @@ The desktop tier itself is live — the native **aethersafha** compositor hosts 
 | Display + ACPI — DCN 2.1 scanout, vblank-paced tear-free present, sovereign ATOM BIOS interpreter, CP-DMA hardware 2D, self-poweroff via ACPI S5 | **Iron-validated on real Zen** — 1.55.x |
 | GPU 3D raster + native scanout — triangle rasteriser (20/20 byte-identical to the CPU reference), perspective-correct texturing, depth test; kernel-side DCN modeset to native 2560x1440 with a hardware-panned console | **Iron-validated on real Zen** — 1.56.0–1.56.38 |
 | **Sovereign desktop on iron — aethersafha hosts two real client windows** (a present probe + crab's dual-pane file manager) composited on the panel at `cpus online: 4`, 278 frames, keys delivered, clean quit | **Iron-validated on real Zen 2026-08-03** — 1.56.35 |
-| Local display IPC — a kernel channel band, replacing TCP-on-loopback (retired 2026-08-03 as the wrong primitive for a local protocol) | **Open cycle — not yet burned** (1.56.40) |
+| Local display IPC — a kernel channel band, replacing TCP-on-loopback (retired 2026-08-03 as the wrong primitive for a local protocol) | **Iron-validated on real Zen 2026-08-07** — band shipped 1.56.40, first burned in the 1.56.41 kernel (through 1.56.40 this row read *not yet burned*) |
+| Desktop on the GPU — every frame layer composited on the GPU, USB-mouse pointer + titlebar drag, per-window opacity | **Iron-validated on real Zen 2026-08-08 … 08-16** — 1.56.41–1.56.45. ⚠ ~7–15 fps measured on iron 2026-08-22 |
+| Process enumeration + `fork` (`#99`, `#96`), wait-any `waitpid` | `#99` **run on iron 2026-09-03** (1.56.60); `fork` **QEMU-gated only** — 1.56.47–1.56.55 |
+| The blocking model — per-process kernel stacks, every wait blocks only its caller, `kill` that ends/stops/continues, per-child caps, owned sockets | **Built + QEMU-gated, NOT burned** — 1.57.6–1.57.9 |
+| VT-d IOMMU translation | **QEMU-only** (q35 + `intel-iommu`), NOT burned — 1.57.10; the AMD iron target runs with AMD-Vi disabled |
 | Cyrius compiler (self-hosting from 29KB seed) | Done |
 | 40+ subsystem ports (Rust to Cyrius) | Done |
 | Sovereign boot pipeline (Cyrius) — sovereign UEFI handoff via gnoboot | Done |
-| LFS base recipes (421 base + 90 bazaar) | Done |
+| LFS base recipes (zugot, plus the bazaar community overlay) | Done |
 | Security stack (kavach, sigil, libro, aegis at v1.0+) | Done |
-| Consumer apps with MCP integration (marketplace roster) | **Planned — not started** (reference roster) |
+| Consumer apps with MCP integration (marketplace roster) | **Planned** — no app ships as a marketplace bundle yet; several exist as standalone repos (see above) |
 | **Self-hosting (AGNOS builds AGNOS)** | **Public-beta scope — not a closed-beta gate.** Kernel already builds + boots against current Cyrius; the bare-metal toolchain target landed in Cyrius **v6.2.x** and does not gate the MVP (the earlier "closed-beta blocker" framing was pre-monolith-extraction residue, corrected 2026-05-12) |
 | Closed-beta tester cohort (5–15 trusted testers) | Pending closed-beta cut |
 | Third-party security audit | Public-beta gate |
 | Community testing program (formal enrollment) | Public-beta gate |
 
-**Closed-beta target: late August 2026** | **Public-beta target: deferred post-summer** | **GA target: late fall / early winter 2026**
+**Closed-beta target: late August 2026 — passed with no opening recorded; revised date not yet set** | **Public-beta target: deferred post-summer** | **GA target: late fall / early winter 2026**
 
 See [CHANGELOG.md](CHANGELOG.md) for full details.
 
@@ -167,11 +174,11 @@ make boot-test
 
 ## Security
 
-- **kavach** — Landlock + seccomp-bpf sandboxing
+- **kavach** — Landlock + seccomp-bpf sandboxing on **Linux targets**; on AGNOS both backends return a structured *not supported* (native confinement is intended, not built)
 - **sigil** — Ed25519 trust verification, revocation
 - **libro** — Cryptographic audit chain, hash-linked event log
-- **aegis** — System security daemon (threat detection, quarantine, scanning)
-- **AGNOS kernel** — Security hardening 13/13 closed (S1-S13 incl. KASLR data-only, KPTI-light, IBRS Spectre v2 mitigations, VT-d IOMMU, stack canaries); structurally immune to CVE-2026-31431 (no BSD socket family, no `socket()` over arbitrary domains, no `splice`, no AF_ALG in the sovereign syscall table)
+- **aegis** — security library for threat detection, quarantine and scanning (its binary prints `aegis ready` and exits — it does not yet run as a daemon)
+- **AGNOS kernel** — the kernel hardening track closed 13/13 at 1.28.0, but several of its controls do not run as named: KPTI collapsed at 1.40.3; the KASLR allocator half was removed at 1.41.12 and the image slide needs a build flag nothing sets; IBRS is CPUID-gated; and VT-d translation did not turn on in any boot until 1.57.10, and then in QEMU only (the AMD iron target runs with AMD-Vi disabled). Per-control status: [security-guide.md](docs/security/security-guide.md). Structurally immune to CVE-2026-31431 (no BSD socket family, no `socket()` over arbitrary domains, no `splice`, no AF_ALG in the sovereign syscall table)
 
 See [SECURITY.md](SECURITY.md) for vulnerability reporting.
 

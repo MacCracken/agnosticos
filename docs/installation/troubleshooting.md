@@ -1,8 +1,8 @@
 # AGNOS Troubleshooting
 
-> Last Updated: 2026-05-09
+> Last Updated: 2026-09-27
 >
-> **Pre-Beta note:** AGNOS is not yet a running end-user OS. This guide covers what is testable today — the sovereign boot pipeline, the Cyrius toolchain, per-subsystem builds, and the QEMU kernel boot test. Full system-level troubleshooting (services, networking, desktop) arrives with **Phase 13A** and the `agnova` installer.
+> **Pre-Beta note:** AGNOS is not yet a running end-user OS. This guide covers what is testable today — the sovereign boot pipeline, the Cyrius toolchain, per-subsystem builds, and the QEMU kernel boot test. Full system-level troubleshooting (services, networking, desktop) arrives with the **ISO Stage-4 cut** and the `agnova` installer.
 
 ---
 
@@ -27,8 +27,8 @@ ls ~/.cyrius/bin/
 ```
 
 Install options:
-- Release tarball: see `cyrius` repo's `docs/development/roadmap.md` for download steps
-- Source build: `cd /home/macro/Repos/cyrius && sh scripts/bootstrap.sh`
+- Release install: `curl -sSf https://raw.githubusercontent.com/MacCracken/cyrius/main/scripts/install.sh | sh` (see the `cyrius` repo's `README.md` § Install)
+- Source build: `cd /home/macro/Repos/cyrius && sh bootstrap/bootstrap.sh`
 
 ### Toolchain version mismatch
 
@@ -39,7 +39,7 @@ grep '^cyrius' /home/macro/Repos/agnosticos/scripts/cyrius.cyml
 cyrius --version
 ```
 
-If they disagree, rebuild the toolchain from source (`cd /home/macro/Repos/cyrius && sh scripts/bootstrap.sh`) or install the matching release tarball.
+If they disagree, rebuild the toolchain from source (`cd /home/macro/Repos/cyrius && sh bootstrap/bootstrap.sh`) or install the matching release tarball.
 
 ### `stdout` or `println` doesn't print
 
@@ -51,13 +51,15 @@ cyrius build <source.cyr> <output>
 
 ### `main()` runs but the program exits 0 with no output
 
-Cyrius executes top-level code, not `fn main()` automatically. Programs must call `main()` at the top level:
+Cyrius executes top-level code, not `fn main()` automatically. Programs must call `main()` at the top level — from a **bare** statement, exiting via `SYS_EXIT`:
 
 ```cyrius
-fn main() { ... return 0; }
-var exit_code = main();
-syscall(60, exit_code);
+fn main(): i64 { ... return 0; }
+fn _entry(): i64 { var r = main(); syscall(SYS_EXIT, r); return 0; }
+_entry();                 # bare top-level call
 ```
+
+The older `var exit_code = main(); syscall(60, exit_code);` form is wrong on agnos: agnos numbers its own syscalls, `exit` is `0` there and `60` is a different call, so the literal only exits on Linux — `SYS_EXIT` resolves correctly on both. (The `var … = main()` shape also used to hide argv on agnos, because `main` ran before the init stack was captured; cyrius 6.1.32 fixed that.)
 
 Study working programs in `/home/macro/Repos/cyrius/programs/*.cyr` (65+ examples).
 
@@ -96,13 +98,13 @@ Runs `cyrius build` under the hood. If it fails, `cd scripts && cyrius build src
 
 ## Component Verification
 
-### `make iso-check` reports stale artifact
+### `make iso-check` reports a missing build artifact
 
 ```
-STALE: ../kybernet/build/kybernet (expected 1.0.2, found none)
+  MISS   kybernet      vX.Y.Z  [no build artifact]
 ```
 
-The sibling repo hasn't been built. Fix:
+The sibling repo hasn't been built (iso-check checks that each artifact is present and prints the repo's `VERSION`; it does not check freshness). Fix:
 
 ```sh
 cd /home/macro/Repos/kybernet
@@ -117,21 +119,27 @@ A sibling repo path in `scripts/src/boot.cyr` or the Makefile points to a repo t
 
 ### Version drift
 
-The version each sibling reports comes from that repo's `VERSION` file. If a sibling was upgraded but `iso-check` still sees the old version, rebuild from source.
+The version each sibling reports is read straight from that repo's `VERSION` file — iso-check does not look inside the build artifact. If a sibling was upgraded but its artifact predates the upgrade, rebuild it from source; iso-check cannot tell.
 
 ---
 
 ## QEMU Kernel Boot Test
 
-### `make boot-test` hangs on black screen
+### `make boot-test` fails: `Error loading uncompressed kernel without PVH ELF Note`
 
-QEMU serial is not being forwarded. Run the boot binary directly with `--serial`:
+Expected since agnos **1.30.0**. `boot.cyr` boots with QEMU's `-kernel`, the pre-1.30.0 multiboot path; the kernel is now an ELF64 image entered only through gnoboot's sovereign handoff (`RDI = &boot_info`), which `-kernel` cannot provide (checked 2026-09-27 against agnos 1.57.10). Smoke-boot it through gnoboot + OVMF instead (a timed, non-interactive run that asserts gnoboot's hand-off banner):
 
 ```sh
-./scripts/build/boot --test --kernel ../agnos/build/agnos --serial
+# needs OVMF (edk2-ovmf), parted and mtools, and a built gnoboot:
+#   CYRIUS_TARGET_EFI=1 cyrius build src/main.cyr build/BOOTX64.EFI
+cd /home/macro/Repos/gnoboot && sh tests/ovmf_smoke.sh   # AGNOS_KERNEL defaults to ../agnos/build/agnos
 ```
 
-To exit QEMU: `Ctrl-a x`.
+The kernel's own QEMU gates are the agnos repo's smoke battery (`scripts/smoke/`, driven by `scripts/sweep.sh`).
+
+### `make boot-test` hangs on black screen
+
+`boot.cyr` already wires QEMU's serial console to stdio (`-serial stdio -display none`); there is no `--serial` flag — `boot` rejects it as an unknown option. To exit QEMU: `Ctrl-a x`.
 
 ### `make boot-test` reports "kernel not found"
 
@@ -146,7 +154,7 @@ make boot-test
 
 ### Kernel boots but panics on first syscall
 
-Most common cause: `agnos` and its `cyrius` toolchain pin are out of sync. Rebuild the kernel against the pinned toolchain from current sources.
+Most common cause: `agnos` and its `cyrius` toolchain pin are out of sync. Rebuild the kernel against the pinned toolchain from current sources. (Since agnos 1.56.51, `scripts/build.sh` refuses to build on pin drift; `AGNOS_ALLOW_PIN_DRIFT=1` is the deliberate override.)
 
 ### QEMU version too old
 
@@ -197,10 +205,10 @@ Don't mix test runs across repos — each one pins its own toolchain and deps.
 - **Per-subsystem issues**: file against the specific repo (`MacCracken/<name>/issues`)
 - **Security issues**: see [/SECURITY.md](/SECURITY.md) for private disclosure
 - **Roadmap**: tracked in the project's development docs
-- **Phase 13A (Beta blocker)**: tracks the ISO work that closes the "is AGNOS installable?" gap
+- **ISO Stage-4 cut** (the base→server blocker): the ISO work that closes the "is AGNOS installable?" gap — plan in [`iso-stage4-plan.md`](../development/iso-stage4-plan.md)
 
 ---
 
 ## Historical Note
 
-Prior versions of this document covered `systemctl`, `agent-runtime`, `llm-gateway`, `journalctl`, and desktop-environment issues. Those refer to a Rust-era AGNOS built on a Debian base that was retired 2026-04-01 (monolith extraction) / 2026-04-04 (Cyrius pivot). That content returns — against the sovereign stack — when `agnova` and the Phase 13A ISO ship.
+Prior versions of this document covered `systemctl`, `agent-runtime`, `llm-gateway`, `journalctl`, and desktop-environment issues. Those refer to a Rust-era AGNOS built on a Debian base that was retired 2026-04-01 (monolith extraction) / 2026-04-04 (Cyrius pivot). That content returns — against the sovereign stack — when `agnova` and the Stage-4 ISO ship.

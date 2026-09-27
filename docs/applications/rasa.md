@@ -8,9 +8,9 @@
 | Version | `2026.3.15` |
 | Repository | `MacCracken/rasa` |
 | Runtime | native-binary (~3.2MB amd64, ~3.0MB arm64) |
-| Recipe | `zugot/marketplace/rasa.toml` |
+| Recipe | `zugot/marketplace/rasa.cyml` |
 | MCP Tools | 9 `rasa_*` |
-| Agnoshi Intents | 9 |
+| Agnoshi Intents | None (the current agnoshi has no per-app intents) |
 | Port | N/A (desktop app) |
 
 ---
@@ -32,7 +32,7 @@ AI-native image editing with natural language commands ("remove the background",
 - **Daimon**: Registers as an agent; uses RAG for asset discovery; publishes edit history
 - **Hoosh**: NL command interpretation, content-aware suggestions, image description
 - **MCP Tools**: `rasa_canvas`, `rasa_layers`, `rasa_tools`, `rasa_export`, `rasa_filters`, `rasa_selection`, `rasa_transform`, `rasa_color`, `rasa_ai`
-- **Agnoshi Intents**: `rasa canvas <action>`, `rasa layers <action>`, `rasa tools <tool>`, `rasa export <format>`, `rasa filters <filter>`, `rasa selection <mode>`, `rasa transform <op>`, `rasa color <action>`, `rasa ai <command>`
+- **Agnoshi Intents** (the Rust era's planned set — not in the current agnoshi): `rasa canvas <action>`, `rasa layers <action>`, `rasa tools <tool>`, `rasa export <format>`, `rasa filters <filter>`, `rasa selection <mode>`, `rasa transform <op>`, `rasa color <action>`, `rasa ai <command>`
 - **Marketplace**: Graphics/Creative category; sandbox profile allows GPU access, read-write project directories, network for asset fetching
 
 ## Architecture

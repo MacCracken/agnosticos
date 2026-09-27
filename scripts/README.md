@@ -1,6 +1,6 @@
 # AGNOS Build Scripts
 
-> Sovereign boot pipeline — written in Cyrius, compiled by cc5, zero bash dependencies.
+> Sovereign boot pipeline — written in Cyrius, compiled by `cycc`, zero bash dependencies.
 
 ## Quick Start
 
@@ -29,6 +29,7 @@ cyrius build src/boot.cyr build/boot     # compile boot tool
 | Program | Purpose |
 |---------|---------|
 | `boot.cyr` | Assemble and boot AGNOS from sibling-repo components (kernel, toolchain, recipes). Sub-modes: `--test`, `--status`, `--iso-check`. |
+| `read-boot-log.cyr` | Sovereign CMOS boot-log reader — reads the kernel's boot-stage checkpoint slots from RTC/CMOS by direct port I/O on the dev host (the Linux `/dev/nvram` driver rejects archaemenid's layout). |
 
 ## CLI
 
@@ -46,6 +47,12 @@ Options:
 
 ## How It Works
 
+> ⚠ **The interactive and `--test` modes cannot boot a current kernel.** Both hand the kernel to QEMU `-kernel`,
+> and since agnos **1.30.0** the kernel is an ELF64 image with no PVH note, so QEMU refuses it
+> (`Error loading uncompressed kernel without PVH ELF Note`). agnos boots through **gnoboot + OVMF** instead —
+> see agnos's README and `scripts/smoke/`. `--iso-check` still works. `--status` still runs, but its toolchain
+> line looks for the retired `cc5` binary (`src/boot.cyr` still names it) and reports it missing. Re-checked 2026-09-27.
+
 **Interactive boot** (default, fastest for development):
 ```
 ../../agnos/build/agnos → QEMU -kernel → serial output (Ctrl-A X to quit)
@@ -59,15 +66,18 @@ Options:
 **ISO check** (`--iso-check`): walks every required and optional subsystem
 in the sibling-repo tree and reports `READY / MISS / SKIP` per component.
 
-Full ISO assembly (squashfs + GRUB + xorriso) is Phase 13A work — not yet
-implemented. `--iso-check` is the gate.
+Full image assembly is **ISO Stage-4** work — a writable GPT `.img` with a FAT EFI
+System Partition (gnoboot's `BOOTX64.EFI` + kernel) and an ext4 rootfs, cut by a planned
+`src/iso.cyr` that is **not yet written** (plan: [`../docs/development/iso-stage4-plan.md`](../docs/development/iso-stage4-plan.md)).
+AGNOS does not use GRUB, ISO9660/xorriso or squashfs — `--iso-check` no longer checks for them.
+`--iso-check` is the gate.
 
 ## Component Sources
 
 | Component | Default Path | Override |
 |-----------|--------------|----------|
 | AGNOS kernel | `../../agnos/build/agnos` | `--kernel PATH` |
-| Cyrius toolchain | `../../cyrius/build/cc5` | — (sibling repo) |
+| Cyrius toolchain | `../../cyrius/build/cycc` | — (sibling repo) |
 | Subsystems | `../../<name>/build/<name>` | — (sibling repo) |
 
 Paths are relative to `scripts/` — the boot tool runs with `scripts/` as

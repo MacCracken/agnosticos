@@ -8,9 +8,9 @@
 | Version | latest |
 | Repository | `MacCracken/BullShift` |
 | Runtime | native-binary (~2.8MB) |
-| Recipe | `zugot/marketplace/bullshift.toml` |
+| Recipe | `zugot/marketplace/bullshift.cyml` |
 | MCP Tools | 7 `bullshift_*` |
-| Agnoshi Intents | 7 |
+| Agnoshi Intents | None (the current agnoshi has no per-app intents) |
 | Port | N/A |
 
 ---
@@ -32,7 +32,7 @@ No existing open-source trading platform integrates with a local LLM for AI-nati
 - **Daimon**: Registers as an agent; publishes market events; uses approval system for trade execution; RAG for market research
 - **Hoosh**: Sentiment analysis, pattern explanation, NL query interpretation, market summarization
 - **MCP Tools**: `bullshift_portfolio`, `bullshift_trade`, `bullshift_analyze`, `bullshift_watch`, `bullshift_history`, `bullshift_strategy`, `bullshift_sentiment`
-- **Agnoshi Intents**: `bullshift portfolio`, `bullshift trade <action>`, `bullshift analyze <symbol>`, `bullshift watch <symbol>`, `bullshift history <range>`, `bullshift strategy <name>`, `bullshift sentiment <topic>`
+- **Agnoshi Intents** (the Rust era's planned set — not in the current agnoshi): `bullshift portfolio`, `bullshift trade <action>`, `bullshift analyze <symbol>`, `bullshift watch <symbol>`, `bullshift history <range>`, `bullshift strategy <name>`, `bullshift sentiment <topic>`
 - **Marketplace**: Finance/Trading category; sandbox profile allows network access (market data feeds), encrypted storage for credentials, no filesystem write outside data directory
 
 ## Architecture

@@ -1,30 +1,10 @@
-# Shabda
+# shabda
 
-> **Shabda** (Sanskrit: word/sound) — Grapheme-to-phoneme conversion
+Grapheme-to-phoneme (G2P) engine for AGNOS text-to-speech (Sanskrit *shabda* — word / sound) — text to svara phoneme events via shabdakosh lookup, letter-to-sound rules and prosody.
 
-| Field | Value |
-|-------|-------|
-| Status | Stable |
-| Version | `1.0.0` |
-| Repository | `MacCracken/shabda` |
-| Runtime | library crate (Rust) |
+- **Repository**: [github.com/MacCracken/shabda](https://github.com/MacCracken/shabda)
+- **License**: GPL-3.0-only
+- **Status**: Stable — v1.0+
+- **Language**: Cyrius
 
----
-
-## What It Does
-
-- Text-to-phoneme (G2P) conversion for vocal synthesis pipelines
-- Text normalization: lowercase, number expansion, punctuation handling
-- Tokenization with sentence boundary detection
-- G2P engine: dictionary lookup (via shabdakosh) with rule-based fallback
-- Prosody mapping: stress and intonation from punctuation and syntax
-- Outputs `Vec<PhonemeEvent>` sequences compatible with svara
-- Built on shabdakosh for pronunciation dictionaries and svara for phoneme types
-- Optional JSON serialization of phoneme sequences
-- `no_std` + `alloc` compatible
-
-## Consumers
-
-- **svara** — vocal synthesis (receives phoneme event sequences)
-- **vansh** — voice AI shell (text-to-speech pipeline)
-- **dhvani** — audio engine (TTS integration)
+See the [libs registry](../README.md) for the full catalog and dependency context.

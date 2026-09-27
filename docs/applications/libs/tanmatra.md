@@ -1,30 +1,10 @@
-# Tanmatra
+# tanmatra
 
-> **Tanmatra** (Sanskrit: subtle element) — Atomic and subatomic physics
+Atomic and subatomic physics (Sanskrit तन्मात्र — *subtle element*).
 
-| Field | Value |
-|-------|-------|
-| Status | Stable |
-| Version | `1.0.0` |
-| Repository | `MacCracken/tanmatra` |
-| Runtime | library crate (Rust) |
+- **Repository**: [github.com/MacCracken/tanmatra](https://github.com/MacCracken/tanmatra)
+- **License**: GPL-3.0-only
+- **Status**: Stable — v1.0+
+- **Language**: Rust (Cyrius port pending)
 
----
-
-## What It Does
-
-- Standard Model particles: quarks, leptons, bosons, fundamental forces
-- Nuclear structure: Bethe-Weizsacker binding energy, nuclear radii
-- Radioactive decay: half-lives, decay chains, decay modes
-- Nuclear reactions: Q-values, Coulomb barriers
-- Atomic physics: electron configurations, spectral lines (Balmer, Lyman, etc.), ionization energies
-- Data sourced from CODATA 2022, PDG 2024, NNDC/NUBASE, NIST ASD
-- Optional optics integration via prakash (spectral line wavelengths)
-- `no_std` + `alloc` compatible
-- Zero `unsafe` code
-
-## Consumers
-
-- **prakash** — optics library (spectral line coupling)
-- **kimiya** — chemistry library (atomic structure, isotope data)
-- **kiran** — game engine (physics simulation data)
+See the [libs registry](../README.md) for the full catalog and dependency context.

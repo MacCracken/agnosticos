@@ -1,39 +1,10 @@
-# Bijli
+# bijli
 
-> **Bijli** (Hindi: lightning/electricity) — Electromagnetism simulation
+Electromagnetism simulation (Hindi *bijli* — lightning / electricity).
 
-| Field | Value |
-|-------|-------|
-| Status | Stable |
-| Version | `1.0.0` |
-| Repository | `MacCracken/bijli` |
-| Runtime | library crate (Rust) |
-| Recipe | `zugot/marketplace/bijli.toml` |
-| crates.io | `bijli` |
+- **Repository**: [github.com/MacCracken/bijli](https://github.com/MacCracken/bijli)
+- **License**: GPL-3.0-only
+- **Status**: Stable — v1.0+
+- **Language**: Rust (Cyrius port pending)
 
----
-
-## What It Does
-
-- Electric fields: Coulomb's law, Gauss's law, potential, capacitance
-- Magnetic fields: Biot-Savart, Ampere's law, inductance, Lorentz force
-- Maxwell's equations: full FDTD solver for electromagnetic wave propagation
-- Charge dynamics: particle-in-cell, drift-diffusion, circuit elements
-- EM wave simulation: polarization, reflection, transmission, waveguides
-
-## Consumers
-
-- **prakash** — wave optics EM coupling at optical frequencies
-- **kiran** — game engine (lightning effects, electromagnetic puzzles)
-- **goonj** — acoustic-electromagnetic transducer modeling
-- Educational and engineering simulation applications
-
-## Architecture
-
-- Built on hisab for vector calculus and spatial structures
-- FDTD grid solver with PML boundary conditions
-- Dependencies: hisab, serde
-
-## Roadmap
-
-Stable at 1.0.0. Future: GPU-accelerated FDTD, antenna design tools, coupling with pravash for magnetohydrodynamics.
+See the [libs registry](../README.md) for the full catalog and dependency context.

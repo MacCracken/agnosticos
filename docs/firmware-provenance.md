@@ -50,8 +50,11 @@ promote derivatives); reverse-engineering, decompilation, disassembly **expressl
 GPL-incompatible (distro-firmware class — same as CPU `amd-ucode` and most NIC firmware). AGNOS may
 legally **ship** these binaries; it may **not** legally RE them into a sovereign replacement.
 
-**Tiers shipped.** (1) **Compute/desktop tier** — bundle the ~628 KB compute subset (+ `dmcub` when
-real modeset lands), PSP-loaded at GPU init. (2) **Display-only max-sovereignty tier** — zero GPU
+**Tiers shipped.** (1) **Compute/desktop tier** — bundle the ~628 KB compute subset, PSP-loaded at
+GPU init. (`dmcub` was expected to join when real modeset landed; it did not. The GOP leaves DMCUB
+dormant, DMCUB-mediated bring-up was retired at agnos 1.55.22 (2026-07-18), and the kernel-side DCN
+modeset that followed — the sovereign ATOM interpreter plus direct DCN programming — loads no DMCUB
+firmware.) (2) **Display-only max-sovereignty tier** — zero GPU
 ucode, DCN pipe lit from the gnoboot/GOP linear framebuffer; forfeits compute + accel, offered as an
 explicit maximum-sovereignty mode, not a substitute.
 
@@ -63,7 +66,9 @@ at `build/rootfs/fw/` under short names — `rlc.bin` (C1b-2, 39,928 B), `ce.bin
 `gpu_fw_load_set`) reads each blob and feeds it to the PSP via `LOAD_IP_FW`; the PSP validates AMD's
 signature. **`mec2` is NOT staged/loaded** — `renoir_mec2.bin` symlinks to the identical
 `green_sardine_mec.bin`, and gfx9.3.0 loads no separate MEC2 (the single MEC ucode serves both
-pipes). RLC restore-lists (GFXOFF) + `sdma`/`dmcub` (later arcs) not yet staged. The distributed
+pipes). `sdma.bin` has since been staged too, and was PSP-loaded on iron at agnos 1.55.29
+(2026-07-21) — the SDMA engine itself then stayed parked on an agnos setup gap. RLC restore-lists
+(GFXOFF) and `dmcub` are not staged. The distributed
 image must carry AMD's `LICENSE.amdgpu` notice text.
 
 ---

@@ -5,13 +5,13 @@
 | Field | Value |
 |-------|-------|
 | Status | Released |
-| Version | `2026.3.14-1` |
+| Version | See [`VERSION`](https://github.com/MacCracken/shruti/blob/main/VERSION) |
 | Repository | `MacCracken/shruti` |
-| Runtime | native-binary (~8.9MB) |
-| Recipe | `zugot/marketplace/shruti.toml` |
-| MCP Tools | 7 `shruti_*` |
-| Agnoshi Intents | 7 |
-| Port | N/A (desktop app) |
+| Runtime | native-binary (Rust) |
+| Recipe | `zugot/marketplace/shruti.cyml` |
+| MCP Tools | `shruti_*` (in `shruti-ai`) |
+| Agnoshi Intents | None (the current agnoshi has no per-app intents) |
+| Port | 8050 — `shruti serve`'s default (headless agent API); the desktop app needs none |
 
 ---
 
@@ -31,8 +31,8 @@ No open-source DAW has AI-powered composition assistance, intelligent mixing sug
 
 - **Daimon**: Registers as an agent; publishes session metadata; uses RAG for sample/preset discovery
 - **Hoosh**: LLM-powered composition assistance, mixing suggestions, NL command interpretation
-- **MCP Tools**: `shruti_record`, `shruti_mix`, `shruti_effect`, `shruti_export`, `shruti_session`, `shruti_analyze`, `shruti_generate`
-- **Agnoshi Intents**: `shruti record <input>`, `shruti mix <action>`, `shruti effect <name> <params>`, `shruti export <format>`, `shruti session <action>`, `shruti analyze <track>`, `shruti generate <description>`
+- **MCP Tools**: `shruti_session`, `shruti_tracks`, `shruti_transport`, `shruti_export`, `shruti_analysis`, `shruti_mixer`, `shruti_hardware`, `shruti_models`
+- **Agnoshi Intents** (the Rust era's planned set — not in the current agnoshi): `shruti record <input>`, `shruti mix <action>`, `shruti effect <name> <params>`, `shruti export <format>`, `shruti session <action>`, `shruti analyze <track>`, `shruti generate <description>`
 - **Marketplace**: Audio/Creative category; sandbox profile allows PipeWire socket, MIDI device access, read-write project directories
 
 ## Architecture
@@ -40,16 +40,16 @@ No open-source DAW has AI-powered composition assistance, intelligent mixing sug
 - **Crates**:
   - `shruti-engine` — audio engine, track management, transport control
   - `shruti-dsp` — DSP processing, built-in effects, sample-accurate scheduling
-  - `shruti-plugin` — plugin hosting (LV2/CLAP), plugin scanning and sandboxing
+  - `shruti-plugin` — plugin hosting (CLAP, VST3, native Rust plugin API), plugin scanning and sandboxing
   - `shruti-ui` — desktop GUI, waveform display, mixer view, arrangement timeline
   - `shruti-session` — project file format, undo/redo, session state persistence
   - `shruti-ai` — daimon/hoosh integration, composition AI, mixing intelligence
   - `shruti-instruments` — built-in synthesizers and samplers
-- **Dependencies**: tarang (audio I/O), PipeWire (audio routing), MIDI (alsa-rawmidi), SQLite (preset library)
+  - `shruti-ml` — music LLM runtime, tokenizer, and AI player agents
+- **Dependencies**: cpal (audio I/O — ALSA/PipeWire on Linux), dhvani (DSP + analysis, the Rust crate), midir (MIDI), rusqlite (SQLite), egui/eframe (UI), axum (`shruti serve`); tarang is an optional feature (e.g. Opus/AAC encode)
 
 ## Roadmap
 
 - MIDI sequencer improvements (piano roll, drum grid)
-- Plugin format expansion (VST3 bridge)
 - Collaborative sessions via federation
 - AI mastering chain with reference track matching

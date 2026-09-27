@@ -1,6 +1,6 @@
 # AGNOS — Project History & Timeline
 
-> **Status**: Active | **Last Updated**: 2026-08-05
+> **Status**: Active | **Last Updated**: 2026-09-27
 
 ---
 
@@ -107,7 +107,17 @@ The shared crate ecosystem spans a large registry of crates (most at v1.0+ stabl
 | **⭐ THE DESKTOP COMPOSITES TWO REAL CLIENT WINDOWS ON IRON.** archaemenid boots to `smp: cpus online: 4` and the aethersafha compositor hosts `present_probe` and **crab's dual-pane file manager** as windows on the panel — 278 frames, keys delivered to the client, clean Esc quit. The blocker was one line (agnos 1.56.35): the AP trampoline set `EFER \|= 0x100` (LME only) where the BSP sets `0x900` (LME\|NXE), so bit 63 of every NX paging entry was RESERVED and each W^X data page faulted on an AP. Cross-CPU TLB shootdown landed in the same cut | 2026-08-03 | 173 |
 | **Native 2560x1440 scanout + a hardware-panned boot console — RELEASED and BURNED PASS** (1.56.36 / 1.56.37 / 1.56.38): the scaler in DSCL bypass, no banded first frame, and a modeset latch that releases itself at clean shutdown. `Timer ticks before sched` 28 (800x600) → 149 (native, software scroll) → **11** (native + pan) | 2026-08-03 → 2026-08-04 | 173–174 |
 | **Kernel head agnos 1.56.40 — OPEN, not burned**: the local-IPC **channel band** (`chan_*`), replacing TCP-on-loopback, retired 2026-08-03 as the *wrong primitive* for local display IPC — ⚠ retired as wrong, **not** as a thing that never worked. Decisions closed the same day: `#96` = `fork`, `#97` = `chan_op`, no codename. Live versions, sizes and pins → [`state.md`](development/state.md) | 2026-08-05 | 175 |
-| **Target: Closed beta cut** (after a ~July founder solo-dogfood month) | **late August 2026** | — |
+| **The channel band meets silicon — all three subjects PASS** (the 1.56.41 kernel carrying 1.56.40's `chan_*` band): the band, puka as the real terminal, and the shell answering typed keys, on iron. setu 0.8.0 had removed its agnos TCP arm the day before | 2026-08-07 | 177 |
+| **⛔ PS/2 deleted from the kernel; the pointer lands on iron** (1.56.42): the USB mouse binds, a GPU cursor, click-to-focus and a titlebar drag with a real release edge. Every desktop frame layer had moved to the GPU on 2026-08-08 (an aethersafha change on the 1.56.41 kernel). On 2026-08-10 four compositor launches run in one boot and the covered-console `klug` spill is verified byte-exact against an independent ring dump | 2026-08-08 → 2026-08-10 | 178–180 |
+| **HDMI audio shelved after five burns** — every source-side observable says playing and there is no sound; the leg needs an oracle that observes the wire. Same day three HID input-path defects are fixed (1.56.43) and a burn shows the keyboard path unregressed — the mouse half and halt recovery have not run on iron — and Backspace plus file timestamps on the real NVMe volume pass on iron | 2026-08-11 | 181 |
+| **The sovereign shader pipeline on iron** (1.56.44): ring 3 issues `#92` op 0x06 and a translucent client surface composites for hundreds of frames — per-window opacity is real on iron (aethersafha 0.16.2). The premultiplied rounding tie stays unsettled | 2026-08-16 | 186 |
+| **The desktop's iron defect list is empty** — the background flicker fixed at its producer (aethersafha 0.16.18) after a broad-then-narrow switch experiment. Three days later the first frame-cost measurement reads **~7–15 fps on iron, and the clear is not why** | 2026-08-19 → 2026-08-22 | 189–192 |
+| **Consumer syscalls and a hardening sweep** (1.56.47 → 1.56.60): `#99 proclist`, `#100 icmp_echo_ex`, `#101 readdir_at`, `#102 lstat`, `#96 fork`, `#103 statfs`, `#104 mountlist`; the size-multiply overflow class and a toolchain pin `build.sh` enforces; a ring-3 port-I/O hole closed (the TSS I/O-map base at the wrong offset); kernel-log timestamps; a recovery shell that powers off. Burned PASS 2026-08-30 (1.56.53, real DHCP / DNS / HTTPS) and 2026-09-03 (1.56.60); `#96 fork` and the recovery shell's power verbs have not been exercised on iron | 2026-08-24 → 2026-09-03 | 194–204 |
+| **Cyrius v6.5.x closes at 6.5.73; 6.6.0 opens v6.6.x** — `Result` / `Option` / `Either` become value-form, the minor's one breaking change, shipped with the ecosystem migrated at source | 2026-09-06 | 207 |
+| **The first kernel built by cyrius 6.6 runs on iron** (1.57.0), then 1.57.1's backlog closeout burns PASS on four real cores — the **last iron burn to date** | 2026-09-07 → 2026-09-08 | 208–209 |
+| **AGNOS ships a proportional TrueType face** a client can open — Liberation Sans, embedded unmodified in the kernel at `/fonts/default.ttf` for rekha to rasterize (1.57.2) | 2026-09-13 | 214 |
+| **Kernel head agnos 1.57.10 — built and gated, NOT burned.** The 1.57.x repairs minor: per-process kernel stacks, the blocking model (every wait blocks only its caller), a `kill` that acts, sockets with owners, blocking pipe and channel I/O, and **VT-d translation turned on for the first time** (QEMU only). Cyrius **6.6.6** shipped 2026-09-20. Live versions and pins → [`state.md`](development/state.md) | 2026-09-24 → 2026-09-26 | 225–227 |
+| **Target: Closed beta cut** (after a ~July founder solo-dogfood month) | **late August 2026** — passed with no recorded opening; no revised date on record | — |
 | **Target: Public beta** | **deferred post-summer 2026** | — |
 | **Target: GA** | **late fall / early winter 2026** | — |
 
@@ -125,8 +135,8 @@ The Cyrius compiler binary has been renamed four times over the language's evolu
 | `cc5` | v5.x | `cc3` → `cc5` at v5.0.0 (2026-04-15) — **cc4 was never shipped**; that binary name/version was skipped |
 | `cycc` | v6.x (current) | `cc5` → `cycc` ("Cyrius Computer Compiler") at v6.0.0 ceremony on 2026-05-19. Bootstrap `cyrc` → `cybs` ("Cyrius Bootstrap") in the same ceremony. **Names are now permanent** — no `cycc7` at v7.0.0; the cc3 → cc5 (v5.0.0) → cycc (v6.0.0) sequence was the LAST name-change penalty paid |
 
-Four renames total across four language-major transitions. The `cc5` → `cycc` event at v6.0 (landed 2026-05-19) is the one-and-done cleanup that future major versions inherit without further renaming. Back-compat symlinks `cc5 → cycc` + `cyrc → cybs` shipped through the v6.0.x window and were dropped at v6.1.0; `~/.cyrius/bin/` now carries `cycc` and `cybs` only.
+Four renames total across four language-major transitions. The `cc5` → `cycc` event at v6.0 (landed 2026-05-19) is the one-and-done cleanup that future major versions inherit without further renaming. Back-compat symlinks `cc5 → cycc` + `cyrc → cybs` shipped through the v6.0.x window and were dropped at v6.1.1 (2026-06-08); `~/.cyrius/bin/` now carries `cycc` and `cybs` only.
 
 ---
 
-*Last Updated: 2026-08-05*
+*Last Updated: 2026-09-27*

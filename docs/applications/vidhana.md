@@ -8,9 +8,9 @@
 | Version | 2026.3.18 |
 | Repository | `MacCracken/vidhana` |
 | Runtime | native-binary (Rust) |
-| Recipe | `zugot/marketplace/vidhana.toml` |
+| Recipe | `zugot/marketplace/vidhana.cyml` |
 | MCP Tools | 5 `vidhana_*` |
-| Agnoshi Intents | 5 |
+| Agnoshi Intents | None (the current agnoshi has no per-app intents) |
 | Port | 8099 |
 
 ---
@@ -33,7 +33,7 @@ System settings are a core OS component that must deeply integrate with every AG
 - **Daimon**: Registers on port 8090; manages agent sandbox profiles, permission grants, and system-wide agent policies
 - **Hoosh**: LLM inference for NL settings control, configuration search, and troubleshooting suggestions
 - **MCP Tools**: `vidhana_display`, `vidhana_network`, `vidhana_audio`, `vidhana_privacy`, `vidhana_power`
-- **Agnoshi Intents**: `vidhana display`, `vidhana network`, `vidhana audio`, `vidhana privacy`, `vidhana power`
+- **Agnoshi Intents** (the Rust era's planned set — not in the current agnoshi): `vidhana display`, `vidhana network`, `vidhana audio`, `vidhana privacy`, `vidhana power`
 - **Marketplace**: Category: system/settings. Privileged sandbox with hardware access, network configuration, and display server control
 
 ## Architecture

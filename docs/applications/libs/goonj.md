@@ -1,39 +1,10 @@
-# Goonj
+# goonj
 
-> **Goonj** (Hindi: echo/resonance) — Acoustics engine
+Acoustics engine (Hindi/Urdu गूँज — *echo, resonance*) — sound propagation, room simulation, impulse responses, diffraction and spatialization.
 
-| Field | Value |
-|-------|-------|
-| Status | Stable |
-| Version | `1.0.0` |
-| Repository | `MacCracken/goonj` |
-| Runtime | library crate (Rust) |
-| Recipe | `zugot/marketplace/goonj.toml` |
-| crates.io | `goonj` |
+- **Repository**: [github.com/MacCracken/goonj](https://github.com/MacCracken/goonj)
+- **License**: GPL-3.0-only
+- **Status**: Stable — v1.0+
+- **Language**: Cyrius
 
----
-
-## What It Does
-
-- Sound propagation: ray-based and wave-based acoustic simulation
-- Room acoustics: geometry-aware reverb, RT60 estimation, early reflections
-- Impulse response generation for convolution reverb
-- Material absorption coefficients and frequency-dependent attenuation
-- Spatial audio: HRTF, ambisonics encoding, distance attenuation models
-
-## Consumers
-
-- **dhvani** — audio DSP (impulse responses for reverb effects)
-- **kiran** — game engine (spatial audio, environmental acoustics)
-- **joshua** — game simulation (realistic audio environments)
-- **shruti** — DAW (room simulation for mixing)
-
-## Architecture
-
-- Built on hisab for geometry and wave math
-- Ray tracing and image-source method for room simulation
-- Dependencies: hisab, serde
-
-## Roadmap
-
-Stable at 1.0.0. Future: real-time occlusion/diffraction, outdoor propagation (wind, terrain), integration with pravash for aeroacoustics.
+See the [libs registry](../README.md) for the full catalog and dependency context.

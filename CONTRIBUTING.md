@@ -32,7 +32,7 @@ Before contributing, ensure you have:
 
 - Git 2.30+
 - Cyrius compiler (see [cyrius repo](https://github.com/MacCracken/cyrius))
-- Docker 20.10+ (for containerized builds, optional)
+- Docker 20.10+ (optional — for the agnos userland container images under `docker/`)
 - 50GB+ free disk space
 - Basic knowledge of:
   - Cyrius (sovereign systems language — study `cyrius/programs/` for examples)
@@ -44,47 +44,34 @@ Before contributing, ensure you have:
 
 2. **Clone your fork**:
    ```bash
-   git clone https://github.com/YOUR_USERNAME/agnos.git
-   cd agnos
+   git clone https://github.com/YOUR_USERNAME/agnosticos.git
+   cd agnosticos
    ```
 
 3. **Add upstream remote**:
    ```bash
-   git remote add upstream https://github.com/agnostos/agnos.git
+   git remote add upstream https://github.com/MacCracken/agnosticos.git
    ```
 
 4. **Set up development environment**:
    ```bash
-   # Install build dependencies
-   ./scripts/install-build-deps.sh
-   
-   # Set up git hooks
-   ./scripts/setup-git-hooks.sh
+   # Install the Cyrius toolchain (or, from a cyrius checkout: sh bootstrap/bootstrap.sh)
+   curl -sSf https://raw.githubusercontent.com/MacCracken/cyrius/main/scripts/install.sh | sh
    ```
+   (The old `install-build-deps.sh` survives only in `scripts/archive-pre-cyrius/`, Rust-era reference; there is no git-hooks setup script.)
 
 ## Development Environment
 
-### Using Docker (Recommended)
+### Using Docker (optional)
+
+The images under `docker/` are the agnos userland running natively under mirshi (no VM, no Linux base) — see [`docker/README.md`](docker/README.md).
 
 ```bash
-# Build development container
-docker build -t agnos-dev -f Dockerfile.dev .
+# Build the layered stack: agnos-thin -> agnos-shell -> agnos-dev
+docker/build-dev.sh
 
-# Run development environment
-docker run -it --rm \
-  -v $(pwd):/workspace \
-  -v agnos-build-cache:/cache \
-  agnos-dev
-
-# For large builds, increase virtual memory limit (default 8GB)
-docker run -it --rm \
-  -e AGNOS_ULIMIT_VMEM=unlimited \
-  -v $(pwd):/workspace \
-  -v agnos-build-cache:/cache \
-  agnos-dev
-
-# Inside container
-make build
+# Run the dev userland (agnsh at the [ASSIST] > prompt)
+docker run --rm -it --cap-add=SYS_PTRACE --security-opt seccomp=unconfined agnos-dev
 ```
 
 ### Native Development
@@ -95,9 +82,9 @@ cd scripts
 cyrius build src/boot.cyr build/boot
 ./build/boot --help
 
-# Boot test in QEMU
-cd ..
-make boot-test
+# Smoke-boot the kernel under QEMU + OVMF through gnoboot — `make boot-test`'s -kernel path
+# cannot load agnos >= 1.30.0 (see docs/installation/README.md, QEMU Boot Test)
+cd ../../gnoboot && sh tests/ovmf_smoke.sh
 ```
 
 ## Git Workflow
@@ -263,18 +250,21 @@ git push --force-with-lease origin feature/your-feature
 #### Cyrius (All AGNOS Code)
 
 ```cyrius
-// Cyrius is the sovereign systems language for AGNOS.
-// Study working programs in cyrius/programs/ before writing new code.
+# Cyrius is the sovereign systems language for AGNOS. Comments start with `#`.
+# Study working programs in cyrius/programs/ before writing new code.
 
 fn example_function(arg1, arg2) {
-    // Everything is i64. No type annotations needed.
-    // No hidden allocations, no implicit conversions.
+    # Everything is i64. No type annotations needed.
+    # No hidden allocations, no implicit conversions.
     return 0;
 }
 
-// Programs must call main() at top level:
-var exit_code = main();
-syscall(60, exit_code);
+fn main(): i64 { return example_function(1, 2); }
+
+# Programs must call main() at top level — a bare call, exiting via SYS_EXIT
+# (a literal 60 is Linux's exit number; agnos's exit is 0):
+fn _entry(): i64 { var r = main(); syscall(SYS_EXIT, r); return 0; }
+_entry();
 ```
 
 **Building**:
@@ -286,9 +276,8 @@ cyrius build src/main.cyr build/output
 **Key rules**:
 - Programs execute at top level — `fn main()` is not called automatically
 - `cyrius build` auto-resolves deps from `cyrius.cyml`
-- `store8`/`load8` for byte-level access (no pointer dereference syntax)
-- No mixed `&&`/`||` — use nested ifs
-- No negative literals — use `0 - N`
+- `store8`/`load8` (and the 16/32/64 family) for sized byte-level access; `*p` dereferences a pointer
+- Mixed `&&`/`||` (standard precedence) and negative literals both work on current Cyrius — older code still carries the nested-if and `0 - N` workarounds from before cyrius's doc sweep verified both (v6.0.62)
 
 See the [Cyrius field notes](https://github.com/MacCracken/vidya) for practical lessons.
 
@@ -333,11 +322,11 @@ cyrius test
 
 **Cyrius** (`.tcyr` files):
 ```cyrius
-// Tests use the sakshi test framework
-// Place in tests/ directory with .tcyr extension
+# Assertions come from the cyrius stdlib (lib/assert.cyr; lib/test.cyr adds table-driven helpers)
+# Place in tests/ directory with .tcyr extension
 
 fn test_example() {
-    var result = example_function(42);
+    var result = example_function(42, 0);
     assert(result == 0, "example_function should return 0");
     return 0;
 }
@@ -368,7 +357,7 @@ This is the **genesis repo**. Per-repo doc conventions (where to put API docs, u
 | ADRs | `docs/adr/` |
 | Articles | `docs/articles/` |
 | Doc health ledger | `docs/doc-health.md` (audits the whole `docs/` tree + root files) |
-| Developer docs | `docs/development/` (state.md, roadmap.md, sprint-history.md, applications/, guides/, infrastructure/, os/, vision/) |
+| Developer docs | `docs/development/` (state.md, roadmap.md, sprint-history.md, planning/, first-party/, guides/, infrastructure/, os/, vision/) |
 | Application/lib pointers | `docs/applications/`, `docs/applications/libs/` (per-subsystem pointer docs; live docs in each subsystem's own repo) |
 | Security policy | `docs/security/`, root `SECURITY.md` |
 | Installation | `docs/installation/` |
@@ -417,7 +406,7 @@ The canonical version lives in the `VERSION` file at the repository root. Shell 
 ```
 main
   ↑
-release/v2026.3.5  ← Release branch
+release/vX.Y.Z  ← Release branch
   ↑
 develop
 ```
@@ -427,7 +416,7 @@ develop
 - [ ] Version bumped in `VERSION`
 - [ ] Changelog updated
 - [ ] Boot pipeline builds (`cd scripts && cyrius build src/boot.cyr build/boot`)
-- [ ] Boot test passes (`make boot-test`)
+- [ ] Kernel boots under QEMU + OVMF through gnoboot (`gnoboot/tests/ovmf_smoke.sh`; `make boot-test`'s `-kernel` path cannot load agnos ≥ 1.30.0)
 - [ ] Security review completed
 - [ ] Documentation updated
 - [ ] Release notes written
@@ -438,24 +427,24 @@ develop
 
 ```bash
 # Create release branch
-git checkout -b release/v2026.3.5
+git checkout -b release/vX.Y.Z
 
-# Update version
-echo "2026.3.5" > VERSION
+# Update version (SemVer)
+echo "X.Y.Z" > VERSION
 
 # Update changelog
 vim CHANGELOG.md
 
 # Commit
 git add .
-git commit -m "chore(release): prepare v2026.3.5"
+git commit -m "chore(release): prepare vX.Y.Z"
 
 # Create tag
-git tag -s v2026.3.5 -m "Release v2026.3.5"
+git tag -s vX.Y.Z -m "Release vX.Y.Z"
 
 # Push
-git push origin release/v2026.3.5
-git push origin v2026.3.5
+git push origin release/vX.Y.Z
+git push origin vX.Y.Z
 ```
 
 ### Building the Boot Pipeline
@@ -468,16 +457,15 @@ cyrius build src/boot.cyr build/boot
 # Verify ecosystem state
 ./build/boot --status
 
-# Run boot test
-cd ..
-make boot-test
+# Boot test — through gnoboot + OVMF (make boot-test's -kernel path cannot load agnos >= 1.30.0)
+cd ../../gnoboot && sh tests/ovmf_smoke.sh
 ```
 
 See `docs/installation/README.md` for QEMU boot commands and testing instructions.
 
 ## Questions?
 
-- **General questions**: [GitHub Discussions](https://github.com/agnostos/agnos/discussions)
+- **General questions**: [GitHub Issues](https://github.com/MacCracken/agnosticos/issues) (Discussions are not enabled on the repo)
 - **Development help**: Matrix channel #agnos-dev:matrix.org
 - **Security issues**: security@agnos.io
 

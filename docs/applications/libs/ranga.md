@@ -1,32 +1,10 @@
-# Ranga
+# ranga
 
-> **Ranga** (Sanskrit: color) — Core image processing library
+Core image processing (Sanskrit रंग — *color, hue*) — color spaces, blend modes, pixel buffers, filters and optional GPU compute over mabda. Cyrius since the 2.0.0 port (2026-08-19); the Rust line, through 1.0.1, is kept at `rust-old/`.
 
 - **Repository**: [github.com/MacCracken/ranga](https://github.com/MacCracken/ranga)
 - **License**: GPL-3.0-only
 - **Status**: Stable - See Repo
-- **Language**: Rust
+- **Language**: Cyrius
 
 See the [libs registry](../README.md) for the full catalog and dependency context.
-
----
-
-## What It Does
-
-- Color space conversions (sRGB, linear RGB, HSL, HSV, CMYK, CIE Lab)
-- Blend modes (normal, multiply, screen, overlay, soft light, and more)
-- Pixel buffer operations with generic pixel formats
-- Image filters (blur, sharpen, edge detect, color correction)
-- GPU-accelerated compute path via ai-hwaccel when available
-
-## Consumers
-
-- **rasa** — AI-native image editor (primary consumer)
-- **selah** — Screenshot and annotation tool (image manipulation)
-- **aethersafha** — Desktop compositor (compositing pipeline)
-
-## Architecture
-
-- Pure-language core with optional GPU compute backend
-- Generic over pixel type for zero-copy interop
-- Optional dependency on ai-hwaccel

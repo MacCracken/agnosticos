@@ -6,11 +6,11 @@
 |-------|-------|
 | Status | Released |
 | Version | Latest GitHub release |
-| Repository | `anomalyco/aequi` |
+| Repository | `MacCracken/aequi` |
 | Runtime | native-binary (Rust/Tauri v2) |
-| Recipe | `zugot/marketplace/aequi.toml` |
+| Recipe | `zugot/marketplace/aequi.cyml` |
 | MCP Tools | 5 `aequi_*` |
-| Agnoshi Intents | 5 |
+| Agnoshi Intents | None (the current agnoshi has no per-app intents) |
 | Port | N/A |
 
 ---
@@ -32,7 +32,7 @@ No existing accounting tool integrates with a local LLM for AI-native receipt sc
 - **Daimon**: Registers as an agent on port 8090; uses agent lifecycle, memory store, and audit APIs
 - **Hoosh**: LLM-powered receipt OCR interpretation, transaction categorization, and NL query answering
 - **MCP Tools**: `aequi_categorize`, `aequi_query`, `aequi_import`, `aequi_report`, `aequi_receipt`
-- **Agnoshi Intents**: `aequi balance`, `aequi expense`, `aequi import`, `aequi report`, `aequi receipt`
+- **Agnoshi Intents** (the Rust era's planned set — not in the current agnoshi): `aequi balance`, `aequi expense`, `aequi import`, `aequi report`, `aequi receipt`
 - **Marketplace**: Category: productivity/finance. Sandboxed with filesystem access limited to user data directory
 
 ## Architecture

@@ -5,17 +5,17 @@
 | Field | Value |
 |-------|-------|
 | Status | Released |
-| Version | `2026.3.22` |
+| Version | See [`VERSION`](https://github.com/MacCracken/abacus/blob/main/VERSION) |
 | Repository | `MacCracken/abacus` |
 | Runtime | native-binary (Rust, GUI) |
-| Recipe | `zugot/marketplace/abacus.toml` |
+| Recipe | `zugot/marketplace/abacus.cyml` |
 | Port | N/A |
 
 ---
 
 ## Why First-Party
 
-Abacus is the desktop calculator application for AGNOS, providing a native GUI for mathematical expressions and unit conversions. Built on the abaco library crate for expression evaluation and unit conversion logic.
+Abacus is the desktop calculator application for AGNOS, providing a native GUI for mathematical expressions and unit conversions. Built on the abaco library crate for expression evaluation and unit conversion logic — the **Rust** abaco (0.1.x). abaco itself became a Cyrius library at 2.0.0 (2026-04-14) and dropped its Rust implementation; abacus is still Rust and has not been ported.
 
 ## What It Does
 
