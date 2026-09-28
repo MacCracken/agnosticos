@@ -203,6 +203,7 @@
 | **2026-09-13** | **AGNOS ships a proportional TrueType face** a client can open — Liberation Sans, embedded unmodified in the kernel at `/fonts/default.ttf` for rekha to rasterize (1.57.2), filed by crab | `agnos/CHANGELOG.md` `[1.57.2]` |
 | **2026-09-20** | **Cyrius 6.6.6** — the last patch of v6.6.x's reserved repair window | `cyrius/CHANGELOG.md` `[6.6.6]` |
 | **2026-09-24 → 2026-09-26** | **Kernel head agnos 1.57.10 — built and gated, NOT burned.** 1.57.x is the arising-issue-repairs minor: per-process kernel stacks (1.57.6); the blocking model — every wait blocks only its caller — with a `kill` that acts, sockets with owners, `#106 sock_peer` and `#107 spawn_limits` (1.57.7); blocking pipe and channel I/O (1.57.8 / 1.57.9); **VT-d translation turned on for the first time**, in QEMU (1.57.10). Live head → [`state.md`](development/state.md) | `agnos/CHANGELOG.md` `[1.57.6]`–`[1.57.10]` |
+| **2026-09-28** | **The closed beta goes undated.** It slipped past early June and then late August 2026, and per the operator there is still a great deal to do before AGNOS is usable even for the founder's own daily work — the beta waits on that, not on a calendar date | `docs/development/roadmap.md` § *Ship-milestone ladder* |
 
 ### Pace
 

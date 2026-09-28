@@ -111,7 +111,7 @@ The desktop tier itself is live — the native **aethersafha** compositor hosts 
 
 ## Development Status
 
-**Pre-beta.** Critical path to boot cleared. No closed-beta opening is recorded yet — see the targets below.
+**Pre-beta.** Critical path to boot cleared. The closed beta is undated — see the targets below.
 
 | Milestone | Status |
 |-----------|--------|
@@ -141,7 +141,7 @@ The desktop tier itself is live — the native **aethersafha** compositor hosts 
 | Third-party security audit | Public-beta gate |
 | Community testing program (formal enrollment) | Public-beta gate |
 
-**Closed-beta target: late August 2026 — passed with no opening recorded; revised date not yet set** | **Public-beta target: deferred post-summer** | **GA target: late fall / early winter 2026**
+**Closed-beta target: undated** — it slipped past late August 2026 and keeps slipping; AGNOS first has to become usable for its founder's own daily work, and there is still a great deal to do | **Public-beta target: after the closed beta** | **GA target: late fall / early winter 2026** (the 2026-06-29 plan; it sits downstream of both betas)
 
 See [CHANGELOG.md](CHANGELOG.md) for full details.
 

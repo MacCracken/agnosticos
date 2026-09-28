@@ -166,6 +166,14 @@ Also on 2026-09-28:
 - **Cyrius 6.6.7 and 6.6.8 shipped mid-sweep.** `state.md`'s pin table, `CLAUDE.md`, the README badge and `AGNOS.md` now name 6.6.8 as the latest release and 6.6.9 as in progress. `AGNOS.md`'s "three stdlib folds" became a pointer to cyrius's fold table (twelve libraries as of cyrius 6.6.3).
 - **Docs the sweep never touched.** Two issue templates offered an `agnosys` component (decomposed 2026-06-19). `path-c-sovereign-uefi.md` still opened with "NEXT AGENT — START HERE" for a plan that completed on 2026-05-13; it now says it is historical. `CLAUDE.md` linked a memory file at a GitHub path that 404s on both branches; it now uses the `[[memory]]` form the rest of the file uses. Six broken relative links in five files were fixed (`gnoboot.md`, `first-party-documentation.md`, `first-party-standards.md`, `shared-crates.md`, `guides/testing.md`). A malformed 2026-04-13 continuation row in `timeline.md` had put its event in the Source column.
 
+**Operator decisions, applied 2026-09-28.**
+
+- **`iron-nuc-zen-log.md` is the canonical log for NUC work.** `state.md` (the cap note and the pointers), the development index and `iron-log.md`'s own header now say so. `iron-log.md` is marked closed at its 2026-08-11 entry and kept as the record it is.
+- **The closed beta is undated.** It slipped past early June and then late August 2026, and there is still a great deal to do before AGNOS is usable even for the operator's own daily work. The roadmap's status note now says the whole ladder is undated, because its first rung — living on the system daily — is not reachable yet. Its "slips by week, not by month" is marked as not having held. `CLAUDE.md`, `README.md`, `AGNOS.md`, `thesis.md`, the installation README, the planning ledger and `iso-pipeline.md` follow it. The public-beta and GA windows are kept as the 2026-06-29 plan, downstream of the closed beta, and not re-dated. The timeline gains a 2026-09-28 row.
+- **The nine v1.0+ libraries without a stub now have one** — akshara, bhumi, cmdit, darshana, mehman, rosnet, samay, tyche, vani. Each follows the thin pattern and lists its consumers from the manifests.
+- **Crypto boundary.** A Cyrius-era equivalent of the Rust-era note committed at `.claude/.../project_crypto_boundary.md` already exists: `planning/roadmap.md` § *Crypto/Trust Architecture* (sigil owns all AGNOS crypto and trust; SecureYeoman keeps agent-side session crypto), and the timeline marks the boundary resolved on 2026-04-01. No revisit note was needed. That section now carries a dated note on the two facts that moved since: sigil shipped ML-DSA-65 post-quantum signing, on by default since 3.7.6, and SecureYeoman 0.5.0 folded `sy-crypto` into `sy-core`.
+- **Root burn captures: none removed.** All fifteen (`1570run`, `1571run`, `60run`, `basictests`, `klug`, `opacity` and nine `ae*` desktop captures) are unique. None has a byte-identical copy in any local repo. The `ae*` captures share 78–88% of their lines with a `prior-art/` capture only because every klug dump repeats the boot log; the rest is each burn's own evidence. The burn cards cite the three `*run.txt` captures by name. They stay for the later cleanup review, as do the other root scratch files: `vbios.rom`, `ifran.db`, `agnos-hdmi-linux.log`, `shift.cyr` and `result`.
+
 **A finding, not just drift: the boot pipeline cannot boot the current kernel.** The interactive and `--test` modes of `scripts/src/boot.cyr`, and so `make boot-test`, hand the kernel to QEMU `-kernel`. QEMU has refused agnos since 1.30.0 (ELF64, no PVH note), and agnos boots through gnoboot + OVMF instead. The docs now say so. The code is unchanged. `--status` also still looks for the retired `cc5` binary (`boot.cyr:465`, `:534`).
 
 **Flagged, not fixed:**
@@ -190,18 +198,18 @@ Also on 2026-09-28:
 - **In this repo, left for the operator:**
   - the iron log (a burn log, not edited by sweeps): `#tracker-139-cycle`'s header still reads PENDING beside its own "Track B ✓", and its log-chain line calls the FAT/exFAT burn pending — consistent with the scoping above, but worth one reconciling line.
   - `planning/shared-buffer-present.md` (arc-owned) calls pixels unproven in its shipped-record paragraph while the ledger row records them proven on iron on 2026-08-02/03.
-  - The repo's committed `.claude/projects/-home-macro-Repos-agnosticos/memory/project_crypto_boundary.md` describes a Rust-era `pqc.rs` and `sy-crypto` that no longer exist.
+  - The repo's committed `.claude/projects/-home-macro-Repos-agnosticos/memory/project_crypto_boundary.md` describes a Rust-era `pqc.rs` and `sy-crypto` that no longer exist; its idea is carried by `planning/roadmap.md` § *Crypto/Trust Architecture* (see the operator decisions above), so it can go in the later cleanup.
   - `scripts/src/boot.cyr` itself: `--status` names `cc5` and `agnosys`, and the `-kernel` path cannot load agnos ≥ 1.30.0. Code, not docs, so unchanged.
 - **Operator calls:**
-  - which log is canonical for burn narrative: `state.md` says `iron-log.md`, but every burn since 2026-08-11 is only in `iron-nuc-zen-log.md`
+  - ✅ *decided 2026-09-28:* `iron-nuc-zen-log.md` is canonical for NUC work (it had been since 2026-08-11 in practice; `state.md` said `iron-log.md`)
   - public docs (the installation pages, `binaries.md`, the third-party page) link into `docs/development/`, which is marked internal-only for the 0.1.0 merge; they break for public readers if the untrack goes ahead
   - licence notice vs manifest: about 30 repos, this one included, pair a `GPL-3.0-only` manifest with an "or any later version" LICENSE notice
   - whether `bootstrap/bootstrap.sh` belongs in the "rebuild the toolchain" advice: it builds `cybs` and `asm` only (cyrius's own README documents it the same way)
-  - re-dating the beta
+  - ✅ *decided 2026-09-28:* the closed beta is undated — it keeps slipping because AGNOS first has to become usable for the operator's own daily work
   - the postponed Foundation/DCO track
   - the unlinked `planning/README.md.pre-categorization`
-  - moving the root burn captures (`basictests.txt`, `60run.txt`, `1570run.txt`, `1571run.txt` and the `ae*.txt` desktop captures) into `docs/development/prior-art/`
-  - nine v1.0+ libraries with no per-lib stub
+  - ✅ *decided 2026-09-28:* remove the root burn captures that are not unique, and review the rest later
+  - ✅ *decided 2026-09-28:* write the nine missing per-lib stubs
 
 ### Changed — docs/security/ rewritten for the Cyrius era (2026-08-05)
 

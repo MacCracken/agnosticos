@@ -18,7 +18,7 @@ The project's deeper intention is that AGNOS is a **temple built for an intellig
 | **Cyrius created** | 2026-04-03 (scaffold) → 2026-04-04 (kernel solid, 44 hours) |
 | **Repository** | `MacCracken/agnosticos` (genesis), `MacCracken/agnos` (kernel), `MacCracken/cyrius` (compiler) |
 | **Website** | [agnosticos.org](https://agnosticos.org) |
-| **Status** | Pre-Beta — the closed-beta target (late August 2026) has passed with no opening recorded; a revised date is not yet set (it was to follow the founder solo-dogfood month + the server-stage weak-point sweep, windowed ~July / early-Aug 2026; the sweep's harness is still **TBD** and explicitly **not** Docker — the QEMU-in-a-Docker-container design was retired 2026-07-07, see [roadmap](development/roadmap.md)); public beta deferred to post-summer; GA late fall / early winter 2026. |
+| **Status** | Pre-Beta — the closed beta is **undated**: it slipped past its late-August 2026 target and keeps slipping, because AGNOS first has to become usable for its founder's own daily work and there is still a great deal to do (operator, 2026-09-28). It was to follow the founder solo-dogfood month + the server-stage weak-point sweep, windowed ~July / early-Aug 2026; the sweep's harness is still **TBD** and explicitly **not** Docker — the QEMU-in-a-Docker-container design was retired 2026-07-07, see [roadmap](development/roadmap.md)); public beta deferred to post-summer; GA late fall / early winter 2026. |
 
 ---
 
@@ -70,7 +70,7 @@ AGNOS replaces the dependency chain with ownership:
 | Cyrius 5.9.0 — niyama-fold opener; beta rescoped (closed/public) | 2026-05-06 | 85 |
 | Cyrius 5.9.x close — 44 patches, consumer-rollup catchup | 2026-05-08 | 87 |
 | Cyrius 5.10.x — REAL TYPE SYSTEM arc opens (24 patches in 2 days) | 2026-05-08 → 2026-05-09 | 87–88 |
-| **Target: Closed beta cut** | **late August 2026** — passed, no opening recorded; revised date not yet set | ~200 |
+| **Target: Closed beta cut** | **undated** — slipped past late August 2026 (day ~200); waits on AGNOS being usable for the founder's own daily work (operator, 2026-09-28) | — |
 
 From initial commit to self-hosting sovereign language with its own kernel in **62 days**. Full timeline: [History & Timeline](history.md).
 
