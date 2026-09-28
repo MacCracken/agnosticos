@@ -11,4 +11,4 @@ Sovereign ML weight-file format (तुला — *balance / scale; the instrume
 
 **M0 of the Type-3 weight-import chain.** Depends on [sigil](sigil.md) (signed header). Consumers declaring `[deps.tula]` (2026-09-27): `anukūlana` (the Type-3 importer) and ifran (its signed model store); tula's own docs name attn11/tentib checkpoints and the murti model-load seam as planned users.
 
-See the [libs registry](../README.md) for the full catalog and dependency context.
+See the [libs registry](README.md) for the full catalog and dependency context.

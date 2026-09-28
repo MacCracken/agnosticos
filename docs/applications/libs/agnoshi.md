@@ -7,4 +7,4 @@ AI shell (Cyrius) — binary `agnsh`. It has no hoosh or daimon dependency today
 - **Status**: Stable - See Repo
 - **Language**: Cyrius
 
-See the [libs registry](../README.md) for the full catalog and dependency context.
+See the [binaries registry](../binaries.md) for the full catalog and dependency context.

@@ -7,4 +7,4 @@ AI-native media framework (Sanskrit *tarang* — wave) — containers, audio/vid
 - **Status**: Stable — v1.0+
 - **Language**: Rust (Cyrius port deferred)
 
-See the [libs registry](../README.md) for the full catalog and dependency context.
+See the [libs registry](README.md) for the full catalog and dependency context.

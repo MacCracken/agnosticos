@@ -139,7 +139,7 @@ The kernel's own QEMU gates are the agnos repo's smoke battery (`scripts/smoke/`
 
 ### `make boot-test` hangs on black screen
 
-`boot.cyr` already wires QEMU's serial console to stdio (`-serial stdio -display none`); there is no `--serial` flag — `boot` rejects it as an unknown option. To exit QEMU: `Ctrl-a x`.
+`boot.cyr` already wires QEMU's serial console to stdio (`-serial stdio -display none`); there is no `--serial` flag — `boot` rejects it as an unknown option. To exit QEMU: `Ctrl-C` (plain `-serial stdio` has no `Ctrl-a` escape — that belongs to QEMU's `mon:stdio` multiplexer).
 
 ### `make boot-test` reports "kernel not found"
 

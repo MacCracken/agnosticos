@@ -383,11 +383,13 @@ check you can perform against a rule table — it is a check you perform against
       of a default bind** — on 2026-09-27 daimon, dig, hoosh, kavach and sandhi appeared only in
       comments (several saying they do *not* use it), and agnostic and mirshi bind it only behind an
       explicit env var / flag. Confirm each candidate's actual bind call before listing it
-- [ ] ⚠️ **On AGNOS the bind address is not honoured.** Through cyrius 6.6.6 the stdlib's agnos
+- [ ] ⚠️ **On AGNOS the bind address is not honoured by any server shipped today.** Through cyrius 6.6.6 the stdlib's agnos
       `sock_bind` drops the address (`cyrius/lib/net.cyr:295-302`) and `sock_listen#56` is issued with
       the port alone (`lib/syscalls_x86_64_agnos.cyr:1633-1641`), so every "loopback" listener below
       is on the NIC's address when built for AGNOS. agnos 1.57.7 added a loopback-only listen class
-      (built and gated, not burned) that the stdlib does not pass yet. Test reachability from a
+      (built and gated, not burned). cyrius 6.6.7 (2026-09-27) makes the bind address select it
+      (`cyrius/lib/net.cyr:300-313` in 6.6.8), but a server carries that only once rebuilt on 6.6.7 or
+      later — daimon, hoosh and bote still pin 6.6.6 as of 2026-09-28. Test reachability from a
       second host, not from the box
 - [ ] daimon 8090: ⛔ **no authentication whatsoever** — daimon's README and `src/api_agent.cyr:11-12`
       say so, pending its roadmap 2.5.x; port at `daimon/src/config.cyr:11`. Since daimon **2.3.0**

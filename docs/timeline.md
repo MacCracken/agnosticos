@@ -83,7 +83,7 @@
 |------|-----|-------|--------|
 | **2026-04-10** | 58 | Patra dep integration. Crate ports accelerating | `cyrius` |
 | **2026-04-13** | 61 | **Cyrius 4.0.0** tagged. **DOOM Sprint 2** — gameplay end-to-end, P(-1) security audit, 5 CVE-class findings fixed. AGNOS kernel hardening: 6 buffer overflow fixes, security phases 1-3 | `cyrius tag 4.0.0`, `cyrius-doom`, `agnos` |
-| | | | Kernel v1.21.0 (220KB). kybernet 1.0.1 ported. Boot pipeline active | |
+| | | Kernel v1.21.0 (220KB). kybernet 1.0.1 ported. Boot pipeline active | |
 | **2026-04-14** | 62 | **Cyrius 4.8.5-1** tagged. 22+ Cyrius ports complete. kavach 3.0.0, abaco 2.0.0, bote 2.5.1 shipped. Kernel v1.22.0 (260KB). **Independent verification (external env)** — bootstrap verified, kernel booted, benchmarks green. **Sankoch named** — compression library identified as last git blocker | `cyrius tag 4.8.5-1`, `agnos`, audit conversation |
 
 ### Week 4: Sankoch, 5.0, Releases (Apr 15)
@@ -192,7 +192,7 @@
 
 | Date | Event | Source |
 |------|-------|--------|
-| **2026-08-07** | **The channel band meets silicon — all three subjects PASS** (the 1.56.41 kernel carrying 1.56.40's `chan_*` band): the band, puka as the real terminal, and the shell answering typed keys, on iron. setu 0.8.0 had removed its agnos TCP arm the day before | `agnos/CHANGELOG.md` `[1.56.40]`/`[1.56.41]`, `docs/development/iron-nuc-zen-log.md#tracker-15641-desktop-band` |
+| **2026-08-07** | **The channel band meets silicon — all three subjects PASS** (the 1.56.41 kernel carrying 1.56.40's `chan_*` band): the band, puka as the real terminal, and the shell answering typed keys, on iron. setu 0.8.0 had removed the TCP dial from its agnos client the day before (its listen/accept side kept TCP until 0.8.4, the same day, when TCP left setu entirely) | `agnos/CHANGELOG.md` `[1.56.40]`/`[1.56.41]`, `docs/development/iron-nuc-zen-log.md#tracker-15641-desktop-band` |
 | **2026-08-08 → 2026-08-10** | **⛔ PS/2 deleted from the kernel; the pointer lands on iron** (1.56.42): the USB mouse binds on every boot-mouse interface, a GPU cursor, click-to-focus and a titlebar drag with a real release edge; every desktop frame layer moved to the GPU on 2026-08-08 (an aethersafha change on the 1.56.41 kernel). 2026-08-10: four compositor launches in one boot after the relaunch fix, and the covered-console `klug` spill verified **byte-exact** against an independent ring dump | `agnos/CHANGELOG.md` `[1.56.42]`, `iron-nuc-zen-log.md#tracker-15642-relaunch` |
 | **2026-08-11** | **HDMI audio SHELVED after five burns** — every source-side observable says playing and there is no sound; the leg needs an oracle that observes the wire. Same day three HID input-path defects are fixed (1.56.43) and a burn shows the keyboard path unregressed — the mouse half and halt recovery have not run on iron — and Backspace plus file timestamps on the real NVMe volume pass on iron | `agnos/CHANGELOG.md` `[1.56.43]`, `docs/development/iron-log.md` |
 | **2026-08-16** | **The sovereign shader pipeline on iron** (1.56.44): ring 3 issues `#92` op 0x06 and a translucent client surface composites for hundreds of frames — per-window opacity is real on iron (aethersafha 0.16.2). ⚠ The premultiplied rounding tie stays unsettled | `agnos/CHANGELOG.md` `[1.56.44]`, `aethersafha/CHANGELOG.md` `[0.16.2]` |

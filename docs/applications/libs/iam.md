@@ -9,4 +9,4 @@
 
 A thin presentation layer over the [mihi](mihi.md) probe library — the inverse of `whoami` (whoami says who the user is; iam says what the system is). English-wordplay naming lane.
 
-See the [libs registry](../README.md) for the full catalog and dependency context.
+See the [binaries registry](../binaries.md) for the full catalog and dependency context.

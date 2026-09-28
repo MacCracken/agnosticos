@@ -7,6 +7,202 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — ecosystem doc-currency sweep, agnos 1.56.4x → 1.57.10 · Cyrius 6.5.x → 6.6.8 (2026-09-27 → 09-28)
+
+The genesis docs were anchored at agnos **1.56.40–1.56.46** and Cyrius **6.5.x**. Those anchors came from the 2026-08-05 genesis sweep, a 2026-08-17 `state.md` refresh and a 2026-08-23 registry pass, so the docs were seven weeks behind. This sweep brings them up to:
+
+- agnos **1.57.10**: tagged 2026-09-26, built and gated, **not burned**. The last iron burn was **1.57.1 on 2026-09-08**.
+- Cyrius **6.6.8**, the latest release: 6.6.7 shipped 2026-09-27 and 6.6.8 on 2026-09-28, and 6.6.9 is in progress. v6.6.x is active, and v6.5.x closed at 6.5.73. (The sweep began against 6.6.6; the two releases landed while it ran.)
+- gnoboot **0.7.2**.
+- aethersafha **0.16.27**.
+
+Every version was read from the repo's `VERSION` file. Those files were spot-checked against the published GitHub tags first. The exceptions are puka 0.6.25 and cyrius 6.6.9, cycles opened during the sweep and not yet tagged. Where a volatile figure (a size, test count or recipe count) had drifted, it was replaced with a pointer, not re-pinned.
+
+**What the anchor had missed.**
+
+*Kernel, 1.56.45 → 1.56.60:*
+- console line preservation
+- `#99 proclist`, `#100 icmp_echo_ex`, `#101 readdir_at`, `#102 lstat`, `#103 statfs` and `#104 mountlist`
+- `#96 fork`, shipped at 1.56.54 and corrected at 1.56.55
+- the size-multiply overflow class, plus a toolchain pin that `build.sh` now enforces (1.56.51)
+- the ring-3 TSS I/O-map hole, closed (1.56.52)
+- kernel-log timestamps
+- a recovery shell that can power off
+- `#105 blkstats`, minted and then withdrawn
+
+*Kernel, 1.57.x — the arising-issue-repairs minor:*
+- the move onto the Cyrius 6.6 line
+- a kernel-embedded TrueType face
+- per-process kernel stacks
+- the blocking model, including a `kill` that acts and sockets with owners
+- blocking pipe and channel I/O
+- VT-d translation, turned on for the first time and in QEMU only
+
+*Iron:*
+- The channel band ran the desktop on 2026-08-07.
+- PS/2 was deleted, and the pointer, drag and GPU-composited frames followed on 2026-08-08/09.
+- HDMI audio was shelved on 2026-08-11.
+- Per-window opacity, via `#92` op 0x06, ran on 2026-08-16.
+- The desktop's iron defect list was empty by 2026-08-19. On 2026-08-22 the first frame-cost measurement put it at **~7–15 fps**.
+- Four validation burns passed: 1.56.53 (2026-08-30), 1.56.60 (2026-09-03), 1.57.0 (2026-09-07) and 1.57.1 (2026-09-08).
+
+Touchpoints:
+
+- **`docs/development/state.md`**: re-anchored to 1.57.10 and kept under the 80-line cap. It now carries:
+  - the unburned span
+  - the four burns
+  - a pin table that reflects the 6.6.2–6.6.7 spread
+  - "no cycle open" in place of the stale "1.56.45 open"
+
+  The open list gained VT-d queued invalidation, aarch64 not compiling and IPv6 being absent. `cyim` left the list, because its agnos build was restored at cyim 1.8.1.
+
+  The ledger no longer implies that every 1.56.45–1.56.60 feature ran on iron. The two kernels burned PASS, but `#96 fork` and the recovery shell's power verbs have only run in QEMU.
+- **`CLAUDE.md`**:
+  - status line
+  - aethersafha row: first iron desktop 08-03, then the GPU path, the fps figure and the live handoff location. DOOM's `PM_SETU` re-proof is still owed: setu cut over at 0.8.0, but cyrius-doom still vendors setu 0.7.0.
+  - agora row: "agnos has no fork" is scoped to before 1.56.54.
+  - Cyrius paragraph: v6.6.x active, 6.6.7 and 6.6.8 out, 6.6.9 in progress; v6.5.x closed at 6.5.73. Its "current release" pointer now names the newest tag, because `cyrius/VERSION` names the open cycle.
+  - Build block: the boot-path caveat below.
+
+  Two Cyrius rules had gone stale:
+  - The **reason given for the bare `_entry();` call** was fixed upstream at cyrius **6.1.32** (2026-06-11). The init rsp has been parked in `r15` at the entry landing since then, so both shapes see argv on agnos. The bare call stays the house form, and `args_init` is still required on the host.
+  - The **`var X[N]` rule.** On 2026-09-27 this sweep rewrote it to say a module-scope array is N×8 bytes only before the file's first bare top-level statement and N bytes after it — taken from an agnos source comment and a memory note. **That was the behaviour before cyrius 6.4.10**, which made module-scope arrays uniformly N×8 on 2026-07-05. Measured on 2026-09-28: a module-scope `var X[4]` spans 32 bytes before and after that statement, and a sentinel declared after it survives four 8-byte writes; a function-local `var X[4]` spans 8. `CLAUDE.md` and `first-party/example_claude.md` now state the current rule and date the old one.
+- **Crate registries**: the Version column of `libs/README.md`, `binaries.md` and `shared-crates.md` was synced to live `VERSION` files. All 108 of those cells had drifted, and six more (mabda, sigil, yukti, ganita, vani, thoth) were re-synced on 2026-09-28 after overnight releases.
+
+  Graduations:
+  - **samvada 1.0.1** and **chitra 1.0.3** graduated to `libs/`.
+  - **kashi 1.0.10** (v1.0 since 2026-05-28, never catalogued) was added.
+  - **agnosai 2.1.0** was re-catalogued. It has been Cyrius since 2.0.0 (2026-08-14); this registry dropped it on 2026-07-05 as unported Rust.
+  - soorat moved to Graphics & Rendering.
+
+  New pre-1.0 rows: setu, rekha, mishran, sadish, dhancha, rupa, crab, klug and gpumm. sadish and rekha had been listed as "not yet scaffolded"; both have existed since 2026-07-05.
+
+  Other corrections:
+  - `cyrius-mine-cart` became a real Games row.
+  - The `cyrius-chellys-beach-dash` link was fixed.
+  - The mishran row had repeated `anu`, a codename the channel band never adopted. It now says `chan_*` on `#97`.
+  - 30 Rust-era per-lib stubs were collapsed to the thin pointer pattern: the 24 with a Version table, plus six whose bodies were now false. Several said Rust for repos that are Cyrius today. `samvada.md`, `chitra.md` and `kashi.md` are new.
+  - Consumer lists that named repos which do not consume the crate now read "intended, not wired".
+  - The `cyim-lsp` row described a server; it is a client.
+  - The `iam` row claimed a darshana colour path; it was never built.
+  - The `argonaut` row said "rewire pending"; that dep left at 1.8.4.
+- **`README.md`, `docs/AGNOS.md`, `docs/architecture.md`**:
+  - Badges and anchors moved to 1.57.10 / 6.6.6 (the Cyrius badge to 6.6.8 on 2026-09-28).
+  - New capability rows, each scoped iron vs QEMU.
+  - The syscall section now covers 0–108 (`#105` withdrawn) by band, pointing to agnos's ABI doc.
+  - The kernel-hardening line no longer claims controls that do not run as named: KPTI collapsed at 1.40.3; the KASLR allocator half went at 1.41.12, and the image slide needs a build flag nothing sets; IBRS is CPUID-gated; VT-d runs only in QEMU, and AMD-Vi is disabled on the iron box.
+  - kavach's Landlock/seccomp is scoped to Linux targets.
+  - takumi's recipes are CYML, which closes the 2026-08-05 carry-forward.
+  - Port-time figures in AGNOS.md are labelled as port receipts.
+- **Roadmap, history, timeline, philosophy, thesis**:
+  - The late-August closed-beta target and the Black Hat/DEF CON 2026 dates are marked as **passed with no recorded outcome**; no new dates were invented.
+  - The shipped channel-band item left the roadmap.
+  - New timeline and history rows cover 2026-08-07 → 2026-09-26.
+  - The cyrius-symlink drop is corrected: it happened at v6.1.1, not v6.1.0.
+  - The iron target's APU is Cezanne, not Renoir.
+- **`SECURITY.md` + `docs/security/`**: re-verified against 1.57.10 / 6.6.6 / 0.7.2, and nothing past 1.57.1 is called iron-verified.
+
+  *Controls the docs listed as live that are not:*
+  - **KASLR is not active.** This was already wrong on 2026-08-05. The kernel ships `ET_EXEC`, the slide needs a `CYRIUS_PIE=1` build that nothing sets, and the pmm seed is dead.
+  - **The host-config `CRYPTO_USER_API` pin was never applied.** No config file carries the line.
+
+  *Holes that are now time-scoped:*
+  - user-pointer validation: a VA-window check through 1.56.51, a page-table walk since 1.56.52
+  - ring-3 port I/O: open through 1.56.51
+  - W^X: ELF text was RWX through 1.56.50. An RWX segment is refused since 1.57.2. The kernel identity map is still RWX.
+  - ring-3 `#GP`: froze the box until 1.57.7
+  - socket hijack: any process could use any connection until ownership arrived at 1.57.7
+  - `kill`: only set a pending bit until 1.57.7
+  - `mmap`: now has opt-in per-child caps (`#107`)
+  - fork exists (`#96`). VT-d runs in QEMU only, and AMD-Vi is disabled on the AMD iron box.
+
+  The identity section now follows the 2026-05-12 ruling: there is no per-process uid, by design, and shakti is N/A on agnos.
+
+  ⚠ **New finding:** on AGNOS a loopback bind is not honoured. Through cyrius 6.6.6 the stdlib's agnos `sock_bind` drops the address, and `#56` goes out with the port alone (class ANY). A service that asks for 127.0.0.1 — daimon's `serve`, for one — therefore listens on the NIC. cyrius **6.6.7** (2026-09-27) fixed the stdlib half: the address now selects the listen class, and 127/8 gets agnos 1.57.7's loopback-only class. A server carries the fix only once rebuilt on it, and daimon, hoosh and bote still pin 6.6.6, so the five passages that describe the bug now say both things.
+
+  *Userland facts corrected:*
+  - daimon has asked for 127.0.0.1 by default since 2.3.0 (it bound `0.0.0.0` through 2.2.x), and it still has no auth.
+  - hoosh auth still fails open.
+  - shm allows cross-owner writes as well as reads.
+  - ark's `require_signed` defaults to 0 outside the marketplace path.
+  - Untagged cyrius deps are content-verified since 6.6.5.
+  - The MUD does have a passphrase login.
+- **Development docs**:
+  - The planning ledger (`planning/README.md`) was re-dated row by row and gained an index of every file on disk.
+  - The ISO docs now say `iso.cyr` is still unwritten, and that gnoboot has loaded an initramfs since 0.5.0 (the kernel does not read it).
+  - `summer-2026-arc.md` now says every window passed with no record.
+  - The `os/` pages, `software-port-path.md` (eleven Rust repos are now Cyrius), the guides and the infrastructure pages were updated.
+  - A resolved agnos issue stub was closed.
+- **Applications, installation, contributor docs**:
+  - The app docs lost their 2026-04 fat-table volatiles and false technical claims. jalwa, mneme, agnostic and ifran are Cyrius; recipes are `.cyml`; the current agnoshi has no per-app intents.
+  - `gnoboot.md` now describes the 128-byte version-2 `boot_info` (since gnoboot 0.7.1), with the full 80 → 112 → 120 → 128 history.
+  - `CONTRIBUTING.md` / `SUPPORT.md`: pointed to `agnostos/agnos` (an unrelated account) → `MacCracken/agnosticos`, and nonexistent setup scripts were removed. The Cyrius examples used `//` comments, which do not compile. The rules "no deref / no mixed `&&`/`||` / no negative literals" are gone; all three work on 6.6.6, verified by compiling. The same repo fix applies to `.github/ISSUE_TEMPLATE/config.yml`.
+- **Outside `docs/`**:
+  - `scripts/README.md`: `cc5` → `cycc`, the retired GRUB/xorriso/squashfs ISO plan replaced, `read-boot-log.cyr` added.
+  - `docker/README.md`: stiva is Cyrius-native; `iso.cyr` is not yet written.
+  - `docker/mirshi-fanout/README.md`: dead `net-sweep`/`sched-sweep` links; agora serves agnos by poll multiplex, not serial accept.
+  - `first-party-standards.md` and its example `CLAUDE.md` taught a trailing comment on the `cyrius =` pin line (CI reads it as the tag name), a live `path` beside a `tag`, an `agnosys` dep that no longer exists, and `syscall(60, …)`. That exit is a no-op on agnos.
+
+**Completing the verification (2026-09-28).** The third verifier — registries, app docs, installation, contributor and development docs — died on a rate limit on 2026-09-27 without reporting. Its trail held about fifteen leads. Each was re-checked against the owning repo, and these were real:
+
+- `gnoboot.md` said the KASLR / `ET_DYN` load path had never run. It ran at 0.6.0 (agnos's `kaslr-smoke.sh`: two boots, two distinct bases); what has not run is the 0.7.0 rewrite of it, which gnoboot's own `state.md` records as owed.
+- `mneme.md` said the RAG client paths were deferred. mneme's `state.md` shows the daimon REST client (`/health`, `/v1/rag/query|ingest`) wired over sandhi, with only local ONNX inference still bridged out.
+- `secureyeoman.md` described Node ≥ 22 in the runtime and a backend "migrating" to Rust. SY 0.5.0 (2026-04-18) took Node.js out of the server runtime. SY's own sources disagree about the release binary — its CHANGELOG and README name the Rust `sy-core`, while `release-binary.yml` still runs a Bun compile script — and the doc now says so instead of picking a side.
+- `shared-crates.md`: the puka row said its agnos-desktop claim "must be re-proven" — it was, on 2026-08-07 over the channel band, and it took keys on iron from 2026-08-08. The attn11 row blamed a missing cyrius aarch64 trig polyfill that shipped in cyrius 6.4.16 the same day. The anuenue row's "agnos has no pipes" is scoped to before agnoshi's 1.8.0 pipelines (2026-06-27).
+- `libs/mela.md` listed daimon and nous as consumers; only ark declares `[deps.mela]`. `libs/ifran.md` dated the Rust line's removal to 2.2.0; it was 2.2.1. The kashi row now notes thoth's vendored copy of the freestanding core.
+- `CONTRIBUTING.md`'s release checklist ticked "Kernel boots under QEMU + OVMF" off `gnoboot/tests/ovmf_smoke.sh`, which asserts only gnoboot's hand-off banner. The checklist and the installation README now say what it proves.
+- `system-requirements.md` put the NVIDIA floor at Kepler / GTX 600 beside a 595-series driver pin. NVIDIA's 470 branch was the last for Kepler and its 580 branch the last for Maxwell, Pascal and Volta, so the floor is Turing (GTX 16 / RTX 20).
+- `scripts/README.md` said `boot --status` reports `cc5` missing. Where an old `cc5` build survives, it prints that stale binary's size beside the current `VERSION` (observed: `cyrius v6.6.9 (874232 bytes)`), and it still lists `agnosys`.
+- `history.md` / `timeline.md` said setu 0.8.0 removed its agnos TCP arm; 0.8.0 removed the client's dial, and the listen/accept side kept TCP until 0.8.4 (setu's own 0.8.4 entry says so).
+- `architecture.md`'s `.cyml` sentence now says both true things: CYML allows a markdown body after `---`, and zugot's recipes use the TOML part only. A `planning/README.md` pointer to ark's smoke script now follows its move into `scripts/smoke/`.
+
+Three fresh verifiers then audited what the dead one had not reached — the development docs, the app / installation / contributor docs, and the registries with their lib stubs — and confirmed 25 more problems, all fixed:
+
+- *Development docs.* `iso-pipeline.md` said `make boot-test` "works today"; it cannot load agnos since 1.30.0, and its "decisions pending" line now says they were locked in 2026-07. `exec-iron-manual-tests.md` said both halves passed on iron: part B's FAT32 half did (the 1.40.13 burn), but exFAT writes, power-cycle persistence and the dispositive host `fsck` never burned — and `state.md`'s ledger now carries the same exception for 1.34.x. The planning ledger's two-proc row kept a "zero kernel change" the same file retracts, and its 2026-08-02 "client pixels" were aethersafha's `--selftest` surface (the real two-client run was 08-03). `first-party-standards.md`'s test-runner snippet was Rust-shaped (`println!`, a ternary, `syscall(60, …)`); it is now the `assert_summary()` + `SYS_EXIT` form, compiled and run. Smaller: `cc5_aarch64` → `cycc_aarch64`, the buffer rule scoped by declaration scope in both first-party docs, stiva added to samay's consumers, gnoboot's version pointer, the photo catalog's naming convention.
+- *Apps, installation, contributor docs.* The `cyim-lsp` row said every spawn failed from 0.2.0 — an over-retraction: the argv bug was latent until cyrius 6.3.15 put array locals on the stack, and cyim 1.4.1's smoke completed the handshake on 2026-05-07. `CONTRIBUTING.md` dated mixed `&&`/`||` precedence to 6.0.62; it arrived in 6.3.36. Also: agnostic's port is 8000; `Ctrl-a x` does not exit QEMU under plain `-serial stdio` (`Ctrl-C` does); cyim's agent-drive CLI dates to 1.0.0; ark declares sigil, nous, mela, agnostik and sandhi, and its stub's "does not directly execute" predated `--apply` and the native `.ark` installer; yazi and GTK3 are zugot recipes, not bazaar's; the aarch64 probe went silent at cyrius 6.1.1.
+- *Registries and stubs.* samay's, vani's and yantra's "graduated" dates were catalogue dates; their 1.0.0 tag dates now stand beside them. The MUD row's "naturally consumes taar / kii / anuenue / bnrmr" is design intent — it declares only libro. mishran's single-process proof is QEMU-only, and the two-process retraction's reason is the rigged `net_ip`, not the hook. 97 stubs linked "libs registry" to the Applications index: 81 now reach the libs registry and 16 binary stubs the binaries registry. Nine collapsed stubs regained their consumer edges from the manifests. mabda's consumers are attn11 and ranga (puka dropped it at 0.6.8), dig depends on taar and cmdit, aegis's README-named consumers declare nothing, ranga's stub gained the no-LICENSE caveat, and taar's extraction date follows its CHANGELOG.
+
+Also on 2026-09-28:
+- **Cyrius 6.6.7 and 6.6.8 shipped mid-sweep.** `state.md`'s pin table, `CLAUDE.md`, the README badge and `AGNOS.md` now name 6.6.8 as the latest release and 6.6.9 as in progress. `AGNOS.md`'s "three stdlib folds" became a pointer to cyrius's fold table (twelve libraries as of cyrius 6.6.3).
+- **Docs the sweep never touched.** Two issue templates offered an `agnosys` component (decomposed 2026-06-19). `path-c-sovereign-uefi.md` still opened with "NEXT AGENT — START HERE" for a plan that completed on 2026-05-13; it now says it is historical. `CLAUDE.md` linked a memory file at a GitHub path that 404s on both branches; it now uses the `[[memory]]` form the rest of the file uses. Six broken relative links in five files were fixed (`gnoboot.md`, `first-party-documentation.md`, `first-party-standards.md`, `shared-crates.md`, `guides/testing.md`). A malformed 2026-04-13 continuation row in `timeline.md` had put its event in the Source column.
+
+**A finding, not just drift: the boot pipeline cannot boot the current kernel.** The interactive and `--test` modes of `scripts/src/boot.cyr`, and so `make boot-test`, hand the kernel to QEMU `-kernel`. QEMU has refused agnos since 1.30.0 (ELF64, no PVH note), and agnos boots through gnoboot + OVMF instead. The docs now say so. The code is unchanged. `--status` also still looks for the retired `cc5` binary (`boot.cyr:465`, `:534`).
+
+**Flagged, not fixed:**
+- **Handoff docs**, which belong to their arcs: `planning/desktop-arc-handoff.md` is a self-marked-stale copy, since the live one moved to aethersafha; `ml-ai-handoff.md` still says "17 repos on 6.5.27".
+- **Arc-owned planning docs** whose bodies lag. The ledger now carries their current status.
+- **Other repos' docs:**
+  - agnos `state.md` still says boot_info is 120 bytes and gnoboot is 0.7.1.
+  - agnos's ABI row for `#98` misses the 20-byte opt-in.
+  - aethersafha `state.md` still lists 1.56.46 as open.
+  - mishran's README says `anu`.
+  - ifran's README says `rust-old/` was removed at 2.2.0; its CHANGELOG says 2.2.1.
+  - szal's and ranga's READMEs still say Rust.
+  - garjan, ghurni and nidhi ship no LICENSE file.
+  - zugot's agnostic recipe still packages the Python line.
+  - agnos `kernel/core/main.cyr:7779-7783` still describes the pre-6.4.10 `var X[N]` rule as current (its over-sized buffer is harmless).
+  - attn11 still gates its hearing lane x86-only, with a manifest comment waiting on a polyfill cyrius 6.4.16 shipped.
+  - agnos's ABI row for `#96` names agora as fork's consumer; agora's agnos arm maps even `AGORA_SERVE=fork` to poll and never calls it, under a comment that still says "agnos has no fork" (`agora/src/main.cyr:2219-2240`).
+  - SecureYeoman's `release-binary.yml` (Bun compile) disagrees with its CHANGELOG and README (Rust `sy-core`).
+  - cyim-lsp's CHANGELOG repeats the "every consumer since v0.2.0" overstatement; cyim's `state.md` dates its agent-drive CLI to 1.2.0 against its own CHANGELOG's 1.0.0.
+  - cyrius's FAQ still lists "no mixed `&&`/`||`", fixed at 6.3.36 (hands-off — reported only).
+  - agnos `scripts/test.sh` dates the `cc5_aarch64` drop to cyrius 6.1.0 (it was 6.1.1).
+- **In this repo, left for the operator:**
+  - the iron log (a burn log, not edited by sweeps): `#tracker-139-cycle`'s header still reads PENDING beside its own "Track B ✓", and its log-chain line calls the FAT/exFAT burn pending — consistent with the scoping above, but worth one reconciling line.
+  - `planning/shared-buffer-present.md` (arc-owned) calls pixels unproven in its shipped-record paragraph while the ledger row records them proven on iron on 2026-08-02/03.
+  - The repo's committed `.claude/projects/-home-macro-Repos-agnosticos/memory/project_crypto_boundary.md` describes a Rust-era `pqc.rs` and `sy-crypto` that no longer exist.
+  - `scripts/src/boot.cyr` itself: `--status` names `cc5` and `agnosys`, and the `-kernel` path cannot load agnos ≥ 1.30.0. Code, not docs, so unchanged.
+- **Operator calls:**
+  - which log is canonical for burn narrative: `state.md` says `iron-log.md`, but every burn since 2026-08-11 is only in `iron-nuc-zen-log.md`
+  - public docs (the installation pages, `binaries.md`, the third-party page) link into `docs/development/`, which is marked internal-only for the 0.1.0 merge; they break for public readers if the untrack goes ahead
+  - licence notice vs manifest: about 30 repos, this one included, pair a `GPL-3.0-only` manifest with an "or any later version" LICENSE notice
+  - whether `bootstrap/bootstrap.sh` belongs in the "rebuild the toolchain" advice: it builds `cybs` and `asm` only (cyrius's own README documents it the same way)
+  - re-dating the beta
+  - the postponed Foundation/DCO track
+  - the unlinked `planning/README.md.pre-categorization`
+  - moving the root burn captures (`basictests.txt`, `60run.txt`, `1570run.txt`, `1571run.txt` and the `ae*.txt` desktop captures) into `docs/development/prior-art/`
+  - nine v1.0+ libraries with no per-lib stub
+
 ### Changed — docs/security/ rewritten for the Cyrius era (2026-08-05)
 
 Five documents dated **2026-03-07 / 03-16** described a system AGNOS is not. They documented a **Rust supply chain** — `cargo audit`, `cargo-deny`, `Cargo.toml` pinning, the RustSec advisory DB, crates.io ecosystem rules — and a **Linux confinement model** of Landlock, seccomp-BPF, namespaces and cgroups. Neither exists here: the monolith was dismantled 2026-04-01 and there is no `Cargo.toml` anywhere in the repo, and per [`docs/development/roadmap.md`](docs/development/roadmap.md) confinement "when it lands, is **capability-scoped and native** — never Landlock, seccomp or `unshare` ABI emulation." **That is not ordinary staleness. A security document describing a control that does not exist tells an operator they are protected when they are not** — it is worse than no document, because it converts a gap into false confidence. The rewrite's governing rule is therefore **under-claim**: every ✅ was read in live source at a cited `path:line`, and a control that is absent is marked ⛔ / 📋 / 🐧 rather than quietly dropped. Ground truth re-read live: agnos **1.56.40** (OPEN, **not burned**) / cyrius **6.5.7** / gnoboot **0.6.1**. ⛔ **The security posture did not improve — the documents got honest.** The posture is what it always was.

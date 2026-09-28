@@ -7,4 +7,4 @@ World history and versioning.
 - **Status**: Stable - See Repo
 - **Language**: Cyrius
 
-See the [libs registry](../README.md) for the full catalog and dependency context.
+See the [libs registry](README.md) for the full catalog and dependency context.

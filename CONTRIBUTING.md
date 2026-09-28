@@ -82,8 +82,9 @@ cd scripts
 cyrius build src/boot.cyr build/boot
 ./build/boot --help
 
-# Smoke-boot the kernel under QEMU + OVMF through gnoboot — `make boot-test`'s -kernel path
-# cannot load agnos >= 1.30.0 (see docs/installation/README.md, QEMU Boot Test)
+# Hand the kernel off under QEMU + OVMF through gnoboot — this asserts gnoboot's hand-off banner,
+# not that the kernel boots (the kernel's own gates are agnos's scripts/smoke/ battery).
+# `make boot-test`'s -kernel path cannot load agnos >= 1.30.0 (see docs/installation/README.md, QEMU Boot Test)
 cd ../../gnoboot && sh tests/ovmf_smoke.sh
 ```
 
@@ -277,7 +278,7 @@ cyrius build src/main.cyr build/output
 - Programs execute at top level — `fn main()` is not called automatically
 - `cyrius build` auto-resolves deps from `cyrius.cyml`
 - `store8`/`load8` (and the 16/32/64 family) for sized byte-level access; `*p` dereferences a pointer
-- Mixed `&&`/`||` (standard precedence) and negative literals both work on current Cyrius — older code still carries the nested-if and `0 - N` workarounds from before cyrius's doc sweep verified both (v6.0.62)
+- Mixed `&&`/`||` follows standard precedence since cyrius 6.3.36 (2026-07-02; before it, an unparenthesized `a || b && c` parsed as `(a || b) && c`), and negative literals work (verified at v6.0.62) — older code still carries the nested-if and `0 - N` workarounds from before those dates
 
 See the [Cyrius field notes](https://github.com/MacCracken/vidya) for practical lessons.
 
@@ -416,7 +417,7 @@ develop
 - [ ] Version bumped in `VERSION`
 - [ ] Changelog updated
 - [ ] Boot pipeline builds (`cd scripts && cyrius build src/boot.cyr build/boot`)
-- [ ] Kernel boots under QEMU + OVMF through gnoboot (`gnoboot/tests/ovmf_smoke.sh`; `make boot-test`'s `-kernel` path cannot load agnos ≥ 1.30.0)
+- [ ] gnoboot hands the kernel off under QEMU + OVMF (`gnoboot/tests/ovmf_smoke.sh` — it asserts the hand-off banner only; the kernel's own boot gates are the agnos smoke battery, `scripts/smoke/`; `make boot-test`'s `-kernel` path cannot load agnos ≥ 1.30.0)
 - [ ] Security review completed
 - [ ] Documentation updated
 - [ ] Release notes written
@@ -457,7 +458,8 @@ cyrius build src/boot.cyr build/boot
 # Verify ecosystem state
 ./build/boot --status
 
-# Boot test — through gnoboot + OVMF (make boot-test's -kernel path cannot load agnos >= 1.30.0)
+# Hand-off test — through gnoboot + OVMF; asserts gnoboot's banner, not a kernel boot
+# (make boot-test's -kernel path cannot load agnos >= 1.30.0)
 cd ../../gnoboot && sh tests/ovmf_smoke.sh
 ```
 

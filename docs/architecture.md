@@ -321,7 +321,7 @@ Unified security and threat protection. Coordinates threat detection, quarantine
 
 ### takumi — Package Build System
 
-Compiles packages from source into `.ark` binary packages via CYML recipes (`.cyml` — a TOML header above `---`, markdown below). Recipes live in the `zugot` repo. Cyrius-native — the port reached parity and shipped 1.0+; `rust-old/` is kept as a historical reference, not as the authoritative tree.
+Compiles packages from source into `.ark` binary packages via CYML recipes (`.cyml` — CYML allows a TOML header above `---` with markdown below; zugot's recipes use the TOML part only). Recipes live in the `zugot` repo. Cyrius-native — the port reached parity and shipped 1.0+; `rust-old/` is kept as a historical reference, not as the authoritative tree.
 
 ### argonaut — Init System
 

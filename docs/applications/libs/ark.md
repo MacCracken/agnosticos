@@ -4,7 +4,7 @@
 - **License**: GPL-3.0-only
 - **Role**: Unified package manager CLI for AGNOS
 
-Translates user commands into install plans using nous resolver. Generates InstallPlan instructions — does not directly execute apt/dpkg. Supports system, marketplace, Flutter, and community sources.
+Translates user commands into install plans using the nous resolver. Plan-first: it shows the plan by default and executes only with `--apply`, escalating privileged steps through shakti; since 1.1.0 it also installs `.ark` packages natively. Supports system, marketplace, Flutter, and community sources.
 
 **Consumers**: end users, CI/CD, agnoshi, argonaut
-**Dependencies**: nous (resolver)
+**Dependencies**: sigil, nous, mela, agnostik, sandhi (declared in its `cyrius.cyml`)

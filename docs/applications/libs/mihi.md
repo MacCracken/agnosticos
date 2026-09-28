@@ -9,4 +9,4 @@ System-info probe library — CPU / RAM / GPU / kernel / uptime / distro / hostn
 
 The substrate for [iam](iam.md) (fastfetch-equivalent) and chakshu (system monitor) — anything that needs "tell me about this box." Maori: the formal self-introduction ceremony.
 
-See the [libs registry](../README.md) for the full catalog and dependency context.
+See the [libs registry](README.md) for the full catalog and dependency context.

@@ -9,4 +9,4 @@ Coreutils-equivalent multi-tool — `cp` / `mv` / `rm` / `mkdir` / `echo` / `wc`
 
 Ships `/bin/<verb>` symlinks dispatched through one binary. No `cat` verb by design — that's [owl](owl.md)'s job. Consumed by agnoshi as the agnos-fs coreutils layer.
 
-See the [libs registry](../README.md) for the full catalog and dependency context.
+See the [binaries registry](../binaries.md) for the full catalog and dependency context.

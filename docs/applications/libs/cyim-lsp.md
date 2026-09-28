@@ -7,4 +7,4 @@ LSP server companion to [cyim](cyim.md) — language-server features for the Cyr
 - **Status**: Stable — v1.0+
 - **Language**: Cyrius
 
-See the [libs registry](../README.md) for the full catalog and dependency context.
+See the [binaries registry](../binaries.md) for the full catalog and dependency context.

@@ -9,4 +9,4 @@ GNU `stow`-equivalent — dotfile / symlink farm manager (Cyrius-native).
 
 CYML manifest per package, capability-bounded execution (touches `$HOME` only by default), lightweight audit trail. Hawaiian हपी (*happy*) + backronym **H**ome **A**sset **P**rovisioning **I**nterface.
 
-See the [libs registry](../README.md) for the full catalog and dependency context.
+See the [binaries registry](../binaries.md) for the full catalog and dependency context.

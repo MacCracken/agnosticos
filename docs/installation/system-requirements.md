@@ -57,7 +57,7 @@ Full sovereign desktop — the aethersafha compositor (⛔ **not** Wayland; it s
 | Network | Internet for setup | Optional after install |
 
 **Supported GPUs**:
-- **NVIDIA**: Proprietary driver — version pinned by zugot's `desktops/nvidia-driver.cyml` (Kepler and newer, GTX 600+)
+- **NVIDIA**: Proprietary driver — version pinned by zugot's `desktops/nvidia-driver.cyml`. Its 595-series pin supports **Turing and newer (GTX 16 / RTX 20+)**: NVIDIA's 580 branch was the last for Maxwell, Pascal and Volta, and the 470 branch the last for Kepler
 - **AMD**: Mesa radeonsi (GCN 1.0 and newer, HD 7000+)
 - **Intel**: Mesa iris/i965 (Broadwell and newer, HD 5500+)
 - **Software rendering**: Mesa swrast (llvmpipe) — functional but slow
@@ -165,7 +165,7 @@ The oldest hardware that can run AGNOS, by profile:
 
 ### Desktop (oldest viable)
 - **CPU**: Intel Broadwell (2014) / AMD GCN 1.0 (2012) — for GPU driver support
-- **GPU**: NVIDIA GTX 600 series (2012) / AMD HD 7000 (2012) / Intel HD 5500 (2015)
+- **GPU**: NVIDIA RTX 20 / GTX 16 series (Turing, 2018 — the floor of the pinned 595-series driver) / AMD HD 7000 (2012) / Intel HD 5500 (2015)
 - **RAM**: 8 GB DDR3 is functional, DDR4 recommended
 - **Motherboard**: Any x86_64 with UEFI (most boards since ~2012)
 - **Practical floor**: ~2014-2015 era hardware

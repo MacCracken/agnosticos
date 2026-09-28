@@ -7,4 +7,4 @@ Culture modeling — Cyrius-native, 50 cultures, 329 assertions, 33 benchmarks, 
 - **Status**: Stable - See Repo
 - **Language**: Cyrius
 
-See the [libs registry](../README.md) for the full catalog and dependency context.
+See the [libs registry](README.md) for the full catalog and dependency context.

@@ -51,11 +51,14 @@ Options:
 > and since agnos **1.30.0** the kernel is an ELF64 image with no PVH note, so QEMU refuses it
 > (`Error loading uncompressed kernel without PVH ELF Note`). agnos boots through **gnoboot + OVMF** instead —
 > see agnos's README and `scripts/smoke/`. `--iso-check` still works. `--status` still runs, but its toolchain
-> line looks for the retired `cc5` binary (`src/boot.cyr` still names it) and reports it missing. Re-checked 2026-09-27.
+> line reads `../../cyrius/build/cc5`, a binary cyrius stopped producing when `cc5` became `cycc` (`src/boot.cyr`
+> still names it). It reports the tool missing — or, where an old `cc5` survives in that directory, prints the
+> stale binary's size beside the current `VERSION` (2026-09-28: `cyrius v6.6.9 (874232 bytes)`, from a June `cc5`).
+> It also still lists `agnosys`, which became `agnodrm` on 2026-06-19, and shows it as `---`.
 
 **Interactive boot** (default, fastest for development):
 ```
-../../agnos/build/agnos → QEMU -kernel → serial output (Ctrl-A X to quit)
+../../agnos/build/agnos → QEMU -kernel → serial output (Ctrl-C to quit; plain -serial stdio has no Ctrl-A escape)
 ```
 
 **Test boot** (`--test`):

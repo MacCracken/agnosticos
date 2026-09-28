@@ -9,4 +9,4 @@ Sovereign UI automation library — browser + mobile (Cyrius-native).
 
 `.tcyr` files include `lib/yantra.cyr` and drive Chromium / Firefox / WebKit / Android / iOS; `cyrius test` stays the runner — it's a library, not a framework. As of Cyrius 6.2.26 the surface is vendored into the stdlib. See the article *Draw the Line After*.
 
-See the [libs registry](../README.md) for the full catalog and dependency context.
+See the [libs registry](README.md) for the full catalog and dependency context.

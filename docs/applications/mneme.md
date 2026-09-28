@@ -29,7 +29,7 @@ Mneme leverages daimon's RAG and vector store APIs natively, providing semantic 
 
 ## AGNOS Integration
 
-- **Daimon**: Registers as an agent; ingests all notes into RAG pipeline; uses vector store for semantic search; subscribes to knowledge update events — ⚠ in the Cyrius port, daimon embeddings are live when a daimon is reachable (full-text only otherwise) and `mneme serve` registers its MCP tools with daimon, while the RAG / event-bus / Q&A client paths are deferred to a local fallback
+- **Daimon**: Registers as an agent; ingests all notes into RAG pipeline; uses vector store for semantic search; subscribes to knowledge update events — ⚠ in the Cyrius port, daimon embeddings are live when a daimon is reachable (full-text only otherwise), `mneme serve` registers its MCP tools with daimon, and the daimon REST client (`/health`, `/v1/rag/query|ingest`) is wired over sandhi; the AI modules keep local fallbacks, and the one path still bridged out is local ONNX inference (mneme `docs/development/state.md`)
 - **Hoosh**: LLM Q&A over knowledge base, automatic tagging, summarization, relationship suggestion
 - **MCP Tools**: `mneme_create_note`, `mneme_get_note`, `mneme_update_note`, `mneme_search`, `mneme_search_feedback`, `mneme_query_graph`, `mneme_list_vaults`, `mneme_switch_vault`
 - **Agnoshi Intents** (the Rust era's planned set — not in the current agnoshi): `mneme search <query>`, `mneme ask <question>`, `mneme note <action>`, `mneme tag <action>`, `mneme export <format>`, `mneme import <file>`, `mneme link <action>`

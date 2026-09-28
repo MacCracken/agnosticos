@@ -7,4 +7,6 @@ Formant and vocal synthesis (Sanskrit स्वर — *voice, tone, musical not
 - **Status**: Stable — v1.0+
 - **Language**: Cyrius
 
-See the [libs registry](../README.md) for the full catalog and dependency context.
+Consumers declaring `[deps.svara]` (local checkouts, 2026-09-28): dhvani, prani, shabda, shabdakosh.
+
+See the [libs registry](README.md) for the full catalog and dependency context.

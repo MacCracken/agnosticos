@@ -7,4 +7,4 @@ Math engine — Miller-Rabin ~12× faster end-to-end via Cyrius hardware u64_mul
 - **Status**: Stable - See Repo
 - **Language**: Cyrius
 
-See the [libs registry](../README.md) for the full catalog and dependency context.
+See the [libs registry](README.md) for the full catalog and dependency context.

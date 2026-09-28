@@ -33,7 +33,7 @@
 | Boot | UEFI (GPT + FAT ESP) — Legacy BIOS **not supported** | UEFI with Secure Boot |
 | GPU | — (CLI/server) | NVIDIA, AMD, or Intel integrated (for desktop) |
 
-These are **targets for the first bootable image**, not today's support matrix — only x86_64 boots right now; the kernel's aarch64 tree **does not currently compile** (found at agnos 1.56.51, 2026-08-28 — its test probe had been skipping it silently since cyrius v6.1.0) and has no boot harness. Full hardware matrix: [system-requirements.md](system-requirements.md).
+These are **targets for the first bootable image**, not today's support matrix — only x86_64 boots right now; the kernel's aarch64 tree **does not currently compile** (found at agnos 1.56.51, 2026-08-28 — its test probe had been skipping it silently since cyrius v6.1.1 dropped the `cc5_aarch64` name it probed for) and has no boot harness. Full hardware matrix: [system-requirements.md](system-requirements.md).
 
 ---
 
@@ -143,7 +143,8 @@ The **arch-neutral boot pipeline** (`boot.cyr` arch detection, per-arch branch t
 ```sh
 # boot.cyr always wires QEMU's serial console to stdio — there is no --serial flag
 # (it exits with "Unknown option"); -v / --verbose is accepted. Its -kernel path
-# cannot load agnos >= 1.30.0, so smoke-boot the kernel through gnoboot + OVMF:
+# cannot load agnos >= 1.30.0, so hand the kernel off through gnoboot + OVMF
+# (this asserts gnoboot's hand-off banner, not a kernel boot):
 cd ../gnoboot && sh tests/ovmf_smoke.sh
 ```
 

@@ -7,4 +7,4 @@ Lossless compression — LZ4, DEFLATE, zlib, gzip; since 2.4.x also xz/LZMA2 and
 - **Status**: Stable - See Repo
 - **Language**: Cyrius
 
-See the [libs registry](../README.md) for the full catalog and dependency context.
+See the [libs registry](README.md) for the full catalog and dependency context.

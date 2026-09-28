@@ -7,4 +7,6 @@ Higher mathematics library (Arabic حساب — *calculation*) — linear algebr
 - **Status**: Stable — v1.0+
 - **Language**: Cyrius
 
-See the [libs registry](../README.md) for the full catalog and dependency context.
+Consumers declaring `[deps.hisab]` (local checkouts, 2026-09-28): attn11, dhvani, garjan, ghurni, goonj, naad, nidhi, prakash, prani, svara.
+
+See the [libs registry](README.md) for the full catalog and dependency context.

@@ -7,4 +7,6 @@ Core audio engine (Sanskrit ध्वनि — *sound, resonance*) — buffers,
 - **Status**: Stable - See Repo
 - **Language**: Cyrius
 
-See the [libs registry](../README.md) for the full catalog and dependency context.
+Consumers declaring `[deps.dhvani]` (local checkouts, 2026-09-28): jalwa.
+
+See the [libs registry](README.md) for the full catalog and dependency context.

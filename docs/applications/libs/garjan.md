@@ -7,4 +7,6 @@ Environmental and nature sound synthesis (Sanskrit गर्जन — *roar / t
 - **Status**: Stable — v1.0+
 - **Language**: Cyrius
 
-See the [libs registry](../README.md) for the full catalog and dependency context.
+Consumers declaring `[deps.garjan]` (local checkouts, 2026-09-28): dhvani.
+
+See the [libs registry](README.md) for the full catalog and dependency context.

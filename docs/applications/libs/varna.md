@@ -7,4 +7,6 @@ Multilingual language engine (Sanskrit वर्ण — *letter, character, soun
 - **Status**: Stable — v1.0+
 - **Language**: Cyrius
 
-See the [libs registry](../README.md) for the full catalog and dependency context.
+Consumers declaring `[deps.varna]` (local checkouts, 2026-09-28): dhvani, sankhya, shabda, shabdakosh.
+
+See the [libs registry](README.md) for the full catalog and dependency context.

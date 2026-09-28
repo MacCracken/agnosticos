@@ -7,4 +7,4 @@ Agent orchestration engine (AGNOS + AI) — multi-agent crews with task DAGs, LL
 - **Status**: Stable - See Repo
 - **Language**: Cyrius (ported from Rust at 2.0.0, 2026-08-14; the Rust tree is frozen at `rust-old/`)
 
-Catalogued in the [libs registry](../README.md) (OS & Infrastructure) since 2026-09-27 — it had been dropped on 2026-07-05, while it was still an unported Rust repo. It also ships a standalone server binary.
+Catalogued in the [libs registry](README.md) (OS & Infrastructure) since 2026-09-27 — it had been dropped on 2026-07-05, while it was still an unported Rust repo. It also ships a standalone server binary.

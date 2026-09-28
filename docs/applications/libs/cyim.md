@@ -9,4 +9,4 @@ Cyrius-native terminal text editor.
 
 Paired with [cyim-lsp](cyim-lsp.md) for language-server features. Its TTY/raw-mode primitives were extracted into the darshana library once a second consumer (chakshu) appeared.
 
-See the [libs registry](../README.md) for the full catalog and dependency context.
+See the [binaries registry](../binaries.md) for the full catalog and dependency context.

@@ -7,4 +7,4 @@ AI-native threat detection engine (Greek φύλαξ — *guardian, watchman*) �
 - **Status**: Stable - See Repo
 - **Language**: Cyrius
 
-See the [libs registry](../README.md) for the full catalog and dependency context.
+See the [libs registry](README.md) for the full catalog and dependency context.

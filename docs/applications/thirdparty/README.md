@@ -17,7 +17,7 @@
 | Web Browser | Chromium | `zugot/browser/chromium.cyml` | Alternative, sandboxed |
 | Terminal | Foot | `zugot/desktops/foot.cyml` | Wayland-native, fast, minimal deps |
 | Text Editor | Helix | `zugot/desktops/helix.cyml` | Rust-native, default config included |
-| File Manager | yazi | `zugot/desktops/yazi.cyml` | **Retired interim** — superseded by first-party `crab` 🦀; still bazaar-installable |
+| File Manager | yazi | `zugot/desktops/yazi.cyml` | **Retired interim** — superseded by first-party `crab` 🦀; still installable from zugot |
 | PDF Viewer | Zathura | `zugot/desktops/zathura.cyml` | Lightweight, plugin-based (PDF/DJVU/PS) |
 | Image Viewer | imv | `zugot/desktops/imv.cyml` | Wayland-native, HEIF/SVG/WebP |
 | Media Player | mpv | `zugot/desktops/mpv.cyml` | PipeWire, Vulkan, VA-API hwdec |
@@ -34,7 +34,7 @@ Installed via `ark bazaar install <pkg>`. Recipes are `.cyml` files under the [b
 | Category | Highlights |
 |----------|------------|
 | AI | ollama, llama.cpp, whisper.cpp, stable-diffusion.cpp, onnxruntime, vllm, piper-tts, aider, open-webui, comfyui, fabric, lmstudio, pytorch |
-| Desktops | Sway, Hyprland, Thunar, Evince, Blueman, nm-applet, dunst, feh, GParted, GNOME Disks, firewall-config, system-config-printer, GTK3/Qt5/libadwaita |
+| Desktops | Sway, Hyprland, Thunar, Evince, Blueman, nm-applet, dunst, feh, GParted, GNOME Disks, firewall-config, system-config-printer, gtkmm3/Qt5/libadwaita (GTK3 itself is a zugot recipe) |
 | Tools | ripgrep, fd, bat, eza, fzf, tmux, htop, btop, lazygit, starship, zoxide, dust, tokei, hyperfine, git-delta, docker, podman, k9s, syncthing, gimp, inkscape, libreoffice |
 | Editors | neovim, vim, micro |
 | Networking | wireguard-tools, bandwhich, mtr, tailscale |

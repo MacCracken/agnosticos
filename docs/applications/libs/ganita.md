@@ -9,4 +9,4 @@ Linear algebra (matrix, linalg) + advanced math (transcendental functions + numb
 
 Folded byte-identical into the Cyrius stdlib as `lib/ganita.cyr` per the sandhi pattern (since the cyrius 6.1.26 carve).
 
-See the [libs registry](../README.md) for the full catalog and dependency context.
+See the [libs registry](README.md) for the full catalog and dependency context.

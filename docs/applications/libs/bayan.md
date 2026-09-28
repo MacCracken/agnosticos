@@ -9,4 +9,4 @@ Data-format, document & big-integer distfile — json / yaml / toml / cyml / csv
 
 Folded byte-identical into the Cyrius stdlib as `lib/bayan.cyr` per the sandhi pattern (since the cyrius 6.1.25 carve). Consumed by owl and any crate parsing structured data.
 
-See the [libs registry](../README.md) for the full catalog and dependency context.
+See the [libs registry](README.md) for the full catalog and dependency context.

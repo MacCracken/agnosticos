@@ -7,4 +7,4 @@ CPU raster image decoder (चित्र — *image / picture*) — PNG, baseli
 - **Status**: Stable — v1.0+
 - **Language**: Cyrius
 
-See the [libs registry](../README.md) for the full catalog and dependency context.
+See the [libs registry](README.md) for the full catalog and dependency context.

@@ -122,7 +122,8 @@ the same only when `AGNOSTIC_ADDR=any`.)
 6.6.6 the stdlib's agnos `sock_bind` drops the address (`cyrius/lib/net.cyr:295-302`) and `sock_listen`#56
 is issued with the port alone (`lib/syscalls_x86_64_agnos.cyr:1633-1641`), so every "loopback" row below is a
 listener on the NIC's address when built for AGNOS. Kernel 1.57.7 added a loopback-only listen class (built
-and gated, not burned) that the stdlib does not pass yet. Test loopback claims from a second host.
+and gated, not burned). cyrius 6.6.7 (2026-09-27) fixed the stdlib half: the bind address now selects the listen class — 127/8 → the loopback-only class, `0.0.0.0` or the host's own address → any, any other address refused (`cyrius/lib/net.cyr:300-313` in 6.6.8; `cyrius/CHANGELOG.md` [6.6.7], *Security*). A service carries that only once rebuilt on 6.6.7 or later — daimon,
+hoosh and bote still pin 6.6.6 as of 2026-09-28. Test loopback claims from a second host.
 
 | Service | Port | Bind | Auth | Verified at |
 |---|---|---|---|---|

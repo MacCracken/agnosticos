@@ -9,4 +9,4 @@
 
 Reads raster input (PNG / JPEG / GIF / BMP), quantizes to a terminal-renderable palette + glyph set, emits ANSI escapes sized to terminal cols × rows. Four-layered name (Hawaiian *image*; East Asian *ki* 気 life-force; phonetic back-half of *a-scii*; functional convergence). Substrate for BBS/MUD banners + [iam](iam.md) splashes.
 
-See the [libs registry](../README.md) for the full catalog and dependency context.
+See the [binaries registry](../binaries.md) for the full catalog and dependency context.

@@ -4,7 +4,7 @@
 
 [![License](https://img.shields.io/badge/license-GPLv3-blue)](LICENSE)
 [![Kernel](https://img.shields.io/badge/kernel-AGNOS%201.57.10-orange)](https://github.com/MacCracken/agnos)
-[![Language](https://img.shields.io/badge/Cyrius-6.6.6-red)](https://github.com/MacCracken/cyrius)
+[![Language](https://img.shields.io/badge/Cyrius-6.6.8-red)](https://github.com/MacCracken/cyrius)
 ![Status](https://img.shields.io/badge/status-pre--beta-yellow)
 
 **AGNOS** is a sovereign operating system written in **Cyrius** — a systems language with a 29KB seed, zero external dependencies, and a self-hosting compiler. The kernel boots to a typeable shell on real AMD hardware (Boot-to-Shell MVP, 2026-05-15). Since then, validated **on real AMD Zen** unless noted — the latest iron burn is agnos **1.57.1** (2026-09-08); 1.57.2 → 1.57.10 are built and QEMU-gated but **not burned**:

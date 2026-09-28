@@ -7,4 +7,6 @@ Sample playback engine (Sanskrit *nidhi* — treasure / storehouse) — a polyph
 - **Status**: Stable — v1.0+
 - **Language**: Cyrius
 
-See the [libs registry](../README.md) for the full catalog and dependency context.
+Consumers declaring `[deps.nidhi]` (local checkouts, 2026-09-28): dhvani.
+
+See the [libs registry](README.md) for the full catalog and dependency context.

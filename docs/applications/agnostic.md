@@ -11,7 +11,7 @@
 | Recipe | `zugot/marketplace/agnostic.cyml` — still packages the Python line's `2026.3.18` |
 | MCP Tools | None in the Cyrius port yet (the `agnostic_*` tools below are the Python line's) |
 | Agnoshi Intents | None (the current agnoshi has no per-app intents) |
-| Port | N/A |
+| Port | 8000 by default (`AGNOSTIC_PORT` / `PORT` override — `agnostic/src/config.cyr:52,214-216`) |
 
 ---
 

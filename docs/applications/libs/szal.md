@@ -7,4 +7,4 @@ Workflow engine.
 - **Status**: Stable - See Repo
 - **Language**: Cyrius (the Rust crate is kept at `rust-old/` as the parity oracle)
 
-See the [libs registry](../README.md) for the full catalog and dependency context.
+See the [libs registry](README.md) for the full catalog and dependency context.

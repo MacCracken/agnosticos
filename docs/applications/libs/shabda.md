@@ -7,4 +7,4 @@ Grapheme-to-phoneme (G2P) engine for AGNOS text-to-speech (Sanskrit *shabda* —
 - **Status**: Stable — v1.0+
 - **Language**: Cyrius
 
-See the [libs registry](../README.md) for the full catalog and dependency context.
+See the [libs registry](README.md) for the full catalog and dependency context.

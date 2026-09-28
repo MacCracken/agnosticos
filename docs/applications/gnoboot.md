@@ -52,7 +52,7 @@ Key invariants:
 - ✓ FB-handoff observability bundle (GOP mode capture, serial diagnostic, CMOS stamp) — 0.3.0 → 0.4.x
 - ✓ AMD Zen Quiet-Boot scanout residue — parked gnoboot-side at the 0.4.2 closeout (2026-05-20), then **resolved kernel-side** at agnos 1.55.28 (2026-07-20): a surface/raster scale mismatch, not tiling — neither parked option (HUBP `clear_tiling` port, shadow buffer) was needed
 - ✓ `boot_info` feature fill — initramfs, cmdline, ACPI RSDP (0.5.0, 2026-06-03); the kernel-side readers are agnos's work
-- ✓ KASLR / `ET_DYN` kernel load (0.6.0, 2026-06-27) — ⚠ not yet runtime-exercised, since agnos links `ET_EXEC`
+- ✓ KASLR / `ET_DYN` kernel load (0.6.0, 2026-06-27 — run then by agnos's `kaslr-smoke.sh`: two boots, two distinct in-window bases) — ⚠ the 0.7.0 rewrite of that path (multi-segment span, RDRAND retry, slide mask) has not run, since agnos links `ET_EXEC`; gnoboot's own `state.md` records a PIE-kernel run as owed
 - ✓ Native-resolution GOP mode selection (0.6.1, 2026-08-03)
 - ✓ First security audit + ELF-load hardening, multi-`PT_LOAD` (0.7.0, 2026-08-29)
 - ✓ Handoff spec written, `boot_info` 120 → 128 bytes (0.7.1, 2026-08-29)
@@ -63,7 +63,7 @@ Full roadmap: [gnoboot/docs/development/roadmap.md](https://github.com/MacCracke
 
 ## Cross-references
 
-- [agnos](agnos.md) (when added) — the kernel gnoboot loads. agnos 1.30.0 cut the sovereign-struct ABI break that originally paired with gnoboot v0.1.0; the current pairing lives in agnos `state.md` (Bootloader row), not here.
+- [agnos](https://github.com/MacCracken/agnos) — the kernel gnoboot loads (its registry row is in [`binaries.md`](binaries.md)). agnos 1.30.0 cut the sovereign-struct ABI break that originally paired with gnoboot v0.1.0; the current pairing lives in agnos `state.md` (Bootloader row), not here.
 - [cyrius](https://github.com/MacCracken/cyrius) — toolchain. gnoboot's bring-up surfaced multiple cyrius issues that landed across v5.11.49 → v5.11.69 and into v6.0.x.
 - Sovereign UEFI plan — full architecture
 - Iron-boot test log — active iron boot log (post-MVP). gnoboot ships from early in the iron boot arc; full MVP-era arc is tracked in the iron boot log.
