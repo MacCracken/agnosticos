@@ -1,0 +1,405 @@
+# arp_snoop_check — validate the RFC 826 ARP sender-snoop fix on Linux (AF_PACKET).
+#
+# WHY THIS EXISTS
+# --------------
+# AGNOS 1.32.6 net.cyr fix (net_handle_arp): learn the sender IP->MAC mapping
+# from EVERY ARP frame -- request OR reply -- not only from a solicited unicast
+# reply. The gateway broadcasts its own "who-has" queries (sender_ip = gateway,
+# sender_mac = gateway); AGNOS already RECEIVES those as broadcast on iron
+# (the FB arp_in=N count). So the gateway MAC is learnable WITHOUT the gateway's
+# unicast reply ever being delivered -- which is the whole point, since broadcast
+# RX is proven on iron and unicast-class RX is the open question.
+#
+# This probe does NOT touch the NIC binding (AF_PACKET rides Linux's own r8169),
+# so the box stays reachable -- no VFIO, no link drop. It:
+#   1. opens AF_PACKET on <iface>, bound to ETH_P_ARP,
+#   2. sends a few AGNOS-shape who-has <gateway> requests to stir traffic,
+#   3. captures every ARP frame for a ~15 s window,
+#   4. runs the EXACT new net_handle_arp snoop logic against each frame with a
+#      simulated arp_pending_ip = <gateway>, and reports WHICH frame fires it.
+#
+# THE LOAD-BEARING QUESTION the verdict answers:
+#   Does the gateway's .1->MAC mapping appear in a BROADCAST ARP frame?
+#     YES  -> the snoop fires on a frame AGNOS already receives on iron, with
+#             ZERO unicast RX. The OLD reply-only code would NOT have cleared
+#             arp_pending from that frame. Fix CONFIRMED to resolve the symptom.
+#     ONLY-UNICAST -> .1 was only seen via its unicast reply. On Linux that
+#             clears pending (unicast is delivered); on iron, where the unicast
+#             reply is the thing not delivered, the gateway must be made to
+#             broadcast (longer window / AGNOS gratuitous ARP). Reported honestly.
+#     NEVER -> .1 not seen at all in the window; inconclusive, widen the window.
+#
+# Same isolate-on-Linux-first discipline as arp_reply_len.cyr / arp_probe_raw.cyr.
+#
+# Usage: sudo ./arp-snoop-check <iface> [gateway_ip] [src_ip]
+#   default gateway_ip = 192.168.1.1   (AGNOS net_gateway / arp_pending target)
+#   default src_ip     = 192.168.1.222 (AGNOS net_ip, used for the stir requests)
+# Requires CAP_NET_RAW (or root) for AF_PACKET SOCK_RAW.
+
+include "lib/string.cyr"
+include "lib/alloc.cyr"
+include "lib/fmt.cyr"
+include "lib/syscalls.cyr"
+include "lib/args.cyr"
+
+# === Print helpers ===
+
+fn prints(s) { syscall(1, 1, s, strlen(s)); }
+fn putc(c) { var b[1]; store8(&b, c); syscall(1, 1, &b, 1); }
+fn newline() { syscall(1, 1, "\n", 1); }
+
+fn print_ip(ip) {
+    fmt_int((ip >> 24) & 0xFF); putc(46);
+    fmt_int((ip >> 16) & 0xFF); putc(46);
+    fmt_int((ip >> 8) & 0xFF);  putc(46);
+    fmt_int(ip & 0xFF);
+}
+
+fn print_mac(mac) {
+    fmt_byte(load8(mac));
+    var i: i64 = 1;
+    while (i < 6) { putc(58); fmt_byte(load8(mac + i)); i = i + 1; }
+}
+
+# === AGNOS net.cyr ARP frame builder — verbatim from arp_reply_len.cyr ===
+
+fn eth_build(pkt, dst_mac, src_mac, ethertype): i64 {
+    var i: i64 = 0;
+    while (i < 6) { store8(pkt + i, load8(dst_mac + i)); i = i + 1; }
+    i = 0;
+    while (i < 6) { store8(pkt + 6 + i, load8(src_mac + i)); i = i + 1; }
+    store8(pkt + 12, (ethertype >> 8) & 0xFF);
+    store8(pkt + 13, ethertype & 0xFF);
+    return 14;
+}
+
+fn arp_build(p, off, src_mac, src_ip, target_ip): i64 {
+    store8(p + off,     0x00); store8(p + off + 1, 0x01);   # htype = ethernet
+    store8(p + off + 2, 0x08); store8(p + off + 3, 0x00);   # ptype = IPv4
+    store8(p + off + 4, 6);    store8(p + off + 5, 4);       # hlen=6 plen=4
+    store8(p + off + 6, 0x00); store8(p + off + 7, 0x01);   # oper  = request
+    var i: i64 = 0;
+    while (i < 6) { store8(p + off + 8 + i, load8(src_mac + i)); i = i + 1; }   # sha
+    store8(p + off + 14, (src_ip >> 24) & 0xFF);             # spa
+    store8(p + off + 15, (src_ip >> 16) & 0xFF);
+    store8(p + off + 16, (src_ip >> 8) & 0xFF);
+    store8(p + off + 17, src_ip & 0xFF);
+    i = 0;
+    while (i < 6) { store8(p + off + 18 + i, 0); i = i + 1; }                   # tha = 0
+    store8(p + off + 24, (target_ip >> 24) & 0xFF);          # tpa
+    store8(p + off + 25, (target_ip >> 16) & 0xFF);
+    store8(p + off + 26, (target_ip >> 8) & 0xFF);
+    store8(p + off + 27, target_ip & 0xFF);
+    return 28;
+}
+
+# === Iface attr readers — verbatim from arp_reply_len.cyr ===
+
+fn read_iface_attr(iface, suffix, suffix_len, out_buf, max_len): i64 {
+    var path[128];
+    var prefix = "/sys/class/net/";
+    var pi: i64 = 0;
+    var i: i64 = 0;
+    while (i < 15) { store8(&path + pi, load8(prefix + i)); pi = pi + 1; i = i + 1; }
+    i = 0;
+    while (load8(iface + i) != 0) {
+        store8(&path + pi, load8(iface + i));
+        pi = pi + 1; i = i + 1;
+    }
+    i = 0;
+    while (i < suffix_len) {
+        store8(&path + pi, load8(suffix + i));
+        pi = pi + 1; i = i + 1;
+    }
+    store8(&path + pi, 0);
+    var fd = syscall(2, &path, 0, 0);
+    if (fd < 0) { return 0 - 1; }
+    var n = syscall(0, fd, out_buf, max_len);
+    syscall(3, fd);
+    return n;
+}
+
+fn hex_nibble(c): i64 {
+    if (c >= 48) { if (c <= 57)  { return c - 48; } }
+    if (c >= 97) { if (c <= 102) { return c - 87; } }
+    if (c >= 65) { if (c <= 70)  { return c - 55; } }
+    return 0;
+}
+
+fn read_mac(iface, out_mac): i64 {
+    var content[32];
+    var n = read_iface_attr(iface, "/address", 8, &content, 32);
+    if (n < 17) { return 0 - 1; }
+    var ci: i64 = 0;
+    var mi: i64 = 0;
+    while (mi < 6) {
+        var hi = hex_nibble(load8(&content + ci));
+        var lo = hex_nibble(load8(&content + ci + 1));
+        store8(out_mac + mi, (hi << 4) | lo);
+        ci = ci + 3;
+        mi = mi + 1;
+    }
+    return 0;
+}
+
+fn read_ifindex(iface): i64 {
+    var content[16];
+    var n = read_iface_attr(iface, "/ifindex", 8, &content, 16);
+    if (n < 1) { return 0 - 1; }
+    var v: i64 = 0;
+    var i: i64 = 0;
+    while (i < n) {
+        var c = load8(&content + i);
+        if (c >= 48) { if (c <= 57) { v = v * 10 + (c - 48); } }
+        i = i + 1;
+    }
+    return v;
+}
+
+fn parse_ipv4(s): i64 {
+    var v: i64 = 0;
+    var octet: i64 = 0;
+    var i: i64 = 0;
+    while (load8(s + i) != 0) {
+        var c = load8(s + i);
+        if (c == 46) {                       # '.'
+            v = (v << 8) | (octet & 0xFF);
+            octet = 0;
+        } else {
+            if (c >= 48) { if (c <= 57) { octet = octet * 10 + (c - 48); } }
+        }
+        i = i + 1;
+    }
+    v = (v << 8) | (octet & 0xFF);
+    return v & 0xFFFFFFFF;
+}
+
+# === AF_PACKET constants ===
+
+var AF_PACKET = 17;
+var SOCK_RAW = 3;
+var ETH_P_ARP = 0x0806;
+var CLOCK_MONOTONIC = 1;
+
+fn make_sockaddr_ll(sa, ifindex, eth_proto_host, mac) {
+    var i: i64 = 0;
+    while (i < 20) { store8(sa + i, 0); i = i + 1; }
+    store8(sa + 0, AF_PACKET & 0xFF);
+    store8(sa + 1, (AF_PACKET >> 8) & 0xFF);
+    store8(sa + 2, (eth_proto_host >> 8) & 0xFF);
+    store8(sa + 3, eth_proto_host & 0xFF);
+    store8(sa + 4, ifindex & 0xFF);
+    store8(sa + 5, (ifindex >> 8) & 0xFF);
+    store8(sa + 6, (ifindex >> 16) & 0xFF);
+    store8(sa + 7, (ifindex >> 24) & 0xFF);
+    store8(sa + 11, 6);
+    if (mac != 0) {
+        i = 0;
+        while (i < 6) { store8(sa + 12 + i, load8(mac + i)); i = i + 1; }
+    }
+}
+
+fn set_recv_timeout(fd, secs) {
+    var tv[16];
+    var i: i64 = 0;
+    while (i < 16) { store8(&tv + i, 0); i = i + 1; }
+    store8(&tv + 0, secs & 0xFF);
+    syscall(54, fd, 1, 20, &tv, 16);   # SOL_SOCKET=1, SO_RCVTIMEO=20
+}
+
+fn mono_secs(): i64 {
+    var ts[16];
+    syscall(228, CLOCK_MONOTONIC, &ts);   # clock_gettime
+    return load64(&ts);                   # tv_sec
+}
+
+fn send_stir(fd, dst_sa, mac, src_ip, gateway_ip) {
+    var frame[64];
+    var bcast[8];
+    var i: i64 = 0;
+    while (i < 6) { store8(&bcast + i, 0xFF); i = i + 1; }
+    var off = eth_build(&frame, &bcast, mac, 0x0806);
+    arp_build(&frame, off, mac, src_ip, gateway_ip);
+    syscall(44, fd, &frame, off + 28, 0, dst_sa, 20);   # sendto, 42 bytes
+}
+
+fn main(): i64 {
+    args_init();
+    if (argc() < 2) {
+        prints("usage: arp-snoop-check <iface> [gateway_ip] [src_ip]\n");
+        prints("  Validates the RFC 826 ARP sender-snoop fix on Linux without\n");
+        prints("  touching the NIC binding (box stays reachable). Reports whether\n");
+        prints("  the gateway's IP->MAC mapping rides BROADCAST ARP -- i.e. whether\n");
+        prints("  AGNOS can learn it with zero unicast RX.\n");
+        prints("  default gateway=192.168.1.1 src=192.168.1.222\n");
+        return 1;
+    }
+    var iface = argv(1);
+    var gateway_ip = 0xC0A80101;          # 192.168.1.1   (AGNOS net_gateway)
+    var src_ip     = 0xC0A801DE;          # 192.168.1.222 (AGNOS net_ip)
+    if (argc() >= 3) { gateway_ip = parse_ipv4(argv(2)); }
+    if (argc() >= 4) { src_ip     = parse_ipv4(argv(3)); }
+
+    prints("arp-snoop-check: iface="); prints(iface); newline();
+
+    var mac[8];
+    if (read_mac(iface, &mac) != 0) { prints("ERROR: cannot read MAC\n"); return 2; }
+    prints("  src mac        = "); print_mac(&mac); newline();
+    prints("  src ip (stir)  = "); print_ip(src_ip); newline();
+    prints("  arp_pending_ip = "); print_ip(gateway_ip);
+    prints("   (simulated; = AGNOS net_gateway)\n");
+
+    var ifindex = read_ifindex(iface);
+    if (ifindex < 0) { prints("ERROR: cannot read ifindex\n"); return 3; }
+
+    var eth_p_arp_be = ((ETH_P_ARP & 0xFF) << 8) | ((ETH_P_ARP >> 8) & 0xFF);
+    var fd = syscall(41, AF_PACKET, SOCK_RAW, eth_p_arp_be);
+    if (fd < 0) {
+        prints("ERROR: socket(AF_PACKET, SOCK_RAW) failed errno=");
+        fmt_int(0 - fd); newline();
+        return 4;
+    }
+
+    var sa[20];
+    make_sockaddr_ll(&sa, ifindex, ETH_P_ARP, 0);
+    if (syscall(49, fd, &sa, 20) < 0) {
+        prints("ERROR: bind AF_PACKET failed\n");
+        syscall(3, fd); return 5;
+    }
+    set_recv_timeout(fd, 2);              # 2 s per-recv idle timeout
+
+    var dst_sa[20];
+    var bcast[8];
+    var bi: i64 = 0;
+    while (bi < 6) { store8(&bcast + bi, 0xFF); bi = bi + 1; }
+    make_sockaddr_ll(&dst_sa, ifindex, ETH_P_ARP, &bcast);
+
+    send_stir(fd, &dst_sa, &mac, src_ip, gateway_ip);
+    prints("\nstir: who-has "); print_ip(gateway_ip); prints(" sent; capturing ~15 s of ARP...\n\n");
+
+    # ---- Simulated net_handle_arp state ----
+    var arp_pending_ip = gateway_ip;      # what main.cyr sets before the wait
+    var arp_cache_mac[8];
+    var snoop_fired = 0;
+    var fired_was_bcast = 0;
+    var fired_oper = 0;
+
+    # ---- Tallies ----
+    var total_arp = 0;
+    var gw_bcast = 0;                     # .1 seen as sender in a BROADCAST frame
+    var gw_unicast = 0;                   # .1 seen as sender in a UNICAST frame
+
+    var rbuf[2048];
+    var src[24];
+    var srclen[4];
+
+    var t0 = mono_secs();
+    var next_stir = 3;
+    while (1) {
+        var elapsed = mono_secs() - t0;
+        if (elapsed >= 15) { break; }
+        if (elapsed >= next_stir) {
+            send_stir(fd, &dst_sa, &mac, src_ip, gateway_ip);
+            next_stir = next_stir + 3;
+        }
+        store32(&srclen, 20);
+        var n = syscall(45, fd, &rbuf, 2048, 0, &src, &srclen);
+        if (n < 0) { continue; }          # SO_RCVTIMEO fired -> re-check clock
+        if (n < 28) { continue; }
+
+        var et = (load8(&rbuf + 12) << 8) | load8(&rbuf + 13);
+        if (et != 0x0806) { continue; }
+        total_arp = total_arp + 1;
+
+        var oper = (load8(&rbuf + 20) << 8) | load8(&rbuf + 21);
+        var sip  = (load8(&rbuf + 28) << 24) | (load8(&rbuf + 29) << 16)
+                 | (load8(&rbuf + 30) << 8)  |  load8(&rbuf + 31);
+        var dst_is_bcast = 1;
+        var k: i64 = 0;
+        while (k < 6) { if (load8(&rbuf + k) != 0xFF) { dst_is_bcast = 0; } k = k + 1; }
+
+        # Skip frames WE sent (sender == our stir src_ip+mac) so we don't
+        # snoop our own traffic.
+        var own = 1;
+        var m: i64 = 0;
+        while (m < 6) { if (load8(&rbuf + 22 + m) != load8(&mac + m)) { own = 0; } m = m + 1; }
+        if (own == 1) { continue; }
+
+        # Tally gateway sightings by frame class.
+        if (sip == gateway_ip) {
+            if (dst_is_bcast == 1) { gw_bcast = gw_bcast + 1; }
+            else { gw_unicast = gw_unicast + 1; }
+        }
+
+        # --- EXACT new net_handle_arp snoop logic (net.cyr:551) ---
+        if (arp_pending_ip != 0) {
+            if (sip == arp_pending_ip) {
+                var c: i64 = 0;
+                while (c < 6) { store8(&arp_cache_mac + c, load8(&rbuf + 22 + c)); c = c + 1; }
+                arp_pending_ip = 0;       # cleared
+                if (snoop_fired == 0) {
+                    snoop_fired = 1;
+                    fired_was_bcast = dst_is_bcast;
+                    fired_oper = oper;
+                }
+            }
+        }
+
+        # Per-frame line (only frames mentioning the gateway, to keep it short).
+        if (sip == gateway_ip) {
+            if (oper == 2) { prints("  REPLY  "); } else { prints("  request"); }
+            prints(" sender="); print_ip(sip);
+            prints(" mac="); print_mac(&rbuf + 22);
+            if (dst_is_bcast == 1) { prints("  dst=BCAST"); } else { prints("  dst=unicast"); }
+            newline();
+        }
+    }
+
+    # ---- Verdict ----
+    prints("\n=== VERDICT =================================================\n");
+    prints("ARP frames examined: "); fmt_int(total_arp); newline();
+    prints("gateway "); print_ip(gateway_ip); prints(" seen as sender: ");
+    fmt_int(gw_bcast); prints(" broadcast, "); fmt_int(gw_unicast); prints(" unicast\n");
+
+    if (snoop_fired == 1) {
+        prints("snoop FIRED: arp_pending cleared, gateway MAC = ");
+        print_mac(&arp_cache_mac); newline();
+        prints("  fired from a "); if (fired_was_bcast == 1) { prints("BROADCAST"); } else { prints("unicast"); }
+        prints(" frame (oper="); fmt_int(fired_oper); prints(")\n");
+    } else {
+        prints("snoop did NOT fire (no gateway-sender ARP frame in window)\n");
+    }
+    newline();
+
+    if (gw_bcast > 0) {
+        prints("RESULT: CONFIRMED. The gateway's "); print_ip(gateway_ip);
+        prints("->MAC mapping rode\n");
+        prints("  a BROADCAST ARP frame -- a frame AGNOS already receives on iron\n");
+        prints("  (broadcast RX proven). The new snoop clears arp_pending from it\n");
+        prints("  with ZERO unicast RX. The OLD reply-only code would have ignored\n");
+        prints("  this broadcast frame and stayed stuck. Fix is load-bearing.\n");
+        syscall(3, fd);
+        return 0;
+    }
+
+    if (gw_unicast > 0) {
+        prints("RESULT: PARTIAL. The gateway mapping was seen ONLY via its UNICAST\n");
+        prints("  reply in this window (Linux delivers unicast, so the snoop fired\n");
+        prints("  here). On iron, where the unicast reply is the un-delivered class,\n");
+        prints("  the gateway must be made to BROADCAST its mapping -- widen the\n");
+        prints("  capture window, or have AGNOS emit a gratuitous ARP so the gateway\n");
+        prints("  re-broadcasts. The snoop CODE is correct; this is about wire timing.\n");
+        syscall(3, fd);
+        return 0;
+    }
+
+    prints("RESULT: INCONCLUSIVE. Gateway "); print_ip(gateway_ip);
+    prints(" never appeared as an ARP\n");
+    prints("  sender in the window. Re-run with a longer wait or confirm the\n");
+    prints("  gateway IP. Not an AGNOS bug.\n");
+    syscall(3, fd);
+    return 0;
+}
+
+var rc = main();
+syscall(60, rc);

@@ -298,3 +298,48 @@ result-*
 
 # Assembly output
 *.s
+
+# Private outreach / fundraising / partnership planning
+# Named-target docs stay out of the public GPL repo
+docs/private/
+
+# ═══════════════════════════════════════════════════════════════════════
+# 0.1.0 pre-merge — INTERNAL, not pushed to the public GPL repo.
+# Kept LOCAL + usable (you and the agent hit these every session); already-
+# committed ones need `git rm -r --cached <path>` to untrack. Manifest +
+# rationale: docs/development/planning/0-1-0-repo-cleanup.md.
+# ═══════════════════════════════════════════════════════════════════════
+# Agent scaffolding (the full 85-file memory tree lives in ~/.claude — never here)
+/CLAUDE.md
+/.claude/
+# Dev tracking + iron bring-up (state, roadmap, iron logs, planning, retro, vision, issues, prior-art …)
+/docs/development/
+/docs/doc-health.md
+/iron-nuc-zen-photos/
+# mirshi-fanout = the LIVE container path: agnos userland run NATIVELY on the
+# host kernel via mirshi (the AGNOS↔Linux syscall shim / Linux-swallow +
+# cloud-deploy bridge) — NO VM. Internal for now; may graduate to a shippable
+# container image. NOT a sweep. See docs/development/planning/mirshi.md.
+/docker/mirshi-fanout/
+# Iron-specific (archaemenid) scripts
+/scripts/iron-jbd2-prep.sh
+/scripts/iron-jbd2-validate.sh
+# Dev database (generated runtime state)
+/ifran.db
+# Articles, creative, and theoretical narrative — private for now; bring back
+# grounded post-0.1.0 (thesis = consciousness/cosmic framework; design-patterns
+# = WIP accretion outline).
+/docs/articles/
+/docs/creative/
+/docs/thesis.md
+/docs/design-patterns.md
+# Local iron artifacts — kept on the dev box, not repo content. vbios.rom is archaemenid's ATOM VBIOS image
+# (dumped from /sys/kernel/debug/dri/*/amdgpu_vbios); the ATOM-interpreter/A-series docs reference it AT THIS
+# PATH, so it stays here rather than moving — it just isn't committed (55 KB vendor blob, re-dumpable on the
+# box). shift.cyr is a scratch Cyrius snippet. Root klug/burn .txt dumps are disposable and swept
+# periodically; keeper captures get promoted to docs/development/prior-art/ (see its README).
+/vbios.rom
+/shift.cyr
+# ROOT-ONLY (leading slash): klug dumps land here from `run /bin/klug > foo.txt`. Must NOT be a bare
+# `*.txt` — that matches recursively and would shadow docs/development/prior-art/*.txt, the promoted keepers.
+/*.txt

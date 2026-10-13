@@ -1,0 +1,408 @@
+# read-boot-log — sovereign CMOS boot-log reader (Cyrius, direct port I/O).
+#
+# /dev/nvram is dead on archaemenid (the Linux nvram driver rejects the BIOS
+# checksum layout with -EIO), so we iopl(3) + read the RTC/CMOS index/data
+# pair (0x70 = index, 0x71 = data) ourselves.
+#
+# Two CMOS banks (port-pair routing):
+#   slots < 0x80  → low bank, ports 0x70/0x71  (bit 7 of 0x70 = NMI mask)
+#   slots >= 0x80 → extended bank, ports 0x72/0x73 (7-bit offset, real = +0x80)
+# The extended bank read back NOISE at the 1409 burn (0x86 sentinel was 0x5A,
+# not the 0xCC it should be), so DO NOT trust slots >= 0x80 on this box.
+#
+# LIVE signal slots (everything else is BIOS noise / retired arcs — gone):
+#   0x50  kernel checkpoint (highest boot stage reached; last-write-wins)
+#   0x51  kernel magic 0xAB (set at boot_shim entry)
+#   0x52  gnoboot checkpoint
+#   0x53  gnoboot magic 0xCD (set at efi_main entry)
+#   0x54  CPU-exception fault vector   (idt.cyr exc_handlers_init, 1.40.9)
+#   0x55  fault-handler magic 0xE5     (= a real exception was caught this boot)
+#   0x5C..0x5F  on a #PF-halt boot ONLY: CR2 bits 23:0 + error code.
+#   0x63..0x66  on a #PF-halt boot ONLY: faulting RIP bits 31:0 (follow-on #3).
+#   0x60..0x62  on a #PF-halt boot ONLY: CR2 bits 47:24 (full 48-bit address;
+#               1.40.9 follow-on #2). On any other boot 0x5C-0x62 are stale
+#               r8169/xhci leftovers — ignore them unless 0x55=0xE5 + 0x54=0x0E.
+#   0x67..0x6F  on a #GP-halt boot ONLY (1.46.x SMP sub-bite 7): error code
+#               (selector) bits 15:0 (0x67/0x68) + faulting RIP bits 47:0
+#               (0x69-0x6C,0x6E,0x6F) + fault CS bits 7:0 (0x6D). Localizes the IF=1
+#               first-preempt agnsh #GP. Ignore unless 0x55=0xE5 + 0x54=0x0D.
+#   0x70..0x7E  on a #GP-halt boot ONLY (1.46.x SMP sub-bite 8): the LOADED iretq
+#               frame the #GP fired on — LOADED SS 0x70, *LOADED CS 0x71* (THE
+#               discriminator: 0x23 consistent / 0x08 torn), LOADED RFLAGS 0x72/0x73,
+#               LOADED RSP 0x74/0x75, iretq frame ptr 0x76/0x77, CR3-at-fault 0x78/0x79,
+#               kernel RFLAGS-at-fault 0x7A; do_context_switch heartbeat old/new/ctr/magic
+#               0x7B-0x7E (magic 0x5C); GDT[3] access byte via live GDTR 0x7F (expect 0xF2).
+#               Virgin low-bank scratch; #GP stub is the sole writer.
+#   0xA0..0xA4  jbd2 iron-burn telemetry (probe / replay / commit counters)
+#
+# History (xhci/r8169/dhcp/MTRR decode chapters) was stripped 2026-05-31 — those
+# arcs are closed; their slots are no longer written. `git log` has the old text.
+
+include "lib/string.cyr"
+include "lib/fmt.cyr"
+include "lib/args.cyr"
+
+fn cmos_read_lo(cmos_off: i64): i64 {
+    var val = 0;
+    asm {
+        0x8A; 0x45; 0xF8;     # mov al, byte [rbp-0x08]   (low byte of cmos_off → AL)
+        0xE6; 0x70;           # out 0x70, al              (select CMOS register)
+        0xE4; 0x71;           # in  al, 0x71              (read CMOS data byte)
+        0x0F; 0xB6; 0xC0;     # movzx eax, al             (zero-extend, clears upper RAX)
+        0x48; 0x89; 0x45; 0xF0;  # mov [rbp-0x10], rax    (store to local `val`)
+    }
+    return val;
+}
+
+fn cmos_read(cmos_off: i64): i64 {
+    # Only the low bank is trustworthy on archaemenid (see header note).
+    return cmos_read_lo(cmos_off);
+}
+
+fn print_cmos_line(label, b) {
+    syscall(1, 1, label, strlen(label));
+    syscall(1, 1, "0x", 2);
+    fmt_byte(b);
+    syscall(1, 1, "  (decimal ", 11);
+    print_num(b);
+    syscall(1, 1, ")\n", 2);
+    return 0;
+}
+
+fn print_str(s): i64 {
+    syscall(1, 1, s, strlen(s));
+    return 0;
+}
+
+fn print_hexb(b: i64): i64 {
+    syscall(1, 1, "0x", 2);
+    fmt_byte(b);
+    return 0;
+}
+
+# Raw CMOS hex grid (0x0E-0x7F). Used to spot which slots the BIOS leaves
+# untouched on a given board. RTC bytes 0x00-0x0D skipped (garbage mid-update).
+fn cmos_dump() {
+    println("CMOS dump (0x0E-0x7F, RTC region 0x00-0x0D skipped):");
+    println("");
+    println("       +0 +1 +2 +3  +4 +5 +6 +7  +8 +9 +A +B  +C +D +E +F");
+    var row = 0;
+    while (row < 8) {
+        var base = row * 16;
+        syscall(1, 1, "  0x", 4);
+        fmt_byte(base);
+        syscall(1, 1, "  ", 2);
+        var col = 0;
+        while (col < 16) {
+            var off = base + col;
+            if (off < 14) {
+                syscall(1, 1, "-- ", 3);
+            } else {
+                var b = cmos_read(off);
+                fmt_byte(b);
+                syscall(1, 1, " ", 1);
+            }
+            col = col + 1;
+            if (col == 4)  { syscall(1, 1, " ", 1); }
+            if (col == 8)  { syscall(1, 1, " ", 1); }
+            if (col == 12) { syscall(1, 1, " ", 1); }
+        }
+        syscall(1, 1, "\n", 1);
+        row = row + 1;
+    }
+    return 0;
+}
+
+# Decode the #PF error code (low byte) bit-by-bit.
+fn print_pf_errcode(e: i64): i64 {
+    print_str("    err 0x"); fmt_byte(e); print_str(" =");
+    if ((e & 1) == 0) { print_str(" not-present"); } else { print_str(" protection"); }
+    if ((e & 2) == 0) { print_str(" / read"); }      else { print_str(" / write"); }
+    if ((e & 4) == 0) { print_str(" / SUPERVISOR(CPL0)"); } else { print_str(" / user(CPL3)"); }
+    if ((e & 16) != 0) { print_str(" / instr-fetch"); } else { print_str(" / data"); }
+    println("");
+    return 0;
+}
+
+fn main(): i64 {
+    args_init();
+    var dump_mode = 0;
+    var i = 1;
+    while (i < argc()) {
+        var arg = argv(i);
+        if (streq(arg, "--dump") == 1) { dump_mode = 1; }
+        elif (streq(arg, "--verbose") == 1) { dump_mode = 0; }   # accepted, no-op (always full now)
+        elif (streq(arg, "-h") == 1 || streq(arg, "--help") == 1) {
+            println("Usage: read-boot-log [--dump]");
+            println("  default   decoded boot-log summary (gnoboot/kernel checkpoints + fault)");
+            println("  --dump    raw CMOS 0x0E-0x7F hex grid");
+            return 0;
+        }
+        else {
+            print_str("error: unknown argument '"); print_str(arg); println("'");
+            println("Usage: read-boot-log [--dump]");
+            return 1;
+        }
+        i = i + 1;
+    }
+
+    var rc = syscall(172, 3);   # iopl(3) — needs root / CAP_SYS_RAWIO
+    if (rc != 0) {
+        println("error: iopl(3) failed — run with sudo (need CAP_SYS_RAWIO).");
+        return 1;
+    }
+
+    if (dump_mode == 1) { return cmos_dump(); }
+
+    var gmagic = cmos_read(83);  # 0x53
+    var gcp    = cmos_read(82);  # 0x52
+    var kmagic = cmos_read(81);  # 0x51
+    var kcp    = cmos_read(80);  # 0x50
+    var fvec   = cmos_read(84);  # 0x54  exception fault vector
+    var fmag   = cmos_read(85);  # 0x55  fault-handler magic (0xE5 = caught)
+
+    println("--- boot-log (live slots) ---");
+    print_cmos_line("CMOS[0x53] gnoboot magic    = ", gmagic);
+    print_cmos_line("CMOS[0x52] gnoboot checkpt  = ", gcp);
+    print_cmos_line("CMOS[0x51] kernel  magic    = ", kmagic);
+    print_cmos_line("CMOS[0x50] kernel  checkpt  = ", kcp);
+    print_cmos_line("CMOS[0x54] fault vector     = ", fvec);
+    print_cmos_line("CMOS[0x55] fault magic      = ", fmag);
+
+    # --- exception decode (the live diagnostic, checked FIRST) ---
+    # A caught CPU exception (CMOS[0x55]=0xE5) is the most specific signal in the
+    # bank — decode it BEFORE the gnoboot/kernel-reach heuristics below. Those
+    # heuristics short-circuit on a stale/mismatched gnoboot magic (0x53 read back
+    # 0x02 on the 1.40.9 fourth boot, not the expected 0xCD) and were suppressing
+    # the whole CR2 dump even with a #PF plainly stamped.
+    println("");
+    # 1.46.x SMP sub-bite 7 (2026-06-25): torn-(CS,SS)-selector diagnostic (agnos sched.cyr
+    # sched_fix_torn_selector). Magic 0x7C at 0x59 = the scheduler restored a proc whose
+    # proc_cs/proc_ss were NOT a consistent privilege pair (the 1.46.1 iron timer-ISR-iretq #GP
+    # root cause), normalized it from the RIP privilege, and stamped which proc + the torn values.
+    # Decoded INDEPENDENT of the fault block: if the repair let the box boot-to-shell there is NO
+    # #GP (fmag != 0xE5) yet this still names the offending slot; if a fault still halted, both print.
+    var tmag = cmos_read(89);   # 0x59  torn-selector magic (written LAST by the stamper)
+    if (tmag == 124) {          # 0x7C
+        var tpid = cmos_read(86);   # 0x56  pid being restored
+        var tcs  = cmos_read(87);   # 0x57  torn CS (low byte)
+        var tss  = cmos_read(88);   # 0x58  torn SS (low byte)
+        var tr2  = cmos_read(90);   # 0x5A  restored-proc RIP bits 23:16
+        var tr0  = cmos_read(91);   # 0x5B  restored-proc RIP bits  7:0
+        println("TORN-SELECTOR (1.46.x sub-bite 7): scheduler caught + repaired a desynced (CS,SS) pair.");
+        print_str("    proc pid = "); print_num(tpid);
+        println("   (0=kmain  1=BSP-idle  2-4=AP-idle  5+=agnsh/child)");
+        print_str("    torn CS = 0x"); fmt_byte(tcs);
+        print_str("   torn SS = 0x"); fmt_byte(tss);
+        println("   (a consistent pair is 0x08/0x10 kernel or 0x23/0x1b ring-3)");
+        print_str("    restored-RIP byte[23:16] = 0x"); fmt_byte(tr2);
+        print_str("   byte[7:0] = 0x"); fmt_byte(tr0); println("");
+        println("       (byte[23:16] 0x40+ => ring-3 agnsh code; 0x10-0x19 => kernel .text)");
+        println("    -> CONFIRMS the iretq #GP root cause = torn proc_cs/proc_ss; this pid is the corrupted slot.");
+        println("");
+    }
+    # 1.46.x sub-bite 7 follow-on (2026-06-25): LIVE-FRAME guard (agnos sched.cyr sched_fix_live_frame).
+    # Magic 0x3C at 0x65 = the scheduler caught + repaired a torn (CS,SS) in the ACTUAL iretq frame —
+    # the array-guard's structural blind spot (it checks proc_cs[]/proc_ss[], the iretq consumes the
+    # live stack frame). Decoded INDEPENDENT of the fault block: if the repair let the box boot-to-shell
+    # there is NO #GP (fmag != 0xE5) yet this still confirms the torn frame; if a #GP still halted, both
+    # print. Slots 0x63-0x65 alias the #PF RIP capture, so gate on fvec != 14 (no #PF this boot) AND
+    # selector-sanity (CS in {0x08,0x23}, SS in {0x10,0x1B}) to reject stale CMOS / a #PF-RIP collision.
+    var lmag = cmos_read(101);   # 0x65  live-frame magic (written LAST)
+    var lcs  = cmos_read(99);    # 0x63  live-frame CS (low byte)
+    var lss  = cmos_read(100);   # 0x64  live-frame SS (low byte)
+    var lcs_ok = 0; if (lcs == 8 || lcs == 35) { lcs_ok = 1; }       # 0x08 kernel / 0x23 user CS
+    var lss_ok = 0; if (lss == 16 || lss == 27) { lss_ok = 1; }      # 0x10 kernel / 0x1B user SS
+    if (lmag == 60 && fvec != 14 && lcs_ok == 1 && lss_ok == 1) {    # 0x3C, not a #PF boot, valid selectors
+        println("LIVE-FRAME TORN (1.46.x sub-bite 7 follow-on): scheduler caught + repaired the ACTUAL iretq frame.");
+        print_str("    live-frame CS = 0x"); fmt_byte(lcs);
+        print_str("   live-frame SS = 0x"); fmt_byte(lss); println("");
+        println("    (torn pair = kernel CS 0x08 + user SS 0x1B; repaired to a consistent pair before the iretq)");
+        println("    -> CONFIRMS the #GP root cause = a torn LIVE frame, NOT the proc_cs/proc_ss arrays.");
+        println("    -> if this burn ALSO booted to shell, the repair WORKED => root cause (a) cross-CR3 frame tear.");
+        println("");
+    }
+    if (fmag == 229) {     # 0xE5 — a real exception was caught + halted this boot
+        print_str("FAULT: an armed CPU exception fired this boot — vector ");
+        print_num(fvec); println("");
+        if (fvec == 13) {
+            println("  #GP — selector/descriptor fault (iretq/sysret) OR a general-protection violation.");
+            # 1.46.x SMP sub-bite 7: errcode(selector) 0x67/0x68 + faulting RIP 0x69-0x6C + CS 0x6D.
+            var ge0 = cmos_read(103);  # 0x67  errcode bits  7:0
+            var ge1 = cmos_read(104);  # 0x68  errcode bits 15:8
+            var gr0 = cmos_read(105);  # 0x69  RIP bits  7:0
+            var gr1 = cmos_read(106);  # 0x6A  RIP bits 15:8
+            var gr2 = cmos_read(107);  # 0x6B  RIP bits 23:16
+            var gr3 = cmos_read(108);  # 0x6C  RIP bits 31:24
+            var gr4 = cmos_read(110);  # 0x6E  RIP bits 39:32
+            var gr5 = cmos_read(111);  # 0x6F  RIP bits 47:40
+            var gcs = cmos_read(109);  # 0x6D  CS bits 7:0
+            var ge = ge0 | (ge1 << 8);
+            print_str("    error code = 0x"); fmt_byte(ge1); fmt_byte(ge0); println("");
+            if (ge == 0) {
+                println("      = 0 -> NOT a selector fault (non-canonical addr / reserved bit / SMAP / WP / etc.)");
+            } else {
+                # errcode holds the selector INDEX in bits 15:3 (RPL dropped); bit0 EXT, bit1 IDT, bit2 TI.
+                var idx = ge >> 3;
+                print_str("      selector index = "); print_num(idx);
+                if ((ge & 2) != 0) { print_str("  (in IDT)"); } elif ((ge & 4) != 0) { print_str("  (in LDT)"); } else { print_str("  (in GDT)"); }
+                if ((ge & 1) != 0) { print_str("  EXT"); }
+                println("");
+                if (idx == 1) { println("      -> GDT[1] kernel CS (0x08)."); }
+                elif (idx == 2) { println("      -> GDT[2] kernel DS (0x10)."); }
+                elif (idx == 3) { println("      -> GDT[3] user DS / user SS 0x1b  (also the 1.46.1 AP-trampoline CS=0x18 class)."); }
+                elif (idx == 4) { println("      -> GDT[4] user CS 0x23."); }
+                elif (idx == 5) { println("      -> GDT[5] BSP TSS (0x28)."); }
+                elif (idx == 7) { println("      -> GDT[7] CPU1 TSS (0x38)."); }
+                elif (idx == 9) { println("      -> GDT[9] CPU2 TSS (0x48)."); }
+                elif (idx == 11) { println("      -> GDT[11] CPU3 TSS (0x58)."); }
+                else { println("      -> cross-read against the GDT layout (gdt.cyr)."); }
+            }
+            if (gr0 != 0 || gr1 != 0 || gr2 != 0 || gr3 != 0 || gr4 != 0 || gr5 != 0) {
+                print_str("    faulting RIP = 0x");
+                fmt_byte(gr5); fmt_byte(gr4); fmt_byte(gr3); fmt_byte(gr2); fmt_byte(gr1); fmt_byte(gr0);
+                println("");
+                if (gr4 != 0 || gr5 != 0) {
+                    println("      -> >= 4 GB / high-half: CORRUPTED or non-canonical RIP (NOT kernel<16MB nor agnsh~0x400000)");
+                } else {
+                    println("      -> map via the kernel map / nm (kernel <16MB; agnsh code ~0x400000)");
+                }
+            }
+            print_str("    fault CS = 0x"); fmt_byte(gcs);
+            if (gcs == 8) { println("  -> fault at a KERNEL instruction (CS=0x08; e.g. the timer-ISR iretq returning to ring 3)."); }
+            elif (gcs == 35) { println("  -> fault INSIDE ring-3 agnsh (CS=0x23)."); }
+            else { println("  (cross-read against the GDT)."); }
+            # 1.46.x sub-bite 8 (2026-06-26): the LOADED iretq frame the #GP fired on + CR3-at-fault +
+            # the do_context_switch heartbeat. Slots 0x70-0x7E are virgin low-bank scratch the #GP stub
+            # is the ONLY writer of, so no last-writer gate is needed beyond the 0x55=0xE5/0x54=0x0D
+            # already checked above. The existing 0x6D (fault CS) is the kernel ISR that CONTAINS the
+            # iretq; THESE bytes are the frame that iretq was actually consuming.
+            var lss  = cmos_read(112);  # 0x70  LOADED SS  (expect 0x1B)
+            var lcs2 = cmos_read(113);  # 0x71  LOADED CS  *** the discriminator ***
+            var lf0  = cmos_read(114);  # 0x72  LOADED RFLAGS bits  7:0
+            var lf1  = cmos_read(115);  # 0x73  LOADED RFLAGS bits 15:8
+            var lr3  = cmos_read(117);  # 0x75  LOADED target RSP bits 31:24
+            var fp0  = cmos_read(118);  # 0x76  iretq frame ptr bits  7:0
+            var fp2  = cmos_read(119);  # 0x77  iretq frame ptr bits 23:16
+            var cr3a = cmos_read(120);  # 0x78  CR3 bits 19:12
+            var cr3b = cmos_read(121);  # 0x79  CR3 bits 27:20
+            var krf  = cmos_read(122);  # 0x7A  kernel RFLAGS-at-fault bits 15:8
+            println("    -- LOADED iretq frame (the frame the faulting iretq was consuming) --");
+            print_str("    LOADED CS = 0x"); fmt_byte(lcs2);
+            if (lcs2 == 35) { println("  *** 0x23 => CONSISTENT frame: a GENUINE SS-load rejection of valid SS=0x1B (NOT a tear)."); }
+            elif (lcs2 == 8) { println("  *** 0x08 => TORN frame (kernel CS + user SS): revives the frame-tear hypothesis."); }
+            else { println("  (unexpected loaded CS — cross-read against the GDT)."); }
+            print_str("    LOADED SS = 0x"); fmt_byte(lss);
+            if (lss == 27) { println("   (0x1B user SS — the value the iretq was loading, as expected)."); }
+            else { println("   (NOT 0x1B — the frame SS itself is corrupt)."); }
+            print_str("    LOADED RFLAGS = 0x"); fmt_byte(lf1); fmt_byte(lf0);
+            if ((lf0 & 2) != 0) { print_str("   (bit1 reserved=1 OK"); } else { print_str("   (bit1=0 => GARBAGE RFLAGS"); }
+            if ((lf1 & 2) != 0) { println(" / IF=1)"); } else { println(" / IF=0)"); }
+            print_str("    LOADED target RSP byte[31:24] = 0x"); fmt_byte(lr3);
+            if (lr3 == 0) { println("   (0x00 => GARBAGE user RSP)."); } else { println("   (nonzero => plausible agnsh user stack)."); }
+            print_str("    iretq frame ptr byte[23:16] = 0x"); fmt_byte(fp2); print_str("  byte[7:0] = 0x"); fmt_byte(fp0);
+            println("   (byte[23:16] ~0x0E-0x0F => ran off the region-7 per-proc kstack)");
+            print_str("    CR3 at fault bits[27:12] = 0x"); fmt_byte(cr3b); fmt_byte(cr3a);
+            if (cr3a == 1 && cr3b == 0) { println("   (0x0001 => boot CR3 0x1000 — NOT a per-proc pml4!)"); }
+            else { println("   (nonzero => resumed under a per-proc pml4, as expected)."); }
+            print_str("    kernel RFLAGS-at-fault bits[15:8] = 0x"); fmt_byte(krf);
+            if ((krf & 2) != 0) { println("   (IF=1 in kernel context at the fault)."); } else { println("   (IF=0 at the fault)."); }
+            var hbm = cmos_read(126);  # 0x7E  heartbeat magic (written LAST by the relay)
+            if (hbm == 92) {           # 0x5C
+                var hbold = cmos_read(123);  # 0x7B  old_pid
+                var hbnew = cmos_read(124);  # 0x7C  new_pid
+                var hbctr = cmos_read(125);  # 0x7D  switch counter (low 8)
+                println("    -- do_context_switch HEARTBEAT (last real switch before the fault) --");
+                print_str("    old pid = "); print_num(hbold); print_str("  ->  new pid = "); print_num(hbnew);
+                println("   (old=1 BSP-idle, new=5+ agnsh => the IF=1 idle->agnsh resume IS the faulting transition)");
+                print_str("    switch count = "); print_num(hbctr);
+                println("   (1-2 => FIRST preempt => confirms the IF=1-first-resume thesis)");
+            }
+            # 1.46.x sub-bite 8: GDT[3] descriptor state, read THROUGH the live GDTR (sgdt) at fault.
+            # H1 (CR3 asymmetry) is dead — KPTI collapsed, proc_get_user_cr3==proc_get_cr3 — so this
+            # slot decides H2 (GDT corruption) vs a genuine silicon rejection of a valid SS=0x1B.
+            var g3a = cmos_read(127);  # 0x7F  GDT[3] access byte (expect 0xF2)
+            print_str("    GDT[3] access byte (via live GDTR) = 0x"); fmt_byte(g3a);
+            if (g3a == 242) { println("   (0xF2 INTACT: P=1,DPL=3,data,writable => GDT[3] valid; with LOADED CS=0x23 = GENUINE silicon SS-load rejection, H2 dead)."); }
+            else { println("   (NOT 0xF2 => GDT[3] corrupted OR GDTR relocated = H2: the loaded SS=0x1B descriptor the CPU reads is malformed)."); }
+            return 0;
+        }
+        elif (fvec == 14) {
+            println("  #PF — page fault. Full 48-bit faulting address + cause:");
+            var b0 = cmos_read(94);  # 0x5E  CR2 bits  7:0
+            var b1 = cmos_read(93);  # 0x5D  CR2 bits 15:8
+            var b2 = cmos_read(92);  # 0x5C  CR2 bits 23:16
+            var b3 = cmos_read(96);  # 0x60  CR2 bits 31:24  (1.40.9 follow-on #2)
+            var b4 = cmos_read(97);  # 0x61  CR2 bits 39:32
+            var b5 = cmos_read(98);  # 0x62  CR2 bits 47:40
+            var ec = cmos_read(95);  # 0x5F  #PF error code (low byte)
+            print_str("    CR2 = 0x");
+            fmt_byte(b5); fmt_byte(b4); fmt_byte(b3); fmt_byte(b2); fmt_byte(b1); fmt_byte(b0);
+            println("");
+            print_pf_errcode(ec);
+            # 1.40.9 follow-on #3: faulting RIP low 32 bits (slots 0x63-0x66).
+            # Kernel code is <16 MB so this fully localizes the instruction that
+            # dereferenced the wild pointer. 0 = pre-#3 build (no RIP capture).
+            var r0 = cmos_read(99);   # 0x63  RIP bits  7:0
+            var r1 = cmos_read(100);  # 0x64  RIP bits 15:8
+            var r2 = cmos_read(101);  # 0x65  RIP bits 23:16
+            var r3 = cmos_read(102);  # 0x66  RIP bits 31:24
+            if (r0 != 0 || r1 != 0 || r2 != 0 || r3 != 0) {
+                print_str("    faulting RIP (low 32) = 0x");
+                fmt_byte(r3); fmt_byte(r2); fmt_byte(r1); fmt_byte(r0);
+                println("  -> map to .cyr via the kernel map / nm");
+            }
+            # Classify off the HIGH bytes (b3..b5). The per-process CR3 maps only
+            # 0-4 GB, so anything with a bit set above 31 = outside that window.
+            if (b5 != 0 || b4 != 0) {
+                println("    -> >= 4 GB: OUTSIDE the per-process CR3's 0-4 GB window —");
+                println("       a wild/garbage pointer or an unmapped high mapping.");
+                println("       THIS is the value the old low-24 capture truncated to 0x6190.");
+            }
+            elif (b3 != 0) {
+                print_str("    -> 0x"); fmt_byte(b3);
+                println("xxxxxx (1-4 GB): MMIO/BAR region or high RAM (mapped via PDPT[1..3]).");
+            }
+            elif (b2 < 0x10) {
+                println("    -> LOW (< 16 MB): kernel structure / trampoline / page-table");
+                println("       region, NOT a user-space VA (kernel-side bug).");
+            }
+            elif (b2 == 0x40) { println("    -> ~0x4xxxxx: user code-segment region."); }
+            elif (b2 >= 0x80) { println("    -> >= 0x800000: user stack region."); }
+            else { println("    -> low/mid range — cross-read against the kernel map."); }
+        }
+        elif (fvec == 6) { println("  #UD — bad opcode (e.g. SYSCALL with EFER.SCE clear)."); }
+        elif (fvec == 8) { println("  #DF — double fault (fault during fault delivery; check TSS RSP0)."); }
+        else { println("  (other vector — see Intel SDM Vol 3 Table 6-1)."); }
+        return 0;
+    }
+
+    # --- gnoboot / kernel reach (fallback: only when NO exception was caught) ---
+    if (gmagic != 205) {   # 0xCD
+        println("verdict: gnoboot never ran (CMOS[0x53] != 0xCD) — firmware rejected");
+        println("  BOOTX64.EFI or boot order skipped the AGNOS USB. Check BIOS menu.");
+        return 0;
+    }
+    if (kmagic != 171) {   # 0xAB
+        println("verdict: gnoboot ran but the kernel never reached boot_shim entry");
+        println("  (CMOS[0x51] != 0xAB). Handoff or early long-mode setup faulted.");
+        return 0;
+    }
+
+    # --- jbd2 telemetry (only meaningful past mount) ---
+    var j0 = cmos_read(160);  # 0xA0 probe outcome
+    if (j0 == 1 || j0 == 2) {
+        print_cmos_line("CMOS[0xA0] jbd2 probe     = ", j0);
+        print_cmos_line("CMOS[0xA4] jbd2 commits   = ", cmos_read(164));
+    }
+
+    # --- no exception caught: report how far the kernel got ---
+    println("");
+    print_str("verdict: no armed exception caught (CMOS[0x55] != 0xE5). Kernel reached ");
+    print_str("checkpoint 0x"); fmt_byte(kcp);
+    println(" — cross-read the on-screen kprint log for the stall point.");
+    return 0;
+}
+
+var exit_code = main();
+syscall(60, exit_code);

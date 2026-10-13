@@ -2,12 +2,12 @@
 
 > **Sangha** (Sanskrit: सङ्घ — community, assembly) — Sociology and social dynamics
 
-| Field | Value |
-|-------|-------|
-| Status | Planned |
-| Version | `0.1.0` |
-| Repository | `MacCracken/sangha` |
-| Runtime | library crate (Rust) |
+- **Repository**: [github.com/MacCracken/sangha](https://github.com/MacCracken/sangha)
+- **License**: GPL-3.0-only
+- **Status**: Stable - See Repo
+- **Language**: Rust
+
+See the [libs registry](README.md) for the full catalog and dependency context.
 
 ---
 

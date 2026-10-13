@@ -1,0 +1,543 @@
+# tcp_syn_probe — disambiguate AGNOS's "L3+TCP FAIL -- SYN sent but no SYN+ACK"
+# on Linux (AF_PACKET), WITHOUT an iron burn and WITHOUT touching the NIC binding.
+#
+# WHY THIS EXISTS
+# --------------
+# 1.32.6 bite-4 (ARP RFC-826 snoop) reached the gateway on iron:
+#     arp: REPLY gw_mac=d4:6a:91:ce:70:60  ->  net: L2 OK -- gateway MAC cached
+# The boot then ran the outbound TCP test and printed:
+#     tcp: connect 1.1.1.1:80  ->  net: L3+TCP FAIL -- SYN sent but no SYN+ACK
+#
+# The SYN+ACK from 1.1.1.1 is a UNICAST frame to AGNOS's MAC -- the one RX class
+# never proven on iron (the parked APM/unicast-RX gap). But "no SYN+ACK" has THREE
+# candidate causes, and this probe separates them WITHOUT a burn:
+#   (1) AGNOS r8169 drops the unicast SYN+ACK (APM-class RX gap).      [prime suspect]
+#   (2) the gateway source-guards the static .222 (no DHCP lease).      [weak: user runs
+#                                                                        static .244 etc.]
+#   (3) AGNOS's SYN is malformed (bad IP/TCP checksum) -> dropped       [unexamined]
+#       upstream, so no SYN+ACK is ever generated.
+#
+# This probe sends a BYTE-FAITHFUL copy of AGNOS's SYN -- the ip_build /
+# ip_checksum / tcp_build_header / tcp_checksum_compute below are ported verbatim
+# from agnos/kernel/core/net.cyr -- out the real wire via Linux's own r8169
+# (AF_PACKET, no VFIO, box stays reachable), and watches for the SYN+ACK on the
+# wire. It self-resolves the gateway MAC (who-has .1) and answers who-has .222 so
+# the gateway can deliver the reply back to us.
+#
+# VERDICT the probe answers:
+#   SYN+ACK seen  -> gateway forwards our SYN, NATs it, 1.1.1.1 replies, the reply
+#                    returns to our wire == causes (2)+(3) RULED OUT. The byte-exact
+#                    AGNOS SYN is well-formed and the path works end-to-end. The
+#                    ONLY thing left that differs on iron is unicast-class RX
+#                    delivery == cause (1), AGNOS r8169, is the blocker.
+#   RST seen      -> path also works (we elicited a response); same conclusion as
+#                    SYN+ACK for our purposes (Linux may RST .222 if .222 is also a
+#                    kernel IP; harmless -- the response proves the round-trip).
+#   nothing       -> a byte-faithful AGNOS SYN got no response. Since construction
+#                    is AGNOS-exact, this points at (2) gateway source-guard / path,
+#                    NOT AGNOS RX. Reported honestly; next step is a DHCP-leased src.
+#
+# Same isolate-on-Linux-first discipline as arp_snoop_check.cyr / arp_reply_len.cyr.
+#
+# Usage: sudo ./tcp-syn-probe <iface> [dst_ip] [src_ip] [gateway_ip] [dst_port]
+#   defaults: dst_ip=1.1.1.1  src_ip=192.168.1.222  gateway_ip=192.168.1.1  dst_port=80
+# Requires CAP_NET_RAW (or root) for AF_PACKET SOCK_RAW.
+
+include "lib/string.cyr"
+include "lib/alloc.cyr"
+include "lib/fmt.cyr"
+include "lib/syscalls.cyr"
+include "lib/args.cyr"
+
+# === Print helpers ===
+
+fn prints(s) { syscall(1, 1, s, strlen(s)); }
+fn putc(c) { var b[1]; store8(&b, c); syscall(1, 1, &b, 1); }
+fn newline() { syscall(1, 1, "\n", 1); }
+
+fn print_ip(ip) {
+    fmt_int((ip >> 24) & 0xFF); putc(46);
+    fmt_int((ip >> 16) & 0xFF); putc(46);
+    fmt_int((ip >> 8) & 0xFF);  putc(46);
+    fmt_int(ip & 0xFF);
+}
+
+fn print_mac(mac) {
+    fmt_byte(load8(mac));
+    var i: i64 = 1;
+    while (i < 6) { putc(58); fmt_byte(load8(mac + i)); i = i + 1; }
+}
+
+# === Ethernet / ARP frame builders (byte-loop form, == arp_snoop_check.cyr) ===
+
+fn eth_build(pkt, dst_mac, src_mac, ethertype): i64 {
+    var i: i64 = 0;
+    while (i < 6) { store8(pkt + i, load8(dst_mac + i)); i = i + 1; }
+    i = 0;
+    while (i < 6) { store8(pkt + 6 + i, load8(src_mac + i)); i = i + 1; }
+    store8(pkt + 12, (ethertype >> 8) & 0xFF);
+    store8(pkt + 13, ethertype & 0xFF);
+    return 14;
+}
+
+# ARP request (oper=1) -- used to resolve the gateway MAC.
+fn arp_request_build(p, off, src_mac, src_ip, target_ip): i64 {
+    store8(p + off,     0x00); store8(p + off + 1, 0x01);   # htype = ethernet
+    store8(p + off + 2, 0x08); store8(p + off + 3, 0x00);   # ptype = IPv4
+    store8(p + off + 4, 6);    store8(p + off + 5, 4);       # hlen=6 plen=4
+    store8(p + off + 6, 0x00); store8(p + off + 7, 0x01);   # oper  = request
+    var i: i64 = 0;
+    while (i < 6) { store8(p + off + 8 + i, load8(src_mac + i)); i = i + 1; }   # sha
+    store8(p + off + 14, (src_ip >> 24) & 0xFF);
+    store8(p + off + 15, (src_ip >> 16) & 0xFF);
+    store8(p + off + 16, (src_ip >> 8) & 0xFF);
+    store8(p + off + 17, src_ip & 0xFF);
+    i = 0;
+    while (i < 6) { store8(p + off + 18 + i, 0); i = i + 1; }                   # tha = 0
+    store8(p + off + 24, (target_ip >> 24) & 0xFF);
+    store8(p + off + 25, (target_ip >> 16) & 0xFF);
+    store8(p + off + 26, (target_ip >> 8) & 0xFF);
+    store8(p + off + 27, target_ip & 0xFF);
+    return 28;
+}
+
+# ARP reply (oper=2) -- claim src_ip is-at src_mac, addressed to the requester.
+fn arp_reply_build(p, off, src_mac, src_ip, tgt_mac, tgt_ip): i64 {
+    store8(p + off,     0x00); store8(p + off + 1, 0x01);
+    store8(p + off + 2, 0x08); store8(p + off + 3, 0x00);
+    store8(p + off + 4, 6);    store8(p + off + 5, 4);
+    store8(p + off + 6, 0x00); store8(p + off + 7, 0x02);   # oper = reply
+    var i: i64 = 0;
+    while (i < 6) { store8(p + off + 8 + i, load8(src_mac + i)); i = i + 1; }   # sha
+    store8(p + off + 14, (src_ip >> 24) & 0xFF);
+    store8(p + off + 15, (src_ip >> 16) & 0xFF);
+    store8(p + off + 16, (src_ip >> 8) & 0xFF);
+    store8(p + off + 17, src_ip & 0xFF);
+    i = 0;
+    while (i < 6) { store8(p + off + 18 + i, load8(tgt_mac + i)); i = i + 1; }  # tha
+    store8(p + off + 24, (tgt_ip >> 24) & 0xFF);
+    store8(p + off + 25, (tgt_ip >> 16) & 0xFF);
+    store8(p + off + 26, (tgt_ip >> 8) & 0xFF);
+    store8(p + off + 27, tgt_ip & 0xFF);
+    return 28;
+}
+
+# === AGNOS net.cyr IP + TCP construction, ported VERBATIM ===
+# Source: agnos/kernel/core/net.cyr  (ip4 / ip_checksum / ip_build /
+# tcp_checksum_compute / tcp_build_header). store16 calls rewritten as store8
+# pairs (this probe's stdlib uses store8 throughout); values are identical.
+
+fn ip4(a, b, c, d): i64 { return (a << 24) | (b << 16) | (c << 8) | d; }
+
+fn ip_checksum(buf, len): i64 {
+    var sum: i64 = 0;
+    var i: i64 = 0;
+    while (i < len) {
+        sum = sum + (load8(buf + i) << 8);
+        if (i + 1 < len) { sum = sum + load8(buf + i + 1); }
+        i = i + 2;
+    }
+    while (sum > 0xFFFF) { sum = (sum & 0xFFFF) + (sum >> 16); }
+    return (0 - 1 - sum) & 0xFFFF;
+}
+
+fn ip_build(pkt, src_ip, dst_ip, proto, payload_len): i64 {
+    var total = 20 + payload_len;
+    store8(pkt, 0x45);
+    store8(pkt + 1, 0);
+    store8(pkt + 2, (total >> 8) & 0xFF);
+    store8(pkt + 3, total & 0xFF);
+    store8(pkt + 4, 0); store8(pkt + 5, 0);     # id     = 0
+    store8(pkt + 6, 0); store8(pkt + 7, 0);     # flags/frag = 0
+    store8(pkt + 8, 64);                         # TTL
+    store8(pkt + 9, proto);
+    store8(pkt + 10, 0); store8(pkt + 11, 0);   # checksum placeholder
+    store8(pkt + 12, (src_ip >> 24) & 0xFF);
+    store8(pkt + 13, (src_ip >> 16) & 0xFF);
+    store8(pkt + 14, (src_ip >> 8) & 0xFF);
+    store8(pkt + 15, src_ip & 0xFF);
+    store8(pkt + 16, (dst_ip >> 24) & 0xFF);
+    store8(pkt + 17, (dst_ip >> 16) & 0xFF);
+    store8(pkt + 18, (dst_ip >> 8) & 0xFF);
+    store8(pkt + 19, dst_ip & 0xFF);
+    var cksum = ip_checksum(pkt, 20);
+    store8(pkt + 10, (cksum >> 8) & 0xFF);
+    store8(pkt + 11, cksum & 0xFF);
+    return 20;
+}
+
+fn tcp_checksum_compute(src_ip, dst_ip, tcp_buf, tcp_len): i64 {
+    var sum: i64 = 0;
+    sum = sum + ((src_ip >> 16) & 0xFFFF);
+    sum = sum + (src_ip & 0xFFFF);
+    sum = sum + ((dst_ip >> 16) & 0xFFFF);
+    sum = sum + (dst_ip & 0xFFFF);
+    sum = sum + 6;                 # zero + proto=6
+    sum = sum + tcp_len;
+    var i: i64 = 0;
+    while (i < tcp_len) {
+        var hi = load8(tcp_buf + i) << 8;
+        var lo = 0;
+        if (i + 1 < tcp_len) { lo = load8(tcp_buf + i + 1); }
+        sum = sum + hi + lo;
+        i = i + 2;
+    }
+    while (sum > 0xFFFF) { sum = (sum & 0xFFFF) + (sum >> 16); }
+    return (0 - 1 - sum) & 0xFFFF;
+}
+
+fn tcp_build_header(pkt, src_port, dst_port, seq, ack, flags, window): i64 {
+    store8(pkt,     (src_port >> 8) & 0xFF); store8(pkt + 1,  src_port & 0xFF);
+    store8(pkt + 2, (dst_port >> 8) & 0xFF); store8(pkt + 3,  dst_port & 0xFF);
+    store8(pkt + 4, (seq >> 24) & 0xFF); store8(pkt + 5, (seq >> 16) & 0xFF);
+    store8(pkt + 6, (seq >> 8) & 0xFF);  store8(pkt + 7,  seq & 0xFF);
+    store8(pkt + 8, (ack >> 24) & 0xFF); store8(pkt + 9, (ack >> 16) & 0xFF);
+    store8(pkt + 10, (ack >> 8) & 0xFF); store8(pkt + 11, ack & 0xFF);
+    store8(pkt + 12, 0x50);              # data offset 5 (20 bytes) << 4
+    store8(pkt + 13, flags & 0xFF);
+    store8(pkt + 14, (window >> 8) & 0xFF); store8(pkt + 15, window & 0xFF);
+    store8(pkt + 16, 0); store8(pkt + 17, 0);   # checksum placeholder
+    store8(pkt + 18, 0); store8(pkt + 19, 0);   # urgent
+    return 20;
+}
+
+# === Iface attr readers (== arp_snoop_check.cyr) ===
+
+fn read_iface_attr(iface, suffix, suffix_len, out_buf, max_len): i64 {
+    var path[128];
+    var prefix = "/sys/class/net/";
+    var pi: i64 = 0;
+    var i: i64 = 0;
+    while (i < 15) { store8(&path + pi, load8(prefix + i)); pi = pi + 1; i = i + 1; }
+    i = 0;
+    while (load8(iface + i) != 0) { store8(&path + pi, load8(iface + i)); pi = pi + 1; i = i + 1; }
+    i = 0;
+    while (i < suffix_len) { store8(&path + pi, load8(suffix + i)); pi = pi + 1; i = i + 1; }
+    store8(&path + pi, 0);
+    var fd = syscall(2, &path, 0, 0);
+    if (fd < 0) { return 0 - 1; }
+    var n = syscall(0, fd, out_buf, max_len);
+    syscall(3, fd);
+    return n;
+}
+
+fn hex_nibble(c): i64 {
+    if (c >= 48) { if (c <= 57)  { return c - 48; } }
+    if (c >= 97) { if (c <= 102) { return c - 87; } }
+    if (c >= 65) { if (c <= 70)  { return c - 55; } }
+    return 0;
+}
+
+fn read_mac(iface, out_mac): i64 {
+    var content[32];
+    var n = read_iface_attr(iface, "/address", 8, &content, 32);
+    if (n < 17) { return 0 - 1; }
+    var ci: i64 = 0;
+    var mi: i64 = 0;
+    while (mi < 6) {
+        var hi = hex_nibble(load8(&content + ci));
+        var lo = hex_nibble(load8(&content + ci + 1));
+        store8(out_mac + mi, (hi << 4) | lo);
+        ci = ci + 3; mi = mi + 1;
+    }
+    return 0;
+}
+
+fn read_ifindex(iface): i64 {
+    var content[16];
+    var n = read_iface_attr(iface, "/ifindex", 8, &content, 16);
+    if (n < 1) { return 0 - 1; }
+    var v: i64 = 0;
+    var i: i64 = 0;
+    while (i < n) {
+        var c = load8(&content + i);
+        if (c >= 48) { if (c <= 57) { v = v * 10 + (c - 48); } }
+        i = i + 1;
+    }
+    return v;
+}
+
+fn parse_ipv4(s): i64 {
+    var v: i64 = 0;
+    var octet: i64 = 0;
+    var i: i64 = 0;
+    while (load8(s + i) != 0) {
+        var c = load8(s + i);
+        if (c == 46) { v = (v << 8) | (octet & 0xFF); octet = 0; }
+        else { if (c >= 48) { if (c <= 57) { octet = octet * 10 + (c - 48); } } }
+        i = i + 1;
+    }
+    v = (v << 8) | (octet & 0xFF);
+    return v & 0xFFFFFFFF;
+}
+
+# === AF_PACKET constants ===
+
+var AF_PACKET = 17;
+var SOCK_RAW = 3;
+var ETH_P_ALL = 0x0003;
+var ETH_P_IP  = 0x0800;
+var ETH_P_ARP = 0x0806;
+var CLOCK_MONOTONIC = 1;
+
+fn make_sockaddr_ll(sa, ifindex, eth_proto_host, mac) {
+    var i: i64 = 0;
+    while (i < 20) { store8(sa + i, 0); i = i + 1; }
+    store8(sa + 0, AF_PACKET & 0xFF);
+    store8(sa + 1, (AF_PACKET >> 8) & 0xFF);
+    store8(sa + 2, (eth_proto_host >> 8) & 0xFF);   # sll_protocol (BE)
+    store8(sa + 3, eth_proto_host & 0xFF);
+    store8(sa + 4, ifindex & 0xFF);
+    store8(sa + 5, (ifindex >> 8) & 0xFF);
+    store8(sa + 6, (ifindex >> 16) & 0xFF);
+    store8(sa + 7, (ifindex >> 24) & 0xFF);
+    store8(sa + 11, 6);                             # sll_halen
+    if (mac != 0) {
+        i = 0;
+        while (i < 6) { store8(sa + 12 + i, load8(mac + i)); i = i + 1; }
+    }
+}
+
+fn set_recv_timeout(fd, secs) {
+    var tv[16];
+    var i: i64 = 0;
+    while (i < 16) { store8(&tv + i, 0); i = i + 1; }
+    store8(&tv + 0, secs & 0xFF);
+    syscall(54, fd, 1, 20, &tv, 16);   # SOL_SOCKET=1, SO_RCVTIMEO=20
+}
+
+fn mono_secs(): i64 {
+    var ts[16];
+    syscall(228, CLOCK_MONOTONIC, &ts);
+    return load64(&ts);
+}
+
+fn macs_equal(a, b): i64 {
+    var i: i64 = 0;
+    while (i < 6) { if (load8(a + i) != load8(b + i)) { return 0; } i = i + 1; }
+    return 1;
+}
+
+fn main(): i64 {
+    args_init();
+    if (argc() < 2) {
+        prints("usage: tcp-syn-probe <iface> [dst_ip] [src_ip] [gateway_ip] [dst_port]\n");
+        prints("  Sends a byte-faithful AGNOS SYN (1.1.1.1:80 from .222) via Linux's\n");
+        prints("  r8169 (AF_PACKET, no VFIO) and watches for the SYN+ACK on the wire.\n");
+        prints("  SYN+ACK -> path+construction GOOD, AGNOS unicast RX is the blocker.\n");
+        prints("  defaults: dst=1.1.1.1 src=192.168.1.222 gw=192.168.1.1 dport=80\n");
+        return 1;
+    }
+    var iface = argv(1);
+    var dst_ip     = 0x01010101;          # 1.1.1.1
+    var src_ip     = 0xC0A801DE;          # 192.168.1.222 (AGNOS net_ip)
+    var gateway_ip = 0xC0A80101;          # 192.168.1.1   (AGNOS net_gateway)
+    var dst_port   = 80;
+    var src_port   = 49152;               # == main.cyr tcp_connect(...)
+    if (argc() >= 3) { dst_ip     = parse_ipv4(argv(2)); }
+    if (argc() >= 4) { src_ip     = parse_ipv4(argv(3)); }
+    if (argc() >= 5) { gateway_ip = parse_ipv4(argv(4)); }
+    if (argc() >= 6) {
+        # tiny atoi for the port
+        var s = argv(5); var pv: i64 = 0; var k: i64 = 0;
+        while (load8(s + k) != 0) { var c = load8(s + k); if (c >= 48) { if (c <= 57) { pv = pv * 10 + (c - 48); } } k = k + 1; }
+        dst_port = pv;
+    }
+
+    var mac[8];
+    if (read_mac(iface, &mac) != 0) { prints("ERROR: cannot read MAC\n"); return 2; }
+    var ifindex = read_ifindex(iface);
+    if (ifindex < 0) { prints("ERROR: cannot read ifindex\n"); return 3; }
+
+    prints("tcp-syn-probe: iface="); prints(iface); newline();
+    prints("  src mac  = "); print_mac(&mac); newline();
+    prints("  src ip   = "); print_ip(src_ip); newline();
+    prints("  dst      = "); print_ip(dst_ip); prints(":"); fmt_int(dst_port);
+    prints("   src_port="); fmt_int(src_port); newline();
+    prints("  gateway  = "); print_ip(gateway_ip); newline();
+
+    var eth_p_all_be = ((ETH_P_ALL & 0xFF) << 8) | ((ETH_P_ALL >> 8) & 0xFF);
+    var fd = syscall(41, AF_PACKET, SOCK_RAW, eth_p_all_be);
+    if (fd < 0) { prints("ERROR: socket(AF_PACKET) errno="); fmt_int(0 - fd); newline(); return 4; }
+
+    var sa[20];
+    make_sockaddr_ll(&sa, ifindex, ETH_P_ALL, 0);
+    if (syscall(49, fd, &sa, 20) < 0) { prints("ERROR: bind failed\n"); syscall(3, fd); return 5; }
+    set_recv_timeout(fd, 1);
+
+    var bcast[8];
+    var bi: i64 = 0;
+    while (bi < 6) { store8(&bcast + bi, 0xFF); bi = bi + 1; }
+
+    var rbuf[2048];
+    var src[24];
+    var srclen[4];
+
+    # ---- Phase 1: resolve the gateway MAC (who-has gateway_ip) ----
+    var gw_mac[8];
+    var gw_known = 0;
+    # default fallback = the Araknis gateway confirmed on the FB (d4:6a:91:ce:70:60)
+    store8(&gw_mac + 0, 0xD4); store8(&gw_mac + 1, 0x6A); store8(&gw_mac + 2, 0x91);
+    store8(&gw_mac + 3, 0xCE); store8(&gw_mac + 4, 0x70); store8(&gw_mac + 5, 0x60);
+
+    var arp_sa[20];
+    make_sockaddr_ll(&arp_sa, ifindex, ETH_P_ARP, &bcast);
+    var aframe[64];
+    var aoff = eth_build(&aframe, &bcast, &mac, ETH_P_ARP);
+    arp_request_build(&aframe, aoff, &mac, src_ip, gateway_ip);
+    syscall(44, fd, &aframe, aoff + 28, 0, &arp_sa, 20);   # sendto who-has gateway
+
+    var t_arp = mono_secs();
+    while ((mono_secs() - t_arp) < 3) {
+        store32(&srclen, 20);
+        var n = syscall(45, fd, &rbuf, 2048, 0, &src, &srclen);
+        if (n < 28) { continue; }
+        var et = (load8(&rbuf + 12) << 8) | load8(&rbuf + 13);
+        if (et != ETH_P_ARP) { continue; }
+        var oper = (load8(&rbuf + 20) << 8) | load8(&rbuf + 21);
+        var sip  = (load8(&rbuf + 28) << 24) | (load8(&rbuf + 29) << 16)
+                 | (load8(&rbuf + 30) << 8)  |  load8(&rbuf + 31);
+        if (oper == 2) { if (sip == gateway_ip) {
+            var c: i64 = 0;
+            while (c < 6) { store8(&gw_mac + c, load8(&rbuf + 22 + c)); c = c + 1; }
+            gw_known = 1; break;
+        } }
+    }
+    prints("  gw mac   = "); print_mac(&gw_mac);
+    if (gw_known == 1) { prints("  (resolved)\n"); } else { prints("  (default fallback)\n"); }
+
+    # ---- Phase 2: build the byte-faithful AGNOS SYN ----
+    var syn[128];
+    var off = eth_build(&syn, &gw_mac, &mac, ETH_P_IP);
+    var tcp_off = off + 20;
+    var seq = 0x12345678;                 # arbitrary nonzero ISN
+    var tlen = tcp_build_header(&syn + tcp_off, src_port, dst_port, seq, 0, 0x02, 8192);  # SYN
+    var cks = tcp_checksum_compute(src_ip, dst_ip, &syn + tcp_off, tlen);
+    store8(&syn + tcp_off + 16, (cks >> 8) & 0xFF);
+    store8(&syn + tcp_off + 17, cks & 0xFF);
+    ip_build(&syn + off, src_ip, dst_ip, 6, tlen);
+    var syn_total = off + 20 + tlen;       # 14 + 20 + 20 = 54
+
+    var ip_sa[20];
+    make_sockaddr_ll(&ip_sa, ifindex, ETH_P_IP, &gw_mac);
+    syscall(44, fd, &syn, syn_total, 0, &ip_sa, 20);
+    prints("\nSYN sent ("); fmt_int(syn_total); prints(" bytes), watching ~6 s for SYN+ACK...\n\n");
+
+    # ---- Phase 3: capture; answer who-has .222; match SYN+ACK from dst_ip:dst_port ----
+    var synack_seen = 0;
+    var rst_seen = 0;
+    var other_tcp = 0;
+    var arp222_answered = 0;
+    var t0 = mono_secs();
+    var resent = 0;
+    while ((mono_secs() - t0) < 6) {
+        # retransmit the SYN once at ~2 s, like a real stack would
+        if (resent == 0) { if ((mono_secs() - t0) >= 2) {
+            syscall(44, fd, &syn, syn_total, 0, &ip_sa, 20);
+            resent = 1;
+        } }
+
+        store32(&srclen, 20);
+        var n = syscall(45, fd, &rbuf, 2048, 0, &src, &srclen);
+        if (n < 14) { continue; }
+
+        # skip frames WE sent
+        if (macs_equal(&rbuf + 6, &mac) == 1) { continue; }
+
+        var et = (load8(&rbuf + 12) << 8) | load8(&rbuf + 13);
+
+        # Answer who-has <src_ip> so the gateway can deliver the unicast reply.
+        if (et == ETH_P_ARP) {
+            var oper = (load8(&rbuf + 20) << 8) | load8(&rbuf + 21);
+            var tpa  = (load8(&rbuf + 38) << 24) | (load8(&rbuf + 39) << 16)
+                     | (load8(&rbuf + 40) << 8)  |  load8(&rbuf + 41);
+            if (oper == 1) { if (tpa == src_ip) {
+                # requester's sha + spa become our reply's target
+                var rmac[8];
+                var rip = (load8(&rbuf + 28) << 24) | (load8(&rbuf + 29) << 16)
+                        | (load8(&rbuf + 30) << 8)  |  load8(&rbuf + 31);
+                var c: i64 = 0;
+                while (c < 6) { store8(&rmac + c, load8(&rbuf + 22 + c)); c = c + 1; }
+                var rep[64];
+                var roff = eth_build(&rep, &rmac, &mac, ETH_P_ARP);
+                arp_reply_build(&rep, roff, &mac, src_ip, &rmac, rip);
+                var rsa[20];
+                make_sockaddr_ll(&rsa, ifindex, ETH_P_ARP, &rmac);
+                syscall(44, fd, &rep, roff + 28, 0, &rsa, 20);
+                arp222_answered = arp222_answered + 1;
+            } }
+            continue;
+        }
+
+        if (et != ETH_P_IP) { continue; }
+        if (n < 34) { continue; }
+
+        var ihl = (load8(&rbuf + 14) & 0x0F) * 4;
+        if (ihl < 20) { continue; }
+        var proto = load8(&rbuf + 14 + 9);
+        if (proto != 6) { continue; }                 # TCP only
+
+        var sip = (load8(&rbuf + 26) << 24) | (load8(&rbuf + 27) << 16)
+                | (load8(&rbuf + 28) << 8)  |  load8(&rbuf + 29);
+        var dip = (load8(&rbuf + 30) << 24) | (load8(&rbuf + 31) << 16)
+                | (load8(&rbuf + 32) << 8)  |  load8(&rbuf + 33);
+        var toff = 14 + ihl;
+        var sp = (load8(&rbuf + toff) << 8)     | load8(&rbuf + toff + 1);
+        var dp = (load8(&rbuf + toff + 2) << 8) | load8(&rbuf + toff + 3);
+        var flags = load8(&rbuf + toff + 13);
+
+        # is this the reply to OUR connection?  src=dst_ip:dst_port, dst=src_ip:src_port
+        if (sip == dst_ip) { if (sp == dst_port) { if (dp == src_port) {
+            if ((flags & 0x12) == 0x12) {              # SYN+ACK
+                synack_seen = 1;
+                prints("  <- SYN+ACK from "); print_ip(sip); prints(":"); fmt_int(sp);
+                prints("  flags=0x"); fmt_byte(flags); newline();
+                break;
+            }
+            if ((flags & 0x04) == 0x04) {              # RST
+                rst_seen = 1;
+                prints("  <- RST from "); print_ip(sip); prints(":"); fmt_int(sp);
+                prints("  flags=0x"); fmt_byte(flags); newline();
+            }
+            other_tcp = other_tcp + 1;
+        } } }
+    }
+
+    # ---- Verdict ----
+    prints("\n=== VERDICT =================================================\n");
+    prints("who-has "); print_ip(src_ip); prints(" answered: "); fmt_int(arp222_answered); prints(" time(s)\n");
+
+    if (synack_seen == 1) {
+        prints("RESULT: SYN+ACK RECEIVED on the wire.\n");
+        prints("  -> The gateway forwarded a BYTE-FAITHFUL AGNOS SYN, NATed it, and\n");
+        prints("     1.1.1.1's reply returned to our wire. Construction (IP/TCP\n");
+        prints("     checksums) is GOOD and the static "); print_ip(src_ip); prints(" source is\n");
+        prints("     ACCEPTED by the gateway. Causes (2) source-guard and (3)\n");
+        prints("     malformed-SYN are RULED OUT.\n");
+        prints("  -> The ONLY thing that differs on iron is unicast-class RX delivery.\n");
+        prints("     AGNOS r8169 dropping the unicast SYN+ACK (the parked APM gap) is\n");
+        prints("     the blocker. Next: drive AGNOS's r8169 RX with register readback.\n");
+        syscall(3, fd); return 0;
+    }
+
+    if (rst_seen == 1) {
+        prints("RESULT: RST RECEIVED (no SYN+ACK, but a response).\n");
+        prints("  -> The round-trip works (we elicited a reply from "); print_ip(dst_ip); prints(").\n");
+        prints("     A RST here is most likely Linux's own stack rejecting "); print_ip(src_ip); prints("\n");
+        prints("     (no matching socket) AFTER 1.1.1.1's SYN+ACK already came back,\n");
+        prints("     OR the gateway/host RST. Either way path+construction WORK ->\n");
+        prints("     same conclusion as SYN+ACK: AGNOS unicast RX is the blocker.\n");
+        syscall(3, fd); return 0;
+    }
+
+    prints("RESULT: NO RESPONSE from "); print_ip(dst_ip); prints(" in the window.\n");
+    prints("  -> A byte-faithful AGNOS SYN drew nothing back. Since construction is\n");
+    prints("     AGNOS-exact, this points AWAY from AGNOS RX and toward the gateway:\n");
+    prints("     either it source-guards the static "); print_ip(src_ip); prints(" (try a DHCP-leased\n");
+    prints("     source), or this host can't reach "); print_ip(dst_ip); prints(" right now.\n");
+    prints("  -> Re-run sourced from this box's real lease to confirm the path is up.\n");
+    syscall(3, fd); return 0;
+}
+
+var rc = main();
+syscall(60, rc);

@@ -1,0 +1,400 @@
+# arp_reply_len — empirical RX runt-discriminator probe (AF_PACKET).
+#
+# WHY THIS EXISTS
+# --------------
+# AGNOS 1.32.6: r8169 delivers BROADCAST + MULTICAST frames on iron (proven,
+# rx>0, arp_in>0) but the gateway's UNICAST ARP reply is never seen. The
+# accept-filter layer (AAP/APM nibble + IDR physical-match) is exonerated
+# across bites 7 + 2. The one remaining in-driver lever is the descriptor
+# OWN-handoff / poll path.
+#
+# r8169_poll (agnos/kernel/core/r8169.cyr:737) DROPS any descriptor whose
+# status word has bit 0x00100000 set:
+#     if ((status & R8169_RDESC_RXERRSUM) != 0) { rearm; skip; }   # 0x00100000
+# On the RTL8168 RX descriptor, 0x00100000 (bit 20) is the RUNT flag — set
+# when the received frame is shorter than the 64-byte Ethernet minimum
+# (60 bytes after the chip strips the 4-byte FCS). So r8169_poll silently
+# discards every sub-60-byte frame.
+#
+# THE TESTABLE HYPOTHESIS (frame-class discriminator):
+#   - Broadcast ARP requests from other LAN hosts are emitted by full OS NICs
+#     that PAD to the 60-byte minimum  -> not runts -> delivered (arp_in>0).
+#   - The Araknis gateway may emit its unicast ARP REPLY UNPADDED (42 bytes)
+#     -> runt -> r8169_poll drops it -> "gateway reply never seen", while
+#     every padded broadcast frame passes. Nothing in the accept filter would
+#     produce this split; a runt-drop does, exactly.
+#
+# This probe does NOT read chip descriptor bits (AF_PACKET can't). It reads
+# the one userland-observable property that the RUNT bit is a function of:
+# the on-the-wire LENGTH of the gateway's unicast reply vs. the broadcast
+# ARP traffic, as Linux's own r8169 delivers them (FCS already stripped, so
+# Linux's length == AGNOS's pkt_len; a value < 60 == a frame the chip flags
+# RUNT == a frame AGNOS's poll would drop).
+#
+#   reply len  < 60  AND broadcast lens >= 60  -> runt-drop CONFIRMED as the
+#                                                 unicast-RX culprit; the iron
+#                                                 fix is to stop gating on the
+#                                                 RUNT bit (use the real error
+#                                                 summary, bit 21 / 0x00200000).
+#   reply len >= 60                            -> runt theory FALSIFIED; the
+#                                                 drop is below anything
+#                                                 userland can see -> the
+#                                                 deferred hw tally-counter
+#                                                 (reg 0x28) iron read is the
+#                                                 justified next escape.
+#
+# Same isolate-on-Linux-first discipline as arp_probe_raw.cyr / dhcp_probe_raw.cyr.
+#
+# Usage: sudo ./arp-reply-len <iface> [target_ip] [src_ip]
+#   default target_ip = 192.168.1.1   (gateway — AGNOS net_gateway)
+#   default src_ip    = 192.168.1.222 (AGNOS net_ip)
+# Requires CAP_NET_RAW (or root) for AF_PACKET SOCK_RAW.
+
+include "lib/string.cyr"
+include "lib/alloc.cyr"
+include "lib/fmt.cyr"
+include "lib/syscalls.cyr"
+include "lib/args.cyr"
+
+# === Print helpers ===
+
+fn prints(s) { syscall(1, 1, s, strlen(s)); }
+fn putc(c) { var b[1]; store8(&b, c); syscall(1, 1, &b, 1); }
+fn newline() { syscall(1, 1, "\n", 1); }
+
+fn print_ip(ip) {
+    fmt_int((ip >> 24) & 0xFF); putc(46);
+    fmt_int((ip >> 16) & 0xFF); putc(46);
+    fmt_int((ip >> 8) & 0xFF);  putc(46);
+    fmt_int(ip & 0xFF);
+}
+
+fn print_mac(mac) {
+    fmt_byte(load8(mac));
+    var i: i64 = 1;
+    while (i < 6) { putc(58); fmt_byte(load8(mac + i)); i = i + 1; }
+}
+
+# === AGNOS net.cyr functions — copied verbatim from arp_probe_raw.cyr ===
+
+fn eth_build(pkt, dst_mac, src_mac, ethertype): i64 {
+    var i: i64 = 0;
+    while (i < 6) { store8(pkt + i, load8(dst_mac + i)); i = i + 1; }
+    i = 0;
+    while (i < 6) { store8(pkt + 6 + i, load8(src_mac + i)); i = i + 1; }
+    store8(pkt + 12, (ethertype >> 8) & 0xFF);
+    store8(pkt + 13, ethertype & 0xFF);
+    return 14;
+}
+
+fn arp_build(p, off, src_mac, src_ip, target_ip): i64 {
+    store8(p + off,     0x00); store8(p + off + 1, 0x01);   # htype = ethernet
+    store8(p + off + 2, 0x08); store8(p + off + 3, 0x00);   # ptype = IPv4
+    store8(p + off + 4, 6);    store8(p + off + 5, 4);       # hlen=6 plen=4
+    store8(p + off + 6, 0x00); store8(p + off + 7, 0x01);   # oper  = request
+    var i: i64 = 0;
+    while (i < 6) { store8(p + off + 8 + i, load8(src_mac + i)); i = i + 1; }   # sha
+    store8(p + off + 14, (src_ip >> 24) & 0xFF);             # spa
+    store8(p + off + 15, (src_ip >> 16) & 0xFF);
+    store8(p + off + 16, (src_ip >> 8) & 0xFF);
+    store8(p + off + 17, src_ip & 0xFF);
+    i = 0;
+    while (i < 6) { store8(p + off + 18 + i, 0); i = i + 1; }                   # tha = 0
+    store8(p + off + 24, (target_ip >> 24) & 0xFF);          # tpa
+    store8(p + off + 25, (target_ip >> 16) & 0xFF);
+    store8(p + off + 26, (target_ip >> 8) & 0xFF);
+    store8(p + off + 27, target_ip & 0xFF);
+    return 28;
+}
+
+# === Iface attr readers — verbatim from arp_probe_raw.cyr ===
+
+fn read_iface_attr(iface, suffix, suffix_len, out_buf, max_len): i64 {
+    var path[128];
+    var prefix = "/sys/class/net/";
+    var pi: i64 = 0;
+    var i: i64 = 0;
+    while (i < 15) { store8(&path + pi, load8(prefix + i)); pi = pi + 1; i = i + 1; }
+    i = 0;
+    while (load8(iface + i) != 0) {
+        store8(&path + pi, load8(iface + i));
+        pi = pi + 1; i = i + 1;
+    }
+    i = 0;
+    while (i < suffix_len) {
+        store8(&path + pi, load8(suffix + i));
+        pi = pi + 1; i = i + 1;
+    }
+    store8(&path + pi, 0);
+    var fd = syscall(2, &path, 0, 0);
+    if (fd < 0) { return 0 - 1; }
+    var n = syscall(0, fd, out_buf, max_len);
+    syscall(3, fd);
+    return n;
+}
+
+fn hex_nibble(c): i64 {
+    if (c >= 48) { if (c <= 57)  { return c - 48; } }
+    if (c >= 97) { if (c <= 102) { return c - 87; } }
+    if (c >= 65) { if (c <= 70)  { return c - 55; } }
+    return 0;
+}
+
+fn read_mac(iface, out_mac): i64 {
+    var content[32];
+    var n = read_iface_attr(iface, "/address", 8, &content, 32);
+    if (n < 17) { return 0 - 1; }
+    var ci: i64 = 0;
+    var mi: i64 = 0;
+    while (mi < 6) {
+        var hi = hex_nibble(load8(&content + ci));
+        var lo = hex_nibble(load8(&content + ci + 1));
+        store8(out_mac + mi, (hi << 4) | lo);
+        ci = ci + 3;
+        mi = mi + 1;
+    }
+    return 0;
+}
+
+fn read_ifindex(iface): i64 {
+    var content[16];
+    var n = read_iface_attr(iface, "/ifindex", 8, &content, 16);
+    if (n < 1) { return 0 - 1; }
+    var v: i64 = 0;
+    var i: i64 = 0;
+    while (i < n) {
+        var c = load8(&content + i);
+        if (c >= 48) { if (c <= 57) { v = v * 10 + (c - 48); } }
+        i = i + 1;
+    }
+    return v;
+}
+
+fn parse_ipv4(s): i64 {
+    var v: i64 = 0;
+    var octet: i64 = 0;
+    var i: i64 = 0;
+    while (load8(s + i) != 0) {
+        var c = load8(s + i);
+        if (c == 46) {                       # '.'
+            v = (v << 8) | (octet & 0xFF);
+            octet = 0;
+        } else {
+            if (c >= 48) { if (c <= 57) { octet = octet * 10 + (c - 48); } }
+        }
+        i = i + 1;
+    }
+    v = (v << 8) | (octet & 0xFF);
+    return v & 0xFFFFFFFF;
+}
+
+# === AF_PACKET constants ===
+
+var AF_PACKET = 17;
+var SOCK_RAW = 3;
+var ETH_P_ARP = 0x0806;
+
+fn make_sockaddr_ll(sa, ifindex, eth_proto_host, mac) {
+    var i: i64 = 0;
+    while (i < 20) { store8(sa + i, 0); i = i + 1; }
+    store8(sa + 0, AF_PACKET & 0xFF);
+    store8(sa + 1, (AF_PACKET >> 8) & 0xFF);
+    store8(sa + 2, (eth_proto_host >> 8) & 0xFF);
+    store8(sa + 3, eth_proto_host & 0xFF);
+    store8(sa + 4, ifindex & 0xFF);
+    store8(sa + 5, (ifindex >> 8) & 0xFF);
+    store8(sa + 6, (ifindex >> 16) & 0xFF);
+    store8(sa + 7, (ifindex >> 24) & 0xFF);
+    store8(sa + 11, 6);
+    if (mac != 0) {
+        i = 0;
+        while (i < 6) { store8(sa + 12 + i, load8(mac + i)); i = i + 1; }
+    }
+}
+
+fn set_recv_timeout(fd, secs) {
+    var tv[16];
+    var i: i64 = 0;
+    while (i < 16) { store8(&tv + i, 0); i = i + 1; }
+    store8(&tv + 0, secs & 0xFF);
+    syscall(54, fd, 1, 20, &tv, 16);   # SOL_SOCKET=1, SO_RCVTIMEO=20
+}
+
+fn main(): i64 {
+    args_init();
+    if (argc() < 2) {
+        prints("usage: arp-reply-len <iface> [target_ip] [src_ip]\n");
+        prints("  Measures on-wire length of the gateway unicast ARP reply vs.\n");
+        prints("  broadcast ARP traffic, to test the r8169_poll RUNT-drop theory.\n");
+        prints("  default target=192.168.1.1 src=192.168.1.222\n");
+        prints("  Requires CAP_NET_RAW (or root) for AF_PACKET SOCK_RAW.\n");
+        return 1;
+    }
+    var iface = argv(1);
+    var target_ip = 0xC0A80101;          # 192.168.1.1   (AGNOS gateway)
+    var src_ip    = 0xC0A801DE;          # 192.168.1.222 (AGNOS net_ip)
+    if (argc() >= 3) { target_ip = parse_ipv4(argv(2)); }
+    if (argc() >= 4) { src_ip    = parse_ipv4(argv(3)); }
+
+    prints("arp-reply-len: iface="); prints(iface); newline();
+
+    var mac[8];
+    if (read_mac(iface, &mac) != 0) {
+        prints("ERROR: cannot read MAC\n");
+        return 2;
+    }
+    prints("  src mac="); print_mac(&mac); newline();
+    prints("  src ip ="); print_ip(src_ip); newline();
+    prints("  target ="); print_ip(target_ip);
+    prints("   (RUNT threshold: a frame Linux reports < 60 bytes is one the\n");
+    prints("    RTL8168 flags RUNT and AGNOS r8169_poll drops)\n");
+
+    var ifindex = read_ifindex(iface);
+    if (ifindex < 0) {
+        prints("ERROR: cannot read ifindex\n");
+        return 3;
+    }
+
+    var eth_p_arp_be = ((ETH_P_ARP & 0xFF) << 8) | ((ETH_P_ARP >> 8) & 0xFF);
+    var fd = syscall(41, AF_PACKET, SOCK_RAW, eth_p_arp_be);
+    if (fd < 0) {
+        prints("ERROR: socket(AF_PACKET, SOCK_RAW) failed errno=");
+        fmt_int(0 - fd); newline();
+        return 4;
+    }
+
+    var sa[20];
+    make_sockaddr_ll(&sa, ifindex, ETH_P_ARP, 0);
+    if (syscall(49, fd, &sa, 20) < 0) {
+        prints("ERROR: bind AF_PACKET failed\n");
+        syscall(3, fd); return 5;
+    }
+    set_recv_timeout(fd, 5);
+
+    # ---- Build + send 3 AGNOS-shape ARP requests to elicit the reply ----
+    var frame[64];
+    var bcast[8];
+    var i: i64 = 0;
+    while (i < 6) { store8(&bcast + i, 0xFF); i = i + 1; }
+    var off = eth_build(&frame, &bcast, &mac, 0x0806);
+    arp_build(&frame, off, &mac, src_ip, target_ip);
+    var frame_len = off + 28;            # 42
+
+    var dst_sa[20];
+    make_sockaddr_ll(&dst_sa, ifindex, ETH_P_ARP, &bcast);
+    var s: i64 = 0;
+    while (s < 3) {
+        syscall(44, fd, &frame, frame_len, 0, &dst_sa, 20);
+        s = s + 1;
+    }
+    prints("arp: 3 requests sent (AGNOS-shape, 42 bytes each); capturing ~5s...\n");
+    newline();
+
+    # ---- Capture every ARP frame for the window; report lengths ----
+    var rbuf[2048];
+    var src[24];
+    var srclen[4];
+
+    var reply_seen = 0;
+    var reply_len  = 0;
+    var bcast_count = 0;
+    var bcast_min  = 9999;
+    var bcast_max  = 0;
+    var runt_bcast = 0;     # broadcast/other ARP frames that ARE < 60
+    var total = 0;          # frames examined — hard cap so a chatty LAN ends
+
+    while (1) {
+        # Bounded exit: SO_RCVTIMEO is a per-recv idle timeout, but on a busy
+        # LAN a frame always arrives inside 5s so it never fires. Stop once we
+        # have the gateway reply plus enough broadcast samples to compare, or
+        # after a hard frame cap.
+        if (reply_seen == 1) { if (bcast_count >= 5) { break; } }
+        if (total >= 80) { break; }
+        store32(&srclen, 20);
+        var n = syscall(45, fd, &rbuf, 2048, 0, &src, &srclen);
+        if (n < 0) { break; }            # SO_RCVTIMEO fired -> window over
+        if (n < 28) { continue; }
+        total = total + 1;
+
+        var et = (load8(&rbuf + 12) << 8) | load8(&rbuf + 13);
+        if (et != 0x0806) { continue; }
+        var oper = (load8(&rbuf + 20) << 8) | load8(&rbuf + 21);
+        var sip  = (load8(&rbuf + 28) << 24) | (load8(&rbuf + 29) << 16)
+                 | (load8(&rbuf + 30) << 8)  |  load8(&rbuf + 31);
+
+        # destination MAC: ff:ff:ff:ff:ff:ff == broadcast, else unicast
+        var dst_is_bcast = 1;
+        var k: i64 = 0;
+        while (k < 6) { if (load8(&rbuf + k) != 0xFF) { dst_is_bcast = 0; } k = k + 1; }
+
+        var is_runt = 0;
+        if (n < 60) { is_runt = 1; }
+
+        # Per-frame line
+        if (oper == 2) { prints("  REPLY  "); } else { prints("  request"); }
+        prints(" from "); print_ip(sip);
+        prints("  len="); fmt_int(n);
+        if (dst_is_bcast == 1) { prints("  dst=bcast"); } else { prints("  dst=unicast"); }
+        if (is_runt == 1) { prints("  <-- RUNT (< 60: AGNOS poll WOULD DROP)"); }
+        newline();
+
+        # Is this the gateway's unicast reply we care about?
+        if (oper == 2) {
+            if (sip == target_ip) {
+                reply_seen = 1;
+                reply_len  = n;
+            }
+        } else {
+            bcast_count = bcast_count + 1;
+            if (n < bcast_min) { bcast_min = n; }
+            if (n > bcast_max) { bcast_max = n; }
+            if (is_runt == 1) { runt_bcast = runt_bcast + 1; }
+        }
+    }
+
+    # ---- Verdict ----
+    newline();
+    prints("=== VERDICT =================================================\n");
+    prints("broadcast/other ARP frames seen: "); fmt_int(bcast_count);
+    if (bcast_count > 0) {
+        prints("  (len min="); fmt_int(bcast_min);
+        prints(" max="); fmt_int(bcast_max);
+        prints(", runts="); fmt_int(runt_bcast); prints(")");
+    }
+    newline();
+
+    if (reply_seen == 0) {
+        prints("gateway unicast reply: NOT CAPTURED on Linux either.\n");
+        prints("  -> the reply is not reliably on the wire; this is NOT an\n");
+        prints("     AGNOS RX bug. Re-check gateway/ARP elicitation first.\n");
+        syscall(3, fd);
+        return 8;
+    }
+
+    prints("gateway unicast reply: len="); fmt_int(reply_len);
+    if (reply_len < 60) {
+        prints("  <-- RUNT\n");
+        prints("\nRESULT: CONFIRMED. The Araknis gateway emits its unicast ARP\n");
+        prints("  reply at "); fmt_int(reply_len); prints(" bytes (< 60). The RTL8168 flags it RUNT\n");
+        prints("  (descriptor bit 0x00100000), and r8169_poll's error gate drops\n");
+        prints("  it -- while padded broadcast ARP (>= 60) passes. This is the\n");
+        prints("  frame-class discriminator. IRON FIX: gate on the real error\n");
+        prints("  SUMMARY (bit 21 / 0x00200000), not the RUNT bit -- accept short\n");
+        prints("  frames, they are valid ARP. Behavioral, no instrumentation.\n");
+        syscall(3, fd);
+        return 0;
+    }
+
+    prints("  (>= 60, not a runt)\n");
+    prints("\nRESULT: FALSIFIED. The gateway reply is "); fmt_int(reply_len);
+    prints(" bytes -- not a runt.\n");
+    prints("  r8169_poll's RUNT gate is NOT what drops it. The drop is below\n");
+    prints("  anything AF_PACKET can observe -> the deferred hardware tally-\n");
+    prints("  counter read (rx_ucasts, MMIO reg 0x28) on iron is now the\n");
+    prints("  justified next escape.\n");
+    syscall(3, fd);
+    return 0;
+}
+
+var rc = main();
+syscall(60, rc);

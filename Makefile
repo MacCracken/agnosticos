@@ -1,382 +1,108 @@
-# AGNOS Makefile
-# Top-level build orchestration
+# AGNOS Makefile — Genesis build orchestration
+# The sovereign boot pipeline. Cyrius all the way down.
 
-# Configuration
-VERSION := $(shell cat VERSION 2>/dev/null || echo '2026.3.6')
-KERNEL_VERSION := 6.6.0
+VERSION := $(shell cat VERSION 2>/dev/null || echo 'dev')
 ARCH := $(shell uname -m)
 BUILD_DIR := build
 DIST_DIR := dist
-CONFIG_DIR := config
 
-# Toolchain
-CC := gcc
-CXX := g++
-CARGO := cargo
-RUSTC := rustc
-MAKE := make
-DOCKER := docker
+# Cyrius toolchain — always invoke via the `cyrius` wrapper so this
+# Makefile doesn't couple to the compiler binary name (cc5 today,
+# cyc after v6.0.0).
+CYRIUS_HOME := $(HOME)/.cyrius
+CYRIUS := $(CYRIUS_HOME)/bin/cyrius
 
-# Colors for output
+# Sibling repos
+AGNOS_REPO := ../agnos
+CYRIUS_REPO := ../cyrius
+ZUGOT_REPO := ../zugot
+
+# Colors
 BLUE := \033[36m
 GREEN := \033[32m
 YELLOW := \033[33m
 RED := \033[31m
-NC := \033[0m # No Color
+NC := \033[0m
 
-.PHONY: all help deps build build-kernel build-userland build-initramfs iso install clean test test-unit test-integration test-security test-coverage lint format check docker-dev release ark-build ark-build-all ark-build-python docker-ark-build docker-ark-build-python ark-sign ark-sign-all ark-verify ark-keygen ark-bundle ark-bundle-all selfhost-validate qemu-boot-test
+.PHONY: all help check boot boot-test boot-iso iso-check scripts clean version
 
-# Default target
 all: help
 
-# Help target
 help:
-	@echo "$(BLUE)AGNOS Build System$(NC)"
+	@echo "$(BLUE)AGNOS Genesis Build System$(NC) (v$(VERSION))"
 	@echo ""
-	@echo "$(GREEN)Setup targets:$(NC)"
-	@echo "  $(YELLOW)deps$(NC)          - Install build dependencies"
-	@echo "  $(YELLOW)check$(NC)         - Check build environment"
+	@echo "$(GREEN)Boot targets:$(NC)"
+	@echo "  $(YELLOW)boot$(NC)          - Direct boot AGNOS kernel in QEMU"
+	@echo "  $(YELLOW)boot-test$(NC)     - Boot + validate serial output"
+	@echo "  $(YELLOW)iso-check$(NC)     - Verify all ISO components are present"
+	@echo "  $(YELLOW)boot-iso$(NC)      - Build bootable ISO (not yet implemented)"
 	@echo ""
 	@echo "$(GREEN)Build targets:$(NC)"
-	@echo "  $(YELLOW)build$(NC)         - Build everything (kernel + userland)"
-	@echo "  $(YELLOW)build-kernel$(NC)  - Build Linux kernel"
-	@echo "  $(YELLOW)build-userland$(NC)- Build userland components"
-	@echo "  $(YELLOW)build-initramfs$(NC)- Build initial ramdisk"
-	@echo "  $(YELLOW)iso$(NC)           - Create bootable ISO image"
-	@echo ""
-	@echo "$(GREEN)Validation targets:$(NC)"
-	@echo "  $(YELLOW)selfhost-validate$(NC) - Run full self-hosting validation"
-	@echo "  $(YELLOW)selfhost-validate-quick$(NC) - Quick self-hosting check (compile tests only)"
-	@echo "  $(YELLOW)qemu-boot-test$(NC)  - Boot ISO in QEMU and run smoke tests"
-	@echo ""
-	@echo "$(GREEN)Installation targets:$(NC)"
-	@echo "  $(YELLOW)install$(NC)       - Install AGNOS to target device"
-	@echo ""
-	@echo "$(GREEN)Test targets:$(NC)"
-	@echo "  $(YELLOW)test$(NC)          - Run all tests"
-	@echo "  $(YELLOW)test-unit$(NC)     - Run unit tests only"
-	@echo "  $(YELLOW)test-integration$(NC)- Run integration tests"
-	@echo "  $(YELLOW)test-security$(NC) - Run security tests"
-	@echo "  $(YELLOW)test-coverage$(NC) - Run tests with coverage"
-	@echo ""
-	@echo "$(GREEN)Quality targets:$(NC)"
-	@echo "  $(YELLOW)lint$(NC)          - Run linters"
-	@echo "  $(YELLOW)format$(NC)        - Format code"
-	@echo "  $(YELLOW)security-scan$(NC) - Run security scanners"
-	@echo ""
-	@echo "$(GREEN)Package targets:$(NC)"
-	@echo "  $(YELLOW)ark-build$(NC)     - Build single .ark package (RECIPE=path/to/recipe.toml)"
-	@echo "  $(YELLOW)ark-build-all$(NC) - Build all .ark packages from recipes/"
-	@echo "  $(YELLOW)ark-build-python$(NC) - Build all Python .ark packages"
-	@echo "  $(YELLOW)docker-ark-build$(NC) - Build .ark package in container (RECIPE=...)"
-	@echo "  $(YELLOW)docker-ark-build-python$(NC) - Build all Python .ark packages in container"
-	@echo ""
-	@echo ""
-	@echo "$(GREEN)Marketplace targets:$(NC)"
-	@echo "  $(YELLOW)ark-bundle$(NC)    - Bundle single .agnos-agent package (RECIPE=recipes/marketplace/foo.toml)"
-	@echo "  $(YELLOW)ark-bundle-all$(NC)- Bundle all marketplace recipes"
-	@echo ""
-	@echo "$(GREEN)Signing targets:$(NC)"
-	@echo "  $(YELLOW)ark-keygen$(NC)    - Generate Ed25519 signing keypair"
-	@echo "  $(YELLOW)ark-sign$(NC)      - Sign a single .ark package (PKG=path/to/file.ark)"
-	@echo "  $(YELLOW)ark-sign-all$(NC)  - Sign all .ark packages in dist/ark/"
-	@echo "  $(YELLOW)ark-verify$(NC)    - Verify .ark package signature (PKG=path/to/file.ark)"
-	@echo ""
-	@echo "$(GREEN)Development targets:$(NC)"
-	@echo "  $(YELLOW)docker-dev$(NC)    - Build and run development container"
+	@echo "  $(YELLOW)scripts$(NC)       - Build Cyrius boot scripts"
+	@echo "  $(YELLOW)check$(NC)         - Check build environment"
 	@echo "  $(YELLOW)clean$(NC)         - Clean build artifacts"
-	@echo "  $(YELLOW)release$(NC)       - Create release build"
 	@echo ""
-	@echo "$(GREEN)Documentation targets:$(NC)"
-	@echo "  $(YELLOW)docs$(NC)          - Build documentation"
-	@echo "  $(YELLOW)docs-serve$(NC)    - Serve documentation locally"
+	@echo "$(GREEN)Info targets:$(NC)"
+	@echo "  $(YELLOW)version$(NC)       - Show version info"
+	@echo "  $(YELLOW)status$(NC)        - Show component status"
+	@echo ""
+	@echo "$(GREEN)Kernel:$(NC)  $(AGNOS_REPO)/build/agnos (built by agnos repo)"
+	@echo "$(GREEN)Cyrius:$(NC) $(shell $(CYRIUS) --version 2>/dev/null || echo 'not installed')"
 
-# Setup targets
-deps:
-	@echo "$(BLUE)Installing build dependencies...$(NC)"
-	./scripts/install-build-deps.sh
-	@echo "$(GREEN)Dependencies installed$(NC)"
-
+# Check build environment
 check:
 	@echo "$(BLUE)Checking build environment...$(NC)"
-	@which $(CC) > /dev/null || (echo "$(RED)Error: $(CC) not found$(NC)" && exit 1)
-	@which $(CARGO) > /dev/null || (echo "$(RED)Error: cargo not found$(NC)" && exit 1)
-	@which $(MAKE) > /dev/null || (echo "$(RED)Error: make not found$(NC)" && exit 1)
+	@which $(CYRIUS) > /dev/null 2>&1 || (echo "$(RED)Error: Cyrius toolchain not found at $(CYRIUS_HOME)$(NC)" && exit 1)
+	@which qemu-system-x86_64 > /dev/null 2>&1 || (echo "$(RED)Error: qemu-system-x86_64 not found$(NC)" && exit 1)
 	@echo "$(GREEN)Build environment OK$(NC)"
-	@echo "$(BLUE)Versions:$(NC)"
-	@echo "  GCC: $(shell $(CC) --version | head -1)"
-	@echo "  Cargo: $(shell $(CARGO) --version)"
-	@echo "  Make: $(shell $(MAKE) --version | head -1)"
+	@echo "  Cyrius:  $(shell $(CYRIUS) --version 2>/dev/null)"
+	@echo "  QEMU:    $(shell qemu-system-x86_64 --version 2>/dev/null | head -1)"
+	@test -f $(AGNOS_REPO)/build/agnos && echo "  Kernel:  $(shell wc -c < $(AGNOS_REPO)/build/agnos) bytes" || echo "  Kernel:  $(RED)not found at $(AGNOS_REPO)/build/agnos$(NC)"
 
-# Build targets
-build: check build-kernel build-userland build-initramfs
-	@echo "$(GREEN)Build complete$(NC)"
+# Build boot scripts (Cyrius)
+scripts:
+	@echo "$(BLUE)Building boot scripts...$(NC)"
+	cd scripts && $(CYRIUS) deps && $(CYRIUS) build src/boot.cyr build/boot
+	@echo "$(GREEN)Boot scripts built: scripts/build/boot ($(shell wc -c < scripts/build/boot 2>/dev/null || echo '?') bytes)$(NC)"
 
-build-kernel:
-	@echo "$(BLUE)Building kernel...$(NC)"
-	$(MAKE) -C kernel defconfig
-	$(MAKE) -C kernel -j$$(nproc)
-	@echo "$(GREEN)Kernel built$(NC)"
+# Boot targets
+boot: scripts
+	@echo "$(BLUE)Booting AGNOS...$(NC)"
+	cd scripts && ./build/boot --kernel $(CURDIR)/$(AGNOS_REPO)/build/agnos
 
-build-userland:
-	@echo "$(BLUE)Building userland...$(NC)"
-	$(CARGO) build --release
-	@echo "$(GREEN)Userland built$(NC)"
+boot-test: scripts
+	@echo "$(BLUE)Boot + validate...$(NC)"
+	cd scripts && ./build/boot --test --kernel $(CURDIR)/$(AGNOS_REPO)/build/agnos
 
-build-initramfs:
-	@echo "$(BLUE)Building initramfs...$(NC)"
-	./scripts/build-initramfs.sh
-	@echo "$(GREEN)initramfs built$(NC)"
+iso-check: scripts
+	@echo "$(BLUE)Checking ISO components...$(NC)"
+	cd scripts && ./build/boot --iso-check
 
-iso: build
-	@echo "$(BLUE)Creating ISO image...$(NC)"
-	./scripts/create-iso.sh
-	@echo "$(GREEN)ISO created: $(DIST_DIR)/agnos-$(VERSION)-$(ARCH).iso$(NC)"
+boot-iso: iso-check
+	@echo "$(RED)ISO assembly not yet implemented$(NC)"
+	@echo "Run 'make iso-check' to see component readiness."
+	@exit 1
 
-# Self-hosting validation targets
-selfhost-validate:
-	@echo "$(BLUE)Running self-hosting validation...$(NC)"
-	./scripts/selfhost-validate.sh --source "$(CURDIR)" $(SELFHOST_ARGS)
-	@echo "$(GREEN)Self-hosting validation complete$(NC)"
+# Version info
+version:
+	@echo "AGNOS $(VERSION)"
+	@echo "  Cyrius:    $(shell $(CYRIUS) --version 2>/dev/null || echo 'not installed')"
+	@echo "  Kernel:    $(shell cat $(AGNOS_REPO)/VERSION 2>/dev/null || echo 'unknown')"
+	@echo "  Toolchain: $(shell grep -oP '(?<=^cyrius = ")[^"]+' scripts/cyrius.cyml 2>/dev/null || echo 'unknown')"
 
-selfhost-validate-quick:
-	@echo "$(BLUE)Running quick self-hosting validation...$(NC)"
-	./scripts/selfhost-validate.sh --source "$(CURDIR)" --quick $(SELFHOST_ARGS)
-	@echo "$(GREEN)Quick self-hosting validation complete$(NC)"
+# Component status
+status:
+	@echo "$(BLUE)Component Status$(NC)"
+	@echo ""
+	@test -f $(AGNOS_REPO)/build/agnos && echo "  $(GREEN)kernel$(NC)    $(shell wc -c < $(AGNOS_REPO)/build/agnos) bytes (v$(shell cat $(AGNOS_REPO)/VERSION 2>/dev/null))" || echo "  $(RED)kernel$(NC)    not built"
+	@test -f scripts/build/boot && echo "  $(GREEN)boot$(NC)      $(shell wc -c < scripts/build/boot) bytes" || echo "  $(RED)boot$(NC)      not built (run: make scripts)"
+	@test -x $(CYRIUS) && echo "  $(GREEN)cyrius$(NC)    $(shell $(CYRIUS) --version)" || echo "  $(RED)cyrius$(NC)    not installed"
+	@test -d $(ZUGOT_REPO) && echo "  $(GREEN)zugot$(NC)     $(shell ls $(ZUGOT_REPO)/base/*.toml 2>/dev/null | wc -l) base recipes" || echo "  $(YELLOW)zugot$(NC)     not found at $(ZUGOT_REPO)"
 
-qemu-boot-test: iso
-	@echo "$(BLUE)Running QEMU boot test...$(NC)"
-	./scripts/qemu-boot-test.sh $(QEMU_ARGS)
-	@echo "$(GREEN)QEMU boot test complete$(NC)"
-
-# Installation targets
-install:
-	@if [ -z "$(TARGET)" ]; then \
-		echo "$(RED)Error: TARGET not specified$(NC)"; \
-		echo "Usage: make install TARGET=/dev/sdX"; \
-		exit 1; \
-	fi
-	@echo "$(YELLOW)WARNING: This will erase all data on $(TARGET)$(NC)"
-	@read -p "Are you sure? [y/N] " confirm && [ $$confirm = y ] || exit 1
-	./scripts/install.sh $(TARGET)
-
-# Test targets
-test: test-unit test-integration
-	@echo "$(GREEN)All tests passed$(NC)"
-
-test-unit:
-	@echo "$(BLUE)Running unit tests...$(NC)"
-	$(CARGO) test --lib
-	@echo "$(GREEN)Unit tests passed$(NC)"
-
-test-integration:
-	@echo "$(BLUE)Running integration tests...$(NC)"
-	$(CARGO) test --test '*'
-	@echo "$(GREEN)Integration tests passed$(NC)"
-
-test-security:
-	@echo "$(BLUE)Running security tests...$(NC)"
-	$(CARGO) test --features security-tests
-	@echo "$(GREEN)Security tests passed$(NC)"
-
-test-coverage:
-	@echo "$(BLUE)Running tests with coverage...$(NC)"
-	$(CARGO) install cargo-tarpaulin 2>/dev/null || true
-	$(CARGO) tarpaulin --out Xml --out Html
-	@echo "$(GREEN)Coverage report generated$(NC)"
-
-# Quality targets
-lint:
-	@echo "$(BLUE)Running linters...$(NC)"
-	$(CARGO) clippy -- -D warnings
-	@echo "$(GREEN)Linting complete$(NC)"
-
-format:
-	@echo "$(BLUE)Formatting code...$(NC)"
-	$(CARGO) fmt
-	@echo "$(GREEN)Formatting complete$(NC)"
-
-format-check:
-	@echo "$(BLUE)Checking formatting...$(NC)"
-	$(CARGO) fmt -- --check
-
-security-scan:
-	@echo "$(BLUE)Running security scans...$(NC)"
-	$(CARGO) audit
-	@echo "$(GREEN)Security scan complete$(NC)"
-
-# Development targets
-docker-dev:
-	@echo "$(BLUE)Building development container...$(NC)"
-	$(DOCKER) build -f Dockerfile.dev -t agnos:dev .
-	@echo "$(GREEN)Development container built$(NC)"
-	@echo "$(BLUE)Starting development container...$(NC)"
-	$(DOCKER) run -it --rm \
-		-v $(PWD):/workspace \
-		-v agnos-build-cache:/cache \
-		agnos:dev /bin/bash
-
-docker-build:
-	@echo "$(BLUE)Building in container...$(NC)"
-	$(DOCKER) build -f Dockerfile.dev -t agnos:dev .
-	$(DOCKER) run --rm \
-		-v $(PWD):/workspace \
-		-v agnos-build-cache:/cache \
-		agnos:dev make build
-
+# Clean
 clean:
-	@echo "$(BLUE)Cleaning build artifacts...$(NC)"
-	$(CARGO) clean
+	@echo "$(BLUE)Cleaning...$(NC)"
+	rm -rf scripts/build/*
 	rm -rf $(BUILD_DIR)/*
 	rm -rf $(DIST_DIR)/*
-	$(MAKE) -C kernel clean || true
-	@echo "$(GREEN)Clean complete$(NC)"
-
-# Ark package build targets
-ark-build:
-	@if [ -z "$(RECIPE)" ]; then \
-		echo "$(RED)Error: RECIPE not specified$(NC)"; \
-		echo "Usage: make ark-build RECIPE=recipes/python/cpython-3.12.toml [SIGN=1] [TARGET=aarch64]"; \
-		exit 1; \
-	fi
-	@echo "$(BLUE)Building ark package from $(RECIPE)...$(NC)"
-	./scripts/ark-build.sh $(if $(SIGN),--sign) $(if $(TARGET),--target $(TARGET)) $(RECIPE)
-	@echo "$(GREEN)Ark package built$(NC)"
-
-ark-build-all:
-	@echo "$(BLUE)Building all ark packages...$(NC)"
-	@for recipe in $$(find recipes -name '*.toml' -type f); do \
-		echo "$(YELLOW)Building $$recipe...$(NC)"; \
-		./scripts/ark-build.sh $$recipe || exit 1; \
-	done
-	@echo "$(GREEN)All ark packages built$(NC)"
-
-ark-build-python:
-	@echo "$(BLUE)Building Python ark packages...$(NC)"
-	@for recipe in $$(find recipes/python -name '*.toml' -type f); do \
-		echo "$(YELLOW)Building $$recipe...$(NC)"; \
-		./scripts/ark-build.sh $$recipe || exit 1; \
-	done
-	@echo "$(GREEN)Python ark packages built$(NC)"
-
-docker-ark-build:
-	@if [ -z "$(RECIPE)" ]; then \
-		echo "$(RED)Error: RECIPE not specified$(NC)"; \
-		echo "Usage: make docker-ark-build RECIPE=recipes/python/cpython-3.12.toml"; \
-		exit 1; \
-	fi
-	@echo "$(BLUE)Building ark package in container from $(RECIPE)...$(NC)"
-	$(DOCKER) build -f docker/Dockerfile.takumi-builder -t agnos:takumi-builder .
-	$(DOCKER) run --rm \
-		-v $(PWD)/recipes:/recipes:ro \
-		-v $(PWD)/$(DIST_DIR)/ark:/output \
-		agnos:takumi-builder /recipes/$(notdir $(RECIPE))
-	@echo "$(GREEN)Ark package built in container$(NC)"
-
-docker-ark-build-python:
-	@echo "$(BLUE)Building all Python ark packages in container...$(NC)"
-	$(DOCKER) build -f docker/Dockerfile.takumi-builder -t agnos:takumi-builder .
-	@for recipe in $$(find recipes/python -name '*.toml' -type f); do \
-		echo "$(YELLOW)Building $$recipe in container...$(NC)"; \
-		$(DOCKER) run --rm \
-			-v $(PWD)/recipes:/recipes:ro \
-			-v $(PWD)/$(DIST_DIR)/ark:/output \
-			agnos:takumi-builder /recipes/python/$$(basename $$recipe) || exit 1; \
-	done
-	@echo "$(GREEN)Python ark packages built in container$(NC)"
-
-# Marketplace bundle targets
-ark-bundle:
-	@if [ -z "$(RECIPE)" ]; then \
-		echo "$(RED)Error: RECIPE not specified$(NC)"; \
-		echo "Usage: make ark-bundle RECIPE=recipes/marketplace/secureyeoman.toml"; \
-		exit 1; \
-	fi
-	@echo "$(BLUE)Bundling marketplace package from $(RECIPE)...$(NC)"
-	./scripts/ark-bundle.sh $(if $(SIGN),--sign) $(RECIPE)
-
-ark-bundle-all:
-	@echo "$(BLUE)Bundling all marketplace packages...$(NC)"
-	./scripts/ark-bundle.sh $(if $(SIGN),--sign) recipes/marketplace/
-	@echo "$(GREEN)All marketplace packages bundled$(NC)"
-
-# Signing targets
-ark-keygen:
-	@echo "$(BLUE)Generating Ed25519 signing keypair...$(NC)"
-	./scripts/ark-sign.sh --generate-key
-	@echo "$(GREEN)Keypair generated$(NC)"
-
-ark-sign:
-	@if [ -z "$(PKG)" ]; then \
-		echo "$(RED)Error: PKG not specified$(NC)"; \
-		echo "Usage: make ark-sign PKG=dist/ark/redis7-7.4.2-x86_64.ark"; \
-		exit 1; \
-	fi
-	@echo "$(BLUE)Signing package $(PKG)...$(NC)"
-	./scripts/ark-sign.sh $(PKG)
-
-ark-sign-all:
-	@echo "$(BLUE)Signing all .ark packages in dist/ark/...$(NC)"
-	./scripts/ark-sign.sh $(DIST_DIR)/ark/
-	@echo "$(GREEN)All packages signed$(NC)"
-
-ark-verify:
-	@if [ -z "$(PKG)" ]; then \
-		echo "$(RED)Error: PKG not specified$(NC)"; \
-		echo "Usage: make ark-verify PKG=dist/ark/redis7-7.4.2-x86_64.ark"; \
-		exit 1; \
-	fi
-	@echo "$(BLUE)Verifying package $(PKG)...$(NC)"
-	./scripts/ark-sign.sh --verify $(PKG)
-
-# Release targets
-release: clean
-	@echo "$(BLUE)Creating release build...$(NC)"
-	VERSION=$(VERSION) $(MAKE) build
-	./scripts/create-release.sh $(VERSION)
-	@echo "$(GREEN)Release $(VERSION) created$(NC)"
-
-# Documentation targets
-docs:
-	@echo "$(BLUE)Building documentation...$(NC)"
-	$(CARGO) doc --no-deps
-	@echo "$(GREEN)Documentation built$(NC)"
-
-docs-serve:
-	@echo "$(BLUE)Serving documentation...$(NC)"
-	$(CARGO) doc --no-deps --open
-
-# CI targets for automation
-ci-build: check build
-
-ci-test: test lint format-check security-scan
-
-ci-docs: docs
-
-# Convenience targets
-kernel-config:
-	$(MAKE) -C kernel menuconfig
-
-kernel-clean:
-	$(MAKE) -C kernel clean
-	$(MAKE) -C kernel mrproper
-
-# Release signing (requires GPG key)
-sign-release:
-	@if [ -z "$(VERSION)" ]; then \
-		echo "$(RED)Error: VERSION not specified$(NC)"; \
-		exit 1; \
-	fi
-	@echo "$(BLUE)Signing release $(VERSION)...$(NC)"
-	gpg --armor --detach-sign $(DIST_DIR)/agnos-$(VERSION)-$(ARCH).iso
-	@echo "$(GREEN)Release signed$(NC)"
-
-# Verify release signature
-verify-release:
-	@if [ -z "$(VERSION)" ]; then \
-		echo "$(RED)Error: VERSION not specified$(NC)"; \
-		exit 1; \
-	fi
-	@echo "$(BLUE)Verifying release signature...$(NC)"
-	gpg --verify $(DIST_DIR)/agnos-$(VERSION)-$(ARCH).iso.asc
-	@echo "$(GREEN)Signature verified$(NC)"
+	@echo "$(GREEN)Clean$(NC)"

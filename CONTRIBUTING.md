@@ -31,11 +31,11 @@ This project adheres to a code of conduct. By participating, you are expected to
 Before contributing, ensure you have:
 
 - Git 2.30+
-- Docker 20.10+ (for containerized builds)
+- Cyrius compiler (see [cyrius repo](https://github.com/MacCracken/cyrius))
+- Docker 20.10+ (optional — for the agnos userland container images under `docker/`)
 - 50GB+ free disk space
 - Basic knowledge of:
-  - Linux kernel development
-  - Rust, C, or Python (depending on area)
+  - Cyrius (sovereign systems language — study `cyrius/programs/` for examples)
   - Git and GitHub workflow
 
 ### First-Time Setup
@@ -44,63 +44,48 @@ Before contributing, ensure you have:
 
 2. **Clone your fork**:
    ```bash
-   git clone https://github.com/YOUR_USERNAME/agnos.git
-   cd agnos
+   git clone https://github.com/YOUR_USERNAME/agnosticos.git
+   cd agnosticos
    ```
 
 3. **Add upstream remote**:
    ```bash
-   git remote add upstream https://github.com/agnostos/agnos.git
+   git remote add upstream https://github.com/MacCracken/agnosticos.git
    ```
 
 4. **Set up development environment**:
    ```bash
-   # Install build dependencies
-   ./scripts/install-build-deps.sh
-   
-   # Set up git hooks
-   ./scripts/setup-git-hooks.sh
+   # Install the Cyrius toolchain (or, from a cyrius checkout: sh bootstrap/bootstrap.sh)
+   curl -sSf https://raw.githubusercontent.com/MacCracken/cyrius/main/scripts/install.sh | sh
    ```
+   (The old `install-build-deps.sh` survives only in `scripts/archive-pre-cyrius/`, Rust-era reference; there is no git-hooks setup script.)
 
 ## Development Environment
 
-### Using Docker (Recommended)
+### Using Docker (optional)
+
+The images under `docker/` are the agnos userland running natively under mirshi (no VM, no Linux base) — see [`docker/README.md`](docker/README.md).
 
 ```bash
-# Build development container
-docker build -t agnos-dev -f Dockerfile.dev .
+# Build the layered stack: agnos-thin -> agnos-shell -> agnos-dev
+docker/build-dev.sh
 
-# Run development environment
-docker run -it --rm \
-  -v $(pwd):/workspace \
-  -v agnos-build-cache:/cache \
-  agnos-dev
-
-# For large builds, increase virtual memory limit (default 8GB)
-docker run -it --rm \
-  -e AGNOS_ULIMIT_VMEM=unlimited \
-  -v $(pwd):/workspace \
-  -v agnos-build-cache:/cache \
-  agnos-dev
-
-# Inside container
-make build
+# Run the dev userland (agnsh at the [ASSIST] > prompt)
+docker run --rm -it --cap-add=SYS_PTRACE --security-opt seccomp=unconfined agnos-dev
 ```
 
 ### Native Development
 
 ```bash
-# Install dependencies
-sudo ./scripts/install-build-deps.sh
+# Build the boot pipeline (Cyrius)
+cd scripts
+cyrius build src/boot.cyr build/boot
+./build/boot --help
 
-# Build kernel
-./scripts/build-kernel.sh
-
-# Build userland
-make build-userland
-
-# Run tests
-make test
+# Hand the kernel off under QEMU + OVMF through gnoboot — this asserts gnoboot's hand-off banner,
+# not that the kernel boots (the kernel's own gates are agnos's scripts/smoke/ battery).
+# `make boot-test`'s -kernel path cannot load agnos >= 1.30.0 (see docs/installation/README.md, QEMU Boot Test)
+cd ../../gnoboot && sh tests/ovmf_smoke.sh
 ```
 
 ## Git Workflow
@@ -263,99 +248,39 @@ git push --force-with-lease origin feature/your-feature
 
 ### Language-Specific Standards
 
-#### Rust (Agent Runtime, System Tools)
+#### Cyrius (All AGNOS Code)
 
-```rust
-// Use rustfmt for formatting
-// Max line length: 100 characters
+```cyrius
+# Cyrius is the sovereign systems language for AGNOS. Comments start with `#`.
+# Study working programs in cyrius/programs/ before writing new code.
 
-/// Brief description of function
-/// 
-/// # Arguments
-/// 
-/// * `arg1` - Description
-/// 
-/// # Returns
-/// 
-/// Description of return value
-/// 
-/// # Security Considerations
-/// 
-/// Any security implications
-pub fn example_function(arg1: &str) -> Result<(), Error> {
-    // Implementation
+fn example_function(arg1, arg2) {
+    # Everything is i64. No type annotations needed.
+    # No hidden allocations, no implicit conversions.
+    return 0;
 }
 
-// Use anyhow for error handling
-// Use tracing for logging
-// Use clap for CLI
+fn main(): i64 { return example_function(1, 2); }
+
+# Programs must call main() at top level — a bare call, exiting via SYS_EXIT
+# (a literal 60 is Linux's exit number; agnos's exit is 0):
+fn _entry(): i64 { var r = main(); syscall(SYS_EXIT, r); return 0; }
+_entry();
 ```
 
-**Linting**:
+**Building**:
 ```bash
-cargo fmt
-cargo clippy --all-targets --all-features
-cargo audit
+# Always use cyrius build, never raw cycc (self-hosting compiler; was cc5, renamed at cyrius v6.0.0)
+cyrius build src/main.cyr build/output
 ```
 
-#### C (Kernel Code)
+**Key rules**:
+- Programs execute at top level — `fn main()` is not called automatically
+- `cyrius build` auto-resolves deps from `cyrius.cyml`
+- `store8`/`load8` (and the 16/32/64 family) for sized byte-level access; `*p` dereferences a pointer
+- Mixed `&&`/`||` follows standard precedence since cyrius 6.3.36 (2026-07-02; before it, an unparenthesized `a || b && c` parsed as `(a || b) && c`), and negative literals work (verified at v6.0.62) — older code still carries the nested-if and `0 - N` workarounds from before those dates
 
-```c
-/*
- * Brief description
- * @param arg1 Description
- * @return Description
- * 
- * Security: Any security considerations
- */
-int example_function(const char *arg1)
-{
-    // Use kernel coding style
-    // Checkpatch.pl compliance
-    // No floating point in kernel
-}
-```
-
-**Linting**:
-```bash
-./scripts/checkpatch.pl --file kernel/module.c
-sparse kernel/module.c
-```
-
-#### Python (Build Scripts, Tools)
-
-```python
-"""Module docstring."""
-
-import os
-from typing import Optional
-
-
-def example_function(arg1: str) -> Optional[int]:
-    """
-    Brief description.
-    
-    Args:
-        arg1: Description
-        
-    Returns:
-        Description or None
-        
-    Security:
-        Any security considerations
-    """
-    # Use black for formatting
-    # Use ruff for linting
-    # Use type hints
-```
-
-**Linting**:
-```bash
-black .
-ruff check .
-mypy .
-bandit -r .
-```
+See the [Cyrius field notes](https://github.com/MacCracken/vidya) for practical lessons.
 
 ### Code Review Checklist
 
@@ -386,80 +311,35 @@ tests/
 ### Running Tests
 
 ```bash
-# All tests
-make test
+# Boot pipeline test
+cd scripts && cyrius build src/boot.cyr build/boot && ./build/boot --test
 
-# Specific test suite
-make test-unit
-make test-integration
-make test-security
-
-# With coverage
-make test-coverage
-
-# Performance benchmarks
-make benchmark
+# Individual subsystem tests (in their respective repos)
+cd /path/to/subsystem
+cyrius test
 ```
 
 ### Writing Tests
 
-**Rust**:
-```rust
-#[cfg(test)]
-mod tests {
-    use super::*;
+**Cyrius** (`.tcyr` files):
+```cyrius
+# Assertions come from the cyrius stdlib (lib/assert.cyr; lib/test.cyr adds table-driven helpers)
+# Place in tests/ directory with .tcyr extension
 
-    #[test]
-    fn test_example() {
-        let result = example_function("test");
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_panic_case() {
-        example_function("");
-    }
+fn test_example() {
+    var result = example_function(42, 0);
+    assert(result == 0, "example_function should return 0");
+    return 0;
 }
 ```
 
-**Python**:
-```python
-import pytest
-
-
-def test_example():
-    """Test example function."""
-    result = example_function("test")
-    assert result is not None
-
-
-def test_example_error():
-    """Test error handling."""
-    with pytest.raises(ValueError):
-        example_function("")
-```
+See individual repo CLAUDE.md files for repo-specific test conventions.
 
 ## Documentation
 
 ### Code Documentation
 
-All public APIs must be documented:
-
-```rust
-/// Agent Kernel Daemon
-/// 
-/// The main daemon responsible for managing agent lifecycle
-/// and resource allocation.
-/// 
-/// # Security
-/// 
-/// This daemon runs with elevated privileges. All agent
-/// operations are sandboxed using Landlock and seccomp.
-pub struct AgentKernelDaemon {
-    // ...
-}
-```
+All public APIs should be documented with comments:
 
 ### User Documentation
 
@@ -470,14 +350,19 @@ pub struct AgentKernelDaemon {
 
 ### Documentation Locations
 
+This is the **genesis repo**. Per-repo doc conventions (where to put API docs, user guides, etc., inside each subsystem repo) are defined per-subsystem in each repo. The genesis repo's own `docs/` tree is structured as follows:
+
 | Type | Location |
 |------|----------|
-| API docs | `docs/api/` |
-| User guides | `docs/user/` |
-| Developer docs | `docs/development/` |
-| Security docs | `docs/security/` |
-| README | Component root |
-| Inline | Source code |
+| Architecture & philosophy | `docs/` (root: architecture.md, philosophy.md, design-patterns.md, AGNOS.md, thesis.md) |
+| ADRs | `docs/adr/` |
+| Articles | `docs/articles/` |
+| Doc health ledger | `docs/doc-health.md` (audits the whole `docs/` tree + root files) |
+| Developer docs | `docs/development/` (state.md, roadmap.md, sprint-history.md, planning/, first-party/, guides/, infrastructure/, os/, vision/) |
+| Application/lib pointers | `docs/applications/`, `docs/applications/libs/` (per-subsystem pointer docs; live docs in each subsystem's own repo) |
+| Security policy | `docs/security/`, root `SECURITY.md` |
+| Installation | `docs/installation/` |
+| Archive | `docs/archive/` (frozen pre-Cyrius / pre-extraction artifacts) |
 
 ## Security
 
@@ -505,108 +390,84 @@ Security-sensitive changes require:
 
 ### Versioning
 
-We use [Semantic Versioning](https://semver.org/):
-
-```
-MAJOR.MINOR.PATCH
-
-MAJOR - Breaking changes
-MINOR - New features (backwards compatible)
-PATCH - Bug fixes (backwards compatible)
-```
-
 ### Versioning Scheme
 
-AGNOS uses **Calendar Versioning (CalVer)** in `YYYY.M.D` format:
+AGNOS uses **Semantic Versioning (SemVer)** in `MAJOR.MINOR.PATCH` format:
 
-- `YYYY` — release year
-- `M` — release month
-- `D` — release day of the month
+- `MAJOR` — incompatible/breaking changes
+- `MINOR` — backward-compatible functionality
+- `PATCH` — backward-compatible fixes
 
-Patch releases append `-N` (e.g., `2026.3.5-1`, `2026.3.5-2`).
+The scheme switched from CalVer (`YYYY.M.D`) to SemVer at the 0.1.0 cut; CalVer may return at a named GA milestone.
 
-The canonical version lives in the `VERSION` file at the repository root. Shell scripts, the Makefile, and the Docker entrypoint all read from this file. Cargo workspace version is set in `userland/Cargo.toml` under `[workspace.package]`.
+The canonical version lives in the `VERSION` file at the repository root. Shell scripts, the Makefile, and the Docker entrypoint all read from this file.
 
 ### Release Branches
 
 ```
 main
   ↑
-release/v2026.3.5  ← Release branch
+release/vX.Y.Z  ← Release branch
   ↑
 develop
 ```
 
 ### Release Checklist
 
-- [ ] Version bumped in `VERSION`, `userland/Cargo.toml`, and `userland/fuzz/Cargo.toml`
+- [ ] Version bumped in `VERSION`
 - [ ] Changelog updated
-- [ ] All tests passing (`cargo test --workspace`)
-- [ ] No compiler warnings (`cargo clippy --workspace`)
+- [ ] Boot pipeline builds (`cd scripts && cyrius build src/boot.cyr build/boot`)
+- [ ] gnoboot hands the kernel off under QEMU + OVMF (`gnoboot/tests/ovmf_smoke.sh` — it asserts the hand-off banner only; the kernel's own boot gates are the agnos smoke battery, `scripts/smoke/`; `make boot-test`'s `-kernel` path cannot load agnos ≥ 1.30.0)
 - [ ] Security review completed
 - [ ] Documentation updated
-- [ ] ISO build tested (`sudo ./scripts/build-iso.sh`)
-- [ ] QEMU boot test passed
 - [ ] Release notes written
 - [ ] Tag created and signed
-- [ ] Packages built and signed
 - [ ] Release published
 
 ### Creating a Release
 
 ```bash
 # Create release branch
-git checkout -b release/v2026.3.5
+git checkout -b release/vX.Y.Z
 
-# Update version — edit the VERSION file, then sync Cargo.toml
-echo "2026.3.5" > VERSION
-# Update version in userland/Cargo.toml [workspace.package] and userland/fuzz/Cargo.toml
+# Update version (SemVer)
+echo "X.Y.Z" > VERSION
 
 # Update changelog
 vim CHANGELOG.md
 
 # Commit
 git add .
-git commit -m "chore(release): prepare v2026.3.5"
+git commit -m "chore(release): prepare vX.Y.Z"
 
 # Create tag
-git tag -s v2026.3.5 -m "Release v2026.3.5"
+git tag -s vX.Y.Z -m "Release vX.Y.Z"
 
 # Push
-git push origin release/v2026.3.5
-git push origin v2026.3.5
+git push origin release/vX.Y.Z
+git push origin vX.Y.Z
 ```
 
-### Building the ISO
-
-The ISO requires musl for static binaries (avoids glibc version mismatches with the
-Debian-based rootfs).
+### Building the Boot Pipeline
 
 ```bash
-# Install dependencies (Arch Linux)
-sudo pacman -S squashfs-tools grub libisoburn mtools qemu-full debootstrap \
-  debian-archive-keyring musl
+# Build the sovereign boot pipeline (Cyrius)
+cd scripts
+cyrius build src/boot.cyr build/boot
 
-# Add musl target
-rustup target add x86_64-unknown-linux-musl
+# Verify ecosystem state
+./build/boot --status
 
-# Full build (compiles + bootstraps rootfs + ISO)
-sudo ./scripts/build-iso.sh
-
-# Incremental rebuilds
-cargo build --release --target x86_64-unknown-linux-musl \
-  --manifest-path userland/Cargo.toml
-sudo ./scripts/build-iso.sh --skip-build                  # reuse binaries
-sudo ./scripts/build-iso.sh --skip-build --skip-debootstrap  # reuse rootfs too
+# Hand-off test — through gnoboot + OVMF; asserts gnoboot's banner, not a kernel boot
+# (make boot-test's -kernel path cannot load agnos >= 1.30.0)
+cd ../../gnoboot && sh tests/ovmf_smoke.sh
 ```
-
-Output: `output/agnos-VERSION-x86_64.iso`
 
 See `docs/installation/README.md` for QEMU boot commands and testing instructions.
 
 ## Questions?
 
-- **General questions**: [GitHub Discussions](https://github.com/agnostos/agnos/discussions)
+- **General questions**: [GitHub Issues](https://github.com/MacCracken/agnosticos/issues) (Discussions are not enabled on the repo)
 - **Development help**: Matrix channel #agnos-dev:matrix.org
 - **Security issues**: security@agnos.io
 

@@ -2,12 +2,12 @@
 
 > **Kiran** (Sanskrit: ray of light) — AI-native game engine
 
-| Field | Value |
-|-------|-------|
-| Status | Pre-1.0 |
-| Version | `0.26.3` |
-| Repository | `MacCracken/kiran` |
-| Runtime | library crate (Rust) |
+- **Repository**: [github.com/MacCracken/kiran](https://github.com/MacCracken/kiran)
+- **License**: GPL-3.0-only
+- **Status**: Stable - See Repo
+- **Language**: Rust
+
+See the [libs registry](README.md) for the full catalog and dependency context.
 
 ---
 
@@ -21,7 +21,7 @@
 - Animation system
 - Gizmos for debug visualization
 - Profiler for frame timing
-- Scripting via kavach WASM sandboxing
+- Scripting via kavach sandboxing
 - Feature-gated integrations:
   - `ai` — AI behaviors via hoosh
   - `audio` — spatial audio via dhvani

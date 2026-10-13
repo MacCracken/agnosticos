@@ -1,38 +1,10 @@
-# AgnosAI
+# agnosai
 
-> **AgnosAI** (AGNOS + AI) — Provider-agnostic AI orchestration framework
+Agent orchestration engine (AGNOS + AI) — multi-agent crews with task DAGs, LLM routing, fleet distribution and sandboxed tool execution; the CrewAI replacement, and the core engine inside agnostic.
 
-| Field | Value |
-|-------|-------|
-| Status | Released |
-| Version | `0.25.3` |
-| Repository | `MacCracken/agnosai` |
-| Runtime | library crate (Rust) |
-| Recipe | `recipes/marketplace/agnosai.toml` |
-| crates.io | [agnosai](https://crates.io/crates/agnosai) |
+- **Repository**: [github.com/MacCracken/agnosai](https://github.com/MacCracken/agnosai)
+- **License**: GPL-3.0-only
+- **Status**: Stable - See Repo
+- **Language**: Cyrius (ported from Rust at 2.0.0, 2026-08-14; the Rust tree is frozen at `rust-old/`)
 
----
-
-## What It Does
-
-- Crew management with role-based agent assignment and lifecycle
-- Task DAG execution with dependency resolution and parallel stages
-- Tool execution framework with sandboxed invocation
-- Fleet distribution for spreading crews across nodes
-- CrewAI replacement written in pure Rust for the AGNOS ecosystem
-
-## Consumers
-
-- **agnostic** — Python/CrewAI agent automation platform (primary consumer)
-- **daimon** — Agent orchestrator (crew scheduling)
-- **joshua** — Game manager (NPC crew behavior and AI teams)
-
-## Architecture
-
-- Crew/Task/Tool abstraction layers with trait-based extensibility
-- DAG scheduler with topological sort and cycle detection
-- Dependencies: tokio, serde, hoosh (LLM calls)
-
-## Roadmap
-
-Stable — published on crates.io. Future: streaming task results, crew checkpointing and resume, cost estimation per crew run.
+Catalogued in the [libs registry](README.md) (OS & Infrastructure) since 2026-09-27 — it had been dropped on 2026-07-05, while it was still an unported Rust repo. It also ships a standalone server binary.

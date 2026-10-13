@@ -1,0 +1,529 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_call:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # ============================================================================
+  # STAGE 1 — Validation (all parallel, always runs)
+  #
+  # Quality, tests, security, fuzzing, license, docs must all pass before
+  # any build work begins. These jobs have no inter-dependencies.
+  # ============================================================================
+
+  # Code quality (fmt + clippy)
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Rust environment
+      uses: ./.github/actions/setup-rust-env
+      with:
+        components: rustfmt, clippy
+        cache-prefix: quality
+
+    - name: Check formatting
+      run: cargo fmt --all -- --check
+      working-directory: userland
+
+    - name: Run clippy
+      run: cargo clippy --workspace -- -D warnings
+      working-directory: userland
+
+  # Testing — parallelized by crate
+  test:
+    name: Test ${{ matrix.crate }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        crate: [agent_runtime, ai_shell, desktop_environment, llm_gateway, common-and-sys]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Rust environment
+      uses: ./.github/actions/setup-rust-env
+      with:
+        cache-prefix: test-${{ matrix.crate }}
+
+    - name: Run tests (agent_runtime)
+      if: matrix.crate == 'agent_runtime'
+      run: cargo test -p agent_runtime
+      working-directory: userland
+
+    - name: Run tests (ai_shell)
+      if: matrix.crate == 'ai_shell'
+      run: cargo test -p ai_shell
+      working-directory: userland
+
+    - name: Run tests (desktop_environment)
+      if: matrix.crate == 'desktop_environment'
+      run: cargo test -p desktop_environment
+      working-directory: userland
+
+    - name: Run tests (llm_gateway)
+      if: matrix.crate == 'llm_gateway'
+      run: cargo test -p llm_gateway
+      working-directory: userland
+
+    - name: Run tests (agnos-common + agnos-sys)
+      if: matrix.crate == 'common-and-sys'
+      run: cargo test -p agnos-common -p agnos-sys
+      working-directory: userland
+
+  # Security scanning — parallelized across 4 independent scan types
+  security:
+    name: Security ${{ matrix.scan }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        scan: [trivy, cargo-audit, semgrep, cargo-deny]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Rust environment
+      if: matrix.scan == 'cargo-audit' || matrix.scan == 'cargo-deny'
+      uses: ./.github/actions/setup-rust-env
+      with:
+        cache-prefix: security-${{ matrix.scan }}
+
+    - name: Run Trivy vulnerability scanner
+      if: matrix.scan == 'trivy'
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        ignore-unfixed: true
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+        severity: 'CRITICAL,HIGH'
+
+    - name: Upload Trivy scan results
+      if: matrix.scan == 'trivy'
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+    - name: Run cargo audit
+      if: matrix.scan == 'cargo-audit'
+      run: |
+        cargo install cargo-audit --locked
+        cargo audit --ignore RUSTSEC-2026-0049 --ignore RUSTSEC-2025-0134
+      working-directory: userland
+
+    - name: Run Semgrep
+      if: matrix.scan == 'semgrep'
+      run: |
+        pip install semgrep
+        semgrep --config p/security-audit --config p/secrets --error
+
+    - name: Dependency vulnerability check
+      if: matrix.scan == 'cargo-deny'
+      run: |
+        cargo install cargo-deny --locked
+        printf '[advisories]\nversion = 2\ndb-path = "~/.cargo/advisory-db"\ndb-urls = ["https://github.com/rustsec/advisory-db"]\nyanked = "warn"\n\n[licenses]\nversion = 2\nallow = ["MIT", "Apache-2.0", "BSD-3-Clause", "GPL-3.0"]\n\n[bans]\nmultiple-versions = "warn"\nwildcards = "allow"\n\n[sources]\nunknown-registry = "warn"\nunknown-git = "warn"\n' > deny.toml
+        cargo deny check advisories || true
+      working-directory: userland
+      continue-on-error: true
+
+    - name: Check for outdated dependencies
+      if: matrix.scan == 'cargo-deny'
+      run: |
+        cargo install cargo-outdated --locked
+        cargo outdated --root-deps-only 2>/dev/null || true
+      working-directory: userland
+      continue-on-error: true
+
+  # Fuzzing — runs on push to main and release (workflow_call)
+  fuzzing:
+    name: Fuzz ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      github.event_name == 'workflow_call'
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [fuzz_agent_parse, fuzz_interpreter, fuzz_command_split, fuzz_llm_inference]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Rust environment
+      uses: ./.github/actions/setup-rust-env
+      with:
+        toolchain: nightly
+        cache-prefix: fuzz-${{ matrix.target }}
+
+    - name: Install cargo-fuzz
+      run: cargo install cargo-fuzz --locked
+
+    - name: Cache fuzzing corpus
+      uses: actions/cache@v4
+      with:
+        path: |
+          userland/fuzz/corpus/
+          userland/fuzz/artifacts/
+        key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
+        restore-keys: |
+          fuzz-corpus-${{ matrix.target }}-
+
+    - name: Run fuzzer (30 minutes)
+      run: |
+        cd userland
+        timeout 1800 cargo fuzz run ${{ matrix.target }} -- -max_total_time=1800 || true
+      continue-on-error: true
+
+    - name: Check for crashes
+      run: |
+        ARTIFACT_DIR="userland/fuzz/artifacts/${{ matrix.target }}"
+        if [ -d "$ARTIFACT_DIR" ] && [ "$(ls -A "$ARTIFACT_DIR" 2>/dev/null)" ]; then
+          echo "::error::Found crashes in ${{ matrix.target }}:"
+          ls -la "$ARTIFACT_DIR/"
+          exit 1
+        fi
+
+    - name: Upload crash artifacts
+      uses: actions/upload-artifact@v4
+      if: failure()
+      with:
+        name: fuzz-crash-${{ matrix.target }}
+        path: userland/fuzz/artifacts/${{ matrix.target }}/
+
+    - name: Upload corpus
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: fuzz-corpus-${{ matrix.target }}
+        path: userland/fuzz/corpus/${{ matrix.target }}/
+
+  # License check
+  license:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Verify LICENSE file
+      run: |
+        test -f LICENSE
+        grep -q "GNU GENERAL PUBLIC LICENSE" LICENSE
+
+  # Documentation
+  docs:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Verify documentation completeness
+      run: |
+        test -f README.md
+        test -f docs/development/roadmap.md
+        test -f CONTRIBUTING.md
+        test -f SECURITY.md
+        test -f LICENSE
+
+  # ============================================================================
+  # STAGE 2 — Build & Artifacts (needs stage 1, push/workflow_call only)
+  #
+  # Build verification, coverage, benchmarks, containers, and .ark packages.
+  # These only run after all stage 1 validation jobs pass.
+  # ============================================================================
+
+  # Build verification (skipped on workflow_call — release does its own --release build)
+  build:
+    name: Build ${{ matrix.name }}
+    needs: [quality, test, security, fuzzing, license, docs]
+    if: github.event_name != 'workflow_call'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            name: linux-amd64
+          - target: aarch64-unknown-linux-gnu
+            name: linux-arm64
+            aarch64: true
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Setup Rust environment
+      uses: ./.github/actions/setup-rust-env
+      with:
+        targets: ${{ matrix.target }}
+        cache-prefix: build-${{ matrix.target }}
+        install-build-essential: ${{ !matrix.aarch64 }}
+
+    - name: Install aarch64 cross-compiler
+      if: matrix.aarch64
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y gcc-aarch64-linux-gnu
+
+    - name: Build userland
+      run: |
+        if [ "${{ matrix.aarch64 }}" = "true" ]; then
+          export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
+        fi
+        cargo build --workspace --target ${{ matrix.target }}
+      working-directory: userland
+
+  # Coverage — runs after stage 1 passes (skip on release — tests already ran)
+  coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: [quality, test, security, fuzzing, license, docs]
+    if: github.event_name != 'workflow_call'
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Rust environment
+      uses: ./.github/actions/setup-rust-env
+      with:
+        cache-prefix: coverage
+
+    - name: Generate coverage report
+      run: |
+        cargo install cargo-tarpaulin --locked
+        cargo tarpaulin --workspace --jobs 4 --timeout 300 --out Xml --fail-under 65 || true
+      working-directory: userland
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        file: ./userland/cobertura.xml
+        flags: unittests
+        name: codecov-umbrella
+
+  # Benchmarks (record only, does not block merges)
+  benchmarks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [quality, test, security, fuzzing, license, docs]
+    if: github.event_name == 'push'
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Rust environment
+      uses: ./.github/actions/setup-rust-env
+      with:
+        cache-prefix: bench
+
+    - name: Run benchmarks
+      run: cargo bench -- --noplot 2>&1 | tee benchmark-output.txt
+      working-directory: userland
+      continue-on-error: true
+
+    - name: Upload benchmark results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: benchmark-results
+        path: |
+          userland/benchmark-output.txt
+          userland/target/criterion/
+
+  # Container build
+  container:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: [quality, test, security, fuzzing, license, docs]
+    if: github.event_name == 'push'
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Cache Docker layers
+      uses: actions/cache@v4
+      with:
+        path: /tmp/.buildx-cache
+        key: ${{ runner.os }}-docker-${{ hashFiles('Dockerfile', 'userland/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-docker-
+
+    - name: Build container image
+      run: docker build -t agnos:latest .
+
+    - name: Test container
+      run: docker run --rm agnos:latest echo "Container build successful"
+
+  # Build .ark packages — independent packages in parallel, pgvector after postgresql
+  ark-build-independent:
+    name: Build .ark (${{ matrix.package }})
+    needs: [quality, test, security, fuzzing, license, docs]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    if: github.event_name == 'push'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - package: redis
+            recipe: recipes/database/redis-7.toml
+          - package: cpython
+            recipe: recipes/python/cpython-3.12.toml
+          - package: postgresql
+            recipe: recipes/database/postgresql-17.toml
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install build dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends \
+          build-essential pkg-config autoconf automake libtool \
+          zlib1g-dev libffi-dev libssl-dev libbz2-dev liblzma-dev \
+          libreadline-dev libncurses5-dev libsqlite3-dev libgdbm-dev \
+          libexpat1-dev uuid-dev llvm \
+          bison flex libxml2-dev libxslt1-dev libicu-dev \
+          liblz4-dev libzstd-dev libsystemd-dev
+
+    - name: Build ${{ matrix.package }} .ark
+      run: ARK_SKIP_CHECK=1 ./scripts/ark-build.sh ${{ matrix.recipe }}
+
+    - name: Upload .ark artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ark-${{ matrix.package }}
+        path: dist/ark/*.ark
+        retention-days: 30
+
+  # pgvector depends on postgresql — runs after it
+  ark-build-pgvector:
+    name: Build .ark (pgvector)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: ark-build-independent
+    if: github.event_name == 'push'
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install build dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends \
+          build-essential pkg-config \
+          libicu-dev libxml2-dev libxslt1-dev \
+          liblz4-dev libzstd-dev libsystemd-dev
+
+    - name: Download PostgreSQL .ark
+      uses: actions/download-artifact@v4
+      with:
+        name: ark-postgresql
+        path: dist/ark/
+
+    - name: Build pgvector .ark
+      run: |
+        mkdir -p /tmp/pg-stage
+        tar xzf dist/ark/postgresql17-*-*.ark -C /tmp/pg-stage
+        PG_CONFIG=/tmp/pg-stage/usr/bin/pg_config ARK_SKIP_CHECK=1 \
+          ./scripts/ark-build.sh recipes/database/pgvector-0.8.toml
+
+    - name: Upload .ark artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ark-pgvector
+        path: dist/ark/pgvector*.ark
+        retention-days: 30
+
+  # Verify all .ark packages after builds complete
+  ark-verify:
+    name: Verify .ark packages
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [ark-build-independent, ark-build-pgvector]
+    if: github.event_name == 'push'
+
+    steps:
+    - name: Download all .ark artifacts
+      uses: actions/download-artifact@v4
+      with:
+        pattern: ark-*
+        path: dist/ark/
+        merge-multiple: true
+
+    - name: Verify .ark packages
+      run: |
+        echo "Built packages:"
+        ls -lh dist/ark/
+        for ark in dist/ark/*.ark; do
+          echo "--- $(basename $ark) ---"
+          tar xzf "$ark" -O ./.ark-manifest.toml
+          echo ""
+        done
+
+  # CIS Benchmark Validation (informational, push only)
+  # NOTE: CI runners are generic Ubuntu — scores will be low. This tracks
+  # regressions in the validation script itself, not actual AGNOS compliance.
+  # Real CIS scores come from testing on a configured AGNOS image.
+  cis-validate:
+    runs-on: ubuntu-latest
+    needs: [quality, test, security, fuzzing, license, docs]
+    if: github.event_name == 'push'
+    continue-on-error: true
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y bc jq
+
+    - name: Run CIS Validation
+      run: |
+        sudo ./scripts/cis-validate.sh --category all --report "$GITHUB_WORKSPACE/cis-report.json"
+      continue-on-error: true
+
+    - name: Upload CIS Report
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: cis-validation-report
+        path: cis-report.json
+        if-no-files-found: warn
+
+    - name: Report Score
+      run: |
+        if [ -f cis-report.json ]; then
+          SCORE=$(jq -r '.compliance.score' cis-report.json)
+          echo "::notice::CIS compliance score: ${SCORE}% (informational — CI runner, not AGNOS image)"
+        else
+          echo "::notice::CIS report not generated (expected on generic runners)"
+        fi

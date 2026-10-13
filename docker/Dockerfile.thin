@@ -1,0 +1,26 @@
+# AGNOS thin image — the minimal sovereign agnos base on the mirshi model.
+#
+# FROM scratch (cf. mirshi/docker/Dockerfile + Dockerfile.dev): ONLY /mirshi (the
+# AGNOS<->Linux syscall shim) + iam (identity / sysinfo) + ark (package manager) +
+# a tiny rootfs. NO Linux base, NO shell, NO QEMU — the thinnest agnos container:
+# know what it is (iam) and install onto it (ark). Populate with `ark install` (the
+# sovereign marketplace / .ark path), or use it as a base to test the installer.
+#
+# Built by:  PROFILE=thin docker/build-dev.sh
+#
+# Run (stock Docker's seccomp blocks mirshi's ptrace, so add the caps):
+#   docker run --rm --cap-add=SYS_PTRACE --security-opt seccomp=unconfined agnos-thin
+#     # default CMD = /bin/iam (prints the agnos identity)
+#   docker run --rm --cap-add=SYS_PTRACE --security-opt seccomp=unconfined \
+#     agnos-thin /bin/ark list
+FROM scratch
+
+# The AGNOS<->Linux syscall shim (entrypoint) — Linux-target static ELF.
+COPY mirshi /mirshi
+# The minimal agnos userland: iam (identity) + ark (package manager).
+COPY bin/ /bin/
+COPY data/ /data/
+
+# mirshi supervises; the argument is the agnos tool to run — default = iam (identity).
+ENTRYPOINT ["/mirshi"]
+CMD ["/bin/iam"]

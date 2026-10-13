@@ -1,0 +1,25 @@
+# AGNOS dev image — the full sovereign agnos userland dev environment.
+#
+# Layered (clean stack): FROM agnos-shell (thin base + agnsh) + the CLI toolset.
+# Each image in the family is the one below it plus one delta layer:
+#     agnos-thin (base)  ->  agnos-shell (usable)  ->  agnos-dev (full)
+# NO Linux base, NO GNU shell, NO QEMU — agnos userland runs natively under mirshi
+# (cf. mirshi/docker/Dockerfile). agnsh's `run` / `&` / `>` / `|` land on mirshi's
+# exec band (mirshi >= 1.10.2).
+#
+# Built by:  docker/build-dev.sh    (builds thin -> shell -> dev)
+#
+# Run (add the caps; -it for the interactive shell):
+#   docker run --rm -it --cap-add=SYS_PTRACE --security-opt seccomp=unconfined agnos-dev
+#     # at [ASSIST] >:  run /bin/iam  ·  run /bin/bnrmr AGNOS  ·  run /bin/kriya ls  ·  exit
+ARG PARENT=agnos-shell
+FROM ${PARENT}
+
+# + the CLI dev toolset: kriya (coreutils) · owl (cat) · kii (image→ANSI) ·
+#   bnrmr (banner) · cmdrs (prompt) · cyim (editor) · sit (VCS) · shu (monitor) ·
+#   hapi (dotfiles) · yo · dig · whirl (HTTP) · darshini (file-list) · anuenue
+#   (rainbow) — plus the flagship servers agora (telnet BBS) · descent (MUD).
+#   agnsh + iam + ark come from the base layers.
+COPY bin/ /bin/
+
+CMD ["/bin/agnsh"]

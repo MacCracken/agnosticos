@@ -6,7 +6,6 @@
 
 - **Type**: Shared library crate
 - **License**: GPL-3.0
-- **Version**: 1.0.0
 - **crates.io**: [sharira](https://crates.io/crates/sharira)
 - **Repository**: [MacCracken/sharira](https://github.com/MacCracken/sharira)
 

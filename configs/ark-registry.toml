@@ -66,33 +66,34 @@ strip_build_paths = true
 [sources]
 # Recognized package sources and their priorities
 # Lower number = higher priority
+# Recipes live in the zugot repo (../zugot/ or /usr/src/zugot/)
 
 [sources.base]
 priority = 10
-path = "recipes/base"
+path = "zugot/base"
 description = "LFS base system packages"
 
 [sources.desktop]
 priority = 20
-path = "recipes/desktop"
+path = "zugot/desktop"
 description = "Desktop and graphics stack"
 
 [sources.network]
 priority = 20
-path = "recipes/network"
+path = "zugot/network"
 description = "Networking packages"
 
 [sources.ai]
 priority = 30
-path = "recipes/ai"
+path = "zugot/ai"
 description = "AI/ML infrastructure"
 
 [sources.marketplace]
 priority = 50
-path = "recipes/marketplace"
+path = "zugot/marketplace"
 description = "AGNOS marketplace agents and apps"
 
 [sources.browser]
 priority = 40
-path = "recipes/browser"
+path = "zugot/browser"
 description = "Web browser packages"

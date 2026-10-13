@@ -1,39 +1,12 @@
-# Dhvani
+# dhvani
 
-> **Dhvani** (Sanskrit: sound) — Core audio engine
+Core audio engine (Sanskrit ध्वनि — *sound, resonance*) — buffers, DSP, resampling, mixing, analysis, synthesis and device I/O in one bundle; the Cyrius port of the Rust library, which is frozen at `rust-old/` as the parity oracle.
 
-| Field | Value |
-|-------|-------|
-| Status | Released |
-| Version | `0.22.4` |
-| Repository | `MacCracken/dhvani` |
-| Runtime | library crate (Rust) |
-| Recipe | `recipes/marketplace/dhvani.toml` |
-| crates.io | [dhvani](https://crates.io/crates/dhvani) |
+- **Repository**: [github.com/MacCracken/dhvani](https://github.com/MacCracken/dhvani)
+- **License**: GPL-3.0-only
+- **Status**: Stable - See Repo
+- **Language**: Cyrius
 
----
+Consumers declaring `[deps.dhvani]` (local checkouts, 2026-09-28): jalwa.
 
-## What It Does
-
-- Audio buffer management with sample-accurate timing
-- DSP primitives (filters, envelopes, oscillators, FFT)
-- Sample rate conversion and format resampling
-- Multi-channel mixing with per-channel gain and panning
-- Audio analysis (spectrum, RMS, peak detection) and capture from system devices
-
-## Consumers
-
-- **shruti** — DAW (primary consumer, full DSP pipeline)
-- **jalwa** — Media player (playback and EQ)
-- **kiran** — Game engine (spatial audio, sound effects)
-- **goonj** — Acoustics simulation backend
-
-## Architecture
-
-- Core audio buffer types with generic sample formats (f32, i16, i24)
-- Lock-free ring buffers for real-time audio threads
-- Dependencies: serde, symphonia (codec support)
-
-## Roadmap
-
-Stable — published on crates.io. Future: spatial audio (HRTF), VST3/CLAP plugin hosting bridge, PipeWire native backend.
+See the [libs registry](README.md) for the full catalog and dependency context.

@@ -6,7 +6,6 @@
 
 - **Type**: Shared library crate
 - **License**: GPL-3.0
-- **Version**: 1.0.0
 - **crates.io**: [vanaspati](https://crates.io/crates/vanaspati)
 - **Repository**: [MacCracken/vanaspati](https://github.com/MacCracken/vanaspati)
 

@@ -1,7 +1,9 @@
 # ADR-001: Foundation and Architecture
 
-**Status:** Accepted
+**Status:** Accepted (partially superseded by [ADR-008](adr-008-cyrius-as-sovereign-systems-language.md) on 2026-04-04)
 **Date:** 2026-03-07
+
+> **Partial supersession (2026-04-04)**: The "*Rust as Primary Language*" decision below was superseded by [ADR-008 — Cyrius as Sovereign Systems Language](adr-008-cyrius-as-sovereign-systems-language.md). All other decisions in this ADR (multi-agent orchestration via daimon, LLM gateway via hoosh, cross-project integration) remain in force. This ADR is preserved as historical record.
 
 ## Context
 

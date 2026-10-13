@@ -1,30 +1,10 @@
-# Shabdakosh
+# shabdakosh
 
-> **Shabdakosh** (Sanskrit: dictionary) — Pronunciation dictionary
+Pronunciation dictionary (Sanskrit *shabdakosh* — dictionary) — words to svara phonemes, with ARPABET / IPA / X-SAMPA bridges and CMUdict / PLS / SSML / JSON I/O.
 
-| Field | Value |
-|-------|-------|
-| Status | Stable |
-| Version | `1.0.0` |
-| Repository | `MacCracken/shabdakosh` |
-| Runtime | library crate (Rust) |
+- **Repository**: [github.com/MacCracken/shabdakosh](https://github.com/MacCracken/shabdakosh)
+- **License**: GPL-3.0-only
+- **Status**: Stable — v1.0+
+- **Language**: Cyrius
 
----
-
-## What It Does
-
-- 10,000+ entry English pronunciation dictionary generated at compile time from CMUdict
-- Bidirectional ARPABET-to-svara phoneme mapping
-- IPA (International Phonetic Alphabet) support
-- User overlay dictionaries for application-specific entries
-- Import/export in CMUdict text format and JSON (with `json` feature)
-- Region-aware pronunciations
-- Diff computation between dictionary versions
-- Built on svara phoneme types
-- `no_std` + `alloc` compatible (uses hashbrown for no-std hash maps)
-
-## Consumers
-
-- **shabda** — G2P engine (primary dictionary backend for word lookup)
-- **svara** — vocal synthesis (phoneme type definitions)
-- **vansh** — voice AI shell (pronunciation lookup)
+See the [libs registry](README.md) for the full catalog and dependency context.

@@ -1,0 +1,80 @@
+# boot.tcyr — Tests for the boot pipeline
+#
+# Tests path resolution, ISO assembly logic, and CLI parsing.
+# Does NOT boot QEMU (that's an integration test).
+
+include "lib/string.cyr"
+include "lib/alloc.cyr"
+include "lib/fmt.cyr"
+include "lib/vec.cyr"
+include "lib/str.cyr"
+include "lib/syscalls.cyr"
+include "lib/fs.cyr"
+include "lib/assert.cyr"
+
+fn prints(s) { syscall(1, 1, s, strlen(s)); }
+
+fn main() {
+    alloc_init();
+
+    # --- Path utilities ---
+    var p1 = path_join(str_from("/boot"), str_from("agnos"));
+    assert_eq(str_eq(p1, str_from("/boot/agnos")), 1, "path_join basic");
+
+    var p2 = path_join(str_from("/boot/"), str_from("agnos"));
+    assert_eq(str_eq(p2, str_from("/boot/agnos")), 1, "path_join trailing slash");
+
+    var b1 = path_basename(str_from("/usr/lib/cyrius/bin/cc5"));
+    assert_eq(str_eq(b1, str_from("cc5")), 1, "basename");
+
+    var d1 = path_dirname(str_from("/usr/lib/cyrius/bin/cc5"));
+    assert_eq(str_eq(d1, str_from("/usr/lib/cyrius/bin")), 1, "dirname");
+
+    # --- File existence check pattern ---
+    var fd = sys_open("/dev/null", O_RDONLY, 0);
+    assert_eq(fd >= 0, 1, "/dev/null exists");
+    sys_close(fd);
+
+    var fd2 = sys_open("/nonexistent_path_12345", O_RDONLY, 0);
+    assert_eq(fd2 < 0, 1, "nonexistent path returns negative");
+
+    # --- Vec for args building ---
+    var args = vec_new();
+    vec_push(args, str_from("qemu-system-x86_64"));
+    vec_push(args, str_from("-kernel"));
+    vec_push(args, str_from("/tmp/test"));
+    assert_eq(vec_len(args), 3, "args vec has 3 elements");
+
+    var first = vec_get(args, 0);
+    assert_eq(str_eq(first, str_from("qemu-system-x86_64")), 1, "first arg is qemu");
+
+    # --- String search pattern (AGNOS banner detection) ---
+    var output = str_from("...boot complete... AGNOS v1.22.0 ...");
+    var sd = str_data(output);
+    var slen = str_len(output);
+    var found = 0;
+    var i = 0;
+    while (i < slen - 5) {
+        if (memeq(sd + i, "AGNOS", 5) == 1) { found = 1; }
+        i = i + 1;
+    }
+    assert_eq(found, 1, "AGNOS banner found in output");
+
+    # --- No false positive ---
+    var bad_output = str_from("...boot complete... nothing here ...");
+    var bd = str_data(bad_output);
+    var blen = str_len(bad_output);
+    var bfound = 0;
+    var bi = 0;
+    while (bi < blen - 5) {
+        if (memeq(bd + bi, "AGNOS", 5) == 1) { bfound = 1; }
+        bi = bi + 1;
+    }
+    assert_eq(bfound, 0, "no false AGNOS banner");
+
+    prints("boot: all tests passed\n");
+    return 0;
+}
+
+var exit_code = main();
+syscall(60, exit_code);

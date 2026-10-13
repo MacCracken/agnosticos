@@ -1,0 +1,20 @@
+# AGNOS shell image — the thin base + the interactive agnos shell = a usable env.
+#
+# Layered (clean stack): FROM agnos-thin (mirshi + iam + ark) + agnsh. mirshi's
+# exec band (execwait#37 / spawn_path#43 / exec_redirect#62 / symlink#63, needs
+# mirshi >= 1.10.2) makes agnsh run programs — `run /bin/iam`, `run /bin/ark
+# status`, `>`, `|`.
+#
+# Built by:  PROFILE=shell docker/build-dev.sh    (builds agnos-thin, then this)
+#
+# Run (add the caps — stock Docker's seccomp blocks mirshi's ptrace; -it interactive):
+#   docker run --rm -it --cap-add=SYS_PTRACE --security-opt seccomp=unconfined agnos-shell
+#     # at [ASSIST] >:  run /bin/iam  ·  run /bin/ark status  ·  exit
+ARG PARENT=agnos-thin
+FROM ${PARENT}
+
+# + the interactive agnos shell (the only delta over the thin base).
+COPY bin/ /bin/
+
+# default = the shell (ENTRYPOINT ["/mirshi"] is inherited from the thin base).
+CMD ["/bin/agnsh"]

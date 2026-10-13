@@ -1,0 +1,395 @@
+# dhcp_probe — POSIX UDP DHCP client in Cyrius.
+#
+# Working reference shape for AGNOS kernel `dhcp_init`. Talks to the real
+# LAN gateway from Linux userland — no kernel, no r8169, no QEMU. If this
+# binary acquires a lease, the DHCP protocol code (BOOTP packing, option
+# walker, OFFER/REQUEST/ACK state machine) is provably correct against
+# the real wire. Any remaining failure in `agnos/kernel/core/net.cyr` is
+# then locked to driver TX/RX or kernel net_poll dispatch, NOT protocol.
+#
+# Usage:
+#   sudo ./dhcp-probe <iface>
+#
+# Root is required for: bind(:68) (port <1024) and SO_BINDTODEVICE.
+#
+# This program intentionally mirrors the AGNOS kernel's packet layout
+# byte-for-byte so a diff against `dhcp_init` is mechanical, not
+# interpretive.
+
+include "lib/string.cyr"
+include "lib/alloc.cyr"
+include "lib/fmt.cyr"
+include "lib/syscalls.cyr"
+include "lib/args.cyr"
+include "lib/result.cyr"
+include "lib/tagged.cyr"
+include "lib/net.cyr"
+
+# === Print helpers ===
+
+fn prints(s) { syscall(1, 1, s, strlen(s)); }
+
+fn putc(c) {
+    var b[1];
+    store8(&b, c);
+    syscall(1, 1, &b, 1);
+}
+
+fn newline() { syscall(1, 1, "\n", 1); }
+
+fn print_ip(ip) {
+    fmt_int((ip >> 24) & 0xFF); putc(46);
+    fmt_int((ip >> 16) & 0xFF); putc(46);
+    fmt_int((ip >> 8) & 0xFF);  putc(46);
+    fmt_int(ip & 0xFF);
+}
+
+fn print_mac(mac) {
+    fmt_byte(load8(mac));
+    var i = 1;
+    while (i < 6) {
+        putc(58);
+        fmt_byte(load8(mac + i));
+        i = i + 1;
+    }
+}
+
+# === Hex parse ===
+
+fn hex_nibble(c): i64 {
+    if (c >= 48) { if (c <= 57)  { return c - 48; } }   # 0-9
+    if (c >= 97) { if (c <= 102) { return c - 87; } }   # a-f
+    if (c >= 65) { if (c <= 70)  { return c - 55; } }   # A-F
+    return 0;
+}
+
+# Read MAC from /sys/class/net/<iface>/address.
+# File content shape: "b0:41:6f:0c:e4:25\n" (18 bytes).
+fn read_mac(iface, out_mac): i64 {
+    var path[128];
+    var prefix = "/sys/class/net/";
+    var suffix = "/address";
+    var pi: i64 = 0;
+    var i: i64 = 0;
+    while (i < 15) { store8(&path + pi, load8(prefix + i)); pi = pi + 1; i = i + 1; }
+    i = 0;
+    while (load8(iface + i) != 0) {
+        store8(&path + pi, load8(iface + i));
+        pi = pi + 1;
+        i = i + 1;
+    }
+    i = 0;
+    while (i < 8) { store8(&path + pi, load8(suffix + i)); pi = pi + 1; i = i + 1; }
+    store8(&path + pi, 0);
+
+    var fd = syscall(2, &path, 0, 0);
+    if (fd < 0) { return 0 - 1; }
+    var content[32];
+    var n = syscall(0, fd, &content, 32);
+    syscall(3, fd);
+    if (n < 17) { return 0 - 2; }
+    var ci: i64 = 0;
+    var mi: i64 = 0;
+    while (mi < 6) {
+        var hi = hex_nibble(load8(&content + ci));
+        var lo = hex_nibble(load8(&content + ci + 1));
+        store8(out_mac + mi, (hi << 4) | lo);
+        ci = ci + 3;
+        mi = mi + 1;
+    }
+    return 0;
+}
+
+# === DHCP constants ===
+
+var DHCP_OP_REQUEST = 1;
+var DHCP_OP_REPLY = 2;
+var DHCP_MSG_DISCOVER = 1;
+var DHCP_MSG_OFFER = 2;
+var DHCP_MSG_REQUEST = 3;
+var DHCP_MSG_ACK = 5;
+var DHCP_MSG_NAK = 6;
+
+# Syscall numbers (x86_64 Linux) not already in stdlib net.cyr
+var SYS_SENDTO = 44;
+var SYS_RECVFROM = 45;
+
+# Socket options
+var SO_BROADCAST_OPT = 6;
+var SO_BINDTODEVICE_OPT = 25;
+
+# === DHCP packet builders ===
+
+fn zero_buf(b, n) {
+    var i: i64 = 0;
+    while (i < n) { store8(b + i, 0); i = i + 1; }
+}
+
+# Write a u32 in big-endian (network order) at buf+off.
+fn put_be32(buf, off, val) {
+    store8(buf + off + 0, (val >> 24) & 0xFF);
+    store8(buf + off + 1, (val >> 16) & 0xFF);
+    store8(buf + off + 2, (val >> 8) & 0xFF);
+    store8(buf + off + 3, val & 0xFF);
+}
+
+# Read a big-endian u32 at buf+off.
+fn get_be32(buf, off): i64 {
+    return (load8(buf + off + 0) << 24)
+         | (load8(buf + off + 1) << 16)
+         | (load8(buf + off + 2) << 8)
+         | (load8(buf + off + 3));
+}
+
+# Build BOOTP fixed header (offsets 0..239). Returns 240 (first option offset).
+# Mirrors `agnos/kernel/core/net.cyr` dhcp_init packing 1:1.
+fn build_bootp_header(buf, mac, xid): i64 {
+    zero_buf(buf, 300);
+    store8(buf + 0, DHCP_OP_REQUEST);   # op = BOOTREQUEST
+    store8(buf + 1, 1);                 # htype = Ethernet
+    store8(buf + 2, 6);                 # hlen = 6
+    store8(buf + 3, 0);                 # hops = 0
+    put_be32(buf, 4, xid);              # xid
+    # secs (offset 8, u16) = 0
+    # flags (offset 10, u16) = 0x8000 broadcast bit
+    store8(buf + 10, 0x80);
+    store8(buf + 11, 0x00);
+    # ciaddr (12), yiaddr (16), siaddr (20), giaddr (24) = 0
+    # chaddr at offset 28: 6 MAC bytes + 10 zero
+    var i: i64 = 0;
+    while (i < 6) { store8(buf + 28 + i, load8(mac + i)); i = i + 1; }
+    # sname (44, 64B), file (108, 128B) zero
+    # magic cookie at 236: 0x63 0x82 0x53 0x63
+    store8(buf + 236, 0x63);
+    store8(buf + 237, 0x82);
+    store8(buf + 238, 0x53);
+    store8(buf + 239, 0x63);
+    return 240;
+}
+
+fn build_discover(buf, mac, xid): i64 {
+    var off = build_bootp_header(buf, mac, xid);
+    # opt 53: DHCP message type = DISCOVER
+    store8(buf + off, 53);  off = off + 1;
+    store8(buf + off, 1);   off = off + 1;
+    store8(buf + off, DHCP_MSG_DISCOVER); off = off + 1;
+    # opt 55: parameter request list — subnet/router/DNS/server-id
+    store8(buf + off, 55);  off = off + 1;
+    store8(buf + off, 4);   off = off + 1;
+    store8(buf + off, 1);   off = off + 1;
+    store8(buf + off, 3);   off = off + 1;
+    store8(buf + off, 6);   off = off + 1;
+    store8(buf + off, 54);  off = off + 1;
+    # opt 255: END
+    store8(buf + off, 255); off = off + 1;
+    while (off < 300) { store8(buf + off, 0); off = off + 1; }
+    return off;
+}
+
+fn build_request(buf, mac, xid, req_ip, server_id): i64 {
+    var off = build_bootp_header(buf, mac, xid);
+    store8(buf + off, 53);  off = off + 1;
+    store8(buf + off, 1);   off = off + 1;
+    store8(buf + off, DHCP_MSG_REQUEST); off = off + 1;
+    # opt 50: requested IP
+    store8(buf + off, 50);  off = off + 1;
+    store8(buf + off, 4);   off = off + 1;
+    put_be32(buf, off, req_ip); off = off + 4;
+    # opt 54: server identifier
+    store8(buf + off, 54);  off = off + 1;
+    store8(buf + off, 4);   off = off + 1;
+    put_be32(buf, off, server_id); off = off + 4;
+    store8(buf + off, 255); off = off + 1;
+    while (off < 300) { store8(buf + off, 0); off = off + 1; }
+    return off;
+}
+
+# Parse a DHCP reply. Returns 1 iff the BOOTP op==REPLY, magic-cookie
+# matches, and an opt-53 of the expected message type is present.
+# Always populates out_yiaddr; populates server/subnet/gw if their
+# options were present (else 0).
+fn parse_reply(buf, len, want_type, out_yi, out_sid, out_sn, out_gw): i64 {
+    if (len < 240) { return 0; }
+    if (load8(buf + 0) != DHCP_OP_REPLY) { return 0; }
+    if (load8(buf + 236) != 0x63) { return 0; }
+    if (load8(buf + 237) != 0x82) { return 0; }
+    if (load8(buf + 238) != 0x53) { return 0; }
+    if (load8(buf + 239) != 0x63) { return 0; }
+    store32(out_yi,  get_be32(buf, 16));
+    store32(out_sid, 0);
+    store32(out_sn,  0);
+    store32(out_gw,  0);
+    var off: i64 = 240;
+    var found: i64 = 0;
+    while (off < len) {
+        var code = load8(buf + off);
+        if (code == 0) { off = off + 1; }
+        if (code == 255) { return found; }
+        if (code != 0) {
+            if (off + 1 >= len) { return found; }
+            var olen = load8(buf + off + 1);
+            off = off + 2;
+            if (off + olen > len) { return found; }
+            if (code == 53) { if (olen == 1) { if (load8(buf + off) == want_type) { found = 1; } } }
+            if (code == 54) { if (olen == 4) { store32(out_sid, get_be32(buf, off)); } }
+            if (code == 1)  { if (olen == 4) { store32(out_sn,  get_be32(buf, off)); } }
+            if (code == 3)  { if (olen == 4) { store32(out_gw,  get_be32(buf, off)); } }
+            off = off + olen;
+        }
+    }
+    return found;
+}
+
+# === Socket setup ===
+
+fn enable_broadcast(fd): i64 {
+    var v[4];
+    store32(&v, 1);
+    return syscall(54, fd, 1, SO_BROADCAST_OPT, &v, 4);
+}
+
+fn bind_to_iface(fd, iface): i64 {
+    return syscall(54, fd, 1, SO_BINDTODEVICE_OPT, iface, strlen(iface));
+}
+
+# Build sockaddr_in {family=AF_INET, port_be, addr (4 BE bytes), zero}.
+# addr_be32 is in "wire order" represented as a host integer where the
+# top byte is the first wire byte (e.g., 255.255.255.255 = 0xFFFFFFFF;
+# 1.1.1.1 = 0x01010101).
+fn make_sockaddr(sa, addr_be32, port) {
+    zero_buf(sa, 16);
+    store8(sa + 0, 2);                       # AF_INET = 2 (low byte)
+    store8(sa + 1, 0);
+    store8(sa + 2, (port >> 8) & 0xFF);
+    store8(sa + 3, port & 0xFF);
+    put_be32(sa, 4, addr_be32);
+}
+
+# Coarse xid from clock_gettime(CLOCK_REALTIME).tv_nsec low 32 bits.
+fn xid_from_clock(): i64 {
+    var ts[16];
+    syscall(228, 0, &ts);
+    return load8(&ts + 8)
+         | (load8(&ts + 9)  << 8)
+         | (load8(&ts + 10) << 16)
+         | (load8(&ts + 11) << 24);
+}
+
+# === Main ===
+
+fn main(): i64 {
+    args_init();
+    if (argc() < 2) {
+        prints("usage: dhcp-probe <iface>\n");
+        prints("  (root required for bind(:68) + SO_BINDTODEVICE)\n");
+        return 1;
+    }
+    var iface = argv(1);
+    prints("dhcp-probe: iface="); prints(iface); newline();
+
+    var mac[8];
+    var rr = read_mac(iface, &mac);
+    if (rr != 0) {
+        prints("ERROR: read /sys/class/net/"); prints(iface);
+        prints("/address failed (rr="); fmt_int(0 - rr); prints(")\n");
+        return 2;
+    }
+    prints("  mac="); print_mac(&mac); newline();
+
+    var sock_r = udp_socket();
+    if (is_ok(sock_r) == 0) {
+        prints("ERROR: socket(AF_INET, SOCK_DGRAM) failed\n");
+        return 3;
+    }
+    var fd = result_unwrap(sock_r);
+
+    if (enable_broadcast(fd) < 0) {
+        prints("WARN: setsockopt SO_BROADCAST failed\n");
+    }
+    # SO_REUSEADDR — systemd-networkd already holds :68 bound to the
+    # interface address; our bind to 0.0.0.0 coexists with that.
+    sock_reuse(fd);
+    if (bind_to_iface(fd, iface) < 0) {
+        prints("WARN: setsockopt SO_BINDTODEVICE failed (need root); proceeding\n");
+    }
+
+    var bind_r = sock_bind(fd, INADDR_ANY(), 68);
+    if (is_ok(bind_r) == 0) {
+        prints("ERROR: bind(0.0.0.0:68) failed — port <1024 needs root\n");
+        sock_close(fd);
+        return 4;
+    }
+    sock_set_recv_timeout(fd, 5, 0);
+
+    var xid = xid_from_clock();
+    prints("  xid=0x"); fmt_hex(xid); newline();
+
+    var buf[600];
+    var dlen = build_discover(&buf, &mac, xid);
+    var dst[16];
+    make_sockaddr(&dst, 0xFFFFFFFF, 67);
+    var sent = syscall(SYS_SENDTO, fd, &buf, dlen, 0, &dst, 16);
+    if (sent < 0) {
+        prints("ERROR: sendto DISCOVER failed errno=");
+        fmt_int(0 - sent); newline();
+        sock_close(fd); return 5;
+    }
+    prints("dhcp: DISCOVER sent ("); fmt_int(sent); prints(" bytes)\n");
+
+    var rbuf[1500];
+    var src[16];
+    var srclen[4];
+    store32(&srclen, 16);
+    var rn = syscall(SYS_RECVFROM, fd, &rbuf, 1500, 0, &src, &srclen);
+    if (rn < 0) {
+        prints("ERROR: recvfrom OFFER timeout/error errno=");
+        fmt_int(0 - rn); newline();
+        sock_close(fd); return 6;
+    }
+    prints("dhcp: OFFER recv ("); fmt_int(rn); prints(" bytes)\n");
+
+    var yia[4]; var sid[4]; var sn[4]; var gw[4];
+    var ok = parse_reply(&rbuf, rn, DHCP_MSG_OFFER, &yia, &sid, &sn, &gw);
+    if (ok != 1) {
+        prints("ERROR: reply is not a valid OFFER (op/cookie/msg-type mismatch)\n");
+        sock_close(fd); return 7;
+    }
+    prints("  offered ip="); print_ip(load32(&yia)); newline();
+    prints("  server  id="); print_ip(load32(&sid)); newline();
+    prints("  subnet    ="); print_ip(load32(&sn));  newline();
+    prints("  gateway   ="); print_ip(load32(&gw));  newline();
+
+    var rlen = build_request(&buf, &mac, xid, load32(&yia), load32(&sid));
+    sent = syscall(SYS_SENDTO, fd, &buf, rlen, 0, &dst, 16);
+    if (sent < 0) {
+        prints("ERROR: sendto REQUEST failed errno=");
+        fmt_int(0 - sent); newline();
+        sock_close(fd); return 8;
+    }
+    prints("dhcp: REQUEST sent\n");
+
+    rn = syscall(SYS_RECVFROM, fd, &rbuf, 1500, 0, &src, &srclen);
+    if (rn < 0) {
+        prints("ERROR: recvfrom ACK timeout/error errno=");
+        fmt_int(0 - rn); newline();
+        sock_close(fd); return 9;
+    }
+    prints("dhcp: ACK recv ("); fmt_int(rn); prints(" bytes)\n");
+
+    var ok2 = parse_reply(&rbuf, rn, DHCP_MSG_ACK, &yia, &sid, &sn, &gw);
+    if (ok2 != 1) {
+        prints("WARN: reply was NOT an ACK (likely NAK)\n");
+        sock_close(fd); return 10;
+    }
+    prints("dhcp: LEASE ACQUIRED ip=");
+    print_ip(load32(&yia));
+    prints(" via server=");
+    print_ip(load32(&sid));
+    newline();
+
+    sock_close(fd);
+    return 0;
+}
+
+var rc = main();
+syscall(60, rc);

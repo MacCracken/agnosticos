@@ -1,0 +1,464 @@
+# dhcp_probe_raw — AGNOS-shape AF_PACKET DHCP client.
+#
+# Builds the FULL frame (eth + IP + UDP + BOOTP) in Cyrius userland
+# using the EXACT SAME byte construction AGNOS's net.cyr does (the
+# eth_build / ip_build / udp_build / ip_checksum / dhcp_build_packet
+# functions are copied verbatim from agnos/kernel/core/net.cyr lines
+# 31-89 + 311-335). Sends via AF_PACKET SOCK_RAW so the Linux kernel
+# adds zero header bytes — what we put in the frame buffer is what
+# hits the wire.
+#
+# If this binary acquires a lease from the real Araknis gateway,
+# AGNOS's header construction code is provably wire-correct, and the
+# remaining bug locus for AGNOS DHCP-on-iron collapses to:
+#   1. r8169 TX  (descriptor consumed but bits never on cable)
+#   2. r8169 RX  (PHY receives but never delivered to r8169_poll)
+# That's TWO suspects. Not three. Not fifty.
+#
+# Usage: sudo ./dhcp-probe-raw <iface>
+# Requires CAP_NET_RAW (or root) for AF_PACKET SOCK_RAW.
+
+include "lib/string.cyr"
+include "lib/alloc.cyr"
+include "lib/fmt.cyr"
+include "lib/syscalls.cyr"
+include "lib/args.cyr"
+
+# === Print helpers ===
+
+fn prints(s) { syscall(1, 1, s, strlen(s)); }
+fn putc(c) { var b[1]; store8(&b, c); syscall(1, 1, &b, 1); }
+fn newline() { syscall(1, 1, "\n", 1); }
+
+fn print_ip(ip) {
+    fmt_int((ip >> 24) & 0xFF); putc(46);
+    fmt_int((ip >> 16) & 0xFF); putc(46);
+    fmt_int((ip >> 8) & 0xFF);  putc(46);
+    fmt_int(ip & 0xFF);
+}
+
+fn print_mac(mac) {
+    fmt_byte(load8(mac));
+    var i: i64 = 1;
+    while (i < 6) { putc(58); fmt_byte(load8(mac + i)); i = i + 1; }
+}
+
+# === AGNOS net.cyr functions — copied byte-for-byte verbatim ===
+# These are the things under test. Any structural bug in AGNOS's
+# header construction will reproduce here.
+
+# agnos/kernel/core/net.cyr:31
+fn ip_checksum(buf, len): i64 {
+    var sum: i64 = 0;
+    var i: i64 = 0;
+    while (i < len) {
+        sum = sum + (load8(buf + i) << 8);
+        if (i + 1 < len) { sum = sum + load8(buf + i + 1); }
+        i = i + 2;
+    }
+    while (sum > 0xFFFF) {
+        sum = (sum & 0xFFFF) + (sum >> 16);
+    }
+    return (0 - 1 - sum) & 0xFFFF;
+}
+
+# agnos/kernel/core/net.cyr:45 (memcpy expanded to byte loops)
+fn eth_build(pkt, dst_mac, src_mac, ethertype): i64 {
+    var i: i64 = 0;
+    while (i < 6) { store8(pkt + i, load8(dst_mac + i)); i = i + 1; }
+    i = 0;
+    while (i < 6) { store8(pkt + 6 + i, load8(src_mac + i)); i = i + 1; }
+    store8(pkt + 12, (ethertype >> 8) & 0xFF);
+    store8(pkt + 13, ethertype & 0xFF);
+    return 14;
+}
+
+# agnos/kernel/core/net.cyr:53 (store16(_,0) calls expanded to store8 pairs;
+# semantically identical since the value being stored is 0).
+fn ip_build(pkt, src_ip, dst_ip, proto, payload_len): i64 {
+    var total = 20 + payload_len;
+    store8(pkt + 0, 0x45);
+    store8(pkt + 1, 0);
+    store8(pkt + 2, (total >> 8) & 0xFF);
+    store8(pkt + 3, total & 0xFF);
+    store8(pkt + 4, 0); store8(pkt + 5, 0);     # ID = 0
+    store8(pkt + 6, 0); store8(pkt + 7, 0);     # flags + frag = 0
+    store8(pkt + 8, 64);                         # TTL
+    store8(pkt + 9, proto);
+    store8(pkt + 10, 0); store8(pkt + 11, 0);   # cksum (cleared, recomputed below)
+    store8(pkt + 12, (src_ip >> 24) & 0xFF);
+    store8(pkt + 13, (src_ip >> 16) & 0xFF);
+    store8(pkt + 14, (src_ip >> 8) & 0xFF);
+    store8(pkt + 15, src_ip & 0xFF);
+    store8(pkt + 16, (dst_ip >> 24) & 0xFF);
+    store8(pkt + 17, (dst_ip >> 16) & 0xFF);
+    store8(pkt + 18, (dst_ip >> 8) & 0xFF);
+    store8(pkt + 19, dst_ip & 0xFF);
+    var cksum = ip_checksum(pkt, 20);
+    store8(pkt + 10, (cksum >> 8) & 0xFF);
+    store8(pkt + 11, cksum & 0xFF);
+    return 20;
+}
+
+# agnos/kernel/core/net.cyr:78 (memcpy expanded to byte loop)
+fn udp_build(pkt, src_port, dst_port, data, data_len): i64 {
+    var udp_len = 8 + data_len;
+    store8(pkt + 0, (src_port >> 8) & 0xFF);
+    store8(pkt + 1, src_port & 0xFF);
+    store8(pkt + 2, (dst_port >> 8) & 0xFF);
+    store8(pkt + 3, dst_port & 0xFF);
+    store8(pkt + 4, (udp_len >> 8) & 0xFF);
+    store8(pkt + 5, udp_len & 0xFF);
+    store8(pkt + 6, 0); store8(pkt + 7, 0);      # UDP cksum = 0 (legal RFC 768)
+    var i: i64 = 0;
+    while (i < data_len) { store8(pkt + 8 + i, load8(data + i)); i = i + 1; }
+    return udp_len;
+}
+
+# agnos/kernel/core/net.cyr:311 dhcp_build_packet
+fn dhcp_build_packet(buf, mac, xid, opts, opts_len): i64 {
+    var i: i64 = 0;
+    while (i < 240) { store8(buf + i, 0); i = i + 1; }
+    store8(buf + 0, 1);                          # op = BOOTREQUEST
+    store8(buf + 1, 1);                          # htype = ethernet
+    store8(buf + 2, 6);                          # hlen
+    # hops = 0
+    store8(buf + 4, (xid >> 24) & 0xFF);
+    store8(buf + 5, (xid >> 16) & 0xFF);
+    store8(buf + 6, (xid >> 8) & 0xFF);
+    store8(buf + 7, xid & 0xFF);
+    store8(buf + 10, 0x80);                      # broadcast flag
+    # chaddr at offset 28
+    i = 0;
+    while (i < 6) { store8(buf + 28 + i, load8(mac + i)); i = i + 1; }
+    # magic cookie
+    store8(buf + 236, 0x63);
+    store8(buf + 237, 0x82);
+    store8(buf + 238, 0x53);
+    store8(buf + 239, 0x63);
+    # options blob
+    i = 0;
+    while (i < opts_len) { store8(buf + 240 + i, load8(opts + i)); i = i + 1; }
+    return 240 + opts_len;
+}
+
+# === Iface attr readers (MAC, ifindex from /sys/class/net) ===
+
+fn read_iface_attr(iface, suffix, suffix_len, out_buf, max_len): i64 {
+    var path[128];
+    var prefix = "/sys/class/net/";
+    var pi: i64 = 0;
+    var i: i64 = 0;
+    while (i < 15) { store8(&path + pi, load8(prefix + i)); pi = pi + 1; i = i + 1; }
+    i = 0;
+    while (load8(iface + i) != 0) {
+        store8(&path + pi, load8(iface + i));
+        pi = pi + 1; i = i + 1;
+    }
+    i = 0;
+    while (i < suffix_len) {
+        store8(&path + pi, load8(suffix + i));
+        pi = pi + 1; i = i + 1;
+    }
+    store8(&path + pi, 0);
+    var fd = syscall(2, &path, 0, 0);
+    if (fd < 0) { return 0 - 1; }
+    var n = syscall(0, fd, out_buf, max_len);
+    syscall(3, fd);
+    return n;
+}
+
+fn hex_nibble(c): i64 {
+    if (c >= 48) { if (c <= 57)  { return c - 48; } }
+    if (c >= 97) { if (c <= 102) { return c - 87; } }
+    if (c >= 65) { if (c <= 70)  { return c - 55; } }
+    return 0;
+}
+
+fn read_mac(iface, out_mac): i64 {
+    var content[32];
+    var n = read_iface_attr(iface, "/address", 8, &content, 32);
+    if (n < 17) { return 0 - 1; }
+    var ci: i64 = 0;
+    var mi: i64 = 0;
+    while (mi < 6) {
+        var hi = hex_nibble(load8(&content + ci));
+        var lo = hex_nibble(load8(&content + ci + 1));
+        store8(out_mac + mi, (hi << 4) | lo);
+        ci = ci + 3;
+        mi = mi + 1;
+    }
+    return 0;
+}
+
+fn read_ifindex(iface): i64 {
+    var content[16];
+    var n = read_iface_attr(iface, "/ifindex", 8, &content, 16);
+    if (n < 1) { return 0 - 1; }
+    var v: i64 = 0;
+    var i: i64 = 0;
+    while (i < n) {
+        var c = load8(&content + i);
+        if (c >= 48) { if (c <= 57) { v = v * 10 + (c - 48); } }
+        i = i + 1;
+    }
+    return v;
+}
+
+# === AF_PACKET constants ===
+
+var AF_PACKET = 17;
+var SOCK_RAW = 3;
+var ETH_P_IP = 0x0800;
+
+# struct sockaddr_ll {                       offset
+#     uint16_t sll_family;     // AF_PACKET    0
+#     uint16_t sll_protocol;   // ETH_P_* BE   2
+#     int32_t  sll_ifindex;    //              4
+#     uint16_t sll_hatype;     //              8
+#     uint8_t  sll_pkttype;    //             10
+#     uint8_t  sll_halen;      //             11
+#     uint8_t  sll_addr[8];    //             12
+# } = 20 bytes
+fn make_sockaddr_ll(sa, ifindex, eth_proto_host, mac) {
+    var i: i64 = 0;
+    while (i < 20) { store8(sa + i, 0); i = i + 1; }
+    # sll_family = AF_PACKET (host-order u16, LE on x86_64 → 0x11 0x00)
+    store8(sa + 0, AF_PACKET & 0xFF);
+    store8(sa + 1, (AF_PACKET >> 8) & 0xFF);
+    # sll_protocol — network byte order (MSB at offset 2)
+    store8(sa + 2, (eth_proto_host >> 8) & 0xFF);
+    store8(sa + 3, eth_proto_host & 0xFF);
+    # sll_ifindex (host-order int32, LE on x86_64)
+    store8(sa + 4, ifindex & 0xFF);
+    store8(sa + 5, (ifindex >> 8) & 0xFF);
+    store8(sa + 6, (ifindex >> 16) & 0xFF);
+    store8(sa + 7, (ifindex >> 24) & 0xFF);
+    # sll_halen = 6
+    store8(sa + 11, 6);
+    # sll_addr (6 bytes of MAC if provided)
+    if (mac != 0) {
+        i = 0;
+        while (i < 6) { store8(sa + 12 + i, load8(mac + i)); i = i + 1; }
+    }
+}
+
+# === Helpers ===
+
+fn xid_from_clock(): i64 {
+    var ts[16];
+    syscall(228, 0, &ts);
+    return load8(&ts + 8)
+         | (load8(&ts + 9)  << 8)
+         | (load8(&ts + 10) << 16)
+         | (load8(&ts + 11) << 24);
+}
+
+fn be32(buf, off): i64 {
+    return (load8(buf + off + 0) << 24)
+         | (load8(buf + off + 1) << 16)
+         | (load8(buf + off + 2) << 8)
+         | (load8(buf + off + 3));
+}
+
+fn set_recv_timeout(fd, secs) {
+    var tv[16];
+    var i: i64 = 0;
+    while (i < 16) { store8(&tv + i, 0); i = i + 1; }
+    store8(&tv + 0, secs & 0xFF);
+    syscall(54, fd, 1, 20, &tv, 16);   # SOL_SOCKET=1, SO_RCVTIMEO=20
+}
+
+# Read frames until we see an IP/UDP/DHCP reply matching our xid + msg type.
+# Returns 1 on match (populates out_yi/sid/sn/gw), 0 on timeout.
+fn wait_for_reply(fd, want_msg, xid, our_mac, out_yi, out_sid, out_sn, out_gw): i64 {
+    var rbuf[2048];
+    var src[24];
+    var srclen[4];
+    while (1) {
+        store32(&srclen, 20);
+        var n = syscall(45, fd, &rbuf, 2048, 0, &src, &srclen);
+        if (n < 0) { return 0; }
+        if (n < 42) { continue; }
+        # ethertype
+        var et = (load8(&rbuf + 12) << 8) | load8(&rbuf + 13);
+        if (et != 0x0800) { continue; }
+        var ihl = (load8(&rbuf + 14) & 0x0F) * 4;
+        if (ihl < 20) { continue; }
+        if (load8(&rbuf + 14 + 9) != 17) { continue; }   # not UDP
+        var udp_off = 14 + ihl;
+        if (n < udp_off + 8) { continue; }
+        var dport = (load8(&rbuf + udp_off + 2) << 8) | load8(&rbuf + udp_off + 3);
+        if (dport != 68) { continue; }
+        var d_off = udp_off + 8;
+        if (n < d_off + 240) { continue; }
+        if (load8(&rbuf + d_off + 0) != 2) { continue; }     # op != REPLY
+        if (load8(&rbuf + d_off + 236) != 0x63) { continue; }
+        if (load8(&rbuf + d_off + 237) != 0x82) { continue; }
+        if (load8(&rbuf + d_off + 238) != 0x53) { continue; }
+        if (load8(&rbuf + d_off + 239) != 0x63) { continue; }
+        if (be32(&rbuf, d_off + 4) != xid) { continue; }
+        # chaddr match
+        var cm: i64 = 1;
+        var ci: i64 = 0;
+        while (ci < 6) {
+            if (load8(&rbuf + d_off + 28 + ci) != load8(our_mac + ci)) { cm = 0; }
+            ci = ci + 1;
+        }
+        if (cm == 0) { continue; }
+        # Walk options for msg-type + server-id/subnet/gateway
+        store32(out_yi, be32(&rbuf, d_off + 16));
+        store32(out_sid, 0); store32(out_sn, 0); store32(out_gw, 0);
+        var ooff = d_off + 240;
+        var found: i64 = 0;
+        while (ooff < n) {
+            var code = load8(&rbuf + ooff);
+            if (code == 255) { ooff = n; continue; }
+            if (code == 0)   { ooff = ooff + 1; continue; }
+            if (ooff + 1 >= n) { ooff = n; continue; }
+            var olen = load8(&rbuf + ooff + 1);
+            ooff = ooff + 2;
+            if (ooff + olen > n) { ooff = n; continue; }
+            if (code == 53) { if (olen == 1) { if (load8(&rbuf + ooff) == want_msg) { found = 1; } } }
+            if (code == 54) { if (olen == 4) { store32(out_sid, be32(&rbuf, ooff)); } }
+            if (code == 1)  { if (olen == 4) { store32(out_sn,  be32(&rbuf, ooff)); } }
+            if (code == 3)  { if (olen == 4) { store32(out_gw,  be32(&rbuf, ooff)); } }
+            ooff = ooff + olen;
+        }
+        if (found == 1) { return 1; }
+    }
+    return 0;
+}
+
+fn main(): i64 {
+    args_init();
+    if (argc() < 2) {
+        prints("usage: dhcp-probe-raw <iface>\n");
+        prints("  AGNOS-shape AF_PACKET DHCP — bypasses Linux UDP/IP wrappers.\n");
+        prints("  Requires CAP_NET_RAW (or root) for AF_PACKET SOCK_RAW.\n");
+        return 1;
+    }
+    var iface = argv(1);
+    prints("dhcp-probe-raw: iface="); prints(iface); newline();
+
+    var mac[8];
+    if (read_mac(iface, &mac) != 0) {
+        prints("ERROR: cannot read MAC\n");
+        return 2;
+    }
+    prints("  mac="); print_mac(&mac); newline();
+
+    var ifindex = read_ifindex(iface);
+    if (ifindex < 0) {
+        prints("ERROR: cannot read ifindex\n");
+        return 3;
+    }
+    prints("  ifindex="); fmt_int(ifindex); newline();
+
+    # htons(ETH_P_IP) on little-endian = 0x0008
+    var eth_p_ip_be = ((ETH_P_IP & 0xFF) << 8) | ((ETH_P_IP >> 8) & 0xFF);
+    var fd = syscall(41, AF_PACKET, SOCK_RAW, eth_p_ip_be);
+    if (fd < 0) {
+        prints("ERROR: socket(AF_PACKET, SOCK_RAW) failed errno=");
+        fmt_int(0 - fd); newline();
+        return 4;
+    }
+
+    var sa[20];
+    make_sockaddr_ll(&sa, ifindex, ETH_P_IP, 0);
+    if (syscall(49, fd, &sa, 20) < 0) {
+        prints("ERROR: bind AF_PACKET failed\n");
+        syscall(3, fd); return 5;
+    }
+    set_recv_timeout(fd, 5);
+
+    var xid = xid_from_clock();
+    prints("  xid=0x"); fmt_hex(xid); newline();
+
+    # ---- Build DISCOVER (BOOTP + opts) ----
+    var dhcp_buf[600];
+    var opts[16];
+    store8(&opts + 0, 53); store8(&opts + 1, 1); store8(&opts + 2, 1);    # msg=DISCOVER
+    store8(&opts + 3, 55); store8(&opts + 4, 3);                            # paramlist
+    store8(&opts + 5, 1); store8(&opts + 6, 3); store8(&opts + 7, 6);
+    store8(&opts + 8, 255);
+    var dhcp_len = dhcp_build_packet(&dhcp_buf, &mac, xid, &opts, 9);
+
+    # ---- Wrap in eth + IP + UDP — IDENTICAL byte-construction to AGNOS udp_send_from ----
+    var frame[2048];
+    var bcast[8];
+    var i: i64 = 0;
+    while (i < 6) { store8(&bcast + i, 0xFF); i = i + 1; }
+    var off = eth_build(&frame, &bcast, &mac, 0x0800);
+    var udp_len = udp_build(&frame + off + 20, 68, 67, &dhcp_buf, dhcp_len);
+    ip_build(&frame + off, 0, 0xFFFFFFFF, 17, udp_len);
+    var frame_len = off + 20 + udp_len;
+
+    var dst_sa[20];
+    make_sockaddr_ll(&dst_sa, ifindex, ETH_P_IP, &bcast);
+    var sent = syscall(44, fd, &frame, frame_len, 0, &dst_sa, 20);
+    if (sent < 0) {
+        prints("ERROR: sendto DISCOVER (AF_PACKET) failed errno=");
+        fmt_int(0 - sent); newline();
+        syscall(3, fd); return 6;
+    }
+    prints("dhcp: DISCOVER sent ("); fmt_int(sent); prints(" bytes via AF_PACKET, AGNOS-shape)\n");
+
+    # ---- Wait OFFER ----
+    var yi[4]; var sid[4]; var sn[4]; var gw[4];
+    if (wait_for_reply(fd, 2, xid, &mac, &yi, &sid, &sn, &gw) != 1) {
+        prints("ERROR: OFFER timeout/no-match\n");
+        syscall(3, fd); return 7;
+    }
+    prints("dhcp: OFFER recv\n");
+    prints("  offered ip="); print_ip(load32(&yi));  newline();
+    prints("  server  id="); print_ip(load32(&sid)); newline();
+    prints("  subnet    ="); print_ip(load32(&sn));  newline();
+    prints("  gateway   ="); print_ip(load32(&gw));  newline();
+
+    # ---- Build REQUEST ----
+    store8(&opts + 0, 53); store8(&opts + 1, 1); store8(&opts + 2, 3);
+    store8(&opts + 3, 50); store8(&opts + 4, 4);
+    var rip = load32(&yi);
+    store8(&opts + 5, (rip >> 24) & 0xFF);
+    store8(&opts + 6, (rip >> 16) & 0xFF);
+    store8(&opts + 7, (rip >> 8) & 0xFF);
+    store8(&opts + 8, rip & 0xFF);
+    store8(&opts + 9, 54); store8(&opts + 10, 4);
+    var sidv = load32(&sid);
+    store8(&opts + 11, (sidv >> 24) & 0xFF);
+    store8(&opts + 12, (sidv >> 16) & 0xFF);
+    store8(&opts + 13, (sidv >> 8) & 0xFF);
+    store8(&opts + 14, sidv & 0xFF);
+    store8(&opts + 15, 255);
+    dhcp_len = dhcp_build_packet(&dhcp_buf, &mac, xid, &opts, 16);
+
+    off = eth_build(&frame, &bcast, &mac, 0x0800);
+    udp_len = udp_build(&frame + off + 20, 68, 67, &dhcp_buf, dhcp_len);
+    ip_build(&frame + off, 0, 0xFFFFFFFF, 17, udp_len);
+    frame_len = off + 20 + udp_len;
+    sent = syscall(44, fd, &frame, frame_len, 0, &dst_sa, 20);
+    if (sent < 0) {
+        prints("ERROR: sendto REQUEST failed\n");
+        syscall(3, fd); return 8;
+    }
+    prints("dhcp: REQUEST sent\n");
+
+    # ---- Wait ACK ----
+    if (wait_for_reply(fd, 5, xid, &mac, &yi, &sid, &sn, &gw) != 1) {
+        prints("WARN: ACK timeout or NAK\n");
+        syscall(3, fd); return 9;
+    }
+    prints("dhcp: LEASE ACQUIRED (AGNOS-shape wire) ip=");
+    print_ip(load32(&yi));
+    prints(" via server=");
+    print_ip(load32(&sid));
+    newline();
+    prints("  ====> AGNOS eth_build/ip_build/udp_build PROVEN wire-correct.\n");
+
+    syscall(3, fd);
+    return 0;
+}
+
+var rc = main();
+syscall(60, rc);

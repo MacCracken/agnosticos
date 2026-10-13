@@ -1,0 +1,53 @@
+[Unit]
+Description=Ifran LLM Management and Training Service
+Documentation=https://github.com/MacCracken/ifran
+After=network.target daimon.service hoosh.service
+Wants=daimon.service hoosh.service
+ConditionPathExists=/usr/bin/ifran
+
+[Service]
+Type=notify
+ExecStart=/usr/bin/ifran serve --config /etc/ifran/ifran.toml
+ExecReload=/bin/kill -HUP $MAINPID
+
+# Environment
+Environment=IFRAN_DATA_DIR=/var/lib/ifran
+Environment=IFRAN_MODEL_DIR=/var/lib/ifran/models
+Environment=IFRAN_LOG_DIR=/var/log/ifran
+Environment=AGNOS_RUNTIME_URL=http://127.0.0.1:8090
+Environment=AGNOS_GATEWAY_URL=http://127.0.0.1:8088
+
+# Resource limits
+LimitNOFILE=65535
+LimitMEMLOCK=infinity
+
+# Restart policy
+Restart=on-failure
+RestartSec=5
+StartLimitBurst=3
+StartLimitIntervalSec=60
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/ifran /var/log/ifran /run/agnos
+ReadOnlyPaths=/etc/ifran
+
+# GPU access (CUDA/ROCm)
+DeviceAllow=/dev/dri rw
+DeviceAllow=/dev/nvidia* rw
+DeviceAllow=/dev/kfd rw
+
+# User/Group
+User=ifran
+Group=ifran
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ifran
+
+[Install]
+WantedBy=multi-user.target

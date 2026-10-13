@@ -5,6 +5,711 @@ All notable changes to AGNOS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed — ecosystem doc-currency sweep, agnos 1.56.4x → 1.57.10 · Cyrius 6.5.x → 6.6.8 (2026-09-27 → 09-28)
+
+The genesis docs were anchored at agnos **1.56.40–1.56.46** and Cyrius **6.5.x**. Those anchors came from the 2026-08-05 genesis sweep, a 2026-08-17 `state.md` refresh and a 2026-08-23 registry pass, so the docs were seven weeks behind. This sweep brings them up to:
+
+- agnos **1.57.10**: tagged 2026-09-26, built and gated, **not burned**. The last iron burn was **1.57.1 on 2026-09-08**.
+- Cyrius **6.6.8**, the latest release: 6.6.7 shipped 2026-09-27 and 6.6.8 on 2026-09-28, and 6.6.9 is in progress. v6.6.x is active, and v6.5.x closed at 6.5.73. (The sweep began against 6.6.6; the two releases landed while it ran.)
+- gnoboot **0.7.2**.
+- aethersafha **0.16.27**.
+
+Every version was read from the repo's `VERSION` file. Those files were spot-checked against the published GitHub tags first. The exceptions are puka 0.6.25 and cyrius 6.6.9, cycles opened during the sweep and not yet tagged. Where a volatile figure (a size, test count or recipe count) had drifted, it was replaced with a pointer, not re-pinned.
+
+**What the anchor had missed.**
+
+*Kernel, 1.56.45 → 1.56.60:*
+- console line preservation
+- `#99 proclist`, `#100 icmp_echo_ex`, `#101 readdir_at`, `#102 lstat`, `#103 statfs` and `#104 mountlist`
+- `#96 fork`, shipped at 1.56.54 and corrected at 1.56.55
+- the size-multiply overflow class, plus a toolchain pin that `build.sh` now enforces (1.56.51)
+- the ring-3 TSS I/O-map hole, closed (1.56.52)
+- kernel-log timestamps
+- a recovery shell that can power off
+- `#105 blkstats`, minted and then withdrawn
+
+*Kernel, 1.57.x — the arising-issue-repairs minor:*
+- the move onto the Cyrius 6.6 line
+- a kernel-embedded TrueType face
+- per-process kernel stacks
+- the blocking model, including a `kill` that acts and sockets with owners
+- blocking pipe and channel I/O
+- VT-d translation, turned on for the first time and in QEMU only
+
+*Iron:*
+- The channel band ran the desktop on 2026-08-07.
+- PS/2 was deleted, and the pointer, drag and GPU-composited frames followed on 2026-08-08/09.
+- HDMI audio was shelved on 2026-08-11.
+- Per-window opacity, via `#92` op 0x06, ran on 2026-08-16.
+- The desktop's iron defect list was empty by 2026-08-19. On 2026-08-22 the first frame-cost measurement put it at **~7–15 fps**.
+- Four validation burns passed: 1.56.53 (2026-08-30), 1.56.60 (2026-09-03), 1.57.0 (2026-09-07) and 1.57.1 (2026-09-08).
+
+Touchpoints:
+
+- **`docs/development/state.md`**: re-anchored to 1.57.10 and kept under the 80-line cap. It now carries:
+  - the unburned span
+  - the four burns
+  - a pin table that reflects the 6.6.2–6.6.7 spread
+  - "no cycle open" in place of the stale "1.56.45 open"
+
+  The open list gained VT-d queued invalidation, aarch64 not compiling and IPv6 being absent. `cyim` left the list, because its agnos build was restored at cyim 1.8.1.
+
+  The ledger no longer implies that every 1.56.45–1.56.60 feature ran on iron. The two kernels burned PASS, but `#96 fork` and the recovery shell's power verbs have only run in QEMU.
+- **`CLAUDE.md`**:
+  - status line
+  - aethersafha row: first iron desktop 08-03, then the GPU path, the fps figure and the live handoff location. DOOM's `PM_SETU` re-proof is still owed: setu cut over at 0.8.0, but cyrius-doom still vendors setu 0.7.0.
+  - agora row: "agnos has no fork" is scoped to before 1.56.54.
+  - Cyrius paragraph: v6.6.x active, 6.6.7 and 6.6.8 out, 6.6.9 in progress; v6.5.x closed at 6.5.73. Its "current release" pointer now names the newest tag, because `cyrius/VERSION` names the open cycle.
+  - Build block: the boot-path caveat below.
+
+  Two Cyrius rules had gone stale:
+  - The **reason given for the bare `_entry();` call** was fixed upstream at cyrius **6.1.32** (2026-06-11). The init rsp has been parked in `r15` at the entry landing since then, so both shapes see argv on agnos. The bare call stays the house form, and `args_init` is still required on the host.
+  - The **`var X[N]` rule.** On 2026-09-27 this sweep rewrote it to say a module-scope array is N×8 bytes only before the file's first bare top-level statement and N bytes after it — taken from an agnos source comment and a memory note. **That was the behaviour before cyrius 6.4.10**, which made module-scope arrays uniformly N×8 on 2026-07-05. Measured on 2026-09-28: a module-scope `var X[4]` spans 32 bytes before and after that statement, and a sentinel declared after it survives four 8-byte writes; a function-local `var X[4]` spans 8. `CLAUDE.md` and `first-party/example_claude.md` now state the current rule and date the old one.
+- **Crate registries**: the Version column of `libs/README.md`, `binaries.md` and `shared-crates.md` was synced to live `VERSION` files. All 108 of those cells had drifted, and six more (mabda, sigil, yukti, ganita, vani, thoth) were re-synced on 2026-09-28 after overnight releases.
+
+  Graduations:
+  - **samvada 1.0.1** and **chitra 1.0.3** graduated to `libs/`.
+  - **kashi 1.0.10** (v1.0 since 2026-05-28, never catalogued) was added.
+  - **agnosai 2.1.0** was re-catalogued. It has been Cyrius since 2.0.0 (2026-08-14); this registry dropped it on 2026-07-05 as unported Rust.
+  - soorat moved to Graphics & Rendering.
+
+  New pre-1.0 rows: setu, rekha, mishran, sadish, dhancha, rupa, crab, klug and gpumm. sadish and rekha had been listed as "not yet scaffolded"; both have existed since 2026-07-05.
+
+  Other corrections:
+  - `cyrius-mine-cart` became a real Games row.
+  - The `cyrius-chellys-beach-dash` link was fixed.
+  - The mishran row had repeated `anu`, a codename the channel band never adopted. It now says `chan_*` on `#97`.
+  - 30 Rust-era per-lib stubs were collapsed to the thin pointer pattern: the 24 with a Version table, plus six whose bodies were now false. Several said Rust for repos that are Cyrius today. `samvada.md`, `chitra.md` and `kashi.md` are new.
+  - Consumer lists that named repos which do not consume the crate now read "intended, not wired".
+  - The `cyim-lsp` row described a server; it is a client.
+  - The `iam` row claimed a darshana colour path; it was never built.
+  - The `argonaut` row said "rewire pending"; that dep left at 1.8.4.
+- **`README.md`, `docs/AGNOS.md`, `docs/architecture.md`**:
+  - Badges and anchors moved to 1.57.10 / 6.6.6 (the Cyrius badge to 6.6.8 on 2026-09-28).
+  - New capability rows, each scoped iron vs QEMU.
+  - The syscall section now covers 0–108 (`#105` withdrawn) by band, pointing to agnos's ABI doc.
+  - The kernel-hardening line no longer claims controls that do not run as named: KPTI collapsed at 1.40.3; the KASLR allocator half went at 1.41.12, and the image slide needs a build flag nothing sets; IBRS is CPUID-gated; VT-d runs only in QEMU, and AMD-Vi is disabled on the iron box.
+  - kavach's Landlock/seccomp is scoped to Linux targets.
+  - takumi's recipes are CYML, which closes the 2026-08-05 carry-forward.
+  - Port-time figures in AGNOS.md are labelled as port receipts.
+- **Roadmap, history, timeline, philosophy, thesis**:
+  - The late-August closed-beta target and the Black Hat/DEF CON 2026 dates are marked as **passed with no recorded outcome**; no new dates were invented.
+  - The shipped channel-band item left the roadmap.
+  - New timeline and history rows cover 2026-08-07 → 2026-09-26.
+  - The cyrius-symlink drop is corrected: it happened at v6.1.1, not v6.1.0.
+  - The iron target's APU is Cezanne, not Renoir.
+- **`SECURITY.md` + `docs/security/`**: re-verified against 1.57.10 / 6.6.6 / 0.7.2, and nothing past 1.57.1 is called iron-verified.
+
+  *Controls the docs listed as live that are not:*
+  - **KASLR is not active.** This was already wrong on 2026-08-05. The kernel ships `ET_EXEC`, the slide needs a `CYRIUS_PIE=1` build that nothing sets, and the pmm seed is dead.
+  - **The host-config `CRYPTO_USER_API` pin was never applied.** No config file carries the line.
+
+  *Holes that are now time-scoped:*
+  - user-pointer validation: a VA-window check through 1.56.51, a page-table walk since 1.56.52
+  - ring-3 port I/O: open through 1.56.51
+  - W^X: ELF text was RWX through 1.56.50. An RWX segment is refused since 1.57.2. The kernel identity map is still RWX.
+  - ring-3 `#GP`: froze the box until 1.57.7
+  - socket hijack: any process could use any connection until ownership arrived at 1.57.7
+  - `kill`: only set a pending bit until 1.57.7
+  - `mmap`: now has opt-in per-child caps (`#107`)
+  - fork exists (`#96`). VT-d runs in QEMU only, and AMD-Vi is disabled on the AMD iron box.
+
+  The identity section now follows the 2026-05-12 ruling: there is no per-process uid, by design, and shakti is N/A on agnos.
+
+  ⚠ **New finding:** on AGNOS a loopback bind is not honoured. Through cyrius 6.6.6 the stdlib's agnos `sock_bind` drops the address, and `#56` goes out with the port alone (class ANY). A service that asks for 127.0.0.1 — daimon's `serve`, for one — therefore listens on the NIC. cyrius **6.6.7** (2026-09-27) fixed the stdlib half: the address now selects the listen class, and 127/8 gets agnos 1.57.7's loopback-only class. A server carries the fix only once rebuilt on it, and daimon, hoosh and bote still pin 6.6.6, so the five passages that describe the bug now say both things.
+
+  *Userland facts corrected:*
+  - daimon has asked for 127.0.0.1 by default since 2.3.0 (it bound `0.0.0.0` through 2.2.x), and it still has no auth.
+  - hoosh auth still fails open.
+  - shm allows cross-owner writes as well as reads.
+  - ark's `require_signed` defaults to 0 outside the marketplace path.
+  - Untagged cyrius deps are content-verified since 6.6.5.
+  - The MUD does have a passphrase login.
+- **Development docs**:
+  - The planning ledger (`planning/README.md`) was re-dated row by row and gained an index of every file on disk.
+  - The ISO docs now say `iso.cyr` is still unwritten, and that gnoboot has loaded an initramfs since 0.5.0 (the kernel does not read it).
+  - `summer-2026-arc.md` now says every window passed with no record.
+  - The `os/` pages, `software-port-path.md` (eleven Rust repos are now Cyrius), the guides and the infrastructure pages were updated.
+  - A resolved agnos issue stub was closed.
+- **Applications, installation, contributor docs**:
+  - The app docs lost their 2026-04 fat-table volatiles and false technical claims. jalwa, mneme, agnostic and ifran are Cyrius; recipes are `.cyml`; the current agnoshi has no per-app intents.
+  - `gnoboot.md` now describes the 128-byte version-2 `boot_info` (since gnoboot 0.7.1), with the full 80 → 112 → 120 → 128 history.
+  - `CONTRIBUTING.md` / `SUPPORT.md`: pointed to `agnostos/agnos` (an unrelated account) → `MacCracken/agnosticos`, and nonexistent setup scripts were removed. The Cyrius examples used `//` comments, which do not compile. The rules "no deref / no mixed `&&`/`||` / no negative literals" are gone; all three work on 6.6.6, verified by compiling. The same repo fix applies to `.github/ISSUE_TEMPLATE/config.yml`.
+- **Outside `docs/`**:
+  - `scripts/README.md`: `cc5` → `cycc`, the retired GRUB/xorriso/squashfs ISO plan replaced, `read-boot-log.cyr` added.
+  - `docker/README.md`: stiva is Cyrius-native; `iso.cyr` is not yet written.
+  - `docker/mirshi-fanout/README.md`: dead `net-sweep`/`sched-sweep` links; agora serves agnos by poll multiplex, not serial accept.
+  - `first-party-standards.md` and its example `CLAUDE.md` taught a trailing comment on the `cyrius =` pin line (CI reads it as the tag name), a live `path` beside a `tag`, an `agnosys` dep that no longer exists, and `syscall(60, …)`. That exit is a no-op on agnos.
+
+**Completing the verification (2026-09-28).** The third verifier — registries, app docs, installation, contributor and development docs — died on a rate limit on 2026-09-27 without reporting. Its trail held about fifteen leads. Each was re-checked against the owning repo, and these were real:
+
+- `gnoboot.md` said the KASLR / `ET_DYN` load path had never run. It ran at 0.6.0 (agnos's `kaslr-smoke.sh`: two boots, two distinct bases); what has not run is the 0.7.0 rewrite of it, which gnoboot's own `state.md` records as owed.
+- `mneme.md` said the RAG client paths were deferred. mneme's `state.md` shows the daimon REST client (`/health`, `/v1/rag/query|ingest`) wired over sandhi, with only local ONNX inference still bridged out.
+- `secureyeoman.md` described Node ≥ 22 in the runtime and a backend "migrating" to Rust. SY 0.5.0 (2026-04-18) took Node.js out of the server runtime. SY's own sources disagree about the release binary — its CHANGELOG and README name the Rust `sy-core`, while `release-binary.yml` still runs a Bun compile script — and the doc now says so instead of picking a side.
+- `shared-crates.md`: the puka row said its agnos-desktop claim "must be re-proven" — it was, on 2026-08-07 over the channel band, and it took keys on iron from 2026-08-08. The attn11 row blamed a missing cyrius aarch64 trig polyfill that shipped in cyrius 6.4.16 the same day. The anuenue row's "agnos has no pipes" is scoped to before agnoshi's 1.8.0 pipelines (2026-06-27).
+- `libs/mela.md` listed daimon and nous as consumers; only ark declares `[deps.mela]`. `libs/ifran.md` dated the Rust line's removal to 2.2.0; it was 2.2.1. The kashi row now notes thoth's vendored copy of the freestanding core.
+- `CONTRIBUTING.md`'s release checklist ticked "Kernel boots under QEMU + OVMF" off `gnoboot/tests/ovmf_smoke.sh`, which asserts only gnoboot's hand-off banner. The checklist and the installation README now say what it proves.
+- `system-requirements.md` put the NVIDIA floor at Kepler / GTX 600 beside a 595-series driver pin. NVIDIA's 470 branch was the last for Kepler and its 580 branch the last for Maxwell, Pascal and Volta, so the floor is Turing (GTX 16 / RTX 20).
+- `scripts/README.md` said `boot --status` reports `cc5` missing. Where an old `cc5` build survives, it prints that stale binary's size beside the current `VERSION` (observed: `cyrius v6.6.9 (874232 bytes)`), and it still lists `agnosys`.
+- `history.md` / `timeline.md` said setu 0.8.0 removed its agnos TCP arm; 0.8.0 removed the client's dial, and the listen/accept side kept TCP until 0.8.4 (setu's own 0.8.4 entry says so).
+- `architecture.md`'s `.cyml` sentence now says both true things: CYML allows a markdown body after `---`, and zugot's recipes use the TOML part only. A `planning/README.md` pointer to ark's smoke script now follows its move into `scripts/smoke/`.
+
+Three fresh verifiers then audited what the dead one had not reached — the development docs, the app / installation / contributor docs, and the registries with their lib stubs — and confirmed 25 more problems, all fixed:
+
+- *Development docs.* `iso-pipeline.md` said `make boot-test` "works today"; it cannot load agnos since 1.30.0, and its "decisions pending" line now says they were locked in 2026-07. `exec-iron-manual-tests.md` said both halves passed on iron: part B's FAT32 half did (the 1.40.13 burn), but exFAT writes, power-cycle persistence and the dispositive host `fsck` never burned — and `state.md`'s ledger now carries the same exception for 1.34.x. The planning ledger's two-proc row kept a "zero kernel change" the same file retracts, and its 2026-08-02 "client pixels" were aethersafha's `--selftest` surface (the real two-client run was 08-03). `first-party-standards.md`'s test-runner snippet was Rust-shaped (`println!`, a ternary, `syscall(60, …)`); it is now the `assert_summary()` + `SYS_EXIT` form, compiled and run. Smaller: `cc5_aarch64` → `cycc_aarch64`, the buffer rule scoped by declaration scope in both first-party docs, stiva added to samay's consumers, gnoboot's version pointer, the photo catalog's naming convention.
+- *Apps, installation, contributor docs.* The `cyim-lsp` row said every spawn failed from 0.2.0 — an over-retraction: the argv bug was latent until cyrius 6.3.15 put array locals on the stack, and cyim 1.4.1's smoke completed the handshake on 2026-05-07. `CONTRIBUTING.md` dated mixed `&&`/`||` precedence to 6.0.62; it arrived in 6.3.36. Also: agnostic's port is 8000; `Ctrl-a x` does not exit QEMU under plain `-serial stdio` (`Ctrl-C` does); cyim's agent-drive CLI dates to 1.0.0; ark declares sigil, nous, mela, agnostik and sandhi, and its stub's "does not directly execute" predated `--apply` and the native `.ark` installer; yazi and GTK3 are zugot recipes, not bazaar's; the aarch64 probe went silent at cyrius 6.1.1.
+- *Registries and stubs.* samay's, vani's and yantra's "graduated" dates were catalogue dates; their 1.0.0 tag dates now stand beside them. The MUD row's "naturally consumes taar / kii / anuenue / bnrmr" is design intent — it declares only libro. mishran's single-process proof is QEMU-only, and the two-process retraction's reason is the rigged `net_ip`, not the hook. 97 stubs linked "libs registry" to the Applications index: 81 now reach the libs registry and 16 binary stubs the binaries registry. Nine collapsed stubs regained their consumer edges from the manifests. mabda's consumers are attn11 and ranga (puka dropped it at 0.6.8), dig depends on taar and cmdit, aegis's README-named consumers declare nothing, ranga's stub gained the no-LICENSE caveat, and taar's extraction date follows its CHANGELOG.
+
+Also on 2026-09-28:
+- **Cyrius 6.6.7 and 6.6.8 shipped mid-sweep.** `state.md`'s pin table, `CLAUDE.md`, the README badge and `AGNOS.md` now name 6.6.8 as the latest release and 6.6.9 as in progress. `AGNOS.md`'s "three stdlib folds" became a pointer to cyrius's fold table (twelve libraries as of cyrius 6.6.3).
+- **Docs the sweep never touched.** Two issue templates offered an `agnosys` component (decomposed 2026-06-19). `path-c-sovereign-uefi.md` still opened with "NEXT AGENT — START HERE" for a plan that completed on 2026-05-13; it now says it is historical. `CLAUDE.md` linked a memory file at a GitHub path that 404s on both branches; it now uses the `[[memory]]` form the rest of the file uses. Six broken relative links in five files were fixed (`gnoboot.md`, `first-party-documentation.md`, `first-party-standards.md`, `shared-crates.md`, `guides/testing.md`). A malformed 2026-04-13 continuation row in `timeline.md` had put its event in the Source column.
+
+**Operator decisions, applied 2026-09-28.**
+
+- **`iron-nuc-zen-log.md` is the canonical log for NUC work.** `state.md` (the cap note and the pointers), the development index and `iron-log.md`'s own header now say so. `iron-log.md` is marked closed at its 2026-08-11 entry and kept as the record it is.
+- **The closed beta is undated.** It slipped past early June and then late August 2026, and there is still a great deal to do before AGNOS is usable even for the operator's own daily work. The roadmap's status note now says the whole ladder is undated, because its first rung — living on the system daily — is not reachable yet. Its "slips by week, not by month" is marked as not having held. `CLAUDE.md`, `README.md`, `AGNOS.md`, `thesis.md`, the installation README, the planning ledger and `iso-pipeline.md` follow it. The public-beta and GA windows are kept as the 2026-06-29 plan, downstream of the closed beta, and not re-dated. The timeline gains a 2026-09-28 row.
+- **The nine v1.0+ libraries without a stub now have one** — akshara, bhumi, cmdit, darshana, mehman, rosnet, samay, tyche, vani. Each follows the thin pattern and lists its consumers from the manifests.
+- **Crypto boundary.** A Cyrius-era equivalent of the Rust-era note committed at `.claude/.../project_crypto_boundary.md` already exists: `planning/roadmap.md` § *Crypto/Trust Architecture* (sigil owns all AGNOS crypto and trust; SecureYeoman keeps agent-side session crypto), and the timeline marks the boundary resolved on 2026-04-01. No revisit note was needed. That section now carries a dated note on the two facts that moved since: sigil shipped ML-DSA-65 post-quantum signing, on by default since 3.7.6, and SecureYeoman 0.5.0 folded `sy-crypto` into `sy-core`.
+- **Root burn captures: none removed.** All fifteen (`1570run`, `1571run`, `60run`, `basictests`, `klug`, `opacity` and nine `ae*` desktop captures) are unique. None has a byte-identical copy in any local repo. The `ae*` captures share 78–88% of their lines with a `prior-art/` capture only because every klug dump repeats the boot log; the rest is each burn's own evidence. The burn cards cite the three `*run.txt` captures by name. They stay for the later cleanup review, as do the other root scratch files: `vbios.rom`, `ifran.db`, `agnos-hdmi-linux.log`, `shift.cyr` and `result`.
+
+**A finding, not just drift: the boot pipeline cannot boot the current kernel.** The interactive and `--test` modes of `scripts/src/boot.cyr`, and so `make boot-test`, hand the kernel to QEMU `-kernel`. QEMU has refused agnos since 1.30.0 (ELF64, no PVH note), and agnos boots through gnoboot + OVMF instead. The docs now say so. The code is unchanged. `--status` also still looks for the retired `cc5` binary (`boot.cyr:465`, `:534`).
+
+**Flagged, not fixed:**
+- **Handoff docs**, which belong to their arcs: `planning/desktop-arc-handoff.md` is a self-marked-stale copy, since the live one moved to aethersafha; `ml-ai-handoff.md` still says "17 repos on 6.5.27".
+- **Arc-owned planning docs** whose bodies lag. The ledger now carries their current status.
+- **Other repos' docs:**
+  - agnos `state.md` still says boot_info is 120 bytes and gnoboot is 0.7.1.
+  - agnos's ABI row for `#98` misses the 20-byte opt-in.
+  - aethersafha `state.md` still lists 1.56.46 as open.
+  - mishran's README says `anu`.
+  - ifran's README says `rust-old/` was removed at 2.2.0; its CHANGELOG says 2.2.1.
+  - szal's and ranga's READMEs still say Rust.
+  - garjan, ghurni and nidhi ship no LICENSE file.
+  - zugot's agnostic recipe still packages the Python line.
+  - agnos `kernel/core/main.cyr:7779-7783` still describes the pre-6.4.10 `var X[N]` rule as current (its over-sized buffer is harmless).
+  - attn11 still gates its hearing lane x86-only, with a manifest comment waiting on a polyfill cyrius 6.4.16 shipped.
+  - agnos's ABI row for `#96` names agora as fork's consumer; agora's agnos arm maps even `AGORA_SERVE=fork` to poll and never calls it, under a comment that still says "agnos has no fork" (`agora/src/main.cyr:2219-2240`).
+  - SecureYeoman's `release-binary.yml` (Bun compile) disagrees with its CHANGELOG and README (Rust `sy-core`).
+  - cyim-lsp's CHANGELOG repeats the "every consumer since v0.2.0" overstatement; cyim's `state.md` dates its agent-drive CLI to 1.2.0 against its own CHANGELOG's 1.0.0.
+  - cyrius's FAQ still lists "no mixed `&&`/`||`", fixed at 6.3.36 (hands-off — reported only).
+  - agnos `scripts/test.sh` dates the `cc5_aarch64` drop to cyrius 6.1.0 (it was 6.1.1).
+- **In this repo, left for the operator:**
+  - the iron log (a burn log, not edited by sweeps): `#tracker-139-cycle`'s header still reads PENDING beside its own "Track B ✓", and its log-chain line calls the FAT/exFAT burn pending — consistent with the scoping above, but worth one reconciling line.
+  - `planning/shared-buffer-present.md` (arc-owned) calls pixels unproven in its shipped-record paragraph while the ledger row records them proven on iron on 2026-08-02/03.
+  - The repo's committed `.claude/projects/-home-macro-Repos-agnosticos/memory/project_crypto_boundary.md` describes a Rust-era `pqc.rs` and `sy-crypto` that no longer exist; its idea is carried by `planning/roadmap.md` § *Crypto/Trust Architecture* (see the operator decisions above), so it can go in the later cleanup.
+  - `scripts/src/boot.cyr` itself: `--status` names `cc5` and `agnosys`, and the `-kernel` path cannot load agnos ≥ 1.30.0. Code, not docs, so unchanged.
+- **Operator calls:**
+  - ✅ *decided 2026-09-28:* `iron-nuc-zen-log.md` is canonical for NUC work (it had been since 2026-08-11 in practice; `state.md` said `iron-log.md`)
+  - public docs (the installation pages, `binaries.md`, the third-party page) link into `docs/development/`, which is marked internal-only for the 0.1.0 merge; they break for public readers if the untrack goes ahead
+  - licence notice vs manifest: about 30 repos, this one included, pair a `GPL-3.0-only` manifest with an "or any later version" LICENSE notice
+  - whether `bootstrap/bootstrap.sh` belongs in the "rebuild the toolchain" advice: it builds `cybs` and `asm` only (cyrius's own README documents it the same way)
+  - ✅ *decided 2026-09-28:* the closed beta is undated — it keeps slipping because AGNOS first has to become usable for the operator's own daily work
+  - the postponed Foundation/DCO track
+  - the unlinked `planning/README.md.pre-categorization`
+  - ✅ *decided 2026-09-28:* remove the root burn captures that are not unique, and review the rest later
+  - ✅ *decided 2026-09-28:* write the nine missing per-lib stubs
+
+### Changed — docs/security/ rewritten for the Cyrius era (2026-08-05)
+
+Five documents dated **2026-03-07 / 03-16** described a system AGNOS is not. They documented a **Rust supply chain** — `cargo audit`, `cargo-deny`, `Cargo.toml` pinning, the RustSec advisory DB, crates.io ecosystem rules — and a **Linux confinement model** of Landlock, seccomp-BPF, namespaces and cgroups. Neither exists here: the monolith was dismantled 2026-04-01 and there is no `Cargo.toml` anywhere in the repo, and per [`docs/development/roadmap.md`](docs/development/roadmap.md) confinement "when it lands, is **capability-scoped and native** — never Landlock, seccomp or `unshare` ABI emulation." **That is not ordinary staleness. A security document describing a control that does not exist tells an operator they are protected when they are not** — it is worse than no document, because it converts a gap into false confidence. The rewrite's governing rule is therefore **under-claim**: every ✅ was read in live source at a cited `path:line`, and a control that is absent is marked ⛔ / 📋 / 🐧 rather than quietly dropped. Ground truth re-read live: agnos **1.56.40** (OPEN, **not burned**) / cyrius **6.5.7** / gnoboot **0.6.1**. ⛔ **The security posture did not improve — the documents got honest.** The posture is what it always was.
+
+**Controls deleted because they do not exist.** Each had been presented as shipped: Landlock/seccomp/namespace sandboxing with a Rust code sample (kavach's backends are `#ifdef CYRIUS_TARGET_AGNOS`-gated to a structured "not supported" — `kavach/src/security.cyr:157-167`, `confine.cyr:116-118,340-350`); a six-row per-agent capability table (`file:read`, `network:outbound`, …) whose strings exist in **no repo**; a human-approval gate and an emergency kill switch (no `request_permission` / `emergency_kill_switch` anywhere in the ecosystem); **mutual TLS** with a local CA, per-agent client certificates and zero-downtime rotation (no mTLS implementation, no CA, no issuance — daimon, hoosh and bote all speak plain HTTP); **ML-KEM/Kyber post-quantum key exchange** and SPHINCS+ (only ML-DSA-65 *signing* is real, and every signature in the supply chain today is still Ed25519); aegis as a running daemon doing real-time behavioural monitoring and kernel-LSM coordination (`aegis/src/main.cyr` prints `"aegis ready"` and returns — **no repo declares `[deps.aegis]`**); phylax's `.phylax-db` signature database and fanotify real-time mode; and **~55 CIS controls ticked ✅** against subsystems AGNOS does not have.
+
+What each file now says:
+
+- **`security-guide.md`** — rebuilt as a source-cited architecture record with a status legend (✅ verified / 🐧 Linux-target-only / 📋 intended / ⛔ absent). Its one-sentence honest model: *AGNOS runs one owner's trusted software on one machine; its security value is a radically small sovereign attack surface that structurally lacks whole classes of Linux vulnerability — **not** the enforcement of boundaries between processes, users, or code of differing trust.* The genuinely strong controls are stated as such — per-process CR3, ring-3 separation, SMEP/SMAP, IOPL 0, `is_user_range()` on **48 call sites**, SFMASK entry sanitization — alongside what they are not: **KPTI is collapsed** since 1.40.3 (the per-process "user" CR3 *is* the kernel CR3; no Meltdown mitigation, no retpoline), **kernel `.text` is RWX** and kernel stacks have **no guard pages**, and there is **no copy-in** — SMAP is open for the whole duration of every syscall, not per-copy. The attack-vector table's mitigation column was the sharpest fix: it had listed "sandboxing, seccomp, namespaces" and "no root for agents", and now says what actually stands in the way, which for agent escape is **⛔ nothing**.
+- **`vulnerability-management.md`** — written against the *real* chain (`cyrius.cyml` + `cyrius deps` → zugot recipes → nous → takumi → ark) instead of a Rust one, and honest that there is **⛔ no advisory database or CVE feed of any kind** for first-party code. Names three integrity gaps it found: TOFU commit-pinning covers **tagged deps only** — the whole check sits behind `if (dep_tag != 0)`, and no-tag deps *"intentionally float (track a branch HEAD)"* (`cyrius/cbt/deps.cyr:1393-1394`); recipe hash-pinning is **519 of 564**, not universal; and this repo's own CI `curl -sLO`s the cyrius toolchain and **executes it with no checksum and no signature check** (`ci.yml:29-30`) while cyrius publishes a signed `SHA256SUMS` that nothing here consumes. Also corrected a *stale blocker*: `cyrius sign-efi` ships today (`cyrius/cbt/cyrius.cyr:315-329`), so the Secure Boot gap is the missing enrolment flow and the absent verification step inside gnoboot — not, as written, a compiler that cannot sign PE-COFF.
+- **`security-checklist.md`** — every `- [ ]` is now checkable on AGNOS with a command that runs or a file that opens; everything else moved into two no-tickbox sections (⛔ *Not Applicable by Design* and the gaps). The Rust-toolchain row is explicit: `cargo audit` / `cargo-deny` / `Cargo.toml` pinning / RustSec / crates.io ⛔ **the toolchain is not Rust**.
+- **`penetration-testing.md`** — rescoped from Rust-era targets (sandbox escape, `sudo -l`, SUID hunting, `/proc/self/ns`, mTLS, a Wayland compositor, loadable kernel modules — **none of which exist**) onto the surface that is actually reachable, including the userland binaries parsing untrusted bytes off a public socket: **agora** (telnet, `INADDR_ANY`, sigil challenge/response) and **cyrius-yeomans-descent** (telnet MUD, `INADDR_ANY`, ⛔ no cryptographic auth at all).
+- **`cis-benchmarks.md`** — reframed as *a mapping, not an attestation*. Its finding is that most of the benchmark is **categorically inapplicable**, not merely unmet: CIS presupposes uid/gid separation, `/etc/passwd`, PAM, systemd, `/etc/fstab`, sysctl, auditd, rsyslog and nftables. The ~55 invented ✅ rows were **removed rather than updated**, host-bootstrap-only rows are marked 🐧, and the fictional `sudo agnos-cis-audit` command set is gone (no such binary; AGNOS has no `sudo`).
+
+**Gaps the set now names openly** rather than leaving to inference: daimon `serve` binds **`0.0.0.0`:8090 with no auth** (`daimon/src/server.cyr:183` — its `config_listen_addr` default of `127.0.0.1` is never called); hoosh auth **fails open** when no tokens are configured, which is the default (`hoosh/src/lib/auth.cyr:6`); `shm_write`#72 / `shm_read`#73 are cross-owner **permitted**, warn-counted only; the 8-slot TCP conn table has **no owner field**; `sys_mmap` has **no per-process page budget**; the `blk_write` arm is **anti-accident, not anti-adversary** (the magic constant is published in source and never disarmed); gnoboot verifies **nothing but ELF magic**, and anyone who can write the ESP owns the machine; t-ron's injection detector is wired into nothing (neither bote nor daimon declares `[deps.tron]`); and `ark`'s `require_signed` **defaults to 0** with **no CLI flag and no config-file key** — the one path that forces it on is a marketplace install (`ark/src/marketplace.cyr:57-58`).
+
+**Verifier catches, fixed before they shipped.** The adversarial pass found the rewrite committing the same class of error it was correcting. Two were material: `vulnerability-management.md` marked recipe hash-pinning ✅ on a count of **548 files containing the string** `sha256` when only **519 of 564** carry a populated 64-hex digest (25 of the 29 empties declare a live remote source) — restated ⚠️, with the consequence traced through both gates so it reads *un-pinned and unbuildable*, **not** *installs an unverified artifact*; and `security-checklist.md` claimed **segment W^X** as shipped when the non-`PF_X` arm **never fires** — cyrius/cyrld emits one RWE `PT_LOAD` per binary, so every real AGNOS binary's data and BSS share an **executable** 2 MB page with its code (`agnos/kernel/core/elf.cyr:314-317`). Also caught: an **over-correction that deleted a real control** (the guide asserted ark's trust gate "does not run on a default install" — marketplace installs force it on, fail-closed); a **fabricated verbatim quote** welding two different kavach comments together; five **tickable-but-uncheckable** instructions (`require_signed` has no operator lever; the `libro` binary is a 466-assert test harness, not a chain-head readout; `hardening-smoke.sh` needs a build flag it does not set; `phylax rules` needs its `list` subverb; `shm_xown_warns` has no ring-3 path); and **`cyrius vet` listed as a passing CI gate when it exits 1 here** (`cyaudit` resolves `include "lib/…"` CWD-relative and `scripts/lib/` is empty ⇒ `10 deps, 0 untrusted, 10 missing`).
+
+**`SECURITY.md` touched at its two pointers into this tree and nowhere else** — it had been swept hours earlier the same day. The *Security Architecture* disclaimer calling the guide a Rust/Landlock **fossil** is retired, verified dead before softening: the five docs carry **zero Rust code fences** (only `cyrius`, `sh`, `json`), and every Landlock/seccomp/namespace mention is now 🐧 Linux-target-only or explicitly ruled out. The replacement deliberately does **not** re-assert that `SECURITY.md` wins a disagreement — it says the guide carries the `path:line` citation and is the thing to verify against. The CIS compliance row's *"scoped to the Linux host-bootstrap kernels … predates the Cyrius transition"* was corrected for the same reason.
+
+⛔ **Flagged, not fixed — a call for the owner.** `SECURITY.md:32` still lists *"KASLR — the PIE kernel image is slid to an RDRAND-chosen 2 MB-aligned base each boot"* as a live kernel-level control. **The shipped kernel is not PIE**: `readelf -h agnos/build/agnos` reads `Type: EXEC`, gnoboot slides only `e_type == 3` (`gnoboot/src/main.cyr:441`), and `CYRIUS_PIE` appears nowhere in agnos outside `scripts/smoke/kaslr-smoke.sh` — no `build.sh` default, no CI job, no ISO step — while the smoke hard-errors *"build/agnos is ET_EXEC (non-PIE)"*. `security-guide.md` §5 records this correctly, so the two now disagree and the guide is right. Left unedited because this pass was fenced to the doc-pointers, but it is a **fifth false control** in the file the morning sweep cleared of four.
+
+### Changed — genesis doc-set currency sweep, 1.53.5 → 1.56.40 (2026-08-05)
+
+The genesis docs were anchored at agnos **1.53.5** / Cyrius **6.4.16** / gnoboot **0.6.0** and dated **2026-07-07** — an anchor that predated three whole kernel arcs. Swept current through agnos **1.56.40** / Cyrius **6.5.7** / gnoboot **0.6.1** / aethersafha **0.12.1** (all read from live `VERSION` files). Volatile figures were **deleted in favour of ledger pointers**, not re-pinned to numbers that immediately re-drift.
+
+**What the anchor had missed:** **1.54.x GPU compute** — the AMD Cezanne iGPU brought up from nothing (PSP firmware, GFXHUB, a mapped compute queue, hand-assembled gfx90c shaders) with no amdgpu and no ROCm, f64 matmul on the shader cores bit-identical to the CPU reference including rounding. **1.55.x display/scanout** — a sovereign ATOM BIOS interpreter proven bit-correct against the vendor oracle on iron, the first hardware 2D via CP-DMA, and AGNOS powering itself off via ACPI S5 (iron-validated 2026-07-19). **1.56.x the shader arc** — a GPU triangle rasteriser (167 hand-authored gfx90c instructions, 20/20 cases byte-identical to the CPU reference) → barycentric RGBA interpolation → perspective-correct texturing → depth test → a kernel-side DCN modeset; **1.56.36 / 37 / 38 RELEASED and BURNED PASS** (native 2560x1440, scaler in DSCL bypass, hardware-panned boot console). ⭐ **And the headline: on 2026-08-03 the aethersafha desktop composited TWO REAL CLIENT WINDOWS on archaemenid** at `cpus online: 4` — `present_probe` + crab's dual-pane file manager, 278 frames, keys delivered, clean Esc quit. The blocker had been `EFER.NXE` never enabled on the APs. Separately, **TCP-on-loopback was retired as the *wrong primitive*** for local display IPC (operator ruling 2026-08-03); the replacement is a kernel `chan_*` band with no codename, sitting beside `pipe_*` / `shm_*` / `sock_*`. **agnos 1.56.40 is that band — OPEN and NOT burned.**
+
+Touchpoints:
+
+- **`docs/development/state.md`** — re-anchored to the 1.56.40 head, 80-line cap held. ⛔ A `check.sh` **23/23** / `sweep.sh` **15/15** line was attributed to 1.56.39; those numbers are a five-day-old result from **1.56.34** (HDMI-audio CRC null-case calibration), and both denominators are already dead — 1.56.40 wired `chan-semantics-check.sh` into `check.sh` and `syscall-harden-smoke.sh` into `sweep.sh`. Replaced with `exec-redirect-smoke` **4/4**, the only suite result the 1.56.39 entry actually records. The "⛔ all QEMU, never burned" scoping stayed.
+- **`README.md`** — GPU-compute and 3D-raster/native-scanout capability rows added. The **iron-validated** label is scoped to **1.56.0–1.56.38**, never bare "1.56.x": that range would sweep in the released-but-never-burned 1.56.39 and the open 1.56.40.
+- **`docs/AGNOS.md`** — Networking row corrected: the 1.45.x arc shipped the **kernel prerequisites** for TLS (`getrandom`#45 / `time_unix`#46 / `sock_*`#47-#50) — **TLS itself is userland (`tls_native`), not a kernel subsystem**. Status row rewritten from a finished-fact assertion back to the plan: the founder solo-dogfood month + the server-stage weak-point sweep are windowed **~July / early-Aug 2026** and the window is still open, and the sweep's harness is **TBD and explicitly not Docker** — the QEMU-in-a-Docker-container design was retired 2026-07-07 as the dead VM-in-container pattern. The comparison table's "sub-MB self-hosting compiler" claim deleted (`cycc` is past 1 MB) → cyrius `state.md` pointer, matching the three other size hardcodes this file lost in the same pass.
+- **`docs/architecture.md`** — `#96` (`fork`) and `#97` (`chan_op`) recorded as operator-assigned 2026-08-05. `#96` stays reserved; `#97` **was minted in the OPEN, unburned 1.56.40 cut** (boot-reserved 2 MB region + a single `CH_CAPS` op; `CH_HANDOFF` / `CH_DIAL` reserved and reading 0). Documented as **in-flight, not shipped**: its kill criterion is *half* met (the selftest proves the kernel-CR3 half of region reachability, not the spawned-client half), and `check.sh` is red on it by design until the Cyrius stdlib lands `SYS_CHAN_OP = 97`. Syscall-count prose scoped to the released **0-95** range rather than chased to a figure the open cut re-drifts.
+- **`docs/timeline.md`** + **`docs/history.md`** — new rows **appended** for the 1.54.x / 1.55.x / 1.56.x arcs, the 2026-08-03 desktop burn, the 1.56.36-38 native-scanout burn and the 1.56.40 open head; existing rows preserved name-at-the-time. Three claims tightened to what was measured: the modeset instrument (`Timer ticks before sched` **28** at 800x600 → **149** native with software scroll → **11** native + pan) shows native-*without*-pan is the regression, and says nothing about pan-alone — `mdo_pan` refuses unless the pipe is already native, so that arm is structurally unbuildable; the Cyrius version-chain span re-derived from the file's own anchors (**v1.0 on 2026-04-04 → 2026-08-05 = 123 days**) once the endpoint moved to 6.5.x; and "Days later" → "The next day" for the `#86`-`#89` GPU compositor seam (1.55.30 → 1.55.32 are one day apart).
+- **`docs/philosophy.md`** — the ATOM interpreter and DCN 2.1 scanout are now two separately iron-validated coordinates, not one causal claim. ATOM's oracle-agreement run was a **DRY build — no MMIO, no amdgpu**; the code that actually produces scanout (`mdo_native`) is direct HUBP/OTG/DSCL register programming with no ATOM in the path, and ATOM `#12 SetPixelClock` is under a standing operator ruling not to fire at the live pipe. The desktop line reads "on archaemenid's panel" — the 2026-08-03 burn rendered at 800x600 at scale 2 into the 2560x1440 panel and **predates** native scanout.
+- **`CLAUDE.md`** — agora row: the runtime-selectable `AGORA_SERVE={fork,poll}` serve model recorded (fork-per-connection on Linux, single-process poll multiplex on agnos, which has no fork), with the iron claim split from the host claim — iron-validation is scoped to the **base BBS cut** (telnet login round-trip + 8-user concurrent fanout); **the door tree and the agnos poll path are mirshi/host-verified, NOT iron**.
+
+**Carry-forward closed in a second pass, same day.** The items the sweep's verifiers flagged but left were worked through, and two of them turned out to be more than staleness:
+
+- **The security anchor was false as written.** Five docs claimed a syscall surface with "no socket/splice/AF_ALG layer". agnos **does** ship a socket band — `sock_connect`#47 / `sock_send`#48 / `sock_recv`#49 / `sock_close`#50 / `sock_listen`#56 / `sock_accept`#57. The *argument* survives intact (AF_ALG and splice have no implementation, and there is no BSD socket family), but the phrasing asserted something untrue in the repo's most-cited security line. Re-stated everywhere as **no generic BSD socket family, no `socket()` over arbitrary domains, no splice, no AF_ALG** — the wording `docs/architecture.md` already used correctly.
+- **`SECURITY.md` was describing controls that do not exist.** Four claims removed or scoped: **KASLR's allocator half is dead** — `pmm_next_free` is RDRAND-seeded (`pmm.cyr:535`) but no allocator consumes it; the bottom-up first-fit that did was removed at 1.41.12 because it scattered a page into a random 2 MB region and *was* the flaky agnsh ring-3 `#PF` (the image-base slide is still live, the heap randomization is not). **Nothing verifies a signature at exec** — `elf.cyr` checks ELF magic and nothing else; verification happens at *install* (ark: SHA-256 root hash + Ed25519). **"Nothing else listens" is false** — bote defaults to 127.0.0.1:8390-8393 and agora serves telnet on 2323. **`shakti` is pre-1.0 (0.7.0)** with no kernel seam behind it — `syscall.cyr` records the aegis/shakti capability check as landing "when agnos grows per-proc caps". The Least Privilege bullets now carry 📋/⚠️ markers naming exactly where enforcement is absent, including that `getuid` returns 0 for every process. A fabricated replacement ("capability grants checked by daimon at load" — daimon has no capability code at all) was caught by the verifier before it shipped. Also retired: the **Landlock / seccomp-bpf / namespaces** kernel-level bullet, a Rust-era fossil naming the exact mechanisms `roadmap.md` records as a *permanent prohibited boundary*.
+- Also closed: the `EFER.NXE` cite corrected **514 → 542** in `state.md` and `timeline.md` (514 is inside the 16-bit trampoline byte emitter; the dated burn log keeps its as-written value); **seema** added to the Pending Cyrius Ports table; the README census and the 1.42.x iron-flip walked back to what the receipts support; the desktop `2/2` green in `state.md` caveated against the `AE_CLIENTS_MODE=desktop` flake that agnos `[1.56.40]` records, scoped in time rather than as a standing "never"; and **`anuenue` 1.2.0 graduated** to [`binaries.md`](docs/applications/binaries.md) (22 → **23**), closing a half-done graduation the registry pass had correctly flagged but declined to write itself.
+
+**Still open, deliberately** (each a new claim rather than a correction): `docs/philosophy.md`'s compiler-platform list omits the Intel-Mac x86_64 Mach-O revival; `architecture.md:313` still says takumi uses "TOML recipes" where zugot holds 564 `.cyml` and zero `.toml`; and `shared-crates.md` carries `sadish` / `rekha` under *Planned (not yet scaffolded)* when both are real repos on disk. Of the 33 pre-1.0 registry rows, **19 were verifiable against a local `VERSION`** and none has crossed v1.0 — the other 14 have no local clone, so the honest claim is *no locally-verifiable row has graduated*, not *none has*.
+
+### Milestone — Type-3 fidelity gate closed + the ML-substrate freeze (2026-07-04)
+
+Two cuts landed the same day, closing the review's live items:
+
+- **anukūlana 0.3.0 — M2 COMPLETE.** The imported GPT-2 forward now **matches HF exactly**: `gpt2-oracle` gates against a **committed HF-logits fixture** (torch ran once in a disposable venv, its logits committed as test data — Python/torch is never a build/run/test dependency). Result on the real 124M checkpoint: argmax identical at all 48 positions (3 seqs × 16), last-row maxrel 1.05e-6 (fp32-rounding scale — HF computes fp32, the sovereign path computes f64 over the same widened weights), gate frozen at 1e-5. Suite 49/49; `make fidelity`. Next: M3 LoRA.
+- **rosnet 1.0.0 — the substrate freeze.** No behavior change: froze the surface **six shipping consumers** (attn11/tarka/tentib/prajna/rupantara/anukūlana) exercised unchanged since 0.1.1 — CPU bundle **and** GPU profile (mabda 4.x churn is provider-level; 4.0 added basic NVIDIA). All six v1.0 criteria closed at the cut: `docs/api.md` freeze + `docs/benchmarks.md` capture (Ryzen 7 5800H) + audit PASS (the no-bounds-checks caller-guarantees contract audited as the deliberate substrate design). Graduated pre-1.0 → [`libs/README.md`](docs/applications/libs/README.md) Science & Knowledge (86→**87** v1.0+ libs).
+- Cross-cutting decisions recorded: **ifran decomposition RESOLVED** (decompose at the port — existing homes take their pieces; the control-plane core ports as one repo, internals second-consumer-gated; `software-port-path.md` §3) and the **runs-on-agnos gate** (the agnos kernel FP/SIMD arc, 1.53.x) cross-linked into all five ML axis docs + state.md.
+
+### Changed — ML/AI-arc planning-doc currency sweep (2026-07-04)
+
+Review of the twelve ML/AI planning docs against live repo state (VERSION files, CHANGELOGs, source trees) found the plans lagging their own shipped results; five docs + state.md re-anchored:
+
+- **`planning/tarka-preference-rlhf-extensions.md`** — status "Planning — NOT authorized" → **SHIPPED** with a *Since This Was Written* footer: tarka **1.1.0** landed DPO + the KL-to-reference penalty and **1.1.1** landed IPO + KTO (past the doc's own "DPO only" scope wall), all FD-gated. Doc retained as the historical spec.
+- **`planning/ml-product-mining.md`** — harvest table's tarka DPO/KL rows ticked SHIPPED; the QLoRA new-lib bullet repointed at `type3-weight-import.md` + the shipped M1 chain. (Bandits/pass@k verified still absent from `tarka/src` — rows left open.)
+- **`planning/generative-paradigms.md`** — paradigm table re-anchored: attn11 1.7.2→**1.12.0 (parked M20, forward extracted → rupantara)**; **Type-3 "planned" → OPENED, M1 shipped 2026-07-02** (tula 1.0.0 / rupantara 0.4.0 / anukūlana 0.2.0) with a promotion banner on the Type-3 section; the sequencing bullet now records that Type-3 moved first (the original Type-2-first suggestion was overtaken).
+- **`planning/multimodal-substrate.md`** — the "two real lifts" (conv + sovereign FFT) reduced to **one**: sovereign FFTs have since landed (**hisab** FFT/DST/DCT/2D-FFT as a registered lib; shravan `fft.cyr`; naad `dsp_spectral.cyr`), and the attn11→libs transformer-blocks extraction completed as **rupantara** 0.4.0. **conv2d/conv1d fwd+bwd is now the single new learned primitive gating both sight and hearing** (and it's shared with Type-4 diffusion). Substrate table + sequencing + in-ecosystem refs updated; STFT framing + mel filterbank glue is what remains of the audio frontend.
+- **`planning/software-port-path.md`** — partial refresh: **svara** (3.0.0) + **nidhi** (2.0.0) ported 2026-07-03, moved Tier D → §1; counts 88→**90** Cyrius done / ~74→**~72** port targets.
+- **`docs/development/state.md`** — ML-arc sibling line: tarka 1.0.0 → **1.1.1** (the 1.1.x preference set *was* the change); tentib gate annotated as named-next in the cyrius v6.4.x opening sequence.
+
+### Milestone — DOOM renders on AGNOS (2026-06-08)
+
+The first real userland application runs on the AGNOS kernel: **cyrius-doom 0.28.2 `--agnos` boots to the DOOM title screen** at agnos **1.43.6**. The 584 KB ELF exec's from disk in ring 3, reads the 4.2 MB DOOM1.WAD off the ext2 root, parses it, and blits a 240-colour frame via the kernel's `fbinfo`#38/`blit`#39 syscalls. *"agnsh launches DOOM."*
+
+Kernel-side enablers (detail in `agnos/CHANGELOG.md` `[1.43.6]` + `agnos/docs/development/planning/doom-on-agnos-render-blockers.md`): the 1.43.x graphics path (`fbinfo`/`blit` framebuffer, `uptime_ms`/`sleep_ms` ring-3 timing) plus two 1.43.6 fixes — PMM 2 MB pool 16 MB → 128 MB and `proc_create` mapping `PD[8..63]` 16–128 MB identity-supervisor (the WAD-alloc ring-0 #PF→#DF fix). Validated by `agnos/scripts/doom-smoke.sh` (PASS); QEMU sweep 7/7; cyrius pin held 6.0.56; production kernel (no DOOM_SELFTEST).
+
+**Known bug (workaround-only):** the first `mmap` from a freshly-exec'd ring-3 process corrupts the ring-3 return state (fault at RIP=0); cyrius-doom carries a one-line warm-up-mmap workaround. agnsh unaffected.
+
+**Provisioning:** `scripts/install-media.sh` now stages `/bin/doom` + `/DOOM1.WAD` onto agnos-fs via `--update-fs` (and full provision; `stage_doom`). The DOOM milestone is **NOT yet iron-burned on archaemenid** — the 128 MB PMM + `PD[8..63]` map meet the box's real UEFI memory map for the first time (primary risk: a reserved-region collision in 16–128 MB; PMM hardcodes `pmm_total`, reads no E820/UEFI map — the old 16 MB pool proved 4–16 MB clean).
+
+### Changed — 0.1.0 clean+prep: doc currency + ecosystem release-readiness (2026-06-07)
+
+Genesis docs swept current through agnos **1.43.2** (detail in `docs/doc-health.md`). Kept brief here on purpose — the 0.1.0 cycle is prep, and the point is an accurate **release-readiness** picture across the repos:
+
+- **Iron-validated / shippable now:** agnos kernel **base maturity** — FS-crash-safe (extent → jbd2 → VFS) + exec-from-disk, iron-validated 2026-05-31; **1.41.x shell-separation iron-complete** (iron-validated 2026-06-06 — `agnsh` types/echoes/dispatches on archaemenid); cyrius pin **6.0.56** (toolchain latest 6.0.88); **94 crates at v1.0+** (registry reconciled); **agora 1.0.0** (telnet BBS, iron-validated on archaemenid); **gnoboot 0.5.0** (sovereign UEFI boot).
+- **Landed since (QEMU-validated, rides the next burn):** agnos **1.42.x** perf+hardening + the **1.43.x** graphics/userland arc (execwait #37 → userland `run`; FB-console ANSI/SGR color; `fbinfo`#38/`blit`#39 framebuffer; `uptime_ms`#40/`sleep_ms`#41 timing) — culminating in **DOOM rendering on AGNOS (agnos 1.43.6 / cyrius-doom 0.28.2)**: the first real userland app, exec'd from disk in ring 3, blitting the 240-colour title screen (`doom-smoke.sh` PASS). First AGNOS-tic userland tools on `/bin` (`bnrmr`/`cmdrs`/`klug`/`anuenue`). agnoshi **1.4.6** (`verb_abspath` + envp `$HOME` walk). **NOT yet iron-burned** — the 128 MB PMM pool meets archaemenid's real UEFI map for the first time.
+- **0.1.0 close still gates on:** the combined kernel **iron burn** + **ISO** assembly (`iso-stage4-plan.md`) + Docker images — the `monolith-extraction` → `main` merge waits on these, not on the doc work.
+
+Docs touched: README / AGNOS / architecture / history / timeline / roadmap / SECURITY / state.md (anchor) + the crate registries (`shared-crates.md` / `libs/README.md`) + `port-ledger-volume-3.md` (7/10 Volume 1 ports now carry 6.0.x receipts).
+
+### Changed — cross-cutting documentation sweep (2026-05-26)
+
+Genesis-repo docs brought current after the agnos 1.33.x ext2/4-WRITE + 1.34.x FAT-family arcs landed (companion to the agnos-repo doc sweep at agnos `[1.35.0]`).
+
+- **`README.md`** — kernel badge 1.32.7 → **1.34.6**; lead capability line rewritten (boots to typeable shell; storage / networking / read+write filesystems landed + iron-validation status); kernel subsystem count 35+ → **40+**.
+- **`docs/development/roadmap.md`** — **restructured to forward-facing** (per user directive): removed the stale top-matter quote-block, the completed "Status" section (Cyrius milestone table + ports dependency chain + monolith-complete + KPIs), and the completed 1.30.x-keyboard / 1.31.x-storage / 1.32.x-networking cycle-tracking (history now lives in CHANGELOG + state.md). Retained the maturity arc (demo→base transition reflected), strategic vision, beta path, active 1.35.x, forward governance phases 13B–24, and the ecosystem inventory (Version column dropped from the Named Subsystems table — defers to state.md/shared-crates.md). 742 → 544 lines.
+- **`docs/doc-health.md`** — ledger refreshed for the 2026-05-26 sweep. `state.md`, `architecture.md`, `philosophy.md`, `thesis.md`, and `installation/*` were already pointer-based/current from the 2026-05-25 pass; articles + prior-art docs left as dated artifacts.
+
+### Added — `scripts/install-usb.sh` 2-partition + agnos-fs seed upgrade (2026-05-22)
+
+Provision-mode upgrade from single-partition (256 MiB ESP + rest unallocated) to **two-partition layout**: ESP + 25 GiB ext4 `agnos-fs` partition pre-seeded for the upcoming **1.33.x ext4 WRITE** bring-up arc.
+
+- **New partition** — GPT name + fs label `agnos-fs`, formatted via default `mkfs.ext4 -F -L agnos-fs $PART2` → 64BIT-enabled per the iron-validated profile.
+- **Pre-seeded content** — `/hello.txt` (primary), `/welcome.txt` (secondary hello at root), `/agnos/notes.txt` (file inside subfolder, for `cd` + `cat` + `ls` validation). All three timestamped at provision time via `$(date -u +%Y-%m-%d)`.
+- **`--update` mode unchanged** — still ESP-only (gnoboot + kernel + initramfs refresh). The data partition + seed are **deliberately untouched** on `--update` so writes that 1.33.x lands on `agnos-fs` survive every subsequent kernel-iteration cycle. Per [[feedback_prefer_mount_modify_over_reflash]] — for AGNOS-side seed changes, mount the partition from Linux and edit in place; reserve `--update` reflash for kernel/gnoboot binary changes.
+- **Mount-priority note** — per `agnos/kernel/core/ext2.cyr:198-205` the probe order is **NVMe → AHCI → USB-MS → VirtIO → RAMDISK, first match wins**. On archaemenid the internal NVMe `agnos-fs` keeps winning, so the USB `agnos-fs` sits *dormant* (kernel mounts NVMe, USB seed invisible to `ls`/`cat`). That's the desired posture — keeps the sacred NVMe partition out of the path for 1.33.x WRITE bring-up while the **sacrificial USB partition** stays ready to swap into the probe priority once writes start landing.
+- **Step count** — provision mode goes `[1/6]…[6/6]` → `[1/8]…[8/8]`; added `mkfs.ext4` to tool preflight.
+- **Strategic role** — this is the **base-stage** persistence surface getting prepped ahead of 1.33.x landing. Per the maturity arc (roadmap.md § Maturity Arc / [[project_agnos_maturity_arc]]), the demo→base transition is what triggers archaemenid's dual-boot migration; `install-usb.sh` is the **base-stage** installer, with `agnova` (native AGNOS-side installer) taking over at **server-stage**.
+
+## [0.1.0] — TBD (clean + prep cycle on `monolith-extraction` branch, on the way to merge into `main`)
+
+### Versioning — scheme transition
+
+- **VERSION file: `2026.5.13` → `0.1.0`** — switched from CalVer (`YYYY.M.D`) to SemVer (`MAJOR.MINOR.PATCH`). Reason: with the kernel + tooling in continuous-update mode (multiple cuts per day during active arcs like the 1.31.x storage cycle), CalVer's date stamp would need patch suffixes constantly and stops being useful as a work-tracking anchor. SemVer cycles absorb arbitrary work between cuts without re-stamping. CHANGELOG header already declared SemVer adherence — the file bump reconciles VERSION with the declared convention. **CalVer may return later** once cadence normalizes around named ship milestones (ISO cut, closed beta, public beta, GA). Per the no-unprompted-version-bumps policy: bump on cycle OPEN (this IS the OPEN of 0.1.0), user drives the close + tag. The 0.1.0 cycle will close when kernel items + ISO prep are ready for merge into `main`.
+- **`CLAUDE.md` Project Identity** — versioning line updated to reflect SemVer + 0.1.0 active cycle + open-bump convention pointer.
+
+### Changed — Documentation sweep (kernel-week catchup, 2026-05-21)
+
+The 1.30.x → 1.31.x kernel-focused week left several root + tier-1 docs at older version cells. Tier 1 + Tier 2 + Tier 4 of the sweep landed in this session (Tier 3 articles deliberately skipped per user direction). Full ledger entry in `docs/doc-health.md` — eight touchpoints, summarized:
+
+- **`README.md`** — kernel badge `1.30.7 → 1.31.4`; Cyrius badge `5.11.59 → 6.0.1`; "Path-C UEFI handoff" label retired from the Sovereign-boot-pipeline milestone (sovereign UEFI is the only UEFI path now — nothing left to disambiguate).
+- **`docs/AGNOS.md`** — full version-cell sweep: kernel `1.30.5 (~365KB) → 1.31.4 (~510KB, open cycle)`, compiler `cc5 5.11.55 → cycc 6.0.1`, bootstrap chain shortened to `seed → cybs → cycc` (bridge step retired at cyrius v5.11.66), kernel subsystem table extended for NVMe / AHCI / USB-MS / GPT / VirtIO-modern / RAM-disk + iron debut Attempts 68 / 80 / 81 / 87, Technical Statistics dated 2026-05-21.
+- **`docs/applications/gnoboot.md`** — `0.1.0 (2026-05-13) → 0.4.2`, Cyrius pin `5.11.53 → 6.0.1`, iron-validation note (MVP gate cleared on real hardware; storage iron debuts followed), Quiet-Boot scanout carry-forward parked at 0.4.2 closeout. "Path C plan" label relabeled "Sovereign UEFI plan" (file literal preserved).
+- **`docs/architecture.md`** — Last Updated `2026-05-18 → 2026-05-21`; redundant Version stamp removed (CalVer→SemVer transition).
+- **`docs/development/README.md`** — Last Updated `2026-05-09 → 2026-05-21`; index extended with two new sections — *Iron Boot Bring-up* (4 docs incl. iron-nuc-zen-log, MVP-era log, photos directory) and *Prior-Art Audits + Kernel Plans* (9 docs: the audit-first / port-from-multi-source pattern that landed NVMe, AHCI, USB-MS, RAM-disk + VirtIO-modern first-iron-try).
+- **`docs/philosophy.md`** — bootstrap chain line updated `seed → cyrc → bridge → cc5` → `seed → cybs → cycc` per cyrius v5.11.66 bridge retirement + v6.0.0 binary rename.
+- **`docs/development/planning/first-party-documentation.md`** — `completed-phases.md` pattern retired ecosystem-wide (relitigated `CHANGELOG.md` per-tag chronology; cyrius slowly phasing out too). Five live references stripped (Doc Layer Map row, optional-subtree listing, development-docs bullet, CLAUDE.md Current State pointer, quick-ref table); footer rationale appended. `docs/development/planning/example_claude.md` updated to match.
+- **`docs/development/planning/usb-hid-keyboard-driver.md`** archived → `docs/archive/usb-hid-keyboard-driver-shipped.md` (`git mv` + archive notice prepended). All 5 phases shipped + MVP gate iron-validated; planning doc was fossil. `planning/README.md` Kernel-scope row repointed to archive + note about the prior-art-audit pattern superseding the explicit kernel-plan table.
+- **`scripts/build.sh`** — Path-C labelling retired from comments + the visible `Boot:` echo (sovereign UEFI is just "the UEFI path" now). Boot banner now reads `Boot: gnoboot + OVMF (QEMU) or install-usb.sh (iron)` without the dangling `— Path-C` suffix.
+- **`CLAUDE.md`** — five durable drifts: CalVer hardcoded `2026.4.25` → SemVer 0.1.0; subsystem count `35+` → `40+`; `cat file | cc5` rule → `cat file | cycc` (rename completed); `cc5 → cyc rename queued for v6.0` retired (rename happened at v6.0.0, names are `cycc` + `cybs`, both permanent); Current Cyrius release blurb refreshed (`v5.11.x active` → `v6.0.x active "what the language GAINS"`, v5.11.x retired at .69 / 2026-05-19); boot-pipeline size cell dropped (drift-prone — surrounding convention is pointer-to-state.md).
+- **`docs/doc-health.md`** — refresh entry prepended summarizing all eight touchpoints with the cross-references above.
+
+### Notes
+
+- **Branch context**: this 0.1.0 cycle is opening on the `monolith-extraction` branch and is the prep cycle to get that branch to a clean state for merging into `main`. User drives the merge + git tag per CLAUDE.md.
+- **Engineering work this cycle** lives in `[Unreleased]` above; gets folded into [0.1.0] as it lands (or rolls forward into [0.2.0] if scope expands). The existing 1.31.x storage / dual-iron-debut entries (which describe agnos-repo events from the genesis perspective) are accreting under the next section below.
+
+### Changed — 1.31.x storage cycle + dual iron debut (Attempts 80 + 81)
+
+- **`docs/development/iron-nuc-zen-log.md` — AHCI iron debut added.** AHCI/SATA iron debut on archaemenid: WD Blue SA510 2.5" 2 TB SATA SSD enumerated, IDENTIFY decoded (model `WD Blue SA510 2.5 2TB`, serial `24313QD00663`, firmware `5304 00WD`, LBA48=3907029168 sectors), LBA-5 write-then-read round-trip PASSED on real silicon (first AGNOS-issued disk write to land on physical platter). PASS-WITH-CAVEAT: post-RW IDENTIFY in `ahci_register_block_dev` timed out (`PxCI stuck`), AHCI silently bailed → did NOT register as secondary block_dev. Boot continued cleanly through GPT (NVMe-primary, hdr-CRC-OK arr-CRC-OK, 2 partitions parsed) → VFS → `AGNOS shell v1.31.1`. Per-hypothesis ranking captured for the 1.31.2 IDENTIFY-fix bite; ATA-string trailing-space drag noted as cosmetic carry-forward; §4 `AHCI_RW_DEMO` mitigation deferred-then-acceptable framing recorded.
+- **`docs/development/state.md` refreshed for 1.31.1 cut.** Header re-anchored to 2026-05-20 PM. AHCI iron debut footnote folded into the 1.31.x cycle block. Storage-target table updated: GPT parser + AHCI/SATA driver moved to ✅ DONE; new **AHCI iron carry-forward** sub-table (post-RW IDENTIFY hang / ATA-string trim / `AHCI_RW_DEMO` compile gate) captures the items rolling into 1.31.2. "Next storage targets after NVMe iron debut" heading retitled to "after NVMe + AHCI iron debuts"; hardware-catalog correction (sda is **2 TB**, not 1.8 TB) noted.
+- **`docs/development/iron-nuc-zen-photos/attempt-81-ahci-iron-debut-wd-blue-sa510.jpg`** added (790 KB framebuffer photo). Captures the AHCI iron-debut boot log top-to-bottom: NVMe + AHCI side-by-side enumeration, IDENTIFY decode, LBA-5 round-trip PASS, post-RW IDENTIFY timeout line, GPT parsing the NVMe (arr-CRC-OK), VFS through to `agnos>` shell prompt at v1.31.1.
+- **`docs/development/iron-nuc-zen-photos/README.md` catalog refreshed.** Post-MVP era table now includes both the NVMe iron debut (on Crucial P3) and the AHCI iron debut (on WD Blue SA510). Naming convention `attempt-NN-<short-handle>.jpg` continues unchanged.
+- **`docs/development/prior-art/ahci-iron-burn-audit.md`** (added earlier in the session) — pre-burn audit covering Phase 1-4 risk surface, identifying the LBA-5 sentinel write in `ahci_rw_demo` as the only iron-write hazard, proposing the `AHCI_RW_DEMO` compile-gate mitigation. The audit's §7 partial-success-rubric matched the AHCI iron-debut outcome exactly.
+
+### Changed — agnos 1.31.1 framing in state.md
+
+- **agnos 1.31.1 cycle status: CUT 2026-05-20** (was "code-complete, pending rename + tag"). All planned engineering (GPT Phase 1-3 + AHCI/SATA Phase 1-4) plus both iron debuts (NVMe + AHCI) closed in a single session. Build trajectory captured (441,056 B → 475,096 B; total cycle delta +34,040 B / +7.7%). 1.31.2 opens with **USB Mass Storage** as primary scope + AHCI iron carry-forward as secondary.
+
+### Notes
+
+- Per `feedback_no_unprompted_version_bumps`: agnosticos VERSION (2026.5.13) NOT bumped — the storage cycle is an agnos kernel event, not an agnosticos scripts/docs cut. This `[Unreleased]` entry captures the genesis-repo ecosystem-context summary; per-cycle agnos receipts live in `/home/macro/Repos/agnos/CHANGELOG.md` § `[1.31.1]`.
+- Per `feedback_bootloader_kernel_ownership`: Claude owns the agnos kernel and gnoboot bootloader end-to-end during iron-boot bring-up — agnos CHANGELOG edits + agnos kernel work are within scope. Git ops (merge / tag / push) remain user-driven per CLAUDE.md.
+
+## [2026.5.13] - 2026-05-13
+
+### Iron-boot Attempts 2 + 3 + repairs
+
+- **`scripts/install-usb.sh` (commit `cdb67b2`, "fixing video")** — generated grub.cfg now preloads `all_video` / `efi_gop` / `efi_uga` and forces `gfxpayload=text` (global + per-menuentry). Resolves an early iron boot's `error: video/video.c:grub_video_set_mode:782: no suitable video mode found` on UEFI firmware that exposes only GOP/UGA (every modern board, the NUC AMD included). Multiboot1 negotiates a video mode at handoff that AGNOS doesn't need (kernel uses VGA text + serial, no framebuffer console); the insmod-then-skip pattern tells GRUB to bypass the mode switch. **Note:** `install-usb.sh --update` skips grub.cfg by design — verifying the fix requires a full re-provision (wipe + re-grub), not the iteration-refresh path.
+- **`agnos` v1.29.0 → v1.29.1** (consumed via the v5.10.44 live-bedrock pin cluster — `docs/development/state.md` Pin-lag spectrum) — boot_shim CR4 step 5 now CPUID-gates SMEP (EBX bit 7) and SMAP (EBX bit 20). v1.29.0 ORed both unconditionally, which `#GP`→triple-faulted on silicon that doesn't advertise the feature. **Framing:** the current iron target (NUC AMD, Zen-class) *does* advertise both bits, so this patch is behaviorally equivalent to v1.29.0 on that host — it is **not** a confirmed causal fix for the early iron silent-reset. It is a real portability bug that future Intel hosts (queued post-AMD-proof) and older AMD silicon would have hit. QEMU-verified: clean boot to `=== done ===` on `-cpu max`; previously-triple-faulted `-cpu qemu64` now boots through the shim and reaches `AGNOS kernel v1.29.1` banner — direct regression proof. Full receipt in `agnos/CHANGELOG.md` § `[1.29.1]`. That silent-reset root cause remains open; serial-cable capture is the recommended next diagnostic.
+
+### Changed — docs
+
+- **`docs/development/iron-nuc-zen-log-mvp.md`** — the early iron boots logged (each with verbatim GRUB symptom, root cause, repair-step table); the next-boot placeholder updated to reflect v1.29.1 as the build under test, with an outcome-interpretation table for the no-serial-cable retry. Last-updated bumped to 2026-05-13.
+- **`docs/development/state.md`** — Last refresh → 2026-05-13. Active table row 8 expanded to cover the first three iron boots → 3 repairs → next boot pending, summarizing all three failure classes and their fixes. Pin-lag spectrum: agnos bumped 1.29.0 → 1.29.1 in the live-bedrock cluster. CVE-2026-31431 immunity-anchor entry re-pinned to 1.29.1 (the syscall-table invariant is unchanged; doc-version-staleness avoidance only).
+
+### Memory
+
+- **`feedback_iron_boot_log_precision.md`** added — engineering-history logs (iron-boot, similar) use approximate timestamps; not scientific reconstruction. Don't pause work to ask the user for exact wall-clock times — pick a sensible approximate from available signals (commit timestamps, conversational context) and proceed. Established 2026-05-13 from explicit user feedback.
+
+## [2026.5.11] - 2026-05-11
+
+### Changed — v5.10.x cycle close + v5.11.x open (state.md refresh)
+
+- **`docs/development/state.md` refreshed for cycle transition** — toolchain pin `5.10.24 → 5.11.0`; cycle banner re-cast from "v5.10.x REAL TYPE SYSTEM arc (active)" to "v5.11.x stdlib annotation arc + consumer-issue closeout (active)". v5.10.x demoted to retrospective: closed 2026-05-11 at .50, **50 patches in 5 days** (2026-05-06 → 2026-05-11), THREE completed arcs (typed-simd ABI 11 phases, REAL TYPE SYSTEM 5 phases, struct-byval ABI 3 phases) + compile-perf miniarc (.40 + .41, **2.7× total compile speedup**) + TLS contract pin (.42) + PE premise debunk (.49). cc5 size `783,408 B → 804,472 B`. api-surface 2,769 → 2,888 (+119 public fns across cycle).
+- **v5.11.x slot list opened** — kavach P1 sandbox syscall wrappers ✅ landed at v5.11.0 (6 wrappers: `sys_fchmod`, `sys_setresuid/gid`, `sys_prctl`, `sys_seccomp`, `sys_execveat`; async-signal-safe; both x86_64 + aarch64 backends). Stdlib annotation arc Phase 1 (alloc/vec/fmt/freelist/fnptr/result/tagged/assert) queued for v5.11.1. P2 consumer wave (daimon aarch64 epoll_wait, bote net recv_timeout + getaddrinfo, bote arena fl_free, bote streaming) + infrastructure work (deps copy fix, regression port, TS test harness) queued through v5.11.x.
+- **Typed-simd ABI substrate framing added to state.md** — the v5.10.x typed-simd ABI arc (11 phases, closeout v5.10.39) is now explicitly framed as "the substrate for Cyrius-native codec work long-term." `lib/simd.cyr` rewrite ships f64v2/f64v4 value-form + pointer-form sibling pairs with parser-side `&IDENT → _ptr` overload routing; ABI-aware register routing (XMM0/XMM1 SysV, V0/V1 aarch64, pair-quad return, PE-gated value-form via `CYRIUS_HAS_VAL_SIMD_PARAMS`). Tarang's current dav1d/openh264/libvpx C-FFI layer flagged as placeholder until codec-native arc opens (gated on v5.12.x bare-metal + future codec-native arc).
+- **v5.12.x reservation re-anchored** — bare-metal AGNOS target + RISC-V rv64 backend remain at v5.12.x. Substrate prereq updated: now lists typed-simd ABI + REAL TYPE SYSTEM + struct-byval ABI from v5.10.x (was just type-system); v5.11.x stdlib annotation arc is the remaining prereq.
+- **`CLAUDE.md` Cyrius release line refreshed** — was "v5.8.x active — optimization, math, language fixes cycle" (3 minors stale); now "v5.11.x active — stdlib annotation arc + consumer-issue closeout cycle" with v5.10.x three-arc retro callout.
+- **Article slots added to state.md doc/article queue** — *v5.10.x: three arcs in five days* (retro candidate, draftable now; supersedes earlier "REAL TYPE SYSTEM in 24 patches" working title which under-represented the cycle); *Typed SIMD: the substrate for native codec ports* (companion piece, frames tarang ↔ dav1d/FFmpeg positioning as prereq-landed-but-codec-arc-is-future-work).
+- **`docs/articles/_outlines.md`** — new outline #6 *Structuring Major Work During Release Cycles*. Thesis: REAL TYPE SYSTEM is the canonical "infrastructure-first unblocks downstream work" example (typed-simd ABI required type vocabulary to even describe f64v2/f64v4 at parse time). Companion themes: tailing-bug class (locname-staleness surfaced THREE times across v5.10.x) and port-driven deviation as feature-not-bug (sandhi 1.3.x drove TLS surface work; kavach 3.1.1 raw-syscall workaround drove v5.11.0 P1 wrappers; install.sh symlink discovery drove user-side workflow improvements).
+
+### Notes
+
+- Per-cycle Cyrius receipts live in the cyrius repo CHANGELOG (`/home/macro/Repos/cyrius/CHANGELOG.md`); this file consolidates the genesis-repo ecosystem-context summary.
+- Pin-update sweep across consumer repos is **in progress** at refresh time — user is rolling kernel-adjacent repos before updating `scripts/cyrius.cyml` boot pin. Per-repo pin spectrum in state.md is stale-by-design until sweep completes.
+
+## [2026.5.9] - 2026-05-09
+
+### Changed — Doc audit sweep (3-day delta since 2026-05-06 audit)
+
+- **`docs/development/doc-health.md` relocated to `docs/doc-health.md`** — the ledger sweeps the entire `docs/` tree plus root files, not just `docs/development/`. Location now reflects scope. Internal paths re-anchored; external refs updated in `README.md`, `CONTRIBUTING.md`, `docs/development/README.md`, ADR-008.
+- **`docs/development/state.md` refreshed for v5.10.x mid-cycle** — toolchain pin `5.9.0 → 5.10.24`; cycle banner re-cast (was "v5.9.x — niyama-fold opener", now "v5.10.x REAL TYPE SYSTEM arc — active"). v5.9.x demoted to 1-paragraph closeout (44 patches, 2026-05-06 → 2026-05-08). v5.11.x reservation slot added (TS testing suite + bug sweep from agnosys-agent-surfaced items). v5.12.x reservation slot added (bare-metal + RISC-V rv64; slipped v5.8 → v5.10 → v5.11 → **v5.12**). cc5 size `741,048 B → 783,408 B`. Pin-lag spectrum fully re-sampled across ~46 local + remote tail: held-cluster 5 → 4 (agnosys exited at 5.10.19), deep-lag tail 7 → 6 (vyakarana exited at 5.10.5), **darshana** + **cyim-lsp** + **aegis** + **chakshu** added. **kiran shipped to 1.0.0** noted (pin field still missing).
+- **`docs/development/planning/first-party-standards.md` full Cyrius-first rewrite** — 1109 lines (mid-transition, ~70% Rust still) → 972 lines (Cyrius-only). Rust-era standards already preserved at `docs/archive/first-party-standards-rust-era.md`. Replaced: Cargo.toml metadata → cyrius.cyml manifest section; Rust CI/release workflows → kybernet-pattern Cyrius CI (deps + fmt + lint + vet + build + test + bench, security pattern scan, docs job); criterion → `cyrius bench` + `bench-history.sh`; thiserror+anyhow+tracing → sakshi (canonical error/tracing/logging); cargo commands in P(-1) and Development Loop boxes → cyrius commands; Makefile cargo targets → cyrius targets. Removed: duplicated `.gitignore` block (Rust + Cyrius both present), `deny.toml` section, "Flat vs Workspace (Rust)" section.
+- **`docs/development/planning/shared-crates.md`** — `trump_epstein` removed (entry + nyaya consumer-list ref); section header `82 entries → 83 entries` to match summary count; total `110 → 109` and non-library `10 → 9` after removal.
+- **`docs/development/planning/README.md` rewrite** — pre-1.0 only; v1.0+ entries link to `docs/applications/libs/` (lib-doc precedent — version columns dropped to avoid drift); shared-crates.md cited for live state.
+- **`docs/development/planning/roadmap.md`** — footer date `2026-04-01 → 2026-05-09` (matches header); stripped stale "77 crates (56 stable)" count.
+- **`docs/development/planning/tanur.md`** — 39 occurrences of `Irfan/IrfanConnection/irfan.sock/irfan.local` → `Ifran/IfranConnection/ifran.sock/ifran.local` (canonical name from registry).
+- **`README.md`** — Cyrius badge `5.9.0 → 5.10.24`; compiler size `~741KB → ~783KB`; stack-table version cells refreshed (Cyrius 5.10.24, kybernet 1.0.2, argonaut 1.5.0, sigil 3.1.0, daimon 1.1.4, nous 1.1.2); self-hosting blocker note updated to v5.12.x bare-metal target (slipped twice).
+- **`docs/AGNOS.md`** — same version-cell sweep (cc5 `~783KB`, kybernet 1.0.2, argonaut 1.5.0, daimon 1.1.4, mabda 3.0.0-rc.2, phylax 1.1.0, shakti 0.3.0, hisab 2.2.2); compiler section reframed for v5.10.x REAL TYPE SYSTEM arc; recently-shipped list expanded with **aegis 0.8.2** (graduated from scaffold), **chakshu 0.2.0**, **darshana 0.2.0** (new TTY/terminal observability lane); history table appended with v5.9.x close + v5.10.x arc opener.
+
+### Cyrius cycle progression (post-2026-05-06)
+
+- **Cyrius v5.9.x close — 2026-05-08 at 5.9.43**. 44 patches over 3 days. Catchup + niyama-fold cycle. v5.9.0 shipped niyama fold-in (8th sibling distfile, 6,664 lines, 7 regex modules byte-identical from niyama 1.0.1). Remainder ran consumer-rollup + optimization-debt closeout. Pin-lag bands collapsed materially (agnosys, vyakarana, sandhi, agnostik, owl, cyim, vidya all rolled forward).
+- **Cyrius v5.10.x open — 2026-05-08, REAL TYPE SYSTEM arc, active.** Cycle opened with v5.10.0 (per-phase compile-time profiling instrumentation as the optimization-arc opener) and pivoted at v5.10.5 into the type-vocabulary work that now defines the cycle: cstring / Result / Option / Tagged annotations on stdlib functions plus call-site type checking (Phase 2 closes 5.10.5's false-positive flood). **24 patches in 2 days** (5.10.0 → 5.10.24). cc5 at 783,408 B (+42 KB from instrumentation + type vocabulary + checking machinery). Self-host two-step byte-identical confirmed.
+- **v5.11.x reservation** — type-system testing suite + bug sweeping (agnosys-agent-update sweep surfaced material debt list). Consolidation cycle.
+- **v5.12.x reservation** — bare-metal AGNOS target + RISC-V rv64 backend. Reservation slipped v5.8 → v5.10 → v5.11 → v5.12.
+
+### Notes
+
+- Per-cycle Cyrius receipts live in the cyrius repo CHANGELOG; this file consolidates the genesis-repo doc cleanup + ecosystem-context summary.
+- `doc-health.md` relocation chosen over rename because the ledger's scope was always the whole repo; the `development/` location was a misnomer.
+
+## [2026.5.6] - 2026-05-06
+
+### Changed — Beta scope rescoped to two-stage (closed + public)
+
+- **Closed beta** target: **early June 2026** (~1 month). Gate: Phase 13A (OS Independence) complete + small private cohort of trusted testers (5–15 friends), no formal community-program enrollment, no marketing.
+- **Public beta** target: Q4 2026 (preserved). Adds the third-party security audit + community testing program (formal enrollment) — items previously listed as mandatory beta gates that are now public-beta gates. Honest framing: "the OS rebuilds itself; broader testing comes next."
+- **Gating dependency**: closed beta is gated on Cyrius v5.10.x landing the bare-metal target (queued; v5.9.0 cut today). Slips by week, not by month.
+- Roadmap restructured (`docs/development/roadmap.md`): Beta — Q4 2026 → split into Closed Beta + Public Beta with explicit gate philosophies; Phase 13A target moved from "May 1, 2026 (Beltane)" → "early June 2026 (closed beta cut)".
+
+### Added — Documentation health surface
+
+- **New living doc**: `docs/development/doc-health.md` — ledger of doc currency across the 265-file corpus (fresh / stale / archive / open-question buckets, refreshed in place as docs are touched). Pattern parallels `state.md` (volatile-state ledger).
+- **New ADR**: [ADR-008 — Cyrius as Sovereign Systems Language](docs/adr/adr-008-cyrius-as-sovereign-systems-language.md). Catches up the biggest unrecorded decision (the 2026-04-04 Cyrius pivot), records context (4 problems with Rust dep), 5 specific decisions, and explicit consequences. ADR-001 marked **partially superseded** (language only; daimon/hoosh/cross-project decisions remain in force).
+
+### Changed — Documentation audit cleanup
+
+- **Entry-point docs refreshed**: `README.md`, `docs/AGNOS.md`, `docs/architecture.md`, `docs/installation/README.md`. Kernel 1.22.0 → 1.26.1 (260KB → 248KB), Cyrius 4.8.5-1 → 5.9.0, sigil 2.1.2 → 2.9.4, libro 1.0.3 → 2.0.5, ark/nous version refresh, cc3 → cc5. Beltane target line replaced with closed-beta target. Pointers to `state.md` added so future drift goes against state.md, not these entry-points.
+- **App index honesty**: `docs/applications/README.md` — added Status column (18 Released, 1 Planned per per-doc headers), fixed Vidhana drift ("File manager" → "System settings"), corrected Ifran display name (filename `irfan.md` predates Synapse → Irfan → Ifran rename).
+- **Lib doc cleanup**: removed `- **Version**: X.Y.Z` lines from 56 of ~83 lib docs in `docs/applications/libs/`. Registry tables (`shared-crates.md`, `libs/README.md`) are now the single source of truth for versions; per-lib docs are pure pointers (role + repo + license + status + registry pointer). Cuts the per-lib drift surface to zero.
+- **release-vision.md fossil pointer fix**: the 2026-04-11 fossil notice promised a separate "compass document" alongside the fossil; that promise is closed by declaring `roadmap.md` the canonical forward-looking compass and pointing the fossil notice at it.
+- **CLAUDE.md drift fix**: removed inline kernel size (was "260KB"; current is 248KB per `state.md`). Per CLAUDE.md's own principle ("volatile state lives in state.md, never in CLAUDE.md"), inline sizes/versions removed in favor of state.md pointers.
+
+### Cyrius cycle progression (post-2026-04-27)
+
+- **Cyrius v5.7.x** — closed at 5.7.48. 51 patches in 36 days. Sandhi-fold (v5.7.0) + cyrius-ts P1–P10. Optimization work incidental.
+- **Cyrius v5.8.x** — 3-phase, 66 patches in 4 days (2026-05-01 → 2026-05-05). Phase 1 closed v5.8.0 audit (lint/fmt cap, f64_log2 polyfill, sys_stat/fstat backfill, _SC_ARITY cross-arch gate, NI-class dupe, cc5_aarch64 packaging + cyrc_check orphan); Phase 2 language vocabulary (var X; diagnostic, fmt --check exit code, vidya audit at v5.8.40); Phase 3 stdlib foldin sweep (vani audio at slot 1).
+- **Cyrius v5.9.0 cut 2026-05-06** — niyama fold-in (8th sibling distfile, 5 regex engines: bre/re2/pcre/fuzzy/vim, 6,664 lines vendored byte-identical from niyama 1.0.1). cc5 binary at 741,048 B (net unchanged from v5.8.65 — foldin is `lib/` content). v5.9.x scope = catchup + fixes; v5.10.x reservation holds AGNOS bare-metal target + RISC-V rv64 backend.
+
+### Added — Articles
+
+- **"What Justifies a Stdlib Foldin"** (2026-05-06) — meta-process article on the foldin gate framework, anti-criteria, mechanism, and three-instance pattern across sandhi/vani/niyama. Subsumes per-instance article slots; per-fold articles optional if a different angle wants its own piece.
+
+### Notes
+
+- This entry consolidates the Cyrius v5.7.x → v5.9.0 cycle progression and the post-Beltane doc-currency cleanup. Per-cycle Cyrius receipts live in the cyrius repo CHANGELOG; the cyrius repo state is the receipt for the Cyrius cycle, not this file.
+
+## [2026.4.27] - 2026-04-27
+
+### Changed — Boot pipeline brought current with the public Cyrius release
+
+- **Boot pipeline toolchain pin**: `scripts/cyrius.cyml` bumped `cyrius = "5.5.27"` → `cyrius = "5.7.21"`. Boot pipeline rebuilt clean against 5.7.21 (`cyrius build src/boot.cyr build/boot` → 67KB binary, all options working). Skips the 5.6.x optimization arc and the 5.7.0 sandhi fold in one move; boot is stdlib-only (no `[deps]` section), so the toolchain bump is the only manifest change.
+- **Genesis VERSION**: `2026.4.25` → `2026.4.27`.
+
+### Fixed — ISO check unblocked (sigil 2.9.4 + agnostik VERSION revert)
+
+- **sigil 2.9.4** — manifest `[build].output` renamed `build/sigil-smoke` → `build/sigil` to match the boot's `--iso-check` convention (it expects `build/<package>` for each component). Smoke-test program is otherwise unchanged (still entry-pointed at `programs/smoke.cyr` with `SIGIL_SMOKE` defined). `dist/sigil.cyr` regenerated. Roadmap captured in the manifest's `[build]` comment block: a future patch replaces smoke with a real library probe; later still, the boot looks at `dist/sigil.cyr` directly; eventual endgame is sigil folding into Cyrius stdlib (like sandhi at 5.7.0, mabda at 3.4.19).
+- **agnostik** — local `VERSION` reverted `1.0.1` → `1.0.0` to match the canonical GitHub release. Local `1.0.1` was a docs-update attempt that didn't land; the WIP commits stay on main past the 1.0.0 mark for whenever that work resumes. Boot now reports the released version, not the local-only one.
+- **Boot `--iso-check`** now PASS at **26 of 26 components ready, 0 missing** — ISO assembly unblocked.
+
+### Ecosystem state (snapshot)
+
+- **Cyrius 5.7.21** — current public release. The 5.7.x patch series picks up after the 5.7.0 sandhi fold (2026-04-25, sandhi folded into stdlib at `lib/sandhi.cyr`).
+- **AGNOS kernel 1.26.1** — released 2026-04-28 (UTC). 1.26.0's CI/release hygiene workaround was replaced with a real fix in 1.26.1; the fix surfaced real formatting issues which were then resolved in the same patch. Boot's `--iso-check` now reports kernel v1.26.1 (247,816 bytes).
+- **Sigil 2.9.4** — released alongside this genesis bump for the boot-output rename above.
+- **Agnostik 1.0.0** — canonical (local now matches; 1.0.1 docs work is paused on main).
+- **Boot pipeline** runs against the public toolchain (5.7.21), one minor version ahead of the kernel's pinned toolchain (5.7.19). No incompatibility — boot is a host-side validator, not a kernel build dependency.
+
+### Achieved — Kernel 1.21.0 + Cyrius 4.0.0 + Sovereign Boot
+
+- **AGNOS kernel v1.21.0** — 220KB honest binary. 33 subsystems, 26 syscalls, TCP/IP (full SYN/ACK/FIN), FAT16, VirtIO-Net/Blk, SMP, Pipes, signals, epoll, timerfd, ELF loader, 18-command shell, kybernet PID 1. Three hardening passes found 14 undersized buffer overflows ("The 143KB Lie" — the original 143KB binary was only that small because buffers were overwriting each other). 220KB is the honest size. See vidya field notes.
+- **Cyrius 4.0.0** — 299KB self-hosting compiler from 29KB seed. 41 stdlib modules + 5 deps. Shipped 3.5.1 through 4.0.0 in one weekend. Key additions: `cyrius deps` (auto-resolve from cyrius.toml), auto-include on build, `cyrius init --ci`, `#derive(accessors)`, native multi-return, switch blocks, defer on all exit paths, compound assignment (`+=`/`-=`/`*=`), negative literals, undefined function diagnostic, verbose build mode, stage1f→cyrc rename. Roadmap reworked for 4.0→5.0 arc.
+- **Sovereign boot pipeline** — `scripts/src/boot.cyr` (48KB compiled). Boots AGNOS kernel in QEMU, validates serial output, resolves sibling repos for kernel/toolchain/recipes. Written in Cyrius, compiled by cc3. `make boot-test` from genesis repo.
+- **Critical path CLEARED**: libro ✅ → argonaut ✅ → kybernet 1.0.1 ✅ → kernel 1.21.0 ✅ → boot pipeline ✅. All blockers resolved in one session.
+
+### Added — New Crates & Ports
+
+- **hadara** (1.0.0) — Culture as first-class entity (Arabic: حضارة — civilization, presence). 50 cultures across every inhabited continent, 85 practices, 84 art forms, 25 figures, 21 inter-culture relations, BFS graph traversal, evolution tracking, consumer integration (bhava/joshua/natya/jnana), HTTP JSON API. Cyrius-native from day one. 329 assertions, 33 benchmarks. Academic citations throughout.
+- **avatara** (2.3.0) — Ported from Rust, then expanded. 362 archetypes, 24 traditions (added Finnish/Sami + Vodou), affinity system with cross-tradition mapping/similarity/conflict detection. Cached access 2,761× faster than Rust. 195 tests, 39 benchmarks.
+- **hoosh** (2.0.0) — Ported from Rust. 5.1MB → 474KB (10.8×). 22,956→1,361 lines (16.9×). 15s→216ms compile (70×). 40 crates→0 deps.
+- **ai-hwaccel** (2.0.0) — Ported from Rust. 708KB → 217KB (3.3×). 131 crates→0 deps. 518 tests, 6 fuzz, 20 benchmarks. Added safetensors/GGUF detection (new features Rust version didn't have).
+- **kybernet** (1.0.1) — Ported from Rust. 6.7MB → 486KB (14×). 140 tests (was 27), 46 benchmarks (was 3). Native seccomp BPF, Landlock sandboxing, capability dropping. is_mounted() optimized 1,583× via mount cache. klog() optimized to single-write batching.
+- **libro, argonaut, itihas** — Cyrius ports completed, released.
+
+### Changed — Genesis Repo Cleaned
+
+- **CLAUDE.md** rewritten — removed MSRV 1.89, Rust references, old `cargo fmt`/`cargo clippy` workflow. Added Cyrius section with build rules, top-level main() pattern, working-programs reference.
+- **Makefile** rewritten — removed all cargo/rustc/gcc references. Pure Cyrius + QEMU + sibling repos. Targets: `make boot`, `make boot-test`, `make scripts`, `make check`, `make status`, `make version`.
+- **scripts/** — 34 bash scripts archived to `scripts/archive-pre-cyrius/`. New Cyrius project: `scripts/cyrius.toml`, `scripts/src/boot.cyr` (48KB sovereign boot pipeline).
+- **AGNOS.md** rewritten for Cyrius era. Rust-era version archived at `docs/archive/AGNOS-rust-era-2026-04-03.md`.
+- **release-vision.md** — fossil banner added acknowledging pre-April-4 content overtaken by Cyrius kernel.
+- **Roadmap** — Phase 13A blocker status updated (critical path cleared), header updated with current state.
+
+### Added — Articles
+
+- **"The Python in the Bootstrap"** (`docs/articles/python-in-the-bootstrap.md`) — how a name-squatting incident exposed a recursive dependency problem, produced a 29KB seed, and built a sovereign OS in 48 hours.
+- **"Why Do LLMs Need Gigacenters?"** (`docs/articles/why-gigacenters.md`) — outline for the distributed inference thesis (article milestone: when murti + seema demonstrate distributed inference on sovereign nodes).
+
+### Added — Philosophy
+
+- O'Shaughnessy quote added to philosophy.md epigraphs: *"We are the music-makers, and we are the dreamers of dreams"* — via Willy Wonka.
+
+## [2026.4.4] - 2026-04-04
+
+### Achieved — Cyrius 1.0 (Self-Hosting Compiler)
+
+- **Cyrius 1.0** — Self-hosting compiler achieved in one day. 1,467 lines, 43KB binary, 9ms self-compile, 41ms full bootstrap. 29KB auditable seed binary — the smallest trusted binary in any self-hosting chain. Zero external dependencies (no C, no Rust, no Python in any path). 6,560 total lines across compiler + assembler + stages. Byte-exact reproducibility verified across all 11 bootstrap artifacts.
+- **Bootstrap loop closed**: seed (Rust) → stage1f → asm.cyr → stage1f_v2 (byte-exact match). The Rust seed can be retired for forward progress.
+- Comparison: Cyrius 1.0 matches c4 in self-hosting capability with a fundamentally different trust model. No other self-hosting compiler bootstraps from a 29KB binary with zero external deps in 41ms.
+- Missing (honest): structs, typed pointers, multi-file compilation, optimization, stdlib, debug info. The sovereignty is achieved; the language features come next.
+
+### Added — New Crates (6)
+
+- **mudra** (0.1.0) — Token/value primitives (Sanskrit: मुद्रा — coin, seal, token). Asset identity, ownership, divisibility. Crate #78.
+- **vinimaya** (0.1.0) — Transaction layer (Sanskrit: विनिमय — exchange, barter). Transfers, escrow, settlement, exchange. Feature-gated: lite (default), escrow, exchange, mint, full. Crate #79.
+- **taal** (0.1.0) — Music theory (Sanskrit: ताल — rhythmic cycle). Scales, intervals, chords, rhythm, time signatures, key signatures. Feature-gated: western, hindustani, carnatic. Crate #80.
+- **natya** (0.1.0) — Theater/drama/narrative (Sanskrit: नाट्य — drama, from the Natya Shastra). Rasa theory (9 emotional essences), dramatic arcs, character archetypes, dialogue. Crate #81.
+- **kshetra** (0.1.0) — Temporal geography (Sanskrit: क्षेत्र — field, domain). Spatiotemporal database: (lat, lon, time) → state. Terrain, hydrology, climate, geology, vegetation, settlement, political, celestial layers. Confidence-tagged data. Crate #82.
+- **zugot** — Recipe repository scaffolded (Hebrew: זוּגוֹת — pairs that enter the ark). Standalone repo for all takumi build recipes, consumed by ark/nous/takumi.
+
+### Changed — Ecosystem CLAUDE.md Standardization
+
+- **28 CLAUDE.md files updated** across all standalone repos to new template format
+- **8 new CLAUDE.md files created** (ark, nous, takumi, aegis, agnova, mela, seema, samay)
+- All repos now include: genesis/philosophy/standards/zugot references, P(-1) documentation audit step, expanded work loop with ADRs/source citations/zugot recipe verification, full documentation structure
+- License corrected to `GPL-3.0-only` across all repos (was `GPL-3.0` or `AGPL-3.0-only` in several)
+
+### Changed — Documentation Standards
+
+- **example_claude.md** — major update: documentation standards section (ADRs, guides, examples, standards, compliance, source citations), zugot references, P(-1) doc audit step
+- **first-party-standards.md** — licensing simplified to `GPL-3.0-only` everywhere, documentation requirements section added (ADRs, source citations for science/math crates), zugot recipe references, expanded P(-1) and development loop
+- **philosophy.md** — added: The Builder (Persian/Scottish heritage), The Star and the Capstone (Sirrus→Cyrius), Layer 0 Substrate architecture
+- **AGNOS.md** — full refresh: corrected versions, Cyrius section, boot profiles, zugot, genesis layer concept, 2026-04-03 timeline entry
+
+### Added — Vision Documents
+
+- **holodeck.md** — Immersive simulation architecture. 12+ existing crates covering NPCs, audio, rendering, physics, security. Key finding: NPC layer is complete (daimon + hoosh + bhava + natya). Software gaps: narrative director, unified physics runtime. Hardware gaps: volumetric display, haptics.
+- **time-machine.md** — Temporal simulation engine. Reconstructs probable pasts and futures from layered data. Primary gap: kshetra (temporal geography engine, now scaffolded). Design principle: honesty over spectacle.
+- **theoretical.md** — Future explorations: spatial transit (portal/teleportation/gate with adoption path), matter-energy teleportation, warp/FTL, digitization. All reduce to "transmit a pattern and reconstruct from it."
+- **cyrius-lang-migration.md** — Six-phase migration roadmap from Rust to Cyrius, following dependency graph bottom-up.
+
+### Changed — Recipe & Infrastructure
+
+- All 109 marketplace recipe licenses fixed to `GPL-3.0-only` (stiva: `GPL-3.0-or-later`)
+- 5 recipe version mismatches corrected (agnosys, daimon, hoosh, kybernet, bote)
+- 29 stale header comments updated, 3 misplaced install blocks fixed, tazama gstreamer deps removed
+- Edge recipes synced (openssl 3.5.5, glibc 2.42, bash 5.3, iproute2 6.19.0)
+- SHA256 placeholders added to all 109 marketplace recipes
+- Workspace Cargo.toml: 14 unused deps removed, agnosys tag fixed
+- CLAUDE.md rewritten for meta-repo/genesis layer identity
+- nous gaps document created for hardening agent
+- ark, nous, takumi READMEs created
+- vidya roadmap created, CLAUDE.md updated
+
+## [2026.4.3] - 2026-04-03
+
+### Added — Cyrius Language
+
+**C.Y.R.I.U.S.** — *Consciousness Yields Righteous Intelligence Unveiling Self*
+
+AGNOS's sovereign systems language. Supersedes the Rust++ vision with a ground-up approach: Assembly → Rust → Rust++ → Cyrius.
+
+- **cyrius-seed** (0.1.0) — Diamond hardened. Zero-dependency assembler written in Rust, compiled by user-built rustc (1.96.0-dev). 5 modules (token, parse, encode, elf, error), 38 x86_64 instructions, 102 tests (83 unit + 19 integration executing real binaries), 9 example programs. Benchmarks: ~13 MB/s sustained pipeline, encoder at 12M ops/sec. No libc, no linker, no external tools.
+- **stage1b** — Runtime codegen compiler. Emits x86_64 instructions that compute, compare, branch, and loop at execution time. Variables with fixup table, if/while with jump patching, all 6 comparison operators, nested control flow. 5051-byte binary, 32 tests. Computes factorial(5)=120, sum(1..10)=55.
+- Bootstrap chain: `rustc 1.96.0-dev → cyrius-seed (102 tests) → stage1a (compile-time) → stage1b (runtime codegen) → generated programs`
+- Roadmap v3.0 section rewritten to reflect Cyrius evolution and phased approach (viyda → Rust++ transitional → Cyrius self-hosting)
+
+### Achieved — Pure AGNOS Desktop Boot (Zero External Dependencies)
+
+- **Boot time: 3.2s** (kernel+init), **~80ms** from argonaut init to event loop
+- **Pure AGNOS** — no busybox, no external libs, no training wheels
+- **7 real binaries**: kybernet (PID 1, 2.2MB), daimon (11MB), hoosh (14MB), aethersafha (1.8MB), agnoshi (8.1MB), ifran (19MB) + argonaut library
+- **21MB initramfs** (down from 23MB after removing busybox/libs), 512MB RAM QEMU VM
+- Wave-parallel startup: Wave 0 (postgres, redis) → Wave 1 (daimon, aethersafha, hoosh, agnoshi, ifran)
+- Clean shutdown after 10s trigger
+- Progression: daimon-only (2.9s/120ms) → all 7 real (3.3s/80ms) → pure AGNOS (3.2s/80ms, 21MB)
+
+### Achieved — Edge Boot Profile
+
+- **Edge boot**: 7.9MB initramfs, 128MB RAM, kybernet + daimon + agnoshi
+- Init → argonaut ready: **99ms**. Total with daimon startup: **1.15s** from init, **3.8s** total
+- Three boot profiles validated:
+
+| Mode | Initramfs | Init → Event Loop | Total (kernel+init) |
+|------|-----------|-------------------|---------------------|
+| Minimal | 2.4MB | 140ms | 2.98s |
+| Desktop (all real) | 21MB | 80ms | 3.28s |
+| Edge | 7.9MB | 99ms (+ 1s daimon) | 3.80s |
+
+### Changed — Recipe Audit
+
+- **8 recipes updated** to match actual Cargo.toml versions: agnostik (0.90.0), agnosys (0.50.0), bote (0.91.0), kavach (2.0.0), stiva (2.0.0), majra (1.0.4), libro (0.92.0), agnosai (1.1.0)
+- **License corrections**: agnostik, agnosys, bote, kavach, agnosai aligned to actual repo licenses
+- **15 missing OS core recipes created**: daimon, agnoshi, aethersafha, ark, nous, takumi, argonaut, kybernet, aegis, agnova, mela, seema, samay, shakti, cyrius-seed
+- **1 dummy SHA256 flagged**: agnos-edge-agent (was all-zeros, cleared with TODO)
+- Stale version comments fixed in kavach, stiva, majra install scripts
+
+### Changed — Full Recipe Audit (109 marketplace recipes)
+
+- **License audit**: all 109 marketplace recipes set to `GPL-3.0-only` (stiva: `GPL-3.0-or-later`). ~80 recipes had bare `GPL-3.0`/`AGPL-3.0` without SPDX `-only` suffix — all corrected.
+- **Duplicate deleted**: `irfan.toml` removed (duplicate of `ifran.toml`, both set `name = "ifran"`)
+- **5 version mismatches fixed** against actual standalone repos: agnosys (0.50.0 → 0.51.0), daimon (0.5.0 → 0.6.0), hoosh (1.1.0 → 1.2.0), kybernet (0.50.0 → 0.51.0), bote (0.91.0 → 0.92.0)
+- **29 stale header comments** updated to match current recipe versions (scaffolding-era references like "v0.1.0" corrected)
+- **3 misplaced install blocks** fixed (abacus, aequi, phylax — `install` was under `[security]` instead of `[build]`)
+- **tazama**: removed stale gstreamer runtime/build deps (GStreamer was already dropped)
+- **SHA256 placeholders**: `sha256 = ""` field added to all 109 marketplace recipes (TODO: populate from release tarballs)
+
+### Changed — Edge Recipes Synced with Base
+
+- **openssl** 3.4.1 → 3.5.5 (URL + SHA256 from base recipe)
+- **glibc** 2.40 → 2.42 (URL + SHA256 from base recipe)
+- **bash** 5.2.37 → 5.3 (URL + SHA256 from base recipe)
+- **iproute2** 6.12.0 → 6.19.0 (URL + SHA256 from base recipe)
+
+### Changed — Meta-Repo Cleanup
+
+- **CLAUDE.md** rewritten — was describing agnostik (shared types crate), now correctly describes the AGNOS meta-repo (recipes, docs, scripts, kernel configs, CI/CD)
+- **Workspace Cargo.toml** — removed 14 unused deps (tonic, prost, axum, tower, reqwest, sha2, base64, rumqttc, thiserror, clap, config, futures, libc, parking_lot, dashmap, tower-http). Fixed agnosys git dep tag 0.50.0 → 0.51.0.
+- **shared-crates.md** — version corrections: hoosh 1.2.0, bote 0.92.0, kavach 2.0.0, stiva 2.0.0, majra 1.0.4, libro 0.92.0, agnostik 0.90.0
+
+### Changed — Roadmap
+
+- v3.0 Vision rewritten: Rust++ → Cyrius Lang with full bootstrap chain and evolution path
+- Boot Time KPI updated from `<10s` target to **achieved at 3.2s** (desktop) / **2.98s** (minimal)
+- Named Subsystems: `rustpp` → `cyrius-seed`
+- Version corrections: agnoshi (0.90.0), bote (0.92.0), kybernet (0.51.0), phylax (0.5.0)
+- P0 recipe audit section updated with completed items
+- Post-extraction cleanup updated: workspace cleaned, repo identity decided (meta-repo)
+
+## [2026.4.2] - 2026-04-02
+
+### Changed — Monolith Dismantled
+
+The userland monolith is fully dismantled. `agent-runtime/`, `ai-shell/`, `llm-gateway/`, and `desktop-environment/` have been removed from the workspace. All code lives in standalone repos.
+
+**Workspace now**: examples only. All subsystem code extracted.
+
+### Added — kybernet
+
+- **kybernet** (0.1.0) — PID 1 binary for AGNOS (Greek: κυβερνήτης, "helmsman"). The helmsman of the Argo — uses the argonaut library for service management. Handles unsafe kernel interactions (console setup, signal handling, reaping) that argonaut's `forbid(unsafe_code)` cannot. Repo: `MacCracken/kybernet`, scaffolded by argonaut agent.
+
+### Changed — shakti Extracted
+
+- **shakti** (0.1.0) — Extracted `agnos-sudo` to standalone repo (`MacCracken/shakti`). Binary crate, no library deps on agnostik/agnosys. 44 tests, 1522 lines.
+
+### Changed — agnostik Extracted
+
+- **agnostik** (0.90.0) — Extracted `agnos-common` to standalone repo (`MacCracken/agnostik`). Feature-gated modules: agent, security, telemetry, audit, llm, secrets, config, classification, validation, hardware, logging. Consumed via git dep (tag `0.90.0`).
+- Examples and fuzz targets updated to agnostik API
+
+### Changed — agnosys Extracted
+
+- **agnosys** (0.50.0) — Removed `agnos-sys` wrapper from workspace. Standalone repo (`MacCracken/agnosys`) is now the sole kernel interface crate, consumed via git dep (tag `0.50.0`).
+- Legacy Agent SDK (AgentContext, AgentRuntime, Agent trait) moved to `examples/src/agent.rs` — only used by examples in this repo
+- `agnos-sudo` no longer depends on agnos-sys (was unused)
+
+### Added — Standalone Repo Extractions (12 new repos)
+
+- **aethersafha** (0.1.0) — Wayland compositor, extracted from desktop-environment/ (785 tests)
+- **agnoshi** (0.1.0) — AI shell, extracted from ai-shell/ (736 tests)
+- **sigil** (1.0.0) — Trust verification & crypto, extracted from agent-runtime/sigil/ + integrity.rs + trust.rs (142 tests). Single crypto/trust boundary for AGNOS. PQC planned as future feature.
+- **ark** (0.1.0) — Package manager, extracted from agent-runtime/ark/ (71 tests)
+- **nous** (0.1.0) — Package resolver, extracted from agent-runtime/nous.rs (57 tests)
+- **takumi** (0.1.0) — Build system, extracted from agent-runtime/takumi.rs (57 tests)
+- **argonaut** (0.1.0) — Init system, extracted from agent-runtime/argonaut/ (148 tests)
+- **aegis** (0.1.0) — Security daemon, extracted from agent-runtime/aegis.rs (55 tests)
+- **agnova** (0.1.0) — OS installer, extracted from agent-runtime/agnova/ (104 tests)
+- **mela** (0.1.0) — App marketplace, extracted from agent-runtime/marketplace/ (204 tests)
+- **seema** (0.1.0) — Edge fleet management (renamed from "edge"), extracted from agent-runtime/edge/ (135 tests)
+- **samay** (0.1.0) — Task scheduler (renamed from "scheduler"), extracted from agent-runtime/scheduler.rs (53 tests)
+
+### Added — Crate Absorptions
+
+- **bote** (0.90.0 → 0.91.0) — Absorbed MCP hosting types from agent-runtime/mcp_server/. New `host` module with McpHostRegistry, SSRF validation. MCP 2025-11-25 spec compliance: tool annotations, audio content, session management, origin validation, streamable HTTP transport, OAuth 2.1 auth module. 305 tests.
+- **kavach** (1.0.1 → 2.0.0) — Absorbed sandbox_mod/ runtime modules (monitor, credential proxy, egress gate, v2, wasm runtime, backends, seccomp profiles). License fixed to GPL-3.0-only. 121 tests.
+- **t-ron** (0.26.3 → 0.90.0) — Absorbed safety/ module (injection detection, circuit breaker, policy engine). License fixed to GPL-3.0-only. 195 tests.
+- **libro** (0.25.3 → 0.90.0) — Added BLAKE3 hash support, extensible hash algorithm types.
+
+### Added — Infrastructure
+
+- **agnosticos.org** — Domain registered, static coming-soon site deployed via GitHub Pages (repo: agnosticos-org)
+- **34 new marketplace recipes** for all stable v1.0+ crates that were missing them (95+ total marketplace recipes)
+- **sigil marketplace recipe** — new (1.0.0)
+
+### Changed — Shared Crates
+
+- 77 total crates (56 at v1.0+ stable, 20 pre-1.0, 1 internal)
+- Stable index reorganized: OS & Infrastructure (11), Science & Knowledge (25), Media & Audio (10), Language/Nav/Reference (5), Physics & Engineering (5)
+- 6 version bumps synced from crates.io: bhava 2.0.0, pramana 1.2.0, shabda 1.1.0, shabdakosh 1.1.0, svara 1.1.1, tanmatra 1.2.1
+
+### Changed — Documentation
+
+- OS subsystem docs split: `docs/os/` (v1.0+ stable) and `docs/development/os/` (pre-1.0)
+- Development roadmap cleaned: completed items removed, open items only
+- Named subsystems: edge → **seema** (Hindi: boundary), scheduler → **samay** (Hindi: time)
+- Crypto boundary resolved: sigil owns all AGNOS trust/crypto, no separate pqc crate
+- "Self-hosting" renamed to "OS Independence" for clarity vs "Self-hosted CI runners"
+
+### Changed — Dependencies
+
+- Cargo.lock updated (25 compatible dep bumps: ICU 2.2.0, wasm-bindgen 0.2.117, libc 0.2.184, zerovec family)
+
 ## [2026.3.28] - 2026-03-28
 
 ### Changed — Core Crate 0.5.0 Migration
@@ -36,14 +741,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`docs/AGNOS.md`** — Project overview document
 - **`docs/applications/abacus.md`** — Abacus desktop calculator app doc
 - **`docs/applications/sutra.md`** — Sutra infrastructure orchestrator app doc
-- **`docs/development/applications/impetus.md`** — Impetus physics engine spec
-- **`docs/development/applications/joshua.md`** — Joshua game manager spec
-- **`docs/development/applications/muharrir.md`** — Muharrir text editor spec
-- **`docs/development/applications/murti.md`** — Murti core model runtime spec
-- **`docs/development/applications/stiva.md`** — Stiva container runtime spec
-- **`docs/development/applications/t-ron.md`** — T-ron MCP security monitor spec
-- **`docs/development/applications/tanur.md`** — Tanur desktop LLM studio spec
-- **`docs/development/applications/shared-crates.md`** — Shared crate registry and version table
+- **`docs/development/planning/impetus.md`** — Impetus physics engine spec
+- **`docs/development/planning/joshua.md`** — Joshua game manager spec
+- **`docs/development/planning/muharrir.md`** — Muharrir text editor spec
+- **`docs/development/planning/murti.md`** — Murti core model runtime spec
+- **`docs/development/planning/stiva.md`** — Stiva container runtime spec
+- **`docs/development/planning/t-ron.md`** — T-ron MCP security monitor spec
+- **`docs/development/planning/tanur.md`** — Tanur desktop LLM studio spec
+- **`docs/development/planning/shared-crates.md`** — Shared crate registry and version table
 - **`docs/development/k8s-roadmap.md`** — Kubernetes-equivalent orchestration roadmap
 - **`docs/development/monolith-extraction.md`** — Monolith extraction plan (agnosys)
 - **`docs/development/network-evolution.md`** — Network evolution (TCP → QUIC → AAP)
@@ -86,11 +791,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added — Documentation Restructure
 
-- **First-party application standards** — `docs/development/applications/first-party-standards.md`: scaffolding, versioning (CalVer), CI/CD, MCP integration, daimon integration tiers, testing conventions, naming conventions, release checklist
-- **Application development roadmap** — `docs/development/applications/roadmap.md`: future apps (Priority 1-6) extracted from os_long_term.md
+- **First-party application standards** — `docs/development/planning/first-party-standards.md`: scaffolding, versioning (CalVer), CI/CD, MCP integration, daimon integration tiers, testing conventions, naming conventions, release checklist
+- **Application development roadmap** — `docs/development/planning/roadmap.md`: future apps (Priority 1-6) extracted from os_long_term.md
 - **18 individual app docs** — `docs/applications/*.md`: ADR-style docs for all released consumer projects (jalwa, tarang, shruti, rasa, tazama, mneme, synapse, bullshift, delta, aequi, agnostic, secureyeoman, photisnadi, nazar, selah, abaco, rahd, vidhana)
 - **Third-party package docs** — `docs/applications/thirdparty/README.md`: packaged software strategy (OS vs Bazaar)
-- **Sutra** (Sanskrit: सूत्र — thread, rule, formula) — AI-native infrastructure orchestrator. Spec: `docs/development/applications/sutra.md`. Scaffolded at `/home/macro/Repos/sutra` with 5 crates, 36 tests, 6 MCP tools, YAML canonical format with TOML/Markdown/NL input, dry-run-by-default, IaC user ownership
+- **Sutra** (Sanskrit: सूत्र — thread, rule, formula) — AI-native infrastructure orchestrator. Spec: `docs/development/planning/sutra.md`. Scaffolded at `/home/macro/Repos/sutra` with 5 crates, 36 tests, 6 MCP tools, YAML canonical format with TOML/Markdown/NL input, dry-run-by-default, IaC user ownership
 
 ### Added — Claude Code Hooks
 
@@ -157,7 +862,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
-- `os_long_term.md` — content migrated to `docs/applications/` (released) and `docs/development/applications/roadmap.md` (planned). References in roadmap.md updated
+- `os_long_term.md` — content migrated to `docs/applications/` (released) and `docs/development/planning/roadmap.md` (planned). References in roadmap.md updated
 - Debian debootstrap fallback from build scripts (B4)
 
 ## [2026.3.17] - 2026-03-18

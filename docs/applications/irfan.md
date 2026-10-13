@@ -1,54 +1,49 @@
-# Irfan
+# Ifran
 
-> **Irfan** (Persian: deep knowledge) — LLM management and training tool (formerly Synapse)
+> **Ifran** (Arabic: knowledge/wisdom — عرفان, *gnosis*) — the AGNOS **ML training control plane** (formerly Synapse → Irfan → Ifran). Through 1.x it was a Rust LLM inference & training engine; the Rust → Cyrius port shipped as **2.0.0** (2026-07-05) and the Rust line was removed after 2.2.0. Its v1.0+ registry row is in [binaries.md](binaries.md).
 
 | Field | Value |
 |-------|-------|
-| Status | Released |
-| Version | `2026.3.18-2` |
-| Repository | `MacCracken/synapse` |
-| Runtime | native-binary (~9.6MB) |
-| Recipe | `recipes/marketplace/synapse.toml` |
-| MCP Tools | 7 `synapse_*` |
-| Agnoshi Intents | 7 |
-| Port | 8080 |
+| Status | Released (Cyrius; frozen 2.x surface) |
+| Version | See [`VERSION`](https://github.com/MacCracken/ifran/blob/main/VERSION) |
+| Repository | `MacCracken/ifran` |
+| Runtime | native-binary (Cyrius CLI) |
+| Recipe | `zugot/marketplace/ifran.cyml` |
+| MCP Tools | None yet — a bote-MCP surface is a roadmap lane (the Rust line's `ifran_*` tools were not carried) |
+| Agnoshi Intents | None (the current agnoshi has no per-app intents) |
+| Port | N/A — CLI. The Rust line's REST API (port 8080) was not carried; its SecureYeoman bridge contract survives as reference docs in the repo |
 
 ---
 
 ## Why First-Party
 
-Synapse is core infrastructure for hoosh — it manages model downloads, fine-tuning jobs, and serving configuration. No existing tool integrates with the AGNOS LLM pipeline end-to-end. It provides a unified interface across llama.cpp, Candle, Ollama, vLLM, ONNX, and TensorRT backends, with fine-tuning methods (LoRA, QLoRA, full, DPO, RLHF, distillation) that feed directly back into hoosh's model registry.
+The sovereign ML siblings (attn11, tarka, tentib, prajna, anukūlana) prove the learning primitives; ifran owns **the orchestration around a training run — never the math**. It drives their binaries as recorded jobs and holds everything around them: signed model artifacts, datasets, sweeps, evals and preference data.
+
+*Through 1.x* the Rust line was instead a multi-backend engine — llama.cpp, Candle, Ollama, vLLM, ONNX and TensorRT backends, with LoRA/QLoRA/full/DPO/RLHF/distillation fine-tuning feeding hoosh's model registry. The Cyrius port deliberately owns none of that: serving is hoosh's, foreign inference engines are mehman's, and GPU is mabda / ai-hwaccel's.
 
 ## What It Does
 
-- Model lifecycle management: download, convert, quantize, serve across multiple backends
-- Fine-tuning pipeline: LoRA, QLoRA, full fine-tuning, DPO, RLHF, and distillation
-- Backend orchestration for llama.cpp, Candle, Ollama, vLLM, ONNX, and TensorRT
-- Training job scheduling with GPU resource management
-- Model catalog and version tracking with performance benchmarks
+- **Jobs** — CYML job specs run as fork + pipe + execve with full output capture, exit-code propagation, quoted args and `timeout_s` enforcement; a patra-backed run store (`ifran run` / `runs` / `show` / `reap`)
+- **Model store** — signed `.tula` artifacts: structural validation, Ed25519 verification against the operator key (`ifran keys`), sha256 content addressing with dedup, tamper-detecting re-verification
+- **Datasets** — content-addressed text corpora with exact-line dedup deriving curated children; jobs reference datasets by id
+- **Sweeps** — grid or seeded-random expansion of a job template, every combo a first-class run, with a post-hoc leaderboard (`sweep best`)
+- **Evals** — sibling gates recorded as benchmarks: the exit code is the gate, with an optional metric extracted from the run log
+- **Preferences** — DPO/IPO pairs and KTO thumbs, exported as JSONL for tarka's preference surface
 
 ## AGNOS Integration
 
-- **Daimon**: Registers as an agent; publishes model availability events; exposes training job status via API
-- **Hoosh**: Direct integration as the model management backend; synapse-managed models are served through hoosh's inference gateway
-- **MCP Tools**: `synapse_models`, `synapse_download`, `synapse_finetune`, `synapse_serve`, `synapse_status`, `synapse_benchmark`, `synapse_catalog`
-- **Agnoshi Intents**: `synapse models`, `synapse download <model>`, `synapse finetune <config>`, `synapse serve <model>`, `synapse status`, `synapse benchmark <model>`, `synapse catalog`
-- **Marketplace**: AI/Infrastructure category; sandbox profile allows GPU access, network for model downloads, read-write model storage directories
+- **ML siblings**: the port's acceptance proof ran attn11 training (a job plus a sweep), anukūlana's fidelity oracle as a gated eval, and tarka's full gate suite — all as recorded ifran jobs
+- **tula + sigil**: every ingested artifact is validated and verified through tula; Ed25519 + sha256 come from sigil
+- **patra**: the run, model, dataset, eval and preference stores
+- **cmdit**: CLI verb dispatch and generated help
+- **Not owned, by design**: serving (hoosh), lineage (itihas), marketplace (mela), fleet (seema), GPU (mabda / ai-hwaccel), foreign inference engines (mehman)
 
 ## Architecture
 
-- **Crates**:
-  - `synapse-core` — model registry, backend abstraction, configuration
-  - `synapse-train` — fine-tuning pipeline (LoRA/QLoRA/full/DPO/RLHF/distillation)
-  - `synapse-serve` — model serving, backend orchestration, health monitoring
-  - `synapse-api` — REST API (port 8080), job management
-  - `synapse-cli` — command-line interface
-- **Dependencies**: CUDA/ROCm (GPU compute), llama.cpp (GGUF inference), SQLite (job database)
+- **Modules** (`src/`): `jobspec`, `run`, `runstore`, `keys`, `store`, `dataset`, `sweep`, `eval`, `pref`, `main`
+- **Dependencies**: patra, sigil, tula, cmdit, plus the Cyrius stdlib — see the repo's `cyrius.cyml`
+- The Rust workspace (`ifran-core` / `-train` / `-serve` / `-api` / `-cli`; CUDA/ROCm, llama.cpp, SQLite) was held at `rust-old/` as the parity oracle, then removed after a zero-loss pre-removal audit; it survives in git history
 
 ## Roadmap
 
-Active development. Known review items R1-R7:
-- R1: Stub RAG integration needs full implementation
-- R2: Incomplete hoosh bridge for model hot-swap
-- R3: Empty model catalog (seed with curated models)
-- R4-R7: Training pipeline hardening, multi-GPU scheduling, checkpoint management
+The 2.x surface is frozen; post-2.0 work is additive lanes, each opened by a trigger — see the repo's [`docs/development/roadmap.md`](https://github.com/MacCracken/ifran/blob/main/docs/development/roadmap.md). The bote-MCP interface waits on SecureYeoman re-wiring off its HTTP proxy to the Rust ifran. The Rust line's review items (stub RAG, hoosh model hot-swap bridge, empty catalog, training-pipeline hardening) went with that line.

@@ -1,0 +1,711 @@
+# boot.cyr — AGNOS sovereign boot pipeline
+#
+# Assembles and boots AGNOS from sibling repo components.
+#
+# Usage:
+#   cyrius build src/boot.cyr build/boot
+#   ./build/boot                  # direct boot (fastest)
+#   ./build/boot --test           # boot + validate serial output
+#   ./build/boot --status         # show component versions + sizes
+#   ./build/boot --iso-check      # verify all ISO components are present
+#   ./build/boot --kernel PATH    # custom kernel path
+#   ./build/boot -v               # verbose
+
+include "lib/string.cyr"
+include "lib/alloc.cyr"
+include "lib/fmt.cyr"
+include "lib/vec.cyr"
+include "lib/str.cyr"
+include "lib/syscalls.cyr"
+include "lib/fs.cyr"
+include "lib/args.cyr"
+include "lib/tagged.cyr"
+include "lib/process.cyr"
+
+# --- helpers ---
+
+fn prints(s) { syscall(1, 1, s, strlen(s)); }
+
+fn print_int(n) { print_num(n); }
+
+# --- state ---
+
+var kernel_path = 0;
+var mode = 0;
+var verbose = 0;
+
+# mode values
+# 0 = interactive boot
+# 1 = test (validate serial output)
+# 2 = status (show component info)
+# 3 = iso-check (verify ISO components)
+
+# --- file helpers ---
+
+fn file_exists(path) {
+    var fd = sys_open(path, O_RDONLY, 0);
+    if (fd >= 0) {
+        sys_close(fd);
+        return 1;
+    }
+    return 0;
+}
+
+fn file_size(path) {
+    var fd = sys_open(str_data(path), O_RDONLY, 0);
+    if (fd < 0) { return 0 - 1; }
+    var sz = syscall(8, fd, 0, 2);  # lseek(fd, 0, SEEK_END)
+    sys_close(fd);
+    return sz;
+}
+
+fn read_version(path) {
+    var buf = alloc(64);
+    var fd = sys_open(path, O_RDONLY, 0);
+    if (fd < 0) { return str_from("?"); }
+    var n = sys_read(fd, buf, 63);
+    sys_close(fd);
+    if (n <= 0) { return str_from("?"); }
+    # Trim trailing newline
+    if (n > 0) {
+        if (load8(buf + n - 1) == 10) { n = n - 1; }
+    }
+    store8(buf + n, 0);
+    return str_from(buf);
+}
+
+# --- resolve kernel location ---
+
+fn resolve_kernel() {
+    if (kernel_path != 0) { return kernel_path; }
+
+    # Try sibling agnos repo (scripts/ is inside agnosticos/)
+    var sibling = "../../agnos/build/agnos";
+    if (file_exists(sibling) == 1) {
+        kernel_path = str_from(sibling);
+        return kernel_path;
+    }
+
+    # Try installed location
+    var installed = "/usr/lib/agnos/kernel";
+    if (file_exists(installed) == 1) {
+        kernel_path = str_from(installed);
+        return kernel_path;
+    }
+
+    println("ERROR: AGNOS kernel not found");
+    println("  Expected: ../../agnos/build/agnos");
+    println("  Or:       /usr/lib/agnos/kernel");
+    println("  Use --kernel /path/to/agnos");
+    sys_exit(1);
+    return 0;
+}
+
+# --- ISO component verification ---
+
+# Check a single component for ISO readiness.
+# required: 1 = must exist, 0 = optional
+# Returns 1 if OK (present or optional-missing), 0 if required-missing.
+fn check_component(name, version_path, binary_path, required) {
+    var ok = 1;
+    var has_version = file_exists(version_path);
+    var has_binary = 0;
+    if (binary_path != 0) {
+        has_binary = file_exists(binary_path);
+    }
+
+    # Determine status
+    if (required == 1) {
+        if (binary_path != 0) {
+            if (has_binary == 0) { ok = 0; }
+        }
+        elif (has_version == 0) { ok = 0; }
+    }
+
+    # Print status line
+    if (ok == 1) {
+        if (has_version == 1) {
+            prints("  READY  ");
+        } else {
+            prints("  SKIP   ");
+        }
+    } else {
+        prints("  MISS   ");
+    }
+
+    prints(name);
+    var nlen = strlen(name);
+    var pad = 14 - nlen;
+    while (pad > 0) {
+        prints(" ");
+        pad = pad - 1;
+    }
+
+    if (has_version == 1) {
+        var ver = read_version(version_path);
+        prints("v");
+        prints(str_data(ver));
+    }
+
+    if (binary_path != 0) {
+        if (has_binary == 1) {
+            var bpath = str_from(binary_path);
+            var sz = file_size(bpath);
+            if (sz > 0) {
+                prints("  (");
+                print_int(sz);
+                prints(" bytes)");
+            }
+        } else {
+            prints("  [no build artifact]");
+        }
+    }
+
+    if (required == 0) {
+        if (has_version == 0) {
+            prints("  (optional)");
+        }
+    }
+
+    prints("\n");
+    return ok;
+}
+
+fn iso_check() {
+    println("");
+    println("=== AGNOS ISO Component Check ===");
+    println("");
+    println("Verifying all components required for bootable ISO assembly.");
+    println("Components are resolved from sibling repos (../../<name>/).");
+    println("");
+
+    var total = 0;
+    var ready = 0;
+    var missing = 0;
+    var optional_missing = 0;
+    var r = 0;
+
+    # --- Boot chain (all required) ---
+    println("--- Boot Chain (required) ---");
+
+    # gnoboot — sovereign UEFI bootloader (PE32+ EFI Application). This is the
+    # AGNOS boot path: firmware → ESP/BOOTX64.EFI → kernel. It REPLACES GRUB;
+    # AGNOS does not use grub/grub-mkrescue, ISO9660/xorriso, or squashfs (those
+    # are Linux packaging leftovers). The artifact is the EFI app, not an ELF.
+    total = total + 1;
+    r = check_component("gnoboot",  "../../gnoboot/VERSION",  "../../gnoboot/build/BOOTX64.EFI", 1);
+    if (r == 1) { ready = ready + 1; } else { missing = missing + 1; }
+
+    total = total + 1;
+    r = check_component("kernel",   "../../agnos/VERSION",    "../../agnos/build/agnos", 1);
+    if (r == 1) { ready = ready + 1; } else { missing = missing + 1; }
+
+    total = total + 1;
+    r = check_component("kybernet", "../../kybernet/VERSION", "../../kybernet/build/kybernet", 1);
+    if (r == 1) { ready = ready + 1; } else { missing = missing + 1; }
+
+    total = total + 1;
+    r = check_component("cyrius",   "../../cyrius/VERSION",   "../../cyrius/build/cycc", 1);
+    if (r == 1) { ready = ready + 1; } else { missing = missing + 1; }
+
+    total = total + 1;
+    r = check_component("ark",      "../../ark/VERSION",      "../../ark/build/ark", 1);
+    if (r == 1) { ready = ready + 1; } else { missing = missing + 1; }
+
+    total = total + 1;
+    r = check_component("nous",     "../../nous/VERSION",     "../../nous/build/nous", 1);
+    if (r == 1) { ready = ready + 1; } else { missing = missing + 1; }
+
+    # agnova — the AGNOS OS installer. The bootable medium IS the installer image,
+    # so agnova is a required ISO component (it lays AGNOS onto the target disk;
+    # the sovereign counterpart to a distro installer, no debian-installer/calamares).
+    total = total + 1;
+    r = check_component("agnova",   "../../agnova/VERSION",   "../../agnova/build/agnova", 1);
+    if (r == 1) { ready = ready + 1; } else { missing = missing + 1; }
+
+    println("");
+
+    # --- Security (required) ---
+    println("--- Security (required) ---");
+
+    total = total + 1;
+    r = check_component("sigil",    "../../sigil/VERSION",    "../../sigil/build/sigil", 1);
+    if (r == 1) { ready = ready + 1; } else { missing = missing + 1; }
+
+    total = total + 1;
+    r = check_component("kavach",   "../../kavach/VERSION",   "../../kavach/build/kavach", 1);
+    if (r == 1) { ready = ready + 1; } else { missing = missing + 1; }
+
+    println("");
+
+    # --- Agent layer (required for minimal profile) ---
+    println("--- Agent Layer (required) ---");
+
+    total = total + 1;
+    r = check_component("daimon",   "../../daimon/VERSION",   "../../daimon/build/daimon", 1);
+    if (r == 1) { ready = ready + 1; } else { missing = missing + 1; }
+
+    total = total + 1;
+    r = check_component("hoosh",    "../../hoosh/VERSION",    "../../hoosh/build/hoosh", 1);
+    if (r == 1) { ready = ready + 1; } else { missing = missing + 1; }
+
+    total = total + 1;
+    r = check_component("agnoshi",  "../../agnoshi/VERSION",  "../../agnoshi/build/agnoshi", 1);
+    if (r == 1) { ready = ready + 1; } else { missing = missing + 1; }
+
+    total = total + 1;
+    r = check_component("bote",     "../../bote/VERSION",     "../../bote/build/bote", 1);
+    if (r == 1) { ready = ready + 1; } else { missing = missing + 1; }
+
+    total = total + 1;
+    r = check_component("t-ron",    "../../t-ron/VERSION",    "../../t-ron/build/t-ron", 1);
+    if (r == 1) { ready = ready + 1; } else { missing = missing + 1; }
+
+    println("");
+
+    # --- Infrastructure libraries (required) ---
+    println("--- Infrastructure (required) ---");
+
+    total = total + 1;
+    r = check_component("agnostik", "../../agnostik/VERSION", "../../agnostik/build/agnostik", 1);
+    if (r == 1) { ready = ready + 1; } else { missing = missing + 1; }
+
+    # agnosys was RENAMED/DECOMPOSED 2026-06-19 → agnodrm (the device/DRM survivor:
+    # udev enumeration + DRM/KMS). trust→sigil, security/mac/audit→kavach, pam→aegis,
+    # logging→sakshi, syscall→cyrius. In the ISO manifest agnodrm takes agnosys's slot.
+    # (A stale build/agnosys binary lingers in agnodrm/build/ — ignore it; the current
+    # artifact is build/agnodrm.)
+    total = total + 1;
+    r = check_component("agnodrm",  "../../agnodrm/VERSION",  "../../agnodrm/build/agnodrm", 1);
+    if (r == 1) { ready = ready + 1; } else { missing = missing + 1; }
+
+    total = total + 1;
+    r = check_component("argonaut", "../../argonaut/VERSION", "../../argonaut/build/argonaut", 1);
+    if (r == 1) { ready = ready + 1; } else { missing = missing + 1; }
+
+    total = total + 1;
+    r = check_component("libro",    "../../libro/VERSION",    "../../libro/build/libro", 1);
+    if (r == 1) { ready = ready + 1; } else { missing = missing + 1; }
+
+    total = total + 1;
+    r = check_component("itihas",   "../../itihas/VERSION",   "../../itihas/build/itihas", 1);
+    if (r == 1) { ready = ready + 1; } else { missing = missing + 1; }
+
+    total = total + 1;
+    r = check_component("sankoch",  "../../sankoch/VERSION",  "../../sankoch/build/sankoch", 1);
+    if (r == 1) { ready = ready + 1; } else { missing = missing + 1; }
+
+    println("");
+
+    # --- Recipes ---
+    println("--- Recipes ---");
+
+    total = total + 1;
+    var zugot_ok = file_exists("../../zugot/build-order.txt");
+    if (zugot_ok == 1) {
+        prints("  READY  zugot         build-order.txt present\n");
+        ready = ready + 1;
+    } else {
+        prints("  MISS   zugot         build-order.txt not found\n");
+        missing = missing + 1;
+    }
+
+    println("");
+
+    # --- Optional components ---
+    println("--- Optional ---");
+
+    total = total + 1;
+    r = check_component("shravan",  "../../shravan/VERSION",  "../../shravan/build/shravan", 0);
+    if (r == 1) { ready = ready + 1; } else { optional_missing = optional_missing + 1; }
+
+    total = total + 1;
+    r = check_component("hadara",   "../../hadara/VERSION",   "../../hadara/build/hadara", 0);
+    if (r == 1) { ready = ready + 1; } else { optional_missing = optional_missing + 1; }
+
+    total = total + 1;
+    r = check_component("avatara",  "../../avatara/VERSION",  "../../avatara/build/avatara", 0);
+    if (r == 1) { ready = ready + 1; } else { optional_missing = optional_missing + 1; }
+
+    total = total + 1;
+    r = check_component("ai-hwaccel","../../ai-hwaccel/VERSION","../../ai-hwaccel/build/ai-hwaccel", 0);
+    if (r == 1) { ready = ready + 1; } else { optional_missing = optional_missing + 1; }
+
+    total = total + 1;
+    r = check_component("abaco",    "../../abaco/VERSION",    "../../abaco/build/abaco", 0);
+    if (r == 1) { ready = ready + 1; } else { optional_missing = optional_missing + 1; }
+
+    total = total + 1;
+    r = check_component("bsp",      "../../bsp/VERSION",      "../../bsp/build/bsp", 0);
+    if (r == 1) { ready = ready + 1; } else { optional_missing = optional_missing + 1; }
+
+    total = total + 1;
+    r = check_component("mabda",    "../../mabda/VERSION",    0, 0);
+    if (r == 1) { ready = ready + 1; } else { optional_missing = optional_missing + 1; }
+
+    println("");
+
+    # --- Host tools (TRANSITIONAL bootstrap — replaced by the sovereign builder) ---
+    # AGNOS is UEFI-native via gnoboot: the medium is a GPT disk with an EFI System
+    # Partition (FAT) holding BOOTX64.EFI + kernel + rootfs. NO grub/xorriso/squashfs
+    # (Linux ISO9660 leftovers, removed). The image is assembled TODAY with Linux
+    # mtools/dosfstools/gptfdisk (agnsh-smoke.sh / install-usb.sh mcopy onto the ESP).
+    # These are BOOTSTRAP SCAFFOLDING — a Cyrius-native sovereign disk-image assembler
+    # (name TBD, roadmap SERVER stage) replaces them at the "agnos building agnos" gate,
+    # since a self-hosting AGNOS can't shell out to Linux tools to build its own image.
+    # Informational only — NOT counted in the required-component tally.
+    println("--- Host Tools: LINUX (bootstrap only — until the sovereign image-builder ships) ---");
+
+    var tbuf = alloc(256);
+
+    var tn = exec_capture(vec_from("/usr/bin/env", "mcopy", "--version"), tbuf, 256);
+    if (tn > 0) {
+        prints("  READY  mtools        (mcopy — stage BOOTX64.EFI + kernel onto the FAT ESP)\n");
+    } else {
+        prints("  note   mtools absent (needed NOW to populate the ESP image)\n");
+    }
+
+    tn = exec_capture(vec_from("/usr/bin/env", "mkfs.fat", 0), tbuf, 256);
+    if (tn > 0) {
+        prints("  READY  dosfstools    (mkfs.fat — format the EFI System Partition)\n");
+    } else {
+        prints("  note   dosfstools absent (needed NOW to format the ESP)\n");
+    }
+
+    tn = exec_capture(vec_from("/usr/bin/env", "sgdisk", "--version"), tbuf, 256);
+    if (tn > 0) {
+        prints("  READY  gptfdisk      (sgdisk — GPT-partition the disk image)\n");
+    } else {
+        prints("  note   gptfdisk absent (needed NOW to GPT-partition the image)\n");
+    }
+
+    tn = exec_capture(vec_from("/usr/bin/env", "qemu-system-x86_64", "--version"), tbuf, 256);
+    if (tn > 0) {
+        prints("  READY  qemu          (optional — boot the assembled image to validate)\n");
+    } else {
+        prints("  note   qemu absent   (optional; only for boot-testing the image)\n");
+    }
+
+    println("");
+
+    # --- Summary ---
+    println("=== Summary ===");
+    prints("  Total:    ");
+    print_int(total);
+    prints("\n");
+    prints("  Ready:    ");
+    print_int(ready);
+    prints("\n");
+    prints("  Missing:  ");
+    print_int(missing);
+    prints(" required");
+    if (optional_missing > 0) {
+        prints(", ");
+        print_int(optional_missing);
+        prints(" optional");
+    }
+    prints("\n");
+    println("");
+
+    if (missing == 0) {
+        println("PASS: All required ISO components present.");
+        return 0;
+    } else {
+        println("FAIL: Required components missing. ISO assembly blocked.");
+        return 1;
+    }
+}
+
+# --- component status ---
+
+fn show_component(name, version_path, binary_path) {
+    prints("  ");
+    prints(name);
+    # Pad name to 14 chars
+    var nlen = strlen(name);
+    var pad = 14 - nlen;
+    while (pad > 0) {
+        prints(" ");
+        pad = pad - 1;
+    }
+
+    # Version
+    if (file_exists(version_path) == 1) {
+        var ver = read_version(version_path);
+        prints("v");
+        prints(str_data(ver));
+    } else {
+        prints("---");
+    }
+
+    # Binary size
+    if (binary_path != 0) {
+        if (file_exists(binary_path) == 1) {
+            var bpath = str_from(binary_path);
+            var sz = file_size(bpath);
+            if (sz > 0) {
+                prints("  (");
+                print_int(sz);
+                prints(" bytes)");
+            }
+        }
+    }
+
+    prints("\n");
+}
+
+fn show_status() {
+    println("");
+    println("=== AGNOS Component Status ===");
+    println("");
+
+    # Core chain
+    println("--- Boot Chain ---");
+    show_component("kernel",    "../../agnos/VERSION",     "../../agnos/build/agnos");
+    show_component("cyrius",    "../../cyrius/VERSION",    "../../cyrius/build/cc5");
+    show_component("kybernet",  "../../kybernet/VERSION",  0);
+    show_component("argonaut",  "../../argonaut/VERSION",  0);
+    show_component("ark",       "../../ark/VERSION",       0);
+    show_component("nous",      "../../nous/VERSION",      0);
+    println("");
+
+    # Agent layer
+    println("--- Agent Layer ---");
+    show_component("daimon",    "../../daimon/VERSION",    0);
+    show_component("hoosh",     "../../hoosh/VERSION",     0);
+    show_component("bote",      "../../bote/VERSION",      0);
+    show_component("t-ron",     "../../t-ron/VERSION",     0);
+    show_component("agnoshi",   "../../agnoshi/VERSION",   0);
+    println("");
+
+    # Security
+    println("--- Security ---");
+    show_component("sigil",     "../../sigil/VERSION",     0);
+    show_component("kavach",    "../../kavach/VERSION",    0);
+    show_component("phylax",    "../../phylax/VERSION",    0);
+    show_component("shakti",    "../../shakti/VERSION",    0);
+    println("");
+
+    # Infrastructure
+    println("--- Infrastructure ---");
+    show_component("libro",     "../../libro/VERSION",     0);
+    show_component("agnostik",  "../../agnostik/VERSION",  0);
+    show_component("agnosys",   "../../agnosys/VERSION",   0);
+    show_component("sankoch",   "../../sankoch/VERSION",   0);
+    show_component("bsp",       "../../bsp/VERSION",       0);
+    println("");
+
+    # Knowledge & Consciousness
+    println("--- Knowledge & Consciousness ---");
+    show_component("hadara",    "../../hadara/VERSION",    0);
+    show_component("avatara",   "../../avatara/VERSION",   0);
+    show_component("bhava",     "../../bhava/VERSION",     0);
+    show_component("itihas",    "../../itihas/VERSION",    0);
+    show_component("hisab",     "../../hisab/VERSION",     0);
+    show_component("abaco",     "../../abaco/VERSION",     0);
+    show_component("mabda",     "../../mabda/VERSION",     0);
+    show_component("ai-hwaccel","../../ai-hwaccel/VERSION",0);
+    show_component("shravan",   "../../shravan/VERSION",   0);
+    println("");
+
+    # Applications
+    println("--- Applications ---");
+    show_component("cyrius-doom","../../cyrius-doom/VERSION",0);
+    println("");
+
+    # Recipes
+    println("--- Recipes ---");
+    if (file_exists("../../zugot/build-order.txt") == 1) {
+        prints("  zugot         build-order.txt present\n");
+    } else {
+        prints("  zugot         not found at ../../zugot/\n");
+    }
+    println("");
+
+    # Boot pipeline
+    println("--- Genesis ---");
+    show_component("boot.cyr",  "../VERSION",              "build/boot");
+
+    # Toolchain
+    println("");
+    prints("  toolchain:    ");
+    var tbuf = alloc(256);
+    var tn = exec_capture(
+        vec_from("/usr/bin/env", "cc5", "--version"),
+        tbuf, 256
+    );
+    if (tn > 0) {
+        store8(tbuf + tn, 0);
+        # Trim newline
+        if (tn > 0) {
+            if (load8(tbuf + tn - 1) == 10) { store8(tbuf + tn - 1, 0); }
+        }
+        println(tbuf);
+    } else {
+        println("not found");
+    }
+}
+
+fn vec_from(a, b, c) {
+    var v = vec_new();
+    vec_push(v, a);
+    if (b != 0) { vec_push(v, b); }
+    if (c != 0) { vec_push(v, c); }
+    return v;
+}
+
+# --- QEMU direct boot ---
+
+fn qemu_direct(test_mode) {
+    var kpath = resolve_kernel();
+
+    println("");
+    println("=== AGNOS Boot Pipeline ===");
+    prints("  kernel:   ");
+    println(str_data(kpath));
+
+    var sz = file_size(kpath);
+    if (sz > 0) {
+        prints("  size:     ");
+        print_int(sz);
+        println(" bytes");
+    }
+
+    # Show kernel version if available
+    if (file_exists("../../agnos/VERSION") == 1) {
+        var kver = read_version("../../agnos/VERSION");
+        prints("  version:  ");
+        println(str_data(kver));
+    }
+
+    var qargs = vec_new();
+    vec_push(qargs, "/usr/bin/qemu-system-x86_64");
+    vec_push(qargs, "-kernel");
+    vec_push(qargs, str_data(kpath));
+    vec_push(qargs, "-serial");
+    vec_push(qargs, "stdio");
+    vec_push(qargs, "-display");
+    vec_push(qargs, "none");
+    vec_push(qargs, "-no-reboot");
+    # Memory for daimon + hoosh + services
+    vec_push(qargs, "-m");
+    vec_push(qargs, "512");
+
+    if (test_mode == 1) {
+        println("  mode:     test (validating serial output)");
+        println("");
+
+        var outbuf = alloc(65536);
+        var n = exec_capture(qargs, outbuf, 65536);
+
+        if (n <= 0) {
+            println("FAIL: QEMU produced no output (kernel may have crashed)");
+            sys_exit(1);
+        }
+
+        # Search for AGNOS banner in serial output
+        var found = 0;
+        var si = 0;
+        while (si < n - 5) {
+            if (memeq(outbuf + si, "AGNOS", 5) == 1) {
+                found = 1;
+            }
+            si = si + 1;
+        }
+
+        if (found == 1) {
+            println("PASS: AGNOS kernel booted (banner detected in serial output)");
+            prints("  captured ");
+            print_int(n);
+            println(" bytes of serial output");
+        } else {
+            println("FAIL: AGNOS banner not found in serial output");
+            prints("  captured ");
+            print_int(n);
+            println(" bytes");
+            println("  first 256 bytes:");
+            var plen = n;
+            if (plen > 256) { plen = 256; }
+            sys_write(1, outbuf, plen);
+            prints("\n");
+            sys_exit(1);
+        }
+    } else {
+        println("  mode:     interactive (Ctrl-A X to quit)");
+        println("  memory:   512MB");
+        println("");
+        exec_vec(qargs);
+    }
+}
+
+# --- CLI ---
+
+fn parse_args() {
+    args_init();
+    var i = 1;
+    while (i < argc()) {
+        var arg = argv(i);
+        if (streq(arg, "--help") == 1) {
+            println("AGNOS Boot Pipeline");
+            println("");
+            println("Usage: boot [OPTIONS]");
+            println("");
+            println("Options:");
+            println("  --test           Boot + validate AGNOS banner in serial output");
+            println("  --status         Show component versions and sizes");
+            println("  --iso-check      Verify all ISO components are present");
+            println("  --kernel PATH    Path to AGNOS kernel binary");
+            println("  -v, --verbose    Verbose output");
+            println("  -h, --help       Show this help");
+            println("");
+            println("Default: direct boot from ../../agnos/build/agnos (interactive)");
+            sys_exit(0);
+        }
+        elif (streq(arg, "-h") == 1) {
+            println("Usage: boot [--test] [--status] [--iso-check] [--kernel PATH] [-v]");
+            sys_exit(0);
+        }
+        elif (streq(arg, "--test") == 1) { mode = 1; }
+        elif (streq(arg, "--status") == 1) { mode = 2; }
+        elif (streq(arg, "--iso-check") == 1) { mode = 3; }
+        elif (streq(arg, "-v") == 1) { verbose = 1; }
+        elif (streq(arg, "--verbose") == 1) { verbose = 1; }
+        elif (streq(arg, "--kernel") == 1) {
+            i = i + 1;
+            if (i < argc()) { kernel_path = str_from(argv(i)); }
+        }
+        else {
+            prints("Unknown option: ");
+            println(arg);
+            sys_exit(1);
+        }
+        i = i + 1;
+    }
+}
+
+# --- main ---
+
+fn main() {
+    alloc_init();
+    parse_args();
+
+    if (mode == 2) {
+        show_status();
+        return 0;
+    }
+
+    if (mode == 3) {
+        var rc = iso_check();
+        return rc;
+    }
+
+    if (mode == 1) {
+        qemu_direct(1);
+    } else {
+        qemu_direct(0);
+    }
+    return 0;
+}
+
+var exit_code = main();
+syscall(60, exit_code);

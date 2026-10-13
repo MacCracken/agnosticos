@@ -1,0 +1,327 @@
+# arp_probe_raw — AGNOS-shape AF_PACKET ARP probe.
+#
+# Builds the FULL ARP request frame (eth + ARP) in Cyrius userland using
+# the EXACT byte construction AGNOS's net.cyr arp_request() does:
+#   - eth_build       copied verbatim from agnos/kernel/core/net.cyr:45
+#   - the ARP payload  copied verbatim from net.cyr:106-119 (the post-
+#     Attempt-102 byte-pair big-endian fix that replaced the byte-swapped
+#     store16 calls — Attempt 102 egressed htype=0x0100/ptype=0x0008/
+#     oper=0x0100 and the switch dropped it as malformed).
+# Sends via AF_PACKET SOCK_RAW so the Linux kernel adds zero header bytes —
+# what we put in the frame buffer is what hits the wire.
+#
+# This is the ARP analog of dhcp_probe_raw.cyr. Same isolate-the-driver
+# discipline: if this binary gets an ARP reply from the real Araknis
+# gateway, AGNOS's ARP frame construction is provably wire-correct, and the
+# Attempt-102 iron ARP TIMEOUT collapses to a SINGLE remaining suspect:
+#   r8169 RX — the gateway's unicast reply is received by the PHY but never
+#              delivered to r8169_poll (ring/rearm), OR is dropped by the
+#              chip's hardware unicast filter (IDR0-5) if the sovereign-MAC
+#              LAA override b0->b2 never propagated into the filter.
+#
+# NOTE on the MAC: this probe sends with the iface's REAL hardware MAC
+# (b0:...) read from /sys, NOT the AGNOS LAA override (b2:...). That is
+# deliberate — a unicast ARP reply to b2:... would not be received by a
+# non-promiscuous Linux socket (the chip filter is b0:...), giving a false
+# negative. The construction (field layout + byte order) is identical
+# regardless of which 6 bytes fill the sender-hw-addr, so this faithfully
+# tests the thing under question: is AGNOS's ARP frame wire-correct?
+#
+# Usage: sudo ./arp-probe-raw <iface> [target_ip] [src_ip]
+#   default target_ip = 192.168.1.1   (gateway — AGNOS net_gateway)
+#   default src_ip    = 192.168.1.222 (AGNOS net_ip)
+# Requires CAP_NET_RAW (or root) for AF_PACKET SOCK_RAW.
+
+include "lib/string.cyr"
+include "lib/alloc.cyr"
+include "lib/fmt.cyr"
+include "lib/syscalls.cyr"
+include "lib/args.cyr"
+
+# === Print helpers ===
+
+fn prints(s) { syscall(1, 1, s, strlen(s)); }
+fn putc(c) { var b[1]; store8(&b, c); syscall(1, 1, &b, 1); }
+fn newline() { syscall(1, 1, "\n", 1); }
+
+fn print_ip(ip) {
+    fmt_int((ip >> 24) & 0xFF); putc(46);
+    fmt_int((ip >> 16) & 0xFF); putc(46);
+    fmt_int((ip >> 8) & 0xFF);  putc(46);
+    fmt_int(ip & 0xFF);
+}
+
+fn print_mac(mac) {
+    fmt_byte(load8(mac));
+    var i: i64 = 1;
+    while (i < 6) { putc(58); fmt_byte(load8(mac + i)); i = i + 1; }
+}
+
+# === AGNOS net.cyr functions — copied byte-for-byte verbatim ===
+
+# agnos/kernel/core/net.cyr:45 (memcpy expanded to byte loops)
+fn eth_build(pkt, dst_mac, src_mac, ethertype): i64 {
+    var i: i64 = 0;
+    while (i < 6) { store8(pkt + i, load8(dst_mac + i)); i = i + 1; }
+    i = 0;
+    while (i < 6) { store8(pkt + 6 + i, load8(src_mac + i)); i = i + 1; }
+    store8(pkt + 12, (ethertype >> 8) & 0xFF);
+    store8(pkt + 13, ethertype & 0xFF);
+    return 14;
+}
+
+# agnos/kernel/core/net.cyr:106-119 — the ARP payload block from arp_request,
+# verbatim (memcpy/memset expanded to byte loops; the explicit store8 byte
+# pairs for htype/ptype/oper are THE fix under test).
+fn arp_build(p, off, src_mac, src_ip, target_ip): i64 {
+    store8(p + off,     0x00); store8(p + off + 1, 0x01);   # htype = ethernet
+    store8(p + off + 2, 0x08); store8(p + off + 3, 0x00);   # ptype = IPv4
+    store8(p + off + 4, 6);    store8(p + off + 5, 4);       # hlen=6 plen=4
+    store8(p + off + 6, 0x00); store8(p + off + 7, 0x01);   # oper  = request
+    var i: i64 = 0;
+    while (i < 6) { store8(p + off + 8 + i, load8(src_mac + i)); i = i + 1; }   # sha
+    store8(p + off + 14, (src_ip >> 24) & 0xFF);             # spa
+    store8(p + off + 15, (src_ip >> 16) & 0xFF);
+    store8(p + off + 16, (src_ip >> 8) & 0xFF);
+    store8(p + off + 17, src_ip & 0xFF);
+    i = 0;
+    while (i < 6) { store8(p + off + 18 + i, 0); i = i + 1; }                   # tha = 0
+    store8(p + off + 24, (target_ip >> 24) & 0xFF);          # tpa
+    store8(p + off + 25, (target_ip >> 16) & 0xFF);
+    store8(p + off + 26, (target_ip >> 8) & 0xFF);
+    store8(p + off + 27, target_ip & 0xFF);
+    return 28;
+}
+
+# === Iface attr readers (MAC, ifindex from /sys/class/net) — verbatim ===
+
+fn read_iface_attr(iface, suffix, suffix_len, out_buf, max_len): i64 {
+    var path[128];
+    var prefix = "/sys/class/net/";
+    var pi: i64 = 0;
+    var i: i64 = 0;
+    while (i < 15) { store8(&path + pi, load8(prefix + i)); pi = pi + 1; i = i + 1; }
+    i = 0;
+    while (load8(iface + i) != 0) {
+        store8(&path + pi, load8(iface + i));
+        pi = pi + 1; i = i + 1;
+    }
+    i = 0;
+    while (i < suffix_len) {
+        store8(&path + pi, load8(suffix + i));
+        pi = pi + 1; i = i + 1;
+    }
+    store8(&path + pi, 0);
+    var fd = syscall(2, &path, 0, 0);
+    if (fd < 0) { return 0 - 1; }
+    var n = syscall(0, fd, out_buf, max_len);
+    syscall(3, fd);
+    return n;
+}
+
+fn hex_nibble(c): i64 {
+    if (c >= 48) { if (c <= 57)  { return c - 48; } }
+    if (c >= 97) { if (c <= 102) { return c - 87; } }
+    if (c >= 65) { if (c <= 70)  { return c - 55; } }
+    return 0;
+}
+
+fn read_mac(iface, out_mac): i64 {
+    var content[32];
+    var n = read_iface_attr(iface, "/address", 8, &content, 32);
+    if (n < 17) { return 0 - 1; }
+    var ci: i64 = 0;
+    var mi: i64 = 0;
+    while (mi < 6) {
+        var hi = hex_nibble(load8(&content + ci));
+        var lo = hex_nibble(load8(&content + ci + 1));
+        store8(out_mac + mi, (hi << 4) | lo);
+        ci = ci + 3;
+        mi = mi + 1;
+    }
+    return 0;
+}
+
+fn read_ifindex(iface): i64 {
+    var content[16];
+    var n = read_iface_attr(iface, "/ifindex", 8, &content, 16);
+    if (n < 1) { return 0 - 1; }
+    var v: i64 = 0;
+    var i: i64 = 0;
+    while (i < n) {
+        var c = load8(&content + i);
+        if (c >= 48) { if (c <= 57) { v = v * 10 + (c - 48); } }
+        i = i + 1;
+    }
+    return v;
+}
+
+# Parse a dotted-quad string into a packed big-endian-ordered i64 (a.b.c.d
+# -> (a<<24)|(b<<16)|(c<<8)|d), matching AGNOS ip4().
+fn parse_ipv4(s): i64 {
+    var v: i64 = 0;
+    var octet: i64 = 0;
+    var i: i64 = 0;
+    while (load8(s + i) != 0) {
+        var c = load8(s + i);
+        if (c == 46) {                       # '.'
+            v = (v << 8) | (octet & 0xFF);
+            octet = 0;
+        } else {
+            if (c >= 48) { if (c <= 57) { octet = octet * 10 + (c - 48); } }
+        }
+        i = i + 1;
+    }
+    v = (v << 8) | (octet & 0xFF);
+    return v & 0xFFFFFFFF;
+}
+
+# === AF_PACKET constants ===
+
+var AF_PACKET = 17;
+var SOCK_RAW = 3;
+var ETH_P_ARP = 0x0806;
+
+# struct sockaddr_ll (20 bytes) — see dhcp_probe_raw.cyr for field map.
+fn make_sockaddr_ll(sa, ifindex, eth_proto_host, mac) {
+    var i: i64 = 0;
+    while (i < 20) { store8(sa + i, 0); i = i + 1; }
+    store8(sa + 0, AF_PACKET & 0xFF);
+    store8(sa + 1, (AF_PACKET >> 8) & 0xFF);
+    store8(sa + 2, (eth_proto_host >> 8) & 0xFF);
+    store8(sa + 3, eth_proto_host & 0xFF);
+    store8(sa + 4, ifindex & 0xFF);
+    store8(sa + 5, (ifindex >> 8) & 0xFF);
+    store8(sa + 6, (ifindex >> 16) & 0xFF);
+    store8(sa + 7, (ifindex >> 24) & 0xFF);
+    store8(sa + 11, 6);
+    if (mac != 0) {
+        i = 0;
+        while (i < 6) { store8(sa + 12 + i, load8(mac + i)); i = i + 1; }
+    }
+}
+
+fn set_recv_timeout(fd, secs) {
+    var tv[16];
+    var i: i64 = 0;
+    while (i < 16) { store8(&tv + i, 0); i = i + 1; }
+    store8(&tv + 0, secs & 0xFF);
+    syscall(54, fd, 1, 20, &tv, 16);   # SOL_SOCKET=1, SO_RCVTIMEO=20
+}
+
+# Read frames until we see an ARP REPLY whose sender-IP == target_ip.
+# Returns 1 on match (out_mac <- sender hw addr), 0 on timeout.
+fn wait_for_arp_reply(fd, target_ip, out_mac): i64 {
+    var rbuf[2048];
+    var src[24];
+    var srclen[4];
+    while (1) {
+        store32(&srclen, 20);
+        var n = syscall(45, fd, &rbuf, 2048, 0, &src, &srclen);
+        if (n < 0) { return 0; }
+        if (n < 42) { continue; }
+        var et = (load8(&rbuf + 12) << 8) | load8(&rbuf + 13);
+        if (et != 0x0806) { continue; }
+        var oper = (load8(&rbuf + 14 + 6) << 8) | load8(&rbuf + 14 + 7);
+        if (oper != 2) { continue; }                  # not a REPLY
+        # sender IP at ARP payload offset 14 -> frame offset 28
+        var sip = (load8(&rbuf + 28) << 24) | (load8(&rbuf + 29) << 16)
+                | (load8(&rbuf + 30) << 8)  |  load8(&rbuf + 31);
+        if (sip != target_ip) { continue; }
+        # sender hw addr at ARP payload offset 8 -> frame offset 22
+        var i: i64 = 0;
+        while (i < 6) { store8(out_mac + i, load8(&rbuf + 22 + i)); i = i + 1; }
+        return 1;
+    }
+    return 0;
+}
+
+fn main(): i64 {
+    args_init();
+    if (argc() < 2) {
+        prints("usage: arp-probe-raw <iface> [target_ip] [src_ip]\n");
+        prints("  AGNOS-shape AF_PACKET ARP request — verbatim net.cyr arp_request.\n");
+        prints("  default target=192.168.1.1 src=192.168.1.222\n");
+        prints("  Requires CAP_NET_RAW (or root) for AF_PACKET SOCK_RAW.\n");
+        return 1;
+    }
+    var iface = argv(1);
+    var target_ip = 0xC0A80101;          # 192.168.1.1   (AGNOS gateway)
+    var src_ip    = 0xC0A801DE;          # 192.168.1.222 (AGNOS net_ip)
+    if (argc() >= 3) { target_ip = parse_ipv4(argv(2)); }
+    if (argc() >= 4) { src_ip    = parse_ipv4(argv(3)); }
+
+    prints("arp-probe-raw: iface="); prints(iface); newline();
+
+    var mac[8];
+    if (read_mac(iface, &mac) != 0) {
+        prints("ERROR: cannot read MAC\n");
+        return 2;
+    }
+    prints("  src mac="); print_mac(&mac); newline();
+    prints("  src ip ="); print_ip(src_ip); newline();
+    prints("  target ="); print_ip(target_ip); newline();
+
+    var ifindex = read_ifindex(iface);
+    if (ifindex < 0) {
+        prints("ERROR: cannot read ifindex\n");
+        return 3;
+    }
+    prints("  ifindex="); fmt_int(ifindex); newline();
+
+    # htons(ETH_P_ARP) on little-endian = 0x0608
+    var eth_p_arp_be = ((ETH_P_ARP & 0xFF) << 8) | ((ETH_P_ARP >> 8) & 0xFF);
+    var fd = syscall(41, AF_PACKET, SOCK_RAW, eth_p_arp_be);
+    if (fd < 0) {
+        prints("ERROR: socket(AF_PACKET, SOCK_RAW) failed errno=");
+        fmt_int(0 - fd); newline();
+        return 4;
+    }
+
+    var sa[20];
+    make_sockaddr_ll(&sa, ifindex, ETH_P_ARP, 0);
+    if (syscall(49, fd, &sa, 20) < 0) {
+        prints("ERROR: bind AF_PACKET failed\n");
+        syscall(3, fd); return 5;
+    }
+    set_recv_timeout(fd, 5);
+
+    # ---- Build ARP request — IDENTICAL byte-construction to AGNOS arp_request ----
+    var frame[64];
+    var bcast[8];
+    var i: i64 = 0;
+    while (i < 6) { store8(&bcast + i, 0xFF); i = i + 1; }
+    var off = eth_build(&frame, &bcast, &mac, 0x0806);
+    arp_build(&frame, off, &mac, src_ip, target_ip);
+    var frame_len = off + 28;            # 14 + 28 = 42
+
+    var dst_sa[20];
+    make_sockaddr_ll(&dst_sa, ifindex, ETH_P_ARP, &bcast);
+    var sent = syscall(44, fd, &frame, frame_len, 0, &dst_sa, 20);
+    if (sent < 0) {
+        prints("ERROR: sendto ARP (AF_PACKET) failed errno=");
+        fmt_int(0 - sent); newline();
+        syscall(3, fd); return 6;
+    }
+    prints("arp: request sent ("); fmt_int(sent); prints(" bytes via AF_PACKET, AGNOS-shape)\n");
+
+    # ---- Wait for REPLY ----
+    var gwmac[8];
+    if (wait_for_arp_reply(fd, target_ip, &gwmac) != 1) {
+        prints("ERROR: ARP reply timeout/no-match (no reply within ~5s)\n");
+        syscall(3, fd); return 7;
+    }
+    prints("arp: REPLY recv -- gateway ");
+    print_ip(target_ip);
+    prints(" is at ");
+    print_mac(&gwmac);
+    newline();
+    prints("  ====> AGNOS eth_build + arp_request construction PROVEN wire-correct.\n");
+    prints("  ====> Attempt-102 iron ARP TIMEOUT isolates to r8169 RX delivery/filter.\n");
+
+    syscall(3, fd);
+    return 0;
+}
+
+var rc = main();
+syscall(60, rc);

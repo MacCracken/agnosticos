@@ -2,12 +2,12 @@
 
 > **Bodh** (Sanskrit: बोध — awareness, understanding) — Psychology and cognitive science
 
-| Field | Value |
-|-------|-------|
-| Status | Planned |
-| Version | `0.1.0` |
-| Repository | `MacCracken/bodh` |
-| Runtime | library crate (Rust) |
+- **Repository**: [github.com/MacCracken/bodh](https://github.com/MacCracken/bodh)
+- **License**: GPL-3.0-only
+- **Status**: Stable - See Repo
+- **Language**: Rust
+
+See the [libs registry](README.md) for the full catalog and dependency context.
 
 ---
 

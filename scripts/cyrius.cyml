@@ -1,0 +1,11 @@
+[package]
+name = "agnos-scripts"
+version = "0.1.0"
+description = "AGNOS genesis build scripts — sovereign boot pipeline in Cyrius"
+license = "GPL-3.0-only"
+repository = "https://github.com/MacCracken/agnosticos"
+cyrius = "6.4.17"
+
+[build]
+src = "src/boot.cyr"
+output = "build/boot"

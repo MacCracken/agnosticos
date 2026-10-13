@@ -8,9 +8,9 @@
 | Version | Latest GitHub release |
 | Repository | `MacCracken/rahd` |
 | Runtime | native-binary (Rust) |
-| Recipe | `recipes/marketplace/rahd.toml` |
+| Recipe | `zugot/marketplace/rahd.cyml` |
 | MCP Tools | 5 `rahd_*` |
-| Agnoshi Intents | 5 |
+| Agnoshi Intents | None (the current agnoshi has no per-app intents) |
 | Port | N/A |
 
 ---
@@ -32,7 +32,7 @@ Calendar and contacts are core PIM functionality that benefits enormously from l
 - **Daimon**: Registers as an agent; uses memory store for contact data and audit APIs for event changes
 - **Hoosh**: LLM inference for NL event parsing, conflict resolution suggestions, and intelligent scheduling recommendations
 - **MCP Tools**: `rahd_event`, `rahd_schedule`, `rahd_contacts`, `rahd_free`, `rahd_remind`
-- **Agnoshi Intents**: `rahd add`, `rahd schedule`, `rahd contacts`, `rahd free`, `rahd remind`
+- **Agnoshi Intents** (the Rust era's planned set — not in the current agnoshi): `rahd add`, `rahd schedule`, `rahd contacts`, `rahd free`, `rahd remind`
 - **Marketplace**: Category: productivity/calendar. Sandboxed with user data directory access
 
 ## Architecture

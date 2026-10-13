@@ -1,0 +1,42 @@
+[Unit]
+Description=AGNOS LLM Gateway (hoosh)
+After=agnos-init.service network.target
+Wants=agnos-init.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/hoosh
+ExecStartPost=/bin/sh -c 'for i in 1 2 3 4 5; do sleep 1; curl -sf http://127.0.0.1:8088/v1/health >/dev/null && exit 0; done; exit 1'
+Restart=always
+RestartSec=5
+User=agnos-llm
+Group=agnos-llm
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/agnos/models /var/log/agnos
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=false
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+# Resource limits - higher for LLM workloads
+MemoryMax=8G
+CPUQuota=80%
+TasksMax=1024
+
+# Capability bounding set
+CapabilityBoundingSet=CAP_IPC_LOCK CAP_SYS_RESOURCE CAP_SYS_ADMIN CAP_MKNOD
+AmbientCapabilities=CAP_IPC_LOCK CAP_SYS_RESOURCE
+
+[Install]
+WantedBy=multi-user.target

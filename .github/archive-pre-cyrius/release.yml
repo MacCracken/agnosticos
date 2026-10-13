@@ -1,0 +1,475 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - '[0-9]*'
+
+permissions:
+  contents: write
+  actions: read
+  security-events: write
+  packages: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  REGISTRY: ghcr.io
+  IMAGE_NAME: maccracken/agnosticos
+
+jobs:
+  # Quality gate — run CI checks before building release
+  ci-gate:
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+
+  build-release:
+    name: Build ${{ matrix.name }}
+    needs: ci-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            name: linux-amd64
+            profile: release
+          - target: aarch64-unknown-linux-gnu
+            name: linux-arm64
+            aarch64: true
+            profile: release
+          - target: aarch64-unknown-linux-gnu
+            name: linux-arm64-edge
+            aarch64: true
+            profile: release-edge
+            no_default_features: true
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Rust environment
+      uses: ./.github/actions/setup-rust-env
+      with:
+        targets: ${{ matrix.target }}
+        cache-prefix: release-${{ matrix.target }}
+        install-build-essential: ${{ !matrix.aarch64 }}
+
+    - name: Install aarch64 cross-compiler
+      if: matrix.aarch64
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y gcc-aarch64-linux-gnu
+
+    - name: Build
+      run: |
+        if [ "${{ matrix.aarch64 }}" = "true" ]; then
+          export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
+        fi
+        ARGS="--profile ${{ matrix.profile }} --workspace --target ${{ matrix.target }}"
+        if [ "${{ matrix.no_default_features }}" = "true" ]; then
+          ARGS="$ARGS --no-default-features"
+        fi
+        cargo build $ARGS
+      working-directory: userland
+
+    - name: Package
+      run: |
+        mkdir -p agnos-${{ matrix.name }}
+        PROFILE_DIR="${{ matrix.profile }}"
+        for bin in agent_runtime llm_gateway desktop_environment ai_shell agnos_sudo agnsh; do
+          cp "userland/target/${{ matrix.target }}/${PROFILE_DIR}/${bin}" "agnos-${{ matrix.name }}/" 2>/dev/null || true
+        done
+        cp -r docs agnos-${{ matrix.name }}/
+        cp README.md agnos-${{ matrix.name }}/
+        cp LICENSE agnos-${{ matrix.name }}/
+        tar czvf agnos-${{ matrix.name }}.tar.gz agnos-${{ matrix.name }}
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: agnos-${{ matrix.name }}
+        path: agnos-${{ matrix.name }}.tar.gz
+
+  # Generate SBOM alongside release artifacts
+  generate-sbom:
+    name: Generate SBOM
+    needs: ci-gate
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Rust environment
+      uses: ./.github/actions/setup-rust-env
+      with:
+        cache-prefix: sbom
+
+    - name: Install SBOM tools
+      run: cargo install cargo-cyclonedx cargo-license --locked
+
+    - name: Generate SBOM (CycloneDX)
+      run: |
+        cd userland
+        cargo cyclonedx --format json --output-cdx || true
+        cargo cyclonedx --format xml --output-cdx || true
+        mkdir -p ../sbom
+        cp -f *.cdx.json ../sbom/ 2>/dev/null || true
+        cp -f *.cdx.xml ../sbom/ 2>/dev/null || true
+
+    - name: Generate license summary
+      run: |
+        cd userland
+        cargo license --json > ../sbom/license-summary.json 2>/dev/null || true
+        cargo license > ../sbom/license-summary.txt 2>/dev/null || true
+
+    - name: Upload SBOM artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: sbom-files
+        path: sbom/
+        if-no-files-found: warn
+
+  # Build base rootfs (x86_64 + aarch64) on self-hosted runners.
+  # Publishes to base-rootfs-latest release. Skips if already cached.
+  selfhost-build:
+    name: Self-Hosting Build (Base Rootfs)
+    needs: ci-gate
+    uses: ./.github/workflows/selfhost-build.yml
+    with:
+      force_rebuild: false
+    permissions:
+      contents: write
+      packages: write
+
+  # Build bootable ISO/IMG from release binaries + base rootfs
+  build-iso:
+    name: Build ISO Images
+    needs: [build-release, selfhost-build]
+    uses: ./.github/workflows/build-iso.yml
+    with:
+      version: ${{ github.ref_name }}
+      use_agnos_base: true
+    permissions:
+      contents: write
+
+  create-release:
+    name: Create GitHub Release
+    needs: [build-release, generate-sbom, build-iso]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Download release binaries
+      uses: actions/download-artifact@v4
+      with:
+        pattern: agnos-linux-*
+        path: artifacts
+        merge-multiple: false
+
+    - name: Download SBOM
+      uses: actions/download-artifact@v4
+      with:
+        name: sbom-files
+        path: artifacts/sbom-files
+      continue-on-error: true
+
+    - name: Download x86_64 installer ISO
+      uses: actions/download-artifact@v4
+      with:
+        name: agnos-installer-x86_64
+        path: artifacts/installer-x86_64
+      continue-on-error: true
+
+    - name: Download x86_64 minimal ISO
+      uses: actions/download-artifact@v4
+      with:
+        name: agnos-minimal-x86_64
+        path: artifacts/minimal-x86_64
+      continue-on-error: true
+
+    - name: Download aarch64 SD card image
+      uses: actions/download-artifact@v4
+      with:
+        name: agnos-sdcard-aarch64
+        path: artifacts/sdcard-aarch64
+      continue-on-error: true
+
+    - name: Download aarch64 minimal image
+      uses: actions/download-artifact@v4
+      with:
+        name: agnos-minimal-aarch64
+        path: artifacts/minimal-aarch64
+      continue-on-error: true
+
+    - name: Download x86_64 edge ISO
+      uses: actions/download-artifact@v4
+      with:
+        name: agnos-edge-x86_64
+        path: artifacts/edge-x86_64
+      continue-on-error: true
+
+    - name: Download aarch64 edge image
+      uses: actions/download-artifact@v4
+      with:
+        name: agnos-edge-aarch64
+        path: artifacts/edge-aarch64
+      continue-on-error: true
+
+    - name: Generate release notes
+      id: notes
+      run: |
+        VERSION="${{ github.ref_name }}"
+        PREV_TAG=$(git describe --tags --abbrev=0 HEAD~1 2>/dev/null || echo "")
+        {
+          echo "notes<<EOF"
+          echo "## What's Changed"
+          echo ""
+          if [ -n "$PREV_TAG" ]; then
+            git log --pretty=format:"- %s" "${PREV_TAG}..HEAD" | head -50
+          else
+            git log --pretty=format:"- %s" -20
+          fi
+          echo ""
+          echo ""
+          echo "**Full Changelog**: See [CHANGELOG.md](CHANGELOG.md)"
+          echo "EOF"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v2
+      with:
+        name: AGNOS ${{ github.ref_name }} (Pre-Beta)
+        body: |
+          > **Pre-Beta Release** — This is a pre-beta build. Not recommended for production use.
+
+          ## Download Guide
+
+          ### Bootable Images (ready to flash)
+
+          | File | Target | How to use |
+          |------|--------|------------|
+          | `agnos-YYYYMMDD-x86_64.iso` | **Desktop PC / VM** | Unified installer — GRUB menu offers Desktop (Wayland) or Server (headless) mode |
+          | `agnos-YYYYMMDD-minimal-x86_64.iso` | **Headless x86_64** | Minimal headless with SY edge agent |
+          | `agnos-YYYYMMDD-aarch64.img.xz` | **Raspberry Pi 4/5** | Full AGNOS for RPi. Decompress + `dd` to microSD |
+          | `agnos-YYYYMMDD-minimal-aarch64.img.xz` | **RPi 4/5 (Minimal)** | Headless RPi with SY edge agent |
+          | `agnos-YYYYMMDD-edge-x86_64.iso` | **x86_64 Edge (NUC, DeepLens)** | dm-verity protected, LFS-style minimal |
+          | `agnos-YYYYMMDD-edge-aarch64.img.xz` | **RPi 4/5 (Edge)** | dm-verity protected, minimal rootfs |
+
+          **Flash instructions:**
+          ```bash
+          # ISO (x86_64) — write to USB drive
+          sudo dd if=agnos-*.iso of=/dev/sdX bs=4M status=progress conv=fsync
+
+          # IMG.XZ (aarch64) — decompress and write to microSD
+          xzcat agnos-*.img.xz | sudo dd of=/dev/sdX bs=4M status=progress conv=fsync
+          # After boot, expand rootfs: sudo parted /dev/mmcblk0 resizepart 2 100% && sudo resize2fs /dev/mmcblk0p2
+          ```
+
+          **Default credentials:** `user` / `agnos`, `root` / `agnos`
+          **SSH:** Enabled on port 22. Agent runtime on 8090, LLM gateway on 8088.
+
+          ### Binary Archives (for manual installation)
+
+          | File | Architecture | Profile |
+          |------|-------------|---------|
+          | `agnos-linux-amd64.tar.gz` | x86_64 | Full (desktop + all services) |
+          | `agnos-linux-arm64.tar.gz` | aarch64 | Full (cross-compiled) |
+          | `agnos-linux-arm64-edge.tar.gz` | aarch64 | Edge (size-optimized, no desktop) |
+
+          ### Other Artifacts
+
+          | File | Description |
+          |------|-------------|
+          | `*.cdx.json` / `*.cdx.xml` | CycloneDX SBOM |
+          | `license-summary.*` | Dependency license report |
+          | `SHA256SUMS` | Checksums for all artifacts |
+
+          ---
+
+          ${{ steps.notes.outputs.notes }}
+        draft: false
+        prerelease: true
+        files: |
+          artifacts/agnos-*/*.tar.gz
+          artifacts/sbom-files/*
+          artifacts/installer-x86_64/*.iso
+          artifacts/installer-x86_64/*.iso.sha256
+          artifacts/minimal-x86_64/*.iso
+          artifacts/minimal-x86_64/*.iso.sha256
+          artifacts/sdcard-aarch64/*.img.xz
+          artifacts/sdcard-aarch64/*.img.xz.sha256
+          artifacts/minimal-aarch64/*.img.xz
+          artifacts/minimal-aarch64/*.img.xz.sha256
+          artifacts/edge-x86_64/*.iso
+          artifacts/edge-x86_64/*.iso.sha256
+          artifacts/edge-aarch64/*.img.xz
+          artifacts/edge-aarch64/*.img.xz.sha256
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Multi-arch container image → ghcr.io
+  container:
+    name: Publish Container Image
+    needs: build-release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v3
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to GHCR
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Download amd64 artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: agnos-linux-amd64
+        path: artifacts/amd64
+
+    - name: Download arm64 artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: agnos-linux-arm64
+        path: artifacts/arm64
+
+    - name: Extract binaries
+      run: |
+        for arch in amd64 arm64; do
+          mkdir -p build/${arch}/binaries build/${arch}/tmp
+          # Try tarball first, fall back to raw files (download-artifact v4 compat)
+          tar xzf artifacts/${arch}/*.tar.gz -C build/${arch}/tmp 2>/dev/null \
+            || cp artifacts/${arch}/* build/${arch}/tmp/ 2>/dev/null \
+            || true
+          for bin in agent_runtime llm_gateway agnsh; do
+            find build/${arch}/tmp -name "$bin" -type f -exec cp {} build/${arch}/binaries/ \;
+          done
+          echo "=== ${arch} binaries ==="
+          ls -la build/${arch}/binaries/
+        done
+
+    - name: Prepare build contexts
+      run: |
+        for arch in amd64 arm64; do
+          cp VERSION build/${arch}/
+          cp -r docker build/${arch}/
+        done
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=raw,value=${{ github.ref_name }}
+          type=raw,value=latest
+          type=raw,value=pre-beta
+
+    - name: Build and push amd64
+      uses: docker/build-push-action@v6
+      with:
+        context: build/amd64
+        file: docker/Dockerfile.release
+        platforms: linux/amd64
+        push: true
+        tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}-amd64
+        build-args: |
+          AGNOS_VERSION=${{ github.ref_name }}
+
+    - name: Build and push arm64
+      uses: docker/build-push-action@v6
+      with:
+        context: build/arm64
+        file: docker/Dockerfile.release
+        platforms: linux/arm64
+        push: true
+        tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}-arm64
+        build-args: |
+          AGNOS_VERSION=${{ github.ref_name }}
+
+    - name: Create and push multi-arch manifest
+      run: |
+        IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
+        VERSION="${{ github.ref_name }}"
+
+        for TAG in "${VERSION}" "latest" "pre-beta"; do
+          docker buildx imagetools create \
+            --tag "${IMAGE}:${TAG}" \
+            "${IMAGE}:${VERSION}-amd64" \
+            "${IMAGE}:${VERSION}-arm64"
+        done
+
+  # Runtime base images → ghcr.io/maccracken/agnosticos:<runtime>
+  runtime-images:
+    name: Publish ${{ matrix.tag }} Base Image
+    needs: ci-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - dockerfile: docker/Dockerfile.node
+            tag: node22
+            title: "Node.js 22 + Bun"
+          - dockerfile: docker/Dockerfile.python3.13
+            tag: python3.13
+            title: "Python 3.13"
+          - dockerfile: docker/Dockerfile.python3.14
+            tag: python3.14
+            title: "Python 3.14"
+          - dockerfile: docker/Dockerfile.rust
+            tag: rust
+            title: "Rust"
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v3
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to GHCR
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Build and push
+      uses: docker/build-push-action@v6
+      with:
+        context: .
+        file: ${{ matrix.dockerfile }}
+        platforms: linux/amd64,linux/arm64
+        push: true
+        tags: |
+          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.tag }}
+          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.tag }}-${{ github.ref_name }}
+        labels: |
+          org.opencontainers.image.title=AGNOS ${{ matrix.title }} Base
+          org.opencontainers.image.version=${{ github.ref_name }}
+          org.opencontainers.image.source=https://github.com/MacCracken/agnosticos

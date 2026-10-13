@@ -8,9 +8,9 @@
 | Version | `2026.3.18` |
 | Repository | `MacCracken/sutra` |
 | Runtime | native-binary (Rust) |
-| Recipe | `recipes/marketplace/sutra.toml` |
+| Recipe | `zugot/marketplace/sutra.cyml` |
 | MCP Tools | 6 `sutra_*` |
-| Agnoshi Intents | 6 |
+| Agnoshi Intents | None (the current agnoshi has no per-app intents) |
 | Port | N/A (CLI tool) |
 
 ---
@@ -34,7 +34,7 @@ No Rust-based orchestrator exists at Ansible's level. Existing tools (Ansible, p
 - **Daimon**: Agent registration, fleet inventory via `/v1/edge/nodes`, audit reporting
 - **Hoosh**: NL-to-TOML playbook translation, Markdown-to-TOML parsing, drift explanation
 - **MCP Tools**: `sutra_apply`, `sutra_plan`, `sutra_check`, `sutra_inventory`, `sutra_translate`, `sutra_convert`
-- **Agnoshi Intents**: deploy, check fleet, translate playbook, show inventory, rollback, convert format
+- **Agnoshi Intents** (the Rust era's planned set — not in the current agnoshi): deploy, check fleet, translate playbook, show inventory, rollback, convert format
 - **Marketplace**: Category: infrastructure. No network access required for local mode
 
 ## Architecture

@@ -1,38 +1,10 @@
-# Phylax
+# phylax
 
-> **Phylax** (Greek: guardian/watchman) — AI-native threat detection engine
+AI-native threat detection engine (Greek φύλαξ — *guardian, watchman*) — YARA rules, entropy and magic-byte analysis, PE/ELF parsing, similarity hashing, an inotify watch mode, and LLM triage via hoosh.
 
-| Field | Value |
-|-------|-------|
-| Status | Released |
-| Version | `0.22.3` |
-| Repository | `MacCracken/phylax` |
-| Runtime | library crate (Rust) |
-| Recipe | `recipes/marketplace/phylax.toml` |
-| crates.io | N/A (not yet published) |
+- **Repository**: [github.com/MacCracken/phylax](https://github.com/MacCracken/phylax)
+- **License**: GPL-3.0-only
+- **Status**: Stable - See Repo
+- **Language**: Cyrius
 
----
-
-## What It Does
-
-- YARA rule engine for signature-based threat matching
-- Entropy analysis to detect packed, encrypted, or obfuscated binaries
-- Magic bytes identification for file type verification regardless of extension
-- ML-based binary classification for unknown threat detection
-- fanotify real-time filesystem scanning with LLM triage via hoosh
-
-## Consumers
-
-- **daimon** — Agent orchestrator (scanning agent outputs and file writes)
-- **aegis** — Security daemon (integrated threat response)
-- Complements t-ron (t-ron guards MCP inputs, phylax scans outputs/files)
-
-## Architecture
-
-- 5 crates: core (engine), rules (YARA), ml (classifier), scan (fanotify), mcp (tool interface)
-- Scan pipeline: magic bytes -> entropy -> YARA -> ML -> LLM triage
-- Dependencies: tokio, serde, hoosh (LLM triage)
-
-## Roadmap
-
-Pre-release — scaffolded at v0.1.0, core 15A done. Future: ClamAV signature import, network traffic scanning, threat intelligence feed ingestion.
+See the [libs registry](README.md) for the full catalog and dependency context.

@@ -1,0 +1,10 @@
+fn m(): i64 {
+    # Is >> arithmetic (sign-propagating) or logical?
+    var x = 0 - 1;              # all ones (0xFFFF...FFFF)
+    var y = x >> 1;
+    # arithmetic >> of -1 == -1 ; logical >> == 0x7FFF...FFFF (positive)
+    if (y == (0 - 1)) { return 60; }   # arithmetic shift
+    return 61;                          # logical shift
+}
+fn _entry(): i64 { var r = m(); syscall(SYS_EXIT, r); return 0; }
+_entry();

@@ -1,0 +1,11 @@
+[package]
+name = "dhcp-probe"
+version = "0.1.0"
+description = "POSIX UDP DHCP client in Cyrius — working reference shape for AGNOS kernel dhcp_init"
+license = "GPL-3.0-only"
+repository = "https://github.com/MacCracken/agnosticos"
+cyrius = "6.0.1"
+
+[build]
+src = "src/dhcp_probe.cyr"
+output = "build/dhcp-probe"

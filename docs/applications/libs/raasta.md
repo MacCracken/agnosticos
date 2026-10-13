@@ -2,14 +2,12 @@
 
 > **Raasta** (Hindi: path/road) — Navigation and pathfinding library
 
-| Field | Value |
-|-------|-------|
-| Status | Released |
-| Version | `0.26.3` |
-| Repository | `MacCracken/raasta` |
-| Runtime | library crate (Rust) |
-| Recipe | `recipes/marketplace/raasta.toml` |
-| crates.io | N/A (not yet published) |
+- **Repository**: [github.com/MacCracken/raasta](https://github.com/MacCracken/raasta)
+- **License**: GPL-3.0-only
+- **Status**: Stable - See Repo
+- **Language**: Rust
+
+See the [libs registry](README.md) for the full catalog and dependency context.
 
 ---
 
@@ -30,8 +28,3 @@
 
 - Generic over graph type via trait-based abstraction
 - Built on hisab spatial structures (BVH, k-d tree) for acceleration
-- Dependencies: serde, hisab
-
-## Roadmap
-
-Pre-release — available but not yet published on crates.io. Future: dynamic obstacle avoidance (RVO2), flow field pathfinding, crowd simulation.

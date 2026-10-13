@@ -1,479 +1,165 @@
 # AGNOS Installation Guide
 
-> **Version:** 2026.3.12 | **Last Updated:** 2026-03-13
-
-This guide covers installing AGNOS on bare metal hardware and virtual machines.
+> **Last Updated:** 2026-09-27
+>
+> **Status:** AGNOS is **Pre-Beta**. Closed beta was targeted to open late August 2026 (after a founder solo-dogfood month + the server-stage weak-point sweep, windowed ~July / early-Aug 2026; the sweep's harness is **TBD** and explicitly **not** Docker — the QEMU-in-a-Docker-container design was retired 2026-07-07). **That date has passed and the beta is now undated** — AGNOS first has to become usable for its founder's own daily work, with a great deal still to do (operator, 2026-09-28) — and its gate, the ISO Stage-4 cut, is not started; the [roadmap](../development/roadmap.md) holds the ladder. Public beta and GA sit downstream (post-summer and late fall/early winter 2026 in the 2026-06-29 plan). The kernel boots both in QEMU and on real AMD Zen hardware, and the sovereign boot pipeline is active. There is still **no end-user install path**: the distributable image (the **ISO Stage-4 cut**) and `agnova`'s native installer are both open stage-exit work. This guide describes what is buildable and testable **today**, and what is coming.
 
 ---
 
-## Requirements
+## What Works Today
 
-### Hardware
+- **Sovereign boot pipeline** — `scripts/src/boot.cyr` (Cyrius): ISO component verification plus a QEMU launcher. ⚠ The launcher's direct `-kernel` path predates agnos 1.30.0 and cannot load the current kernel — see [QEMU Boot Test](#qemu-boot-test-kernel). Compiled size drifts every cut; `make status` prints the live figure.
+- **AGNOS kernel** — Cyrius-native, 40+ subsystems, a small sovereign syscall surface (no BSD socket family, no `socket()` over arbitrary domains, no splice, no AF_ALG). Boots on real AMD Zen (the NUC devbox, archaemenid) to the ring-3 userland shell **agnsh**, exec'd from the agnos-fs. ⚠ Iron validation is **per-cut, not blanket** — the head is often an unburned cut, and not every released cut has been burned. Per-cut burn status: [`../development/state.md`](../development/state.md).
+- **Iron boot media** — `scripts/install-media.sh` (the old `install-usb.sh` is now a forwarding shim) provisions a USB stick or an internal disk with gnoboot's ESP + the kernel + an ext4 `agnos-fs` root, and refreshes either without a wipe. Iron-proven on archaemenid — but it is a developer provisioning tool, **not** an end-user installer.
+- **Component verification** — `make iso-check` walks every downstream repo and confirms the build artifacts an ISO would need are present, printing each repo's `VERSION` (it does not compare versions).
+- **Per-subsystem builds** — every subsystem (kybernet, ark, nous, sigil, libro, agnoshi, …) builds standalone from its own repo via `cyrius build`.
+
+## What is Coming
+
+- **ISO Stage-4 cut** — package the iron-proven boot media as a distributable writable `.img` with a writable ext4 rootfs. Decisions are **LOCKED**; `scripts/src/iso.cyr` is **not started but unblocked**. Plan: [`iso-stage4-plan.md`](../development/iso-stage4-plan.md). The LFS-style Stages 1–3 (source download, cross-toolchain bootstrap, chroot base-system build) are deferred behind it; the read-only `.iso` is a follow-on gated on a kernel-side initramfs reader (gnoboot has loaded `\boot\initramfs` into `boot_info` since 0.5.0; the kernel only logs the field so far).
+- **agnova** (installer) — Cyrius-native, past the scaffold stage, but a finished *port* is not a finished *installer*: the native installer capability is still owed to the server stage. Will own disk partitioning, LUKS2, bootloader install, profile selection (Desktop / Server / Minimal). ⛔ Hard prerequisite chain: sovereign ark → agnova → server-stage exit.
+- **takumi** (build system) — the Cyrius port is **done**; what is still coming is its use in ISO assembly, driving recipe builds out of zugot.
+- **Target**: closed beta cut — **undated** since its late-August 2026 target passed (see Status above). ⚠ It is **not** gated on the Cyrius toolchain — the bare-metal target shipped at Cyrius **v6.2.x**, and the kernel already builds and boots against the current pin. The remaining dependency is agnosticos-side: the ISO Stage-4 cut plus a first non-founder boot session.
+
+---
+
+## Requirements (target hardware for Beta)
 
 | Resource | Minimum | Recommended |
 |----------|---------|-------------|
-| CPU | x86_64, 2 cores | x86_64, 4+ cores |
-| RAM | 2 GB | 8 GB (16 GB for AI workloads) |
-| Disk | 20 GB | 100 GB SSD |
-| Boot | UEFI or Legacy BIOS | UEFI with Secure Boot |
-| GPU | — | NVIDIA, AMD, or Intel (for desktop) |
+| CPU | x86_64 or aarch64, 2 cores | x86_64, 4+ cores; or Raspberry Pi 4/5 (aarch64) |
+| RAM | 2 GB | 8 GB (16 GB for local LLM workloads) |
+| Disk | 20 GB | 100 GB NVMe SSD |
+| Boot | UEFI (GPT + FAT ESP) — Legacy BIOS **not supported** | UEFI with Secure Boot |
+| GPU | — (CLI/server) | NVIDIA, AMD, or Intel integrated (for desktop) |
 
-### Supported Hardware
-
-- **GPU**: NVIDIA (proprietary 570.x or nouveau), AMD (radeonsi), Intel (iris)
-- **WiFi**: Broadcom, Intel, Atheros, Realtek (via linux-firmware)
-- **Bluetooth**: BlueZ 5.82 (BLE + mesh)
-- **Thunderbolt**: USB4/TB3/TB4 via boltd
-- **Printing**: CUPS 2.4 (optional)
+These are **targets for the first bootable image**, not today's support matrix — only x86_64 boots right now; the kernel's aarch64 tree **does not currently compile** (found at agnos 1.56.51, 2026-08-28 — its test probe had been skipping it silently since cyrius v6.1.1 dropped the `cc5_aarch64` name it probed for) and has no boot harness. Full hardware matrix: [system-requirements.md](system-requirements.md).
 
 ---
 
-## Installation Methods
+## Building and Testing Today
 
-### Method 1: ISO Install (Recommended)
+All commands run from the genesis repo root unless noted.
 
-#### Step 1 — Download the ISO
+### Prerequisites
 
-```bash
-# From the releases page or build locally:
-make iso
-
-# Output: build/agnos-VERSION-x86_64.iso
+Cyrius toolchain (required):
+```sh
+# Install from release tarball or build from source (cyrius repo)
+# Toolchain version pinned in scripts/cyrius.cyml (manifest is single source of truth)
+which cyrius  # verify on PATH
 ```
 
-#### Step 2 — Create bootable media
-
-**USB drive:**
-```bash
-# WARNING: This erases the target device
-sudo dd if=build/agnos-VERSION-x86_64.iso of=/dev/sdX bs=4M status=progress
-sync
-```
-
-**Or use a GUI tool:** Balena Etcher, Ventoy, or Rufus (Windows).
-
-#### Step 3 — Boot from USB/ISO
-
-1. Insert the USB drive (or mount the ISO in your VM)
-2. Enter BIOS/UEFI setup (usually F2, F12, DEL, or ESC at POST)
-3. Set boot order to prioritize USB/optical
-4. Save and reboot
-
-#### Step 4 — AGNOS Installer (agnova)
-
-The installer runs automatically on first boot. It will walk you through:
-
-**Disk Configuration:**
-```
-Select installation disk:
-  [1] /dev/sda  Samsung 870 EVO 500GB
-  [2] /dev/nvme0n1  WD Black SN850X 1TB
-
-Partition scheme:  GPT (recommended) / MBR
-Filesystem:        ext4 / btrfs / xfs
-Encryption:        LUKS2 (optional, recommended)
-```
-
-**Installation Mode:**
-| Mode | Description |
-|------|-------------|
-| **Desktop** | Full desktop environment (aethersafha compositor, GPU drivers, audio, printing) |
-| **Server** | Headless, agent runtime + LLM gateway, no GUI |
-| **Minimal** | Base system only, build from there |
-| **Custom** | Choose individual packages |
-
-**User Setup:**
-- Root password
-- Initial user account (added to `wheel` group for shakti/sudo)
-- Hostname and timezone
-
-**Bootloader:**
-- systemd-boot (UEFI, default) or GRUB 2 (UEFI/BIOS)
-- Automatic kernel parameter configuration
-
-#### Step 5 — First Boot
-
-After installation completes and reboot:
-
-1. **Argonaut init** starts services in dependency order
-2. **daimon** (agent runtime) starts on port 8090
-3. **hoosh** (LLM gateway) starts on port 8088
-4. Login at the console or desktop
-
-Verify the system:
-```bash
-# Check version
-cat /etc/agnos/version
-
-# Check services
-ark status
-
-# Verify agent runtime
-curl -s http://127.0.0.1:8090/v1/health
-
-# Verify LLM gateway
-curl -s http://127.0.0.1:8088/v1/health
-
-# Launch AI shell
-agnsh
-```
-
----
-
-### Method 2: QEMU/KVM Virtual Machine
-
-#### Quick Start (graphical)
-
-```bash
-# Build the ISO first
-make iso
-
-# Boot in QEMU with GUI display
-sudo qemu-system-x86_64 \
-  -m 2G -smp 2 -enable-kvm \
-  -cdrom output/agnos-*-x86_64.iso \
-  -boot d \
-  -nic user,hostfwd=tcp::2222-:22,hostfwd=tcp::18090-:8090,hostfwd=tcp::18088-:8088
-
-# Or use the automated boot test:
-./scripts/qemu-boot-test.sh --disk 20G
-```
-
-#### Headless / SSH (no display)
-
-If you're connected via SSH or have no graphical environment:
-
-```bash
-# Serial console mode — boots directly in your terminal
-sudo qemu-system-x86_64 \
-  -m 2G -smp 2 -enable-kvm \
-  -cdrom output/agnos-*-x86_64.iso \
-  -boot d \
-  -nographic \
-  -nic user,hostfwd=tcp::2222-:22,hostfwd=tcp::18090-:8090,hostfwd=tcp::18088-:8088
-```
-
-Select the **"Serial Console"** entry from the GRUB menu for proper serial output.
-To exit QEMU: `Ctrl-a x`.
-
-Alternatively, use VNC:
-```bash
-sudo qemu-system-x86_64 \
-  -m 2G -smp 2 -enable-kvm \
-  -cdrom output/agnos-*-x86_64.iso \
-  -boot d \
-  -vnc :0 \
-  -nic user,hostfwd=tcp::2222-:22,hostfwd=tcp::18090-:8090,hostfwd=tcp::18088-:8088
-```
-Then connect a VNC client to `localhost:5900`.
-
-#### Persistent disk install
-
-```bash
-# Create a disk image for persistent installs
-qemu-img create -f qcow2 agnos-disk.qcow2 40G
-
-# Boot with ISO + disk
-sudo qemu-system-x86_64 \
-  -m 4G -smp 4 -enable-kvm \
-  -cdrom output/agnos-*-x86_64.iso \
-  -boot d \
-  -drive file=agnos-disk.qcow2,format=qcow2,if=virtio \
-  -nic user,hostfwd=tcp::2222-:22,hostfwd=tcp::18090-:8090,hostfwd=tcp::18088-:8088
-```
-
-#### UEFI Boot (recommended)
-
-Install OVMF firmware:
-```bash
+Host build tools (for QEMU):
+```sh
 # Debian/Ubuntu
-sudo apt install ovmf
+sudo apt install qemu-system-x86 qemu-utils
 
 # Arch
-sudo pacman -S edk2-ovmf
-
-# Fedora
-sudo dnf install edk2-ovmf
+sudo pacman -S qemu-full
 ```
 
-Add to QEMU command:
-```bash
--drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE.fd
+### Build the Sovereign Boot Pipeline
+
+```sh
+cd scripts
+cyrius build src/boot.cyr build/boot
+./build/boot --help
 ```
 
-#### Port Forwarding
+The `boot` binary is the Cyrius-native launcher used by every `make boot-*` target.
 
-AGNOS services are forwarded to non-conflicting host ports:
+### Component Verification
 
-| Service | Guest Port | Host Port |
-|---------|-----------|-----------|
-| SSH | 22 | 2222 |
-| daimon (agent runtime) | 8090 | 18090 |
-| hoosh (LLM gateway) | 8088 | 18088 |
-
-From the host:
-```bash
-ssh -p 2222 user@localhost             # password: agnos
-curl http://localhost:18090/v1/health  # agent runtime
-curl http://localhost:18088/v1/models  # LLM gateway
+```sh
+make iso-check
 ```
+
+Walks every downstream repo (agnos, kybernet, ark, nous, sigil, libro, …) and verifies the build artifacts an ISO would need are present, printing each one's `VERSION`. Current ISO-pipeline entry point — **Stage 0**.
+
+### QEMU Boot Test (Kernel)
+
+```sh
+make boot-test
+```
+
+Direct-boots the AGNOS kernel in QEMU via `boot.cyr` (`qemu -kernel`). No rootfs, no userland — so it would reach the kernel's **recovery-only** in-kernel REPL, not the interactive shell (**agnsh** is a ring-3 binary and needs a rootfs to exec from).
+
+⚠ **This path cannot boot the current kernel.** `-kernel` is the pre-1.30.0 multiboot path. Since agnos **1.30.0** the kernel is an ELF64 image entered only through gnoboot's sovereign handoff (`RDI = &boot_info`), and QEMU refuses it outright: `Error loading uncompressed kernel without PVH ELF Note` (checked 2026-09-27 against agnos 1.57.10). Until `boot.cyr` gains a gnoboot + OVMF path, smoke-boot the kernel under QEMU + OVMF through gnoboot — a timed, non-interactive run that asserts gnoboot's hand-off banner:
+
+```sh
+# needs OVMF (edk2-ovmf), parted and mtools; build gnoboot first:
+#   CYRIUS_TARGET_EFI=1 cyrius build src/main.cyr build/BOOTX64.EFI
+cd ../gnoboot && sh tests/ovmf_smoke.sh   # AGNOS_KERNEL defaults to ../agnos/build/agnos
+```
+
+The kernel's own QEMU gates are the agnos repo's smoke battery (`scripts/smoke/`, driven by `scripts/sweep.sh`).
+
+### Build a Specific Subsystem
+
+Each subsystem lives in its own repo; build from there. Example:
+
+```sh
+cd /home/macro/Repos/kybernet
+cyrius build src/main.cyr build/kybernet
+```
+
+Repo map: see the public map in [`docs/architecture.md`](../architecture.md).
 
 ---
 
-### Method 3: Docker Container
+## Installer and ISO — Status
 
-For evaluation and development without a full install:
+The installer (`agnova`) and the bootable ISO do not exist yet as user-facing artifacts. They are tracked as **open stage-exit work** on the [roadmap](../development/roadmap.md) — the ISO Stage-4 cut is the base→server blocker, and agnova's native installer is a server-stage exit item. (The roadmap's old Phase 13A–24 numbering was deleted 2026-08-01; cite a maturity-arc stage or a named spec, never a phase number.)
 
-```bash
-# Pull the pre-built image
-docker pull ghcr.io/maccracken/agnosticos:latest
+Progress against the ISO pipeline:
 
-# Run with AI shell
-docker run -it \
-  -p 8088:8088 \
-  -p 8090:8090 \
-  ghcr.io/maccracken/agnosticos:latest \
-  agnsh
+| Stage | What it does | Status |
+|-------|--------------|--------|
+| 0 | Resolve components (verify artifacts across all repos) | **Implemented** — `make iso-check` |
+| 1 | Download / vendor upstream sources | Deferred behind the Stage-4 cut |
+| 2 | Bootstrap cross-toolchain from source | Deferred behind the Stage-4 cut |
+| 3 | Build base system in chroot | Deferred behind the Stage-4 cut |
+| 4 | Package the boot media into a distributable image | **Not started, unblocked** — `scripts/src/iso.cyr`, decisions LOCKED |
 
-# Run as daemon
-docker run -d \
-  --name agnos \
-  -p 8088:8088 \
-  -p 8090:8090 \
-  -v agnos-data:/var/lib/agnos \
-  ghcr.io/maccracken/agnosticos:latest
-```
-
-#### With GPU Support (NVIDIA)
-
-```bash
-docker run -d \
-  --gpus all \
-  --name agnos-gpu \
-  -p 8088:8088 \
-  -p 8090:8090 \
-  ghcr.io/maccracken/agnosticos:latest
-```
-
-#### Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `AGNOS_ULIMIT_VMEM` | `8388608` | Virtual memory limit (KB), `unlimited` to disable |
-| `AGNOS_ULIMIT_NOFILE` | `4096` | Max open file descriptors |
-| `AGNOS_ULIMIT_NPROC` | `256` | Max user processes |
-| `OLLAMA_HOST` | `http://host.docker.internal:11434` | Ollama endpoint |
-| `OPENAI_API_KEY` | — | OpenAI API key for cloud inference |
-| `ANTHROPIC_API_KEY` | — | Anthropic API key for cloud inference |
-
----
-
-### Method 4: Build from Source
-
-#### Prerequisites
-
-```bash
-# Install build dependencies (Debian/Ubuntu)
-./scripts/install-build-deps.sh
-
-# Or manually (Debian/Ubuntu):
-sudo apt install build-essential gcc g++ make cmake ninja-build \
-  autoconf automake libtool pkg-config bison flex gawk m4 \
-  texinfo bc kmod libssl-dev libseccomp-dev libcap-dev \
-  curl wget rsync qemu-system-x86 qemu-utils \
-  debootstrap squashfs-tools grub-common grub-pc-bin xorriso mtools musl-tools
-
-# Or manually (Arch Linux):
-sudo pacman -S base-devel cmake ninja squashfs-tools grub libisoburn mtools \
-  qemu-full debootstrap debian-archive-keyring musl
-```
-
-#### Install Rust
-
-```bash
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-source "$HOME/.cargo/env"
-
-# Add musl target for static binaries (required for ISO builds)
-rustup target add x86_64-unknown-linux-musl
-```
-
-#### Build Everything
-
-```bash
-# Clone
-git clone https://github.com/agnostos/agnos.git
-cd agnos
-
-# Build userland (static musl binaries for ISO portability)
-cargo build --release --target x86_64-unknown-linux-musl \
-  --manifest-path userland/Cargo.toml
-
-# Build kernel
-./scripts/build-kernel.sh -v 6.6-lts
-
-# Build base system packages
-./scripts/ark-build-all.sh recipes/base/
-
-# Build ISO
-make iso
-```
-
-#### Building the ISO
-
-The ISO builder (`scripts/build-iso.sh`) creates a bootable live image using a Debian
-base with AGNOS userland installed on top. It must be run as root.
-
-```bash
-# Full build (compiles userland + bootstraps rootfs + creates ISO)
-sudo ./scripts/build-iso.sh
-
-# Skip cargo build (use pre-built musl binaries)
-sudo ./scripts/build-iso.sh --skip-build
-
-# Skip debootstrap (reuse existing rootfs, just update binaries + repackage)
-sudo ./scripts/build-iso.sh --skip-build --skip-debootstrap
-```
-
-**Static linking (musl):** The ISO builder compiles with `--target x86_64-unknown-linux-musl`
-to produce fully static binaries. This avoids glibc version mismatches between the build
-host and the Debian-based ISO rootfs. If you build manually, always use the musl target
-for ISO-destined binaries.
-
-**Output:** `output/agnos-VERSION-x86_64.iso` (~350 MB)
-
-The ISO includes:
-- Debian minimal base (systemd, networking, SSH)
-- AGNOS binaries: `agent-runtime`, `llm-gateway`, `agnsh`, `agnos-sudo`
-- Systemd units for daimon (agent runtime) and hoosh (LLM gateway)
-- AGNOS init scripts and sysctl hardening
-- GRUB bootloader with 5 boot modes (normal, live, debug, serial console, recovery)
-- Default login: `user`/`agnos` or `root`/`agnos`
-
-#### Self-Hosting Validation
-
-After building, verify the system can rebuild itself:
-
-```bash
-# Quick check (compile tests only)
-make selfhost-validate-quick
-
-# Full validation (builds packages, compiles kernel modules)
-make selfhost-validate
-
-# QEMU boot test
-make qemu-boot-test
-```
-
----
-
-## Post-Install Configuration
-
-### Connect to LLM Providers
-
-Edit `/etc/agnos/hoosh.toml` or set environment variables:
-
-```bash
-# Local (Ollama — auto-detected if running)
-export OLLAMA_HOST=http://localhost:11434
-
-# Cloud providers
-export OPENAI_API_KEY=sk-...
-export ANTHROPIC_API_KEY=sk-ant-...
-export GOOGLE_API_KEY=...
-```
-
-Verify:
-```bash
-curl http://127.0.0.1:8088/v1/models
-```
-
-### Install Marketplace Apps
-
-```bash
-# Search available apps
-agnsh marketplace search
-
-# Install an app
-agnsh marketplace install secureyeoman
-
-# List installed
-agnsh marketplace list
-```
-
-### Configure Desktop Environment
-
-For desktop installations, the aethersafha compositor starts automatically. Configure via:
-
-```bash
-# Theme
-/etc/agnos/desktop/theme.toml
-
-# Display settings
-/etc/agnos/desktop/display.toml
-
-# Keyboard/input
-/etc/agnos/desktop/input.toml
-```
-
-### Hardening
-
-AGNOS comes hardened by default:
-- Landlock LSM for filesystem sandboxing
-- seccomp-BPF for syscall filtering
-- Cryptographic audit chain in `/var/log/agnos/audit.log`
-- mTLS for service-to-service communication
-- Network namespace isolation per agent
-
-Review and customize:
-```bash
-# Security posture
-/etc/agnos/security/aegis.toml
-
-# Sandbox profiles
-/etc/agnos/sandbox/profiles/
-
-# CIS benchmark compliance
-cat /etc/agnos/security/cis-report.txt
-```
+The **arch-neutral boot pipeline** (`boot.cyr` arch detection, per-arch branch tables, arch-aware ISO stages keyed on the target triple) is a medium-priority roadmap item, not a gate on any of the above. Cyrius's bare-metal target shipped at **v6.2.x**; RISC-V rv64 has **not** shipped and is pinned to Cyrius **v6.7.x / v6.8.x**.
 
 ---
 
 ## Troubleshooting
 
-### Boot Issues
+### Boot Pipeline
 
-| Symptom | Solution |
-|---------|----------|
-| Black screen after GRUB | Add `nomodeset` to kernel parameters |
-| Kernel panic on boot | Check RAM, try `memtest86+` from boot menu |
-| No network on boot | Check `ip link`, WiFi needs `linux-firmware` package |
-| Services not starting | Check `journalctl -u argonaut` or `/var/log/agnos/boot.log` |
+| Symptom | Cause / Fix |
+|---------|-------------|
+| `cyrius: command not found` | Toolchain not on PATH. Check `~/.cyrius/bin/` or install from cyrius release tarball. |
+| `cyrius build` fails with missing stdlib | Running `cycc` directly; always use `cyrius build` (auto-prepends includes). |
+| `make boot-test` fails: `Error loading uncompressed kernel without PVH ELF Note` | Expected since agnos 1.30.0 — `boot.cyr`'s `-kernel` path cannot load the ELF64 kernel. Boot it through gnoboot + OVMF (see [QEMU Boot Test](#qemu-boot-test-kernel)). |
+| `make boot-test` hangs on black screen | QEMU serial not wired; check with `qemu-system-x86_64 --version` ≥ 7.0. |
+| `make iso-check` reports `MISS … [no build artifact]` | Sibling repo hasn't been built (iso-check checks presence, not freshness). `cd ../<repo> && cyrius build …` then retry. |
 
-### Service Issues
+### Kernel in QEMU
 
-```bash
-# Check agent runtime
-curl -v http://127.0.0.1:8090/v1/health
-
-# Check LLM gateway
-curl -v http://127.0.0.1:8088/v1/health
-
-# View logs
-tail -f /var/log/agnos/agent-runtime.log
-tail -f /var/log/agnos/llm-gateway.log
-
-# Restart services
-# (via argonaut)
-ark service restart agent-runtime
+```sh
+# boot.cyr always wires QEMU's serial console to stdio — there is no --serial flag
+# (it exits with "Unknown option"); -v / --verbose is accepted. Its -kernel path
+# cannot load agnos >= 1.30.0, so hand the kernel off through gnoboot + OVMF
+# (this asserts gnoboot's hand-off banner, not a kernel boot):
+cd ../gnoboot && sh tests/ovmf_smoke.sh
 ```
 
 ### Getting Help
 
-- **Issue Tracker**: https://github.com/agnostos/agnos/issues
-- **Security Issues**: Report privately (see `SECURITY.md`)
-- **Documentation**: https://docs.agnos.org
+- **Issue Tracker**: https://github.com/MacCracken/agnosticos/issues
+- **Security Issues**: see [SECURITY.md](/SECURITY.md)
+- **Roadmap**: tracked in the project's development docs
 
 ---
 
-*See also: [CONTRIBUTING.md](/CONTRIBUTING.md) for development setup, [API Reference](/docs/api/README.md) for endpoint documentation.*
+## Historical Note
+
+Prior versions of this document described a Debian-based rootfs + `userland/` Cargo workspace + Docker distribution path. That toolchain was retired during the monolith extraction (2026-04-01) and the Cyrius pivot (2026-04-04). Scripts from that era live in `scripts/archive-pre-cyrius/` for reference only and do not build.
+
+---
+
+*See also: [CONTRIBUTING.md](/CONTRIBUTING.md) for development setup, [troubleshooting.md](troubleshooting.md) for common issues, [system-requirements.md](system-requirements.md) for the full hardware matrix.*

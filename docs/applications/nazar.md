@@ -8,9 +8,9 @@
 | Version | Latest GitHub release |
 | Repository | `MacCracken/nazar` |
 | Runtime | native-binary (Rust) |
-| Recipe | `recipes/marketplace/nazar.toml` |
+| Recipe | `zugot/marketplace/nazar.cyml` |
 | MCP Tools | 5 `nazar_*` |
-| Agnoshi Intents | 5 |
+| Agnoshi Intents | None (the current agnoshi has no per-app intents) |
 | Port | 8095 |
 
 ---
@@ -32,7 +32,7 @@ No existing system monitor provides LLM-powered diagnostic suggestions or integr
 - **Daimon**: Registers on port 8090; uses anomaly baseline/alert APIs, agent heartbeat, and metric submission
 - **Hoosh**: LLM inference for diagnostic explanations, anomaly triage, and NL system queries
 - **MCP Tools**: `nazar_status`, `nazar_metrics`, `nazar_diagnose`, `nazar_alerts`, `nazar_processes`
-- **Agnoshi Intents**: `nazar status`, `nazar metrics`, `nazar diagnose`, `nazar alerts`, `nazar top`
+- **Agnoshi Intents** (the Rust era's planned set — not in the current agnoshi): `nazar status`, `nazar metrics`, `nazar diagnose`, `nazar alerts`, `nazar top`
 - **Marketplace**: Category: system/monitoring. Sandboxed with read-only /proc access and network access to localhost ports
 
 ## Architecture
