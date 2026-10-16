@@ -405,15 +405,17 @@ check you can perform against a rule table — it is a check you perform against
       at `hoosh/src/main.cyr:368-374` fires **only** when bound off 127.0.0.1 *and* no tokens are
       configured, so a loopback deployment is silently unauthenticated. Confirm tokens are configured
       or accept that it is open
-- [ ] bote: ⚠️ `bote` with no args is **stdio, not a listener** (`bote/src/main.cyr:168`). A port opens
-      only on an explicit subcommand — 8390 http (`main.cyr:146`), 8391 bridge (`:158`), 8392
-      streamable (`main_streamable.cyr:62`, separate binary), 8393 ws (`main_ws.cyr:50`, separate
-      binary). All four bind `INADDR_LOOPBACK()`. ⚠️ `bote unix` is an AF_UNIX transport — a Linux
-      path only; its agnos arm fails closed (`bote/src/transport_unix.cyr:179-186`)
+- [ ] bote: ⚠️ `bote` with no args is **stdio, not a listener** (`bote/src/main_common.cyr:152` →
+      `bote/src/main.cyr:219-220`). A port opens only on an explicit subcommand of the one `bote`
+      binary (one binary since bote 3.4.2) — 8390 http (`main.cyr:187`), 8391 bridge (`:203`), 8392
+      streamable (`:151`), 8393 ws (`:161`). `bote-streamable` / `bote-ws` are now only argv[0]
+      aliases (symlinks, `main_common.cyr:146-149`). All four bind `INADDR_LOOPBACK()`. ⚠️ `bote unix`
+      is an AF_UNIX transport — a Linux path only; its agnos arm fails closed
+      (`bote/src/transport_unix.cyr:192-200`)
 - [ ] bote auth is opt-in via one env var: `BOTE_BEARER_TOKENS=tok-a,tok-b`
-      (`bote/src/main_common.cyr:97-105`). ⛔ **Unset ⇒ no validator is installed ⇒ every request
-      passes.** When set, the comparison is constant-time (`bote/src/auth.cyr:97-117`)
-- [ ] ⚠️ `bote bridge` sets `allowed_origins = ["*"]` — a CORS wildcard (`bote/src/main.cyr:159-161`)
+      (`bote/src/main_common.cyr:97-114`). ⛔ **Unset ⇒ no validator is installed ⇒ every request
+      passes.** When set, the comparison is constant-time (`bote/src/auth.cyr:97-120`)
+- [ ] ⚠️ `bote bridge` sets `allowed_origins = ["*"]` — a CORS wildcard (`bote/src/main.cyr:204-206`)
 - [ ] agora 2323: binds `INADDR_ANY` (`agora/src/main.cyr:36,3186`), sigil Ed25519
       challenge/response, anon-read / auth-post by default. ⚠️ This is a **telnet** service and it is
       part of the system

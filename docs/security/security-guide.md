@@ -290,8 +290,8 @@ sigil is real and broad, all in-house with zero external crypto dependencies: Ed
 |---|---|---|---|
 | daimon `serve` | 8090 | `127.0.0.1` by default since daimon **2.3.0** (its HTTP-listen fix; `daimon/src/server.cyr:260-264`, overridable with `serve --listen`). ⛔ Through 2.2.x it bound **`INADDR_ANY` (0.0.0.0)** and its `127.0.0.1` default (`daimon/src/config.cyr:10`) was never read | ⛔ **none** — daimon's README and `src/api_agent.cyr:11-12` say so, pending its roadmap 2.5.x |
 | hoosh `serve` | 8088 | `127.0.0.1` (`hoosh/src/main.cyr:88`; `INADDR_ANY` before hoosh 2.5.1) | ⚠️ **fails open** — `hoosh/src/lib/auth.cyr:35-36` returns 1 when no tokens are configured, which is the default |
-| bote http / bridge | 8390 / 8391 | ✅ `INADDR_LOOPBACK` (`bote/src/main.cyr:146,158`) | ⚠️ opt-in only, via `$BOTE_BEARER_TOKENS` (`bote/src/main_common.cyr:97-105`). Unset ⇒ no validator installed. Bridge additionally sets CORS `*`. Default `bote` with no args is **stdio, not a listener** |
-| bote-streamable / bote-ws | 8392 / 8393 | `127.0.0.1` | same opt-in |
+| bote http / bridge | 8390 / 8391 | ✅ `INADDR_LOOPBACK` (`bote/src/main.cyr:187,203`) | ⚠️ opt-in only, via `$BOTE_BEARER_TOKENS` (`bote/src/main_common.cyr:97-114`). Unset ⇒ no validator installed. Bridge additionally sets CORS `*`. Default `bote` with no args is **stdio, not a listener** (`main_common.cyr:152`) |
+| bote streamable / ws | 8392 / 8393 | ✅ `INADDR_LOOPBACK` (`bote/src/main.cyr:151,161`) | same opt-in. Subcommands of the same `bote` binary since bote 3.4.2; `bote-streamable` / `bote-ws` are only argv[0] aliases (`main_common.cyr:146-149`) |
 | agora (telnet BBS) | 2323 | ⚠️ `INADDR_ANY` (`agora/src/main.cyr:36,3186`) | ✅ sigil Ed25519 challenge/response; anon-read, auth-post |
 | kavach credential proxy | caller-chosen | `127.0.0.1` (`kavach/src/credential_http.cyr:97`) | ⛔ **none** — a secret-name allowlist only. ⚠️ On AGNOS "loopback-only" is not an isolation boundary: every process on the box is a peer |
 
