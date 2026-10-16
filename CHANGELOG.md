@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — `install-media.sh` full provision builds a complete drive in one pass (2026-10-16)
+
+Prepared for swapping archaemenid's 1 TB AGNOS NVMe for a 512 GB one. The full-provision mode (`sudo ./scripts/install-media.sh /dev/nvme0n1`) is the new-drive path, and it now produces the same drive the update modes maintain:
+
+- **Seeds the whole staged rootfs.** Provision used to copy `/bin/agnsh` and nothing else from `agnos/build/rootfs`, so a fresh drive had no desktop tools, no `/fw` GPU microcode, no `/etc/ssl` and no wallpapers until a second `--update-fs` pass. Provision and `--update-fs` now share one `stage_rootfs` function.
+- **Requires the staged rootfs before the wipe.** A missing `build/rootfs/bin/agnsh` now stops the run before anything is destroyed. Previously it made a drive with no shell.
+- **Refuses a disk whose logical sectors are not 512 bytes.** agnos's ext4 and FAT probes (`ext2_probe_backend`, `fatfs_probe_backend`) refuse any other size. On a 4Kn drive gnoboot and the kernel would load and then find no agnos-fs. On NVMe, the refusal prints the `nvme format --lbaf` fix.
+- **Waits for the partition nodes** (`udevadm settle` plus a bounded poll) instead of a fixed `sleep 1` after `partprobe`.
+- **Formats agnos-fs with `lazy_itable_init=0,lazy_journal_init=0`**, so inode tables are zeroed at mkfs time. They no longer depend on what the drive returns for never-written blocks.
+
+The partition layout is unchanged: 256 MiB ESP, 25 GiB agnos-fs and 512 MiB fstest at fixed offsets, with the rest of the disk left unallocated, so drive capacity does not matter. Verified without root: the pre-wipe guards were run against the live 1 TB drive (stopped at the confirmation), against the system disk (refused) and against a partition (refused). `stage_rootfs` was run into a scratch directory and diffed against the stage. The 4096-byte refusal was exercised in isolation. **A real provision has not run yet**; the 512 GB drive will be its first.
+
 ### Changed — ecosystem doc-currency sweep, agnos 1.56.4x → 1.57.10 · Cyrius 6.5.x → 6.6.8 (2026-09-27 → 09-28)
 
 The genesis docs were anchored at agnos **1.56.40–1.56.46** and Cyrius **6.5.x**. Those anchors came from the 2026-08-05 genesis sweep, a 2026-08-17 `state.md` refresh and a 2026-08-23 registry pass, so the docs were seven weeks behind. This sweep brings them up to:

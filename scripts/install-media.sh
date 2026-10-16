@@ -15,8 +15,11 @@
 # Modes:
 #   sudo ./scripts/install-media.sh /dev/sdX            FULL PROVISION (WIPES the whole disk). Guarded:
 #                                                        refuses the disk holding / or /boot, refuses a
-#                                                        mounted disk, refuses a partition target; fails
-#                                                        CLOSED if it can't identify the system disk.
+#                                                        mounted disk, refuses a partition target, refuses
+#                                                        a non-512-byte-sector disk; fails CLOSED if it
+#                                                        can't identify the system disk. This is the path
+#                                                        for a NEW drive: it stages the whole build/rootfs,
+#                                                        same as --update-fs, so no follow-up pass is needed.
 #   sudo ./scripts/install-media.sh --update [DEV]       ESP refresh (gnoboot+kernel+initramfs), no wipe.
 #                                                        Targets AGNOSBOOT by label unless DEV given.
 #   sudo ./scripts/install-media.sh --update-fs [PART]   agnos-fs refresh (build/rootfs/* incl /bin/agnsh),
@@ -262,6 +265,47 @@ stage_fp() {
     fi
 }
 
+# The staged rootfs must exist and carry /bin/agnsh (PID 1) — a disk without it boots the kernel
+# and then has no shell. Checked by --update-fs AND by full provision, which checks it BEFORE the wipe.
+require_rootfs_stage() {
+    [[ -d "$ROOTFS_STAGE" ]] || die "staged rootfs not found at $ROOTFS_STAGE — run: (cd ../agnos && ./scripts/burn/stage-agnsh.sh --build && ./scripts/burn/stage-tools.sh --build)"
+    [[ -f "${ROOTFS_STAGE}/bin/agnsh" ]] || die "${ROOTFS_STAGE}/bin/agnsh missing — run: (cd ../agnos && ./scripts/burn/stage-agnsh.sh --build)"
+    return 0
+}
+
+# Put everything the iron image carries onto a mounted agnos-fs: the whole build/rootfs tree
+# (/bin/agnsh + stage-tools' /bin/*, /fw GPU microcode, /etc, /share, wallpapers) plus doom + WAD and
+# the FP-arc proofs. Full provision and --update-fs BOTH go through here, so a freshly provisioned
+# disk carries exactly what a refresh would put on an old one. (Full provision used to seed
+# /bin/agnsh alone, so a new disk needed a second --update-fs pass before the desktop had its tools
+# or the GPU had its /fw blobs.)
+stage_rootfs() {
+    local mnt="$1"
+    # Merge the staged tree in (cp -a is overwrite-matching-paths, never a mirror/delete — existing
+    # write-test artifacts + seed files survive). cp -a preserves the +x bits stage-*.sh set; the
+    # explicit chmod is belt-and-suspenders across the whole /bin — agnsh (PID 1) + the AGNOS-tic
+    # tools (bnrmr/cmdrs/…) must all stay executable on the ext4 agnos-fs for exec-from-disk.
+    cp -a "${ROOTFS_STAGE}/." "${mnt}/"
+    chmod +x "${mnt}/bin/"*
+    echo "  staged doom + WAD:"
+    stage_doom "$mnt"
+    echo "  staged FP-arc ring-3 f64 proofs:"
+    stage_fp "$mnt"
+    # /fw microcode blobs (GPU arc 1.54.x) ride in on the cp -a above (build/rootfs/fw/ → /fw),
+    # but cp -a is silent — read the tree back off the mount so a missing/short blob is VISIBLE
+    # here rather than surfacing as "RLC blob not found" mid-burn. Same "did this land?" intent
+    # as the /bin size-diff block.
+    echo "  on-disk /fw (GPU microcode blobs):"
+    if [[ -d "${mnt}/fw" ]]; then
+        for f in "${mnt}/fw/"*; do
+            [[ -f "$f" ]] && echo "    $(basename "$f") ($(stat -c%s "$f") bytes)"
+        done
+    else
+        echo "    (none — build/rootfs/fw/ was empty at stage time)"
+    fi
+    return 0
+}
+
 # --- agnos-fs refresh (stage /bin/agnsh + rootfs files), no wipe ---
 
 fs_update() {
@@ -270,8 +314,7 @@ fs_update() {
     refuse_whole_disk "$part" agnos-fs
     refuse_system_disk "$part"
     refuse_mounted_elsewhere "$part" "$MOUNT_POINT_DATA"
-    [[ -d "$ROOTFS_STAGE" ]] || die "staged rootfs not found at $ROOTFS_STAGE — run: (cd ../agnos && ./scripts/burn/stage-agnsh.sh --build)"
-    [[ -f "${ROOTFS_STAGE}/bin/agnsh" ]] || die "${ROOTFS_STAGE}/bin/agnsh missing — run: (cd ../agnos && ./scripts/burn/stage-agnsh.sh --build)"
+    require_rootfs_stage
 
     echo "=== agnos-fs refresh (no wipe) ==="
     echo "Target agnos-fs: $part  (disk /dev/$(disk_base_of "$part"))"
@@ -295,28 +338,7 @@ fs_update() {
         _old_md5["$b"]="$(md5sum "$f" | cut -d' ' -f1)"   # captured BEFORE overwrite, for the equal-size tiebreak
     done
 
-    # Merge the staged tree in (cp -a is overwrite-matching-paths, never a mirror/delete — existing
-    # write-test artifacts + seed files survive). cp -a preserves the +x bits stage-*.sh set; the
-    # explicit chmod is belt-and-suspenders across the whole /bin — agnsh (PID 1) + the AGNOS-tic
-    # tools (bnrmr/cmdrs/…) must all stay executable on the ext4 agnos-fs for exec-from-disk.
-    cp -a "${ROOTFS_STAGE}/." "${MOUNT_POINT_DATA}/"
-    chmod +x "${MOUNT_POINT_DATA}/bin/"*
-    echo "  staged doom + WAD:"
-    stage_doom "${MOUNT_POINT_DATA}"
-    echo "  staged FP-arc ring-3 f64 proofs:"
-    stage_fp "${MOUNT_POINT_DATA}"
-    # /fw microcode blobs (GPU arc 1.54.x) ride in on the cp -a above (build/rootfs/fw/ → /fw),
-    # but cp -a is silent — read the tree back off the mount so a missing/short blob is VISIBLE
-    # here rather than surfacing as "RLC blob not found" mid-burn. Same "did this land?" intent
-    # as the /bin size-diff block.
-    echo "  on-disk /fw (GPU microcode blobs):"
-    if [[ -d "${MOUNT_POINT_DATA}/fw" ]]; then
-        for f in "${MOUNT_POINT_DATA}/fw/"*; do
-            [[ -f "$f" ]] && echo "    $(basename "$f") ($(stat -c%s "$f") bytes)"
-        done
-    else
-        echo "    (none — build/rootfs/fw/ was empty at stage time)"
-    fi
+    stage_rootfs "${MOUNT_POINT_DATA}"
     sync
 
     echo "  /bin size diff (old → new):"
@@ -414,11 +436,30 @@ DEV="$(readlink -f "$DEV")"                                   # resolve symlinks
 refuse_system_disk "$DEV"
 refuse_if_mounted "$DEV"
 
-for tool in parted mkfs.fat mkfs.ext4 wipefs partprobe; do
+for tool in parted mkfs.fat mkfs.ext4 wipefs partprobe udevadm; do
     command -v "$tool" >/dev/null 2>&1 || die "required tool '$tool' not found"
 done
 require_file "$KERNEL_SRC"  "AGNOS kernel"
 require_file "$GNOBOOT_SRC" "gnoboot binary"
+require_rootfs_stage   # before the wipe: a provision that cannot seed /bin/agnsh must not destroy anything
+
+# 512-byte logical sectors ONLY. agnos's ext4 and FAT drivers read a 512 B-LBA backend and nothing
+# else (agnos kernel/core/ext2.cyr ext2_probe_backend refuses any other size before its first read;
+# fatfs_probe_backend likewise). On a 4096 B-LBA disk UEFI still loads gnoboot and gnoboot still
+# loads the kernel, and then the kernel finds no agnos-fs and there is no /bin/agnsh — a boot that
+# LOOKS like a kernel bug. Most consumer NVMe ships 512 B; some ship or are reformatted 4Kn. Fails
+# closed if the size can't be read.
+LOG_SEC="$(cat "/sys/block/$(basename "$DEV")/queue/logical_block_size" 2>/dev/null || true)"
+[[ -n "$LOG_SEC" ]] || die "cannot read the logical sector size of $DEV — refusing (fail-closed)."
+if [[ "$LOG_SEC" != "512" ]]; then
+    echo "$DEV uses ${LOG_SEC}-byte logical sectors; agnos mounts ext4/FAT on 512-byte-sector disks only." >&2
+    if [[ "$DEV" == *nvme* ]]; then
+        echo "Switch the namespace to its 512-byte LBA format first (this ERASES the drive):" >&2
+        echo "  sudo nvme id-ns -H $DEV | grep 'LBA Format'     # find the index whose Data Size is 512 bytes" >&2
+        echo "  sudo nvme format $DEV --lbaf=<that index>" >&2
+    fi
+    die "refusing: $DEV would boot the kernel but never mount its agnos-fs."
+fi
 
 case "$DEV" in
     *nvme*|*mmcblk*|*loop*) P1="${DEV}p1"; P2="${DEV}p2"; P3="${DEV}p3" ;;
@@ -428,17 +469,16 @@ esac
 IS_REMOVABLE="$(cat "/sys/block/$(basename "$DEV")/removable" 2>/dev/null || echo 0)"
 
 echo "=== AGNOS full provision (gnoboot, no GRUB) ==="
-echo "Target whole disk: $DEV   (removable=$IS_REMOVABLE)"
+echo "Target whole disk: $DEV   (removable=$IS_REMOVABLE, ${LOG_SEC}-byte sectors)"
 lsblk -o NAME,SIZE,TYPE,FSTYPE,LABEL,MOUNTPOINTS,MODEL "$DEV" 2>/dev/null || true
 udevadm info --query=property --name="$DEV" 2>/dev/null | grep -E "ID_BUS|ID_MODEL|ID_VENDOR" || true
 echo ""
 echo "Will create: p1 256MiB FAT32 AGNOSBOOT (ESP) | p2 25GiB ext4 agnos-fs | p3 512MiB FAT32 fstest"
+echo "             (fixed sizes — the rest of the disk stays unallocated, whatever its capacity)"
 echo "ESP gets: gnoboot + kernel ($(stat -c%s "$KERNEL_SRC") B)  [+ sovereign \\boot\\initramfs if present]."
-if [[ -f "${ROOTFS_STAGE}/bin/agnsh" ]]; then
-    echo "agnos-fs gets: /bin/agnsh ($(stat -c%s "${ROOTFS_STAGE}/bin/agnsh") B) + seed files."
-else
-    echo "agnos-fs gets: seed files only (run stage-agnsh.sh --build first to include /bin/agnsh)."
-fi
+echo "agnos-fs gets: the staged rootfs $ROOTFS_STAGE ($(du -sh "$ROOTFS_STAGE" 2>/dev/null | cut -f1)):"
+echo "  /bin: $(ls "${ROOTFS_STAGE}/bin/" 2>/dev/null | tr '\n' ' ')"
+echo "  + doom/WAD/FP proofs if built, + seed files."
 echo ""
 echo "*** THIS WILL WIPE ALL DATA ON $DEV ***"
 [[ "$IS_REMOVABLE" != "1" ]] && echo "*** $DEV is a NON-REMOVABLE (internal) disk — confirm this is the AGNOS disk. ***"
@@ -458,12 +498,23 @@ parted -s "$DEV" set 1 esp on
 parted -s "$DEV" mkpart agnos-fs ext4 256MiB 25856MiB
 parted -s "$DEV" mkpart fstest fat32 25856MiB 26368MiB
 partprobe "$DEV"
-sleep 1
+# Wait for udev to create the partition nodes instead of a fixed sleep — on a disk that has never
+# been partitioned the nodes can lag partprobe, and mkfs on a missing node fails mid-provision.
+udevadm settle 2>/dev/null || true
+for _ in $(seq 1 20); do
+    [[ -b "$P1" && -b "$P2" && -b "$P3" ]] && break
+    sleep 0.5
+done
+[[ -b "$P1" && -b "$P2" && -b "$P3" ]] || die "partition nodes $P1 / $P2 / $P3 did not appear after partprobe."
 
 echo "[3/8] Formatting $P1 FAT32 (label AGNOSBOOT)..."
 mkfs.fat -F32 -n AGNOSBOOT "$P1"
 echo "[4/8] Formatting $P2 ext4 (label agnos-fs)..."
-mkfs.ext4 -F -L agnos-fs "$P2"
+# Zero the inode tables + journal NOW (lazy_*_init=0) rather than leave them to Linux's background
+# ext4lazyinit, which only runs while the fs is mounted on Linux — a few seconds per --update-fs.
+# Without it, never-touched inode-table blocks read back as whatever the drive returns for unwritten
+# space, and that varies by drive. Costs seconds on 25 GiB of NVMe.
+mkfs.ext4 -F -L agnos-fs -E lazy_itable_init=0,lazy_journal_init=0 "$P2"
 echo "      Formatting $P3 FAT32 (label fstest)..."
 mkfs.fat -F32 -n fstest "$P3"
 
@@ -475,19 +526,11 @@ cp "$KERNEL_SRC"  "${MOUNT_POINT}/boot/agnos"
 install_initramfs "$MOUNT_POINT"
 sync; umount_safe "$MOUNT_POINT"
 
-echo "[6/8] Mounting agnos-fs + seeding /bin/agnsh + sample files..."
+echo "[6/8] Mounting agnos-fs + staging the rootfs (/bin/agnsh + tools + /fw) + sample files..."
 mount_at "$P2" "$MOUNT_POINT_DATA"
 PROV_DATE="$(date -u +%Y-%m-%d 2>/dev/null || echo provisioned)"
-if [[ -f "${ROOTFS_STAGE}/bin/agnsh" ]]; then
-    mkdir -p "${MOUNT_POINT_DATA}/bin"
-    cp "${ROOTFS_STAGE}/bin/agnsh" "${MOUNT_POINT_DATA}/bin/agnsh"
-    chmod +x "${MOUNT_POINT_DATA}/bin/agnsh"
-    echo "      seeded /bin/agnsh ($(stat -c%s "${MOUNT_POINT_DATA}/bin/agnsh") bytes)"
-fi
-echo "      staging doom + WAD..."
-stage_doom "${MOUNT_POINT_DATA}"
-echo "      staging FP-arc ring-3 f64 proofs (fpex + naadex)..."
-stage_fp "${MOUNT_POINT_DATA}"
+stage_rootfs "${MOUNT_POINT_DATA}"
+echo "  on-disk /bin: $(ls "${MOUNT_POINT_DATA}/bin/" 2>/dev/null | tr '\n' ' ')"
 printf 'hello from agnos ext4 seed   provisioned %s\n' "$PROV_DATE" > "${MOUNT_POINT_DATA}/hello.txt"
 printf 'welcome — secondary hello on agnos-fs root   provisioned %s\n' "$PROV_DATE" > "${MOUNT_POINT_DATA}/welcome.txt"
 mkdir -p "${MOUNT_POINT_DATA}/agnos"
