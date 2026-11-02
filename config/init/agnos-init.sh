@@ -14,26 +14,45 @@ log() {
 # -----------------------------------------------------------------------
 # System users and groups — must exist before any AGNOS service starts
 # -----------------------------------------------------------------------
+# The ids are FIXED, not whatever `useradd -r` picks. argonaut's default services drop
+# to these numbers (daimon and aethersafha 900:900, llm-gateway 901:901, agnoshi
+# 1000:1000), and kybernet's agnos-init owns their runtime paths and grants
+# /dev/fb0 to video (44) and /dev/input/event* to input (104) by them (argonaut
+# 1.20.0, kybernet 1.12.0). A name at another number would own nothing they use.
+expect_uid() {
+    local got
+    got="$(id -u "$1" 2>/dev/null || true)"
+    [ "$got" = "$2" ] || log "WARNING: $1 is uid ${got:-missing}, but AGNOS services run as $2"
+}
+
 setup_users() {
     log "Creating system users..."
 
+    # The device groups aethersafha holds, before the users that join them.
+    getent group video >/dev/null 2>&1 || groupadd -r -g 44 video
+    getent group input >/dev/null 2>&1 || groupadd -r -g 104 input
+
     # agnos — agent runtime daemon user
-    getent group agnos >/dev/null 2>&1 || groupadd -r agnos
+    getent group agnos >/dev/null 2>&1 || groupadd -r -g 900 agnos
     id -u agnos >/dev/null 2>&1 || \
-        useradd -r -g agnos -d /var/lib/agnos -s /usr/sbin/nologin \
+        useradd -r -u 900 -g agnos -d /var/lib/agnos -s /usr/sbin/nologin \
         -c "AGNOS Agent Runtime" agnos
+    expect_uid agnos 900
 
     # agnos-llm — LLM gateway daemon user
-    getent group agnos-llm >/dev/null 2>&1 || groupadd -r agnos-llm
+    getent group agnos-llm >/dev/null 2>&1 || groupadd -r -g 901 agnos-llm
     id -u agnos-llm >/dev/null 2>&1 || \
-        useradd -r -g agnos-llm -d /var/lib/agnos/models -s /usr/sbin/nologin \
+        useradd -r -u 901 -g agnos-llm -d /var/lib/agnos/models -s /usr/sbin/nologin \
         -c "AGNOS LLM Gateway" agnos-llm
+    expect_uid agnos-llm 901
 
     # user — default interactive user (UID 1000, password: agnos)
+    getent group user >/dev/null 2>&1 || groupadd -g 1000 user
     if ! id -u user >/dev/null 2>&1; then
-        useradd -m -G sudo,video,audio,input,render -s /bin/bash -u 1000 user 2>/dev/null || true
+        useradd -m -u 1000 -g user -G sudo,video,audio,input,render -s /bin/bash user 2>/dev/null || true
         echo 'user:agnos' | chpasswd 2>/dev/null || true
     fi
+    expect_uid user 1000
 
     # root password (default: agnos)
     echo 'root:agnos' | chpasswd 2>/dev/null || true

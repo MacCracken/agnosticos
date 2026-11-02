@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — the AGNOS accounts have fixed ids (2026-11-02)
+
+`config/init/agnos-init.sh` made agnos and agnos-llm with `useradd -r`, which takes whatever system uid
+is free. argonaut 1.20.0's default services now drop root to fixed numbers, and kybernet 1.12.0's
+agnos-init owns their runtime paths and grants their devices by the same numbers, so the accounts have
+to match:
+
+| Account | uid:gid | Who runs as it |
+|---|---|---|
+| agnos | 900:900 | daimon, aethersafha |
+| agnos-llm | 901:901 | llm-gateway (hoosh) |
+| user | 1000:1000 | agnoshi, the interactive user |
+| group video | 44 | aethersafha, for `/dev/fb0` |
+| group input | 104 | aethersafha, for `/dev/input/event*` |
+
+These are the numbers the pre-Cyrius installer already used (`scripts/archive-pre-cyrius/build-installer.sh`).
+An account that already exists at another number is not renumbered, since its files would need to
+follow it; the script logs a warning naming the account and the number the services expect. Checked in
+a fresh `ubuntu:26.04` container, run twice: the ids came out as listed, and the second run changed
+nothing and warned about nothing. That image ships its own `ubuntu` account at 1000, which had to be
+removed first. With it in place, `user` could not be created, and the new warning said so.
+
 ### Changed — `install-media.sh` full provision builds a complete drive in one pass (2026-10-16)
 
 Prepared for swapping archaemenid's 1 TB AGNOS NVMe for a 512 GB one. The full-provision mode (`sudo ./scripts/install-media.sh /dev/nvme0n1`) is the new-drive path, and it now produces the same drive the update modes maintain:
