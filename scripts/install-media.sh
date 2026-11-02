@@ -233,7 +233,13 @@ stage_doom() {
     fi
     # tonegen — the agnos audio-path test (clean tones via the snd_* band). Optional,
     # staged alongside doom so `run /bin/tonegen` works on iron.
-    if [[ -f "$TONEGEN_BIN" ]]; then
+    # ⚠ stage-tools.sh OWNS /bin/tonegen now (it builds tests/audio/build/tonegen_agnos and stages it
+    # into build/rootfs/bin). This copy ran AFTER stage_rootfs's cp -a, so it replaced that fresh build
+    # with TONEGEN_BIN — a stale tests/audio/build/tonegen from 2026-07-04 (114080 B against the
+    # staged 165224 B, found 2026-10-16). The staged copy wins; TONEGEN_BIN is only a fallback.
+    if [[ -f "${ROOTFS_STAGE}/bin/tonegen" ]]; then
+        echo "    /bin/tonegen: the staged build/rootfs copy ($(stat -c%s "${ROOTFS_STAGE}/bin/tonegen") bytes) — not overridden"
+    elif [[ -f "$TONEGEN_BIN" ]]; then
         cp "$TONEGEN_BIN" "${mnt}/bin/tonegen"; chmod +x "${mnt}/bin/tonegen"
         echo "    staged /bin/tonegen ($(stat -c%s "$TONEGEN_BIN") bytes)"
     fi
