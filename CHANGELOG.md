@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — doc sweep: versions, ports and toolchain caught up (2026-11-10)
+
+The docs were six weeks behind (last refreshed 2026-09-28). Every local repo's `VERSION`, `cyrius.cyml` and `Cargo.toml` was read (149 directories), and the GitHub org listing (223 repos) was used for the repos with no local clone.
+
+- **Registries.** 114 Version cells synced: 67 in `applications/libs/README.md`, 19 in `applications/binaries.md`, 28 in `planning/shared-crates.md`. Every row with a local clone now matches its repo.
+  - The 39 GitHub-only rows were left alone. None of those repos has been pushed since the last sweep.
+  - **rekha graduated:** 1.0.0 was tagged 2026-10-13. Its row moved from shared-crates (pre-1.0 count 23 → 22) to libs Graphics & Rendering (8 → 9; total v1.0+ libraries 94 → 95).
+  - Row descriptions were updated only for rekha, kashi, the agnos row, and the port-status cells listed below. The rest were not re-verified.
+- **Ports.** In libs/README.md and `planning/software-port-path.md`:
+  - **tanmatra** 2.0.0 (2026-11-08) and **impetus** 2.0.0 (2026-11-10) are Cyrius now.
+  - **kimiya**'s port is in progress: Rust 1.2.0 is frozen in `rust-old/`, heading for 2.0.0.
+  - **bijli, pravash and ushma** are still Rust. Each shipped a toolchain + correctness-audit release on 2026-11-09, the step that preceded the impetus and kimiya ports. They are **scheduled as the next ports** (operator, 2026-11-10), with port plans still to be written. That is recorded in their libs rows, in software-port-path's physical-science tier, and in the planning ledger's port-path row and section, where the 2026-07-05 counts are also replaced.
+- **software-port-path.md.**
+  - The Done list is re-derived from local manifests: 91 → 128, plus kimiya in progress. The 37 additions are ported repos and repos that were Cyrius from birth, listed separately.
+  - The Rust tiers lost the ported repos, and the local-clone markers were updated.
+  - The counts were re-run against the org: 128 Cyrius · 53 Rust (13 local, 40 GitHub-only) · 8 unported games · 34 other.
+- **`development/state.md`.**
+  - agnos 1.57.10 → **1.57.19** (2026-11-09). There is still no iron burn after 1.57.1, so the unburned span now runs 1.57.2–1.57.19 (ZFS read/write, VT-d queued invalidation, `#109`–`#115`, aarch64 compiling and linking, the cyrius 6.7.18 move). Next free syscall: `#116`.
+  - The cyrius pin table is rewritten. 102 repos pin 6.7.18; the older 6.7 pins and the 15 repos still on 6.6 are named. The newest tag is **6.7.18** (2026-10-23), and 6.6.x closed at 6.6.20 (2026-10-07).
+  - VT-d queued invalidation is removed from the open list, and the aarch64 line now says it compiles but has never booted.
+  - The desktop note records aethersafha 0.17.x / 0.18.2 (none of it on iron).
+- **`CLAUDE.md`.**
+  - The Cyrius paragraph now describes v6.7.x, the language minor (6.7.0 → 6.7.18), adds v6.6.x to the closed minors, and dates RISC-V's re-homing to v6.8.x/v6.9.x.
+  - The aethersafha row says cyrius-doom vendors setu 0.9.1 (it said 0.7.0), and its "NOT Wayland" note is scoped to the compositor: Wayland stays a frontend for cross-platform clients.
+- **`planning/README.md`.** The ML/AI ledger row's pins are updated: all but prajna and mabda are on 6.7.18, and attn11's dep tags have caught up.
+
+### Changed — murti recorded as having no repo (2026-11-10)
+
+The pre-pivot Rust `murti` crate (0.1.0, a broker over 15 external inference backends) was deleted from GitHub and from the local clone. Several docs still described it as a live crate or a port in waiting, which contradicted the 2026-07-01 decision in `docs/development/planning/murti.md`: there is no port, and the model-load seam is prototyped inside hoosh. Corrected:
+
+- `planning/shared-crates.md` — the murti row is removed from *In Progress* (pre-1.0 count 24 → 23, re-counted).
+- `planning/roadmap.md` — the *Murti* entry no longer says "Scaffolded 0.1.0 … Ollama replacement". It now says there is no repo and the work is deferred until demand appears.
+- `roadmap.md` — the forward tracks for local-inference optimization and computational architecture no longer name murti as an owning repo.
+- `planning/README.md` — the IDEA-ONLY and DEAD entries record the deletion. The 2026-08-01 "none cloned locally" is now scoped to that check, since tanur, selah and muharrir are cloned locally.
+- `planning/murti.md` — the header records the deletion. A new status note says the Type-3 importer condition holds, the second-consumer condition is not recorded as met, and hoosh 2.11.0 (ADR-014) already serves tentib in-process.
+- `ml-ai-handoff.md`, `planning/integer-native-ml.md`, `planning/multimodal-substrate.md` — murti is no longer listed as a serving consumer. hoosh is.
+- `vision/architecture/k8s-roadmap.md` — a header note marks its murti items as the dead Rust-era design.
+- `doc-health.md` — the `planning/murti.md` row is re-dated.
+
 ### Changed — the AGNOS accounts have fixed ids (2026-11-02)
 
 `config/init/agnos-init.sh` made agnos and agnos-llm with `useradd -r`, which takes whatever system uid
